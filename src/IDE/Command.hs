@@ -225,9 +225,11 @@ mkActions =
     ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
     ,AD "WorkspaceAddPackage" (__ "_Add Package...") Nothing Nothing
         (showWorkspacePane >> workspaceTry workspaceAddPackage) [] False
-    ,AD "CleanWorkspace" (__ "Cl_ean all packages") (Just (__ "Cleans all packages in the workspace")) (Just "ide_clean")
+    ,AD "WorkspaceAddPackageCopy" (__ "_Add Copy Of Installed Package...") Nothing Nothing
+    (showWorkspacePane >> workspaceTry workspacePackageClone) [] False
+    ,AD "CleanWorkspace" (__ "Cl_ean All packages") (Just (__ "Cleans all packages in the workspace")) (Just "ide_clean")
         (workspaceTry workspaceClean) [] False
-    ,AD "MakeWorkspace" (__ "_Build all packages") (Just (__ "Builds all of the packages in the workspace")) (Just "ide_configure")
+    ,AD "MakeWorkspace" (__ "_Build All packages") (Just (__ "Builds all of the packages in the workspace")) (Just "ide_configure")
         (workspaceTry workspaceMake) [] False
     ,AD "NextError" (__ "_Next Error") (Just (__ "Go to the next error")) (Just "ide_error_next")
         nextError [] False
@@ -235,8 +237,6 @@ mkActions =
         previousError [] False
 
     ,AD "Package" (__ "_Package") Nothing Nothing (return ()) [] False
-    ,AD "ClonePackage" (__ "Add Package From Source _Repository...") Nothing Nothing
-        (showWorkspacePane >> workspaceTry workspacePackageClone) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "PackageEdit" (__ "_Edit") Nothing Nothing (return ()) [] False
     ,AD "EditPackage" (__ "With _Package Editor") Nothing Nothing
@@ -362,13 +362,13 @@ mkActions =
         debugType [] False
 
     ,AD "Metadata" (__ "_Metadata") Nothing Nothing (return ()) [] False
-    ,AD "UpdateMetadataCurrent" (__ "_Update workspace data") (Just (__ "Updates data for the current workspace"))
+    ,AD "UpdateMetadataCurrent" (__ "_Update Workspace Data") (Just (__ "Updates data for the current workspace"))
             (Just "ide_rebuild_meta") updateWorkspaceInfo [] False
-    ,AD "RebuildMetadataCurrent" (__ "_Rebuild workspace data") (Just (__ "Rebuilds data for the current workspace"))
+    ,AD "RebuildMetadataCurrent" (__ "_Rebuild Workspace Data") (Just (__ "Rebuilds data for the current workspace"))
             Nothing rebuildWorkspaceInfo [] False
-    ,AD "UpdateMetadataLib" (__ "U_pdate system data") Nothing Nothing
+    ,AD "UpdateMetadataLib" (__ "U_pdate System Data") Nothing Nothing
         updateSystemInfo [] False
-    ,AD "RebuildMetadataLib" (__ "R_ebuild system data") Nothing Nothing
+    ,AD "RebuildMetadataLib" (__ "R_ebuild System Data") Nothing Nothing
         rebuildSystemInfo [] False
 
     ,AD "Session" (__ "_Session") Nothing Nothing (return ()) [] False

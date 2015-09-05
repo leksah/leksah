@@ -103,8 +103,13 @@ chooseDir window prompt mbFolder = do
             return Nothing
         _                   -> return Nothing
 
-chooseFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
-chooseFile window prompt mbFolder = do
+-- | Launch a "choose file" dialog
+chooseFile :: Window
+           -> Text                   -- ^ Window title
+           -> Maybe FilePath         -- ^ Start location
+           -> [(String, [String])]   -- ^ File filters, e.g. [("Music Files", ["*.mp3", "*.wav"])]
+           -> IO (Maybe FilePath)
+chooseFile window prompt mbFolder filters = do
     dialog <- fileChooserDialogNew
                     (Just prompt)
                     (Just window)
@@ -113,7 +118,9 @@ chooseFile window prompt mbFolder = do
                 ,ResponseCancel)
                 ,("gtk-open"
                 ,ResponseAccept)]
-    when (isJust mbFolder) $ void (fileChooserSetCurrentFolder dialog (fromJust mbFolder))
+    forM_ mbFolder $ \folder ->
+        void (fileChooserSetCurrentFolder dialog folder)
+    forM_ filters (addFilter dialog)
     widgetShow dialog
     response <- dialogRun dialog
     case response of
@@ -128,6 +135,13 @@ chooseFile window prompt mbFolder = do
             widgetDestroy dialog
             return Nothing
         _                   -> return Nothing
+
+    where
+        addFilter dialog (description, exts) = do
+            ff <- fileFilterNew
+            fileFilterSetName ff description
+            forM_ exts (fileFilterAddPattern ff)
+            fileChooserAddFilter dialog ff
 
 chooseSaveFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSaveFile window prompt mbFolder = do

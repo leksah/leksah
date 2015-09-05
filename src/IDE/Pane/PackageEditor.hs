@@ -171,8 +171,8 @@ choosePackageDir window
   = chooseDir window (__ "Select root folder for package")
 
 choosePackageFile :: Window -> Maybe FilePath -> IO (Maybe FilePath)
-choosePackageFile window
-  = chooseFile window (__ "Select cabal package file (.cabal)")
+choosePackageFile window mbfp
+  = chooseFile window (__ "Select cabal package file (.cabal)") mbfp [("Cabal Package Files", ["*.cabal"])]
 
 packageEdit :: PackageAction
 packageEdit = do
@@ -377,7 +377,7 @@ data ClonePackageSourceRepo = ClonePackageSourceRepo {
 cloneFields :: [PackageId] -> FilePath -> FieldDescription ClonePackageSourceRepo
 cloneFields packages workspaceDir = VFD emptyParams [
         mkField
-            (paraName <<<- ParaName (__ "Existing package to clone source repository")
+            (paraName <<<- ParaName (__ "Existing package to copy source repository")
                     $ emptyParams)
             packageToClone
             (\ a b -> b{packageToClone = a})
@@ -395,12 +395,12 @@ clonePackageSourceDialog parent workspaceDir = do
     packages                   <- getInstalledPackageIds
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
-            , windowTitle := __ "Clone Package" ]
+            , windowTitle := __ "Copy Installed Package" ]
     upper                      <-   dialogGetContentArea dia
     lower                      <-   dialogGetActionArea dia
     (widget,inj,ext,_)         <-   buildEditor (cloneFields packages workspaceDir)
                                         (ClonePackageSourceRepo "" workspaceDir)
-    okButton <- dialogAddButton dia (__"Clone Package") ResponseOk
+    okButton <- dialogAddButton dia (__"Copy Package") ResponseOk
     dialogAddButton dia (__"Cancel") ResponseCancel
     boxPackStart (castToBox upper) widget PackGrow 7
     set okButton [widgetCanDefault := True]

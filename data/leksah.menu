@@ -2,10 +2,11 @@
     <menubar>
       <menu name="_File" action="File">
        <menu name="_New" action="FileNew">
-           <menuitem name="_Workspace..." action="FileNewWorkspace" />
            <menuitem name="_Package..." action="FileNewPackage" />
            <menuitem name="_Module..." action="FileNewModule" />
            <menuitem name="_Text File..." action="FileNewTextFile" />
+           <separator />
+           <menuitem name="_Workspace..." action="FileNewWorkspace" />
        </menu>
        <menu name="_Open" action="FileOpen">
            <menuitem name="_Workspace..." action="FileOpenWorkspace" />
@@ -57,11 +58,11 @@
        <menuitem name="Align ::" action="EditAlignTypeSig" />
      </menu>
     <menu name="_Workspace" action="Workspace">
-       <menuitem name="_Add Package" action="WorkspaceAddPackage" />
-       <menuitem name="_Add Package From Source Repository..." action="ClonePackage" />
+       <menuitem name="_Add Package..." action="WorkspaceAddPackage" />
+       <menuitem name="_Add Copy Of Installed Package..." action="WorkspaceAddPackageCopy" />
        <separator />
-       <menuitem name="Cl_ean all packages" action="CleanWorkspace" />
-       <menuitem name="_Build all packages" action="MakeWorkspace" />
+       <menuitem name="Cl_ean All packages" action="CleanWorkspace" />
+       <menuitem name="_Build All packages" action="MakeWorkspace" />
        <separator/>
        <menuitem name="_Next Error" action="NextError" />
        <menuitem name="_Previous Error" action="PreviousError" />
@@ -158,10 +159,10 @@
        <menuitem name="Toggle Toolbar" action="ToggleToolbar" />
      </menu>
     <menu name="_Tools" action="Tools">
-       <menuitem name="Update workspace data" action="UpdateMetadataCurrent" />
-       <menuitem name="Rebuild workspace data" action="RebuildMetadataCurrent" />
-       <menuitem name="Update system data" action="UpdateMetadataLib" />
-       <menuitem name="Rebuild system data" action="RebuildMetadataLib" />
+       <menuitem name="Update Workspace Data" action="UpdateMetadataCurrent" />
+       <menuitem name="Rebuild Workspace Data" action="RebuildMetadataCurrent" />
+       <menuitem name="Update System Data" action="UpdateMetadataLib" />
+       <menuitem name="Rebuild System Data" action="RebuildMetadataLib" />
        <separator/>
        <menuitem name="Save Session As..." action="SaveSession" />
        <menuitem name="Load Session" action="LoadSession" />

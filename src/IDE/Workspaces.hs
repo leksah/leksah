@@ -190,7 +190,7 @@ workspaceTry f = do
                 _  -> return ()
 
 chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
-chooseWorkspaceFile window = chooseFile window (__ "Select leksah workspace file (.lkshw)") Nothing
+chooseWorkspaceFile window = chooseFile window (__ "Select leksah workspace file (.lkshw)") Nothing [("Leksah Workspace Files", ["*.lkshw"])]
 
 workspaceOpenThis :: Bool -> Maybe FilePath -> IDEAction
 workspaceOpenThis askForSession mbFilePath =

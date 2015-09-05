@@ -193,7 +193,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     iter    <- getIterAtOffset gtkBuf i
                     placeCursor gtkBuf iter
                     mark    <- getInsertMark gtkBuf
-                    scrollToMark v mark 0.0 (Just (0.3,0.3))
+                    scrollToMark v mark 0.0 (Just (1.0,0.3))
                     liftIO $ debugM "leksah" "SourceBuffer recoverState done"
                 return mbbuf
             Nothing -> return Nothing
@@ -211,7 +211,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     iter     <-  getIterAtOffset gtkBuf i
                     placeCursor gtkBuf iter
                     mark     <-  getInsertMark gtkBuf
-                    scrollToMark v mark 0.0 (Just (0.3,0.3))
+                    scrollToMark v mark 0.0 (Just (1.0,0.3))
                     liftIO $ debugM "leksah" "SourceBuffer recoverState done"
                 return (Just buf)
             Nothing -> return Nothing
@@ -328,7 +328,7 @@ goToSourceDefinition' sourcePath Location{..} = do
                     liftIO $ debugM "lekash" "goToSourceDefinition triggered selectRange"
                     selectRange ebuf iter iter2
                     liftIO $ debugM "lekash" "goToSourceDefinition triggered scrollToIter"
-                    scrollToIter sv iter 0.0 (Just (0.3,0.3))
+                    scrollToIter sv iter 0.0 (Just (1.0,0.3))
                 return ()
         Nothing -> return ()
     return mbBuf
