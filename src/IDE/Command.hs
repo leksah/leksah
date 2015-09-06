@@ -105,7 +105,7 @@ import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.WebKit.Output (getOutputPane)
 import IDE.Pane.WebKit.Inspect (getInspectPane)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (unless, when, forM_, filterM)
+import Control.Monad (unless, when, forM_, filterM, liftM)
 import Control.Monad.Trans.Reader (ask)
 import System.Log.Logger (debugM)
 import Foreign.C.Types (CInt(..))
@@ -116,6 +116,8 @@ import IDE.Session
        (saveSessionAs, loadSession, saveSession, sessionClosePane,
         loadSessionPrompt, saveSessionAsPrompt, viewFullScreen)
 import qualified Data.Text as T (unpack, pack)
+import Data.Time.Clock (getCurrentTime, utctDay)
+import Data.Time.Calendar (toGregorian)
 import Data.Text (Text)
 import qualified Data.Text.IO as T (readFile)
 import Data.Monoid (Monoid(..), (<>))
@@ -678,10 +680,11 @@ aboutDialog :: IO ()
 aboutDialog = do
     d <- aboutDialogNew
     dd <- getDataDir
+    (year, _, _) <- liftM (toGregorian . utctDay) getCurrentTime
     license <- catch (T.readFile $ dd </> T.unpack (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
     set d [ aboutDialogName := ("Leksah" :: Text)
           , aboutDialogVersion := T.pack $ showVersion version
-          , aboutDialogCopyright := __ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+          , aboutDialogCopyright := __ "Copyright 2007-" <> T.pack (show year) <> " Jürgen Nicklisch-Franken, Hamish Mackenzie"
           , aboutDialogComments := __ "An integrated development environement (IDE) for the " <>
                                __ "programming language Haskell and the Glasgow Haskell Compiler"
           , aboutDialogLicense := Just license
