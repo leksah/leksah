@@ -681,7 +681,7 @@ aboutDialog = do
     license <- catch (T.readFile $ dd </> T.unpack (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
     set d [ aboutDialogName := ("Leksah" :: Text)
           , aboutDialogVersion := T.pack $ showVersion version
-          , aboutDialogCopyright := __ "Copyright 2007-2011 Jürgen Nicklisch-Franken, Hamish Mackenzie"
+          , aboutDialogCopyright := __ "Copyright 2007-2015 Jürgen Nicklisch-Franken, Hamish Mackenzie"
           , aboutDialogComments := __ "An integrated development environement (IDE) for the " <>
                                __ "programming language Haskell and the Glasgow Haskell Compiler"
           , aboutDialogLicense := Just license
