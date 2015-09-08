@@ -9,7 +9,7 @@
 --
 -- Maintainer  :  <maintainer at leksah.org>
 -- Stability   :  provisional
--- Portability :  portablea
+-- Portability :  portable
 --
 -- | The toolbar for searching and replacing in a text buffer
 --
@@ -27,12 +27,9 @@ module IDE.Find (
 ,   getFindState
 ,   setFindState
 ,   editFind
-
 ,   showToolbar
 ,   hideToolbar
 ,   toggleToolbar
-
-
 ) where
 
 import Graphics.UI.Gtk
@@ -326,7 +323,7 @@ constructFindReplace = reifyIDE $ \ ideR   -> do
         return False
 
     replaceButton `onToolButtonClicked` replace toolbar Forward ideR
-    let performReplaceAll = replaceAll toolbar Forward ideR
+    let performReplaceAll = replaceAll toolbar Initial ideR
     replaceAllButton `onToolButtonClicked` performReplaceAll
 
     let ctrl "c" = toggleToolButton caseSensitiveButton >> return True
@@ -488,7 +485,6 @@ replace fb hint ideR   =  do
                 ideR
     return ()
 
-
 replaceAll :: Toolbar -> SearchHint -> IDERef -> IO ()
 replaceAll fb hint ideR   =  do
     entry          <- getFindEntry fb
@@ -513,43 +509,45 @@ editFind entireWord caseSensitive wrapAround regex search dummy hint = do
 editFind' :: Regex -> Int -> Bool -> Text -> SearchHint -> IDEM Bool
 editFind' exp matchIndex wrapAround dummy hint =
     inActiveBufContext False $ \_ sv ebuf _ _ -> do
-    i1 <- getStartIter ebuf
-    i2 <- getEndIter ebuf
-    text <- getText ebuf i1 i2 True
-    removeTagByName ebuf "found"
-    startMark <- getInsertMark ebuf
-    st1 <- getIterAtMark ebuf startMark
-    mbsr2 <-
-        if hint == Backward
-            then do
-                st2 <- backwardCharC st1
-                st3 <- backwardCharC st2
-                mbsr <- backSearch exp matchIndex ebuf text st3
-                case mbsr of
-                    Nothing ->
-                        if wrapAround
-                            then backSearch exp matchIndex ebuf text i2
-                            else return Nothing
-                    m -> return m
-            else do
-                st2 <- if hint == Forward
-                    then forwardCharC st1
-                    else return st1
-                mbsr <- forwardSearch exp matchIndex ebuf text st2
-                case mbsr of
-                    Nothing ->
-                        if wrapAround
-                            then forwardSearch exp matchIndex ebuf text i1
-                            else return Nothing
-                    m -> return m
-    case mbsr2 of
-        Just (start,end,_) -> do --found
-            --widgetGrabFocus sourceView
-            scrollToIter sv start 0.2 Nothing
-            applyTagByName ebuf "found" start end
-            placeCursor ebuf start
-            return True
-        Nothing -> return False
+        i1 <- getStartIter ebuf
+        i2 <- getEndIter ebuf
+        text <- getText ebuf i1 i2 True
+        removeTagByName ebuf "found"
+        startMark <- getInsertMark ebuf
+        st1 <- getIterAtMark ebuf startMark
+        mbsr2 <-
+            if hint == Backward
+                then do
+                    st2 <- backwardCharC st1
+                    st3 <- backwardCharC st2
+                    mbsr <- backSearch exp matchIndex ebuf text st3
+                    case mbsr of
+                        Nothing ->
+                            if wrapAround
+                                then backSearch exp matchIndex ebuf text i2
+                                else return Nothing
+                        m -> return m
+                else do
+                    st2 <- if hint == Forward
+                        then forwardCharC st1
+                        else return st1
+                    mbsr <- if hint == Initial
+                            then initialSearch exp matchIndex ebuf text st2
+                            else forwardSearch exp matchIndex ebuf text st2
+                    case mbsr of
+                        Nothing ->
+                            if wrapAround
+                                then forwardSearch exp matchIndex ebuf text i1
+                                else return Nothing
+                        m -> return m
+        case mbsr2 of
+            Just (start,end,_) -> do --found
+                --widgetGrabFocus sourceView
+                scrollToIter sv start 0.2 Nothing
+                applyTagByName ebuf "found" start end
+                placeCursor ebuf start
+                return True
+            Nothing -> return False
     where
         backSearch exp matchIndex ebuf text iter = do
             offset <- getOffset iter
@@ -558,6 +556,8 @@ editFind' exp matchIndex wrapAround dummy hint =
         forwardSearch exp matchIndex ebuf text iter = do
             offset <- getOffset iter
             findMatch exp matchIndex ebuf text (>= offset) False
+
+        initialSearch exp matchIndex ebuf text iter = findMatch exp matchIndex ebuf text (>= 0) False
 
 regexAndMatchIndex :: Bool -> Bool -> Bool -> Text -> IO (Maybe (Regex, Int))
 regexAndMatchIndex caseSensitive entireWord regex string =
@@ -602,14 +602,15 @@ editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRe
     inActiveBufContext False $ \_ _ ebuf _ _ -> do
         insertMark <- getInsertMark ebuf
         iter       <- getIterAtMark ebuf insertMark
-        offset     <- getOffset iter
+        offset   <- getOffset iter
+        let offset' = if mayRepeat then 0 else offset
         mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search
         case mbExpAndMatchIndex of
             Just (exp, matchIndex) -> do
                 iStart <- getStartIter ebuf
                 iEnd   <- getEndIter ebuf
                 text   <- getText ebuf iStart iEnd True
-                match  <- findMatch exp matchIndex ebuf text (== offset) False
+                match  <- findMatch exp matchIndex ebuf text (== offset') False
                 case match of
                     Just (iterStart, iterEnd, matches) -> do
                         mbText <- liftIO $ replacementText regex text matchIndex matches $ T.unpack replace
@@ -653,6 +654,7 @@ regexReplacement text matchIndex matches ('\\' : n : xs) | isDigit n =
     value ++ regexReplacement text matchIndex matches xs
 
 regexReplacement text matchIndex matches (x : xs) = x : regexReplacement text matchIndex matches xs
+
 
 editReplaceAll :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
 editReplaceAll entireWord caseSensitive wrapAround regex search replace hint = do
