@@ -10,6 +10,8 @@ Documentation can be found on [leksah.org](http://leksah.org/).
 
 ## Installation
 
+Requirements: ghc >= 7.8.3 cabal >= 1.18
+
 You can get Leksah up and running quickly on Windows and OS X using the
 [official binaries](https://github.com/leksah/leksah/wiki/download).
 
