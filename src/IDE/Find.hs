@@ -24,7 +24,7 @@ module IDE.Find (
 ,   editFindInc
 ,   editGotoLine
 ,   FindState(..)
-,   getFindState 
+,   getFindState
 ,   setFindState
 ,   editFind
 ,   showToolbar
@@ -488,26 +488,26 @@ replace fb hint ideR   =  do
 replaceAll :: Toolbar -> SearchHint -> IDERef -> IO ()
 replaceAll fb hint ideR   =  do
     entry          <- getFindEntry fb
-    search         <- entryGetText (castToEntry entry)    
+    search         <- entryGetText (castToEntry entry)
     rentry         <- getReplaceEntry fb
     replace        <- entryGetText (castToEntry rentry)
     entireWord     <- getEntireWord fb
     caseSensitive  <- getCaseSensitive fb
     wrapAround     <- getWrapAround fb
-    regex          <- getRegex fb    
+    regex          <- getRegex fb
     found <- reflectIDE (editReplaceAll entireWord caseSensitive wrapAround regex search replace hint)
                 ideR
     return ()
 
 editFind :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
 editFind entireWord caseSensitive wrapAround regex search dummy hint = do
-    mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search    
+    mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search
     case mbExpAndMatchIndex of
         Nothing -> return False
         Just (exp, matchIndex) -> editFind' exp matchIndex wrapAround dummy hint
 
 editFind' :: Regex -> Int -> Bool -> Text -> SearchHint -> IDEM Bool
-editFind' exp matchIndex wrapAround dummy hint = 
+editFind' exp matchIndex wrapAround dummy hint =
     inActiveBufContext False $ \_ sv ebuf _ _ -> do
         i1 <- getStartIter ebuf
         i2 <- getEndIter ebuf
@@ -557,7 +557,7 @@ editFind' exp matchIndex wrapAround dummy hint =
             offset <- getOffset iter
             findMatch exp matchIndex ebuf text (>= offset) False
 
-        initialSearch exp matchIndex ebuf text iter = findMatch exp matchIndex ebuf text (>= 0) False            
+        initialSearch exp matchIndex ebuf text iter = findMatch exp matchIndex ebuf text (>= 0) False
 
 regexAndMatchIndex :: Bool -> Bool -> Bool -> Text -> IO (Maybe (Regex, Int))
 regexAndMatchIndex caseSensitive entireWord regex string =
