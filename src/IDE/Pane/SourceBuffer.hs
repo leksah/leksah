@@ -627,6 +627,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                 case mbfn of
                     Just fn -> Just (SrcSpan fn lStart cStart lEnd cEnd)
                     Nothing -> Nothing
+
             let tagName = "match"
             hasSelection <- hasSelection buffer
             m <- liftIO $ readIORef hasMatch

@@ -704,7 +704,8 @@ newIcons = catch (do
             "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build",
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local", "ide_js", "ide_folder", "ide_source_folder",
-            "ide_cabal_file", "ide_package", "ide_component", "ide_source_dependency"]
+            "ide_cabal_file", "ide_package", "ide_component", "ide_source_dependency", "ide_error",
+            "ide_warning", "ide_suggestion"  ]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
@@ -943,7 +944,7 @@ registerLeksahEvents =    do
     registerEvent stRef "ErrorChanged"
         (\ e@(ErrorChanged show') -> postAsyncIDE (fillErrorList show') >> return e)
     registerEvent stRef "ErrorAdded"
-        (\ e@(ErrorAdded show' i ref) -> postAsyncIDE (addErrorToList show' i ref) >> return e)
+        (\ e@(ErrorAdded show' i ref) -> postAsyncIDE (fillErrorList show') >> return e)
     registerEvent stRef "CurrentErrorChanged"
         (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (do
             selectRef mbLogRef
