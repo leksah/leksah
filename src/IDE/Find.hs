@@ -27,7 +27,6 @@ module IDE.Find (
 ,   getFindState 
 ,   setFindState
 ,   editFind
-
 ,   showToolbar
 ,   hideToolbar
 ,   toggleToolbar
@@ -504,9 +503,7 @@ editFind :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM B
 editFind entireWord caseSensitive wrapAround regex search dummy hint = do
     mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search    
     case mbExpAndMatchIndex of
-        Nothing -> do
-          liftIO $ print "false"
-          return False
+        Nothing -> return False
         Just (exp, matchIndex) -> editFind' exp matchIndex wrapAround dummy hint
 
 editFind' :: Regex -> Int -> Bool -> Text -> SearchHint -> IDEM Bool
