@@ -51,7 +51,8 @@ import Graphics.UI.Gtk
         treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
         ScrolledWindow, treeViewRowExpanded, treeStoreGetTree, Menu(..),
         MenuItem(..), treeStoreSetValue)
-import Data.Maybe (fromMaybe, maybeToList, listToMaybe, isJust)
+import Data.Maybe
+       (fromJust, fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
 import IDE.Core.State
@@ -115,6 +116,7 @@ import Graphics.UI.Gtk.ModelView.CellRenderer
 import IDE.Pane.PackageEditor (packageEditText)
 import IDE.Utils.GtkBindings (treeViewSetActiveOnSingleClick)
 import IDE.Package (packageTest, packageRun, packageClean)
+import Control.Monad.Trans.Class (MonadTrans(..))
 
 
 -- | The data for a single record in the Workspace Pane
@@ -396,14 +398,7 @@ refresh pane = do
 
     workspaceTryQuiet $ do
         packages <- sort . wsPackages <$> ask
-
-        activePackage <- readIDE activePack
-        forest <- forM packages $ \pkg -> do
-            let record = PackageRecord pkg
-            subForest <- flip runPackage pkg $ subTrees record
-            return (Node record subForest)
-
-        liftIDE $ setEntries store [] forest
+        setChildren Nothing store view [] (map PackageRecord packages)
 
 
 -- | Mutates the 'TreeStore' with the given TreePath as root to attach new
@@ -414,36 +409,21 @@ refreshPackageTreeFrom store view path = do
     Just pkg   <- liftIDE $ treePathToPackage store path
     expandable <- liftIDE $ canExpand record pkg
 
-    forest     <- subTrees record
+    kids     <- children record
+    lift $ setChildren (Just pkg) store view path kids
 
-    liftIDE $ setEntries store path forest
-
-
-
-
-
--- | Returns the subtrees of the 'WorkspaceRecord'.
-subTrees :: WorkspaceRecord -> PackageM (Forest WorkspaceRecord)
-subTrees record = case record of
-    DirRecord dir _     -> do
-        records <- dirRecords dir
-        mapM (\r -> Node r <$> subTrees r) records
-    ComponentsRecord    -> do
-        records <- componentsRecords
-        mapM (\r -> Node r <$> subTrees r) records
-    AddSourcesRecord    -> do
-        records <- addSourcesRecords
-        mapM (\r -> Node r <$> subTrees r) records
+-- | Returns the children of the 'WorkspaceRecord'.
+children :: WorkspaceRecord -> PackageM [WorkspaceRecord]
+children record = case record of
+    DirRecord dir _     -> dirRecords dir
+    ComponentsRecord    -> componentsRecords
+    AddSourcesRecord    -> addSourcesRecords
     AddSourceRecord pkg -> return []
     PackageRecord pkg   -> do
         p <- ask
-        let dirRecord = DirRecord (ipdPackageDir p) False
-        compForest <- subTrees ComponentsRecord
-        addSourcesForest <- subTrees AddSourcesRecord
-        dirForest <- subTrees dirRecord
-        return [ Node ComponentsRecord compForest
-               , Node AddSourcesRecord addSourcesForest
-               , Node dirRecord dirForest]
+        return [ ComponentsRecord
+               , AddSourcesRecord
+               , DirRecord (ipdPackageDir p) False]
     _                   -> return []
 
 
@@ -499,12 +479,24 @@ componentsRecords = do
                           ++ ipdBenchmarks package
 
 
--- | Recursively sets the subtrees of the given 'TreePath' to the provided tree of 'WorkspaceRecord's. If a record
+-- | Recursively sets the children of the given 'TreePath' to the provided tree of 'WorkspaceRecord's. If a record
 -- is already present, it is kept in the same (expanded) state.
-setEntries :: TreeStore WorkspaceRecord -> TreePath -> Forest WorkspaceRecord -> IDEAction
-setEntries store [] [] = liftIO $ treeStoreClear store
-setEntries store parentPath forest = reifyIDE $ \ideR -> do
-    forM_ (zip [0..] (map rootLabel forest)) $ \(n, record) -> do
+-- If a the parent record is not expanded just makes sure at least one of
+-- the chldren is added.
+setChildren :: Maybe IDEPackage -> TreeStore WorkspaceRecord -> TreeView -> TreePath -> [WorkspaceRecord] -> WorkspaceAction
+setChildren _ store _ [] [] = liftIO $ treeStoreClear store
+setChildren mbPkg store view parentPath kids = do
+    -- We only need to get all the children right when they are visible
+    expanded <- if null parentPath
+                    then return True
+                    else liftIO $ treeViewRowExpanded view parentPath
+
+    let kidsToAdd = (if expanded
+                            then id
+                            else take 1) kids
+
+    forM_ (zip [0..] kidsToAdd) $ \(n, record) -> do
+      liftIO $ do
         mbParentIter <- treeModelGetIter store parentPath
         mbChildIter <- treeModelIterNthChild store mbParentIter n
         let compare rec1 rec2 = case (rec1, rec2) of
@@ -521,15 +513,17 @@ setEntries store parentPath forest = reifyIDE $ \ideR -> do
             _ -> do
                 treeStoreInsert store parentPath n record
 
-    -- Recursively set the subforests
-    forM_ (zip [0..] (map subForest forest)) $ \(n, subForest) -> do
-        reflectIDE (setEntries store (parentPath ++ [n]) subForest) ideR
+      let pkg = case record of
+                        PackageRecord p -> p
+                        _               -> fromJust mbPkg
+      -- Only update the grand kids if they are visible
+      when expanded $ do
+          grandKids <- (`runPackage` pkg) $ children record
+          setChildren (Just pkg) store view (parentPath ++ [n]) grandKids
 
-
-    if null forest then do
-        treeStoreRemoveChildren store parentPath
-    else do
-        void $ removeRemaining store (parentPath++[length forest])
+    liftIO $ if null kids
+        then treeStoreRemoveChildren store parentPath
+        else when expanded . void $ removeRemaining store (parentPath++[length kids])
 
 
 -- * Context menu
