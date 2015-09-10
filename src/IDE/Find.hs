@@ -495,7 +495,7 @@ replaceAll fb hint ideR   =  do
     caseSensitive  <- getCaseSensitive fb
     wrapAround     <- getWrapAround fb
     regex          <- getRegex fb
-    found <- reflectIDE (editReplaceAll entireWord caseSensitive wrapAround regex search replace hint)
+    found <- reflectIDE (editReplaceAll entireWord caseSensitive regex search replace hint)
                 ideR
     return ()
 
@@ -595,15 +595,15 @@ findMatch exp matchIndex gtkbuf text offsetPred findLast = do
 
 editReplace :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
 editReplace entireWord caseSensitive wrapAround regex search replace hint =
-    editReplace' entireWord caseSensitive wrapAround regex search replace hint True
+    editReplace' entireWord caseSensitive wrapAround regex search replace hint False
 
 editReplace' :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> Bool -> IDEM Bool
-editReplace' entireWord caseSensitive wrapAround regex search replace hint mayRepeat =
+editReplace' entireWord caseSensitive wrapAround regex search replace hint fromStart =
     inActiveBufContext False $ \_ _ ebuf _ _ -> do
         insertMark <- getInsertMark ebuf
         iter       <- getIterAtMark ebuf insertMark
         offset   <- getOffset iter
-        let offset' = if mayRepeat then 0 else offset
+        let offset' = if fromStart then 0 else offset
         mbExpAndMatchIndex <- liftIO $ regexAndMatchIndex caseSensitive entireWord regex search
         case mbExpAndMatchIndex of
             Just (exp, matchIndex) -> do
@@ -655,12 +655,14 @@ regexReplacement text matchIndex matches ('\\' : n : xs) | isDigit n =
 
 regexReplacement text matchIndex matches (x : xs) = x : regexReplacement text matchIndex matches xs
 
+editReplaceAll :: Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
+editReplaceAll = editReplaceAll' True
 
-editReplaceAll :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
-editReplaceAll entireWord caseSensitive wrapAround regex search replace hint = do
-    res <- editReplace' entireWord caseSensitive False regex search replace hint True
+editReplaceAll' :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> IDEM Bool
+editReplaceAll' fromStart entireWord caseSensitive regex search replace hint = do
+    res <- editReplace' entireWord caseSensitive False regex search replace hint fromStart
     if res
-        then editReplaceAll entireWord caseSensitive False regex search replace hint
+        then editReplaceAll' False entireWord caseSensitive regex search replace hint
         else return False
 
 compileRegex :: Bool -> Text -> Either String Regex
