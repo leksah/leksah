@@ -631,13 +631,12 @@ textPopupMenu ideR menu = do
     menuShellAppend menu mi2
     mi3 <- menuItemNewWithLabel (__ "Search (metadata)")
     mi3 `on` menuItemActivate $
-      reflectIDE_ $
-         getSearch Nothing >>=
-           (\ search ->
-              do mbtext <- selectedText
-                 case mbtext of
-                     Just t -> searchMetaGUI search t
-                     Nothing -> ideMessage Normal (__ "Select a text first"))
+      reflectIDE_ $ do
+         mbtext <- selectedText
+         searchPane <- getSearch Nothing
+         case mbtext of
+             Just t  -> searchMetaGUI searchPane t
+             Nothing -> ideMessage Normal (__ "No identifier selected")
     menuShellAppend menu mi3
     let interpretingEntries = [castToWidget mi16]
     let interpretingSelEntries
