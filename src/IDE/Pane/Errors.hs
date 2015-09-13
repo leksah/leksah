@@ -20,7 +20,6 @@ module IDE.Pane.Errors (
     ErrorsPane
 ,   ErrorsState
 ,   fillErrorList
-,   selectError
 ,   getErrors
 ,   selectMatchingErrors
 ) where
@@ -29,22 +28,28 @@ import Graphics.UI.Gtk
 import Data.Typeable (Typeable)
 import IDE.Core.State
 import IDE.ImportTool
-       (addResolveMenuItems, resolveErrors)
+       (resolveErrors, resolveMenuItems)
 import Data.List (groupBy, sortBy, elemIndex)
 import IDE.LogRef (showSourceSpan)
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (treeViewContextMenu, __)
-import Data.Text (Text)
+import IDE.Utils.GUIUtils
+       (treeViewContextMenu', treeViewContextMenu, __, treeViewToggleRow,
+        treeStoreGetForest)
+import Data.Text (dropWhileEnd, Text)
 import Control.Monad (filterM, foldM_, unless, void, when, forM_)
 import qualified Data.Text as T
-       (unpack, pack, intercalate, lines, takeWhile, length, drop)
+       (unlines, dropWhileEnd, unpack, pack, intercalate, lines,
+        takeWhile, length, drop)
 import Data.IORef (writeIORef, readIORef, newIORef, IORef)
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import qualified Data.Foldable as F (toList)
 import qualified Data.Sequence as Seq (null, elemIndexL)
 import Data.Monoid ((<>))
 import Data.Ord (comparing)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
+import Data.Char (isSpace)
+import Data.Tree (Forest, Tree(..), Tree)
+import Control.Applicative (Alternative(..))
 
 
 -- | The representation of the Errors pane
@@ -65,10 +70,15 @@ data ErrorRecord = ERLogRef LogRef
                  | ERPackage IDEPackage Text
                  | ERIDE Text
                  | ERFile IDEPackage FilePath -- used for parent node for all errors in a file
-
+    deriving (Eq)
 
 -- | The additional state used when recovering the pane
-data ErrorsState    =   ErrorsState
+data ErrorsState = ErrorsState
+    {
+      showErrors :: Bool
+    , showWarnings :: Bool
+    , showSuggestions :: Bool
+    }
    deriving (Eq,Ord,Read,Show,Typeable)
 
 
@@ -80,9 +90,22 @@ instance Pane ErrorsPane IDEM
 
 
 instance RecoverablePane ErrorsPane ErrorsState IDEM where
-    saveState _p     =   return (Just ErrorsState)
-    recoverState pp ErrorsState = do nb <- getNotebook pp
-                                     buildPane pp nb builder
+    saveState ErrorsPane{..} = liftIO $ do
+        showErrors      <- get errorsButton toggleButtonActive
+        showWarnings    <- get warningsButton toggleButtonActive
+        showSuggestions <- get suggestionsButton toggleButtonActive
+        return (Just ErrorsState{..})
+
+    recoverState pp ErrorsState{..} = do
+        nb <- getNotebook pp
+        mbErrors <- buildPane pp nb builder
+        forM_ mbErrors $ \ErrorsPane{..} -> liftIO $ do
+            set errorsButton [toggleButtonActive := showErrors]
+            set warningsButton [toggleButtonActive := showWarnings]
+            set suggestionsButton [toggleButtonActive := showSuggestions]
+        return mbErrors
+
+
     builder = builder'
 
 -- | Builds an 'ErrorsPane' pane together with a list of
@@ -103,7 +126,7 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
     errorsButton <- toggleButtonNewWithLabel (__ "Errors")
     warningsButton <- toggleButtonNewWithLabel (__ "Warnings")
     suggestionsButton <- toggleButtonNewWithLabel (__ "Suggestions")
-
+    set suggestionsButton [toggleButtonActive := False]
 
     forM_ [errorsButton, warningsButton, suggestionsButton] $ \b -> do
         set b [toggleButtonActive := True]
@@ -128,7 +151,7 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
 
     cellLayoutPackStart column iconRenderer False
     cellLayoutSetAttributes column iconRenderer errorStore
-                $ \row -> [ newAttrFromMaybeStringProperty "stock-id" := toIcon row]
+                $ \row -> [ newAttrFromMaybeStringProperty "icon-name" := toIcon row]
 
 
     treeViewColumnSetSizing column TreeViewColumnAutosize
@@ -154,8 +177,14 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
     cid1 <- after treeView focusInEvent $ do
         liftIO $ reflectIDE (makeActive pane) ideR
         return True
-    (cid2, cid3) <- treeViewContextMenu treeView $ errorsContextMenu ideR errorStore treeView
-    cid4 <- treeView `on` rowActivated $ errorsSelect ideR errorStore
+    (cid2, cid3) <- flip reflectIDE ideR $
+        treeViewContextMenu' treeView errorStore contextMenuItems
+    cid4 <- treeView `on` rowActivated $ \path col -> do
+        record <- treeStoreGetValue errorStore path
+        case record of
+            ERLogRef logRef -> errorsSelect ideR errorStore path col
+            ERFile _ _ -> void $ treeViewToggleRow treeView path
+            _        -> return ()
 
     reflectIDE (fillErrorList' pane) ideR
     return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
@@ -173,7 +202,7 @@ toIcon (ERIDE _) = Just "dialog-error"
 toIcon (ERFile _ _) = Just "ide_source"
 
 toDescription :: ErrorRecord -> Text
-toDescription errorRec =  removeNewlines . removeIndentation $
+toDescription errorRec =  T.intercalate " " . map (removeTrailingWhiteSpace . removeIndentation) . T.lines $
     case errorRec of
         (ERLogRef logRef) -> refDescription logRef
         (ERPackage pkg msg) -> packageIdentifierToString (ipdPackageId pkg) <> ": " <> msg
@@ -188,12 +217,12 @@ removeIndentation t = T.intercalate "\n" $ map (T.drop minIndent) l
     l = T.lines t
     minIndent = minimum $ map (T.length . T.takeWhile (== ' ')) l
 
+removeTrailingWhiteSpace :: Text -> Text
+removeTrailingWhiteSpace = T.dropWhileEnd isSpace
+
 cutOffAt :: Int -> Text -> Text
 cutOffAt n t | T.length t < n = t
              | otherwise      = T.pack (take n (T.unpack t)) <> "..."
-
-removeNewlines :: Text -> Text
-removeNewlines = T.intercalate " " . T.lines
 
 -- | Get the Errors pane
 getErrors :: Maybe PanePath -> IDEM ErrorsPane
@@ -274,46 +303,58 @@ getSelectedError treeView store = do
                 _ -> return Nothing
         _  ->  return Nothing
 
--- | Select an error in the Errors pane
-selectError :: Maybe LogRef -- ^ When @Nothing@, the first error in the list is selected
+-- | Select a 'LogRef' in the Errors pane if it is visible
+selectError :: Maybe LogRef -- ^ When @Nothing@, the first row in the list is selected
             -> IDEAction
 selectError mbLogRef = do
-    return ()
---    (mbPane :: Maybe ErrorsPane) <- getPane
---    errorRefs' <- readIDE errorRefs
---    errors     <- getErrors Nothing
---    when (isNothing mbPane) $ do
---        liftIO $ writeIORef (autoClose errors) True
---        displayPane errors False
---    liftIO $ do
---        selection <- treeViewGetSelection (treeView errors)
---        case mbLogRef of
---            Nothing -> do
---                size <- treeStoreGetSize (errorStore errors)
---                unless (size == 0) $
---                    treeViewScrollToCell (treeView errors) (Just [0]) Nothing Nothing
---                treeSelectionUnselectAll selection
---            Just lr -> case lr `Seq.elemIndexL` errorRefs' of
---                        Nothing  -> return ()
---                        Just ind -> do
---                            treeViewScrollToCell (treeView errors) (Just [ind]) Nothing Nothing
---                            treeSelectionSelectPath selection [ind]
+    (mbPane :: Maybe ErrorsPane) <- getPane
+    errors     <- getErrors Nothing
+    when (isNothing mbPane) $ do
+        liftIO $ writeIORef (autoClose errors) True
+        displayPane errors False
+    reifyIDE $ \ideR -> do
+        selection <- treeViewGetSelection (treeView errors)
+        case mbLogRef of
+            Nothing -> do
+                empty <- null <$> treeStoreGetTree (errorStore errors) []
+                unless empty $
+                    treeViewScrollToCell (treeView errors) (Just [0]) Nothing Nothing
+                treeSelectionUnselectAll selection
+            Just lr -> do
+                let store = errorStore errors
+                empty <- isNothing <$> treeModelGetIterFirst store
+                unless empty $ do
+                    forest <- treeStoreGetForest store
+                    let mbPath = forestFind forest (ERLogRef lr)
+                    forM_ mbPath $ \path -> do
+                        treeViewScrollToCell (treeView errors) (Just path) Nothing Nothing
+                        treeSelectionSelectPath selection path
+
+    where
+        forestFind :: Eq a => Forest a -> a -> Maybe TreePath
+        forestFind = forestFind' [0]
+            where
+                forestFind' path [] _ = Nothing
+                forestFind' path (Node x trees : forest) y
+                    | x == y    = Just path
+                    | otherwise = forestFind' (path ++ [0]) trees y
+                                      <|> forestFind' (sibling path) forest y
+
+                sibling [n] = [n+1]
+                sibling (x:xs) = x:sibling xs
+
+contextMenuItems :: ErrorRecord -> TreePath -> TreeStore ErrorRecord -> IDEM [[(Text, IDEAction)]]
+contextMenuItems record path store = return $
+    [[("Resolve Errors", resolveErrors)]
+        ++ case record of
+               ERLogRef logRef -> resolveMenuItems logRef ++ [clipboardItem (refDescription logRef)]
+               ERIDE msg       -> [clipboardItem msg]
+               ERPackage _ msg -> [clipboardItem msg]
+               _               -> []
+    ]
 
 
--- | Constructs the context menu for the Errors pane
-errorsContextMenu :: IDERef
-                  -> TreeStore ErrorRecord
-                  -> TreeView
-                  -> Menu
-                  -> IO ()
-errorsContextMenu ideR store treeView theMenu = do
-    mbSel           <-  getSelectedError treeView store
-    item0           <-  menuItemNewWithLabel (__ "Resolve Errors")
-    item0 `on` menuItemActivate $ reflectIDE resolveErrors ideR
-    menuShellAppend theMenu item0
-    case mbSel of
-        Just sel -> addResolveMenuItems ideR theMenu sel
-        Nothing -> return ()
+    where clipboardItem str = ("Copy message to clipboard", liftIO $ clipboardGet selectionClipboard >>= flip clipboardSetText str)
 
 
 -- | Highlight an error refered to by the 'TreePath' in the given 'TreeViewColumn'
@@ -334,34 +375,25 @@ errorsSelect ideR store path _ = do
 selectMatchingErrors :: Maybe SrcSpan -- ^ When @Nothing@, unselects any errors in the pane
                      -> IDEAction
 selectMatchingErrors mbSpan = do
-    return ()
---    mbErrors <- getPane
---    case mbErrors of
---        Nothing -> return ()
---        Just pane  ->
---            liftIO $ do
---                treeSel <- treeViewGetSelection (treeView pane)
---                case mbSpan of
---                    Nothing -> treeSelectionUnselectAll treeSel
---                    Just (SrcSpan file lStart cStart lEnd cEnd) -> do
---                        size <- listStoreGetSize (errorStore pane)
---                        foldM_ (\ haveScrolled n -> do
---                            mbIter <- treeModelGetIter (errorStore pane) [n]
---                            case mbIter of
---                                Nothing -> return False
---                                Just iter -> do
---                                    ERLogRef (ref@LogRef{..}) <- listStoreGetValue (errorStore pane) n
---                                    isSelected <- treeSelectionIterIsSelected treeSel iter
---                                    let shouldBeSel = file == logRefFullFilePath ref
---                                                     && (lStart, cStart) <= (srcSpanEndLine     logRefSrcSpan,
---                                                                               srcSpanEndColumn   logRefSrcSpan)
---                                                     && (lEnd, cEnd)     >= (srcSpanStartLine   logRefSrcSpan,
---                                                                               srcSpanStartColumn logRefSrcSpan)
---                                    when (isSelected && not shouldBeSel) $ treeSelectionUnselectIter treeSel iter
---                                    when (not isSelected && shouldBeSel) $ do
---                                        unless haveScrolled $ treeViewScrollToCell (treeView pane) (Just [n]) Nothing Nothing
---                                        treeSelectionSelectIter treeSel iter
---                                    return $ haveScrolled || shouldBeSel)
---                            False (take size [0..])
+    mbErrors <- getPane
+    forM_ mbErrors $ \pane -> do
+        treeSel <- liftIO $ treeViewGetSelection (treeView pane)
+        liftIO $ treeSelectionUnselectAll treeSel
+        forM_ mbSpan $ \span -> do
+            spans <- map logRefSrcSpan . F.toList <$> readIDE errorRefs
+            matches <- matchingRefs span . F.toList <$> readIDE errorRefs
+            forM_ matches $ \ref ->
+                selectError (Just ref)
 
+matchingRefs :: SrcSpan -> [LogRef] -> [LogRef]
+matchingRefs span refs =
+    -- the path of the SrcSpan in the LogRef absolute, so comparison with the given SrcSpan goes right
+    let toAbsolute ref =  ref {logRefSrcSpan = (logRefSrcSpan ref) {srcSpanFilename = logRefFullFilePath ref}}
+    in filter (\ref -> filesMatch (logRefSrcSpan (toAbsolute ref)) span && span `insideOf` (logRefSrcSpan (toAbsolute ref))) refs
+    where
+        filesMatch span span' = srcSpanFilename span == srcSpanFilename span'
 
+        -- Test whether the first span is inside of the second
+        insideOf (SrcSpan _ lStart cStart lEnd cEnd) (SrcSpan _ lStart' cStart' lEnd' cEnd')
+            =  (lStart, cStart) <= (lEnd', cEnd')
+            && (lEnd, cEnd)     >= (lStart', cStart')

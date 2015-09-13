@@ -88,6 +88,9 @@ data-files:
     pics/ide_rebuild_meta.png
     pics/ide_empty.png
     pics/ide_js.png
+    pics/ide_error.png
+    pics/ide_warning.png
+    pics/ide_suggestion.png
     doc/Keybindings.svg
     doc/leksah_manual.lyx
     doc/screenshots2/screenshot_buffer_menu.png

@@ -36,7 +36,8 @@ module IDE.Command (
 ) where
 
 import Graphics.UI.Gtk
-       (toToolbar, ToolbarClass, Toolbar(..), keyToChar, eventKeyVal,
+       (iconThemeAddBuiltinIcon, iconThemeLoadIcon, iconThemeGetDefault,
+        toToolbar, ToolbarClass, Toolbar(..), keyToChar, eventKeyVal,
         eventModifier, eventKeyName, EKey, containerAdd,
         windowAddAccelGroup, keyPressEvent, boxPackEnd, boxPackStart,
         widgetSetName, vBoxNew, windowSetIconFromFile, Widget, Window,
@@ -123,6 +124,7 @@ import qualified Data.Text.IO as T (readFile)
 import Data.Monoid (Monoid(..), (<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
+import Graphics.UI.Gtk.General.IconTheme (IconLookupFlags(..))
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -632,11 +634,12 @@ textPopupMenu ideR menu = do
     mi3 <- menuItemNewWithLabel (__ "Search (metadata)")
     mi3 `on` menuItemActivate $
       reflectIDE_ $ do
-         mbtext <- selectedText
-         searchPane <- getSearch Nothing
-         case mbtext of
-             Just t  -> searchMetaGUI searchPane t
-             Nothing -> ideMessage Normal (__ "No identifier selected")
+         getSearch Nothing >>=
+           (\ search ->
+              do mbtext <- selectedText
+                 case mbtext of
+                     Just t -> searchMetaGUI search t
+                     Nothing -> ideMessage Normal (__ "Select a text first"))
     menuShellAppend menu mi3
     let interpretingEntries = [castToWidget mi16]
     let interpretingSelEntries
@@ -698,7 +701,9 @@ newIcons :: IO ()
 newIcons = catch (do
         iconFactory <- iconFactoryNew
         dataDir <- getDataDir
-        mapM_ (loadIcon dataDir iconFactory) ["ide_class","ide_configure","ide_data","ide_error_next",
+
+        mapM_ (loadIcon dataDir iconFactory)
+            ["ide_class","ide_configure","ide_data","ide_error_next",
             "ide_error_prev","ide_function","ide_instance", "ide_konstructor","ide_make",
             "ide_method","ide_newtype","ide_other","ide_rule","ide_run","ide_slot",
             "ide_source","ide_type","leksah", "ide_reexported", "ide_clean", "ide_link", "ide_build",
@@ -713,6 +718,7 @@ newIcons = catch (do
         pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name <> ".png")
         icon    <-  iconSetNewFromPixbuf pb
         iconFactoryAdd iconFactory (T.pack name) icon
+        iconThemeAddBuiltinIcon name 16 pb
 
 setSensitivity :: [(SensitivityMask, Bool)] -> IDEAction
 setSensitivity = mapM_ setSensitivitySingle
@@ -944,11 +950,9 @@ registerLeksahEvents =    do
     registerEvent stRef "ErrorChanged"
         (\ e@(ErrorChanged show') -> postAsyncIDE (fillErrorList show') >> return e)
     registerEvent stRef "ErrorAdded"
-        (\ e@(ErrorAdded show' i ref) -> postAsyncIDE (fillErrorList show') >> return e)
+        (\ e@(ErrorAdded show' ref) -> postAsyncIDE (fillErrorList show') >> return e)
     registerEvent stRef "CurrentErrorChanged"
-        (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (do
-            selectRef mbLogRef
-            selectError mbLogRef)  >> return e)
+        (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (selectRef mbLogRef)  >> return e)
     registerEvent stRef "BreakpointChanged"
         (\ e@BreakpointChanged    -> postAsyncIDE fillBreakpointList >> return e)
     registerEvent stRef "CurrentBreakChanged"

@@ -40,8 +40,10 @@ module IDE.Utils.GUIUtils (
 
 ,   stockIdFromType
 ,   mapControlCommand
+,   treeViewToggleRow
 ,   treeViewContextMenu
 ,   treeViewContextMenu'
+,   treeStoreGetForest
 
 ,   __
 
@@ -69,6 +71,7 @@ import qualified Data.Text as T (unpack
                                 )
 import Control.Applicative ((<$>))
 import Data.List (intercalate)
+import Data.Tree (Tree(..), Forest)
 
 #ifdef LOCALIZATION
 
@@ -321,6 +324,17 @@ stockIdFromType Constructor     =   "ide_konstructor"
 stockIdFromType Field           =   "ide_slot"
 stockIdFromType Method          =   "ide_method"
 stockIdFromType _               =   "ide_other"
+
+
+treeStoreGetForest :: TreeStore a -> IO (Forest a)
+treeStoreGetForest store = subForest <$> (treeStoreGetTree store [])
+
+-- | Toggles a row in a `TreeView`
+treeViewToggleRow treeView path = do
+    expanded <- treeViewRowExpanded treeView path
+    if expanded
+        then treeViewCollapseRow treeView path
+        else treeViewExpandRow   treeView path False
 
 -- maps control key for Macos
 #if defined(darwin_HOST_OS)
