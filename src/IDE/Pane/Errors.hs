@@ -50,6 +50,7 @@ import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Data.Char (isSpace)
 import Data.Tree (Forest, Tree(..), Tree)
 import Control.Applicative (Alternative(..))
+import Data.Function ((&))
 
 
 -- | The representation of the Errors pane
@@ -69,7 +70,7 @@ data ErrorsPane      =   ErrorsPane {
 data ErrorRecord = ERLogRef LogRef
                  | ERPackage IDEPackage Text
                  | ERIDE Text
-                 | ERFile IDEPackage FilePath -- used for parent node for all errors in a file
+                 | ERFullMessage Text (Maybe LogRef)
     deriving (Eq)
 
 -- | The additional state used when recovering the pane
@@ -123,6 +124,7 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
     hbox <- hBoxNew False 0
     boxPackStart vbox hbox PackNatural 0
 
+
     errorsButton <- toggleButtonNewWithLabel (__ "Errors")
     warningsButton <- toggleButtonNewWithLabel (__ "Warnings")
     suggestionsButton <- toggleButtonNewWithLabel (__ "Suggestions")
@@ -158,10 +160,15 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
 
     renderer <- cellRendererTextNew
     cellLayoutPackStart column renderer False
-    cellLayoutSetAttributes column renderer errorStore
-        $ \row -> [cellText := toDescription row ]
+
+    cellLayoutSetAttributeFunc column renderer errorStore $ \iter -> do
+        path <- treeModelGetPath errorStore iter
+        row <- treeModelGetRow errorStore iter
+        expanded <- treeViewRowExpanded treeView path
+        set renderer [cellText := toDescription expanded row]
 
     treeViewAppendColumn treeView column
+
 
     selB <- treeViewGetSelection treeView
     treeSelectionSetMode selB SelectionMultiple
@@ -183,7 +190,7 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
         record <- treeStoreGetValue errorStore path
         case record of
             ERLogRef logRef -> errorsSelect ideR errorStore path col
-            ERFile _ _ -> void $ treeViewToggleRow treeView path
+            ERFullMessage _ ref -> errorsSelect ideR errorStore path col
             _        -> return ()
 
     reflectIDE (fillErrorList' pane) ideR
@@ -199,15 +206,25 @@ toIcon (ERLogRef logRef) =
         _          -> Nothing
 toIcon (ERPackage _ _) = Just "dialog-error"
 toIcon (ERIDE _) = Just "dialog-error"
-toIcon (ERFile _ _) = Just "ide_source"
+toIcon (ERFullMessage _ _) = Nothing
 
-toDescription :: ErrorRecord -> Text
-toDescription errorRec =  T.intercalate " " . map (removeTrailingWhiteSpace . removeIndentation) . T.lines $
+
+toDescription :: Bool -> ErrorRecord -> Text
+toDescription expanded errorRec =
     case errorRec of
-        (ERLogRef logRef) -> refDescription logRef
-        (ERPackage pkg msg) -> packageIdentifierToString (ipdPackageId pkg) <> ": " <> msg
-        (ERIDE msg) -> msg
-        (ERFile pkg fp) -> T.pack fp <> " ("  <> packageIdentifierToString (ipdPackageId pkg) <> ")"
+        (ERLogRef logRef)   -> formatExpandableMessage (T.pack $ logRefFilePath logRef) (refDescription logRef)
+        (ERIDE msg)         -> formatExpandableMessage "" msg
+        (ERPackage pkg msg) -> formatExpandableMessage (packageIdentifierToString (ipdPackageId pkg))
+                                   (packageIdentifierToString (ipdPackageId pkg) <> ": \n" <> msg)
+        (ERFullMessage msg _) -> removeIndentation msg
+
+    where
+        formatExpandableMessage location msg
+            | expanded  = location
+            | otherwise = location <> ": " <> msg & removeIndentation
+                                                  & T.lines
+                                                  & map removeTrailingWhiteSpace
+                                                  & T.intercalate " "
 
 
 -- | Removes the unnecessary indentation
@@ -242,14 +259,6 @@ fillErrorList' :: ErrorsPane -> IDEAction
 fillErrorList' pane = do
     refs <- F.toList <$> readIDE errorRefs
     visibleRefs <- liftIO $ filterM visible refs
-    let eqFile ref1 ref2 = let file = (srcSpanFilename . logRefSrcSpan) in file ref1 == file ref2
-        fileRefs :: [(IDEPackage, FilePath, [LogRef])]
-        fileRefs =
-            map (\(x:xs) -> (logRefPackage x, srcSpanFilename (logRefSrcSpan x), x:xs))
-            . map (sortBy (comparing logRefType))
-            . groupBy eqFile
-            . sortBy (comparing (srcSpanFilename . logRefSrcSpan))
-            $ visibleRefs
 
     ac   <- liftIO $ readIORef (autoClose pane)
     when (null refs && ac) . void $ closePane pane
@@ -259,11 +268,11 @@ fillErrorList' pane = do
         let store = errorStore pane
         let view  = treeView pane
         treeStoreClear store
-        forM_ (zip fileRefs [0..]) $ \ ((pkg, path, refs), n) -> do
-            treeStoreInsert store [] n (ERFile pkg path)
-            forM_ (zip refs [0..]) $ \(ref, m) ->
-                treeStoreInsert store [n] m (ERLogRef ref)
-            treeViewExpandRow view [n] False
+        forM_ (zip visibleRefs [0..]) $ \(ref, n) -> do
+            treeStoreInsert store [] n (ERLogRef ref)
+            when (length (T.lines (refDescription ref)) > 1) $ do
+                treeStoreInsert store [n] 0 (ERFullMessage (refDescription ref) (Just ref))
+                treeViewExpandToPath view [n,0]
     where
         visible ref =
             case logRefType ref of
