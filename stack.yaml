@@ -2,7 +2,6 @@ flags: {}
 packages:
 - '.'
 extra-deps:
-- attoparsec-conduit-1.1.0
 - binary-shared-0.8.3
 - ghcjs-codemirror-0.0.0.1
 - ghcjs-dom-0.2.1.0
