@@ -765,11 +765,13 @@ viewDetachInstrumented = do
 
 viewUseDarkInterface :: IDEAction
 viewUseDarkInterface = do
+    useDark <- getDarkState
     prefs <- readIDE prefs
-    let useDark = darkUserInterface prefs
-    let prefs' = prefs {darkUserInterface = not useDark}
-    modifyIDE_ (\ide -> ide {prefs = prefs'})
-    applyInterfaceTheme
+    when (useDark /= darkUserInterface prefs) $ do
+        let prefs' = prefs {darkUserInterface = useDark}
+        modifyIDE_ (\ide -> ide {prefs = prefs'})
+        applyInterfaceTheme
+
 
 instrumentWindow :: Window -> Prefs -> Widget -> IDEAction
 instrumentWindow win prefs topWidget = do

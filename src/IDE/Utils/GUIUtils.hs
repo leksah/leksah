@@ -24,6 +24,8 @@ module IDE.Utils.GUIUtils (
 
 ,   getFullScreenState
 ,   setFullScreenState
+,   getDarkState
+,   setDarkState
 
 ,   getBackgroundBuildToggled
 ,   setBackgroundBuildToggled
@@ -252,6 +254,16 @@ getFullScreenState = do
 setFullScreenState :: PaneMonad alpha => Bool -> alpha ()
 setFullScreenState b = do
     ui <- getUIAction "ui/menubar/_View/_Full Screen" castToToggleAction
+    liftIO $toggleActionSetActive ui b
+
+getDarkState :: PaneMonad alpha => alpha Bool
+getDarkState = do
+    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" castToToggleAction
+    liftIO $toggleActionGetActive ui
+
+setDarkState :: PaneMonad alpha => Bool -> alpha ()
+setDarkState b = do
+    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" castToToggleAction
     liftIO $toggleActionSetActive ui b
 
 getMenuItem :: Text -> IDEM MenuItem

@@ -825,6 +825,9 @@ applyInterfaceTheme = do
                             (if darkUserInterface prefs then 1 else 0)
                             "Leksah"
         Nothing -> return ()
+    menuDarkState <- getDarkState
+    when (menuDarkState /= darkUserInterface prefs) $
+        setDarkState (darkUserInterface prefs)
 
 -- | Editor for enabling a different syntax stylesheet
 styleEditor :: Editor (Bool, Text)

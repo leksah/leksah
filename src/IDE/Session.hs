@@ -74,6 +74,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (pack)
 import Data.Traversable (forM)
 import Data.Foldable (forM_)
+import IDE.Preferences (applyInterfaceTheme)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
@@ -356,7 +357,6 @@ saveSessionAs sessionPath mbSecondPath = do
     population      <-  getPopulation
     size            <-  liftIO $ windowGetSize wdw
     fullScreen      <-  getFullScreenState
-    dark            <-  darkUserInterface <$> readIDE prefs
     (completionSize,_) <- readIDE completion
     mbWs            <-  readIDE workspace
     activePane'     <-  getActivePane
@@ -565,6 +565,7 @@ recoverSession sessionPath = catchIDE (do
                                         recentWorkspaces = recentOpenedWorksp sessionSt})
         setFullScreenState (fullScreen sessionSt)
         viewFullScreen
+        applyInterfaceTheme
         liftIO $ debugM "leksah" "recoverSession done"
         return (toolbarVisibleS sessionSt, (fst . findbarState) sessionSt))
         (\ (e :: SomeException) -> do
