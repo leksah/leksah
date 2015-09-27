@@ -36,7 +36,10 @@ sudo dnf -y install \
 # Disable password authenticated SSH (key should be on there now) and enable sshd.
 # Run vagrant ssh to connect or vagrant ssh_config to find out the connection settings.
 sudo sed -i -e 's|^\(PasswordAuthentication *\)yes$|\1no|' /etc/ssh/sshd_config
+sudo setenforce 0
 sudo systemctl enable sshd.service
+sudo systemctl restart sshd.service
+sudo setenforce 1
 
 # Install VirtualBox Guest Additions
 sudo dnf install -y dkms kernel-devel wget make

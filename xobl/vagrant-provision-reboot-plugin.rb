@@ -108,7 +108,7 @@ class RebootPlugin < Vagrant.plugin('2')
 
       # Run the provisioning.
       def provision
-        command = 'shutdown -r now'
+        command = 'sudo setenforce 0 && shutdown -r now && sudo setenforce 1'
         @machine.ui.info("Issuing command: #{command}")
         @machine.communicate.sudo(command) do |type, data|
           if type == :stderr
