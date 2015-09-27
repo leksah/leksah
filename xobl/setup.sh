@@ -1,6 +1,6 @@
 #!/bin/sh -ex
 
-export VBOXVER=5.0.0
+export VBOXVER=5.0.4
 export GHCVER=7.10.2
 
 # Install GNOME desktop
@@ -123,14 +123,13 @@ fi
 if [ ! -e ~/haskell/ghcjs/.cabal-sandbox/bin/ghcjs ]
 then
     cd ~/haskell/ghcjs
-    git checkout origin/improved-base
     cabal sandbox init
     cabal install --constraint='Cabal>=1.22.3.0'
 fi
 
 if [ ! -e ~/.ghcjs/x86_64-linux-*-$GHCVER/ghcjs/ghcjs_boot.completed ]
 then
-    ghcjs-boot --dev --ghcjs-boot-dev-branch improved-base --shims-dev-branch improved-base
+    ghcjs-boot --dev
 fi
 
 if [ ! -e ~/.ghcjs/x86_64-linux-$GHCVER ]
