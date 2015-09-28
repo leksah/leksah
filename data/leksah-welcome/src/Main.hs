@@ -16,7 +16,7 @@
 --   * Package -> New
 
 -- Next we are importing some things from other modules.
--- Leksah can normally addd these imports for you, just
+-- Leksah can normally add these imports for you, just
 -- press Ctrl+R (OS X Command+R)
 
 import Data.Monoid ((<>))
