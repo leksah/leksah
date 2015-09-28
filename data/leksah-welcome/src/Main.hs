@@ -16,12 +16,12 @@
 --   * Package -> New
 
 -- Next we are importing some things from other modules.
--- Leksah can normally addd these imports for you, just
+-- Leksah can normally add these imports for you, just
 -- press Ctrl+R (OS X Command+R)
 
 import Data.Monoid ((<>))
 
--- This strang looking comment adds code only needed when running the
+-- This strange looking comment adds code only needed when running the
 -- doctest tests embedded in the comments
 -- $setup
 -- >>> import Data.List (stripPrefix)
