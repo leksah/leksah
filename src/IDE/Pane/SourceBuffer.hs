@@ -6,6 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -108,6 +109,7 @@ import Data.Typeable
 import IDE.Core.State
 import IDE.Utils.GUIUtils
 import IDE.Utils.FileUtils
+import IDE.Utils.DirectoryUtils
 import IDE.SourceCandy
 import IDE.SymbolNavigation
 import IDE.Completion as Completion (complete,cancel)
@@ -142,7 +144,7 @@ import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
 import Control.Monad.Trans.Class (MonadTrans(..))
-import System.Log.Logger (debugM)
+import System.Log.Logger (errorM, warningM, debugM)
 import Data.Text (Text)
 import qualified Data.Text as T
        (length, findIndex, replicate, lines,
@@ -158,6 +160,7 @@ import Language.Haskell.HLint3 (Idea(..))
 -- import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.Sequence as Seq
 import Data.Sequence (ViewR(..), (|>))
+import Data.Time.Clock (addUTCTime, diffUTCTime)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -987,13 +990,52 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
             let text' = if removeTBlanks
                             then T.unlines $ map (T.dropWhileEnd $ \c -> c == ' ') $ T.lines text
                             else text
+            modTime <- liftIO $ getModificationTime fn
             succ <- liftIO $ E.catch (do T.writeFile fn text'; return True)
                 (\(e :: SomeException) -> do
                     sysMessage Normal . T.pack $ show e
                     return False)
-            setModified buf (not succ)
-            markLabelAsChanged nb ideBuf
-            triggerEventIDE_ $ SavedFile fn
+
+            -- Truely horrible hack to work around HFS+ only having 1sec resolution
+            -- and ghc ignoring files unless the modifiction time has moved forward.
+            -- The limitation means we can do at most 1 reload a second, but
+            -- this hack allows us to take an advance of up to 30 reloads (by
+            -- moving the modidification time up to 30s into the future).
+            modTimeChanged <- liftIO $ do
+                newModTime <- getModificationTime fn
+                let diff = diffUTCTime modTime newModTime
+                if
+                    | (newModTime > modTime) -> return True -- All good mode time has moved on
+                    | diff < 30 -> do
+                         setModificationTimeOnOSX fn (addUTCTime 1 modTime)
+                         updatedModTime <- getModificationTime fn
+                         return (updatedModTime > modTime)
+                    | diff < 32 -> do
+                         -- Reached our limit of how far in the future we want to set the modifiction time.
+                         -- Using 32 instead of 31 in case NTP or something is adjusting the clock back.
+                         warningM "leksah" $ "Modification time for " <> fn
+                            <> " was already " <> show (diffUTCTime modTime newModTime)
+                            <> " in the future"
+                         -- We still want to keep the modification time the same though.
+                         -- If it went back the future date ghc has might cause it to
+                         -- continue to ignore the file.
+                         setModificationTimeOnOSX fn modTime
+                         return False
+                    | otherwise -> do
+                         -- This should never happen unless something else is messing
+                         -- with the modification time or the clock.
+                         -- If it does happen we will leave the modifiction time alone.
+                         errorM "leksah" $ "Modification time for " <> fn
+                            <> " was already " <> show (diffUTCTime modTime newModTime)
+                            <> " in the future"
+                         return True
+
+            -- Only consider the file saved if the modification time changed
+            -- otherwise another save is really needed to trigger ghc.
+            when modTimeChanged $ do
+                setModified buf (not succ)
+                markLabelAsChanged nb ideBuf
+                triggerEventIDE_ $ SavedFile fn
 
 fileSave :: Bool -> IDEM Bool
 fileSave query = inActiveBufContext False $ fileSaveBuffer query

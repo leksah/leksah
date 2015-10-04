@@ -255,6 +255,7 @@ library
         IDE.Session
         IDE.Command
         IDE.Keymap
+        IDE.Utils.DirectoryUtils
         IDE.Utils.GUIUtils
         IDE.SymbolNavigation
         IDE.Package
