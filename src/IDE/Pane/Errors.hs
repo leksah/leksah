@@ -26,6 +26,8 @@ module IDE.Pane.Errors (
 ,   selectMatchingErrors
 ) where
 
+import Control.Applicative ((<$>))
+import Prelude
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable)
 import IDE.Core.State

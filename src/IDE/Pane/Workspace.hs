@@ -53,7 +53,8 @@ import Graphics.UI.Gtk
         MenuItem(..), treeStoreSetValue)
 import Data.Maybe
        (fromJust, fromMaybe, maybeToList, listToMaybe, isJust)
-import Control.Monad (forM, void, forM_, when)
+import Control.Monad (forM, void, when)
+import Data.Foldable (forM_)
 import Data.Typeable (Typeable)
 import IDE.Core.State
        (catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,

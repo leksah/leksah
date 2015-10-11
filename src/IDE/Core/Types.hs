@@ -413,7 +413,7 @@ ipdPackageDir = dropFileName . ipdCabalFile
 
 -- | Gets the package name
 ipdPackageName :: IDEPackage -> Text
-ipdPackageName = T.pack . unPackageName . pkgName . ipdPackageId
+ipdPackageName = T.pack . (\(PackageName s) -> s) . pkgName . ipdPackageId
 
 -- | Gets the library name if the package has a library component
 ipdLib :: IDEPackage -> Maybe Text

@@ -54,7 +54,7 @@ import Graphics.UI.Gtk
 import IDE.Utils.Tool (runProcess)
 import Data.Maybe
        (listToMaybe, fromMaybe, catMaybes, fromJust, isJust)
-import Control.Monad
+import Control.Monad (void, when, unless)
 import IDE.Core.State
 --import Graphics.UI.Gtk.Selectors.FileChooser
 --    (FileChooserAction(..))
@@ -71,6 +71,7 @@ import qualified Data.Text as T (unpack
                                 )
 import Control.Applicative ((<$>))
 import Data.List (intercalate)
+import Data.Foldable (forM_)
 
 #ifdef LOCALIZATION
 
