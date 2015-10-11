@@ -62,9 +62,6 @@ sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Lek
 echo Fixing pixbuf loader paths
 sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-3.0/gdk-pixbuf.loaders || exit
 
-echo Fixing pango module paths
-sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/pango/pango.modules || exit
-
 LEKSAH_DMG="$LEKSAH_X_X_X_X_GHC_X_X_X.dmg"
 if test -e "$LEKSAH_DMG"; then
    rm "$LEKSAH_DMG"

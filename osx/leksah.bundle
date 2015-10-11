@@ -83,10 +83,6 @@
   </binary>
 
   <binary>
-    ${prefix}/lib/pango/${pkg:pango:pango_module_version}/modules/
-  </binary>
-
-  <binary>
     ${prefix}/lib/gio/modules/
   </binary>
 
@@ -104,10 +100,6 @@
 
   <data>
     ${prefix}/etc/fonts/
-  </data>
-
-  <data>
-    ${prefix}/etc/pango/
   </data>
 
   <!-- Translation filenames, one for each program or library that you
