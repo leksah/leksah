@@ -148,7 +148,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
             liftIO $ reflectIDE (makeActive out) ideR
             return True
 
-        webView `set` [webViewZoomLevel := 2.0]
+--        webView `set` [webViewZoomLevel := 2.0]
         cid2 <- on webView keyPressEvent $ do
             key <- eventKeyName
             mod <- eventModifier
