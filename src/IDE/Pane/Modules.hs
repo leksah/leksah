@@ -59,7 +59,7 @@ import Distribution.PackageDescription
         hasLibs, executables, testSuites, exeName, testName, benchmarks,
         benchmarkName, libBuildInfo, library, buildInfo, testBuildInfo,
         benchmarkBuildInfo)
-import System.FilePath (takeBaseName, (</>),dropFileName)
+import System.FilePath (takeBaseName, (</>),dropFileName,makeRelative,takeDirectory)
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters
@@ -782,13 +782,26 @@ buildModulesTree (PackScope localMap _,PackScope otherMap _) =
         resultTree        =   foldl' insertPairsInTree defaultRoot modDescrPackDescr
         in sortTree resultTree
 
+-- | Insert module and package info into the tre
 insertPairsInTree :: ModTree -> (ModuleDescr,PackageDescr) -> ModTree
 insertPairsInTree tree pair =
-    let nameArray           =   map T.pack . components . modu . mdModuleId $ fst pair
+    let nameArray           =   modTreeName $ fst pair
         (startArray,last)   =   splitAt (length nameArray - 1) nameArray
         pairedWith          =   map (\ n -> (n, Nothing)) startArray ++ [(head last, Just pair)]
     in  insertNodesInTree pairedWith tree
-
+    where modTreeName modDescr = let
+                    modId = mdModuleId modDescr
+                    modName = modu modId
+                    mFilePath = mdMbSourcePath modDescr
+                    -- show relative file path for Main modules
+                    -- since we can have several
+                    in case (components modName,mFilePath) of
+                        (["Main"],Just fp) ->
+                            let sfp = case (pdMbSourcePath (snd pair)) of
+                                        Nothing -> fp
+                                        Just pfp -> makeRelative (takeDirectory pfp) fp
+                            in  [T.pack $ "Main ("++sfp++")"]
+                        (cmps,_) -> map T.pack cmps
 
 insertNodesInTree :: [ModuleRecord] -> ModTree -> ModTree
 insertNodesInTree  [p1@(str1,Just pair)] (Node p2@(str2,mbPair) forest2) =
