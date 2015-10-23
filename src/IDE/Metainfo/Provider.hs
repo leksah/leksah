@@ -281,9 +281,8 @@ updatePackageInfo rebuild idePack continuation = do
                                     mbFn <- findSourceFile' (srcDirs' bi) fn
                                     return (main,mbFn))
                             (ipdMain idePack)
-    let modPairsMb' = case mainModules of
-                        [] -> modPairsMb
-                        hd:_ -> hd : modPairsMb
+    -- we want all Main modules since they may be several with different files
+    let modPairsMb' = mainModules ++ modPairsMb
     let (modWith,modWithout) = partition (\(x,y) -> isJust y) modPairsMb'
     let modWithSources       = map (A.second fromJust) modWith
     let modWithoutSources    = map fst modWithout
@@ -326,7 +325,7 @@ figureOutRealSources idePack modWithSources = do
     where
         ff packageCollectorPath (md ,fp) =  do
                 let modId = display md
-                let collectorModulePath = packageCollectorPath </> modId <.> leksahMetadataWorkspaceFileExtension
+                let collectorModulePath = packageCollectorPath </> (moduleCollectorFileName modId fp) <.> leksahMetadataWorkspaceFileExtension
                 existCollectorFile <- doesFileExist collectorModulePath
                 existSourceFile    <- doesFileExist fp
                 if not existSourceFile || not existCollectorFile
@@ -374,7 +373,7 @@ getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (
                                         modName : problemMods)
                 else return (modDescrs,packageMap,changed, modName : problemMods)
     where
-        moduleCollectorPath = packageCollectorPath </> display modName <.>  leksahMetadataWorkspaceFileExtension
+        moduleCollectorPath = packageCollectorPath </> moduleCollectorFileName' (display modName) mbFilePath <.>  leksahMetadataWorkspaceFileExtension
 
 -- ---------------------------------------------------------------------
 -- Low level helpers for loading metadata
