@@ -255,16 +255,21 @@ updateWorkspaceInfo' rebuild continuation = do
                 continuation True
     postAsyncIDE $ ideMessage Normal "Finished updating workspace metadata"
 
+-- | Update the metadata on several packages
 updatePackageInfos :: Bool -> [IDEPackage] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
-updatePackageInfos = updatePackageInfos' []
+updatePackageInfos rebuild pkgs continuation = do
+    -- calculate list of known packages once
+    knownPackages   <- liftIO getInstalledPackageIds
+    updatePackageInfos' [] knownPackages rebuild pkgs continuation
     where
-        updatePackageInfos' collector _ [] continuation =  continuation True collector
-        updatePackageInfos' collector rebuild (hd:tail) continuation =
-            updatePackageInfo rebuild hd $ \ _ packDescr ->
-                updatePackageInfos' (packDescr : collector) rebuild tail continuation
+        updatePackageInfos' collector _ _ [] continuation =  continuation True collector
+        updatePackageInfos' collector knownPackages rebuild (hd:tail) continuation =
+            updatePackageInfo knownPackages rebuild hd $ \ _ packDescr ->
+                updatePackageInfos' (packDescr : collector) knownPackages rebuild tail continuation
 
-updatePackageInfo :: Bool -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
-updatePackageInfo rebuild idePack continuation = do
+-- | Update the metadata on one package
+updatePackageInfo :: [PackageIdentifier] -> Bool -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
+updatePackageInfo knownPackages rebuild idePack continuation = do
     liftIO $ infoM "leksah" ("updatePackageInfo " ++ show rebuild ++ " " ++ show (ipdPackageId idePack))
     workspInfoCache'     <- readIDE workspInfoCache
     let (packageMap, ic) =  case pi  `Map.lookup` workspInfoCache' of
@@ -297,7 +302,7 @@ updatePackageInfo rebuild idePack continuation = do
         (ipdPackageId idePack)
         (map (\(x,y) -> (T.pack $ display x,y)) modToUpdate)
         (\ b -> do
-            buildDepends         <- liftIO $ findFittingPackages (ipdDepends idePack)
+            let buildDepends         = findFittingPackages knownPackages (ipdDepends idePack)
             collectorPath        <- liftIO getCollectorPath
             let packageCollectorPath = collectorPath </> T.unpack (packageIdentifierToString pi)
             (moduleDescrs,packageMap, changed, modWithout)
@@ -453,15 +458,20 @@ loadInfosForModule filePath  = do
             sysMessage Normal $ "moduleInfo not found for " <> T.pack filePath
             return Nothing
 
-findFittingPackages :: [Dependency] -> IO [PackageIdentifier]
-findFittingPackages dependencyList = do
-    knownPackages   <-  getInstalledPackageIds
-    return (concatMap (fittingKnown knownPackages) dependencyList)
+-- | Find the packages fitting the dependencies
+findFittingPackages
+    :: [PackageIdentifier] -- ^ the list of known packages
+    -> [Dependency]  -- ^ the dependencies
+    -> [PackageIdentifier] -- ^ the known packages matching the dependencies
+findFittingPackages knownPackages dependencyList =
+    concatMap (fittingKnown knownPackages) dependencyList
     where
     fittingKnown packages (Dependency dname versionRange) =
+        -- find matching packages
         let filtered =  filter (\ (PackageIdentifier name version) ->
                                     name == dname && withinRange version versionRange)
                         packages
+        -- take latest version if several versions match
         in  if length filtered > 1
                 then [maximumBy (compare `on` pkgVersion) filtered]
                 else filtered
