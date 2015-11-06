@@ -36,7 +36,7 @@ Make sure `$HOME/.cabal/bin` is in your `PATH` then:
     cabal install leksah
     leksah
 
-### Buildling on OS X
+### Building on OS X
 
 [Install MacPorts](https://www.macports.org/install.php).
 
