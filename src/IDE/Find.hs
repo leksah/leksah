@@ -684,19 +684,19 @@ needFindbar = do
         Nothing -> throwIDE "Find>>needFindbar: Findbar not initialized"
         Just p  -> return p
 
+-- | Find action. If SearchHint==Initial then we'll use the selected text or current identifier to populate the find text box
 editFindInc :: SearchHint -> IDEAction
 editFindInc hint = do
     ideR <- ask
     (fb,_) <- needFindbar
     case hint of
-        Initial -> inActiveBufContext () $ \_ _ ebuf _ _ -> do
-            hasSelection <- hasSelection ebuf
-            when hasSelection $ do
-                (i1,i2)   <- getSelectionBounds ebuf
-                text      <- getText ebuf i1 i2 False
-                findEntry <- liftIO $ getFindEntry fb
-                liftIO $ entrySetText (castToEntry findEntry) text
-                return ()
+        Initial -> do
+               mbtext <- selectedTextOrCurrentIdentifier -- if no text selected, search for current identifier
+               case mbtext of
+                 Just text -> do
+                     findEntry <- liftIO $ getFindEntry fb
+                     liftIO $ entrySetText (castToEntry findEntry) text
+                 Nothing -> return ()
         _ -> return ()
     showFindbar
     reifyIDE $ \ideR   -> do

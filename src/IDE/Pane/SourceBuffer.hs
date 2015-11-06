@@ -80,6 +80,7 @@ module IDE.Pane.SourceBuffer (
 
 ,   selectedText
 ,   selectedTextOrCurrentLine
+,   selectedTextOrCurrentIdentifier
 ,   insertTextAfterSelection
 ,   selectedModuleName
 ,   selectedLocation
@@ -740,11 +741,13 @@ isRangeStart sel = do                                   -- if char and previous 
     mbPrevCharCat <- getCharacterCategory <$> (backwardCharC sel >>= getChar)
     return $ isNothing currentChar || currentChar == Just '\n' || mbStartCharCat /= mbPrevCharCat && (mbStartCharCat == SyntaxCharacter || mbStartCharCat == IdentifierCharacter)
 
+-- | Get an iterator pair (start,end) delimiting the identifier currently under the cursor
 getIdentifierUnderCursor :: forall editor. TextEditor editor => EditorBuffer editor -> IDEM (EditorIter editor, EditorIter editor)
 getIdentifierUnderCursor buffer = do
     (startSel, endSel) <- getSelectionBounds buffer
     getIdentifierUnderCursorFromIter (startSel, endSel)
 
+-- | Get an iterator pair (start,end) delimiting the identifier currently contained inside the provided iterator pair
 getIdentifierUnderCursorFromIter :: TextEditor editor => (EditorIter editor, EditorIter editor) -> IDEM (EditorIter editor, EditorIter editor)
 getIdentifierUnderCursorFromIter (startSel, endSel) = do
     let isIdent a = isAlphaNum a || a == '\'' || a == '_'
@@ -1390,6 +1393,7 @@ removeRecentlyUsedFile fp = do
         triggerEventIDE UpdateRecent
         return ()
 
+-- | Get the currently selected text or Nothing is no text is selected
 selectedText :: IDEM (Maybe Text)
 selectedText = do
     candy' <- readIDE candy
@@ -1402,6 +1406,7 @@ selectedText = do
                 return $ Just text
             else return Nothing
 
+-- | Get the currently selected text, or, if none, the current line text
 selectedTextOrCurrentLine :: IDEM (Maybe Text)
 selectedTextOrCurrentLine = do
     candy' <- readIDE candy
@@ -1416,6 +1421,21 @@ selectedTextOrCurrentLine = do
                 iEnd <- forwardToLineEndC iStart
                 return (iStart, iEnd)
         Just <$> getCandylessPart candy' ebuf i1 i2
+
+-- | Get the currently selected text, or, if none, tries to selected the current identifier (the one under the cursor)
+selectedTextOrCurrentIdentifier :: IDEM (Maybe Text)
+selectedTextOrCurrentIdentifier = do
+    st <- selectedText
+    case st of
+        Just t -> return $ Just t
+        Nothing -> do
+            candy' <- readIDE candy
+            inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
+                        (l,r)   <- getIdentifierUnderCursor ebuf
+                        t <- getCandylessPart candy' ebuf l r
+                        return $ if T.null t
+                                                then Nothing
+                                                else Just t
 
 selectedLocation :: IDEM (Maybe (Int, Int))
 selectedLocation = do

@@ -632,7 +632,7 @@ textPopupMenu ideR menu = do
     mi3 <- menuItemNewWithLabel (__ "Search (metadata)")
     mi3 `on` menuItemActivate $
       reflectIDE_ $ do
-         mbtext <- selectedText
+         mbtext <- selectedTextOrCurrentIdentifier -- if no text selected, search for current identifier
          searchPane <- getSearch Nothing
          case mbtext of
              Just t  -> searchMetaGUI searchPane t
