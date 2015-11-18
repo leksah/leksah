@@ -993,7 +993,10 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
             let text' = if removeTBlanks
                             then T.unlines $ map (T.dropWhileEnd $ \c -> c == ' ') $ T.lines text
                             else text
-            modTime <- liftIO $ getModificationTime fn
+            alreadyExists <- liftIO $ doesFileExist fn
+            mbModTimeBefore <- if alreadyExists
+                then liftIO $ Just <$> getModificationTime fn
+                else return Nothing
             succ <- liftIO $ E.catch (do T.writeFile fn text'; return True)
                 (\(e :: SomeException) -> do
                     sysMessage Normal . T.pack $ show e
@@ -1004,34 +1007,36 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
             -- The limitation means we can do at most 1 reload a second, but
             -- this hack allows us to take an advance of up to 30 reloads (by
             -- moving the modidification time up to 30s into the future).
-            modTimeChanged <- liftIO $ do
-                newModTime <- getModificationTime fn
-                let diff = diffUTCTime modTime newModTime
-                if
-                    | (newModTime > modTime) -> return True -- All good mode time has moved on
-                    | diff < 30 -> do
-                         setModificationTimeOnOSX fn (addUTCTime 1 modTime)
-                         updatedModTime <- getModificationTime fn
-                         return (updatedModTime > modTime)
-                    | diff < 32 -> do
-                         -- Reached our limit of how far in the future we want to set the modifiction time.
-                         -- Using 32 instead of 31 in case NTP or something is adjusting the clock back.
-                         warningM "leksah" $ "Modification time for " <> fn
-                            <> " was already " <> show (diffUTCTime modTime newModTime)
-                            <> " in the future"
-                         -- We still want to keep the modification time the same though.
-                         -- If it went back the future date ghc has might cause it to
-                         -- continue to ignore the file.
-                         setModificationTimeOnOSX fn modTime
-                         return False
-                    | otherwise -> do
-                         -- This should never happen unless something else is messing
-                         -- with the modification time or the clock.
-                         -- If it does happen we will leave the modifiction time alone.
-                         errorM "leksah" $ "Modification time for " <> fn
-                            <> " was already " <> show (diffUTCTime modTime newModTime)
-                            <> " in the future"
-                         return True
+            modTimeChanged <- liftIO $ case mbModTimeBefore of
+                Nothing -> return True
+                Just modTime -> do
+                    newModTime <- getModificationTime fn
+                    let diff = diffUTCTime modTime newModTime
+                    if
+                        | (newModTime > modTime) -> return True -- All good mode time has moved on
+                        | diff < 30 -> do
+                             setModificationTimeOnOSX fn (addUTCTime 1 modTime)
+                             updatedModTime <- getModificationTime fn
+                             return (updatedModTime > modTime)
+                        | diff < 32 -> do
+                             -- Reached our limit of how far in the future we want to set the modifiction time.
+                             -- Using 32 instead of 31 in case NTP or something is adjusting the clock back.
+                             warningM "leksah" $ "Modification time for " <> fn
+                                <> " was already " <> show (diffUTCTime modTime newModTime)
+                                <> " in the future"
+                             -- We still want to keep the modification time the same though.
+                             -- If it went back the future date ghc has might cause it to
+                             -- continue to ignore the file.
+                             setModificationTimeOnOSX fn modTime
+                             return False
+                        | otherwise -> do
+                             -- This should never happen unless something else is messing
+                             -- with the modification time or the clock.
+                             -- If it does happen we will leave the modifiction time alone.
+                             errorM "leksah" $ "Modification time for " <> fn
+                                <> " was already " <> show (diffUTCTime modTime newModTime)
+                                <> " in the future"
+                             return True
 
             -- Only consider the file saved if the modification time changed
             -- otherwise another save is really needed to trigger ghc.
