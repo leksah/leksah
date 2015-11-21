@@ -697,4 +697,4 @@ data StatusbarCompartment =
     |   CompartmentCollect Bool
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
-type ModuleDescrCache = Map ModuleName (UTCTime, Maybe FilePath, ModuleDescr)
+type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)

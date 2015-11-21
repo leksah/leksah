@@ -276,15 +276,15 @@ updatePackageInfo knownPackages rebuild idePack continuation = do
                                 Nothing -> (Map.empty,True)
                                 Just m  -> (m,False)
     modPairsMb <- liftIO $ mapM (\(modName, bi) -> do
-            sf <- case  modName `Map.lookup` packageMap of
+            sf <- case  LibModule modName `Map.lookup` packageMap of
                         Nothing            -> findSourceFile (srcDirs' bi) haskellSrcExts modName
                         Just (_,Nothing,_) -> findSourceFile (srcDirs' bi) haskellSrcExts modName
                         Just (_,Just fp,_) -> return (Just fp)
-            return (modName, sf))
+            return (LibModule modName, sf))
                 $ Map.toList $ ipdModules idePack
     mainModules <- liftIO $ mapM (\(fn, bi, isTest) -> do
                                     mbFn <- findSourceFile' (srcDirs' bi) fn
-                                    return (main,mbFn))
+                                    return (MainModule (fromMaybe fn mbFn), mbFn))
                             (ipdMain idePack)
     -- we want all Main modules since they may be several with different files
     let modPairsMb' = mainModules ++ modPairsMb
@@ -295,12 +295,12 @@ updatePackageInfo knownPackages rebuild idePack continuation = do
     modToUpdate <- if rebuild
                             then return modWithSources
                             else liftIO $ figureOutRealSources idePack modWithSources
-    liftIO . infoM "leksah" $ "updatePackageInfo modToUpdate " ++ show (map (display.fst) modToUpdate)
+    liftIO . infoM "leksah" $ "updatePackageInfo modToUpdate " ++ show (map (displayModuleKey.fst) modToUpdate)
     callCollectorWorkspace
         rebuild
         (ipdPackageDir idePack)
         (ipdPackageId idePack)
-        (map (\(x,y) -> (T.pack $ display x,y)) modToUpdate)
+        (map (\(x,y) -> (T.pack $ display (moduleKeyToName x),y)) modToUpdate)
         (\ b -> do
             let buildDepends         = findFittingPackages knownPackages (ipdDepends idePack)
             collectorPath        <- liftIO getCollectorPath
@@ -322,29 +322,28 @@ updatePackageInfo knownPackages rebuild idePack continuation = do
         srcDirs' bi =  map (basePath </>) ("dist/build":hsSourceDirs bi)
         pi = ipdPackageId idePack
 
-figureOutRealSources :: IDEPackage -> [(ModuleName,FilePath)] -> IO [(ModuleName,FilePath)]
+figureOutRealSources :: IDEPackage -> [(ModuleKey,FilePath)] -> IO [(ModuleKey,FilePath)]
 figureOutRealSources idePack modWithSources = do
     collectorPath <- getCollectorPath
     let packageCollectorPath = collectorPath </> T.unpack (packageIdentifierToString $ ipdPackageId idePack)
     filterM (ff packageCollectorPath) modWithSources
     where
         ff packageCollectorPath (md ,fp) =  do
-                let modId = display md
-                let collectorModulePath = packageCollectorPath </> (moduleCollectorFileName modId fp) <.> leksahMetadataWorkspaceFileExtension
-                existCollectorFile <- doesFileExist collectorModulePath
-                existSourceFile    <- doesFileExist fp
-                if not existSourceFile || not existCollectorFile
-                    then return True -- Maybe with preprocessing
-                    else do
-                        sourceModTime <-  getModificationTime fp
-                        collModTime   <-  getModificationTime collectorModulePath
-                        return (sourceModTime > collModTime)
+            let collectorModulePath = packageCollectorPath </> (moduleCollectorFileName md) <.> leksahMetadataWorkspaceFileExtension
+            existCollectorFile <- doesFileExist collectorModulePath
+            existSourceFile    <- doesFileExist fp
+            if not existSourceFile || not existCollectorFile
+                then return True -- Maybe with preprocessing
+                else do
+                    sourceModTime <-  getModificationTime fp
+                    collModTime   <-  getModificationTime collectorModulePath
+                    return (sourceModTime > collModTime)
 
 
 getModuleDescr :: FilePath
-    -> ([ModuleDescr],ModuleDescrCache,Bool,[ModuleName])
-    -> (ModuleName, Maybe FilePath)
-    -> IO ([ModuleDescr],ModuleDescrCache,Bool,[ModuleName])
+    -> ([ModuleDescr],ModuleDescrCache,Bool,[ModuleKey])
+    -> (ModuleKey, Maybe FilePath)
+    -> IO ([ModuleDescr],ModuleDescrCache,Bool,[ModuleKey])
 getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (modName,mbFilePath) =
     case modName `Map.lookup` packageMap of
         Just (eTime,mbFp,mdescr) -> do
@@ -355,7 +354,7 @@ getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (
                     if modificationTime == eTime
                         then return (mdescr:modDescrs,packageMap,changed,problemMods)
                         else do
-                            liftIO . infoM "leksah" $ "getModuleDescr loadInfo: " ++ display modName
+                            liftIO . infoM "leksah" $ "getModuleDescr loadInfo: " ++ displayModuleKey modName
                             mbNewDescr <- loadInfosForModule moduleCollectorPath
                             case mbNewDescr of
                                 Just newDescr -> return (newDescr:modDescrs,
@@ -378,7 +377,7 @@ getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (
                                         modName : problemMods)
                 else return (modDescrs,packageMap,changed, modName : problemMods)
     where
-        moduleCollectorPath = packageCollectorPath </> moduleCollectorFileName' (display modName) mbFilePath <.>  leksahMetadataWorkspaceFileExtension
+        moduleCollectorPath = packageCollectorPath </> moduleCollectorFileName modName <.>  leksahMetadataWorkspaceFileExtension
 
 -- ---------------------------------------------------------------------
 -- Low level helpers for loading metadata
