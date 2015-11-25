@@ -186,6 +186,7 @@ data IDE            =  IDE {
 ,   logLaunches     ::   Map.Map Text LogLaunchData
 ,   autoCommand     ::   IDEAction
 ,   autoURI         ::   Maybe Text
+,   hieState     :: Maybe ToolState
 } --deriving Show
 
 --
@@ -521,6 +522,7 @@ data Prefs = Prefs {
     ,   serverIP            ::   Text
     ,   showHiddenFiles     ::   Bool
     ,   showWorkspaceIcons  ::   Bool
+    ,   hiePath          ::   Maybe FilePath -- ^ Path to hie if we want to use it
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]

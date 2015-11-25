@@ -400,6 +400,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   logLaunches       =   Map.empty
           ,   autoCommand       =   return ()
           ,   autoURI           =   Nothing
+          ,   hieState          = Nothing
     }
     ideR             <-  newIORef ide
     menuDescription' <- menuDescription

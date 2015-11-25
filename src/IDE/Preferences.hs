@@ -170,7 +170,9 @@ runPreferencesDialog = reifyIDE $ \ideR -> do
                                 Nothing -> False
                                 Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
                                           initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
-        when (isJust mbP) $ labelSetMarkup errorLabel ("" :: Text)
+        when (isJust mbP) $ do
+            labelSetMarkup errorLabel ("" :: Text)
+            widgetSetSensitive apply True
         return (e{gtkReturn=False}))
 
     registerEvent notifier ValidationError $ \e -> do
@@ -801,6 +803,16 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a{docuSearchURL = b})
             (textEditor (not . T.null) True)
             (\i -> return ())
+    ]),
+    (__ "Helper programs", VFDPP emptyParams [
+        mkFieldPP
+            (paraName <<<- ParaName (__ "Use haskell-ide-engine?") $ emptyParams)
+            (PP.text . show)
+            readParser
+            hiePath
+            (\b a -> a{hiePath = b})
+            (maybeEditor ((fileEditor Nothing FileChooserActionOpen(__ "...")),emptyParams) True (__ "Path:"))
+            (\i -> return ())
     ])]
 
 getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)
@@ -924,6 +936,7 @@ defaultPrefs = Prefs {
     ,   endWithLastConn     =   True
     ,   showHiddenFiles     =   False
     ,   showWorkspaceIcons       =   True
+    ,   hiePath                        = Nothing
     }
 
 -- ------------------------------------------------------------

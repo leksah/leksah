@@ -246,6 +246,7 @@ library
         build-depends:
             binary-shared >=0.8.2
     exposed-modules:
+        IDE.HIE
         IDE.HLint
         IDE.Leksah
         IDE.Completion
@@ -360,7 +361,8 @@ library
         vado >=0.0.1 && <0.1,
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.20,
-        stm >=2.4.4 && <2.5
+        stm >=2.4.4 && <2.5,
+        aeson
     cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
     default-language: Haskell2010
     default-extensions: ViewPatterns

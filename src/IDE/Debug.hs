@@ -96,6 +96,8 @@ import System.Exit (ExitCode(..))
 import IDE.Pane.WebKit.Output (loadOutputUri)
 import qualified Data.Sequence as Seq (filter, empty)
 
+import IDE.HIE (hieType)
+
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
 
@@ -369,14 +371,22 @@ debugKind = do
             debugCommand (":kind "<>stripComments text) logOutputDefault
         Nothing   -> ideMessage Normal "Please select a type in the editor"
 
+-- | Get the type of the selected expression, either via GHCi or hie
 debugType :: IDEAction
 debugType = do
-    maybeText <- selectedTextOrCurrentLine
-    case maybeText of
-        Just text -> packageTry $ tryDebug $ do
-            debugSetLiberalScope
-            debugCommand (":type "<>stripComments text) logOutputDefault
-        Nothing   -> ideMessage Normal "Please select an expression in the editor"
+    -- do we have hie set in the preferences?
+   mhiePath <- hiePath <$> readIDE prefs
+   case mhiePath of
+        -- run hie
+        Just path -> hieType path
+        Nothing -> do
+            -- run ghci
+            maybeText <- selectedTextOrCurrentLine
+            case maybeText of
+                Just text -> packageTry $ tryDebug $ do
+                        debugSetLiberalScope
+                        debugCommand (":type "<>stripComments text) logOutputDefault
+                Nothing   -> ideMessage Normal "Please select an expression in the editor"
 
 debugSetBreakpoint :: IDEAction
 debugSetBreakpoint = do
