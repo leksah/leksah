@@ -152,7 +152,7 @@ toMarkup record pkg = do
     mbActivePackage   <- readIDE activePack
     mbActiveComponent <- readIDE activeExe
 
-    return . size $ case record of
+    return $ case record of
      (PackageRecord p) ->
         let active = Just pkg == mbActivePackage
             pkgText = (if active then bold else id)
@@ -183,7 +183,6 @@ toMarkup record pkg = do
         bold str = "<b>" <> str <> "</b>"
         italic str = "<i>" <> str <> "</i>"
         gray str = "<span foreground=\"#999999\">" <> str <> "</span>"
-        size str = "<span font=\"9\">" <> str <> "</span>"
 
 
 -- | The icon to show for a record
