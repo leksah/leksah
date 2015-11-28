@@ -138,22 +138,21 @@ showPopupText edView eBuf txt = do
 
 getToolOutput :: (ToJSON a,FromJSON b) => ToolState -> a -> (b -> IDEAction) -> IDEAction
 getToolOutput ts cmdObj f = do
+    ideR <- ask
     let cmd = toTextCmd cmdObj
-    mvar <- liftIO newEmptyMVar
     liftIO $ debugM "leksah" "in getToolOutput1"
     liftIO $ executeCommand ts (cmd <> "\STX") cmd $ do
-                liftIO $ debugM "leksah" "in getToolOutput2"
-                output <- CL.take 3
-                liftIO $ debugM "leksah" "in getToolOutput3"
-                liftIO $ debugM "leksah" $ show output
-                liftIO . putMVar mvar $ catMaybes $ map outputOnly output
-    out <- liftIO $ takeMVar mvar
-    let t = T.takeWhile (/= '\STX') $ T.concat out
-    liftIO $ debugM "leksah" $ T.unpack $ "t:"<> t
-    let ret = fromTextResp $ t
-    case ret of
-        Just r->  f r
-        Nothing -> return ()
+        liftIO $ debugM "leksah" "in getToolOutput2"
+        output <- CL.consume
+        liftIO $ debugM "leksah" "in getToolOutput3"
+        liftIO $ debugM "leksah" $ show output
+        liftIO . (`reflectIDE` ideR) . postAsyncIDE $ do
+            let t = T.takeWhile (/= '\STX') . T.concat $ mapMaybe outputOnly output
+            liftIO $ debugM "leksah" $ T.unpack $ "t:"<> t
+            let ret = fromTextResp t
+            case ret of
+                Just r  -> f r
+                Nothing -> return ()
 
 -- | Transform the text viewer selection (0 based), into a ghc-mod selection (1-base)
 toGhcModSel :: ((Int,Int),(Int,Int)) -> ((Int,Int),(Int,Int))
