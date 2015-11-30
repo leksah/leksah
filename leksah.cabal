@@ -362,7 +362,8 @@ library
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.20,
         stm >=2.4.4 && <2.5,
-        aeson
+        aeson,
+        unordered-containers, vector
     cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
     default-language: Haskell2010
     default-extensions: ViewPatterns

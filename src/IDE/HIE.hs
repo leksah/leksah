@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# Language OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
@@ -30,7 +31,7 @@ import IDE.TextEditor
 import Control.Applicative
 import Control.Concurrent
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (when, void)
+import Control.Monad (when, void, join)
 import Control.Monad.Trans.Reader (ask)
 
 import Data.Aeson
@@ -49,6 +50,8 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (foldM, fold, consume,head,take)
 import Data.Conduit (($$))
+import qualified Data.HashMap.Lazy as H
+import qualified Data.Vector as V
 
 import System.Exit (ExitCode(..))
 
@@ -58,34 +61,84 @@ import System.Log.Logger (debugM)
 -- Display hie type of the selected text
 hieType :: FilePath -> IDEAction
 hieType hiePath = do
+    withHieState hiePath $ \(HieState hie cs)->do
+        rg <- selectedRange
+        maybeModuleName <- selectedModuleName
+        case (rg,maybeModuleName,getTypeCommand cs) of
+            (Just leksahSel,Just mn,Just cmd) -> do
+                let ghcModSel@((sl,sc),_) = toGhcModSel leksahSel
+                inActiveBufContext Nothing $ \_ edView eBuf ideBuf _ -> do
+                    let mfn = fileName ideBuf
+                    case mfn of
+                      Just fn -> getToolOutput hie (object ["cmd".= cmdName cmd
+                                                                        ,"params".= object
+                                                                            ["file".= object ["file".=toJSON fn]
+                                                                            ,"start_pos".=object ["line" .=toJSON sl,"col".=toJSON sc]]]) $ \types -> do
+                        let mMatching= matchingType ghcModSel $ results types
+                        case mMatching of
+                            Nothing -> return ()
+                            Just matching -> showPopupText edView eBuf $ trText matching
+                      Nothing -> return ()
+                    return $ Just ()
+                return ()
+            _ -> return ()
+
+-- | Run an action with the HIE executable
+withHieState hiePath f= do
     mhieState <- readIDE hieState
-    hie <- case mhieState of
-                Just st -> return st
+    case mhieState of
+                Just st -> f st
                 Nothing -> do
                     st <- liftIO $ newToolState
                     let clr=noInputCommandLineReader {sepCharacter=Just '\STX'}
                     liftIO $ runInteractiveTool st clr hiePath [] Nothing
-                    modifyIDE (\i->(i{hieState=Just st},st))
-    rg <- selectedRange
-    maybeModuleName <- selectedModuleName
-    case (rg,maybeModuleName) of
-        (Just leksahSel,Just mn) -> do
-            let ghcModSel@((sl,sc),_) = toGhcModSel leksahSel
-            inActiveBufContext Nothing $ \_ edView eBuf ideBuf _ -> do
-                let mfn = fileName ideBuf
-                case mfn of
-                  Just fn -> getToolOutput hie (object ["cmd".= ("ghcmod:type"::T.Text)
-                                                                    ,"params".= object
-                                                                        ["file".= object ["file".=toJSON fn]
-                                                                        ,"start_pos".=object ["line" .=toJSON sl,"col".=toJSON sc]]]) $ \types -> do
-                    let mMatching= matchingType ghcModSel $ results types
-                    case mMatching of
-                        Nothing -> return ()
-                        Just matching -> showPopupText edView eBuf $ trText matching
-                  Nothing -> return ()
-                return $ Just ()
-            return ()
-        _ -> return ()
+                    getToolOutput st (object ["cmd".= ("base:plugins"::T.Text)
+                                                                    ,"params".= object []]) $ \plugins -> do
+                              let cs=fromMaybe [] $ parseMaybe allCommandsParser plugins
+                              let hs = HieState st cs
+                              modifyIDE (\i->(i{hieState=Just hs},st))
+                              f hs
+
+-- | Parse all commands exposed via HIE
+allCommandsParser (Object v) = do
+  v2 <- v .: "plugins"
+  parseInPlugin v2
+  where
+    parseInPlugin (Object v2) = parseCmdList v2
+    parseInPlugin _ = mempty
+    parseCmdList o =
+      let ass = H.toList o
+      in concat <$> mapM findRef ass
+      where
+        findRef (pl,Array cmds) = mapM (getRef pl) $ V.toList cmds
+        findRef _ = mempty
+        getRef pl (Object m) =
+          HieCommand pl <$> m .: "name"
+                    <*> m .:? "ui_description" .!= ""
+                    <*> m .: "contexts"
+                    <*> m .: "additional_params"
+                    <*> m .: "return_type"
+        getRef _ _ = mempty
+allCommandsParser _ = mempty
+
+
+
+-- | Find all commands matching the given return types and possible contexts
+findCommands :: T.Text -> [T.Text] -> [HieCommand] -> [HieCommand]
+findCommands ret [] = filter (\c-> (hcRet c)==ret)
+findCommands ret ctxs = filter (\c->any (`elem` (hcContexts c)) ctxs && (hcRet c)==ret)
+
+-- | Get type command
+getTypeCommand ::  [HieCommand] -> Maybe HieCommand
+getTypeCommand = listToMaybe . findCommands "TypeInfo" ["point"]
+
+-- | Get all refactor commands
+getRefactorCommands :: [HieCommand] -> [HieCommand]
+getRefactorCommands = findCommands "RefactorResult" ["point","region"]
+
+-- | Get the full command name (plugin:command)
+cmdName :: HieCommand -> T.Text
+cmdName HieCommand {..}= hcPlugin <> ":" <> hcName
 
 -- | Show the given text in popup over the editor selection
 showPopupText :: (TextEditor editor) => (EditorView editor) -> (EditorBuffer editor) -> T.Text -> IDEAction
@@ -117,38 +170,23 @@ showPopupText edView eBuf txt = do
                     widgetGrabFocus popup
         return ()
 
--- | Run the given executable with the given arguments in the current package folder
--- Gather all output lines and feed to given function
---getToolOutput :: FilePath -> [T.Text]
---                        -> ([T.Text] -> PackageAction) -> IDEAction
---getToolOutput ghcModPath args f= packageTry $ do
---    package <- ask
---    logLaunch <- getDefaultLogLaunch
---    mvar <- liftIO newEmptyMVar
---    runExternalTool' (__ "ghc-mod type")
---            ghcModPath args
---            (ipdPackageDir package) $ do
---                output <- CL.consume
---                liftIO . putMVar mvar $ case take 1 $ reverse output of
---                    [ToolExit ExitSuccess] ->
---                        catMaybes $ map outputOnly output
---                    _ -> []
---    out <- liftIO $ takeMVar mvar
---    f out
-
+-- | Run the given command given as a ToJSON and run an action on the result
 getToolOutput :: (ToJSON a,FromJSON b) => ToolState -> a -> (b -> IDEAction) -> IDEAction
 getToolOutput ts cmdObj f = do
     ideR <- ask
     let cmd = toTextCmd cmdObj
-    liftIO $ debugM "leksah" "in getToolOutput1"
+    --liftIO $ debugM "leksah" "in getToolOutput1"
     liftIO $ executeCommand ts (cmd <> "\STX") cmd $ do
-        liftIO $ debugM "leksah" "in getToolOutput2"
+        --liftIO $ debugM "leksah" "in getToolOutput2"
         output <- CL.consume
-        liftIO $ debugM "leksah" "in getToolOutput3"
-        liftIO $ debugM "leksah" $ show output
+        --liftIO $ debugM "leksah" "in getToolOutput3"
+        liftIO $ debugM "leksah" ("hie output:" ++ show output)
         liftIO . (`reflectIDE` ideR) . postAsyncIDE $ do
+            let err = T.concat $ mapMaybe errorOnly output
+            when (not $ T.null err) $
+                ideMessage High $ err
             let t = T.takeWhile (/= '\STX') . T.concat $ mapMaybe outputOnly output
-            liftIO $ debugM "leksah" $ T.unpack $ "t:"<> t
+            --liftIO $ debugM "leksah" $ T.unpack $ "t:"<> t
             let ret = fromTextResp t
             case ret of
                 Just r  -> f r
@@ -163,12 +201,18 @@ outputOnly :: ToolOutput -> Maybe T.Text
 outputOnly (ToolOutput l)=Just l
 outputOnly _ = Nothing
 
+-- | Get only the normal output from a tool
+errorOnly :: ToolOutput -> Maybe T.Text
+errorOnly (ToolError l)=Just l
+errorOnly _ = Nothing
+
 toTextCmd :: (ToJSON a) => a -> T.Text
 toTextCmd v = (toStrict $ toLazyText $ encodeToTextBuilder $ toJSON v)
 
 fromTextResp :: (FromJSON a)=> T.Text -> Maybe a
 fromTextResp = decode . BSL.fromStrict . T.encodeUtf8
 
+-- | ghc-mod list of types
 data TypeInfo = TypeInfo { results :: [TypeResult] }
   deriving (Show,Read,Eq,Ord)
 
