@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.Core.Data
+-- Module      :  IDE.Core.Types
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
@@ -96,6 +96,7 @@ module IDE.Core.Types (
 
 ,   HieState(..)
 ,   HieCommand(..)
+,   HieParameter(..)
 ) where
 
 import qualified IDE.YiConfig as Yi

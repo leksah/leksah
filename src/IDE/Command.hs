@@ -56,7 +56,7 @@ import Graphics.UI.Gtk
         widgetDestroy, menuItemGetSubmenu, menuShellAppend,
         menuItemActivate, menuItemNewWithLabel, menuNew, Packing(..),
         ToolbarStyle(..), PositionType(..), on, IconSize(..), Modifier(..),
-        widgetSetSensitive)
+        widgetSetSensitive,widgetSetTooltipText)
 import System.FilePath
 import Data.Version
 import Prelude hiding (catch)
@@ -86,6 +86,7 @@ import IDE.NotebookFlipper
 import IDE.ImportTool (resolveErrors)
 import IDE.LogRef
 import IDE.Debug
+import IDE.HIE(refactorCommands,runHIECommand)
 import System.Directory (doesFileExist)
 import Graphics.UI.Gtk.Gdk.EventM (EventM)
 import qualified Data.Map as  Map (lookup, empty)
@@ -638,12 +639,28 @@ textPopupMenu ideR menu = do
              Just t  -> searchMetaGUI searchPane t
              Nothing -> ideMessage Normal (__ "No identifier selected")
     menuShellAppend menu mi3
+
+    refs <- reflectIDE_ $ do refactorCommands
+    rmis <- maybeToList <$> case refs of
+        [] -> return Nothing
+        _ -> do
+            rmi <-  menuItemNewWithLabel (__ "Refactor")
+            menuShellAppend menu rmi
+            rm <- menuNew
+            forM_ refs $ \c -> do
+                mir1 <- menuItemNewWithLabel (__ (hcName c))
+                widgetSetTooltipText mir1 (Just $ hcDesc c)
+                menuShellAppend rm mir1
+                mir1 `on` menuItemActivate $ reflectIDE_ $ runHIECommand c
+                widgetShow $ castToWidget mir1
+            menuItemSetSubmenu rmi rm
+            return $ Just rmi
     let interpretingEntries = [castToWidget mi16]
     let interpretingSelEntries
           = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
              castToWidget mi13, castToWidget mi14, castToWidget mi141,
              castToWidget mi15]
-    let otherEntries = [castToWidget mi2, castToWidget mi3]
+    let otherEntries = [castToWidget mi2, castToWidget mi3] ++ (map castToWidget rmis)
     -- isInterpreting' <- (reflectIDE isInterpreting ideR)
     selected <- reflectIDE selectedText ideR
 --    unless isInterpreting'

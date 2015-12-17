@@ -55,6 +55,7 @@ import IDE.Debug
      debugSetBreakOnError,
      debugSetBreakOnException,
      debugSetPrintEvldWithShow)
+import IDE.HIE(resetHie)
 import Graphics.UI.Gtk.SourceView
        (sourceStyleSchemeManagerAppendSearchPath,
         sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
@@ -812,7 +813,7 @@ prefsDescription configDir packages = NFDPP [
             hiePath
             (\b a -> a{hiePath = b})
             (maybeEditor ((fileEditor Nothing FileChooserActionOpen(__ "...")),emptyParams) True (__ "Path:"))
-            (\i -> return ())
+            (\i -> resetHie)
     ])]
 
 getActiveSettings :: PaneMonad alpha => alpha (Maybe Settings)

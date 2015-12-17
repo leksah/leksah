@@ -15,11 +15,17 @@
 -----------------------------------------------------------------------------
 module IDE.HIE (
     hieType
+  , hieInfo
+  , shutDownHie
+  , initHie
+  , resetHie
+  , refactorCommands
+  , runHIECommand
 ) where
 
 import IDE.Core.State
 import IDE.Pane.SourceBuffer
-       (selectedRange,selectedModuleName,inActiveBufContext,IDEBuffer(..))
+       (selectedRange,selectedModuleName,inActiveBufContext,IDEBuffer(..),selectedTextOrCurrentIdentifier)
 import IDE.Pane.Log (getDefaultLogLaunch)
 import IDE.Utils.ExternalTool (runExternalTool')
 import IDE.Workspaces (packageTry)
@@ -40,6 +46,7 @@ import Data.Aeson.Encode
 import Data.Either
 import Data.Maybe
 import Data.Monoid
+import Data.List
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Read as T
@@ -59,21 +66,20 @@ import Graphics.UI.Gtk
 import System.Log.Logger (debugM)
 
 -- Display hie type of the selected text
-hieType :: FilePath -> IDEAction
-hieType hiePath = do
-    withHieState hiePath $ \(HieState hie cs)->do
+hieType :: IDEAction
+hieType = do
+    withHieState $ \(HieState hie cs)->do
         rg <- selectedRange
-        maybeModuleName <- selectedModuleName
-        case (rg,maybeModuleName,getTypeCommand cs) of
-            (Just leksahSel,Just mn,Just cmd) -> do
+        case (rg,getTypeCommand cs) of
+            (Just leksahSel,Just cmd) -> do
                 let ghcModSel@((sl,sc),_) = toGhcModSel leksahSel
                 inActiveBufContext Nothing $ \_ edView eBuf ideBuf _ -> do
                     let mfn = fileName ideBuf
                     case mfn of
                       Just fn -> getToolOutput hie (object ["cmd".= cmdName cmd
                                                                         ,"params".= object
-                                                                            ["file".= object ["file".=toJSON fn]
-                                                                            ,"start_pos".=object ["line" .=toJSON sl,"col".=toJSON sc]]]) $ \types -> do
+                                                                            ["file".= object ["file".= fn]
+                                                                            ,"start_pos".=object ["line" .=sl,"col".=sc]]]) $ \types -> do
                         let mMatching= matchingType ghcModSel $ results types
                         case mMatching of
                             Nothing -> return ()
@@ -83,21 +89,136 @@ hieType hiePath = do
                 return ()
             _ -> return ()
 
+-- Display hie info of the selected text
+hieInfo :: IDEAction
+hieInfo = do
+    withHieState $ \(HieState hie cs)->do
+        mt <- selectedTextOrCurrentIdentifier
+        case (mt,getInfoCommand cs) of
+            (Just t,Just cmd) -> do
+                inActiveBufContext Nothing $ \_ edView eBuf ideBuf _ -> do
+                    let mfn = fileName ideBuf
+                    case mfn of
+                      Just fn -> getToolOutput hie (object ["cmd".= cmdName cmd
+                                                                        ,"params".= object
+                                                                            ["file".= object ["file".= fn]
+                                                                            ,"expr".=object ["text" .= t]]]) $ \info -> do
+                        showPopupText edView eBuf (irText info)
+                      Nothing -> return ()
+                    return $ Just ()
+                return ()
+            _ -> return ()
+
 -- | Run an action with the HIE executable
-withHieState hiePath f= do
+withHieState f= do
+    mhiePath <- hiePath <$> readIDE prefs
+    case mhiePath of
+        Nothing -> return ()
+        Just hiePath -> do
+            mhieState <- readIDE hieState
+            case mhieState of
+                        Just st -> f st
+                        Nothing -> do
+                            st <- liftIO $ newToolState
+                            let clr=noInputCommandLineReader {sepCharacter=Just '\STX'}
+                            liftIO $ runInteractiveTool st clr hiePath [] Nothing
+                            getToolOutput st (object ["cmd".= ("base:plugins"::T.Text)
+                                                                            ,"params".= object []]) $ \plugins -> do
+                                      let cs=fromMaybe [] $ parseMaybe allCommandsParser plugins
+                                      let hs = HieState st cs
+                                      modifyIDE (\i->(i{hieState=Just hs},st))
+                                      f hs
+
+shutDownHie :: IDEAction
+shutDownHie = do
     mhieState <- readIDE hieState
     case mhieState of
-                Just st -> f st
-                Nothing -> do
-                    st <- liftIO $ newToolState
-                    let clr=noInputCommandLineReader {sepCharacter=Just '\STX'}
-                    liftIO $ runInteractiveTool st clr hiePath [] Nothing
-                    getToolOutput st (object ["cmd".= ("base:plugins"::T.Text)
-                                                                    ,"params".= object []]) $ \plugins -> do
-                              let cs=fromMaybe [] $ parseMaybe allCommandsParser plugins
-                              let hs = HieState st cs
-                              modifyIDE (\i->(i{hieState=Just hs},st))
-                              f hs
+        Nothing -> return ()
+        Just (HieState hie cs) -> liftIO $ do
+            tp <- toolProcess hie
+            terminateProcess tp
+
+initHie :: IDEAction
+initHie =  withHieState $ \_-> return ()
+
+resetHie :: IDEAction
+resetHie = shutDownHie >> initHie
+
+refactorCommands :: IDEM  [HieCommand]
+refactorCommands = do
+    mhieState <- readIDE hieState
+    return $ case mhieState of
+        Just (HieState _ cs) -> getRefactorCommands cs
+        Nothing -> []
+
+-- | run a HIE command
+runHIECommand :: HieCommand -> IDEAction
+runHIECommand c = do
+    liftIO $ debugM "leksah" ("executing " ++ (T.unpack $ hcName c))
+    withHieState $ \(HieState hie cs)->do
+        rg <- selectedRange
+        void $ inActiveBufContext Nothing $ \_ edView eBuf ideBuf _ -> do
+            let ghcModSel = fmap toGhcModSel rg
+            let mfn = fileName ideBuf
+            --liftIO $ debugM "leksah" (show $ hcContexts c)
+            let pvsCtx = foldl' collectParamsCtx (ParamValues ghcModSel mfn [] [] []) (hcContexts c)
+            let pvs = foldl' collectParams pvsCtx (hcParams c)
+            liftIO $ debugM "leksah" (show pvs)
+            case pvError pvs of
+                [] -> do
+                    getToolOutput hie (object ["cmd".= cmdName c
+                                                             ,"params".= object (pvOK pvs)]) $ \res -> do
+                       liftIO $ debugM "leksah" (show (encode (res::Value)))
+                errs -> liftIO $ debugM "leksah" (show errs)
+            return $ Just ()
+
+
+-- | Collect parameters values for context
+collectParamsCtx :: ParamValues -> T.Text -> ParamValues
+collectParamsCtx pv@(ParamValues sel fn ok err pen) ctx
+    | ctx == "none" = pv
+    | ctx == "file"
+    , Just f <- fn =  ParamValues sel fn
+            (("file",object ["file".= fn])
+                :ok) err pen
+    | ctx == "point"
+    , Just f <- fn
+    , Just ((sl,sc),_) <- sel =  ParamValues sel fn
+            (("file",object ["file".= fn])
+                :("start_pos",object ["line" .=sl,"col".=sc])
+                :ok) err pen
+    | ctx == "region"
+    , Just f <- fn
+    , Just ((sl,sc),_) <- sel
+    , Just (_,(el,ec)) <- sel = ParamValues sel fn
+            (("file",object ["file".= fn])
+                :("start_pos",object ["line" .=sl,"col".=sc])
+                :("end_pos",object ["line" .=el,"col".=ec])
+                :ok) err pen
+    | otherwise = ParamValues sel fn ok (ctx:err) pen
+
+-- | Collect parameters values
+collectParams :: ParamValues -> HieParameter -> ParamValues
+collectParams (ParamValues sel fn ok err pen) p
+    | hpType p == "file"
+    , Just f <- fn = ParamValues sel fn ((hpName p,toJSON f):ok) err pen
+    | hpType p == "pos"
+    , hpName p == "start_pos"
+    , Just ((sl,sc),_) <- sel = ParamValues sel fn ((hpName p,object ["line" .=sl,"col".=sc]):ok) err pen
+    | hpType p == "pos"
+    , hpName p == "end_pos"
+    , Just (_,(el,ec)) <- sel = ParamValues sel fn ((hpName p,object ["line" .=el,"col".=ec]):ok) err pen
+    | hpType p == "text" = ParamValues sel fn ok err (p:pen)
+    | otherwise = ParamValues sel fn ok (hpName p:err) pen
+
+-- | Collected parameters values, some from the current information, some provided by the user
+data ParamValues = ParamValues
+    { pvSelection :: Maybe ((Int,Int),(Int,Int))
+    ,  pvFileName :: Maybe FilePath
+    ,  pvOK :: [(T.Text,Value)]
+    ,  pvError :: [T.Text]
+    ,  pvPending :: [HieParameter]
+    } deriving (Show)
 
 -- | Parse all commands exposed via HIE
 allCommandsParser (Object v) = do
@@ -131,6 +252,10 @@ findCommands ret ctxs = filter (\c->any (`elem` (hcContexts c)) ctxs && (hcRet c
 -- | Get type command
 getTypeCommand ::  [HieCommand] -> Maybe HieCommand
 getTypeCommand = listToMaybe . findCommands "TypeInfo" ["point"]
+
+-- | Get info command
+getInfoCommand ::  [HieCommand] -> Maybe HieCommand
+getInfoCommand = listToMaybe . filter (\c->hcName c=="info" && hcPlugin c=="ghcmod") . findCommands "Text" ["file"]
 
 -- | Get all refactor commands
 getRefactorCommands :: [HieCommand] -> [HieCommand]
@@ -234,9 +359,18 @@ instance FromJSON TypeInfo where
     parseJSON (Object v) = TypeInfo <$> v .: "type_info"
     parseJSON _ = empty
 
+
 jsonToPos :: Value -> Parser (Int,Int)
 jsonToPos (Object v) = (,) <$> v .: "line" <*> v.: "col"
 jsonToPos _ = empty
+
+data InfoResult = InfoResult {
+    irText :: T.Text
+    }
+
+instance FromJSON InfoResult where
+  parseJSON (Object v) = InfoResult <$> v .: "ok"
+  parseJSON _ = empty
 
 -- | Find the best matching type from the selection
 matchingType :: ((Int,Int),(Int,Int)) -> [TypeResult] -> Maybe TypeResult
