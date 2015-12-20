@@ -86,7 +86,7 @@ import IDE.NotebookFlipper
 import IDE.ImportTool (resolveErrors)
 import IDE.LogRef
 import IDE.Debug
-import IDE.HIE(refactorCommands,runHIECommand)
+import IDE.HIE(refactorCommands,runHIECommand,applyRefactor)
 import System.Directory (doesFileExist)
 import Graphics.UI.Gtk.Gdk.EventM (EventM)
 import qualified Data.Map as  Map (lookup, empty)
@@ -124,6 +124,8 @@ import qualified Data.Text.IO as T (readFile)
 import Data.Monoid (Monoid(..), (<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
+
+import Haskell.Ide.Engine.PluginTypes hiding (ideMessage)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -648,10 +650,10 @@ textPopupMenu ideR menu = do
             menuShellAppend menu rmi
             rm <- menuNew
             forM_ refs $ \c -> do
-                mir1 <- menuItemNewWithLabel (__ (hcName c))
-                widgetSetTooltipText mir1 (Just $ hcDesc c)
+                mir1 <- menuItemNewWithLabel (__ (cmdName c))
+                widgetSetTooltipText mir1 (Just $ cmdUiDescription c)
                 menuShellAppend rm mir1
-                mir1 `on` menuItemActivate $ reflectIDE_ $ runHIECommand c
+                mir1 `on` menuItemActivate $ reflectIDE_ $ runHIECommand c applyRefactor
                 widgetShow $ castToWidget mir1
             menuItemSetSubmenu rmi rm
             return $ Just rmi

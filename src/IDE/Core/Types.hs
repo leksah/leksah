@@ -95,8 +95,6 @@ module IDE.Core.Types (
 ,   StatusbarCompartment(..)
 
 ,   HieState(..)
-,   HieCommand(..)
-,   HieParameter(..)
 ) where
 
 import qualified IDE.YiConfig as Yi
@@ -147,6 +145,7 @@ import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
 import Data.Maybe (maybeToList)
 import Data.Aeson
+import Haskell.Ide.Engine.PluginTypes
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -706,32 +705,9 @@ data StatusbarCompartment =
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
 type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)
 
--- | A Hie command
-data HieCommand = HieCommand
-  { hcPlugin :: Text
-  , hcName :: Text
-  , hcDesc :: Text
-  , hcContexts :: [Text]
-  , hcParams :: [HieParameter]
-  , hcRet :: Text
-} deriving (Read,Show,Eq)
 
 -- | State for Hie: the current executable state, and the commands we can pass it
 data HieState = HieState
  { hsToolState :: ToolState
- ,  hsCommands:: [HieCommand]
+ ,  hsCommands:: IdePlugins
  }
-
--- | An extra parameter to a Hie Command
-data HieParameter = HieParameter {
-  hpName :: Text
-, hpHelp :: Text
-, hpMandatory :: Bool
-, hpType :: Text
-} deriving (Read,Show,Eq,Ord)
-
--- | Read parameter from JSON
-instance FromJSON HieParameter where
-  parseJSON (Object v) = do
-    HieParameter <$> v .: "name" <*> v .:? "help" .!= "" <*> v .: "required" <*> v .: "type"
-  parseJSON _ = mempty
