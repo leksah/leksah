@@ -96,7 +96,7 @@ import System.Exit (ExitCode(..))
 import IDE.Pane.WebKit.Output (loadOutputUri)
 import qualified Data.Sequence as Seq (filter, empty)
 
-import IDE.HIE (hieType)
+import IDE.HIE (hieType,hieInfo)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -354,13 +354,20 @@ debugShowLanguages :: IDEAction
 debugShowLanguages = packageTry $ tryDebug $ debugCommand ":show languages" logOutputDefault
 
 debugInformation :: IDEAction
-debugInformation = do
-    maybeText <- selectedTextOrCurrentLine
-    case maybeText of
-        Just text -> packageTry $ tryDebug $ do
-            debugSetLiberalScope
-            debugCommand (":info "<>stripComments text) logOutputDefault
-        Nothing   -> ideMessage Normal "Please select a name in the editor"
+debugInformation =    do
+   -- do we have hie set in the preferences?
+   mhiePath <- hiePath <$> readIDE prefs
+   case mhiePath of
+        -- run hie
+        Just _ -> hieInfo
+        Nothing -> do
+            -- run ghci
+            maybeText <- selectedTextOrCurrentLine
+            case maybeText of
+                Just text -> packageTry $ tryDebug $ do
+                    debugSetLiberalScope
+                    debugCommand (":info "<>stripComments text) logOutputDefault
+                Nothing   -> ideMessage Normal "Please select a name in the editor"
 
 debugKind :: IDEAction
 debugKind = do
@@ -378,7 +385,7 @@ debugType = do
    mhiePath <- hiePath <$> readIDE prefs
    case mhiePath of
         -- run hie
-        Just path -> hieType path
+        Just _ -> hieType
         Nothing -> do
             -- run ghci
             maybeText <- selectedTextOrCurrentLine

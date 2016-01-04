@@ -314,6 +314,7 @@ library
         IDE.Utils.ExternalTool
         IDE.Utils.GtkBindings
     build-depends:
+        aeson >=0.8 && <0.10,
         gtk3 >=0.14.1 && <0.15,
         gtksourceview3 >=0.13.1.5 && <0.14,
         webkitgtk3 >=0.13 && <0.15,
@@ -331,6 +332,7 @@ library
         directory >=1.0.0.2 && <3.1,
         filepath >=1.1.0.1 && <1.5,
         glib >=0.13.2.1 && <0.14,
+        hie-base,
         mtl >=1.1.0.2 && <2.3,
         old-time >=1.0.0.1 && <1.2,
         parsec >=2.1.0.1 && <3.2,
@@ -362,7 +364,7 @@ library
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.20,
         stm >=2.4.4 && <2.5,
-        aeson
+        unordered-containers, vector
     cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
     default-language: Haskell2010
     default-extensions: ViewPatterns

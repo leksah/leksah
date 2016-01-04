@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
--- Module      :  IDE.Core.Data
+-- Module      :  IDE.Core.Types
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
@@ -93,6 +93,8 @@ module IDE.Core.Types (
 ,   SensitivityMask(..)
 ,   SearchMode(..)
 ,   StatusbarCompartment(..)
+
+,   HieState(..)
 ) where
 
 import qualified IDE.YiConfig as Yi
@@ -142,6 +144,8 @@ import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
 import Data.Maybe (maybeToList)
+import Data.Aeson
+import Haskell.Ide.Engine.PluginTypes
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -186,7 +190,7 @@ data IDE            =  IDE {
 ,   logLaunches     ::   Map.Map Text LogLaunchData
 ,   autoCommand     ::   IDEAction
 ,   autoURI         ::   Maybe Text
-,   hieState     :: Maybe ToolState
+,   hieState     :: Maybe HieState -- ^ HIE state if launched
 } --deriving Show
 
 --
@@ -700,3 +704,10 @@ data StatusbarCompartment =
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
 type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)
+
+
+-- | State for Hie: the current executable state, and the commands we can pass it
+data HieState = HieState
+ { hsToolState :: ToolState
+ ,  hsCommands:: IdePlugins
+ }

@@ -58,6 +58,7 @@ import IDE.Workspaces
        (workspaceAddPackage', workspaceTryQuiet, workspaceNewHere,
         workspaceOpenThis, backgroundMake)
 import IDE.Utils.GUIUtils
+import IDE.HIE(initHie)
 import Network (withSocketsDo)
 import Control.Exception
 import System.Exit(exitFailure)
@@ -413,7 +414,8 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     reflectIDE (do
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
         setRunUnitTests (runUnitTests startupPrefs)
-        setMakeModeToggled (makeMode startupPrefs)) ideR
+        setMakeModeToggled (makeMode startupPrefs)
+        initHie) ideR
     let (x,y)   =   defaultSize startupPrefs
     windowSetDefaultSize win x y
     (tbv,fbv)   <- reflectIDE (do

@@ -123,6 +123,7 @@ testIDE f = do
               ,   autoURI           =   Nothing
               ,   hlintQueue        =   Nothing
               ,   serverQueue       =   Nothing
+              ,   hieState           = Nothing
               }
     ideR <- newIORef ide
     (`reflectIDE` ideR) f >>= putMVar result
