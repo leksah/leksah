@@ -49,6 +49,7 @@ import Data.Maybe
 import Data.Monoid
 import Data.List
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Read as T
 import Data.Text.Lazy (toStrict)
@@ -68,6 +69,8 @@ import System.Log.Logger (debugM)
 
 import Haskell.Ide.Engine.PluginTypes hiding (ideMessage)
 import Haskell.Ide.Engine.SemanticTypes
+
+import System.Directory (removeFile)
 
 -- Display hie type of the selected text
 hieType :: IDEAction
@@ -221,8 +224,25 @@ data ParamValues = ParamValues
     ,  pvPending :: [ParamDescription]
     } deriving (Show)
 
+-- | Apply refactoring result
 applyRefactor :: RefactorResult -> IDEAction
-applyRefactor rr = ideMessage High $ T.pack $ show rr
+applyRefactor rr = do
+    ideMessage High $ T.pack $ show rr
+    void $ inActiveBufContext Nothing $ \_ _ eBuf ideBuf _ -> do
+        mapM_ (applyRefactor1 (fileName ideBuf) eBuf) $ rrDiffs rr
+        return Nothing
+    where
+       applyRefactor1 mfn eBuf (HieDiff f1 f2 df) = do
+                if Just f1 == mfn
+                    then do
+                        -- set text of current buffer
+                        -- TODO apply diff to current text
+                        t <- liftIO $ T.readFile f2
+                        setText eBuf t
+                    else
+                        -- write file, let leksah pick up the new code
+                        liftIO (T.readFile f2 >>= T.writeFile f1)
+                liftIO $ removeFile f2
 
 -- | Find all commands matching the given return types and possible contexts
 findCommands :: ReturnType -> [AcceptedContext] -> IdePlugins -> [CommandDescriptor]
