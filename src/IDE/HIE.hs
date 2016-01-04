@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# Language OverloadedStrings #-}
+{-# Language GADTs #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.HIE
@@ -65,6 +66,12 @@ import qualified Data.Vector as V
 import System.Exit (ExitCode(..))
 
 import Graphics.UI.Gtk
+import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
+import Graphics.UI.Editor.Parameters
+       (paraMinSize, paraMultiSel, Parameter(..), emptyParams, (<<<-),
+        paraName)
+import Graphics.UI.Editor.Simple
+       (textEditor)
 import System.Log.Logger (debugM)
 
 import Haskell.Ide.Engine.PluginTypes hiding (ideMessage)
@@ -151,6 +158,7 @@ initHie =  withHieState $ \_-> return ()
 resetHie :: IDEAction
 resetHie = shutDownHie >> initHie
 
+-- | List all refactor commands
 refactorCommands :: IDEM  [CommandDescriptor]
 refactorCommands = do
     mhieState <- readIDE hieState
@@ -172,10 +180,72 @@ runHIECommand c f = do
             let pvs = foldl' collectParams pvsCtx (cmdAdditionalParams c)
             liftIO $ debugM "leksah" (show pvs)
             case pvError pvs of
-                [] -> do
-                    getToolOutput hie (IdeRequest (cmdName c) (pvOK pvs)) f
-                errs -> liftIO $ debugM "leksah" (show errs)
+                [] -> askForParams pvs $ \ps -> getToolOutput hie (IdeRequest (cmdName c) ps) f
+                errs -> ideMessage High $ T.pack $ show errs
             return $ Just ()
+
+-- | Ask for additional parameters
+askForParams :: ParamValues -> (ParamMap-> IDEAction) -> IDEAction
+askForParams pvs f = case pvPending pvs of
+    []        -> f $ pvOK pvs
+    pends -> do
+        parent <- liftIDE getMainWindow
+
+        (resp,mval) <- liftIO $ do
+            dia                        <-   dialogNew
+            set dia [ windowTransientFor := parent
+                    , windowTitle := __ "Construct new module" ]
+            windowSetDefaultSize dia 400 100
+            upper                      <-   dialogGetContentArea dia
+            lower                      <-   dialogGetActionArea dia
+            (widget,inj,ext,_)  <-   buildEditor (paramFields pends)
+                                                M.empty
+            bb      <-  hButtonBoxNew
+            boxSetSpacing bb 6
+            buttonBoxSetLayout bb ButtonboxSpread
+            cancel  <-  buttonNewFromStock "gtk-cancel"
+            ok      <-  buttonNewFromStock "gtk-ok"
+            boxPackEnd bb cancel PackNatural 0
+            boxPackEnd bb ok PackNatural 0
+
+            errorLabel <-  labelNew (Nothing :: Maybe String)
+            labelSetLineWrap errorLabel True
+            widgetSetName errorLabel ("errorLabel" :: String)
+
+            on ok buttonActivated $ do
+                fields <- ext M.empty
+                case fmap M.size fields == Just (length pends) of
+                    True -> dialogResponse dia ResponseOk
+                    False -> do
+                                boxPackStart (castToBox upper) errorLabel PackNatural 0
+                                boxReorderChild (castToBox upper) errorLabel 0
+                                labelSetText errorLabel ("Fill in all fields" :: String)
+                                widgetShow errorLabel
+
+            on cancel buttonActivated (dialogResponse dia ResponseCancel)
+            boxPackStart (castToBox upper) widget PackGrow 0
+            boxPackEnd (castToBox lower) bb PackNatural 5
+            set ok [widgetCanDefault := True]
+            widgetGrabDefault ok
+            widgetShowAll dia
+            resp  <- dialogRun dia
+            value <- ext M.empty
+            widgetDestroy dia
+            return (resp,value)
+        case (resp,mval) of
+            (ResponseOk,Just value)    -> f (M.union (pvOK pvs) (M.map (ParamValP . ParamText) value))
+            _             -> return ()
+
+-- | Build parameter field definition
+-- we build a simple map name -> Text value, we use the proper types (ParamValP, etc.) later
+paramFields :: [ParamDescription] -> FieldDescription (M.Map ParamName T.Text)
+paramFields pds = VFD emptyParams $ map (\p->
+        mkField
+            (paraName <<<- ParaName (__ (pHelp p))
+                    $ emptyParams)
+            (M.findWithDefault "" (pName p))
+            (\ a b -> M.insert (pName p) a b)
+            (textEditor (const True) True)) pds
 
 
 -- | Collect parameters values for context
@@ -343,7 +413,6 @@ fromTextResp :: (ValidResponse a)=> T.Text -> Maybe (IdeResponse a)
 fromTextResp = decode . BSL.fromStrict . T.encodeUtf8
 
 
-
 -- | Find the best matching type from the selection
 matchingType :: ((Int,Int),(Int,Int)) -> [TypeResult] -> Maybe TypeResult
 matchingType _ [] = Nothing
@@ -352,7 +421,7 @@ matchingType (a,b) xs = listToMaybe $ filter (matchResult a b) xs -- take the sm
                                                                                                         -- encompassing the full selection range
     where
         matchResult s1 e1 tr = matchPos s1 e1 (trStart tr) (trEnd tr)
-        matchPos  s1 e1 s2 e2 = s1 `after` s2 && e1 `before` e2
+        matchPos  s1 e1 s2 e2 = s1 `afterPos` s2 && e1 `before` e2
         before (l1,c1) (l2,c2) = l1 < l2 || (l1==l2 && c1<=c2)
-        after (l1,c1) (l2,c2) = l1 > l2 || (l1==l2 && c1>=c2)
+        afterPos (l1,c1) (l2,c2) = l1 > l2 || (l1==l2 && c1>=c2)
 
