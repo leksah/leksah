@@ -77,7 +77,7 @@ import Distribution.PackageDescription.Configuration
 import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
-import System.Directory (setCurrentDirectory, doesFileExist, getDirectoryContents)
+import System.Directory (setCurrentDirectory, doesFileExist, getDirectoryContents, doesDirectoryExist)
 import Prelude hiding (catch)
 import Data.Maybe
        (listToMaybe, fromMaybe, isNothing, isJust, fromJust, catMaybes)
@@ -93,7 +93,7 @@ import Distribution.Text (display)
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import IDE.LogRef
 import Distribution.ModuleName (ModuleName(..))
-import Data.List (isInfixOf, nub, foldl', delete)
+import Data.List (isInfixOf, nub, foldl', delete, find)
 import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..), toolline, ProcessHandle, executeGhciCommand)
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
@@ -943,9 +943,19 @@ idePackageFromPath log filePath = do
                         map (T.unpack . toolline) . takeWhile (/= ToolOutput "") . drop 1 $ dropWhile (/= ToolOutput "") output
                     _ -> []
             paths <- liftIO $ takeMVar mvar
-            sandboxSources <- concat <$> forM paths (\ path -> do
-                contents <- liftIO $ getDirectoryContents path
-                return . take 1 . map (path </>) $ filter ((== ".cabal") . takeExtension) contents)
+
+            sandboxSources <- catMaybes <$> forM paths (\path -> do
+                exists <- liftIO (doesDirectoryExist path)
+                if exists
+                    then do
+                        contents <- liftIO $ getDirectoryContents path
+                        let mbCabalFile = find ((== ".cabal") . takeExtension) contents
+                        when (isNothing mbCabalFile) $
+                            ideMessage Normal ("Could not find cabal file of the add-source dependency at " <> T.pack path)
+                        return (fmap (path </>) mbCabalFile)
+                    else do
+                        ideMessage Normal ("Path of add-source dependency does not exist: " <> T.pack path)
+                        return Nothing)
             s <- liftM catMaybes . mapM idePackageFromPath' $ nub sandboxSources
             return . Just $ rootPackage {ipdSandboxSources = s}
 
