@@ -81,6 +81,11 @@ import Data.Foldable (forM_)
 import IDE.Pane.Errors (fillErrorList)
 import GHC.IO (evaluate)
 
+
+-- | This needs to be incremented when the preferences format changes
+prefsVersion :: Int
+prefsVersion = 7
+
 runPreferencesDialog :: IDEAction
 runPreferencesDialog = reifyIDE $ \ideR -> do
     parent <- reflectIDE getMainWindow ideR
@@ -186,10 +191,6 @@ runPreferencesDialog = reifyIDE $ \ideR -> do
     resp  <- dialogRun dialog
     widgetDestroy dialog
     return ()
-
--- | This needs to be incremented when the preferences format changes
-prefsVersion :: Int
-prefsVersion = 6
 
 
 -- | Represents the Preferences dialog
