@@ -967,7 +967,12 @@ registerLeksahEvents =    do
     registerEvent stRef "SelectSrcSpan"
         (\ e@(SelectSrcSpan mbSpan) -> selectMatchingErrors mbSpan >> return e)
     registerEvent stRef "SavedFile"
-        (\ e@(SavedFile file) -> scheduleHLint (Right file) >> return e)
+        (\ e@(SavedFile file) -> do
+              prefs <- readIDE prefs
+              when (hlintOnSave prefs && takeExtension file `elem` [".hs", ".lhs"]) $
+                  scheduleHLint (Right file)
+              return e)
+
     return ()
 
 

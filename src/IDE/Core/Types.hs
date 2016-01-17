@@ -521,6 +521,7 @@ data Prefs = Prefs {
     ,   serverIP            ::   Text
     ,   showHiddenFiles     ::   Bool
     ,   showWorkspaceIcons  ::   Bool
+    ,   hlintOnSave         ::   Bool
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]

@@ -679,6 +679,14 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
+               (paraName <<<- ParaName (__ "Run HLint when saving a source file") $ emptyParams)
+               (PP.text . show)
+               boolParser
+               hlintOnSave
+               (\b a -> a{hlintOnSave = b})
+               boolEditor
+               (\i -> return ())
+         , mkFieldPP
             (paraName <<<- ParaName (__ "Select first warning if built without errors") $ emptyParams)
             (PP.text . show)
             boolParser
@@ -924,6 +932,7 @@ defaultPrefs = Prefs {
     ,   endWithLastConn     =   True
     ,   showHiddenFiles     =   False
     ,   showWorkspaceIcons       =   True
+    ,   hlintOnSave = True
     }
 
 -- ------------------------------------------------------------
