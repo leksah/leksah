@@ -21,6 +21,7 @@ module IDE.Pane.Errors (
 ,   ErrorsState
 ,   fillErrorList
 ,   getErrors
+,   addErrorToList
 ,   selectMatchingErrors
 ) where
 
@@ -280,6 +281,33 @@ fillErrorList' pane = do
                 WarningRef -> toggleButtonGetActive (warningsButton pane)
                 LintRef    -> toggleButtonGetActive (suggestionsButton pane)
                 _          -> return False
+
+-- | Add any LogRef to the Errors pane at a given index
+addErrorToList :: Bool -- ^ Whether to display the pane
+               -> Int  -- ^ The index to insert at
+               -> LogRef
+               -> IDEAction
+addErrorToList False index lr = getPane >>= maybe (return ()) (addErrorToList' index lr)
+addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' index lr p >> displayPane p False
+
+
+-- | Add a 'LogRef' at a specific index to the Errors pane
+addErrorToList' :: Int -> LogRef -> ErrorsPane -> IDEAction
+addErrorToList' index ref pane = do
+--    refs <- readIDE errorRefs
+    ac   <- liftIO $ readIORef (autoClose pane)
+--    when (null refs && ac) . void $ closePane pane
+    isDark <- darkUserInterface <$> readIDE prefs
+    liftIO $ do
+        let store = errorStore pane
+        let view  = treeView pane
+--        listStoreClear store
+--        forM_ (zip (toList refs) [0..]) $ \ (lr, index) ->
+        treeStoreInsert store [] index (ERLogRef ref)
+        when (length (T.lines (refDescription ref)) > 1) $ do
+            treeStoreInsert store [index] 0 (ERFullMessage (refDescription ref) (Just ref))
+            treeViewExpandToPath view [index,0]
+
 
 updateButtons :: ErrorsPane -> IDEAction
 updateButtons pane = do

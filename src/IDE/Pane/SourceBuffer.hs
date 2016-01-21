@@ -438,7 +438,7 @@ addLogRef hlintFileScope backgroundBuild ref = do
     F.forM_ matchingBufs $ \ buf -> markRefInSourceBuf buf ref False
 
     triggerEventIDE $ ErrorAdded
-        (not backgroundBuild && Seq.null moreImportant) ref
+        (not backgroundBuild && Seq.null moreImportant) (Seq.length moreImportant) ref
     return ()
 
 markRefInSourceBuf :: IDEBuffer -> LogRef -> Bool -> IDEAction

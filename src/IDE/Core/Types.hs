@@ -294,7 +294,7 @@ data IDEEvent  =
     |   UpdateRecent
     |   VariablesChanged
     |   ErrorChanged Bool
-    |   ErrorAdded Bool LogRef
+    |   ErrorAdded Bool Int LogRef
     |   CurrentErrorChanged (Maybe LogRef)
     |   BreakpointChanged
     |   CurrentBreakChanged (Maybe LogRef)
@@ -321,7 +321,7 @@ instance Event IDEEvent Text where
     getSelector UpdateRecent            =   "UpdateRecent"
     getSelector VariablesChanged        =   "VariablesChanged"
     getSelector (ErrorChanged _)        =   "ErrorChanged"
-    getSelector (ErrorAdded _ _)      =   "ErrorAdded"
+    getSelector (ErrorAdded _ _ _)      =   "ErrorAdded"
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
     getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
