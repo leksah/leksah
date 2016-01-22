@@ -259,12 +259,12 @@ fillErrorList True = getErrors Nothing  >>= \ p -> fillErrorList' p >> displayPa
 fillErrorList' :: ErrorsPane -> IDEAction
 fillErrorList' pane = do
     refs <- F.toList <$> readIDE errorRefs
-    visibleRefs <- liftIO $ filterM visible refs
+    visibleRefs <- liftIO $ filterM (isRefVisible pane) refs
 
     ac   <- liftIO $ readIORef (autoClose pane)
     when (null refs && ac) . void $ closePane pane
 
-    updateButtons pane
+    updateFilterButtons pane
     liftIO $ do
         let store = errorStore pane
         let view  = treeView pane
@@ -274,13 +274,15 @@ fillErrorList' pane = do
             when (length (T.lines (refDescription ref)) > 1) $ do
                 treeStoreInsert store [n] 0 (ERFullMessage (refDescription ref) (Just ref))
                 treeViewExpandToPath view [n,0]
-    where
-        visible ref =
-            case logRefType ref of
-                ErrorRef   -> toggleButtonGetActive (errorsButton pane)
-                WarningRef -> toggleButtonGetActive (warningsButton pane)
-                LintRef    -> toggleButtonGetActive (suggestionsButton pane)
-                _          -> return False
+
+-- | Returns whether the `LogRef` should be visible in the errors pane
+isRefVisible :: ErrorsPane -> LogRef -> IO Bool
+isRefVisible pane ref =
+    case logRefType ref of
+        ErrorRef   -> toggleButtonGetActive (errorsButton pane)
+        WarningRef -> toggleButtonGetActive (warningsButton pane)
+        LintRef    -> toggleButtonGetActive (suggestionsButton pane)
+        _          -> return False
 
 -- | Add any LogRef to the Errors pane at a given index
 addErrorToList :: Bool -- ^ Whether to display the pane
@@ -294,23 +296,21 @@ addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' in
 -- | Add a 'LogRef' at a specific index to the Errors pane
 addErrorToList' :: Int -> LogRef -> ErrorsPane -> IDEAction
 addErrorToList' index ref pane = do
---    refs <- readIDE errorRefs
-    ac   <- liftIO $ readIORef (autoClose pane)
---    when (null refs && ac) . void $ closePane pane
-    isDark <- darkUserInterface <$> readIDE prefs
-    liftIO $ do
-        let store = errorStore pane
-        let view  = treeView pane
---        listStoreClear store
---        forM_ (zip (toList refs) [0..]) $ \ (lr, index) ->
-        treeStoreInsert store [] index (ERLogRef ref)
-        when (length (T.lines (refDescription ref)) > 1) $ do
-            treeStoreInsert store [index] 0 (ERFullMessage (refDescription ref) (Just ref))
-            treeViewExpandToPath view [index,0]
+    visible <- liftIO $ isRefVisible pane ref
+    updateFilterButtons pane
+    when visible $ do
+        ac   <- liftIO $ readIORef (autoClose pane)
+        liftIO $ do
+            let store = errorStore pane
+            let view  = treeView pane
+            treeStoreInsert store [] index (ERLogRef ref)
+            when (length (T.lines (refDescription ref)) > 1) $ do
+                treeStoreInsert store [index] 0 (ERFullMessage (refDescription ref) (Just ref))
+                treeViewExpandToPath view [index,0]
 
-
-updateButtons :: ErrorsPane -> IDEAction
-updateButtons pane = do
+-- | Updates the filter buttons in the Error Pane
+updateFilterButtons :: ErrorsPane -> IDEAction
+updateFilterButtons pane = do
     let numRefs refType = length . filter ((== refType) . logRefType) . F.toList <$> readIDE errorRefs
     let setLabel name amount button = buttonSetLabel button (name <> " (" <> T.pack (show amount) <> ")" )
 
