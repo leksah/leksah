@@ -320,7 +320,7 @@ library
         gtksourceview3 >=0.13.1.5 && <0.14,
         webkitgtk3 >=0.13 && <0.15,
         webkitgtk3-javascriptcore -any,
-        jsaddle >=0.2.1.0 && <0.3,
+        jsaddle >=0.3.0.0 && <0.4,
         ghcjs-codemirror -any,
         blaze-html -any,
         lens -any,
