@@ -262,10 +262,10 @@ instance TextEditor GtkSourceView where
             forM_ [minBound..maxBound] $ \ refType -> do
                 let cat = T.pack $ show refType
                     icon = case refType of
-                            ErrorRef       -> "dialog-error"
-                            WarningRef     -> "dialog-warning"
+                            ErrorRef       -> "ide_error"
+                            WarningRef     -> "ide_warning"
                             TestFailureRef -> "software-update-urgent"
-                            LintRef        -> "emblem-generic"
+                            LintRef        -> "ide_suggestion"
                             BreakpointRef  -> "media-playback-pause"
                             ContextRef     -> "media-playback-start"
                 attributes <- sourceMarkAttributesNew

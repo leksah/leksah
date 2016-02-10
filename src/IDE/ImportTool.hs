@@ -17,6 +17,7 @@ module IDE.ImportTool (
     resolveErrors
 ,   addOneImport
 ,   addResolveMenuItems
+,   resolveMenuItems
 ,   parseHiddenModule
 ,   HiddenModuleResult(..)
 ) where
@@ -546,6 +547,14 @@ addExtension' ext filePath continuation =  do
                 setModified gtkbuf True
                 continuation True
         _  -> return ()
+
+resolveMenuItems :: LogRef -> [(Text, IDEAction)]
+resolveMenuItems logRef
+    | isJust (parseNotInScope msg)   = [("Add Import", addImport logRef [] (\ _ -> return ()))]
+    | isJust (parseHiddenModule msg) = [("Add Package", void $ addPackages [logRef])]
+    | length (parsePerhapsYouIntendedToUse msg) == 1 = [("Add Extension", addExtension logRef (\ _ -> return ()))]
+    | otherwise = []
+    where msg = refDescription logRef
 
 addResolveMenuItems ideR theMenu logRef = do
     let msg = refDescription logRef

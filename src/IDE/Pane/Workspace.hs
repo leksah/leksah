@@ -82,7 +82,7 @@ import System.Glib.Attributes (set, AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils
        (showErrorDialog, showInputDialog, treeViewContextMenu', __,
-        showDialogOptions)
+        showDialogOptions, treeViewToggleRow)
 import Control.Exception (SomeException(..), catch)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -349,14 +349,6 @@ showWorkspacePane :: IDEAction
 showWorkspacePane = do
     l <- getWorkspacePane
     displayPane l False
-
-
--- | Toggles a row in a `TreeView`
-treeViewToggleRow treeView path = do
-    expanded <- treeViewRowExpanded treeView path
-    if expanded
-        then treeViewCollapseRow treeView path
-        else treeViewExpandRow   treeView path False
 
 
 -- | Deletes the Workspace pane and rebuilds it (used when enabling/disabling
