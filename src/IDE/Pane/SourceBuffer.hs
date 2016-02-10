@@ -495,7 +495,7 @@ markRefInSourceBuf buf logRef scrollTo = do
             lineStart <- backwardToLineStartC iter
             createMark sv (logRefType logRef) lineStart $ refDescription logRef
             applyTagByName ebuf tagName iter iter2
-        when scrollTo . postAsyncIDE $ do
+        when scrollTo $ do
             liftIO $ debugM "lekash" "markRefInSourceBuf triggered placeCursor"
             placeCursor ebuf iter
             mark <- getInsertMark ebuf

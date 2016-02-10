@@ -383,7 +383,7 @@ logOutputLines :: LogLaunch -- ^ logLaunch
 logOutputLines logLaunch lineLogger = do
     log :: Log.IDELog <- lift $ postSyncIDE Log.getLog
     results <- CL.mapM (postSyncIDE . lineLogger log logLaunch) =$ CL.consume
-    lift $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+    lift . postSyncIDE $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
 logOutputLines_ :: LogLaunch
@@ -574,7 +574,7 @@ logOutputForBreakpoints :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
                         -> C.Sink ToolOutput IDEM ()
 logOutputForBreakpoints package logLaunch = do
-    breaks <- logOutputLines logLaunch (\log logLaunch out ->
+    breaks <- logOutputLines logLaunch (\log logLaunch out -> postSyncIDE $
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
@@ -602,7 +602,7 @@ logOutputForSetBreakpoint package logLaunch = do
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)
-    lift . addLogRefs . Seq.fromList $ catMaybes breaks
+    lift . postSyncIDE . addLogRefs . Seq.fromList $ catMaybes breaks
 
 logOutputForSetBreakpointDefault :: IDEPackage
                                  -> C.Sink ToolOutput IDEM ()
@@ -626,7 +626,7 @@ logOutputForContext package loglaunch getContexts = do
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)
-    lift $ unless (null refs) $ do
+    lift . unless (null refs) . postSyncIDE $ do
         addLogRefs . Seq.singleton $ last refs
         lastContext
 
