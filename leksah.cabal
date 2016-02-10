@@ -358,7 +358,7 @@ library
         vcsgui >=0.1.0 && <0.2,
         vcswrapper >=0.1.0 && <0.2,
         QuickCheck >=2.4.2 && <2.9,
-        haskell-src-exts >=1.13.5 && <1.17,
+        haskell-src-exts >=1.13.5 && <1.18,
         hlint >=1.9.21 && <1.10,
         vado >=0.0.1 && <0.1,
         shakespeare >=2.0.0.1 && <2.1,
