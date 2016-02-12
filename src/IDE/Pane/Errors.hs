@@ -25,7 +25,7 @@ module IDE.Pane.Errors (
 ,   selectMatchingErrors
 ) where
 
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), Alternative(..))
 import Prelude
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable)
@@ -52,8 +52,8 @@ import Data.Ord (comparing)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Data.Char (isSpace)
 import Data.Tree (Forest, Tree(..), Tree)
-import Control.Applicative (Alternative(..))
 import Data.Function ((&))
+import System.Log.Logger (debugM)
 
 
 -- | The representation of the Errors pane
@@ -66,6 +66,7 @@ data ErrorsPane      =   ErrorsPane {
 ,   errorsButton      :: ToggleButton
 ,   warningsButton    :: ToggleButton
 ,   suggestionsButton :: ToggleButton
+,   testFailsButton   :: ToggleButton
 } deriving Typeable
 
 
@@ -82,6 +83,7 @@ data ErrorsState = ErrorsState
       showErrors :: Bool
     , showWarnings :: Bool
     , showSuggestions :: Bool
+    , showTestFails :: Bool
     }
    deriving (Eq,Ord,Read,Show,Typeable)
 
@@ -98,6 +100,7 @@ instance RecoverablePane ErrorsPane ErrorsState IDEM where
         showErrors      <- get errorsButton toggleButtonActive
         showWarnings    <- get warningsButton toggleButtonActive
         showSuggestions <- get suggestionsButton toggleButtonActive
+        showTestFails   <- get testFailsButton toggleButtonActive
         return (Just ErrorsState{..})
 
     recoverState pp ErrorsState{..} = do
@@ -107,6 +110,7 @@ instance RecoverablePane ErrorsPane ErrorsState IDEM where
             set errorsButton [toggleButtonActive := showErrors]
             set warningsButton [toggleButtonActive := showWarnings]
             set suggestionsButton [toggleButtonActive := showSuggestions]
+            set testFailsButton [toggleButtonActive := showTestFails]
         return mbErrors
 
 
@@ -131,9 +135,10 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
     errorsButton <- toggleButtonNewWithLabel (__ "Errors")
     warningsButton <- toggleButtonNewWithLabel (__ "Warnings")
     suggestionsButton <- toggleButtonNewWithLabel (__ "Suggestions")
+    testFailsButton <- toggleButtonNewWithLabel (__ "Test Failures")
     set suggestionsButton [toggleButtonActive := False]
 
-    forM_ [errorsButton, warningsButton, suggestionsButton] $ \b -> do
+    forM_ [errorsButton, warningsButton, suggestionsButton, testFailsButton] $ \b -> do
         set b [toggleButtonActive := True]
         boxPackStart hbox b PackNatural 3
         b `on` toggled $ reflectIDE (fillErrorList False) ideR
@@ -203,10 +208,11 @@ builder' _pp _nb _windows = reifyIDE $ \ ideR -> do
 toIcon :: ErrorRecord -> Maybe Text
 toIcon (ERLogRef logRef) =
     case logRefType logRef of
-        ErrorRef   -> Just "ide_error"
-        WarningRef -> Just "ide_warning"
-        LintRef    -> Just "ide_suggestion"
-        _          -> Nothing
+        ErrorRef       -> Just "ide_error"
+        WarningRef     -> Just "ide_warning"
+        LintRef        -> Just "ide_suggestion"
+        TestFailureRef -> Just "software-update-urgent"
+        _              -> Nothing
 toIcon (ERPackage _ _) = Just "dialog-error"
 toIcon (ERIDE _) = Just "dialog-error"
 toIcon (ERFullMessage _ _) = Nothing
@@ -260,6 +266,7 @@ fillErrorList True = getErrors Nothing  >>= \ p -> fillErrorList' p >> displayPa
 -- | Fills the pane with the error list from the IDE state
 fillErrorList' :: ErrorsPane -> IDEAction
 fillErrorList' pane = do
+    liftIO $ debugM "leksah" "fillErrorList'"
     refs <- F.toList <$> readIDE errorRefs
     visibleRefs <- liftIO $ filterM (isRefVisible pane) refs
 
@@ -281,10 +288,11 @@ fillErrorList' pane = do
 isRefVisible :: ErrorsPane -> LogRef -> IO Bool
 isRefVisible pane ref =
     case logRefType ref of
-        ErrorRef   -> toggleButtonGetActive (errorsButton pane)
-        WarningRef -> toggleButtonGetActive (warningsButton pane)
-        LintRef    -> toggleButtonGetActive (suggestionsButton pane)
-        _          -> return False
+        ErrorRef       -> toggleButtonGetActive (errorsButton pane)
+        WarningRef     -> toggleButtonGetActive (warningsButton pane)
+        LintRef        -> toggleButtonGetActive (suggestionsButton pane)
+        TestFailureRef -> toggleButtonGetActive (testFailsButton pane)
+        _              -> return False
 
 -- | Add any LogRef to the Errors pane at a given index
 addErrorToList :: Bool -- ^ Whether to display the pane
@@ -297,10 +305,13 @@ addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' in
 
 -- | Add a 'LogRef' at a specific index to the Errors pane
 addErrorToList' :: Int -> LogRef -> ErrorsPane -> IDEAction
-addErrorToList' index ref pane = do
+addErrorToList' unfilteredIndex ref pane = do
+    liftIO $ debugM "leksah" "addErrorToList'"
     visible <- liftIO $ isRefVisible pane ref
     updateFilterButtons pane
     when visible $ do
+        refs <- F.toList <$> readIDE errorRefs
+        index <- liftIO $ length <$> filterM (isRefVisible pane) (take unfilteredIndex refs)
         ac   <- liftIO $ readIORef (autoClose pane)
         liftIO $ do
             let store = errorStore pane
@@ -313,17 +324,20 @@ addErrorToList' index ref pane = do
 -- | Updates the filter buttons in the Error Pane
 updateFilterButtons :: ErrorsPane -> IDEAction
 updateFilterButtons pane = do
+    liftIO $ debugM "leksah" "updateFilterButtons"
     let numRefs refType = length . filter ((== refType) . logRefType) . F.toList <$> readIDE errorRefs
     let setLabel name amount button = buttonSetLabel button (name <> " (" <> T.pack (show amount) <> ")" )
 
     numErrors      <- numRefs ErrorRef
     numWarnings    <- numRefs WarningRef
     numSuggestions <- numRefs LintRef
+    numTestFails   <- numRefs TestFailureRef
 
     liftIO $ do
-        setLabel "Errors"      numErrors      (errorsButton   pane)
-        setLabel "Warnings"    numWarnings    (warningsButton pane)
-        setLabel "Suggestions" numSuggestions (suggestionsButton pane)
+        setLabel "Errors"        numErrors      (errorsButton      pane)
+        setLabel "Warnings"      numWarnings    (warningsButton    pane)
+        setLabel "Suggestions"   numSuggestions (suggestionsButton pane)
+        setLabel "Test Failures" numTestFails   (testFailsButton   pane)
         widgetShowAll (vbox pane)
 
 
@@ -332,6 +346,7 @@ getSelectedError ::  TreeView
     -> TreeStore ErrorRecord
     -> IO (Maybe LogRef)
 getSelectedError treeView store = do
+    liftIO $ debugM "leksah" "getSelectedError"
     treeSelection   <-  treeViewGetSelection treeView
     paths           <-  treeSelectionGetSelectedRows treeSelection
     case paths of
@@ -346,6 +361,7 @@ getSelectedError treeView store = do
 selectError :: Maybe LogRef -- ^ When @Nothing@, the first row in the list is selected
             -> IDEAction
 selectError mbLogRef = do
+    liftIO $ debugM "leksah" "selectError"
     (mbPane :: Maybe ErrorsPane) <- getPane
     errors     <- getErrors Nothing
     when (isNothing mbPane) $ do
@@ -381,11 +397,12 @@ selectError mbLogRef = do
 
                 sibling [n] = [n+1]
                 sibling (x:xs) = x:sibling xs
+                sibling [] = error "Error in selectError sibling function"
 
 contextMenuItems :: ErrorRecord -> TreePath -> TreeStore ErrorRecord -> IDEM [[(Text, IDEAction)]]
-contextMenuItems record path store = return $
-    [[("Resolve Errors", resolveErrors)]
-        ++ case record of
+contextMenuItems record path store = return
+    [("Resolve Errors", resolveErrors) :
+        case record of
                ERLogRef logRef -> resolveMenuItems logRef ++ [clipboardItem (refDescription logRef)]
                ERIDE msg       -> [clipboardItem msg]
                ERPackage _ msg -> [clipboardItem msg]
@@ -403,9 +420,11 @@ errorsSelect :: IDERef
                 -> TreeViewColumn
                 -> IO ()
 errorsSelect ideR store path _ = do
+    liftIO $ debugM "leksah" "errorsSelect"
     record <- treeStoreGetValue store path
     case record of
-        ERLogRef logRef -> reflectIDE (setCurrentError (Just logRef )) ideR
+        ERLogRef logRef -> reflectIDE (setCurrentError (Just logRef)) ideR
+        ERFullMessage _ (Just ref) -> reflectIDE (setCurrentError (Just ref)) ideR
         _ -> return ()
 
 
@@ -414,6 +433,7 @@ errorsSelect ideR store path _ = do
 selectMatchingErrors :: Maybe SrcSpan -- ^ When @Nothing@, unselects any errors in the pane
                      -> IDEAction
 selectMatchingErrors mbSpan = do
+    liftIO $ debugM "leksah" "selectMatchingErrors"
     mbErrors <- getPane
     forM_ mbErrors $ \pane -> do
         treeSel <- liftIO $ treeViewGetSelection (treeView pane)
@@ -428,7 +448,7 @@ matchingRefs :: SrcSpan -> [LogRef] -> [LogRef]
 matchingRefs span refs =
     -- the path of the SrcSpan in the LogRef absolute, so comparison with the given SrcSpan goes right
     let toAbsolute ref =  ref {logRefSrcSpan = (logRefSrcSpan ref) {srcSpanFilename = logRefFullFilePath ref}}
-    in filter (\ref -> filesMatch (logRefSrcSpan (toAbsolute ref)) span && span `insideOf` (logRefSrcSpan (toAbsolute ref))) refs
+    in filter (\ref -> filesMatch (logRefSrcSpan (toAbsolute ref)) span && span `insideOf` logRefSrcSpan (toAbsolute ref)) refs
     where
         filesMatch span span' = srcSpanFilename span == srcSpanFilename span'
 
