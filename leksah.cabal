@@ -1,5 +1,5 @@
 name: leksah
-version: 0.15.1.5
+version: 0.15.1.6
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
@@ -399,7 +399,7 @@ executable leksah
         ghc-options: -optl-headerpad_max_install_names
     main-is: Main.hs
     build-depends:
-        leksah ==0.15.1.5,
+        leksah ==0.15.1.6,
         base >=4.0.0.0 && <=4.9,
         gtk3 >=0.14.1 && <0.15,
         stm >=2.4.4 && <2.5
@@ -410,7 +410,7 @@ executable leksah
 executable bewleksah
     main-is: Main.hs
     build-depends:
-        leksah ==0.15.1.5,
+        leksah ==0.15.1.6,
         base >=4.0.0.0 && <=4.9,
         jsaddle -any,
         ghcjs-dom >=0.2.1.0 && <0.3,
@@ -433,7 +433,7 @@ test-suite tests
         base >=4.0.0.0 && <4.9,
         Cabal >=1.10.2.0 && <1.23,
         QuickCheck >=2.4.2 && <2.9,
-        leksah ==0.15.1.5,
+        leksah ==0.15.1.6,
         containers -any,
         ltk -any,
         leksah-server -any,
