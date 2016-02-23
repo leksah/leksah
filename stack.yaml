@@ -1,13 +1,23 @@
+# Configuration file for building with stack
+# Must be kept in sync with changes to leksah.cabal
+#
+# http://docs.haskellstack.org/en/stable/yaml_configuration/
+
 flags: {}
+
 packages:
 - '.'
+
+# If you have built leksah-server at a local path, you can add it here:
+#- '../leksah-server'
+
 extra-deps:
 - binary-shared-0.8.3
 - ghcjs-codemirror-0.0.0.1
 - ghcjs-dom-0.2.1.0
 - gtk3-mac-integration-0.3.2.0
 - gtksourceview3-0.13.2.0
-- jsaddle-0.2.1.0
+- jsaddle-0.3.0.1
 - regex-tdfa-text-1.0.0.3
 - leksah-server-0.15.0.8
 - ltk-0.15.0.4
@@ -17,5 +27,6 @@ extra-deps:
 - webkitgtk3-0.14.1.0
 - webkitgtk3-javascriptcore-0.13.1.0
 - gtk2hs-buildtools-0.13.0.4
-- gtk3-0.14.1
+- gtk3-0.14.2
+
 resolver: lts-3.1
