@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
@@ -37,14 +38,16 @@ module IDE.Metainfo.Provider (
 ,   getAllPackageIds'
 ) where
 
+import Prelude ()
+import Prelude.Compat hiding(catch, readFile)
 import System.IO (hClose, openBinaryFile, IOMode(..))
 import System.IO.Strict (readFile)
 import qualified Data.Map as Map
-import Control.Monad
+import Control.Monad (void, filterM, foldM, liftM, when)
 import System.FilePath
 import System.Directory
-import Data.List
-import Data.Maybe
+import Data.List (nub, (\\), find, partition, maximumBy, foldl')
+import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe, fromMaybe)
 import Distribution.Package hiding (depends,packageId)
 import qualified Data.Set as Set
 import qualified Data.ByteString.Char8 as BS
@@ -66,7 +69,6 @@ import Distribution.Text (display)
 import IDE.Core.Serializable ()
 import Data.Map (Map(..))
 import Control.Exception (SomeException(..), catch)
-import Prelude hiding(catch, readFile)
 import IDE.Utils.ServerConnection(doServerCommand)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -206,7 +208,7 @@ getEmptyDefaultScope = symEmpty
 -- | Rebuilds system info
 --
 rebuildSystemInfo' :: (Bool -> IDEAction) -> IDEAction
-rebuildSystemInfo' continuation = do
+rebuildSystemInfo' continuation =
     callCollector True True True $ \ _ -> do
         loadSystemInfo
         continuation True
@@ -345,7 +347,7 @@ figureOutRealSources idePack modWithSources = do
     filterM (ff packageCollectorPath) modWithSources
     where
         ff packageCollectorPath (md ,fp) =  do
-            let collectorModulePath = packageCollectorPath </> (moduleCollectorFileName md) <.> leksahMetadataWorkspaceFileExtension
+            let collectorModulePath = packageCollectorPath </> moduleCollectorFileName md <.> leksahMetadataWorkspaceFileExtension
             existCollectorFile <- doesFileExist collectorModulePath
             existSourceFile    <- doesFileExist fp
             if not existSourceFile || not existCollectorFile
@@ -478,8 +480,8 @@ findFittingPackages
     :: [PackageIdentifier] -- ^ the list of known packages
     -> [Dependency]  -- ^ the dependencies
     -> [PackageIdentifier] -- ^ the known packages matching the dependencies
-findFittingPackages knownPackages dependencyList =
-    concatMap (fittingKnown knownPackages) dependencyList
+findFittingPackages knownPackages =
+    concatMap (fittingKnown knownPackages)
     where
     fittingKnown packages (Dependency dname versionRange) =
         -- find matching packages
@@ -771,10 +773,10 @@ buildSymbolTable pDescr symbolTable =
 --
 
 callCollector :: Bool -> Bool -> Bool -> (Bool -> IDEAction) -> IDEAction
-callCollector rebuild sources extract cont = do
+callCollector scRebuild scSources scExtract cont = do
     liftIO $ infoM "leksah" "callCollector"
-    dbs <- getAllPackageDBs
-    doServerCommand command {scPackageDBs = dbs} $ \ res ->
+    scPackageDBs <- getAllPackageDBs
+    doServerCommand SystemCommand {..} $ \ res ->
         case res of
             ServerOK         -> do
                 liftIO $ infoM "leksah" "callCollector finished"
@@ -785,10 +787,6 @@ callCollector rebuild sources extract cont = do
             _                -> do
                 liftIO $ infoM "leksah" "impossible server answer"
                 cont False
-    where command = SystemCommand {
-            scRebuild    = rebuild,
-            scSources    = sources,
-            scExtract    = extract}
 
 callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(Text,FilePath)] ->
     (Bool -> IDEAction) -> IDEAction

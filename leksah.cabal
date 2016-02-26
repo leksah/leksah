@@ -316,6 +316,7 @@ library
         IDE.Utils.ExternalTool
         IDE.Utils.GtkBindings
     build-depends:
+        base-compat >=0.9.0 && <0.10,
         gtk3 >=0.14.1 && <0.15,
         gtksourceview3 >=0.13.1.5 && <0.14,
         webkitgtk3 >=0.13 && <0.15,

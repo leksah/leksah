@@ -25,8 +25,8 @@ module IDE.Pane.Errors (
 ,   selectMatchingErrors
 ) where
 
-import Control.Applicative ((<$>), Alternative(..))
-import Prelude
+import Prelude ()
+import Prelude.Compat
 import Graphics.UI.Gtk
 import Data.Typeable (Typeable)
 import IDE.Core.State
@@ -39,7 +39,8 @@ import IDE.Utils.GUIUtils
        (treeViewContextMenu', treeViewContextMenu, __, treeViewToggleRow,
         treeStoreGetForest)
 import Data.Text (dropWhileEnd, Text)
-import Control.Monad (filterM, foldM_, unless, void, when, forM_)
+import Control.Applicative (Alternative(..))
+import Control.Monad (filterM, foldM_, unless, void, when)
 import qualified Data.Text as T
        (unlines, dropWhileEnd, unpack, pack, intercalate, lines,
         takeWhile, length, drop)
@@ -52,8 +53,9 @@ import Data.Ord (comparing)
 import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Data.Char (isSpace)
 import Data.Tree (Forest, Tree(..), Tree)
-import Data.Function ((&))
+import Data.Function.Compat ((&))
 import System.Log.Logger (debugM)
+import Data.Foldable (forM_)
 
 
 -- | The representation of the Errors pane
