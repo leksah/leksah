@@ -80,6 +80,7 @@ import Distribution.Text (display, simpleParse)
 import Data.Foldable (forM_)
 import IDE.Pane.Errors (fillErrorList)
 import GHC.IO (evaluate)
+import IDE.Metainfo.Provider (getAllPackageIds)
 
 
 -- | This needs to be incremented when the preferences format changes
@@ -87,16 +88,17 @@ prefsVersion :: Int
 prefsVersion = 7
 
 runPreferencesDialog :: IDEAction
-runPreferencesDialog = reifyIDE $ \ideR -> do
-    parent <- reflectIDE getMainWindow ideR
+runPreferencesDialog = do
+  packageInfos <- getAllPackageIds
+  initialPrefs <- readIDE prefs
+  parent <- getMainWindow
+  reifyIDE $ \ideR -> do
     dialog <-   dialogNew
     set dialog [ windowTransientFor := parent
             , windowTitle := __ "Preferences" ]
     windowSetDefaultSize dialog 800 500
 
     configDir    <- getConfigDir
-    packageInfos <- getInstalledPackageIds
-    initialPrefs <- reflectIDE (readIDE prefs) ideR
     (widget, inj, ext, notifier) <- buildEditor (extractFieldDescription $ prefsDescription configDir packageInfos) initialPrefs
 
     bb      <-  hButtonBoxNew

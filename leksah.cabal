@@ -347,7 +347,7 @@ library
         binary-shared >=0.8 && <0.9,
         deepseq >=1.1.0.0 && <1.5,
         hslogger >=1.0.7 && <1.3,
-        leksah-server >=0.15.1.0 && <0.16,
+        leksah-server >=0.15.2.0 && <0.16,
         ghc >=6.10.1 && <7.11,
         strict >=0.3.2 && <0.4,
         conduit >=1.0.8 && <1.3,

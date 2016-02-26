@@ -114,6 +114,7 @@ import MyMissing (forceJust)
 import Language.Haskell.Extension (Language(..))
 import Distribution.License (License(..))
 import Control.Exception (SomeException(..))
+import IDE.Metainfo.Provider (getAllPackageIds)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -390,9 +391,10 @@ cloneFields packages workspaceDir = VFD emptyParams [
             (\ a b -> b{cloneParentDir = a})
             (fileEditor (Just workspaceDir) FileChooserActionSelectFolder "Select")]
 
-clonePackageSourceDialog :: Window -> FilePath -> IO (Maybe ClonePackageSourceRepo)
+clonePackageSourceDialog :: Window -> FilePath -> IDEM (Maybe ClonePackageSourceRepo)
 clonePackageSourceDialog parent workspaceDir = do
-    packages                   <- getInstalledPackageIds
+  packages <- getAllPackageIds
+  liftIO $ do
     dia                        <-   dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := __ "Copy Installed Package" ]
@@ -417,7 +419,7 @@ clonePackageSourceDialog parent workspaceDir = do
 packageClone :: FilePath -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
 packageClone workspaceDir log activateAction = flip catchIDE (\(e :: SomeException) -> print e) $ do
     windows  <- getWindows
-    mbResult <- liftIO $ clonePackageSourceDialog (head windows) workspaceDir
+    mbResult <- clonePackageSourceDialog (head windows) workspaceDir
     case mbResult of
         Nothing -> return ()
         Just ClonePackageSourceRepo{..} -> cabalUnpack cloneParentDir packageToClone True Nothing log activateAction
@@ -598,7 +600,7 @@ editPackage packageD packagePath modules afterSaveAction = do
         Nothing -> do
             pp  <- getBestPathForId "*Package"
             nb  <- getNotebook pp
-            packageInfos <- liftIO getInstalledPackageIds
+            packageInfos <- getAllPackageIds
             let packageEd = toEditor packageD
             initPackage packagePath packageEd
                 (packageDD
@@ -623,7 +625,7 @@ initPackage :: FilePath
 initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction origPackageD = do
     let fields =  flattenFieldDescription packageDescr
     let initialPackagePath = packageDir </> (display . pkgName . package . pd) packageD ++ ".cabal"
-    packageInfos <- liftIO getInstalledPackageIds
+    packageInfos <- getAllPackageIds
     mbP <- buildThisPane panePath nb
         (builder' packageDir packageD packageDescr afterSaveAction
             initialPackagePath modules packageInfos fields origPackageD)

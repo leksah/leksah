@@ -77,10 +77,13 @@ import Distribution.PackageDescription.Configuration
 import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
-import System.Directory (setCurrentDirectory, doesFileExist, getDirectoryContents, doesDirectoryExist)
+import System.Directory
+       (canonicalizePath, setCurrentDirectory, doesFileExist,
+        getDirectoryContents, doesDirectoryExist)
 import Prelude hiding (catch)
 import Data.Maybe
-       (listToMaybe, fromMaybe, isNothing, isJust, fromJust, catMaybes)
+       (mapMaybe, listToMaybe, fromMaybe, isNothing, isJust, fromJust,
+        catMaybes)
 import Control.Exception (SomeException(..), catch)
 
 import IDE.Core.State
@@ -115,7 +118,8 @@ import IDE.Pane.WebKit.Output (loadOutputUri, getOutputPane)
 import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T
-       (replace, unwords, takeWhile, pack, unpack, isInfixOf)
+       (lines, isPrefixOf, stripPrefix, replace, unwords, takeWhile, pack,
+        unpack, isInfixOf)
 import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
 import Text.PrinterParser (writeFields)
 import Data.Text (Text)
@@ -196,35 +200,41 @@ packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
 packageConfig' package continuation = do
     prefs     <- readIDE prefs
     let dir = ipdPackageDir package
-    logLaunch <- getDefaultLogLaunch
-    showDefaultLogLaunch'
+    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+    if useStack
+        then ideMessage Normal (__ "Leksah is not running \"cabal configure\" because a stack.yaml file was found.")
+        else do
+            logLaunch <- getDefaultLogLaunch
+            showDefaultLogLaunch'
 
-    runExternalTool'        (__ "Configuring")
-                            (cabalCommand prefs)
-                            ("configure" : ipdConfigFlags package)
-                            dir $ do
-        mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
-        lift $ do
-            mbPack <- idePackageFromPath (logOutput logLaunch) (ipdCabalFile package)
-            case mbPack of
-                Just pack -> do
-                    changePackage pack
-                    triggerEventIDE $ WorkspaceChanged False True
-                    continuation (mbLastOutput == Just (ToolExit ExitSuccess))
-                    return ()
-                Nothing -> do
-                    postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
-                    continuation False
-                    return()
+            runExternalTool'        (__ "Configuring")
+                                    (cabalCommand prefs)
+                                    ("configure" : ipdConfigFlags package)
+                                    dir $ do
+                mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
+                lift $ do
+                    mbPack <- idePackageFromPath (logOutput logLaunch) (ipdCabalFile package)
+                    case mbPack of
+                        Just pack -> do
+                            changePackage pack
+                            triggerEventIDE $ WorkspaceChanged False True
+                            continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+                            return ()
+                        Nothing -> do
+                            postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
+                            continuation False
+                            return()
 
 runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
     prefs <- readIDE prefs
     let dir =  ipdPackageDir package
+    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     let args = ["build"]
-                ++ ["--with-ld=false" | backgroundBuild && withoutLinking]
+                ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
+                ++ (if useStack && runUnitTests prefs then ["--test", "--haddock"] else [])
                 ++ ipdBuildFlags package
-    runExternalTool' (__ "Building") (cabalCommand prefs) args dir $ do
+    runExternalTool' (__ "Building") (if useStack then "stack" else cabalCommand prefs) args dir $ do
         (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
             <$> C.ZipSink sinkLast
             <*> C.ZipSink isConfigError
@@ -302,11 +312,15 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
     prefs     <- readIDE prefs
     catchIDE (do
         let dir = ipdPackageDir package
-        runExternalTool' (__ "Documenting") (cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
-                mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
-                    logOutputForBuild package backgroundBuild jumpToWarnings)
-                lift $ postAsyncIDE reloadDoc
-                lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
+        useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+        if useStack
+            then continuation True
+            else
+                runExternalTool' (__ "Documenting") (cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
+                    mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
+                        logOutputForBuild package backgroundBuild jumpToWarnings)
+                    lift $ postAsyncIDE reloadDoc
+                    lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> print e)
 
 packageClean :: PackageAction
@@ -321,8 +335,9 @@ packageClean' package continuation = do
     showDefaultLogLaunch'
 
     let dir = ipdPackageDir package
+    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     runExternalTool' (__ "Cleaning")
-                    (cabalCommand prefs)
+                    (if useStack then "stack" else cabalCommand prefs)
                     ["clean"]
                     dir $ do
         mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
@@ -345,7 +360,7 @@ packageCopy = do
                     let dir = ipdPackageDir package
                     runExternalTool' (__ "Copying")
                                     (cabalCommand prefs)
-                                    ("copy" : ["--destdir=" <> T.pack fp])
+                                    ["copy", "--destdir=" <> T.pack fp]
                                     dir
                                     (logOutput logLaunch))
             (\(e :: SomeException) -> print e)
@@ -376,7 +391,11 @@ packageCopy' package continuation = do
 
     catchIDE (do
         let dir = ipdPackageDir package
-        runExternalTool' (__ "Copying") (cabalCommand prefs) ("copy" : ipdInstallFlags package) dir $ do
+        useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+        runExternalTool' (__ "Copying")
+                         (if useStack then "stack" else cabalCommand prefs)
+                         ((if useStack then ("install" : ipdBuildFlags package) else ["copy"]) ++ ipdInstallFlags package)
+                         dir $ do
                 mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> print e)
@@ -420,10 +439,11 @@ packageRun' removeGhcjsFlagIfPresent package =
             case maybeDebug of
                 Nothing -> do
                     let dir = ipdPackageDir package
+                    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
                     IDE.Package.runPackage (addLogLaunchData logName logLaunch)
                                            (T.pack $ printf (__ "Running %s") (T.unpack logName))
-                                           "cabal"
-                                           (concat [["run"]
+                                           (if useStack then "stack" else "cabal")
+                                           (concat [[if useStack then "exec" else "run"]
                                                 , ipdBuildFlags package
                                                 , map (T.pack . exeName) exe
                                                 , ["--"]
@@ -514,9 +534,12 @@ packageRegister' package continuation =
           catchIDE (do
             prefs <- readIDE prefs
             let dir = ipdPackageDir package
-            runExternalTool' (__ "Registering") (cabalCommand prefs) ("register" : ipdRegisterFlags package) dir $ do
-                    mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
-                    lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
+            useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+            if useStack
+                then continuation True
+                else runExternalTool' (__ "Registering") (cabalCommand prefs) ("register" : ipdRegisterFlags package) dir $ do
+                        mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
+                        lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
             (\(e :: SomeException) -> print e)
         else continuation True
 
@@ -526,14 +549,15 @@ packageTest = do
     interruptSaveAndRun $ packageTest' False True package True (\ _ -> return ())
 
 packageTest' :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation =
-    if "--enable-tests" `elem` ipdConfigFlags package
+packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation = do
+    let dir = ipdPackageDir package
+    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+    if not useStack && "--enable-tests" `elem` ipdConfigFlags package
         then do
           logLaunch <- getDefaultLogLaunch
           showDefaultLogLaunch'
           catchIDE (do
             prefs <- readIDE prefs
-            let dir = ipdPackageDir package
             removeTestLogRefs dir
             runExternalTool' (__ "Testing") (cabalCommand prefs) (["test", "--with-ghc=leksahtrue"]
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
@@ -929,6 +953,19 @@ idePackageFromPath' ipdCabalFile = do
                     else return packp
             return (Just pack)
 
+extractStackPackageList :: Text -> [String]
+extractStackPackageList = filter (/= ".") .
+                          map (stripQuotes . T.unpack . (\x -> fromMaybe x $ T.stripPrefix "location: " x)) .
+                          mapMaybe (T.stripPrefix "- ") .
+                          takeWhile ("- " `T.isPrefixOf`) .
+                          drop 1 .
+                          dropWhile (/= "packages:") .
+                          T.lines
+  where
+    stripQuotes ('\'':rest) | take 1 (reverse rest) == "\'" = init rest
+    stripQuotes x = x
+
+
 idePackageFromPath :: C.Sink ToolOutput IDEM () -> FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath log filePath = do
     mbRootPackage <- idePackageFromPath' filePath
@@ -936,22 +973,29 @@ idePackageFromPath log filePath = do
         Nothing -> return Nothing
         Just rootPackage -> do
             mvar <- liftIO newEmptyMVar
-            runExternalTool' "" "cabal" ["sandbox", "list-sources"] (takeDirectory filePath) $ do
-                output <- CL.consume
-                liftIO . putMVar mvar $ case take 1 $ reverse output of
-                    [ToolExit ExitSuccess] ->
-                        map (T.unpack . toolline) . takeWhile (/= ToolOutput "") . drop 1 $ dropWhile (/= ToolOutput "") output
-                    _ -> []
-            paths <- liftIO $ takeMVar mvar
+            let dir = takeDirectory filePath
+            useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+            paths <-
+                if useStack
+                    then liftIO $ map (dir </>) . extractStackPackageList <$> T.readFile (dir </> "stack.yaml")
+                    else do
+                        runExternalTool' "" "cabal" ["sandbox", "list-sources"] dir $ do
+                            output <- CL.consume
+                            liftIO . putMVar mvar $ case take 1 $ reverse output of
+                                [ToolExit ExitSuccess] ->
+                                    map (T.unpack . toolline) . takeWhile (/= ToolOutput "") . drop 1 $ dropWhile (/= ToolOutput "") output
+                                _ -> []
+                        liftIO $ takeMVar mvar
 
             sandboxSources <- catMaybes <$> forM paths (\path -> do
                 exists <- liftIO (doesDirectoryExist path)
                 if exists
                     then do
-                        contents <- liftIO $ getDirectoryContents path
+                        cpath <- liftIO $ canonicalizePath path
+                        contents <- liftIO $ getDirectoryContents cpath
                         let mbCabalFile = find ((== ".cabal") . takeExtension) contents
                         when (isNothing mbCabalFile) $
-                            ideMessage Normal ("Could not find cabal file of the add-source dependency at " <> T.pack path)
+                            ideMessage Normal ("Could not find cabal file of the add-source dependency at " <> T.pack cpath)
                         return (fmap (path </>) mbCabalFile)
                     else do
                         ideMessage Normal ("Path of add-source dependency does not exist: " <> T.pack path)

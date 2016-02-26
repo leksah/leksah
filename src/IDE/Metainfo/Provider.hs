@@ -33,6 +33,8 @@ module IDE.Metainfo.Provider (
 ,   getSystemInfo
 
 ,   getPackageImportInfo -- Scope for the import tool
+,   getAllPackageIds
+,   getAllPackageIds'
 ) where
 
 import System.IO (hClose, openBinaryFile, IOMode(..))
@@ -75,6 +77,7 @@ import qualified Data.Text as T (null, isPrefixOf, unpack, pack)
 import Data.Monoid ((<>))
 import qualified Control.Arrow as A (Arrow(..))
 import Data.Function (on)
+import Distribution.Package (PackageIdentifier)
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -131,6 +134,19 @@ rebuildWorkspaceInfo = do
     updateWorkspaceInfo' True $ \ _ ->
         void (triggerEventIDE (InfoChanged False))
 
+getAllPackageIds :: IDEM [PackageIdentifier]
+getAllPackageIds = either (const []) id <$> getAllPackageIds'
+
+getAllPackageIds' :: IDEM (Either Text [PackageIdentifier])
+getAllPackageIds' = do
+    mbWorkspace <- readIDE workspace
+    liftIO . getInstalledPackageIds' $ map ipdPackageDir (maybe [] wsAllPackages mbWorkspace)
+
+getAllPackageDBs :: IDEM [[FilePath]]
+getAllPackageDBs = do
+    mbWorkspace <- readIDE workspace
+    liftIO . getPackageDBs $ map ipdPackageDir (maybe [] wsAllPackages mbWorkspace)
+
 --
 -- | Load all infos for all installed and exposed packages
 --   (see shell command: ghc-pkg list)
@@ -138,7 +154,7 @@ rebuildWorkspaceInfo = do
 loadSystemInfo :: IDEAction
 loadSystemInfo = do
     collectorPath   <-  liftIO getCollectorPath
-    mbPackageIds    <-  liftIO getInstalledPackageIds'
+    mbPackageIds    <-  getAllPackageIds'
     case mbPackageIds of
         Left e -> logMessage ("Please check that ghc-pkg is in your PATH and restart leksah:\n    " <> e) ErrorTag
         Right packageIds -> do
@@ -161,7 +177,7 @@ updateSystemInfo' rebuild continuation = do
     case wi of
         Nothing -> loadSystemInfo
         Just (GenScopeC (PackScope psmap psst)) -> do
-            mbPackageIds    <-  liftIO getInstalledPackageIds'
+            mbPackageIds    <-  getAllPackageIds'
             case mbPackageIds of
                 Left e -> logMessage ("Please check that ghc-pkg is in your PATH and restart leksah:\n    " <> e) ErrorTag
                 Right packageIds -> do
@@ -190,7 +206,7 @@ getEmptyDefaultScope = symEmpty
 -- | Rebuilds system info
 --
 rebuildSystemInfo' :: (Bool -> IDEAction) -> IDEAction
-rebuildSystemInfo' continuation =
+rebuildSystemInfo' continuation = do
     callCollector True True True $ \ _ -> do
         loadSystemInfo
         continuation True
@@ -259,7 +275,7 @@ updateWorkspaceInfo' rebuild continuation = do
 updatePackageInfos :: Bool -> [IDEPackage] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
 updatePackageInfos rebuild pkgs continuation = do
     -- calculate list of known packages once
-    knownPackages   <- liftIO getInstalledPackageIds
+    knownPackages   <- getAllPackageIds
     updatePackageInfos' [] knownPackages rebuild pkgs continuation
     where
         updatePackageInfos' collector _ _ [] continuation =  continuation True collector
@@ -757,7 +773,8 @@ buildSymbolTable pDescr symbolTable =
 callCollector :: Bool -> Bool -> Bool -> (Bool -> IDEAction) -> IDEAction
 callCollector rebuild sources extract cont = do
     liftIO $ infoM "leksah" "callCollector"
-    doServerCommand command $ \ res ->
+    dbs <- getAllPackageDBs
+    doServerCommand command {scPackageDBs = dbs} $ \ res ->
         case res of
             ServerOK         -> do
                 liftIO $ infoM "leksah" "callCollector finished"
@@ -769,9 +786,9 @@ callCollector rebuild sources extract cont = do
                 liftIO $ infoM "leksah" "impossible server answer"
                 cont False
     where command = SystemCommand {
-            scRebuild = rebuild,
-            scSources = sources,
-            scExtract = extract}
+            scRebuild    = rebuild,
+            scSources    = sources,
+            scExtract    = extract}
 
 callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(Text,FilePath)] ->
     (Bool -> IDEAction) -> IDEAction
