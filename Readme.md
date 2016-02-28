@@ -30,7 +30,6 @@ Make sure `$HOME/.cabal/bin` is in your `PATH` then:
     
     cabal update
     cabal install Cabal cabal-install
-    cabal install regex-tdfa-text --ghc-options=-XFlexibleContexts
     cabal install alex happy
     cabal install gtk2hs-buildtools
     cabal install leksah
