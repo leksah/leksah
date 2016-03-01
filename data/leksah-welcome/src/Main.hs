@@ -13,7 +13,7 @@
 --   * Package -> Build
 
 -- When you are ready to create your own workspace and package.
---   * Package -> New
+--   * File -> New -> Package
 
 -- Next we are importing some things from other modules.
 -- Leksah can normally add these imports for you, just
