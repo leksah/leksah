@@ -230,8 +230,7 @@ updateWorkspaceInfo' rebuild continuation = do
             continuation False
         Just ws ->
             updatePackageInfos rebuild (wsAllPackages ws) $ \ _ packDescrs -> do
-                let dependPackIds = nub (concatMap pdBuildDepends packDescrs) \\
-                                       map pdPackage packDescrs
+                let dependPackIds = nub (concatMap pdBuildDepends packDescrs) \\ map pdPackage packDescrs
                 let packDescrsI =   case systemInfo' of
                                         Nothing -> []
                                         Just (GenScopeC (PackScope pdmap _)) ->
