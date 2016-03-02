@@ -127,6 +127,7 @@ import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
+import IDE.Metainfo.Provider (updateSystemInfo)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -368,6 +369,7 @@ packageCopy = do
 packageInstallDependencies :: PackageAction
 packageInstallDependencies = do
     package <- ask
+    ideR <- liftIDE ask
     interruptSaveAndRun $ do
         logLaunch <- getDefaultLogLaunch
         showDefaultLogLaunch'
@@ -380,7 +382,9 @@ packageInstallDependencies = do
                         then ["install-deps"]
                         else ["install","--only-dependencies"])
                 ++ ipdConfigFlags package
-                ++ ipdInstallFlags package) dir (logOutput logLaunch))
+                ++ ipdInstallFlags package) dir $ do
+                    logOutput logLaunch
+                    liftIO . postGUISync $ reflectIDE updateSystemInfo ideR)
             (\(e :: SomeException) -> print e)
 
 packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
@@ -394,7 +398,7 @@ packageCopy' package continuation = do
         useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
         runExternalTool' (__ "Copying")
                          (if useStack then "stack" else cabalCommand prefs)
-                         ((if useStack then ("install" : ipdBuildFlags package) else ["copy"]) ++ ipdInstallFlags package)
+                         ((if useStack then "install" : ipdBuildFlags package else ["copy"]) ++ ipdInstallFlags package)
                          dir $ do
                 mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
