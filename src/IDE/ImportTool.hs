@@ -339,6 +339,7 @@ getRealId descr id = case descr of
         getReal (FieldDescr d) = IThingAll (dscName d)
         getReal (ConstructorDescr d) = IThingAll (dscName d)
         getReal (MethodDescr d) = IThingAll (dscName d)
+        getReal PatternSynonymDescr = IVar ("pattern " <> id)
         getReal _ = IVar id
 
 qualString ::  ImportDecl -> Text

@@ -336,6 +336,7 @@ stockIdFromType Instance        =   "ide_instance"
 stockIdFromType Constructor     =   "ide_konstructor"
 stockIdFromType Field           =   "ide_slot"
 stockIdFromType Method          =   "ide_method"
+stockIdFromType PatternSynonym  =   "ide_konstructor"
 stockIdFromType _               =   "ide_other"
 
 
