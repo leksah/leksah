@@ -232,6 +232,8 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     let dir =  ipdPackageDir package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     let args = ["build"]
+                -- stack needs the package name to actually print the output info
+                ++ (if useStack then [ipdPackageName package] else [])
                 ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
                 ++ (if useStack && runUnitTests prefs then ["--test", "--haddock"] else [])
                 ++ ipdBuildFlags package
