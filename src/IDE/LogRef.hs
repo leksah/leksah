@@ -455,9 +455,9 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
         ideR <- ask
         let logPrevious (previous:_) = reflectIDE (addLogRef False backgroundBuild previous) ideR
             logPrevious _ = return ()
-
         liftIO $ postGUISync $ case output of
-            ToolError line -> do
+            -- stack prints everything to stderr, so let's process errors as normal output first
+            ToolError line -> processNormalOutput ideR logLaunch state logPrevious line $ do
                 let parsed  =  parse buildErrorParser "" $ T.unpack line
                 let nonErrorPrefixes = ["Linking ", "ar:", "ld:", "ld warning:"]
                 tag <- case parsed of
@@ -509,26 +509,9 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                         when inError $ logPrevious errs
                         return state { inError = False }
             ToolOutput line ->
-                case (parse buildOutputParser "" $ T.unpack line, inDocTest, testFails) of
-                    (Right (BuildProgress n total file), _, _) -> do
-                        logLn <- Log.appendLog log logLaunch (line <> "\n") LogTag
-                        reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState
-                            (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])) ideR
-                        let root = ipdPackageDir package
-                            fullFilePath = root </> file
-                        reflectIDE (removeBuildLogRefs root file) ideR
-                        when inDocTest $ logPrevious testFails
-                        return state { inDocTest = False }
-                    (Right (DocTestFailure span exp), _, _) -> do
-                        logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
-                        when inDocTest $ logPrevious testFails
-                        return state { inDocTest = True
-                                     , testFails = LogRef span
-                                            package
-                                            exp
-                                            Nothing (Just (logLn,logLn)) TestFailureRef : testFails
-                                     }
-                    (_, True, LogRef span rootPath str Nothing (Just (l1, l2)) refType : tl) -> do
+                processNormalOutput ideR logLaunch state logPrevious line $ do
+                  case (inDocTest, testFails) of
+                    (True, LogRef span rootPath str Nothing (Just (l1, l2)) refType : tl) -> do
                         logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
                         return state { testFails = LogRef span
                                             rootPath
@@ -564,6 +547,29 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                                             ++ show warnNum ++ " warnings -- "
                                             ++ show (length testFails) ++ " doctest failures -----\n") FrameTag
                 return state { inError = False, inDocTest = False }
+    -- process output line as normal, otherwise calls given alternative
+    processNormalOutput :: (IORef IDE) -> LogLaunch -> BuildOutputState -> ([LogRef]->IO()) -> Text -> IO BuildOutputState -> IO BuildOutputState
+    processNormalOutput ideR logLaunch state@BuildOutputState {..} logPrevious line altFunction =
+      case (parse buildOutputParser "" $ T.unpack line) of
+        (Right (BuildProgress n total file)) -> do
+            logLn <- Log.appendLog log logLaunch (line <> "\n") LogTag
+            reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState
+                (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])) ideR
+            let root = ipdPackageDir package
+                fullFilePath = root </> file
+            reflectIDE (removeBuildLogRefs root file) ideR
+            when inDocTest $ logPrevious testFails
+            return state { inDocTest = False }
+        (Right (DocTestFailure span exp)) -> do
+            logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
+            when inDocTest $ logPrevious testFails
+            return state { inDocTest = True
+                         , testFails = LogRef span
+                                package
+                                exp
+                                Nothing (Just (logLn,logLn)) TestFailureRef : testFails
+                         }
+        _ -> altFunction
 
 --logOutputLines :: Text -- ^ logLaunch
 --               -> (LogLaunch -> ToolOutput -> IDEM a)
