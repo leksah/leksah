@@ -474,6 +474,7 @@ isActiveExe selected (Executable name _ _) = selected == (T.pack name)
 --   no exe activated, take first one
 exeToRun :: (Maybe Text) -> [Executable] -> [Executable]
 exeToRun Nothing (exe:_) = [exe]
+exeToRun Nothing _ = []
 exeToRun (Just selected) exes = take 1 $ filter (isActiveExe selected) exes
 
 packageRunJavaScript :: PackageAction
