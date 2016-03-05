@@ -435,7 +435,7 @@ packageRun' removeGhcjsFlagIfPresent package =
             pd <- liftIO $ liftM flattenPackageDescription
                              (readPackageDescription normal (ipdCabalFile package))
             mbExe <- readIDE activeExe
-            let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
+            let exe = exeToRun mbExe $ executables pd
             let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
                 logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
             (logLaunch,logName) <- buildLogLaunchByName logName
@@ -465,8 +465,17 @@ packageRun' removeGhcjsFlagIfPresent package =
                         executeDebugCommand (":main " <> T.unwords (ipdExeFlags package)) (logOutput logLaunch))
                         debug)
             (\(e :: SomeException) -> print e)
-  where
-    isActiveExe selected (Executable name _ _) = selected == Just (T.pack name)
+
+-- | Is the given executable the active one?
+isActiveExe :: Text -> Executable -> Bool
+isActiveExe selected (Executable name _ _) = selected == (T.pack name)
+
+-- | get executable to run
+--   no exe activated, take first one
+exeToRun :: (Maybe Text) -> [Executable] -> [Executable]
+exeToRun Nothing (exe:_) = [exe]
+exeToRun Nothing _ = []
+exeToRun (Just selected) exes = take 1 $ filter (isActiveExe selected) exes
 
 packageRunJavaScript :: PackageAction
 packageRunJavaScript = ask >>= (interruptSaveAndRun . packageRunJavaScript' True)
@@ -499,7 +508,7 @@ packageRunJavaScript' addFlagIfMissing package =
                 pd <- liftIO $ liftM flattenPackageDescription
                                  (readPackageDescription normal (ipdCabalFile package))
                 mbExe <- readIDE activeExe
-                let exe = take 1 . filter (isActiveExe mbExe) $ executables pd
+                let exe = exeToRun mbExe $ executables pd
                 let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
                     logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
                 (logLaunch,logName) <- buildLogLaunchByName logName
@@ -521,8 +530,6 @@ packageRunJavaScript' addFlagIfMissing package =
 
                     _ -> return ())
                 (\(e :: SomeException) -> print e)
-  where
-    isActiveExe selected (Executable name _ _) = selected == Just (T.pack name)
 
 packageRegister :: PackageAction
 packageRegister = do
