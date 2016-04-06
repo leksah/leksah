@@ -444,11 +444,12 @@ packageRun' removeGhcjsFlagIfPresent package =
             showLog
             case maybeDebug of
                 Nothing -> do
+                    prefs <- readIDE prefs
                     let dir = ipdPackageDir package
                     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
                     IDE.Package.runPackage (addLogLaunchData logName logLaunch)
                                            (T.pack $ printf (__ "Running %s") (T.unpack logName))
-                                           (if useStack then "stack" else "cabal")
+                                           (if useStack then "stack" else cabalCommand prefs)
                                            (concat [[if useStack then "exec" else "run"]
                                                 , ipdBuildFlags package
                                                 , map (T.pack . exeName) exe
@@ -565,14 +566,16 @@ packageTest' :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDE
 packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation = do
     let dir = ipdPackageDir package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-    if not useStack && "--enable-tests" `elem` ipdConfigFlags package
+    if "--enable-tests" `elem` ipdConfigFlags package
         then do
           logLaunch <- getDefaultLogLaunch
           showDefaultLogLaunch'
           catchIDE (do
             prefs <- readIDE prefs
             removeTestLogRefs dir
-            runExternalTool' (__ "Testing") (cabalCommand prefs) (["test", "--with-ghc=leksahtrue"]
+            let cmd=if useStack then "stack" else cabalCommand prefs
+            let args=if useStack then ["test"] else ["test", "--with-ghc=leksahtrue"]
+            runExternalTool' (__ "Testing") cmd (args
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
                     (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
                         <$> C.ZipSink sinkLast
