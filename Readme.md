@@ -115,8 +115,8 @@ Get the leksah source:
 
 Get the Fedora 22 docker image and load it:
 
-    wget http://dl.fedoraproject.org/pub/fedora/linux/releases/22/Docker/x86_64/Fedora-Docker-Base-22-20150521.x86_64.tar.xz
-    sudo docker load -i Fedora-Docker-Base-22-20150521.x86_64.tar.xz
+    wget http://dl.fedoraproject.org/pub/fedora/linux/releases/23/Docker/x86_64/Fedora-Docker-Base-23-20151030.x86_64.tar.xz
+    sudo docker load -i Fedora-Docker-Base-23-20151030.x86_64.tar.xz
 
 Build Leksah using the Dockerfile:
 
