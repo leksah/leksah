@@ -33,7 +33,6 @@ import qualified IDE.Command.VCS.Mercurial as Mercurial
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 
-import qualified Graphics.UI.Gtk as Gtk
 import Control.Monad.Reader
 import Control.Monad.Trans(liftIO)
 import qualified Control.Exception as Exc
@@ -41,56 +40,64 @@ import Data.Maybe
 import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
+import qualified GI.Gtk.Objects.Menu as Gtk (menuNew, Menu(..))
+import qualified GI.Gtk.Objects.MenuItem as Gtk
+       (menuItemGetSubmenu, menuItemSetSubmenu, menuItemNewWithMnemonic,
+        menuItemNewWithLabel)
+import GI.Gtk.Objects.MenuItem (MenuItem(..), onMenuItemActivate)
+import qualified GI.Gtk.Objects.MenuShell as Gtk (menuShellAppend)
+import qualified GI.Gtk.Objects.Widget as Gtk (widgetShowAll)
+import Data.GI.Base (unsafeCastTo)
+import GI.Gtk.Objects.Menu (Menu(..))
 
 
 
 setMenuForPackage :: Gtk.Menu -> FilePath -> Maybe VCSConf -> IDEAction
 setMenuForPackage vcsMenu cabalFp mbVCSConf = do
-                    ideR <- ask
+    ideR <- ask
 
-                    -- create or get packageItem and set it to ide to be able to get it later again
-                    (oldMenuItems,pw) <- readIDE vcsData
-                    packageItem <-
-                        case Map.lookup cabalFp oldMenuItems of
-                             Nothing -> liftIO . Gtk.menuItemNewWithLabel $ T.pack cabalFp
-                             Just menuItem -> return menuItem
-                    let newMenuItems = Map.insert cabalFp packageItem oldMenuItems
-                    modifyIDE_ (\ide -> ide {vcsData = (newMenuItems,pw)})
+    -- create or get packageItem and set it to ide to be able to get it later again
+    (oldMenuItems,pw) <- readIDE vcsData
+    packageItem <-
+        case Map.lookup cabalFp oldMenuItems of
+             Nothing -> Gtk.menuItemNewWithLabel $ T.pack cabalFp
+             Just menuItem -> return menuItem
+    let newMenuItems = Map.insert cabalFp packageItem oldMenuItems
+    modifyIDE_ (\ide -> ide {vcsData = (newMenuItems,pw)})
 
-                    packageMenu <- liftIO Gtk.menuNew
+    packageMenu <- liftIO Gtk.menuNew
 
-                    -- build and set set-up repo action
-                    setupActionItem <- liftIO $ Gtk.menuItemNewWithMnemonic (__"_Setup Repo")
-                    liftIO $ setupActionItem `Gtk.on` Gtk.menuItemActivate $
-                            reflectIDE (
-                                    runSetupRepoActionWithContext cabalFp
-                                ) ideR
-                    liftIO $ Gtk.menuShellAppend packageMenu setupActionItem
+    -- build and set set-up repo action
+    setupActionItem <- Gtk.menuItemNewWithMnemonic (__"_Setup Repo")
+    onMenuItemActivate setupActionItem $
+            reflectIDE (
+                    runSetupRepoActionWithContext cabalFp
+                ) ideR
+    Gtk.menuShellAppend packageMenu setupActionItem
 
-                    -- build and set other actions
-                    let packageMenuOperations = case mbVCSConf of
-                                                    Nothing -> []
-                                                    Just (vcsType,_,_) -> mkVCSActions vcsType
-                    liftIO $ addActions cabalFp packageMenu ideR packageMenuOperations
+    -- build and set other actions
+    let packageMenuOperations = case mbVCSConf of
+                                    Nothing -> []
+                                    Just (vcsType,_,_) -> mkVCSActions vcsType
+    addActions cabalFp packageMenu ideR packageMenuOperations
 
-                    -- set menus
-                    liftIO $ Gtk.menuItemRemoveSubmenu packageItem
-                    liftIO $ Gtk.menuItemSetSubmenu packageItem packageMenu
-                    liftIO $ Gtk.menuShellAppend vcsMenu packageItem
-                    liftIO $ Gtk.widgetShowAll vcsMenu
-                    return ()
-                    where
-                    addActions cabalFp packageMenu ideR
-                       = mapM_
-                           (\ (name, action) ->
-                              do actionItem <- Gtk.menuItemNewWithMnemonic name
-                                 actionItem `Gtk.on` Gtk.menuItemActivate $
-                                   reflectIDE (runActionWithContext action cabalFp) ideR
-                                 Gtk.menuShellAppend packageMenu actionItem)
-                    mkVCSActions :: VCS.VCSType -> [(Text, Types.VCSAction ())]
-                    mkVCSActions VCS.SVN = SVN.mkSVNActions
-                    mkVCSActions VCS.GIT = GIT.mkGITActions
-                    mkVCSActions VCS.Mercurial = Mercurial.mkMercurialActions
+    -- set menus
+    Gtk.menuItemSetSubmenu packageItem (Just packageMenu)
+    Gtk.menuShellAppend vcsMenu packageItem
+    Gtk.widgetShowAll vcsMenu
+    return ()
+    where
+    addActions cabalFp packageMenu ideR
+       = mapM_
+           (\ (name, action) ->
+              do actionItem <- Gtk.menuItemNewWithMnemonic name
+                 onMenuItemActivate actionItem $
+                   reflectIDE (runActionWithContext action cabalFp) ideR
+                 Gtk.menuShellAppend packageMenu actionItem)
+    mkVCSActions :: VCS.VCSType -> [(Text, Types.VCSAction ())]
+    mkVCSActions VCS.SVN = SVN.mkSVNActions
+    mkVCSActions VCS.GIT = GIT.mkGITActions
+    mkVCSActions VCS.Mercurial = Mercurial.mkMercurialActions
 
 
 
@@ -139,8 +146,7 @@ runSetupRepoActionWithContext packageFp = do
 workspaceSetVCSConfig :: FilePath -> Maybe VCSConf -> IDEAction
 workspaceSetVCSConfig pathToPackage mbVCSConf = do
     vcsItem <- GUIUtils.getVCS
-    mbVcsMenu <- liftIO $ Gtk.menuItemGetSubmenu vcsItem
-    let vcsMenu = Gtk.castToMenu $ fromJust mbVcsMenu
+    vcsMenu <- Gtk.menuItemGetSubmenu vcsItem >>= liftIO . unsafeCastTo Menu
     setMenuForPackage vcsMenu pathToPackage mbVCSConf
     modifyIDE_ (\ide -> do
         let oldWs = fromJust (workspace ide)

@@ -35,20 +35,20 @@ import Data.IORef(writeIORef, readIORef, IORef(..))
 import Control.Monad.Reader(liftIO,ask,when)
 
 import Graphics.UI.Frame.Panes
-import Graphics.UI.Gtk (
-    menuNew, menuItemNewWithLabel, menuItemActivate, menuShellAppend, menuItemSetSubmenu
-        ,widgetShowAll, menuItemNewWithMnemonic, menuItemGetSubmenu, widgetHide, widgetDestroy, menuItemRemoveSubmenu)
 
 import Data.Maybe
 import Data.List
 import System.Log.Logger (debugM)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (unpack, pack)
+import GI.Gtk.Objects.MenuItem (menuItemSetSubmenu)
+import GI.Gtk.Objects.Menu (noMenu, menuNew)
+import GI.Gtk.Objects.Widget (widgetShowAll)
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = do
     vcsItem <- GUIUtils.getVCS
-    liftIO $ menuItemRemoveSubmenu vcsItem
+    menuItemSetSubmenu vcsItem noMenu
 
 onWorkspaceOpen :: Workspace -> IDEAction
 onWorkspaceOpen ws = do
@@ -64,11 +64,11 @@ onWorkspaceOpen ws = do
     --for each package add an extra menu containing vcs specific menuitems
     mapM_ (\(p,mbVcsConf) -> do
                 Common.setMenuForPackage vcsMenu (ipdCabalFile p) mbVcsConf
-                liftIO $ menuItemSetSubmenu vcsItem vcsMenu
+                menuItemSetSubmenu vcsItem (Just vcsMenu)
                 )
            packages
 
-    liftIO $ widgetShowAll vcsItem
+    widgetShowAll vcsItem
     return ()
     where
     mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)

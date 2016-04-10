@@ -93,12 +93,14 @@ module IDE.Core.Types (
 ,   SensitivityMask(..)
 ,   SearchMode(..)
 ,   StatusbarCompartment(..)
+
+,   Color(..)
+,   toGdkColor
+,   fromGdkColor
+,   KeyVal
 ) where
 
 import qualified IDE.YiConfig as Yi
-import Graphics.UI.Gtk
-       (TextBuffer, MenuItem, Window(..), KeyVal(..), Color(..), Menu(..),
-        TreeView(..), ListStore(..), Toolbar(..))
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
@@ -109,8 +111,6 @@ import Data.Set (Set(..))
 import Data.List (nubBy)
 import Control.Concurrent (MVar)
 import Distribution.ModuleName (ModuleName(..))
-import Graphics.UI.Gtk.Gdk.EventM (Modifier(..))
-import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
 import IDE.Utils.Tool (ToolState(..), ProcessHandle)
@@ -142,6 +142,16 @@ import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
 import Data.Maybe (maybeToList)
+import GI.Gtk.Objects.Toolbar (Toolbar(..))
+import Data.GI.Gtk.ModelView.SeqStore (SeqStore(..))
+import GI.Gtk.Objects.MenuItem (MenuItem(..))
+import GI.Gtk.Objects.TreeView (TreeView(..))
+import GI.Gtk.Objects.Menu (Menu(..))
+import GI.Gdk.Flags (ModifierType)
+import GI.Gtk.Objects.TextBuffer (TextBuffer(..))
+import Data.Word (Word32)
+import GI.Gtk.Objects.Window (Window(..))
+import Text.PrinterParser (Color(..), toGdkColor, fromGdkColor)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -171,7 +181,7 @@ data IDE            =  IDE {
 ,   handlers        ::   Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   currentState    ::   IDEState
 ,   guiHistory      ::   (Bool,[GUIHistory],Int)
-,   findbar         ::   (Bool,Maybe (Toolbar,ListStore Text))
+,   findbar         ::   (Bool,Maybe (Toolbar,SeqStore Text))
 ,   toolbar         ::   (Bool,Maybe Toolbar)
 ,   recentFiles     ::   [FilePath]
 ,   recentWorkspaces ::  [FilePath]
@@ -237,7 +247,7 @@ a ?>>= b = do
 -- ---------------------------------------------------------------------
 -- Monad for Gtk events (use onIDE instead of on)
 --
-type IDEEventM t = ReaderT IDERef (ReaderT (Ptr t) IO)
+type IDEEventM t = ReaderT IDERef (ReaderT t IO)
 
 instance MonadIDE (IDEEventM t) where
     liftIDE f = do
@@ -562,7 +572,7 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
 #ifndef LEKSAH_WITH_YI
-instance Ord Modifier
+instance Ord ModifierType
     where compare a b = compare (fromEnum a) (fromEnum b)
 #endif
 
@@ -645,9 +655,11 @@ type CandyTableBack     =   [(Text,Text,Int)]
 newtype KeymapI         =   KM  (Map ActionString
                                 [(Maybe (Either KeyString (KeyString,KeyString)), Maybe Text)])
 
-type SpecialKeyTable alpha  =   Map (KeyVal,[Modifier]) (Map (KeyVal,[Modifier]) (ActionDescr alpha))
+type KeyVal = Word32
 
-type SpecialKeyCons  alpha  =   Maybe (Map (KeyVal, [Modifier]) (ActionDescr alpha), Text)
+type SpecialKeyTable alpha  =   Map (KeyVal,[ModifierType]) (Map (KeyVal,[ModifierType]) (ActionDescr alpha))
+
+type SpecialKeyCons  alpha  =   Maybe (Map (KeyVal, [ModifierType]) (ActionDescr alpha), Text)
 
 data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag
 
@@ -685,7 +697,7 @@ data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
 data CompletionWindow = CompletionWindow {
     cwWindow :: Window,
     cwTreeView :: TreeView,
-    cwListStore :: ListStore Text}
+    cwSeqStore :: SeqStore Text}
 
 data StatusbarCompartment =
         CompartmentCommand Text
@@ -699,3 +711,4 @@ data StatusbarCompartment =
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
 type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)
+

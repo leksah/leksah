@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, DataKinds, PatternSynonyms #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Utils.GUIUtils
@@ -45,36 +45,90 @@ module IDE.Utils.GUIUtils (
 ,   treeViewToggleRow
 ,   treeViewContextMenu
 ,   treeViewContextMenu'
-,   treeStoreGetForest
+,   forestStoreGetForest
 
 ,   __
 
 ,   fontDescription
 ) where
 
-import Graphics.UI.Gtk
 import IDE.Utils.Tool (runProcess)
 import Data.Maybe
        (listToMaybe, fromMaybe, catMaybes, fromJust, isJust)
 import Control.Monad (void, when, unless)
 import IDE.Core.State
---import Graphics.UI.Gtk.Selectors.FileChooser
---    (FileChooserAction(..))
---import Graphics.UI.Gtk.General.Structs
---    (ResponseId(..))
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Exception as E
 import Data.Text (Text)
 import Data.Monoid ((<>))
-import qualified Data.Text as T (unpack
-#ifdef LOCALIZATION
-                               , pack
-#endif
-                                )
+import qualified Data.Text as T (unpack, pack)
 import Control.Applicative ((<$>))
 import Data.List (intercalate)
 import Data.Foldable (forM_)
 import Data.Tree (Tree(..), Forest)
+import GI.Gtk.Objects.Window
+       (setWindowWindowPosition, windowSetTransientFor, setWindowTitle,
+        Window(..))
+import GI.Gtk.Enums
+       (WindowPosition(..), MessageType(..), ButtonsType(..), MessageType,
+        ResponseType(..), FileChooserAction(..))
+import Data.GI.Base (new)
+import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
+import GI.Gtk.Interfaces.FileChooser
+       (fileChooserAddFilter, fileChooserGetFilename,
+        fileChooserSetCurrentFolder, fileChooserSetAction)
+import GI.Gtk.Objects.Dialog
+       (dialogGetContentArea, dialogNew, dialogSetDefaultResponse,
+        dialogRun, dialogAddButton)
+import GI.Gtk.Objects.FileFilter
+       (fileFilterAddPattern, fileFilterSetName, fileFilterNew)
+import GI.Gtk.Objects.MessageDialog (MessageDialog(..))
+import Data.Proxy (Proxy(..))
+import Data.GI.Base.Attributes (AttrLabelProxy(..), AttrOp(..))
+import Data.GI.Base.ManagedPtr (unsafeCastTo)
+import GI.Gtk.Objects.Box (boxPackStart, Box(..))
+import GI.Gtk.Objects.Label (labelNew)
+import GI.Gtk.Objects.Entry (getEntryText, setEntryText, entryNew)
+import Graphics.UI.Editor.Parameters
+       (dialogSetDefaultResponse', dialogRun', dialogAddButton',
+        boxPackStart', Packing(..))
+import GI.Gtk.Objects.ToggleAction
+       (toggleActionSetActive, toggleActionGetActive, ToggleAction(..))
+import GI.Gtk.Objects.MenuItem
+       (toMenuItem, onMenuItemActivate, menuItemNewWithLabel,
+        MenuItem(..))
+import GI.Gtk.Objects.UIManager (uIManagerGetWidget)
+import GI.Gtk.Objects.TreeView
+       (toTreeView, TreeView(..), treeViewGetPathAtPos,
+        treeViewGetSelection, TreeViewK(..), treeViewExpandRow,
+        treeViewCollapseRow, treeViewRowExpanded)
+import GI.Gdk.Flags (ModifierType(..))
+import GI.Gtk.Structs.TreePath
+       (TreePath(..))
+import GI.Gtk.Objects.Widget
+       (Widget(..), toWidget, noWidget, onWidgetButtonPressEvent, onWidgetPopupMenu,
+        widgetShowAll, widgetHide, widgetDestroy, widgetShow)
+import GI.Gdk
+       (pattern BUTTON_SECONDARY, eventButtonReadType, eventButtonReadY,
+        eventButtonReadX, eventButtonReadTime, eventButtonReadButton)
+import GI.Gdk.Enums (EventType(..))
+import GI.Gtk.Objects.TreeSelection
+       (treeSelectionSelectPath, treeSelectionUnselectAll, treeSelectionCountSelectedRows)
+import Graphics.UI.Editor.Basics (Connection, Connection)
+import Data.GI.Gtk.ModelView.ForestStore
+       (forestStoreGetValue, forestStoreGetTree, ForestStore(..))
+import GI.Gtk.Objects.Menu
+       (Menu(..), menuPopup, menuAttachToWidget, menuNew)
+import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import GI.Pango.Structs.FontDescription
+       (fontDescriptionSetFamily, fontDescriptionNew, FontDescription(..))
+import GI.Pango (fontDescriptionFromString)
+import Data.GI.Base.BasicTypes (UnexpectedNullPointerReturn(..))
+import GI.Gtk.Functions (getCurrentEventTime)
+import Data.Word (Word32)
+import Data.GI.Gtk.ModelView.Types
+       (treeSelectionGetSelectedRows', treePathNewFromIndices')
 
 #ifdef LOCALIZATION
 
@@ -83,28 +137,31 @@ import System.IO.Unsafe (unsafePerformIO)
 
 #endif
 
+_useHeaderBar = AttrLabelProxy :: AttrLabelProxy "useHeaderBar"
+_messageType = AttrLabelProxy :: AttrLabelProxy "messageType"
+_buttons = AttrLabelProxy :: AttrLabelProxy "buttons"
+_text = AttrLabelProxy :: AttrLabelProxy "text"
+
 chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
-    dialog <- fileChooserDialogNew
-                    (Just prompt)
-                    (Just window)
-                FileChooserActionSelectFolder
-                [("gtk-cancel"
-                ,ResponseCancel)
-                ,("gtk-open"
-                ,ResponseAccept)]
+    dialog <- new FileChooserDialog []
+    setWindowTitle dialog prompt
+    windowSetTransientFor dialog $ Just window
+    fileChooserSetAction dialog FileChooserActionSelectFolder
+    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    dialogAddButton' dialog "gtk-open" ResponseTypeAccept
     when (isJust mbFolder) . void $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)
     widgetShow dialog
-    response <- dialogRun dialog
+    response <- dialogRun' dialog
     case response of
-        ResponseAccept -> do
+        ResponseTypeAccept -> do
             fn <- fileChooserGetFilename dialog
             widgetDestroy dialog
-            return fn
-        ResponseCancel -> do
+            return $ Just fn
+        ResponseTypeCancel -> do
             widgetDestroy dialog
             return Nothing
-        ResponseDeleteEvent -> do
+        ResponseTypeDeleteEvent -> do
             widgetDestroy dialog
             return Nothing
         _                   -> return Nothing
@@ -116,28 +173,26 @@ chooseFile :: Window
            -> [(String, [String])]   -- ^ File filters, e.g. [("Music Files", ["*.mp3", "*.wav"])]
            -> IO (Maybe FilePath)
 chooseFile window prompt mbFolder filters = do
-    dialog <- fileChooserDialogNew
-                    (Just prompt)
-                    (Just window)
-                FileChooserActionOpen
-                [("gtk-cancel"
-                ,ResponseCancel)
-                ,("gtk-open"
-                ,ResponseAccept)]
+    dialog <- new FileChooserDialog []
+    setWindowTitle dialog prompt
+    windowSetTransientFor dialog $ Just window
+    fileChooserSetAction dialog FileChooserActionOpen
+    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    dialogAddButton' dialog "gtk-open" ResponseTypeAccept
     forM_ mbFolder $ \folder ->
         void (fileChooserSetCurrentFolder dialog folder)
     forM_ filters (addFilter dialog)
     widgetShow dialog
-    response <- dialogRun dialog
+    response <- dialogRun' dialog
     case response of
-        ResponseAccept -> do
+        ResponseTypeAccept -> do
             fn <- fileChooserGetFilename dialog
             widgetDestroy dialog
-            return fn
-        ResponseCancel -> do
+            return $ Just fn
+        ResponseTypeCancel -> do
             widgetDestroy dialog
             return Nothing
-        ResponseDeleteEvent -> do
+        ResponseTypeDeleteEvent -> do
             widgetDestroy dialog
             return Nothing
         _                   -> return Nothing
@@ -145,26 +200,26 @@ chooseFile window prompt mbFolder filters = do
     where
         addFilter dialog (description, exts) = do
             ff <- fileFilterNew
-            fileFilterSetName ff description
-            forM_ exts (fileFilterAddPattern ff)
+            fileFilterSetName ff . Just $ T.pack description
+            forM_ exts (fileFilterAddPattern ff . T.pack)
             fileChooserAddFilter dialog ff
 
 chooseSaveFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSaveFile window prompt mbFolder = do
-    dialog <- fileChooserDialogNew
-              (Just prompt)
-              (Just window)
-              FileChooserActionSave
-              [("gtk-cancel", ResponseCancel)
-              ,("gtk-save",   ResponseAccept)]
+    dialog <- new FileChooserDialog []
+    setWindowTitle dialog prompt
+    windowSetTransientFor dialog $ Just window
+    fileChooserSetAction dialog FileChooserActionSave
+    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    dialogAddButton' dialog "gtk-open" ResponseTypeAccept
     when (isJust mbFolder) $ void (fileChooserSetCurrentFolder dialog (fromJust mbFolder))
     widgetShow dialog
-    res <- dialogRun dialog
+    res <- dialogRun' dialog
     case res of
-        ResponseAccept  ->  do
-            mbFileName <- fileChooserGetFilename dialog
+        ResponseTypeAccept  ->  do
+            fileName <- fileChooserGetFilename dialog
             widgetDestroy dialog
-            return mbFileName
+            return $ Just fileName
         _               ->  do
             widgetDestroy dialog
             return Nothing
@@ -183,15 +238,18 @@ openBrowser url = do
 -- | Show a text dialog with an Ok button and a specific messagetype
 showDialog :: Text -> MessageType -> IO ()
 showDialog msg msgType = do
-    dialog <- messageDialogNew Nothing [] msgType ButtonsOk msg
-    _ <- dialogRun dialog
+    dialog <- new MessageDialog [_useHeaderBar := 0,
+                                 _messageType := msgType,
+                                 _buttons := ButtonsTypeOk,
+                                 _text := msg]
+    _ <- dialogRun' dialog
     widgetDestroy dialog
     return ()
 
 
 -- | Show an error dialog with an Ok button
 showErrorDialog :: Text -> IO ()
-showErrorDialog msg = showDialog msg MessageError
+showErrorDialog msg = showDialog msg MessageTypeError
 
 
 -- | Show a dialog with custom buttons and callbacks
@@ -201,17 +259,20 @@ showDialogOptions :: Text             -- ^ the message
                   -> Maybe Int        -- ^ index of button that has default focus (0-based)
                   -> IO ()
 showDialogOptions msg msgType buttons mbIndex = do
-    dialog <- messageDialogNew Nothing [] msgType ButtonsNone msg
+    dialog <- new MessageDialog [_useHeaderBar := 0,
+                                 _messageType := msgType,
+                                 _buttons := ButtonsTypeNone,
+                                 _text := msg]
 
-    forM_ (zip [0..] buttons) $ \(n,(text, _)) -> do
-        dialogAddButton dialog text (ResponseUser n)
+    forM_ (zip [0..] buttons) $ \(n,(text, _)) ->
+        dialogAddButton' dialog text (AnotherResponseType n)
 
-    dialogSetDefaultResponse dialog (ResponseUser (fromMaybe 0 mbIndex))
-    set dialog [ windowWindowPosition := WinPosCenterOnParent ]
-    res <- dialogRun dialog
+    dialogSetDefaultResponse' dialog (AnotherResponseType $ fromMaybe 0 mbIndex)
+    setWindowWindowPosition dialog WindowPositionCenterOnParent
+    res <- dialogRun' dialog
     widgetHide dialog
     case res of
-        ResponseUser n | n >= 0 && n < length buttons -> map snd buttons !! n
+        AnotherResponseType n | n >= 0 && n < length buttons -> map snd buttons !! n
         _ -> return ()
 
 
@@ -221,25 +282,25 @@ showInputDialog :: Text -- ^ The message text
                 -> IO (Maybe Text)
 showInputDialog msg def = do
     dialog <- dialogNew -- Nothing [] MessageQuestion ButtonsOkCancel msg
-    vbox   <- castToBox <$> dialogGetContentArea dialog
+    vbox   <- dialogGetContentArea dialog >>= unsafeCastTo Box
     label <- labelNew (Just msg)
     entry <- entryNew
-    set entry [entryText := def]
-    boxPackStart vbox label PackNatural 0
-    boxPackStart vbox entry PackNatural 0
+    setEntryText entry def
+    boxPackStart' vbox label PackNatural 0
+    boxPackStart' vbox entry PackNatural 0
     widgetShowAll vbox
 
     -- Can't use messageDialog because of https://github.com/gtk2hs/gtk2hs/issues/114
-    dialogAddButton dialog ("Cancel" :: Text) ResponseCancel
-    dialogAddButton dialog ("Ok" :: Text) ResponseOk
-    dialogSetDefaultResponse dialog ResponseOk
+    dialogAddButton' dialog "Cancel" ResponseTypeCancel
+    dialogAddButton' dialog "Ok" ResponseTypeOk
+    dialogSetDefaultResponse' dialog ResponseTypeOk
 
-    res <- dialogRun dialog
+    res <- dialogRun' dialog
     widgetHide dialog
 
     case res of
-        ResponseOk -> do
-            text <- get entry entryText
+        ResponseTypeOk -> do
+            text <- getEntryText entry
             widgetDestroy dialog
             return (Just text)
         _ -> widgetDestroy dialog >> return Nothing
@@ -252,71 +313,70 @@ showInputDialog msg def = do
 
 getFullScreenState :: PaneMonad alpha => alpha Bool
 getFullScreenState = do
-    ui <- getUIAction "ui/menubar/_View/_Full Screen" castToToggleAction
-    liftIO $toggleActionGetActive ui
+    ui <- getUIAction "ui/menubar/_View/_Full Screen" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
 
 setFullScreenState :: PaneMonad alpha => Bool -> alpha ()
 setFullScreenState b = do
-    ui <- getUIAction "ui/menubar/_View/_Full Screen" castToToggleAction
-    liftIO $toggleActionSetActive ui b
+    ui <- getUIAction "ui/menubar/_View/_Full Screen" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
 
 getDarkState :: PaneMonad alpha => alpha Bool
 getDarkState = do
-    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" castToToggleAction
-    liftIO $toggleActionGetActive ui
+    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
 
 setDarkState :: PaneMonad alpha => Bool -> alpha ()
 setDarkState b = do
-    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" castToToggleAction
-    liftIO $toggleActionSetActive ui b
+    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
 
 getMenuItem :: Text -> IDEM MenuItem
-getMenuItem path = do
+getMenuItem path = (do
     uiManager' <- getUiManager
-    mbWidget   <- liftIO $ uiManagerGetWidget uiManager' path
-    case mbWidget of
-        Nothing     -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " <> path)
-        Just widget -> return (castToMenuItem widget)
+    uIManagerGetWidget uiManager' path >>= (liftIO . unsafeCastTo MenuItem))
+        `catchIDE` \(_::UnexpectedNullPointerReturn) ->
+            throwIDE ("State.hs>>getMenuItem: Can't find ui path " <> path)
 
 getBackgroundBuildToggled :: PaneMonad alpha => alpha Bool
 getBackgroundBuildToggled = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
-    liftIO $ toggleActionGetActive ui
+    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
 
 setBackgroundBuildToggled :: PaneMonad alpha => Bool -> alpha ()
 setBackgroundBuildToggled b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" castToToggleAction
-    liftIO $ toggleActionSetActive ui b
+    ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
 
 getRunUnitTests :: PaneMonad alpha => alpha Bool
 getRunUnitTests = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
-    liftIO $ toggleActionGetActive ui
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
 
 setRunUnitTests :: PaneMonad alpha => Bool -> alpha ()
 setRunUnitTests b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" castToToggleAction
-    liftIO $ toggleActionSetActive ui b
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
 
 getMakeModeToggled :: PaneMonad alpha => alpha Bool
 getMakeModeToggled = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" castToToggleAction
-    liftIO $ toggleActionGetActive ui
+    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
 
 setMakeModeToggled :: PaneMonad alpha => Bool -> alpha ()
 setMakeModeToggled b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" castToToggleAction
-    liftIO $ toggleActionSetActive ui b
+    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
 
 getDebugToggled :: PaneMonad alpha => alpha Bool
 getDebugToggled = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
-    liftIO $ toggleActionGetActive ui
+    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
 
 setDebugToggled :: PaneMonad alpha => Bool -> alpha ()
 setDebugToggled b = do
-    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" castToToggleAction
-    liftIO $ toggleActionSetActive ui b
+    ui <- getUIAction "ui/toolbar/BuildToolItems/Debug" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
 
 getRecentFiles , getRecentWorkspaces, getVCS :: IDEM MenuItem
 getRecentFiles    = getMenuItem "ui/menubar/_File/Recent Files"
@@ -326,7 +386,7 @@ getRecentWorkspaces = getMenuItem "ui/menubar/_File/Recent Workspaces"
 getVCS = getMenuItem "ui/menubar/Version Con_trol" --this could fail, try returning Menu if it does
 -- (toolbar)
 
-stockIdFromType :: DescrType -> StockId
+stockIdFromType :: DescrType -> Text
 stockIdFromType Variable        =   "ide_function"
 stockIdFromType Newtype         =   "ide_newtype"
 stockIdFromType Type            =   "ide_type"
@@ -340,8 +400,8 @@ stockIdFromType PatternSynonym  =   "ide_konstructor"
 stockIdFromType _               =   "ide_other"
 
 
-treeStoreGetForest :: TreeStore a -> IO (Forest a)
-treeStoreGetForest store = subForest <$> (treeStoreGetTree store [])
+forestStoreGetForest :: ForestStore a -> IO (Forest a)
+forestStoreGetForest store = subForest <$> (forestStoreGetTree store =<< treePathNewFromIndices' [])
 
 -- | Toggles a row in a `TreeView`
 treeViewToggleRow treeView path = do
@@ -352,95 +412,98 @@ treeViewToggleRow treeView path = do
 
 -- maps control key for Macos
 #if defined(darwin_HOST_OS)
-mapControlCommand Alt = Control
+mapControlCommand ModifierTypeMod1Mask = ModifierTypeControlMask
 #endif
 mapControlCommand a = a
 
 -- | Sets the context menu for a treeView widget
-treeViewContextMenu' :: TreeViewClass treeView
-                     => treeView                 -- ^ The view
-                     -> TreeStore a              -- ^ The model
-                     -> (a -> TreePath -> TreeStore a -> IDEM [[(Text, IDEAction)]]) -- ^ Produces the menu items for the selected values when right clicking
+treeViewContextMenu' :: TreeView                 -- ^ The view
+                     -> ForestStore a              -- ^ The model
+                     -> (a -> TreePath -> ForestStore a -> IDEM [[(Text, IDEAction)]]) -- ^ Produces the menu items for the selected values when right clicking
                                                                                      -- The lists are seperated by a seperator
-                     -> IDEM (ConnectId treeView, ConnectId treeView)
+                     -> IDEM [Connection]
 treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
-    cid1 <- view `on` popupMenuSignal $ do
-        showMenu Nothing ideRef
-    cid2 <- view `on` buttonPressEvent $ do
-        button    <- eventButton
-        click     <- eventClick
-        timestamp <- eventTime
-        (x, y)    <- eventCoordinates
-        case (button, click) of
-            (RightButton, SingleClick) -> liftIO $ do
+    cid1 <- onWidgetPopupMenu view $ do
+        t <- getCurrentEventTime
+        showMenu 0 t ideRef
+    cid2 <- onWidgetButtonPressEvent view $ \e -> do
+        button    <- eventButtonReadButton e
+        click     <- eventButtonReadType e
+        timestamp <- eventButtonReadTime e
+        x         <- eventButtonReadX e
+        y         <- eventButtonReadY e
+        case (fromIntegral button, click) of
+            (BUTTON_SECONDARY, EventTypeButtonPress) -> do
                 sel <- treeViewGetSelection view
                 selCount <- treeSelectionCountSelectedRows sel
                 when (selCount <= 1) $ do
-                    pathInfo <- treeViewGetPathAtPos view (floor x, floor y)
+                    pathInfo <- treeViewGetPathAtPos view (floor x) (floor y)
                     case pathInfo of
-                        Just (path, _, _) -> do
+                        (True, Just path, _, _, _) -> do
                             treeSelectionUnselectAll sel
                             treeSelectionSelectPath sel path
                         _ -> return ()
-                showMenu (Just (button, timestamp)) ideRef
+                showMenu button timestamp ideRef
             _ -> return False
-    return (cid1, cid2)
+    return $ map (ConnectC view) [cid1, cid2]
   where
-    showMenu buttonEventDetails ideRef = do
+    showMenu :: Word32 -> Word32 -> IDERef -> IO Bool
+    showMenu button timestamp ideRef = do
 
-        selPaths  <- treeViewGetSelection view >>= treeSelectionGetSelectedRows
-        selValues <- mapM (treeStoreGetValue store) selPaths
-        theMenu   <- menuNew
-        menuAttachToWidget theMenu view
+        selPaths     <- treeViewGetSelection view >>= treeSelectionGetSelectedRows'
+        selValues    <- mapM (forestStoreGetValue store) selPaths
+        theMenu      <- menuNew
+        menuAttachToWidget theMenu view Nothing
         forM_ (listToMaybe $ zip selValues selPaths) $ \(val, path) -> do
             itemsPerSection     <- flip reflectIDE ideRef $ itemsFor val path store
-            menuItemsPerSection <- mapM (mapM (liftIO . menuItemNewWithLabel . fst)) itemsPerSection
+            menuItemsPerSection <- mapM (mapM (menuItemNewWithLabel . fst)) itemsPerSection
 
 
-            forM_ (zip itemsPerSection menuItemsPerSection) $ \(section, itemsSection) -> do
-                forM_ (zip section itemsSection) $ \((_, onActivated), m) -> do
-                    m `on` menuItemActivated $ reflectIDE onActivated ideRef
+            forM_ (zip itemsPerSection menuItemsPerSection) $ \(section, itemsSection) ->
+                forM_ (zip section itemsSection) $ \((_, onActivated), m) ->
+                    onMenuItemActivate m $ reflectIDE onActivated ideRef
 
             unless (null itemsPerSection) $ do
                 itemsAndSeparators <- sequence $
-                    intercalate [fmap castToMenuItem separatorMenuItemNew]
-                                (map (map (return . castToMenuItem)) menuItemsPerSection)
+                    intercalate [separatorMenuItemNew >>= toMenuItem]
+                                (map (map return) menuItemsPerSection)
                 mapM_ (menuShellAppend theMenu) itemsAndSeparators
-                menuPopup theMenu buttonEventDetails
+                menuPopup theMenu noWidget noWidget Nothing button timestamp
                 widgetShowAll theMenu
         return True
 
-treeViewContextMenu :: TreeViewClass treeView
-                    => treeView
+treeViewContextMenu :: MonadIO m
+                    => TreeView
                     -> (Menu -> IO ())
-                    -> IO (ConnectId treeView, ConnectId treeView)
+                    -> m [Connection]
 treeViewContextMenu treeView populateMenu = do
-    cid1 <- treeView `on` popupMenuSignal $ showMenu Nothing
-    cid2 <- treeView `on` buttonPressEvent $ do
-        button    <- eventButton
-        click     <- eventClick
-        timestamp <- eventTime
-        (x, y)    <- eventCoordinates
-        case (button, click) of
-            (RightButton, SingleClick) -> liftIO $ do
+    cid1 <- onWidgetPopupMenu treeView $ showMenu 0 =<< getCurrentEventTime
+    cid2 <- onWidgetButtonPressEvent treeView $ \e -> do
+        button    <- eventButtonReadButton e
+        click     <- eventButtonReadType e
+        timestamp <- eventButtonReadTime e
+        x         <- eventButtonReadX e
+        y         <- eventButtonReadY e
+        case (fromIntegral button, click) of
+            (BUTTON_SECONDARY, EventTypeButtonPress) -> do
                 sel <- treeViewGetSelection treeView
                 selCount <- treeSelectionCountSelectedRows sel
                 when (selCount <= 1) $ do
-                    pathInfo <- treeViewGetPathAtPos treeView (floor x, floor y)
+                    pathInfo <- treeViewGetPathAtPos treeView (floor x) (floor y)
                     case pathInfo of
-                        Just (path, _, _) -> do
+                        (True, Just path, _, _, _) -> do
                             treeSelectionUnselectAll sel
                             treeSelectionSelectPath sel path
                         _ -> return ()
-                showMenu (Just (button, timestamp))
+                showMenu button timestamp
             _ -> return False
-    return (cid1, cid2)
+    return $ map (ConnectC treeView) [cid1, cid2]
   where
-    showMenu buttonEventDetails = do
+    showMenu button timestamp = do
         theMenu <- menuNew
-        menuAttachToWidget theMenu treeView
+        menuAttachToWidget theMenu treeView Nothing
         populateMenu theMenu
-        menuPopup theMenu buttonEventDetails
+        menuPopup theMenu noWidget noWidget Nothing button timestamp
         widgetShowAll theMenu
         return True
 
@@ -460,12 +523,12 @@ __ = id
 #endif
 
 fontDescription :: Maybe Text -> IDEM FontDescription
-fontDescription mbFontString = liftIO $
+fontDescription mbFontString =
     case mbFontString of
         Just str ->
             fontDescriptionFromString str
         Nothing -> do
             f <- fontDescriptionNew
-            fontDescriptionSetFamily f ("Monospace" :: Text)
+            fontDescriptionSetFamily f "Monospace"
             return f
 

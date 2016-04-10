@@ -33,7 +33,6 @@ module IDE.Pane.PackageEditor (
 ,   standardSetup
 ) where
 
-import Graphics.UI.Gtk
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Verbosity
@@ -55,21 +54,12 @@ import Graphics.UI.Editor.Composite
         multisetEditor)
 import Distribution.Text (simpleParse, display)
 import Graphics.UI.Editor.Parameters
-    (paraInnerPadding,
-     paraInnerAlignment,
-     paraOuterPadding,
-     paraOuterAlignment,
-     Parameter(..),
-     paraPack,
-     Direction(..),
-     paraDirection,
-     paraMinSize,
-     paraShadow,
-     paraSynopsis,
-     (<<<-),
-     emptyParams,
-     paraName,
-     getParameterPrim)
+       (boxPackEnd', dialogSetDefaultResponse', dialogRun', Packing(..),
+        boxPackStart', dialogAddButton', paraInnerPadding,
+        paraInnerAlignment, paraOuterPadding, paraOuterAlignment,
+        Parameter(..), paraPack, Direction(..), paraDirection, paraMinSize,
+        paraShadow, paraSynopsis, (<<<-), emptyParams, paraName,
+        getParameterPrim)
 import Graphics.UI.Editor.Simple
        (stringEditor, comboEntryEditor,
         staticListMultiEditor, intEditor, boolEditor, fileEditor,
@@ -84,7 +74,6 @@ import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
 import Control.Event (EventSource(..))
 
-import qualified Graphics.UI.Gtk.Gdk.Events as GTK (Event(..))
 import Data.List (isPrefixOf, sort, nub, sortBy)
 import Data.Text (Text)
 import Control.Monad.Trans.Reader (ask)
@@ -115,6 +104,32 @@ import Language.Haskell.Extension (Language(..))
 import Distribution.License (License(..))
 import Control.Exception (SomeException(..))
 import IDE.Metainfo.Provider (getAllPackageIds)
+import GI.Gtk.Objects.Window
+       (windowSetTransientFor, windowWindowPosition, windowTitle,
+        windowTransientFor, Window(..))
+import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
+import GI.Gtk.Enums
+       (ShadowType(..), WindowPosition(..), ButtonsType(..),
+        MessageType(..), ResponseType(..), FileChooserAction(..))
+import GI.Gtk.Objects.Dialog
+       (dialogUseHeaderBar, dialogGetActionArea, dialogGetContentArea,
+        dialogNew)
+import Data.GI.Base (on, unsafeCastTo, set)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.Box (boxPackEnd, Box(..))
+import GI.Gtk.Objects.Widget
+       (widgetSetSensitive, toWidget, widgetDestroy, widgetShowAll,
+        widgetGrabDefault, widgetCanDefault)
+import Data.GI.Base.Constructible (Constructible(..))
+import GI.Gtk.Objects.MessageDialog
+       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+        MessageDialog(..))
+import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
+import GI.Gtk.Objects.Notebook (Notebook(..))
+import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
+import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
+import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
+import GI.Gtk.Objects.CellRendererText (cellRendererTextText)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -264,33 +279,32 @@ examplePackages = [ "hello"
                   , "ghcjs-dom-hello"
                   , "jsaddle-hello"]
 
-newPackageDialog :: Window -> FilePath -> IO (Maybe NewPackage)
+newPackageDialog :: MonadIO m => Window -> FilePath -> m (Maybe NewPackage)
 newPackageDialog parent workspaceDir = do
-    dia                        <-   dialogNew
+    dia                <- dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := __ "Create New Package" ]
-    upper                      <-   dialogGetContentArea dia
-    lower                      <-   dialogGetActionArea dia
-    (widget,inj,ext,_)         <-   buildEditor (packageFields workspaceDir)
+    upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
+    (widget,inj,ext,_) <- liftIO $ buildEditor (packageFields workspaceDir)
                                         (NewPackage "" workspaceDir Nothing)
-    okButton <- dialogAddButton dia (__"Create Package") ResponseOk
-    dialogAddButton dia (__"Cancel") ResponseCancel
-    boxPackStart (castToBox upper) widget PackGrow 7
+    okButton <- dialogAddButton' dia (__"Create Package") ResponseTypeOk
+    dialogAddButton' dia (__"Cancel") ResponseTypeCancel
+    boxPackStart' upper widget PackGrow 7
     set okButton [widgetCanDefault := True]
     widgetGrabDefault okButton
     widgetShowAll dia
-    resp  <- dialogRun dia
-    value <- ext (NewPackage "" workspaceDir Nothing)
+    resp  <- dialogRun' dia
+    value <- liftIO $ ext (NewPackage "" workspaceDir Nothing)
     widgetDestroy dia
     --find
     case resp of
-        ResponseOk    -> return value
+        ResponseTypeOk    -> return value
         _             -> return Nothing
 
 packageNew' :: FilePath -> C.Sink ToolOutput IDEM () -> (Bool -> FilePath -> IDEAction) -> IDEAction
 packageNew' workspaceDir log activateAction = do
-    windows  <- getWindows
-    mbNewPackage <- liftIO $ newPackageDialog (head windows) workspaceDir
+    windows <- getWindows
+    mbNewPackage <- newPackageDialog (head windows) workspaceDir
     case mbNewPackage of
         Nothing -> return ()
         Just NewPackage{..} | isNothing templatePackage -> do
@@ -299,34 +313,40 @@ packageNew' workspaceDir log activateAction = do
             window <- getMainWindow
             case mbCabalFile of
                 Just cfn -> do
-                    add <- liftIO $ do
-                        md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                             (T.pack $ printf (__
-                              "There is already file %s in this directory. Would you like to add this package to the workspace?")
-                              (takeFileName cfn))
-                        dialogAddButton md (__ "_Add Package") (ResponseUser 1)
-                        dialogSetDefaultResponse md (ResponseUser 1)
-                        set md [ windowWindowPosition := WinPosCenterOnParent ]
-                        rid <- dialogRun md
-                        widgetDestroy md
-                        return $ rid == ResponseUser 1
-                    when add $ activateAction False cfn
+                    md <- new MessageDialog [
+                        dialogUseHeaderBar := 0,
+                        messageDialogMessageType := MessageTypeQuestion,
+                        messageDialogButtons := ButtonsTypeCancel,
+                        messageDialogText := T.pack (printf (__
+                          "There is already file %s in this directory. Would you like to add this package to the workspace?")
+                          (takeFileName cfn))]
+                    dialogAddButton' md (__ "_Add Package") (AnotherResponseType 1)
+                    dialogSetDefaultResponse' md (AnotherResponseType 1)
+                    set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                    rid <- dialogRun' md
+                    widgetDestroy md
+                    when (rid == AnotherResponseType 1) $
+                        activateAction False cfn
                 Nothing -> do
                     liftIO $ createDirectoryIfMissing True dirName
                     isEmptyDir <- liftIO $ isEmptyDirectory dirName
                     make <- if isEmptyDir
                         then return True
-                        else liftIO $ do
-                            md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                                 (T.pack $ printf (__
-                                  "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
-                                  dirName)
-                            dialogAddButton md (__ "_Make Package Here") (ResponseUser 1)
-                            dialogSetDefaultResponse md (ResponseUser 1)
-                            set md [ windowWindowPosition := WinPosCenterOnParent ]
-                            rid <- dialogRun md
+                        else do
+                            md <- new MessageDialog [
+                                    dialogUseHeaderBar := 0,
+                                    messageDialogMessageType := MessageTypeQuestion,
+                                    messageDialogButtons := ButtonsTypeCancel,
+                                    messageDialogText := (T.pack $ printf (__
+                                      "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
+                                      dirName)]
+                            windowSetTransientFor md (Just window)
+                            dialogAddButton' md (__ "_Make Package Here") (AnotherResponseType 1)
+                            dialogSetDefaultResponse' md (AnotherResponseType 1)
+                            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                            rid <- dialogRun' md
                             widgetDestroy md
-                            return $ rid == ResponseUser 1
+                            return $ rid == AnotherResponseType 1
                     when make $ do
                         modules <- liftIO $ allModules dirName
                         let Just initialVersion = simpleParse "0.0.1"
@@ -393,27 +413,25 @@ cloneFields packages workspaceDir = VFD emptyParams [
 
 clonePackageSourceDialog :: Window -> FilePath -> IDEM (Maybe ClonePackageSourceRepo)
 clonePackageSourceDialog parent workspaceDir = do
-  packages <- getAllPackageIds
-  liftIO $ do
-    dia                        <-   dialogNew
+    packages <- getAllPackageIds
+    dia      <- dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := __ "Copy Installed Package" ]
-    upper                      <-   dialogGetContentArea dia
-    lower                      <-   dialogGetActionArea dia
-    (widget,inj,ext,_)         <-   buildEditor (cloneFields packages workspaceDir)
+    upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
+    (widget,inj,ext,_) <- liftIO $ buildEditor (cloneFields packages workspaceDir)
                                         (ClonePackageSourceRepo "" workspaceDir)
-    okButton <- dialogAddButton dia (__"Copy Package") ResponseOk
-    dialogAddButton dia (__"Cancel") ResponseCancel
-    boxPackStart (castToBox upper) widget PackGrow 7
+    okButton <- dialogAddButton' dia (__"Copy Package") ResponseTypeOk
+    dialogAddButton' dia (__"Cancel") ResponseTypeCancel
+    boxPackStart' upper widget PackGrow 7
     set okButton [widgetCanDefault := True]
     widgetGrabDefault okButton
     widgetShowAll dia
-    resp  <- dialogRun dia
-    value <- ext (ClonePackageSourceRepo "" workspaceDir)
+    resp  <- dialogRun' dia
+    value <- liftIO $ ext (ClonePackageSourceRepo "" workspaceDir)
     widgetDestroy dia
     --find
     case resp of
-        ResponseOk    -> return value
+        ResponseTypeOk    -> return value
         _             -> return Nothing
 
 packageClone :: FilePath -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
@@ -584,7 +602,7 @@ instance Pane PackagePane IDEM
     where
     primPaneName _  =   __ "Package"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . packageBox
+    getTopWidget    =   liftIO . toWidget . packageBox
     paneId b        =   "*Package"
 
 instance RecoverablePane PackagePane PackageState IDEM where
@@ -611,7 +629,7 @@ editPackage packageD packagePath modules afterSaveAction = do
                     (concatMap (buildInfoD (Just (takeDirectory packagePath)) modules)
                         [0..length (bis packageEd) - 1]))
                 pp nb modules afterSaveAction packageEd
-        Just p -> liftIO $ bringPaneToFront p
+        Just p -> bringPaneToFront p
 
 initPackage :: FilePath
     -> PackageDescriptionEd
@@ -659,18 +677,18 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
     addB    <- buttonNewFromStock (__ "Add Build Info")
     removeB <- buttonNewFromStock (__ "Remove Build Info")
     label   <-  labelNew (Nothing :: Maybe Text)
-    boxPackStart bb addB PackNatural 0
-    boxPackStart bb removeB PackNatural 0
-    boxPackEnd bb closeB PackNatural 0
-    boxPackEnd bb save PackNatural 0
+    boxPackStart' bb addB PackNatural 0
+    boxPackStart' bb removeB PackNatural 0
+    boxPackEnd' bb closeB PackNatural 0
+    boxPackEnd' bb save PackNatural 0
     (widget, setInj, getExt, notifier)  <-  buildEditor packageDescr packageD
     let packagePane = PackagePane vb notifier
-    boxPackStart vb widget PackGrow 7
-    boxPackStart vb label PackNatural 0
-    boxPackEnd vb bb PackNatural 7
+    boxPackStart' vb widget PackGrow 7
+    boxPackStart' vb label PackNatural 0
+    boxPackEnd' vb bb PackNatural 7
 
     let fieldNames = map (fromMaybe (__ "Unnamed") . getParameterPrim paraName . parameters) fields
-    on addB buttonActivated $ do
+    onButtonClicked addB $ do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
             Nothing -> sysMessage Normal (__ "Content doesn't validate")
@@ -685,7 +703,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                             (concatMap (buildInfoD (Just packageDir) modules)
                                 [0..length (bis pde)]))
                         panePath nb modules afterSaveAction origPackageD) ideR
-    on removeB buttonActivated $ do
+    onButtonClicked removeB $ do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
             Nothing -> sysMessage Normal (__ "Content doesn't validate")
@@ -701,7 +719,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                                 (concatMap (buildInfoD (Just packageDir) modules)
                                     [0..length (bis pde) - 2]))
                             panePath nb modules afterSaveAction origPackageD) ideR
-    on closeB buttonActivated $ do
+    onButtonClicked closeB $ do
         mbP <- extract packageD [getExt]
         let hasChanged = case mbP of
                                 Nothing -> False
@@ -709,17 +727,19 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         if not hasChanged
             then reflectIDE (void (closePane packagePane)) ideR
             else do
-                md <- messageDialogNew (Just window) []
-                    MessageQuestion
-                    ButtonsYesNo
-                    (__ "Unsaved changes. Close anyway?")
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
+                md <- new MessageDialog [
+                        dialogUseHeaderBar := 0,
+                        messageDialogMessageType := MessageTypeQuestion,
+                        messageDialogButtons := ButtonsTypeYesNo,
+                        messageDialogText := __ "Unsaved changes. Close anyway?"]
+                windowSetTransientFor md (Just window)
+                set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                resp <- dialogRun' md
                 widgetDestroy md
                 case resp of
-                    ResponseYes ->   reflectIDE (void (closePane packagePane)) ideR
+                    ResponseTypeYes ->   reflectIDE (void (closePane packagePane)) ideR
                     _  ->   return ()
-    on save buttonActivated $ do
+    onButtonClicked save $ do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of
             Nothing -> return ()
@@ -736,9 +756,10 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         let hasChanged = case mbP of
                                 Nothing -> False
                                 Just p -> p /= origPackageD
-        when (isJust mbP) $ labelSetMarkup label ("" :: Text)
+        when (isJust mbP) $ labelSetMarkup label ""
         when (isJust mbP) $ comparePDE (fromJust mbP) packageD
-        markLabel nb (getTopWidget packagePane) hasChanged
+        w <- reflectIDE (getTopWidget packagePane) ideR
+        markLabel nb w hasChanged
         widgetSetSensitive save hasChanged
         return (e{gtkReturn=False}))
     registerEvent notifier ValidationError (\e -> do
@@ -774,7 +795,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
     ,   mkField
             (paraName <<<- ParaName (__ "Description")
                 $ paraSynopsis <<<- ParaSynopsis (__ "A more verbose description of this package")
-                    $ paraShadow <<<- ParaShadow ShadowOut
+                    $ paraShadow <<<- ParaShadow ShadowTypeOut
                         $ paraMinSize <<<- ParaMinSize (-1,210)
                             $ emptyParams)
             (T.pack . description . pd)
@@ -868,13 +889,13 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Cabal version")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "Does this package depends on a specific version of Cabal?")
-                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+                    $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             (specVersion . pd)
             (\ a b -> b{pd = (pd b){specVersionRaw = Left a}})
             versionEditor
     ,   mkField
             (paraName <<<- ParaName (__ "Tested with compiler")
-                $ paraShadow <<<- ParaShadow ShadowIn
+                $ paraShadow <<<- ParaShadow ShadowTypeIn
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,150)
                             $ emptyParams)
@@ -928,7 +949,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Build Type")
                 $ paraSynopsis <<<- ParaSynopsis
                 (__ "Describe executable programs contained in the package")
-                        $ paraShadow <<<- ParaShadow ShadowIn
+                        $ paraShadow <<<- ParaShadow ShadowTypeIn
                             $ paraDirection <<<- ParaDirection Vertical
                                 $ emptyParams)
             (buildType . pd)
@@ -936,14 +957,14 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (maybeEditor (buildTypeEditor, emptyParams) True (__ "Specify?"))
     ,   mkField
             (paraName <<<- ParaName (__ "Custom Fields")
-                $ paraShadow <<<- ParaShadow ShadowIn
+                $ paraShadow <<<- ParaShadow ShadowTypeIn
                     $ paraMinSize <<<- ParaMinSize (-1,150)
                         $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
             (customFieldsPD . pd)
             (\ a b -> b{pd = (pd b){customFieldsPD = a}})
             (multisetEditor
-                (ColumnDescr True [(__ "Name",\(n,_) -> [cellText := T.pack n])
-                                   ,(__ "Value",\(_,v) -> [cellText := T.pack v])])
+                (ColumnDescr True [(__ "Name",\(n,_) -> [cellRendererTextText := T.pack n])
+                                   ,(__ "Value",\(_,v) -> [cellRendererTextText := T.pack v])])
                 (pairEditor (stringxEditor (const True), emptyParams)
                    (stringEditor (const True) True, emptyParams),
                  emptyParams)
@@ -986,7 +1007,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
            $ paraSynopsis <<<- ParaSynopsis
              (__ "If the package contains a library, specify the exported modules here")
            $ paraDirection <<<- ParaDirection Vertical
-           $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+           $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             mbLib
             (\ a b -> b{mbLib = a})
             (maybeEditor (libraryEditor (Just fp) modules numBuildInfos,
@@ -1016,7 +1037,7 @@ buildInfoD fp modules i = [
                 (__ "Where to look for the source hierarchy")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "Root directories for the source hierarchy.")
-                    $ paraShadow  <<<- ParaShadow ShadowIn
+                    $ paraShadow  <<<- ParaShadow ShadowTypeIn
                         $ paraDirection  <<<- ParaDirection Vertical
                             $ paraMinSize <<<- ParaMinSize (-1,150)
                                 $ emptyParams)
@@ -1027,7 +1048,7 @@ buildInfoD fp modules i = [
             (paraName <<<- ParaName (__ "Non-exposed or non-main modules")
             $ paraSynopsis <<<- ParaSynopsis
                                        (__ "A list of modules used by the component but not exposed to users.")
-                $ paraShadow <<<- ParaShadow ShadowIn
+                $ paraShadow <<<- ParaShadow ShadowTypeIn
                     $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,300)
                             $ paraPack <<<- ParaPack PackGrow
@@ -1042,18 +1063,18 @@ buildInfoD fp modules i = [
         mkField
             (paraName  <<<- ParaName (__ "Options for haskell compilers")
             $ paraDirection <<<- ParaDirection Vertical
-            $ paraShadow <<<- ParaShadow ShadowIn
+            $ paraShadow <<<- ParaShadow ShadowTypeIn
             $ paraPack <<<- ParaPack PackGrow $ emptyParams)
             (options . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = a})})
             (multisetEditor
-                (ColumnDescr True [( __ "Compiler Flavor",\(cv,_) -> [cellText := T.pack $ show cv])
-                                   ,(__ "Options",\(_,op) -> [cellText := T.pack $ concatMap (\s -> ' ' : s) op])])
+                (ColumnDescr True [( __ "Compiler Flavor",\(cv,_) -> [cellRendererTextText := T.pack $ show cv])
+                                   ,(__ "Options",\(_,op) -> [cellRendererTextText := T.pack $ concatMap (\s -> ' ' : s) op])])
                 (pairEditor
                     (compilerFlavorEditor,emptyParams)
                     (optsEditor,emptyParams),
                         paraDirection <<<- ParaDirection Vertical
-                            $ paraShadow  <<<- ParaShadow ShadowIn $ emptyParams)
+                            $ paraShadow  <<<- ParaShadow ShadowTypeIn $ emptyParams)
                 Nothing
                 Nothing)
 #if MIN_VERSION_Cabal(1,22,0)
@@ -1195,14 +1216,14 @@ buildInfoD fp modules i = [
             (textsEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Custom fields build info")
-                $ paraShadow <<<- ParaShadow ShadowIn
+                $ paraShadow <<<- ParaShadow ShadowTypeIn
                     $ paraMinSize <<<- ParaMinSize (-1,150)
                         $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
              (customFieldsBI . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{customFieldsBI = a})})
             (multisetEditor
-                (ColumnDescr True [(__ "Name",\(n,_) -> [cellText := T.pack n])
-                                   ,(__ "Value",\(_,v) -> [cellText := T.pack v])])
+                (ColumnDescr True [(__ "Name",\(n,_) -> [cellRendererTextText := T.pack n])
+                                   ,(__ "Value",\(_,v) -> [cellRendererTextText := T.pack v])])
                 (pairEditor
                     (stringxEditor (const True),emptyParams)
                     (stringEditor (const True) True,emptyParams),emptyParams)
@@ -1247,15 +1268,15 @@ compilerOptRecordEditor para =
 compilerOptsEditor :: Editor [(CompilerFlavor, [String])]
 compilerOptsEditor p =
     multisetEditor
-        (ColumnDescr True [("Compiler",\(compiler, _) -> [cellText := T.pack $ show compiler])
-                           ,("Options",\(_, opts    ) -> [cellText := T.pack $ unwords opts])])
+        (ColumnDescr True [("Compiler",\(compiler, _) -> [cellRendererTextText := T.pack $ show compiler])
+                           ,("Options",\(_, opts    ) -> [cellRendererTextText := T.pack $ unwords opts])])
         (compilerOptRecordEditor,
             paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
                    $ emptyParams)
         (Just (sortBy (\ (f1, _) (f2, _) -> compare f1 f2)))
         (Just (\ (f1, _) (f2, _) -> f1 == f2))
-        (paraShadow <<<- ParaShadow ShadowIn
+        (paraShadow <<<- ParaShadow ShadowTypeIn
             $ paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
                     $ paraDirection  <<<-  ParaDirection Vertical
@@ -1268,7 +1289,7 @@ packageEditor para noti = do
         (stringEditor (not . null) True, paraName <<<- ParaName (__ "Name") $ emptyParams)
         (versionEditor, paraName <<<- ParaName (__ "Version") $ emptyParams)
         (paraDirection <<<- ParaDirection Horizontal
-            $ paraShadow <<<- ParaShadow ShadowIn
+            $ paraShadow <<<- ParaShadow ShadowTypeIn
                 $ para) noti
     let pinj (PackageIdentifier (PackageName n) v) = inj (n,v)
     let pext = do
@@ -1284,13 +1305,13 @@ packageEditor para noti = do
 testedWithEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWithEditor =
     multisetEditor
-       (ColumnDescr True [(__ "Compiler Flavor",\(cv,_) -> [cellText := T.pack $ show cv])
-                           ,(__ "Version Range",\(_,vr) -> [cellText := T.pack $ display vr])])
+       (ColumnDescr True [(__ "Compiler Flavor",\(cv,_) -> [cellRendererTextText := T.pack $ show cv])
+                           ,(__ "Version Range",\(_,vr) -> [cellRendererTextText := T.pack $ display vr])])
        (pairEditor
           (compilerFlavorEditor,
-           paraShadow <<<- ParaShadow ShadowNone $ emptyParams)
+           paraShadow <<<- ParaShadow ShadowTypeNone $ emptyParams)
           (versionRangeEditor,
-           paraShadow <<<- ParaShadow ShadowNone $ emptyParams),
+           paraShadow <<<- ParaShadow ShadowTypeNone $ emptyParams),
         paraDirection <<<- ParaDirection Vertical $ emptyParams)
        Nothing
        (Just (==))
@@ -1348,14 +1369,14 @@ extensionsL = map EnableExtension [minBound..maxBound]
 reposEditor :: Editor [SourceRepo]
 reposEditor p noti =
     multisetEditor
-        (ColumnDescr False [("",\repo -> [cellText := display repo])])
+        (ColumnDescr False [("",\repo -> [cellRendererTextText := display repo])])
         (repoEditor,
             paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
                    $ emptyParams)
         Nothing
         Nothing
-        (paraShadow <<<- ParaShadow ShadowIn $
+        (paraShadow <<<- ParaShadow ShadowTypeIn $
             paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
                     $ paraDirection  <<<-  ParaDirection Vertical
@@ -1573,13 +1594,13 @@ modulesEditor modules   =   staticListMultiEditor (map (T.pack . display) module
 executablesEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Executable']
 executablesEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [(__ "Executable Name",\(Executable' exeName _ _) -> [cellText := exeName])
-                           ,(__ "Module Path",\(Executable'  _ mp _) -> [cellText := T.pack mp])
-                           ,(__ "Build info index",\(Executable'  _ _ bii) -> [cellText := T.pack $ show (bii + 1)])])
+        (ColumnDescr True [(__ "Executable Name",\(Executable' exeName _ _) -> [cellRendererTextText := exeName])
+                           ,(__ "Module Path",\(Executable'  _ mp _) -> [cellRendererTextText := T.pack mp])
+                           ,(__ "Build info index",\(Executable'  _ _ bii) -> [cellRendererTextText := T.pack $ show (bii + 1)])])
         (executableEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
-        (paraShadow  <<<- ParaShadow ShadowIn
+        (paraShadow  <<<- ParaShadow ShadowTypeIn
             $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
 
 executableEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Executable'
@@ -1611,13 +1632,13 @@ executableEditor fp modules countBuildInfo para noti = do
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [(__ "Test Name",\(Test' testName _ _) -> [cellText := testName])
-                           ,(__ "Interface",\(Test'  _ i _) -> [cellText := T.pack $ interfaceName i])
-                           ,(__ "Build info index",\(Test'  _ _ bii) -> [cellText := T.pack $ show (bii + 1)])])
+        (ColumnDescr True [(__ "Test Name",\(Test' testName _ _) -> [cellRendererTextText := testName])
+                           ,(__ "Interface",\(Test'  _ i _) -> [cellRendererTextText := T.pack $ interfaceName i])
+                           ,(__ "Build info index",\(Test'  _ _ bii) -> [cellRendererTextText := T.pack $ show (bii + 1)])])
         (testEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
-        (paraShadow  <<<- ParaShadow ShadowIn
+        (paraShadow  <<<- ParaShadow ShadowTypeIn
             $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
   where
     interfaceName (TestSuiteExeV10 _ f) = f
@@ -1653,13 +1674,13 @@ testEditor fp modules countBuildInfo para noti = do
 benchmarksEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Benchmark']
 benchmarksEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [(__ "Benchmark Name",\(Benchmark' benchmarkName _ _) -> [cellText := benchmarkName])
-                           ,(__ "Interface",\(Benchmark'  _ i _) -> [cellText := T.pack $ interfaceName i])
-                           ,(__ "Build info index",\(Benchmark'  _ _ bii) -> [cellText := T.pack $ show (bii + 1)])])
+        (ColumnDescr True [(__ "Benchmark Name",\(Benchmark' benchmarkName _ _) -> [cellRendererTextText := benchmarkName])
+                           ,(__ "Interface",\(Benchmark'  _ i _) -> [cellRendererTextText := T.pack $ interfaceName i])
+                           ,(__ "Build info index",\(Benchmark'  _ _ bii) -> [cellRendererTextText := T.pack $ show (bii + 1)])])
         (benchmarkEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
-        (paraShadow  <<<- ParaShadow ShadowIn
+        (paraShadow  <<<- ParaShadow ShadowTypeIn
             $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
   where
     interfaceName (BenchmarkExeV10 _ f) = f

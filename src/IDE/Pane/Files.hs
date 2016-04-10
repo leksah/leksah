@@ -25,7 +25,6 @@ module IDE.Pane.Files (
 ) where
 
 import Prelude hiding (catch)
-import Graphics.UI.Gtk
 import Data.Maybe (fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
@@ -48,10 +47,6 @@ import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import Graphics.UI.Frame.ViewFrame (getMainWindow, getNotebook)
 import Graphics.UI.Editor.Basics (Connection(..))
-import Graphics.UI.Gtk.General.Enums
-       (ShadowType(..), PolicyType(..), SelectionMode(..),
-        TreeViewColumnSizing(..))
-import System.Glib.Attributes (set, AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils
        (showErrorDialog, showInputDialog, treeViewContextMenu', __,
@@ -65,7 +60,6 @@ import IDE.Core.Types
        (ipdLib, WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
         runPackage, runWorkspace, PackageAction, PackageM, IDEPackage(..),
         IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
-import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import System.FilePath
        (addTrailingPathSeparator, takeDirectory, takeExtension,
        makeRelative, splitDirectories)
@@ -80,16 +74,11 @@ import Data.Ord (comparing)
 import Data.Char (toUpper, toLower)
 import System.Log.Logger (debugM)
 import Data.Tree (Forest, Tree(..))
-import Graphics.UI.Gtk.MenuComboToolbar.MenuItem
-       (menuItemActivate, menuItemNewWithLabel)
 import IDE.Pane.Modules (addModule)
-import Graphics.UI.Gtk.Windows.MessageDialog
-       (ButtonsType(..), MessageType(..), messageDialogNew)
-import Graphics.UI.Gtk.ModelView.CellRenderer
-       (CellRendererMode(..), cellMode)
 import IDE.Pane.PackageEditor (packageEditText)
-import IDE.Utils.GtkBindings (treeViewSetActiveOnSingleClick)
 import IDE.Package (packageTest, packageRun, packageClean)
+import GI.Gtk.Objects.Label (labelNew, Label(..))
+import GI.Gtk.Objects.Widget (toWidget)
 
 
 -- * The Files pane
@@ -108,7 +97,7 @@ data FilesState      =   FilesState
 instance Pane IDEFiles IDEM where
     primPaneName _  =   __ "Files"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . deprecatedLabel
+    getTopWidget    =   liftIO . toWidget . deprecatedLabel
     paneId b        =   "*Files"
 
 instance RecoverablePane IDEFiles FilesState IDEM where
@@ -117,5 +106,5 @@ instance RecoverablePane IDEFiles FilesState IDEM where
         nb      <-  getNotebook pp
         buildPane pp nb builder
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        deprecatedLabel <- labelNew $ Just ("The Files pane is deprecated and has been combined with the Workspace pane"::Text)
+        deprecatedLabel <- labelNew $ Just "The Files pane is deprecated and has been combined with the Workspace pane"
         return (Just IDEFiles {..}, [])

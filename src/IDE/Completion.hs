@@ -21,8 +21,6 @@ import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
 import Data.IORef
 import Control.Monad
-import Graphics.UI.Gtk as Gtk
-import Graphics.UI.Gtk.Gdk.EventM as Gtk
 import IDE.Core.State
 import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
 import IDE.TextEditor as TE
@@ -36,6 +34,74 @@ import qualified Data.Text as T
        (empty, commonPrefixes, pack, unpack, null, stripPrefix,
         isPrefixOf)
 import System.Log.Logger (debugM)
+import GI.Gtk.Objects.Window
+       (windowMove, windowGetScreen, windowGetSize, Window(..),
+        windowNew, windowTransientFor, windowDefaultHeight,
+        windowDefaultWidth, windowResizable, windowDecorated,
+        windowTypeHint, windowResize)
+import Data.GI.Base
+       (unsafeManagedPtrGetPtr, unsafeCastTo, get, set)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gdk.Enums (GrabStatus(..), WindowTypeHint(..))
+import GI.Gtk.Objects.Container
+       (containerRemove, containerAdd, containerSetBorderWidth)
+import GI.Gtk.Objects.HPaned (hPanedNew)
+import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Widget
+       (Widget(..), widgetShowAll, widgetGetAllocation, widgetGetParent,
+        widgetHide, onWidgetButtonReleaseEvent, onWidgetMotionNotifyEvent,
+        widgetGetWindow, onWidgetButtonPressEvent, widgetVisible,
+        widgetModifyFont, widgetSetSizeRequest)
+import GI.Gtk.Objects.TreeView
+       (treeViewSetCursor, onTreeViewRowActivated, treeViewRowActivated,
+        treeViewScrollToCell, treeViewGetColumn, treeViewGetModel,
+        TreeView(..), treeViewGetSelection, treeViewHeadersVisible,
+        treeViewAppendColumn, treeViewSetModel, treeViewNew)
+import Data.GI.Gtk.ModelView.SeqStore
+       (seqStoreAppend, seqStoreClear, seqStoreGetValue, SeqStore(..),
+        seqStoreNew)
+import GI.Pango.Structs.FontDescription
+       (fontDescriptionSetFamily, fontDescriptionNew,
+        fontDescriptionFromString)
+import GI.Gtk.Objects.TreeViewColumn
+       (noTreeViewColumn, treeViewColumnPackStart, treeViewColumnMinWidth,
+        treeViewColumnSizing, treeViewColumnNew)
+import GI.Gtk.Enums (TreeViewColumnSizing(..), WindowType(..))
+import GI.Gtk.Objects.CellRendererText
+       (cellRendererTextText, cellRendererTextNew)
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetAttributes)
+import GI.Gtk.Objects.TreeSelection
+       (treeSelectionGetSelected, treeSelectionSelectPath,
+        treeSelectionSelectedForeach,
+        onTreeSelectionChanged)
+import GI.Gtk.Objects.Paned
+       (panedSetPosition, panedGetPosition, panedGetChild2, Paned(..),
+        panedGetChild1, panedAdd2, panedAdd1)
+import GI.Gdk.Structs.EventKey
+       (eventKeyReadKeyval, eventKeyReadState)
+import GI.Gdk.Functions
+       (pointerUngrab, pointerGrab, keyvalToUnicode, keyvalName)
+import GI.Gtk.Interfaces.TreeModel
+       (treeModelGetPath, treeModelIterNChildren)
+import GI.Gdk.Structs.EventButton
+       (eventButtonReadTime, eventButtonReadY, eventButtonReadX,
+        eventButtonReadButton)
+import GI.Gdk.Flags (EventMask(..))
+import GI.Gdk.Objects.Cursor (noCursor)
+import GI.Gdk.Structs.EventMotion
+       (eventMotionReadY, eventMotionReadX)
+import GI.Gtk.Structs.TreePath (treePathGetIndices, TreePath(..))
+import GI.Gdk.Structs.Rectangle
+       (rectangleReadHeight, rectangleReadWidth, rectangleReadY,
+        rectangleReadX, Rectangle(..))
+import GI.Gdk.Objects.Window (windowGetOrigin)
+import qualified GI.Gdk.Objects.Window as Gdk (noWindow)
+import GI.Gdk.Objects.Screen
+       (screenGetHeight, screenGetWidth, screenGetMonitorAtPoint)
+import Data.GI.Gtk.ModelView.Types
+       (treePathGetIndices', treePathNewFromIndices')
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -59,14 +125,14 @@ cancel = do
             cancelCompletion window tv st conn
         _            -> return ()
 
-setCompletionSize :: (Int, Int) -> IDEAction
-setCompletionSize (x, y) | x > 10 && y > 10 = do
+setCompletionSize :: Int -> Int -> IDEAction
+setCompletionSize x y | x > 10 && y > 10 = do
     (_, completion) <- readIDE completion
     case completion of
-        Just (CompletionWindow window _ _) -> liftIO $ windowResize window x y
+        Just (CompletionWindow window _ _) -> windowResize window (fromIntegral x) (fromIntegral y)
         Nothing                            -> return ()
     modifyIDE_ $ \ide -> ide{completion = ((x, y), completion)}
-setCompletionSize _ = return ()
+setCompletionSize _ _ = return ()
 
 getIsWordChar :: forall editor. TextEditor editor => EditorView editor -> IDEM (Char -> Bool)
 getIsWordChar sourceView = do
@@ -101,43 +167,43 @@ initCompletion sourceView always = do
         Nothing -> do
             windows    <- getWindows
             prefs      <- readIDE prefs
-            window     <- liftIO windowNewPopup
-            liftIO $ set window [
+            window     <- windowNew WindowTypePopup
+            set window [
                          windowTypeHint      := WindowTypeHintUtility,
                          windowDecorated     := False,
                          windowResizable     := True,
-                         windowDefaultWidth  := width,
-                         windowDefaultHeight := height,
+                         windowDefaultWidth  := fromIntegral width,
+                         windowDefaultHeight := fromIntegral height,
                          windowTransientFor  := head windows]
-            liftIO $ containerSetBorderWidth window 3
-            paned      <- liftIO hPanedNew
-            liftIO $ containerAdd window paned
-            nameScrolledWindow <- liftIO $ scrolledWindowNew Nothing Nothing
-            liftIO $ widgetSetSizeRequest nameScrolledWindow 250 40
-            tree       <- liftIO treeViewNew
-            liftIO $ containerAdd nameScrolledWindow tree
-            store      <- liftIO $ listStoreNew []
-            liftIO $ treeViewSetModel tree store
+            containerSetBorderWidth window 3
+            paned      <- hPanedNew
+            containerAdd window paned
+            nameScrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
+            widgetSetSizeRequest nameScrolledWindow 250 40
+            tree       <- treeViewNew
+            containerAdd nameScrolledWindow tree
+            store      <- seqStoreNew []
+            treeViewSetModel tree (Just store)
 
-            font <- liftIO $ case textviewFont prefs of
+            font <- case textviewFont prefs of
                 Just str ->
                     fontDescriptionFromString str
                 Nothing -> do
                     f <- fontDescriptionNew
-                    fontDescriptionSetFamily f ("Monospace" :: Text)
+                    fontDescriptionSetFamily f "Monospace"
                     return f
-            liftIO $ widgetModifyFont tree (Just font)
+            widgetModifyFont tree (Just font)
 
-            column   <- liftIO treeViewColumnNew
-            liftIO $ set column [
-                treeViewColumnSizing   := TreeViewColumnFixed,
+            column   <- treeViewColumnNew
+            set column [
+                treeViewColumnSizing   := TreeViewColumnSizingFixed,
                 treeViewColumnMinWidth := 800] -- OSX does not like it if there is no hscroll
-            liftIO $ treeViewAppendColumn tree column
-            renderer <- liftIO cellRendererTextNew
-            liftIO $ treeViewColumnPackStart column renderer True
-            liftIO $ cellLayoutSetAttributes column renderer store (\name -> [ cellText := name ])
+            treeViewAppendColumn tree column
+            renderer <- cellRendererTextNew
+            treeViewColumnPackStart column renderer True
+            cellLayoutSetAttributes column renderer store (\name -> [ cellRendererTextText := name ])
 
-            liftIO $ set tree [treeViewHeadersVisible := False]
+            set tree [treeViewHeadersVisible := False]
 
             descriptionBuffer <- newDefaultBuffer Nothing ""
             descriptionView   <- newView descriptionBuffer (textviewFont prefs)
@@ -147,20 +213,17 @@ initCompletion sourceView always = do
             visible    <- liftIO $ newIORef False
             activeView <- liftIO $ newIORef Nothing
 
-            treeSelection <- liftIO $ treeViewGetSelection tree
+            treeSelection <- treeViewGetSelection tree
 
-            liftIO $ on treeSelection treeSelectionSelectionChanged $
-                treeSelectionSelectedForeach treeSelection $ \treePath -> do
-                    rows <- treeSelectionGetSelectedRows treeSelection
-                    case rows of
-                        [treePath] -> reflectIDE (withWord store treePath (\name -> do
+            onTreeSelectionChanged treeSelection $
+                treeSelectionSelectedForeach treeSelection $ \_model treePath _iter ->
+                    reflectIDE (withWord store treePath (\name -> do
                             description <- getDescription name
                             setText descriptionBuffer description
                             )) ideR
-                        _ -> return ()
 
-            liftIO $ panedAdd1 paned nameScrolledWindow
-            liftIO $ panedAdd2 paned descriptionScrolledWindow
+            panedAdd1 paned nameScrolledWindow
+            panedAdd2 paned descriptionScrolledWindow
 
             cids <- addEventHandling window sourceView tree store isWordChar always
 
@@ -168,35 +231,38 @@ initCompletion sourceView always = do
                 completion = ((width, height), Just (CompletionWindow window tree store))})
             updateOptions window tree store sourceView cids isWordChar always
 
-addEventHandling :: TextEditor editor => Window -> EditorView editor -> TreeView -> ListStore Text
+addEventHandling :: TextEditor editor => Window -> EditorView editor -> TreeView -> SeqStore Text
                  -> (Char -> Bool) -> Bool -> IDEM Connections
 addEventHandling window sourceView tree store isWordChar always = do
     ideR      <- ask
     cidsPress <- TE.onKeyPress sourceView $ do
-        keyVal      <- lift eventKeyVal
-        name        <- lift eventKeyName
-        modifier    <- lift eventModifier
-        char        <- liftIO $ keyvalToChar keyVal
-        Just model  <- liftIO $ treeViewGetModel tree
-        selection   <- liftIO $ treeViewGetSelection tree
-        count       <- liftIO $ treeModelIterNChildren model Nothing
-        Just column <- liftIO $ treeViewGetColumn tree 0
-        let whenVisible f = liftIO (get tree widgetVisible) >>= \case
+        e           <- lift ask
+        keyVal      <- eventKeyReadKeyval e
+        name        <- keyvalName keyVal
+        modifier    <- eventKeyReadState e
+        char        <- toEnum . fromIntegral <$> keyvalToUnicode keyVal
+        model       <- treeViewGetModel tree
+        selection   <- treeViewGetSelection tree
+        count       <- treeModelIterNChildren model Nothing
+        column      <- treeViewGetColumn tree 0
+        let whenVisible f = get tree widgetVisible >>= \case
                                 True  -> f
                                 False -> return False
             down = whenVisible $ do
                 maybeRow <- liftIO $ getRow tree
                 let newRow = maybe 0 (+ 1) maybeRow
-                when (newRow < count) . liftIO $ do
-                    treeSelectionSelectPath selection [newRow]
-                    treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
+                when (newRow < count) $ do
+                    path <- treePathNewFromIndices' [newRow]
+                    treeSelectionSelectPath selection path
+                    treeViewScrollToCell tree (Just path) noTreeViewColumn False 0 0
                 return True
             up = whenVisible $ do
                 maybeRow <- liftIO $ getRow tree
                 let newRow = maybe 0 (\ row -> row - 1) maybeRow
-                when (newRow >= 0) . liftIO $ do
-                    treeSelectionSelectPath selection [newRow]
-                    treeViewScrollToCell tree (Just [newRow]) Nothing Nothing
+                when (newRow >= 0) $ do
+                    path <- treePathNewFromIndices' [newRow]
+                    treeSelectionSelectPath selection path
+                    treeViewScrollToCell tree (Just path) noTreeViewColumn False 0 0
                 return True
         case (name, modifier, char) of
             ("Tab", _, _) -> whenVisible . liftIDE $ do
@@ -206,88 +272,93 @@ addEventHandling window sourceView tree store isWordChar always = do
                 maybeRow <- liftIO $ getRow tree
                 case maybeRow of
                     Just row -> do
-                        liftIO $ treeViewRowActivated tree [row] column
+                        path <- treePathNewFromIndices' [row]
+                        treeViewRowActivated tree path column
                         return True
                     Nothing -> do
                         liftIDE cancel
                         return False
             ("Down", _, _) -> down
             ("Up", _, _) -> up
-            (super, _, Just 'a') | super `elem` ["Super_L", "Super_R"] -> do
+            (super, _, 'a') | super `elem` ["Super_L", "Super_R"] -> do
                 liftIO $ debugM "leksah" "Completion - Super 'a' key press"
                 down
-            (super, _, Just 'l') | super `elem` ["Super_L", "Super_R"] -> do
+            (super, _, 'l') | super `elem` ["Super_L", "Super_R"] -> do
                 liftIO $ debugM "leksah" "Completion - Super 'l' key press"
                 up
-            (_, _, Just c) | isWordChar c -> return False
+            (_, _, c) | isWordChar c -> return False
             ("BackSpace", _, _) -> return False
             (key, _, _) | key `elem` ["Shift_L", "Shift_R", "Super_L", "Super_R"] -> return False
             _ -> do liftIDE cancel
                     return False
 
     cidsRelease <- TE.onKeyRelease sourceView $ do
-        name     <- lift eventKeyName
-        modifier <- lift eventModifier
+        e        <- lift ask
+        name     <- eventKeyReadKeyval e >>= keyvalName
+        modifier <- eventKeyReadState e
         case (name, modifier) of
             ("BackSpace", _) -> do
                 liftIDE $ complete sourceView False
                 return False
             _ -> return False
 
-    liftIO $ do
-        resizeHandler <- newIORef Nothing
+    resizeHandler <- liftIO $ newIORef Nothing
 
-        idButtonPress <- window `on` buttonPressEvent $ do
-            button     <- eventButton
-            (x, y)     <- eventCoordinates
-            time       <- eventTime
+    idButtonPress <- ConnectC window <$> onWidgetButtonPressEvent window (\e -> do
+        button     <- eventButtonReadButton e
+        x          <- eventButtonReadX e
+        y          <- eventButtonReadY e
+        time       <- eventButtonReadTime e
 
-            mbDrawWindow <- Gtk.liftIO $ widgetGetWindow window
-            case mbDrawWindow of
-                Just drawWindow -> do
-                    status <- Gtk.liftIO $ pointerGrab
-                        drawWindow
-                        False
-                        [PointerMotionMask, ButtonReleaseMask]
-                        (Nothing:: Maybe DrawWindow)
-                        Nothing
-                        time
-                    when (status == GrabSuccess) $ Gtk.liftIO $ do
-                        (width, height) <- windowGetSize window
-                        writeIORef resizeHandler $ Just $ \(newX, newY) ->
-                            reflectIDE (
-                                setCompletionSize (width + floor (newX - x), height + floor (newY - y))) ideR
-                Nothing -> return ()
+        drawWindow <- widgetGetWindow window
+        status <- pointerGrab
+            drawWindow
+            False
+            [EventMaskPointerMotionMask, EventMaskButtonReleaseMask]
+            Gdk.noWindow
+            noCursor
+            time
+        when (status == GrabStatusSuccess) $ do
+            (width, height) <- windowGetSize window
+            liftIO $ writeIORef resizeHandler $ Just $ \newX newY ->
+                reflectIDE (
+                    setCompletionSize (fromIntegral width + floor (newX - x)) (fromIntegral height + floor (newY - y))) ideR
 
-            return True
+        return True)
 
-        idMotion <- window `on` motionNotifyEvent $ do
-            mbResize <- Gtk.liftIO $ readIORef resizeHandler
-            case mbResize of
-                Just resize -> eventCoordinates >>= (Gtk.liftIO . resize) >> return True
-                Nothing     -> return False
+    idMotion <- ConnectC window <$> onWidgetMotionNotifyEvent window (\e -> do
+        mbResize <- readIORef resizeHandler
+        case mbResize of
+            Just resize -> do
+                x <- eventMotionReadX e
+                y <- eventMotionReadY e
+                resize x y
+                return True
+            Nothing     -> return False)
 
-        idButtonRelease <- window `on` buttonReleaseEvent $ do
-            mbResize <- Gtk.liftIO $ readIORef resizeHandler
-            case mbResize of
-                Just resize -> do
-                    eventCoordinates >>= (Gtk.liftIO . resize)
-                    eventTime >>= (Gtk.liftIO . pointerUngrab)
-                    Gtk.liftIO $ writeIORef resizeHandler Nothing
-                    return True
-                Nothing     -> return False
+    idButtonRelease <- ConnectC window <$> onWidgetButtonReleaseEvent window (\e -> do
+        mbResize <- liftIO $ readIORef resizeHandler
+        case mbResize of
+            Just resize -> do
+                x <- eventButtonReadX e
+                y <- eventButtonReadY e
+                resize x y
+                eventButtonReadTime e >>= pointerUngrab
+                liftIO $ writeIORef resizeHandler Nothing
+                return True
+            Nothing     -> return False)
 
-        idSelected <- on tree rowActivated $ \treePath column -> do
-            reflectIDE (withWord store treePath (replaceWordStart sourceView isWordChar)) ideR
-            liftIO $ postGUIAsync $ reflectIDE cancel ideR
+    idSelected <- ConnectC tree <$> onTreeViewRowActivated tree (\treePath column -> (`reflectIDE` ideR) $ do
+        withWord store treePath (replaceWordStart sourceView isWordChar)
+        postAsyncIDE cancel)
 
-        return $ concat [cidsPress, cidsRelease, [ConnectC idButtonPress, ConnectC idMotion, ConnectC idButtonRelease, ConnectC idSelected]]
+    return $ concat [cidsPress, cidsRelease, [idButtonPress, idMotion, idButtonRelease, idSelected]]
 
-withWord :: ListStore Text -> TreePath -> (Text -> IDEM ()) -> IDEM ()
+withWord :: SeqStore Text -> TreePath -> (Text -> IDEM ()) -> IDEM ()
 withWord store treePath f =
-   case treePath of
+   treePathGetIndices' treePath >>= \case
        [row] -> do
-            value <- liftIO $ listStoreGetValue store row
+            value <- seqStoreGetValue store row
             f value
        _ -> return ()
 
@@ -308,24 +379,22 @@ replaceWordStart sourceView isWordChar name = do
                 _ -> insert buffer selEnd extra
         Nothing -> return ()
 
-cancelCompletion :: Window -> TreeView -> ListStore Text -> Connections -> IDEAction
+cancelCompletion :: Window -> TreeView -> SeqStore Text -> Connections -> IDEAction
 cancelCompletion window tree store connections = do
-    liftIO (do
-        listStoreClear (store :: ListStore Text)
-        signalDisconnectAll connections
-        widgetHide window
-        )
+    seqStoreClear (store :: SeqStore Text)
+    signalDisconnectAll connections
+    widgetHide window
     modifyIDE_ (\ide -> ide{currentState = IsRunning})
 
-updateOptions :: forall editor. TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Connections -> (Char -> Bool) -> Bool -> IDEAction
+updateOptions :: forall editor. TextEditor editor => Window -> TreeView -> SeqStore Text -> EditorView editor -> Connections -> (Char -> Bool) -> Bool -> IDEAction
 updateOptions window tree store sourceView connections isWordChar always = do
     result <- tryToUpdateOptions window tree store sourceView False isWordChar always
     unless result $ cancelCompletion window tree store connections
 
-tryToUpdateOptions :: TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Bool -> (Char -> Bool) -> Bool -> IDEM Bool
+tryToUpdateOptions :: TextEditor editor => Window -> TreeView -> SeqStore Text -> EditorView editor -> Bool -> (Char -> Bool) -> Bool -> IDEM Bool
 tryToUpdateOptions window tree store sourceView selectLCP isWordChar always = do
     ideR <- ask
-    liftIO $ listStoreClear (store :: ListStore Text)
+    seqStoreClear (store :: SeqStore Text)
     buffer <- getBuffer sourceView
     (selStart, end) <- getSelectionBounds buffer
     start <- findWordStart selStart isWordChar
@@ -359,7 +428,7 @@ longestCommonPrefix a b = case T.commonPrefixes a b of
                             Nothing        -> T.empty
                             Just (p, _, _) -> p
 
-processResults :: TextEditor editor => Window -> TreeView -> ListStore Text -> EditorView editor -> Text -> [Text]
+processResults :: TextEditor editor => Window -> TreeView -> SeqStore Text -> EditorView editor -> Text -> [Text]
                -> Bool -> (Char -> Bool) -> Bool -> IDEAction
 processResults window tree store sourceView wordStart options selectLCP isWordChar always =
     case options of
@@ -375,62 +444,71 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                                     else currentWordStart
 
             when (T.isPrefixOf wordStart newWordStart) $ do
-                liftIO $ listStoreClear store
+                seqStoreClear store
                 let newOptions = List.filter (T.isPrefixOf newWordStart) options
-                liftIO $ forM_ (take 200 newOptions) (listStoreAppend store)
-                Rectangle startx starty width height <- getIterLocation sourceView start
-                (wWindow, hWindow)                   <- liftIO $ windowGetSize window
-                (x, y)                               <- bufferToWindowCoords sourceView (startx, starty+height)
-                mbDrawWindow                         <- getWindow sourceView
+                forM_ (take 200 newOptions) (seqStoreAppend store)
+                rect                 <- getIterLocation sourceView start
+                startx               <- rectangleReadX rect
+                starty               <- rectangleReadY rect
+                width                <- rectangleReadWidth rect
+                height               <- rectangleReadHeight rect
+                (wWindow, hWindow)   <- windowGetSize window
+                (x, y)               <- bufferToWindowCoords sourceView (fromIntegral startx, fromIntegral (starty+height))
+                mbDrawWindow         <- getWindow sourceView
                 case mbDrawWindow of
                     Nothing -> return ()
                     Just drawWindow -> do
-                        (ox, oy)                     <- liftIO $ drawWindowGetOrigin drawWindow
-                        Just namesSW                 <- liftIO $ widgetGetParent tree
-                        (Rectangle _ _ wNames hNames) <- liftIO $ widgetGetAllocation namesSW
-                        Just paned                   <- liftIO $ widgetGetParent namesSW
-                        Just first                   <- liftIO $ panedGetChild1 (castToPaned paned)
-                        Just second                  <- liftIO $ panedGetChild2 (castToPaned paned)
-                        screen                       <- liftIO $ windowGetScreen window
-                        monitor                      <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y)
-                        monitorLeft                  <- liftIO $ screenGetMonitorAtPoint screen (ox+x-wWindow+wNames) (oy+y)
-                        monitorRight                 <- liftIO $ screenGetMonitorAtPoint screen (ox+x+wWindow) (oy+y)
-                        monitorBelow                 <- liftIO $ screenGetMonitorAtPoint screen (ox+x) (oy+y+hWindow)
-                        wScreen                      <- liftIO $ screenGetWidth screen
-                        hScreen                      <- liftIO $ screenGetHeight screen
-                        top <- if monitorBelow /= monitor || (oy+y+hWindow) > hScreen
+                        (_, ox, oy)  <- windowGetOrigin drawWindow
+                        namesSW      <- widgetGetParent tree
+                        rNames       <- widgetGetAllocation namesSW
+                        wNames       <- rectangleReadWidth rNames
+                        hNames       <- rectangleReadHeight rNames
+                        paned        <- widgetGetParent namesSW >>= liftIO . unsafeCastTo Paned
+                        first        <- panedGetChild1 paned
+                        second       <- panedGetChild2 paned
+                        screen       <- windowGetScreen window
+                        monitor      <- screenGetMonitorAtPoint screen (ox+fromIntegral x) (oy+fromIntegral y)
+                        monitorLeft  <- screenGetMonitorAtPoint screen (ox+fromIntegral x-wWindow+wNames) (oy+fromIntegral y)
+                        monitorRight <- screenGetMonitorAtPoint screen (ox+fromIntegral x+wWindow) (oy+fromIntegral y)
+                        monitorBelow <- screenGetMonitorAtPoint screen (ox+fromIntegral x) (oy+fromIntegral y+hWindow)
+                        wScreen      <- screenGetWidth screen
+                        hScreen      <- screenGetHeight screen
+                        top <- if monitorBelow /= monitor || (oy+fromIntegral y+hWindow) > hScreen
                             then do
                                 sourceSW <- getScrolledWindow sourceView
-                                (Rectangle _ _ _ hSource) <- liftIO $ widgetGetAllocation sourceSW
+                                hSource <- widgetGetAllocation sourceSW >>= rectangleReadHeight
                                 scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
-                                (_, newy)     <- bufferToWindowCoords sourceView (startx, starty+height)
-                                return (oy+newy)
-                            else return (oy+y)
-                        swap <- if (monitorRight /= monitor || (ox+x+wWindow) > wScreen) && monitorLeft == monitor && (ox+x-wWindow+wNames) > 0
+                                (_, newy)     <- bufferToWindowCoords sourceView (fromIntegral startx, fromIntegral (starty+height))
+                                return (oy+fromIntegral newy)
+                            else return (oy+fromIntegral y)
+                        swap <- if (monitorRight /= monitor || (ox+fromIntegral x+wWindow) > wScreen) && monitorLeft == monitor && (ox+fromIntegral x-wWindow+wNames) > 0
                             then do
-                                liftIO $ windowMove window (ox+x-wWindow+wNames) top
-                                return $ first == namesSW
+                                windowMove window (ox+fromIntegral x-wWindow+wNames) top
+                                return $ unsafeManagedPtrGetPtr first == unsafeManagedPtrGetPtr namesSW
                             else do
-                                liftIO $ windowMove window (ox+x) top
-                                return $ first /= namesSW
-                        when swap $ liftIO $ do
-                            pos <- panedGetPosition (castToPaned paned)
-                            containerRemove (castToPaned paned) first
-                            containerRemove (castToPaned paned) second
-                            panedAdd1 (castToPaned paned) second
-                            panedAdd2 (castToPaned paned) first
-                            panedSetPosition (castToPaned paned) (wWindow-pos)
-                        unless (null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
-                        liftIO $ widgetShowAll window
+                                windowMove window (ox+fromIntegral x) top
+                                return $ unsafeManagedPtrGetPtr first /= unsafeManagedPtrGetPtr namesSW
+                        when swap $ do
+                            pos <- panedGetPosition paned
+                            containerRemove paned first
+                            containerRemove paned second
+                            panedAdd1 paned second
+                            panedAdd2 paned first
+                            panedSetPosition paned (wWindow-pos)
+                        unless (null newOptions) $ do
+                            path <- treePathNewFromIndices' [0]
+                            treeViewSetCursor tree path noTreeViewColumn False
+                        widgetShowAll window
 
             when (newWordStart /= currentWordStart) $
                 replaceWordStart sourceView isWordChar newWordStart
 
 getRow tree = do
-    Just model <- treeViewGetModel tree
+    model <- treeViewGetModel tree
     selection <- treeViewGetSelection tree
     maybeIter <- treeSelectionGetSelected selection
     case maybeIter of
-        Just iter -> do [row] <- treeModelGetPath model iter
-                        return $ Just row
-        Nothing   -> return Nothing
+        (True, _, iter) -> do
+            [row] <- treeModelGetPath model iter >>= treePathGetIndices
+            return $ Just row
+        _ -> return Nothing

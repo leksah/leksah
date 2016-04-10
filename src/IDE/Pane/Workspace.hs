@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Workspace
@@ -30,34 +31,13 @@ module IDE.Pane.Workspace (
 ) where
 
 import Prelude hiding (catch)
-import Graphics.UI.Gtk
-       (treeSelectionSelectIter, treeStoreLookup,
-        cellLayoutSetAttributeFunc, treeViewRowActivated, treeStoreClear,
-        treeModelGetIterFirst, treeViewLevelIndentation,
-        treeViewShowExpanders, treeViewCollapseRow, treeViewExpandRow,
-        treeSelectionUnselectAll, cellLayoutPackEnd, cellTextMarkup,
-        cellPixbufStockId, scrolledWindowSetShadowType,
-        treeSelectionSelectionChanged, treeStoreRemove, treeModelIterNext,
-        treeModelGetRow, treeStoreInsert, treeModelIterNthChild,
-        treeModelGetPath, TreeIter, treeModelGetIter, TreePath,
-        treeSelectionGetSelectedRows, rowActivated, treeStoreGetValue,
-        rowExpanded, on, after, focusInEvent, scrolledWindowSetPolicy,
-        containerAdd, scrolledWindowNew, treeSelectionSetMode,
-        treeViewGetSelection, treeViewSetHeadersVisible, cellText,
-        cellLayoutSetAttributes, cellLayoutPackStart, treeViewAppendColumn,
-        treeViewColumnSetReorderable, treeViewColumnSetResizable,
-        treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew,
-        cellRendererPixbufNew, cellRendererTextNew, treeViewSetModel,
-        treeViewNew, treeStoreNew, castToWidget, TreeStore, TreeView,
-        ScrolledWindow, treeViewRowExpanded, treeStoreGetTree, Menu(..),
-        MenuItem(..), treeStoreSetValue)
 import Data.Maybe
        (fromJust, fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, when)
 import Data.Foldable (forM_)
 import Data.Typeable (Typeable)
 import IDE.Core.State
-       (catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
+       (onIDE, catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
         wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
         reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
 import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
@@ -75,10 +55,6 @@ import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import Graphics.UI.Frame.ViewFrame (getMainWindow, getNotebook)
 import Graphics.UI.Editor.Basics (Connection(..))
-import Graphics.UI.Gtk.General.Enums
-       (ShadowType(..), PolicyType(..), SelectionMode(..),
-        TreeViewColumnSizing(..))
-import System.Glib.Attributes (set, AttrOp(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils
        (showErrorDialog, showInputDialog, treeViewContextMenu', __,
@@ -92,7 +68,6 @@ import IDE.Core.Types
        (ipdLib, WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
         runPackage, runWorkspace, PackageAction, PackageM, IDEPackage(..),
         IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
-import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import System.FilePath
        (addTrailingPathSeparator, takeDirectory, takeExtension,
        makeRelative, splitDirectories)
@@ -107,17 +82,51 @@ import Data.Ord (comparing)
 import Data.Char (toUpper, toLower)
 import System.Log.Logger (debugM)
 import Data.Tree (Forest, Tree(..))
-import Graphics.UI.Gtk.MenuComboToolbar.MenuItem
-       (menuItemActivate, menuItemNewWithLabel)
 import IDE.Pane.Modules (addModule)
-import Graphics.UI.Gtk.Windows.MessageDialog
-       (ButtonsType(..), MessageType(..), messageDialogNew)
-import Graphics.UI.Gtk.ModelView.CellRenderer
-       (CellRendererMode(..), cellMode)
 import IDE.Pane.PackageEditor (packageEditText)
-import IDE.Utils.GtkBindings (treeViewSetActiveOnSingleClick)
 import IDE.Package (packageTest, packageRun, packageClean)
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Data.GI.Gtk.ModelView.ForestStore
+       (forestStoreGetTree, forestStoreGetValue, ForestStore(..),
+        forestStoreRemove, forestStoreInsert, forestStoreSetValue,
+        forestStoreClear, forestStoreNew)
+import GI.Gtk.Structs.TreeIter (treeIterCopy, TreeIter(..))
+import Data.GI.Gtk.ModelView.TreeModel
+       (treeModelIterNext, treeModelIterNthChild, treeModelGetIter,
+        treeModelGetPath)
+import GI.Gtk.Structs.TreePath
+       (TreePath(..))
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew, ScrolledWindow(..))
+import GI.Gtk.Objects.TreeView
+       (treeViewRowExpanded, onTreeViewRowActivated,
+        onTreeViewRowExpanded, treeViewGetSelection,
+        treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
+        treeViewNew, TreeView(..))
+import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
+import GI.Gtk.Objects.TreeViewColumn
+       (treeViewColumnSetReorderable, treeViewColumnSetResizable,
+        treeViewColumnSetSizing, treeViewColumnNew)
+import GI.Gtk.Enums
+       (MessageType(..), PolicyType(..), ShadowType(..),
+        TreeViewColumnSizing(..))
+import GI.Gtk.Objects.CellRendererPixbuf
+       (cellRendererPixbufStockId, cellRendererPixbufNew)
+import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
+import Data.GI.Base (set)
+import Data.GI.Base.Attributes (AttrOp(..))
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetAttributeFunc, cellLayoutSetAttributes)
+import GI.Gtk.Objects.CellRendererText
+       (cellRendererTextMarkup, cellRendererTextNew)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Container (containerAdd)
+import Data.GI.Gtk.ModelView.CustomStore
+       (customStoreGetRow)
+import Data.Int (Int32)
+import Data.GI.Gtk.ModelView.Types
+       (treePathGetIndices', treePathNewFromIndices')
 
 
 -- | The data for a single record in the Workspace Pane
@@ -187,37 +196,40 @@ toMarkup record pkg = do
 
 
 -- | The icon to show for a record
-toIcon :: WorkspaceRecord -> Maybe Text
+toIcon :: WorkspaceRecord -> Text
 toIcon record = case record of
     FileRecord path
-        | takeExtension path == ".hs"    -> Just "ide_source"
-        | takeExtension path == ".cabal" -> Just "ide_cabal_file"
+        | takeExtension path == ".hs"    -> "ide_source"
+        | takeExtension path == ".cabal" -> "ide_cabal_file"
     DirRecord p isSrc
-        | isSrc     -> Just "ide_source_folder"
-        | otherwise -> Just "ide_folder"
-    PackageRecord _ -> Just "ide_package"
-    ComponentsRecord -> Just "ide_component"
-    AddSourcesRecord -> Just "ide_source_dependency"
-    AddSourceRecord _ -> Just "ide_package"
-    _ -> Nothing
+        | isSrc     -> "ide_source_folder"
+        | otherwise -> "ide_folder"
+    PackageRecord _ -> "ide_package"
+    ComponentsRecord -> "ide_component"
+    AddSourcesRecord -> "ide_source_dependency"
+    AddSourceRecord _ -> "ide_package"
+    _ -> ""
 
 
 -- | Gets the package to which a node in the tree belongs
-iterToPackage :: TreeStore WorkspaceRecord -> TreeIter -> IDEM (Maybe IDEPackage)
+iterToPackage :: ForestStore WorkspaceRecord -> TreeIter -> IDEM (Maybe IDEPackage)
 iterToPackage store iter = do
-    path <- liftIO $ treeModelGetPath store iter
+    path <- treeModelGetPath store iter
     treePathToPackage store path
 
 -- | Gets the package to which a node in the tree belongs
-treePathToPackage :: TreeStore WorkspaceRecord -> TreePath -> IDEM (Maybe IDEPackage)
-treePathToPackage store (n:_) = do
-    record <- liftIO $ treeStoreGetValue store [n]
+treePathToPackage :: ForestStore WorkspaceRecord -> TreePath -> IDEM (Maybe IDEPackage)
+treePathToPackage store p = treePathGetIndices' p >>= treePathToPackage' store
+
+treePathToPackage' :: ForestStore WorkspaceRecord -> [Int32] -> IDEM (Maybe IDEPackage)
+treePathToPackage' store (n:_) = do
+    record <- forestStoreGetValue store =<< treePathNewFromIndices' [n]
     case record of
         (PackageRecord pkg) -> return (Just pkg)
         _                     -> do
             liftIO $ debugM "leksah" "treePathToPackage: Unexpected entry at root forest"
             return Nothing
-treePathToPackage _ _ = do
+treePathToPackage' _ _ = do
     liftIO $ debugM "leksah" "treePathToPackage is called with empty path"
     return Nothing
 
@@ -245,7 +257,7 @@ canExpand record pkg = case record of
 data WorkspacePane        =   WorkspacePane {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   recordStore     ::   TreeStore WorkspaceRecord
+,   recordStore     ::   ForestStore WorkspaceRecord
 } deriving Typeable
 
 
@@ -257,7 +269,7 @@ data WorkspaceState = WorkspaceState
 instance Pane WorkspacePane IDEM where
     primPaneName _  =   __ "Workspace"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   liftIO . toWidget . scrolledView
     paneId b        =   "*Workspace"
 
 instance RecoverablePane WorkspacePane WorkspaceState IDEM where
@@ -265,64 +277,62 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
     recoverState pp WorkspaceState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
-    builder pp nb windows = reifyIDE $ \ ideR -> do
-        recordStore   <-  treeStoreNew []
+    builder pp nb windows = do
+        ideR <- ask
+        recordStore <-  forestStoreNew []
         treeView    <-  treeViewNew
-        treeViewSetModel treeView recordStore
+        treeViewSetModel treeView (Just recordStore)
 
-
-
-        col1         <- treeViewColumnNew
-        treeViewColumnSetSizing col1 TreeViewColumnAutosize
+        col1        <- treeViewColumnNew
+        treeViewColumnSetSizing col1 TreeViewColumnSizingAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
         treeViewAppendColumn treeView col1
 
-
-        prefs <- reflectIDE (readIDE prefs) ideR
+        prefs <- readIDE prefs
         when (showWorkspaceIcons prefs) $ do
             renderer2    <- cellRendererPixbufNew
             cellLayoutPackStart col1 renderer2 False
-            set renderer2 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing :: Maybe Text) ]
+            set renderer2 [ cellRendererPixbufStockId := "" ]
             cellLayoutSetAttributes col1 renderer2 recordStore
-                $ \record -> [ newAttrFromMaybeStringProperty "stock-id" := toIcon record]
+                $ \record -> [ cellRendererPixbufStockId := toIcon record]
 
         renderer1    <- cellRendererTextNew
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributeFunc col1 renderer1 recordStore $ \iter -> do
-            record <- treeModelGetRow recordStore iter
+            record <- customStoreGetRow recordStore iter
             mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
             forM_ mbPkg $ \pkg -> do
                 -- The cellrenderer is stateful, so it knows which cell this markup will be for (the cell at iter)
                 markup <- flip reflectIDE ideR $ toMarkup record pkg
-                forM_ mbPkg $ \pkg -> set renderer1 [ cellTextMarkup := Just markup]
+                forM_ mbPkg $ \pkg -> set renderer1 [ cellRendererTextMarkup := markup]
 
         -- treeViewSetActiveOnSingleClick treeView True
         treeViewSetHeadersVisible treeView False
         sel <- treeViewGetSelection treeView
-        -- treeSelectionSetMode sel SelectionSingle
+        -- treeSelectionSetMode sel SelectionModeSingle
 
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        scrolledWindowSetShadowType scrolledView ShadowIn
+        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
 
         let wsPane = WorkspacePane {..}
 
-        cid1 <- after treeView focusInEvent $ do
-            liftIO $ reflectIDE (makeActive wsPane) ideR
+        cid1 <- onIDE afterWidgetFocusInEvent treeView $ do
+            liftIDE $ makeActive wsPane
             return True
 
-        on treeView rowExpanded $ \iter path -> do
-            record <- treeStoreGetValue recordStore path
+        onTreeViewRowExpanded treeView $ \iter path -> do
+            record <- forestStoreGetValue recordStore path
             mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
             forM_ mbPkg $ \pkg -> do
                 flip reflectIDE ideR $ do
                     workspaceTryQuiet $ do
                         runPackage (refreshPackageTreeFrom recordStore treeView path) pkg
 
-        on treeView rowActivated $ \path col -> do
-            record <- treeStoreGetValue recordStore path
+        onTreeViewRowActivated treeView $ \path col -> do
+            record <- forestStoreGetValue recordStore path
             mbPkg    <- flip reflectIDE ideR $ treePathToPackage recordStore path
             forM_ mbPkg $ \pkg -> do
                 expandable <- flip reflectIDE ideR $ canExpand record pkg
@@ -334,10 +344,10 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
                         _ -> when expandable $ do
                                  void $ treeViewToggleRow treeView path
 
-        (cid3, cid4) <- reflectIDE (treeViewContextMenu' treeView recordStore contextMenuItems) ideR
-        reflectIDE (refresh wsPane) ideR
+        cids2 <- treeViewContextMenu' treeView recordStore contextMenuItems
+        refresh wsPane
 
-        return (Just wsPane, map ConnectC [cid1, cid3, cid4])
+        return (Just wsPane, cid1:cids2)
 
 -- | Get the Workspace pane
 getWorkspacePane :: IDEM WorkspacePane
@@ -394,16 +404,17 @@ refresh pane = do
         setChildren Nothing store view [] (map PackageRecord packages)
 
 
--- | Mutates the 'TreeStore' with the given TreePath as root to attach new
+-- | Mutates the 'ForestStore' with the given TreePath as root to attach new
 -- entries to. Walks the directory tree recursively when refreshing directories.
-refreshPackageTreeFrom :: TreeStore WorkspaceRecord -> TreeView -> TreePath -> PackageAction
+refreshPackageTreeFrom :: ForestStore WorkspaceRecord -> TreeView -> TreePath -> PackageAction
 refreshPackageTreeFrom store view path = do
-    record     <- liftIO $ treeStoreGetValue store path
+    record     <- liftIO $ forestStoreGetValue store path
     Just pkg   <- liftIDE $ treePathToPackage store path
     expandable <- liftIDE $ canExpand record pkg
 
     kids     <- children record
-    lift $ setChildren (Just pkg) store view path kids
+    path' <- treePathGetIndices' path
+    lift $ setChildren (Just pkg) store view path' kids
 
 -- | Returns the children of the 'WorkspaceRecord'.
 children :: WorkspaceRecord -> PackageM [WorkspaceRecord]
@@ -476,13 +487,13 @@ componentsRecords = do
 -- is already present, it is kept in the same (expanded) state.
 -- If a the parent record is not expanded just makes sure at least one of
 -- the chldren is added.
-setChildren :: Maybe IDEPackage -> TreeStore WorkspaceRecord -> TreeView -> TreePath -> [WorkspaceRecord] -> WorkspaceAction
-setChildren _ store _ [] [] = liftIO $ treeStoreClear store
+setChildren :: Maybe IDEPackage -> ForestStore WorkspaceRecord -> TreeView -> [Int32] -> [WorkspaceRecord] -> WorkspaceAction
+setChildren _ store _ [] [] = liftIO $ forestStoreClear store
 setChildren mbPkg store view parentPath kids = do
     -- We only need to get all the children right when they are visible
     expanded <- if null parentPath
                     then return True
-                    else liftIO $ treeViewRowExpanded view parentPath
+                    else liftIO $ treeViewRowExpanded view =<< treePathNewFromIndices' parentPath
 
     let kidsToAdd = (if expanded
                             then id
@@ -490,8 +501,12 @@ setChildren mbPkg store view parentPath kids = do
 
     forM_ (zip [0..] kidsToAdd) $ \(n, record) -> do
       liftIO $ do
-        mbParentIter <- treeModelGetIter store parentPath
-        mbChildIter <- treeModelIterNthChild store mbParentIter n
+        mbChildIter <- (treeModelGetIter store =<< treePathNewFromIndices' parentPath) >>= \case
+            Just parentIter ->
+                treeModelIterNthChild store (Just parentIter) n >>= \case
+                    (True, childIter) -> return (Just childIter)
+                    (False, _)        -> return Nothing
+            Nothing         -> return Nothing
         let compare rec1 rec2 = case (rec1, rec2) of
                 (PackageRecord p1, PackageRecord p2) -> ipdCabalFile p1 == ipdCabalFile p2
                 _ -> rec1 == rec2
@@ -499,12 +514,13 @@ setChildren mbPkg store view parentPath kids = do
         case (mbChildIter, findResult) of
             (_, WhereExpected iter) -> do -- it's already there
                 path <- treeModelGetPath store iter
-                treeStoreSetValue store path record
+                forestStoreSetValue store path record
             (Just iter, Found _) -> do -- it's already there at a later sibling
                 path <- treeModelGetPath store iter
                 removeUntil record store path
             _ -> do
-                treeStoreInsert store parentPath n record
+                parentPath' <- treePathNewFromIndices' parentPath
+                forestStoreInsert store parentPath' (fromIntegral n) record
 
       let pkg = case record of
                         PackageRecord p -> p
@@ -515,20 +531,20 @@ setChildren mbPkg store view parentPath kids = do
           setChildren (Just pkg) store view (parentPath ++ [n]) grandKids
 
     liftIO $ if null kids
-        then treeStoreRemoveChildren store parentPath
-        else when expanded . void $ removeRemaining store (parentPath++[length kids])
+        then forestStoreRemoveChildren store parentPath
+        else when expanded . void $ removeRemaining store =<< treePathNewFromIndices' (parentPath++[fromIntegral $ length kids])
 
 
 -- * Context menu
 
-contextMenuItems :: WorkspaceRecord -> TreePath -> TreeStore WorkspaceRecord -> IDEM [[(Text, IDEAction)]]
+contextMenuItems :: WorkspaceRecord -> TreePath -> ForestStore WorkspaceRecord -> IDEM [[(Text, IDEAction)]]
 contextMenuItems record path store = do
     case record of
         (FileRecord fp) -> do
             let onDeleteFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
                     showDialogOptions
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
-                        MessageQuestion
+                        MessageTypeQuestion
                         [ ("Delete File", removeFile fp >> reflectIDE refreshWorkspacePane ideRef)
                         , ("Cancel", return ())
                         ]
@@ -577,7 +593,7 @@ contextMenuItems record path store = do
             let onDeleteDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
                     showDialogOptions
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
-                        MessageQuestion
+                        MessageTypeQuestion
                         [ ("Delete directory", removeDirectoryRecursive fp >> reflectIDE refreshWorkspacePane ideRef)
                         , ("Cancel", return ())
                         ]
@@ -661,55 +677,59 @@ dirToModulePath fp = do
         capitalize [] = []
 
 
--- * Utility functions for operating on 'TreeStore'
+-- * Utility functions for operating on 'ForestStore'
 
 
 
 leaf :: a -> Tree a
 leaf x = Node x []
 
-treeStoreRemoveChildren :: TreeStore a -> TreePath -> IO ()
-treeStoreRemoveChildren store path = do
-    Node record children <- treeStoreGetTree store path
-    forM_ (zip [0..] children) $ \_ -> do
-        treeStoreRemove store (path ++ [0]) -- this works because mutation ...
+forestStoreRemoveChildren :: ForestStore a -> [Int32] -> IO ()
+forestStoreRemoveChildren store path = do
+    Node record children <- forestStoreGetTree store =<< treePathNewFromIndices' path
+    forM_ (zip [0..] children) $ \_ ->
+        forestStoreRemove store =<< treePathNewFromIndices' (path ++ [0]) -- this works because mutation ...
 
 data FindResult = WhereExpected TreeIter | Found TreeIter | NotFound
 
--- | Tries to find the given value in the 'TreeStore'. Only looks at the given 'TreeIter' and its
+-- | Tries to find the given value in the 'ForestStore'. Only looks at the given 'TreeIter' and its
 -- sibling nodes to the right.
 -- Returns @WhereExpected iter@ if the records is found at the provided 'TreeIter'
 -- Returns @Found iter@ if the record is found at a sibling iter
 -- Returns @NotFound@ otherwise
-searchToRight :: (a -> a -> Bool) -> a -> TreeStore a -> Maybe TreeIter -> IO FindResult
+searchToRight :: (a -> a -> Bool) -> a -> ForestStore a -> Maybe TreeIter -> IO FindResult
 searchToRight compare _ _ Nothing = return NotFound
 searchToRight compare a store (Just iter) = do
-    row <- treeModelGetRow store iter
+    row <- customStoreGetRow store iter
     if compare row a
         then return $ WhereExpected iter
-        else treeModelIterNext store iter >>= find'
+        else do
+            next <- treeIterCopy iter
+            treeModelIterNext store next >>= find' next
   where
-    find' :: Maybe TreeIter -> IO FindResult
-    find' Nothing = return NotFound
-    find' (Just iter) = do
-        row <- treeModelGetRow store iter
+    find' :: TreeIter -> Bool -> IO FindResult
+    find' _ False = return NotFound
+    find' iter True = do
+        row <- customStoreGetRow store iter
         if compare row a
             then return $ Found iter
-            else treeModelIterNext store iter >>= find'
+            else do
+                next <- treeIterCopy iter
+                treeModelIterNext store iter >>= find' next
 
 
 -- | Starting at the node at the given 'TreePath', removes all sibling nodes to the right
 --   until the given value is found.
-removeUntil :: Eq a => a -> TreeStore a -> TreePath -> IO ()
+removeUntil :: Eq a => a -> ForestStore a -> TreePath -> IO ()
 removeUntil a store path = do
-    row <- treeStoreGetValue store path
+    row <- forestStoreGetValue store path
     when (row /= a) $ do
-        found <- treeStoreRemove store path
+        found <- forestStoreRemove store path
         when found $ removeUntil a store path
 
 
 -- | Starting at the node at the given 'TreePath', removes all sibling nodes to the right
-removeRemaining :: TreeStore a -> TreePath -> IO ()
+removeRemaining :: ForestStore a -> TreePath -> IO ()
 removeRemaining store path = do
-    found <- treeStoreRemove store path
+    found <- forestStoreRemove store path
     when found $ removeRemaining store path

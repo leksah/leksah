@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -27,11 +26,6 @@ module IDE.Pane.WebKit.Inspect (
 
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
-import Graphics.UI.Gtk
-       (scrolledWindowSetShadowType, entryGetText, entryActivated,
-        boxPackStart, entrySetText, Entry, VBox, entryNew, vBoxNew,
-        postGUISync, scrolledWindowSetPolicy, scrolledWindowNew,
-        castToWidget, ScrolledWindow)
 import IDE.Utils.GUIUtils
 import Data.Typeable (Typeable)
 import IDE.Core.Types (IDEAction, IDEM, IDE(..))
@@ -39,48 +33,31 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
 import IDE.Core.State
        (modifyIDE_, postSyncIDE, reifyIDE, leksahOrPackageDir)
-import Graphics.UI.Gtk.General.Enums
-       (ShadowType(..), Packing(..), PolicyType(..))
-
-#ifdef WEBKITGTK
-import Graphics.UI.Gtk
-       (toggleActionActive, castToMenuItem, actionCreateMenuItem,
-        toggleActionNew, menuShellAppend, toggleActionSetActive,
-        menuItemActivate, menuItemNewWithLabel, eventModifier,
-        eventKeyName, keyPressEvent, focusInEvent, containerAdd,
-        Modifier(..), after)
-import Graphics.UI.Gtk.WebKit.Types (WebView(..))
-import Graphics.UI.Gtk.WebKit.WebView
-       (populatePopup, webViewGoBack, webViewZoomOut, webViewZoomIn,
-        webViewLoadString, webViewZoomLevel, webViewReload, webViewNew,
-        webViewLoadUri)
-import System.Glib.Attributes (AttrOp(..), set, get)
-import System.Glib.Signals (on)
 import IDE.Core.State (reflectIDE)
 import Graphics.UI.Editor.Basics (Connection(..))
 import Text.Show.Pretty
        (HtmlOpts(..), defaultHtmlOpts, valToHtmlPage, parseValue, getDataDir)
 import System.FilePath ((</>))
-#endif
 import Data.IORef (writeIORef, newIORef, readIORef, IORef)
 import Control.Applicative ((<$>))
 import System.Log.Logger (debugM)
-import Graphics.UI.Gtk.WebKit.WebView
-       (webViewSetWebSettings, webViewGetWebSettings, loadCommitted,
-        webViewGetUri)
-import Graphics.UI.Gtk.WebKit.WebFrame (webFrameGetUri)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
-import Graphics.UI.Gtk.WebKit.WebSettings
-       (webSettingsMonospaceFontFamily)
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew, ScrolledWindow(..))
+import GI.WebKit.Objects.WebView
+       (setWebViewSettings, getWebViewSettings, webViewNew, WebView(..))
+import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
+import GI.WebKit.Objects.WebSettings
+       (setWebSettingsMonospaceFontFamily)
+import GI.Gtk.Objects.Container (containerAdd)
 
 data IDEInspect = IDEInspect {
     scrollWin     :: ScrolledWindow
-#ifdef WEBKITGTK
   , inspectView   :: WebView
-#else
-  , inspectState   :: IORef InspectState
-#endif
 } deriving Typeable
 
 data InspectState = InspectState {
@@ -90,55 +67,33 @@ instance Pane IDEInspect IDEM
     where
     primPaneName _  =   "Inspect"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrollWin
+    getTopWidget    =   liftIO . toWidget . scrollWin
     paneId b        =   "*Inspect"
 
 instance RecoverablePane IDEInspect InspectState IDEM where
-    saveState p     =   liftIO $
-#ifdef WEBKITGTK
-        return (Just InspectState{})
-#else
-        Just <$> readIORef (inspectState p)
-#endif
+    saveState p = return (Just InspectState{})
     recoverState pp InspectState {} = do
-        nb      <-  getNotebook pp
-        mbPane <- buildPane pp nb builder
-        case mbPane of
-            Nothing -> return ()
-            Just p  -> liftIO $
-#ifdef WEBKITGTK
-                return ()
-#else
-                writeIORef (inspectState p) InspectState {..}
-#endif
-        return mbPane
+        nb <- getNotebook pp
+        buildPane pp nb builder
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        scrollWin <- scrolledWindowNew Nothing Nothing
-        scrolledWindowSetShadowType scrollWin ShadowIn
+        scrollWin <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType scrollWin ShadowTypeIn
 
-#ifdef WEBKITGTK
         inspectView <- webViewNew
-        settings <- webViewGetWebSettings inspectView
-        settings `set` [webSettingsMonospaceFontFamily := ("Consolas" :: Text)]
-        webViewSetWebSettings inspectView settings
+        settings <- getWebViewSettings inspectView
+        setWebSettingsMonospaceFontFamily settings "Consolas"
+        setWebViewSettings inspectView settings
         alwaysHtmlRef <- newIORef False
         containerAdd scrollWin inspectView
-#else
-        inspectState <- newIORef InspectState {}
-#endif
 
-        scrolledWindowSetPolicy scrollWin PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetPolicy scrollWin PolicyTypeAutomatic PolicyTypeAutomatic
         let inspect = IDEInspect {..}
 
-#ifdef WEBKITGTK
-        cid1 <- after inspectView focusInEvent $ do
+        cid1 <- ConnectC inspectView <$> afterWidgetFocusInEvent inspectView ( \e -> do
             liftIO $ reflectIDE (makeActive inspect) ideR
-            return True
+            return True)
 
-        return (Just inspect, [ConnectC cid1])
-#else
-        return (Just inspect, [])
-#endif
+        return (Just inspect, [cid1])
 
 
 getInspectPane :: Maybe PanePath -> IDEM IDEInspect

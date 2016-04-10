@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 -----------------------------------------------------------------------------
 --
@@ -35,29 +36,6 @@ module IDE.Command (
 ,   instrumentSecWindow
 ) where
 
-import Graphics.UI.Gtk
-       (iconThemeAddBuiltinIcon, iconThemeLoadIcon, iconThemeGetDefault,
-        toToolbar, ToolbarClass, Toolbar(..), keyToChar, eventKeyVal,
-        eventModifier, eventKeyName, EKey, containerAdd,
-        windowAddAccelGroup, keyPressEvent, boxPackEnd, boxPackStart,
-        widgetSetName, vBoxNew, windowSetIconFromFile, Widget, Window,
-        actionGroupGetAction, uiManagerGetActionGroups, Action,
-        actionSetSensitive, iconFactoryAdd, iconSetNewFromPixbuf,
-        pixbufNewFromFile, iconFactoryAddDefault, iconFactoryNew,
-        dialogRun, aboutDialogAuthors, aboutDialogWebsite,
-        aboutDialogLicense, aboutDialogComments, aboutDialogCopyright,
-        aboutDialogVersion, aboutDialogName, aboutDialogNew, mainQuit,
-        widgetHide, widgetShow, castToWidget, separatorMenuItemNew,
-        containerGetChildren, Menu, widgetSetSizeRequest, toolbarSetStyle,
-        set, AttrOp(..), castToToolbar, castToMenuBar, uiManagerGetWidget,
-        uiManagerGetAccelGroup, actionActivated, actionNew,
-        actionGroupAddActionWithAccel, actionToggled, toggleActionNew,
-        uiManagerAddUiFromString, uiManagerInsertActionGroup,
-        actionGroupNew, UIManager, widgetShowAll, menuItemSetSubmenu,
-        widgetDestroy, menuItemGetSubmenu, menuShellAppend,
-        menuItemActivate, menuItemNewWithLabel, menuNew, Packing(..),
-        ToolbarStyle(..), PositionType(..), on, IconSize(..), Modifier(..),
-        widgetSetSensitive)
 import System.FilePath
 import Data.Version
 import Prelude hiding (catch)
@@ -88,7 +66,6 @@ import IDE.ImportTool (resolveErrors)
 import IDE.LogRef
 import IDE.Debug
 import System.Directory (doesFileExist)
-import Graphics.UI.Gtk.Gdk.EventM (EventM)
 import qualified Data.Map as  Map (lookup, empty)
 import Data.List (sort)
 import Control.Event (registerEvent)
@@ -112,7 +89,6 @@ import System.Log.Logger (debugM)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
-import Graphics.UI.GtkInternals (unToolbar)
 import IDE.Session
        (saveSessionAs, loadSession, saveSession, sessionClosePane,
         loadSessionPrompt, saveSessionAsPrompt, viewFullScreen)
@@ -124,18 +100,62 @@ import qualified Data.Text.IO as T (readFile)
 import Data.Monoid (Monoid(..), (<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
-import Graphics.UI.Gtk.General.IconTheme (IconLookupFlags(..))
+import GI.Gtk.Enums
+       (IconSize(..), ToolbarStyle(..), PositionType(..))
+import GI.Gtk.Objects.Menu (Menu(..), menuNew)
+import GI.Gtk.Objects.MenuItem
+       (toMenuItem, menuItemSetSubmenu, menuItemGetSubmenu,
+        onMenuItemActivate, menuItemNewWithLabel)
+import GI.Gtk.Objects.Widget
+       (WidgetK, onWidgetKeyPressEvent, widgetName, widgetSetName,
+        Widget(..), widgetShow, widgetSetSizeRequest, widgetShowAll,
+        widgetDestroy, widgetHide, widgetSetSensitive)
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import GI.Gtk.Objects.UIManager
+       (uIManagerGetActionGroups, uIManagerGetWidget,
+        uIManagerGetAccelGroup, uIManagerAddUiFromString,
+        uIManagerInsertActionGroup, UIManager(..))
+import GI.Gtk.Objects.ActionGroup
+       (actionGroupGetAction, actionGroupAddActionWithAccel,
+        actionGroupNew)
+import GI.Gtk.Objects.ToggleAction
+       (onToggleActionToggled, toggleActionNew)
+import GI.Gtk.Objects.Action
+       (onActionActivate, Action(..), actionSetSensitive, actionNew)
+import Data.GI.Base (on, set, unsafeCastTo)
+import GI.Gtk.Objects.MenuBar (MenuBar(..))
+import GI.Gtk.Objects.Toolbar
+       (toolbarSetIconSize, toolbarSetStyle, Toolbar(..))
+import GI.Gtk.Objects.Container
+       (containerAdd, containerGetChildren, Container(..))
+import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
+import GI.Gtk.Functions (mainQuit)
+import GI.Gtk.Objects.AboutDialog
+       (aboutDialogSetAuthors, setAboutDialogAuthors,
+        aboutDialogProgramName, aboutDialogAuthors, aboutDialogWebsite,
+        aboutDialogLicense, aboutDialogComments, aboutDialogCopyright,
+        aboutDialogVersion, aboutDialogNew)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.Dialog (dialogRun)
+import GI.Gtk.Objects.IconFactory
+       (iconFactoryAdd, iconFactoryAddDefault, iconFactoryNew)
+import GI.GdkPixbuf.Objects.Pixbuf (pixbufNewFromFile)
+import GI.Gtk.Structs.IconSet (iconSetNewFromPixbuf)
+import GI.Gtk.Objects.IconTheme (iconThemeAddBuiltinIcon)
+import GI.Gtk.Objects.Window
+       (WindowK, windowAddAccelGroup, windowSetIconFromFile, Window(..))
+import GI.Gtk.Objects.VBox (vBoxNew)
+import Graphics.UI.Editor.Parameters
+       (boxPackEnd', Packing(..), boxPackStart')
+import GI.Gdk.Structs.EventKey
+       (eventKeyReadState, eventKeyReadKeyval, EventKey(..))
+import GI.Gdk.Functions (keyvalToUnicode, keyvalName)
+import GI.Gdk.Flags (ModifierType, ModifierType(..))
+import GI.Gtk.Objects.AccelGroup (AccelGroup(..))
+import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
-
-foreign import ccall safe "gtk_toolbar_set_icon_size"
-  gtk_toolbar_set_icon_size :: Ptr Toolbar -> CInt -> IO ()
-
-toolbarSetIconSize :: ToolbarClass self => self -> IconSize -> IO ()
-toolbarSetIconSize self iconSize =
-  withForeignPtr (unToolbar $ toToolbar self) $
-    \selfPtr ->gtk_toolbar_set_icon_size selfPtr (fromIntegral $ fromEnum iconSize)
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)
@@ -437,13 +457,13 @@ mkActions =
     ,AD "UseDarkInterface" (__ "_Use Dark Interface") Nothing Nothing
         viewUseDarkInterface [] True
     ,AD "ViewTabsLeft" (__ "Tabs Left") Nothing Nothing
-        (viewTabsPos PosLeft) [] False
+        (viewTabsPos PositionTypeLeft) [] False
     ,AD "ViewTabsRight" (__ "Tabs Right") Nothing Nothing
-        (viewTabsPos PosRight) [] False
+        (viewTabsPos PositionTypeRight) [] False
     ,AD "ViewTabsUp" (__ "Tabs Up") Nothing Nothing
-        (viewTabsPos PosTop) [] False
+        (viewTabsPos PositionTypeTop) [] False
     ,AD "ViewTabsDown" (__ "Tabs Down") Nothing Nothing
-        (viewTabsPos PosBottom) [] False
+        (viewTabsPos PositionTypeBottom) [] False
     ,AD "ViewSwitchTabs" (__ "Tabs On/Off") Nothing Nothing
         viewSwitchTabs [] False
 
@@ -519,13 +539,14 @@ updateRecentEntries = do
             else
                 forM_ recentFiles' $ \s -> do
                     mi <- menuItemNewWithLabel $ T.pack s
-                    mi `on` menuItemActivate $ reflectIDE (fileOpen' s) ideR
+                    onMenuItemActivate mi $ reflectIDE (fileOpen' s) ideR
                     menuShellAppend recentFilesMenu mi
-        oldSubmenu <- menuItemGetSubmenu recentFilesItem
-        when (isJust oldSubmenu) $ do
-            widgetHide (fromJust oldSubmenu)
-            widgetDestroy (fromJust oldSubmenu)
-        menuItemSetSubmenu recentFilesItem recentFilesMenu
+        nullToNothing (menuItemGetSubmenu recentFilesItem) >>= \case
+            Just oldSubmenu -> do
+                widgetHide oldSubmenu
+                widgetDestroy oldSubmenu
+            Nothing -> return ()
+        menuItemSetSubmenu recentFilesItem (Just recentFilesMenu)
         widgetShowAll recentFilesMenu
 
         recentWorkspacesMenu    <-  menuNew
@@ -538,14 +559,15 @@ updateRecentEntries = do
             else
                 forM_ existingRecentWorkspaces $ \s -> do
                     mi <- menuItemNewWithLabel $ T.pack s
-                    mi `on` menuItemActivate $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspacePane) ideR
+                    onMenuItemActivate mi $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspacePane) ideR
                     menuShellAppend recentWorkspacesMenu mi
 
-        oldSubmenu <- menuItemGetSubmenu recentWorkspacesItem
-        when (isJust oldSubmenu) $ do
-            widgetHide (fromJust oldSubmenu)
-            widgetDestroy (fromJust oldSubmenu)
-        menuItemSetSubmenu recentWorkspacesItem recentWorkspacesMenu
+        nullToNothing (menuItemGetSubmenu recentWorkspacesItem) >>= \case
+            Just oldSubmenu -> do
+                widgetHide oldSubmenu
+                widgetDestroy oldSubmenu
+            Nothing -> return ()
+        menuItemSetSubmenu recentWorkspacesItem (Just recentWorkspacesMenu)
         widgetShowAll recentWorkspacesMenu)
 
 
@@ -554,10 +576,10 @@ updateRecentEntries = do
 --
 makeMenu :: UIManager -> [ActionDescr IDERef] -> Text -> IDEAction
 makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
-    actionGroupGlobal <- actionGroupNew ("global" :: Text)
+    actionGroupGlobal <- actionGroupNew "global"
     mapM_ (actm ideR actionGroupGlobal) actions
-    uiManagerInsertActionGroup uiManager actionGroupGlobal 1
-    uiManagerAddUiFromString uiManager menuDescription
+    uIManagerInsertActionGroup uiManager actionGroupGlobal 1
+    uIManagerAddUiFromString uiManager menuDescription (-1)
     return ())
     where
         actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
@@ -566,12 +588,12 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
                                     else (Just (head accs), head accs <> "=" <> name)
             if isToggle
                 then do
-                    act <- toggleActionNew name label tooltip stockId
-                    on act actionToggled $ doAction ideAction ideR accString
+                    act <- toggleActionNew name (Just label) tooltip stockId
+                    onToggleActionToggled act $ doAction ideAction ideR accString
                     actionGroupAddActionWithAccel ag act acc
                 else do
-                    act <- actionNew name label tooltip stockId
-                    on act actionActivated $ doAction ideAction ideR accString
+                    act <- actionNew name (Just label) tooltip stockId
+                    onActionActivate act $ doAction ideAction ideR accString
                     actionGroupAddActionWithAccel ag act acc
         doAction ideAction ideR accStr =
             reflectIDE (do
@@ -579,18 +601,12 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
                 triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])
                 return ()) ideR
 
--- getMenuAndToolbars :: UIManager -> IO (AccelGroup, MenuBar, Toolbar)
+getMenuAndToolbars :: MonadIO m => UIManager -> m (AccelGroup, MenuBar, Toolbar)
 getMenuAndToolbars uiManager = do
-    accGroup <- uiManagerGetAccelGroup uiManager
-    mbMenu   <- uiManagerGetWidget uiManager ("/ui/menubar" :: Text)
-    let menu = case mbMenu of
-                    Just it -> castToMenuBar it
-                    Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create menubar")
-    mbToolbar <- uiManagerGetWidget uiManager ("/ui/toolbar" :: Text)
-    let toolbar = case mbToolbar of
-                    Just it -> castToToolbar it
-                    Nothing -> throwIDE (__ "Menu>>makeMenu: failed to create toolbar")
-    toolbarSetStyle toolbar ToolbarIcons
+    accGroup <- uIManagerGetAccelGroup uiManager
+    menu     <- uIManagerGetWidget uiManager "/ui/menubar" >>= liftIO . unsafeCastTo MenuBar
+    toolbar  <- uIManagerGetWidget uiManager "/ui/toolbar" >>= liftIO . unsafeCastTo Toolbar
+    toolbarSetStyle toolbar ToolbarStyleIcons
     toolbarSetIconSize toolbar IconSizeSmallToolbar
     widgetSetSizeRequest toolbar 700 (-1)
     return (accGroup,menu,toolbar)
@@ -600,39 +616,39 @@ textPopupMenu ideR menu = do
     let reflectIDE_ x = reflectIDE x ideR
     items <- containerGetChildren menu
     mi1 <- menuItemNewWithLabel (__ "Eval")
-    mi1 `on` menuItemActivate $ reflectIDE_ debugExecuteSelection
+    onMenuItemActivate mi1 $ reflectIDE_ debugExecuteSelection
     menuShellAppend menu mi1
     mi11 <- menuItemNewWithLabel (__ "Eval & Insert")
-    mi11 `on` menuItemActivate $
+    onMenuItemActivate mi11 $
       reflectIDE_ debugExecuteAndShowSelection
     menuShellAppend menu mi11
     mi12 <- menuItemNewWithLabel (__ "Step")
-    mi12 `on` menuItemActivate $ reflectIDE_ debugStepExpression
+    onMenuItemActivate mi12 $ reflectIDE_ debugStepExpression
     menuShellAppend menu mi12
     mi13 <- menuItemNewWithLabel (__ "Trace")
-    mi13 `on` menuItemActivate $ reflectIDE_ debugTraceExpression
+    onMenuItemActivate mi13 $ reflectIDE_ debugTraceExpression
     menuShellAppend menu mi13
     mi16 <- menuItemNewWithLabel (__ "Set Breakpoint")
-    mi16 `on` menuItemActivate $ reflectIDE_ debugSetBreakpoint
+    onMenuItemActivate mi16 $ reflectIDE_ debugSetBreakpoint
     menuShellAppend menu mi16
-    sep1 <- separatorMenuItemNew
+    sep1 <- separatorMenuItemNew >>= liftIO . toMenuItem
     menuShellAppend menu sep1
     mi14 <- menuItemNewWithLabel (__ "Type")
-    mi14 `on` menuItemActivate $ reflectIDE_ debugType
+    onMenuItemActivate mi14 $ reflectIDE_ debugType
     menuShellAppend menu mi14
     mi141 <- menuItemNewWithLabel (__ "Info")
-    mi141 `on` menuItemActivate $ reflectIDE_ debugInformation
+    onMenuItemActivate mi141 $ reflectIDE_ debugInformation
     menuShellAppend menu mi141
     mi15 <- menuItemNewWithLabel (__ "Kind")
-    mi15 `on` menuItemActivate $ reflectIDE_ debugKind
+    onMenuItemActivate mi15 $ reflectIDE_ debugKind
     menuShellAppend menu mi15
-    sep2 <- separatorMenuItemNew
+    sep2 <- separatorMenuItemNew >>= liftIO . toMenuItem
     menuShellAppend menu sep2
     mi2 <- menuItemNewWithLabel (__ "Find (text)")
-    mi2 `on` menuItemActivate $ reflectIDE_ (editFindInc Initial)
+    onMenuItemActivate mi2 $ reflectIDE_ (editFindInc Initial)
     menuShellAppend menu mi2
     mi3 <- menuItemNewWithLabel (__ "Search (metadata)")
-    mi3 `on` menuItemActivate $
+    onMenuItemActivate mi3 $
       reflectIDE_ $ do
          mbtext <- selectedTextOrCurrentIdentifier -- if no text selected, search for current identifier
          searchPane <- getSearch Nothing
@@ -640,12 +656,12 @@ textPopupMenu ideR menu = do
               Just t  -> searchMetaGUI searchPane t
               Nothing -> ideMessage Normal (__ "No identifier selected")
     menuShellAppend menu mi3
-    let interpretingEntries = [castToWidget mi16]
+    let interpretingEntries = [mi16]
     let interpretingSelEntries
-          = [castToWidget mi1, castToWidget mi11, castToWidget mi12,
-             castToWidget mi13, castToWidget mi14, castToWidget mi141,
-             castToWidget mi15]
-    let otherEntries = [castToWidget mi2, castToWidget mi3]
+          = [mi1, mi11, mi12,
+             mi13, mi14, mi141,
+             mi15]
+    let otherEntries = [mi2, mi3]
     -- isInterpreting' <- (reflectIDE isInterpreting ideR)
     selected <- reflectIDE selectedText ideR
 --    unless isInterpreting'
@@ -655,7 +671,7 @@ textPopupMenu ideR menu = do
     mapM_ widgetShow interpretingEntries
     mapM_ widgetShow interpretingSelEntries
     mapM_ widgetShow
-      (castToWidget sep1 : castToWidget sep2 : otherEntries)
+      (sep1 : sep2 : otherEntries)
     mapM_ widgetHide $ take 2 (reverse items)
 
 canQuit :: IDEM Bool
@@ -679,18 +695,19 @@ quit = do
 --
 aboutDialog :: IO ()
 aboutDialog = do
+    liftIO $ debugM "leksah" "aboutDialog"
     d <- aboutDialogNew
     dd <- getDataDir
-    (year, _, _) <- liftM (toGregorian . utctDay) getCurrentTime
+    (year, _, _) <- toGregorian . utctDay <$> getCurrentTime
     license <- catch (T.readFile $ dd </> T.unpack (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
-    set d [ aboutDialogName := ("Leksah" :: Text)
+    set d [ aboutDialogProgramName := "Leksah"
           , aboutDialogVersion := T.pack $ showVersion version
-          , aboutDialogCopyright := __ "Copyright 2007-" <> T.pack (show year) <> " Jürgen Nicklisch-Franken, Hamish Mackenzie"
+          , aboutDialogCopyright := __ "Copyright 2007-" <> T.pack (show year) <> " Jürgen Nicklisch-Franken, Hamish Mackenzie,\nJacco Krijnen, JP Moresmau"
           , aboutDialogComments := __ "An integrated development environement (IDE) for the " <>
                                __ "programming language Haskell and the Glasgow Haskell Compiler"
-          , aboutDialogLicense := Just license
-          , aboutDialogWebsite := ("http://leksah.org/" :: Text)
-          , aboutDialogAuthors := ["Jürgen Nicklisch-Franken","Hamish Mackenzie" :: Text] ]
+          , aboutDialogLicense := license
+          , aboutDialogWebsite := "http://leksah.org/"]
+    aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken","Hamish Mackenzie","Jacco Krijnen","JP Moresmau"]
     dialogRun d
     widgetDestroy d
     return ()
@@ -714,16 +731,16 @@ newIcons = catch (do
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
     loadIcon dataDir iconFactory name = do
-        pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name <> ".png")
+        pb      <-  pixbufNewFromFile . T.pack $ dataDir </> "pics" </> (name <> ".png")
         icon    <-  iconSetNewFromPixbuf pb
         iconFactoryAdd iconFactory (T.pack name) icon
-        iconThemeAddBuiltinIcon name 16 pb
+        iconThemeAddBuiltinIcon (T.pack name) 16 pb
 
 setSensitivity :: [(SensitivityMask, Bool)] -> IDEAction
 setSensitivity = mapM_ setSensitivitySingle
     where   setSensitivitySingle (sens,bool) = do
                 actions <- getActionsFor sens
-                liftIO $ mapM_ (`actionSetSensitive` bool) actions
+                mapM_ (`actionSetSensitive` bool) actions
                 let additionalActions = getAdditionalActionsFor sens
                 mapM_ (\a -> a bool) additionalActions
 
@@ -751,8 +768,8 @@ getActionsFor' l = do
     where
         getActionFor string = do
             uiManager' <- getUiManager
-            actionGroups <- liftIO $ uiManagerGetActionGroups uiManager'
-            res <- liftIO $ actionGroupGetAction (head actionGroups) string
+            actionGroups <- uIManagerGetActionGroups uiManager'
+            res <- nullToNothing $ actionGroupGetAction (head actionGroups) string
             when (isNothing res) $ ideMessage Normal $ T.pack $ printf (__ "Can't find UI Action %s") (T.unpack string)
             return res
 
@@ -767,7 +784,7 @@ viewDetachInstrumented = do
         Nothing     -> return ()
         Just (win,wid) -> do
             instrumentSecWindow win
-            liftIO $ widgetShowAll win
+            widgetShowAll win
 
 viewUseDarkInterface :: IDEAction
 viewUseDarkInterface = do
@@ -779,36 +796,33 @@ viewUseDarkInterface = do
         applyInterfaceTheme
 
 
-instrumentWindow :: Window -> Prefs -> Widget -> IDEAction
+instrumentWindow :: WidgetK topWidget => Window -> Prefs -> topWidget -> IDEAction
 instrumentWindow win prefs topWidget = do
     -- sets the icon
     ideR <- ask
     uiManager' <- getUiManager
-    liftIO $ do
-        dataDir <- getDataDir
-        let iconPath = dataDir </> "pics" </> "leksah.png"
-        iconExists  <-  doesFileExist iconPath
-        when iconExists $
-            windowSetIconFromFile win iconPath
-        vb <- vBoxNew False 1  -- Top-level vbox
-        widgetSetName vb ("topBox" :: Text)
-        (acc,menu,toolbar) <-  getMenuAndToolbars uiManager'
-        boxPackStart vb menu PackNatural 0
-        boxPackStart vb toolbar PackNatural 0
-        boxPackStart vb topWidget PackGrow 0
-        findbar <- reflectIDE (do
-            modifyIDE_ (\ide -> ide{toolbar = (True,Just toolbar)})
-            constructFindReplace ) ideR
-        boxPackStart vb findbar PackNatural 0
-        statusBar   <-  buildStatusbar
-        boxPackEnd vb statusBar PackNatural 0
-        win `on` keyPressEvent $ handleSpecialKeystrokes ideR
-        windowAddAccelGroup win acc
-        containerAdd win vb
-        reflectIDE (do
-            setBackgroundBuildToggled (backgroundBuild prefs)
-            setRunUnitTests (runUnitTests prefs)
-            setMakeModeToggled (makeMode prefs)) ideR
+    dataDir <- getDataDir
+    let iconPath = dataDir </> "pics" </> "leksah.png"
+    iconExists  <- liftIO $ doesFileExist iconPath
+    when iconExists $
+        windowSetIconFromFile win iconPath
+    vb <- vBoxNew False 1  -- Top-level vbox
+    widgetSetName vb "topBox"
+    (acc,menu,toolbar) <- getMenuAndToolbars uiManager'
+    boxPackStart' vb menu PackNatural 0
+    boxPackStart' vb toolbar PackNatural 0
+    boxPackStart' vb topWidget PackGrow 0
+    modifyIDE_ (\ide -> ide{toolbar = (True,Just toolbar)})
+    findbar <- constructFindReplace
+    boxPackStart' vb findbar PackNatural 0
+    statusBar <- buildStatusbar
+    boxPackEnd' vb statusBar PackNatural 0
+    onWidgetKeyPressEvent win $ handleSpecialKeystrokes ideR
+    windowAddAccelGroup win acc
+    containerAdd win vb
+    setBackgroundBuildToggled (backgroundBuild prefs)
+    setRunUnitTests (runUnitTests prefs)
+    setMakeModeToggled (makeMode prefs)
 
 instrumentSecWindow :: Window -> IDEAction
 instrumentSecWindow win = do
@@ -824,31 +838,31 @@ instrumentSecWindow win = do
 
         (acc,_,_) <-  getMenuAndToolbars uiManager'
         windowAddAccelGroup win acc
-        win `on` keyPressEvent $ handleSpecialKeystrokes ideR
+        onWidgetKeyPressEvent win $ handleSpecialKeystrokes ideR
         return ()
 
 --
 -- | Callback function for onKeyPress of the main window, so 'preprocess' any key
 --
-handleSpecialKeystrokes :: IDERef -> EventM EKey Bool
-handleSpecialKeystrokes ideR = do
-  name <- eventKeyName
-  mods <- eventModifier
-  keyVal <- eventKeyVal
-  let mbChar = keyToChar keyVal
+handleSpecialKeystrokes :: IDERef -> EventKey -> IO Bool
+handleSpecialKeystrokes ideR e = do
+  keyVal <- eventKeyReadKeyval e
+  name <- keyvalName keyVal
+  mods <- eventKeyReadState e
+  char <- toEnum . fromIntegral <$> keyvalToUnicode keyVal
   liftIO $ (`reflectIDE` ideR) $ do
     prefs' <- readIDE prefs
     case (name, mods) of
-        (tab, [Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+        (tab, [ModifierTypeControlMask]) | (tab == "Tab" || tab == "ISO_Left_Tab")
                                 && useCtrlTabFlipping prefs'      -> do
             flipDown
             return True
-        (tab, [Shift, Control]) | (tab == "Tab" || tab == "ISO_Left_Tab")
+        (tab, [ModifierTypeShiftMask, ModifierTypeControlMask]) | (tab == "Tab" || tab == "ISO_Left_Tab")
                                 && useCtrlTabFlipping prefs'      -> do
             flipUp
             return True
         _                                                            -> do
-                when (candyState prefs') (editKeystrokeCandy mbChar)
+                when (candyState prefs') (editKeystrokeCandy char)
                 sk  <- readIDE specialKey
                 sks <- readIDE specialKeys
                 case sk of
@@ -875,7 +889,7 @@ handleSpecialKeystrokes ideR = do
                         modifyIDE_ (\ide -> ide{specialKey = Nothing})
                         return True
     where
-    printMods :: [Modifier] -> Text
+    printMods :: [ModifierType] -> Text
     printMods = mconcat . map (T.pack . show)
 
 setSymbol :: Text -> Bool -> IDEAction

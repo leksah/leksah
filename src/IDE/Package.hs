@@ -1,7 +1,7 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Package
@@ -69,7 +69,6 @@ module IDE.Package (
 
 ) where
 
-import Graphics.UI.Gtk
 import Distribution.Package hiding (depends,packageId)
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Parse
@@ -128,6 +127,23 @@ import qualified Data.Text.IO as T (readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import IDE.Metainfo.Provider (updateSystemInfo)
+import GI.GLib.Functions (timeoutAdd)
+import GI.GLib.Constants (pattern PRIORITY_DEFAULT)
+import Data.GI.Base.Constructible (Constructible(..))
+import GI.Gtk.Objects.MessageDialog
+       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+        MessageDialog(..))
+import GI.Gtk.Objects.Dialog (dialogUseHeaderBar)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Enums
+       (WindowPosition(..), ResponseType(..), ButtonsType(..),
+        MessageType(..))
+import GI.Gtk.Objects.Window
+       (windowWindowPosition, windowSetTransientFor)
+import Graphics.UI.Editor.Parameters
+       (dialogRun', dialogSetDefaultResponse', dialogAddButton')
+import Data.GI.Base (set)
+import GI.Gtk.Objects.Widget (widgetDestroy)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -179,11 +195,11 @@ interruptSaveAndRun action = do
         then do
             liftIO $ debugM "leksah" "interruptSaveAndRun"
             interruptBuild
-            liftIO $ timeoutAddFull (do
+            timeoutAdd PRIORITY_DEFAULT 200 (do
                 reflectIDE (do
                     interruptSaveAndRun action
                     return False) ideR
-                return False) priorityDefault 200
+                return False)
             return ()
         else liftIDE run
   where
@@ -203,7 +219,9 @@ packageConfig' package continuation = do
     let dir = ipdPackageDir package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     if useStack
-        then ideMessage Normal (__ "Leksah is not running \"cabal configure\" because a stack.yaml file was found.")
+        then do
+            ideMessage Normal (__ "Leksah is not running \"cabal configure\" because a stack.yaml file was found.")
+            continuation True
         else do
             logLaunch <- getDefaultLogLaunch
             showDefaultLogLaunch'
@@ -273,13 +291,13 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                 then do
                     liftIO $ debugM "leksah" "buildPackage interruptBuild"
                     interruptBuild
-                    unless backgroundBuild . liftIO $ do
-                        timeoutAddFull (do
+                    unless backgroundBuild $ do
+                        timeoutAdd PRIORITY_DEFAULT 100 (do
                             reflectIDE (do
                                 buildPackage backgroundBuild jumpToWarnings withoutLinking
                                                 package continuation
                                 return False) ideR
-                            return False) priorityDefault 100
+                            return False)
                         return ()
                 else do
                     when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
@@ -298,10 +316,10 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                 when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace'; return ())
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild package backgroundBuild jumpToWarnings
-                    unless (any isError errs) $ do
-                        cmd <- lift $ readIDE autoCommand
-                        liftIO . postGUISync $ reflectIDE cmd ideR
-                        lift $ continuation True
+                    unless (any isError errs) . lift $ do
+                        cmd <- readIDE autoCommand
+                        postSyncIDE cmd
+                        continuation True
     )
     (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
 
@@ -386,7 +404,7 @@ packageInstallDependencies = do
                 ++ ipdConfigFlags package
                 ++ ipdInstallFlags package) dir $ do
                     logOutput logLaunch
-                    liftIO . postGUISync $ reflectIDE updateSystemInfo ideR)
+                    lift $ postSyncIDE updateSystemInfo)
             (\(e :: SomeException) -> print e)
 
 packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
@@ -414,17 +432,19 @@ packageRun' removeGhcjsFlagIfPresent package =
     if removeGhcjsFlagIfPresent && "--ghcjs" `elem` ipdConfigFlags package
         then do
             window <- liftIDE getMainWindow
-            resp <- liftIO $ do
-                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                        (__ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?")
-                dialogAddButton md (__ "Use _GHC") (ResponseUser 1)
-                dialogSetDefaultResponse md (ResponseUser 1)
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
-                widgetDestroy md
-                return resp
+            md <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeCancel,
+                    messageDialogText := __ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?"]
+            windowSetTransientFor md (Just window)
+            dialogAddButton' md (__ "Use _GHC") (AnotherResponseType 1)
+            dialogSetDefaultResponse' md (AnotherResponseType 1)
+            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            resp <- dialogRun' md
+            widgetDestroy md
             case resp of
-                ResponseUser 1 -> do
+                AnotherResponseType 1 -> do
                     let packWithNewFlags = package { ipdConfigFlags = filter (/="--ghcjs") $ ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
@@ -434,7 +454,7 @@ packageRun' removeGhcjsFlagIfPresent package =
         else liftIDE $ catchIDE (do
             ideR        <- ask
             maybeDebug   <- readIDE debugState
-            pd <- liftIO $ liftM flattenPackageDescription
+            pd <- liftIO $ fmap flattenPackageDescription
                              (readPackageDescription normal (ipdCabalFile package))
             mbExe <- readIDE activeExe
             let exe = exeToRun mbExe $ executables pd
@@ -475,7 +495,7 @@ isActiveExe selected (Executable name _ _) = selected == (T.pack name)
 
 -- | get executable to run
 --   no exe activated, take first one
-exeToRun :: (Maybe Text) -> [Executable] -> [Executable]
+exeToRun :: Maybe Text -> [Executable] -> [Executable]
 exeToRun Nothing (exe:_) = [exe]
 exeToRun Nothing _ = []
 exeToRun (Just selected) exes = take 1 $ filter (isActiveExe selected) exes
@@ -488,17 +508,19 @@ packageRunJavaScript' addFlagIfMissing package =
     if addFlagIfMissing && ("--ghcjs" `notElem` ipdConfigFlags package)
         then do
             window <- liftIDE getMainWindow
-            resp <- liftIO $ do
-                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                        (__ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?")
-                dialogAddButton md (__ "Use _GHCJS") (ResponseUser 1)
-                dialogSetDefaultResponse md (ResponseUser 1)
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
-                widgetDestroy md
-                return resp
+            md <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeCancel,
+                    messageDialogText := __ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?"]
+            windowSetTransientFor md (Just window)
+            dialogAddButton' md (__ "Use _GHCJS") (AnotherResponseType 1)
+            dialogSetDefaultResponse' md (AnotherResponseType 1)
+            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            resp <- dialogRun' md
+            widgetDestroy md
             case resp of
-                ResponseUser 1 -> do
+                AnotherResponseType 1 -> do
                     let packWithNewFlags = package { ipdConfigFlags = "--ghcjs" : ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
@@ -508,7 +530,7 @@ packageRunJavaScript' addFlagIfMissing package =
         else liftIDE $ buildPackage False False True package $ \ ok -> when ok $ liftIDE $ catchIDE (do
                 ideR        <- ask
                 maybeDebug   <- readIDE debugState
-                pd <- liftIO $ liftM flattenPackageDescription
+                pd <- liftIO $ fmap flattenPackageDescription
                                  (readPackageDescription normal (ipdCabalFile package))
                 mbExe <- readIDE activeExe
                 let exe = exeToRun mbExe $ executables pd
@@ -521,13 +543,9 @@ packageRunJavaScript' addFlagIfMissing package =
                     (Executable name _ _ : _) -> liftIDE $ do
                         let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
                             dir = ipdPackageDir package
-#ifdef WEBKITGTK
                         postAsyncIDE $ do
                             loadOutputUri ("file:///" ++ dir </> path)
                             getOutputPane Nothing  >>= \ p -> displayPane p False
-#else
-                        openBrowser path
-#endif
                       `catchIDE`
                         (\(e :: SomeException) -> print e)
 
@@ -618,12 +636,8 @@ packageOpenDoc = do
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
             dir = ipdPackageDir package
-#ifdef WEBKITGTK
         loadDoc . T.pack $ "file:///" ++ dir </> path
         getDocumentation Nothing  >>= \ p -> displayPane p False
-#else
-        openBrowser $ T.pack path
-#endif
       `catchIDE`
         (\(e :: SomeException) -> print e)
 
@@ -836,7 +850,7 @@ debugStart = do
                 -- Fork a thread to wait for the output from the process to close
                 liftIO $ forkIO $ do
                     readMVar (outputClosed ghci)
-                    postGUISync . (`reflectIDE` ideRef) $ do
+                    (`reflectIDE` ideRef) . postSyncIDE $ do
                         setDebugToggled False
                         modifyIDE_ (\ide -> ide {debugState = Nothing, autoCommand = return ()})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
@@ -867,17 +881,19 @@ tryDebug f = do
             liftIDE $ runDebug f debug
         _ -> do
             window <- liftIDE getMainWindow
-            resp <- liftIO $ do
-                md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                        (__ "GHCi debugger is not running.")
-                dialogAddButton md (__ "_Start GHCi") (ResponseUser 1)
-                dialogSetDefaultResponse md (ResponseUser 1)
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
-                widgetDestroy md
-                return resp
+            md <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeCancel,
+                    messageDialogText := __ "GHCi debugger is not running."]
+            windowSetTransientFor md (Just window)
+            dialogAddButton' md (__ "_Start GHCi") (AnotherResponseType 1)
+            dialogSetDefaultResponse' md (AnotherResponseType 1)
+            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            resp <- dialogRun' md
+            widgetDestroy md
             case resp of
-                ResponseUser 1 -> do
+                AnotherResponseType 1 -> do
                     debugStart
                     maybeDebug <- liftIDE $ readIDE debugState
                     case maybeDebug of
@@ -898,17 +914,17 @@ tryDebugQuiet f = do
 executeDebugCommand :: Text -> C.Sink ToolOutput IDEM () -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
-    lift $
-        reifyIDE $ \ideR -> do
-            liftIO $ postGUIAsync $ reflectIDE (do
-                triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
-                return ()) ideR
-            executeGhciCommand ghci command $ do
-                reflectIDEI handler ideR
-                liftIO $ postGUIAsync $ reflectIDE (do
-                    triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
-                    return ()) ideR
-                return ()
+    lift $ do
+        ideR <- ask
+        postAsyncIDE $ do
+            triggerEventIDE (StatusbarChanged [CompartmentState command, CompartmentBuild True])
+            return ()
+        liftIO . executeGhciCommand ghci command $
+            reflectIDEI (do
+                lift . postSyncIDE $ do
+                   triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+                   return ()
+                handler) ideR
 
 -- Includes non buildable
 allBuildInfo' :: PackageDescription -> [BuildInfo]

@@ -60,7 +60,7 @@ instance Pane IDEClassHierarchy IDEM
     where
     primPaneName _  =   "ClassHierarchy"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . outer
+    getTopWidget    =   liftIO . toWidget . outer
     paneId b        =   "*ClassHierarchy"
     makeActive p    =   activatePane p []
     close           =   closePane
@@ -262,14 +262,14 @@ builder currentInfo pp nb windows ideR = do
     renderer    <- cellRendererTextNew
     col         <- treeViewColumnNew
     treeViewColumnSetTitle col "Classes"
-    treeViewColumnSetSizing col TreeViewColumnAutosize
+    treeViewColumnSetSizing col TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col True
     treeViewColumnSetReorderable col True
     treeViewAppendColumn treeView col
     cellLayoutPackStart col renderer0 False
     cellLayoutPackStart col renderer True
     cellLayoutSetAttributes col renderer treeStore
-        $ \(s,_,_) -> [ cellText := s]
+        $ \(s,_,_) -> [ cellRendererTextText := s]
     cellLayoutSetAttributes col renderer0 treeStore
         $ \(_,_,d) -> [
         cellPixbufStockId  :=
@@ -292,13 +292,13 @@ builder currentInfo pp nb windows ideR = do
     renderer3   <- cellRendererTextNew
     col         <- treeViewColumnNew
     treeViewColumnSetTitle col "Interface"
-    --treeViewColumnSetSizing col TreeViewColumnAutosize
+    --treeViewColumnSetSizing col TreeViewColumnSizingAutosize
     treeViewAppendColumn facetView col
     cellLayoutPackStart col renderer30 False
     cellLayoutPackStart col renderer31 False
     cellLayoutPackStart col renderer3 True
     cellLayoutSetAttributes col renderer3 facetStore
-        $ \row -> [ cellText := facetTreeText row]
+        $ \row -> [ cellRendererTextText := facetTreeText row]
     cellLayoutSetAttributes col renderer30 facetStore
         $ \row -> [
         cellPixbufStockId  := stockIdFromType (facetIdType row)]
@@ -313,14 +313,14 @@ builder currentInfo pp nb windows ideR = do
     treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
 --}
     pane'           <-  hPanedNew
-    sw              <-  scrolledWindowNew Nothing Nothing
-    scrolledWindowSetShadowType sw ShadowIn
+    sw              <-  scrolledWindowNew noAdjustment noAdjustment
+    scrolledWindowSetShadowType sw ShadowTypeIn
     containerAdd sw treeView
-    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+    scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
 
-{--        sw2             <-  scrolledWindowNew Nothing Nothing
+{--        sw2             <-  scrolledWindowNew noAdjustment noAdjustment
     containerAdd sw2 facetView
-    scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic--}
+    scrolledWindowSetPolicy sw2 PolicyTypeAutomatic PolicyTypeAutomatic--}
     panedAdd1 pane' sw
 --        panedAdd2 pane' sw2
     (x,y) <- widgetGetSize nb
@@ -332,14 +332,14 @@ builder currentInfo pp nb windows ideR = do
     toggleButtonSetActive rb3 True
     cb              <-  checkButtonNewWithLabel "Blacklist"
 
-    boxPackStart box rb1 PackGrow 2
-    boxPackStart box rb2 PackGrow 2
-    boxPackStart box rb3 PackGrow 2
-    boxPackEnd box cb PackNatural 2
+    boxPackStart' box rb1 PackGrow 2
+    boxPackStart' box rb2 PackGrow 2
+    boxPackStart' box rb3 PackGrow 2
+    boxPackEnd' box cb PackNatural 2
 
     boxOuter        <-  vBoxNew False 2
-    boxPackStart boxOuter box PackNatural 2
-    boxPackStart boxOuter pane' PackGrow 2
+    boxPackStart' boxOuter box PackNatural 2
+    boxPackStart' boxOuter pane' PackGrow 2
 
     let classes = IDEClassHierarchy boxOuter pane' treeView treeStore
                     {--facetView facetStore--} rb1 rb2 rb3 cb
@@ -458,7 +458,7 @@ getSelectionTree ::  TreeView
     -> IO (Maybe (Text, [(ModuleDescr,PackageDescr)]))
 getSelectionTree treeView treeStore = do
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         []  ->  return Nothing
         a:r ->  do
@@ -470,7 +470,7 @@ getSelectionFacet ::  TreeView
     -> IO (Maybe FacetWrapper)
 getSelectionFacet treeView treeStore = do
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         a:r ->  do
             val     <-  treeStoreGetValue treeStore a
@@ -484,7 +484,7 @@ fillInfo :: TreeView
     -> IO ()
 fillInfo treeView lst ideR = do
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         []      ->  return ()
         [a]     ->  do

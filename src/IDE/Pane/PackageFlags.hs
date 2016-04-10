@@ -29,7 +29,6 @@ module IDE.Pane.PackageFlags (
 ,   getFlags
 ) where
 
-import Graphics.UI.Gtk
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Data.Typeable
 import System.FilePath.Posix
@@ -52,6 +51,20 @@ import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (unwords, unpack, pack)
 import Control.Applicative ((<$>))
+import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
+import Control.Monad.IO.Class (MonadIO(..))
+import Data.GI.Base.ManagedPtr (unsafeCastTo)
+import GI.Gtk.Objects.Widget (widgetSetSensitive, Widget(..))
+import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
+import GI.Gtk.Objects.Box (boxSetSpacing)
+import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
+import GI.Gtk.Enums
+       (PolicyType(..), ShadowType(..), ButtonBoxStyle(..))
+import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowAddWithViewport,
+        scrolledWindowSetShadowType, scrolledWindowNew)
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   VBox
@@ -64,7 +77,7 @@ instance Pane IDEFlags IDEM
     where
     primPaneName _  =   __ "Package Flags"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . flagsBox
+    getTopWidget    =   liftIO . unsafeCastTo Widget . flagsBox
     paneId b        =   "*Flags"
 
 instance RecoverablePane IDEFlags FlagsState IDEM where
@@ -99,19 +112,19 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     let flagsPane = IDEFlags vb
     bb                  <-  hButtonBoxNew
     boxSetSpacing bb 6
-    buttonBoxSetLayout bb ButtonboxSpread
+    buttonBoxSetLayout bb ButtonBoxStyleSpread
     saveB               <-  buttonNewFromStock "gtk-save"
     widgetSetSensitive saveB False
     cancelB             <-  buttonNewFromStock "gtk-cancel"
-    boxPackStart bb cancelB PackNatural 0
-    boxPackStart bb saveB PackNatural 0
+    boxPackStart' bb cancelB PackNatural 0
+    boxPackStart' bb saveB PackNatural 0
     (widget,injb,ext,notifier)
                         <-  buildEditor flagsDesc idePackage
-    sw <- scrolledWindowNew Nothing Nothing
-    scrolledWindowSetShadowType sw ShadowIn
+    sw <- scrolledWindowNew noAdjustment noAdjustment
+    scrolledWindowSetShadowType sw ShadowTypeIn
     scrolledWindowAddWithViewport sw widget
-    scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-    on saveB buttonActivated (do
+    scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
+    onButtonClicked saveB (do
         mbPackWithNewFlags <- extract idePackage [ext]
         case mbPackWithNewFlags of
             Nothing -> return ()
@@ -122,21 +135,22 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                 writeFields (dropExtension (ipdCabalFile packWithNewFlags) ++
                                 leksahFlagFileExtension)
                     packWithNewFlags flatFlagsDescription)
-    on cancelB buttonActivated (reflectIDE (void (closePane flagsPane)) ideR)
+    onButtonClicked cancelB (reflectIDE (void (closePane flagsPane)) ideR)
     registerEvent notifier FocusIn (\e -> do
         reflectIDE (makeActive flagsPane) ideR
         return (e{gtkReturn=False}))
-    registerEvent notifier MayHaveChanged (\e -> do
-        mbP <- extract idePackage [ext]
+    registerEvent notifier MayHaveChanged (\e -> (`reflectIDE` ideR) $ do
+        mbP <- liftIO $ extract idePackage [ext]
         let hasChanged = case mbP of
                                 Nothing -> False
                                 Just p -> p /= idePackage
-        markLabel nb (getTopWidget flagsPane) hasChanged
+        topWidget <- getTopWidget flagsPane
+        markLabel nb topWidget hasChanged
         widgetSetSensitive saveB hasChanged
         return (e{gtkReturn=False}))
 
-    boxPackStart vb sw PackGrow 0
-    boxPackEnd vb bb PackNatural 6
+    boxPackStart' vb sw PackGrow 0
+    boxPackEnd' vb bb PackNatural 6
     return (Just flagsPane,[])
 
 

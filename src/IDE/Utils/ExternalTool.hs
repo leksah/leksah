@@ -141,11 +141,10 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
 isRunning :: MonadIDE m => m Bool
 isRunning = do
     maybeProcess <- readIDE runningTool
-    liftIO $
-        case maybeProcess of
-            Just process ->
-                isNothing <$> getProcessExitCode process
-            Nothing -> return False
+    case maybeProcess of
+       Just process ->
+            liftIO $ isNothing <$> getProcessExitCode process
+       Nothing -> return False
 
 interruptBuild :: MonadIDE m => m ()
 interruptBuild = do

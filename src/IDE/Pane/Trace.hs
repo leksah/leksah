@@ -21,7 +21,6 @@ module IDE.Pane.Trace (
 ,   fillTraceList
 ) where
 
-import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Package (tryDebug)
@@ -44,8 +43,6 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as  P
     (integer, whiteSpace, colon, symbol, makeTokenParser)
 import Text.ParserCombinators.Parsec.Language (emptyDef)
-import Graphics.UI.Gtk.Gdk.Events (Event(..))
-import Graphics.UI.Gtk.General.Enums (MouseButton(..))
 import System.Log.Logger (debugM)
 import IDE.Workspaces (packageTry)
 import qualified Data.Conduit.List as CL (consume)
@@ -58,6 +55,44 @@ import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew, ScrolledWindow(..))
+import GI.Gtk.Objects.TreeView
+       (treeViewGetSelection, treeViewSetHeadersVisible,
+        treeViewAppendColumn, treeViewSetModel, treeViewNew, TreeView(..))
+import Data.GI.Gtk.ModelView.ForestStore
+       (forestStoreGetValue, ForestStore(..),
+        forestStoreInsert, forestStoreClear, forestStoreNew)
+import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
+import GI.Gtk.Objects.Notebook (Notebook(..))
+import GI.Gtk.Objects.Window (Window(..))
+import GI.Gtk.Objects.CellRendererToggle
+       (cellRendererToggleActive, cellRendererToggleNew)
+import GI.Gtk.Objects.TreeViewColumn
+       (treeViewColumnSetReorderable, treeViewColumnSetResizable,
+        treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew)
+import GI.Gtk.Enums
+       (PolicyType(..), ShadowType(..), SelectionMode(..),
+        TreeViewColumnSizing(..))
+import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetAttributes)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.CellRendererText
+       (cellRendererTextText, cellRendererTextNew)
+import GI.Gtk.Objects.TreeSelection
+       (onTreeSelectionChanged, treeSelectionSetMode)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Container (containerAdd)
+import GI.Gtk.Objects.Menu (Menu(..))
+import GI.Gtk.Objects.MenuItem
+       (toMenuItem, onMenuItemActivate, menuItemNewWithLabel)
+import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import Control.Monad.Reader (MonadReader(..))
+import Data.GI.Gtk.ModelView.Types
+       (treeSelectionGetSelectedRows', treePathNewFromIndices')
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -67,7 +102,7 @@ printf = S.printf . T.unpack
 data IDETrace    =   IDETrace {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   tracepoints     ::   TreeStore TraceHist
+,   tracepoints     ::   ForestStore TraceHist
 } deriving Typeable
 
 data TraceState  =   TraceState {
@@ -84,7 +119,7 @@ instance Pane IDETrace IDEM
     where
     primPaneName _  =   __ "Trace"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   liftIO . toWidget . scrolledView
     paneId b        =   "*Trace"
 
 instance RecoverablePane IDETrace TraceState IDEM where
@@ -106,76 +141,77 @@ builder' :: PanePath ->
     Notebook ->
     Window ->
     IDEM (Maybe IDETrace,Connections)
-builder' pp nb windows = reifyIDE $ \ ideR -> do
-    tracepoints <-  treeStoreNew []
+builder' pp nb windows = do
+    ideR <- ask
+    tracepoints <-  forestStoreNew []
     treeView    <-  treeViewNew
-    treeViewSetModel treeView tracepoints
+    treeViewSetModel treeView (Just tracepoints)
 
     renderer0 <- cellRendererToggleNew
     col0         <- treeViewColumnNew
-    treeViewColumnSetTitle col0 (""::Text)
-    treeViewColumnSetSizing col0 TreeViewColumnAutosize
+    treeViewColumnSetTitle col0 ""
+    treeViewColumnSetSizing col0 TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col0 False
     treeViewColumnSetReorderable col0 True
     treeViewAppendColumn treeView col0
     cellLayoutPackStart col0 renderer0 False
     cellLayoutSetAttributes col0 renderer0 tracepoints
-        $ \row -> [ cellToggleActive := thSelected row]
+        $ \row -> [ cellRendererToggleActive := thSelected row]
 
     renderer1    <- cellRendererTextNew
     col1         <- treeViewColumnNew
     treeViewColumnSetTitle col1 (__ "Index")
-    treeViewColumnSetSizing col1 TreeViewColumnAutosize
+    treeViewColumnSetSizing col1 TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col1 True
     treeViewColumnSetReorderable col1 True
     treeViewAppendColumn treeView col1
     cellLayoutPackStart col1 renderer1 False
     cellLayoutSetAttributes col1 renderer1 tracepoints
-        $ \row -> [ cellText := T.pack $ show (thIndex row)]
+        $ \row -> [ cellRendererTextText := T.pack $ show (thIndex row)]
 
     renderer2    <- cellRendererTextNew
     col2         <- treeViewColumnNew
     treeViewColumnSetTitle col2 (__ "Function")
-    treeViewColumnSetSizing col2 TreeViewColumnAutosize
+    treeViewColumnSetSizing col2 TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col2 True
     treeViewColumnSetReorderable col2 True
     treeViewAppendColumn treeView col2
     cellLayoutPackStart col2 renderer2 False
     cellLayoutSetAttributes col2 renderer2 tracepoints
-        $ \row -> [ cellText := thFunction row]
+        $ \row -> [ cellRendererTextText := thFunction row]
 
     renderer3    <- cellRendererTextNew
     col3         <- treeViewColumnNew
     treeViewColumnSetTitle col3 (__ "Position")
-    treeViewColumnSetSizing col3 TreeViewColumnAutosize
+    treeViewColumnSetSizing col3 TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col3 True
     treeViewColumnSetReorderable col3 True
     treeViewAppendColumn treeView col3
     cellLayoutPackStart col3 renderer3 False
     cellLayoutSetAttributes col3 renderer3 tracepoints
-        $ \row -> [ cellText := T.pack $ displaySrcSpan (thPosition row)]
+        $ \row -> [ cellRendererTextText := T.pack $ displaySrcSpan (thPosition row)]
 
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView
-    treeSelectionSetMode sel SelectionSingle
+    treeSelectionSetMode sel SelectionModeSingle
 
-    scrolledView <- scrolledWindowNew Nothing Nothing
-    scrolledWindowSetShadowType scrolledView ShadowIn
+    scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+    scrolledWindowSetShadowType scrolledView ShadowTypeIn
     containerAdd scrolledView treeView
-    scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+    scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
 
     let pane = IDETrace scrolledView treeView tracepoints
 
-    cid1 <- after treeView focusInEvent $ do
-        liftIO $ reflectIDE (makeActive pane) ideR
-        return True
-    (cid2, cid3) <- treeViewContextMenu treeView $ traceContextMenu ideR tracepoints treeView
-    on sel treeSelectionSelectionChanged $ do
+    cid1 <- onIDE afterWidgetFocusInEvent treeView (do
+        liftIDE $ makeActive pane
+        return True)
+    cids2 <- treeViewContextMenu treeView $ traceContextMenu ideR tracepoints treeView
+    onTreeSelectionChanged sel $ do
         sel <- getSelectedTracepoint treeView tracepoints
         case sel of
             Just ref -> return () -- TODO reflectIDE (selectRef (Just ref)) ideR
             Nothing -> return ()
-    return (Just pane, map ConnectC [cid1, cid2, cid3])
+    return (Just pane, cid1 : cids2)
 
 fillTraceList :: IDEAction
 fillTraceList = packageTry $ do
@@ -185,22 +221,24 @@ fillTraceList = packageTry $ do
         Nothing -> return ()
         Just tracePane -> tryDebug $ debugCommand' ":history" $ do
             to <- CL.consume
-            liftIO $ postGUIAsync $ do
+            lift $ postAsyncIDE $ do
                 let parseRes = parse tracesParser "" . T.unpack $ selectString to
                 r <- case parseRes of
                         Left err     -> do
-                            debugM "leksah" (printf (__ "trace parse error %s\ninput: %s") (show err)
+                            liftIO $ debugM "leksah" (printf (__ "trace parse error %s\ninput: %s") (show err)
                                                 (T.unpack $ selectString to))
                             return []
                         Right traces -> return traces
-                treeStoreClear (tracepoints tracePane)
+                forestStoreClear (tracepoints tracePane)
                 let r' = map (\h@(TraceHist _ i _ _) -> if i == currentHist'
                                                             then h{thSelected = True}
                                                             else h) r
                 mapM_ (insertTrace (tracepoints tracePane))
                     (zip r' [0..length r'])
   where
-    insertTrace treeStore (tr,index)  = treeStoreInsert treeStore [] index tr
+    insertTrace forestStore (tr,index)  = do
+        emptyPath <- treePathNewFromIndices' []
+        forestStoreInsert forestStore emptyPath index tr
 
 selectString :: [ToolOutput] -> Text
 selectString (ToolOutput str:r)  = "\n" <> str <> selectString r
@@ -208,14 +246,14 @@ selectString (_:r)               = selectString r
 selectString []                  = ""
 
 getSelectedTracepoint ::  TreeView
-    -> TreeStore TraceHist
+    -> ForestStore TraceHist
     -> IO (Maybe TraceHist)
-getSelectedTracepoint treeView treeStore = do
+getSelectedTracepoint treeView forestStore = do
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         a:r ->  do
-            val     <-  treeStoreGetValue treeStore a
+            val     <-  forestStoreGetValue forestStore a
             return (Just val)
         _  ->  return Nothing
 
@@ -225,20 +263,19 @@ selectStrings (_:r)               = selectStrings r
 selectStrings []                  = []
 
 traceContextMenu :: IDERef
-                  -> TreeStore TraceHist
+                  -> ForestStore TraceHist
                   -> TreeView
                   -> Menu
                   -> IO ()
 traceContextMenu ideR store treeView theMenu = do
     item1           <-  menuItemNewWithLabel (__ "Back")
-    item1 `on` menuItemActivate $ reflectIDE debugBack ideR
-    sep1 <- separatorMenuItemNew
+    onMenuItemActivate item1 $ reflectIDE debugBack ideR
+    sep1 <- separatorMenuItemNew >>= liftIO . toMenuItem
     item2           <-  menuItemNewWithLabel (__ "Forward")
-    item2 `on` menuItemActivate $ reflectIDE debugForward ideR
+    onMenuItemActivate item2 $ reflectIDE debugForward ideR
     item3           <-  menuItemNewWithLabel (__ "Update")
-    item3 `on` menuItemActivate $ reflectIDE fillTraceList ideR
-    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
-        castToMenuItem item2, castToMenuItem item3]
+    onMenuItemActivate item3 $ reflectIDE fillTraceList ideR
+    mapM_ (menuShellAppend theMenu) [item1, sep1, item2, item3]
 
 tracesParser :: CharParser () [TraceHist]
 tracesParser = try (do

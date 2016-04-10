@@ -42,16 +42,19 @@ import IDE.TextEditor (newDefaultBuffer, TextEditor(..), EditorView(..))
 import IDE.Utils.GUIUtils (openBrowser, __)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
-import Graphics.UI.Gtk
-       (widgetHide, widgetShowAll, menuShellAppend,
-        menuItemActivate, menuItemNewWithLabel, containerGetChildren, Menu,
-        scrolledWindowSetPolicy, castToWidget, ScrolledWindow)
-import Graphics.UI.Gtk.General.Enums (PolicyType(..))
-import System.Glib.Signals (on)
 import Control.Monad (unless, void)
 import Data.Foldable (forM_)
 import qualified Data.Text as T (unpack, pack, null)
 import Data.Monoid ((<>))
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, ScrolledWindow(..))
+import GI.Gtk.Objects.Widget (widgetHide, widgetShowAll, toWidget)
+import GI.Gtk.Enums (PolicyType(..))
+import GI.Gtk.Objects.Menu (Menu(..))
+import GI.Gtk.Objects.Container (containerGetChildren)
+import GI.Gtk.Objects.MenuItem
+       (onMenuItemActivate, menuItemNewWithLabel)
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
 
 
 -- | Represents the Info pane
@@ -71,7 +74,7 @@ instance Pane IDEInfo IDEM
     where
     primPaneName _  =   __ "Symbol Info"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . sw
+    getTopWidget    =   liftIO . toWidget . sw
     paneId b        =   "*Info"
 
 
@@ -102,13 +105,13 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                                         return ()
                                     )
 
-        liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
 
         --openType
         currentDescr' <- liftIO $ newIORef idDescr
         cids1 <- onPopulatePopup descriptionView $ \ menu -> do
             ideR <- ask
-            liftIO $ populatePopupMenu ideR currentDescr' menu
+            populatePopupMenu ideR currentDescr' menu
         let info = IDEInfo sw currentDescr' descriptionView
         -- ids5 <- sv `onLookupInfo` selectInfo descriptionView       -- obsolete by hyperlinks
         cids2 <- descriptionView `afterFocusIn` makeActive info
@@ -209,15 +212,15 @@ openDocu = do
 
 
 -- | Builds the context menu of the Info pane
-populatePopupMenu :: IDERef -> IORef (Maybe Descr) -> Menu -> IO ()
+populatePopupMenu :: MonadIO m => IDERef -> IORef (Maybe Descr) -> Menu -> m ()
 populatePopupMenu ideR currentDescr' menu = do
     items <- containerGetChildren menu
     item0 <- menuItemNewWithLabel (__ "Goto Definition")
-    item0 `on` menuItemActivate $ reflectIDE gotoSource ideR
+    onMenuItemActivate item0 $ reflectIDE gotoSource ideR
     item1 <- menuItemNewWithLabel (__ "Select Module")
-    item1 `on` menuItemActivate $ reflectIDE gotoModule' ideR
+    onMenuItemActivate item1 $ reflectIDE gotoModule' ideR
     item2 <- menuItemNewWithLabel (__ "Open Documentation")
-    item2 `on` menuItemActivate $ reflectIDE openDocu ideR
+    onMenuItemActivate item2 $ reflectIDE openDocu ideR
     menuShellAppend menu item0
     menuShellAppend menu item1
     menuShellAppend menu item2

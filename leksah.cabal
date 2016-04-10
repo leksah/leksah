@@ -1,10 +1,10 @@
 name: leksah
-version: 0.15.2.0
+version: 0.16.0.0
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
 license-file: LICENSE
-copyright: 2007-2014 Juergen Nicklisch-Franken, Hamish Mackenzie
+copyright: 2007-2016 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 maintainer: maintainer@leksah.org
 stability: provisional
 homepage: http://www.leksah.org
@@ -14,7 +14,7 @@ synopsis: Haskell IDE written in Haskell
 description:
     An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
-author: Juergen Nicklisch-Franken, Hamish Mackenzie
+author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 tested-with: GHC ==7.2.2
 data-files:
     LICENSE
@@ -217,7 +217,7 @@ library
 
     if os(osx)
         build-depends:
-            gtk3-mac-integration >=0.3.1.0 && <0.4
+            gi-gtkosxapplication >=0.2.0.12 && <0.3
 
     if flag(yi)
         build-depends:
@@ -314,14 +314,22 @@ library
         IDE.TextEditor.Yi
         IDE.TextEditor.GtkSourceView
         IDE.Utils.ExternalTool
-        IDE.Utils.GtkBindings
     build-depends:
         base-compat >=0.9.0 && <0.10,
-        gtk3 >=0.14.1 && <0.15,
-        gtksourceview3 >=0.13.1.5 && <0.14,
-        webkitgtk3 >=0.13 && <0.15,
+        haskell-gi-base >=0.13 && <0.14,
+        gi-glib >=0.2.44 && <0.2.47,
+        gi-gobject >=0.2.44 && <0.2.47,
+        gi-gio >=0.2.44 && <0.2.47,
+        gi-gdk >=0.3.16 && <0.3.19,
+        gi-gdkpixbuf >=0.2.32 && <0.2.33,
+        gi-gtk >=0.3.16 && <0.3.19,
+        gi-pango >=0.1.38 && <0.1.39,
+        gi-gtksource >=0.3.18 && <0.3.19,
+        gi-webkit >=0.2.4 && <0.2.5,
+        gi-javascriptcore >=0.2.4 && <0.2.5,
+        gi-gtk-hs >=0.1.1.0 && <0.2,
         webkitgtk3-javascriptcore -any,
-        jsaddle >=0.3.0.0 && <0.4,
+        jsaddle >=0.4.0.0 && <0.5,
         ghcjs-codemirror -any,
         blaze-html -any,
         lens -any,
@@ -333,7 +341,6 @@ library
         containers >=0.2.0.0 && <0.6,
         directory >=1.0.0.2 && <3.1,
         filepath >=1.1.0.1 && <1.5,
-        glib >=0.13.2.1 && <0.14,
         mtl >=1.1.0.2 && <2.3,
         old-time >=1.0.0.1 && <1.2,
         parsec >=2.1.0.1 && <3.2,
@@ -344,19 +351,18 @@ library
         utf8-string >=0.3.1.1 && <1.1,
         array >=0.2.0.0 && <0.6,
         time >=0.1 && <1.6,
-        ltk >=0.15.0.4 && <0.16,
+        ltk >=0.16.0.0 && <0.17,
         binary-shared >=0.8 && <0.9,
         deepseq >=1.1.0.0 && <1.5,
         hslogger >=1.0.7 && <1.3,
-        leksah-server >=0.15.2.0 && <0.16,
+        leksah-server >=0.16.0.0 && <0.17,
         ghc >=6.10.1 && <7.11,
         strict >=0.3.2 && <0.4,
         conduit >=1.0.8 && <1.3,
         text >=0.11.1.5 && <1.3,
-        gio >=0.13.0.0 && <0.14,
         transformers >=0.2.2.0 && <0.5,
         executable-path >=0.0.3 && <0.1,
-        vcsgui >=0.1.0 && <0.2,
+        vcsgui >=0.2.0 && <0.3,
         vcswrapper >=0.1.0 && <0.2,
         QuickCheck >=2.4.2 && <2.9,
         haskell-src-exts >=1.13.5 && <1.18,
@@ -365,7 +371,7 @@ library
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.21,
         stm >=2.4.4 && <2.5
-    cpp-options: -DWEBKITGTK -DLEKSAH_WITH_CODE_MIRROR
+    cpp-options: -DLEKSAH_WITH_CODE_MIRROR
     default-language: Haskell2010
     default-extensions: ViewPatterns
     hs-source-dirs: src
@@ -400,9 +406,9 @@ executable leksah
         ghc-options: -optl-headerpad_max_install_names
     main-is: Main.hs
     build-depends:
-        leksah ==0.15.2.0,
+        leksah ==0.16.0.0,
         base >=4.0.0.0 && <=4.9,
-        gtk3 >=0.14.1 && <0.15,
+        gi-gtk-hs >=0.1.1.0 && <0.2,
         stm >=2.4.4 && <2.5
     default-language: Haskell2010
     hs-source-dirs: main
@@ -411,13 +417,13 @@ executable leksah
 executable bewleksah
     main-is: Main.hs
     build-depends:
-        leksah ==0.15.2.0,
+        leksah ==0.16.0.0,
         base >=4.0.0.0 && <=4.9,
         jsaddle -any,
-        ghcjs-dom >=0.2.1.0 && <0.3,
-        gtk3 >=0.14.1 && <0.15,
-        gtksourceview3 >=0.13.1.5 && <0.14,
-        webkitgtk3 >=0.13 && <0.15,
+        ghcjs-dom >=0.3.0.0 && <0.4,
+        gi-gtk-hs >=0.1.1.0 && <0.2,
+        gi-gtksource >=0.3.18 && <0.3.19,
+        gi-webkit >=0.2.4 && <0.2.5,
         webkitgtk3-javascriptcore -any,
         stm >=2.4.4 && <2.5
     default-language: Haskell2010
@@ -434,18 +440,18 @@ test-suite tests
         base >=4.0.0.0 && <4.9,
         Cabal >=1.10.2.0 && <1.23,
         QuickCheck >=2.4.2 && <2.9,
-        leksah ==0.15.2.0,
+        leksah ==0.16.0.0,
         containers -any,
         ltk -any,
         leksah-server -any,
         hslogger -any,
         transformers -any,
-        glib -any,
         monad-loops -any,
         text -any,
-        gtk3 >=0.14.1 && <0.15,
-        gtksourceview3 >=0.13.1.5 && <0.14,
-        webkitgtk3 -any,
+        gi-glib >=0.2.44 && <0.2.47,
+        gi-gtksource >=0.3.18 && <0.3.19,
+        gi-webkit >=0.2.4 && <0.2.5,
+        gi-gtk-hs >=0.1.1.0 && <0.2,
         stm >=2.4.4 && <2.5
     default-language: Haskell2010
     hs-source-dirs: tests

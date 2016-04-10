@@ -22,7 +22,6 @@ module IDE.Pane.Variables (
 ,   fillVariablesListQuiet
 ) where
 
-import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Package (tryDebug, tryDebugQuiet)
@@ -43,9 +42,6 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as  P
     (whiteSpace, symbol, makeTokenParser)
 import Text.ParserCombinators.Parsec.Language (emptyDef)
-import Graphics.UI.Gtk.Gdk.Events (Event(..))
-import Graphics.UI.Gtk.General.Enums
-    (Click(..), MouseButton(..))
 import IDE.Workspaces (packageTry, packageTryQuiet)
 import qualified Data.Conduit.List as CL (consume)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -55,12 +51,52 @@ import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
 import Control.Applicative ((<$>))
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew, ScrolledWindow(..))
+import GI.Gtk.Objects.TreeView
+       (onTreeViewRowActivated, treeViewGetSelection,
+        treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
+        treeViewNew, TreeView(..))
+import Data.GI.Gtk.ModelView.ForestStore
+       (forestStoreGetValue, ForestStore(..), forestStoreSetValue,
+        forestStoreInsert, forestStoreClear, forestStoreNew)
+import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
+import GI.Gtk.Objects.Notebook (Notebook(..))
+import GI.Gtk.Objects.Window (Window(..))
+import GI.Gtk.Objects.CellRendererText
+       (cellRendererTextText, cellRendererTextNew)
+import GI.Gtk.Objects.TreeViewColumn
+       (TreeViewColumn(..), treeViewColumnSetReorderable,
+        treeViewColumnSetResizable, treeViewColumnSetSizing,
+        treeViewColumnSetTitle, treeViewColumnNew)
+import GI.Gtk.Enums
+       (PolicyType(..), ShadowType(..), SelectionMode(..),
+        TreeViewColumnSizing(..))
+import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetAttributes)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.TreeSelection
+       (treeSelectionSetMode)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Container (containerAdd)
+import Control.Monad.Reader (MonadReader(..))
+import GI.Gtk.Structs.TreePath
+       (TreePath(..))
+import GI.Gtk.Objects.Menu (Menu(..))
+import GI.Gtk.Objects.MenuItem
+       (toMenuItem, onMenuItemActivate, menuItemNewWithLabel)
+import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import Data.GI.Gtk.ModelView.Types
+       (treeSelectionGetSelectedRows', treePathNewFromIndices')
 
 -- | Represents the Variables pane
 data IDEVariables    =   IDEVariables {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   variables       ::   TreeStore VarDescription
+,   variables       ::   ForestStore VarDescription
 } deriving Typeable
 
 
@@ -80,7 +116,7 @@ instance Pane IDEVariables IDEM
     where
     primPaneName _  =   __ "Variables"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   liftIO . toWidget . scrolledView
     paneId b        =   "*Variables"
 
 
@@ -110,60 +146,61 @@ builder' :: PanePath ->
     Notebook ->
     Window ->
     IDEM (Maybe IDEVariables, Connections)
-builder' pp nb windows = reifyIDE $  \ideR -> do
-    variables   <-  treeStoreNew []
+builder' pp nb windows = do
+    ideR <- ask
+    variables   <-  forestStoreNew []
     treeView    <-  treeViewNew
-    treeViewSetModel treeView variables
+    treeViewSetModel treeView (Just variables)
 
     renderer1    <- cellRendererTextNew
     col1         <- treeViewColumnNew
     treeViewColumnSetTitle col1 (__ "Name")
-    treeViewColumnSetSizing col1 TreeViewColumnAutosize
+    treeViewColumnSetSizing col1 TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col1 True
     treeViewColumnSetReorderable col1 True
     treeViewAppendColumn treeView col1
     cellLayoutPackStart col1 renderer1 False
     cellLayoutSetAttributes col1 renderer1 variables
-        $ \row -> [ cellText := varName row]
+        $ \row -> [ cellRendererTextText := varName row]
 
     renderer2    <- cellRendererTextNew
     col2         <- treeViewColumnNew
     treeViewColumnSetTitle col2 (__ "Type")
-    treeViewColumnSetSizing col2 TreeViewColumnAutosize
+    treeViewColumnSetSizing col2 TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col2 True
     treeViewColumnSetReorderable col2 True
     treeViewAppendColumn treeView col2
     cellLayoutPackStart col2 renderer2 False
     cellLayoutSetAttributes col2 renderer2 variables
-        $ \row -> [ cellText := varType row]
+        $ \row -> [ cellRendererTextText := varType row]
 
     renderer3    <- cellRendererTextNew
     col3         <- treeViewColumnNew
     treeViewColumnSetTitle col3 (__ "Value")
-    treeViewColumnSetSizing col3 TreeViewColumnAutosize
+    treeViewColumnSetSizing col3 TreeViewColumnSizingAutosize
     treeViewColumnSetResizable col3 True
     treeViewColumnSetReorderable col3 True
     treeViewAppendColumn treeView col3
     cellLayoutPackStart col3 renderer3 False
     cellLayoutSetAttributes col3 renderer3 variables
-        $ \row -> [ cellText := varValue row]
+        $ \row -> [ cellRendererTextText := varValue row]
 
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView
-    treeSelectionSetMode sel SelectionSingle
+    treeSelectionSetMode sel SelectionModeSingle
 
-    scrolledView <- scrolledWindowNew Nothing Nothing
-    scrolledWindowSetShadowType scrolledView ShadowIn
+    scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+    scrolledWindowSetShadowType scrolledView ShadowTypeIn
     containerAdd scrolledView treeView
-    scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+    scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
 
     let pane = IDEVariables scrolledView treeView variables
-    cid1 <- after treeView focusInEvent $ do
-        liftIO $ reflectIDE (makeActive pane) ideR
-        return True
-    (cid2, cid3) <- treeViewContextMenu treeView $ variablesContextMenu ideR variables treeView
-    cid4 <- on treeView rowActivated $ variablesSelect ideR variables
-    return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
+    cid1 <- onIDE afterWidgetFocusInEvent treeView (do
+        liftIDE $ makeActive pane
+        return True)
+    cids2 <- treeViewContextMenu treeView $ variablesContextMenu ideR variables treeView
+    cid4 <- ConnectC treeView <$> onTreeViewRowActivated treeView (variablesSelect ideR variables)
+    return (Just pane, [cid1, cid4] ++ cids2)
 
 
 -- | Quietly list the variable bindings of the current debug session
@@ -174,15 +211,18 @@ fillVariablesListQuiet = packageTryQuiet $ do
         Nothing -> return ()
         Just var -> tryDebugQuiet $ debugCommand' ":show bindings" $ do
             to <- CL.consume
-            liftIO $ postGUIAsync $
+            lift $ postAsyncIDE $
                 case parse variablesParser "" . T.unpack $ selectString to of
-                    Left e -> sysMessage Normal (T.pack $ show e)
+                    Left e -> liftIO $ sysMessage Normal (T.pack $ show e)
                     Right triples -> do
-                        treeStoreClear (variables var)
-                        mapM_ (insertBreak (variables var))
+                        forestStoreClear (variables var)
+                        mapM_ (insertAtRoot (variables var))
                             (zip triples [0..length triples])
-  where
-    insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
+
+insertAtRoot :: MonadIO m => ForestStore a -> (a, Int) -> m ()
+insertAtRoot forestStore (v,index)  = do
+    emptyPath <- treePathNewFromIndices' []
+    forestStoreInsert forestStore emptyPath index v
 
 
 -- | List the variable bindings of the current debug session
@@ -193,15 +233,13 @@ fillVariablesList = packageTry $ do
         Nothing -> return ()
         Just var -> tryDebug $ debugCommand' ":show bindings" $ do
             to <- CL.consume
-            liftIO $ postGUIAsync $
+            lift $ postAsyncIDE $
                 case parse variablesParser "" . T.unpack $ selectString to of
-                    Left e -> sysMessage Normal (T.pack $ show e)
+                    Left e -> liftIO $ sysMessage Normal (T.pack $ show e)
                     Right triples -> do
-                        treeStoreClear (variables var)
-                        mapM_ (insertBreak (variables var))
+                        forestStoreClear (variables var)
+                        mapM_ (insertAtRoot (variables var))
                             (zip triples [0..length triples])
-  where
-    insertBreak treeStore (v,index)  = treeStoreInsert treeStore [] index v
 
 
 -- | Concatenates the tool output lines with newlines
@@ -214,14 +252,14 @@ selectString []                  = ""
 -- | Tries to get the selected variable in the Pane,
 --  together with the 'TreePath'
 getSelectedVariable ::  TreeView
-    -> TreeStore VarDescription
+    -> ForestStore VarDescription
     -> IO (Maybe (VarDescription,TreePath))
-getSelectedVariable treeView treeStore = do
+getSelectedVariable treeView forestStore = do
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         a:r ->  do
-            val     <-  treeStoreGetValue treeStore a
+            val     <-  forestStoreGetValue forestStore a
             return (Just (val,a))
         _  ->  return Nothing
 
@@ -282,82 +320,81 @@ whiteSpace = P.whiteSpace lexer
 
 -- | Constructs the context menu of the Variables pane
 variablesContextMenu :: IDERef
-                  -> TreeStore VarDescription
+                  -> ForestStore VarDescription
                   -> TreeView
                   -> Menu
                   -> IO ()
 variablesContextMenu ideR store treeView theMenu = do
     item1           <-  menuItemNewWithLabel (__ "Force")
-    item1 `on` menuItemActivate $ do
+    onMenuItemActivate item1 $ do
         mbSel  <-  getSelectedVariable treeView store
         case mbSel of
             Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
             otherwise     -> return ()
-    sep1 <- separatorMenuItemNew
+    sep1 <- separatorMenuItemNew >>= liftIO . toMenuItem
     item2           <-  menuItemNewWithLabel (__ "Print")
-    item2 `on` menuItemActivate $ do
+    onMenuItemActivate item2 $ do
         mbSel  <-  getSelectedVariable treeView store
         case mbSel of
             Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
             otherwise     -> return ()
     item3           <-  menuItemNewWithLabel (__ "Update")
-    item3 `on` menuItemActivate $ postGUIAsync (reflectIDE fillVariablesList ideR)
-    mapM_ (menuShellAppend theMenu) [castToMenuItem item1,
-        castToMenuItem item2, castToMenuItem sep1, castToMenuItem item3]
+    onMenuItemActivate item3 $ reflectIDE (postAsyncIDE fillVariablesList) ideR
+    mapM_ (menuShellAppend theMenu) [item1, item2, sep1, item3]
 
 
 -- | Called when a variable is selected in the Variables pane.
 -- Forces the variable and updates the entry in the pane,
 variablesSelect :: IDERef
-                -> TreeStore VarDescription
+                -> ForestStore VarDescription
                 -> TreePath
                 -> TreeViewColumn
                 -> IO ()
 variablesSelect ideR store path _ = do
-    varDescr <- treeStoreGetValue store path
+    varDescr <- forestStoreGetValue store path
     reflectIDE (forceVariable varDescr path store) ideR
 
 
 -- | Force the value of the given 'VarDescription', retrieve its type
 -- and update the appropriate entry in the Variables pane
-forceVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
-forceVariable varDescr path treeStore = packageTry $ tryDebug $ do
+forceVariable :: VarDescription -> TreePath -> ForestStore VarDescription -> IDEAction
+forceVariable varDescr path forestStore = packageTry $ tryDebug $ do
     debugCommand' (":force " <> varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $
+        lift $ postAsyncIDE $
             case parse valueParser "" . T.unpack $ selectString to of
-                Left e -> sysMessage Normal (T.pack $ show e)
+                Left e -> liftIO $ sysMessage Normal (T.pack $ show e)
                 Right value -> do
-                    var <- treeStoreGetValue treeStore path
-                    treeStoreSetValue treeStore path var{varValue = value}
+                    var <- forestStoreGetValue forestStore path
+                    forestStoreSetValue forestStore path var{varValue = value}
     debugCommand' (":type " <> varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $
+        lift $ postAsyncIDE $
             case parse typeParser "" . T.unpack $ selectString to of
-                Left e -> sysMessage Normal (T.pack $ show e)
+                Left e -> liftIO $ sysMessage Normal (T.pack $ show e)
                 Right typ -> do
-                    var <- treeStoreGetValue treeStore path
-                    treeStoreSetValue treeStore path var{varType = typ}
+                    var <- forestStoreGetValue forestStore path
+                    forestStoreSetValue forestStore path var{varType = typ}
 
 
 -- | Print the value of the given 'VarDescription', retrieve its type
 -- and update the appropriate entry in the Variables pane
-printVariable :: VarDescription -> TreePath -> TreeStore VarDescription -> IDEAction
-printVariable varDescr path treeStore = packageTry $ tryDebug $ do
+printVariable :: VarDescription -> TreePath -> ForestStore VarDescription -> IDEAction
+printVariable varDescr path forestStore = packageTry $ tryDebug $ do
     debugCommand' (":print " <> varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $
+        lift $ postAsyncIDE $
             case parse valueParser "" . T.unpack $ selectString to of
-                Left e -> sysMessage Normal (T.pack $ show e)
+                Left e -> liftIO $ sysMessage Normal (T.pack $ show e)
                 Right value -> do
-                    var <- treeStoreGetValue treeStore path
-                    treeStoreSetValue treeStore path var{varValue = value}
+                    var <- forestStoreGetValue forestStore path
+                    forestStoreSetValue forestStore path var{varValue = value}
     debugCommand' (":type " <> varName varDescr) $ do
         to <- CL.consume
-        liftIO $ postGUIAsync $
+        lift $ postAsyncIDE $
             case parse typeParser "" . T.unpack $ selectString to of
-                Left e -> sysMessage Normal (T.pack $ show e)
+                Left e -> liftIO $ sysMessage Normal (T.pack $ show e)
                 Right typ -> do
-                    var <- treeStoreGetValue treeStore path
-                    treeStoreSetValue treeStore path var{varType = typ}
+                    var <- forestStoreGetValue forestStore path
+                    forestStoreSetValue forestStore path var{varType = typ}
 

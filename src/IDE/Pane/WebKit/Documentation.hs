@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -29,42 +28,34 @@ module IDE.Pane.WebKit.Documentation (
 
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
-import Graphics.UI.Gtk
-       (scrolledWindowSetShadowType, scrolledWindowSetPolicy,
-        scrolledWindowNew, castToWidget, ScrolledWindow)
 import Data.Typeable (Typeable)
 import Data.Text (Text)
 import IDE.Core.Types (IDEAction, IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
 import IDE.Core.State (reifyIDE)
-import Graphics.UI.Gtk.General.Enums
-       (ShadowType(..), PolicyType(..))
-
-#ifdef WEBKITGTK
-import Graphics.UI.Gtk
-       (eventModifier, eventKeyName, keyPressEvent, focusInEvent,
-        containerAdd, Modifier(..), after)
-import Graphics.UI.Gtk.WebKit.Types (WebView(..))
-import Graphics.UI.Gtk.WebKit.WebView
-       (webViewUri, webViewGoBack, webViewZoomOut, webViewZoomIn,
-        webViewZoomLevel, webViewReload, webViewLoadUri, webViewNew)
-import System.Glib.Attributes (AttrOp(..), set, get)
-import System.Glib.Signals (on)
 import IDE.Core.State (reflectIDE)
 import Graphics.UI.Editor.Basics (Connection(..))
-#else
-import Data.IORef (writeIORef, newIORef, readIORef, IORef)
-import Control.Applicative ((<$>))
-#endif
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew, ScrolledWindow(..))
+import GI.WebKit.Objects.WebView
+       (webViewReload, webViewGoBack, webViewZoomOut, webViewZoomIn,
+        webViewNew, webViewLoadUri, setWebViewZoomLevel, webViewGetUri,
+        getWebViewZoomLevel, WebView(..))
+import GI.Gtk.Objects.Widget
+       (onWidgetKeyPressEvent, afterWidgetFocusInEvent, toWidget)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
+import GI.Gtk.Objects.Container (containerAdd)
+import GI.Gdk (eventKeyReadState, keyvalName, eventKeyReadKeyval)
+import GI.Gdk.Flags (ModifierType(..))
+import System.Log.Logger (debugM)
+import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 data IDEDocumentation = IDEDocumentation {
     scrolledView :: ScrolledWindow
-#ifdef WEBKITGTK
   , webView      :: WebView
-#else
-  , docState     :: IORef DocumentationState
-#endif
 } deriving Typeable
 
 data DocumentationState = DocumentationState {
@@ -76,62 +67,46 @@ instance Pane IDEDocumentation IDEM
     where
     primPaneName _  =   "Doc"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   liftIO . toWidget . scrolledView
     paneId b        =   "*Doc"
 
 instance RecoverablePane IDEDocumentation DocumentationState IDEM where
-    saveState p     =   liftIO $
-#ifdef WEBKITGTK
-         do zoom <- webView p `get` webViewZoomLevel
-            uri  <- webView p `get` webViewUri
-            return (Just DocumentationState{..})
-#else
-            Just <$> readIORef (docState p)
-#endif
-    recoverState pp DocumentationState {..} =   do
-        nb      <-  getNotebook pp
+    saveState p = do
+        zoom <- getWebViewZoomLevel $ webView p
+        uri  <- nullToNothing . webViewGetUri $ webView p
+        return (Just DocumentationState{..})
+    recoverState pp DocumentationState {..} = do
+        nb     <-  getNotebook pp
         mbPane <- buildPane pp nb builder
         case mbPane of
             Nothing -> return ()
-            Just p  -> liftIO $
-#ifdef WEBKITGTK
-                 do webView p `set` [webViewZoomLevel := zoom]
-                    maybe (return ()) (webViewLoadUri (webView p)) uri
-#else
-                    writeIORef (docState p) DocumentationState {..}
-#endif
+            Just p  -> do
+                setWebViewZoomLevel (webView p) zoom
+                maybe (return ()) (webViewLoadUri (webView p)) uri
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        scrolledWindowSetShadowType scrolledView ShadowIn
+        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType scrolledView ShadowTypeIn
 
-#ifdef WEBKITGTK
         webView <- webViewNew
         containerAdd scrolledView webView
-#else
-        docState <- newIORef DocumentationState {zoom = 1.0, uri = Nothing}
-#endif
 
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
         let docs = IDEDocumentation {..}
 
-#ifdef WEBKITGTK
-        cid1 <- after webView focusInEvent $ do
+        cid1 <- ConnectC webView <$> afterWidgetFocusInEvent webView (\e -> do
             liftIO $ reflectIDE (makeActive docs) ideR
-            return True
+            return True)
 
-        cid2 <- webView `on` keyPressEvent $ do
-            key <- eventKeyName
-            mod <- eventModifier
-            liftIO $ case (key, mod) of
-                ("plus", [Shift,Control]) -> webViewZoomIn  webView >> return True
-                ("minus",[Control])       -> webViewZoomOut webView >> return True
+        cid2 <- ConnectC webView <$> onWidgetKeyPressEvent webView (\e -> do
+            key <- eventKeyReadKeyval e >>= keyvalName
+            mod <- eventKeyReadState e
+            case (key, mod) of
+                ("plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
+                ("minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True
                 ("BackSpace", [])         -> webViewGoBack  webView >> return True
-                _                         -> return False
-        return (Just docs, map ConnectC [cid1, cid2])
-#else
-        return (Just docs, [])
-#endif
+                _                         -> return False)
+        return (Just docs, [cid1, cid2])
 
 
 getDocumentation :: Maybe PanePath -> IDEM IDEDocumentation
@@ -140,21 +115,13 @@ getDocumentation (Just pp)  = forceGetPane (Left pp)
 
 loadDoc :: Text -> IDEAction
 loadDoc uri =
-#ifdef WEBKITGTK
      do doc <- getDocumentation Nothing
         let view = webView doc
-        liftIO $ webViewLoadUri view uri
-#else
-        return ()
-#endif
+        webViewLoadUri view uri
 
 reloadDoc :: IDEAction
 reloadDoc =
-#ifdef WEBKITGTK
      do doc <- getDocumentation Nothing
         let view = webView doc
-        liftIO $ webViewReload view
-#else
-        return ()
-#endif
+        webViewReload view
 

@@ -38,8 +38,6 @@ module IDE.TextEditor.CodeMirror (
 ) where
 
 import Data.Typeable (Typeable)
-import Graphics.UI.Gtk (scrolledWindowSetShadowType)
-import Graphics.UI.Gtk.General.Enums (ShadowType(..))
 import Data.Text (Text)
 import Text.Show (Show)
 import Data.Tuple (snd, fst)
@@ -57,12 +55,39 @@ import GHC.Float (Double)
 import qualified Data.Text as T (pack)
 import Control.Lens.Getter (to)
 import Control.Monad (liftM, (=<<))
+import GI.WebKit.Objects.WebView
+       (onWebViewPopulatePopup, webViewLoadString, webViewGetMainFrame,
+        onWebViewLoadFinished, webViewNew, WebView(..))
+import GI.Gtk.Functions (mainIteration)
+import GI.Gtk.Objects.ScrolledWindow
+       (ScrolledWindow(..), scrolledWindowSetShadowType,
+        scrolledWindowNew)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Enums (ShadowType(..))
+import GI.Gtk.Objects.Container (containerAdd)
+import GI.WebKit.Objects.WebFrame (webFrameGetGlobalContext)
+import GI.Gtk.Objects.Widget
+       (widgetAddEvents, onWidgetKeyReleaseEvent,
+        onWidgetLeaveNotifyEvent, onWidgetMotionNotifyEvent,
+        onWidgetKeyPressEvent, onWidgetButtonReleaseEvent,
+        onWidgetButtonPressEvent, afterWidgetFocusInEvent, widgetGrabFocus,
+        toWidget, widgetGetParent, widgetGetWindow)
+import GI.Gdk.Structs.Rectangle
+       (rectangleHeight, rectangleWidth, rectangleY, rectangleX,
+        Rectangle(..))
+import Data.GI.Base.ManagedPtr (withManagedPtr, unsafeCastTo)
+import GI.Gdk.Flags (ModifierType(..), EventMask(..))
+import GI.Gdk.Structs.EventButton (eventButtonReadState)
+import GI.JavaScriptCore.Structs.GlobalContext (GlobalContext(..))
+import Foreign.Ptr (castPtr)
+import Data.GI.Base.BasicConversions (gflagsToWord)
+import Data.GI.Base.Constructible (Constructible(..))
+import Data.GI.Base.Attributes (AttrOp(..))
 
 #ifdef LEKSAH_WITH_CODE_MIRROR
 import Control.Monad (unless)
 import Data.Text (pack, unpack)
 import IDE.TextEditor.Class (TextEditor(..))
-import Graphics.UI.Gtk.WebKit.Types (WebView(..))
 import Control.Monad.Reader (ReaderT(..))
 import Language.Javascript.JSaddle
        (valToObject, (#), JSContextRef, Object, jsg, jsg2, (<#), obj, js2, jss,
@@ -75,26 +100,9 @@ import IDE.Core.Types (IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Lens ((^.), IndexPreservingGetter)
-import Graphics.UI.Gtk.WebKit.WebView
-       (webViewLoadUri, webViewLoadString, webViewGetMainFrame,
-        loadFinished, webViewNew)
 import qualified GHCJS.CodeMirror as CM (getDataDir)
-import System.Glib.Signals (after, on)
-import Graphics.UI.Gtk.WebKit.JavaScriptCore.WebFrame
-       (webFrameGetGlobalContext)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Hamlet (shamlet)
-import Graphics.UI.Gtk
-       (ScrolledWindow, menuPopup, menuAttachToWidget, menuNew,
-        popupMenuSignal, eventModifier, widgetAddEvents, keyReleaseEvent,
-        leaveNotifyEvent, motionNotifyEvent, keyPressEvent,
-        buttonReleaseEvent, buttonPressEvent, focusInEvent,
-        widgetGrabFocus, widgetGetParent, castToScrolledWindow,
-        containerAdd, scrolledWindowNew, Rectangle(..),
-        EventMask(..), Modifier(..), ContainerClass, mainIteration,
-        castToWidget,
-        widgetGetWindow
-        )
 import Data.Maybe (fromJust)
 import IDE.Core.State (onIDE, reflectIDE, leksahOrPackageDir)
 import Graphics.UI.Editor.Basics (Connection(..))
@@ -106,7 +114,7 @@ data CodeMirror = CodeMirror deriving( Typeable, Show )
 #ifdef LEKSAH_WITH_CODE_MIRROR
 
 data CodeMirrorState = CodeMirrorState {
-    cmContext        :: JSContextRef
+    cmContext        :: GlobalContext
   , cmObject         :: Object }
 type CM = ReaderT (WebView, CodeMirrorState) JSM
 webView :: CM WebView
@@ -116,7 +124,7 @@ codeMirror = cmObject . snd <$> ask
 runCM :: CodeMirrorRef -> CM a -> IDEM a
 runCM (v, mvar) f = liftIO $ do
     s <- guiTakeMVar mvar
-    runReaderT (runReaderT f (v, s)) (cmContext s)
+    withManagedPtr (cmContext s) (runReaderT (runReaderT f (v, s)) . castPtr)
   where
     guiTakeMVar mvar = do
         maybeValue <- tryTakeMVar mvar
@@ -202,19 +210,19 @@ newCMBuffer mbFilename contents = do
     ideR <- ask
     liftIO $ do
         debugM "leksah" "newCMBuffer"
-        scrolledWindow <- scrolledWindowNew Nothing Nothing
-        scrolledWindowSetShadowType scrolledWindow ShadowIn
+        scrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType scrolledWindow ShadowTypeIn
         cmWebView <- webViewNew
         containerAdd scrolledWindow cmWebView
         dataDir <- liftIO $ leksahOrPackageDir "ghcjs-codemirror" CM.getDataDir
         s <- newEmptyMVar
-        cmWebView `on` loadFinished $ \ _ -> do
+        onWebViewLoadFinished cmWebView $ \ _ -> do
             debugM "leksah" "newCMBuffer loadFinished"
             cmContext <- webViewGetMainFrame cmWebView >>= webFrameGetGlobalContext
-            let runjs f = f `runReaderT` cmContext
+            let runjs f = withManagedPtr cmContext (runReaderT f . castPtr)
 
             runjs $ do
-                document   <- jsg "document"
+                document <- jsg "document"
                 code <- obj
                 code ^. setValue contents
                 code ^. setMode "haskell"
@@ -233,7 +241,7 @@ newCMBuffer mbFilename contents = do
                 ++ "</head>"
                 ++ "<body style=\"margin:0;padding:0 auto;\">"
                 ++ "</body></html>"
-            ) Nothing (T.pack $ "file://" ++ dataDir ++ "/codemirror.html")
+            ) (T.pack "text/html") (T.pack "UTF-8") (T.pack $ "file://" ++ dataDir ++ "/codemirror.html")
         debugM "leksah" "newCMBuffer loading"
         return $ CMBuffer (cmWebView, s)
 
@@ -365,7 +373,7 @@ instance TextEditor CodeMirror where
     getBuffer (CMView cm) = return $ CMBuffer cm
     getWindow (CMView cm) = runCM cm $ do
         v <- webView
-        liftIO $ widgetGetWindow v
+        Just <$> widgetGetWindow v
     getIterAtLocation (CMView cm) x y = runCM cm $ do
         m <- codeMirror
         lift $ do
@@ -381,13 +389,17 @@ instance TextEditor CodeMirror where
             r <- rect ^. right
             t <- rect ^. top
             b <- rect ^. bottom
-            return $ Rectangle (round l) (round t) (round $ r - l) (round $ b - t)
+            new Rectangle [
+                rectangleX := (round l),
+                rectangleY := (round t),
+                rectangleWidth := (round $ r - l),
+                rectangleHeight := (round $ b - t)]
     getOverwrite (CMView cm) = return False -- TODO
-    getScrolledWindow (CMView (v,_)) = liftIO . fmap (castToScrolledWindow . fromJust) $ widgetGetParent v
-    getEditorWidget (CMView (v,_)) = return $ castToWidget v
+    getScrolledWindow (CMView (v,_)) = widgetGetParent v >>= (liftIO . unsafeCastTo ScrolledWindow)
+    getEditorWidget (CMView (v,_)) = liftIO $ toWidget v
     grabFocus (CMView cm) = runCM cm $ do
         v <- webView
-        liftIO $ widgetGrabFocus v
+        widgetGrabFocus v
     scrollToMark (CMView cm) m withMargin mbAlign = do
         i <- getIterAtMark (CMBuffer cm) m
         scrollToIter (CMView cm) i withMargin mbAlign
@@ -493,51 +505,46 @@ instance TextEditor CodeMirror where
     afterFocusIn (CMView (v, _)) f = do
         ideR <- ask
         liftIO $ do
-            id1 <- v `after` focusInEvent $ lift $ reflectIDE f ideR >> return False
-            return [ConnectC id1]
+            id1 <- afterWidgetFocusInEvent v $ \e -> reflectIDE f ideR >> return False
+            return [ConnectC v id1]
     afterModifiedChanged (CMBuffer cm) f = return [] -- TODO
     afterMoveCursor (CMView cm) f = return [] -- TODO
     afterToggleOverwrite (CMView cm) f = return [] -- TODO
     onButtonPress (CMView (v, _)) f = do
-        id1 <- v `onIDE` buttonPressEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetButtonPressEvent v f
+        return [id1]
     onButtonRelease (CMView (v, _)) f = do
-        id1 <- v `onIDE` buttonReleaseEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetButtonReleaseEvent v f
+        return [id1]
     onCompletion (CMView cm) start cancel = return [] -- TODO
     onKeyPress (CMView (v, _)) f = do
-        id1 <- v `onIDE` keyPressEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetKeyPressEvent v f
+        return [id1]
     onMotionNotify (CMView (v, _)) f = do
-        id1 <- v `onIDE` motionNotifyEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetMotionNotifyEvent v f
+        return [id1]
     onLeaveNotify (CMView (v, _)) f = do
-        id1 <- v `onIDE` leaveNotifyEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetLeaveNotifyEvent v f
+        return [id1]
     onKeyRelease (CMView (v, _)) f = do
-        id1 <- v `onIDE` keyReleaseEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetKeyReleaseEvent v f
+        return [id1]
     onLookupInfo (CMView (v, _)) f = do
         ideR <- ask
-        liftIO $ do
-            v `widgetAddEvents` [ButtonReleaseMask]
-            id1 <- (`reflectIDE` ideR) $ v `onIDE` buttonReleaseEvent $ do
-                mod <- lift eventModifier
-                case mod of
-                    [Control] -> f >> return True
-                    _             -> return False
-            return [ConnectC id1]
+        widgetAddEvents v (gflagsToWord [EventMaskButtonReleaseMask])
+        id1 <- onIDE onWidgetButtonReleaseEvent v $ do
+            e <- lift ask
+            mod <- liftIO $ eventButtonReadState e
+            case mod of
+                [ModifierTypeControlMask] -> f >> return True
+                _                         -> return False
+        return [id1]
     onMotionNotifyEvent (CMView cm) f = return [] -- TODO
     onPopulatePopup (CMView (v, _)) f = do
         ideR <- ask
-        liftIO $ do
-            id1 <- on v popupMenuSignal $ do
-                 menu <- menuNew
-                 menuAttachToWidget menu v
-                 reflectIDE (f menu) ideR
-                 menuPopup menu Nothing
-                 return True
-            return [ConnectC id1]
+        id1 <- onWebViewPopulatePopup v $ \menu -> do
+             reflectIDE (f menu) ideR
+        return [ConnectC v id1]
     onSelectionChanged (CMBuffer cm) f = return [] -- TODO
 #endif
 

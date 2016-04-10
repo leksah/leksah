@@ -26,8 +26,6 @@ module IDE.Pane.Grep (
 ,   getGrep
 ) where
 
-import Graphics.UI.Gtk hiding (get)
-import qualified Graphics.UI.Gtk.Gdk.Events as Gdk
 import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -64,6 +62,41 @@ import qualified Data.Text as T (pack, take, unpack)
 import System.Log.Logger (debugM)
 import Control.Exception (SomeException, catch)
 import Data.Text (Text)
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew, ScrolledWindow(..))
+import GI.Gtk.Objects.TreeView
+       (treeViewExpandAll, treeViewGetSelection,
+        treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
+        treeViewNew, TreeView(..))
+import Data.GI.Gtk.ModelView.ForestStore
+       (forestStoreChange, forestStoreGetValue, ForestStore(..),
+        forestStoreNew, forestStoreClear, forestStoreInsert)
+import GI.Gtk.Objects.CellRendererText
+       (cellRendererTextText, cellRendererTextNew)
+import GI.Gtk.Objects.TreeViewColumn
+       (treeViewColumnSetReorderable, treeViewColumnSetResizable,
+        treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew)
+import GI.Gtk.Enums
+       (PolicyType(..), ShadowType(..), SelectionMode(..),
+        TreeViewColumnSizing(..))
+import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetAttributes)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.TreeSelection
+       (onTreeSelectionChanged, treeSelectionSetMode)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Container (containerAdd)
+import GI.Gtk.Objects.Widget
+       (widgetGrabFocus, onWidgetKeyPressEvent, afterWidgetFocusInEvent,
+        toWidget)
+import GI.Gdk.Structs.EventKey (eventKeyReadKeyval)
+import GI.Gdk.Functions (keyvalName)
+import Data.GI.Gtk.ModelView.TreeModel
+       (treeModelGetIter, treeModelIterNChildren)
+import Data.GI.Gtk.ModelView.Types
+       (treeSelectionGetSelectedRows', treePathNewFromIndices')
 
 -- | Represents a single search result
 data GrepRecord = GrepRecord {
@@ -84,7 +117,7 @@ isDir otherwies                     = False
 data IDEGrep        =   IDEGrep {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   grepStore       ::   TreeStore GrepRecord
+,   grepStore       ::   ForestStore GrepRecord
 ,   waitingGrep     ::   MVar Bool
 ,   activeGrep      ::   MVar Bool
 } deriving Typeable
@@ -99,7 +132,7 @@ instance Pane IDEGrep IDEM
     where
     primPaneName _  =   __ "Grep"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   liftIO . toWidget . scrolledView
     paneId b        =   "*Grep"
 
 
@@ -108,91 +141,92 @@ instance RecoverablePane IDEGrep GrepState IDEM where
     recoverState pp GrepState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
-    builder pp nb windows = reifyIDE $ \ ideR -> do
-        grepStore   <-  treeStoreNew []
+    builder pp nb windows = do
+        grepStore   <-  forestStoreNew []
         treeView    <-  treeViewNew
-        treeViewSetModel treeView grepStore
+        treeViewSetModel treeView (Just grepStore)
 
         renderer1    <- cellRendererTextNew
         col1         <- treeViewColumnNew
         treeViewColumnSetTitle col1 (__ "File")
-        treeViewColumnSetSizing col1 TreeViewColumnAutosize
+        treeViewColumnSetSizing col1 TreeViewColumnSizingAutosize
         treeViewColumnSetResizable col1 True
         treeViewColumnSetReorderable col1 True
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetAttributes col1 renderer1 grepStore
-            $ \row -> [ cellText := T.pack $ file row]
+            $ \row -> [ cellRendererTextText := T.pack $ file row]
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
         treeViewColumnSetTitle col2 (__ "Line")
-        treeViewColumnSetSizing col2 TreeViewColumnAutosize
+        treeViewColumnSetSizing col2 TreeViewColumnSizingAutosize
         treeViewColumnSetResizable col2 True
         treeViewColumnSetReorderable col2 True
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
         cellLayoutSetAttributes col2 renderer2 grepStore
-            $ \row -> [ cellText := T.pack $ show $ line row]
+            $ \row -> [ cellRendererTextText := T.pack $ show $ line row]
 
         renderer3    <- cellRendererTextNew
         col3         <- treeViewColumnNew
         treeViewColumnSetTitle col3 (__ "Context")
-        treeViewColumnSetSizing col3 TreeViewColumnAutosize
+        treeViewColumnSetSizing col3 TreeViewColumnSizingAutosize
         treeViewColumnSetResizable col3 True
         treeViewColumnSetReorderable col3 True
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer3 True
         cellLayoutSetAttributes col3 renderer3 grepStore
-            $ \row -> [ cellText := T.take 2048 $ context row]
+            $ \row -> [ cellRendererTextText := T.take 2048 $ context row]
 
 
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
-        treeSelectionSetMode sel SelectionSingle
+        treeSelectionSetMode sel SelectionModeSingle
 
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        scrolledWindowSetShadowType scrolledView ShadowIn
+        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
 
-        waitingGrep <- newEmptyMVar
-        activeGrep <- newEmptyMVar
+        waitingGrep <- liftIO newEmptyMVar
+        activeGrep <- liftIO newEmptyMVar
         let grep = IDEGrep {..}
         let
-            gotoSource :: Bool -> IO Bool
+            gotoSource :: Bool -> IDEM Bool
             gotoSource focus = do
                 sel <- getSelectionGrepRecord treeView grepStore
                 case sel of
-                    Just record -> reflectIDE (
+                    Just record ->
                         case record of
                             GrepRecord {file=f, line=l, parDir=Just pp} ->
                                 goToSourceDefinition pp (Location f l 0 l 0) ?>>=
-                                   (\ (IDEBuffer{sourceView = sv}) -> when focus $ grabFocus sv)
-                            _ -> return ()) ideR
+                                   (\ IDEBuffer{sourceView = sv} -> when focus $ grabFocus sv)
+                            _ -> return ()
                     Nothing -> return ()
                 return True
-        cid1 <- after treeView focusInEvent $ do
-            liftIO $ reflectIDE (makeActive grep) ideR
+        cid1 <- onIDE afterWidgetFocusInEvent treeView $ do
+            liftIDE $ makeActive grep
             return True
-        cid2 <- on treeView keyPressEvent $ do
-            name <- eventKeyName
-            liftIO $ case name of
-                        "Return" -> gotoSource True
-                        "Escape" -> do
-                            reflectIDE (do
-                                lastActiveBufferPane ?>>= \paneName -> do
-                                    (PaneC pane) <- paneFromName paneName
-                                    makeActive pane
-                                    return ()
-                                triggerEventIDE StartFindInitial) ideR
-                            return True
-                            -- gotoSource True
-                        _ -> return False
-        on sel treeSelectionSelectionChanged (void (gotoSource False))
+        cid2 <- onIDE onWidgetKeyPressEvent treeView $ do
+            e <- lift ask
+            name <- eventKeyReadKeyval e >>= keyvalName
+            liftIDE $
+                case name of
+                    "Return" -> gotoSource True
+                    "Escape" -> do
+                        lastActiveBufferPane ?>>= \paneName -> do
+                            (PaneC pane) <- paneFromName paneName
+                            makeActive pane
+                            return ()
+                        triggerEventIDE StartFindInitial
+                        return True
+                        -- gotoSource True
+                    _ -> return False
+        ideR <- ask
+        onTreeSelectionChanged sel (void (reflectIDE (gotoSource False) ideR))
 
-
-        return (Just grep,[ConnectC cid1])
+        return (Just grep,[cid1, cid2])
 
 -- | Get the Grep panel
 getGrep :: Maybe PanePath -> IDEM IDEGrep
@@ -223,14 +257,15 @@ int = fromInteger <$> P.integer lexer
 
 
 -- | Tries to get the currently selected record in the pane
-getSelectionGrepRecord ::  TreeView
-    ->  TreeStore GrepRecord
-    -> IO (Maybe GrepRecord)
+getSelectionGrepRecord :: MonadIO m
+                       => TreeView
+                       -> ForestStore GrepRecord
+                       -> m (Maybe GrepRecord)
 getSelectionGrepRecord treeView grepStore = do
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
-        p:_ ->  Just <$> treeStoreGetValue grepStore p
+        p:_ ->  Just <$> forestStoreGetValue grepStore p
         _   ->  return Nothing
 
 
@@ -259,53 +294,54 @@ grepDirectories regexString caseSensitive dirs = do
     grep <- getGrep Nothing
     let store = grepStore grep
     ideRef <- ask
-    liftIO $ do
-        bringPaneToFront grep
-        forkIO $ do
+    bringPaneToFront grep
+    liftIO . forkIO . (`reflectIDE` ideRef) $ do
+        liftIO $ do
             putMVar (waitingGrep grep) True
             putMVar (activeGrep grep) True
             takeMVar (waitingGrep grep)
 
-            postGUISync $ treeStoreClear store
+        postSyncIDE $ forestStoreClear store
 
-            totalFound <- foldM (\a dir -> do
-                subDirs <- filter (\f ->
-                       not ("." `isPrefixOf` f)
-                    && f `notElem` ["_darcs", "dist", "vendor"]) <$> getDirectoryContents dir
-                nooneWaiting <- isEmptyMVar (waitingGrep grep)
-                found <- if nooneWaiting
-                    then do
-                        (output, pid) <- runTool "grep" ((if caseSensitive then [] else ["-i"])
-                            ++ ["-R", "-E", "-n", "-I",
-                                "--exclude=*~",
-                                "--exclude-dir=.svn",
-                                "--exclude-dir=_darcs",
-                                "--exclude-dir=.git",
-                                regexString] ++ map T.pack subDirs) (Just dir)
-                        reflectIDE (
-                            output $$ do
-                                let max = 1000
-                                CL.isolate max =$ do
-                                    n <- setGrepResults dir
-                                    when (n >= max) . liftIO $ do
-                                        debugM "leksah" "interrupting grep process"
-                                        interruptProcessGroupOf pid
-                                          `catch` \(_::SomeException) -> return ()
-                                        postGUISync $ do
-                                            nDir <- treeModelIterNChildren store Nothing
-                                            treeStoreChange store [nDir-1] (\r -> r{ context = __ "(Stoped Searching)" })
-                                            return ()
-                                    CL.sinkNull
-                                    return n) ideRef
-                    else return 0
-                return $ a + found) 0 dirs
+        totalFound <- foldM (\a dir -> do
+            subDirs <- liftIO $ filter (\f ->
+                   not ("." `isPrefixOf` f)
+                && f `notElem` ["_darcs", "dist", "vendor"]) <$> getDirectoryContents dir
+            nooneWaiting <- liftIO $ isEmptyMVar (waitingGrep grep)
+            found <- if nooneWaiting
+                then do
+                    (output, pid) <- liftIO $ runTool "grep" ((if caseSensitive then [] else ["-i"])
+                        ++ ["-R", "-E", "-n", "-I",
+                            "--exclude=*~",
+                            "--exclude-dir=.svn",
+                            "--exclude-dir=_darcs",
+                            "--exclude-dir=.git",
+                            regexString] ++ map T.pack subDirs) (Just dir)
+                    output $$ do
+                        let max = 1000
+                        CL.isolate max =$ do
+                            n <- setGrepResults dir
+                            when (n >= max) $ do
+                                liftIO $ debugM "leksah" "interrupting grep process"
+                                liftIO $ interruptProcessGroupOf pid
+                                  `catch` \(_::SomeException) -> return ()
+                                lift $ postSyncIDE $ do
+                                    nDir <- treeModelIterNChildren store Nothing
+                                    p <- treePathNewFromIndices' [nDir-1]
+                                    forestStoreChange store p (\r -> r{ context = __ "(Stoped Searching)" })
+                                    return ()
+                            CL.sinkNull
+                            return n
+                else return 0
+            return $ a + found) 0 dirs
 
-            nooneWaiting <- isEmptyMVar (waitingGrep grep)
-            when nooneWaiting $ postGUISync $ do
-                nDir <- treeModelIterNChildren store Nothing
-                treeStoreInsert store [] nDir $ GrepRecord (T.unpack $ __ "Search Complete") totalFound "" Nothing
+        nooneWaiting <- liftIO $ isEmptyMVar (waitingGrep grep)
+        when nooneWaiting $ postSyncIDE $ do
+            nDir <- treeModelIterNChildren store Nothing
+            p <- treePathNewFromIndices' []
+            forestStoreInsert store p (fromIntegral nDir) $ GrepRecord (T.unpack $ __ "Search Complete") totalFound "" Nothing
 
-            void $ takeMVar (activeGrep grep)
+        void $ liftIO $ takeMVar (activeGrep grep)
     return ()
 
 
@@ -318,26 +354,28 @@ setGrepResults dir = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     let store = grepStore grep
         view  = treeView grep
-    nDir <- liftIO $ postGUISync $ do
+    nDir <- lift $ postSyncIDE $ do
         nDir <- treeModelIterNChildren store Nothing
-        treeStoreInsert store [] nDir $ GrepRecord dir 0 "" Nothing
+        p <- treePathNewFromIndices' []
+        forestStoreInsert store p (fromIntegral nDir) $ GrepRecord dir 0 "" Nothing
         when (nDir == 0) (void $ widgetGrabFocus view)
         return nDir
     CL.foldM (\count line ->
         if isError line
             then do
-                liftIO $ postGUISync $ reflectIDE (void $ defaultLineLogger log defaultLogLaunch line) ideRef
+                postSyncIDE $ void $ defaultLineLogger log defaultLogLaunch line
                 return count
             else
                 case process dir line of
                     Nothing     -> return count
-                    Just record -> liftIO $ do
-                        nooneWaiting <- isEmptyMVar (waitingGrep grep)
-                        when nooneWaiting $ postGUISync $ do
-                            parent <- treeModelGetIter store [nDir]
-                            n <- treeModelIterNChildren store parent
-                            treeStoreInsert store [nDir] n record
-                            treeStoreChange store [nDir] (\r -> r{ line = n+1 })
+                    Just record -> do
+                        nooneWaiting <- liftIO $ isEmptyMVar (waitingGrep grep)
+                        when nooneWaiting . postSyncIDE $ do
+                            p <- treePathNewFromIndices' [nDir]
+                            Just parent <- treeModelGetIter store p
+                            n <- treeModelIterNChildren store (Just parent)
+                            forestStoreInsert store p (fromIntegral n) record
+                            forestStoreChange store p (\r -> r{ line = fromIntegral n+1 })
                             when (nDir == 0 && n == 0) $
                                 treeViewExpandAll view
                         return (count+1)) 0

@@ -25,12 +25,8 @@ module IDE.Pane.Breakpoints (
 ,   selectBreak
 ) where
 
-import Graphics.UI.Gtk
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
-import Graphics.UI.Gtk.Gdk.Events (Event(..))
-import Graphics.UI.Gtk.General.Enums
-    (Click(..), MouseButton(..))
 import IDE.Debug
     (debugShowBreakpoints,
      debugDeleteBreakpoint,
@@ -42,13 +38,52 @@ import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import qualified Data.Text as T (words, unpack)
 import qualified Data.Foldable as F (toList)
 import qualified Data.Sequence as Seq (elemIndexL)
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew, ScrolledWindow(..))
+import GI.Gtk.Objects.TreeView
+       (onTreeViewRowActivated, treeViewGetSelection,
+        treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
+        treeViewNew, TreeView(..))
+import Data.GI.Gtk.ModelView.ForestStore
+       (forestStoreGetValue, ForestStore(..),
+        forestStoreInsert, forestStoreClear, forestStoreNew)
+import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
+import GI.Gtk.Objects.CellRendererText
+       (cellRendererTextText, cellRendererTextNew)
+import GI.Gtk.Objects.TreeViewColumn
+       (TreeViewColumn(..), treeViewColumnSetReorderable,
+        treeViewColumnSetResizable, treeViewColumnSetSizing,
+        treeViewColumnSetTitle, treeViewColumnNew)
+import GI.Gtk.Enums
+       (PolicyType(..), ShadowType(..), SelectionMode(..),
+        TreeViewColumnSizing(..))
+import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetAttributes)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.TreeSelection
+       (treeSelectionSelectPath, treeSelectionUnselectAll,
+        treeSelectionSetMode)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Container (containerAdd)
+import GI.Gtk.Objects.Menu (Menu(..))
+import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew, SeparatorMenuItem(..))
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import GI.Gtk.Structs.TreePath
+       (TreePath(..))
+import Control.Monad.Reader (MonadReader(..))
+import GI.Gtk.Objects.MenuItem
+       (toMenuItem, onMenuItemActivate, menuItemNewWithLabel)
+import Data.GI.Gtk.ModelView.Types
+       (treeSelectionGetSelectedRows', treePathNewFromIndices')
 
 
 -- | Represents the Breakpoints pane
 data IDEBreakpoints    =   IDEBreakpoints {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
-,   breakpoints     ::   TreeStore LogRef
+,   breakpoints     ::   ForestStore LogRef
 } deriving Typeable
 
 
@@ -61,7 +96,7 @@ instance Pane IDEBreakpoints IDEM
     where
     primPaneName _  =   __ "Breakpoints"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . scrolledView
+    getTopWidget    =   liftIO . toWidget . scrolledView
     paneId b        =   "*Breakpoints"
 
 
@@ -70,47 +105,48 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
     recoverState pp BreakpointsState =   do
         nb      <-  getNotebook pp
         buildPane pp nb builder
-    builder pp nb windows = reifyIDE $ \ ideR -> do
-        breakpoints <-  treeStoreNew []
+    builder pp nb windows = do
+        ideR <- ask
+        breakpoints <-  forestStoreNew []
         treeView    <-  treeViewNew
-        treeViewSetModel treeView breakpoints
+        treeViewSetModel treeView (Just breakpoints)
 
         rendererA    <- cellRendererTextNew
         colA         <- treeViewColumnNew
         treeViewColumnSetTitle colA (__ "Location")
-        treeViewColumnSetSizing colA TreeViewColumnAutosize
+        treeViewColumnSetSizing colA TreeViewColumnSizingAutosize
         treeViewColumnSetResizable colA True
         treeViewColumnSetReorderable colA True
         treeViewAppendColumn treeView colA
         cellLayoutPackStart colA rendererA False
         cellLayoutSetAttributes colA rendererA breakpoints
-            $ \row -> [cellText := showSourceSpan row]
+            $ \row -> [cellRendererTextText := showSourceSpan row]
 
         rendererB    <- cellRendererTextNew
         colB         <- treeViewColumnNew
         treeViewColumnSetTitle colB (__ "Breakpoints")
-        treeViewColumnSetSizing colB TreeViewColumnAutosize
+        treeViewColumnSetSizing colB TreeViewColumnSizingAutosize
         treeViewColumnSetResizable colB True
         treeViewColumnSetReorderable colB True
         treeViewAppendColumn treeView colB
         cellLayoutPackStart colB rendererB False
         cellLayoutSetAttributes colB rendererB breakpoints
-            $ \row -> [ cellText := refDescription row]
+            $ \row -> [ cellRendererTextText := refDescription row]
 
         treeViewSetHeadersVisible treeView True
         selB <- treeViewGetSelection treeView
-        treeSelectionSetMode selB SelectionSingle
-        scrolledView <- scrolledWindowNew Nothing Nothing
-        scrolledWindowSetShadowType scrolledView ShadowIn
+        treeSelectionSetMode selB SelectionModeSingle
+        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyAutomatic PolicyAutomatic
+        scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
         let pane = IDEBreakpoints scrolledView treeView breakpoints
-        cid1 <- after treeView focusInEvent $ do
-            liftIO $ reflectIDE (makeActive pane) ideR
+        cid1 <- onIDE afterWidgetFocusInEvent treeView $ do
+            liftIDE $ makeActive pane
             return True
-        (cid2, cid3) <- treeViewContextMenu treeView $ breakpointsContextMenu ideR breakpoints treeView
-        cid4 <- treeView `on` rowActivated $ breakpointsSelect ideR breakpoints
-        return (Just pane, map ConnectC [cid1, cid2, cid3, cid4])
+        cids2 <- treeViewContextMenu treeView $ breakpointsContextMenu ideR breakpoints treeView
+        cid4 <- ConnectC treeView <$> onTreeViewRowActivated treeView (breakpointsSelect ideR breakpoints)
+        return (Just pane, [cid1, cid4] ++ cids2)
 
 
 -- | Get the Breakpoints pane
@@ -133,22 +169,22 @@ fillBreakpointList = do
         Nothing -> return ()
         Just b  -> do
             refs <- readIDE breakpointRefs
-            liftIO $ do
-                treeStoreClear (breakpoints b)
-                mapM_ (\ (lr,index) -> treeStoreInsert (breakpoints b) [] index lr)
-                    (zip (F.toList refs) [0..])
+            forestStoreClear (breakpoints b)
+            emptyPath <- treePathNewFromIndices' []
+            mapM_ (\ (lr,index) -> forestStoreInsert (breakpoints b) emptyPath index lr)
+                (zip (F.toList refs) [0..])
 
 
 -- | Try to get the currently selected breakpoint
 getSelectedBreakpoint ::  TreeView
-    -> TreeStore LogRef
+    -> ForestStore LogRef
     -> IO (Maybe LogRef)
-getSelectedBreakpoint treeView treeStore = do
+getSelectedBreakpoint treeView forestStore = do
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         a:r ->  do
-            val     <-  treeStoreGetValue treeStore a
+            val     <-  forestStoreGetValue forestStore a
             return (Just val)
         _  ->  return Nothing
 
@@ -159,46 +195,44 @@ selectBreak :: Maybe LogRef  -- If @Nothing@, no breakpoints are selected
 selectBreak mbLogRef = do
     breakRefs' <- readIDE breakpointRefs
     breaks     <- forceGetPane (Right "*Breakpoints")
-    liftIO $ do
-        selection <- treeViewGetSelection (treeView breaks)
-        case mbLogRef of
-            Nothing -> treeSelectionUnselectAll selection
-            Just lr -> case lr `Seq.elemIndexL` breakRefs' of
-                        Nothing  -> return ()
-                        Just ind -> treeSelectionSelectPath selection [ind]
+    selection <- treeViewGetSelection (treeView breaks)
+    case mbLogRef of
+        Nothing -> treeSelectionUnselectAll selection
+        Just lr -> case lr `Seq.elemIndexL` breakRefs' of
+                    Nothing  -> return ()
+                    Just ind -> treeSelectionSelectPath selection =<< treePathNewFromIndices' [fromIntegral ind]
 
 
 -- | Constructs the context menu for the breakpoint
 breakpointsContextMenu :: IDERef
-                       -> TreeStore LogRef
+                       -> ForestStore LogRef
                        -> TreeView
                        -> Menu
                        -> IO ()
 breakpointsContextMenu ideR store treeView theMenu = do
-    item1           <-  menuItemNewWithLabel (__ "Remove breakpoint")
-    item1 `on` menuItemActivate $ do
-        sel         <-  getSelectedBreakpoint treeView store
+    item1 <- menuItemNewWithLabel (__ "Remove breakpoint")
+    onMenuItemActivate item1 $ do
+        sel <- getSelectedBreakpoint treeView store
         case sel of
             Just ref  -> reflectIDE (deleteBreakpoint ref) ideR
             otherwise -> sysMessage Normal (__ "Debugger>> breakpointViewPopup: no selection2")
-    sep1 <- separatorMenuItemNew
-    item2           <-  menuItemNewWithLabel (__ "Remove all breakpoints")
-    item2 `on` menuItemActivate $ reflectIDE debugDeleteAllBreakpoints ideR
-    item3           <-  menuItemNewWithLabel (__ "Update")
-    item3 `on` menuItemActivate $ reflectIDE debugShowBreakpoints ideR
-    mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1,
-        castToMenuItem item2, castToMenuItem item3]
+    sep1 <- separatorMenuItemNew >>= liftIO . toMenuItem
+    item2 <- menuItemNewWithLabel (__ "Remove all breakpoints")
+    onMenuItemActivate item2 $ reflectIDE debugDeleteAllBreakpoints ideR
+    item3 <- menuItemNewWithLabel (__ "Update")
+    onMenuItemActivate item3 $ reflectIDE debugShowBreakpoints ideR
+    mapM_ (menuShellAppend theMenu) [item1, sep1, item2, item3]
 
 
 -- | Set the current breakpoint to a specific entry
 --   pointed to by the supplied 'TreePath'
 breakpointsSelect :: IDERef
-                  -> TreeStore LogRef
+                  -> ForestStore LogRef
                   -> TreePath
                   -> TreeViewColumn
                   -> IO ()
 breakpointsSelect ideR store path _ = do
-    ref <- treeStoreGetValue store path
+    ref <- forestStoreGetValue store path
     reflectIDE (setCurrentBreak (Just ref)) ideR
 
 

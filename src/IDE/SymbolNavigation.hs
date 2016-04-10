@@ -19,23 +19,9 @@ module IDE.SymbolNavigation (
     mapControlCommand
 ) where
 
-import Graphics.UI.Gtk
-       (cursorNew, eventRootCoordinates, widgetAddEvents,
-        buttonPressEvent, eventIsHint, motionNotifyEvent, eventModifier,
-        drawWindowGetPointer, eventCoordinates, EventM, DrawWindow,
-        pointerGrab, screenGetDefault,
-        widgetGetAllocation, scrolledWindowGetVAdjustment,
-        adjustmentGetValue, scrolledWindowGetHAdjustment, pointerUngrab,
-        eventTime, leaveNotifyEvent, ScrolledWindow, Modifier(..),
-        Rectangle(..), EventMask(..), Underline(..),
-        widgetGetWindow
-        )
-import System.Glib.Signals (on)
 import IDE.TextEditor (TextEditor(..), EditorView(..), EditorIter(..))
 import IDE.Core.Types (IDEM)
-import Graphics.UI.Editor.Basics (Connection(..), Connection)
 import Control.Monad.IO.Class (MonadIO(..))
-import Graphics.UI.Gtk.Gdk.Cursor (CursorType(..))
 import IDE.Utils.GUIUtils (mapControlCommand)
 import Data.IORef (writeIORef, readIORef, newIORef)
 import Control.Monad (when)
@@ -45,6 +31,30 @@ import IDE.Core.State (reflectIDE)
 import Control.Applicative ((<$>))
 import Data.Text (Text)
 import qualified Data.Text as T (length)
+import GI.Gtk.Objects.ScrolledWindow
+       (getScrolledWindowVadjustment, getScrolledWindowHadjustment,
+        ScrolledWindow(..))
+import Graphics.UI.Editor.Basics (Connection(..), Connection)
+import GI.Pango.Enums (Underline(..))
+import GI.Gdk.Objects.Cursor (cursorNew)
+import GI.Gdk.Enums (CursorType(..))
+import GI.Gtk.Objects.Widget
+       (onWidgetButtonPressEvent, onWidgetMotionNotifyEvent,
+        widgetGetWindow, widgetGetAllocation, onWidgetLeaveNotifyEvent)
+import GI.Gdk.Structs.EventCrossing (eventCrossingReadTime)
+import GI.Gdk.Functions (pointerGrab, pointerUngrab)
+import GI.Gtk.Objects.Adjustment (adjustmentGetValue)
+import GI.Gdk.Flags (EventMask(..), ModifierType(..))
+import GI.Gdk.Structs.Rectangle
+       (rectangleReadHeight, rectangleReadWidth)
+import GI.Gdk.Objects.Screen (screenGetDefault)
+import qualified GI.Gdk.Objects.Window as Gdk (noWindow)
+import GI.Gdk.Structs.EventMotion
+       (eventMotionReadXRoot, eventMotionReadY, eventMotionReadX,
+        eventMotionReadState, eventMotionReadTime, eventMotionReadIsHint)
+import GI.Gdk.Structs.EventButton
+       (eventButtonReadXRoot, eventButtonReadY, eventButtonReadX,
+        eventButtonReadState, eventButtonReadTime)
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
@@ -63,25 +73,27 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
     ttt <- getTagTable tvb
     linkTag <- newTag ttt "link"
     underline linkTag UnderlineSingle
-    cursor <- liftIO $ cursorNew Hand2
+    cursor <- cursorNew CursorTypeHand2
 
-    id1 <- liftIO (sw `on` leaveNotifyEvent $ do
-        eventTime >>= (liftIO . pointerUngrab)
+    id1 <- ConnectC sw <$> onWidgetLeaveNotifyEvent sw (\e -> do
+        eventCrossingReadTime e >>= pointerUngrab
         return True)
 
     let moveOrClick eventX eventY mods eventTime click = do
-            sx <- liftIO $ scrolledWindowGetHAdjustment sw >>= adjustmentGetValue
-            sy <- liftIO $ scrolledWindowGetVAdjustment sw >>= adjustmentGetValue
+            sx <- getScrolledWindowHadjustment sw >>= adjustmentGetValue
+            sy <- getScrolledWindowVadjustment sw >>= adjustmentGetValue
 
             let ex = eventX + sx
                 ey = eventY + sy
-                ctrlPressed = mapControlCommand Control `elem` mods
-                shiftPressed = Shift `elem` mods
+                ctrlPressed = mapControlCommand ModifierTypeControlMask `elem` mods
+                shiftPressed = ModifierTypeShiftMask `elem` mods
             iter <- getIterAtLocation sv (round ex) (round ey)
-            (Rectangle _ _ szx szy) <- liftIO $ widgetGetAllocation sw
+            rect <- widgetGetAllocation sw
+            szx <- rectangleReadWidth rect
+            szy <- rectangleReadHeight rect
             if eventX < 0 || eventY < 0
                 || round eventX > szx || round eventY > szy then do
-                    liftIO $ pointerUngrab eventTime
+                    pointerUngrab eventTime
                     return True
               else do
                 (beg, en) <- identifierMapper ctrlPressed shiftPressed iter
@@ -91,24 +103,23 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                 offsc <- getLineOffset iter
                 if T.length slice > 1 then
                     if click then do
-                            liftIO $ pointerUngrab eventTime
+                            pointerUngrab eventTime
                             clickHandler ctrlPressed shiftPressed slice
                         else do
                             applyTagByName tvb "link" beg en
-                            Just screen <- liftIO screenGetDefault
-                            mbDW <- liftIO $ widgetGetWindow tv
-                            case mbDW of
-                                Nothing -> return ()
-                                Just dw -> do
-                                    liftIO $ pointerGrab dw False [PointerMotionMask,ButtonPressMask,LeaveNotifyMask] (Nothing  :: Maybe DrawWindow) (Just cursor) eventTime
-                                    return ()
+                            screen <- screenGetDefault
+                            dw <- widgetGetWindow tv
+                            pointerGrab dw False
+                                [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
+                                Gdk.noWindow (Just cursor) eventTime
+                            return ()
                   else do
-                    liftIO $ pointerUngrab eventTime
+                    pointerUngrab eventTime
                     return ()
                 return True
     lineNumberBugFix <- liftIO $ newIORef Nothing
     let fixBugWithX mods isHint (eventX, eventY) ptrx = do
-            let hasNoControlModifier = mapControlCommand Control `notElem` mods
+            let hasNoControlModifier = mapControlCommand ModifierTypeControlMask `notElem` mods
             lnbf <- readIORef lineNumberBugFix
             -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",isHint,ptrx - fromMaybe (-1000) lnbf , eventX, ptrx, lnbf, hasNoControlModifier)
             -- when (isHint && hasNoControlModifier) $
@@ -124,28 +135,28 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                         else eventX
             return (nx, eventY)
     ideR <- ask
-    liftIO $ do
-        id2 <- sw `on` motionNotifyEvent $ do
-            isHint <- eventIsHint
-            eventTime <- eventTime
-            mods <- eventModifier
-            (oldX, oldY) <- eventCoordinates
-            (rootX, _) <- eventRootCoordinates
-            (eventX, eventY) <- liftIO $ fixBugWithX mods isHint (oldX, oldY) rootX
-            liftIO $
-                -- print ("move adjustment: isHint, old, new root", isHint, eventX, oldX, rootX)
-                (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime False
-            return True
-        id3 <- sw `on` buttonPressEvent $ do
-            eventTime <- eventTime
-            mods <- eventModifier
-            -- liftIO $ print ("button press")
-            (oldX, oldY) <- eventCoordinates
-            (rootX, _) <- eventRootCoordinates
-            (eventX, eventY) <- liftIO $ fixBugWithX mods False (oldX, oldY) rootX
-            -- liftIO $ print ("click adjustment: old, new", eventX, oldX)
-            liftIO $ (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime True
+    id2 <- ConnectC sw <$> onWidgetMotionNotifyEvent sw (\e -> do
+        isHint <- (/=0) <$> eventMotionReadIsHint e
+        eventTime <- eventMotionReadTime e
+        mods <- eventMotionReadState e
+        oldX <- eventMotionReadX e
+        oldY <- eventMotionReadY e
+        rootX <- eventMotionReadXRoot e
+        (eventX, eventY) <- liftIO $ fixBugWithX mods isHint (oldX, oldY) rootX
+        -- print ("move adjustment: isHint, old, new root", isHint, eventX, oldX, rootX)
+        (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime False
+        return True)
+    id3 <- ConnectC sw <$> onWidgetButtonPressEvent sw (\e -> do
+        eventTime <- eventButtonReadTime e
+        mods <- eventButtonReadState e
+        -- liftIO $ print ("button press")
+        oldX <- eventButtonReadX e
+        oldY <- eventButtonReadY e
+        rootX <- eventButtonReadXRoot e
+        (eventX, eventY) <- liftIO $ fixBugWithX mods False (oldX, oldY) rootX
+        -- liftIO $ print ("click adjustment: old, new", eventX, oldX)
+        (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime True)
 
-        return [ConnectC id1, ConnectC id2, ConnectC id3]
+    return [id1, id2, id3]
 
 

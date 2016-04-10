@@ -21,7 +21,6 @@ module IDE.Sandbox (
 , sandboxDeleteSource
 ) where
 
-import Graphics.UI.Gtk (Window)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when, void)
 import Control.Monad.Trans.Class (lift)
@@ -48,7 +47,8 @@ import qualified Data.Text as T (pack)
 import IDE.Core.Types (runWorkspace, IDE(..), PackageM)
 import System.Directory (doesFileExist)
 import System.FilePath.Windows ((</>))
-import Graphics.UI.Gtk.Windows.MessageDialog (MessageType(..))
+import GI.Gtk.Enums (MessageType(..))
+import GI.Gtk.Objects.Window (Window(..))
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -58,16 +58,18 @@ sandboxTry action = do
     sandbox <- hasSandbox
     pkg <- ask
     if sandbox then action else do
-        reifyIDE $ \ideRef -> do
-            Just ws <- reflectIDE (readIDE workspace) ideRef
-            let packageToIO = flip reflectIDE ideRef . flip runWorkspace ws . flip runPackage pkg
-            showDialogOptions
-                "This action requires a sandboxed package database. Would you like to initialize a sandbox for this package?"
-                MessageQuestion
-                [ ("Initialize New Sandbox", packageToIO $ sandboxInit >> action)
-                , ("Use Existing Sandbox", packageToIO $ sandboxInitShared >> action)
-                , ("Cancel", return ())]
-                (Just 0)
+        ideRef <- lift $ lift ask
+        Just ws <- readIDE workspace
+        let packageToIO = (`reflectIDE` ideRef) .
+                          (`runWorkspace` ws) .
+                          (`runPackage` pkg)
+        liftIO $ showDialogOptions
+            "This action requires a sandboxed package database. Would you like to initialize a sandbox for this package?"
+            MessageTypeQuestion
+            [ ("Initialize New Sandbox", packageToIO $ sandboxInit >> action)
+            , ("Use Existing Sandbox", packageToIO $ sandboxInitShared >> action)
+            , ("Cancel", return ())]
+            (Just 0)
 
 hasSandbox :: PackageM Bool
 hasSandbox = do

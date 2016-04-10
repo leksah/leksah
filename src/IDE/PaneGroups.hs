@@ -33,9 +33,6 @@ import Graphics.UI.Frame.ViewFrame
 import Control.Monad (void, unless, when, liftM)
 import IDE.Core.Types (frameState)
 import Graphics.UI.Editor.Parameters (Direction(..))
-import Graphics.UI.Gtk
-    (widgetSetSensitive, notebookSetShowTabs, notebookSetTabPos)
-import Graphics.UI.Gtk.General.Enums (PositionType(..))
 import IDE.Pane.Modules (IDEModules(..))
 import IDE.Pane.Info (IDEInfo(..))
 import IDE.Pane.SourceBuffer
@@ -46,6 +43,10 @@ import IDE.Pane.Trace (IDETrace(..))
 import IDE.Pane.Workspace (WorkspacePane(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Pane.WebKit.Output (IDEOutput(..))
+import GI.Gtk.Objects.Notebook
+       (notebookSetShowTabs, notebookSetTabPos)
+import GI.Gtk.Enums (PositionType(..))
+import GI.Gtk.Objects.Widget (widgetSetSensitive)
 
 moveOrBuildPane :: RecoverablePane alpha beta delta => PanePath -> delta (Maybe alpha)
 moveOrBuildPane path = do
@@ -70,13 +71,12 @@ showBrowser = do
             lower <- getNotebook lowerP
             upper <- getNotebook upperP
             top   <- getNotebook topP
-            liftIO $ do
-                notebookSetTabPos lower PosBottom
-                notebookSetTabPos upper PosTop
-                notebookSetTabPos top PosTop
-                notebookSetShowTabs upper False
-                notebookSetShowTabs lower False
-                notebookSetShowTabs top False
+            notebookSetTabPos lower PositionTypeBottom
+            notebookSetTabPos upper PositionTypeTop
+            notebookSetTabPos top PositionTypeTop
+            notebookSetShowTabs upper False
+            notebookSetShowTabs lower False
+            notebookSetShowTabs top False
             getOrBuildBrowserPanes upperP lowerP topP
         (Just rpp, False) -> do
             let lowerP  =  getBestPanePath (rpp ++  [SplitP BottomP, SplitP BottomP]) layout'
@@ -96,16 +96,15 @@ setSensitivityDebugger sens = do
     mbBreakpoints :: Maybe IDEBreakpoints <- getPane
     mbVariables   :: Maybe IDEVariables   <- getPane
     mbTrace       :: Maybe IDETrace       <- getPane
-    liftIO $ do
-        case mbBreakpoints of
-            Nothing -> return ()
-            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
-        case mbVariables of
-            Nothing -> return ()
-            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
-        case mbTrace of
-            Nothing -> return ()
-            Just idePane -> widgetSetSensitive (getTopWidget idePane) sens
+    case mbBreakpoints of
+        Nothing -> return ()
+        Just idePane -> getTopWidget idePane >>= (`widgetSetSensitive` sens)
+    case mbVariables of
+        Nothing -> return ()
+        Just idePane -> getTopWidget idePane >>= (`widgetSetSensitive` sens)
+    case mbTrace of
+        Nothing -> return ()
+        Just idePane -> getTopWidget idePane >>= (`widgetSetSensitive` sens)
 
 showDebugger :: IDEAction
 showDebugger = do
@@ -120,10 +119,9 @@ showDebugger = do
             let upperP =  rpp ++ [SplitP TopP]
             lower <- getNotebook lowerP
             upper <- getNotebook upperP
-            liftIO $ do
-                notebookSetTabPos lower PosTop
-                notebookSetTabPos upper PosTop
-                notebookSetShowTabs upper False
+            notebookSetTabPos lower PositionTypeTop
+            notebookSetTabPos upper PositionTypeTop
+            notebookSetShowTabs upper False
             getOrBuildDebugPanes upperP lowerP bufs
         (Just rpp, False) -> do
             let lowerP  =  getBestPanePath (rpp ++ [SplitP BottomP]) layout'

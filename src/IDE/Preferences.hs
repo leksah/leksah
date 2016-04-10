@@ -4,6 +4,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Preferences
@@ -27,8 +28,6 @@ module IDE.Preferences (
 , defaultPrefs
 ) where
 
-import Graphics.UI.Gtk
-import Graphics.UI.Gtk.General.Settings
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
 import Data.IORef
@@ -55,20 +54,12 @@ import IDE.Debug
      debugSetBreakOnError,
      debugSetBreakOnException,
      debugSetPrintEvldWithShow)
-import Graphics.UI.Gtk.SourceView
-       (sourceStyleSchemeManagerAppendSearchPath,
-        sourceStyleSchemeManagerGetSchemeIds, sourceStyleSchemeManagerNew)
 import System.Time (getClockTime)
 import qualified IDE.StrippedPrefs as SP
 import Control.Exception(SomeException,catch)
 import Prelude hiding(catch)
 import Data.List (isSuffixOf, sortBy)
 import Data.Maybe (mapMaybe, catMaybes, fromMaybe, isJust)
-import Graphics.UI.Gtk.Windows.MessageDialog
-       (ButtonsType(..), MessageType(..))
-import System.Glib.Attributes (set)
-import Graphics.UI.Gtk.General.Enums
-       (ButtonBoxStyle(..), WindowPosition(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (void, when)
 import System.FilePath ((</>))
@@ -81,6 +72,33 @@ import Data.Foldable (forM_)
 import IDE.Pane.Errors (fillErrorList)
 import GHC.IO (evaluate)
 import IDE.Metainfo.Provider (getAllPackageIds)
+import GI.Gtk.Objects.Dialog
+       (onDialogResponse, dialogResponse, dialogGetActionArea,
+        dialogGetContentArea, dialogNew)
+import Data.GI.Base (unsafeCastTo, set)
+import GI.Gtk.Objects.Window
+       (windowSetDefaultSize, windowTitle, windowTransientFor)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
+import GI.Gtk.Objects.Box (Box(..), boxSetSpacing)
+import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
+import GI.Gtk.Enums
+       (FileChooserAction(..), ShadowType(..), ResponseType(..),
+        ButtonBoxStyle(..))
+import GI.Gtk.Objects.Button
+       (onButtonClicked, buttonNewFromStock, buttonNewWithLabel)
+import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
+import GI.Gtk.Objects.Widget
+       (widgetModifyFont, widgetDestroy, widgetShowAll, widgetGrabDefault,
+        widgetCanDefault, widgetSetSensitive)
+import GI.Gtk.Objects.VBox (VBox(..))
+import GI.Pango.Structs.FontDescription (fontDescriptionFromString)
+import GI.Gtk.Objects.CellRendererText (cellRendererTextText)
+import GI.Gtk.Objects.Settings
+       (settingsSetLongProperty, settingsGetForScreen, Settings(..))
+import GI.GtkSource
+       (styleSchemeManagerGetSchemeIds,
+        styleSchemeManagerAppendSearchPath, styleSchemeManagerNew)
 
 
 -- | This needs to be incremented when the preferences format changes
@@ -103,23 +121,23 @@ runPreferencesDialog = do
 
     bb      <-  hButtonBoxNew
     boxSetSpacing bb 6
-    buttonBoxSetLayout bb ButtonboxSpread
+    buttonBoxSetLayout bb ButtonBoxStyleSpread
     load    <-  buttonNewWithLabel (__ "Load")
     save    <-  buttonNewWithLabel (__ "Save")
     preview <-  buttonNewWithLabel (__ "Preview")
     cancel  <-  buttonNewFromStock "gtk-cancel"
-    apply      <-  buttonNewFromStock "gtk-apply"
+    apply   <-  buttonNewFromStock "gtk-apply"
     forM_ [preview, cancel, apply] $ \but ->
-        boxPackEnd bb but PackNatural 0
+        boxPackEnd' bb but PackNatural 0
 
 
 
-    upper <-   dialogGetContentArea dialog
-    boxPackStart (castToBox upper) widget PackGrow 0
-    errorLabel <-  labelNew (Nothing :: Maybe Text)
-    boxPackStart (castToBox upper) errorLabel PackNatural 0
-    lower <-   dialogGetActionArea dialog
-    boxPackEnd (castToBox lower) bb PackNatural 5
+    upper <-   dialogGetContentArea dialog >>= unsafeCastTo Box
+    boxPackStart' upper widget PackGrow 0
+    errorLabel <-  labelNew Nothing
+    boxPackStart' upper errorLabel PackNatural 0
+    lower <-   dialogGetActionArea dialog >>= unsafeCastTo Box
+    boxPackEnd' lower bb PackNatural 5
 
     -- Keep an IO ref to the last applied preferences
     -- so it can be restored
@@ -132,12 +150,12 @@ runPreferencesDialog = do
             writeIORef lastAppliedPrefsRef newPrefs
 
 
-    on preview buttonActivated $ do
+    onButtonClicked preview $ do
             mbNewPrefs <- extract initialPrefs [ext]
             forM_ mbNewPrefs applyPrefs
 
 
-    on apply buttonActivated $ do
+    onButtonClicked apply $ do
         mbNewPrefs <- extract initialPrefs [ext]
         forM_ mbNewPrefs $ \newPrefs -> do
             applyPrefs newPrefs
@@ -154,7 +172,7 @@ runPreferencesDialog = do
                            SP.serverPort        = serverPort newPrefs,
                            SP.endWithLastConn   = endWithLastConn newPrefs}
 
-        dialogResponse dialog ResponseOk
+        dialogResponse' dialog ResponseTypeOk
 
     let onClose = do
             mbP <- extract initialPrefs [ext]
@@ -163,12 +181,12 @@ runPreferencesDialog = do
                                     Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
                                               initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
             when hasChanged (applyPrefs initialPrefs)
-            dialogResponse dialog ResponseCancel
+            dialogResponse' dialog ResponseTypeCancel
 
-    on cancel buttonActivated onClose
-    on dialog response $ \resp -> do
-        case resp of
-            ResponseDeleteEvent -> onClose
+    onButtonClicked cancel onClose
+    onDialogResponse dialog $ \resp ->
+        case toEnum $ fromIntegral resp of
+            ResponseTypeDeleteEvent -> onClose
             _ -> return ()
 
     registerEvent notifier MayHaveChanged (\ e -> do
@@ -177,7 +195,7 @@ runPreferencesDialog = do
                                 Nothing -> False
                                 Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
                                           initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
-        when (isJust mbP) $ labelSetMarkup errorLabel ("" :: Text)
+        when (isJust mbP) $ labelSetMarkup errorLabel ""
         return (e{gtkReturn=False}))
 
     registerEvent notifier ValidationError $ \e -> do
@@ -190,7 +208,7 @@ runPreferencesDialog = do
     set apply [widgetCanDefault := True]
     widgetGrabDefault apply
     widgetShowAll dialog
-    resp  <- dialogRun dialog
+    resp  <- dialogRun' dialog
     widgetDestroy dialog
     return ()
 
@@ -254,7 +272,7 @@ prefsDescription configDir packages = NFDPP [
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Right margin")
                 $ paraSynopsis <<<- ParaSynopsis (__ "Size or 0 for no right margin")
-                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+                    $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             (PP.text . show)
             readParser
             rightMargin
@@ -308,7 +326,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Source candy")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "Empty for do not use or the name of a candy file in a config dir")
-                    $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+                    $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             (PP.text . show)
             readParser
             sourceCandy (\b a -> a{sourceCandy = b})
@@ -466,13 +484,13 @@ prefsDescription configDir packages = NFDPP [
             fontEditor
             (\mbs -> do
                 log <- getLog
-                fdesc <- liftIO $fontDescriptionFromString (fromMaybe "" mbs)
-                liftIO $widgetModifyFont (castToWidget $ logLaunchTextView log) (Just fdesc))
+                fdesc <- fontDescriptionFromString (fromMaybe "" mbs)
+                widgetModifyFont (logLaunchTextView log) (Just fdesc))
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Window default size")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "Default size of the main ide window specified as pair")
-                $ paraShadow <<<- ParaShadow ShadowIn $ emptyParams)
+                $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             (PP.text.show)
             (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
@@ -530,7 +548,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Save the session (open files, pane positioning and sizing, etc) before closing a workspace") $
                 paraSynopsis <<<- ParaSynopsis
                     (__ "Save the session (open files, pane positioning and sizing, etc) before closing a workspace")
-                    $ paraShadow <<<- ParaShadow ShadowIn  $ emptyParams)
+                    $ paraShadow <<<- ParaShadow ShadowTypeIn  $ emptyParams)
             (PP.text . show)
             boolParser
             saveSessionOnClose
@@ -542,7 +560,7 @@ prefsDescription configDir packages = NFDPP [
         mkFieldPP
             (paraName <<<- ParaName
                 (__ "Categories for panes")
-                $ paraShadow <<<- ParaShadow ShadowIn
+                $ paraShadow <<<- ParaShadow ShadowTypeIn
                      $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
                             $ emptyParams)
@@ -551,8 +569,8 @@ prefsDescription configDir packages = NFDPP [
             categoryForPane
             (\b a -> a{categoryForPane = b})
             (multisetEditor
-                (ColumnDescr True [(__ "Pane Id", \ (n, _) -> [cellText := n])
-                                   ,(__ "Pane Category", \ (_, v) -> [cellText := v])])
+                (ColumnDescr True [(__ "Pane Id", \ (n, _) -> [cellRendererTextText := n])
+                                   ,(__ "Pane Category", \ (_, v) -> [cellRendererTextText := v])])
                 (pairEditor
                     (textEditor (not . T.null) True, emptyParams)
                     (textEditor (not . T.null) True, emptyParams), emptyParams)
@@ -562,7 +580,7 @@ prefsDescription configDir packages = NFDPP [
        ,mkFieldPP
             (paraName <<<- ParaName
                 (__ "Pane path for category")
-                $ paraShadow <<<- ParaShadow ShadowIn
+                $ paraShadow <<<- ParaShadow ShadowTypeIn
                      $ paraDirection <<<- ParaDirection Vertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
                             $ emptyParams)
@@ -571,8 +589,8 @@ prefsDescription configDir packages = NFDPP [
             pathForCategory
             (\b a -> a{pathForCategory = b})
             (multisetEditor
-                (ColumnDescr True [(__ "Pane category", \ (n, _) -> [cellText := n])
-                                   ,(__ "Pane path", \ (_, v) -> [cellText := T.pack $ show v])])
+                (ColumnDescr True [(__ "Pane category", \ (n, _) -> [cellRendererTextText := n])
+                                   ,(__ "Pane path", \ (_, v) -> [cellRendererTextText := T.pack $ show v])])
                 (pairEditor (textEditor (not . T.null) True, emptyParams)
                     (genericEditor, emptyParams),
                   emptyParams)
@@ -819,7 +837,7 @@ getActiveSettings = do
     mbScreen <- getActiveScreen
     case mbScreen of
         Nothing -> return Nothing
-        Just screen -> liftIO $ Just <$> settingsGetForScreen screen
+        Just screen -> Just <$> settingsGetForScreen screen
 
 applyInterfaceTheme :: IDEAction
 applyInterfaceTheme = do
@@ -830,9 +848,9 @@ applyInterfaceTheme = do
     mapM_ updateStyle' buffers
     mbSettings <- getActiveSettings
     case mbSettings of
-        Just settings -> liftIO $ settingsSetLongProperty
+        Just settings -> settingsSetLongProperty
                             settings
-                            ("gtk-application-prefer-dark-theme" :: Text)
+                            "gtk-application-prefer-dark-theme"
                             (if darkUserInterface prefs then 1 else 0)
                             "Leksah"
         Nothing -> return ()
@@ -843,10 +861,10 @@ applyInterfaceTheme = do
 -- | Editor for enabling a different syntax stylesheet
 styleEditor :: Editor (Bool, Text)
 styleEditor p n = do
-    styleManager <- sourceStyleSchemeManagerNew
+    styleManager <- styleSchemeManagerNew
     dataDir <- getDataDir
-    sourceStyleSchemeManagerAppendSearchPath styleManager $ dataDir </> "data/styles"
-    ids          <- sourceStyleSchemeManagerGetSchemeIds styleManager
+    styleSchemeManagerAppendSearchPath styleManager . T.pack $ dataDir </> "data/styles"
+    ids          <- styleSchemeManagerGetSchemeIds styleManager
     let notDarkIds = filter (not . T.isSuffixOf "-dark") ids
     disableEditor (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
 

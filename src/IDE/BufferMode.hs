@@ -39,14 +39,15 @@ import IDE.SourceCandy
 import Control.Monad (when)
 import Data.Maybe (mapMaybe, catMaybes)
 import IDE.Utils.FileUtils
-import Graphics.UI.Gtk
-       (Notebook, castToWidget, notebookPageNum, ScrolledWindow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Time (UTCTime)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T
        (isPrefixOf, lines, unlines, count, isInfixOf)
+import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
+import GI.Gtk.Objects.Widget (toWidget)
+import GI.Gtk.Objects.Notebook (notebookPageNum, Notebook(..))
 
 -- * Buffer Basics
 
@@ -67,7 +68,7 @@ instance Pane IDEBuffer IDEM
     where
     primPaneName    =   bufferName
     getAddedIndex   =   addedIndex
-    getTopWidget    =   castToWidget . scrolledWindow
+    getTopWidget    =   liftIO . toWidget . scrolledWindow
     paneId b        =   ""
 
 data BufferState            =   BufferState FilePath Int
@@ -117,14 +118,14 @@ inBufContext :: MonadIDE m => alpha -> IDEBuffer -> (forall editor. TextEditor e
 inBufContext def (ideBuf@IDEBuffer{sourceView = v}) f = do
     (pane,_)       <-  liftIDE $ guiPropertiesFromName (paneName ideBuf)
     nb             <-  liftIDE $ getNotebook pane
-    mbI            <-  liftIO $ notebookPageNum nb (scrolledWindow ideBuf)
-    case mbI of
-        Nothing ->  liftIO $ do
+    i              <-  notebookPageNum nb (scrolledWindow ideBuf)
+    if i < 0
+        then do
             sysMessage Normal $ bufferName ideBuf <> " notebook page not found: unexpected"
             return def
-        Just i  ->  do
+        else do
             ebuf <- liftIDE $ getBuffer v
-            f nb v ebuf ideBuf i
+            f nb v ebuf ideBuf (fromIntegral i)
 
 inActiveBufContext :: alpha -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
 inActiveBufContext def f = do
@@ -153,7 +154,7 @@ data Mode = Mode {
     modeTransformToCandy   :: forall editor . TextEditor editor => (Text -> Bool) -> EditorBuffer editor -> IDEAction,
     modeTransformFromCandy   :: forall editor . TextEditor editor => EditorBuffer editor -> IDEAction,
     modeEditFromCandy      :: IDEAction,
-    modeEditKeystrokeCandy :: Maybe Char -> (Text -> Bool) -> IDEAction,
+    modeEditKeystrokeCandy :: Char -> (Text -> Bool) -> IDEAction,
     modeEditInsertCode     :: forall editor . TextEditor editor => Text -> EditorIter editor -> EditorBuffer editor -> IDEAction,
     modeEditInCommentOrString :: Text -> Bool
     }
@@ -321,7 +322,7 @@ editToCandy = withCurrentMode () (\m -> modeEditToCandy m (modeEditInCommentOrSt
 editFromCandy :: IDEAction
 editFromCandy = withCurrentMode () modeEditFromCandy
 
-editKeystrokeCandy :: Maybe Char -> IDEAction
+editKeystrokeCandy :: Char -> IDEAction
 editKeystrokeCandy c = withCurrentMode () (\m -> modeEditKeystrokeCandy m c
                             (modeEditInCommentOrString m))
 

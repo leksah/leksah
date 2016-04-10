@@ -156,7 +156,7 @@ prop_test s = monadicIO $ do
         buffer <- buf Nothing (T.pack "")
         view <- newView buffer (Just $ T.pack "monospace")
         sw <- getScrolledWindow view
-        liftIO $ containerAdd win sw
+        containerAdd win sw
         setText buffer (T.pack input)
         first <- getStartIter buffer
         last <- getEndIter buffer

@@ -118,25 +118,6 @@ import IDE.TextEditor
 import Data.IORef (writeIORef,readIORef,newIORef)
 import Control.Event (triggerEvent)
 import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
-import Graphics.UI.Gtk
-       (Notebook, clipboardGet, selectionClipboard, dialogAddButton, widgetDestroy,
-        fileChooserGetFilename, widgetShow, fileChooserDialogNew,
-        notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
-        messageDialogNew, scrolledWindowSetShadowType,
-        scrolledWindowSetPolicy, dialogSetDefaultResponse,
-        fileChooserSelectFilename,
-        TextSearchFlags(..))
-import qualified Graphics.UI.Gtk as Gtk hiding (eventKeyName)
-import Graphics.UI.Gtk.Windows.Window
-import Graphics.UI.Gtk.General.Enums
-       (ShadowType(..), PolicyType(..))
-import Graphics.UI.Gtk.Windows.MessageDialog
-       (ButtonsType(..), MessageType(..))
-import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
-import Graphics.UI.Gtk.Selectors.FileChooser
-       (FileChooserAction(..))
-import System.Glib.Attributes (AttrOp(..), set)
-
 import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -153,8 +134,6 @@ import qualified Data.Text as T
 import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
-import Graphics.UI.Gtk.Gdk.EventM
-       (eventModifier, eventKeyName, eventKeyVal)
 import qualified Data.Foldable as F (Foldable(..), forM_, toList)
 import Data.Traversable (forM)
 import Language.Haskell.HLint3 (Idea(..))
@@ -162,6 +141,42 @@ import Language.Haskell.HLint3 (Idea(..))
 import qualified Data.Sequence as Seq
 import Data.Sequence (ViewR(..), (|>))
 import Data.Time.Clock (addUTCTime, diffUTCTime)
+import qualified GI.Gtk.Objects.Notebook as Gtk (Notebook(..))
+import qualified GI.Gtk.Objects.Window as Gtk (Window(..))
+import GI.Gtk.Objects.ScrolledWindow
+       (setScrolledWindowShadowType, scrolledWindowSetPolicy)
+import GI.Gtk.Enums
+       (FileChooserAction(..), WindowPosition(..), ResponseType(..),
+        ButtonsType(..), MessageType(..), ShadowType(..), PolicyType(..))
+import GI.Gdk.Structs.EventKey
+       (eventKeyReadState, eventKeyReadKeyval)
+import GI.Gdk.Functions (keyvalName)
+import GI.Gdk.Flags (ModifierType(..))
+import GI.Gtk.Flags (TextSearchFlags(..))
+import Data.GI.Base.Constructible (Constructible(..))
+import GI.Gtk.Objects.MessageDialog
+       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+        MessageDialog(..))
+import GI.Gtk.Objects.Dialog
+       (dialogRun, dialogUseHeaderBar)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.Window
+       (setWindowTitle, windowWindowPosition, windowSetTransientFor)
+import Data.GI.Base (set)
+import GI.Gtk.Objects.Widget
+       (widgetHide, widgetShow, widgetDestroy)
+import GI.Gtk.Objects.Notebook
+       (notebookPageNum, notebookGetNthPage, Notebook(..))
+import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
+import GI.Gtk.Interfaces.FileChooser
+       (fileChooserGetFilename, fileChooserSelectFilename,
+        fileChooserSetAction)
+import Graphics.UI.Editor.Parameters
+       (dialogRun', dialogSetDefaultResponse', dialogAddButton')
+import GI.Gtk.Objects.Clipboard (clipboardGet)
+import GI.Gdk.Structs.Atom (atomIntern)
+import GI.Gdk.Structs.EventButton (eventButtonReadType)
+import GI.Gdk.Enums (EventType(..))
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -562,6 +577,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
   where
     makeBuffer :: TextEditor editor => Maybe UTCTime -> EditorBuffer editor -> IDEM (Maybe IDEBuffer,Connections)
     makeBuffer modTime buffer = do
+        liftIO $ debugM "lekash" "makeBuffer"
         ideR <- ask
 
         beginNotUndoableAction buffer
@@ -588,9 +604,11 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         -- put it in a scrolled window
         sw <- getScrolledWindow sv
         if wrapLines prefs
-            then liftIO $ scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
-            else liftIO $ scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-        liftIO $ scrolledWindowSetShadowType sw ShadowIn
+            then scrolledWindowSetPolicy sw PolicyTypeNever PolicyTypeAutomatic
+            else scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
+        liftIO $ debugM "lekash" "makeBuffer setScrolledWindowShadowType"
+        setScrolledWindowShadowType sw ShadowTypeIn
+        liftIO $ debugM "lekash" "makeBuffer setScrolledWindowShadowType done"
         modTimeRef <- liftIO $ newIORef modTime
         let buf = IDEBuffer {
             fileName =  mbfn,
@@ -601,13 +619,14 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
             modTime = modTimeRef,
             mode = mod}
         -- events
-        ids1 <- sv `afterFocusIn` makeActive buf
+        ids1 <- afterFocusIn sv $ makeActive buf
         ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
         ids3 <- onButtonPress sv $ do
-                click <- lift Gtk.eventClick
+                e <- lift ask
+                click <- eventButtonReadType e
                 liftIDE $
                     case click of
-                        Gtk.DoubleClick -> do
+                        EventType2buttonPress -> do
                             (start, end) <- getIdentifierUnderCursor buffer
                             selectRange buffer start end
                             return True
@@ -654,9 +673,10 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
             return ()
 
         ids6 <- onKeyPress sv $ do
-            keyval      <- lift eventKeyVal
-            name        <- lift eventKeyName
-            modifier    <- lift eventModifier
+            e        <- lift ask
+            keyval   <- eventKeyReadKeyval e
+            name     <- keyvalName keyval
+            modifier <- eventKeyReadState e
             liftIDE $ do
                 let moveToNextWord iterOp sel  = do
                         sel' <- iterOp sel
@@ -672,30 +692,30 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                                 placeCursor buffer nsel
                         scrollToIter sv nsel 0 Nothing
                 case (name, map mapControlCommand modifier, keyval) of
-                    ("Left",[Gtk.Control],_) -> do
+                    ("Left",[ModifierTypeControlMask],_) -> do
                         calculateNewPosition backwardCharC >>= continueSelection False
                         return True
-                    ("Left",[Gtk.Shift, Gtk.Control],_) -> do
+                    ("Left",[ModifierTypeShiftMask, ModifierTypeControlMask],_) -> do
                         calculateNewPosition backwardCharC >>= continueSelection True
                         return True
-                    ("Right",[Gtk.Control],_) -> do
+                    ("Right",[ModifierTypeControlMask],_) -> do
                         calculateNewPosition forwardCharC >>= continueSelection False --placeCursor buffer
                         return True
-                    ("Right",[Gtk.Shift, Gtk.Control],_) -> do
+                    ("Right",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
                         calculateNewPosition forwardCharC >>= continueSelection True
                         return True
-                    ("BackSpace",[Gtk.Control],_) -> do              -- delete word
+                    ("BackSpace",[ModifierTypeControlMask],_) -> do              -- delete word
                         here <- getInsertIter buffer
                         there <- calculateNewPosition backwardCharC
                         delete buffer here there
                         return True
-                    ("underscore",[Gtk.Shift, Gtk.Control],_) -> do
+                    ("underscore",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
                         (start, end) <- getIdentifierUnderCursor buffer
                         slice <- getSlice buffer start end True
                         triggerEventIDE (SelectInfo slice False)
                         return True
                         -- Redundant should become a go to definition directly
-                    ("minus",[Gtk.Control],_) -> do
+                    ("minus",[ModifierTypeControlMask],_) -> do
                         (start, end) <- getIdentifierUnderCursor buffer
                         slice <- getSlice buffer start end True
                         triggerEventIDE (SelectInfo slice True)
@@ -724,7 +744,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                     -> EditorBuffer editor
                     -> IDEM Bool
     forwardApplying tI txt mbTi tagName ebuf = do
-        mbFTxt <- forwardSearch tI txt [TextSearchVisibleOnly, TextSearchTextOnly] mbTi
+        mbFTxt <- forwardSearch tI txt [TextSearchFlagsVisibleOnly, TextSearchFlagsTextOnly] mbTi
         case mbFTxt of
             Just (start, end) -> do
                 startsWord <- startsWord start
@@ -805,29 +825,28 @@ checkModTime buf = do
                                                 return (False, True)
                                             else do
                                                 window <- liftIDE getMainWindow
-                                                resp <- liftIO $ do
-                                                    md <- messageDialogNew
-                                                            (Just window) []
-                                                            MessageQuestion
-                                                            ButtonsNone
-                                                            (__ "File \"" <> name <> __ "\" has changed on disk.")
-                                                    dialogAddButton md (__ "_Load From Disk") (ResponseUser 1)
-                                                    dialogAddButton md (__ "_Always Load From Disk") (ResponseUser 2)
-                                                    dialogAddButton md (__ "_Don't Load") (ResponseUser 3)
-                                                    dialogSetDefaultResponse md (ResponseUser 1)
-                                                    set md [ windowWindowPosition := WinPosCenterOnParent ]
-                                                    resp <- dialogRun md
-                                                    widgetDestroy md
-                                                    return resp
+                                                md <- new MessageDialog [
+                                                    dialogUseHeaderBar := 0,
+                                                    messageDialogMessageType := MessageTypeQuestion,
+                                                    messageDialogButtons := ButtonsTypeNone,
+                                                    messageDialogText := (__ "File \"" <> name <> __ "\" has changed on disk.")]
+                                                windowSetTransientFor md (Just window)
+                                                dialogAddButton' md (__ "_Load From Disk") (AnotherResponseType 1)
+                                                dialogAddButton' md (__ "_Always Load From Disk") (AnotherResponseType 2)
+                                                dialogAddButton' md (__ "_Don't Load") (AnotherResponseType 3)
+                                                dialogSetDefaultResponse' md (AnotherResponseType 1)
+                                                set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                                                resp <- dialogRun' md
+                                                widgetDestroy md
                                                 case resp of
-                                                    ResponseUser 1 -> do
+                                                    AnotherResponseType 1 -> do
                                                         revert buf
                                                         return (False, True)
-                                                    ResponseUser 2 -> do
+                                                    AnotherResponseType 2 -> do
                                                         revert buf
                                                         modifyIDE_ $ \ide -> ide{prefs = (prefs ide) {autoLoad = True}}
                                                         return (False, True)
-                                                    ResponseUser 3 -> do
+                                                    AnotherResponseType 3 -> do
                                                         nmt2 <- liftIO $ getModificationTime fn
                                                         liftIO $ writeIORef (modTime buf) (Just nmt2)
                                                         return (True, True)
@@ -912,9 +931,11 @@ markActiveLabelAsChanged = do
 
 markLabelAsChanged :: Notebook -> IDEBuffer -> IDEAction
 markLabelAsChanged nb (buf@IDEBuffer{sourceView = sv}) = do
+    liftIO $ debugM "leksah" "markLabelAsChanged"
     ebuf   <- getBuffer sv
     modified <- getModified ebuf
-    liftIO $ markLabel nb (getTopWidget buf) modified
+    w <- getTopWidget buf
+    markLabel nb w modified
 
 fileSaveBuffer :: MonadIDE m => TextEditor editor => Bool -> Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> m Bool
 fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $ do
@@ -925,67 +946,64 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
     candy   <- readIDE candy
     (panePath,connects) <- guiPropertiesFromName (paneName ideBuf)
     let mbfn = fileName ideBuf
-    mbpage <- liftIO $ notebookGetNthPage nb i
-    case mbpage of
-        Nothing     -> throwIDE (__ "fileSave: Page not found")
-        Just page   ->
-            if isJust mbfn && not query
-                then do (modifiedOnDiskNotLoaded, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
-                        modifiedInBuffer <- getModified ebuf
-                        if modifiedOnDiskNotLoaded || modifiedInBuffer
-                            then do
-                                fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf
-                                    useCandy candy $fromJust mbfn
-                                setModTime ideBuf
-                                return True
-                            else return modifiedOnDisk
-                else reifyIDE $ \ideR   ->  do
-                    dialog <- fileChooserDialogNew
-                                    (Just $ __ "Save File")
-                                    (Just window)
-                                FileChooserActionSave
-                                [("gtk-cancel"     --buttons to display
-                                ,ResponseCancel)  --you can use stock buttons
-                                ,("gtk-save"
-                                , ResponseAccept)]
-                    case mbfn of
-                        Just fn -> void (fileChooserSelectFilename dialog fn)
-                        Nothing -> return ()
-                    widgetShow dialog
-                    response <- dialogRun dialog
-                    mbFileName <- case response of
-                            ResponseAccept ->       fileChooserGetFilename dialog
-                            ResponseCancel ->       return Nothing
-                            ResponseDeleteEvent->   return Nothing
-                            _               ->      return Nothing
-                    widgetDestroy dialog
-                    case mbFileName of
-                        Nothing -> return False
-                        Just fn -> do
-                            dfe <- doesFileExist fn
-                            resp <- if dfe
-                                then do md <- messageDialogNew (Just window) []
-                                                MessageQuestion
-                                                ButtonsCancel
-                                                (__ "File already exist.")
-                                        dialogAddButton md (__ "_Overwrite") ResponseYes
-                                        dialogSetDefaultResponse md ResponseCancel
-                                        set md [ windowWindowPosition := WinPosCenterOnParent ]
-                                        resp <- dialogRun md
-                                        widgetHide md
-                                        return resp
-                                else return ResponseYes
-                            case resp of
-                                ResponseYes -> do
-                                    reflectIDE (do
-                                        fileSave' (forceLineEnds prefs) (removeTBlanks prefs)
-                                            nb ideBuf useCandy candy fn
-                                        closePane ideBuf
-                                        cfn <- liftIO $ myCanonicalizePath fn
-                                        newTextBuffer panePath (T.pack $ takeFileName cfn) (Just cfn)
-                                        ) ideR
-                                    return True
-                                _          -> return False
+    page <- liftIO $ notebookGetNthPage nb (fromIntegral i)
+    if isJust mbfn && not query
+        then do (modifiedOnDiskNotLoaded, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
+                modifiedInBuffer <- getModified ebuf
+                if modifiedOnDiskNotLoaded || modifiedInBuffer
+                    then do
+                        fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf
+                            useCandy candy $fromJust mbfn
+                        setModTime ideBuf
+                        return True
+                    else return modifiedOnDisk
+        else reifyIDE $ \ideR   ->  do
+            dialog <- new FileChooserDialog []
+            setWindowTitle dialog (__ "Save File")
+            windowSetTransientFor dialog $ Just window
+            fileChooserSetAction dialog FileChooserActionSave
+            dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+            dialogAddButton' dialog "gtk-save" ResponseTypeAccept
+            case mbfn of
+                Just fn -> void (fileChooserSelectFilename dialog fn)
+                Nothing -> return ()
+            widgetShow dialog
+            response <- dialogRun' dialog
+            mbFileName <- case response of
+                    ResponseTypeAccept      -> Just <$> fileChooserGetFilename dialog
+                    ResponseTypeCancel      -> return Nothing
+                    ResponseTypeDeleteEvent -> return Nothing
+                    _                       -> return Nothing
+            widgetDestroy dialog
+            case mbFileName of
+                Nothing -> return False
+                Just fn -> do
+                    dfe <- doesFileExist fn
+                    resp <- if dfe
+                        then do md <- new MessageDialog [
+                                    dialogUseHeaderBar := 0,
+                                    messageDialogMessageType := MessageTypeQuestion,
+                                    messageDialogButtons := ButtonsTypeCancel,
+                                    messageDialogText := __ "File already exist."]
+                                windowSetTransientFor md (Just window)
+                                dialogAddButton' md (__ "_Overwrite") ResponseTypeYes
+                                dialogSetDefaultResponse' md ResponseTypeCancel
+                                set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                                resp <- toEnum . fromIntegral <$> dialogRun md
+                                widgetHide md
+                                return resp
+                        else return ResponseTypeYes
+                    case resp of
+                        ResponseTypeYes -> do
+                            reflectIDE (do
+                                fileSave' (forceLineEnds prefs) (removeTBlanks prefs)
+                                    nb ideBuf useCandy candy fn
+                                closePane ideBuf
+                                cfn <- liftIO $ myCanonicalizePath fn
+                                newTextBuffer panePath (T.pack $ takeFileName cfn) (Just cfn)
+                                ) ideR
+                            return True
+                        _          -> return False
     where
         fileSave' :: Bool -> Bool -> Notebook -> IDEBuffer -> Bool -> CandyTable -> FilePath -> IDEAction
         fileSave' forceLineEnds removeTBlanks nb ideBuf useCandy candyTable fn = do
@@ -1095,24 +1113,26 @@ fileClose' nb _ ebuf currentBuffer i = do
     cancel <- reifyIDE $ \ideR   ->
         if modified
             then do
-                md <- messageDialogNew (Just window) []
-                                            MessageQuestion
-                                            ButtonsCancel
-                                            (__ "Save changes to document: "
+                md <- new MessageDialog [
+                        dialogUseHeaderBar := 0,
+                        messageDialogMessageType := MessageTypeQuestion,
+                        messageDialogButtons := ButtonsTypeCancel,
+                        messageDialogText := (__ "Save changes to document: "
                                                 <> paneName currentBuffer
-                                                <> "?")
-                dialogAddButton md (__ "_Save") ResponseYes
-                dialogAddButton md (__ "_Don't Save") ResponseNo
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
+                                                <> "?")]
+                windowSetTransientFor md (Just window)
+                dialogAddButton' md (__ "_Save") ResponseTypeYes
+                dialogAddButton' md (__ "_Don't Save") ResponseTypeNo
+                set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                resp <- dialogRun' md
                 widgetDestroy md
                 case resp of
-                    ResponseYes ->   do
+                    ResponseTypeYes -> do
                         reflectIDE (fileSave False) ideR
                         return False
-                    ResponseCancel  ->   return True
-                    ResponseNo      ->   return False
-                    _               ->   return False
+                    ResponseTypeCancel -> return True
+                    ResponseTypeNo     -> return False
+                    _                  -> return False
             else return False
     if cancel
         then return False
@@ -1145,15 +1165,15 @@ fileCloseAllButPackage = do
         close' dir (buf@IDEBuffer {sourceView = sv}) = do
             (pane,_)    <-  guiPropertiesFromName (paneName buf)
             nb          <-  getNotebook pane
-            mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
-            case mbI of
-                Nothing ->  throwIDE (__ "notebook page not found: unexpected")
-                Just i  ->  do
+            i           <-  notebookPageNum nb (scrolledWindow buf)
+            if i < 0
+                then throwIDE (__ "notebook page not found: unexpected")
+                else do
                     ebuf <- getBuffer sv
                     when (isJust (fileName buf)) $ do
                         modified <- getModified ebuf
                         when (not modified && not (isSubPath dir (fromJust (fileName buf))))
-                            $ do fileClose' nb sv ebuf buf i; return ()
+                            $ do fileClose' nb sv ebuf buf (fromIntegral i); return ()
 
 fileCloseAllButWorkspace :: IDEAction
 fileCloseAllButWorkspace = do
@@ -1165,15 +1185,15 @@ fileCloseAllButWorkspace = do
         close' workspace (buf@IDEBuffer {sourceView = sv}) = do
             (pane,_)    <-  guiPropertiesFromName (paneName buf)
             nb          <-  getNotebook pane
-            mbI         <-  liftIO $notebookPageNum nb (scrolledWindow buf)
-            case mbI of
-                Nothing ->  throwIDE (__ "notebook page not found: unexpected")
-                Just i  ->  do
+            i           <-  notebookPageNum nb (scrolledWindow buf)
+            if i < 0
+                then throwIDE (__ "notebook page not found: unexpected")
+                else do
                     ebuf <- getBuffer sv
                     when (isJust (fileName buf)) $ do
                         modified <- getModified ebuf
                         when (not modified && not (isSubPathOfAny workspace (fromJust (fileName buf))))
-                            $ do fileClose' nb sv ebuf buf i; return ()
+                            $ do fileClose' nb sv ebuf buf (fromIntegral i); return ()
         isSubPathOfAny workspace fileName =
             let paths = wsPackages workspace >>= ipdAllDirs
             in  any (`isSubPath` fileName) paths
@@ -1191,22 +1211,21 @@ fileOpenThis fp =  do
     case buf of
         hdb:tl -> do
             window <- getMainWindow
-            resp <- liftIO $ do
-                md <- messageDialogNew
-                        (Just window) []
-                        MessageQuestion
-                        ButtonsNone
-                        (__ "Buffer already open.")
-                dialogAddButton md (__ "Make _Active") (ResponseUser 1)
-                dialogAddButton md (__ "_Open Second") (ResponseUser 2)
-                dialogSetDefaultResponse md (ResponseUser 1)
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
-                widgetDestroy md
-                return resp
+            md <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeNone,
+                    messageDialogText := __ "Buffer already open."]
+            windowSetTransientFor md (Just window)
+            dialogAddButton' md (__ "Make _Active") (AnotherResponseType 1)
+            dialogAddButton' md (__ "_Open Second") (AnotherResponseType 2)
+            dialogSetDefaultResponse' md (AnotherResponseType 1)
+            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            resp <- dialogRun' md
+            widgetDestroy md
             case resp of
-                ResponseUser 2 -> reallyOpen prefs fpc
-                _              -> makeActive hdb
+                AnotherResponseType 2 -> reallyOpen prefs fpc
+                _                     -> makeActive hdb
         [] -> reallyOpen prefs fpc
     where
         reallyOpen prefs fpc =   do
@@ -1222,46 +1241,50 @@ filePrint' nb _ ebuf currentBuffer _ = do
     let pName = paneName currentBuffer
     window  <- getMainWindow
     print <- reifyIDE $ \ideR ->  do
-        md <- messageDialogNew (Just window) []
-                                    MessageQuestion
-                                    ButtonsNone
-                                    (__"Print document: "
-                                        <> pName
-                                        <> "?")
-        dialogAddButton md (__"_Print") ResponseYes
-        dialogAddButton md (__"_Don't Print") ResponseNo
-        set md [ windowWindowPosition := WinPosCenterOnParent ]
-        resp <- dialogRun md
+        md <- new MessageDialog [
+                        dialogUseHeaderBar := 0,
+                        messageDialogMessageType := MessageTypeQuestion,
+                        messageDialogButtons := ButtonsTypeNone,
+                        messageDialogText := (__"Print document: "
+                                                <> pName
+                                                <> "?")]
+        windowSetTransientFor md (Just window)
+        dialogAddButton' md (__"_Print") ResponseTypeYes
+        dialogAddButton' md (__"_Don't Print") ResponseTypeNo
+        set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+        resp <- dialogRun' md
         widgetDestroy md
         case resp of
-            ResponseYes     ->   return True
-            ResponseCancel  ->   return False
-            ResponseNo      ->   return False
-            _               ->   return False
+            ResponseTypeYes     ->   return True
+            ResponseTypeCancel  ->   return False
+            ResponseTypeNo      ->   return False
+            _                   ->   return False
     when print $ do
         --real code
         modified <- getModified ebuf
         cancel <- reifyIDE $ \ideR ->
             if modified
                 then do
-                    md <- messageDialogNew (Just window) []
-                                                MessageQuestion
-                                                ButtonsNone
-                                                (__"Save changes to document: "
+                    md <- new MessageDialog [
+                        dialogUseHeaderBar := 0,
+                        messageDialogMessageType := MessageTypeQuestion,
+                        messageDialogButtons := ButtonsTypeNone,
+                        messageDialogText := (__"Save changes to document: "
                                                     <> pName
-                                                    <> "?")
-                    dialogAddButton md (__"_Save") ResponseYes
-                    dialogAddButton md (__"_Don't Save") ResponseNo
-                    dialogAddButton md (__"_Cancel Printing") ResponseCancel
-                    set md [ windowWindowPosition := WinPosCenterOnParent ]
-                    resp <- dialogRun md
+                                                    <> "?")]
+                    windowSetTransientFor md (Just window)
+                    dialogAddButton' md (__"_Save") ResponseTypeYes
+                    dialogAddButton' md (__"_Don't Save") ResponseTypeNo
+                    dialogAddButton' md (__"_Cancel Printing") ResponseTypeCancel
+                    set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                    resp <- dialogRun' md
                     widgetDestroy md
                     case resp of
-                        ResponseYes ->   do
+                        ResponseTypeYes ->   do
                             reflectIDE (fileSave False) ideR
                             return False
-                        ResponseCancel  ->   return True
-                        ResponseNo      ->   return False
+                        ResponseTypeCancel  ->   return True
+                        ResponseTypeNo      ->   return False
                         _               ->   return False
                 else
                     return False
@@ -1270,8 +1293,8 @@ filePrint' nb _ ebuf currentBuffer _ = do
                 Just name -> do
                               status <- liftIO $ Print.print name
                               case status of
-                                Left error -> liftIO $ showDialog (T.pack $ show error) MessageError
-                                Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageInfo
+                                Left error -> liftIO $ showDialog (T.pack $ show error) MessageTypeError
+                                Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageTypeInfo
                               return ()
                 Nothing   -> return ()
 
@@ -1301,12 +1324,12 @@ editSelectAll = inActiveBufContext () $ \_ _ ebuf _ _ -> do
 
 editCut :: IDEAction
 editCut = inActiveBufContext () $ \_ _ ebuf _ _ -> do
-    clip <- liftIO $ clipboardGet selectionClipboard
+    clip <- clipboardGet =<< atomIntern "CLIPBOARD" False
     cutClipboard ebuf clip True
 
 editCopy :: IDEAction
 editCopy = inActiveBufContext () $ \_ view ebuf _ _ -> do
-    clip <- liftIO $ clipboardGet selectionClipboard
+    clip <- clipboardGet =<< atomIntern "CLIPBOARD" False
     copyClipboard ebuf clip
     scrollToCursor view
 
@@ -1314,7 +1337,7 @@ editPaste :: IDEAction
 editPaste = inActiveBufContext () $ \_ _ ebuf _ _ -> do
     mark <- getInsertMark ebuf
     iter <- getIterAtMark ebuf mark
-    clip <- liftIO $ clipboardGet selectionClipboard
+    clip <- clipboardGet =<< atomIntern "CLIPBOARD" False
     pasteClipboard ebuf clip iter True
 
 editShiftLeft :: IDEAction

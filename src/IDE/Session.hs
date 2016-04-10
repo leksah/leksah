@@ -27,9 +27,6 @@ module IDE.Session (
 ) where
 
 import Prelude hiding (catch)
-import Graphics.UI.Gtk hiding (showLayout)
-import Graphics.UI.Gtk.General.CssProvider (cssProviderNew, cssProviderLoadFromString)
-import Graphics.UI.Gtk.General.StyleContext (styleContextAddProvider)
 import Control.Applicative ((<$>))
 import System.FilePath
 import qualified Data.Map as Map
@@ -71,10 +68,29 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (void, when)
 import System.Log.Logger (debugM)
 import Data.Text (Text)
-import qualified Data.Text as T (pack)
 import Data.Traversable (forM)
 import Data.Foldable (forM_)
 import IDE.Preferences (applyInterfaceTheme)
+import GI.Gtk.Objects.Window
+       (windowUnfullscreen, windowFullscreen, windowSetDefaultSize,
+        Window(..), windowSetTransientFor, setWindowTitle, windowGetSize)
+import GI.Gtk.Enums (ResponseType(..), FileChooserAction(..))
+import Data.GI.Base.Constructible (Constructible(..))
+import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
+import GI.Gtk.Interfaces.FileChooser
+       (fileChooserGetFilename, fileChooserSetCurrentFolder,
+        fileChooserSetAction)
+import GI.Gtk.Objects.Widget
+       (widgetShowAll, widgetGetParent, widgetDestroy, widgetHide,
+        widgetShow)
+import GI.Gtk.Objects.Paned (panedSetPosition, panedGetPosition)
+import GI.Gtk.Objects.Notebook
+       (notebookSetCurrentPage, notebookSetTabPos, notebookSetShowTabs,
+        notebookGetCurrentPage, notebookGetTabPos, notebookGetShowTabs)
+import Data.GI.Base (unsafeCastTo)
+import Control.Arrow (Arrow(..))
+import qualified Data.Text as T (unpack, pack)
+import Data.Monoid ((<>))
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
@@ -334,13 +350,13 @@ sessionDescr = [
 --
 saveSession :: IDEAction
 saveSession = do
-    sessionPath     <-  liftIO $ getConfigFilePathForSave standardSessionFilename
-    mbSessionPath2  <-  do
-                            ws <- readIDE workspace
-                            case ws of
-                                Nothing -> return Nothing
-                                Just ws -> return $ Just (dropExtension (wsFile ws) ++
-                                                        leksahSessionFileExtension)
+    sessionPath    <- liftIO $ getConfigFilePathForSave standardSessionFilename
+    mbSessionPath2 <- do
+        ws <- readIDE workspace
+        case ws of
+            Nothing -> return Nothing
+            Just ws -> return $ Just (dropExtension (wsFile ws) ++
+                                    leksahSessionFileExtension)
     saveSessionAs sessionPath mbSessionPath2
 
 saveSessionAs :: FilePath -> Maybe FilePath ->  IDEAction
@@ -355,7 +371,7 @@ saveSessionAs sessionPath mbSecondPath = do
     wdw             <-  getMainWindow
     layout          <-  mkLayout
     population      <-  getPopulation
-    size            <-  liftIO $ windowGetSize wdw
+    size            <-  windowGetSize wdw
     fullScreen      <-  getFullScreenState
     (completionSize,_) <- readIDE completion
     mbWs            <-  readIDE workspace
@@ -374,7 +390,7 @@ saveSessionAs sessionPath mbSecondPath = do
     ,   saveTime            =   T.pack $ show timeNow
     ,   layoutS             =   layout
     ,   population          =   population
-    ,   windowSize          =   size
+    ,   windowSize          =   (fromIntegral *** fromIntegral) size
     ,   fullScreen          =   fullScreen
     ,   completionSize      =   completionSize
     ,   workspacePath       =   case mbWs of
@@ -405,30 +421,22 @@ saveSessionAsPrompt = do
 loadSessionPrompt :: IDEAction
 loadSessionPrompt = do
     window' <- getMainWindow
-    response <- liftIO $ do
-        configFolder <- getConfigDir
-        dialog <- fileChooserDialogNew
-                  (Just $ __ "Select session file")
-                  (Just window')
-              FileChooserActionOpen
-              [("gtk-cancel"
-               ,ResponseCancel)
-              ,("gtk-open"
-               , ResponseAccept)]
-        fileChooserSetCurrentFolder dialog configFolder
-        widgetShow dialog
-        res <- dialogRun dialog
-        case res of
-            ResponseAccept  ->  do
-                fileName <- fileChooserGetFilename dialog
-                widgetHide dialog
-                return fileName
-            _               ->  do
-                widgetHide dialog
-                return Nothing
-    case response of
-        Just fn -> loadSession fn
-        Nothing -> return ()
+    configFolder <- liftIO getConfigDir
+    dialog <- new FileChooserDialog []
+    setWindowTitle dialog (__ "Select session file")
+    windowSetTransientFor dialog $ Just window'
+    fileChooserSetAction dialog FileChooserActionOpen
+    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    dialogAddButton' dialog "gtk-open" ResponseTypeAccept
+    fileChooserSetCurrentFolder dialog configFolder
+    widgetShow dialog
+    res <- dialogRun' dialog
+    case res of
+        ResponseTypeAccept  ->  do
+            fileName <- fileChooserGetFilename dialog
+            widgetHide dialog
+            loadSession fileName
+        _ -> widgetHide dialog
 
 loadSession :: FilePath -> IDEAction
 loadSession sessionPath = do
@@ -451,7 +459,7 @@ loadSession sessionPath = do
 detachedCloseAll :: IDEAction
 detachedCloseAll = do
     windows <- getWindows
-    liftIO $ mapM_ widgetDestroy (tail windows)
+    mapM_ widgetDestroy (tail windows)
 
 paneCloseAll :: IDEAction
 paneCloseAll = do
@@ -480,26 +488,26 @@ mkLayout = do
         l2          <-  getLayout' l (pp ++ [SplitP TopP])
         r2          <-  getLayout' r (pp ++ [SplitP BottomP])
         pane        <-  getPaned pp
-        pos         <-  liftIO $ panedGetPosition pane
+        pos         <-  fromIntegral <$> panedGetPosition pane
         return (HorizontalP l2 r2 pos)
     getLayout' (VerticalP l r _) pp = do
         l2          <-  getLayout' l (pp ++ [SplitP LeftP])
         r2          <-  getLayout' r (pp ++ [SplitP RightP])
         pane        <-  getPaned pp
-        pos         <-  liftIO $ panedGetPosition pane
+        pos         <-  fromIntegral <$> panedGetPosition pane
         return (VerticalP l2 r2 pos)
     getLayout' raw@(TerminalP {paneGroups = groups}) pp = do
         groups2     <-  forM (Map.toAscList groups) $ \(group, g) -> do
             l <- getLayout' g (pp ++ [GroupP group])
             return (group, l)
         nb          <-  getNotebook pp
-        showTabs    <-  liftIO $ notebookGetShowTabs nb
-        pos         <-  liftIO $ notebookGetTabPos nb
-        current     <-  liftIO $ notebookGetCurrentPage nb
+        showTabs    <-  notebookGetShowTabs nb
+        pos         <-  notebookGetTabPos nb
+        current     <-  fromIntegral <$> notebookGetCurrentPage nb
         size <- case detachedId raw of
             Just _  -> do
-                Just parent <- liftIO $ widgetGetParent nb
-                liftIO (Just <$> windowGetSize (castToWindow parent))
+                parent <- widgetGetParent nb >>= liftIO . unsafeCastTo Window
+                Just . (fromIntegral *** fromIntegral) <$> windowGetSize parent
             Nothing -> return $ detachedSize raw
         return raw {
                 paneGroups   = Map.fromAscList groups2
@@ -511,6 +519,7 @@ getPopulation :: IDEM[(Maybe PaneState,PanePath)]
 getPopulation = do
     paneMap <- getPaneMapSt
     mapM (\ (pn,v) -> do
+        liftIO $ debugM "leksah" $ "getPopulation calling saveState for " <> T.unpack pn
         (PaneC p) <- paneFromName pn
         mbSt <- saveState p
         case mbSt of
@@ -540,7 +549,7 @@ recoverSession sessionPath = catchIDE (do
         sessionSt    <- liftIO $ catch
                             (readFields sessionPath sessionDescr defaultSession)
                             (\(_ :: SomeException) -> return defaultSession)
-        liftIO $ uncurry (windowSetDefaultSize wdw) (windowSize sessionSt)
+        uncurry (windowSetDefaultSize wdw) . (fromIntegral *** fromIntegral) $ windowSize sessionSt
         applyLayout (layoutS sessionSt)
         workspaceOpenThis False (workspacePath sessionSt)
         liftIO $ debugM "leksah" "recoverSession calling populate"
@@ -560,7 +569,7 @@ recoverSession sessionPath = catchIDE (do
         if (fst . findbarState) sessionSt
             then showFindbar
             else hideFindbar
-        setCompletionSize (completionSize sessionSt)
+        uncurry setCompletionSize (completionSize sessionSt)
         modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
                                         recentWorkspaces = recentOpenedWorksp sessionSt})
         setFullScreenState (fullScreen sessionSt)
@@ -588,25 +597,25 @@ applyLayout layoutS = do
                 case mbPair of
                     Nothing     -> return ()
                     Just (win,wid) -> do
-                        liftIO $ widgetShowAll win
-                        liftIO $ windowSetDefaultSize win width height
+                        widgetShowAll win
+                        windowSetDefaultSize win (fromIntegral width) (fromIntegral height)
             _ -> return ()
-        liftIO $notebookSetShowTabs nb (isJust mbTabPos)
+        notebookSetShowTabs nb (isJust mbTabPos)
         case mbTabPos of
-            Just p -> liftIO $notebookSetTabPos nb (paneDirectionToPosType p)
+            Just p -> notebookSetTabPos nb (paneDirectionToPosType p)
             _      -> return ()
         forM_ (Map.toAscList groups) $ \(group, g) ->
             applyLayout' g (pp ++ [GroupP group])
     applyLayout' (VerticalP l r pos) pp = do
         viewSplit' pp Vertical
         pane        <-  getPaned pp
-        liftIO $panedSetPosition pane pos
+        panedSetPosition pane (fromIntegral pos)
         applyLayout' l (pp ++ [SplitP LeftP])
         applyLayout' r (pp ++ [SplitP RightP])
     applyLayout' (HorizontalP t b pos) pp = do
         viewSplit' pp Horizontal
         pane        <-  getPaned pp
-        liftIO $panedSetPosition pane pos
+        panedSetPosition pane (fromIntegral pos)
         applyLayout' t (pp ++ [SplitP TopP])
         applyLayout' b (pp ++ [SplitP BottomP])
 
@@ -625,7 +634,7 @@ setCurrentPages layout = setCurrentPages' layout []
                                                         setCurrentPages' g (GroupP group : p)
                                                     when (ind >=  0) $ do
                                                         nb <- getNotebook (reverse p)
-                                                        liftIO $ notebookSetCurrentPage nb ind
+                                                        notebookSetCurrentPage nb (fromIntegral ind)
 
 viewFullScreen :: IDEAction
 viewFullScreen = do
@@ -633,6 +642,6 @@ viewFullScreen = do
     mbWindow <- getActiveWindow
     case (mbWindow, isFullScreen) of
         (Nothing, _)         -> return ()
-        (Just window, True)  -> liftIO $ windowFullscreen window
-        (Just window, False) -> liftIO $ windowUnfullscreen window
+        (Just window, True)  -> windowFullscreen window
+        (Just window, False) -> windowUnfullscreen window
 

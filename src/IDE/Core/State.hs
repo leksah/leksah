@@ -1,7 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, TypeSynonymInstances,
-             MultiParamTypeClasses, ScopedTypeVariables, CPP,
-             DeriveDataTypeable, OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
@@ -82,9 +84,6 @@ module IDE.Core.State (
 
 ) where
 
-import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.SourceView.SourceView ()
-
 import Data.IORef
 import Control.Exception
 import Prelude hiding (catch)
@@ -119,6 +118,14 @@ import Data.Monoid ((<>))
 import Control.Concurrent.MVar (takeMVar, putMVar, newEmptyMVar)
 import qualified Data.Sequence as Seq (filter)
 import Data.Sequence (Seq)
+import GI.Gtk.Objects.Widget
+       (noWidget, Widget(..), widgetDestroy, widgetShowAll, widgetSetName,
+        widgetGrabFocus)
+import GI.Gtk.Objects.Notebook
+       (Notebook(..), notebookRemovePage, notebookPageNum)
+import Data.Int (Int32)
+import GI.GLib (pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, idleAdd)
+import GI.Gtk.Objects.Label (noLabel)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -148,8 +155,8 @@ instance PaneMonad IDEM where
 
     -- displayThisPane ::  Bool -> delta alpha
     displayThisPane pane shallGrabFocus = do
-        liftIO $ bringPaneToFront pane
-        when shallGrabFocus $ liftIO $ widgetGrabFocus $ getTopWidget pane
+        bringPaneToFront pane
+        when shallGrabFocus $ widgetGrabFocus =<< getTopWidget pane
     -- buildThisPane   ::  forall alpha beta . RecoverablePane alpha beta delta => PanePath ->
     --                    Notebook ->
     --                    (PanePath -> Notebook -> Window -> delta (alpha,Connections)) ->
@@ -171,13 +178,13 @@ instance PaneMonad IDEM where
                             Just it -> False
                 if b1 && b2
                     then do
-                        notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False
+                        topWidget <- getTopWidget buf
+                        notebookInsertOrdered notebook topWidget (paneName buf) noLabel False
                         addPaneAdmin buf cids panePath
-                        liftIO $ do
-                            widgetSetName (getTopWidget buf) (paneName buf)
-                            widgetShowAll (getTopWidget buf)
-                            widgetGrabFocus (getTopWidget buf)
-                            bringPaneToFront buf
+                        widgetSetName topWidget (paneName buf)
+                        widgetShowAll topWidget
+                        widgetGrabFocus topWidget
+                        bringPaneToFront buf
                         return (Just buf)
                     else return Nothing
     --activateThisPane :: forall alpha beta . RecoverablePane alpha beta delta => alpha -> Connections -> delta ()
@@ -188,7 +195,7 @@ instance PaneMonad IDEM where
             _  -> do
                 deactivatePaneWithout
                 triggerEventIDE (StatusbarChanged [CompartmentPane (Just (PaneC pane))])
-                liftIO $ bringPaneToFront pane
+                bringPaneToFront pane
                 setActivePane (Just (paneName pane,conn))
                 trigger (Just (paneName pane))
                     (case mbAP of
@@ -208,16 +215,15 @@ instance PaneMonad IDEM where
     closeThisPane pane = do
         (panePath,_)    <-  guiPropertiesFromName (paneName pane)
         nb              <-  getNotebook panePath
-        mbI             <-  liftIO $notebookPageNum nb (getTopWidget pane)
-        case mbI of
-            Nothing ->  liftIO $ do
+        i               <-  notebookPageNum nb =<< getTopWidget pane
+        if i < 0
+            then liftIO $ do
                 error ("notebook page not found: unexpected " ++ T.unpack (paneName pane) ++ " " ++ show panePath)
                 return False
-            Just i  ->  do
+            else do
                 deactivatePaneIfActive pane
-                liftIO $ do
-                    notebookRemovePage nb i
-                    widgetDestroy (getTopWidget pane)
+                notebookRemovePage nb i
+                widgetDestroy =<< getTopWidget pane
                 removePaneAdmin pane
                 modifyIDE_ (\ide -> ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
                 return True
@@ -326,31 +332,31 @@ catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) handle
 forkIDE :: MonadIDE m => IDEAction  -> m ()
 forkIDE block = reifyIDE (void . forkIO . reflectIDE block)
 
-postSyncIDE' :: MonadIDE m => Priority -> IDEM a -> m a
+postSyncIDE' :: MonadIDE m => Int32 -> IDEM a -> m a
 postSyncIDE' priority f = reifyIDE $ \ideR -> do
     resultVar <- newEmptyMVar
-    idleAdd (reflectIDE f ideR >>= putMVar resultVar >> return False) priority
+    idleAdd priority $ reflectIDE f ideR >>= putMVar resultVar >> return False
     takeMVar resultVar
 
 postSyncIDE :: MonadIDE m => IDEM a -> m a
-postSyncIDE = postSyncIDE' priorityDefault
+postSyncIDE = postSyncIDE' PRIORITY_DEFAULT
 
 postSyncIDEIdle :: MonadIDE m => IDEM a -> m a
-postSyncIDEIdle = postSyncIDE' priorityDefaultIdle
+postSyncIDEIdle = postSyncIDE' PRIORITY_DEFAULT_IDLE
 
-postAsyncIDE' :: MonadIDE m => Priority -> IDEM () -> m ()
+postAsyncIDE' :: MonadIDE m => Int32 -> IDEM () -> m ()
 postAsyncIDE' priority f = reifyIDE $ \ideR ->
-    void $ idleAdd (reflectIDE f ideR >> return False) priority
+    void . idleAdd priority $ reflectIDE f ideR >> return False
 
 postAsyncIDE :: MonadIDE m => IDEM () -> m ()
-postAsyncIDE = postAsyncIDE' priorityDefault
+postAsyncIDE = postAsyncIDE' PRIORITY_DEFAULT
 
 postAsyncIDEIdle :: MonadIDE m => IDEM () -> m ()
-postAsyncIDEIdle = postAsyncIDE' priorityDefaultIdle
+postAsyncIDEIdle = postAsyncIDE' PRIORITY_DEFAULT_IDLE
 
-onIDE obj signal callback = do
+onIDE onSignal obj callback = do
     ideRef <- ask
-    liftIO (obj `on` signal $ runReaderT callback ideRef)
+    liftIO (ConnectC obj <$> onSignal obj (\e -> runReaderT (runReaderT callback ideRef) e))
 
 -- ---------------------------------------------------------------------
 -- Convenience methods for accesing the IDE State
@@ -415,8 +421,7 @@ deactivatePaneWithout = do
     triggerEventIDE (StatusbarChanged [CompartmentPane Nothing])
     mbAP    <-  getActivePane
     case mbAP of
-        Just (_,signals) -> liftIO $do
-            signalDisconnectAll signals
+        Just (_,signals) -> signalDisconnectAll signals
         Nothing -> return ()
     setActivePane Nothing
 
@@ -476,6 +481,6 @@ leksahOrPackageDir subDir getPackageDir = do
         Just result -> return result
         Nothing     -> getPackageDir
 
-getDataDir :: IO FilePath
-getDataDir = leksahOrPackageDir "leksah" P.getDataDir
+getDataDir :: MonadIO m => m FilePath
+getDataDir = liftIO $ leksahOrPackageDir "leksah" P.getDataDir
 

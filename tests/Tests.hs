@@ -55,7 +55,7 @@ main = do
         updateGlobalLogger rootLoggerName (setLevel DEBUG)
         allPass <- $quickCheckAll -- Run QuickCheck on all prop_ functions
         initGUI
-        timeoutAddFull (yield >> return True) priorityLow 10
+        timeoutAdd PRIORITY_LOW 10 $ yield >> return True
         editorsOk <- testEditors
         putMVar result (allPass && editorsOk)
     forkIO $ do

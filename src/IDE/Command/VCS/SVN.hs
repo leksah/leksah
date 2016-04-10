@@ -32,8 +32,6 @@ import qualified VCSGui.Svn as GUISvn
 import qualified VCSWrapper.Svn as Wrapper.Svn
 import qualified VCSWrapper.Common as Wrapper
 
-import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
-
 import Control.Monad.Reader(liftIO,ask,lift)
 import Data.IORef(atomicModifyIORef, IORef)
 import Data.Either

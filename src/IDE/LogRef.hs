@@ -45,7 +45,6 @@ module IDE.LogRef (
 ,   srcSpanParser
 ) where
 
-import Graphics.UI.Gtk
 import Control.Monad.Reader
 import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
@@ -440,22 +439,21 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
     log    <- lift getLog
     logLaunch <- lift Log.getDefaultLogLaunch
     BuildOutputState {..} <- CL.foldM (readAndShow logLaunch) $ initialState log
-    ideR <- lift ask
-    liftIO $ postGUISync $ reflectIDE (do
+    lift $ postSyncIDE $ do
         allErrorLikeRefs <- readIDE errorRefs
         triggerEventIDE (Sensitivity [(SensitivityError,not (Seq.null allErrorLikeRefs))])
         let errorNum    =   length (filter isError errs)
         let warnNum     =   length errs - errorNum
         triggerEventIDE (StatusbarChanged [CompartmentState
             (T.pack $ show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
-        return errs) ideR
+        return errs
   where
     readAndShow :: LogLaunch -> BuildOutputState -> ToolOutput -> IDEM BuildOutputState
     readAndShow logLaunch state@BuildOutputState {..} output = do
         ideR <- ask
         let logPrevious (previous:_) = reflectIDE (addLogRef False backgroundBuild previous) ideR
             logPrevious _ = return ()
-        liftIO $ postGUISync $ case output of
+        liftIDE $ postSyncIDE $ liftIO $ case output of
             -- stack prints everything to stderr, so let's process errors as normal output first
             ToolError line -> processNormalOutput ideR logLaunch state logPrevious line $ do
                 let parsed  =  parse buildErrorParser "" $ T.unpack line

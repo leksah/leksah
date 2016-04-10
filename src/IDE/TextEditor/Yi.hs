@@ -33,7 +33,6 @@ module IDE.TextEditor.Yi (
 ) where
 
 import Data.Typeable (Typeable)
-import Graphics.UI.Gtk (castToWidget)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
 

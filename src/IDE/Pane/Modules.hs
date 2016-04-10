@@ -4,6 +4,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Modules
@@ -31,8 +32,6 @@ module IDE.Pane.Modules (
 ,   addModule
 ) where
 
-import Graphics.UI.Gtk hiding (get)
-import Graphics.UI.Gtk.Gdk.Events
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -63,8 +62,9 @@ import System.FilePath (takeBaseName, (</>),dropFileName,makeRelative,takeDirect
 import System.Directory (doesFileExist,createDirectoryIfMissing, removeFile)
 import Graphics.UI.Editor.MakeEditor (buildEditor,FieldDescription(..),mkField)
 import Graphics.UI.Editor.Parameters
-       (paraMinSize, paraMultiSel, Parameter(..), emptyParams, (<<<-),
-        paraName)
+       (dialogRun', dialogSetDefaultResponse', dialogAddButton',
+        Packing(..), boxPackEnd', boxPackStart', paraMinSize, paraMultiSel,
+        Parameter(..), emptyParams, (<<<-), paraName, dialogResponse')
 import Graphics.UI.Editor.Simple
        (textEditor, boolEditor, staticListEditor)
 import Graphics.UI.Editor.Composite (maybeEditor)
@@ -79,13 +79,105 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (when, void)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
-import System.Glib.Properties (newAttrFromMaybeStringProperty)
 import Data.Text (Text, toCaseFold)
 import qualified Data.Text as T (unpack, isInfixOf, toLower, pack)
 import Data.Monoid ((<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (writeFile)
+import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
+import GI.Gtk.Objects.HPaned (hPanedNew, HPaned(..))
+import Data.GI.Gtk.ModelView.ForestStore
+       (forestStoreInsertTree, forestStoreGetTree, forestStoreGetValue,
+        ForestStore(..))
+import GI.Gtk.Objects.RadioButton
+       (radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel,
+        RadioButton(..))
+import GI.Gtk.Objects.CheckButton
+       (checkButtonNewWithLabel, CheckButton(..))
+import GI.Gtk.Structs.TreePath
+       (TreePath(..))
+import GI.Gtk.Objects.Widget
+       (widgetShowAll, widgetGrabDefault, widgetCanDefault, widgetShow,
+        widgetSetName, widgetDestroy, widgetSetSensitive,
+        afterWidgetFocusInEvent, widgetGetAllocation, toWidget)
+import GI.Gtk.Objects.Paned
+       (panedAdd2, panedAdd1, panedSetPosition, panedGetPosition)
+import GI.Gtk.Objects.CellRendererPixbuf
+       (cellRendererPixbufStockId, cellRendererPixbufNew)
+import Data.GI.Base (unsafeCastTo, on, set)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.CellRendererText
+       (cellRendererTextText, cellRendererTextNew)
+import GI.Gtk.Objects.TreeViewColumn
+       (TreeViewColumn(..), treeViewColumnSetSortColumnId,
+        treeViewColumnSetReorderable, treeViewColumnSetResizable,
+        treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew)
+import GI.Gtk.Enums
+       (ButtonsType(..), MessageType(..), WindowPosition(..),
+        ResponseType(..), ButtonBoxStyle(..), PolicyType(..),
+        ShadowType(..), SortType(..), TreeViewColumnSizing(..))
+import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetAttributes)
+import GI.Gtk.Interfaces.TreeModel
+       (treeModelIterNext, treeModelIterChildren, treeModelGetIterFirst,
+        treeModelGetPath, treeModelSortNewWithModel)
+import GI.Gtk.Interfaces.TreeSortable
+       (treeSortableSetSortColumnId, treeSortableSetSortFunc)
+import Data.GI.Gtk.ModelView.CustomStore
+       (customStoreGetRow)
+import Data.GI.Gtk.ModelView.Types
+       (treeSelectionGetSelectedRows', treePathGetIndices',
+        treePathNewFromIndices', TypedTreeModelSort(..))
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
+        scrolledWindowNew)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Container (containerAdd)
+import GI.Gdk.Structs.Rectangle
+       (rectangleReadY, rectangleReadX, Rectangle(..))
+import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
+import GI.Gtk.Objects.Box (boxReorderChild, Box(..), boxSetSpacing)
+import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
+import GI.Gtk.Objects.ToggleButton
+       (toggleButtonGetActive, onToggleButtonToggled,
+        toggleButtonSetActive)
+import GI.Gtk.Objects.TreeView
+       (treeViewSetSearchColumn, treeViewCollapseRow, treeViewCollapseAll,
+        treeViewExpandAll, treeViewExpandRow, treeViewRowExpanded,
+        treeViewScrollToCell, treeViewGetColumn, treeViewExpandToPath,
+        treeViewGetSelection, onTreeViewRowActivated,
+        treeViewSetSearchEqualFunc, treeViewSetEnableSearch,
+        treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
+        treeViewNew, TreeView(..))
+import GI.Gtk.Objects.TreeSelection
+       (treeSelectionUnselectAll, treeSelectionSelectPath, onTreeSelectionChanged)
+import GI.Gtk.Objects.TreeModelSort
+       (TreeModelSort(..), treeModelSortConvertPathToChildPath,
+        treeModelSortConvertChildPathToPath)
+import GI.Gtk.Structs.TreeIter (TreeIter(..))
+import GI.Gtk.Objects.Menu (Menu(..))
+import GI.Gtk.Objects.MenuItem
+       (toMenuItem, onMenuItemActivate, MenuItem(..), menuItemActivate,
+        menuItemNewWithLabel)
+import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import Data.GI.Base.Constructible (Constructible(..))
+import GI.Gtk.Objects.MessageDialog
+       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+        MessageDialog(..))
+import GI.Gtk.Objects.Dialog
+       (dialogResponse, dialogGetActionArea, dialogGetContentArea,
+        dialogNew, dialogUseHeaderBar)
+import GI.Gtk.Objects.Window
+       (windowSetDefaultSize, windowTitle, windowTransientFor, Window(..),
+        windowWindowPosition, windowSetTransientFor)
+import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
+import GI.Gtk.Objects.Label
+       (labelSetText, labelSetLineWrap, labelNew)
+import Data.GI.Gtk.ModelView.ForestStore (forestStoreClear, forestStoreNew)
+import Data.Int (Int32)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -99,9 +191,9 @@ data IDEModules     =   IDEModules {
     outer            ::   VBox
 ,   paned            ::   HPaned
 ,   treeView         ::   TreeView
-,   treeStore        ::   TreeStore ModuleRecord
+,   forestStore        ::   ForestStore ModuleRecord
 ,   descrView        ::   TreeView
-,   descrStore       ::   TreeStore Descr
+,   descrStore       ::   ForestStore Descr
 ,   descrSortedStore ::   TypedTreeModelSort Descr -- ^ The sorted model for descrs
 ,   packageScopeB    ::   RadioButton
 ,   workspaceScopeB  ::   RadioButton
@@ -130,7 +222,7 @@ data ExpanderState =  ExpanderState {
 ,   systemExpNoBlack        :: ExpanderFacet
 }   deriving (Eq,Ord,Show,Read)
 
-type ExpanderFacet      = ([TreePath], [TreePath])
+type ExpanderFacet      = ([[Int]], [[Int]])
 
 data SelectionState = SelectionState {
     moduleS'        ::   Maybe ModuleName
@@ -143,7 +235,7 @@ instance Pane IDEModules IDEM
     where
     primPaneName _  =   __ "Modules"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . outer
+    getTopWidget    =   liftIO . toWidget . outer
     paneId b        =   "*Modules"
         --liftIO $ widgetGrabFocus (descrView p)
 
@@ -156,6 +248,11 @@ showModules = do
     pane <- getModules Nothing
     displayPane pane False
 
+orderToInt32 :: Ordering -> Int32
+orderToInt32 LT = -1
+orderToInt32 EQ = 0
+orderToInt32 GT = 1
+
 instance RecoverablePane IDEModules ModulesState IDEM where
     saveState p     =   do
         m           <-  getModules Nothing
@@ -165,9 +262,9 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         expander    <-  liftIO $ readIORef (expanderState p)
         case mbModules of
             Nothing ->  return Nothing
-            Just p  ->  liftIO $ do
+            Just p  ->  do
                 i   <-  panedGetPosition (paned p)
-                mbTreeSelection     <-  getSelectionTree (treeView m) (treeStore m)
+                mbTreeSelection     <-  getSelectionTree (treeView m) (forestStore m)
                 mbFacetSelection    <-  getSelectionDescr (descrView m) (descrStore m) (descrSortedStore m)
                 let mbs = (case mbTreeSelection of
                             Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
@@ -175,175 +272,181 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                             case mbFacetSelection of
                                 Nothing -> Nothing
                                 Just fw -> Just (dscName fw))
-                return (Just (ModulesState i sc mbs expander))
+                return (Just (ModulesState (fromIntegral i) sc mbs expander))
     recoverState pp (ModulesState i sc@(scope,useBlacklist) se exp)  =  do
         nb          <-  getNotebook pp
         p           <-  buildPane pp nb builder
         mod         <-  getModules Nothing
         liftIO $ writeIORef (expanderState mod) exp
         liftIO $ writeIORef (oldSelection mod) (uncurry SelectionState se scope useBlacklist)
-        liftIO $ panedSetPosition (paned mod) i
+        panedSetPosition (paned mod) (fromIntegral i)
         return p
     builder pp nb windows = do
         packageInfo' <- getPackageInfo
-        reifyIDE $ \ ideR -> do
-            let forest  = case packageInfo' of
-                            Nothing     ->  []
-                            Just (GenScopeC fst,GenScopeC snd)
-                                ->  subForest (buildModulesTree (fst,snd))
-            treeStore   <-  treeStoreNew forest
-            treeView    <-  treeViewNew
-            treeViewSetModel treeView treeStore
-            --treeViewSetRulesHint treeView True
+        ideR <- ask
+        let forest  = case packageInfo' of
+                        Nothing     ->  []
+                        Just (GenScopeC fst, GenScopeC snd)
+                            ->  subForest (buildModulesTree (fst,snd))
+        forestStore   <-  forestStoreNew forest
+        treeView    <-  treeViewNew
+        treeViewSetModel treeView (Just forestStore)
+        --treeViewSetRulesHint treeView True
 
-            renderer0    <- cellRendererPixbufNew
-            set renderer0 [ newAttrFromMaybeStringProperty "stock-id"  := (Nothing :: Maybe Text) ]
+        renderer0    <- cellRendererPixbufNew
+        set renderer0 [ cellRendererPixbufStockId := "" ]
 
-            renderer    <- cellRendererTextNew
-            col         <- treeViewColumnNew
-            treeViewColumnSetTitle col (__ "Module")
-            treeViewColumnSetSizing col TreeViewColumnAutosize
-            treeViewColumnSetResizable col True
-            treeViewColumnSetReorderable col True
-            treeViewAppendColumn treeView col
-            cellLayoutPackStart col renderer0 False
-            cellLayoutPackStart col renderer True
-            cellLayoutSetAttributes col renderer treeStore
-                $ \row -> [ cellText := fst row]
-            cellLayoutSetAttributes col renderer0 treeStore
-                $ \row -> [
-                newAttrFromMaybeStringProperty "stock-id" :=
-                   case snd row of
-                        Nothing -> Nothing
-                        Just pair -> if isJust (mdMbSourcePath (fst pair))
-                                         then Just ("ide_source" :: Text)
-                                         else Nothing]
+        renderer    <- cellRendererTextNew
+        col         <- treeViewColumnNew
+        treeViewColumnSetTitle col (__ "Module")
+        treeViewColumnSetSizing col TreeViewColumnSizingAutosize
+        treeViewColumnSetResizable col True
+        treeViewColumnSetReorderable col True
+        treeViewAppendColumn treeView col
+        cellLayoutPackStart col renderer0 False
+        cellLayoutPackStart col renderer True
+        cellLayoutSetAttributes col renderer forestStore
+            $ \row -> [ cellRendererTextText := fst row]
+        cellLayoutSetAttributes col renderer0 forestStore
+            $ \row -> [
+            cellRendererPixbufStockId :=
+               case snd row of
+                    Nothing -> ""
+                    Just pair -> if isJust (mdMbSourcePath (fst pair))
+                                     then "ide_source"
+                                     else ""]
 
-            renderer2   <- cellRendererTextNew
-            col2        <- treeViewColumnNew
-            treeViewColumnSetTitle col2 (__ "Package")
-            treeViewColumnSetSizing col2 TreeViewColumnAutosize
-            treeViewColumnSetResizable col2 True
-            treeViewColumnSetReorderable col2 True
-            treeViewAppendColumn treeView col2
-            cellLayoutPackStart col2 renderer2 True
-            cellLayoutSetAttributes col2 renderer2 treeStore
-                $ \row -> [
-                    cellText := case snd row of
-                                    Nothing -> ""
-                                    Just pair -> (T.pack . display . pdPackage . snd) pair]
+        renderer2   <- cellRendererTextNew
+        col2        <- treeViewColumnNew
+        treeViewColumnSetTitle col2 (__ "Package")
+        treeViewColumnSetSizing col2 TreeViewColumnSizingAutosize
+        treeViewColumnSetResizable col2 True
+        treeViewColumnSetReorderable col2 True
+        treeViewAppendColumn treeView col2
+        cellLayoutPackStart col2 renderer2 True
+        cellLayoutSetAttributes col2 renderer2 forestStore
+            $ \row -> [
+                cellRendererTextText := case snd row of
+                                Nothing -> ""
+                                Just pair -> (T.pack . display . pdPackage . snd) pair]
 
-            treeViewSetHeadersVisible treeView True
-            treeViewSetEnableSearch treeView True
-            treeViewSetSearchEqualFunc treeView (Just (treeViewSearch treeView treeStore))
+        treeViewSetHeadersVisible treeView True
+        treeViewSetEnableSearch treeView True
+        treeViewSetSearchEqualFunc treeView
+            (\_ _ key iter -> treeViewSearch treeView forestStore key iter)
+        treeViewSetSearchColumn treeView 0
 
-        -- Facet view
+    -- Facet view
 
-            descrView   <-  treeViewNew
-            descrStore  <-  treeStoreNew []
-            -- sorted model
-            descrSortedStore <- treeModelSortNewWithModel descrStore
-            treeViewSetModel descrView descrSortedStore
-            renderer30    <- cellRendererPixbufNew
-            renderer31    <- cellRendererPixbufNew
-            renderer3   <- cellRendererTextNew
-            col         <- treeViewColumnNew
-            treeViewColumnSetTitle col (__ "Interface")
-            --treeViewColumnSetSizing col TreeViewColumnAutosize
-            treeViewAppendColumn descrView col
-            cellLayoutPackStart col renderer30 False
-            cellLayoutPackStart col renderer31 False
-            cellLayoutPackStart col renderer3 True
-            cellLayoutSetAttributes col renderer3 descrStore
-                $ \row -> [ cellText := descrTreeText row]
-            cellLayoutSetAttributes col renderer30 descrStore
-                $ \row -> [
-                cellPixbufStockId  := stockIdFromType (descrIdType row)]
-            cellLayoutSetAttributes col renderer31 descrStore
-                $ \row -> [
-                cellPixbufStockId  := if isReexported row
-                                        then "ide_reexported"
-                                            else if isJust (dscMbLocation row)
-                                                then
-                                                    if dscExported row
-                                                        then ("ide_source" :: Text)
-                                                        else "ide_source_local"
-                                                else "ide_empty"]
-            -- sort definitions on name, ignoring case
-            treeSortableSetSortFunc descrSortedStore 2 $ \iter1 iter2 -> do
-                d1 <- treeModelGetRow descrStore iter1
-                d2 <- treeModelGetRow descrStore iter2
-                let cafName = toCaseFold . descrTreeText
-                return (compare (cafName d1) (cafName d2))
-            treeViewColumnSetSortColumnId col 2
-            treeSortableSetSortColumnId descrSortedStore 2 SortAscending
-            treeViewSetHeadersVisible descrView True
-            treeViewSetEnableSearch descrView True
-            treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
-            pane'           <-  hPanedNew
-            sw              <-  scrolledWindowNew Nothing Nothing
-            scrolledWindowSetShadowType sw ShadowIn
-            containerAdd sw treeView
-            scrolledWindowSetPolicy sw PolicyAutomatic PolicyAutomatic
-            sw2             <-  scrolledWindowNew Nothing Nothing
-            scrolledWindowSetShadowType sw2 ShadowIn
-            containerAdd sw2 descrView
-            scrolledWindowSetPolicy sw2 PolicyAutomatic PolicyAutomatic
-            panedAdd1 pane' sw
-            panedAdd2 pane' sw2
-            (Rectangle _ _ x y) <- liftIO $ widgetGetAllocation nb
-            panedSetPosition pane' (max 200 (x `quot` 2))
-            box             <-  hButtonBoxNew
-            boxSetSpacing box 2
-            buttonBoxSetLayout box ButtonboxSpread
-            rb1             <-  radioButtonNewWithLabel (__ "Package")
-            rb2             <-  radioButtonNewWithLabelFromWidget rb1 (__ "Workspace")
-            rb3             <-  radioButtonNewWithLabelFromWidget rb1 (__ "System")
-            toggleButtonSetActive rb3 True
-            cb2             <-  checkButtonNewWithLabel (__ "Imports")
-            cb              <-  checkButtonNewWithLabel (__ "Blacklist")
+        descrView   <-  treeViewNew
+        descrStore  <-  forestStoreNew []
+        -- sorted model
+        descrSortedStore <- treeModelSortNewWithModel descrStore
+            >>= liftIO . unsafeCastTo TypedTreeModelSort
+        treeViewSetModel descrView (Just descrSortedStore)
+        renderer30    <- cellRendererPixbufNew
+        renderer31    <- cellRendererPixbufNew
+        renderer3   <- cellRendererTextNew
+        col         <- treeViewColumnNew
+        treeViewColumnSetTitle col (__ "Interface")
+        --treeViewColumnSetSizing col TreeViewColumnSizingAutosize
+        treeViewAppendColumn descrView col
+        cellLayoutPackStart col renderer30 False
+        cellLayoutPackStart col renderer31 False
+        cellLayoutPackStart col renderer3 True
+        cellLayoutSetAttributes col renderer3 descrStore
+            $ \row -> [ cellRendererTextText := descrTreeText row]
+        cellLayoutSetAttributes col renderer30 descrStore
+            $ \row -> [
+            cellRendererPixbufStockId  := stockIdFromType (descrIdType row)]
+        cellLayoutSetAttributes col renderer31 descrStore
+            $ \row -> [
+            cellRendererPixbufStockId  := if isReexported row
+                                    then "ide_reexported"
+                                        else if isJust (dscMbLocation row)
+                                            then
+                                                if dscExported row
+                                                    then "ide_source"
+                                                    else "ide_source_local"
+                                            else "ide_empty"]
+        -- sort definitions on name, ignoring case
+        treeSortableSetSortFunc descrSortedStore 2 $ \_ iter1 iter2 -> do
+            d1 <- customStoreGetRow descrStore iter1
+            d2 <- customStoreGetRow descrStore iter2
+            let cafName = toCaseFold . descrTreeText
+            return . orderToInt32 $ compare (cafName d1) (cafName d2)
+        treeViewColumnSetSortColumnId col 2
+        treeSortableSetSortColumnId descrSortedStore 2 SortTypeAscending
+        treeViewSetHeadersVisible descrView True
+        treeViewSetEnableSearch descrView True
+        treeViewSetSearchEqualFunc descrView
+            (\_ _ key iter -> descrViewSearch descrView descrStore key iter)
+        pane'           <-  hPanedNew
+        sw              <-  scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType sw ShadowTypeIn
+        containerAdd sw treeView
+        scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
+        sw2             <-  scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType sw2 ShadowTypeIn
+        containerAdd sw2 descrView
+        scrolledWindowSetPolicy sw2 PolicyTypeAutomatic PolicyTypeAutomatic
+        panedAdd1 pane' sw
+        panedAdd2 pane' sw2
+        rect <- widgetGetAllocation nb
+        x <- rectangleReadX rect
+        y <- rectangleReadY rect
+        panedSetPosition pane' (max 200 (x `quot` 2))
+        box             <-  hButtonBoxNew
+        boxSetSpacing box 2
+        buttonBoxSetLayout box ButtonBoxStyleSpread
+        rb1             <-  radioButtonNewWithLabel ([]::[RadioButton]) (__ "Package")
+        rb2             <-  radioButtonNewWithLabelFromWidget (Just rb1) (__ "Workspace")
+        rb3             <-  radioButtonNewWithLabelFromWidget (Just rb1) (__ "System")
+        toggleButtonSetActive rb3 True
+        cb2             <-  checkButtonNewWithLabel (__ "Imports")
+        cb              <-  checkButtonNewWithLabel (__ "Blacklist")
 
-            boxPackStart box rb1 PackGrow 0
-            boxPackStart box rb2 PackGrow 0
-            boxPackStart box rb3 PackGrow 0
-            boxPackEnd box cb PackNatural 0
-            boxPackEnd box cb2 PackNatural 0
+        boxPackStart' box rb1 PackGrow 0
+        boxPackStart' box rb2 PackGrow 0
+        boxPackStart' box rb3 PackGrow 0
+        boxPackEnd' box cb PackNatural 0
+        boxPackEnd' box cb2 PackNatural 0
 
 
-            boxOuter        <-  vBoxNew False 0
-            boxPackStart boxOuter box PackNatural 2
-            boxPackStart boxOuter pane' PackGrow 0
-            oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing SystemScope False
-            expanderState <- liftIO $ newIORef emptyExpansion
-            scopeRef <- newIORef (SystemScope,True)
-            let modules = IDEModules boxOuter pane' treeView treeStore descrView descrStore descrSortedStore
-                                rb1 rb2 rb3 cb2 cb oldState expanderState
-            cid1 <- after treeView focusInEvent $ do
-                liftIO $ reflectIDE (makeActive modules) ideR
-                return True
-            cid2 <- after descrView focusInEvent $ do
-                liftIO $ reflectIDE (makeActive modules) ideR
-                return True
-            (cid3, cid4) <- treeViewContextMenu treeView $ modulesContextMenu ideR treeStore treeView
-            cid5 <- treeView `on` rowActivated $ modulesSelect ideR treeStore treeView
-            (cid6, cid7) <- treeViewContextMenu descrView $ descrViewContextMenu ideR descrStore descrSortedStore descrView
-            cid8 <- descrView `on` rowActivated $ descrViewSelect ideR descrStore descrSortedStore
-            on rb1 toggled (reflectIDE scopeSelection ideR)
-            on rb2 toggled (reflectIDE scopeSelection ideR)
-            on rb3 toggled (reflectIDE scopeSelection ideR)
-            on cb  toggled (reflectIDE scopeSelection ideR)
-            on cb2 toggled (reflectIDE scopeSelection ideR)
-            sel     <-  treeViewGetSelection treeView
-            on sel treeSelectionSelectionChanged $ do
-                fillFacets treeView treeStore descrView descrStore descrSortedStore
-                reflectIDE recordSelHistory ideR
-                return ()
-            sel2    <-  treeViewGetSelection descrView
-            on sel2 treeSelectionSelectionChanged $ do
-                fillInfo descrView descrStore descrSortedStore ideR
-                reflectIDE recordSelHistory ideR
-                return ()
-            return (Just modules,map ConnectC [cid1, cid2, cid3, cid4, cid5, cid6, cid7, cid8])
+        boxOuter        <-  vBoxNew False 0
+        boxPackStart' boxOuter box PackNatural 2
+        boxPackStart' boxOuter pane' PackGrow 0
+        oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing SystemScope False
+        expanderState <- liftIO $ newIORef emptyExpansion
+        scopeRef <- liftIO $ newIORef (SystemScope,True)
+        let modules = IDEModules boxOuter pane' treeView forestStore descrView descrStore descrSortedStore
+                            rb1 rb2 rb3 cb2 cb oldState expanderState
+        cid1 <- onIDE afterWidgetFocusInEvent treeView $ do
+            liftIDE $ makeActive modules
+            return True
+        cid2 <- onIDE afterWidgetFocusInEvent descrView $ do
+            liftIDE $ makeActive modules
+            return True
+        cids3 <- treeViewContextMenu treeView $ modulesContextMenu ideR forestStore treeView
+        cid5 <- ConnectC treeView <$> onTreeViewRowActivated treeView (modulesSelect ideR forestStore treeView)
+        cids6 <- treeViewContextMenu descrView $ descrViewContextMenu ideR descrStore descrSortedStore descrView
+        cid8 <- ConnectC descrView <$> onTreeViewRowActivated descrView (descrViewSelect ideR descrStore descrSortedStore)
+        onToggleButtonToggled rb1 (reflectIDE scopeSelection ideR)
+        onToggleButtonToggled rb2 (reflectIDE scopeSelection ideR)
+        onToggleButtonToggled rb3 (reflectIDE scopeSelection ideR)
+        onToggleButtonToggled cb  (reflectIDE scopeSelection ideR)
+        onToggleButtonToggled cb2 (reflectIDE scopeSelection ideR)
+        sel     <-  treeViewGetSelection treeView
+        onTreeSelectionChanged sel $ do
+            fillFacets treeView forestStore descrView descrStore descrSortedStore
+            reflectIDE recordSelHistory ideR
+            return ()
+        sel2    <-  treeViewGetSelection descrView
+        onTreeSelectionChanged sel2 $ do
+            fillInfo descrView descrStore descrSortedStore ideR
+            reflectIDE recordSelHistory ideR
+            return ()
+        return (Just modules, [cid1, cid2, cid5, cid8] ++ cids3 ++ cids6)
 
 selectIdentifier :: Descr -> Bool -> IDEAction
 selectIdentifier idDescr openSource= do
@@ -400,33 +503,34 @@ selectIdentifier'  moduleName symbol =
     in do
         liftIO $ debugM "leksah" $ "selectIdentifier' " <> show moduleName <> " " <> T.unpack symbol
         mods            <- getModules Nothing
-        mbTree          <-  liftIO $ treeStoreGetTreeSave (treeStore mods) []
+        mbTree          <- forestStoreGetTreeSave (forestStore mods) =<< treePathNewFromIndices' []
         case treePathFromNameArray mbTree nameArray [] of
-            Just treePath   ->  liftIO $ do
+            Just treePath'  ->  do
+                treePath <- treePathNewFromIndices' (map fromIntegral treePath')
                 treeViewExpandToPath (treeView mods) treePath
                 sel         <-  treeViewGetSelection (treeView mods)
                 treeSelectionSelectPath sel treePath
                 col         <-  treeViewGetColumn (treeView mods) 0
-                treeViewScrollToCell (treeView mods) (Just treePath) col (Just (0.3,0.3))
-                mbFacetTree <-  treeStoreGetTreeSave (descrStore mods) []
+                treeViewScrollToCell (treeView mods) (Just treePath) (Just col) True 0.3 0.3
+                mbFacetTree <-  forestStoreGetTreeSave (descrStore mods) =<< treePathNewFromIndices' []
                 selF        <-  treeViewGetSelection (descrView mods)
                 case  findPathFor symbol mbFacetTree of
                     Nothing     ->  sysMessage Normal (__ "no path found")
                     Just childPath   ->  do
-                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) childPath
+                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
                         treeViewExpandToPath (descrView mods) path
                         treeSelectionSelectPath selF path
                         col     <-  treeViewGetColumn (descrView mods) 0
-                        treeViewScrollToCell (descrView mods) (Just path) col (Just (0.3,0.3))
+                        treeViewScrollToCell (descrView mods) (Just path) (Just col) True 0.3 0.3
                 bringPaneToFront mods
             Nothing         ->  return ()
 
-findPathFor :: Text -> Maybe (Tree Descr) -> Maybe TreePath
+findPathFor :: Text -> Maybe (Tree Descr) -> Maybe [Int]
 findPathFor symbol (Just (Node _ forest)) =
     foldr ( \i mbTreePath -> findPathFor' [i] (forest !! i) mbTreePath)
                             Nothing  [0 .. (length forest - 1)]
     where
-    findPathFor' :: TreePath -> Tree Descr -> Maybe TreePath -> Maybe TreePath
+    findPathFor' :: [Int] -> Tree Descr -> Maybe [Int] -> Maybe [Int]
     findPathFor' _ node (Just p)                  =   Just p
     findPathFor' path (Node wrap sub) Nothing     =
         if dscName wrap == symbol
@@ -447,15 +551,15 @@ treePathFromNameArray (Just tree) (h:t) accu   =
 treePathFromNameArray Nothing _ _  = Nothing
 
 treeViewSearch :: TreeView
-    -> TreeStore ModuleRecord
+    -> ForestStore ModuleRecord
     -> Text
     -> TreeIter
     -> IO Bool
-treeViewSearch treeView treeStore string iter =  do
+treeViewSearch treeView forestStore string iter =  do
     liftIO $ debugM "leksah" "treeViewSearch"
-    path   <- treeModelGetPath treeStore iter
-    val    <- treeStoreGetValue treeStore path
-    mbTree <- treeStoreGetTreeSave treeStore path
+    path   <- treeModelGetPath forestStore iter
+    val    <- forestStoreGetValue forestStore path
+    mbTree <- forestStoreGetTreeSave forestStore path
     exp    <- treeViewRowExpanded treeView path
     when (isJust mbTree && not (null (subForest (fromJust mbTree))) && not exp) $
         let found = searchInModSubnodes (fromJust mbTree) string
@@ -480,15 +584,15 @@ searchInModSubnodes tree str =
       (concatMap flatten (subForest tree))
 
 descrViewSearch :: TreeView
-    -> TreeStore Descr
+    -> ForestStore Descr
     -> Text
     -> TreeIter
     -> IO Bool
 descrViewSearch descrView descrStore string iter = do
     liftIO $ debugM "leksah" "descrViewSearch"
     path    <- treeModelGetPath descrStore iter
-    val     <- treeStoreGetValue descrStore path
-    tree <- treeStoreGetTree descrStore path
+    val     <- forestStoreGetValue descrStore path
+    tree <- forestStoreGetTree descrStore path
     exp  <- treeViewRowExpanded descrView path
     when (not (null (subForest tree)) && not exp) $
         let found = searchInFacetSubnodes tree string
@@ -504,73 +608,76 @@ searchInFacetSubnodes tree str =
       (concatMap flatten (subForest tree))
 
 -- | Fill facet view with descrs from selected module
-fillFacets :: TreeView
-    -> TreeStore ModuleRecord
-    -> TreeView
-    -> TreeStore Descr
-    -> TypedTreeModelSort Descr
-    -> IO ()
-fillFacets treeView treeStore descrView descrStore descrSortedStore = do
+fillFacets :: MonadIO m
+           => TreeView
+           -> ForestStore ModuleRecord
+           -> TreeView
+           -> ForestStore Descr
+           -> TypedTreeModelSort Descr
+           -> m ()
+fillFacets treeView forestStore descrView descrStore descrSortedStore = do
     liftIO $ debugM "leksah" "fillFacets"
-    sel        <- getSelectionTree treeView treeStore
-    emptyModel <- treeStoreNew []
-    treeViewSetModel descrView emptyModel
-    treeStoreClear descrStore
+    sel        <- getSelectionTree treeView forestStore
+    emptyModel <- forestStoreNew []
+    treeViewSetModel descrView (Just emptyModel)
+    forestStoreClear descrStore
+    emptyPath <- treePathNewFromIndices' []
     case sel of
         Just (_,Just (mod,package))
-            ->  mapM_ (\(e,i) -> treeStoreInsertTree descrStore [] i e)
+            ->  mapM_ (\(e,i) -> forestStoreInsertTree descrStore emptyPath i e)
                                     $ zip (buildFacetForrest mod) [0 ..]
         _   ->  return ()
-    treeViewSetModel descrView descrSortedStore
+    treeViewSetModel descrView (Just descrSortedStore)
     treeViewSetEnableSearch descrView True
-    treeViewSetSearchEqualFunc descrView (Just (descrViewSearch descrView descrStore))
+    treeViewSetSearchEqualFunc descrView
+        (\_ _ key iter -> descrViewSearch descrView descrStore key iter)
     liftIO $ debugM "leksah" "fillFacets done"
 
-getSelectionTree ::  TreeView
-    ->  TreeStore ModuleRecord
-    -> IO (Maybe ModuleRecord)
-getSelectionTree treeView treeStore = do
+getSelectionTree :: MonadIO m
+                 => TreeView
+                 -> ForestStore ModuleRecord
+                 -> m (Maybe ModuleRecord)
+getSelectionTree treeView forestStore = do
     liftIO $ debugM "leksah" "getSelectionTree"
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         []  ->  return Nothing
-        a:r ->  do
-            val     <-  treeStoreGetValue treeStore a
-            return (Just val)
+        a:r ->  Just <$> forestStoreGetValue forestStore a
 
 -- | Get selected Descr, if any
-getSelectionDescr ::  TreeView
-    ->  TreeStore Descr
-    -> TypedTreeModelSort Descr
-    -> IO (Maybe Descr)
-getSelectionDescr treeView treeStore descrSortedStore = do
+getSelectionDescr :: MonadIO m
+                  => TreeView
+                  -> ForestStore Descr
+                  -> TypedTreeModelSort Descr
+                  -> m (Maybe Descr)
+getSelectionDescr treeView forestStore descrSortedStore = do
     liftIO $ debugM "leksah" "getSelectionDescr"
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         a:_ ->  do
             unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
-            val     <-  treeStoreGetValue treeStore unsorteda
-            return (Just val)
+            Just <$> forestStoreGetValue forestStore unsorteda
         _  ->  return Nothing
 
 -- | Fill info pane with selected Descr if any
-fillInfo :: TreeView
-    -> TreeStore Descr
-    -> TypedTreeModelSort Descr
-    -> IDERef
-    -> IO ()
+fillInfo :: MonadIO m
+         => TreeView
+         -> ForestStore Descr
+         -> TypedTreeModelSort Descr
+         -> IDERef
+         -> m ()
 fillInfo treeView lst descrSortedStore ideR  = do
     liftIO $ debugM "leksah" "fillInfo"
     treeSelection   <-  treeViewGetSelection treeView
-    paths           <-  treeSelectionGetSelectedRows treeSelection
+    paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         []      ->  return ()
         [a]     ->  do
             unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
-            descr    <-  treeStoreGetValue lst unsorteda
-            reflectIDE (setInfo descr) ideR
+            descr    <-  forestStoreGetValue lst unsorteda
+            liftIO $ reflectIDE (setInfo descr) ideR
             return ()
         _       ->  return ()
 
@@ -594,8 +701,8 @@ fillModulesList (scope,useBlacklist) = do
         SystemScope -> do
             accessibleInfo'             <-  getSystemInfo
             case accessibleInfo' of
-                Nothing ->  liftIO $ treeStoreClear (treeStore mods)
-                                     --treeStoreInsertTree (treeStore mods) [] 0 (Node ("",[]) [])
+                Nothing ->  forestStoreClear (forestStore mods)
+                                     --forestStoreInsertTree (forestStore mods) [] 0 (Node ("",[]) [])
                 Just (GenScopeC ai@(PackScope pm ps)) ->
                     let p2  =   if useBlacklist
                                     then PackScope (Map.filter (filterBlacklist
@@ -633,16 +740,17 @@ fillModulesList (scope,useBlacklist) = do
                         (Node _ li)     =   buildModulesTree (l', p2)
                     in insertIt li mods
     where
-        insertIt li mods = liftIO $ do
-            emptyModel <- treeStoreNew []
-            treeViewSetModel (treeView mods) emptyModel
-            treeStoreClear (treeStore mods)
-            mapM_ (\(e,i) -> treeStoreInsertTree (treeStore mods) [] i e)
+        insertIt li mods = do
+            emptyModel <- forestStoreNew []
+            treeViewSetModel (treeView mods) (Just emptyModel)
+            forestStoreClear (forestStore mods)
+            emptyPath <- treePathNewFromIndices' []
+            mapM_ (\(e,i) -> forestStoreInsertTree (forestStore mods) emptyPath i e)
                     $ zip li [0 .. length li]
-            treeViewSetModel (treeView mods) (treeStore mods)
+            treeViewSetModel (treeView mods) (Just $ forestStore mods)
             treeViewSetEnableSearch (treeView mods) True
             treeViewSetSearchEqualFunc (treeView mods)
-                (Just (treeViewSearch (treeView mods) (treeStore mods)))
+                (\_ _ key iter -> treeViewSearch (treeView mods) (forestStore mods) key iter)
 
 
 filterBlacklist :: [Dependency] -> PackageDescr -> Bool
@@ -849,61 +957,59 @@ getSelectedModuleFile sel =
         otherwise       ->  Nothing
 
 modulesContextMenu :: IDERef
-                   -> TreeStore ModuleRecord
+                   -> ForestStore ModuleRecord
                    -> TreeView
                    -> Menu
                    -> IO ()
 modulesContextMenu ideR store treeView theMenu = do
     liftIO $ debugM "leksah" "modulesContextMenu"
-    item1           <-  menuItemNewWithLabel (__ "Edit source")
-    item1 `on` menuItemActivate $ do
+    item1 <- menuItemNewWithLabel (__ "Edit source")
+    onMenuItemActivate item1 $ do
         mbFile <- getSelectedModuleFile <$> getSelectionTree treeView store
         case mbFile of
             Nothing -> return ()
             Just fp -> void $ reflectIDE (selectSourceBuf fp) ideR
-    sep1 <- separatorMenuItemNew
-    item2           <-  menuItemNewWithLabel (__ "Expand here")
-    item2 `on` menuItemActivate $ expandHere treeView
-    item3           <-  menuItemNewWithLabel (__ "Collapse here")
-    item3 `on` menuItemActivate $ collapseHere treeView
-    item4           <-  menuItemNewWithLabel (__ "Expand all")
-    item4 `on` menuItemActivate $ treeViewExpandAll treeView
-    item5           <-  menuItemNewWithLabel (__ "Collapse all")
-    item5 `on` menuItemActivate $ treeViewCollapseAll treeView
-    sep2 <- separatorMenuItemNew
-    item6           <-  menuItemNewWithLabel (__ "Add module")
-    item6 `on` menuItemActivate $ reflectIDE (packageTry $ addModule' treeView store) ideR
-    item7           <-  menuItemNewWithLabel (__ "Delete module")
-    item7 `on` menuItemActivate $ do
+    sep1 <- separatorMenuItemNew >>= liftIO . toMenuItem
+    item2 <- menuItemNewWithLabel (__ "Expand here")
+    onMenuItemActivate item2 $ expandHere treeView
+    item3 <- menuItemNewWithLabel (__ "Collapse here")
+    onMenuItemActivate item3 $ collapseHere treeView
+    item4 <- menuItemNewWithLabel (__ "Expand all")
+    onMenuItemActivate item4 $ treeViewExpandAll treeView
+    item5 <- menuItemNewWithLabel (__ "Collapse all")
+    onMenuItemActivate item5 $ treeViewCollapseAll treeView
+    sep2 <- separatorMenuItemNew >>= liftIO . toMenuItem
+    item6 <- menuItemNewWithLabel (__ "Add module")
+    onMenuItemActivate item6 $ reflectIDE (packageTry $ addModule' treeView store) ideR
+    item7 <- menuItemNewWithLabel (__ "Delete module")
+    onMenuItemActivate item7 $ do
         mbFile <- getSelectedModuleFile <$> getSelectionTree treeView store
         case mbFile of
             Nothing     ->  return ()
             Just fp     ->  do
                 resp <- reflectIDE respDelModDialog ideR
                 when resp $ do
-                        exists <- doesFileExist fp
-                        if exists
-                           then do
-                             reflectIDE (liftIO $ removeFile fp) ideR
-                             reflectIDE (packageTry $ delModule treeView store)ideR
-                           else
-                             reflectIDE (packageTry $ delModule treeView store)ideR
-                        reflectIDE (packageTry packageConfig) ideR
-                        return ()
-    sel         <-  getSelectionTree treeView store
+                    exists <- doesFileExist fp
+                    if exists
+                       then do
+                         reflectIDE (liftIO $ removeFile fp) ideR
+                         reflectIDE (packageTry $ delModule treeView store)ideR
+                       else
+                         reflectIDE (packageTry $ delModule treeView store)ideR
+                    reflectIDE (packageTry packageConfig) ideR
+                    return ()
+    sel <- getSelectionTree treeView store
     case sel of
         Just (s, Nothing) ->
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
-                castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
-                castToMenuItem item6]
+            mapM_ (menuShellAppend theMenu) [item1, sep1, item2,
+                item3, item4, item5, sep2, item6]
         Just (_,Just (m,_)) ->
-            mapM_ (menuShellAppend theMenu) [castToMenuItem item1, castToMenuItem sep1, castToMenuItem item2,
-                castToMenuItem item3, castToMenuItem item4, castToMenuItem item5, castToMenuItem sep2,
-                castToMenuItem item6, castToMenuItem item7]
+            mapM_ (menuShellAppend theMenu) [item1, sep1, item2,
+                item3, item4, item5, sep2, item6, item7]
         otherwise -> return ()
 
 modulesSelect :: IDERef
-              -> TreeStore ModuleRecord
+              -> ForestStore ModuleRecord
               -> TreeView
               -> TreePath
               -> TreeViewColumn
@@ -918,30 +1024,30 @@ modulesSelect ideR store treeView path _ = do
 
 -- | Build contextual menu on selected Descr
 descrViewContextMenu :: IDERef
-                   -> TreeStore Descr
+                   -> ForestStore Descr
                    -> TypedTreeModelSort Descr
                    -> TreeView
                    -> Menu
                    -> IO ()
 descrViewContextMenu ideR store descrSortedStore descrView theMenu = do
     liftIO $ debugM "leksah" "descrViewContextMenu"
-    item1           <-  menuItemNewWithLabel (__ "Go to definition")
-    item1 `on` menuItemActivate $ do
+    item1 <- menuItemNewWithLabel (__ "Go to definition")
+    onMenuItemActivate item1 $ do
         sel         <-  getSelectionDescr descrView store descrSortedStore
         case sel of
             Just descr      ->  reflectIDE (goToDefinition descr) ideR
-            otherwise       ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
-    item2           <-  menuItemNewWithLabel (__ "Insert in buffer")
-    item2 `on` menuItemActivate $ do
+            _               ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
+    item2 <-  menuItemNewWithLabel (__ "Insert in buffer")
+    onMenuItemActivate item2 $ do
         sel         <-  getSelectionDescr descrView store descrSortedStore
         case sel of
             Just descr      ->  reflectIDE (insertInBuffer descr) ideR
-            otherwise       ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
+            _               ->  sysMessage Normal (__ "Modules>> descrViewPopup: no selection")
     mapM_ (menuShellAppend theMenu) [item1, item2]
 
 -- | Selects the Descr referenced by the path
 descrViewSelect :: IDERef
-              -> TreeStore Descr
+              -> ForestStore Descr
               -> TypedTreeModelSort Descr
               -> TreePath
               -> TreeViewColumn
@@ -949,7 +1055,7 @@ descrViewSelect :: IDERef
 descrViewSelect ideR store descrSortedStore path _ = do
     liftIO $ debugM "leksah" "descrViewSelect"
     unsortedp <- treeModelSortConvertPathToChildPath descrSortedStore path
-    descr <- treeStoreGetValue store unsortedp
+    descr <- forestStoreGetValue store unsortedp
     reflectIDE (goToDefinition descr) ideR
 
 setScope :: (Scope,Bool) -> IDEAction
@@ -957,37 +1063,37 @@ setScope (sc,bl) = do
     liftIO $ debugM "leksah" "setScope"
     mods  <-  getModules Nothing
     case sc of
-        (PackageScope False) -> liftIO $ do
+        (PackageScope False) -> do
             toggleButtonSetActive (packageScopeB mods) True
             widgetSetSensitive (dependsB mods) True
             toggleButtonSetActive (dependsB mods) False
-        (PackageScope True) -> liftIO $ do
+        (PackageScope True) -> do
             toggleButtonSetActive (packageScopeB mods) True
             widgetSetSensitive (dependsB mods) True
             toggleButtonSetActive (dependsB mods) True
-        (WorkspaceScope False) -> liftIO $ do
+        (WorkspaceScope False) -> do
             toggleButtonSetActive (workspaceScopeB mods) True
             widgetSetSensitive (dependsB mods) True
             toggleButtonSetActive (dependsB mods) False
-        (WorkspaceScope True) -> liftIO $ do
+        (WorkspaceScope True) -> do
             toggleButtonSetActive (workspaceScopeB mods) True
             widgetSetSensitive (dependsB mods) True
             toggleButtonSetActive (dependsB mods) True
-        SystemScope -> liftIO $ do
+        SystemScope -> do
             toggleButtonSetActive (systemScopeB mods) True
             widgetSetSensitive (dependsB mods) False
-    liftIO $ toggleButtonSetActive (blacklistB mods) bl
+    toggleButtonSetActive (blacklistB mods) bl
     selectScope (sc,bl)
 
 getScope :: IDEM (Scope,Bool)
 getScope = do
     liftIO $ debugM "leksah" "getScope"
-    mods  <-  getModules Nothing
-    rb1s                <-  liftIO $ toggleButtonGetActive (packageScopeB mods)
-    rb2s                <-  liftIO $ toggleButtonGetActive (workspaceScopeB mods)
-    rb3s                <-  liftIO $ toggleButtonGetActive (systemScopeB mods)
-    cb1s                <-  liftIO $ toggleButtonGetActive (dependsB mods)
-    cbs                 <-  liftIO $ toggleButtonGetActive (blacklistB mods)
+    mods <- getModules Nothing
+    rb1s <- toggleButtonGetActive (packageScopeB   mods)
+    rb2s <- toggleButtonGetActive (workspaceScopeB mods)
+    rb3s <- toggleButtonGetActive (systemScopeB    mods)
+    cb1s <- toggleButtonGetActive (dependsB        mods)
+    cbs  <- toggleButtonGetActive (blacklistB      mods)
     let scope
           | rb1s      = PackageScope cb1s
           | rb2s      = WorkspaceScope cb1s
@@ -1006,12 +1112,12 @@ selectScope (sc,bl) = do
     liftIO $ debugM "leksah" "selectScope"
     recordExpanderState
     mods                <-  getModules Nothing
-    mbTreeSelection     <-  liftIO $ getSelectionTree (treeView mods) (treeStore mods)
-    mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
+    mbTreeSelection     <-  getSelectionTree (treeView mods) (forestStore mods)
+    mbDescrSelection    <-  getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
 
-    ts                  <-  liftIO $ treeViewGetSelection (treeView mods)
+    ts                  <-  treeViewGetSelection (treeView mods)
     withoutRecordingDo $ do
-        liftIO $ treeSelectionUnselectAll ts
+        treeSelectionUnselectAll ts
         fillModulesList (sc,bl)
         let mbs = (case mbTreeSelection of
                     Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
@@ -1023,14 +1129,14 @@ selectScope (sc,bl) = do
         selectNames mbs
     recordScopeHistory
     applyExpanderState
-    liftIO $ bringPaneToFront mods
+    bringPaneToFront mods
 
 selectNames :: (Maybe ModuleName, Maybe Text) -> IDEAction
 selectNames (mbModuleName, mbIdName) = do
     liftIO $ debugM "leksah" "selectIdentifier"
     mods <- getModules Nothing
     case mbModuleName of
-        Nothing -> liftIO $ do
+        Nothing -> do
             sel         <-  treeViewGetSelection (treeView mods)
             treeSelectionUnselectAll  sel
             selF        <-  treeViewGetSelection (descrView mods)
@@ -1038,31 +1144,32 @@ selectNames (mbModuleName, mbIdName) = do
         Just moduleName ->
             let nameArray = map T.pack $ components moduleName
             in do
-                mbTree              <-  liftIO $ treeStoreGetTreeSave (treeStore mods) []
+                mbTree              <-  forestStoreGetTreeSave (forestStore mods) =<< treePathNewFromIndices' []
                 case treePathFromNameArray mbTree nameArray [] of
                     Nothing         ->  return ()
-                    Just treePath   ->  liftIO $ do
+                    Just treePath'  ->  do
+                        treePath <- treePathNewFromIndices' (map fromIntegral treePath')
                         treeViewExpandToPath (treeView mods) treePath
                         sel         <-  treeViewGetSelection (treeView mods)
                         treeSelectionSelectPath sel treePath
                         col         <-  treeViewGetColumn (treeView mods) 0
-                        treeViewScrollToCell (treeView mods) (Just treePath) col
-                            (Just (0.3,0.3))
+                        treeViewScrollToCell (treeView mods) (Just treePath) (Just col)
+                            True 0.3 0.3
                         case mbIdName of
                             Nothing -> do
                                 selF          <-  treeViewGetSelection (descrView mods)
                                 treeSelectionUnselectAll  selF
                             Just symbol -> do
-                                mbDescrTree   <-  treeStoreGetTreeSave (descrStore mods) []
+                                mbDescrTree   <-  forestStoreGetTreeSave (descrStore mods) =<< treePathNewFromIndices' []
                                 selF          <-  treeViewGetSelection (descrView mods)
                                 case  findPathFor symbol mbDescrTree of
                                     Nothing     ->  sysMessage Normal (__ "no path found")
                                     Just childPath   ->  do
-                                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) childPath
+                                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
                                         treeSelectionSelectPath selF path
                                         col     <-  treeViewGetColumn (descrView mods) 0
-                                        treeViewScrollToCell (descrView mods) (Just path) col
-                                            (Just (0.3,0.3))
+                                        treeViewScrollToCell (descrView mods) (Just path) (Just col)
+                                            True 0.3 0.3
 
 reloadKeepSelection :: Bool -> IDEAction
 reloadKeepSelection isInitial = do
@@ -1074,12 +1181,12 @@ reloadKeepSelection isInitial = do
             state <- readIDE currentState
             if not $ isStartingOrClosing state
                 then do
-                    mbTreeSelection     <-  liftIO $ getSelectionTree (treeView mods) (treeStore mods)
-                    mbDescrSelection    <-  liftIO $ getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
+                    mbTreeSelection     <-  getSelectionTree (treeView mods) (forestStore mods)
+                    mbDescrSelection    <-  getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
                     sc                  <-  getScope
                     recordExpanderState
                     fillModulesList sc
-                    liftIO $ treeStoreClear (descrStore mods)
+                    forestStoreClear (descrStore mods)
                     let mbs =  (case mbTreeSelection of
                                     Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
                                     otherwise -> Nothing,
@@ -1096,17 +1203,17 @@ reloadKeepSelection isInitial = do
                             selectNames (moduleS', facetS')
                             applyExpanderState
 
-treeStoreGetTreeSave :: TreeStore a -> TreePath -> IO (Maybe (Tree a))
-treeStoreGetTreeSave treeStore treePath = catch (do
-    liftIO $ debugM "leksah" "treeStoreGetTreeSave"
-    res <- treeStoreGetTree treeStore treePath
+forestStoreGetTreeSave :: MonadIO m => ForestStore a -> TreePath -> m (Maybe (Tree a))
+forestStoreGetTreeSave forestStore treePath = liftIO $ catch (do
+    debugM "leksah" "forestStoreGetTreeSave"
+    res <- forestStoreGetTree forestStore treePath
     return (Just res)) (\ (_ :: SomeException) -> return Nothing)
 
 expandHere :: TreeView -> IO ()
 expandHere treeView = do
     liftIO $ debugM "leksah" "expandHere"
     sel   <- treeViewGetSelection treeView
-    paths <- treeSelectionGetSelectedRows sel
+    paths <- treeSelectionGetSelectedRows' sel
     case paths of
         []     -> return ()
         (hd:_) -> void (treeViewExpandRow treeView hd True)
@@ -1115,20 +1222,24 @@ collapseHere :: TreeView -> IO ()
 collapseHere treeView = do
     liftIO $ debugM "leksah" "collapseHere"
     sel   <- treeViewGetSelection treeView
-    paths <- treeSelectionGetSelectedRows sel
+    paths <- treeSelectionGetSelectedRows' sel
     case paths of
         []     -> return ()
         (hd:_) -> void (treeViewCollapseRow treeView hd)
 
-delModule :: TreeView -> TreeStore ModuleRecord -> PackageAction
+delModule :: TreeView -> ForestStore ModuleRecord -> PackageAction
 delModule treeview store = do
     liftIO $ debugM "leksah" "delModule"
     window <- liftIDE getMainWindow
-    sel   <- liftIO $ treeViewGetSelection treeview
-    paths <- liftIO $ treeSelectionGetSelectedRows sel
+    sel   <- treeViewGetSelection treeview
+    paths <- treeSelectionGetSelectedRows' sel
     categories <- case paths of
         []     -> return []
-        (treePath:_) -> liftIO $ mapM (treeStoreGetValue store . (`take` treePath))
+        (treePath':_) -> do
+            treePath <- treePathGetIndices' treePath'
+            mapM (\n ->
+                treePathNewFromIndices' (take n treePath) >>=
+                    forestStoreGetValue store)
                                    [1 .. length treePath]
 
     liftIDE $ ideMessage Normal (T.pack $ printf (__ "categories: %s") (show categories))
@@ -1145,24 +1256,31 @@ respDelModDialog :: IDEM Bool
 respDelModDialog = do
     liftIO $ debugM "leksah" "respDelModDialog"
     window <- getMainWindow
-    resp <- liftIO $ do
-        dia <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel (__ "Are you sure?")
-        dialogAddButton dia (__ "_Delete Module") (ResponseUser 1)
-        dialogSetDefaultResponse dia ResponseCancel
-        set dia [ windowWindowPosition := WinPosCenterOnParent ]
-        resp <- dialogRun dia
-        widgetDestroy dia
-        return resp
-    return $ resp == ResponseUser 1
+    dia <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeCancel,
+                    messageDialogText := __ "Are you sure?"]
+    windowSetTransientFor dia (Just window)
+    dialogAddButton' dia (__ "_Delete Module") (AnotherResponseType 1)
+    dialogSetDefaultResponse' dia ResponseTypeCancel
+    set dia [ windowWindowPosition := WindowPositionCenterOnParent ]
+    resp <- dialogRun' dia
+    widgetDestroy dia
+    return $ resp == AnotherResponseType 1
 
-addModule' :: TreeView -> TreeStore ModuleRecord -> PackageAction
+addModule' :: TreeView -> ForestStore ModuleRecord -> PackageAction
 addModule' treeView store = do
     liftIO $ debugM "leksah" "addModule'"
-    sel   <- liftIO $ treeViewGetSelection treeView
-    paths <- liftIO $ treeSelectionGetSelectedRows sel
+    sel   <- treeViewGetSelection treeView
+    paths <- treeSelectionGetSelectedRows' sel
     categories <- case paths of
         []     -> return []
-        (treePath:_) -> liftIO $ mapM (treeStoreGetValue store . (`take` treePath))
+        (treePath':_) -> do
+            treePath <- treePathGetIndices' treePath'
+            mapM (\n ->
+                treePathNewFromIndices' (take n treePath) >>=
+                    forestStoreGetValue store)
                                    [1 .. length treePath]
     addModule (map fst categories)
 
@@ -1185,7 +1303,7 @@ addModule modulePrefix = do
                                                     modulePrefix
                                in do
             window' <- liftIDE getMainWindow
-            mbResp <- liftIO $ addModuleDialog window' modPath srcPaths (hasLibs pd) $
+            mbResp <- addModuleDialog window' modPath srcPaths (hasLibs pd) $
                       map (T.pack . exeName)  (executables pd)
                    ++ map (T.pack . testName) (testSuites pd)
                    ++ map (T.pack . benchmarkName) (benchmarks pd)
@@ -1228,61 +1346,62 @@ addModuleLocations addMod = lib (libExposed addMod)
     lib Nothing = []
 
 -- | Creates and runs a "new module" dialog
-addModuleDialog :: Window -- ^ The parent window
+addModuleDialog :: MonadIO m
+                => Window -- ^ The parent window
                 -> Text   -- ^ Will be set as default value for the module name
                 -> [FilePath] -- ^ Possible source directories to add it to
                 -> Bool       -- ^ Whether the active package has a library
                 -> [Text]     -- ^ The components of the active package
-                -> IO (Maybe AddModule)
+                -> m (Maybe AddModule)
 addModuleDialog parent modString sourceRoots hasLib exesTests = do
     liftIO $ debugM "leksah" "addModuleDialog"
-    dia                        <-   dialogNew
+    dia                <- dialogNew
     set dia [ windowTransientFor := parent
             , windowTitle := __ "Construct new module" ]
     windowSetDefaultSize dia 400 100
-    upper                      <-   dialogGetContentArea dia
-    lower                      <-   dialogGetActionArea dia
-    (widget,inj,ext,_)  <-   buildEditor (moduleFields sourceRoots hasLib exesTests)
+    upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
+    lower              <- dialogGetActionArea dia >>= liftIO . unsafeCastTo Box
+    (widget,inj,ext,_) <- liftIO $ buildEditor (moduleFields sourceRoots hasLib exesTests)
                                         (AddModule modString (head sourceRoots) (Just False) Set.empty)
     bb      <-  hButtonBoxNew
     boxSetSpacing bb 6
-    buttonBoxSetLayout bb ButtonboxSpread
+    buttonBoxSetLayout bb ButtonBoxStyleSpread
     cancel  <-  buttonNewFromStock "gtk-cancel"
     ok      <-  buttonNewFromStock "gtk-ok"
-    boxPackEnd bb cancel PackNatural 0
-    boxPackEnd bb ok PackNatural 0
+    boxPackEnd' bb cancel PackNatural 0
+    boxPackEnd' bb ok PackNatural 0
 
-    errorLabel <-  labelNew (Nothing :: Maybe String)
+    errorLabel <- labelNew Nothing
     labelSetLineWrap errorLabel True
-    widgetSetName errorLabel ("errorLabel" :: String)
+    widgetSetName errorLabel "errorLabel"
 
-    on ok buttonActivated $ do
+    onButtonClicked ok $ do
         mbAddModule <- ext (AddModule modString (head sourceRoots) (Just False) Set.empty)
         case mbAddModule of
             Nothing -> return ()
             Just am -> do
                 let mbModName = simpleParse $ T.unpack (moduleName am) :: Maybe ModuleName
                 case mbModName of
-                    Just _  -> dialogResponse dia ResponseOk
+                    Just _  -> dialogResponse' dia ResponseTypeOk
                     Nothing -> do
-                        boxPackStart (castToBox upper) errorLabel PackNatural 0
-                        boxReorderChild (castToBox upper) errorLabel 0
-                        labelSetText errorLabel ("Invalid module name, use uppercase identifiers seperated by dots. For example Some.New.Module" :: String)
+                        boxPackStart' upper errorLabel PackNatural 0
+                        boxReorderChild upper errorLabel 0
+                        labelSetText errorLabel "Invalid module name, use uppercase identifiers seperated by dots. For example Some.New.Module"
                         widgetShow errorLabel
 
 
-    on cancel buttonActivated (dialogResponse dia ResponseCancel)
-    boxPackStart (castToBox upper) widget PackGrow 0
-    boxPackEnd (castToBox lower) bb PackNatural 5
+    onButtonClicked cancel (dialogResponse' dia ResponseTypeCancel)
+    boxPackStart' upper widget PackGrow 0
+    boxPackEnd' lower bb PackNatural 5
     set ok [widgetCanDefault := True]
     widgetGrabDefault ok
     widgetShowAll dia
-    resp  <- dialogRun dia
-    value <- ext (AddModule modString (head sourceRoots) (Just False) Set.empty)
+    resp  <- dialogRun' dia
+    value <- liftIO $ ext (AddModule modString (head sourceRoots) (Just False) Set.empty)
     widgetDestroy dia
     --find
     case resp of
-        ResponseOk    -> return value
+        ResponseTypeOk    -> return value
         _             -> return Nothing
 
 moduleFields :: [FilePath] -> Bool -> [Text] -> FieldDescription AddModule
@@ -1330,7 +1449,7 @@ recordExpanderState = do
     liftIO $ do
         oldSel  <- readIORef (oldSelection m)
         let (sc,bl) =  (scope' oldSel, blacklist' oldSel)
-        paths1 <-  getExpandedRows (treeView m) (treeStore m)
+        paths1 <-  getExpandedRows (treeView m) (forestStore m)
         paths2 <-  getExpandedRows (descrView m) (descrStore m)
         modifyIORef (expanderState m) (\ es ->
             case (sc,bl) of
@@ -1350,13 +1469,14 @@ recordExpanderState = do
         return ()
 
 
-getExpandedRows :: TreeView -> TreeStore alpha -> IO [TreePath]
+getExpandedRows :: TreeView -> ForestStore alpha -> IO [[Int]]
 getExpandedRows view store = do
     liftIO $ debugM "leksah" "getExpandedRows"
     mbIter <- treeModelGetIterFirst store
     case mbIter of
-        Nothing   -> return []
-        Just iter -> expandedFor iter []
+        (False, _)   -> return []
+        (True, iter) -> expandedFor iter [] >>=
+                            mapM (fmap (map fromIntegral) . treePathGetIndices')
     where
         expandedFor :: TreeIter -> [TreePath] -> IO [TreePath]
         expandedFor iter accu = do
@@ -1365,15 +1485,14 @@ getExpandedRows view store = do
             res      <-
                 if expanded
                     then do
-                        mbIter <- treeModelIterChildren store iter
+                        mbIter <- treeModelIterChildren store (Just iter)
                         case mbIter of
-                            Nothing   -> return (path : accu)
-                            Just iter -> expandedFor iter (path : accu)
+                            (False, _)   -> return (path : accu)
+                            (True, iter) -> expandedFor iter (path : accu)
                     else return accu
-            next <- treeModelIterNext store iter
-            case next of
-                Nothing   -> return res
-                Just iter -> expandedFor iter res
+            treeModelIterNext store iter >>= \case
+                False -> return res
+                True  -> expandedFor iter res
 
 applyExpanderState :: IDEAction
 applyExpanderState = do
@@ -1393,8 +1512,8 @@ applyExpanderState = do
                                 (WorkspaceScope True,False)     -> workspaceDExpNoBlack es
                                 (SystemScope,True)              -> systemExp es
                                 (SystemScope,False)             -> systemExpNoBlack es
-        mapM_ (treeViewExpandToPath (treeView m)) paths1
-        mapM_ (treeViewExpandToPath (descrView m)) paths2
+        mapM_ (\p -> treePathNewFromIndices' (map fromIntegral p) >>= treeViewExpandToPath (treeView m)) paths1
+        mapM_ (\p -> treePathNewFromIndices' (map fromIntegral p) >>= treeViewExpandToPath (descrView m)) paths2
 
 -- * GUI History
 
@@ -1403,8 +1522,8 @@ recordSelHistory = do
     liftIO $ debugM "leksah" "selectIdentifier"
     mods <- getModules Nothing
     ideR <- ask
-    selTree <- liftIO $ getSelectionTree (treeView mods) (treeStore mods)
-    selDescr <- liftIO $ getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
+    selTree <- getSelectionTree (treeView mods) (forestStore mods)
+    selDescr <- getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
     let selMod = case selTree of
                         Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
                         otherwise -> Nothing

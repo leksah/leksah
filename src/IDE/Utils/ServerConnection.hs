@@ -27,7 +27,6 @@ import System.IO
 import Control.Exception (SomeException(..), catch)
 import Prelude hiding(catch)
 import Control.Concurrent(forkIO, newEmptyMVar, putMVar, takeMVar, tryTakeMVar)
-import Graphics.UI.Gtk(postGUIAsync)
 import Control.Event(triggerEvent)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (ask)

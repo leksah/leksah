@@ -25,16 +25,21 @@ import IDE.Core.Types
         IDEAction(..), Prefs (..), editorStyle)
 import Graphics.UI.Editor.Basics (Connection)
 import Control.Monad.Reader (ReaderT(..))
-import Graphics.UI.Gtk
-       (Widget, ECrossing, ScrolledWindow, DrawWindow, Clipboard,
-        TextSearchFlags, Menu, EMotion, EKey, EButton, EventM, Rectangle,
-        Color, Underline)
 import Foreign (Ptr)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import System.Glib.Signals (on)
 import Data.Text (Text)
 import IDE.Core.State (readIDE)
+import GI.Gtk.Objects.Clipboard (Clipboard(..))
+import qualified GI.Gdk as Gdk (Window)
+import GI.Gdk
+       (EventCrossing, EventMotion, EventKey, EventButton, Rectangle)
+import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
+import GI.Gtk.Objects.Widget (Widget(..))
+import GI.Gtk.Objects.Menu (Menu(..))
+import GI.Gtk.Flags (TextSearchFlags)
+import Text.PrinterParser (Color(..))
+import GI.Pango (Underline)
 
 updateStyle :: TextEditor editor => EditorBuffer editor -> IDEAction
 updateStyle ebuf = do
@@ -125,7 +130,7 @@ class TextEditor editor where
     bufferToWindowCoords :: EditorView editor -> (Int, Int) -> IDEM (Int, Int)
     drawTabs :: EditorView editor -> IDEM ()
     getBuffer :: EditorView editor -> IDEM (EditorBuffer editor)
-    getWindow :: EditorView editor -> IDEM (Maybe DrawWindow)
+    getWindow :: EditorView editor -> IDEM (Maybe Gdk.Window)
     getIterAtLocation :: EditorView editor -> Int -> Int -> IDEM (EditorIter editor)
     getIterLocation :: EditorView editor -> EditorIter editor -> IDEM Rectangle
     getOverwrite :: EditorView editor -> IDEM Bool
@@ -155,26 +160,26 @@ class TextEditor editor where
     afterMoveCursor :: EditorView editor -> IDEM () -> IDEM [Connection]
     afterToggleOverwrite :: EditorView editor -> IDEM () -> IDEM [Connection]
     onButtonPress :: EditorView editor
-                     -> IDEEventM EButton Bool
+                     -> IDEEventM EventButton Bool
                      -> IDEM [Connection]
     onButtonRelease :: EditorView editor
-                     -> IDEEventM EButton Bool
+                     -> IDEEventM EventButton Bool
                      -> IDEM [Connection]
     onCompletion :: EditorView editor -> IDEM () -> IDEM () -> IDEM [Connection]
     onKeyPress :: EditorView editor
-                  -> IDEEventM EKey Bool
+                  -> IDEEventM EventKey Bool
                   -> IDEM [Connection]
     onMotionNotify :: EditorView editor
-                  -> IDEEventM EMotion Bool
+                  -> IDEEventM EventMotion Bool
                   -> IDEM [Connection]
     onLeaveNotify :: EditorView editor
-                  -> IDEEventM ECrossing Bool
+                  -> IDEEventM EventCrossing Bool
                   -> IDEM [Connection]
     onKeyRelease :: EditorView editor
-                    -> IDEEventM EKey Bool
+                    -> IDEEventM EventKey Bool
                     -> IDEM [Connection]
-    onLookupInfo :: EditorView editor -> IDEEventM EButton Bool -> IDEM [Connection]
-    onMotionNotifyEvent :: EditorView editor -> IDEEventM EMotion Bool -> IDEM [Connection]
+    onLookupInfo :: EditorView editor -> IDEEventM EventButton Bool -> IDEM [Connection]
+    onMotionNotifyEvent :: EditorView editor -> IDEEventM EventMotion Bool -> IDEM [Connection]
     onPopulatePopup :: EditorView editor -> (Menu -> IDEM ()) -> IDEM [Connection]
     onSelectionChanged :: EditorBuffer editor -> IDEM () -> IDEM [Connection]
 

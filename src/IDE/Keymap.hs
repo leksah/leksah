@@ -7,8 +7,6 @@ module IDE.Keymap (
     Keymap(..)
 ) where
 
-import Graphics.UI.Gtk (keyvalFromName, KeyVal)
-import Graphics.UI.Gtk.Gdk.Events(Modifier(..))
 import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -22,6 +20,8 @@ import System.Log.Logger (infoM)
 import Data.Text (Text)
 import qualified Data.Text as T (toLower, unpack, pack)
 import Control.Applicative ((<$>))
+import IDE.Core.Types (KeyVal)
+import GI.Gdk (keyvalFromName, ModifierType(..))
 
 class Keymap alpha where
     parseKeymap         ::   FilePath -> IO alpha
@@ -71,7 +71,7 @@ buildSpecialKeys' (KM keymap) actions = do
     let map1 = Map.fromListWith (++) $concat pseudoTriples
     return (Map.map Map.fromList map1)
     where
-    build :: ActionDescr IDERef -> IO [((KeyVal,[Modifier]),[((KeyVal, [Modifier]), ActionDescr IDERef)])]
+    build :: ActionDescr IDERef -> IO [((KeyVal,[ModifierType]),[((KeyVal, [ModifierType]), ActionDescr IDERef)])]
     build act =
         case Map.lookup (name act) keymap of
             Nothing             ->  return []
@@ -135,7 +135,7 @@ lineparser = do
 --------------------------------------------------
 -- Have to write this until gtk_accelerator_parse gets bound in gtk2hs
 --
-accParse :: Text -> IO (KeyVal,[Modifier])
+accParse :: Text -> IO (KeyVal,[ModifierType])
 accParse str = case parse accparser "accelerator" (T.unpack str) of
     Right (ks,mods) -> do
         key <- keyvalFromName $ T.toLower ks
@@ -151,34 +151,34 @@ symbol2 =  P.symbol lexer2
 identifier2 = T.pack <$> P.identifier lexer2
 whiteSpace2 = P.whiteSpace lexer2
 
-accparser :: GenParser Char () (Text,[Modifier])
+accparser :: GenParser Char () (Text,[ModifierType])
 accparser = do
     whiteSpace2
     mods <- many modparser
     key <- identifier2
     return (key, mods)
 
-modparser :: GenParser Char () Modifier
+modparser :: GenParser Char () ModifierType
 modparser = do
     try $symbol2 "<shift>"
-    return Shift
+    return ModifierTypeShiftMask
     <|> do
     try $symbol2 "<control>"
-    return Control
+    return ModifierTypeControlMask
     <|> do
     try $symbol2 "<ctrl>"
-    return Control
+    return ModifierTypeControlMask
     <|> do
     try $symbol2 "<alt>"
-    return Alt
+    return ModifierTypeMod1Mask
     <|> do
     try $symbol2 "<super>"
-    return Super
+    return ModifierTypeSuperMask
     <|> do
     try $symbol2 "<meta>"
-    return Meta
+    return ModifierTypeMetaMask
     <|> do
     try $symbol2 "<compose>"
-    return Hyper
+    return ModifierTypeHyperMask
     <?>"modparser"
 

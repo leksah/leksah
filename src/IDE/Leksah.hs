@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, LambdaCase #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, LambdaCase, PatternSynonyms #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Leksah
@@ -18,7 +18,6 @@ module IDE.Leksah (
     leksah
 ) where
 
-import Graphics.UI.Gtk
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
@@ -81,11 +80,44 @@ import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
 import Data.Text (Text)
 import Data.Monoid ((<>))
-import Graphics.UI.Gtk.General.CssProvider
-       (cssProviderLoadFromString, cssProviderNew)
-import Graphics.UI.Gtk.General.StyleContext
-       (styleContextAddProviderForScreen)
 import qualified Data.Sequence as Seq (empty)
+import qualified GI.Gtk.Functions as Gtk (main, init)
+import GI.GLib.Functions (idleAdd, timeoutAdd)
+import GI.GLib.Constants (pattern PRIORITY_DEFAULT, pattern PRIORITY_LOW)
+import GI.Gdk.Objects.Screen (screenGetDefault)
+import GI.Gtk.Objects.CssProvider
+       (cssProviderLoadFromData, cssProviderNew)
+import GI.Gtk.Objects.StyleContext
+       (styleContextAddProviderForScreen)
+import qualified Data.ByteString.Char8 as B (unlines)
+import GI.GLib.Structs.Source (sourceRemove)
+import GI.Gtk.Functions
+       (mainIterationDo, eventsPending, mainIteration)
+import GI.Gtk.Objects.Window
+       (windowDeletable, windowSetIconFromFile, WindowK,
+        windowWindowPosition, windowTitle, windowSetDefaultSize, windowNew)
+import GI.Gtk.Objects.Widget
+       (widgetDestroy, widgetHide, widgetShowAll, widgetGetWindow,
+        onWidgetRealize, onWidgetDeleteEvent, widgetSetName)
+import GI.Gtk.Objects.UIManager (uIManagerNew)
+import GI.Gtk.Objects.Notebook (afterNotebookSwitchPage)
+import GI.Gtk.Enums
+       (WindowType(..), PolicyType(..), ResponseType(..),
+        WindowPosition(..), FileChooserAction(..))
+import GI.Gtk.Objects.Dialog
+       (dialogRun, dialogResponse, dialogGetContentArea, dialogNew)
+import Data.GI.Base (unsafeCastTo, set)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.Label (labelNew)
+import GI.Gtk.Objects.Box (Box(..))
+import GI.Gtk.Objects.ScrolledWindow
+       (scrolledWindowSetPolicy, scrolledWindowAddWithViewport,
+        scrolledWindowNew)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import Control.Monad.Reader (MonadReader(..))
+import GI.Gtk.Objects.ProgressBar
+       (progressBarSetFraction, progressBarSetText, progressBarNew)
+import GI.Gtk.Objects.CssProvider (CssProvider(..))
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -215,32 +247,28 @@ handleExceptions inner =
 startGUI :: Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
 startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
   Yi.start yiConfig $ \yiControl -> do
-    st       <- unsafeInitGUIForThreadedRTS
+    st       <- Gtk.init Nothing
     timeout  <- if rtsSupportsBoundThreads
                     then do
                         setNumCapabilities 2
                         sysMessage Normal "Linked with -threaded"
                         return Nothing
-                    else Just <$> timeoutAddFull (yield >> return True) priorityLow 10
-    mbScreen <- screenGetDefault
-    case mbScreen of
-        Just screen -> do
-            provider <- cssProviderNew
-            cssProviderLoadFromString provider $
-                T.unlines [ ".window-frame,"
-                          , ".window-frame:backdrop {"
-                          , "  box-shadow: none;"
-                          , "  margin: 0;}"
-                          , "#errorLabel {"
-                          , "  padding: 10px;"
-                          , "  background: #F2DEDE;"
-                          , "  color: #A94442;"
-                          , "  border: 1px solid #EBCCD1;"
-                          , "  border-radius: 5px;}"
-                          ]
-            styleContextAddProviderForScreen screen provider 600
-        Nothing -> debugM "leksah" "Unable to add style provider for screen"
-    mapM_ (sysMessage Normal . T.pack) st
+                    else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
+    screen <- screenGetDefault
+    provider <- cssProviderNew
+    cssProviderLoadFromData provider $
+        B.unlines [ ".window-frame,"
+                  , ".window-frame:backdrop {"
+                  , "  box-shadow: none;"
+                  , "  margin: 0;}"
+                  , "#errorLabel {"
+                  , "  padding: 10px;"
+                  , "  background: #F2DEDE;"
+                  , "  color: #A94442;"
+                  , "  border: 1px solid #EBCCD1;"
+                  , "  border-radius: 5px;}"
+                  ]
+    styleContextAddProviderForScreen screen provider 600
     dataDir       <- getDataDir
     mbStartupPrefs <- if not isFirstStart
                                 then return $ Just iprefs
@@ -252,14 +280,16 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
                                             prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
                                             prefs <- readPrefs prefsPath
                                             return $ Just prefs
-    maybe (return ()) timeoutRemove timeout
-    postGUIAsync $
-        case mbStartupPrefs of
-            Nothing           -> return ()
-            Just startupPrefs -> startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
-                                    startupPrefs isFirstStart
+    maybe (return ()) (void . sourceRemove) timeout
+    case mbStartupPrefs of
+        Nothing           -> return ()
+        Just startupPrefs ->
+            void . idleAdd PRIORITY_DEFAULT $ do
+                startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
+                                startupPrefs isFirstStart
+                return False
     debugM "leksah" "starting mainGUI"
-    mainGUI
+    Gtk.main
     debugM "leksah" "finished mainGUI"
 
 mainLoop :: IO () -> IO ()
@@ -278,7 +308,7 @@ mainLoopThreaded onIdle = loop
                         isActive <- isJust <$> tryTakeMVar active
                         unless isActive $ do
                             putMVar mvarSentIdleMessage ()
-                            postGUIAsync onIdle
+                            void . idleAdd PRIORITY_DEFAULT $ onIdle >> return False
                     quit <- mainIteration
                     putMVar active ()
                     unless quit $ do
@@ -288,12 +318,11 @@ mainLoopThreaded onIdle = loop
                                 then mainIteration
                                 else return False
                             unless quit loop
-        loopTillIdle = do
-            pending <- eventsPending
-            if pending == 0
-                then return False
-                else do
-                    quit <- loopn (pending + 2)
+        loopTillIdle =
+            eventsPending >>= \case
+                False -> return False
+                True  -> do
+                    quit <- loopn 3
                     if quit
                         then return True
                         else loopTillIdle
@@ -301,25 +330,25 @@ mainLoopThreaded onIdle = loop
 mainLoopSingleThread :: IO () -> IO ()
 mainLoopSingleThread onIdle = eventsPending >>= loop False 50
   where
-    loop :: Bool -> Int -> Int -> IO ()
-    loop False delay 0 | delay > 2000 = onIdle >> loop True delay 0
+    loop :: Bool -> Int -> Bool -> IO ()
+    loop False delay False | delay > 2000 = onIdle >> loop True delay False
     loop isIdle delay n = do
-        quit <- if n > 0
+        quit <- if n
                     then do
-                        timeout <- timeoutAddFull (yield >> return True) priorityLow 10
-                        quit <- loopn (n+2)
-                        timeoutRemove timeout
+                        timeout <- timeoutAdd PRIORITY_LOW 10 $ yield >> return True
+                        quit <- loopn 3
+                        sourceRemove timeout
                         return quit
                     else
-                        loopn (n+2)
+                        loopn 3
         unless quit $ do
                 yield
                 pending <- eventsPending
-                if pending > 0
+                if pending
                     then loop False 50 pending
                     else do
                         threadDelay delay
-                        eventsPending >>= loop isIdle (if n > 0
+                        eventsPending >>= loop isIdle (if n
                                                             then 50
                                                             else min (delay+delay) 50000)
 
@@ -336,10 +365,10 @@ startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
 startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
     timeout  <- if rtsSupportsBoundThreads
                     then return Nothing
-                    else Just <$> timeoutAddFull (yield >> return True) priorityLow 10
+                    else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
     debugM "leksah" "startMainWindow"
     osxApp <- OSX.applicationNew
-    uiManager   <-  uiManagerNew
+    uiManager   <-  uIManagerNew
     newIcons
     dataDir       <- getDataDir
     candyPath   <-  getConfigFilePathForLoad
@@ -352,8 +381,8 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     let accelActions = setKeymap (keyMap :: KeymapI) mkActions
     specialKeys <-  buildSpecialKeys keyMap accelActions
 
-    win         <-  windowNew
-    widgetSetName win ("Leksah Main Window"::Text)
+    win         <-  windowNew WindowTypeToplevel
+    widgetSetName win "Leksah Main Window"
     let fs = FrameState
             {   windows       =   [win]
             ,   uiManager     =   uiManager
@@ -402,35 +431,32 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   autoURI           =   Nothing
     }
     ideR             <-  newIORef ide
-    menuDescription' <- menuDescription
-    reflectIDE (makeMenu uiManager accelActions menuDescription') ideR
-    nb               <-  reflectIDE (newNotebook []) ideR
-    after nb switchPage (\i -> reflectIDE (handleNotebookSwitch nb i) ideR)
-    widgetSetName nb ("root"::Text)
-    on win deleteEvent . liftIO $ reflectIDE quit ideR >> return True
-    reflectIDE (instrumentWindow win startupPrefs (castToWidget nb)) ideR
-    reflectIDE (do
+    (`reflectIDE` ideR) $ do
+        menuDescription' <- liftIO $ menuDescription
+        makeMenu uiManager accelActions menuDescription'
+        nb               <-  newNotebook []
+        afterNotebookSwitchPage nb (\_ i -> reflectIDE (handleNotebookSwitch nb (fromIntegral i)) ideR)
+        widgetSetName nb "root"
+        onIDE onWidgetDeleteEvent win $ liftIDE quit >> return True
+        instrumentWindow win startupPrefs nb
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
         setRunUnitTests (runUnitTests startupPrefs)
-        setMakeModeToggled (makeMode startupPrefs)) ideR
-    let (x,y)   =   defaultSize startupPrefs
-    windowSetDefaultSize win x y
-    (tbv,fbv)   <- reflectIDE (do
+        setMakeModeToggled (makeMode startupPrefs)
+        let (x,y)   =   defaultSize startupPrefs
+        windowSetDefaultSize win (fromIntegral x) (fromIntegral y)
         registerLeksahEvents
-        pair <- recoverSession sessionFP
+        (tbv,fbv) <- recoverSession sessionFP
         workspaceOpenThis False  mbWorkspaceFP
         mapM_ fileOpenThis sourceFPs
         wins <- getWindows
         mapM_ instrumentSecWindow (tail wins)
-        return pair
-        ) ideR
 
-    on win realize $ widgetGetWindow win >>= maybe (return ()) OSX.allowFullscreen
+        onWidgetRealize win $
+            widgetGetWindow win >>= OSX.allowFullscreen
 
-    debugM "leksah" "Show main window"
-    widgetShowAll win
+        liftIO $ debugM "leksah" "Show main window"
+        widgetShowAll win
 
-    reflectIDE (do
         triggerEventIDE UpdateRecent
         if tbv
             then showToolbar
@@ -438,46 +464,45 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         if fbv
             then showFindbar
             else hideFindbar
-        OSX.updateMenu osxApp uiManager) ideR
+        OSX.updateMenu osxApp uiManager
 
-    OSX.applicationReady osxApp
+        OSX.applicationReady osxApp
 
-    configDir <- getConfigDir
-    let welcomePath  = configDir</>"leksah-welcome"
-    welcomeExists <- doesDirectoryExist welcomePath
-    unless welcomeExists $ do
-        let welcomeSource = dataDir</>"data"</>"leksah-welcome"
-            welcomeCabal = welcomePath</>"leksah-welcome.cabal"
-            welcomeMain  = welcomePath</>"src"</>"Main.hs"
-        createDirectoryIfMissing True $ welcomePath</>"src"
-        createDirectoryIfMissing True $ welcomePath</>"test"
-        copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
-        copyFile (welcomeSource</>"leksah-welcome.cabal") welcomeCabal
-        copyFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
-        copyFile (welcomeSource</>"src"</>"Main.hs")      welcomeMain
-        copyFile (welcomeSource</>"test"</>"Main.hs")     (welcomePath</>"test"</>"Main.hs")
-        defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
-        defaultExists <- liftIO $ doesFileExist defaultWorkspace
-        reflectIDE (do
+        configDir <- liftIO getConfigDir
+        let welcomePath  = configDir</>"leksah-welcome"
+        welcomeExists <- liftIO $ doesDirectoryExist welcomePath
+        unless welcomeExists $ do
+            let welcomeSource = dataDir</>"data"</>"leksah-welcome"
+                welcomeCabal = welcomePath</>"leksah-welcome.cabal"
+                welcomeMain  = welcomePath</>"src"</>"Main.hs"
+            liftIO $ do
+                createDirectoryIfMissing True $ welcomePath</>"src"
+                createDirectoryIfMissing True $ welcomePath</>"test"
+                copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
+                copyFile (welcomeSource</>"leksah-welcome.cabal") welcomeCabal
+                copyFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
+                copyFile (welcomeSource</>"src"</>"Main.hs")      welcomeMain
+                copyFile (welcomeSource</>"test"</>"Main.hs")     (welcomePath</>"test"</>"Main.hs")
+            defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
+            defaultExists <- liftIO $ doesFileExist defaultWorkspace
             if defaultExists
                 then workspaceOpenThis False (Just defaultWorkspace)
                 else workspaceNewHere defaultWorkspace
             workspaceTryQuiet $ void (workspaceAddPackage' welcomeCabal)
-            fileOpenThis welcomeMain) ideR
-    reflectIDE (initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))) ideR
-    maybe (return ()) timeoutRemove timeout
-    postGUIAsync . mainLoop $
-        reflectIDE (do
+            fileOpenThis welcomeMain
+        initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))
+        maybe (return ()) (void . sourceRemove) timeout
+        postAsyncIDE . liftIO . mainLoop . (`reflectIDE` ideR) $ do
             currentPrefs <- readIDE prefs
-            when (backgroundBuild currentPrefs) backgroundMake) ideR
---    timeoutAddFull (do
---        reflectIDE (do
---            currentPrefs <- readIDE prefs
---            when (backgroundBuild currentPrefs) $ backgroundMake) ideR
---        return True) priorityDefaultIdle 1000
-    reflectIDE (triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])) ideR
-    return ()
---    mainGUI
+            when (backgroundBuild currentPrefs) backgroundMake
+--        timeoutAdd PRIORITY_DEFAULT_IDLE 1000 (do
+--            reflectIDE (do
+--                currentPrefs <- readIDE prefs
+--                when (backgroundBuild currentPrefs) $ backgroundMake) ideR
+--            return True)
+        triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])
+        return ()
+--        mainGUI
 
 fDescription :: FilePath -> FieldDescription Prefs
 fDescription configPath = VFD emptyParams [
@@ -517,37 +542,37 @@ firstStart prefs = do
     dialog      <- dialogNew
     setLeksahIcon dialog
     set dialog [
-        windowTitle := ("Welcome to Leksah, the Haskell IDE"::Text),
-        windowWindowPosition := WinPosCenter]
-    dialogAddButton dialog ("gtk-ok"::Text) ResponseOk
-    dialogAddButton dialog ("gtk-cancel"::Text) ResponseCancel
-    vb          <- dialogGetContentArea dialog
+        windowTitle := "Welcome to Leksah, the Haskell IDE",
+        windowWindowPosition := WindowPositionCenter]
+    dialogAddButton' dialog "gtk-ok" ResponseTypeOk
+    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
     label       <- labelNew (Just (
         "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" <>
-        "You can add folders under which you have sources for Haskell packages not available from Hackage."::Text))
+        "You can add folders under which you have sources for Haskell packages not available from Hackage."))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
-    boxPackStart (castToBox vb) label PackNatural 7
-    sw <- scrolledWindowNew Nothing Nothing
+    boxPackStart' vb label PackNatural 7
+    sw <- scrolledWindowNew noAdjustment noAdjustment
     scrolledWindowAddWithViewport sw widget
-    scrolledWindowSetPolicy sw PolicyNever PolicyAutomatic
-    boxPackStart (castToBox vb) sw PackGrow 7
+    scrolledWindowSetPolicy sw PolicyTypeNever PolicyTypeAutomatic
+    boxPackStart' vb sw PackGrow 7
     windowSetDefaultSize dialog 800 630
     widgetShowAll dialog
-    response <- dialogRun dialog
+    response <- dialogRun' dialog
     widgetHide dialog
     case response of
-        ResponseOk -> do
-            mbNewPrefs <- extract prefs [getExt]
+        ResponseTypeOk -> do
+            mbNewPrefs <- liftIO $ extract prefs [getExt]
             widgetDestroy dialog
             case mbNewPrefs of
                 Nothing -> do
-                    sysMessage Normal "No dialog results"
+                    liftIO $ sysMessage Normal "No dialog results"
                     return False
                 Just newPrefs -> do
-                    fp <- getConfigFilePathForSave standardPreferencesFilename
-                    writePrefs fp newPrefs
-                    fp2  <-  getConfigFilePathForSave strippedPreferencesFilename
-                    SP.writeStrippedPrefs fp2
+                    fp <- liftIO $ getConfigFilePathForSave standardPreferencesFilename
+                    liftIO $ writePrefs fp newPrefs
+                    fp2  <-  liftIO $ getConfigFilePathForSave strippedPreferencesFilename
+                    liftIO $ SP.writeStrippedPrefs fp2
                             SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
                                        SP.unpackDirectory   = unpackDirectory newPrefs,
                                        SP.retrieveURL       = retrieveURL newPrefs,
@@ -560,7 +585,7 @@ firstStart prefs = do
             widgetDestroy dialog
             return False
 
-setLeksahIcon :: (WindowClass self) => self -> IO ()
+setLeksahIcon :: (WindowK self) => self -> IO ()
 setLeksahIcon window = do
     dataDir <- getDataDir
     let iconPath = dataDir </> "pics" </> "leksah.png"
@@ -568,27 +593,30 @@ setLeksahIcon window = do
     when iconExists $
         windowSetIconFromFile window iconPath
 
+firstBuild :: Prefs -> IO ()
 firstBuild newPrefs = do
     dialog      <- dialogNew
-    setLeksahIcon dialog
+    liftIO $ setLeksahIcon dialog
     set dialog [
-        windowTitle := ("Leksah: Updating Metadata"::Text),
-        windowWindowPosition := WinPosCenter,
+        windowTitle := "Leksah: Updating Metadata",
+        windowWindowPosition := WindowPositionCenter,
         windowDeletable := False]
-    vb          <- dialogGetContentArea dialog
+    vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
     progressBar <- progressBarNew
-    progressBarSetText progressBar ("Please wait while Leksah collects information about Haskell packages on your system"::Text)
+    progressBarSetText progressBar $ Just "Please wait while Leksah collects information about Haskell packages on your system"
     progressBarSetFraction progressBar 0.0
-    boxPackStart (castToBox vb) progressBar PackGrow 7
+    boxPackStart' vb progressBar PackGrow 7
     forkIO $ do
-            logger <- getRootLogger
-            let verbosity = case getLevel logger of
-                                Just level -> ["--verbosity=" <> T.pack (show level)]
-                                Nothing    -> []
-            (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing
-            output $$ CL.mapM_ (update progressBar)
-            waitForProcess pid
-            postGUIAsync (dialogResponse dialog ResponseOk)
+        logger <- getRootLogger
+        let verbosity = case getLevel logger of
+                            Just level -> ["--verbosity=" <> T.pack (show level)]
+                            Nothing    -> []
+        (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing
+        output $$ CL.mapM_ (update progressBar)
+        waitForProcess pid
+        void . idleAdd PRIORITY_DEFAULT $ do
+            dialogResponse' dialog ResponseTypeOk
+            return False
     widgetShowAll dialog
     dialogRun dialog
     widgetHide dialog
@@ -598,8 +626,10 @@ firstBuild newPrefs = do
         update pb to = do
             let str = toolline to
             case T.stripPrefix "update_toolbar " str of
-                Just rest -> postGUIAsync $ progressBarSetFraction pb (read $ T.unpack rest)
-                Nothing   -> liftIO $ debugM "leksah" $ T.unpack str
+                Just rest -> void . idleAdd PRIORITY_DEFAULT $ do
+                    progressBarSetFraction pb (read $ T.unpack rest)
+                    return False
+                Nothing   -> debugM "leksah" $ T.unpack str
 
 
 

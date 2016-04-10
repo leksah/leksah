@@ -46,9 +46,10 @@ import qualified Data.Text as T
         index)
 import Data.Monoid ((<>))
 import Control.Monad.IO.Class (MonadIO(..))
-import Graphics.UI.Gtk.SourceView (sourceBufferNew)
-import Graphics.UI.Gtk.Multiline.TextBuffer
+import GI.Gtk.Objects.TextBuffer
        (textBufferGetIterAtMark, textBufferCreateMark, textBufferSetText)
+import GI.GtkSource (bufferNew)
+import GI.Gtk.Objects.TextTagTable (noTextTagTable)
 
 ---------------------------------------------------------------------------------
 -- * Implementation
@@ -58,8 +59,8 @@ notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 notBeforeOp     =   Set.fromList "!#$%&*+./<=>?@\\^|-~'\""
 notAfterOp      =   notBeforeOp
 
-keystrokeCandy :: TextEditor editor => CandyTable -> Maybe Char -> EditorBuffer editor -> (Text -> Bool) -> IDEM ()
-keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
+keystrokeCandy :: TextEditor editor => CandyTable -> Char -> EditorBuffer editor -> (Text -> Bool) -> IDEM ()
+keystrokeCandy (CT(transformTable,_)) c ebuf editInCommentOrString = do
     cursorMark  <-  getInsertMark ebuf
     endIter     <-  getIterAtMark ebuf cursorMark
     lineNr      <-  getLine endIter
@@ -67,9 +68,9 @@ keystrokeCandy (CT(transformTable,_)) mbc ebuf editInCommentOrString = do
     offset      <-  getOffset endIter
     startIter   <-  backwardToLineStartC endIter
     slice       <-  getSlice ebuf startIter endIter True
-    mbc2        <-  case mbc of
-                        Just c  -> return (Just c)
-                        Nothing -> getChar endIter
+    mbc2        <-  if c /= '\0'
+                        then return (Just c)
+                        else getChar endIter
     let block   =  editInCommentOrString slice
     unless block $
         replace mbc2 cursorMark slice offset transformTable
@@ -161,9 +162,9 @@ transformFromCandy (CT(_,transformTableBack)) ebuf = do
     setModified ebuf modified
 
 simpleGtkBuffer :: Text -> IDEM (EditorBuffer GtkSourceView)
-simpleGtkBuffer contents = liftIO $ GtkBuffer <$> do
-    buffer <- sourceBufferNew Nothing
-    textBufferSetText buffer contents
+simpleGtkBuffer contents = GtkBuffer <$> do
+    buffer <- bufferNew noTextTagTable
+    textBufferSetText buffer contents (-1)
     return buffer
 
 getCandylessText :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM Text
@@ -195,8 +196,8 @@ stringToCandy  candyTable text = do
     getText workBuffer i1 i2 True
 
 -- We only need a TextMark here not a SourceMark
-createTextMark (GtkBuffer sb) (GtkIter i) leftGravity = liftIO $  textBufferCreateMark sb Nothing i leftGravity
-getIterAtTextMark (GtkBuffer sb) m = liftIO $ GtkIter <$> textBufferGetIterAtMark sb m
+createTextMark (GtkBuffer sb) (GtkIter i) = textBufferCreateMark sb Nothing i
+getIterAtTextMark (GtkBuffer sb) m = GtkIter <$> textBufferGetIterAtMark sb m
 
 positionFromCandy :: TextEditor editor => CandyTable -> EditorBuffer editor -> (Int,Int) -> IDEM (Int,Int)
 positionFromCandy candyTable ebuf (line,column) = do

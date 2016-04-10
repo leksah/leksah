@@ -26,13 +26,14 @@ module IDE.Pane.HLint (
 
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), RecoverablePane, Pane(..))
-import Graphics.UI.Gtk.Display.Label (labelNew, Label)
 import Data.Typeable (Typeable)
 import IDE.Core.Types (IDEM)
-import Graphics.UI.Gtk.Abstract.Widget (castToWidget)
 import Graphics.UI.Frame.ViewFrame (getNotebook)
 import IDE.Core.State (reifyIDE)
 import Data.Text (Text)
+import GI.Gtk.Objects.Label (labelNew, Label(..))
+import Control.Monad.IO.Class (MonadIO(..))
+import GI.Gtk.Objects.Widget (toWidget, Widget(..))
 
 data IDEHLint       =   IDEHLint {
     deprecatedLabel :: Label
@@ -45,7 +46,7 @@ instance Pane IDEHLint IDEM
     where
     primPaneName _  =   "HLint"
     getAddedIndex _ =   0
-    getTopWidget    =   castToWidget . deprecatedLabel
+    getTopWidget    =   liftIO . toWidget . deprecatedLabel
     paneId b        =   "*HLint"
 
 instance RecoverablePane IDEHLint HLintState IDEM where
@@ -54,5 +55,5 @@ instance RecoverablePane IDEHLint HLintState IDEM where
         nb      <-  getNotebook pp
         buildPane pp nb builder
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        deprecatedLabel <- labelNew $ Just ("HLint has moved to the Errors pane and Package -> HLint menu item"::Text)
+        deprecatedLabel <- labelNew $ Just "HLint has moved to the Errors pane and Package -> HLint menu item"
         return (Just IDEHLint {..}, [])

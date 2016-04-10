@@ -2,12 +2,10 @@ module Main (
     main
 ) where
 
-import Graphics.UI.Gtk (postGUIAsync)
-import GHCJS.DOM (runWebGUI, webViewGetDomDocument)
+import GHCJS.DOM (runWebGUI)
 
-main =
-  runWebGUI $ \ webView -> postGUIAsync $ do
-    Just doc <- webViewGetDomDocument webView
+main = do
+--  runWebGUI $ \ webView -> do
     putStrLn "Bewleksah is a version of Leksah that can run in a web browser."
     putStrLn "Nothing working yet."
 

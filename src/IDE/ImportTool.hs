@@ -31,14 +31,14 @@ import Text.PrettyPrint (render)
 import Distribution.Text (simpleParse, display, disp)
 import IDE.Pane.SourceBuffer
 import IDE.HLint (resolveActiveHLint)
-import Graphics.UI.Gtk
 import IDE.Utils.GUIUtils
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor
        (getRealWidget, FieldDescription(..), buildEditor, mkField)
 import Graphics.UI.Editor.Parameters
-       ((<<<-), paraMinSize, emptyParams, Parameter(..), paraMultiSel,
-        paraName)
+       (dialogRun', dialogSetDefaultResponse', Packing(..), boxPackStart',
+        dialogAddButton', (<<<-), paraMinSize, emptyParams, Parameter(..),
+        paraMultiSel, paraName)
 import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec as Parsec (parse)
 import Graphics.UI.Editor.Simple (staticListEditor)
@@ -80,6 +80,18 @@ import Data.Monoid ((<>))
 import System.Log.Logger (debugM)
 import qualified Data.Traversable as Tr (forM)
 import qualified Data.Foldable as F (toList, foldr, or)
+import GI.Gtk.Objects.Window (windowTransientFor, Window(..))
+import GI.Gtk.Objects.Dialog (dialogGetContentArea, dialogNew)
+import Data.GI.Base (unsafeCastTo, set)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Enums (ResponseType(..))
+import GI.Gtk.Objects.Box (Box(..), boxPackStart)
+import GI.Gtk.Objects.Widget
+       (widgetDestroy, widgetHide, widgetGrabDefault, widgetCanDefault,
+        widgetShowAll)
+import GI.Gtk.Objects.MenuItem
+       (onMenuItemActivate, menuItemNewWithLabel)
+import GI.Gtk.Objects.MenuShell (menuShellAppend)
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -450,23 +462,23 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                             Just str -> str <> "." <> id
             dia               <- dialogNew
             set dia [ windowTransientFor := parentWindow ]
-            upper             <- dialogGetContentArea dia
-            okButton <- dialogAddButton dia (__"Add Import") ResponseOk
-            dialogAddButton dia (__"Cancel") ResponseCancel
+            upper             <- dialogGetContentArea dia >>= unsafeCastTo Box
+            okButton <- dialogAddButton' dia (__"Add Import") ResponseTypeOk
+            dialogAddButton' dia (__"Cancel") ResponseTypeCancel
             (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
-            boxPackStart (castToBox upper) widget PackGrow 7
-            dialogSetDefaultResponse dia ResponseOk --does not work for the tree view
+            boxPackStart' upper widget PackGrow 7
+            dialogSetDefaultResponse' dia ResponseTypeOk --does not work for the tree view
             widgetShowAll dia
             rw <- getRealWidget widget
             set okButton [widgetCanDefault := True]
             widgetGrabDefault okButton
-            resp <- dialogRun dia
+            resp <- dialogRun' dia
             value                      <- ext T.empty
             widgetHide dia
             widgetDestroy dia
             --find
             case (resp,value) of
-                (ResponseOk,Just v)    -> return (Just (head
+                (ResponseTypeOk,Just v)    -> return (Just (head
                                             (filter (\e -> case dsMbModu e of
                                                 Nothing -> False
                                                 Just pm -> (T.pack . render . disp . modu) pm == v) list)))
@@ -568,6 +580,6 @@ addResolveMenuItems ideR theMenu logRef = do
   where
     addFixMenuItem name fix = do
         item <- menuItemNewWithLabel name
-        item `on` menuItemActivate $ reflectIDE (void fix) ideR
+        onMenuItemActivate item $ reflectIDE (void fix) ideR
         menuShellAppend theMenu item
 

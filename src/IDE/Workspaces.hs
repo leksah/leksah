@@ -41,7 +41,8 @@ module IDE.Workspaces (
 
 import IDE.Core.State
 import Graphics.UI.Editor.Parameters
-    (Parameter(..), (<<<-), paraName, emptyParams)
+       (dialogRun', dialogSetDefaultResponse', dialogAddButton',
+        Parameter(..), (<<<-), paraName, emptyParams)
 import Control.Monad (filterM, void, unless, when, liftM)
 import Data.Maybe (isJust, fromJust, catMaybes)
 import IDE.Utils.GUIUtils
@@ -59,10 +60,6 @@ import Text.PrinterParser
      mkFieldS,
      FieldDescriptionS(..))
 import qualified Text.PrettyPrint as  PP (text)
-import Graphics.UI.Gtk
-       (dialogSetDefaultResponse, windowWindowPosition, widgetDestroy,
-        dialogRun, messageDialogNew, dialogAddButton, Window(..),
-        widgetHide, DialogFlags(..))
 import IDE.Pane.PackageEditor (packageNew', packageClone, choosePackageFile, standardSetup)
 import Data.List (delete)
 import IDE.Package
@@ -72,16 +69,11 @@ import System.Directory
        (doesDirectoryExist, getDirectoryContents, getHomeDirectory,
         createDirectoryIfMissing, doesFileExist)
 import System.Time (getClockTime)
-import Graphics.UI.Gtk.Windows.MessageDialog
-    (ButtonsType(..), MessageType(..))
-import Graphics.UI.Gtk.Windows.Dialog (ResponseId(..))
 import qualified Control.Exception as Exc (SomeException(..), throw, Exception)
 import qualified Data.Map as  Map (empty)
 import IDE.Pane.SourceBuffer
        (belongsToWorkspace, IDEBuffer(..), maybeActiveBuf, fileOpenThis,
         fileCheckAll, belongsToPackages')
-import System.Glib.Attributes (AttrOp(..), set)
-import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
@@ -104,13 +96,26 @@ import Data.Monoid ((<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (writeFile)
-import Graphics.UI.Gtk.Selectors.FileChooserDialog
-       (fileChooserDialogNew)
-import Graphics.UI.Gtk.Selectors.FileChooser
-       (fileChooserGetFilename, fileChooserSetCurrentFolder,
-        FileChooserAction(..))
-import Graphics.UI.Gtk.Abstract.Widget (widgetShow)
 import Control.Exception (SomeException(..), catch)
+import Data.GI.Base.Constructible (Constructible(..))
+import GI.Gtk.Objects.MessageDialog
+       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+        MessageDialog(..))
+import GI.Gtk.Objects.Dialog (dialogUseHeaderBar)
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.Window
+       (windowSetTransientFor, setWindowTitle, Window(..),
+        windowWindowPosition, windowModal)
+import GI.Gtk.Enums
+       (FileChooserAction(..), ResponseType(..), ButtonsType(..),
+        WindowPosition(..), MessageType(..))
+import Data.GI.Base (set)
+import GI.Gtk.Objects.Widget
+       (widgetShow, widgetDestroy, widgetHide)
+import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
+import GI.Gtk.Interfaces.FileChooser
+       (fileChooserGetFilename, fileChooserSetCurrentFolder,
+        fileChooserSetAction)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -159,29 +164,33 @@ workspaceTry f = do
         Nothing -> do
             mainWindow <- getMainWindow
             defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
-            resp <- liftIO $ do
-                defaultExists <- doesFileExist defaultWorkspace
-                md <- messageDialogNew (Just mainWindow) [DialogModal] MessageQuestion ButtonsCancel (
-                        __ "You need to have a workspace open for this to work. "
-                     <> __ "Choose ~/leksah.lkshw to "
-                     <> __ (if defaultExists then "open workspace " else "create a workspace ")
-                     <> T.pack defaultWorkspace)
-                dialogAddButton md (__ "_New Workspace") (ResponseUser 1)
-                dialogAddButton md (__ "_Open Workspace") (ResponseUser 2)
-                dialogAddButton md ("~/leksah.lkshw" :: Text) (ResponseUser 3)
-                dialogSetDefaultResponse md (ResponseUser 3)
-                set md [ windowWindowPosition := WinPosCenterOnParent ]
-                resp <- dialogRun md
-                widgetHide md
-                return resp
+            defaultExists <- liftIO $ doesFileExist defaultWorkspace
+            md <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    windowModal := True,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeCancel,
+                    messageDialogText := (
+                            __ "You need to have a workspace open for this to work. "
+                         <> __ "Choose ~/leksah.lkshw to "
+                         <> __ (if defaultExists then "open workspace " else "create a workspace ")
+                         <> T.pack defaultWorkspace)]
+            windowSetTransientFor md (Just mainWindow)
+            dialogAddButton' md (__ "_New Workspace") (AnotherResponseType 1)
+            dialogAddButton' md (__ "_Open Workspace") (AnotherResponseType 2)
+            dialogAddButton' md "~/leksah.lkshw" (AnotherResponseType 3)
+            dialogSetDefaultResponse' md (AnotherResponseType 3)
+            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            resp <- dialogRun' md
+            widgetHide md
             case resp of
-                ResponseUser 1 -> do
+                AnotherResponseType 1 -> do
                     workspaceNew
                     postAsyncIDE $ workspaceTryQuiet f
-                ResponseUser 2 -> do
+                AnotherResponseType 2 -> do
                     workspaceOpen
                     postAsyncIDE $ workspaceTryQuiet f
-                ResponseUser 3 -> do
+                AnotherResponseType 3 -> do
                     defaultExists <- liftIO $ doesFileExist defaultWorkspace
                     if defaultExists
                         then workspaceOpenThis True (Just defaultWorkspace)
@@ -205,18 +214,19 @@ workspaceOpenThis askForSession mbFilePath =
                 if exists && askForSession
                     then do
                         window <- getMainWindow
-                        liftIO $ do
-                            md  <- messageDialogNew (Just window) [] MessageQuestion ButtonsNone
-                                    $ __ "There are session settings stored with this workspace."
-                            dialogAddButton md (__ "_Ignore Session") ResponseCancel
-                            dialogAddButton md (__ "_Load Session") ResponseYes
-                            dialogSetDefaultResponse md ResponseYes
-                            set md [ windowWindowPosition := WinPosCenterOnParent ]
-                            rid <- dialogRun md
-                            widgetDestroy md
-                            case rid of
-                                ResponseYes ->  return True
-                                otherwise   ->  return False
+                        md <- new MessageDialog [
+                            dialogUseHeaderBar := 0,
+                            messageDialogMessageType := MessageTypeQuestion,
+                            messageDialogButtons := ButtonsTypeNone,
+                            messageDialogText := __ "There are session settings stored with this workspace."]
+                        windowSetTransientFor md (Just window)
+                        dialogAddButton' md (__ "_Ignore Session") ResponseTypeCancel
+                        dialogAddButton' md (__ "_Load Session") ResponseTypeYes
+                        dialogSetDefaultResponse' md ResponseTypeYes
+                        set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                        rid <- dialogRun' md
+                        widgetDestroy md
+                        return $ rid == ResponseTypeYes
                     else return False
             if wantToLoadSession
                 then void (triggerEventIDE (LoadSession spath))
@@ -332,21 +342,23 @@ packageTry f = workspaceTry $ do
             Just p  -> runPackage f p
             Nothing -> do
                 window <- lift getMainWindow
-                resp <- liftIO $ do
-                    md <- messageDialogNew (Just window) [] MessageQuestion ButtonsCancel
-                            (__ "You need to have an active package for this to work.")
-                    dialogAddButton md (__ "_New Package") (ResponseUser 1)
-                    dialogAddButton md (__ "_Add Package") (ResponseUser 2)
-                    dialogSetDefaultResponse md (ResponseUser 2)
-                    set md [ windowWindowPosition := WinPosCenterOnParent ]
-                    resp <- dialogRun md
-                    widgetHide md
-                    return resp
+                md <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeCancel,
+                    messageDialogText := __ "You need to have an active package for this to work."]
+                windowSetTransientFor md (Just window)
+                dialogAddButton' md (__ "_New Package") (AnotherResponseType 1)
+                dialogAddButton' md (__ "_Add Package") (AnotherResponseType 2)
+                dialogSetDefaultResponse' md (AnotherResponseType 2)
+                set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                resp <- dialogRun' md
+                widgetHide md
                 case resp of
-                    ResponseUser 1 -> do
+                    AnotherResponseType 1 -> do
                         workspacePackageNew
                         lift $ postAsyncIDE $ packageTryQuiet f
-                    ResponseUser 2 -> do
+                    AnotherResponseType 2 -> do
                         workspaceAddPackage
                         lift $ postAsyncIDE $ packageTryQuiet f
                     _  -> return ()
@@ -490,7 +502,7 @@ makePackage ::  PackageAction
 makePackage = do
   p <- ask
   liftIDE $ do
-    getLog >>= liftIO . bringPaneToFront
+    getLog >>= bringPaneToFront
     showDefaultLogLaunch'
     prefs' <- readIDE prefs
     mbWs   <- readIDE workspace
@@ -515,33 +527,20 @@ fileOpen = do
     window <- getMainWindow
     prefs <- readIDE prefs
     mbBuf <- maybeActiveBuf
-    mbFileName <- liftIO $ do
-        dialog <- fileChooserDialogNew
-                        (Just $ __ "Open File")
-                        (Just window)
-                    FileChooserActionOpen
-                    [("gtk-cancel"
-                    ,ResponseCancel)
-                    ,("gtk-open"
-                    ,ResponseAccept)]
-        case mbBuf >>= fileName of
-            Just fn -> void (fileChooserSetCurrentFolder dialog (dropFileName fn))
-            Nothing -> return ()
-        widgetShow dialog
-        response <- dialogRun dialog
-        case response of
-            ResponseAccept -> do
-                f <- fileChooserGetFilename dialog
-                widgetDestroy dialog
-                return f
-            ResponseCancel -> do
-                widgetDestroy dialog
-                return Nothing
-            ResponseDeleteEvent-> do
-                widgetDestroy dialog
-                return Nothing
-            _ -> return Nothing
-    forM_ mbFileName fileOpen'
+    dialog <- new FileChooserDialog []
+    setWindowTitle dialog $ __ "Open File"
+    windowSetTransientFor dialog $ Just window
+    fileChooserSetAction dialog FileChooserActionOpen
+    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    dialogAddButton' dialog "gtk-open" ResponseTypeAccept
+    case mbBuf >>= fileName of
+        Just fn -> void (fileChooserSetCurrentFolder dialog (dropFileName fn))
+        Nothing -> return ()
+    widgetShow dialog
+    response <- dialogRun' dialog
+    when (response == ResponseTypeAccept) $
+        fileChooserGetFilename dialog >>= fileOpen'
+    widgetDestroy dialog
 
 fileOpen' :: FilePath -> IDEAction
 fileOpen' fp = do
@@ -550,44 +549,42 @@ fileOpen' fp = do
     unless knownFile $
         if takeExtension fp == ".cabal"
             then do
-                resp <- liftIO $ do
-                    md <- messageDialogNew
-                        (Just window) []
-                        MessageQuestion
-                        ButtonsNone
-                        (__ "Would you like to add the package " <> T.pack fp
-                            <> __ " to the workspace so that it can be built by Leksah?")
-                    dialogAddButton md (__ "_Add " <> T.pack (takeFileName fp)) (ResponseUser 1)
-                    dialogAddButton md (__ "Just _open " <> T.pack (takeFileName fp)) (ResponseUser 2)
-                    dialogSetDefaultResponse md (ResponseUser 1)
-                    resp <- dialogRun md
-                    widgetDestroy md
-                    return resp
+                md <- new MessageDialog [
+                    dialogUseHeaderBar := 0,
+                    messageDialogMessageType := MessageTypeQuestion,
+                    messageDialogButtons := ButtonsTypeNone,
+                    messageDialogText := (__ "Would you like to add the package " <> T.pack fp
+                        <> __ " to the workspace so that it can be built by Leksah?")]
+                windowSetTransientFor md (Just window)
+                dialogAddButton' md (__ "_Add " <> T.pack (takeFileName fp)) (AnotherResponseType 1)
+                dialogAddButton' md (__ "Just _open " <> T.pack (takeFileName fp)) (AnotherResponseType 2)
+                dialogSetDefaultResponse' md (AnotherResponseType 1)
+                resp <- dialogRun' md
+                widgetDestroy md
                 case resp of
-                    ResponseUser 1 -> workspaceTry $ do
+                    AnotherResponseType 1 -> workspaceTry $ do
                         workspaceAddPackage' fp
                         return ()
                     _ -> return ()
             else liftIO (findCabalFile fp) >>= \case
                 Nothing -> return ()
                 Just cabalFile -> do
-                    resp <- liftIO $ do
-                        md <- messageDialogNew
-                            (Just window) []
-                            MessageQuestion
-                            ButtonsNone
-                            (__ "The file " <> T.pack fp
-                                <> __ " seems to belong to the package " <> T.pack cabalFile
-                                <> __ " would you like to add " <> T.pack (takeFileName cabalFile)
-                                <> __ " to your workspace?")
-                        dialogAddButton md (__ "_Add " <> T.pack (takeFileName cabalFile)) (ResponseUser 1)
-                        dialogAddButton md (__ "Just _open " <> T.pack (takeFileName fp)) (ResponseUser 2)
-                        dialogSetDefaultResponse md (ResponseUser 1)
-                        resp <- dialogRun md
-                        widgetDestroy md
-                        return resp
+                    md <- new MessageDialog [
+                        dialogUseHeaderBar := 0,
+                        messageDialogMessageType := MessageTypeQuestion,
+                        messageDialogButtons := ButtonsTypeNone,
+                        messageDialogText := (__ "The file " <> T.pack fp
+                            <> __ " seems to belong to the package " <> T.pack cabalFile
+                            <> __ " would you like to add " <> T.pack (takeFileName cabalFile)
+                            <> __ " to your workspace?")]
+                    windowSetTransientFor md (Just window)
+                    dialogAddButton' md (__ "_Add " <> T.pack (takeFileName cabalFile)) (AnotherResponseType 1)
+                    dialogAddButton' md (__ "Just _open " <> T.pack (takeFileName fp)) (AnotherResponseType 2)
+                    dialogSetDefaultResponse' md (AnotherResponseType 1)
+                    resp <- dialogRun' md
+                    widgetDestroy md
                     case resp of
-                        ResponseUser 1 -> workspaceTry $ do
+                        AnotherResponseType 1 -> workspaceTry $ do
                             workspaceAddPackage' cabalFile
                             return ()
                         _ -> return ()
