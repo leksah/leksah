@@ -7,14 +7,14 @@ Box for Haskell development.  This provides an easy way to set up a
 * [Leksah](http://leksah.org/) (Haskell IDE)
 * [GHC](https://www.haskell.org/ghc/) 7.10.1 (Haskell Compiler)
 * [GHCJS](https://github.com/ghcjs/ghcjs) (Haskell to JavaScript Compiler)
-* GHC 7.10.1 running on [Wine](https://www.winehq.org/) (so you can build Windows binaries too)
+* GHC 7.10.3 running on [Wine](https://www.winehq.org/) (so you can build Windows binaries too)
 
 ## Setup
 
 Finished VM takes about 16GB or so of disk space.  Install VirtualBox 5.0.0 (edit
 the setup.sh if you choose a newer version) and Vagrant then run:
 
-    vagrant box add -name fedora-22 http://download.fedoraproject.org/pub/fedora/linux/releases/22/Cloud/x86_64/Images/Fedora-Cloud-Base-Vagrant-22-20150521.x86_64.vagrant-virtualbox.box
+    vagrant box add -name fedora-23 https://download.fedoraproject.org/pub/fedora/linux/releases/23/Cloud/x86_64/Images/Fedora-Cloud-Base-Vagrant-23-20151030.x86_64.vagrant-virtualbox.box
     git clone https://github.com/leksah/leksah
     cd leksah/xobl
 
