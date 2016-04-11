@@ -22,11 +22,13 @@ module IDE.OSX (
 ,   allowFullscreen
 ) where
 
+import Control.Monad.IO.Class (MonadIO(..))
+import GI.Gdk.Objects.Window (WindowK)
+import GI.Gtk.Objects.UIManager (uIManagerGetWidget, UIManager(..))
 import IDE.Core.State
 
 #if defined(darwin_HOST_OS)
 
-import Control.Monad.Reader (liftIO)
 import Control.Monad.Reader.Class (ask)
 import IDE.Command (canQuit)
 import Data.Text (Text)
@@ -35,7 +37,6 @@ import GI.GtkosxApplication
         applicationSetUseQuartzAccelerators,
         onApplicationNSApplicationBlockTermination,
         applicationInsertAppMenuItem, applicationSetMenuBar, Application)
-import GI.Gtk.Objects.UIManager (uIManagerGetWidget, UIManager(..))
 import GI.Gtk.Objects.Widget (widgetHide)
 import Data.GI.Base (unsafeCastTo)
 import GI.Gtk.Objects.MenuShell (MenuShell(..))
@@ -43,7 +44,6 @@ import GI.Gtk.Objects.MenuItem (MenuItem(..))
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
 import Control.Monad.IO.Class (MonadIO)
 import Data.GI.Base.Constructible (Constructible(..))
-import GI.Gdk.Objects.Window (WindowK)
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 applicationNew :: MonadIO m => m Application
@@ -92,9 +92,9 @@ applicationNew :: MonadIO m => m Application
 applicationNew = return Application
 updateMenu :: Application -> UIManager -> IDEM ()
 updateMenu _ _ = return ()
-applicationReady :: Application -> IO ()
+applicationReady :: MonadIO m => Application -> m ()
 applicationReady _ = return ()
-allowFullscreen :: WindowK window => window -> IO ()
+allowFullscreen :: MonadIO m => WindowK window => window -> m ()
 allowFullscreen _ = return ()
 
 #endif
