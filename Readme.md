@@ -125,3 +125,56 @@ Build Leksah using the Dockerfile:
 Copy the resulting msi file out of the container (version number in the file name will match the one in the leksah.cabal file):
 
     sudo docker run --rm --volume $HOME/output:/output leksah/build cp /leksah/win32/leksah-0.15.0.1-ghc-7.10.1.msi /output
+
+
+### Building Leksah from GitHub
+
+We have just completed a port of Leksah from Gtk2Hs to haskell-gi.  Not all
+of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
+or follow the instructions below.
+
+First install the following C libraries for your OS using the instructions
+above (these are the Fedora names your OS may have different names):
+
+    gobject-introspection-devel
+    atk-devel
+    libsoup-devel
+    webkitgtk3-devel
+    webkitgtk4-devel
+    gtksourceview3-devel
+    poppler-glib-devel
+    vte291-devel
+    libnotify-devel
+    gstreamer1-devel
+    gstreamer1-plugins-base-devel
+
+Clone lots of stuff:
+
+    git clone https://github.com/haskell-gi/haskell-gi-base.git
+    git clone https://github.com/haskell-gi/haskell-gi.git
+    git clone https://github.com/gtk2hs/gi-gtk-hs.git
+    git clone https://github.com/ghcjs/jsaddle.git
+    git clone https://github.com/ghcjs/jsaddle-dom.git
+    git clone https://github.com/ghcjs/ghcjs-dom.git
+    git clone https://github.com/leksah/leksah.git
+    cd leksah
+    git submodule update --init
+    cd ..
+
+Install some tools (gtk2hs-buildtools is still needed for webkitgtk3-javascriptcore):
+
+    cabal install alex happy
+    cabal install gtk2hs-buildtools
+
+Install haskell-gi (it check the genBindings output to see if you need to install more -devel packages):
+
+    cabal install ./haskell-gi-base ./haskell-gi
+    cd haskell-gi/bindings
+    ./genBindings.sh
+    ./buildAll.sh
+    cd ../..
+
+Install the rest:
+
+    cd leksah
+    cabal install ../gi-gtk-hs ../jsaddle ../jsaddle-dom ../ghcjs-dom ./ ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
