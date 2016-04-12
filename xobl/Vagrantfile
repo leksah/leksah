@@ -21,7 +21,7 @@ Vagrant.configure(2) do |config|
 
   # Update and reboot to make sure we are in the right version of the kernel before
   # the virtual box guest additions
-  config.vm.provision "shell", inline: "sudo dnf -y update --setopt=deltarpm=false"
+  config.vm.provision "shell", inline: "sudo dnf -y update --setopt=deltarpm=false || sudo dnf -y update --setopt=deltarpm=false"
   config.vm.provision :unix_reboot
 
   config.vm.provision "shell", path: "setup.sh", privileged: false

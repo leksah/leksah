@@ -113,7 +113,7 @@ fi
 if [ ! -d ~/haskell/gi-gtk-hs ]
 then
     cd ~/haskell
-    git clone https://github.com/haskell-gi/gi-gtk-hs.git
+    git clone https://github.com/gtk2hs/gi-gtk-hs.git
 fi
 
 if [ ! -d ~/haskell/jsaddle ]
@@ -186,6 +186,8 @@ fi
 
 if [ ! -e ~/.ghcjs/x86_64-linux-*-$GHCVER/ghcjs/ghcjs_boot.completed ]
 then
+	cabal install cabal-install-1.22.7.0
+	hash -r
     ghcjs-boot --dev
 fi
 
