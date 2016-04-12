@@ -186,8 +186,8 @@ fi
 
 if [ ! -e ~/.ghcjs/x86_64-linux-*-$GHCVER/ghcjs/ghcjs_boot.completed ]
 then
-	cabal install cabal-install-1.22.7.0
-	hash -r
+    cabal install cabal-install-1.22.7.0
+    hash -r
     ghcjs-boot --dev
 fi
 
