@@ -78,6 +78,7 @@ import GI.WebKit.Objects.WebSettings
 import GI.WebKit.Objects.WebInspector
        (onWebInspectorInspectWebView)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
+import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 data IDEOutput = IDEOutput {
     vbox          :: VBox
@@ -216,8 +217,8 @@ loadOutputUri uri =
      do out <- getOutputPane Nothing
         let view = webView out
         entrySetText (uriEntry out) (T.pack uri)
-        currentUri <- webViewGetUri view
-        if T.pack uri == currentUri
+        currentUri <- nullToNothing $ webViewGetUri view
+        if Just (T.pack uri) == currentUri
             then webViewReload view
             else webViewLoadUri view (T.pack uri)
 
