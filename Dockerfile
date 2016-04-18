@@ -1,4 +1,4 @@
-FROM Fedora-Docker-Base-22-20150521.x86_64
+FROM Fedora-Docker-Base-23-20151030.x86_64
 MAINTAINER Hamish.K.Mackenzie@gmail.com
 
 RUN dnf -y install sudo && dnf clean all
@@ -13,9 +13,39 @@ RUN sudo dnf -y --enablerepo updates-testing update && \
 RUN sudo dnf -y --enablerepo updates-testing install \
                            wine.x86_64 \
                            wine.i686 \
-                           mingw64-webkitgtk3.noarch \
                            mingw64-gtksourceview3.noarch \
                            mingw32-winpthreads \
+                           mingw64-enchant \
+                           mingw64-libsoup \
+                           mingw64-libidn \
+                           mingw64-sqlite \
+                           mingw64-gstreamer1-plugins-base \
+                           mingw64-libwebp \
+                           mingw64-libxslt \
+                           mingw32-enchant \
+                           mingw32-libsoup \
+                           mingw32-libidn \
+                           mingw32-sqlite \
+                           mingw32-gstreamer1-plugins-base \
+                           mingw32-libwebp \
+                           mingw32-libxslt \
+                           mingw32-gtk3 \
+                           bison \
+                           flex \
+                           gettext \
+                           gobject-introspection-devel \
+                           atk-devel \
+                           libsoup-devel \
+                           webkitgtk3-devel \
+                           webkitgtk4-devel \
+                           gtksourceview3-devel \
+                           poppler-glib-devel \
+                           vte291-devel \
+                           libnotify-devel \
+                           gstreamer1-devel \
+                           gstreamer1-plugins-base-devel \
+                           gperf \
+                           ruby \
                            wget \
                            tar \
                            xz \
@@ -30,8 +60,28 @@ RUN sudo dnf -y --enablerepo updates-testing install \
                            which \
                            mono-core \
                            mono-locale-extras \
-                           libxslt && \
-    sudo dnf clean all
+                           libxslt \
+                           rpm-build
+
+RUN sudo dnf -y --enablerepo updates-testing install dnf-plugins-core
+
+RUN dnf download --source mingw32-webkitgtk3 && \
+    rpm -i mingw-webkitgtk3-2.4.9-1.fc23.src.rpm
+
+RUN ls /usr/src
+
+ADD linux/specfiles/mingw-webkitgtk3.spec /root/rpmbuild/SPECS/
+
+RUN cd /root/rpmbuild/SOURCES && \
+    wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-webkitgtk3/0101-webkitgtk-2.4.3-gcc-asm.all.patch
+
+RUN cd /root/rpmbuild/SPECS && \
+    rpmbuild -ba mingw-webkitgtk3.spec
+
+RUN sudo rpm -i /root/rpmbuild/RPMS/noarch/mingw64-webkitgtk3-2.4.9-1.fc23.noarch.rpm
+
+RUN rm -rf /root/rpmbuild
+RUN sudo dnf clean all
 
 RUN wget http://winetricks.org/winetricks && \
     sudo cp winetricks /usr/bin && \
@@ -57,7 +107,7 @@ RUN wineboot && wine cmd /C echo "Wine OK" && wineserver -w && \
       wineboot && wine cmd /C echo "Wine 32 OK" && xvfb-run winetricks --unattended dotnet40 corefonts && wineserver -w \
     )
 
-ENV GHCVER 7.10.1
+ENV GHCVER 7.10.3
 
 # Install Windows version of GHC (but not the old mingw that comes with it):
 RUN cd ~/.wine/drive_c && \
@@ -89,13 +139,9 @@ RUN cd ~/.wine/drive_c/ghc-$GHCVER && \
     rm -rf x86_64-4.9.2-release-posix-seh-rt_v4-rev2.7z
 
 # Install WiX Toolset:
+ADD wix39-binaries.zip /root/
 RUN mkdir ~/.wine32/drive_c/bin && \
     cd ~/.wine32/drive_c/bin && \
-    curl --header 'Host: download-codeplex.sec.s-msft.com' \
-    --header 'Referer: http://wix.codeplex.com/releases/view/610859' --header 'DNT:1' \
-    --header 'Connection: keep-alive' \
-    'http://download-codeplex.sec.s-msft.com/Download/Release?ProjectName=wix&DownloadId=1421697&FileTime=130661188723230000&Build=21029' \
-    -o ~/wix39-binaries.zip -L && \
     unzip ~/wix39-binaries.zip && \
     rm ~/wix39-binaries.zip
 
@@ -162,9 +208,22 @@ RUN wineserver -p1 && \
     wine cabal install shakespeare lens hlint hscolour && \
     wineserver -w
 
-RUN wineserver -p1 && \
-    wine cabal install ghcjs-dom -fold-webkit && \
-    wineserver -w
+RUN git clone https://github.com/haskell-gi/haskell-gi-base.git && \
+    git clone https://github.com/haskell-gi/haskell-gi.git && \
+    git clone https://github.com/ghcjs/jsaddle.git && \
+    git clone https://github.com/ghcjs/jsaddle-dom.git && \
+    git clone https://github.com/ghcjs/ghcjs-dom.git
+
+RUN sudo dnf copr -y enable petersen/ghc-$GHCVER
+RUN sudo dnf install -y ghc cabal-install
+RUN cabal install happy alex
+
+RUN ghc-pkg list
+
+RUN cabal install ./haskell-gi-base ./haskell-gi --force-reinstalls
+
+RUN cd haskell-gi/bindings && \
+    LANG=en_GB.UTF-8 PATH=/root/.cabal/bin:$PATH ./genBindings.sh
 
 # Add Leksah files to Docker:
 ADD leksah.cabal LICENSE LICENSE.rtf Readme.md Setup.lhs SetupLocale.lhs sources.txt leksah/
@@ -184,6 +243,36 @@ ADD src leksah/src
 ADD tests leksah/tests
 ADD vendor leksah/vendor
 ADD win32 leksah/win32
+
+RUN wineserver -p1 && \
+    rm -rf haskell-gi-base/dist && \
+    wine cabal install \
+                 ./haskell-gi-base \
+                 ./haskell-gi/bindings/GLib \
+                 ./haskell-gi/bindings/Gdk \
+                 ./haskell-gi/bindings/Gtk \
+                 ./haskell-gi/bindings/Atk \
+                 ./haskell-gi/bindings/GdkPixbuf \
+                 ./haskell-gi/bindings/Pango \
+                 ./haskell-gi/bindings/Cairo \
+                 ./haskell-gi/bindings/PangoCairo \
+                 ./haskell-gi/bindings/WebKit \
+                 ./haskell-gi/bindings/Gio \
+                 ./haskell-gi/bindings/JavaScriptCore-3.0 \
+                 ./haskell-gi/bindings/GtkSource \
+                 ./haskell-gi/bindings/Notify \
+                 ./haskell-gi/bindings/GObject \
+                 ./haskell-gi/bindings/Soup && \
+    wineserver -w
+
+RUN git clone https://github.com/gtk2hs/gi-gtk-hs.git
+
+RUN wineserver -p1 && \
+    rm -rf haskell-gi-base/dist && \
+    wine cabal install \
+                 ./gi-gtk-hs ./jsaddle ./jsaddle-dom ./ghcjs-dom \
+                 ./leksah/vendor/haskellVCSGUI/vcsgui && \
+    wineserver -w
 
 # Build leksah and make the MSI file:
 RUN wineserver -p1 && \
