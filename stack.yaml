@@ -10,21 +10,37 @@ packages:
 - '.'
 - vendor/leksah-server/
 - vendor/ltk/
+- vendor/haskellVCSGUI/vcsgui/
+- ../haskell-gi-base/
+- ../haskell-gi/bindings/Atk/
+- ../haskell-gi/bindings/cairo/
+- ../haskell-gi/bindings/Gdk/
+- ../haskell-gi/bindings/GdkPixbuf/
+- ../haskell-gi/bindings/Gio/
+- ../haskell-gi/bindings/GLib/
+- ../haskell-gi/bindings/GObject/
+- ../haskell-gi/bindings/Gtk/
+- ../haskell-gi/bindings/GtkSource/
+- ../haskell-gi/bindings/GtkosxApplication/
+- ../haskell-gi/bindings/JavaScriptCore-3.0/
+- ../haskell-gi/bindings/Pango/
+- ../haskell-gi/bindings/PangoCairo/
+- ../haskell-gi/bindings/Soup/
+- ../haskell-gi/bindings/WebKit/
+- ../gi-gtk-hs/
+- ../webkit-javascriptcore/
+- ../jsaddle/
+- ../jsaddle-dom/
+- ../ghcjs-dom/
+- ../haskell-gi-base/
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
 - binary-shared-0.8.3
 - ghcjs-codemirror-0.0.0.1
-- ghcjs-dom-0.2.3.1
-- gtk3-mac-integration-0.3.2.1
-- gtksourceview3-0.13.2.1
-- jsaddle-0.3.0.1
 - text-1.2.2.0
 - vado-0.0.6
-- vcsgui-0.1.3.0
 - vcswrapper-0.1.2
-- webkitgtk3-0.14.1.1
-- webkitgtk3-javascriptcore-0.13.1.1
 
 # Override default flag values for local packages and extra-deps
 flags: {}
