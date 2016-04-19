@@ -113,10 +113,10 @@ Get the leksah source:
     cd leksah
     git submodule update --init
 
-Get the Fedora 22 docker image and load it:
+Get the Fedora 23 docker image and load it:
 
-    wget http://dl.fedoraproject.org/pub/fedora/linux/releases/22/Docker/x86_64/Fedora-Docker-Base-22-20150521.x86_64.tar.xz
-    sudo docker load -i Fedora-Docker-Base-22-20150521.x86_64.tar.xz
+    wget https://download.fedoraproject.org/pub/fedora/linux/releases/23/Docker/x86_64/Fedora-Docker-Base-23-20151030.x86_64.tar.xz
+    sudo docker load -i Fedora-Docker-Base-23-20151030.x86_64.tar.xz
 
 Build Leksah using the Dockerfile:
 
@@ -124,7 +124,7 @@ Build Leksah using the Dockerfile:
 
 Copy the resulting msi file out of the container (version number in the file name will match the one in the leksah.cabal file):
 
-    sudo docker run --rm --volume $HOME/output:/output leksah/build cp /leksah/win32/leksah-0.15.0.1-ghc-7.10.1.msi /output
+    sudo docker run --rm --volume $HOME/output:/output leksah/build cp /leksah/win32/leksah-0.16.0.0-ghc-7.10.3.msi /output
 
 
 ### Building Leksah from GitHub
