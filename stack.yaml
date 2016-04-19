@@ -28,7 +28,6 @@ packages:
 - ../haskell-gi/bindings/Soup/
 - ../haskell-gi/bindings/WebKit/
 - ../gi-gtk-hs/
-- ../webkit-javascriptcore/
 - ../jsaddle/
 - ../jsaddle-dom/
 - ../ghcjs-dom/
@@ -41,6 +40,7 @@ extra-deps:
 - text-1.2.2.0
 - vado-0.0.6
 - vcswrapper-0.1.2
+- webkitgtk3-javascriptcore-0.14.0.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}
