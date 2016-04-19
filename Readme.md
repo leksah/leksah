@@ -184,6 +184,7 @@ Install the rest:
 As above but with two changes:
 
 * Skip the `./buildAll.sh` haskell-gi script.
+* If you are not building on OS X delete `- ../haskell-gi/bindings/GtkosxApplication/` from `stack.yaml` ([stack issue 2048](https://github.com/commercialhaskell/stack/issues/2048))
 * Instead of the very last `cabal install ...` command run `stack build`.
 
 Note: If you intend to do any development work on Leksah, do not use stack for now as it adds 10-12s to every build (not a problem for a one off build, but annoying when you are making changes).  This will probably be fixed once new haskell-gi packages added to hackage or once the [stack issue](https://github.com/commercialhaskell/stack/issues/2041) is resolved.
