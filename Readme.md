@@ -173,6 +173,11 @@ Install haskell-gi (it check the genBindings output to see if you need to instal
     ./genBindings.sh
     ./buildAll.sh
     cd ../..
+    
+On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
+
+    XDG_DATA_DIRS=/opt/local/share ./genBindings.sh
+    XDG_DATA_DIRS=/opt/local/share ./buildAll.sh
 
 Install the rest:
 
