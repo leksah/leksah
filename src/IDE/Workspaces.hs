@@ -39,6 +39,8 @@ module IDE.Workspaces (
 ,   fileOpen'
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State
 import Graphics.UI.Editor.Parameters
        (dialogRun', dialogSetDefaultResponse', dialogAddButton',
@@ -109,7 +111,7 @@ import GI.Gtk.Objects.Window
 import GI.Gtk.Enums
        (FileChooserAction(..), ResponseType(..), ButtonsType(..),
         WindowPosition(..), MessageType(..))
-import Data.GI.Base (set)
+import Data.GI.Base (set, nullToNothing)
 import GI.Gtk.Objects.Widget
        (widgetShow, widgetDestroy, widgetHide)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
@@ -539,7 +541,7 @@ fileOpen = do
     widgetShow dialog
     response <- dialogRun' dialog
     when (response == ResponseTypeAccept) $
-        fileChooserGetFilename dialog >>= mapM_ fileOpen'
+        nullToNothing (fileChooserGetFilename dialog) >>= mapM_ fileOpen'
     widgetDestroy dialog
 
 fileOpen' :: FilePath -> IDEAction

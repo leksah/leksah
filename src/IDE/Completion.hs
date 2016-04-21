@@ -40,7 +40,7 @@ import GI.Gtk.Objects.Window
         windowDefaultWidth, windowResizable, windowDecorated,
         windowTypeHint, windowResize)
 import Data.GI.Base
-       (unsafeManagedPtrGetPtr, unsafeCastTo, get, set)
+       (unsafeManagedPtrGetPtr, unsafeCastTo, get, set, nullToNothing)
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gdk.Enums (GrabStatus(..), WindowTypeHint(..))
 import GI.Gtk.Objects.Container
@@ -93,7 +93,7 @@ import GI.Gdk.Objects.Cursor (noCursor)
 import GI.Gdk.Structs.EventMotion
        (eventMotionReadY, eventMotionReadX)
 import GI.Gtk.Structs.TreePath (treePathGetIndices, TreePath(..))
-import GI.Gdk.Structs.Rectangle
+import Graphics.UI.Frame.Rectangle
        (rectangleReadHeight, rectangleReadWidth, rectangleReadY,
         rectangleReadX, Rectangle(..))
 import GI.Gdk.Objects.Window (windowGetOrigin)
@@ -245,7 +245,7 @@ addEventHandling window sourceView tree store isWordChar always = do
         Just model  <- treeViewGetModel tree
         selection   <- treeViewGetSelection tree
         count       <- treeModelIterNChildren model Nothing
-        Just column <- treeViewGetColumn tree 0
+        Just column <- nullToNothing $ treeViewGetColumn tree 0
         let whenVisible f = get tree widgetVisible >>= \case
                                 True  -> f
                                 False -> return False
@@ -311,7 +311,7 @@ addEventHandling window sourceView tree store isWordChar always = do
         y          <- eventButtonReadY e
         time       <- eventButtonReadTime e
 
-        widgetGetWindow window >>= \case
+        nullToNothing (widgetGetWindow window) >>= \case
             Nothing -> return ()
             Just drawWindow -> do
                 status <- pointerGrab
@@ -462,13 +462,13 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                     Nothing -> return ()
                     Just drawWindow -> do
                         (_, ox, oy)  <- windowGetOrigin drawWindow
-                        Just namesSW <- widgetGetParent tree
+                        Just namesSW <- nullToNothing $ widgetGetParent tree
                         rNames       <- widgetGetAllocation namesSW
                         wNames       <- rectangleReadWidth rNames
                         hNames       <- rectangleReadHeight rNames
-                        paned        <- widgetGetParent namesSW >>= liftIO . unsafeCastTo Paned . fromJust
-                        Just first   <- panedGetChild1 paned
-                        Just second  <- panedGetChild2 paned
+                        paned        <- nullToNothing (widgetGetParent namesSW) >>= liftIO . unsafeCastTo Paned . fromJust
+                        Just first   <- nullToNothing $ panedGetChild1 paned
+                        Just second  <- nullToNothing $ panedGetChild2 paned
                         screen       <- windowGetScreen window
                         monitor      <- screenGetMonitorAtPoint screen (ox+fromIntegral x) (oy+fromIntegral y)
                         monitorLeft  <- screenGetMonitorAtPoint screen (ox+fromIntegral x-wWindow+wNames) (oy+fromIntegral y)

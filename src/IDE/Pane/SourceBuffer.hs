@@ -162,7 +162,7 @@ import GI.Gtk.Objects.Dialog
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.Window
        (setWindowTitle, windowWindowPosition, windowSetTransientFor)
-import Data.GI.Base (set)
+import Data.GI.Base (set, nullToNothing)
 import GI.Gtk.Objects.Widget
        (widgetHide, widgetShow, widgetDestroy)
 import GI.Gtk.Objects.Notebook
@@ -970,7 +970,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
             widgetShow dialog
             response <- dialogRun' dialog
             mbFileName <- case response of
-                    ResponseTypeAccept      -> fileChooserGetFilename dialog
+                    ResponseTypeAccept      -> nullToNothing $ fileChooserGetFilename dialog
                     ResponseTypeCancel      -> return Nothing
                     ResponseTypeDeleteEvent -> return Nothing
                     _                       -> return Nothing

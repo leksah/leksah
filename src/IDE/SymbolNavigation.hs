@@ -32,6 +32,7 @@ import IDE.Core.State (reflectIDE)
 import Control.Applicative ((<$>))
 import Data.Text (Text)
 import qualified Data.Text as T (length)
+import Data.GI.Base (nullToNothing)
 import GI.Gtk.Objects.ScrolledWindow
        (getScrolledWindowVadjustment, getScrolledWindowHadjustment,
         ScrolledWindow(..))
@@ -46,7 +47,7 @@ import GI.Gdk.Structs.EventCrossing (eventCrossingReadTime)
 import GI.Gdk.Functions (pointerGrab, pointerUngrab)
 import GI.Gtk.Objects.Adjustment (adjustmentGetValue)
 import GI.Gdk.Flags (EventMask(..), ModifierType(..))
-import GI.Gdk.Structs.Rectangle
+import Graphics.UI.Frame.Rectangle
        (rectangleReadHeight, rectangleReadWidth)
 import GI.Gdk.Objects.Screen (screenGetDefault)
 import qualified GI.Gdk.Objects.Window as Gdk (noWindow)
@@ -109,7 +110,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                         else do
                             applyTagByName tvb "link" beg en
                             screen <- screenGetDefault
-                            widgetGetWindow tv >>= \case
+                            nullToNothing (widgetGetWindow tv) >>= \case
                                 Nothing -> return ()
                                 Just dw -> do
                                     pointerGrab dw False

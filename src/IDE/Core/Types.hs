@@ -100,6 +100,7 @@ module IDE.Core.Types (
 ,   KeyVal
 ) where
 
+import Control.Applicative (Applicative)
 import qualified IDE.YiConfig as Yi
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
@@ -228,7 +229,7 @@ data IDEState =
     |   IsCompleting Connections
 
 
-class (Functor m, Monad m, MonadIO m) => MonadIDE m where
+class (Applicative m, Monad m, MonadIO m) => MonadIDE m where
     liftIDE :: IDEM a -> m a
 
 instance MonadIDE IDEM where

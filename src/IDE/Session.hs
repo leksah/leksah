@@ -26,8 +26,8 @@ module IDE.Session (
 ,   viewFullScreen
 ) where
 
-import Prelude hiding (catch)
-import Control.Applicative ((<$>))
+import Prelude ()
+import Prelude.Compat
 import System.FilePath
 import qualified Data.Map as Map
 import Data.Maybe
@@ -87,7 +87,7 @@ import GI.Gtk.Objects.Paned (panedSetPosition, panedGetPosition)
 import GI.Gtk.Objects.Notebook
        (notebookSetCurrentPage, notebookSetTabPos, notebookSetShowTabs,
         notebookGetCurrentPage, notebookGetTabPos, notebookGetShowTabs)
-import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base (unsafeCastTo, nullToNothing)
 import Control.Arrow (Arrow(..))
 import qualified Data.Text as T (unpack, pack)
 import Data.Monoid ((<>))
@@ -433,7 +433,7 @@ loadSessionPrompt = do
     res <- dialogRun' dialog
     case res of
         ResponseTypeAccept  ->  do
-            fileName <- fileChooserGetFilename dialog
+            fileName <- nullToNothing $ fileChooserGetFilename dialog
             widgetHide dialog
             mapM_ loadSession fileName
         _ -> widgetHide dialog
@@ -506,7 +506,7 @@ mkLayout = do
         current     <-  fromIntegral <$> notebookGetCurrentPage nb
         size <- case detachedId raw of
             Just _  -> do
-                parent <- widgetGetParent nb >>= liftIO . unsafeCastTo Window . fromJust
+                parent <- nullToNothing (widgetGetParent nb) >>= liftIO . unsafeCastTo Window . fromJust
                 Just . (fromIntegral *** fromIntegral) <$> windowGetSize parent
             Nothing -> return $ detachedSize raw
         return raw {

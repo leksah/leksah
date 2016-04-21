@@ -26,6 +26,9 @@ module IDE.Pane.Grep (
 ,   getGrep
 ) where
 
+import Prelude ()
+import Prelude.Compat
+import Control.Applicative (Applicative)
 import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec hiding(Parser)
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -42,7 +45,6 @@ import IDE.LogRef (logOutput, defaultLineLogger)
 import IDE.Pane.SourceBuffer
     (goToSourceDefinition, maybeActiveBuf, IDEBuffer(..))
 import IDE.TextEditor (grabFocus)
-import Control.Applicative ((<$>))
 import System.FilePath ((</>), dropFileName)
 import System.Exit (ExitCode(..))
 import IDE.Pane.Log (getLog, getDefaultLogLaunch)
@@ -257,7 +259,7 @@ int = fromInteger <$> P.integer lexer
 
 
 -- | Tries to get the currently selected record in the pane
-getSelectionGrepRecord :: MonadIO m
+getSelectionGrepRecord :: (Applicative m, MonadIO m)
                        => TreeView
                        -> ForestStore GrepRecord
                        -> m (Maybe GrepRecord)

@@ -72,9 +72,9 @@ import GI.Gtk.Objects.Widget
         onWidgetKeyPressEvent, onWidgetButtonReleaseEvent,
         onWidgetButtonPressEvent, afterWidgetFocusInEvent, widgetGrabFocus,
         toWidget, widgetGetParent, widgetGetWindow)
-import GI.Gdk.Structs.Rectangle
+import Graphics.UI.Frame.Rectangle
        (rectangleHeight, rectangleWidth, rectangleY, rectangleX,
-        Rectangle(..))
+        newRectangle)
 import Data.GI.Base.ManagedPtr (withManagedPtr, unsafeCastTo)
 import GI.Gdk.Flags (ModifierType(..), EventMask(..))
 import GI.Gdk.Structs.EventButton (eventButtonReadState)
@@ -83,6 +83,7 @@ import Foreign.Ptr (castPtr)
 import Data.GI.Base.BasicConversions (gflagsToWord)
 import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
+import Data.GI.Base.BasicTypes (nullToNothing)
 
 #ifdef LEKSAH_WITH_CODE_MIRROR
 import Control.Monad (unless)
@@ -373,7 +374,7 @@ instance TextEditor CodeMirror where
     getBuffer (CMView cm) = return $ CMBuffer cm
     getWindow (CMView cm) = runCM cm $ do
         v <- webView
-        widgetGetWindow v
+        nullToNothing $ widgetGetWindow v
     getIterAtLocation (CMView cm) x y = runCM cm $ do
         m <- codeMirror
         lift $ do
@@ -389,13 +390,13 @@ instance TextEditor CodeMirror where
             r <- rect ^. right
             t <- rect ^. top
             b <- rect ^. bottom
-            new Rectangle [
+            newRectangle [
                 rectangleX := (round l),
                 rectangleY := (round t),
                 rectangleWidth := (round $ r - l),
                 rectangleHeight := (round $ b - t)]
     getOverwrite (CMView cm) = return False -- TODO
-    getScrolledWindow (CMView (v,_)) = widgetGetParent v >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
+    getScrolledWindow (CMView (v,_)) = nullToNothing (widgetGetParent v) >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
     getEditorWidget (CMView (v,_)) = liftIO $ toWidget v
     grabFocus (CMView cm) = runCM cm $ do
         v <- webView

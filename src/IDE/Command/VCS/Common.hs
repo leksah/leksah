@@ -47,7 +47,7 @@ import qualified GI.Gtk.Objects.MenuItem as Gtk
 import GI.Gtk.Objects.MenuItem (MenuItem(..), onMenuItemActivate)
 import qualified GI.Gtk.Objects.MenuShell as Gtk (menuShellAppend)
 import qualified GI.Gtk.Objects.Widget as Gtk (widgetShowAll)
-import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base (unsafeCastTo, nullToNothing)
 import GI.Gtk.Objects.Menu (Menu(..))
 
 
@@ -146,7 +146,7 @@ runSetupRepoActionWithContext packageFp = do
 workspaceSetVCSConfig :: FilePath -> Maybe VCSConf -> IDEAction
 workspaceSetVCSConfig pathToPackage mbVCSConf = do
     vcsItem <- GUIUtils.getVCS
-    vcsMenu <- Gtk.menuItemGetSubmenu vcsItem >>= liftIO . unsafeCastTo Menu . fromJust
+    vcsMenu <- nullToNothing (Gtk.menuItemGetSubmenu vcsItem) >>= liftIO . unsafeCastTo Menu . fromJust
     setMenuForPackage vcsMenu pathToPackage mbVCSConf
     modifyIDE_ (\ide -> do
         let oldWs = fromJust (workspace ide)

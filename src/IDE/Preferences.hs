@@ -75,7 +75,7 @@ import IDE.Metainfo.Provider (getAllPackageIds)
 import GI.Gtk.Objects.Dialog
        (onDialogResponse, dialogResponse, dialogGetActionArea,
         dialogGetContentArea, dialogNew)
-import Data.GI.Base (unsafeCastTo, set)
+import Data.GI.Base (unsafeCastTo, set, nullToNothing)
 import GI.Gtk.Objects.Window
        (windowSetDefaultSize, windowTitle, windowTransientFor)
 import Data.GI.Base.Attributes (AttrOp(..))
@@ -864,7 +864,7 @@ styleEditor p n = do
     styleManager <- styleSchemeManagerNew
     dataDir <- getDataDir
     styleSchemeManagerAppendSearchPath styleManager . T.pack $ dataDir </> "data/styles"
-    ids <- fromMaybe [] <$> styleSchemeManagerGetSchemeIds styleManager
+    ids <- fromMaybe [] <$> nullToNothing (styleSchemeManagerGetSchemeIds styleManager)
     let notDarkIds = filter (not . T.isSuffixOf "-dark") ids
     disableEditor (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
 

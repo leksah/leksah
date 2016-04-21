@@ -18,6 +18,8 @@ module IDE.Leksah (
     leksah
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Control.Concurrent
 import Data.IORef
 import Data.Maybe
@@ -25,7 +27,6 @@ import qualified Data.Map as Map
 import System.Console.GetOpt
 import System.Environment
 import Data.Version
-import Prelude hiding(catch)
 
 import qualified IDE.OSX as OSX
 import qualified IDE.YiConfig as Yi
@@ -106,7 +107,7 @@ import GI.Gtk.Enums
         WindowPosition(..), FileChooserAction(..))
 import GI.Gtk.Objects.Dialog
        (dialogRun, dialogResponse, dialogGetContentArea, dialogNew)
-import Data.GI.Base (unsafeCastTo, set)
+import Data.GI.Base (unsafeCastTo, set, nullToNothing)
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Box (Box(..))
@@ -454,7 +455,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         mapM_ instrumentSecWindow (tail wins)
 
         onWidgetRealize win $
-            widgetGetWindow win >>= mapM_ OSX.allowFullscreen
+            nullToNothing (widgetGetWindow win) >>= mapM_ OSX.allowFullscreen
 
         liftIO $ debugM "leksah" "Show main window"
         widgetShowAll win

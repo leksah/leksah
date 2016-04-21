@@ -35,7 +35,7 @@ import GI.Gtk.Objects.Window
         windowDefaultWidth, windowResizable, windowDecorated,
         windowTypeHint, windowNew, windowGetSize)
 import GI.Gtk.Enums (WindowPosition(..), WindowType(..))
-import Data.GI.Base (on, set)
+import Data.GI.Base (on, set, nullToNothing)
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gdk.Enums (WindowTypeHint(..))
 import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
@@ -197,7 +197,7 @@ handleKeyRelease tree ideR e = do
                 IsFlipping _tv ->
                     treeViewGetCursor tree >>= \case
                         (Just treePath, _) -> do
-                            Just column <- treeViewGetColumn tree 0
+                            Just column <- nullToNothing (treeViewGetColumn tree 0)
                             treeViewRowActivated tree treePath column
                             return False
                         _ -> return False

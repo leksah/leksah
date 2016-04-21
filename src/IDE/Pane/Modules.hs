@@ -32,17 +32,18 @@ module IDE.Pane.Modules (
 ,   addModule
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Tree
-import Data.List
+import Data.List (find, elemIndex, foldl', nub, partition, sort)
 import Distribution.Package
 import Distribution.Version
 import Data.Char (toLower)
-import Prelude hiding (catch)
 import Data.IORef
 import IDE.Core.State
 import IDE.Pane.Info
@@ -51,7 +52,6 @@ import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
 import Control.Exception (SomeException(..),catch)
-import Control.Applicative ((<$>))
 import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
 import Distribution.PackageDescription
        (PackageDescription, BuildInfo, hsSourceDirs,
@@ -105,7 +105,7 @@ import GI.Gtk.Objects.Paned
        (panedAdd2, panedAdd1, panedSetPosition, panedGetPosition)
 import GI.Gtk.Objects.CellRendererPixbuf
        (cellRendererPixbufStockId, cellRendererPixbufNew)
-import Data.GI.Base (unsafeCastTo, on, set)
+import Data.GI.Base (unsafeCastTo, on, set, nullToNothing)
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.CellRendererText
        (cellRendererTextText, cellRendererTextNew)
@@ -135,7 +135,7 @@ import GI.Gtk.Objects.ScrolledWindow
         scrolledWindowNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Container (containerAdd)
-import GI.Gdk.Structs.Rectangle
+import Graphics.UI.Frame.Rectangle
        (rectangleReadY, rectangleReadX, Rectangle(..))
 import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
 import GI.Gtk.Objects.Box (boxReorderChild, Box(..), boxSetSpacing)
@@ -510,17 +510,17 @@ selectIdentifier'  moduleName symbol =
                 treeViewExpandToPath (treeView mods) treePath
                 sel         <-  treeViewGetSelection (treeView mods)
                 treeSelectionSelectPath sel treePath
-                Just col    <-  treeViewGetColumn (treeView mods) 0
+                Just col    <-  nullToNothing $ treeViewGetColumn (treeView mods) 0
                 treeViewScrollToCell (treeView mods) (Just treePath) (Just col) True 0.3 0.3
                 mbFacetTree <-  forestStoreGetTreeSave (descrStore mods) =<< treePathNewFromIndices' []
                 selF        <-  treeViewGetSelection (descrView mods)
                 case  findPathFor symbol mbFacetTree of
                     Nothing     ->  sysMessage Normal (__ "no path found")
                     Just childPath   ->  do
-                        Just path <-  treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
+                        Just path <-  nullToNothing . treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
                         treeViewExpandToPath (descrView mods) path
                         treeSelectionSelectPath selF path
-                        Just col <- treeViewGetColumn (descrView mods) 0
+                        Just col <- nullToNothing $ treeViewGetColumn (descrView mods) 0
                         treeViewScrollToCell (descrView mods) (Just path) (Just col) True 0.3 0.3
                 bringPaneToFront mods
             Nothing         ->  return ()
@@ -608,7 +608,7 @@ searchInFacetSubnodes tree str =
       (concatMap flatten (subForest tree))
 
 -- | Fill facet view with descrs from selected module
-fillFacets :: MonadIO m
+fillFacets :: (Applicative m, MonadIO m)
            => TreeView
            -> ForestStore ModuleRecord
            -> TreeView
@@ -633,7 +633,7 @@ fillFacets treeView forestStore descrView descrStore descrSortedStore = do
         (\_ _ key iter -> descrViewSearch descrView descrStore key iter)
     liftIO $ debugM "leksah" "fillFacets done"
 
-getSelectionTree :: MonadIO m
+getSelectionTree :: (Applicative m, MonadIO m)
                  => TreeView
                  -> ForestStore ModuleRecord
                  -> m (Maybe ModuleRecord)
@@ -646,7 +646,7 @@ getSelectionTree treeView forestStore = do
         a:r ->  Just <$> forestStoreGetValue forestStore a
 
 -- | Get selected Descr, if any
-getSelectionDescr :: MonadIO m
+getSelectionDescr :: (Applicative m, MonadIO m)
                   => TreeView
                   -> ForestStore Descr
                   -> TypedTreeModelSort Descr
@@ -657,12 +657,12 @@ getSelectionDescr treeView forestStore descrSortedStore = do
     paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         a:_ ->  do
-            Just unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
+            Just unsorteda <- nullToNothing $ treeModelSortConvertPathToChildPath descrSortedStore a
             Just <$> forestStoreGetValue forestStore unsorteda
         _  ->  return Nothing
 
 -- | Fill info pane with selected Descr if any
-fillInfo :: MonadIO m
+fillInfo :: (Applicative m, MonadIO m)
          => TreeView
          -> ForestStore Descr
          -> TypedTreeModelSort Descr
@@ -675,7 +675,7 @@ fillInfo treeView lst descrSortedStore ideR  = do
     case paths of
         []      ->  return ()
         [a]     ->  do
-            Just unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
+            Just unsorteda <- nullToNothing $ treeModelSortConvertPathToChildPath descrSortedStore a
             descr    <-  forestStoreGetValue lst unsorteda
             liftIO $ reflectIDE (setInfo descr) ideR
             return ()
@@ -1054,7 +1054,7 @@ descrViewSelect :: IDERef
               -> IO ()
 descrViewSelect ideR store descrSortedStore path _ = do
     liftIO $ debugM "leksah" "descrViewSelect"
-    Just unsortedp <- treeModelSortConvertPathToChildPath descrSortedStore path
+    Just unsortedp <- nullToNothing $ treeModelSortConvertPathToChildPath descrSortedStore path
     descr <- forestStoreGetValue store unsortedp
     reflectIDE (goToDefinition descr) ideR
 
@@ -1152,7 +1152,7 @@ selectNames (mbModuleName, mbIdName) = do
                         treeViewExpandToPath (treeView mods) treePath
                         sel         <-  treeViewGetSelection (treeView mods)
                         treeSelectionSelectPath sel treePath
-                        Just col    <-  treeViewGetColumn (treeView mods) 0
+                        Just col    <-  nullToNothing $ treeViewGetColumn (treeView mods) 0
                         treeViewScrollToCell (treeView mods) (Just treePath) (Just col)
                             True 0.3 0.3
                         case mbIdName of
@@ -1165,9 +1165,9 @@ selectNames (mbModuleName, mbIdName) = do
                                 case  findPathFor symbol mbDescrTree of
                                     Nothing     ->  sysMessage Normal (__ "no path found")
                                     Just childPath   ->  do
-                                        Just path <- treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
+                                        Just path <- nullToNothing . treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
                                         treeSelectionSelectPath selF path
-                                        Just col  <- treeViewGetColumn (descrView mods) 0
+                                        Just col  <- nullToNothing $ treeViewGetColumn (descrView mods) 0
                                         treeViewScrollToCell (descrView mods) (Just path) (Just col)
                                             True 0.3 0.3
 
@@ -1346,7 +1346,7 @@ addModuleLocations addMod = lib (libExposed addMod)
     lib Nothing = []
 
 -- | Creates and runs a "new module" dialog
-addModuleDialog :: MonadIO m
+addModuleDialog :: (Applicative m, MonadIO m)
                 => Window -- ^ The parent window
                 -> Text   -- ^ Will be set as default value for the module name
                 -> [FilePath] -- ^ Possible source directories to add it to

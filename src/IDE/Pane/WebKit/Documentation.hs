@@ -26,6 +26,8 @@ module IDE.Pane.WebKit.Documentation (
   , reloadDoc
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import Data.Typeable (Typeable)

@@ -4,6 +4,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
@@ -84,9 +85,10 @@ module IDE.Core.State (
 
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.IORef
 import Control.Exception
-import Prelude hiding (catch)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import IDE.Core.Types as Reexported
 import Graphics.UI.Frame.Panes as Reexported

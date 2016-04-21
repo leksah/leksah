@@ -40,6 +40,8 @@ module IDE.Pane.Log (
 ,   showDefaultLogLaunch'
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Core.Types(LogLaunch)
@@ -47,7 +49,6 @@ import Control.Monad.Trans (liftIO)
 import Control.Monad.Reader (ask, unless)
 import IDE.Pane.SourceBuffer (markRefInSourceBuf,selectSourceBuf)
 import System.IO
-import Prelude hiding (catch)
 import Control.Exception hiding (try)
 import IDE.ImportTool
        (resolveErrors, addResolveMenuItems)
@@ -94,7 +95,7 @@ import GI.Gtk.Objects.TextBuffer
         textBufferNew)
 import GI.Gtk.Objects.TextTag
        (textTagBackground, textTagForeground, textTagNew)
-import Data.GI.Base (unsafeCastTo, set)
+import Data.GI.Base (unsafeCastTo, set, nullToNothing)
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.TextTagTable
        (noTextTagTable, textTagTableAdd)
@@ -528,7 +529,7 @@ appendLog log logLaunch text tag = do
             textBufferApplyTagByName buf name iter2 strti
 
     textBufferMoveMarkByName buf "end" iter2
-    mbMark <- textBufferGetMark buf "end"
+    mbMark <- nullToNothing $ textBufferGetMark buf "end"
     line   <- textIterGetLine iter2
     F.forM_ mbMark (textViewScrollMarkOnscreen tv)
     return $ fromIntegral line
@@ -542,7 +543,7 @@ markErrorInLog log (l1,l2) = do
         iter2  <- textBufferGetIterAtLineOffset buf (fromIntegral l2) 0
         textBufferSelectRange buf iter iter2
         textBufferMoveMarkByName buf "end" iter
-        textBufferGetMark buf "end" >>= \case
+        nullToNothing (textBufferGetMark buf "end") >>= \case
             Nothing   -> return ()
             Just mark -> textViewScrollToMark tv mark 0.0 True 0.3 0.3
         return False)

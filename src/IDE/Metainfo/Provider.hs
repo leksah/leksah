@@ -39,7 +39,7 @@ module IDE.Metainfo.Provider (
 ) where
 
 import Prelude ()
-import Prelude.Compat hiding(catch, readFile)
+import Prelude.Compat hiding(readFile)
 import System.IO (hClose, openBinaryFile, IOMode(..))
 import System.IO.Strict (readFile)
 import qualified Data.Map as Map

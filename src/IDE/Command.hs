@@ -36,9 +36,10 @@ module IDE.Command (
 ,   instrumentSecWindow
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import System.FilePath
 import Data.Version
-import Prelude hiding (catch)
 import Control.Exception
 import Data.Maybe
 

@@ -33,6 +33,7 @@ module IDE.Pane.PackageEditor (
 ,   standardSetup
 ) where
 
+import Control.Applicative (Applicative)
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Verbosity
@@ -279,7 +280,7 @@ examplePackages = [ "hello"
                   , "ghcjs-dom-hello"
                   , "jsaddle-hello"]
 
-newPackageDialog :: MonadIO m => Window -> FilePath -> m (Maybe NewPackage)
+newPackageDialog :: (Applicative m, MonadIO m) => Window -> FilePath -> m (Maybe NewPackage)
 newPackageDialog parent workspaceDir = do
     dia                <- dialogNew
     set dia [ windowTransientFor := parent

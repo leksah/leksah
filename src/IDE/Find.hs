@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
@@ -32,6 +33,7 @@ module IDE.Find (
 ,   toggleToolbar
 ) where
 
+import Control.Applicative (Applicative)
 import IDE.Core.State
 import IDE.Utils.GUIUtils
 import IDE.TextEditor hiding(afterFocusIn)
@@ -254,7 +256,11 @@ constructFindReplace = do
     replaceTool <- toolItemNew
     rentry <- entryNew
     widgetSetName rentry "replaceEntry"
-    entrySetPlaceholderText rentry $ Just "Replace with"
+    entrySetPlaceholderText rentry
+#if MIN_VERSION_gi_gtk(0,3,18)
+        $ Just
+#endif
+        "Replace with"
     containerAdd replaceTool rentry
     widgetSetName replaceTool "replaceTool"
     toolbarInsert toolbar replaceTool 0
@@ -281,7 +287,11 @@ constructFindReplace = do
     entryTool <- toolItemNew
     entry <- entryNew
     widgetSetName entry "searchEntry"
-    entrySetPlaceholderText entry $ Just "Find"
+    entrySetPlaceholderText entry
+#if MIN_VERSION_gi_gtk(0,3,18)
+        $ Just
+#endif
+        "Find"
     containerAdd entryTool entry
     widgetSetName entryTool "searchEntryTool"
     toolItemSetExpand entryTool True
@@ -379,7 +389,7 @@ constructFindReplace = do
                     return True
              | mapControlCommand ModifierTypeControlMask `elem` mods ->
                         ctrl $ T.toLower name
-             | otherwise -> return False
+           _ -> return False
 
     onIDE afterWidgetFocusInEvent spinL . liftIDE $ inActiveBufContext True $ \ _ _ ebuf _ _ -> do
         max <- getLineCount ebuf
@@ -468,7 +478,7 @@ doGrep fb   = do
     let (regexString, _) = regexStringAndMatchIndex entireWord regex search
     liftIDE $ workspaceTry $ grepWorkspace regexString caseSensitive
 
-matchFunc :: MonadIO m => SeqStore Text -> EntryCompletion -> Text -> TreeIter -> m Bool
+matchFunc :: (Applicative m, MonadIO m) => SeqStore Text -> EntryCompletion -> Text -> TreeIter -> m Bool
 matchFunc model completion str iter = do
   tp <- treeModelGetPath model iter >>= treePathGetIndices
   case tp of
@@ -729,14 +739,14 @@ editGotoLine = do
     entry <- getLineEntry fb
     widgetGrabFocus entry
 
-getLineEntry :: MonadIO m => Toolbar -> m SpinButton
+getLineEntry :: (Applicative m, MonadIO m) => Toolbar -> m SpinButton
 getLineEntry tb    = getWidget "gotoLineEntryTool" tb >>= liftIO . unsafeCastTo SpinButton
 
-getReplaceEntry, getFindEntry :: MonadIO m => Toolbar -> m Entry
+getReplaceEntry, getFindEntry :: (Applicative m, MonadIO m) => Toolbar -> m Entry
 getReplaceEntry tb = getWidget "replaceTool" tb >>= liftIO . unsafeCastTo Entry
 getFindEntry tb    = getWidget "searchEntryTool" tb >>= liftIO . unsafeCastTo Entry
 
-getWidget :: MonadIO m => Text -> Toolbar -> m Widget
+getWidget :: (Applicative m, MonadIO m) => Text -> Toolbar -> m Widget
 getWidget str tb = do
     widgets <- containerGetChildren tb
     entryL <-  filterM (fmap (== str) . widgetGetName) widgets
@@ -744,13 +754,13 @@ getWidget str tb = do
         [w] -> liftIO (unsafeCastTo Bin w) >>= binGetChild
         _   -> throwIDE "Find>>getWidget not found(2)"
 
-getEntireWord, getWrapAround, getCaseSensitive, getRegex :: MonadIO m => Toolbar -> m Bool
+getEntireWord, getWrapAround, getCaseSensitive, getRegex :: (Applicative m, MonadIO m) => Toolbar -> m Bool
 getEntireWord    = getSelection "entireWordButton"
 getWrapAround    = getSelection "wrapAroundButton"
 getCaseSensitive = getSelection "caseSensitiveButton"
 getRegex         = getSelection "regexButton"
 
-getSelection :: MonadIO m => Text -> Toolbar -> m Bool
+getSelection :: (Applicative m, MonadIO m) => Text -> Toolbar -> m Bool
 getSelection str tb = do
     widgets <- containerGetChildren tb
     entryL <-  filterM (fmap (== str) . widgetGetName) widgets
@@ -758,13 +768,13 @@ getSelection str tb = do
         [w] -> liftIO (unsafeCastTo ToggleToolButton w) >>= toggleToolButtonGetActive
         _   -> throwIDE "Find>>getIt widget not found"
 
-setEntireWord, setWrapAround, setCaseSensitive, setRegex :: MonadIO m => Toolbar -> Bool -> m ()
+setEntireWord, setWrapAround, setCaseSensitive, setRegex :: (Applicative m, MonadIO m) => Toolbar -> Bool -> m ()
 setEntireWord    = setSelection "entireWordButton"
 setWrapAround    = setSelection "wrapAroundButton"
 setCaseSensitive = setSelection "caseSensitiveButton"
 setRegex         = setSelection "regexButton"
 
-setSelection :: MonadIO m => Text -> Toolbar -> Bool ->  m ()
+setSelection :: (Applicative m, MonadIO m) => Text -> Toolbar -> Bool ->  m ()
 setSelection str tb bool = do
     widgets <- containerGetChildren tb
     entryL <-  filterM (fmap (== str) . widgetGetName ) widgets

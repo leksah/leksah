@@ -25,6 +25,8 @@ module IDE.Pane.Breakpoints (
 ,   selectBreak
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Debug

@@ -27,6 +27,8 @@ module IDE.Pane.Search (
 ,   getSearch
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.IORef (newIORef, writeIORef, readIORef, IORef(..))
 -- import IDE.Pane.SourceBuffer (goToDefinition)
 import IDE.Metainfo.Provider (searchMeta)
@@ -390,7 +392,7 @@ selectDescr ideR store [i] col = do
 
 selectDescr _ _ _ _ = liftIO $ sysMessage Normal (__ "Search >> selectDescr: invalid path")
 
-getSelectionDescr :: MonadIO m
+getSelectionDescr :: (Applicative m, MonadIO m)
                   => TreeView
                   ->  SeqStore Descr
                   -> m (Maybe Descr)
