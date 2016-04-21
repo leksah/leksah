@@ -373,7 +373,7 @@ instance TextEditor CodeMirror where
     getBuffer (CMView cm) = return $ CMBuffer cm
     getWindow (CMView cm) = runCM cm $ do
         v <- webView
-        Just <$> widgetGetWindow v
+        widgetGetWindow v
     getIterAtLocation (CMView cm) x y = runCM cm $ do
         m <- codeMirror
         lift $ do
@@ -395,7 +395,7 @@ instance TextEditor CodeMirror where
                 rectangleWidth := (round $ r - l),
                 rectangleHeight := (round $ b - t)]
     getOverwrite (CMView cm) = return False -- TODO
-    getScrolledWindow (CMView (v,_)) = widgetGetParent v >>= (liftIO . unsafeCastTo ScrolledWindow)
+    getScrolledWindow (CMView (v,_)) = widgetGetParent v >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
     getEditorWidget (CMView (v,_)) = liftIO $ toWidget v
     grabFocus (CMView cm) = runCM cm $ do
         v <- webView

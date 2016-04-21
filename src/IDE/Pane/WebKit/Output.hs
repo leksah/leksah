@@ -139,9 +139,9 @@ instance RecoverablePane IDEOutput OutputState IDEM where
             key <- eventKeyReadKeyval e >>= keyvalName
             mod <- eventKeyReadState e
             case (key, mod) of
-                ("plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
-                ("minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True
-                ("BackSpace", [ModifierTypeShiftMask]) -> webViewGoBack  webView >> return True
+                (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
+                (Just "minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True
+                (Just "BackSpace", [ModifierTypeShiftMask]) -> webViewGoBack  webView >> return True
                 _                         -> return False)
 
         cid3 <- ConnectC webView <$> onWebViewPopulatePopup webView (\ menu -> do

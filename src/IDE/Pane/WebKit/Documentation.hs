@@ -102,9 +102,9 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
             key <- eventKeyReadKeyval e >>= keyvalName
             mod <- eventKeyReadState e
             case (key, mod) of
-                ("plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
-                ("minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True
-                ("BackSpace", [])         -> webViewGoBack  webView >> return True
+                (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
+                (Just "minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True
+                (Just "BackSpace", [])         -> webViewGoBack  webView >> return True
                 _                         -> return False)
         return (Just docs, [cid1, cid2])
 

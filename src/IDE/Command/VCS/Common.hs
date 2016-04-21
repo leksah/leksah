@@ -146,7 +146,7 @@ runSetupRepoActionWithContext packageFp = do
 workspaceSetVCSConfig :: FilePath -> Maybe VCSConf -> IDEAction
 workspaceSetVCSConfig pathToPackage mbVCSConf = do
     vcsItem <- GUIUtils.getVCS
-    vcsMenu <- Gtk.menuItemGetSubmenu vcsItem >>= liftIO . unsafeCastTo Menu
+    vcsMenu <- Gtk.menuItemGetSubmenu vcsItem >>= liftIO . unsafeCastTo Menu . fromJust
     setMenuForPackage vcsMenu pathToPackage mbVCSConf
     modifyIDE_ (\ide -> do
         let oldWs = fromJust (workspace ide)

@@ -254,21 +254,23 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
                         sysMessage Normal "Linked with -threaded"
                         return Nothing
                     else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
-    screen <- screenGetDefault
-    provider <- cssProviderNew
-    cssProviderLoadFromData provider $
-        B.unlines [ ".window-frame,"
-                  , ".window-frame:backdrop {"
-                  , "  box-shadow: none;"
-                  , "  margin: 0;}"
-                  , "#errorLabel {"
-                  , "  padding: 10px;"
-                  , "  background: #F2DEDE;"
-                  , "  color: #A94442;"
-                  , "  border: 1px solid #EBCCD1;"
-                  , "  border-radius: 5px;}"
-                  ]
-    styleContextAddProviderForScreen screen provider 600
+    screenGetDefault >>= \case
+        Nothing -> return ()
+        Just screen -> do
+            provider <- cssProviderNew
+            cssProviderLoadFromData provider $
+                B.unlines [ ".window-frame,"
+                          , ".window-frame:backdrop {"
+                          , "  box-shadow: none;"
+                          , "  margin: 0;}"
+                          , "#errorLabel {"
+                          , "  padding: 10px;"
+                          , "  background: #F2DEDE;"
+                          , "  color: #A94442;"
+                          , "  border: 1px solid #EBCCD1;"
+                          , "  border-radius: 5px;}"
+                          ]
+            styleContextAddProviderForScreen screen provider 600
     dataDir       <- getDataDir
     mbStartupPrefs <- if not isFirstStart
                                 then return $ Just iprefs
@@ -452,7 +454,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         mapM_ instrumentSecWindow (tail wins)
 
         onWidgetRealize win $
-            widgetGetWindow win >>= OSX.allowFullscreen
+            widgetGetWindow win >>= mapM_ OSX.allowFullscreen
 
         liftIO $ debugM "leksah" "Show main window"
         widgetShowAll win

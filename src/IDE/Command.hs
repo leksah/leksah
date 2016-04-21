@@ -847,21 +847,21 @@ instrumentSecWindow win = do
 handleSpecialKeystrokes :: IDERef -> EventKey -> IO Bool
 handleSpecialKeystrokes ideR e = do
   keyVal <- eventKeyReadKeyval e
-  name <- keyvalName keyVal
+  name <- fromMaybe "" <$> keyvalName keyVal
   mods <- eventKeyReadState e
   char <- toEnum . fromIntegral <$> keyvalToUnicode keyVal
   liftIO $ (`reflectIDE` ideR) $ do
     prefs' <- readIDE prefs
     case (name, mods) of
         (tab, [ModifierTypeControlMask]) | (tab == "Tab" || tab == "ISO_Left_Tab")
-                                && useCtrlTabFlipping prefs'      -> do
+                                && useCtrlTabFlipping prefs'  -> do
             flipDown
             return True
         (tab, [ModifierTypeShiftMask, ModifierTypeControlMask]) | (tab == "Tab" || tab == "ISO_Left_Tab")
-                                && useCtrlTabFlipping prefs'      -> do
+                                && useCtrlTabFlipping prefs'  -> do
             flipUp
             return True
-        _                                                            -> do
+        _                                                     -> do
                 when (candyState prefs') (editKeystrokeCandy char)
                 sk  <- readIDE specialKey
                 sks <- readIDE specialKeys

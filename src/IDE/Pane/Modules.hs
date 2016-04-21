@@ -510,17 +510,17 @@ selectIdentifier'  moduleName symbol =
                 treeViewExpandToPath (treeView mods) treePath
                 sel         <-  treeViewGetSelection (treeView mods)
                 treeSelectionSelectPath sel treePath
-                col         <-  treeViewGetColumn (treeView mods) 0
+                Just col    <-  treeViewGetColumn (treeView mods) 0
                 treeViewScrollToCell (treeView mods) (Just treePath) (Just col) True 0.3 0.3
                 mbFacetTree <-  forestStoreGetTreeSave (descrStore mods) =<< treePathNewFromIndices' []
                 selF        <-  treeViewGetSelection (descrView mods)
                 case  findPathFor symbol mbFacetTree of
                     Nothing     ->  sysMessage Normal (__ "no path found")
                     Just childPath   ->  do
-                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
+                        Just path <-  treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
                         treeViewExpandToPath (descrView mods) path
                         treeSelectionSelectPath selF path
-                        col     <-  treeViewGetColumn (descrView mods) 0
+                        Just col <- treeViewGetColumn (descrView mods) 0
                         treeViewScrollToCell (descrView mods) (Just path) (Just col) True 0.3 0.3
                 bringPaneToFront mods
             Nothing         ->  return ()
@@ -657,7 +657,7 @@ getSelectionDescr treeView forestStore descrSortedStore = do
     paths           <-  treeSelectionGetSelectedRows' treeSelection
     case paths of
         a:_ ->  do
-            unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
+            Just unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
             Just <$> forestStoreGetValue forestStore unsorteda
         _  ->  return Nothing
 
@@ -675,7 +675,7 @@ fillInfo treeView lst descrSortedStore ideR  = do
     case paths of
         []      ->  return ()
         [a]     ->  do
-            unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
+            Just unsorteda <- treeModelSortConvertPathToChildPath descrSortedStore a
             descr    <-  forestStoreGetValue lst unsorteda
             liftIO $ reflectIDE (setInfo descr) ideR
             return ()
@@ -1054,7 +1054,7 @@ descrViewSelect :: IDERef
               -> IO ()
 descrViewSelect ideR store descrSortedStore path _ = do
     liftIO $ debugM "leksah" "descrViewSelect"
-    unsortedp <- treeModelSortConvertPathToChildPath descrSortedStore path
+    Just unsortedp <- treeModelSortConvertPathToChildPath descrSortedStore path
     descr <- forestStoreGetValue store unsortedp
     reflectIDE (goToDefinition descr) ideR
 
@@ -1152,7 +1152,7 @@ selectNames (mbModuleName, mbIdName) = do
                         treeViewExpandToPath (treeView mods) treePath
                         sel         <-  treeViewGetSelection (treeView mods)
                         treeSelectionSelectPath sel treePath
-                        col         <-  treeViewGetColumn (treeView mods) 0
+                        Just col    <-  treeViewGetColumn (treeView mods) 0
                         treeViewScrollToCell (treeView mods) (Just treePath) (Just col)
                             True 0.3 0.3
                         case mbIdName of
@@ -1165,9 +1165,9 @@ selectNames (mbModuleName, mbIdName) = do
                                 case  findPathFor symbol mbDescrTree of
                                     Nothing     ->  sysMessage Normal (__ "no path found")
                                     Just childPath   ->  do
-                                        path    <- treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
+                                        Just path <- treeModelSortConvertChildPathToPath (descrSortedStore mods) =<< treePathNewFromIndices' (map fromIntegral childPath)
                                         treeSelectionSelectPath selF path
-                                        col     <-  treeViewGetColumn (descrView mods) 0
+                                        Just col  <- treeViewGetColumn (descrView mods) 0
                                         treeViewScrollToCell (descrView mods) (Just path) (Just col)
                                             True 0.3 0.3
 

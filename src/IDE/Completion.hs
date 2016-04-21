@@ -102,6 +102,7 @@ import GI.Gdk.Objects.Screen
        (screenGetHeight, screenGetWidth, screenGetMonitorAtPoint)
 import Data.GI.Gtk.ModelView.Types
        (treePathGetIndices', treePathNewFromIndices')
+import Data.Maybe (fromJust)
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -241,10 +242,10 @@ addEventHandling window sourceView tree store isWordChar always = do
         name        <- keyvalName keyVal
         modifier    <- eventKeyReadState e
         char        <- toEnum . fromIntegral <$> keyvalToUnicode keyVal
-        model       <- treeViewGetModel tree
+        Just model  <- treeViewGetModel tree
         selection   <- treeViewGetSelection tree
         count       <- treeModelIterNChildren model Nothing
-        column      <- treeViewGetColumn tree 0
+        Just column <- treeViewGetColumn tree 0
         let whenVisible f = get tree widgetVisible >>= \case
                                 True  -> f
                                 False -> return False
@@ -265,10 +266,10 @@ addEventHandling window sourceView tree store isWordChar always = do
                     treeViewScrollToCell tree (Just path) noTreeViewColumn False 0 0
                 return True
         case (name, modifier, char) of
-            ("Tab", _, _) -> whenVisible . liftIDE $ do
+            (Just "Tab", _, _) -> whenVisible . liftIDE $ do
                 tryToUpdateOptions window tree store sourceView True isWordChar always
                 return True
-            ("Return", _, _) -> whenVisible $ do
+            (Just "Return", _, _) -> whenVisible $ do
                 maybeRow <- liftIO $ getRow tree
                 case maybeRow of
                     Just row -> do
@@ -278,17 +279,17 @@ addEventHandling window sourceView tree store isWordChar always = do
                     Nothing -> do
                         liftIDE cancel
                         return False
-            ("Down", _, _) -> down
-            ("Up", _, _) -> up
-            (super, _, 'a') | super `elem` ["Super_L", "Super_R"] -> do
+            (Just "Down", _, _) -> down
+            (Just "Up", _, _) -> up
+            (Just super, _, 'a') | super `elem` ["Super_L", "Super_R"] -> do
                 liftIO $ debugM "leksah" "Completion - Super 'a' key press"
                 down
-            (super, _, 'l') | super `elem` ["Super_L", "Super_R"] -> do
+            (Just super, _, 'l') | super `elem` ["Super_L", "Super_R"] -> do
                 liftIO $ debugM "leksah" "Completion - Super 'l' key press"
                 up
             (_, _, c) | isWordChar c -> return False
-            ("BackSpace", _, _) -> return False
-            (key, _, _) | key `elem` ["Shift_L", "Shift_R", "Super_L", "Super_R"] -> return False
+            (Just "BackSpace", _, _) -> return False
+            (Just key, _, _) | key `elem` ["Shift_L", "Shift_R", "Super_L", "Super_R"] -> return False
             _ -> do liftIDE cancel
                     return False
 
@@ -297,7 +298,7 @@ addEventHandling window sourceView tree store isWordChar always = do
         name     <- eventKeyReadKeyval e >>= keyvalName
         modifier <- eventKeyReadState e
         case (name, modifier) of
-            ("BackSpace", _) -> do
+            (Just "BackSpace", _) -> do
                 liftIDE $ complete sourceView False
                 return False
             _ -> return False
@@ -310,19 +311,21 @@ addEventHandling window sourceView tree store isWordChar always = do
         y          <- eventButtonReadY e
         time       <- eventButtonReadTime e
 
-        drawWindow <- widgetGetWindow window
-        status <- pointerGrab
-            drawWindow
-            False
-            [EventMaskPointerMotionMask, EventMaskButtonReleaseMask]
-            Gdk.noWindow
-            noCursor
-            time
-        when (status == GrabStatusSuccess) $ do
-            (width, height) <- windowGetSize window
-            liftIO $ writeIORef resizeHandler $ Just $ \newX newY ->
-                reflectIDE (
-                    setCompletionSize (fromIntegral width + floor (newX - x)) (fromIntegral height + floor (newY - y))) ideR
+        widgetGetWindow window >>= \case
+            Nothing -> return ()
+            Just drawWindow -> do
+                status <- pointerGrab
+                    drawWindow
+                    False
+                    [EventMaskPointerMotionMask, EventMaskButtonReleaseMask]
+                    Gdk.noWindow
+                    noCursor
+                    time
+                when (status == GrabStatusSuccess) $ do
+                    (width, height) <- windowGetSize window
+                    liftIO $ writeIORef resizeHandler $ Just $ \newX newY ->
+                        reflectIDE (
+                            setCompletionSize (fromIntegral width + floor (newX - x)) (fromIntegral height + floor (newY - y))) ideR
 
         return True)
 
@@ -459,13 +462,13 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                     Nothing -> return ()
                     Just drawWindow -> do
                         (_, ox, oy)  <- windowGetOrigin drawWindow
-                        namesSW      <- widgetGetParent tree
+                        Just namesSW <- widgetGetParent tree
                         rNames       <- widgetGetAllocation namesSW
                         wNames       <- rectangleReadWidth rNames
                         hNames       <- rectangleReadHeight rNames
-                        paned        <- widgetGetParent namesSW >>= liftIO . unsafeCastTo Paned
-                        first        <- panedGetChild1 paned
-                        second       <- panedGetChild2 paned
+                        paned        <- widgetGetParent namesSW >>= liftIO . unsafeCastTo Paned . fromJust
+                        Just first   <- panedGetChild1 paned
+                        Just second  <- panedGetChild2 paned
                         screen       <- windowGetScreen window
                         monitor      <- screenGetMonitorAtPoint screen (ox+fromIntegral x) (oy+fromIntegral y)
                         monitorLeft  <- screenGetMonitorAtPoint screen (ox+fromIntegral x-wWindow+wNames) (oy+fromIntegral y)
@@ -504,10 +507,9 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                 replaceWordStart sourceView isWordChar newWordStart
 
 getRow tree = do
-    model <- treeViewGetModel tree
-    selection <- treeViewGetSelection tree
-    maybeIter <- treeSelectionGetSelected selection
-    case maybeIter of
+    Just model <- treeViewGetModel tree
+    selection  <- treeViewGetSelection tree
+    treeSelectionGetSelected selection >>= \case
         (True, _, iter) -> do
             [row] <- treeModelGetPath model iter >>= treePathGetIndices
             return $ Just row

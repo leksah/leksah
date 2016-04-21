@@ -864,7 +864,7 @@ styleEditor p n = do
     styleManager <- styleSchemeManagerNew
     dataDir <- getDataDir
     styleSchemeManagerAppendSearchPath styleManager . T.pack $ dataDir </> "data/styles"
-    ids          <- styleSchemeManagerGetSchemeIds styleManager
+    ids <- fromMaybe [] <$> styleSchemeManagerGetSchemeIds styleManager
     let notDarkIds = filter (not . T.isSuffixOf "-dark") ids
     disableEditor (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
 

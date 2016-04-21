@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.SymbolNavigation
@@ -108,11 +109,13 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                         else do
                             applyTagByName tvb "link" beg en
                             screen <- screenGetDefault
-                            dw <- widgetGetWindow tv
-                            pointerGrab dw False
-                                [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
-                                Gdk.noWindow (Just cursor) eventTime
-                            return ()
+                            widgetGetWindow tv >>= \case
+                                Nothing -> return ()
+                                Just dw -> do
+                                    pointerGrab dw False
+                                        [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
+                                        Gdk.noWindow (Just cursor) eventTime
+                                    return ()
                   else do
                     pointerUngrab eventTime
                     return ()

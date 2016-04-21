@@ -435,7 +435,7 @@ loadSessionPrompt = do
         ResponseTypeAccept  ->  do
             fileName <- fileChooserGetFilename dialog
             widgetHide dialog
-            loadSession fileName
+            mapM_ loadSession fileName
         _ -> widgetHide dialog
 
 loadSession :: FilePath -> IDEAction
@@ -506,7 +506,7 @@ mkLayout = do
         current     <-  fromIntegral <$> notebookGetCurrentPage nb
         size <- case detachedId raw of
             Just _  -> do
-                parent <- widgetGetParent nb >>= liftIO . unsafeCastTo Window
+                parent <- widgetGetParent nb >>= liftIO . unsafeCastTo Window . fromJust
                 Just . (fromIntegral *** fromIntegral) <$> windowGetSize parent
             Nothing -> return $ detachedSize raw
         return raw {

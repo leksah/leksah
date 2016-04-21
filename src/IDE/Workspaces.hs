@@ -539,7 +539,7 @@ fileOpen = do
     widgetShow dialog
     response <- dialogRun' dialog
     when (response == ResponseTypeAccept) $
-        fileChooserGetFilename dialog >>= fileOpen'
+        fileChooserGetFilename dialog >>= mapM_ fileOpen'
     widgetDestroy dialog
 
 fileOpen' :: FilePath -> IDEAction

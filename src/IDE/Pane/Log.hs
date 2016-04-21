@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE LambdaCase #-}
 --
 -- Module      :  IDE.Pane.Log
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
@@ -527,9 +528,9 @@ appendLog log logLaunch text tag = do
             textBufferApplyTagByName buf name iter2 strti
 
     textBufferMoveMarkByName buf "end" iter2
-    mark <- textBufferGetMark buf "end"
-    line <- textIterGetLine iter2
-    textViewScrollMarkOnscreen tv mark
+    mbMark <- textBufferGetMark buf "end"
+    line   <- textIterGetLine iter2
+    F.forM_ mbMark (textViewScrollMarkOnscreen tv)
     return $ fromIntegral line
 
 markErrorInLog :: IDELog -> (Int,Int) -> IDEAction
@@ -541,8 +542,9 @@ markErrorInLog log (l1,l2) = do
         iter2  <- textBufferGetIterAtLineOffset buf (fromIntegral l2) 0
         textBufferSelectRange buf iter iter2
         textBufferMoveMarkByName buf "end" iter
-        mark <- textBufferGetMark buf "end"
-        textViewScrollToMark tv mark 0.0 True 0.3 0.3
+        textBufferGetMark buf "end" >>= \case
+            Nothing   -> return ()
+            Just mark -> textViewScrollToMark tv mark 0.0 True 0.3 0.3
         return False)
     return ()
 

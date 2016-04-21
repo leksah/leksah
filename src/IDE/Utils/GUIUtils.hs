@@ -157,7 +157,7 @@ chooseDir window prompt mbFolder = do
         ResponseTypeAccept -> do
             fn <- fileChooserGetFilename dialog
             widgetDestroy dialog
-            return $ Just fn
+            return fn
         ResponseTypeCancel -> do
             widgetDestroy dialog
             return Nothing
@@ -188,7 +188,7 @@ chooseFile window prompt mbFolder filters = do
         ResponseTypeAccept -> do
             fn <- fileChooserGetFilename dialog
             widgetDestroy dialog
-            return $ Just fn
+            return fn
         ResponseTypeCancel -> do
             widgetDestroy dialog
             return Nothing
@@ -219,7 +219,7 @@ chooseSaveFile window prompt mbFolder = do
         ResponseTypeAccept  ->  do
             fileName <- fileChooserGetFilename dialog
             widgetDestroy dialog
-            return $ Just fileName
+            return fileName
         _               ->  do
             widgetDestroy dialog
             return Nothing

@@ -354,25 +354,26 @@ constructFindReplace = do
             toggleToolButtonSetActive btn $ not old
 
     onWidgetKeyPressEvent entry $ \e -> do
-        name <- eventKeyReadKeyval e >>= keyvalName
+        mbName <- eventKeyReadKeyval e >>= keyvalName
         mods <- eventKeyReadState e
-        case name of
-            "Down"   -> doSearch toolbar Forward ideR >> return True
-            "Up"     -> doSearch toolbar Backward ideR >> return True
-            "Escape" -> getOut ideR >> return True
-            "Tab"    -> do
+        case mbName of
+            Just "Down"   -> doSearch toolbar Forward ideR >> return True
+            Just "Up"     -> doSearch toolbar Backward ideR >> return True
+            Just "Escape" -> getOut ideR >> return True
+            Just "Tab"    -> do
                 re <- getReplaceEntry toolbar
                 widgetGrabFocus re
                 --- widgetAc
                 return True
-            _ | mapControlCommand ModifierTypeControlMask `elem` mods -> ctrl $ T.toLower name
+            Just name | mapControlCommand ModifierTypeControlMask `elem` mods -> ctrl $ T.toLower name
             _        -> return False
 
     onWidgetKeyPressEvent rentry $ \e -> do
-        name <- eventKeyReadKeyval e >>= keyvalName
+        mbName <- eventKeyReadKeyval e >>= keyvalName
         mods <- eventKeyReadState e
-        case () of
-           _ | name == "Tab" || name == "ISO_Left_Tab" -> do
+        case mbName of
+           Just name
+             | name == "Tab" || name == "ISO_Left_Tab" -> do
                     fe <- getFindEntry toolbar
                     widgetGrabFocus fe
                     return True
@@ -386,15 +387,15 @@ constructFindReplace = do
         return True
 
     onWidgetKeyPressEvent spinL $ \e -> do
-        name <- eventKeyReadKeyval e >>= keyvalName
+        mbName <- eventKeyReadKeyval e >>= keyvalName
         mods <- eventKeyReadState e
-        case name of
-            "Escape" -> getOut ideR >> return True
-            "Tab"    -> do
+        case mbName of
+            Just "Escape" -> getOut ideR >> return True
+            Just "Tab"    -> do
                 re <- getFindEntry toolbar
                 widgetGrabFocus re
                 return True
-            _ | mapControlCommand ModifierTypeControlMask `elem` mods -> ctrl $ T.toLower name
+            Just name | mapControlCommand ModifierTypeControlMask `elem` mods -> ctrl $ T.toLower name
             _ -> return False
 
     afterEntryActivate spinL . (`reflectIDE` ideR) $ inActiveBufContext () $ \ _ sv ebuf _ _ -> do

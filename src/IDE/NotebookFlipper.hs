@@ -80,7 +80,7 @@ flipUp = do
 -- | Moves down in the Flipper state
 moveFlipperDown :: TreeViewK alpha => alpha -> IDEAction
 moveFlipperDown tree = do
-    store <- treeViewGetModel tree
+    Just store <- treeViewGetModel tree
     n <- treeModelIterNChildren store Nothing
     when (n /= 0) $ do
         indices <- treeViewGetCursor tree >>= \case
@@ -98,7 +98,7 @@ moveFlipperDown tree = do
 -- | Moves up in the Flipper state
 moveFlipperUp :: TreeViewK alpha => alpha  -> IDEAction
 moveFlipperUp tree = liftIO $ do
-    store <- treeViewGetModel tree
+    Just store <- treeViewGetModel tree
     n <- treeModelIterNChildren store Nothing
     when (n /= 0) $ do
         indices <- treeViewGetCursor tree >>= \case
@@ -191,13 +191,13 @@ handleKeyRelease :: TreeViewK alpha => alpha -> IDERef -> EventKey -> IO Bool
 handleKeyRelease tree ideR e = do
     name <- eventKeyReadKeyval e >>= keyvalName
     case name of
-        ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") -> do
+        Just ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") -> do
             currentState' <- reflectIDE (readIDE currentState) ideR
             case currentState' of
                 IsFlipping _tv ->
                     treeViewGetCursor tree >>= \case
                         (Just treePath, _) -> do
-                            column <- treeViewGetColumn tree 0
+                            Just column <- treeViewGetColumn tree 0
                             treeViewRowActivated tree treePath column
                             return False
                         _ -> return False

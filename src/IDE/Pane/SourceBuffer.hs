@@ -692,30 +692,30 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                                 placeCursor buffer nsel
                         scrollToIter sv nsel 0 Nothing
                 case (name, map mapControlCommand modifier, keyval) of
-                    ("Left",[ModifierTypeControlMask],_) -> do
+                    (Just "Left",[ModifierTypeControlMask],_) -> do
                         calculateNewPosition backwardCharC >>= continueSelection False
                         return True
-                    ("Left",[ModifierTypeShiftMask, ModifierTypeControlMask],_) -> do
+                    (Just "Left",[ModifierTypeShiftMask, ModifierTypeControlMask],_) -> do
                         calculateNewPosition backwardCharC >>= continueSelection True
                         return True
-                    ("Right",[ModifierTypeControlMask],_) -> do
+                    (Just "Right",[ModifierTypeControlMask],_) -> do
                         calculateNewPosition forwardCharC >>= continueSelection False --placeCursor buffer
                         return True
-                    ("Right",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
+                    (Just "Right",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
                         calculateNewPosition forwardCharC >>= continueSelection True
                         return True
-                    ("BackSpace",[ModifierTypeControlMask],_) -> do              -- delete word
+                    (Just "BackSpace",[ModifierTypeControlMask],_) -> do              -- delete word
                         here <- getInsertIter buffer
                         there <- calculateNewPosition backwardCharC
                         delete buffer here there
                         return True
-                    ("underscore",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
+                    (Just "underscore",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
                         (start, end) <- getIdentifierUnderCursor buffer
                         slice <- getSlice buffer start end True
                         triggerEventIDE (SelectInfo slice False)
                         return True
                         -- Redundant should become a go to definition directly
-                    ("minus",[ModifierTypeControlMask],_) -> do
+                    (Just "minus",[ModifierTypeControlMask],_) -> do
                         (start, end) <- getIdentifierUnderCursor buffer
                         slice <- getSlice buffer start end True
                         triggerEventIDE (SelectInfo slice True)
@@ -970,7 +970,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
             widgetShow dialog
             response <- dialogRun' dialog
             mbFileName <- case response of
-                    ResponseTypeAccept      -> Just <$> fileChooserGetFilename dialog
+                    ResponseTypeAccept      -> fileChooserGetFilename dialog
                     ResponseTypeCancel      -> return Nothing
                     ResponseTypeDeleteEvent -> return Nothing
                     _                       -> return Nothing

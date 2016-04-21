@@ -315,7 +315,7 @@ instance TextEditor GtkSourceView where
                 styleManager <- liftIO styleSchemeManagerNew
                 dataDir <- liftIO getDataDir
                 styleSchemeManagerAppendSearchPath styleManager . T.pack $ dataDir </> "data/styles"
-                ids <- styleSchemeManagerGetSchemeIds styleManager
+                ids <- fromMaybe [] <$> styleSchemeManagerGetSchemeIds styleManager
                 let preferedNames = if preferDark then [str<>"-dark", str] else [str]
                 forM_ (take 1 $ filter (`elem` ids) preferedNames) $ \ name -> do
                     scheme <- styleSchemeManagerGetScheme styleManager name
@@ -347,10 +347,10 @@ instance TextEditor GtkSourceView where
     drawTabs (GtkView sv) = viewSetDrawSpaces sv [DrawSpacesFlagsTab, DrawSpacesFlagsSpace, DrawSpacesFlagsTrailing]
     getBuffer (GtkView sv) = GtkBuffer <$> (getTextViewBuffer sv >>= (liftIO . unsafeCastTo Source.Buffer))
     getWindow (GtkView sv) = nullToNothing $ widgetGetWindow sv
-    getIterAtLocation (GtkView sv) x y = GtkIter <$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
+    getIterAtLocation (GtkView sv) x y = GtkIter . snd <$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
     getIterLocation (GtkView sv) (GtkIter i) = textViewGetIterLocation sv i
     getOverwrite (GtkView sv) = textViewGetOverwrite sv
-    getScrolledWindow (GtkView sv) = widgetGetParent sv >>= (liftIO . unsafeCastTo ScrolledWindow)
+    getScrolledWindow (GtkView sv) = widgetGetParent sv >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
     getEditorWidget (GtkView sv) = liftIO $ toWidget sv
     grabFocus (GtkView sv) = widgetGrabFocus sv
     scrollToMark (GtkView sv) (GtkMark m) withMargin mbAlign = uncurry (textViewScrollToMark sv m withMargin (isJust mbAlign)) $ fromMaybe (0,0) mbAlign

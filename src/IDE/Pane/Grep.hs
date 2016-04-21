@@ -213,8 +213,8 @@ instance RecoverablePane IDEGrep GrepState IDEM where
             name <- eventKeyReadKeyval e >>= keyvalName
             liftIDE $
                 case name of
-                    "Return" -> gotoSource True
-                    "Escape" -> do
+                    Just "Return" -> gotoSource True
+                    Just "Escape" -> do
                         lastActiveBufferPane ?>>= \paneName -> do
                             (PaneC pane) <- paneFromName paneName
                             makeActive pane
