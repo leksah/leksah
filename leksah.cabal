@@ -316,11 +316,11 @@ library
         IDE.Utils.ExternalTool
     build-depends:
         base-compat >=0.9.0 && <0.10,
-        haskell-gi-base >=0.13 && <0.14,
+        haskell-gi-base >=0.14 && <0.15,
         gi-glib >=0.2.44 && <0.2.49,
         gi-gobject >=0.2.44 && <0.2.49,
         gi-gio >=0.2.44 && <0.2.49,
-        gi-cairo >=0.1.14 && <0.1.15,
+        gi-cairo >=0.1.14 && <0.1.16,
         gi-gdk >=0.3.16 && <0.3.21,
         gi-gdkpixbuf >=0.2.32 && <0.2.35,
         gi-gtk >=0.3.16 && <0.3.21,
