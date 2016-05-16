@@ -38,7 +38,7 @@ import Distribution.Version (withinRange)
 import Data.Maybe (fromMaybe, mapMaybe)
 import IDE.Package
        (packageClean', packageCopy', packageRegister', buildPackage, packageConfig',
-        packageTest', packageDoc')
+        packageTest', packageDoc',packageBench')
 import IDE.Core.Types
        (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
 import Control.Event (EventSource(..))
@@ -62,6 +62,7 @@ data MakeSettings = MakeSettings {
     msSaveAllBeforeBuild             :: Bool,
     msBackgroundBuild                :: Bool,
     msRunUnitTests                   :: Bool,
+    msRunBenchmarks             :: Bool,
     msJumpToWarnings                 :: Bool,
     msDontInstallLast                :: Bool}
 
@@ -73,6 +74,7 @@ defaultMakeSettings prefs = MakeSettings  {
     msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
     msBackgroundBuild                = backgroundBuild prefs,
     msRunUnitTests                   = runUnitTests prefs,
+    msRunBenchmarks                   = runBenchmarks prefs,
     msJumpToWarnings                 = jumpToWarnings prefs,
     msDontInstallLast                = dontInstallLast prefs}
 
@@ -81,6 +83,7 @@ data MakeOp =
     MoConfigure
     | MoBuild
     | MoTest
+    | MoBench
     | MoCopy
     | MoRegister
     | MoClean
@@ -207,6 +210,8 @@ doBuildChain ms chain@Chain{mcAction = MoDocu} =
     postAsyncIDE $ packageDoc' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoTest} =
     postAsyncIDE $ packageTest' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoBench} =
+    postAsyncIDE $ packageBench' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoCopy} =
     postAsyncIDE $ packageCopy' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoRegister} =

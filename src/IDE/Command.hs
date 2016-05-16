@@ -310,6 +310,8 @@ mkActions =
         (packageTry packageHLint) [] False
     ,AD "TestPackage" (__ "Test") Nothing Nothing
         (packageTry packageTest) [] False
+    ,AD "BenchPackage" (__ "Benchmark") Nothing Nothing
+        (packageTry packageBench) [] False
     ,AD "SdistPackage" (__ "Source Dist") Nothing Nothing
         (packageTry packageSdist) [] False
     ,AD "OpenDocPackage" (__ "_Open Documentation") Nothing Nothing

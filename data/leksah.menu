@@ -93,6 +93,7 @@
        <menuitem name="Re_gister" action="RegisterPackage" />
        <menuitem name="_HLint" action="HLintPackage" />
        <menuitem name="Test" action="TestPackage" />
+       <menuitem name="Benchmark" action="BenchPackage" />
        <menuitem name="SDist" action="SdistPackage" />
        <menuitem name="_Build Documentation" action="DocPackage" />
        <separator/>

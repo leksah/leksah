@@ -732,6 +732,14 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
+            (paraName <<<- ParaName (__ "Run benchmarks when building") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            runBenchmarks
+            (\b a -> a{runBenchmarks = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
             (paraName <<<- ParaName (__ "Make mode") $ emptyParams)
             (PP.text . show)
             boolParser
@@ -941,6 +949,7 @@ defaultPrefs = Prefs {
     ,   useCabalDev         =   False
     ,   backgroundBuild     =   True
     ,   runUnitTests        =   False
+    ,   runBenchmarks        =   False
     ,   makeMode            =   True
     ,   singleBuildWithoutLinking  = False
     ,   dontInstallLast     =   False

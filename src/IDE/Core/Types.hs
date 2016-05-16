@@ -399,14 +399,15 @@ data IDEPackage     =   IDEPackage {
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath] -- ^ Relative paths to the source directories
 ,   ipdExtensions      ::   [Extension]
-,   ipdConfigFlags     ::   [Text]
-,   ipdBuildFlags      ::   [Text]
-,   ipdTestFlags       ::   [Text]
-,   ipdHaddockFlags    ::   [Text]
-,   ipdExeFlags        ::   [Text]
-,   ipdInstallFlags    ::   [Text]
-,   ipdRegisterFlags   ::   [Text]
-,   ipdUnregisterFlags ::   [Text]
+,   ipdConfigFlags     ::   [Text] -- ^ Flag for configure
+,   ipdBuildFlags      ::   [Text] -- ^ Flags for building
+,   ipdTestFlags       ::   [Text]  -- ^ Flags for test runs
+,   ipdBenchmarkFlags       ::   [Text] -- ^ flags for benchmark runs
+,   ipdHaddockFlags    ::   [Text] -- ^ Flags for haddock generation
+,   ipdExeFlags        ::   [Text] -- ^ Flags for executable runs
+,   ipdInstallFlags    ::   [Text] -- ^ Flags for install
+,   ipdRegisterFlags   ::   [Text] -- ^ Flags for register
+,   ipdUnregisterFlags ::   [Text] -- ^ Flags for unregister
 ,   ipdSdistFlags      ::   [Text]
 ,   ipdSandboxSources  ::   [IDEPackage]
 }
@@ -521,7 +522,8 @@ data Prefs = Prefs {
     ,   useVado             ::   Bool
     ,   useCabalDev         ::   Bool
     ,   backgroundBuild     ::   Bool
-    ,   runUnitTests        ::   Bool
+    ,   runUnitTests        ::   Bool -- ^ Run unit tests on build?
+    ,   runBenchmarks        ::   Bool -- ^ Run benchmarks on build?
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool
