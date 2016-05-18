@@ -249,11 +249,33 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     prefs <- readIDE prefs
     let dir =  ipdPackageDir package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+    -- if we use stack, with tests enabled, we build the tests without running them...
+    let stackFlagsForTests =
+            if useStack
+                then
+                    -- ...unless if course the preferences say to run the tests
+                    if runUnitTests prefs
+                        then
+                            ["--test", "--haddock"]
+                        else
+                            if "--enable-tests" `elem` ipdConfigFlags package
+                                then ["--test", "--no-run-tests"]
+                                else []
+                else []
+    -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
+    let stackFlagsForBenchmarks =
+            if useStack
+                then
+                    if "--enable-benchmarks" `elem` ipdConfigFlags package
+                        then ["--bench", "--no-run-benchmarks"]
+                        else []
+                else []
+    let stackFlags = stackFlagsForTests ++ stackFlagsForBenchmarks
     let args = ["build"]
                 -- stack needs the package name to actually print the output info
                 ++ (if useStack then [ipdPackageName package] else [])
                 ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
-                ++ (if useStack && runUnitTests prefs then ["--test", "--haddock"] else [])
+                ++ stackFlags
                 ++ ipdBuildFlags package
     runExternalTool' (__ "Building") (if useStack then "stack" else cabalCommand prefs) args dir $ do
         (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
