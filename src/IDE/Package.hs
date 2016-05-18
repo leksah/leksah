@@ -38,6 +38,8 @@ module IDE.Package (
 ,   packageRegister'
 ,   packageTest
 ,   packageTest'
+,   packageBench
+,   packageBench'
 ,   packageSdist
 ,   packageOpenDoc
 
@@ -249,26 +251,21 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     prefs <- readIDE prefs
     let dir =  ipdPackageDir package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-    -- if we use stack, with tests enabled, we build the tests without running them...
+    -- if we use stack, with tests enabled, we build the tests without running them
     let stackFlagsForTests =
             if useStack
                 then
-                    -- ...unless if course the preferences say to run the tests
-                    if runUnitTests prefs
-                        then
-                            ["--test", "--haddock"]
-                        else
-                            if "--enable-tests" `elem` ipdConfigFlags package
-                                then ["--test", "--no-run-tests"]
-                                else []
+                   if "--enable-tests" `elem` ipdConfigFlags package
+                            then ["--test", "--no-run-tests"]
+                            else []
                 else []
     -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
     let stackFlagsForBenchmarks =
             if useStack
                 then
-                    if "--enable-benchmarks" `elem` ipdConfigFlags package
-                        then ["--bench", "--no-run-benchmarks"]
-                        else []
+                   if "--enable-benchmarks" `elem` ipdConfigFlags package
+                            then ["--bench", "--no-run-benchmarks"]
+                            else []
                 else []
     let stackFlags = stackFlagsForTests ++ stackFlagsForBenchmarks
     let args = ["build"]
@@ -633,6 +630,43 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
             (\(e :: SomeException) -> print e)
         else continuation True
 
+-- | Run benchmarks as foreground action for current package
+packageBench :: PackageAction
+packageBench = do
+    package <- ask
+    interruptSaveAndRun $ packageBench' False True package True (\ _ -> return ())
+
+-- | Run benchmarks
+packageBench' :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
+packageBench' backgroundBuild jumpToWarnings package shallConfigure continuation = do
+    let dir = ipdPackageDir package
+    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+    if "--enable-benchmarks" `elem` ipdConfigFlags package
+        then do
+          logLaunch <- getDefaultLogLaunch
+          showDefaultLogLaunch'
+          catchIDE (do
+            prefs <- readIDE prefs
+            let cmd=if useStack then "stack" else cabalCommand prefs
+            let args=if useStack then ["bench"] else ["bench", "--with-ghc=leksahtrue"]
+            runExternalTool' (__ "Benchmarking") cmd (args
+                ++ ipdBuildFlags package ++ ipdBenchmarkFlags package) dir $ do
+                    (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
+                        <$> C.ZipSink sinkLast
+                        <*> C.ZipSink isConfigError
+                        <*> (C.ZipSink $ logOutputForBuild package backgroundBuild jumpToWarnings)
+                    lift $ do
+                        errs <- readIDE errorRefs
+                        if shallConfigure && isConfigErr
+                            then
+                                packageConfig' package (\ b ->
+                                    when b $ packageBench' backgroundBuild jumpToWarnings package shallConfigure continuation)
+                            else do
+                                continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+                                return ())
+            (\(e :: SomeException) -> print e)
+        else continuation True
+
 packageSdist :: PackageAction
 packageSdist = do
     package <- ask
@@ -991,6 +1025,7 @@ idePackageFromPath' ipdCabalFile = do
                 ipdConfigFlags      = ["--enable-tests"]
                 ipdBuildFlags       = []
                 ipdTestFlags        = []
+                ipdBenchmarkFlags        = []
                 ipdHaddockFlags     = []
                 ipdExeFlags         = []
                 ipdInstallFlags     = []

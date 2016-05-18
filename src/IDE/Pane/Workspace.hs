@@ -84,7 +84,7 @@ import System.Log.Logger (debugM)
 import Data.Tree (Forest, Tree(..))
 import IDE.Pane.Modules (addModule)
 import IDE.Pane.PackageEditor (packageEditText)
-import IDE.Package (packageTest, packageRun, packageClean)
+import IDE.Package (packageTest, packageRun, packageClean,packageBench)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreGetTree, forestStoreGetValue, ForestStore(..),
@@ -623,6 +623,7 @@ contextMenuItems record path store = do
                    , [ ("Build", workspaceTryQuiet $ runPackage makePackage p)
                      , ("Run", workspaceTryQuiet $ runPackage packageRun p)
                      , ("Test", workspaceTryQuiet $ runPackage packageTest p)
+                     , ("Benchmark", workspaceTryQuiet $ runPackage packageBench p)
                      , ("Clean", workspaceTryQuiet $ runPackage packageClean p)
                      , ("Open Package File", onOpenCabalFile)
                      ]
