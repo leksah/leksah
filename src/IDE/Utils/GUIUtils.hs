@@ -45,7 +45,6 @@ module IDE.Utils.GUIUtils (
 ,   treeViewToggleRow
 ,   treeViewContextMenu
 ,   treeViewContextMenu'
-,   forestStoreGetForest
 
 ,   __
 
@@ -399,9 +398,6 @@ stockIdFromType Method          =   "ide_method"
 stockIdFromType PatternSynonym  =   "ide_konstructor"
 stockIdFromType _               =   "ide_other"
 
-
-forestStoreGetForest :: ForestStore a -> IO (Forest a)
-forestStoreGetForest store = subForest <$> (forestStoreGetTree store =<< treePathNewFromIndices' [])
 
 -- | Toggles a row in a `TreeView`
 treeViewToggleRow treeView path = do

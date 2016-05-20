@@ -35,8 +35,7 @@ import Data.List (groupBy, sortBy, elemIndex)
 import IDE.LogRef (showSourceSpan)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils
-       (treeViewContextMenu', treeViewContextMenu, __, treeViewToggleRow,
-        forestStoreGetForest)
+       (treeViewContextMenu', treeViewContextMenu, __, treeViewToggleRow)
 import Data.Text (dropWhileEnd, Text)
 import Control.Applicative (Alternative(..))
 import Control.Monad (filterM, foldM_, unless, void, when)
@@ -100,7 +99,7 @@ import Control.Monad.Reader (MonadReader(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreInsert, forestStoreClear, forestStoreNew, ForestStore(..),
-        forestStoreGetTree, forestStoreGetValue)
+        forestStoreGetTree, forestStoreGetValue, forestStoreGetForest)
 import GI.Gtk.Objects.Button (buttonSetLabel)
 import GI.Gtk.Structs.TreePath
        (TreePath(..))
@@ -425,23 +424,19 @@ selectError mbLogRef = do
         displayPane errors False
     reifyIDE $ \ideR -> do
         selection <- treeViewGetSelection (treeView errors)
+        forest <- forestStoreGetForest (errorStore errors)
         case mbLogRef of
             Nothing -> do
-                empty <- null <$> (forestStoreGetTree (errorStore errors) =<< treePathNewFromIndices' [])
-                unless empty $ do
+                unless (null forest) $ do
                     childPath <- treePathNewFromIndices' [0]
                     treeViewScrollToCell (treeView errors) (Just childPath) noTreeViewColumn False 0.0 0.0
                 treeSelectionUnselectAll selection
             Just lr -> do
-                let store = errorStore errors
-                empty <- fst <$> treeModelGetIterFirst store
-                unless empty $ do
-                    forest <- forestStoreGetForest store
-                    let mbPath = forestFind forest (ERLogRef lr)
-                    forM_ mbPath $ \path' -> do
-                        path <- treePathNewFromIndices' path'
-                        treeViewScrollToCell (treeView errors) (Just path) noTreeViewColumn False 0.0 0.0
-                        treeSelectionSelectPath selection path
+                let mbPath = forestFind forest (ERLogRef lr)
+                forM_ mbPath $ \path' -> do
+                    path <- treePathNewFromIndices' path'
+                    treeViewScrollToCell (treeView errors) (Just path) noTreeViewColumn False 0.0 0.0
+                    treeSelectionSelectPath selection path
 
     where
         forestFind :: Eq a => Forest a -> a -> Maybe [Int32]
