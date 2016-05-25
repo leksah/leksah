@@ -36,7 +36,7 @@ export GTK_PATH="$bundle_res"
 export PATH="$bundle_bin":$PATH
 
 export GTK2_RC_FILES="$bundle_etc/gtk-3.0/gtkrc"
-export GDK_PIXBUF_MODULE_FILE="$bundle_etc/gtk-3.0/gdk-pixbuf.loaders"
+export GDK_PIXBUF_MODULE_FILE="$bundle_lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
 export FONTCONFIG_PATH="$bundle_etc/fonts"
 export PANGO_RC_FILE="$bundle_etc/pango/pangorc"
 export PANGO_LIBDIR="$bundle_lib"

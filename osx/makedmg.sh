@@ -60,7 +60,7 @@ sed -i "" -e "s|/opt/local/|@executable_path/../|" Leksah/Leksah.app/Contents/Re
 sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-3.0/gtk.immodules || exit
 
 echo Fixing pixbuf loader paths
-sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/etc/gtk-3.0/gdk-pixbuf.loaders || exit
+sed -i "" -e "s|@executable_path/../Resources/|@executable_path/../|" Leksah/Leksah.app/Contents/Resources/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache || exit
 
 LEKSAH_DMG="$LEKSAH_X_X_X_X_GHC_X_X_X.dmg"
 if test -e "$LEKSAH_DMG"; then
