@@ -33,10 +33,31 @@ module IDE.TextEditor.Yi (
 ) where
 
 import Data.Typeable (Typeable)
-import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack)
 
 #ifdef LEKSAH_WITH_YI
+import Data.Text (Text)
+import qualified Data.Text as T (pack, unpack)
+import GI.Gtk
+       (noWidget, getCurrentEventTime, menuPopup, menuAttachToWidget,
+        menuNew, onWidgetPopupMenu, onWidgetKeyReleaseEvent,
+        onWidgetLeaveNotifyEvent, onWidgetMotionNotifyEvent,
+        onWidgetKeyPressEvent, onWidgetButtonReleaseEvent,
+        onWidgetButtonPressEvent, widgetAddEvents, afterWidgetFocusInEvent,
+        widgetGrabFocus, toWidget, widgetGetWindow)
+import Data.GI.Base.Constructible (Constructible(..))
+import GI.Gdk
+       (eventButtonReadState, rectangleHeight, rectangleWidth, rectangleY,
+        rectangleX, Rectangle(..))
+import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Pango (layoutSetFontDescription)
+import Yi (nelemsB, readAtB, moveB)
+import Yi.Buffer.TextUnit (TextUnit(..))
+import GI.Gdk.Flags (ModifierType(..), EventMask(..))
+import Control.Monad (void)
+import qualified Yi.Rope as R (head)
+import IDE.Core.Types (MonadIDE(..))
+import Data.GI.Base.BasicConversions (gflagsToWord)
+
 import IDE.TextEditor.Class (TextEditor(..))
 import IDE.Core.Types (IDEM)
 import IDE.Core.State (liftYi, onIDE, reflectIDE, liftYiControl)
@@ -47,7 +68,7 @@ import Yi.UI.Pango.Control
         setBufferMode)
 import Yi
        (moveToColB, gotoLn, atSol, atEof, atSof, curCol, curLn, readLnB,
-        readCharB, nextWordB, moveToEol, rightB, rightN, nextPointB,
+        nextWordB, moveToEol, rightB, rightN,
         unitWord, atBoundaryB, moveToSol, prevWordB, leftB, readB,
         doUntilB_, prevPointB, Mode, modifyMode, insertingA, undoB,
         markSavedB, setSelectRegionB, redoB, markPointA, insertNAt,
@@ -65,20 +86,10 @@ import Control.Monad.State.Class (gets)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Time (getCurrentTime)
-import qualified Graphics.UI.Gtk as Gtk (Modifier(..))
 import IDE.Utils.GUIUtils (fontDescription)
-import Graphics.UI.Gtk
-       (popupMenuSignal, focusInEvent, menuPopup, menuAttachToWidget,
-        menuNew, eventModifier, widgetAddEvents, keyReleaseEvent,
-        leaveNotifyEvent, motionNotifyEvent, keyPressEvent,
-        buttonReleaseEvent, buttonPressEvent, widgetGrabFocus,
-        Rectangle(..), layoutSetFontDescription, EventMask(..),
-        widgetGetWindow
-        )
 import Control.Monad.Reader.Class (MonadReader(..))
 import Graphics.UI.Editor.Basics (Connection(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
-import System.Glib.Signals (on, after)
 import Control.Lens (use)
 #endif
 
@@ -150,7 +161,7 @@ instance TextEditor Yi where
     canRedo (YiBuffer fb) = return True -- TODO
     canUndo (YiBuffer fb) = return True -- TODO
     copyClipboard (YiBuffer fb) _ = liftYi $ withEditor $ copy
-    createMark (YiView b) _name (YiIter (Iter _ p)) _icon _description = withYiBuffer b $
+    createMark (YiView b) _name (YiIter (Iter _ p)) _toolTip = void . withYiBuffer (Yi.getBuffer b) $
         YiMark <$> newMarkB (MarkValue p Backward)
     cutClipboard (YiBuffer fb) clipboard defaultEditable = liftYi $ withEditor $ cut
     delete (YiBuffer b) (YiIter (Iter _ first)) (YiIter (Iter _ last)) =
@@ -197,7 +208,7 @@ instance TextEditor Yi where
     setModified (YiBuffer b) modified = unless modified $ do
         now <- liftIO $ getCurrentTime
         withYiBuffer b $ markSavedB now
-    setStyle preferDark (YiBuffer b) mbStyle = return () -- TODO
+    setStyle (YiBuffer b) mbStyle = return () -- TODO
     setText (YiBuffer b) text = liftYiControl $ Yi.setText b (Yi.fromText text)
     undo (YiBuffer b) =  withYiBuffer b undoB
     bufferToWindowCoords (YiView v) point = return point -- TODO
@@ -205,16 +216,21 @@ instance TextEditor Yi where
     getBuffer (YiView v) = return $ YiBuffer $ Yi.getBuffer v
     getWindow (YiView v) = liftIO $ widgetGetWindow (drawArea v)
     getIterAtLocation (YiView View{viewFBufRef = b}) x y = return $ mkYiIter' b $ Point 0 -- TODO
-    getIterLocation (YiView v) (YiIter i) = return $ Rectangle 0 0 0 0 -- TODO
+    getIterLocation (YiView v) (YiIter i) = new Rectangle
+        [ rectangleX      := 0 -- TODO
+        , rectangleY      := 0
+        , rectangleWidth  := 0
+        , rectangleHeight := 0
+        ]
     getOverwrite (YiView View{viewFBufRef = b}) = withYiBuffer' b $ not <$> use insertingA
     getScrolledWindow (YiView v) = return $ scrollWin v
-    getEditorWidget (YiView v) = return $ castToWidget $ drawArea v
-    grabFocus (YiView View{drawArea = da}) = liftIO $ widgetGrabFocus da
+    getEditorWidget (YiView v) = liftIO . toWidget $ drawArea v
+    grabFocus (YiView View{drawArea = da}) = widgetGrabFocus da
     scrollToMark (YiView v) (YiMark m) withMargin mbAlign = return () -- TODO
     scrollToIter (YiView v) (YiIter i) withMargin mbAlign = return () -- TODO
     setFont (YiView v) mbFontString = do
         fd <- fontDescription mbFontString
-        liftIO $ layoutSetFontDescription (layout v) (Just fd)
+        layoutSetFontDescription (layout v) (Just fd)
     setIndentWidth (YiView View{viewFBufRef = b}) width =
         withYiBuffer' b $ modifyMode $
             \ (mode@Mode{modeIndentSettings = mis}) ->
@@ -239,7 +255,7 @@ instance TextEditor Yi where
     backwardToLineStartC (YiIter i) = transformYiIter i moveToSol
     endsWord (YiIter i) = withYiIter i $ do
         atBoundaryB unitWord Forward
-    forwardCharC (YiIter i) = transformYiIter' i nextPointB
+    forwardCharC i = forwardCharsC i 1
     forwardCharsC (YiIter i) n = transformYiIter i $ rightN n
     forwardFindCharC (YiIter i) pred mbLimit = tryTransformYiIter i $
         doUntilB_ (pred <$> readB) rightB
@@ -251,7 +267,7 @@ instance TextEditor Yi where
         if p == newPoint
             then return Nothing
             else return . Just $ mkYiIter' b newPoint
-    getChar (YiIter i) = withYiIter i readCharB
+    getChar (YiIter (Iter b p)) = withYiBuffer' b $ R.head <$> nelemsB 1 p
     getCharsInLine (YiIter i) = withYiIter i $ Yi.length <$> readLnB
     getLine (YiIter i) = withYiIter i curLn
     getLineOffset (YiIter i) = withYiIter i curCol
@@ -272,50 +288,51 @@ instance TextEditor Yi where
     underline (YiTag) value = return () -- TODO
     afterFocusIn (YiView v) f = do
         ideR <- ask
-        liftIO $ do
-            id1 <- (drawArea v) `after` focusInEvent $ lift $ reflectIDE f ideR >> return False
-            return [ConnectC id1]
+        id1 <- onIDE afterWidgetFocusInEvent (drawArea v) $ liftIDE f >> return True
+        return [id1]
     afterModifiedChanged (YiBuffer b) f = return [] -- TODO
     afterMoveCursor (YiView v) f = return [] -- TODO
     afterToggleOverwrite (YiView v) f = return [] -- TODO
     onButtonPress (YiView v) f = do
-        id1 <- (drawArea v) `onIDE` buttonPressEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetButtonPressEvent (drawArea v) f
+        return [id1]
     onButtonRelease (YiView v) f = do
-        id1 <- (drawArea v) `onIDE` buttonReleaseEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetButtonReleaseEvent (drawArea v) f
+        return [id1]
     onCompletion (YiView v) start cancel = return [] -- TODO
     onKeyPress (YiView v) f = do
-        id1 <- (drawArea v) `onIDE` keyPressEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetKeyPressEvent (drawArea v) f
+        return [id1]
     onMotionNotify (YiView v) f = do
-        id1 <- (drawArea v) `onIDE` motionNotifyEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetMotionNotifyEvent (drawArea v) f
+        return [id1]
     onLeaveNotify (YiView v) f = do
-        id1 <- (drawArea v) `onIDE` leaveNotifyEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetLeaveNotifyEvent (drawArea v) f
+        return [id1]
     onKeyRelease (YiView v) f = do
-        id1 <- (drawArea v) `onIDE` keyReleaseEvent $ f
-        return [ConnectC id1]
+        id1 <- onIDE onWidgetKeyReleaseEvent (drawArea v) f
+        return [id1]
     onLookupInfo (YiView v) f = do
-        liftIO $ (drawArea v) `widgetAddEvents` [ButtonReleaseMask]
-        id1 <- (drawArea v) `onIDE` buttonReleaseEvent $ do
-            mod <- lift $ eventModifier
+        widgetAddEvents (drawArea v) (gflagsToWord [EventMaskButtonReleaseMask])
+        id1 <- onIDE onWidgetButtonReleaseEvent (drawArea v) $ do
+            e <- lift ask
+            mod <- eventButtonReadState e
             case mod of
-                [Gtk.Control] -> f >> return True
-                _             -> return False
-        return [ConnectC id1]
+                [ModifierTypeControlMask] -> f >> return True
+                _                         -> return False
+        return [id1]
     onMotionNotifyEvent (YiView v) f = return [] -- TODO
     onPopulatePopup (YiView v) f = do
         ideR <- ask
         liftIO $ do
-            id1 <- (drawArea v) `on` popupMenuSignal $ do
+            id1 <- ConnectC (drawArea v) <$> onWidgetPopupMenu (drawArea v) (do
                  menu <- menuNew
-                 menuAttachToWidget menu (drawArea v)
+                 menuAttachToWidget menu (drawArea v) Nothing
                  reflectIDE (f menu) ideR
-                 menuPopup menu Nothing
-                 return True
-            return [ConnectC id1]
+                 menuPopup menu noWidget noWidget Nothing 0 =<< getCurrentEventTime
+                 return True)
+            return [id1]
+    onSelectionChanged (YiBuffer b) handler = return [] -- TODO
 
 #endif
 

@@ -221,9 +221,9 @@ library
 
     if flag(yi)
         build-depends:
-            yi >=0.11.2 && <0.12,
-            yi-language >=0.1.0.8 && <0.2,
-            yi-rope >=0.7.0.0 && <0.8
+            yi >=0.12.4 && <0.13,
+            yi-language >=0.2.0 && <0.3,
+            yi-rope >=0.7.0.1 && <0.8
         cpp-options: -DLEKSAH_WITH_YI
 
     if (flag(yi) && flag(dyre))
