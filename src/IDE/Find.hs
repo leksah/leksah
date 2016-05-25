@@ -257,7 +257,7 @@ constructFindReplace = do
     rentry <- entryNew
     widgetSetName rentry "replaceEntry"
     entrySetPlaceholderText rentry
-#if MIN_VERSION_gi_gtk(0,3,18)
+#ifdef MIN_VERSION_GTK_3_18
         $ Just
 #endif
         "Replace with"
@@ -288,7 +288,7 @@ constructFindReplace = do
     entry <- entryNew
     widgetSetName entry "searchEntry"
     entrySetPlaceholderText entry
-#if MIN_VERSION_gi_gtk(0,3,18)
+#ifdef MIN_VERSION_GTK_3_18
         $ Just
 #endif
         "Find"

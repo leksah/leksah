@@ -348,7 +348,7 @@ instance TextEditor GtkSourceView where
     getBuffer (GtkView sv) = GtkBuffer <$> (getTextViewBuffer sv >>= (liftIO . unsafeCastTo Source.Buffer))
     getWindow (GtkView sv) = nullToNothing $ widgetGetWindow sv
     getIterAtLocation (GtkView sv) x y = GtkIter
-#if MIN_VERSION_gi_gtk(0,3,20)
+#ifdef MIN_VERSION_GTK_3_20
 			. snd
 #endif
 		<$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)

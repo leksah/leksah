@@ -204,6 +204,14 @@ flag network-uri
     description:
         Get Network.URI from the network-uri package
 
+flag gtk-318
+    description:
+        GTK+ is 3.18 or later
+
+flag gtk-320
+    description:
+        GTK+ is 3.20 or later
+
 library
 
     if os(windows)
@@ -248,6 +256,15 @@ library
     if impl(ghc >=7.2)
         build-depends:
             binary-shared >=0.8.2
+
+    if flag(gtk-318)
+        pkgconfig-depends: gtk+-3.0 >= 3.18
+        cpp-options:       -DMIN_VERSION_GTK_3_18
+
+    if flag(gtk-320)
+        pkgconfig-depends: gtk+-3.0 >= 3.20
+        cpp-options:       -DMIN_VERSION_GTK_3_20
+
     exposed-modules:
         IDE.HLint
         IDE.Leksah
