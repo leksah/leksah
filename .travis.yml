@@ -4,18 +4,17 @@ sudo: false
 
 matrix:
   include:
-    - env: CABALVER=1.22 GHCVER=7.8.3
-      addons: {apt: {packages: [cabal-install-1.18,ghc-7.8.3,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
-    - env: CABALVER=1.22 GHCVER=7.8.4
-      addons: {apt: {packages: [cabal-install-1.18,ghc-7.8.4,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
     - env: CABALVER=1.22 GHCVER=7.10.1
       addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.1,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
     - env: CABALVER=1.22 GHCVER=7.10.2
       addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
+    - env: CABALVER=1.22 GHCVER=7.10.3
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
+    - env: CABALVER=1.24 GHCVER=8.0.1
+      addons: {apt: {packages: [cabal-install-1.24,ghc-7.10.2,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
     - env: CABALVER=head GHCVER=head
       addons: {apt: {packages: [cabal-install-head,ghc-head,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev],  sources: [hvr-ghc]}}
   allow_failures:
-    - env: CABALVER=1.22 GHCVER=7.10.2
     - env: CABALVER=head GHCVER=head
 
 before_install:
@@ -29,8 +28,8 @@ install:
   - hash -r
   - cabal --version
   - cabal install -j4 gtk2hs-buildtools
-  - cabal install -j4 ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui ghcjs-dom -fold-webkit --enable-tests --only-dependencies --force-reinstalls
-  - cabal install vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui
+  - cabal install -j4 ./ vendor/gi-gtk-hs vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui ghcjs-dom --enable-tests --only-dependencies --force-reinstalls
+  - cabal install vendor/gi-gtk-hs vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui
 
 script:
   - cabal configure --enable-tests -v2

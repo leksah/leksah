@@ -98,42 +98,6 @@ cabal update
 
 mkdir -p ~/haskell
 
-if [ ! -d ~/haskell/haskell-gi-base ]
-then
-    cd ~/haskell
-    git clone https://github.com/haskell-gi/haskell-gi-base.git
-fi
-
-if [ ! -d ~/haskell/haskell-gi ]
-then
-    cd ~/haskell
-    git clone https://github.com/haskell-gi/haskell-gi.git
-fi
-
-if [ ! -d ~/haskell/gi-gtk-hs ]
-then
-    cd ~/haskell
-    git clone https://github.com/gtk2hs/gi-gtk-hs.git
-fi
-
-if [ ! -d ~/haskell/jsaddle ]
-then
-    cd ~/haskell
-    git clone https://github.com/ghcjs/jsaddle.git
-fi
-
-if [ ! -d ~/haskell/jsaddle-dom ]
-then
-    cd ~/haskell
-    git clone https://github.com/ghcjs/jsaddle-dom.git
-fi
-
-if [ ! -d ~/haskell/ghcjs-dom ]
-then
-    cd ~/haskell
-    git clone https://github.com/ghcjs/ghcjs-dom.git
-fi
-
 if [ ! -d ~/haskell/leksah ]
 then
     cd ~/haskell
@@ -142,26 +106,16 @@ then
     git submodule update --init
 fi
 
-if [ ! -e ~/.cabal/bin/haskell-gi ]
-then
-    # Update alex and happy
-    cabal install alex happy
-
-    cd ~/haskell
-    cabal install ./haskell-gi-base ./haskell-gi --force-reinstalls
-fi
-
 if [ ! -e ~/.cabal/bin/leksah ]
 then
-    cd ~/haskell/haskell-gi/bindings
-    ./genBindings.sh
-    ./buildAll.sh
-    
     cd ~/haskell/leksah
 
+    # Update alex and happy
+    cabal install alex happy
+    
     # Install Leksah
     cabal install gtk2hs-buildtools
-    cabal install ../gi-gtk-hs ../jsaddle ../jsaddle-dom ../ghcjs-dom ./ ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui --force-reinstalls
+    cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui --force-reinstalls
 fi
 
 # Install socket.io (needed for GHCJSi)

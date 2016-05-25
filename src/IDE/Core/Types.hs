@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -573,11 +572,6 @@ editorStyle preferDark prefs = EditorStyle { styleName = case sourceStyle prefs 
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
-
-#ifndef LEKSAH_WITH_YI
-instance Ord ModifierType
-    where compare a b = compare (fromEnum a) (fromEnum b)
-#endif
 
 -- Version-Control-System Configuration
 type VCSConf = (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)

@@ -10,3 +10,4 @@ leksah.lkshw
 /.cabal-sandbox/
 *.sandbox.config
 /.stack-work/
+/dist-newstyle/

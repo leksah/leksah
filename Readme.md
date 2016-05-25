@@ -10,7 +10,7 @@ Documentation can be found on [leksah.org](http://leksah.org/).
 
 ## Installation
 
-Requirements: ghc >= 7.8.3 cabal >= 1.18
+Requirements: ghc >= 7.10.3 cabal >= 1.24
 
 You can get Leksah up and running quickly on Windows and OS X using the
 [official binaries](https://github.com/leksah/leksah/wiki/download).
@@ -137,59 +137,32 @@ First install the following C libraries for your OS using the instructions
 above (these are the Fedora names your OS may have different names):
 
     gobject-introspection-devel
-    atk-devel
-    libsoup-devel
     webkitgtk3-devel
-    webkitgtk4-devel
     gtksourceview3-devel
-    poppler-glib-devel
-    vte291-devel
-    libnotify-devel
-    gstreamer1-devel
-    gstreamer1-plugins-base-devel
 
 Clone lots of stuff:
 
-    git clone https://github.com/haskell-gi/haskell-gi-base.git
-    git clone https://github.com/haskell-gi/haskell-gi.git
-    git clone https://github.com/gtk2hs/gi-gtk-hs.git
-    git clone https://github.com/ghcjs/jsaddle.git
-    git clone https://github.com/ghcjs/jsaddle-dom.git
-    git clone https://github.com/ghcjs/ghcjs-dom.git
     git clone https://github.com/leksah/leksah.git
     cd leksah
     git submodule update --init
     cd ..
 
-Install some tools (gtk2hs-buildtools is still needed for webkitgtk3-javascriptcore):
+Install some tools:
 
     cabal install alex happy
     cabal install gtk2hs-buildtools
 
-Install haskell-gi (it check the genBindings output to see if you need to install more -devel packages):
-
-    cabal install ./haskell-gi-base ./haskell-gi
-    cd haskell-gi/bindings
-    ./genBindings.sh
-    ./buildAll.sh
-    cd ../..
-    
-On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
-
-    XDG_DATA_DIRS=/opt/local/share ./genBindings.sh
-    XDG_DATA_DIRS=/opt/local/share ./buildAll.sh
-
 Install the rest:
 
     cd leksah
-    cabal install ../gi-gtk-hs ../jsaddle ../jsaddle-dom ../ghcjs-dom ./ ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
+    cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
+
+On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
+
+    XDG_DATA_DIRS=/opt/local/share cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
 
 #### Using Stack instead of cabal-install
 
-As above but with two changes:
-
-* Skip the `./buildAll.sh` haskell-gi script.
-* If you are not building on OS X delete `- ../haskell-gi/bindings/GtkosxApplication/` from `stack.yaml` ([stack issue 2048](https://github.com/commercialhaskell/stack/issues/2048))
-* Instead of the very last `cabal install ...` command run `stack build`.
+Instead of the very last `cabal install ...` command run `stack build`.
 
 Note: If you intend to do any development work on Leksah, do not use stack for now as it adds 10-12s to every build (not a problem for a one off build, but annoying when you are making changes).  This will probably be fixed once new haskell-gi packages added to hackage or once the [stack issue](https://github.com/commercialhaskell/stack/issues/2041) is resolved.

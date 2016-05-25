@@ -1,0 +1,7 @@
+packages:
+ ./
+ vendor/leksah-server/
+ vendor/ltk/
+ vendor/haskellVCSGUI/vcsgui/
+ vendor/yi/
+ vendor/gi-gtk-hs/

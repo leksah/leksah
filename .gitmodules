@@ -37,3 +37,6 @@
 [submodule "vendor/webkit"]
 	path = vendor/webkit
 	url = https://github.com/gtk2hs/webkit.git
+[submodule "vendor/gi-gtk-hs"]
+	path = vendor/gi-gtk-hs
+	url = https://github.com/gtk2hs/gi-gtk-hs.git
