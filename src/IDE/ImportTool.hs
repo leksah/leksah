@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.ImportTool
@@ -384,41 +385,48 @@ parseNotInScope str =
 
 scopeParser :: CharParser () NotInScopeParseResult
 scopeParser = do whiteSpace
-                 symbol "Not in scope:"
-                 isSub <- optionMaybe
+                 isSub <- (do
+                    symbol "Not in scope:"
+                    isJust <$> optionMaybe
                             (try
                                (choice
-                                  [symbol "type constructor or class", symbol "data constructor"]))
-                 (do char '`'
+                                  [symbol "type constructor or class", symbol "data constructor"])))
+                    <|>
+                    (do
+                    symbol "Variable not in scope:" <|> symbol "• Variable not in scope:"
+                    return False)
+                    <|>
+                    (do
+                    symbol "Data constructor not in scope:"
+                    return True)
+                 (do choice [char '\8219', char '\8216']
                      mbQual <- optionMaybe
-                                 (try
-                                    (do q <- lexeme conid
-                                        dot
-                                        return q))
-                     id <- optionMaybe (try identifier)
-                     case id of
-                         Just id -> return
-                                      (NotInScopeParseResult mbQual (T.take (T.length id - 1) id)
-                                         (isJust isSub)
-                                         False)
-                         Nothing -> do op <- operator
-                                       char '\''
-                                       return (NotInScopeParseResult mbQual op (isJust isSub) True))
-                   <|>
-                   (do choice [char '\8219', char '\8216']
-                       mbQual <- optionMaybe
                                    (try
                                       (do q <- lexeme conid
                                           dot
                                           return q))
-                       id <- optionMaybe (try identifier)
-                       result <- case id of
+                     id <- optionMaybe (try identifier)
+                     result <- case id of
                                      Just id -> return
-                                                  (NotInScopeParseResult mbQual id (isJust isSub) False)
+                                                  (NotInScopeParseResult mbQual id isSub False)
                                      Nothing -> do op <- operator
-                                                   return (NotInScopeParseResult mbQual op (isJust isSub) True)
-                       char '\8217'
-                       return result)
+                                                   return (NotInScopeParseResult mbQual op isSub True)
+                     char '\8217'
+                     return result)
+                    <|>
+                    (do whiteSpace
+                        mbQual <- optionMaybe
+                                   (try
+                                      (do q <- lexeme conid
+                                          dot
+                                          return q))
+                        result <- optionMaybe (try identifier) >>= \case
+                                     Just id -> return
+                                                  (NotInScopeParseResult mbQual id isSub False)
+                                     Nothing -> do op <- operator
+                                                   return (NotInScopeParseResult mbQual op isSub True)
+                        many anyChar
+                        return result)
     <?> "scopeParser"
 
 conid  = do

@@ -284,6 +284,9 @@ buildErrorParser = try (do
         refType <- try (do
                 symbol "Warning:" <|> symbol "warning:"
                 return WarningRef)
+            <|> (do
+                symbol "Error:" <|> symbol "error:"
+                return ErrorRef)
             <|> return ErrorRef
         text <- T.pack <$> many anyChar
         return (ErrorLine span refType text))
