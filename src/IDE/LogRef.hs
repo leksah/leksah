@@ -282,7 +282,7 @@ buildErrorParser = try (do
         char ':'
         whiteSpace
         refType <- try (do
-                symbol "Warning:"
+                symbol "Warning:" <|> symbol "warning:"
                 return WarningRef)
             <|> return ErrorRef
         text <- T.pack <$> many anyChar
@@ -293,9 +293,9 @@ buildErrorParser = try (do
         return EmptyLine)
     <|> try (do
         whiteSpace
-        symbol "Warning:"
+        warning <- T.pack <$> (symbol "Warning:" <|> symbol "warning:")
         text <- T.pack <$> many anyChar
-        return (WarningLine ("Warning:" <> text)))
+        return (WarningLine (warning <> text)))
     <|> try (do
         text <- T.pack <$> many anyChar
         eof
