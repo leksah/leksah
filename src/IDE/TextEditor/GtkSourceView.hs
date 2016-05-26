@@ -349,9 +349,9 @@ instance TextEditor GtkSourceView where
     getWindow (GtkView sv) = nullToNothing $ widgetGetWindow sv
     getIterAtLocation (GtkView sv) x y = GtkIter
 #ifdef MIN_VERSION_GTK_3_20
-			. snd
+        . snd
 #endif
-		<$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
+        <$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
     getIterLocation (GtkView sv) (GtkIter i) = textViewGetIterLocation sv i
     getOverwrite (GtkView sv) = textViewGetOverwrite sv
     getScrolledWindow (GtkView sv) = nullToNothing (widgetGetParent sv) >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
