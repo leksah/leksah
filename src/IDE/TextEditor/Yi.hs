@@ -46,8 +46,10 @@ import GI.Gtk
         widgetGrabFocus, toWidget, widgetGetWindow)
 import Data.GI.Base.Constructible (Constructible(..))
 import GI.Gdk
-       (eventButtonReadState, rectangleHeight, rectangleWidth, rectangleY,
-        rectangleX, Rectangle(..))
+       (eventButtonReadState)
+import Graphics.UI.Frame.Rectangle
+       (rectangleHeight, rectangleWidth, rectangleY,
+        rectangleX, Rectangle(..), newRectangle)
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Pango (layoutSetFontDescription)
 import Yi (nelemsB, readAtB, moveB)
@@ -214,9 +216,9 @@ instance TextEditor Yi where
     bufferToWindowCoords (YiView v) point = return point -- TODO
     drawTabs (YiView _) = return () -- TODO
     getBuffer (YiView v) = return $ YiBuffer $ Yi.getBuffer v
-    getWindow (YiView v) = liftIO $ widgetGetWindow (drawArea v)
+    getWindow (YiView v) = liftIO $ Just <$> widgetGetWindow (drawArea v)
     getIterAtLocation (YiView View{viewFBufRef = b}) x y = return $ mkYiIter' b $ Point 0 -- TODO
-    getIterLocation (YiView v) (YiIter i) = new Rectangle
+    getIterLocation (YiView v) (YiIter i) = newRectangle
         [ rectangleX      := 0 -- TODO
         , rectangleY      := 0
         , rectangleWidth  := 0
