@@ -13,8 +13,9 @@
 
 
 --File
-<ctrl>n                    ->          FileNew         "Creates a new haskell module"
-<ctrl>o                    ->          FileOpen        "Opens an existing file"
+<ctrl>n                    ->          FileNewTextFile "Create a new text file"
+<ctrl><shift>n             ->          FileNewModule   "Creates a new Haskell module"
+<ctrl>o                    ->          FileOpenFile    "Opens an existing file"
 --<ctrl>x/<ctrl>f          ->          FileOpen        "Opens an existing file"
 
 <ctrl>s                    ->          FileSave        "Saves the current buffer"
