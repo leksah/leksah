@@ -8,17 +8,15 @@ The user interface is a mix of GTK+ and WebKit based components.
 
 Documentation can be found on [leksah.org](http://leksah.org/).
 
-## Installation
+## Getting Leksah
+Leksah requires you have **ghc >= 7.10.3** and **cabal-install >= 1.24** installed
 
-Requirements: ghc >= 7.10.3 cabal >= 1.24
+* **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download).
+* **Linux**: [Install from Hackage](https://github.com/leksah/leksah#installing-from-hackage)
 
-You can get Leksah up and running quickly on Windows and OS X using the
-[official binaries](https://github.com/leksah/leksah/wiki/download).
+Alternatively, you can build Leksah [from source](https://github.com/leksah/leksah#building-from-source)
 
-Some Linux distributions include Leksah packages, but building from source
-on Linux is normally relatively easy.
-
-## Building From Source
+## Installing from Hackage
 
 ### Building on Linux
 
@@ -101,6 +99,56 @@ Make sure `C:\Leksah\bin` and `%APPDATA%\cabal\bin` are in your `PATH` and build
     cabal install leksah
     leksah
    
+## Building from source
+
+Requirements: ghc >= **7.10.3**, cabal-install >= **1.24**
+
+We have just completed a port of Leksah from Gtk2Hs to haskell-gi.  Not all
+of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
+or follow the instructions below.
+
+**Step 1**. Install the following C libraries (for Windows and OS X, see the Hackage build instructions)
+
+| Fedora | Ubuntu |
+| --- | --- |
+| `gobject-introspection-devel` | `gobject-introspection` |
+| `webkitgtk3-devel` | `libwebkitgtk-3.0-dev`
+| `gtksourceview3-devel` | `libgtksourceview-3.0-dev` | 
+
+
+
+**Step 2**: Install tools
+
+    cabal install alex happy
+    cabal install gtk2hs-buildtools
+
+**Step 2b**: Optionally, create a sandbox
+
+    cabal sandbox init
+
+**Step 3**: Clone the repo
+
+    git clone https://github.com/leksah/leksah.git
+    cd leksah
+    git submodule update --init
+    
+**Step 4**: Install Leksah
+
+    cabal install Cabal
+    cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
+
+(the Cabal library has to be installed seperately because of a [cabal bug](https://github.com/haskell/cabal/issues/3436] )
+
+On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
+
+    XDG_DATA_DIRS=/opt/local/share cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
+
+#### Using Stack instead of cabal-install
+
+Instead of the very last `cabal install ...` command run `stack build`.
+
+Note: If you intend to do any development work on Leksah, do not use stack for now as it adds 10-12s to every build (not a problem for a one off build, but annoying when you are making changes).  This will probably be fixed once new haskell-gi packages added to hackage or once the [stack issue](https://github.com/commercialhaskell/stack/issues/2041) is resolved.
+
 ### Building Leksah for Windows using Docker
 
 It may seem crazy, but this is currently the best way to bootstrap Leksah for
@@ -125,44 +173,3 @@ Build Leksah using the Dockerfile:
 Copy the resulting msi file out of the container (version number in the file name will match the one in the leksah.cabal file):
 
     sudo docker run --rm --volume $HOME/output:/output leksah/build cp /leksah/win32/leksah-0.16.0.0-ghc-7.10.3.msi /output
-
-
-### Building Leksah from GitHub
-
-We have just completed a port of Leksah from Gtk2Hs to haskell-gi.  Not all
-of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
-or follow the instructions below.
-
-First install the following C libraries for your OS using the instructions
-above (these are the Fedora names your OS may have different names):
-
-    gobject-introspection-devel
-    webkitgtk3-devel
-    gtksourceview3-devel
-
-Clone lots of stuff:
-
-    git clone https://github.com/leksah/leksah.git
-    cd leksah
-    git submodule update --init
-    cd ..
-
-Install some tools:
-
-    cabal install alex happy
-    cabal install gtk2hs-buildtools
-
-Install the rest:
-
-    cd leksah
-    cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
-
-On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
-
-    XDG_DATA_DIRS=/opt/local/share cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
-
-#### Using Stack instead of cabal-install
-
-Instead of the very last `cabal install ...` command run `stack build`.
-
-Note: If you intend to do any development work on Leksah, do not use stack for now as it adds 10-12s to every build (not a problem for a one off build, but annoying when you are making changes).  This will probably be fixed once new haskell-gi packages added to hackage or once the [stack issue](https://github.com/commercialhaskell/stack/issues/2041) is resolved.
