@@ -122,15 +122,15 @@ or follow the instructions below.
     cabal install alex happy
     cabal install gtk2hs-buildtools
 
-**Step 2b**: Optionally, create a sandbox
-
-    cabal sandbox init
-
 **Step 3**: Clone the repo
 
     git clone https://github.com/leksah/leksah.git
     cd leksah
     git submodule update --init
+
+**Step 3b**: Optionally, create a sandbox
+
+    cabal sandbox init
     
 **Step 4**: Install Leksah
 
