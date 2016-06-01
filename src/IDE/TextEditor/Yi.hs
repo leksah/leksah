@@ -37,6 +37,7 @@ import Data.Typeable (Typeable)
 #ifdef LEKSAH_WITH_YI
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
+import Data.GI.Base.BasicTypes (NullToNothing(..))
 import GI.Gtk
        (noWidget, getCurrentEventTime, menuPopup, menuAttachToWidget,
         menuNew, onWidgetPopupMenu, onWidgetKeyReleaseEvent,
@@ -216,7 +217,7 @@ instance TextEditor Yi where
     bufferToWindowCoords (YiView v) point = return point -- TODO
     drawTabs (YiView _) = return () -- TODO
     getBuffer (YiView v) = return $ YiBuffer $ Yi.getBuffer v
-    getWindow (YiView v) = liftIO $ Just <$> widgetGetWindow (drawArea v)
+    getWindow (YiView v) = nullToNothing $ widgetGetWindow (drawArea v)
     getIterAtLocation (YiView View{viewFBufRef = b}) x y = return $ mkYiIter' b $ Point 0 -- TODO
     getIterLocation (YiView v) (YiIter i) = newRectangle
         [ rectangleX      := 0 -- TODO
