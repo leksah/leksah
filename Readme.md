@@ -111,7 +111,7 @@ or follow the instructions below.
 
 | Fedora | Ubuntu |
 | --- | --- |
-| `gobject-introspection-devel` | `gobject-introspection` |
+| `gobject-introspection-devel` | `libgirepository1.0-dev` |
 | `webkitgtk3-devel` | `libwebkitgtk-3.0-dev`
 | `gtksourceview3-devel` | `libgtksourceview-3.0-dev` | 
 
