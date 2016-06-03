@@ -121,7 +121,7 @@ import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T
        (lines, isPrefixOf, stripPrefix, replace, unwords, takeWhile, pack,
-        unpack, isInfixOf, drop)
+        unpack, isInfixOf)
 import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
 import Text.PrinterParser (writeFields)
 import Data.Text (Text)
