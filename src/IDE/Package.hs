@@ -82,6 +82,7 @@ import System.Directory
        (canonicalizePath, setCurrentDirectory, doesFileExist,
         getDirectoryContents, doesDirectoryExist)
 import Prelude hiding (catch)
+import Data.Char (isSpace)
 import Data.Maybe
        (mapMaybe, listToMaybe, fromMaybe, isNothing, isJust, fromJust,
         catMaybes)
@@ -120,7 +121,7 @@ import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T
        (lines, isPrefixOf, stripPrefix, replace, unwords, takeWhile, pack,
-        unpack, isInfixOf)
+        unpack, isInfixOf, drop)
 import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
 import Text.PrinterParser (writeFields)
 import Data.Text (Text)
@@ -353,14 +354,11 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
     catchIDE (do
         let dir = ipdPackageDir package
         useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-        if useStack
-            then continuation True
-            else
-                runExternalTool' (__ "Documenting") (cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
-                    mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
-                        logOutputForBuild package backgroundBuild jumpToWarnings)
-                    lift $ postAsyncIDE reloadDoc
-                    lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
+        runExternalTool' (__ "Documenting") (if useStack then "stack" else cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
+            mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
+                logOutputForBuild package backgroundBuild jumpToWarnings)
+            lift $ postAsyncIDE reloadDoc
+            lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> print e)
 
 packageClean :: PackageAction
@@ -681,21 +679,35 @@ packageSdist = do
             (\(e :: SomeException) -> print e)
 
 
+-- | Open generated documentation for package
 packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
-
+    let dir = ipdPackageDir package
+    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
+    distDir <- if useStack
+                        then do
+                            --ask stack where its dist directory is
+                            mvar <- liftIO newEmptyMVar
+                            runExternalTool' "" "stack" ["path"] dir $ do
+                                output <- CL.consume
+                                liftIO . putMVar mvar $ head $ catMaybes $ map getDistOutput output
+                            liftIO $ takeMVar mvar
+                        else return "dist"
     liftIDE $ do
         prefs   <- readIDE prefs
-        let path = ipdPackageDir package
-                        </> "dist/doc/html"
+        let path = dir </> distDir
+                        </> "doc/html"
                         </> display (pkgName (ipdPackageId package))
                         </> "index.html"
-            dir = ipdPackageDir package
-        loadDoc . T.pack $ "file:///" ++ dir </> path
+        loadDoc . T.pack $ "file://" ++ path
         getDocumentation Nothing  >>= \ p -> displayPane p False
       `catchIDE`
         (\(e :: SomeException) -> print e)
+  where
+    -- get dist directory from stack path output
+    getDistOutput (ToolOutput o) | Just t<-T.stripPrefix "dist-dir:" o = Just $ dropWhile isSpace $ T.unpack t
+    getDistOutput _ = Nothing
 
 
 runPackage ::  (ProcessHandle -> IDEAction)
