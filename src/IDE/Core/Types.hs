@@ -118,7 +118,7 @@ import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)
 import Control.Event
     (EventSelector(..), EventSource(..), Event(..))
-import System.FilePath (dropFileName, (</>))
+import System.FilePath (dropFileName, (</>), isAbsolute, makeRelative)
 import IDE.Core.CTypes
 import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
@@ -617,15 +617,26 @@ displaySrcSpan s = srcSpanFilename s ++ ":" ++
         else show (srcSpanStartLine s) ++ ":" ++
             show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
 
+-- | The root folder of the package the message references
 logRefRootPath :: LogRef -> FilePath
 logRefRootPath = ipdPackageDir . logRefPackage
 
+-- | The file path the message references, relative to the root path
 logRefFilePath :: LogRef -> FilePath
-logRefFilePath = srcSpanFilename . logRefSrcSpan
+logRefFilePath lr = let
+    f =srcSpanFilename $ logRefSrcSpan lr
+    in if isAbsolute f -- can happen, at least when building with stack a source file that is present in several components (ie library and test)
+            then makeRelative (logRefRootPath lr) f
+            else f
 
+-- | The absolute file path the message references
 logRefFullFilePath :: LogRef -- ^ The log ref
     -> FilePath -- ^ the result
-logRefFullFilePath lr = logRefRootPath lr </> logRefFilePath lr
+logRefFullFilePath lr = let
+    f =srcSpanFilename $ logRefSrcSpan lr
+    in if isAbsolute f
+            then f
+            else logRefRootPath lr </> f
 
 isError :: LogRef -> Bool
 isError = (== ErrorRef) . logRefType
