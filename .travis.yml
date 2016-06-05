@@ -1,24 +1,26 @@
 language: haskell
 
-sudo: false
+sudo: required
 
 matrix:
   include:
     - env: CABALVER=1.22 GHCVER=7.10.1
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.1,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.1,happy-1.19.5,alex-3.1.4], sources: [hvr-ghc]}}
     - env: CABALVER=1.22 GHCVER=7.10.2
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.5,alex-3.1.4], sources: [hvr-ghc]}}
     - env: CABALVER=1.22 GHCVER=7.10.3
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.5,alex-3.1.4], sources: [hvr-ghc]}}
     - env: CABALVER=1.24 GHCVER=8.0.1
-      addons: {apt: {packages: [cabal-install-1.24,ghc-7.10.2,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.24,ghc-7.10.2,happy-1.19.5,alex-3.1.4], sources: [hvr-ghc]}}
     - env: CABALVER=head GHCVER=head
-      addons: {apt: {packages: [cabal-install-head,ghc-head,happy-1.19.5,alex-3.1.4,libgtksourceview-3.0-dev,libwebkitgtk-3.0-dev],  sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-head,ghc-head,happy-1.19.5,alex-3.1.4],  sources: [hvr-ghc]}}
   allow_failures:
     - env: CABALVER=head GHCVER=head
 
 before_install:
   - export PATH=$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:$PATH
+  - sudo apt-get update
+  - sudo apt-get install libgirepository1.0-dev libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
 
 install:
   - cabal --version
