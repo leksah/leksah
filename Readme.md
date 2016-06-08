@@ -127,6 +127,7 @@ or follow the instructions below.
 
 **Step 4**: Install Leksah
 
+    cabal install ./vendor/haskell-gi ./vendor/haskell-gi-base
     cabal new-build
 
 **Step 5**: Run leksah
@@ -149,7 +150,7 @@ Do **Step 1** and **Step 2** as above, then
 **Step 4**: Install Leksah
 
     cabal install gtk2hs-buildtools
-    cabal install ./vendor/haskell-gi
+    cabal install ./vendor/haskell-gi ./vendor/haskell-gi-base
     stack build
 
 **Step 5**: Run leksah
