@@ -99,19 +99,17 @@ import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (writeFile)
 import Control.Exception (SomeException(..), catch)
-import Data.GI.Base.Constructible (Constructible(..))
 import GI.Gtk.Objects.MessageDialog
-       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+       (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
         MessageDialog(..))
-import GI.Gtk.Objects.Dialog (dialogUseHeaderBar)
-import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.Dialog (constructDialogUseHeaderBar)
 import GI.Gtk.Objects.Window
        (windowSetTransientFor, setWindowTitle, Window(..),
-        windowWindowPosition, windowModal)
+        setWindowWindowPosition, setWindowModal)
 import GI.Gtk.Enums
        (FileChooserAction(..), ResponseType(..), ButtonsType(..),
         WindowPosition(..), MessageType(..))
-import Data.GI.Base (set, nullToNothing)
+import Data.GI.Base (set, nullToNothing, new')
 import GI.Gtk.Objects.Widget
        (widgetShow, widgetDestroy, widgetHide)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
@@ -167,22 +165,22 @@ workspaceTry f = do
             mainWindow <- getMainWindow
             defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
             defaultExists <- liftIO $ doesFileExist defaultWorkspace
-            md <- new MessageDialog [
-                    dialogUseHeaderBar := 0,
-                    windowModal := True,
-                    messageDialogMessageType := MessageTypeQuestion,
-                    messageDialogButtons := ButtonsTypeCancel,
-                    messageDialogText := (
-                            __ "You need to have a workspace open for this to work. "
-                         <> __ "Choose ~/leksah.lkshw to "
-                         <> __ (if defaultExists then "open workspace " else "create a workspace ")
-                         <> T.pack defaultWorkspace)]
+            md <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeCancel]
+            setWindowModal md True
+            setMessageDialogMessageType md MessageTypeQuestion
+            setMessageDialogText md (
+                    __ "You need to have a workspace open for this to work. "
+                 <> __ "Choose ~/leksah.lkshw to "
+                 <> __ (if defaultExists then "open workspace " else "create a workspace ")
+                 <> T.pack defaultWorkspace)
             windowSetTransientFor md (Just mainWindow)
             dialogAddButton' md (__ "_New Workspace") (AnotherResponseType 1)
             dialogAddButton' md (__ "_Open Workspace") (AnotherResponseType 2)
             dialogAddButton' md "~/leksah.lkshw" (AnotherResponseType 3)
             dialogSetDefaultResponse' md (AnotherResponseType 3)
-            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            setWindowWindowPosition md WindowPositionCenterOnParent
             resp <- dialogRun' md
             widgetHide md
             case resp of
@@ -216,16 +214,16 @@ workspaceOpenThis askForSession mbFilePath =
                 if exists && askForSession
                     then do
                         window <- getMainWindow
-                        md <- new MessageDialog [
-                            dialogUseHeaderBar := 0,
-                            messageDialogMessageType := MessageTypeQuestion,
-                            messageDialogButtons := ButtonsTypeNone,
-                            messageDialogText := __ "There are session settings stored with this workspace."]
+                        md <- new' MessageDialog [
+                            constructDialogUseHeaderBar 0,
+                            constructMessageDialogButtons ButtonsTypeNone]
+                        setMessageDialogMessageType md MessageTypeQuestion
+                        setMessageDialogText md $ __ "There are session settings stored with this workspace."
                         windowSetTransientFor md (Just window)
                         dialogAddButton' md (__ "_Ignore Session") ResponseTypeCancel
                         dialogAddButton' md (__ "_Load Session") ResponseTypeYes
                         dialogSetDefaultResponse' md ResponseTypeYes
-                        set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                        setWindowWindowPosition md WindowPositionCenterOnParent
                         rid <- dialogRun' md
                         widgetDestroy md
                         return $ rid == ResponseTypeYes
@@ -344,16 +342,16 @@ packageTry f = workspaceTry $ do
             Just p  -> runPackage f p
             Nothing -> do
                 window <- lift getMainWindow
-                md <- new MessageDialog [
-                    dialogUseHeaderBar := 0,
-                    messageDialogMessageType := MessageTypeQuestion,
-                    messageDialogButtons := ButtonsTypeCancel,
-                    messageDialogText := __ "You need to have an active package for this to work."]
+                md <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeCancel]
+                setMessageDialogMessageType md MessageTypeQuestion
+                setMessageDialogText md $ __ "You need to have an active package for this to work."
                 windowSetTransientFor md (Just window)
                 dialogAddButton' md (__ "_New Package") (AnotherResponseType 1)
                 dialogAddButton' md (__ "_Add Package") (AnotherResponseType 2)
                 dialogSetDefaultResponse' md (AnotherResponseType 2)
-                set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                setWindowWindowPosition md WindowPositionCenterOnParent
                 resp <- dialogRun' md
                 widgetHide md
                 case resp of
@@ -533,7 +531,7 @@ fileOpen = do
     window <- getMainWindow
     prefs <- readIDE prefs
     mbBuf <- maybeActiveBuf
-    dialog <- new FileChooserDialog []
+    dialog <- new' FileChooserDialog []
     setWindowTitle dialog $ __ "Open File"
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionOpen
@@ -555,12 +553,12 @@ fileOpen' fp = do
     unless knownFile $
         if takeExtension fp == ".cabal"
             then do
-                md <- new MessageDialog [
-                    dialogUseHeaderBar := 0,
-                    messageDialogMessageType := MessageTypeQuestion,
-                    messageDialogButtons := ButtonsTypeNone,
-                    messageDialogText := (__ "Would you like to add the package " <> T.pack fp
-                        <> __ " to the workspace so that it can be built by Leksah?")]
+                md <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeNone]
+                setMessageDialogMessageType md MessageTypeQuestion
+                setMessageDialogText md (__ "Would you like to add the package " <> T.pack fp
+                    <> __ " to the workspace so that it can be built by Leksah?")
                 windowSetTransientFor md (Just window)
                 dialogAddButton' md (__ "_Add " <> T.pack (takeFileName fp)) (AnotherResponseType 1)
                 dialogAddButton' md (__ "Just _open " <> T.pack (takeFileName fp)) (AnotherResponseType 2)
@@ -575,14 +573,14 @@ fileOpen' fp = do
             else liftIO (findCabalFile fp) >>= \case
                 Nothing -> return ()
                 Just cabalFile -> do
-                    md <- new MessageDialog [
-                        dialogUseHeaderBar := 0,
-                        messageDialogMessageType := MessageTypeQuestion,
-                        messageDialogButtons := ButtonsTypeNone,
-                        messageDialogText := (__ "The file " <> T.pack fp
-                            <> __ " seems to belong to the package " <> T.pack cabalFile
-                            <> __ " would you like to add " <> T.pack (takeFileName cabalFile)
-                            <> __ " to your workspace?")]
+                    md <- new' MessageDialog [
+                        constructDialogUseHeaderBar 0,
+                        constructMessageDialogButtons ButtonsTypeNone]
+                    setMessageDialogMessageType md MessageTypeQuestion
+                    setMessageDialogText md (__ "The file " <> T.pack fp
+                        <> __ " seems to belong to the package " <> T.pack cabalFile
+                        <> __ " would you like to add " <> T.pack (takeFileName cabalFile)
+                        <> __ " to your workspace?")
                     windowSetTransientFor md (Just window)
                     dialogAddButton' md (__ "_Add " <> T.pack (takeFileName cabalFile)) (AnotherResponseType 1)
                     dialogAddButton' md (__ "Just _open " <> T.pack (takeFileName fp)) (AnotherResponseType 2)

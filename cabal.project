@@ -5,3 +5,6 @@ packages:
  vendor/haskellVCSGUI/vcsgui/
  vendor/yi/
  vendor/gi-gtk-hs/
+ vendor/haskell-gi/
+ vendor/haskell-gi-base/
+ vendor/ghcjs-dom/

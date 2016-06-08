@@ -81,14 +81,13 @@ import Data.Monoid ((<>))
 import System.Log.Logger (debugM)
 import qualified Data.Traversable as Tr (forM)
 import qualified Data.Foldable as F (toList, foldr, or)
-import GI.Gtk.Objects.Window (windowTransientFor, Window(..))
+import GI.Gtk.Objects.Window (setWindowTransientFor, Window(..))
 import GI.Gtk.Objects.Dialog (dialogGetContentArea, dialogNew)
 import Data.GI.Base (unsafeCastTo, set)
-import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Enums (ResponseType(..))
 import GI.Gtk.Objects.Box (Box(..), boxPackStart)
 import GI.Gtk.Objects.Widget
-       (widgetDestroy, widgetHide, widgetGrabDefault, widgetCanDefault,
+       (widgetDestroy, widgetHide, widgetGrabDefault, setWidgetCanDefault,
         widgetShowAll)
 import GI.Gtk.Objects.MenuItem
        (onMenuItemActivate, menuItemNewWithLabel)
@@ -469,7 +468,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                             Nothing -> id
                                             Just str -> str <> "." <> id
             dia               <- dialogNew
-            set dia [ windowTransientFor := parentWindow ]
+            setWindowTransientFor dia parentWindow
             upper             <- dialogGetContentArea dia >>= unsafeCastTo Box
             okButton <- dialogAddButton' dia (__"Add Import") ResponseTypeOk
             dialogAddButton' dia (__"Cancel") ResponseTypeCancel
@@ -478,7 +477,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
             dialogSetDefaultResponse' dia ResponseTypeOk --does not work for the tree view
             widgetShowAll dia
             rw <- getRealWidget widget
-            set okButton [widgetCanDefault := True]
+            setWidgetCanDefault okButton True
             widgetGrabDefault okButton
             resp <- dialogRun' dia
             value                      <- ext T.empty

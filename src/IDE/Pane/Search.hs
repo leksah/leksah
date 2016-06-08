@@ -79,8 +79,7 @@ import GI.Gtk.Objects.TreeViewColumn
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew)
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
-import Data.GI.Base.Attributes (AttrLabelProxy(..), AttrOp(..))
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSetMode)
 import GI.Gtk.Enums
@@ -95,11 +94,9 @@ import GI.Gtk.Objects.MenuItem
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathGetIndices')
-
-_text = AttrLabelProxy :: AttrLabelProxy "text"
-_stockId = AttrLabelProxy :: AttrLabelProxy "stockId"
-_scale = AttrLabelProxy :: AttrLabelProxy "scale"
-_scaleSet = AttrLabelProxy :: AttrLabelProxy "scaleSet"
+import GI.Gtk
+       (setCellRendererTextScaleSet, setCellRendererTextScale,
+        setCellRendererPixbufStockId, setCellRendererTextText)
 
 -- | A search pane description
 --
@@ -195,11 +192,11 @@ buildSearchPane =
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer30 False
         cellLayoutPackStart col3 renderer3 True
-        cellLayoutSetAttributes col3 renderer3 seqStore
-            $ \row -> [ _text := dscName row]
-        cellLayoutSetAttributes col3 renderer30 seqStore
-            $ \row -> [
-            _stockId := stockIdFromType ((descrType . dscTypeHint) row)]
+        cellLayoutSetDataFunction col3 renderer3 seqStore
+            $ setCellRendererTextText renderer3 . dscName
+        cellLayoutSetDataFunction col3 renderer30 seqStore
+            $ setCellRendererPixbufStockId renderer30
+                . stockIdFromType . descrType . dscTypeHint
 
 
         renderer1    <- cellRendererTextNew
@@ -212,17 +209,18 @@ buildSearchPane =
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer10 False
         cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributes col1 renderer1 seqStore
-            $ \row -> [ _text := case dsMbModu row of
-                                        Nothing -> ""
-                                        Just pm -> T.pack . display $ modu pm]
-        cellLayoutSetAttributes col1 renderer10 seqStore
-            $ \row -> [ _stockId
-                         := if isReexported row
-                                    then "ide_reexported"
-                                        else if isJust (dscMbLocation row)
-                                            then "ide_source"
-                                            else ""]
+        cellLayoutSetDataFunction col1 renderer1 seqStore
+            $ \row -> setCellRendererTextText renderer1 $
+                            case dsMbModu row of
+                                Nothing -> ""
+                                Just pm -> T.pack . display $ modu pm
+        cellLayoutSetDataFunction col1 renderer10 seqStore
+            $ \row -> setCellRendererPixbufStockId renderer10 $
+                            if isReexported row
+                                then "ide_reexported"
+                                    else if isJust (dscMbLocation row)
+                                        then "ide_source"
+                                        else ""
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -232,10 +230,11 @@ buildSearchPane =
         treeViewColumnSetReorderable col2 True
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 seqStore
-            $ \row -> [ _text := case dsMbModu row of
-                                        Nothing -> ""
-                                        Just pm -> T.pack . display $ pack pm]
+        cellLayoutSetDataFunction col2 renderer2 seqStore
+            $ \row -> setCellRendererTextText renderer2 $
+                            case dsMbModu row of
+                                Nothing -> ""
+                                Just pm -> T.pack . display $ pack pm
 
         renderer3   <- cellRendererTextNew
         col3        <- treeViewColumnNew
@@ -245,11 +244,12 @@ buildSearchPane =
         treeViewColumnSetReorderable col3 True
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer3 True
-        cellLayoutSetAttributes col3 renderer3 seqStore
-            $ \row -> [ _text := T.pack . BS.unpack . fromMaybe BS.empty $
-                            dscMbTypeStr row,
-                        _scale := 0.8,
-                        _scaleSet := True    ]
+        cellLayoutSetDataFunction col3 renderer3 seqStore
+            $ \row -> do
+                setCellRendererTextText renderer3 $ T.pack . BS.unpack . fromMaybe BS.empty $
+                            dscMbTypeStr row
+                setCellRendererTextScale renderer3 0.8
+                setCellRendererTextScaleSet renderer3 True
 
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
@@ -440,7 +440,7 @@ launchSymbolNavigationDialog txt act = do
         boxPackEnd' bb closeB PackNatural 0
         boxPackEnd' bb okB PackNatural 0
         boxPackStart' lower bb PackNatural 7
-        set okB [widgetCanDefault := True]
+        setWidgetCanDefault okB True
         buttonSetLabel okB "Goto"
         widgetGrabDefault okB
         widgetShowAll dia

@@ -52,7 +52,7 @@ import Data.GI.Gtk.ModelView.ForestStore
         forestStoreInsert, forestStoreClear, forestStoreNew)
 import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.TreeViewColumn
        (TreeViewColumn(..), treeViewColumnSetReorderable,
         treeViewColumnSetResizable, treeViewColumnSetSizing,
@@ -62,8 +62,7 @@ import GI.Gtk.Enums
         TreeViewColumnSizing(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
-import Data.GI.Base.Attributes (AttrOp(..))
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSelectPath, treeSelectionUnselectAll,
         treeSelectionSetMode)
@@ -121,8 +120,8 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         treeViewColumnSetReorderable colA True
         treeViewAppendColumn treeView colA
         cellLayoutPackStart colA rendererA False
-        cellLayoutSetAttributes colA rendererA breakpoints
-            $ \row -> [cellRendererTextText := showSourceSpan row]
+        cellLayoutSetDataFunction colA rendererA breakpoints
+            $ \row -> setCellRendererTextText rendererA $ showSourceSpan row
 
         rendererB    <- cellRendererTextNew
         colB         <- treeViewColumnNew
@@ -132,8 +131,8 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         treeViewColumnSetReorderable colB True
         treeViewAppendColumn treeView colB
         cellLayoutPackStart colB rendererB False
-        cellLayoutSetAttributes colB rendererB breakpoints
-            $ \row -> [ cellRendererTextText := refDescription row]
+        cellLayoutSetDataFunction colB rendererB breakpoints
+            $ setCellRendererTextText rendererB . refDescription
 
         treeViewSetHeadersVisible treeView True
         selB <- treeViewGetSelection treeView

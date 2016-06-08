@@ -41,7 +41,6 @@ import IDE.Core.State
         wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
         reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
 import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
-import IDE.Sandbox
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), takeFileName, dropFileName)
 import Distribution.Package (PackageIdentifier(..))
@@ -112,14 +111,13 @@ import GI.Gtk.Enums
        (MessageType(..), PolicyType(..), ShadowType(..),
         TreeViewColumnSizing(..))
 import GI.Gtk.Objects.CellRendererPixbuf
-       (cellRendererPixbufStockId, cellRendererPixbufNew)
+       (setCellRendererPixbufStockId, cellRendererPixbufNew)
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Base (set)
-import Data.GI.Base.Attributes (AttrOp(..))
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributeFunc, cellLayoutSetAttributes)
+       (cellLayoutSetDataFunc', cellLayoutSetDataFunction)
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextMarkup, cellRendererTextNew)
+       (setCellRendererTextMarkup, cellRendererTextNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import Data.GI.Gtk.ModelView.CustomStore
@@ -293,19 +291,19 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
         when (showWorkspaceIcons prefs) $ do
             renderer2    <- cellRendererPixbufNew
             cellLayoutPackStart col1 renderer2 False
-            set renderer2 [ cellRendererPixbufStockId := "" ]
-            cellLayoutSetAttributes col1 renderer2 recordStore
-                $ \record -> [ cellRendererPixbufStockId := toIcon record]
+            setCellRendererPixbufStockId renderer2 ""
+            cellLayoutSetDataFunction col1 renderer2 recordStore
+                $ setCellRendererPixbufStockId renderer2 . toIcon
 
         renderer1    <- cellRendererTextNew
         cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributeFunc col1 renderer1 recordStore $ \iter -> do
+        cellLayoutSetDataFunc' col1 renderer1 recordStore $ \iter -> do
             record <- customStoreGetRow recordStore iter
             mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
             forM_ mbPkg $ \pkg -> do
                 -- The cellrenderer is stateful, so it knows which cell this markup will be for (the cell at iter)
                 markup <- flip reflectIDE ideR $ toMarkup record pkg
-                forM_ mbPkg $ \pkg -> set renderer1 [ cellRendererTextMarkup := markup]
+                forM_ mbPkg $ \pkg -> setCellRendererTextMarkup renderer1 markup
 
         -- treeViewSetActiveOnSingleClick treeView True
         treeViewSetHeadersVisible treeView False
@@ -640,23 +638,15 @@ contextMenuItems record path store = do
 
         AddSourcesRecord -> do
             Just pkg <- treePathToPackage store path
-            let onAddSource snapshot = workspaceTryQuiet $ flip runPackage pkg (sandboxAddSource snapshot)
-            return [ [ ("Add Source Dependency...", onAddSource False >> refreshWorkspacePane)
-                     , ("Add Source Dependency Snapshot...", onAddSource True >> refreshWorkspacePane)
-                     ]
-                   ]
+            return []
 
 
         AddSourceRecord p -> do
             Just pkg <- treePathToPackage store path
-            let onRemoveSourceDependency  = do
-                    workspaceTryQuiet $ flip runPackage pkg (sandboxDeleteSource (ipdPackageDir p))
-                onAddSourceDependencyToWs = workspaceTryQuiet . void $
+            let onAddSourceDependencyToWs = workspaceTryQuiet . void $
                     workspaceAddPackage' (ipdCabalFile p)
 
             return [ [ ("Add Package To Workspace", onAddSourceDependencyToWs >> refreshWorkspacePane)
-                     ]
-                   , [ ("Delete Source Dependency", onRemoveSourceDependency >> refreshWorkspacePane)
                      ]
                    ]
         _ -> return []

@@ -77,8 +77,7 @@ import GI.Gtk.Objects.Dialog
         dialogGetContentArea, dialogNew)
 import Data.GI.Base (unsafeCastTo, set, nullToNothing)
 import GI.Gtk.Objects.Window
-       (windowSetDefaultSize, windowTitle, windowTransientFor)
-import Data.GI.Base.Attributes (AttrOp(..))
+       (windowSetDefaultSize, setWindowTitle, setWindowTransientFor)
 import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
 import GI.Gtk.Objects.Box (Box(..), boxSetSpacing)
 import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
@@ -90,10 +89,10 @@ import GI.Gtk.Objects.Button
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
 import GI.Gtk.Objects.Widget
        (widgetModifyFont, widgetDestroy, widgetShowAll, widgetGrabDefault,
-        widgetCanDefault, widgetSetSensitive)
+        setWidgetCanDefault, widgetSetSensitive)
 import GI.Gtk.Objects.VBox (VBox(..))
 import GI.Pango.Structs.FontDescription (fontDescriptionFromString)
-import GI.Gtk.Objects.CellRendererText (cellRendererTextText)
+import GI.Gtk.Objects.CellRendererText (setCellRendererTextText)
 import GI.Gtk.Objects.Settings
        (settingsSetLongProperty, settingsGetForScreen, Settings(..))
 import GI.GtkSource
@@ -112,8 +111,8 @@ runPreferencesDialog = do
   parent <- getMainWindow
   reifyIDE $ \ideR -> do
     dialog <-   dialogNew
-    set dialog [ windowTransientFor := parent
-            , windowTitle := __ "Preferences" ]
+    setWindowTransientFor dialog parent
+    setWindowTitle dialog $ __ "Preferences"
     windowSetDefaultSize dialog 800 500
 
     configDir    <- getConfigDir
@@ -205,7 +204,7 @@ runPreferencesDialog = do
         return e
 
 
-    set apply [widgetCanDefault := True]
+    setWidgetCanDefault apply True
     widgetGrabDefault apply
     widgetShowAll dialog
     resp  <- dialogRun' dialog
@@ -569,8 +568,8 @@ prefsDescription configDir packages = NFDPP [
             categoryForPane
             (\b a -> a{categoryForPane = b})
             (multisetEditor
-                (ColumnDescr True [(__ "Pane Id", \ (n, _) -> [cellRendererTextText := n])
-                                   ,(__ "Pane Category", \ (_, v) -> [cellRendererTextText := v])])
+                (ColumnDescr True [(__ "Pane Id", \cell (n, _) -> setCellRendererTextText cell n)
+                                   ,(__ "Pane Category", \cell (_, v) -> setCellRendererTextText cell v)])
                 (pairEditor
                     (textEditor (not . T.null) True, emptyParams)
                     (textEditor (not . T.null) True, emptyParams), emptyParams)
@@ -589,8 +588,8 @@ prefsDescription configDir packages = NFDPP [
             pathForCategory
             (\b a -> a{pathForCategory = b})
             (multisetEditor
-                (ColumnDescr True [(__ "Pane category", \ (n, _) -> [cellRendererTextText := n])
-                                   ,(__ "Pane path", \ (_, v) -> [cellRendererTextText := T.pack $ show v])])
+                (ColumnDescr True [(__ "Pane category", \cell (n, _) -> setCellRendererTextText cell n)
+                                   ,(__ "Pane path", \cell (_, v) -> setCellRendererTextText cell . T.pack $ show v)])
                 (pairEditor (textEditor (not . T.null) True, emptyParams)
                     (genericEditor, emptyParams),
                   emptyParams)

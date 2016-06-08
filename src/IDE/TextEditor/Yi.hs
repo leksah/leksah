@@ -45,7 +45,6 @@ import GI.Gtk
         onWidgetKeyPressEvent, onWidgetButtonReleaseEvent,
         onWidgetButtonPressEvent, widgetAddEvents, afterWidgetFocusInEvent,
         widgetGrabFocus, toWidget, widgetGetWindow)
-import Data.GI.Base.Constructible (Constructible(..))
 import GI.Gdk
        (eventButtonReadState)
 import Graphics.UI.Frame.Rectangle

@@ -108,7 +108,7 @@ import GI.Gtk.Objects.MenuItem
        (toMenuItem, menuItemSetSubmenu, menuItemGetSubmenu,
         onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.Widget
-       (WidgetK, onWidgetKeyPressEvent, widgetName, widgetSetName,
+       (WidgetK, onWidgetKeyPressEvent, widgetSetName,
         Widget(..), widgetShow, widgetSetSizeRequest, widgetShowAll,
         widgetDestroy, widgetHide, widgetSetSensitive)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
@@ -133,10 +133,9 @@ import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
 import GI.Gtk.Functions (mainQuit)
 import GI.Gtk.Objects.AboutDialog
        (aboutDialogSetAuthors, setAboutDialogAuthors,
-        aboutDialogProgramName, aboutDialogAuthors, aboutDialogWebsite,
-        aboutDialogLicense, aboutDialogComments, aboutDialogCopyright,
-        aboutDialogVersion, aboutDialogNew)
-import Data.GI.Base.Attributes (AttrOp(..))
+        setAboutDialogProgramName, setAboutDialogAuthors, setAboutDialogWebsite,
+        setAboutDialogLicense, setAboutDialogComments, setAboutDialogCopyright,
+        setAboutDialogVersion, aboutDialogNew)
 import GI.Gtk.Objects.Dialog (dialogRun)
 import GI.Gtk.Objects.IconFactory
        (iconFactoryAdd, iconFactoryAddDefault, iconFactoryNew)
@@ -703,13 +702,13 @@ aboutDialog = do
     dd <- getDataDir
     (year, _, _) <- toGregorian . utctDay <$> getCurrentTime
     license <- catch (T.readFile $ dd </> T.unpack (__ "LICENSE")) (\ (_ :: SomeException) -> return "")
-    set d [ aboutDialogProgramName := "Leksah"
-          , aboutDialogVersion := T.pack $ showVersion version
-          , aboutDialogCopyright := __ "Copyright 2007-" <> T.pack (show year) <> " Jürgen Nicklisch-Franken, Hamish Mackenzie,\nJacco Krijnen, JP Moresmau"
-          , aboutDialogComments := __ "An integrated development environement (IDE) for the " <>
+    setAboutDialogProgramName d "Leksah"
+    setAboutDialogVersion d . T.pack $ showVersion version
+    setAboutDialogCopyright d $ __ "Copyright 2007-" <> T.pack (show year) <> " Jürgen Nicklisch-Franken, Hamish Mackenzie,\nJacco Krijnen, JP Moresmau"
+    setAboutDialogComments d $ __ "An integrated development environement (IDE) for the " <>
                                __ "programming language Haskell and the Glasgow Haskell Compiler"
-          , aboutDialogLicense := license
-          , aboutDialogWebsite := "http://leksah.org/"]
+    setAboutDialogLicense d license
+    setAboutDialogWebsite d "http://leksah.org/"
     aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken","Hamish Mackenzie","Jacco Krijnen","JP Moresmau"]
     dialogRun d
     widgetDestroy d

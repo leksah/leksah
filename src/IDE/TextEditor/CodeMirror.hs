@@ -81,7 +81,6 @@ import GI.Gdk.Structs.EventButton (eventButtonReadState)
 import GI.JavaScriptCore.Structs.GlobalContext (GlobalContext(..))
 import Foreign.Ptr (castPtr)
 import Data.GI.Base.BasicConversions (gflagsToWord)
-import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
 import Data.GI.Base.BasicTypes (nullToNothing)
 

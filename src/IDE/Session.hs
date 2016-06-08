@@ -75,7 +75,6 @@ import GI.Gtk.Objects.Window
        (windowUnfullscreen, windowFullscreen, windowSetDefaultSize,
         Window(..), windowSetTransientFor, setWindowTitle, windowGetSize)
 import GI.Gtk.Enums (ResponseType(..), FileChooserAction(..))
-import Data.GI.Base.Constructible (Constructible(..))
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserGetFilename, fileChooserSetCurrentFolder,
@@ -87,7 +86,7 @@ import GI.Gtk.Objects.Paned (panedSetPosition, panedGetPosition)
 import GI.Gtk.Objects.Notebook
        (notebookSetCurrentPage, notebookSetTabPos, notebookSetShowTabs,
         notebookGetCurrentPage, notebookGetTabPos, notebookGetShowTabs)
-import Data.GI.Base (unsafeCastTo, nullToNothing)
+import Data.GI.Base (unsafeCastTo, nullToNothing, new')
 import Control.Arrow (Arrow(..))
 import qualified Data.Text as T (unpack, pack)
 import Data.Monoid ((<>))
@@ -422,7 +421,7 @@ loadSessionPrompt :: IDEAction
 loadSessionPrompt = do
     window' <- getMainWindow
     configFolder <- liftIO getConfigDir
-    dialog <- new FileChooserDialog []
+    dialog <- new' FileChooserDialog []
     setWindowTitle dialog (__ "Select session file")
     windowSetTransientFor dialog $ Just window'
     fileChooserSetAction dialog FileChooserActionOpen

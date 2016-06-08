@@ -94,9 +94,8 @@ import GI.Gtk.Objects.TextBuffer
         textBufferGetTagTable, textBufferCreateMark, textBufferGetEndIter,
         textBufferNew)
 import GI.Gtk.Objects.TextTag
-       (textTagBackground, textTagForeground, textTagNew)
+       (setTextTagBackground, setTextTagForeground, textTagNew)
 import Data.GI.Base (unsafeCastTo, set, nullToNothing)
-import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.TextTagTable
        (noTextTagTable, textTagTableAdd)
 import GI.Gtk.Objects.Notebook (Notebook(..))
@@ -312,23 +311,23 @@ createNewLogLaunch = do
     tags         <- textBufferGetTagTable buf
 
     errtag       <- textTagNew (Just "err")
-    set errtag[textTagForeground := "red"]
+    setTextTagForeground errtag "red"
     textTagTableAdd tags errtag
 
     frametag     <- textTagNew (Just "frame")
-    set frametag[textTagForeground := "dark green"]
+    setTextTagForeground frametag "dark green"
     textTagTableAdd tags frametag
 
     activeErrtag <- textTagNew (Just "activeErr")
-    set activeErrtag[textTagBackground := "yellow"]
+    setTextTagBackground activeErrtag "yellow"
     textTagTableAdd tags activeErrtag
 
     intputTag <- textTagNew (Just "input")
-    set intputTag[textTagForeground := "blue"]
+    setTextTagForeground intputTag "blue"
     textTagTableAdd tags intputTag
 
     infoTag <- textTagNew (Just "info")
-    set infoTag[textTagForeground := "grey"]
+    setTextTagForeground infoTag "grey"
     textTagTableAdd tags infoTag
 
     return $ LogLaunch buf

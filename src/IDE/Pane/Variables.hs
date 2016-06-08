@@ -65,7 +65,7 @@ import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
 import GI.Gtk.Objects.Notebook (Notebook(..))
 import GI.Gtk.Objects.Window (Window(..))
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.TreeViewColumn
        (TreeViewColumn(..), treeViewColumnSetReorderable,
         treeViewColumnSetResizable, treeViewColumnSetSizing,
@@ -75,8 +75,7 @@ import GI.Gtk.Enums
         TreeViewColumnSizing(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
-import Data.GI.Base.Attributes (AttrOp(..))
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSetMode)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
@@ -160,8 +159,8 @@ builder' pp nb windows = do
     treeViewColumnSetReorderable col1 True
     treeViewAppendColumn treeView col1
     cellLayoutPackStart col1 renderer1 False
-    cellLayoutSetAttributes col1 renderer1 variables
-        $ \row -> [ cellRendererTextText := varName row]
+    cellLayoutSetDataFunction col1 renderer1 variables
+        $ setCellRendererTextText renderer1 . varName
 
     renderer2    <- cellRendererTextNew
     col2         <- treeViewColumnNew
@@ -171,8 +170,8 @@ builder' pp nb windows = do
     treeViewColumnSetReorderable col2 True
     treeViewAppendColumn treeView col2
     cellLayoutPackStart col2 renderer2 False
-    cellLayoutSetAttributes col2 renderer2 variables
-        $ \row -> [ cellRendererTextText := varType row]
+    cellLayoutSetDataFunction col2 renderer2 variables
+        $ setCellRendererTextText renderer2 . varType
 
     renderer3    <- cellRendererTextNew
     col3         <- treeViewColumnNew
@@ -182,8 +181,8 @@ builder' pp nb windows = do
     treeViewColumnSetReorderable col3 True
     treeViewAppendColumn treeView col3
     cellLayoutPackStart col3 renderer3 False
-    cellLayoutSetAttributes col3 renderer3 variables
-        $ \row -> [ cellRendererTextText := varValue row]
+    cellLayoutSetDataFunction col3 renderer3 variables
+        $ setCellRendererTextText renderer3 . varValue
 
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView

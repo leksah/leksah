@@ -68,7 +68,7 @@ import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
 import GI.Gtk.Objects.Notebook (Notebook(..))
 import GI.Gtk.Objects.Window (Window(..))
 import GI.Gtk.Objects.CellRendererToggle
-       (cellRendererToggleActive, cellRendererToggleNew)
+       (setCellRendererToggleActive, cellRendererToggleNew)
 import GI.Gtk.Objects.TreeViewColumn
        (treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew)
@@ -77,10 +77,9 @@ import GI.Gtk.Enums
         TreeViewColumnSizing(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
-import Data.GI.Base.Attributes (AttrOp(..))
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.TreeSelection
        (onTreeSelectionChanged, treeSelectionSetMode)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
@@ -155,8 +154,8 @@ builder' pp nb windows = do
     treeViewColumnSetReorderable col0 True
     treeViewAppendColumn treeView col0
     cellLayoutPackStart col0 renderer0 False
-    cellLayoutSetAttributes col0 renderer0 tracepoints
-        $ \row -> [ cellRendererToggleActive := thSelected row]
+    cellLayoutSetDataFunction col0 renderer0 tracepoints
+        $ setCellRendererToggleActive renderer0 . thSelected
 
     renderer1    <- cellRendererTextNew
     col1         <- treeViewColumnNew
@@ -166,8 +165,8 @@ builder' pp nb windows = do
     treeViewColumnSetReorderable col1 True
     treeViewAppendColumn treeView col1
     cellLayoutPackStart col1 renderer1 False
-    cellLayoutSetAttributes col1 renderer1 tracepoints
-        $ \row -> [ cellRendererTextText := T.pack $ show (thIndex row)]
+    cellLayoutSetDataFunction col1 renderer1 tracepoints
+        $ setCellRendererTextText renderer1 . T.pack . show . thIndex
 
     renderer2    <- cellRendererTextNew
     col2         <- treeViewColumnNew
@@ -177,8 +176,8 @@ builder' pp nb windows = do
     treeViewColumnSetReorderable col2 True
     treeViewAppendColumn treeView col2
     cellLayoutPackStart col2 renderer2 False
-    cellLayoutSetAttributes col2 renderer2 tracepoints
-        $ \row -> [ cellRendererTextText := thFunction row]
+    cellLayoutSetDataFunction col2 renderer2 tracepoints
+        $ setCellRendererTextText renderer2 . thFunction
 
     renderer3    <- cellRendererTextNew
     col3         <- treeViewColumnNew
@@ -188,8 +187,8 @@ builder' pp nb windows = do
     treeViewColumnSetReorderable col3 True
     treeViewAppendColumn treeView col3
     cellLayoutPackStart col3 renderer3 False
-    cellLayoutSetAttributes col3 renderer3 tracepoints
-        $ \row -> [ cellRendererTextText := T.pack $ displaySrcSpan (thPosition row)]
+    cellLayoutSetDataFunction col3 renderer3 tracepoints
+        $ setCellRendererTextText renderer3 . T.pack . displaySrcSpan . thPosition
 
     treeViewSetHeadersVisible treeView True
     sel <- treeViewGetSelection treeView

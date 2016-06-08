@@ -71,7 +71,7 @@ import Data.GI.Gtk.ModelView.SeqStore
 import GI.Gtk.Objects.Widget
        (widgetGetName, widgetModifyText, widgetModifyBase,
         afterWidgetFocusInEvent, onWidgetKeyPressEvent,
-        onWidgetFocusInEvent, widgetTooltipText, Widget(..), widgetSetName,
+        onWidgetFocusInEvent, setWidgetTooltipText, Widget(..), widgetSetName,
         widgetGrabFocus, widgetShowAll, widgetHide)
 import GI.Gtk.Objects.Toolbar
        (toolbarInsert, toolbarSetIconSize, toolbarSetStyle, toolbarNew,
@@ -85,7 +85,6 @@ import GI.Gtk.Objects.Container
        (containerGetChildren, containerChildSetProperty, containerAdd)
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.SeparatorToolItem (separatorToolItemNew)
-import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.ToggleToolButton
        (ToggleToolButton(..), toggleToolButtonSetActive,
         toggleToolButtonGetActive, toggleToolButtonNew)
@@ -93,12 +92,12 @@ import Data.GI.Gtk.ModelView.TreeModel (makeColumnIdString, treeModelGetPath, tr
 import Data.GI.Gtk.ModelView.CustomStore (customStoreSetColumn)
 import GI.Gtk.Objects.EntryCompletion
        (EntryCompletion(..), onEntryCompletionMatchSelected,
-        entryCompletionSetMatchFunc, entryCompletionModel,
+        entryCompletionSetMatchFunc, setEntryCompletionModel,
         entryCompletionNew)
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes, cellLayoutPackStart)
+       (cellLayoutSetDataFunction, cellLayoutPackStart)
 import GI.Gtk.Interfaces.Editable
        (afterEditableDeleteText, afterEditableInsertText)
 import GI.Gdk.Structs.EventKey
@@ -242,7 +241,7 @@ constructFindReplace = do
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Grep"))
     toolbarInsert toolbar grepButton 0
     onToolButtonClicked grepButton performGrep
-    set grepButton [widgetTooltipText := __"Search in multiple files"]
+    setWidgetTooltipText grepButton $ __"Search in multiple files"
 
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
@@ -270,18 +269,18 @@ constructFindReplace = do
 
     nextButton <- toolButtonNewFromStock "gtk-go-forward"
     toolbarInsert toolbar nextButton 0
-    set nextButton [widgetTooltipText := __"Search for the next match in the current file"]
+    setWidgetTooltipText nextButton $ __"Search for the next match in the current file"
     nextButton `onToolButtonClicked` doSearch toolbar Forward ideR
 
     wrapAroundButton <- toggleToolButtonNew
     toolButtonSetLabel wrapAroundButton (Just (__"Wrap"))
     widgetSetName wrapAroundButton "wrapAroundButton"
     toolbarInsert toolbar wrapAroundButton 0
-    set wrapAroundButton [widgetTooltipText := __"When selected searching will continue from the top when no more matches are found"]
+    setWidgetTooltipText wrapAroundButton $ __"When selected searching will continue from the top when no more matches are found"
 
     previousButton <- toolButtonNewFromStock "gtk-go-back"
     toolbarInsert toolbar previousButton 0
-    set previousButton [widgetTooltipText := __"Search for the previous match in the current file"]
+    setWidgetTooltipText previousButton $ __"Search for the previous match in the current file"
     previousButton `onToolButtonClicked` doSearch toolbar Backward ideR
 
     entryTool <- toolItemNew
@@ -304,11 +303,11 @@ constructFindReplace = do
     completion <- entryCompletionNew
     entrySetCompletion entry (Just completion)
 
-    set completion [entryCompletionModel := store]
+    setEntryCompletionModel completion store
     cell <- cellRendererTextNew
     cellLayoutPackStart completion cell True
-    cellLayoutSetAttributes completion cell store
-        (\ cd -> [cellRendererTextText := cd])
+    cellLayoutSetDataFunction completion cell store
+        (setCellRendererTextText cell)
     entryCompletionSetMatchFunc completion (matchFunc store)
     onEntryCompletionMatchSelected completion $ \ model iter -> do
         txt <- treeModelGetValue model iter column0
@@ -321,14 +320,14 @@ constructFindReplace = do
     widgetSetName regexButton "regexButton"
     toolbarInsert toolbar regexButton 0
     onToolButtonClicked regexButton $ doSearch toolbar Insert ideR
-    set regexButton [widgetTooltipText := __"When selected the search string is used as a regular expression"]
+    setWidgetTooltipText regexButton $ __"When selected the search string is used as a regular expression"
 
     entireWordButton <- toggleToolButtonNew
     toolButtonSetLabel entireWordButton (Just (__"Words"))
     widgetSetName entireWordButton "entireWordButton"
     toolbarInsert toolbar entireWordButton 0
     entireWordButton `onToolButtonClicked` doSearch toolbar Insert ideR
-    set entireWordButton [widgetTooltipText := __"When selected only entire words are matched"]
+    setWidgetTooltipText entireWordButton $ __"When selected only entire words are matched"
 
     caseSensitiveButton <- toggleToolButtonNew
     toolButtonSetLabel caseSensitiveButton (Just (__"Case"))
@@ -336,7 +335,7 @@ constructFindReplace = do
     toolbarInsert toolbar caseSensitiveButton 0
     caseSensitiveButton `onToolButtonClicked`
        doSearch toolbar Insert ideR
-    set caseSensitiveButton [widgetTooltipText := __"When selected the search is case sensitive"]
+    setWidgetTooltipText caseSensitiveButton $ __"When selected the search is case sensitive"
 
     afterEditableInsertText entry (\ t _ i -> do
         doSearch toolbar Insert ideR

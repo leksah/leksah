@@ -26,17 +26,16 @@ import Control.Monad.IO.Class (MonadIO(..))
 import qualified Control.Monad.Reader as Gtk (liftIO)
 import GI.Gtk.Objects.TreeView
        (treeViewRowActivated, treeViewGetColumn, onTreeViewRowActivated,
-        treeViewGetSelection, treeViewHeadersVisible, treeViewAppendColumn,
+        treeViewGetSelection, setTreeViewHeadersVisible, treeViewAppendColumn,
         treeViewSetModel, treeViewNew, treeViewSetCursor,
         treeViewGetCursor, treeViewGetModel, TreeViewK)
 import GI.Gtk.Interfaces.TreeModel (treeModelIterNChildren)
 import GI.Gtk.Objects.Window
-       (windowWindowPosition, windowTransientFor, windowDefaultHeight,
-        windowDefaultWidth, windowResizable, windowDecorated,
-        windowTypeHint, windowNew, windowGetSize)
+       (setWindowWindowPosition, setWindowTransientFor, setWindowDefaultHeight,
+        setWindowDefaultWidth, setWindowResizable, setWindowDecorated,
+        setWindowTypeHint, windowNew, windowGetSize)
 import GI.Gtk.Enums (WindowPosition(..), WindowType(..))
 import Data.GI.Base (on, set, nullToNothing)
-import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gdk.Enums (WindowTypeHint(..))
 import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
@@ -46,9 +45,9 @@ import Data.GI.Gtk.ModelView.SeqStore
 import GI.Gtk.Objects.TreeViewColumn
        (noTreeViewColumn, treeViewColumnPackStart, treeViewColumnNew)
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.TreeSelection
        (onTreeSelectionChanged)
 import GI.Gtk.Objects.Widget
@@ -121,13 +120,12 @@ initFlipper direction = do
     (tree', store') <- reifyIDE $ \ideR -> do
         window <- windowNew WindowTypePopup
         (_, height) <- windowGetSize mainWindow
-        set window [
-            windowTypeHint      := WindowTypeHintUtility,
-            windowDecorated     := False,
-            windowResizable     := True,
-            windowDefaultWidth  := 200,
-            windowDefaultHeight := height,
-            windowTransientFor  := mainWindow]
+        setWindowTypeHint      window WindowTypeHintUtility
+        setWindowDecorated     window False
+        setWindowResizable     window True
+        setWindowDefaultWidth  window 200
+        setWindowDefaultHeight window height
+        setWindowTransientFor  window mainWindow
 
         scrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
         containerAdd window scrolledWindow
@@ -141,10 +139,10 @@ initFlipper direction = do
         _ <- treeViewAppendColumn tree column
         renderer <- cellRendererTextNew
         treeViewColumnPackStart column renderer True
-        cellLayoutSetAttributes column renderer store
-            (\str -> [ cellRendererTextText := str])
+        cellLayoutSetDataFunction column renderer store $
+            setCellRendererTextText renderer
 
-        set tree [treeViewHeadersVisible := False]
+        setTreeViewHeadersVisible tree False
 
         cid <- onWidgetKeyReleaseEvent mainWindow (handleKeyRelease tree ideR)
 
@@ -177,7 +175,7 @@ initFlipper direction = do
                             Nothing   -> return ()) ideR
                 _ -> return ()
 
-        set window [windowWindowPosition := WindowPositionCenterOnParent]
+        setWindowWindowPosition window WindowPositionCenterOnParent
         widgetShowAll window
         return (tree, store)
     modifyIDE_ (\ide -> ide{currentState = IsFlipping tree'})

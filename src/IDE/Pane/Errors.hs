@@ -60,16 +60,15 @@ import GI.Gtk.Objects.ScrolledWindow
 import GI.Gtk.Objects.TreeView
        (treeViewScrollToCell, treeViewExpandToPath,
         onTreeViewRowActivated, treeViewGetSelection, treeViewAppendColumn,
-        treeViewRowExpanded, treeViewHeadersVisible, treeViewRulesHint,
-        treeViewLevelIndentation, treeViewSetModel, treeViewNew,
+        treeViewRowExpanded, setTreeViewHeadersVisible, setTreeViewRulesHint,
+        setTreeViewLevelIndentation, treeViewSetModel, treeViewNew,
         TreeView(..))
 import GI.Gtk.Objects.ToggleButton
        (toggleButtonGetActive, onToggleButtonToggled,
-        toggleButtonNewWithLabel, toggleButtonActive, ToggleButton(..))
+        toggleButtonNewWithLabel, setToggleButtonActive, ToggleButton(..))
 import GI.Gtk.Objects.Widget
        (widgetShowAll, afterWidgetFocusInEvent, toWidget)
 import Data.GI.Base (set, get)
-import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.Notebook (Notebook(..))
 import GI.Gtk.Objects.Window (Window(..))
 import GI.Gtk.Objects.HBox (hBoxNew)
@@ -78,15 +77,15 @@ import GI.Gtk.Objects.TreeViewColumn
        (noTreeViewColumn, TreeViewColumn(..), treeViewColumnSetSizing,
         treeViewColumnNew)
 import GI.Gtk.Objects.CellRendererPixbuf
-       (cellRendererPixbufIconName, cellRendererPixbufNew)
+       (setCellRendererPixbufIconName, cellRendererPixbufNew)
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributeFunc, cellLayoutSetAttributes)
+       (cellLayoutSetDataFunc', cellLayoutSetDataFunction)
 import GI.Gtk.Enums
        (PolicyType(..), ShadowType(..), SelectionMode(..),
         TreeViewColumnSizing(..))
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Interfaces.TreeModel
        (treeModelGetIterFirst, treeModelGetPath)
 import Data.GI.Gtk.ModelView.CustomStore (customStoreGetRow)
@@ -108,6 +107,7 @@ import GI.Gdk.Structs.Atom (atomIntern)
 import Data.Int (Int32)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
+import GI.Gtk (getToggleButtonActive)
 
 
 -- | The representation of the Errors pane
@@ -151,20 +151,20 @@ instance Pane ErrorsPane IDEM
 
 instance RecoverablePane ErrorsPane ErrorsState IDEM where
     saveState ErrorsPane{..} = do
-        showErrors      <- get errorsButton toggleButtonActive
-        showWarnings    <- get warningsButton toggleButtonActive
-        showSuggestions <- get suggestionsButton toggleButtonActive
-        showTestFails   <- get testFailsButton toggleButtonActive
+        showErrors      <- getToggleButtonActive errorsButton
+        showWarnings    <- getToggleButtonActive warningsButton
+        showSuggestions <- getToggleButtonActive suggestionsButton
+        showTestFails   <- getToggleButtonActive testFailsButton
         return (Just ErrorsState{..})
 
     recoverState pp ErrorsState{..} = do
         nb <- getNotebook pp
         mbErrors <- buildPane pp nb builder
         forM_ mbErrors $ \ErrorsPane{..} -> do
-            set errorsButton      [toggleButtonActive := showErrors]
-            set warningsButton    [toggleButtonActive := showWarnings]
-            set suggestionsButton [toggleButtonActive := showSuggestions]
-            set testFailsButton   [toggleButtonActive := showTestFails]
+            setToggleButtonActive errorsButton      showErrors
+            setToggleButtonActive warningsButton    showWarnings
+            setToggleButtonActive suggestionsButton showSuggestions
+            setToggleButtonActive testFailsButton   showTestFails
         return mbErrors
 
 
@@ -191,10 +191,10 @@ builder' _pp _nb _windows = do
     warningsButton <- toggleButtonNewWithLabel (__ "Warnings")
     suggestionsButton <- toggleButtonNewWithLabel (__ "Suggestions")
     testFailsButton <- toggleButtonNewWithLabel (__ "Test Failures")
-    set suggestionsButton [toggleButtonActive := False]
+    setToggleButtonActive suggestionsButton False
 
     forM_ [errorsButton, warningsButton, suggestionsButton, testFailsButton] $ \b -> do
-        set b [toggleButtonActive := True]
+        setToggleButtonActive b True
         boxPackStart' hbox b PackNatural 3
         onToggleButtonToggled b $ reflectIDE (fillErrorList False) ideR
 
@@ -206,17 +206,16 @@ builder' _pp _nb _windows = do
 
     treeView     <- treeViewNew
     treeViewSetModel treeView (Just errorStore)
-    set treeView
-        [ treeViewLevelIndentation := 20
-        , treeViewRulesHint := True
-        , treeViewHeadersVisible := False]
+    setTreeViewLevelIndentation treeView 20
+    setTreeViewRulesHint        treeView True
+    setTreeViewHeadersVisible   treeView False
 
     column       <- treeViewColumnNew
     iconRenderer <- cellRendererPixbufNew
 
     cellLayoutPackStart column iconRenderer False
-    cellLayoutSetAttributes column iconRenderer errorStore
-                $ \row -> [ cellRendererPixbufIconName := toIcon row]
+    cellLayoutSetDataFunction column iconRenderer errorStore
+        $ setCellRendererPixbufIconName iconRenderer . toIcon
 
 
     treeViewColumnSetSizing column TreeViewColumnSizingAutosize
@@ -224,11 +223,11 @@ builder' _pp _nb _windows = do
     renderer <- cellRendererTextNew
     cellLayoutPackStart column renderer False
 
-    cellLayoutSetAttributeFunc column renderer errorStore $ \iter -> do
+    cellLayoutSetDataFunc' column renderer errorStore $ \iter -> do
         path <- treeModelGetPath errorStore iter
         row <- customStoreGetRow errorStore iter
         expanded <- treeViewRowExpanded treeView path
-        set renderer [cellRendererTextText := toDescription expanded row]
+        setCellRendererTextText renderer $ toDescription expanded row
 
     treeViewAppendColumn treeView column
 

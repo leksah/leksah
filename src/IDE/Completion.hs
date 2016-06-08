@@ -36,12 +36,11 @@ import qualified Data.Text as T
 import System.Log.Logger (debugM)
 import GI.Gtk.Objects.Window
        (windowMove, windowGetScreen, windowGetSize, Window(..),
-        windowNew, windowTransientFor, windowDefaultHeight,
-        windowDefaultWidth, windowResizable, windowDecorated,
-        windowTypeHint, windowResize)
+        windowNew, setWindowTransientFor, setWindowDefaultHeight,
+        setWindowDefaultWidth, setWindowResizable, setWindowDecorated,
+        setWindowTypeHint, windowResize)
 import Data.GI.Base
        (unsafeManagedPtrGetPtr, unsafeCastTo, get, set, nullToNothing)
-import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gdk.Enums (GrabStatus(..), WindowTypeHint(..))
 import GI.Gtk.Objects.Container
        (containerRemove, containerAdd, containerSetBorderWidth)
@@ -51,12 +50,12 @@ import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Widget
        (Widget(..), widgetShowAll, widgetGetAllocation, widgetGetParent,
         widgetHide, onWidgetButtonReleaseEvent, onWidgetMotionNotifyEvent,
-        widgetGetWindow, onWidgetButtonPressEvent, widgetVisible,
+        widgetGetWindow, onWidgetButtonPressEvent, getWidgetVisible,
         widgetModifyFont, widgetSetSizeRequest)
 import GI.Gtk.Objects.TreeView
        (treeViewSetCursor, onTreeViewRowActivated, treeViewRowActivated,
         treeViewScrollToCell, treeViewGetColumn, treeViewGetModel,
-        TreeView(..), treeViewGetSelection, treeViewHeadersVisible,
+        TreeView(..), treeViewGetSelection, setTreeViewHeadersVisible,
         treeViewAppendColumn, treeViewSetModel, treeViewNew)
 import Data.GI.Gtk.ModelView.SeqStore
        (seqStoreAppend, seqStoreClear, seqStoreGetValue, SeqStore(..),
@@ -65,13 +64,13 @@ import GI.Pango.Structs.FontDescription
        (fontDescriptionSetFamily, fontDescriptionNew,
         fontDescriptionFromString)
 import GI.Gtk.Objects.TreeViewColumn
-       (noTreeViewColumn, treeViewColumnPackStart, treeViewColumnMinWidth,
-        treeViewColumnSizing, treeViewColumnNew)
+       (noTreeViewColumn, treeViewColumnPackStart, setTreeViewColumnMinWidth,
+        setTreeViewColumnSizing, treeViewColumnNew)
 import GI.Gtk.Enums (TreeViewColumnSizing(..), WindowType(..))
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionGetSelected, treeSelectionSelectPath,
         treeSelectionSelectedForeach,
@@ -169,13 +168,12 @@ initCompletion sourceView always = do
             windows    <- getWindows
             prefs      <- readIDE prefs
             window     <- windowNew WindowTypePopup
-            set window [
-                         windowTypeHint      := WindowTypeHintUtility,
-                         windowDecorated     := False,
-                         windowResizable     := True,
-                         windowDefaultWidth  := fromIntegral width,
-                         windowDefaultHeight := fromIntegral height,
-                         windowTransientFor  := head windows]
+            setWindowTypeHint      window WindowTypeHintUtility
+            setWindowDecorated     window False
+            setWindowResizable     window True
+            setWindowDefaultWidth  window $ fromIntegral width
+            setWindowDefaultHeight window $ fromIntegral height
+            setWindowTransientFor  window $ head windows
             containerSetBorderWidth window 3
             paned      <- hPanedNew
             containerAdd window paned
@@ -196,15 +194,14 @@ initCompletion sourceView always = do
             widgetModifyFont tree (Just font)
 
             column   <- treeViewColumnNew
-            set column [
-                treeViewColumnSizing   := TreeViewColumnSizingFixed,
-                treeViewColumnMinWidth := 800] -- OSX does not like it if there is no hscroll
+            setTreeViewColumnSizing   column TreeViewColumnSizingFixed
+            setTreeViewColumnMinWidth column 800 -- OSX does not like it if there is no hscroll
             treeViewAppendColumn tree column
             renderer <- cellRendererTextNew
             treeViewColumnPackStart column renderer True
-            cellLayoutSetAttributes column renderer store (\name -> [ cellRendererTextText := name ])
+            cellLayoutSetDataFunction column renderer store $ setCellRendererTextText renderer
 
-            set tree [treeViewHeadersVisible := False]
+            setTreeViewHeadersVisible tree False
 
             descriptionBuffer <- newDefaultBuffer Nothing ""
             descriptionView   <- newView descriptionBuffer (textviewFont prefs)
@@ -246,7 +243,7 @@ addEventHandling window sourceView tree store isWordChar always = do
         selection   <- treeViewGetSelection tree
         count       <- treeModelIterNChildren model Nothing
         Just column <- nullToNothing $ treeViewGetColumn tree 0
-        let whenVisible f = get tree widgetVisible >>= \case
+        let whenVisible f = getWidgetVisible tree >>= \case
                                 True  -> f
                                 False -> return False
             down = whenVisible $ do

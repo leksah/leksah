@@ -98,17 +98,16 @@ import GI.Gtk.Objects.CheckButton
 import GI.Gtk.Structs.TreePath
        (TreePath(..))
 import GI.Gtk.Objects.Widget
-       (widgetShowAll, widgetGrabDefault, widgetCanDefault, widgetShow,
+       (widgetShowAll, widgetGrabDefault, setWidgetCanDefault, widgetShow,
         widgetSetName, widgetDestroy, widgetSetSensitive,
         afterWidgetFocusInEvent, widgetGetAllocation, toWidget)
 import GI.Gtk.Objects.Paned
        (panedAdd2, panedAdd1, panedSetPosition, panedGetPosition)
 import GI.Gtk.Objects.CellRendererPixbuf
-       (cellRendererPixbufStockId, cellRendererPixbufNew)
-import Data.GI.Base (unsafeCastTo, on, set, nullToNothing)
-import Data.GI.Base.Attributes (AttrOp(..))
+       (setCellRendererPixbufStockId, cellRendererPixbufNew)
+import Data.GI.Base (unsafeCastTo, on, set, nullToNothing, new')
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.TreeViewColumn
        (TreeViewColumn(..), treeViewColumnSetSortColumnId,
         treeViewColumnSetReorderable, treeViewColumnSetResizable,
@@ -119,7 +118,7 @@ import GI.Gtk.Enums
         ShadowType(..), SortType(..), TreeViewColumnSizing(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Interfaces.TreeModel
        (treeModelIterNext, treeModelIterChildren, treeModelGetIterFirst,
         treeModelGetPath, treeModelSortNewWithModel)
@@ -163,16 +162,15 @@ import GI.Gtk.Objects.MenuItem
         menuItemNewWithLabel)
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
-import Data.GI.Base.Constructible (Constructible(..))
 import GI.Gtk.Objects.MessageDialog
-       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+       (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
         MessageDialog(..))
 import GI.Gtk.Objects.Dialog
        (dialogResponse, dialogGetActionArea, dialogGetContentArea,
-        dialogNew, dialogUseHeaderBar)
+        dialogNew, constructDialogUseHeaderBar)
 import GI.Gtk.Objects.Window
-       (windowSetDefaultSize, windowTitle, windowTransientFor, Window(..),
-        windowWindowPosition, windowSetTransientFor)
+       (windowSetDefaultSize, setWindowTitle, setWindowTransientFor, Window(..),
+        setWindowWindowPosition, windowSetTransientFor)
 import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
 import GI.Gtk.Objects.Label
        (labelSetText, labelSetLineWrap, labelNew)
@@ -294,7 +292,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         --treeViewSetRulesHint treeView True
 
         renderer0    <- cellRendererPixbufNew
-        set renderer0 [ cellRendererPixbufStockId := "" ]
+        setCellRendererPixbufStockId renderer0 ""
 
         renderer    <- cellRendererTextNew
         col         <- treeViewColumnNew
@@ -305,16 +303,16 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         treeViewAppendColumn treeView col
         cellLayoutPackStart col renderer0 False
         cellLayoutPackStart col renderer True
-        cellLayoutSetAttributes col renderer forestStore
-            $ \row -> [ cellRendererTextText := fst row]
-        cellLayoutSetAttributes col renderer0 forestStore
-            $ \row -> [
-            cellRendererPixbufStockId :=
-               case snd row of
-                    Nothing -> ""
-                    Just pair -> if isJust (mdMbSourcePath (fst pair))
-                                     then "ide_source"
-                                     else ""]
+        cellLayoutSetDataFunction col renderer forestStore
+            $ setCellRendererTextText renderer . fst
+        cellLayoutSetDataFunction col renderer0 forestStore
+            $ \row ->
+                setCellRendererPixbufStockId renderer0 $
+                    case snd row of
+                        Nothing -> ""
+                        Just pair -> if isJust (mdMbSourcePath (fst pair))
+                                         then "ide_source"
+                                         else ""
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -324,11 +322,12 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         treeViewColumnSetReorderable col2 True
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 forestStore
-            $ \row -> [
-                cellRendererTextText := case snd row of
-                                Nothing -> ""
-                                Just pair -> (T.pack . display . pdPackage . snd) pair]
+        cellLayoutSetDataFunction col2 renderer2 forestStore
+            $ \row ->
+                setCellRendererTextText renderer2 $
+                    case snd row of
+                        Nothing -> ""
+                        Just pair -> (T.pack . display . pdPackage . snd) pair
 
         treeViewSetHeadersVisible treeView True
         treeViewSetEnableSearch treeView True
@@ -354,21 +353,21 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         cellLayoutPackStart col renderer30 False
         cellLayoutPackStart col renderer31 False
         cellLayoutPackStart col renderer3 True
-        cellLayoutSetAttributes col renderer3 descrStore
-            $ \row -> [ cellRendererTextText := descrTreeText row]
-        cellLayoutSetAttributes col renderer30 descrStore
-            $ \row -> [
-            cellRendererPixbufStockId  := stockIdFromType (descrIdType row)]
-        cellLayoutSetAttributes col renderer31 descrStore
-            $ \row -> [
-            cellRendererPixbufStockId  := if isReexported row
-                                    then "ide_reexported"
-                                        else if isJust (dscMbLocation row)
-                                            then
-                                                if dscExported row
-                                                    then "ide_source"
-                                                    else "ide_source_local"
-                                            else "ide_empty"]
+        cellLayoutSetDataFunction col renderer3 descrStore
+            $ setCellRendererTextText renderer3 . descrTreeText
+        cellLayoutSetDataFunction col renderer30 descrStore
+            $ setCellRendererPixbufStockId renderer30 . stockIdFromType . descrIdType
+        cellLayoutSetDataFunction col renderer31 descrStore
+            $ \row ->
+                setCellRendererPixbufStockId renderer31 $
+                    if isReexported row
+                        then "ide_reexported"
+                        else if isJust (dscMbLocation row)
+                            then
+                                if dscExported row
+                                    then "ide_source"
+                                    else "ide_source_local"
+                            else "ide_empty"
         -- sort definitions on name, ignoring case
         treeSortableSetSortFunc descrSortedStore 2 $ \_ iter1 iter2 -> do
             d1 <- customStoreGetRow descrStore iter1
@@ -1256,15 +1255,15 @@ respDelModDialog :: IDEM Bool
 respDelModDialog = do
     liftIO $ debugM "leksah" "respDelModDialog"
     window <- getMainWindow
-    dia <- new MessageDialog [
-                    dialogUseHeaderBar := 0,
-                    messageDialogMessageType := MessageTypeQuestion,
-                    messageDialogButtons := ButtonsTypeCancel,
-                    messageDialogText := __ "Are you sure?"]
+    dia <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeCancel]
+    setMessageDialogMessageType dia MessageTypeQuestion
+    setMessageDialogText dia $ __ "Are you sure?"
     windowSetTransientFor dia (Just window)
     dialogAddButton' dia (__ "_Delete Module") (AnotherResponseType 1)
     dialogSetDefaultResponse' dia ResponseTypeCancel
-    set dia [ windowWindowPosition := WindowPositionCenterOnParent ]
+    setWindowWindowPosition dia WindowPositionCenterOnParent
     resp <- dialogRun' dia
     widgetDestroy dia
     return $ resp == AnotherResponseType 1
@@ -1356,8 +1355,8 @@ addModuleDialog :: (Applicative m, MonadIO m)
 addModuleDialog parent modString sourceRoots hasLib exesTests = do
     liftIO $ debugM "leksah" "addModuleDialog"
     dia                <- dialogNew
-    set dia [ windowTransientFor := parent
-            , windowTitle := __ "Construct new module" ]
+    setWindowTransientFor dia parent
+    setWindowTitle dia $ __ "Construct new module"
     windowSetDefaultSize dia 400 100
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
     lower              <- dialogGetActionArea dia >>= liftIO . unsafeCastTo Box
@@ -1393,7 +1392,7 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
     onButtonClicked cancel (dialogResponse' dia ResponseTypeCancel)
     boxPackStart' upper widget PackGrow 0
     boxPackEnd' lower bb PackNatural 5
-    set ok [widgetCanDefault := True]
+    setWidgetCanDefault ok True
     widgetGrabDefault ok
     widgetShowAll dia
     resp  <- dialogRun' dia

@@ -132,20 +132,18 @@ import Text.Printf (PrintfType)
 import IDE.Metainfo.Provider (updateSystemInfo)
 import GI.GLib.Functions (timeoutAdd)
 import GI.GLib.Constants (pattern PRIORITY_DEFAULT)
-import Data.GI.Base.Constructible (Constructible(..))
 import GI.Gtk.Objects.MessageDialog
-       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+       (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
         MessageDialog(..))
-import GI.Gtk.Objects.Dialog (dialogUseHeaderBar)
-import Data.GI.Base.Attributes (AttrOp(..))
+import GI.Gtk.Objects.Dialog (constructDialogUseHeaderBar)
 import GI.Gtk.Enums
        (WindowPosition(..), ResponseType(..), ButtonsType(..),
         MessageType(..))
 import GI.Gtk.Objects.Window
-       (windowWindowPosition, windowSetTransientFor)
+       (setWindowWindowPosition, windowSetTransientFor)
 import Graphics.UI.Editor.Parameters
        (dialogRun', dialogSetDefaultResponse', dialogAddButton')
-import Data.GI.Base (set)
+import Data.GI.Base (set, new')
 import GI.Gtk.Objects.Widget (widgetDestroy)
 
 printf :: PrintfType r => Text -> r
@@ -433,9 +431,9 @@ packageCopy' package continuation = do
     catchIDE (do
         let dir = ipdPackageDir package
         useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-        runExternalTool' (__ "Copying")
-                         (if useStack then "stack" else cabalCommand prefs)
-                         ((if useStack then "install" : ipdBuildFlags package else ["copy"]) ++ ipdInstallFlags package)
+        runExternalTool' (__ "Installing")
+                         (if useStack then "stack" else "echo" {-cabalCommand prefs-})
+                         ((if useStack then "install" : ipdBuildFlags package else ["TODO run cabal new-install"]) ++ ipdInstallFlags package)
                          dir $ do
                 mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
@@ -449,15 +447,15 @@ packageRun' removeGhcjsFlagIfPresent package =
     if removeGhcjsFlagIfPresent && "--ghcjs" `elem` ipdConfigFlags package
         then do
             window <- liftIDE getMainWindow
-            md <- new MessageDialog [
-                    dialogUseHeaderBar := 0,
-                    messageDialogMessageType := MessageTypeQuestion,
-                    messageDialogButtons := ButtonsTypeCancel,
-                    messageDialogText := __ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?"]
+            md <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeCancel]
+            setMessageDialogMessageType md MessageTypeQuestion
+            setMessageDialogText md $ __ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?"
             windowSetTransientFor md (Just window)
             dialogAddButton' md (__ "Use _GHC") (AnotherResponseType 1)
             dialogSetDefaultResponse' md (AnotherResponseType 1)
-            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            setWindowWindowPosition md WindowPositionCenterOnParent
             resp <- dialogRun' md
             widgetDestroy md
             case resp of
@@ -508,7 +506,7 @@ packageRun' removeGhcjsFlagIfPresent package =
 
 -- | Is the given executable the active one?
 isActiveExe :: Text -> Executable -> Bool
-isActiveExe selected (Executable name _ _) = selected == (T.pack name)
+isActiveExe selected (Executable name _ _) = selected == T.pack name
 
 -- | get executable to run
 --   no exe activated, take first one
@@ -525,15 +523,15 @@ packageRunJavaScript' addFlagIfMissing package =
     if addFlagIfMissing && ("--ghcjs" `notElem` ipdConfigFlags package)
         then do
             window <- liftIDE getMainWindow
-            md <- new MessageDialog [
-                    dialogUseHeaderBar := 0,
-                    messageDialogMessageType := MessageTypeQuestion,
-                    messageDialogButtons := ButtonsTypeCancel,
-                    messageDialogText := __ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?"]
+            md <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeCancel]
+            setMessageDialogMessageType md MessageTypeQuestion
+            setMessageDialogText md $ __ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?"
             windowSetTransientFor md (Just window)
             dialogAddButton' md (__ "Use _GHCJS") (AnotherResponseType 1)
             dialogSetDefaultResponse' md (AnotherResponseType 1)
-            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            setWindowWindowPosition md WindowPositionCenterOnParent
             resp <- dialogRun' md
             widgetDestroy md
             case resp of
@@ -949,15 +947,15 @@ tryDebug f = do
             liftIDE $ runDebug f debug
         _ -> do
             window <- liftIDE getMainWindow
-            md <- new MessageDialog [
-                    dialogUseHeaderBar := 0,
-                    messageDialogMessageType := MessageTypeQuestion,
-                    messageDialogButtons := ButtonsTypeCancel,
-                    messageDialogText := __ "GHCi debugger is not running."]
+            md <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeCancel]
+            setMessageDialogMessageType md MessageTypeQuestion
+            setMessageDialogText md $ __ "GHCi debugger is not running."
             windowSetTransientFor md (Just window)
             dialogAddButton' md (__ "_Start GHCi") (AnotherResponseType 1)
             dialogSetDefaultResponse' md (AnotherResponseType 1)
-            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+            setWindowWindowPosition md WindowPositionCenterOnParent
             resp <- dialogRun' md
             widgetDestroy md
             case resp of

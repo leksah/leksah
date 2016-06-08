@@ -38,16 +38,15 @@ import GI.GtkosxApplication
         onApplicationNSApplicationBlockTermination,
         applicationInsertAppMenuItem, applicationSetMenuBar, Application)
 import GI.Gtk.Objects.Widget (widgetHide)
-import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base (unsafeCastTo, new')
 import GI.Gtk.Objects.MenuShell (MenuShell(..))
 import GI.Gtk.Objects.MenuItem (MenuItem(..))
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
 import Control.Monad.IO.Class (MonadIO)
-import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 applicationNew :: MonadIO m => m Application
-applicationNew = new Application []
+applicationNew = new' Application []
 
 updateMenu :: Application -> UIManager -> IDEM ()
 updateMenu app uiManager = do

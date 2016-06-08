@@ -71,19 +71,19 @@ import GI.Gtk.Objects.Window
 import GI.Gtk.Enums
        (WindowPosition(..), MessageType(..), ButtonsType(..), MessageType,
         ResponseType(..), FileChooserAction(..))
-import Data.GI.Base (new, nullToNothing)
+import Data.GI.Base (new', nullToNothing)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserAddFilter, fileChooserGetFilename,
         fileChooserSetCurrentFolder, fileChooserSetAction)
 import GI.Gtk.Objects.Dialog
-       (dialogGetContentArea, dialogNew, dialogSetDefaultResponse,
-        dialogRun, dialogAddButton)
+       (constructDialogUseHeaderBar, dialogGetContentArea, dialogNew,
+        dialogSetDefaultResponse, dialogRun, dialogAddButton)
 import GI.Gtk.Objects.FileFilter
        (fileFilterAddPattern, fileFilterSetName, fileFilterNew)
-import GI.Gtk.Objects.MessageDialog (MessageDialog(..))
-import Data.Proxy (Proxy(..))
-import Data.GI.Base.Attributes (AttrLabelProxy(..), AttrOp(..))
+import GI.Gtk.Objects.MessageDialog
+       (constructMessageDialogText, constructMessageDialogButtons,
+        constructMessageDialogMessageType, MessageDialog(..))
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gtk.Objects.Box (boxPackStart, Box(..))
 import GI.Gtk.Objects.Label (labelNew)
@@ -136,14 +136,9 @@ import System.IO.Unsafe (unsafePerformIO)
 
 #endif
 
-_useHeaderBar = AttrLabelProxy :: AttrLabelProxy "useHeaderBar"
-_messageType = AttrLabelProxy :: AttrLabelProxy "messageType"
-_buttons = AttrLabelProxy :: AttrLabelProxy "buttons"
-_text = AttrLabelProxy :: AttrLabelProxy "text"
-
 chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
-    dialog <- new FileChooserDialog []
+    dialog <- new' FileChooserDialog []
     setWindowTitle dialog prompt
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionSelectFolder
@@ -172,7 +167,7 @@ chooseFile :: Window
            -> [(String, [String])]   -- ^ File filters, e.g. [("Music Files", ["*.mp3", "*.wav"])]
            -> IO (Maybe FilePath)
 chooseFile window prompt mbFolder filters = do
-    dialog <- new FileChooserDialog []
+    dialog <- new' FileChooserDialog []
     setWindowTitle dialog prompt
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionOpen
@@ -205,7 +200,7 @@ chooseFile window prompt mbFolder filters = do
 
 chooseSaveFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSaveFile window prompt mbFolder = do
-    dialog <- new FileChooserDialog []
+    dialog <- new' FileChooserDialog []
     setWindowTitle dialog prompt
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionSave
@@ -237,10 +232,11 @@ openBrowser url = do
 -- | Show a text dialog with an Ok button and a specific messagetype
 showDialog :: Text -> MessageType -> IO ()
 showDialog msg msgType = do
-    dialog <- new MessageDialog [_useHeaderBar := 0,
-                                 _messageType := msgType,
-                                 _buttons := ButtonsTypeOk,
-                                 _text := msg]
+    dialog <- new' MessageDialog [
+        constructDialogUseHeaderBar 0,
+        constructMessageDialogMessageType msgType,
+        constructMessageDialogButtons ButtonsTypeOk,
+        constructMessageDialogText msg]
     _ <- dialogRun' dialog
     widgetDestroy dialog
     return ()
@@ -258,10 +254,11 @@ showDialogOptions :: Text             -- ^ the message
                   -> Maybe Int        -- ^ index of button that has default focus (0-based)
                   -> IO ()
 showDialogOptions msg msgType buttons mbIndex = do
-    dialog <- new MessageDialog [_useHeaderBar := 0,
-                                 _messageType := msgType,
-                                 _buttons := ButtonsTypeNone,
-                                 _text := msg]
+    dialog <- new' MessageDialog [
+        constructDialogUseHeaderBar 0,
+        constructMessageDialogMessageType msgType,
+        constructMessageDialogButtons ButtonsTypeNone,
+        constructMessageDialogText msg]
 
     forM_ (zip [0..] buttons) $ \(n,(text, _)) ->
         dialogAddButton' dialog text (AnotherResponseType n)

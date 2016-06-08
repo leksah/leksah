@@ -268,9 +268,9 @@ builder currentInfo pp nb windows ideR = do
     treeViewAppendColumn treeView col
     cellLayoutPackStart col renderer0 False
     cellLayoutPackStart col renderer True
-    cellLayoutSetAttributes col renderer treeStore
-        $ \(s,_,_) -> [ cellRendererTextText := s]
-    cellLayoutSetAttributes col renderer0 treeStore
+    cellLayoutSetDataFunction col renderer treeStore
+        $ \(s,_,_) -> setCellRendererTextText renderer s
+    cellLayoutSetDataFunction col renderer0 treeStore
         $ \(_,_,d) -> [
         cellPixbufStockId  :=
             if isJust (mbLocation d)
@@ -297,12 +297,12 @@ builder currentInfo pp nb windows ideR = do
     cellLayoutPackStart col renderer30 False
     cellLayoutPackStart col renderer31 False
     cellLayoutPackStart col renderer3 True
-    cellLayoutSetAttributes col renderer3 facetStore
-        $ \row -> [ cellRendererTextText := facetTreeText row]
-    cellLayoutSetAttributes col renderer30 facetStore
+    cellLayoutSetDataFunction col renderer3 facetStore
+        $ setCellRendererTextText renderer3 . facetTreeText row
+    cellLayoutSetDataFunction col renderer30 facetStore
         $ \row -> [
         cellPixbufStockId  := stockIdFromType (facetIdType row)]
-    cellLayoutSetAttributes col renderer31 facetStore
+    cellLayoutSetDataFunction col renderer31 facetStore
         $ \row -> [
         cellPixbufStockId  := if isJust (mbLocation(facetIdDescr row))
                                 then "ide_source"

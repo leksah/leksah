@@ -112,15 +112,12 @@ or follow the instructions below.
 | Fedora | Ubuntu |
 | --- | --- |
 | `gobject-introspection-devel` | `libgirepository1.0-dev` |
-| `webkitgtk3-devel` | `libwebkitgtk-3.0-dev`
+| `webkitgtk3-devel` | `libwebkitgtk-3.0-dev` |
 | `gtksourceview3-devel` | `libgtksourceview-3.0-dev` | 
-
-
 
 **Step 2**: Install tools
 
     cabal install alex happy
-    cabal install gtk2hs-buildtools
 
 **Step 3**: Clone the repo
 
@@ -128,14 +125,14 @@ or follow the instructions below.
     cd leksah
     git submodule update --init
 
-**Step 3b**: Optionally, create a sandbox
-
-    cabal sandbox init
-    
 **Step 4**: Install Leksah
 
-    cabal install Cabal
-    cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
+    cabal new-build
+
+**Step 5**: Run leksah
+
+    leksah_datadir=`pwd` dist-newstyle/build/leksah-0.16.0.0/build/leksah/leksah
+    
 
 (the Cabal library has to be installed seperately because of a [cabal bug](https://github.com/haskell/cabal/issues/3436] )
 
@@ -143,11 +140,21 @@ On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
 
     XDG_DATA_DIRS=/opt/local/share cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
 
-#### Using Stack instead of cabal-install
+#### Using `stack build` instead of `cabal new-build`
 
-Instead of the very last `cabal install ...` command run `stack build`.
+** NOTE : This is currently not working.  If you can make it work let us know. **
 
-Note: If you intend to do any development work on Leksah, do not use stack for now as it adds 10-12s to every build (not a problem for a one off build, but annoying when you are making changes).  This will probably be fixed once new haskell-gi packages added to hackage or once the [stack issue](https://github.com/commercialhaskell/stack/issues/2041) is resolved.
+Do **Step 1** and **Step 2** as above, then
+
+**Step 4**: Install Leksah
+
+    cabal install gtk2hs-buildtools
+    cabal install ./vendor/haskell-gi
+    stack build
+
+**Step 5**: Run leksah
+
+    **TODO add path to path to leksah executable**
 
 ### Building Leksah for Windows using Docker
 

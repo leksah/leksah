@@ -75,7 +75,7 @@ import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreChange, forestStoreGetValue, ForestStore(..),
         forestStoreNew, forestStoreClear, forestStoreInsert)
 import GI.Gtk.Objects.CellRendererText
-       (cellRendererTextText, cellRendererTextNew)
+       (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.TreeViewColumn
        (treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew)
@@ -84,8 +84,7 @@ import GI.Gtk.Enums
         TreeViewColumnSizing(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetAttributes)
-import Data.GI.Base.Attributes (AttrOp(..))
+       (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.TreeSelection
        (onTreeSelectionChanged, treeSelectionSetMode)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
@@ -156,8 +155,8 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewColumnSetReorderable col1 True
         treeViewAppendColumn treeView col1
         cellLayoutPackStart col1 renderer1 True
-        cellLayoutSetAttributes col1 renderer1 grepStore
-            $ \row -> [ cellRendererTextText := T.pack $ file row]
+        cellLayoutSetDataFunction col1 renderer1 grepStore
+            $ \row -> setCellRendererTextText renderer1 . T.pack $ file row
 
         renderer2   <- cellRendererTextNew
         col2        <- treeViewColumnNew
@@ -167,8 +166,8 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewColumnSetReorderable col2 True
         treeViewAppendColumn treeView col2
         cellLayoutPackStart col2 renderer2 True
-        cellLayoutSetAttributes col2 renderer2 grepStore
-            $ \row -> [ cellRendererTextText := T.pack $ show $ line row]
+        cellLayoutSetDataFunction col2 renderer2 grepStore
+            $ setCellRendererTextText renderer2 . T.pack . show . line
 
         renderer3    <- cellRendererTextNew
         col3         <- treeViewColumnNew
@@ -178,8 +177,8 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewColumnSetReorderable col3 True
         treeViewAppendColumn treeView col3
         cellLayoutPackStart col3 renderer3 True
-        cellLayoutSetAttributes col3 renderer3 grepStore
-            $ \row -> [ cellRendererTextText := T.take 2048 $ context row]
+        cellLayoutSetDataFunction col3 renderer3 grepStore
+            $ setCellRendererTextText renderer3 . T.take 2048 . context
 
 
         treeViewSetHeadersVisible treeView True
@@ -308,7 +307,7 @@ grepDirectories regexString caseSensitive dirs = do
         totalFound <- foldM (\a dir -> do
             subDirs <- liftIO $ filter (\f ->
                    not ("." `isPrefixOf` f)
-                && f `notElem` ["_darcs", "dist", "vendor"]) <$> getDirectoryContents dir
+                && f `notElem` ["_darcs", "dist", "dist-newstyle", "vendor"]) <$> getDirectoryContents dir
             nooneWaiting <- liftIO $ isEmptyMVar (waitingGrep grep)
             found <- if nooneWaiting
                 then do

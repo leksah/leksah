@@ -40,3 +40,9 @@
 [submodule "vendor/gi-gtk-hs"]
 	path = vendor/gi-gtk-hs
 	url = https://github.com/gtk2hs/gi-gtk-hs.git
+[submodule "vendor/haskell-gi"]
+	path = vendor/haskell-gi
+	url = https://github.com/hamishmack/haskell-gi.git
+[submodule "vendor/haskell-gi-base"]
+	path = vendor/haskell-gi-base
+	url = https://github.com/haskell-gi/haskell-gi-base.git

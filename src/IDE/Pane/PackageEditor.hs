@@ -106,31 +106,29 @@ import Distribution.License (License(..))
 import Control.Exception (SomeException(..))
 import IDE.Metainfo.Provider (getAllPackageIds)
 import GI.Gtk.Objects.Window
-       (windowSetTransientFor, windowWindowPosition, windowTitle,
-        windowTransientFor, Window(..))
+       (windowSetTransientFor, setWindowWindowPosition, setWindowTitle,
+        setWindowTransientFor, Window(..))
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Enums
        (ShadowType(..), WindowPosition(..), ButtonsType(..),
         MessageType(..), ResponseType(..), FileChooserAction(..))
 import GI.Gtk.Objects.Dialog
-       (dialogUseHeaderBar, dialogGetActionArea, dialogGetContentArea,
+       (constructDialogUseHeaderBar, dialogGetActionArea, dialogGetContentArea,
         dialogNew)
-import Data.GI.Base (on, unsafeCastTo, set)
-import Data.GI.Base.Attributes (AttrOp(..))
+import Data.GI.Base (on, unsafeCastTo, set, new')
 import GI.Gtk.Objects.Box (boxPackEnd, Box(..))
 import GI.Gtk.Objects.Widget
        (widgetSetSensitive, toWidget, widgetDestroy, widgetShowAll,
-        widgetGrabDefault, widgetCanDefault)
-import Data.GI.Base.Constructible (Constructible(..))
+        widgetGrabDefault, setWidgetCanDefault)
 import GI.Gtk.Objects.MessageDialog
-       (messageDialogText, messageDialogButtons, messageDialogMessageType,
+       (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
         MessageDialog(..))
 import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
 import GI.Gtk.Objects.Notebook (Notebook(..))
 import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
 import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
-import GI.Gtk.Objects.CellRendererText (cellRendererTextText)
+import GI.Gtk.Objects.CellRendererText (setCellRendererTextText)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -283,15 +281,15 @@ examplePackages = [ "hello"
 newPackageDialog :: (Applicative m, MonadIO m) => Window -> FilePath -> m (Maybe NewPackage)
 newPackageDialog parent workspaceDir = do
     dia                <- dialogNew
-    set dia [ windowTransientFor := parent
-            , windowTitle := __ "Create New Package" ]
+    setWindowTransientFor dia parent
+    setWindowTitle dia $ __ "Create New Package"
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
     (widget,inj,ext,_) <- liftIO $ buildEditor (packageFields workspaceDir)
                                         (NewPackage "" workspaceDir Nothing)
     okButton <- dialogAddButton' dia (__"Create Package") ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
     boxPackStart' upper widget PackGrow 7
-    set okButton [widgetCanDefault := True]
+    setWidgetCanDefault okButton True
     widgetGrabDefault okButton
     widgetShowAll dia
     resp  <- dialogRun' dia
@@ -314,16 +312,16 @@ packageNew' workspaceDir log activateAction = do
             window <- getMainWindow
             case mbCabalFile of
                 Just cfn -> do
-                    md <- new MessageDialog [
-                        dialogUseHeaderBar := 0,
-                        messageDialogMessageType := MessageTypeQuestion,
-                        messageDialogButtons := ButtonsTypeCancel,
-                        messageDialogText := T.pack (printf (__
+                    md <- new' MessageDialog [
+                        constructDialogUseHeaderBar 0,
+                        constructMessageDialogButtons ButtonsTypeCancel]
+                    setMessageDialogMessageType md MessageTypeQuestion
+                    setMessageDialogText md $ T.pack (printf (__
                           "There is already file %s in this directory. Would you like to add this package to the workspace?")
-                          (takeFileName cfn))]
+                          (takeFileName cfn))
                     dialogAddButton' md (__ "_Add Package") (AnotherResponseType 1)
                     dialogSetDefaultResponse' md (AnotherResponseType 1)
-                    set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                    setWindowWindowPosition md WindowPositionCenterOnParent
                     rid <- dialogRun' md
                     widgetDestroy md
                     when (rid == AnotherResponseType 1) $
@@ -334,17 +332,17 @@ packageNew' workspaceDir log activateAction = do
                     make <- if isEmptyDir
                         then return True
                         else do
-                            md <- new MessageDialog [
-                                    dialogUseHeaderBar := 0,
-                                    messageDialogMessageType := MessageTypeQuestion,
-                                    messageDialogButtons := ButtonsTypeCancel,
-                                    messageDialogText := (T.pack $ printf (__
+                            md <- new' MessageDialog [
+                                    constructDialogUseHeaderBar 0,
+                                    constructMessageDialogButtons ButtonsTypeCancel]
+                            setMessageDialogMessageType md MessageTypeQuestion
+                            setMessageDialogText md . T.pack $ printf (__
                                       "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
-                                      dirName)]
+                                      dirName
                             windowSetTransientFor md (Just window)
                             dialogAddButton' md (__ "_Make Package Here") (AnotherResponseType 1)
                             dialogSetDefaultResponse' md (AnotherResponseType 1)
-                            set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                            setWindowWindowPosition md WindowPositionCenterOnParent
                             rid <- dialogRun' md
                             widgetDestroy md
                             return $ rid == AnotherResponseType 1
@@ -416,15 +414,15 @@ clonePackageSourceDialog :: Window -> FilePath -> IDEM (Maybe ClonePackageSource
 clonePackageSourceDialog parent workspaceDir = do
     packages <- getAllPackageIds
     dia      <- dialogNew
-    set dia [ windowTransientFor := parent
-            , windowTitle := __ "Copy Installed Package" ]
+    setWindowTransientFor dia parent
+    setWindowTitle dia $ __ "Copy Installed Package"
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
     (widget,inj,ext,_) <- liftIO $ buildEditor (cloneFields packages workspaceDir)
                                         (ClonePackageSourceRepo "" workspaceDir)
     okButton <- dialogAddButton' dia (__"Copy Package") ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
     boxPackStart' upper widget PackGrow 7
-    set okButton [widgetCanDefault := True]
+    setWidgetCanDefault okButton True
     widgetGrabDefault okButton
     widgetShowAll dia
     resp  <- dialogRun' dia
@@ -728,13 +726,13 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
         if not hasChanged
             then reflectIDE (void (closePane packagePane)) ideR
             else do
-                md <- new MessageDialog [
-                        dialogUseHeaderBar := 0,
-                        messageDialogMessageType := MessageTypeQuestion,
-                        messageDialogButtons := ButtonsTypeYesNo,
-                        messageDialogText := __ "Unsaved changes. Close anyway?"]
+                md <- new' MessageDialog [
+                        constructDialogUseHeaderBar 0,
+                        constructMessageDialogButtons ButtonsTypeYesNo]
+                setMessageDialogMessageType md MessageTypeQuestion
+                setMessageDialogText md $ __ "Unsaved changes. Close anyway?"
                 windowSetTransientFor md (Just window)
-                set md [ windowWindowPosition := WindowPositionCenterOnParent ]
+                setWindowWindowPosition md WindowPositionCenterOnParent
                 resp <- dialogRun' md
                 widgetDestroy md
                 case resp of
@@ -964,8 +962,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (customFieldsPD . pd)
             (\ a b -> b{pd = (pd b){customFieldsPD = a}})
             (multisetEditor
-                (ColumnDescr True [(__ "Name",\(n,_) -> [cellRendererTextText := T.pack n])
-                                   ,(__ "Value",\(_,v) -> [cellRendererTextText := T.pack v])])
+                (ColumnDescr True [(__ "Name",\cell (n,_) -> setCellRendererTextText cell $ T.pack n)
+                                   ,(__ "Value",\cell (_,v) -> setCellRendererTextText cell $ T.pack v)])
                 (pairEditor (stringxEditor (const True), emptyParams)
                    (stringEditor (const True) True, emptyParams),
                  emptyParams)
@@ -1069,8 +1067,8 @@ buildInfoD fp modules i = [
             (options . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = a})})
             (multisetEditor
-                (ColumnDescr True [( __ "Compiler Flavor",\(cv,_) -> [cellRendererTextText := T.pack $ show cv])
-                                   ,(__ "Options",\(_,op) -> [cellRendererTextText := T.pack $ concatMap (\s -> ' ' : s) op])])
+                (ColumnDescr True [( __ "Compiler Flavor",\cell (cv,_) -> setCellRendererTextText cell . T.pack $ show cv)
+                                   ,(__ "Options",\cell (_,op) -> setCellRendererTextText cell . T.pack $ concatMap (\s -> ' ' : s) op)])
                 (pairEditor
                     (compilerFlavorEditor,emptyParams)
                     (optsEditor,emptyParams),
@@ -1223,8 +1221,8 @@ buildInfoD fp modules i = [
              (customFieldsBI . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{customFieldsBI = a})})
             (multisetEditor
-                (ColumnDescr True [(__ "Name",\(n,_) -> [cellRendererTextText := T.pack n])
-                                   ,(__ "Value",\(_,v) -> [cellRendererTextText := T.pack v])])
+                (ColumnDescr True [(__ "Name",\cell (n,_) -> setCellRendererTextText cell $ T.pack n)
+                                   ,(__ "Value",\cell (_,v) -> setCellRendererTextText cell $ T.pack v)])
                 (pairEditor
                     (stringxEditor (const True),emptyParams)
                     (stringEditor (const True) True,emptyParams),emptyParams)
@@ -1269,8 +1267,8 @@ compilerOptRecordEditor para =
 compilerOptsEditor :: Editor [(CompilerFlavor, [String])]
 compilerOptsEditor p =
     multisetEditor
-        (ColumnDescr True [("Compiler",\(compiler, _) -> [cellRendererTextText := T.pack $ show compiler])
-                           ,("Options",\(_, opts    ) -> [cellRendererTextText := T.pack $ unwords opts])])
+        (ColumnDescr True [("Compiler",\cell (compiler, _) -> setCellRendererTextText cell . T.pack $ show compiler)
+                           ,("Options",\cell (_, opts    ) -> setCellRendererTextText cell . T.pack $ unwords opts)])
         (compilerOptRecordEditor,
             paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
@@ -1306,8 +1304,8 @@ packageEditor para noti = do
 testedWithEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWithEditor =
     multisetEditor
-       (ColumnDescr True [(__ "Compiler Flavor",\(cv,_) -> [cellRendererTextText := T.pack $ show cv])
-                           ,(__ "Version Range",\(_,vr) -> [cellRendererTextText := T.pack $ display vr])])
+       (ColumnDescr True [(__ "Compiler Flavor",\cell (cv,_) -> setCellRendererTextText cell . T.pack $ show cv)
+                           ,(__ "Version Range",\cell (_,vr) -> setCellRendererTextText cell . T.pack $ display vr)])
        (pairEditor
           (compilerFlavorEditor,
            paraShadow <<<- ParaShadow ShadowTypeNone $ emptyParams)
@@ -1370,7 +1368,7 @@ extensionsL = map EnableExtension [minBound..maxBound]
 reposEditor :: Editor [SourceRepo]
 reposEditor p noti =
     multisetEditor
-        (ColumnDescr False [("",\repo -> [cellRendererTextText := display repo])])
+        (ColumnDescr False [("",\cell repo -> setCellRendererTextText cell display repo)])
         (repoEditor,
             paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
@@ -1595,9 +1593,9 @@ modulesEditor modules   =   staticListMultiEditor (map (T.pack . display) module
 executablesEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Executable']
 executablesEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [(__ "Executable Name",\(Executable' exeName _ _) -> [cellRendererTextText := exeName])
-                           ,(__ "Module Path",\(Executable'  _ mp _) -> [cellRendererTextText := T.pack mp])
-                           ,(__ "Build info index",\(Executable'  _ _ bii) -> [cellRendererTextText := T.pack $ show (bii + 1)])])
+        (ColumnDescr True [(__ "Executable Name",\cell (Executable' exeName _ _) -> setCellRendererTextText cell exeName)
+                           ,(__ "Module Path",\cell (Executable'  _ mp _) -> setCellRendererTextText cell $ T.pack mp)
+                           ,(__ "Build info index",\cell (Executable'  _ _ bii) -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
         (executableEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
@@ -1633,9 +1631,9 @@ executableEditor fp modules countBuildInfo para noti = do
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [(__ "Test Name",\(Test' testName _ _) -> [cellRendererTextText := testName])
-                           ,(__ "Interface",\(Test'  _ i _) -> [cellRendererTextText := T.pack $ interfaceName i])
-                           ,(__ "Build info index",\(Test'  _ _ bii) -> [cellRendererTextText := T.pack $ show (bii + 1)])])
+        (ColumnDescr True [(__ "Test Name",\cell (Test' testName _ _) -> setCellRendererTextText cell testName)
+                           ,(__ "Interface",\cell (Test'  _ i _) -> setCellRendererTextText cell . T.pack $ interfaceName i)
+                           ,(__ "Build info index",\cell (Test'  _ _ bii) -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
         (testEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
@@ -1675,9 +1673,9 @@ testEditor fp modules countBuildInfo para noti = do
 benchmarksEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Benchmark']
 benchmarksEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [(__ "Benchmark Name",\(Benchmark' benchmarkName _ _) -> [cellRendererTextText := benchmarkName])
-                           ,(__ "Interface",\(Benchmark'  _ i _) -> [cellRendererTextText := T.pack $ interfaceName i])
-                           ,(__ "Build info index",\(Benchmark'  _ _ bii) -> [cellRendererTextText := T.pack $ show (bii + 1)])])
+        (ColumnDescr True [(__ "Benchmark Name",\cell (Benchmark' benchmarkName _ _) -> setCellRendererTextText cell benchmarkName)
+                           ,(__ "Interface",\cell (Benchmark'  _ i _) -> setCellRendererTextText cell . T.pack $ interfaceName i)
+                           ,(__ "Build info index",\cell (Benchmark'  _ _ bii) -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
         (benchmarkEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing

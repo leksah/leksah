@@ -95,8 +95,8 @@ import GI.GLib.Structs.Source (sourceRemove)
 import GI.Gtk.Functions
        (mainIterationDo, eventsPending, mainIteration)
 import GI.Gtk.Objects.Window
-       (windowDeletable, windowSetIconFromFile, WindowK,
-        windowWindowPosition, windowTitle, windowSetDefaultSize, windowNew)
+       (setWindowDeletable, windowSetIconFromFile, WindowK,
+        setWindowWindowPosition, setWindowTitle, windowSetDefaultSize, windowNew)
 import GI.Gtk.Objects.Widget
        (widgetDestroy, widgetHide, widgetShowAll, widgetGetWindow,
         onWidgetRealize, onWidgetDeleteEvent, widgetSetName)
@@ -108,7 +108,6 @@ import GI.Gtk.Enums
 import GI.Gtk.Objects.Dialog
        (dialogRun, dialogResponse, dialogGetContentArea, dialogNew)
 import Data.GI.Base (unsafeCastTo, set, nullToNothing)
-import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Box (Box(..))
 import GI.Gtk.Objects.ScrolledWindow
@@ -544,9 +543,8 @@ firstStart prefs = do
     configDir   <- getConfigDir
     dialog      <- dialogNew
     setLeksahIcon dialog
-    set dialog [
-        windowTitle := "Welcome to Leksah, the Haskell IDE",
-        windowWindowPosition := WindowPositionCenter]
+    setWindowTitle dialog "Welcome to Leksah, the Haskell IDE"
+    setWindowWindowPosition dialog WindowPositionCenter
     dialogAddButton' dialog "gtk-ok" ResponseTypeOk
     dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
     vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
@@ -600,10 +598,9 @@ firstBuild :: Prefs -> IO ()
 firstBuild newPrefs = do
     dialog      <- dialogNew
     liftIO $ setLeksahIcon dialog
-    set dialog [
-        windowTitle := "Leksah: Updating Metadata",
-        windowWindowPosition := WindowPositionCenter,
-        windowDeletable := False]
+    setWindowTitle dialog "Leksah: Updating Metadata"
+    setWindowWindowPosition dialog WindowPositionCenter
+    setWindowDeletable dialog False
     vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
     progressBar <- progressBarNew
     progressBarSetText progressBar $ Just "Please wait while Leksah collects information about Haskell packages on your system"
