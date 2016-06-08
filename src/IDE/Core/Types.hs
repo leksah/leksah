@@ -58,7 +58,6 @@ module IDE.Core.Types (
 
 ,   Prefs(..)
 ,   candyState
-,   cabalCommand
 ,   EditorStyle(..)
 ,   editorStyle
 
@@ -519,7 +518,6 @@ data Prefs = Prefs {
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
     ,   useVado             ::   Bool
-    ,   useCabalDev         ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   runUnitTests        ::   Bool -- ^ Run unit tests on build?
     ,   runBenchmarks        ::   Bool -- ^ Run benchmarks on build?
@@ -542,9 +540,6 @@ data Prefs = Prefs {
     ,   retrieveStrategy    ::   RetrieveStrategy
     ,   endWithLastConn     ::   Bool
 } deriving(Eq,Show)
-
-cabalCommand :: Prefs -> FilePath
-cabalCommand p = if useCabalDev p then "cabal-dev" else "cabal"
 
 candyState :: Prefs -> Bool
 candyState = fst . sourceCandy

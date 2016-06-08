@@ -27,15 +27,13 @@ module IDE.Package (
 ,   packageClean
 ,   packageClean'
 ,   packageCopy
-,   packageCopy'
+,   packageInstall
+,   packageInstall'
 ,   packageRun
 ,   packageRunJavaScript
 ,   activatePackage
 ,   deactivatePackage
 
-,   packageInstallDependencies
-,   packageRegister
-,   packageRegister'
 ,   packageTest
 ,   packageTest'
 ,   packageBench
@@ -145,6 +143,7 @@ import Graphics.UI.Editor.Parameters
        (dialogRun', dialogSetDefaultResponse', dialogAddButton')
 import Data.GI.Base (set, new')
 import GI.Gtk.Objects.Widget (widgetDestroy)
+import IDE.Utils.CabalUtils (findProjectRoot)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -228,8 +227,8 @@ packageConfig' package continuation = do
             showDefaultLogLaunch'
 
             runExternalTool'        (__ "Configuring")
-                                    (cabalCommand prefs)
-                                    ("configure" : ipdConfigFlags package)
+                                    "cabal"
+                                    ("new-configure" : ipdConfigFlags package)
                                     dir $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
                 lift $ do
@@ -267,13 +266,13 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
                             else []
                 else []
     let stackFlags = stackFlagsForTests ++ stackFlagsForBenchmarks
-    let args = ["build"]
+    let args = ["new-build"]
                 -- stack needs the package name to actually print the output info
                 ++ (if useStack then [ipdPackageName package] else [])
                 ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
                 ++ stackFlags
                 ++ ipdBuildFlags package
-    runExternalTool' (__ "Building") (if useStack then "stack" else cabalCommand prefs) args dir $ do
+    runExternalTool' (__ "Building") (if useStack then "stack" else "cabal") args dir $ do
         (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
             <$> C.ZipSink sinkLast
             <*> C.ZipSink isConfigError
@@ -352,7 +351,7 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
     catchIDE (do
         let dir = ipdPackageDir package
         useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-        runExternalTool' (__ "Documenting") (if useStack then "stack" else cabalCommand prefs) ("haddock" : ipdHaddockFlags package) dir $ do
+        runExternalTool' (__ "Documenting") (if useStack then "stack" else "cabal") ("haddock" : ipdHaddockFlags package) dir $ do
             mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
                 logOutputForBuild package backgroundBuild jumpToWarnings)
             lift $ postAsyncIDE reloadDoc
@@ -373,7 +372,7 @@ packageClean' package continuation = do
     let dir = ipdPackageDir package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     runExternalTool' (__ "Cleaning")
-                    (if useStack then "stack" else cabalCommand prefs)
+                    (if useStack then "stack" else "cabal")
                     ["clean"]
                     dir $ do
         mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
@@ -395,35 +394,19 @@ packageCopy = do
                 Just fp -> do
                     let dir = ipdPackageDir package
                     runExternalTool' (__ "Copying")
-                                    (cabalCommand prefs)
+                                    "cabal"
                                     ["copy", "--destdir=" <> T.pack fp]
                                     dir
                                     (logOutput logLaunch))
             (\(e :: SomeException) -> print e)
 
-packageInstallDependencies :: PackageAction
-packageInstallDependencies = do
+packageInstall :: PackageAction
+packageInstall = do
     package <- ask
-    ideR <- liftIDE ask
-    interruptSaveAndRun $ do
-        logLaunch <- getDefaultLogLaunch
-        showDefaultLogLaunch'
+    interruptSaveAndRun $ packageInstall' package (\ _ -> return ())
 
-        catchIDE (do
-            prefs <- readIDE prefs
-            let dir = ipdPackageDir package
-            runExternalTool' (__ "Installing") (cabalCommand prefs) (
-                   (if useCabalDev prefs
-                        then ["install-deps"]
-                        else ["install","--only-dependencies"])
-                ++ ipdConfigFlags package
-                ++ ipdInstallFlags package) dir $ do
-                    logOutput logLaunch
-                    lift $ postSyncIDE updateSystemInfo)
-            (\(e :: SomeException) -> print e)
-
-packageCopy' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageCopy' package continuation = do
+packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
+packageInstall' package continuation = do
     prefs     <- readIDE prefs
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
@@ -482,16 +465,32 @@ packageRun' removeGhcjsFlagIfPresent package =
                     prefs <- readIDE prefs
                     let dir = ipdPackageDir package
                     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-                    IDE.Package.runPackage (addLogLaunchData logName logLaunch)
-                                           (T.pack $ printf (__ "Running %s") (T.unpack logName))
-                                           (if useStack then "stack" else cabalCommand prefs)
-                                           (concat [[if useStack then "exec" else "run"]
-                                                , ipdBuildFlags package
-                                                , map (T.pack . exeName) exe
-                                                , ["--"]
-                                                , ipdExeFlags package])
-                                           dir
-                                           (logOutput logLaunch)
+                    if useStack
+                        then
+                            IDE.Package.runPackage (addLogLaunchData logName logLaunch)
+                                                   (T.pack $ printf (__ "Running %s") (T.unpack logName))
+                                                   "stack"
+                                                   (concat [["exec"]
+                                                        , ipdBuildFlags package
+                                                        , map (T.pack . exeName) exe
+                                                        , ["--"]
+                                                        , ipdExeFlags package])
+                                                   dir
+                                                   (logOutput logLaunch)
+                        else do
+                            projectRoot <- liftIO $ findProjectRoot dir
+                            case exe ++ executables pd of
+                                [] -> return ()
+                                (Executable name _ _ : _) -> do
+                                    let exePath = projectRoot </> "dist-newstyle/build"
+                                                    </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+                                                    </> "build" </> name </> name
+                                    IDE.Package.runPackage (addLogLaunchData logName logLaunch)
+                                                           (T.pack $ printf (__ "Running %s") (T.unpack logName))
+                                                           exePath
+                                                           (ipdExeFlags package)
+                                                           dir
+                                                           (logOutput logLaunch)
                 Just debug ->
                     -- TODO check debug package matches active package
                     runDebug (do
@@ -556,7 +555,7 @@ packageRunJavaScript' addFlagIfMissing package =
                 prefs <- readIDE prefs
                 case exe ++ executables pd of
                     (Executable name _ _ : _) -> liftIDE $ do
-                        let path = "dist/build" </> name </> name <.> "jsexe" </> "index.html"
+                        let path = "dist-newstyle/build" </> name </> name <.> "jsexe" </> "index.html"
                             dir = ipdPackageDir package
                         postAsyncIDE $ do
                             loadOutputUri ("file:///" ++ dir </> path)
@@ -566,29 +565,6 @@ packageRunJavaScript' addFlagIfMissing package =
 
                     _ -> return ())
                 (\(e :: SomeException) -> print e)
-
-packageRegister :: PackageAction
-packageRegister = do
-    package <- ask
-    interruptSaveAndRun $ packageRegister' package (\ _ -> return ())
-
-packageRegister' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageRegister' package continuation =
-    if ipdHasLibs package
-        then do
-          logLaunch <- getDefaultLogLaunch
-          showDefaultLogLaunch'
-          catchIDE (do
-            prefs <- readIDE prefs
-            let dir = ipdPackageDir package
-            useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-            if useStack
-                then continuation True
-                else runExternalTool' (__ "Registering") (cabalCommand prefs) ("register" : ipdRegisterFlags package) dir $ do
-                        mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
-                        lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
-            (\(e :: SomeException) -> print e)
-        else continuation True
 
 packageTest :: PackageAction
 packageTest = do
@@ -606,7 +582,7 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
           catchIDE (do
             prefs <- readIDE prefs
             removeTestLogRefs dir
-            let cmd=if useStack then "stack" else cabalCommand prefs
+            let cmd=if useStack then "stack" else "cabal"
             let args=if useStack then ["test"] else ["test", "--with-ghc=leksahtrue"]
             runExternalTool' (__ "Testing") cmd (args
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
@@ -643,7 +619,7 @@ packageBench' backgroundBuild jumpToWarnings package shallConfigure continuation
           showDefaultLogLaunch'
           catchIDE (do
             prefs <- readIDE prefs
-            let cmd=if useStack then "stack" else cabalCommand prefs
+            let cmd=if useStack then "stack" else "cabal"
             let args=if useStack then ["bench"] else ["bench", "--with-ghc=leksahtrue"]
             runExternalTool' (__ "Benchmarking") cmd (args
                 ++ ipdBuildFlags package ++ ipdBenchmarkFlags package) dir $ do
@@ -673,7 +649,7 @@ packageSdist = do
         catchIDE (do
             prefs <- readIDE prefs
             let dir = ipdPackageDir package
-            runExternalTool' (__ "Source Dist") (cabalCommand prefs) ("sdist" : ipdSdistFlags package) dir (logOutput logLaunch))
+            runExternalTool' (__ "Source Dist") "cabal" ("sdist" : ipdSdistFlags package) dir (logOutput logLaunch))
             (\(e :: SomeException) -> print e)
 
 

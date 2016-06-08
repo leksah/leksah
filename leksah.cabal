@@ -270,10 +270,10 @@ library
         IDE.Completion
         IDE.ImportTool
         IDE.Find
-        IDE.Sandbox
         IDE.Session
         IDE.Command
         IDE.Keymap
+        IDE.Utils.CabalUtils
         IDE.Utils.DirectoryUtils
         IDE.Utils.GUIUtils
         IDE.SymbolNavigation

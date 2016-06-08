@@ -465,11 +465,11 @@ buildSteps settings = do
     debug <- isJust <$> readIDE debugState
     return $ case (runTests, debug,runBenchmarks) of
                 (True, True,_)   -> [MoBuild,MoDocu]
-                (True, False,False)  -> [MoBuild,MoDocu,MoTest,MoCopy,MoRegister]
-                (True, False,True)  -> [MoBuild,MoDocu,MoTest,MoCopy,MoRegister,MoBench]
+                (True, False,False)  -> [MoBuild,MoDocu,MoTest,MoInstall]
+                (True, False,True)  -> [MoBuild,MoDocu,MoTest,MoInstall,MoBench]
                 (False, True,_)  -> [MoBuild]
-                (False, False,False) -> [MoBuild,MoCopy,MoRegister]
-                (False, False,True) -> [MoBuild,MoCopy,MoRegister,MoBench]
+                (False, False,False) -> [MoBuild,MoInstall]
+                (False, False,True) -> [MoBuild,MoInstall,MoBench]
 
 workspaceMake :: WorkspaceAction
 workspaceMake = do
@@ -480,8 +480,7 @@ workspaceMake = do
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
     build <- lift . buildSteps $ settings
-    let steps = MoComposed (MoConfigure : build)
-    makePackages settings (wsPackages ws) steps steps MoMetaInfo
+    makePackages settings (wsPackages ws) (MoComposed build) (MoComposed build) MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
@@ -498,7 +497,7 @@ backgroundMake = catchIDE (do
         workspaceTryQuiet $ if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
             then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
             else makePackages settings modifiedPacks (MoComposed steps)
-                                (MoComposed (MoConfigure:steps)) MoMetaInfo
+                                (MoComposed steps) MoMetaInfo
     )
     (\(e :: Exc.SomeException) -> sysMessage Normal (T.pack $ show e))
 
@@ -523,7 +522,7 @@ makePackage = do
                     runWorkspace
                         (makePackages settings [p]
                         (MoComposed steps)
-                        (MoComposed (MoConfigure:steps))
+                        (MoComposed steps)
                         MoMetaInfo) ws
 
 fileOpen :: IDEAction

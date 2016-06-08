@@ -51,7 +51,6 @@ import IDE.Pane.Errors
 import IDE.Package
 import IDE.Preferences (runPreferencesDialog, applyInterfaceTheme)
 import IDE.HLint
-import IDE.Sandbox
 import IDE.Pane.Log
 import IDE.Pane.Modules
 import IDE.Find
@@ -272,18 +271,6 @@ mkActions =
     ,AD "PackageFlags" (__ "Package Flags") (Just (__ "Edit the package flags used")) Nothing
         (getFlags Nothing >>= \ p -> displayPane p False) [] False
 
-    ,AD "PackageSandbox" (__ "_Sandbox") Nothing Nothing (return ()) [] False
-    ,AD "SandboxInit" (__ "_Init") (Just (__ "Initialise a cabal sandbox for the package")) Nothing
-        (packageTry sandboxInit) [] False
-    ,AD "SandboxInitShared" (__ "Init _Shared...") (Just (__ "Initialise or use a cabal sandbox in a selected directory")) Nothing
-        (packageTry sandboxInitShared) [] False
-    ,AD "SandboxDelete" (__ "_Delete") (Just (__ "Delete the cabal sandbox")) Nothing
-        (packageTry sandboxDelete) [] False
-    ,AD "SandboxAddSource" (__ "_Add Source...") (Just (__ "Add a source package into the sandbox")) Nothing
-        (packageTry (sandboxAddSource False)) [] False
-    ,AD "SandboxAddSourceSnapshot" (__ "Add Source S_napshot...") (Just (__ "Add a snapshot of a source package into the sandbox")) Nothing
-        (packageTry (sandboxAddSource True)) [] False
-
     ,AD "CleanPackage" (__ "Cl_ean") (Just (__ "Cleans the package")) (Just "ide_clean")
         (packageTry packageClean) [] False
     ,AD "ConfigPackage" (__ "_Configure") (Just (__ "Configures the package")) (Just "ide_configure")
@@ -301,10 +288,8 @@ mkActions =
     ,AD "ResolveErrors" (__ "Resol_ve Errors") (Just (__ "Resolve 'Hidden package' and 'Not in scope' errors by adding the necessary dependancies or imports")) Nothing
         resolveErrors [] False
 
-    ,AD "InstallDependenciesPackage" (__ "_Install Dependencies") (Just (__ "Install the package's dependencies from the hackage server")) Nothing
-        (packageTry packageInstallDependencies) [] False
-    ,AD "RegisterPackage" (__ "_Register") Nothing Nothing
-        (packageTry packageRegister) [] False
+    ,AD "InstallPackage" (__ "_Install") Nothing Nothing
+        (packageTry packageInstall) [] False
     ,AD "HLintPackage" (__ "_HLint") Nothing Nothing
         (packageTry packageHLint) [] False
     ,AD "TestPackage" (__ "Test") Nothing Nothing
@@ -751,8 +736,8 @@ getActionsFor SensitivityForwardHist = getActionsFor' ["ViewHistoryForth"]
 getActionsFor SensitivityBackwardHist = getActionsFor' ["ViewHistoryBack"]
 getActionsFor SensitivityProjectActive = getActionsFor'
     ["EditPackage", "PackageFlags", "ConfigPackage", "BuildPackage"
-    ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage","InstallDependenciesPackage"
-    ,"RegisterPackage", "TestPackage","SdistPackage"
+    ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage"
+    ,"InstallPackage", "TestPackage","SdistPackage"
     ,"OpenDocPackage","FileCloseAll"]
 getActionsFor SensitivityError = getActionsFor' ["NextError", "PreviousError"]
 getActionsFor SensitivityEditor = getActionsFor' ["EditUndo", "EditRedo",

@@ -33,7 +33,6 @@ import IDE.Core.State
         wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
         reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
 import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
-import IDE.Sandbox
 import Control.Applicative ((<$>))
 import System.FilePath ((</>), takeFileName, dropFileName)
 import Distribution.Package (PackageIdentifier(..))

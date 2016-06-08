@@ -69,18 +69,9 @@
        <menuitem name="Resol_ve Errors" action="ResolveErrors" />
      </menu>
     <menu name="_Package" action="Package">
-       <menu name="_Edit" action="PackageEdit">
-          <menuitem name="With _Package Editor" action="EditPackage" />
-          <menuitem name="With _Text Editor" action="EditPackageText" />
-          <menuitem name="Package _Flags" action="PackageFlags" />
-        </menu>
-       <menu name="_Sandbox" action="PackageSandbox">
-          <menuitem name="_Init" action="SandboxInit" />
-          <menuitem name="Init _Shared" action="SandboxInitShared" />
-          <menuitem name="_Delete" action="SandboxDelete" />
-          <menuitem name="_Add Source..." action="SandboxAddSource" />
-          <menuitem name="Add Source S_napshot..." action="SandboxAddSourceSnapshot" />
-        </menu>
+       <menuitem name="Edit _Package" action="EditPackage" />
+       <menuitem name="Edit Package _Text" action="EditPackageText" />
+       <menuitem name="Set Package _Flags" action="PackageFlags" />
        <separator/>
        <menuitem name="Clea_n" action="CleanPackage" />
        <menuitem name="_Configure" action="ConfigPackage" />
@@ -88,9 +79,8 @@
        <menuitem name="_Run" action="RunPackage" />
        <menuitem name="Run _JavaScript" action="RunJavaScript" />
        <separator/>
-       <menuitem name="_Install Dependencies" action="InstallDependenciesPackage" />
        <menuitem name="C_opy" action="CopyPackage" />
-       <menuitem name="Re_gister" action="RegisterPackage" />
+       <menuitem name="Install" action="InstallPackage" />
        <menuitem name="_HLint" action="HLintPackage" />
        <menuitem name="Test" action="TestPackage" />
        <menuitem name="Benchmark" action="BenchPackage" />
