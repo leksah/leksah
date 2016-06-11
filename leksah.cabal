@@ -351,7 +351,7 @@ library
         blaze-html -any,
         lens -any,
         pretty-show >=1.6.3 && <1.7,
-        Cabal >=1.10.2.0 && <1.25,
+        Cabal >=1.24.0.0 && <1.25,
         base >=4.0.0.0 && <4.10,
         binary >=0.5.0.0 && <0.9,
         bytestring >=0.9.0.1 && <0.11,
@@ -455,7 +455,7 @@ test-suite tests
     main-is: Tests.hs
     build-depends:
         base >=4.0.0.0 && <4.10,
-        Cabal >=1.10.2.0 && <1.25,
+        Cabal >=1.24.0.0 && <1.25,
         QuickCheck >=2.4.2 && <2.9,
         leksah ==0.16.0.0,
         containers -any,

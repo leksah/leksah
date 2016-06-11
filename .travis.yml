@@ -1,36 +1,29 @@
 sudo: required
-dist: trusty
-
-env:
- - CABALVER=1.24 GHCVER=7.10.3
- - CABALVER=1.24 GHCVER=8.0.1
+services:
+ - docker
 
 cache:
   directories:
-    - $HOME/.cabal
-    - $HOME/.ghc
+    - .cabal
+    - .ghc
+
+env:
+ - CABALVER=1.24 GHCVER=7.10.3 OSVER=xenial
+ - CABALVER=1.24 GHCVER=8.0.1 OSVER=xenial
+ - CABALVER=1.24 GHCVER=7.10.3 OSVER=wily
+ - CABALVER=1.24 GHCVER=8.0.1 OSVER=wily
+ - CABALVER=1.24 GHCVER=7.10.3 OSVER=vivid
+ - CABALVER=1.24 GHCVER=8.0.1 OSVER=vivid
 
 before_install:
- - travis_retry sudo add-apt-repository -y ppa:hvr/ghc
- - travis_retry sudo apt-get update
- - travis_retry sudo apt-get install -y cabal-install-$CABALVER ghc-$GHCVER happy-1.19.5 alex-3.1.7
- - travis_retry sudo apt-get install -y libgirepository1.0-dev libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
- - export PATH=$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/alex/3.1.7/bin:/opt/happy/1.19.5/bin:$PATH
-
-install:
- - cabal --version
- - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
- - travis_retry cabal update
- - cabal install vendor/haskell-gi vendor/haskell-gi-base
- - cd vendor/haskell-gi/bindings
- - cabal install aeson aeson-pretty
- - for a in `./PKGS.sh`; do ./genBuildInfo.hs $a; done
- - cd ../../..
- - cp cabal.project.gi-bindings cabal.project
+ - docker build -t leksah -f travis/$OSVER.Dockerfile travis
 
 script:
- - cabal new-build
- - cabal sdist
+ - docker run -v `pwd`:/build leksah
+   sh -x -c "
+      apt-get install -y cabal-install-$CABALVER ghc-$GHCVER &&
+      export PATH=\$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/alex/3.1.7/bin:/opt/happy/1.19.5/bin:\$PATH &&
+      ./travis/build.sh"
 
 notifications:
   irc:
