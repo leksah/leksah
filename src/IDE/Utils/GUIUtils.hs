@@ -108,8 +108,8 @@ import GI.Gtk.Objects.Widget
        (Widget(..), toWidget, noWidget, onWidgetButtonPressEvent, onWidgetPopupMenu,
         widgetShowAll, widgetHide, widgetDestroy, widgetShow)
 import GI.Gdk
-       (pattern BUTTON_SECONDARY, eventButtonReadType, eventButtonReadY,
-        eventButtonReadX, eventButtonReadTime, eventButtonReadButton)
+       (pattern BUTTON_SECONDARY, getEventButtonType, getEventButtonY,
+        getEventButtonX, getEventButtonTime, getEventButtonButton)
 import GI.Gdk.Enums (EventType(..))
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSelectPath, treeSelectionUnselectAll, treeSelectionCountSelectedRows)
@@ -420,11 +420,11 @@ treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
         t <- getCurrentEventTime
         showMenu 0 t ideRef
     cid2 <- onWidgetButtonPressEvent view $ \e -> do
-        button    <- eventButtonReadButton e
-        click     <- eventButtonReadType e
-        timestamp <- eventButtonReadTime e
-        x         <- eventButtonReadX e
-        y         <- eventButtonReadY e
+        button    <- getEventButtonButton e
+        click     <- getEventButtonType e
+        timestamp <- getEventButtonTime e
+        x         <- getEventButtonX e
+        y         <- getEventButtonY e
         case (fromIntegral button, click) of
             (BUTTON_SECONDARY, EventTypeButtonPress) -> do
                 sel <- treeViewGetSelection view
@@ -472,11 +472,11 @@ treeViewContextMenu :: MonadIO m
 treeViewContextMenu treeView populateMenu = do
     cid1 <- onWidgetPopupMenu treeView $ showMenu 0 =<< getCurrentEventTime
     cid2 <- onWidgetButtonPressEvent treeView $ \e -> do
-        button    <- eventButtonReadButton e
-        click     <- eventButtonReadType e
-        timestamp <- eventButtonReadTime e
-        x         <- eventButtonReadX e
-        y         <- eventButtonReadY e
+        button    <- getEventButtonButton e
+        click     <- getEventButtonType e
+        timestamp <- getEventButtonTime e
+        x         <- getEventButtonX e
+        y         <- getEventButtonY e
         case (fromIntegral button, click) of
             (BUTTON_SECONDARY, EventTypeButtonPress) -> do
                 sel <- treeViewGetSelection treeView

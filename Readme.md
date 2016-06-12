@@ -1,6 +1,7 @@
 # Leksah, an Integrated Development Environment for Haskell
 
-[![Build Status](https://secure.travis-ci.org/leksah/leksah.png?branch=vcs)](http://travis-ci.org/leksah/leksah)
+[![Build Status](https://secure.travis-ci.org/leksah/leksah.png)](http://travis-ci.org/leksah/leksah)
+[![Hackage](https://img.shields.io/hackage/v/leksah.svg)](#installing-from-hackage)
 
 [Leksah](http://leksah.org/) aims to integrate various Haskell development
 tools to provide a practical and pleasant development environment.
@@ -119,6 +120,8 @@ or follow the instructions below.
 
     cabal install alex happy
 
+(make sure `~/.cabal/bin` is in PATH)
+
 **Step 3**: Clone the repo
 
     git clone https://github.com/leksah/leksah.git
@@ -127,7 +130,6 @@ or follow the instructions below.
 
 **Step 4**: Install Leksah
 
-    cabal install ./vendor/haskell-gi ./vendor/haskell-gi-base
     cabal new-build
 
 **Step 5**: Run leksah

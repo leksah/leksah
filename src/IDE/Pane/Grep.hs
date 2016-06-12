@@ -92,7 +92,7 @@ import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gtk.Objects.Widget
        (widgetGrabFocus, onWidgetKeyPressEvent, afterWidgetFocusInEvent,
         toWidget)
-import GI.Gdk.Structs.EventKey (eventKeyReadKeyval)
+import GI.Gdk.Structs.EventKey (getEventKeyKeyval)
 import GI.Gdk.Functions (keyvalName)
 import Data.GI.Gtk.ModelView.TreeModel
        (treeModelGetIter, treeModelIterNChildren)
@@ -211,7 +211,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
             return True
         cid2 <- onIDE onWidgetKeyPressEvent treeView $ do
             e <- lift ask
-            name <- eventKeyReadKeyval e >>= keyvalName
+            name <- getEventKeyKeyval e >>= keyvalName
             liftIDE $
                 case name of
                     Just "Return" -> gotoSource True

@@ -46,10 +46,9 @@ import GI.Gtk
         onWidgetButtonPressEvent, widgetAddEvents, afterWidgetFocusInEvent,
         widgetGrabFocus, toWidget, widgetGetWindow)
 import GI.Gdk
-       (eventButtonReadState)
+       (getEventButtonState)
 import Graphics.UI.Frame.Rectangle
-       (rectangleHeight, rectangleWidth, rectangleY,
-        rectangleX, Rectangle(..), newRectangle)
+       (Rectangle(..), newRectangle)
 import Data.GI.Base.Attributes (AttrOp(..))
 import GI.Pango (layoutSetFontDescription)
 import Yi (nelemsB, readAtB, moveB)
@@ -218,12 +217,7 @@ instance TextEditor Yi where
     getBuffer (YiView v) = return $ YiBuffer $ Yi.getBuffer v
     getWindow (YiView v) = nullToNothing $ widgetGetWindow (drawArea v)
     getIterAtLocation (YiView View{viewFBufRef = b}) x y = return $ mkYiIter' b $ Point 0 -- TODO
-    getIterLocation (YiView v) (YiIter i) = newRectangle
-        [ rectangleX      := 0 -- TODO
-        , rectangleY      := 0
-        , rectangleWidth  := 0
-        , rectangleHeight := 0
-        ]
+    getIterLocation (YiView v) (YiIter i) = newRectangle 0 0 0 0 -- TODO
     getOverwrite (YiView View{viewFBufRef = b}) = withYiBuffer' b $ not <$> use insertingA
     getScrolledWindow (YiView v) = return $ scrollWin v
     getEditorWidget (YiView v) = liftIO . toWidget $ drawArea v
@@ -318,7 +312,7 @@ instance TextEditor Yi where
         widgetAddEvents (drawArea v) (gflagsToWord [EventMaskButtonReleaseMask])
         id1 <- onIDE onWidgetButtonReleaseEvent (drawArea v) $ do
             e <- lift ask
-            mod <- eventButtonReadState e
+            mod <- getEventButtonState e
             case mod of
                 [ModifierTypeControlMask] -> f >> return True
                 _                         -> return False

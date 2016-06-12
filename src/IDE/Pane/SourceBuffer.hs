@@ -149,7 +149,7 @@ import GI.Gtk.Enums
        (FileChooserAction(..), WindowPosition(..), ResponseType(..),
         ButtonsType(..), MessageType(..), ShadowType(..), PolicyType(..))
 import GI.Gdk.Structs.EventKey
-       (eventKeyReadState, eventKeyReadKeyval)
+       (getEventKeyState, getEventKeyKeyval)
 import GI.Gdk.Functions (keyvalName)
 import GI.Gdk.Flags (ModifierType(..))
 import GI.Gtk.Flags (TextSearchFlags(..))
@@ -173,7 +173,7 @@ import Graphics.UI.Editor.Parameters
        (dialogRun', dialogSetDefaultResponse', dialogAddButton')
 import GI.Gtk.Objects.Clipboard (clipboardGet)
 import GI.Gdk.Structs.Atom (atomIntern)
-import GI.Gdk.Structs.EventButton (eventButtonReadType)
+import GI.Gdk.Structs.EventButton (getEventButtonType)
 import GI.Gdk.Enums (EventType(..))
 
 --time :: MonadIO m => String -> m a -> m a
@@ -621,7 +621,7 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
         ids3 <- onButtonPress sv $ do
                 e <- lift ask
-                click <- eventButtonReadType e
+                click <- getEventButtonType e
                 liftIDE $
                     case click of
                         EventType2buttonPress -> do
@@ -672,9 +672,9 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
 
         ids6 <- onKeyPress sv $ do
             e        <- lift ask
-            keyval   <- eventKeyReadKeyval e
+            keyval   <- getEventKeyKeyval e
             name     <- keyvalName keyval
-            modifier <- eventKeyReadState e
+            modifier <- getEventKeyState e
             liftIDE $ do
                 let moveToNextWord iterOp sel  = do
                         sel' <- iterOp sel

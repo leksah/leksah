@@ -73,11 +73,10 @@ import GI.Gtk.Objects.Widget
         onWidgetButtonPressEvent, afterWidgetFocusInEvent, widgetGrabFocus,
         toWidget, widgetGetParent, widgetGetWindow)
 import Graphics.UI.Frame.Rectangle
-       (rectangleHeight, rectangleWidth, rectangleY, rectangleX,
-        newRectangle)
+       (newRectangle)
 import Data.GI.Base.ManagedPtr (withManagedPtr, unsafeCastTo)
 import GI.Gdk.Flags (ModifierType(..), EventMask(..))
-import GI.Gdk.Structs.EventButton (eventButtonReadState)
+import GI.Gdk.Structs.EventButton (getEventButtonState)
 import GI.JavaScriptCore.Structs.GlobalContext (GlobalContext(..))
 import Foreign.Ptr (castPtr)
 import Data.GI.Base.BasicConversions (gflagsToWord)
@@ -389,11 +388,7 @@ instance TextEditor CodeMirror where
             r <- rect ^. right
             t <- rect ^. top
             b <- rect ^. bottom
-            newRectangle [
-                rectangleX := (round l),
-                rectangleY := (round t),
-                rectangleWidth := (round $ r - l),
-                rectangleHeight := (round $ b - t)]
+            newRectangle (round l) (round t) (round $ r - l) (round $ b - t)
     getOverwrite (CMView cm) = return False -- TODO
     getScrolledWindow (CMView (v,_)) = nullToNothing (widgetGetParent v) >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
     getEditorWidget (CMView (v,_)) = liftIO $ toWidget v
@@ -534,7 +529,7 @@ instance TextEditor CodeMirror where
         widgetAddEvents v (gflagsToWord [EventMaskButtonReleaseMask])
         id1 <- onIDE onWidgetButtonReleaseEvent v $ do
             e <- lift ask
-            mod <- liftIO $ eventButtonReadState e
+            mod <- liftIO $ getEventButtonState e
             case mod of
                 [ModifierTypeControlMask] -> f >> return True
                 _                         -> return False

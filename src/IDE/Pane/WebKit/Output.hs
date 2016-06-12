@@ -64,7 +64,7 @@ import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
 import Graphics.UI.Editor.Parameters (Packing(..), boxPackStart')
 import GI.Gtk.Objects.Container (containerAdd)
-import GI.Gdk (eventKeyReadState, eventKeyReadKeyval, keyvalName)
+import GI.Gdk (getEventKeyState, getEventKeyKeyval, keyvalName)
 import GI.Gdk.Flags (ModifierType(..))
 import GI.Gtk.Objects.ToggleAction
        (setToggleActionActive, toggleActionNew)
@@ -136,8 +136,8 @@ instance RecoverablePane IDEOutput OutputState IDEM where
 
 --        webView `set` [webViewZoomLevel := 2.0]
         cid2 <- ConnectC webView <$> onWidgetKeyPressEvent webView (\e -> do
-            key <- eventKeyReadKeyval e >>= keyvalName
-            mod <- eventKeyReadState e
+            key <- getEventKeyKeyval e >>= keyvalName
+            mod <- getEventKeyState e
             case (key, mod) of
                 (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
                 (Just "minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True

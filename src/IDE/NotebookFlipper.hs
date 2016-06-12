@@ -54,7 +54,7 @@ import GI.Gtk.Objects.Widget
        (widgetShowAll, widgetDestroy, widgetHide, onWidgetKeyReleaseEvent)
 import GI.GObject.Functions (signalHandlerDisconnect)
 import GI.Gdk.Structs.EventKey
-       (eventKeyReadKeyval, eventKeyKeyval, EventKey(..))
+       (getEventKeyKeyval, EventKey(..))
 import GI.Gdk.Functions (keyvalName)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathGetIndices',
@@ -187,7 +187,7 @@ initFlipper direction = do
 
 handleKeyRelease :: TreeViewK alpha => alpha -> IDERef -> EventKey -> IO Bool
 handleKeyRelease tree ideR e = do
-    name <- eventKeyReadKeyval e >>= keyvalName
+    name <- getEventKeyKeyval e >>= keyvalName
     case name of
         Just ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") -> do
             currentState' <- reflectIDE (readIDE currentState) ideR
