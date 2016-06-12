@@ -50,7 +50,7 @@ import GI.Gtk.Objects.Widget
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
 import GI.Gtk.Objects.Container (containerAdd)
-import GI.Gdk (eventKeyReadState, keyvalName, eventKeyReadKeyval)
+import GI.Gdk (getEventKeyState, keyvalName, getEventKeyKeyval)
 import GI.Gdk.Flags (ModifierType(..))
 import System.Log.Logger (debugM)
 import Data.GI.Base.BasicTypes (NullToNothing(..))
@@ -101,8 +101,8 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
             return True)
 
         cid2 <- ConnectC webView <$> onWidgetKeyPressEvent webView (\e -> do
-            key <- eventKeyReadKeyval e >>= keyvalName
-            mod <- eventKeyReadState e
+            key <- getEventKeyKeyval e >>= keyvalName
+            mod <- getEventKeyState e
             case (key, mod) of
                 (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
                 (Just "minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True

@@ -135,7 +135,7 @@ import GI.Gtk.Objects.ScrolledWindow
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import Graphics.UI.Frame.Rectangle
-       (rectangleReadY, rectangleReadX, Rectangle(..))
+       (getRectangleY, getRectangleX, Rectangle(..))
 import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
 import GI.Gtk.Objects.Box (boxReorderChild, Box(..), boxSetSpacing)
 import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
@@ -392,8 +392,8 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         panedAdd1 pane' sw
         panedAdd2 pane' sw2
         rect <- widgetGetAllocation nb
-        x <- rectangleReadX rect
-        y <- rectangleReadY rect
+        x <- getRectangleX rect
+        y <- getRectangleY rect
         panedSetPosition pane' (max 200 (x `quot` 2))
         box             <-  hButtonBoxNew
         boxSetSpacing box 2

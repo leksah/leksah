@@ -43,20 +43,20 @@ import GI.Gdk.Enums (CursorType(..))
 import GI.Gtk.Objects.Widget
        (onWidgetButtonPressEvent, onWidgetMotionNotifyEvent,
         widgetGetWindow, widgetGetAllocation, onWidgetLeaveNotifyEvent)
-import GI.Gdk.Structs.EventCrossing (eventCrossingReadTime)
+import GI.Gdk.Structs.EventCrossing (getEventCrossingTime)
 import GI.Gdk.Functions (pointerGrab, pointerUngrab)
 import GI.Gtk.Objects.Adjustment (adjustmentGetValue)
 import GI.Gdk.Flags (EventMask(..), ModifierType(..))
 import Graphics.UI.Frame.Rectangle
-       (rectangleReadHeight, rectangleReadWidth)
+       (getRectangleHeight, getRectangleWidth)
 import GI.Gdk.Objects.Screen (screenGetDefault)
 import qualified GI.Gdk.Objects.Window as Gdk (noWindow)
 import GI.Gdk.Structs.EventMotion
-       (eventMotionReadXRoot, eventMotionReadY, eventMotionReadX,
-        eventMotionReadState, eventMotionReadTime, eventMotionReadIsHint)
+       (getEventMotionXRoot, getEventMotionY, getEventMotionX,
+        getEventMotionState, getEventMotionTime, getEventMotionIsHint)
 import GI.Gdk.Structs.EventButton
-       (eventButtonReadXRoot, eventButtonReadY, eventButtonReadX,
-        eventButtonReadState, eventButtonReadTime)
+       (getEventButtonXRoot, getEventButtonY, getEventButtonX,
+        getEventButtonState, getEventButtonTime)
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
@@ -78,7 +78,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
     cursor <- cursorNew CursorTypeHand2
 
     id1 <- ConnectC sw <$> onWidgetLeaveNotifyEvent sw (\e -> do
-        eventCrossingReadTime e >>= pointerUngrab
+        getEventCrossingTime e >>= pointerUngrab
         return True)
 
     let moveOrClick eventX eventY mods eventTime click = do
@@ -91,8 +91,8 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                 shiftPressed = ModifierTypeShiftMask `elem` mods
             iter <- getIterAtLocation sv (round ex) (round ey)
             rect <- widgetGetAllocation sw
-            szx <- rectangleReadWidth rect
-            szy <- rectangleReadHeight rect
+            szx <- getRectangleWidth rect
+            szy <- getRectangleHeight rect
             if eventX < 0 || eventY < 0
                 || round eventX > szx || round eventY > szy then do
                     pointerUngrab eventTime
@@ -140,23 +140,23 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             return (nx, eventY)
     ideR <- ask
     id2 <- ConnectC sw <$> onWidgetMotionNotifyEvent sw (\e -> do
-        isHint <- (/=0) <$> eventMotionReadIsHint e
-        eventTime <- eventMotionReadTime e
-        mods <- eventMotionReadState e
-        oldX <- eventMotionReadX e
-        oldY <- eventMotionReadY e
-        rootX <- eventMotionReadXRoot e
+        isHint <- (/=0) <$> getEventMotionIsHint e
+        eventTime <- getEventMotionTime e
+        mods <- getEventMotionState e
+        oldX <- getEventMotionX e
+        oldY <- getEventMotionY e
+        rootX <- getEventMotionXRoot e
         (eventX, eventY) <- liftIO $ fixBugWithX mods isHint (oldX, oldY) rootX
         -- print ("move adjustment: isHint, old, new root", isHint, eventX, oldX, rootX)
         (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime False
         return True)
     id3 <- ConnectC sw <$> onWidgetButtonPressEvent sw (\e -> do
-        eventTime <- eventButtonReadTime e
-        mods <- eventButtonReadState e
+        eventTime <- getEventButtonTime e
+        mods <- getEventButtonState e
         -- liftIO $ print ("button press")
-        oldX <- eventButtonReadX e
-        oldY <- eventButtonReadY e
-        rootX <- eventButtonReadXRoot e
+        oldX <- getEventButtonX e
+        oldY <- getEventButtonY e
+        rootX <- getEventButtonXRoot e
         (eventX, eventY) <- liftIO $ fixBugWithX mods False (oldX, oldY) rootX
         -- liftIO $ print ("click adjustment: old, new", eventX, oldX)
         (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime True)

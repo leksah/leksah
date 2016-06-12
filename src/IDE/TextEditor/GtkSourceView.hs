@@ -132,7 +132,7 @@ import GI.GtkSource.Flags (DrawSpacesFlags(..))
 import Data.GI.Base.BasicConversions (gflagsToWord)
 import GI.Gdk.Flags (ModifierType(..), EventMask(..))
 import GI.GLib (pattern PRIORITY_DEFAULT, idleAdd, sourceRemove)
-import GI.Gdk (eventButtonReadState)
+import GI.Gdk (getEventButtonState)
 import GI.Gtk.Structs.TextIter
        (textIterSetOffset, textIterSetLineOffset, textIterSetLine,
         textIterGetBuffer, textIterStartsWord, textIterStartsLine,
@@ -457,7 +457,7 @@ instance TextEditor GtkSourceView where
         widgetAddEvents sv $ gflagsToWord [EventMaskButtonReleaseMask]
         id1 <- onIDE onWidgetButtonReleaseEvent sv $ do
             e <- lift ask
-            mod <- eventButtonReadState e
+            mod <- getEventButtonState e
             case mod of
                 [ModifierTypeControlMask] -> f >> return True
                 _             -> return False

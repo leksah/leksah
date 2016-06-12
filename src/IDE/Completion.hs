@@ -79,22 +79,22 @@ import GI.Gtk.Objects.Paned
        (panedSetPosition, panedGetPosition, panedGetChild2, Paned(..),
         panedGetChild1, panedAdd2, panedAdd1)
 import GI.Gdk.Structs.EventKey
-       (eventKeyReadKeyval, eventKeyReadState)
+       (getEventKeyKeyval, getEventKeyState)
 import GI.Gdk.Functions
        (pointerUngrab, pointerGrab, keyvalToUnicode, keyvalName)
 import GI.Gtk.Interfaces.TreeModel
        (treeModelGetPath, treeModelIterNChildren)
 import GI.Gdk.Structs.EventButton
-       (eventButtonReadTime, eventButtonReadY, eventButtonReadX,
-        eventButtonReadButton)
+       (getEventButtonTime, getEventButtonY, getEventButtonX,
+        getEventButtonButton)
 import GI.Gdk.Flags (EventMask(..))
 import GI.Gdk.Objects.Cursor (noCursor)
 import GI.Gdk.Structs.EventMotion
-       (eventMotionReadY, eventMotionReadX)
+       (getEventMotionY, getEventMotionX)
 import GI.Gtk.Structs.TreePath (treePathGetIndices, TreePath(..))
 import Graphics.UI.Frame.Rectangle
-       (rectangleReadHeight, rectangleReadWidth, rectangleReadY,
-        rectangleReadX, Rectangle(..))
+       (getRectangleHeight, getRectangleWidth, getRectangleY,
+        getRectangleX, Rectangle(..))
 import GI.Gdk.Objects.Window (windowGetOrigin)
 import qualified GI.Gdk.Objects.Window as Gdk (noWindow)
 import GI.Gdk.Objects.Screen
@@ -235,9 +235,9 @@ addEventHandling window sourceView tree store isWordChar always = do
     ideR      <- ask
     cidsPress <- TE.onKeyPress sourceView $ do
         e           <- lift ask
-        keyVal      <- eventKeyReadKeyval e
+        keyVal      <- getEventKeyKeyval e
         name        <- keyvalName keyVal
-        modifier    <- eventKeyReadState e
+        modifier    <- getEventKeyState e
         char        <- toEnum . fromIntegral <$> keyvalToUnicode keyVal
         Just model  <- treeViewGetModel tree
         selection   <- treeViewGetSelection tree
@@ -292,8 +292,8 @@ addEventHandling window sourceView tree store isWordChar always = do
 
     cidsRelease <- TE.onKeyRelease sourceView $ do
         e        <- lift ask
-        name     <- eventKeyReadKeyval e >>= keyvalName
-        modifier <- eventKeyReadState e
+        name     <- getEventKeyKeyval e >>= keyvalName
+        modifier <- getEventKeyState e
         case (name, modifier) of
             (Just "BackSpace", _) -> do
                 liftIDE $ complete sourceView False
@@ -303,10 +303,10 @@ addEventHandling window sourceView tree store isWordChar always = do
     resizeHandler <- liftIO $ newIORef Nothing
 
     idButtonPress <- ConnectC window <$> onWidgetButtonPressEvent window (\e -> do
-        button     <- eventButtonReadButton e
-        x          <- eventButtonReadX e
-        y          <- eventButtonReadY e
-        time       <- eventButtonReadTime e
+        button     <- getEventButtonButton e
+        x          <- getEventButtonX e
+        y          <- getEventButtonY e
+        time       <- getEventButtonTime e
 
         nullToNothing (widgetGetWindow window) >>= \case
             Nothing -> return ()
@@ -330,8 +330,8 @@ addEventHandling window sourceView tree store isWordChar always = do
         mbResize <- readIORef resizeHandler
         case mbResize of
             Just resize -> do
-                x <- eventMotionReadX e
-                y <- eventMotionReadY e
+                x <- getEventMotionX e
+                y <- getEventMotionY e
                 resize x y
                 return True
             Nothing     -> return False)
@@ -340,10 +340,10 @@ addEventHandling window sourceView tree store isWordChar always = do
         mbResize <- liftIO $ readIORef resizeHandler
         case mbResize of
             Just resize -> do
-                x <- eventButtonReadX e
-                y <- eventButtonReadY e
+                x <- getEventButtonX e
+                y <- getEventButtonY e
                 resize x y
-                eventButtonReadTime e >>= pointerUngrab
+                getEventButtonTime e >>= pointerUngrab
                 liftIO $ writeIORef resizeHandler Nothing
                 return True
             Nothing     -> return False)
@@ -448,10 +448,10 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                 let newOptions = List.filter (T.isPrefixOf newWordStart) options
                 forM_ (take 200 newOptions) (seqStoreAppend store)
                 rect                 <- getIterLocation sourceView start
-                startx               <- rectangleReadX rect
-                starty               <- rectangleReadY rect
-                width                <- rectangleReadWidth rect
-                height               <- rectangleReadHeight rect
+                startx               <- getRectangleX rect
+                starty               <- getRectangleY rect
+                width                <- getRectangleWidth rect
+                height               <- getRectangleHeight rect
                 (wWindow, hWindow)   <- windowGetSize window
                 (x, y)               <- bufferToWindowCoords sourceView (fromIntegral startx, fromIntegral (starty+height))
                 mbDrawWindow         <- getWindow sourceView
@@ -461,8 +461,8 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         (_, ox, oy)  <- windowGetOrigin drawWindow
                         Just namesSW <- nullToNothing $ widgetGetParent tree
                         rNames       <- widgetGetAllocation namesSW
-                        wNames       <- rectangleReadWidth rNames
-                        hNames       <- rectangleReadHeight rNames
+                        wNames       <- getRectangleWidth rNames
+                        hNames       <- getRectangleHeight rNames
                         paned        <- nullToNothing (widgetGetParent namesSW) >>= liftIO . unsafeCastTo Paned . fromJust
                         Just first   <- nullToNothing $ panedGetChild1 paned
                         Just second  <- nullToNothing $ panedGetChild2 paned
@@ -476,7 +476,7 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         top <- if monitorBelow /= monitor || (oy+fromIntegral y+hWindow) > hScreen
                             then do
                                 sourceSW <- getScrolledWindow sourceView
-                                hSource <- widgetGetAllocation sourceSW >>= rectangleReadHeight
+                                hSource <- widgetGetAllocation sourceSW >>= getRectangleHeight
                                 scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
                                 (_, newy)     <- bufferToWindowCoords sourceView (fromIntegral startx, fromIntegral (starty+height))
                                 return (oy+fromIntegral newy)

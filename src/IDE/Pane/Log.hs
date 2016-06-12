@@ -116,8 +116,8 @@ import GI.Gtk.Enums
        (TextWindowType(..), ShadowType(..), PolicyType(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import GI.Gdk.Structs.EventButton
-       (eventButtonReadY, eventButtonReadX, eventButtonReadButton,
-        eventButtonReadType)
+       (getEventButtonY, getEventButtonX, getEventButtonButton,
+        getEventButtonType)
 import GI.Gdk.Enums (EventType(..), EventType)
 import Data.Word (Word32)
 import GI.Gdk.Constants (pattern BUTTON_PRIMARY)
@@ -424,10 +424,10 @@ builder' pp nb windows = do
         return False
     cid2 <- onIDE onWidgetButtonPressEvent tv $ do
         e <- lift ask
-        click <- eventButtonReadType e
-        button <- eventButtonReadButton e
-        x <- eventButtonReadX e
-        y <- eventButtonReadY e
+        click <- getEventButtonType e
+        button <- getEventButtonButton e
+        x <- getEventButtonX e
+        y <- getEventButtonY e
         liftIDE $ clicked click (fromIntegral button) x y buf
         return False
     cid3 <- ConnectC tv <$> onTextViewPopulatePopup tv (\w ->

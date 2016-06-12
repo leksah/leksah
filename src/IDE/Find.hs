@@ -101,7 +101,7 @@ import Data.GI.Gtk.ModelView.CellLayout
 import GI.Gtk.Interfaces.Editable
        (afterEditableDeleteText, afterEditableInsertText)
 import GI.Gdk.Structs.EventKey
-       (eventKeyReadState, eventKeyReadKeyval)
+       (getEventKeyState, getEventKeyKeyval)
 import GI.Gdk.Functions (keyvalName)
 import GI.Gdk.Flags (ModifierType(..))
 import Data.GI.Base.GValue (IsGValue(..))
@@ -363,8 +363,8 @@ constructFindReplace = do
             toggleToolButtonSetActive btn $ not old
 
     onWidgetKeyPressEvent entry $ \e -> do
-        mbName <- eventKeyReadKeyval e >>= keyvalName
-        mods <- eventKeyReadState e
+        mbName <- getEventKeyKeyval e >>= keyvalName
+        mods <- getEventKeyState e
         case mbName of
             Just "Down"   -> doSearch toolbar Forward ideR >> return True
             Just "Up"     -> doSearch toolbar Backward ideR >> return True
@@ -378,8 +378,8 @@ constructFindReplace = do
             _        -> return False
 
     onWidgetKeyPressEvent rentry $ \e -> do
-        mbName <- eventKeyReadKeyval e >>= keyvalName
-        mods <- eventKeyReadState e
+        mbName <- getEventKeyKeyval e >>= keyvalName
+        mods <- getEventKeyState e
         case mbName of
            Just name
              | name == "Tab" || name == "ISO_Left_Tab" -> do
@@ -396,8 +396,8 @@ constructFindReplace = do
         return True
 
     onWidgetKeyPressEvent spinL $ \e -> do
-        mbName <- eventKeyReadKeyval e >>= keyvalName
-        mods <- eventKeyReadState e
+        mbName <- getEventKeyKeyval e >>= keyvalName
+        mods <- getEventKeyState e
         case mbName of
             Just "Escape" -> getOut ideR >> return True
             Just "Tab"    -> do

@@ -148,7 +148,7 @@ import GI.Gtk.Objects.VBox (vBoxNew)
 import Graphics.UI.Editor.Parameters
        (boxPackEnd', Packing(..), boxPackStart')
 import GI.Gdk.Structs.EventKey
-       (eventKeyReadState, eventKeyReadKeyval, EventKey(..))
+       (getEventKeyState, getEventKeyKeyval, EventKey(..))
 import GI.Gdk.Functions (keyvalToUnicode, keyvalName)
 import GI.Gdk.Flags (ModifierType, ModifierType(..))
 import GI.Gtk.Objects.AccelGroup (AccelGroup(..))
@@ -848,9 +848,9 @@ instrumentSecWindow win = do
 --
 handleSpecialKeystrokes :: IDERef -> EventKey -> IO Bool
 handleSpecialKeystrokes ideR e = do
-  keyVal <- eventKeyReadKeyval e
+  keyVal <- getEventKeyKeyval e
   name <- fromMaybe "" <$> keyvalName keyVal
-  mods <- eventKeyReadState e
+  mods <- getEventKeyState e
   char <- toEnum . fromIntegral <$> keyvalToUnicode keyVal
   liftIO $ (`reflectIDE` ideR) $ do
     prefs' <- readIDE prefs
