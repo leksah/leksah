@@ -23,7 +23,7 @@ cd vendor/haskell-gi/bindings
 for a in `./PKGS.sh`; do ./genBuildInfo.hs $a; done
 cd ../../..
 cp cabal.project.gi-bindings cabal.project
-cabal new-build
+cabal new-build -v2
 cabal sdist
 
 # update the cache
