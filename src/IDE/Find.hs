@@ -255,11 +255,7 @@ constructFindReplace = do
     replaceTool <- toolItemNew
     rentry <- entryNew
     widgetSetName rentry "replaceEntry"
-    entrySetPlaceholderText rentry
-#ifdef MIN_VERSION_GTK_3_18
-        $ Just
-#endif
-        "Replace with"
+    entrySetPlaceholderText rentry (Just "Replace with")
     containerAdd replaceTool rentry
     widgetSetName replaceTool "replaceTool"
     toolbarInsert toolbar replaceTool 0
@@ -286,11 +282,7 @@ constructFindReplace = do
     entryTool <- toolItemNew
     entry <- entryNew
     widgetSetName entry "searchEntry"
-    entrySetPlaceholderText entry
-#ifdef MIN_VERSION_GTK_3_18
-        $ Just
-#endif
-        "Find"
+    entrySetPlaceholderText entry (Just "Find")
     containerAdd entryTool entry
     widgetSetName entryTool "searchEntryTool"
     toolItemSetExpand entryTool True
