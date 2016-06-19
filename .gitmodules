@@ -46,3 +46,6 @@
 [submodule "vendor/haskell-gi-base"]
 	path = vendor/haskell-gi-base
 	url = https://github.com/haskell-gi/haskell-gi-base.git
+[submodule "vendor/jsaddle-dom"]
+	path = vendor/jsaddle-dom
+	url = https://github.com/ghcjs/jsaddle-dom.git
