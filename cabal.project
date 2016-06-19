@@ -1,3 +1,5 @@
+flags: -overloaded-methods -overloaded-signals -overloaded-properties
+
 packages:
  ./
  vendor/leksah-server/
@@ -6,5 +8,19 @@ packages:
  vendor/yi/
  vendor/gi-gtk-hs/
  vendor/haskell-gi/
+ vendor/haskell-gi/bindings/cairo/
+ vendor/haskell-gi/bindings/Gdk/
+ vendor/haskell-gi/bindings/GdkPixbuf/
+ vendor/haskell-gi/bindings/Gio/
+ vendor/haskell-gi/bindings/GLib/
+ vendor/haskell-gi/bindings/GObject/
+ vendor/haskell-gi/bindings/Gtk/
+ vendor/haskell-gi/bindings/GtkSource/
+ vendor/haskell-gi/bindings/JavaScriptCore-3.0/
+ vendor/haskell-gi/bindings/Pango/
+ vendor/haskell-gi/bindings/WebKit/
+ vendor/haskell-gi/bindings/Atk/
+ vendor/haskell-gi/bindings/Soup/
  vendor/haskell-gi-base/
+ vendor/jsaddle-dom/
  vendor/ghcjs-dom/

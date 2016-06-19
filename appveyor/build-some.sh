@@ -6,9 +6,8 @@ if [ ! -d cache1 ]; then
   cabal install vendor/haskell-gi-base vendor/haskell-gi --force-reinstalls
   cd vendor/haskell-gi/bindings
   ghc --make genBuildInfo.hs
-  ./genBuildInfo.exe GLib
-  ./genBuildInfo.exe Gio
-  cabal install ./GLib ./Gio --force-reinstalls
+  for a in `./PKGS.sh`; do ./genBuildInfo.hs $a; done
+  cabal install ./cairo ./Gdk ./GdkPixbuf ./Gio ./GLib ./GObject ./Gtk ./GtkSource ./JavaScriptCore-3.0 ./Pango ./WebKit ./Atk ./Soup -f-overloaded-methods -f-overloaded-signals -f-overloaded-properties
   cd ../../..
   mkdir cache1
   mv $APPDATA/ghc $APPDATA/cabal cache1
