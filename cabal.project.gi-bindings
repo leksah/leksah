@@ -1,3 +1,5 @@
+flags: -overloaded-methods -overloaded-signals -overloaded-properties
+
 packages:
  ./
  vendor/leksah-server/
@@ -20,4 +22,5 @@ packages:
  vendor/haskell-gi/bindings/Atk/
  vendor/haskell-gi/bindings/Soup/
  vendor/haskell-gi-base/
+ vendor/jsaddle-dom/
  vendor/ghcjs-dom/
