@@ -5,12 +5,12 @@ cd ../leksah || exit
 . scripts/stage.sh || exit
 
 export GHC_USER_PREFIX=$HOME/Library/Haskell/ghc-`ghc$GHCVERSION --numeric-version`/lib
-export LEKSAH_BIN_DIR=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X
-export LEKSAH_PREFIX=$GHC_USER_PREFIX/$LEKSAH_X_X_X_X/share
-export LEKSAH_SERVER_BIN_DIR=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X
-export LEKSAH_SERVER_PREFIX=$GHC_USER_PREFIX/$LEKSAH_SERVER_X_X_X_X/share
-export VCSGUI_BIN_DIR=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`
-export VCSGUI_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *vcsgui-' | head -n1 | tr -d ' \n'`
+export LEKSAH_BIN_DIR=`pwd`/dist-newstyle/build/$LEKSAH_X_X_X_X/build
+export LEKSAH_PREFIX=`pwd`
+export LEKSAH_SERVER_BIN_DIR=`pwd`/dist-newstyle/build/$LEKSAH_SERVER_X_X_X_X/build
+export LEKSAH_SERVER_PREFIX=`pwd`/vendor/leksah-server
+export VCSGUI_BIN_DIR=`pwd`/`ls -d dist-newstyle/build/vcsgui-*/build`
+export VCSGUI_PREFIX=`pwd`/vendor/haskellVCSGUI/vcsgui
 export HLINT_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *hlint-' | head -n1 | tr -d ' \n'`
 
 #export SANDBOX_BIN_DIR=$PWD/.cabal-sandbox
@@ -66,7 +66,7 @@ LEKSAH_DMG="$LEKSAH_X_X_X_X_GHC_X_X_X.dmg"
 if test -e "$LEKSAH_DMG"; then
    rm "$LEKSAH_DMG"
 fi
-hdiutil create -size 500m -srcfolder "Leksah" "$LEKSAH_DMG" || exit
+hdiutil create -size 800m -srcfolder "Leksah" "$LEKSAH_DMG" || exit
 
 scp "$LEKSAH_DMG" server:leksah/
 

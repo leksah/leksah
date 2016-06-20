@@ -30,15 +30,12 @@ echo Staging Leksah in $GTK_PREFIX
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
 if test "`uname`" = "Darwin"; then
-    cd ./vendor/ltk || exit
-    cabal install -j4 --with-ghc=ghc$GHCVERSION || exit
-    cd ../leksah-server || exit
-    cabal install --enable-tests -j4 --with-ghc=ghc$GHCVERSION || exit
-    cabal test || exit
-#    cd ../yi || exit
-#    cabal install -j4 -fpango --with-ghc=ghc$GHCVERSION || exit
-    cd ../.. || exit
-    cabal install -j4 -fwebkit -f-yi --with-ghc=ghc$GHCVERSION || exit
+    cabal new-build --with-ghc=ghc$GHCVERSION || exit
+    cd vendor/leksah-server
+    cabal new-build --with-ghc=ghc$GHCVERSION || exit
+    cd ../../vendor/haskellVCSGUI/vcsgui
+    cabal new-build --with-ghc=ghc$GHCVERSION || exit
+    cd ../../..
 else
     $WINE cabal install ./ ./vendor/ltk ./vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j1 -fwebkit -f-yi -fpango -f-vty --force-reinstalls || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
