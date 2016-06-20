@@ -8,18 +8,18 @@ install:
   - SET PATH=%APPDATA%\cabal\bin;C:\tools\msys64\mingw64\bin;C:\tools\msys64\usr\bin;C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.1\bin;C:\ProgramData\chocolatey\lib\cabal\tools;C:\Program Files (x86)/WiX Toolset v3.10\bin;%PATH%
   - SET PKG_CONFIG_PATH=C:\tools\msys64\mingw64\lib\pkgconfig
   - SET XDG_DATA_DIRS=C:\tools\msys64\mingw64\share
-  - choco install ghc -version 8.0.1 | grep -v '^Extracting '
+  - appveyor-retry choco install ghc -version 8.0.1 | grep -v '^Extracting '
   - cabal --version
-  - choco install msys2 | grep -v '^Extracting '
+  - appveyor-retry choco install msys2 | grep -v '^Extracting '
   - pacman --version
-  - choco install wixtoolset
+  - appveyor-retry choco install wixtoolset
   - heat -? | grep version
-  - choco install dejavufonts -version 2.35 | grep -v '^Extracting '
-  - pacman -S -q --noconfirm mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
+  - appveyor-retry choco install dejavufonts -version 2.35
+  - appveyor-retry pacman -S -q --noconfirm mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
   # The webkitgtk package still expects ICU 56
-  - curl -fsSL -o mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz/download
+  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz/download
   - pacman -U --noconfirm mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz
-  - curl -fsSL -o mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz/download
+  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz/download
   - pacman -U --noconfirm mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz
 
 build_script:
