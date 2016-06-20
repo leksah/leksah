@@ -2,13 +2,9 @@
 
 if [ ! -d cache1 ]; then
   cabal update
-  cabal install alex happy aeson-pretty --disable-documentation
-  cabal install vendor/haskell-gi-base vendor/haskell-gi --force-reinstalls
-  cd vendor/haskell-gi/bindings
-  ghc --make genBuildInfo.hs
-  for a in `./PKGS.sh`; do ./genBuildInfo.hs $a; done
-  cabal install ./cairo ./Gdk ./GdkPixbuf ./Gio ./GLib ./GObject ./Gtk ./GtkSource ./JavaScriptCore-3.0 ./Pango ./WebKit ./Atk ./Soup -f-overloaded-methods -f-overloaded-signals -f-overloaded-properties
-  cd ../../..
+  cabal install alex happy --disable-documentation
+  cabal install haskell-gi --disable-documentation
+  cabal install gi-cairo gi-gdk gi-gdkpixbuf gi-gio gi-glib gi-gobject gi-gtk gi-gtksource gi-javascriptcore gi-pango gi-webkit gi-atk gi-soup -f-overloaded-methods -f-overloaded-signals -f-overloaded-properties
   mkdir cache1
   mv $APPDATA/ghc $APPDATA/cabal cache1
 elif [ ! -d cache2 ]; then
