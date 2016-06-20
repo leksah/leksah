@@ -57,13 +57,23 @@
   -->
   <plist>${project}/Info.plist</plist>
 
-  <main-binary>${prefix:leksah-bin}/bin/leksah</main-binary>
+  <main-binary>${prefix:leksah-bin}/leksah/leksah</main-binary>
 
-  <binary>${prefix:leksah-server-bin}/bin/leksahecho</binary>
-  <binary>${prefix:leksah-server-bin}/bin/leksahtrue</binary>
-  <binary>${prefix:leksah-server-bin}/bin/leksah-server</binary>
-  <binary>${prefix:vcsgui-bin}/bin/vcsgui</binary>
-  <binary>${prefix:vcsgui-bin}/bin/vcsgui-askpass</binary>
+  <binary dest="${bundle}/Contents/Resources/bin/leksahecho">
+  	${prefix:leksah-server-bin}/leksahecho/leksahecho
+  </binary>
+  <binary dest="${bundle}/Contents/Resources/bin/leksahtrue">
+    ${prefix:leksah-server-bin}/leksahtrue/leksahtrue
+  </binary>
+  <binary dest="${bundle}/Contents/Resources/bin/leksah-server">
+    ${prefix:leksah-server-bin}/leksah-server/leksah-server
+  </binary>
+  <binary dest="${bundle}/Contents/Resources/bin/vcsgui">
+    ${prefix:vcsgui-bin}/vcsgui/vcsgui
+  </binary>
+  <binary dest="${bundle}/Contents/Resources/bin/vcsgui-askpass">
+    ${prefix:vcsgui-bin}/vcsgui-askpass/vcsgui-askpass
+  </binary>
 
   <!-- Copy in the input methods. Dunno if they actually work with
        OSX. Note the ${gtkdir} macro, which expands to the correct
@@ -121,16 +131,40 @@
     ${prefix}/share/gtksourceview-3.0
   </data>
 
-  <data dest="${bundle}/Contents/Resources/share/leksah">
-    ${prefix:leksah}
+  <data dest="${bundle}/Contents/Resources/share/leksah/LICENSE">
+    ${prefix:leksah}/LICENSE
+  </data>
+
+  <data dest="${bundle}/Contents/Resources/share/leksah/Readme.md">
+    ${prefix:leksah}/Readme.md
+  </data>
+
+  <data dest="${bundle}/Contents/Resources/share/leksah/data">
+    ${prefix:leksah}/data
+  </data>
+
+  <data dest="${bundle}/Contents/Resources/share/leksah/doc">
+    ${prefix:leksah}/doc
+  </data>
+
+  <data dest="${bundle}/Contents/Resources/share/leksah/language-specs">
+    ${prefix:leksah}/language-specs
+  </data>
+
+  <data dest="${bundle}/Contents/Resources/share/leksah/pics">
+    ${prefix:leksah}/pics
   </data>
 
   <data dest="${bundle}/Contents/Resources/share/hlint">
     ${prefix:hlint}/share
   </data>
 
-  <data dest="${bundle}/Contents/Resources/share/vcsgui">
-    ${prefix:vcsgui}/share
+  <data dest="${bundle}/Contents/Resources/share/vcsgui/LICENSE">
+    ${prefix:vcsgui}/LICENSE
+  </data>
+
+  <data dest="${bundle}/Contents/Resources/share/vcsgui/data">
+    ${prefix:vcsgui}/data
   </data>
 
   <!-- Copy in the themes data. You may want to trim this to save space
