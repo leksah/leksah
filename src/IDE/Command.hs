@@ -107,7 +107,7 @@ import GI.Gtk.Objects.MenuItem
        (toMenuItem, menuItemSetSubmenu, menuItemGetSubmenu,
         onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.Widget
-       (WidgetK, onWidgetKeyPressEvent, widgetSetName,
+       (IsWidget, onWidgetKeyPressEvent, widgetSetName,
         Widget(..), widgetShow, widgetSetSizeRequest, widgetShowAll,
         widgetDestroy, widgetHide, widgetSetSensitive)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
@@ -142,7 +142,7 @@ import GI.GdkPixbuf.Objects.Pixbuf (pixbufNewFromFile)
 import GI.Gtk.Structs.IconSet (iconSetNewFromPixbuf)
 import GI.Gtk.Objects.IconTheme (iconThemeAddBuiltinIcon)
 import GI.Gtk.Objects.Window
-       (WindowK, windowAddAccelGroup, windowSetIconFromFile, Window(..))
+       (IsWindow, windowAddAccelGroup, windowSetIconFromFile, Window(..))
 import GI.Gtk.Objects.VBox (vBoxNew)
 import Graphics.UI.Editor.Parameters
        (boxPackEnd', Packing(..), boxPackStart')
@@ -783,7 +783,7 @@ viewUseDarkInterface = do
         applyInterfaceTheme
 
 
-instrumentWindow :: WidgetK topWidget => Window -> Prefs -> topWidget -> IDEAction
+instrumentWindow :: IsWidget topWidget => Window -> Prefs -> topWidget -> IDEAction
 instrumentWindow win prefs topWidget = do
     -- sets the icon
     ideR <- ask

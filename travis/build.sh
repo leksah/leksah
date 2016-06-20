@@ -18,11 +18,6 @@ cp -a /root/.cabal ./
 rm -rf .ghc
 cp -a /root/.ghc ./
 
-cd vendor/haskell-gi/bindings
-./PKGS.sh
-for a in `./PKGS.sh`; do ./genBuildInfo.hs $a; done
-cd ../../..
-cp cabal.project.gi-bindings cabal.project
 cabal new-build
 cabal sdist
 

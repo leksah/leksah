@@ -23,7 +23,7 @@ module IDE.OSX (
 ) where
 
 import Control.Monad.IO.Class (MonadIO(..))
-import GI.Gdk.Objects.Window (WindowK)
+import GI.Gdk.Objects.Window (IsWindow)
 import GI.Gtk.Objects.UIManager (uIManagerGetWidget, UIManager(..))
 import IDE.Core.State
 
@@ -81,7 +81,7 @@ updateMenu app uiManager = do
 
     applicationSetUseQuartzAccelerators app True
 
-allowFullscreen :: WindowK window => window -> IO ()
+allowFullscreen :: IsWindow window => window -> IO ()
 allowFullscreen _ = return ()
 
 #else
@@ -93,7 +93,7 @@ updateMenu :: Application -> UIManager -> IDEM ()
 updateMenu _ _ = return ()
 applicationReady :: MonadIO m => Application -> m ()
 applicationReady _ = return ()
-allowFullscreen :: MonadIO m => WindowK window => window -> m ()
+allowFullscreen :: MonadIO m => IsWindow window => window -> m ()
 allowFullscreen _ = return ()
 
 #endif
