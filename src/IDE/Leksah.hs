@@ -95,7 +95,7 @@ import GI.GLib.Structs.Source (sourceRemove)
 import GI.Gtk.Functions
        (mainIterationDo, eventsPending, mainIteration)
 import GI.Gtk.Objects.Window
-       (setWindowDeletable, windowSetIconFromFile, WindowK,
+       (setWindowDeletable, windowSetIconFromFile, IsWindow,
         setWindowWindowPosition, setWindowTitle, windowSetDefaultSize, windowNew)
 import GI.Gtk.Objects.Widget
        (widgetDestroy, widgetHide, widgetShowAll, widgetGetWindow,
@@ -586,7 +586,7 @@ firstStart prefs = do
             widgetDestroy dialog
             return False
 
-setLeksahIcon :: (WindowK self) => self -> IO ()
+setLeksahIcon :: (IsWindow self) => self -> IO ()
 setLeksahIcon window = do
     dataDir <- getDataDir
     let iconPath = dataDir </> "pics" </> "leksah.png"

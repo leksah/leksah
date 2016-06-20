@@ -99,7 +99,7 @@ import GI.Gtk.Objects.MenuItem
 import GI.Gtk.Objects.UIManager (uIManagerGetWidget)
 import GI.Gtk.Objects.TreeView
        (toTreeView, TreeView(..), treeViewGetPathAtPos,
-        treeViewGetSelection, TreeViewK(..), treeViewExpandRow,
+        treeViewGetSelection, treeViewExpandRow,
         treeViewCollapseRow, treeViewRowExpanded)
 import GI.Gdk.Flags (ModifierType(..))
 import GI.Gtk.Structs.TreePath

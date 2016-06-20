@@ -130,14 +130,6 @@ or follow the instructions below.
 
 **Step 4**: Install Leksah
 
-    cabal install aeson aeson-pretty
-    cabal install vendor/haskell-gi vendor/haskell-gi-base
-
-    cd vendor/haskell-gi/bindings
-    ./cleanAll.sh
-    for a in `./PKGS.sh`; do ./genBuildInfo.hs $a; done
-    cd ../../..
-    rm -rf dist-newstyle
     cabal new-build
 
 **Step 5**: Run leksah

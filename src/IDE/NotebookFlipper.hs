@@ -28,7 +28,7 @@ import GI.Gtk.Objects.TreeView
        (treeViewRowActivated, treeViewGetColumn, onTreeViewRowActivated,
         treeViewGetSelection, setTreeViewHeadersVisible, treeViewAppendColumn,
         treeViewSetModel, treeViewNew, treeViewSetCursor,
-        treeViewGetCursor, treeViewGetModel, TreeViewK)
+        treeViewGetCursor, treeViewGetModel, IsTreeView)
 import GI.Gtk.Interfaces.TreeModel (treeModelIterNChildren)
 import GI.Gtk.Objects.Window
        (setWindowWindowPosition, setWindowTransientFor, setWindowDefaultHeight,
@@ -77,7 +77,7 @@ flipUp = do
         _              -> return ()
 
 -- | Moves down in the Flipper state
-moveFlipperDown :: TreeViewK alpha => alpha -> IDEAction
+moveFlipperDown :: IsTreeView alpha => alpha -> IDEAction
 moveFlipperDown tree = do
     Just store <- treeViewGetModel tree
     n <- treeModelIterNChildren store Nothing
@@ -95,7 +95,7 @@ moveFlipperDown tree = do
         treeViewSetCursor tree p noTreeViewColumn False
 
 -- | Moves up in the Flipper state
-moveFlipperUp :: TreeViewK alpha => alpha  -> IDEAction
+moveFlipperUp :: IsTreeView alpha => alpha  -> IDEAction
 moveFlipperUp tree = liftIO $ do
     Just store <- treeViewGetModel tree
     n <- treeModelIterNChildren store Nothing
@@ -185,7 +185,7 @@ initFlipper direction = do
     p <- treePathNewFromIndices' [if direction then min 1 (n - 1) else n - 1]
     treeViewSetCursor tree' p noTreeViewColumn False
 
-handleKeyRelease :: TreeViewK alpha => alpha -> IDERef -> EventKey -> IO Bool
+handleKeyRelease :: IsTreeView alpha => alpha -> IDERef -> EventKey -> IO Bool
 handleKeyRelease tree ideR e = do
     name <- getEventKeyKeyval e >>= keyvalName
     case name of
