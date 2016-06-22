@@ -5,10 +5,13 @@ export LC_ALL=C.UTF-8
 
 if [[ -d .cabal && -d .ghc ]]; then
     cp -a .cabal .ghc /root
-    cabal update
+fi
+
+cabal update
+
+if ghc-pkg --package-db /root/.cabal/store/ghc-`ghc --numeric-version`/package.db list | grep ghcjs-dom; then
     cabal new-build
 else
-    cabal update
     cabal new-build ghcjs-dom
 fi
 
