@@ -20,7 +20,7 @@ before_install:
 
 script:
  - docker run -v `pwd`:/build leksah
-   sh -x -c "
+   bash -x -c "
       apt-get install -y cabal-install-$CABALVER ghc-$GHCVER &&
       export PATH=\$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/alex/3.1.7/bin:/opt/happy/1.19.5/bin:\$PATH &&
       ./travis/build.sh"
