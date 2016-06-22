@@ -10,7 +10,7 @@ if [ ! -d cache1 ]; then
 elif [ ! -d cache2 ]; then
   mv cache1/* $APPDATA
   cabal update
-  cabal install vendor/gi-gtk-hs vendor/ltk vendor/jsaddle-dom vendor/ghcjs-dom --force-reinstalls
+  cabal install gi-gtk-hs vendor/ltk ghcjs-dom --force-reinstalls
   mkdir cache2
   mv $APPDATA/ghc $APPDATA/cabal cache2
 elif [ ! -d cache3 ]; then
