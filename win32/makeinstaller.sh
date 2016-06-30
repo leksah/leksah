@@ -92,6 +92,7 @@ $LN  "$GTK_PREFIX_U"/bin/libgtksourceview-3.0-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libharfbuzz-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libharfbuzz-icu-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libhogweed-*.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libidn-*.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libintl-8.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libjavascriptcoregtk-3.0-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libjpeg-*.dll SourceDir/bin
