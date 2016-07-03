@@ -4,14 +4,14 @@ cd ../leksah || exit
 
 . scripts/stage.sh || exit
 
-export GHC_USER_PREFIX=$HOME/Library/Haskell/ghc-`ghc$GHCVERSION --numeric-version`/lib
+export CABAL_STORE=$HOME/.cabal/store/ghc-`ghc$GHCVERSION --numeric-version`
 export LEKSAH_BIN_DIR=`pwd`/dist-newstyle/build/$LEKSAH_X_X_X_X/build
 export LEKSAH_PREFIX=`pwd`
 export LEKSAH_SERVER_BIN_DIR=`pwd`/dist-newstyle/build/$LEKSAH_SERVER_X_X_X_X/build
 export LEKSAH_SERVER_PREFIX=`pwd`/vendor/leksah-server
 export VCSGUI_BIN_DIR=`pwd`/`ls -d dist-newstyle/build/vcsgui-*/build`
 export VCSGUI_PREFIX=`pwd`/vendor/haskellVCSGUI/vcsgui
-export HLINT_PREFIX=$GHC_USER_PREFIX/`ghc-pkg$GHCVERSION list |grep '^ *hlint-' | head -n1 | tr -d ' \n'`
+export HLINT_PREFIX=$CABAL_STORE/`sed 's/^.*\(hlint-[0-9\.]*-[0-9a-f]*\).*$/\1/' < dist-newstyle/cache/plan.json`
 
 #export SANDBOX_BIN_DIR=$PWD/.cabal-sandbox
 #export SANDBOX_SHARE=$PWD/.cabal-sandbox/share/x86_64-osx-ghc-`ghc$GHCVERSION --numeric-version`
