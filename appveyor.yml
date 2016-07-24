@@ -16,11 +16,15 @@ install:
   - heat -? | grep version
   - appveyor-retry choco install dejavufonts -version 2.35
   - appveyor-retry pacman -S -q --noconfirm mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
-  # The webkitgtk package still expects ICU 56
-  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz/download
-  - pacman -U --noconfirm mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz
-  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz/download
-  - pacman -U --noconfirm mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz
+
+#  # In the past not all packages were rebuilt with the new ICU and this work
+#  # around was used to install an older version.  Leaving it here for now
+#  # in case we need it again.
+#  # The webkitgtk package still expects ICU 56
+#  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz/download
+#  - pacman -U --noconfirm mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz
+#  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz/download
+#  - pacman -U --noconfirm mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz
 
 build_script:
   - chcp 65001 && bash -ex appveyor/build-some.sh
