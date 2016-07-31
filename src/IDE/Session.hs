@@ -90,6 +90,7 @@ import Data.GI.Base (unsafeCastTo, nullToNothing, new')
 import Control.Arrow (Arrow(..))
 import qualified Data.Text as T (unpack, pack)
 import Data.Monoid ((<>))
+import GI.Gtk (constructDialogUseHeaderBar)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
@@ -421,12 +422,12 @@ loadSessionPrompt :: IDEAction
 loadSessionPrompt = do
     window' <- getMainWindow
     configFolder <- liftIO getConfigDir
-    dialog <- new' FileChooserDialog []
+    dialog <- new' FileChooserDialog [constructDialogUseHeaderBar 1]
     setWindowTitle dialog (__ "Select session file")
     windowSetTransientFor dialog $ Just window'
     fileChooserSetAction dialog FileChooserActionOpen
     dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
-    dialogAddButton' dialog "gtk-open" ResponseTypeAccept
+    dialogAddButton' dialog "Load Session" ResponseTypeAccept
     fileChooserSetCurrentFolder dialog configFolder
     widgetShow dialog
     res <- dialogRun' dialog

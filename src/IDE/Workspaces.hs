@@ -166,7 +166,7 @@ workspaceTry f = do
             defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
             defaultExists <- liftIO $ doesFileExist defaultWorkspace
             md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
+                    constructDialogUseHeaderBar 1,
                     constructMessageDialogButtons ButtonsTypeCancel]
             setWindowModal md True
             setMessageDialogMessageType md MessageTypeQuestion
@@ -215,7 +215,7 @@ workspaceOpenThis askForSession mbFilePath =
                     then do
                         window <- getMainWindow
                         md <- new' MessageDialog [
-                            constructDialogUseHeaderBar 0,
+                            constructDialogUseHeaderBar 1,
                             constructMessageDialogButtons ButtonsTypeNone]
                         setMessageDialogMessageType md MessageTypeQuestion
                         setMessageDialogText md $ __ "There are session settings stored with this workspace."
@@ -343,7 +343,7 @@ packageTry f = workspaceTry $ do
             Nothing -> do
                 window <- lift getMainWindow
                 md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
+                    constructDialogUseHeaderBar 1,
                     constructMessageDialogButtons ButtonsTypeCancel]
                 setMessageDialogMessageType md MessageTypeQuestion
                 setMessageDialogText md $ __ "You need to have an active package for this to work."
@@ -531,7 +531,7 @@ fileOpen = do
     window <- getMainWindow
     prefs <- readIDE prefs
     mbBuf <- maybeActiveBuf
-    dialog <- new' FileChooserDialog []
+    dialog <- new' FileChooserDialog [constructDialogUseHeaderBar 1]
     setWindowTitle dialog $ __ "Open File"
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionOpen
@@ -554,7 +554,7 @@ fileOpen' fp = do
         if takeExtension fp == ".cabal"
             then do
                 md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
+                    constructDialogUseHeaderBar 1,
                     constructMessageDialogButtons ButtonsTypeNone]
                 setMessageDialogMessageType md MessageTypeQuestion
                 setMessageDialogText md (__ "Would you like to add the package " <> T.pack fp
@@ -574,7 +574,7 @@ fileOpen' fp = do
                 Nothing -> return ()
                 Just cabalFile -> do
                     md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
+                        constructDialogUseHeaderBar 1,
                         constructMessageDialogButtons ButtonsTypeNone]
                     setMessageDialogMessageType md MessageTypeQuestion
                     setMessageDialogText md (__ "The file " <> T.pack fp

@@ -82,8 +82,8 @@ import System.Log.Logger (debugM)
 import qualified Data.Traversable as Tr (forM)
 import qualified Data.Foldable as F (toList, foldr, or)
 import GI.Gtk.Objects.Window (setWindowTransientFor, Window(..))
-import GI.Gtk.Objects.Dialog (dialogGetContentArea, dialogNew)
-import Data.GI.Base (unsafeCastTo, set)
+import GI.Gtk.Objects.Dialog (Dialog(..), dialogGetContentArea)
+import Data.GI.Base (new', unsafeCastTo, set)
 import GI.Gtk.Enums (ResponseType(..))
 import GI.Gtk.Objects.Box (Box(..), boxPackStart)
 import GI.Gtk.Objects.Widget
@@ -92,6 +92,7 @@ import GI.Gtk.Objects.Widget
 import GI.Gtk.Objects.MenuItem
        (onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import GI.Gtk (constructDialogUseHeaderBar)
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -467,7 +468,7 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
             let qualId             =  case mbQual of
                                             Nothing -> id
                                             Just str -> str <> "." <> id
-            dia               <- dialogNew
+            dia               <- new' Dialog [constructDialogUseHeaderBar 1]
             setWindowTransientFor dia parentWindow
             upper             <- dialogGetContentArea dia >>= unsafeCastTo Box
             okButton <- dialogAddButton' dia (__"Add Import") ResponseTypeOk

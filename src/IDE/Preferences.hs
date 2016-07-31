@@ -73,9 +73,9 @@ import IDE.Pane.Errors (fillErrorList)
 import GHC.IO (evaluate)
 import IDE.Metainfo.Provider (getAllPackageIds)
 import GI.Gtk.Objects.Dialog
-       (onDialogResponse, dialogResponse, dialogGetActionArea,
-        dialogGetContentArea, dialogNew)
-import Data.GI.Base (unsafeCastTo, set, nullToNothing)
+       (Dialog(..), onDialogResponse, dialogResponse, dialogGetActionArea,
+        dialogGetContentArea)
+import Data.GI.Base (new', unsafeCastTo, set, nullToNothing)
 import GI.Gtk.Objects.Window
        (windowSetDefaultSize, setWindowTitle, setWindowTransientFor)
 import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
@@ -98,6 +98,7 @@ import GI.Gtk.Objects.Settings
 import GI.GtkSource
        (styleSchemeManagerGetSchemeIds,
         styleSchemeManagerAppendSearchPath, styleSchemeManagerNew)
+import GI.Gtk (constructDialogUseHeaderBar)
 
 
 -- | This needs to be incremented when the preferences format changes
@@ -110,7 +111,7 @@ runPreferencesDialog = do
   initialPrefs <- readIDE prefs
   parent <- getMainWindow
   reifyIDE $ \ideR -> do
-    dialog <-   dialogNew
+    dialog <-   new' Dialog [constructDialogUseHeaderBar 1]
     setWindowTransientFor dialog parent
     setWindowTitle dialog $ __ "Preferences"
     windowSetDefaultSize dialog 800 500

@@ -77,7 +77,7 @@ import GI.Gtk.Interfaces.FileChooser
        (fileChooserAddFilter, fileChooserGetFilename,
         fileChooserSetCurrentFolder, fileChooserSetAction)
 import GI.Gtk.Objects.Dialog
-       (constructDialogUseHeaderBar, dialogGetContentArea, dialogNew,
+       (Dialog(..), constructDialogUseHeaderBar, dialogGetContentArea,
         dialogSetDefaultResponse, dialogRun, dialogAddButton)
 import GI.Gtk.Objects.FileFilter
        (fileFilterAddPattern, fileFilterSetName, fileFilterNew)
@@ -138,7 +138,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
-    dialog <- new' FileChooserDialog []
+    dialog <- new' FileChooserDialog [constructDialogUseHeaderBar 1]
     setWindowTitle dialog prompt
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionSelectFolder
@@ -167,7 +167,7 @@ chooseFile :: Window
            -> [(String, [String])]   -- ^ File filters, e.g. [("Music Files", ["*.mp3", "*.wav"])]
            -> IO (Maybe FilePath)
 chooseFile window prompt mbFolder filters = do
-    dialog <- new' FileChooserDialog []
+    dialog <- new' FileChooserDialog [constructDialogUseHeaderBar 1]
     setWindowTitle dialog prompt
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionOpen
@@ -200,7 +200,7 @@ chooseFile window prompt mbFolder filters = do
 
 chooseSaveFile :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseSaveFile window prompt mbFolder = do
-    dialog <- new' FileChooserDialog []
+    dialog <- new' FileChooserDialog [constructDialogUseHeaderBar 1]
     setWindowTitle dialog prompt
     windowSetTransientFor dialog $ Just window
     fileChooserSetAction dialog FileChooserActionSave
@@ -233,7 +233,7 @@ openBrowser url = do
 showDialog :: Text -> MessageType -> IO ()
 showDialog msg msgType = do
     dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 0,
+        constructDialogUseHeaderBar 1,
         constructMessageDialogMessageType msgType,
         constructMessageDialogButtons ButtonsTypeOk,
         constructMessageDialogText msg]
@@ -255,7 +255,7 @@ showDialogOptions :: Text             -- ^ the message
                   -> IO ()
 showDialogOptions msg msgType buttons mbIndex = do
     dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 0,
+        constructDialogUseHeaderBar 1,
         constructMessageDialogMessageType msgType,
         constructMessageDialogButtons ButtonsTypeNone,
         constructMessageDialogText msg]
@@ -277,7 +277,7 @@ showInputDialog :: Text -- ^ The message text
                 -> Text -- ^ The default value
                 -> IO (Maybe Text)
 showInputDialog msg def = do
-    dialog <- dialogNew -- Nothing [] MessageQuestion ButtonsOkCancel msg
+    dialog <- new' Dialog [constructDialogUseHeaderBar 1] -- Nothing [] MessageQuestion ButtonsOkCancel msg
     vbox   <- dialogGetContentArea dialog >>= unsafeCastTo Box
     label <- labelNew (Just msg)
     entry <- entryNew

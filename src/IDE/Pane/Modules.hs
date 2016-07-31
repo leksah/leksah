@@ -166,8 +166,8 @@ import GI.Gtk.Objects.MessageDialog
        (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
         MessageDialog(..))
 import GI.Gtk.Objects.Dialog
-       (dialogResponse, dialogGetActionArea, dialogGetContentArea,
-        dialogNew, constructDialogUseHeaderBar)
+       (Dialog(..), dialogResponse, dialogGetActionArea, dialogGetContentArea,
+        constructDialogUseHeaderBar)
 import GI.Gtk.Objects.Window
        (windowSetDefaultSize, setWindowTitle, setWindowTransientFor, Window(..),
         setWindowWindowPosition, windowSetTransientFor)
@@ -189,7 +189,7 @@ data IDEModules     =   IDEModules {
     outer            ::   VBox
 ,   paned            ::   HPaned
 ,   treeView         ::   TreeView
-,   forestStore        ::   ForestStore ModuleRecord
+,   forestStore      ::   ForestStore ModuleRecord
 ,   descrView        ::   TreeView
 ,   descrStore       ::   ForestStore Descr
 ,   descrSortedStore ::   TypedTreeModelSort Descr -- ^ The sorted model for descrs
@@ -1256,7 +1256,7 @@ respDelModDialog = do
     liftIO $ debugM "leksah" "respDelModDialog"
     window <- getMainWindow
     dia <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
+                    constructDialogUseHeaderBar 1,
                     constructMessageDialogButtons ButtonsTypeCancel]
     setMessageDialogMessageType dia MessageTypeQuestion
     setMessageDialogText dia $ __ "Are you sure?"
@@ -1354,27 +1354,21 @@ addModuleDialog :: (Applicative m, MonadIO m)
                 -> m (Maybe AddModule)
 addModuleDialog parent modString sourceRoots hasLib exesTests = do
     liftIO $ debugM "leksah" "addModuleDialog"
-    dia                <- dialogNew
+    dia                <- new' Dialog [constructDialogUseHeaderBar 1]
     setWindowTransientFor dia parent
     setWindowTitle dia $ __ "Construct new module"
     windowSetDefaultSize dia 400 100
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
-    lower              <- dialogGetActionArea dia >>= liftIO . unsafeCastTo Box
     (widget,inj,ext,_) <- liftIO $ buildEditor (moduleFields sourceRoots hasLib exesTests)
                                         (AddModule modString (head sourceRoots) (Just False) Set.empty)
-    bb      <-  hButtonBoxNew
-    boxSetSpacing bb 6
-    buttonBoxSetLayout bb ButtonBoxStyleSpread
-    cancel  <-  buttonNewFromStock "gtk-cancel"
-    ok      <-  buttonNewFromStock "gtk-ok"
-    boxPackEnd' bb cancel PackNatural 0
-    boxPackEnd' bb ok PackNatural 0
+    okButton <- dialogAddButton' dia (__"Add Module") ResponseTypeOk
+    dialogAddButton' dia (__"Cancel") ResponseTypeCancel
 
     errorLabel <- labelNew Nothing
     labelSetLineWrap errorLabel True
     widgetSetName errorLabel "errorLabel"
 
-    onButtonClicked ok $ do
+    onButtonClicked okButton $ do
         mbAddModule <- ext (AddModule modString (head sourceRoots) (Just False) Set.empty)
         case mbAddModule of
             Nothing -> return ()
@@ -1389,11 +1383,9 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
                         widgetShow errorLabel
 
 
-    onButtonClicked cancel (dialogResponse' dia ResponseTypeCancel)
     boxPackStart' upper widget PackGrow 0
-    boxPackEnd' lower bb PackNatural 5
-    setWidgetCanDefault ok True
-    widgetGrabDefault ok
+    setWidgetCanDefault okButton True
+    widgetGrabDefault okButton
     widgetShowAll dia
     resp  <- dialogRun' dia
     value <- liftIO $ ext (AddModule modString (head sourceRoots) (Just False) Set.empty)

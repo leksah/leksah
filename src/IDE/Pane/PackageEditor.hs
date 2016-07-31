@@ -113,8 +113,7 @@ import GI.Gtk.Enums
        (ShadowType(..), WindowPosition(..), ButtonsType(..),
         MessageType(..), ResponseType(..), FileChooserAction(..))
 import GI.Gtk.Objects.Dialog
-       (constructDialogUseHeaderBar, dialogGetActionArea, dialogGetContentArea,
-        dialogNew)
+       (Dialog(..), constructDialogUseHeaderBar, dialogGetActionArea, dialogGetContentArea)
 import Data.GI.Base (on, unsafeCastTo, set, new')
 import GI.Gtk.Objects.Box (boxPackEnd, Box(..))
 import GI.Gtk.Objects.Widget
@@ -280,7 +279,7 @@ examplePackages = [ "hello"
 
 newPackageDialog :: (Applicative m, MonadIO m) => Window -> FilePath -> m (Maybe NewPackage)
 newPackageDialog parent workspaceDir = do
-    dia                <- dialogNew
+    dia                <- new' Dialog [constructDialogUseHeaderBar 1]
     setWindowTransientFor dia parent
     setWindowTitle dia $ __ "Create New Package"
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
@@ -313,7 +312,7 @@ packageNew' workspaceDir log activateAction = do
             case mbCabalFile of
                 Just cfn -> do
                     md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
+                        constructDialogUseHeaderBar 1,
                         constructMessageDialogButtons ButtonsTypeCancel]
                     setMessageDialogMessageType md MessageTypeQuestion
                     setMessageDialogText md $ T.pack (printf (__
@@ -333,7 +332,7 @@ packageNew' workspaceDir log activateAction = do
                         then return True
                         else do
                             md <- new' MessageDialog [
-                                    constructDialogUseHeaderBar 0,
+                                    constructDialogUseHeaderBar 1,
                                     constructMessageDialogButtons ButtonsTypeCancel]
                             setMessageDialogMessageType md MessageTypeQuestion
                             setMessageDialogText md . T.pack $ printf (__
@@ -413,7 +412,7 @@ cloneFields packages workspaceDir = VFD emptyParams [
 clonePackageSourceDialog :: Window -> FilePath -> IDEM (Maybe ClonePackageSourceRepo)
 clonePackageSourceDialog parent workspaceDir = do
     packages <- getAllPackageIds
-    dia      <- dialogNew
+    dia      <- new' Dialog [constructDialogUseHeaderBar 1]
     setWindowTransientFor dia parent
     setWindowTitle dia $ __ "Copy Installed Package"
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
@@ -727,7 +726,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             then reflectIDE (void (closePane packagePane)) ideR
             else do
                 md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
+                        constructDialogUseHeaderBar 1,
                         constructMessageDialogButtons ButtonsTypeYesNo]
                 setMessageDialogMessageType md MessageTypeQuestion
                 setMessageDialogText md $ __ "Unsaved changes. Close anyway?"
