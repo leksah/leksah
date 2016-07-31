@@ -392,19 +392,13 @@ scopeParser = do whiteSpace
                                (choice
                                   [symbol "type constructor or class", symbol "data constructor"])))
                     <|>
-                    (do
-                    symbol "Variable not in scope:" <|> symbol "• Variable not in scope:"
-                    return False)
-                    <|>
-                    (do
-                    symbol "Data constructor not in scope:"
-                    return True)
+                    (do optionMaybe (symbol "•" >> whiteSpace)
+                        (symbol "Variable not in scope:" >> return False)
+                            <|> (symbol "Data constructor not in scope:" >> return True))
                  (do choice [char '\8219', char '\8216']
                      mbQual <- optionMaybe
                                    (try
-                                      (do q <- lexeme conid
-                                          dot
-                                          return q))
+                                      (lexeme conid))
                      id <- optionMaybe (try identifier)
                      result <- case id of
                                      Just id -> return
@@ -417,9 +411,7 @@ scopeParser = do whiteSpace
                     (do whiteSpace
                         mbQual <- optionMaybe
                                    (try
-                                      (do q <- lexeme conid
-                                          dot
-                                          return q))
+                                      (lexeme conid))
                         result <- optionMaybe (try identifier) >>= \case
                                      Just id -> return
                                                   (NotInScopeParseResult mbQual id isSub False)
@@ -432,6 +424,7 @@ scopeParser = do whiteSpace
 conid  = do
     c <-  upper
     cs <- many (alphaNum <|> oneOf "_'")
+    dot
     return (c:cs)
         <?> "conid"
 
