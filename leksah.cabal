@@ -1,5 +1,5 @@
 name: leksah
-version: 0.16.0.0
+version: 0.16.1.0
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
@@ -270,10 +270,10 @@ library
         IDE.Completion
         IDE.ImportTool
         IDE.Find
-        IDE.Sandbox
         IDE.Session
         IDE.Command
         IDE.Keymap
+        IDE.Utils.CabalUtils
         IDE.Utils.DirectoryUtils
         IDE.Utils.GUIUtils
         IDE.SymbolNavigation
@@ -423,7 +423,7 @@ executable leksah
         ghc-options: -optl-headerpad_max_install_names
     main-is: Main.hs
     build-depends:
-        leksah ==0.16.0.0,
+        leksah ==0.16.1.0,
         base >=4.0.0.0 && <=4.10,
         gi-gtk-hs >=0.3.0.0 && <0.4,
         stm >=2.4.4 && <2.5
@@ -434,7 +434,7 @@ executable leksah
 executable bewleksah
     main-is: Main.hs
     build-depends:
-        leksah ==0.16.0.0,
+        leksah ==0.16.1.0,
         base >=4.0.0.0 && <=4.10,
         jsaddle -any,
         ghcjs-dom >=0.3.0.0 && <0.4,
@@ -457,7 +457,7 @@ test-suite tests
         base >=4.0.0.0 && <4.10,
         Cabal >=1.24.0.0 && <1.25,
         QuickCheck >=2.4.2 && <2.9,
-        leksah ==0.16.0.0,
+        leksah ==0.16.1.0,
         containers -any,
         ltk -any,
         leksah-server -any,

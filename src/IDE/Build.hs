@@ -37,8 +37,8 @@ import Data.List (delete, nub, (\\), find)
 import Distribution.Version (withinRange)
 import Data.Maybe (fromMaybe, mapMaybe)
 import IDE.Package
-       (packageClean', packageCopy', packageRegister', buildPackage, packageConfig',
-        packageTest', packageDoc',packageBench')
+       (packageClean', buildPackage, packageConfig',
+        packageTest', packageDoc', packageBench', packageInstall')
 import IDE.Core.Types
        (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
 import Control.Event (EventSource(..))
@@ -62,7 +62,7 @@ data MakeSettings = MakeSettings {
     msSaveAllBeforeBuild             :: Bool,
     msBackgroundBuild                :: Bool,
     msRunUnitTests                   :: Bool,
-    msRunBenchmarks             :: Bool,
+    msRunBenchmarks                  :: Bool,
     msJumpToWarnings                 :: Bool,
     msDontInstallLast                :: Bool}
 
@@ -74,7 +74,7 @@ defaultMakeSettings prefs = MakeSettings  {
     msSaveAllBeforeBuild             = saveAllBeforeBuild prefs,
     msBackgroundBuild                = backgroundBuild prefs,
     msRunUnitTests                   = runUnitTests prefs,
-    msRunBenchmarks                   = runBenchmarks prefs,
+    msRunBenchmarks                  = runBenchmarks prefs,
     msJumpToWarnings                 = jumpToWarnings prefs,
     msDontInstallLast                = dontInstallLast prefs}
 
@@ -84,8 +84,7 @@ data MakeOp =
     | MoBuild
     | MoTest
     | MoBench
-    | MoCopy
-    | MoRegister
+    | MoInstall
     | MoClean
     | MoDocu
     | MoOther Text
@@ -180,9 +179,8 @@ constrElem currentTargets tops  depGraph ms noBuilds
                             (Map.lookup current depGraph)
             withoutInstall = msDontInstallLast ms && null (delete current dependents)
             filteredOps = case firstOp of
-                            MoComposed l -> MoComposed (filter (\e -> e /= MoCopy && e /= MoRegister) l)
-                            MoCopy       -> MoComposed []
-                            MoRegister   -> MoComposed []
+                            MoComposed l -> MoComposed (filter (/= MoInstall) l)
+                            MoInstall    -> MoComposed []
                             other        -> other
         in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
             $
@@ -212,10 +210,8 @@ doBuildChain ms chain@Chain{mcAction = MoTest} =
     postAsyncIDE $ packageTest' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoBench} =
     postAsyncIDE $ packageBench' (msBackgroundBuild ms) (msJumpToWarnings ms) (mcEle chain) False (constrCont ms (mcPos chain) (mcNeg chain))
-doBuildChain ms chain@Chain{mcAction = MoCopy} =
-    postAsyncIDE $ packageCopy' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
-doBuildChain ms chain@Chain{mcAction = MoRegister} =
-    postAsyncIDE $ packageRegister' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
+doBuildChain ms chain@Chain{mcAction = MoInstall} =
+    postAsyncIDE $ packageInstall' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoClean} =
     postAsyncIDE $ packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoMetaInfo} =

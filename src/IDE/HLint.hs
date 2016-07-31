@@ -63,7 +63,7 @@ import Distribution.Package (PackageIdentifier(..))
 import Distribution.ModuleName (ModuleName)
 import IDE.Core.CTypes
        (SrcSpan(..), mdMbSourcePath, pdModules, mdModuleId, modu,
-        PackScope(..), GenScope(..), GenScope)
+        PackScope(..), GenScope(..), GenScope, packageIdentifierToString)
 import IDE.Metainfo.Provider (getWorkspaceInfo)
 import qualified Language.Haskell.Exts.SrcLoc as HSE
        (SrcLoc(..), SrcSpan(..))
@@ -78,6 +78,7 @@ import IDE.SourceCandy
 import IDE.BufferMode (IDEBuffer(..), editInsertCode)
 import Data.Ord (comparing)
 import qualified Data.Foldable as F (toList)
+import IDE.Utils.CabalUtils (findProjectRoot)
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (lift . lift . scheduleHLint . Left)
@@ -172,7 +173,10 @@ getSourcePaths packId names = do
 hlintSettings :: IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
 hlintSettings package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    let cabalMacros = ipdPackageDir package </> "dist/build/autogen/cabal_macros.h"
+    projectRoot <- liftIO $ findProjectRoot (ipdPackageDir package)
+    let cabalMacros = projectRoot </> "dist-newstyle/build"
+                        </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+                        </> "build/autogen/cabal_macros.h"
     cabalMacrosExist <- liftIO $ doesFileExist cabalMacros
     defines <- liftIO $ if cabalMacrosExist
                             then do
