@@ -442,8 +442,10 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         onIDE onWidgetDeleteEvent win $ liftIDE quit >> return True
         instrumentWindow win startupPrefs nb
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
-        setRunUnitTests (runUnitTests startupPrefs)
-        setMakeModeToggled (makeMode startupPrefs)
+        setMakeDocs               (makeDocs        startupPrefs)
+        setRunUnitTests           (runUnitTests    startupPrefs)
+        setRunBenchmarks          (runBenchmarks   startupPrefs)
+        setMakeModeToggled        (makeMode        startupPrefs)
         let (x,y)   =   defaultSize startupPrefs
         windowSetDefaultSize win (fromIntegral x) (fromIntegral y)
         registerLeksahEvents

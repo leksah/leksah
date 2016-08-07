@@ -29,8 +29,12 @@ module IDE.Utils.GUIUtils (
 
 ,   getBackgroundBuildToggled
 ,   setBackgroundBuildToggled
+,   getMakeDocs
+,   setMakeDocs
 ,   getRunUnitTests
 ,   setRunUnitTests
+,   getRunBenchmarks
+,   setRunBenchmarks
 ,   getMakeModeToggled
 ,   setMakeModeToggled
 ,   getDebugToggled
@@ -344,6 +348,16 @@ setBackgroundBuildToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/BackgroundBuild" (unsafeCastTo ToggleAction)
     toggleActionSetActive ui b
 
+getMakeDocs :: PaneMonad alpha => alpha Bool
+getMakeDocs = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeDocs" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
+
+setMakeDocs :: PaneMonad alpha => Bool -> alpha ()
+setMakeDocs b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/MakeDocs" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
+
 getRunUnitTests :: PaneMonad alpha => alpha Bool
 getRunUnitTests = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" (unsafeCastTo ToggleAction)
@@ -352,6 +366,16 @@ getRunUnitTests = do
 setRunUnitTests :: PaneMonad alpha => Bool -> alpha ()
 setRunUnitTests b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/RunUnitTests" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
+
+getRunBenchmarks :: PaneMonad alpha => alpha Bool
+getRunBenchmarks = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunBenchmarks" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
+
+setRunBenchmarks :: PaneMonad alpha => Bool -> alpha ()
+setRunBenchmarks b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/RunBenchmarks" (unsafeCastTo ToggleAction)
     toggleActionSetActive ui b
 
 getMakeModeToggled :: PaneMonad alpha => alpha Bool

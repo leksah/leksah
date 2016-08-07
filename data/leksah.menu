@@ -199,7 +199,9 @@
        <toolitem name="Forward" action="ViewHistoryForth"/>
        <separator/>
        <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
+       <toolitem name="MakeDocs" action="MakeDocsToggled"/>
        <toolitem name="RunUnitTests" action="RunUnitTestsToggled"/>
+       <toolitem name="RunBenchmarks" action="RunBenchmarksToggled"/>
        <toolitem name="MakeMode" action="MakeModeToggled"/>
        <separator/>
        <toolitem name="Update Project" action="UpdateMetadataCurrent" />

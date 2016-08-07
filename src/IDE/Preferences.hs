@@ -715,6 +715,14 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
+            (paraName <<<- ParaName (__ "Make documentation when building") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            makeDocs
+            (\b a -> a{makeDocs = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
             (paraName <<<- ParaName (__ "Run unit tests when building") $ emptyParams)
             (PP.text . show)
             boolParser
@@ -940,8 +948,9 @@ defaultPrefs = Prefs {
     ,   jumpToWarnings      =   True
     ,   useVado             =   False
     ,   backgroundBuild     =   True
+    ,   makeDocs            =   False
     ,   runUnitTests        =   False
-    ,   runBenchmarks        =   False
+    ,   runBenchmarks       =   False
     ,   makeMode            =   True
     ,   singleBuildWithoutLinking  = False
     ,   dontInstallLast     =   False
@@ -953,7 +962,7 @@ defaultPrefs = Prefs {
     ,   serverIP            =   "127.0.0.1"
     ,   endWithLastConn     =   True
     ,   showHiddenFiles     =   False
-    ,   showWorkspaceIcons       =   True
+    ,   showWorkspaceIcons  =   True
     ,   hlintOnSave = True
     }
 

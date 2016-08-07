@@ -490,8 +490,12 @@ mkActions =
 
     ,AD "BackgroundBuildToggled" (__ "_BackgroundBuild") (Just (__ "Build in the background and report errors")) (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "RunUnitTestsToggled" (__ "_RunUnitTests") (Just (__ "Run unit tests when building")) (Just "gtk-apply")
+    ,AD "MakeDocsToggled" (__ "_MakeDocs") (Just (__ "Make documentation when building")) (Just "gtk-apply") -- TODO change icon
+        makeDocsToggled [] True
+    ,AD "RunUnitTestsToggled" (__ "_RunUnitTests") (Just (__ "Run unit tests when building")) (Just "gtk-apply") -- TODO change icon
         runUnitTestsToggled [] True
+    ,AD "RunBenchmarksToggled" (__ "_RunBenchmarks") (Just (__ "Run benchmarks when building")) (Just "gtk-apply") -- TODO change icon
+        runBenchmarksToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
     ,AD "DebugToggled" "_Enable GHCi" (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
@@ -808,8 +812,10 @@ instrumentWindow win prefs topWidget = do
     windowAddAccelGroup win acc
     containerAdd win vb
     setBackgroundBuildToggled (backgroundBuild prefs)
-    setRunUnitTests (runUnitTests prefs)
-    setMakeModeToggled (makeMode prefs)
+    setMakeDocs               (makeDocs        prefs)
+    setRunUnitTests           (runUnitTests    prefs)
+    setRunBenchmarks          (runBenchmarks   prefs)
+    setMakeModeToggled        (makeMode        prefs)
 
 instrumentSecWindow :: Window -> IDEAction
 instrumentSecWindow win = do

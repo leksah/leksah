@@ -460,16 +460,12 @@ workspaceClean = do
 
 buildSteps :: MakeSettings -> IDEM [MakeOp]
 buildSteps settings = do
-    let runTests  = msRunUnitTests settings
-    let runBenchmarks = msRunBenchmarks settings
     debug <- isJust <$> readIDE debugState
-    return $ case (runTests, debug,runBenchmarks) of
-                (True, True,_)   -> [MoBuild,MoDocu]
-                (True, False,False)  -> [MoBuild,MoDocu,MoTest,MoInstall]
-                (True, False,True)  -> [MoBuild,MoDocu,MoTest,MoInstall,MoBench]
-                (False, True,_)  -> [MoBuild]
-                (False, False,False) -> [MoBuild,MoInstall]
-                (False, False,True) -> [MoBuild,MoInstall,MoBench]
+    return $ MoBuild
+         : [MoDocu    | msMakeDocs settings]
+        ++ [MoTest    | not debug && msRunUnitTests settings]
+        ++ [MoInstall | not debug]
+        ++ [MoBench   | not debug && msRunBenchmarks settings]
 
 workspaceMake :: WorkspaceAction
 workspaceMake = do

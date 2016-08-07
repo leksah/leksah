@@ -519,6 +519,7 @@ data Prefs = Prefs {
     ,   jumpToWarnings      ::   Bool
     ,   useVado             ::   Bool
     ,   backgroundBuild     ::   Bool
+    ,   makeDocs            ::   Bool -- ^ Make documentation on build
     ,   runUnitTests        ::   Bool -- ^ Run unit tests on build?
     ,   runBenchmarks        ::   Bool -- ^ Run benchmarks on build?
     ,   makeMode            ::   Bool

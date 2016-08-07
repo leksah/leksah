@@ -49,7 +49,9 @@ module IDE.Package (
 ,   delModuleFromPackageDescr
 
 ,   backgroundBuildToggled
+,   makeDocsToggled
 ,   runUnitTestsToggled
+,   runBenchmarksToggled
 ,   makeModeToggled
 
 ,   debugStart
@@ -251,24 +253,17 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     -- if we use stack, with tests enabled, we build the tests without running them
     let stackFlagsForTests =
-            if useStack
-                then
-                   if "--enable-tests" `elem` ipdConfigFlags package
-                            then ["--test", "--no-run-tests"]
-                            else []
+            if useStack && "--enable-tests" `elem` ipdConfigFlags package
+                then ["--test", "--no-run-tests"]
                 else []
     -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
     let stackFlagsForBenchmarks =
-            if useStack
-                then
-                   if "--enable-benchmarks" `elem` ipdConfigFlags package
-                            then ["--bench", "--no-run-benchmarks"]
-                            else []
+            if useStack && "--enable-benchmarks" `elem` ipdConfigFlags package
+                then ["--bench", "--no-run-benchmarks"]
                 else []
     let stackFlags = stackFlagsForTests ++ stackFlagsForBenchmarks
-    let args = ["new-build"]
-                -- stack needs the package name to actually print the output info
-                ++ (if useStack then [ipdPackageName package] else [])
+    let args =  -- stack needs the package name to actually print the output info
+                (if useStack then ["build", ipdPackageName package] else ["new-build"])
                 ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
                 ++ stackFlags
                 ++ ipdBuildFlags package
@@ -354,7 +349,7 @@ packageDoc' backgroundBuild jumpToWarnings package continuation = do
         projectRoot <- liftIO $ findProjectRoot dir
         runExternalTool' (__ "Documenting") (if useStack then "stack" else "cabal")
             ((if useStack
-                then ["haddock"]
+                then ["haddock", "--no-haddock-deps"]
                 else ["act-as-setup", "--", "haddock",
                     T.pack ("--builddir=" <> projectRoot </> "dist-newstyle/build" </>
                         T.unpack (packageIdentifierToString $ ipdPackageId package))])
@@ -463,7 +458,7 @@ packageRun' removeGhcjsFlagIfPresent package =
                              (readPackageDescription normal (ipdCabalFile package))
             mbExe <- readIDE activeExe
             let exe = exeToRun mbExe $ executables pd
-            let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
+            let defaultLogName = ipdPackageName package
                 logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
             (logLaunch,logName) <- buildLogLaunchByName logName
             showLog
@@ -555,7 +550,7 @@ packageRunJavaScript' addFlagIfMissing package =
                                  (readPackageDescription normal (ipdCabalFile package))
                 mbExe <- readIDE activeExe
                 let exe = exeToRun mbExe $ executables pd
-                let defaultLogName = T.pack . display . pkgName $ ipdPackageId package
+                let defaultLogName = ipdPackageName package
                     logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
                 (logLaunch,logName) <- buildLogLaunchByName logName
                 let dir = ipdPackageDir package
@@ -601,11 +596,12 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
             prefs <- readIDE prefs
             projectRoot <- liftIO $ findProjectRoot dir
             let pkgId = packageIdentifierToString $ ipdPackageId package
+                pkgName = ipdPackageName package
                 exePath = projectRoot </> "dist-newstyle/build"
                             </> T.unpack pkgId
                             </> "build" </> name </> name
                 cmd  = if useStack then "stack" else exePath
-                args = if useStack then ["test", pkgId <> ":" <> T.pack name] else []
+                args = if useStack then ["test", pkgName <> ":" <> T.pack name] else []
             runExternalTool' (__ "Testing") cmd (args
                 ++ ipdBuildFlags package ++ ipdTestFlags package) dir $ do
                     (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
@@ -693,7 +689,7 @@ packageOpenDoc = do
         prefs   <- readIDE prefs
         let path = dir </> distDir
                         </> "doc/html"
-                        </> display (pkgName (ipdPackageId package))
+                        </> T.unpack (ipdPackageName package)
                         </> "index.html"
         loadDoc . T.pack $ "file://" ++ path
         getDocumentation Nothing  >>= \ p -> displayPane p False
@@ -856,17 +852,27 @@ isExposedModule mn (Just CondNode{condTreeData = lib}) = mn `elem` exposedModule
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled = do
     toggled <- getBackgroundBuildToggled
-    modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundBuild= toggled}})
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){backgroundBuild = toggled}})
+
+makeDocsToggled :: IDEAction
+makeDocsToggled = do
+    toggled <- getMakeDocs
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){makeDocs = toggled}})
 
 runUnitTestsToggled :: IDEAction
 runUnitTestsToggled = do
     toggled <- getRunUnitTests
-    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runUnitTests= toggled}})
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runUnitTests = toggled}})
+
+runBenchmarksToggled :: IDEAction
+runBenchmarksToggled = do
+    toggled <- getRunBenchmarks
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){runBenchmarks = toggled}})
 
 makeModeToggled :: IDEAction
 makeModeToggled = do
     toggled <- getMakeModeToggled
-    modifyIDE_ (\ide -> ide{prefs = (prefs ide){makeMode= toggled}})
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){makeMode = toggled}})
 
 -- ---------------------------------------------------------------------
 -- | * Debug code that needs to use the package
@@ -903,9 +909,10 @@ debugStart = do
         maybeDebug <- readIDE debugState
         case maybeDebug of
             Nothing -> do
-                let dir = ipdPackageDir package
+                let dir  = ipdPackageDir  package
+                    name = ipdPackageName package
                 mbExe <- readIDE activeExe
-                ghci <- reifyIDE $ \ideR -> newGhci dir mbExe (interactiveFlags prefs')
+                ghci <- reifyIDE $ \ideR -> newGhci dir name mbExe (interactiveFlags prefs')
                     $ reflectIDEI (void (logOutputForBuild package True False)) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
