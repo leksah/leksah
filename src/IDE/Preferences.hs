@@ -73,8 +73,8 @@ import IDE.Pane.Errors (fillErrorList)
 import GHC.IO (evaluate)
 import IDE.Metainfo.Provider (getAllPackageIds)
 import GI.Gtk.Objects.Dialog
-       (Dialog(..), onDialogResponse, dialogResponse, dialogGetActionArea,
-        dialogGetContentArea)
+       (Dialog(..), onDialogResponse, dialogResponse, dialogGetHeaderBar,
+        dialogGetContentArea, dialogAddActionWidget)
 import Data.GI.Base (new', unsafeCastTo, set, nullToNothing)
 import GI.Gtk.Objects.Window
        (windowSetDefaultSize, setWindowTitle, setWindowTransientFor)
@@ -85,11 +85,11 @@ import GI.Gtk.Enums
        (FileChooserAction(..), ShadowType(..), ResponseType(..),
         ButtonBoxStyle(..))
 import GI.Gtk.Objects.Button
-       (onButtonClicked, buttonNewFromStock, buttonNewWithLabel)
+       (onButtonClicked, buttonNewWithLabel)
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
 import GI.Gtk.Objects.Widget
        (widgetModifyFont, widgetDestroy, widgetShowAll, widgetGrabDefault,
-        setWidgetCanDefault, widgetSetSensitive)
+        setWidgetCanDefault, widgetSetSensitive, widgetShow)
 import GI.Gtk.Objects.VBox (VBox(..))
 import GI.Pango.Structs.FontDescription (fontDescriptionFromString)
 import GI.Gtk.Objects.CellRendererText (setCellRendererTextText)
@@ -98,16 +98,17 @@ import GI.Gtk.Objects.Settings
 import GI.GtkSource
        (styleSchemeManagerGetSchemeIds,
         styleSchemeManagerAppendSearchPath, styleSchemeManagerNew)
-import GI.Gtk (constructDialogUseHeaderBar)
+import GI.Gtk (constructDialogUseHeaderBar, Container(..), containerAdd)
 
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 7
+prefsVersion = 8
 
 runPreferencesDialog :: IDEAction
 runPreferencesDialog = do
   packageInfos <- getAllPackageIds
+  liftIO $ print packageInfos
   initialPrefs <- readIDE prefs
   parent <- getMainWindow
   reifyIDE $ \ideR -> do
@@ -119,25 +120,15 @@ runPreferencesDialog = do
     configDir    <- getConfigDir
     (widget, inj, ext, notifier) <- buildEditor (extractFieldDescription $ prefsDescription configDir packageInfos) initialPrefs
 
-    bb      <-  hButtonBoxNew
-    boxSetSpacing bb 6
-    buttonBoxSetLayout bb ButtonBoxStyleSpread
-    load    <-  buttonNewWithLabel (__ "Load")
-    save    <-  buttonNewWithLabel (__ "Save")
-    preview <-  buttonNewWithLabel (__ "Preview")
-    cancel  <-  buttonNewFromStock "gtk-cancel"
-    apply   <-  buttonNewFromStock "gtk-apply"
-    forM_ [preview, cancel, apply] $ \but ->
-        boxPackEnd' bb but PackNatural 0
-
-
+    actionArea <- dialogGetHeaderBar dialog >>= unsafeCastTo Container
+    preview <- buttonNewWithLabel (__ "Preview")
+    containerAdd actionArea preview
+    apply   <-  dialogAddButton' dialog "gtk-apply" ResponseTypeOk
 
     upper <-   dialogGetContentArea dialog >>= unsafeCastTo Box
     boxPackStart' upper widget PackGrow 0
     errorLabel <-  labelNew Nothing
     boxPackStart' upper errorLabel PackNatural 0
-    lower <-   dialogGetActionArea dialog >>= unsafeCastTo Box
-    boxPackEnd' lower bb PackNatural 5
 
     -- Keep an IO ref to the last applied preferences
     -- so it can be restored
@@ -183,7 +174,7 @@ runPreferencesDialog = do
             when hasChanged (applyPrefs initialPrefs)
             dialogResponse' dialog ResponseTypeCancel
 
-    onButtonClicked cancel onClose
+--    onButtonClicked cancel onClose
     onDialogResponse dialog $ \resp ->
         case toEnum $ fromIntegral resp of
             ResponseTypeDeleteEvent -> onClose
