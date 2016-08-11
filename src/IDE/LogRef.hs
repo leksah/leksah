@@ -55,7 +55,7 @@ import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import qualified IDE.Pane.Log as Log
 import IDE.Utils.Tool
-import System.FilePath (equalFilePath)
+import System.FilePath (equalFilePath, makeRelative, isAbsolute)
 import Data.List (partition, stripPrefix, elemIndex, isPrefixOf)
 import Data.Maybe (catMaybes, isJust)
 import System.Exit (ExitCode(..))
@@ -74,7 +74,6 @@ import qualified Data.Text as T
 import Data.Monoid ((<>))
 import qualified Data.Set as S (notMember, member, insert, empty)
 import Data.Set (Set)
-import System.FilePath.Windows ((</>))
 import Data.Sequence (ViewR(..), Seq)
 import qualified Data.Foldable as F (toList, forM_)
 import qualified Data.Sequence as Seq
@@ -110,7 +109,7 @@ markLogRefs =
 
 unmarkLogRefs :: IDEAction
 unmarkLogRefs =
-    forOpenLogRefs $ \logRef (IDEBuffer {sourceView = sv}) -> do
+    forOpenLogRefs $ \logRef IDEBuffer {sourceView = sv} -> do
             buf     <-  getBuffer sv
             removeTagByName buf (T.pack $ show (logRefType logRef))
 
@@ -417,6 +416,7 @@ logOutputPane command buffer = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     result <- catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
     unless (null result) $ do
+        liftIO $ debugM "leskah" "logOutputPane has result"
         new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x ++ result in (new, new)
         mbURI <- lift $ readIDE autoURI
         unless (isJust mbURI) . lift . postSyncIDE . setOutput command $ T.unlines new
@@ -510,7 +510,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                         when inError $ logPrevious errs
                         return state { inError = False }
             ToolOutput line ->
-                processNormalOutput ideR logLaunch state logPrevious line $ do
+                processNormalOutput ideR logLaunch state logPrevious line $
                   case (inDocTest, testFails) of
                     (True, LogRef span rootPath str Nothing (Just (l1, l2)) refType : tl) -> do
                         logLn <- Log.appendLog log logLaunch (line <> "\n") ErrorTag
@@ -549,16 +549,18 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                                             ++ show (length testFails) ++ " doctest failures -----\n") FrameTag
                 return state { inError = False, inDocTest = False }
     -- process output line as normal, otherwise calls given alternative
-    processNormalOutput :: (IORef IDE) -> LogLaunch -> BuildOutputState -> ([LogRef]->IO()) -> Text -> IO BuildOutputState -> IO BuildOutputState
+    processNormalOutput :: IORef IDE -> LogLaunch -> BuildOutputState -> ([LogRef]->IO()) -> Text -> IO BuildOutputState -> IO BuildOutputState
     processNormalOutput ideR logLaunch state@BuildOutputState {..} logPrevious line altFunction =
-      case (parse buildOutputParser "" $ T.unpack line) of
+      case parse buildOutputParser "" $ T.unpack line of
         (Right (BuildProgress n total file)) -> do
             logLn <- Log.appendLog log logLaunch (line <> "\n") LogTag
             reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState
                 (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])) ideR
             let root = ipdPackageDir package
-                fullFilePath = root </> file
-            reflectIDE (removeBuildLogRefs root file) ideR
+                relativeFile = if isAbsolute file
+                                    then makeRelative root file
+                                    else file
+            reflectIDE (removeBuildLogRefs root relativeFile) ideR
             when inDocTest $ logPrevious testFails
             return state { inDocTest = False }
         (Right (DocTestFailure span exp)) -> do
