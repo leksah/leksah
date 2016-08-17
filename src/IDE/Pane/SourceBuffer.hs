@@ -69,6 +69,7 @@ module IDE.Pane.SourceBuffer (
 ,   addLogRef
 ,   removeLogRefs
 ,   removeBuildLogRefs
+,   removeFileExtLogRefs
 ,   removeTestLogRefs
 ,   removeLintLogRefs
 ,   markRefInSourceBuf
@@ -394,6 +395,11 @@ removeFileLogRefs :: FilePath -> FilePath -> [LogRefType] -> IDEAction
 removeFileLogRefs root file types = do
     liftIO . debugM "leksah" $ "removeFileLogRefs " <> root <> " " <> file <> " " <> show types
     removeLogRefs (\r f -> r == root && f == file) types
+
+removeFileExtLogRefs :: FilePath -> String -> [LogRefType] -> IDEAction
+removeFileExtLogRefs root fileExt types = do
+    liftIO . debugM "leksah" $ "removeFileTypeLogRefs " <> root <> " " <> fileExt <> " " <> show types
+    removeLogRefs (\r f -> r == root && takeExtension f == fileExt) types
 
 removePackageLogRefs :: FilePath -> [LogRefType] -> IDEAction
 removePackageLogRefs root types = do
