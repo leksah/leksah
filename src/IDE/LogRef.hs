@@ -300,8 +300,7 @@ buildErrorParser = try (do
         text <- T.pack . reverse . drop 1 . reverse <$> many (noneOf "-")
         many (char '-')
         whiteSpace
-        char '.'
-        char '/'
+        optional (char '.' >> char '/')
         file <- many anyChar
         return (ElmFile file text))
     <|> try (do
@@ -454,14 +453,14 @@ data BuildOutputState = BuildOutputState { log           :: IDELog
                                          , inError       :: Bool
                                          , inDocTest     :: Bool
                                          , errs          :: [LogRef]
-                                         , elmErrLines   :: [Int]
+                                         , elmLine       :: Int
                                          , testFails     :: [LogRef]
                                          , filesCompiled :: Set FilePath
                                          }
 
 -- Not quite a Monoid
 initialState :: IDELog -> BuildOutputState
-initialState log = BuildOutputState log False False [] [] [] S.empty
+initialState log = BuildOutputState log False False [] 1 [] S.empty
 
 logOutputForBuild :: IDEPackage
                   -> Bool
@@ -486,14 +485,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
     readAndShow :: LogLaunch -> BuildOutputState -> ToolOutput -> IDEM BuildOutputState
     readAndShow logLaunch state@BuildOutputState {..} output = do
         ideR <- ask
-        let setLine ref line = ref { logRefSrcSpan = SrcSpan
-                                        (srcSpanFilename (logRefSrcSpan ref)) line 0 (line+1) 0 }
-            expandElm ref = case elmErrLines of
-                                [] -> [ref]
-                                _  -> map (setLine ref) elmErrLines
-            logPreviousErrs (previous:_) = reflectIDE (mapM_ (addLogRef False backgroundBuild) $ expandElm previous) ideR
-            logPreviousErrs _ = return ()
-            logPrevious (previous:_) = reflectIDE (addLogRef False backgroundBuild previous) ideR
+        let logPrevious (previous:_) = reflectIDE (addLogRef False backgroundBuild previous) ideR
             logPrevious _ = return ()
         liftIDE $ postSyncIDE $ liftIO $ do
           debugM "leksah" $ "readAndShow " ++ show output
@@ -522,10 +514,10 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                             fullFilePath = logRefFullFilePath ref
                         unless (fullFilePath `S.member` filesCompiled) $
                             reflectIDE (removeBuildLogRefs root file) ideR
-                        when inError $ logPreviousErrs errs
+                        when inError $ logPrevious errs
                         return state { inError = True
                                      , errs = ref:errs
-                                     , elmErrLines = []
+                                     , elmLine = 1
                                      , filesCompiled = S.insert fullFilePath filesCompiled
                                      }
                     (Right (ElmFile efile str),_) -> do
@@ -533,13 +525,19 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                             root = logRefRootPath ref
                             file = logRefFilePath ref
                             fullFilePath = logRefFullFilePath ref
-                        when inError $ logPreviousErrs errs
+                        when inError $ logPrevious errs
                         return state { inError = True
                                      , errs = ref:errs
-                                     , elmErrLines = []
+                                     , elmLine = 1
                                      , filesCompiled = S.insert fullFilePath filesCompiled
                                      }
-                    (Right (ElmLine eline), ref:tl) ->
+                    (Right (ElmLine eline), _) ->
+                        if inError
+                            then return state
+                                { elmLine = eline
+                                }
+                            else return state
+                    (Right (ElmPointLine eline), ref:tl) ->
                         if inError
                             then return state
                                 { errs = ref
@@ -550,22 +548,18 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                                     } : tl
                                 }
                             else return state
-                    (Right (ElmPointLine eline), _) ->
-                        if inError
-                            then return state
-                                { elmErrLines = elmErrLines ++ [eline]
-                                }
-                            else return state
                     (Right (ElmColumn c1 c2), ref@LogRef{logRefSrcSpan = span}:tl) ->
                         if inError
                             then do
-                                let leftMargin = 2 + length (show (srcSpanEndLine span))
+                                let line = max 1 elmLine
+                                    leftMargin = 2 + length (show line)
                                 return state
                                     { errs = ref
                                         { logRefSrcSpan = (logRefSrcSpan ref)
                                             { srcSpanStartColumn = max 0 (c1 - leftMargin)
                                             , srcSpanEndColumn = max 0 (c2 - leftMargin)
-                                            , srcSpanEndLine = max 1 (srcSpanEndLine span - 1)
+                                            , srcSpanStartLine = line
+                                            , srcSpanEndLine = line
                                             }
                                         } : tl
                                     }
@@ -592,7 +586,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                             else return state
                     (Right EmptyLine, _) -> return state -- Elm errors can contain empty lines
                     _ -> do
-                        when inError $ logPreviousErrs errs
+                        when inError $ logPrevious errs
                         return state { inError = False }
             ToolOutput line ->
                 processNormalOutput ideR logLaunch state logPrevious line $
@@ -613,7 +607,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                 return state
             ToolPrompt line -> do
                 unless (T.null line) . void $ Log.appendLog log logLaunch (line <> "\n") LogTag
-                when inError $ logPreviousErrs errs
+                when inError $ logPrevious errs
                 when inDocTest $ logPrevious testFails
                 let errorNum    =   length (filter isError errs)
                 let warnNum     =   length errs - errorNum
@@ -625,7 +619,7 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
             ToolExit _ -> do
                 let errorNum    =   length (filter isError errs)
                     warnNum     =   length errs - errorNum
-                when inError $ logPreviousErrs errs
+                when inError $ logPrevious errs
                 when inDocTest $ logPrevious testFails
                 case (errs, testFails) of
                     ([], []) -> defaultLineLogger' log logLaunch output
