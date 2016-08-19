@@ -56,6 +56,7 @@ import Distribution.Version
 import Distribution.ModuleName
 
 import Control.DeepSeq
+import IDE.Utils.VersionUtils (supportedGhcVersions)
 import IDE.Utils.FileUtils
 import IDE.Core.State
 import Data.Char (toLower,isUpper,toUpper,isLower)
@@ -142,7 +143,8 @@ getAllPackageIds = either (const []) id <$> getAllPackageIds'
 getAllPackageIds' :: IDEM (Either Text [PackageIdentifier])
 getAllPackageIds' = do
     mbWorkspace <- readIDE workspace
-    liftIO . getInstalledPackageIds' $ map ipdPackageDir (maybe [] wsAllPackages mbWorkspace)
+    liftIO . getInstalledPackageIds' supportedGhcVersions
+        $ map ipdPackageDir (maybe [] wsAllPackages mbWorkspace)
 
 getAllPackageDBs :: IDEM [[FilePath]]
 getAllPackageDBs = do

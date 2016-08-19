@@ -83,9 +83,10 @@ runExternalTool' :: MonadIDE m
                 -> FilePath
                 -> [Text]
                 -> FilePath
+                -> Maybe [(String,String)]
                 -> C.Sink ToolOutput IDEM ()
                 -> m ()
-runExternalTool' description executable args dir handleOutput = do
+runExternalTool' description executable args dir mbEnv handleOutput = do
         runExternalTool (do
                             run <- isRunning
                             return (not run))
@@ -94,6 +95,7 @@ runExternalTool' description executable args dir handleOutput = do
                         executable
                         args
                         dir
+                        mbEnv
                         handleOutput
         return()
 
@@ -104,9 +106,10 @@ runExternalTool :: MonadIDE m
                 -> FilePath
                 -> [Text]
                 -> FilePath
+                -> Maybe [(String,String)]
                 -> C.Sink ToolOutput IDEM ()
                 -> m ()
-runExternalTool runGuard pidHandler description executable args dir handleOutput  = do
+runExternalTool runGuard pidHandler description executable args dir mbEnv handleOutput  = do
         prefs <- readIDE prefs
         run <- runGuard
         when run $ do
@@ -122,7 +125,7 @@ runExternalTool runGuard pidHandler description executable args dir handleOutput
                                             return ("ssh", map T.pack a)
                                         _ -> return (executable, args)
             -- Run the tool
-            (output, pid) <- liftIO $ runTool executable' args' (Just dir)
+            (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
             modifyIDE_ (\ide -> ide{runningTool = Just pid})
             reifyIDE $ \ideR -> forkIO $
                 reflectIDE (do

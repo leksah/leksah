@@ -502,7 +502,7 @@ parseHiddenModule str =
 hiddenModuleParser :: CharParser () (Text, Text)
 hiddenModuleParser = do
     whiteSpace
-    symbol "Could not find module "
+    symbol "Could not find module " <|> symbol "Failed to load interface for "
     char '`' <|> char '‛' <|> char '‘'
     mod    <- T.pack <$> many (noneOf "'’")
     many (noneOf "\n")

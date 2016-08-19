@@ -317,7 +317,7 @@ grepDirectories regexString caseSensitive dirs = do
                             "--exclude-dir=.svn",
                             "--exclude-dir=_darcs",
                             "--exclude-dir=.git",
-                            regexString] ++ map T.pack subDirs) (Just dir)
+                            regexString] ++ map T.pack subDirs) (Just dir) Nothing
                     output $$ do
                         let max = 1000
                         CL.isolate max =$ do

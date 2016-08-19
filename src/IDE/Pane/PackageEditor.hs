@@ -449,7 +449,7 @@ cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = 
         createDirectory tempDir
     runExternalTool' (__ "Unpacking") "cabal" (["unpack"]
               ++ ["--source-repository" | sourceRepo]
-              ++ ["--destdir=" <> T.pack tempDir, packageToUnpack]) tempDir $ do
+              ++ ["--destdir=" <> T.pack tempDir, packageToUnpack]) tempDir Nothing $ do
         mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink log
         case mbLastOutput of
             Just (ToolExit ExitSuccess) -> do

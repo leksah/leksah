@@ -613,7 +613,7 @@ firstBuild newPrefs = do
         let verbosity = case getLevel logger of
                             Just level -> ["--verbosity=" <> T.pack (show level)]
                             Nothing    -> []
-        (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing
+        (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing Nothing
         output $$ CL.mapM_ (update progressBar)
         waitForProcess pid
         void . idleAdd PRIORITY_DEFAULT $ do
