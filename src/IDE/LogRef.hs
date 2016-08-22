@@ -296,8 +296,11 @@ buildErrorParser = try (do
     <|> try (do
         char '-'
         char '-'
+        char ' '
         whiteSpace
         text <- T.pack . reverse . drop 1 . reverse <$> many (noneOf "-")
+        char '-'
+        char '-'
         many (char '-')
         whiteSpace
         optional (char '.' >> char '/')
