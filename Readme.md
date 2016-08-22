@@ -118,7 +118,8 @@ or follow the instructions below.
 
 **Step 2**: Install tools
 
-    cabal install alex happy haskell-gi
+    cabal install alex happy
+    cabal install haskell-gi
 
 (make sure `~/.cabal/bin` is in PATH)
 
