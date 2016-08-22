@@ -127,7 +127,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             lnbf <- readIORef lineNumberBugFix
             -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",isHint,ptrx - fromMaybe (-1000) lnbf , eventX, ptrx, lnbf, hasNoControlModifier)
             -- when (isHint && hasNoControlModifier) $
-            when (abs (ptrx - eventX) > 1) $
+            when (abs (ptrx - eventX) > 2) $
                 -- get difference between event X and pointer x
                 -- event X is in coordinates of sourceView text
                 -- pointer X is in coordinates of window (remember "show line numbers" ?)
