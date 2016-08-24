@@ -137,7 +137,7 @@ or follow the instructions below.
 
     ./leksah.sh
     
-(the Cabal library has to be installed seperately because of a [cabal bug](https://github.com/haskell/cabal/issues/3436] )
+(the Cabal library has to be installed seperately because of a [cabal bug](https://github.com/haskell/cabal/issues/3436))
 
 On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
 
