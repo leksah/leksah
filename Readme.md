@@ -129,20 +129,19 @@ or follow the instructions below.
     cd leksah
     git submodule update --init
 
-**Step 4**: Install Leksah
+**Step 4**: Build Leksah
 
-    cabal new-build
+    cabal new-build exe:leksah-server exe:leksah
 
 **Step 5**: Run leksah
 
-    leksah_datadir=`pwd` dist-newstyle/build/leksah-0.16.0.0/build/leksah/leksah
+    ./leksah.sh
     
-
 (the Cabal library has to be installed seperately because of a [cabal bug](https://github.com/haskell/cabal/issues/3436] )
 
 On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
 
-    XDG_DATA_DIRS=/opt/local/share cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui
+    XDG_DATA_DIRS=/opt/local/share cabal new-build exe:leksah-server exe:leksah
 
 #### Using `stack build` instead of `cabal new-build`
 
