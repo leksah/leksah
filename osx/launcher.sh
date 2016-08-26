@@ -1,5 +1,9 @@
 #!/bin/bash
 
+if test -e /etc/profile; then
+    . /etc/profile
+fi
+
 if test -e ~/.bash_profile; then
     . ~/.bash_profile
 elif test -e ~/.profile; then
