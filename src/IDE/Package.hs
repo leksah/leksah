@@ -259,7 +259,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     let dir =  ipdPackageDir package
         pkgName = ipdPackageName package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-    -- if we use stack, with tests enabled, we build the tests without running them
+    let flagsForLib = [pkgName <> ":lib:" <> pkgName | ipdHasLibs package && not useStack]
     let flagsForExes =
             if useStack
                 then []
@@ -267,19 +267,19 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     let flagsForTests =
             if "--enable-tests" `elem` ipdConfigFlags package
                 then if useStack
-                    then ["--test", "--no-run-tests"]
+                    then ["--test", "--no-run-tests"] -- if we use stack, with tests enabled, we build the tests without running them
                     else map (\t -> pkgName <> ":test:" <> T.pack (testName t)) $ testSuites pd
                 else []
-    -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
     let flagsForBenchmarks =
             if "--enable-benchmarks" `elem` ipdConfigFlags package
                 then if useStack
-                    then ["--bench", "--no-run-benchmarks"]
+                    then ["--bench", "--no-run-benchmarks"] -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
                     else map (\t -> pkgName <> ":benchmark:" <> T.pack (benchmarkName t)) $ benchmarks pd
                 else []
     let args =  -- stack needs the package name to actually print the output info
                 (if useStack then ["build", ipdPackageName package] else ["new-build"])
                 ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
+                ++ flagsForLib
                 ++ flagsForExes
                 ++ flagsForTests
                 ++ flagsForBenchmarks
