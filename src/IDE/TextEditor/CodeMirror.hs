@@ -40,6 +40,7 @@ module IDE.TextEditor.CodeMirror (
 import Data.Typeable (Typeable)
 import Data.Text (Text)
 import Text.Show (Show)
+#ifdef LEKSAH_WITH_CODE_MIRROR
 import Data.Tuple (snd, fst)
 import Data.Function (($), (.))
 import Data.Maybe (Maybe, Maybe(..))
@@ -82,8 +83,6 @@ import Foreign.Ptr (castPtr)
 import Data.GI.Base.BasicConversions (gflagsToWord)
 import Data.GI.Base.Attributes (AttrOp(..))
 import Data.GI.Base.BasicTypes (nullToNothing)
-
-#ifdef LEKSAH_WITH_CODE_MIRROR
 import Control.Monad (unless)
 import Data.Text (pack, unpack)
 import IDE.TextEditor.Class (TextEditor(..))

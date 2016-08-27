@@ -187,6 +187,11 @@ flag yi
         Experimental Yi support
     default: False
 
+flag codemirror
+    description:
+        Experimental codemirror editor
+    default: False
+
 flag dyre
     description:
         Experimental Yi support
@@ -238,6 +243,12 @@ library
         build-depends:
             dyre >=0.8.3 && <0.9
         cpp-options: -DLEKSAH_WITH_YI_DYRE
+
+    if (flag(codemirror))
+        build-depends:
+            jsaddle >=0.4.0.0 && <0.5,
+            lens -any
+        cpp-options: -DLEKSAH_WITH_CODE_MIRROR
 
     if (flag(loc) && os(linux))
         build-depends:
@@ -346,10 +357,8 @@ library
         gi-javascriptcore >=3.0.6 && <3.1,
         gi-gtk-hs >=0.3.0.0 && <0.4,
         webkitgtk3-javascriptcore -any,
-        jsaddle >=0.4.0.0 && <0.5,
         ghcjs-codemirror -any,
         blaze-html -any,
-        lens -any,
         pretty-show >=1.6.3 && <1.7,
         Cabal >=1.24.0.0 && <1.25,
         base >=4.0.0.0 && <4.10,
@@ -388,7 +397,6 @@ library
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.21,
         stm >=2.4.4 && <2.5
-    cpp-options: -DLEKSAH_WITH_CODE_MIRROR
     default-language: Haskell2010
     default-extensions: ViewPatterns
     hs-source-dirs: src
