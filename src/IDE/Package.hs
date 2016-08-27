@@ -636,7 +636,7 @@ packageRunComponent component backgroundBuild jumpToWarnings package shallConfig
     catchIDE (do
         prefs <- readIDE prefs
         projectRoot <- liftIO $ findProjectRoot dir
-        ghcVersion <- liftIO $ getDefaultGhcVersion
+        ghcVersion <- liftIO getDefaultGhcVersion
         packageDBs <- liftIO $ getPackageDBs' ghcVersion dir
         let pkgId = packageIdentifierToString $ ipdPackageId package
             pkgName = ipdPackageName package
@@ -708,6 +708,8 @@ packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
     let dir = ipdPackageDir package
+        pkgId = packageIdentifierToString $ ipdPackageId package
+    projectRoot <- liftIO $ findProjectRoot dir
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     distDir <- if useStack
                         then do
@@ -715,9 +717,9 @@ packageOpenDoc = do
                             mvar <- liftIO newEmptyMVar
                             runExternalTool' "" "stack" ["path"] dir Nothing $ do
                                 output <- CL.consume
-                                liftIO . putMVar mvar $ head $ catMaybes $ map getDistOutput output
+                                liftIO . putMVar mvar $ head $ mapMaybe getDistOutput output
                             liftIO $ takeMVar mvar
-                        else return "dist"
+                        else return $ projectRoot </> "dist-newstyle/build" </> T.unpack pkgId
     liftIDE $ do
         prefs   <- readIDE prefs
         let path = dir </> distDir
