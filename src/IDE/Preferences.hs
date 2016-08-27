@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Preferences
@@ -452,7 +453,15 @@ prefsDescription configDir packages = NFDPP [
             stringParser
             textEditorType
             (\b a -> a{textEditorType = b})
-            (comboSelectionEditor ["GtkSourceView", "Yi", "CodeMirror"] id)
+            (comboSelectionEditor
+                ["GtkSourceView"]
+#ifdef LEKSAH_WITH_YI
+                ++ ["Yi"]
+#endif
+#ifdef LEKSAH_WITH_CODE_MIRROR
+                ++ ["CodeMirror"]
+#endif
+                id)
             (\i -> return ())
     ]),
     (__ "User Interface", VFDPP emptyParams [
