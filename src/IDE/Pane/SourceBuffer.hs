@@ -830,7 +830,7 @@ checkModTime buf = do
                                             else do
                                                 window <- liftIDE getMainWindow
                                                 md <- new' MessageDialog [
-                                                    constructDialogUseHeaderBar 1,
+                                                    constructDialogUseHeaderBar 0,
                                                     constructMessageDialogButtons ButtonsTypeNone]
                                                 setMessageDialogMessageType md MessageTypeQuestion
                                                 setMessageDialogText md (__ "File \"" <> name <> __ "\" has changed on disk.")
@@ -985,7 +985,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
                     dfe <- doesFileExist fn
                     resp <- if dfe
                         then do md <- new' MessageDialog [
-                                    constructDialogUseHeaderBar 1,
+                                    constructDialogUseHeaderBar 0,
                                     constructMessageDialogButtons ButtonsTypeCancel]
                                 setMessageDialogMessageType md MessageTypeQuestion
                                 setMessageDialogText md $ __ "File already exist."
@@ -1118,7 +1118,7 @@ fileClose' nb _ ebuf currentBuffer i = do
         if modified
             then do
                 md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 1,
+                        constructDialogUseHeaderBar 0,
                         constructMessageDialogButtons ButtonsTypeCancel]
                 setMessageDialogMessageType md MessageTypeQuestion
                 setMessageDialogText md $ __ "Save changes to document: "
@@ -1216,7 +1216,7 @@ fileOpenThis fp =  do
         hdb:tl -> do
             window <- getMainWindow
             md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 1,
+                    constructDialogUseHeaderBar 0,
                     constructMessageDialogButtons ButtonsTypeNone]
             setMessageDialogMessageType md MessageTypeQuestion
             setMessageDialogText md $ __ "Buffer already open."
@@ -1246,7 +1246,7 @@ filePrint' nb _ ebuf currentBuffer _ = do
     window  <- getMainWindow
     print <- reifyIDE $ \ideR ->  do
         md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 1,
+                        constructDialogUseHeaderBar 0,
                         constructMessageDialogButtons ButtonsTypeNone]
         setMessageDialogMessageType md MessageTypeQuestion
         setMessageDialogText md $ __"Print document: "
@@ -1270,7 +1270,7 @@ filePrint' nb _ ebuf currentBuffer _ = do
             if modified
                 then do
                     md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 1,
+                        constructDialogUseHeaderBar 0,
                         constructMessageDialogButtons ButtonsTypeNone]
                     setMessageDialogMessageType md MessageTypeQuestion
                     setMessageDialogText md $ __"Save changes to document: "

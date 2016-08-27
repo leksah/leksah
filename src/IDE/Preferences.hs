@@ -125,6 +125,7 @@ runPreferencesDialog = do
     preview <- buttonNewWithLabel (__ "Preview")
     containerAdd actionArea preview
     apply   <-  dialogAddButton' dialog "gtk-apply" ResponseTypeOk
+    dialogSetDefaultResponse' dialog ResponseTypeOk
 
     upper <-   dialogGetContentArea dialog >>= unsafeCastTo Box
     boxPackStart' upper widget PackGrow 0

@@ -455,7 +455,7 @@ packageRun' removeGhcjsFlagIfPresent package =
         then do
             window <- liftIDE getMainWindow
             md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 1,
+                    constructDialogUseHeaderBar 0,
                     constructMessageDialogButtons ButtonsTypeCancel]
             setMessageDialogMessageType md MessageTypeQuestion
             setMessageDialogText md $ __ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?"
@@ -550,7 +550,7 @@ packageRunJavaScript' addFlagIfMissing package =
         then do
             window <- liftIDE getMainWindow
             md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 1,
+                    constructDialogUseHeaderBar 0,
                     constructMessageDialogButtons ButtonsTypeCancel]
             setMessageDialogMessageType md MessageTypeQuestion
             setMessageDialogText md $ __ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?"
@@ -988,7 +988,7 @@ tryDebug f = do
         _ -> do
             window <- liftIDE getMainWindow
             md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 1,
+                    constructDialogUseHeaderBar 0,
                     constructMessageDialogButtons ButtonsTypeCancel]
             setMessageDialogMessageType md MessageTypeQuestion
             setMessageDialogText md $ __ "GHCi debugger is not running."

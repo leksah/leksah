@@ -312,7 +312,7 @@ packageNew' workspaceDir log activateAction = do
             case mbCabalFile of
                 Just cfn -> do
                     md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 1,
+                        constructDialogUseHeaderBar 0,
                         constructMessageDialogButtons ButtonsTypeCancel]
                     setMessageDialogMessageType md MessageTypeQuestion
                     setMessageDialogText md $ T.pack (printf (__
@@ -332,7 +332,7 @@ packageNew' workspaceDir log activateAction = do
                         then return True
                         else do
                             md <- new' MessageDialog [
-                                    constructDialogUseHeaderBar 1,
+                                    constructDialogUseHeaderBar 0,
                                     constructMessageDialogButtons ButtonsTypeCancel]
                             setMessageDialogMessageType md MessageTypeQuestion
                             setMessageDialogText md . T.pack $ printf (__
@@ -726,7 +726,7 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
             then reflectIDE (void (closePane packagePane)) ideR
             else do
                 md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 1,
+                        constructDialogUseHeaderBar 0,
                         constructMessageDialogButtons ButtonsTypeYesNo]
                 setMessageDialogMessageType md MessageTypeQuestion
                 setMessageDialogText md $ __ "Unsaved changes. Close anyway?"

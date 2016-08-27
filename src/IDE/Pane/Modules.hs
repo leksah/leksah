@@ -1256,7 +1256,7 @@ respDelModDialog = do
     liftIO $ debugM "leksah" "respDelModDialog"
     window <- getMainWindow
     dia <- new' MessageDialog [
-                    constructDialogUseHeaderBar 1,
+                    constructDialogUseHeaderBar 0,
                     constructMessageDialogButtons ButtonsTypeCancel]
     setMessageDialogMessageType dia MessageTypeQuestion
     setMessageDialogText dia $ __ "Are you sure?"

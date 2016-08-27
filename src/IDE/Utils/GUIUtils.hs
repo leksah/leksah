@@ -237,7 +237,7 @@ openBrowser url = do
 showDialog :: Text -> MessageType -> IO ()
 showDialog msg msgType = do
     dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 1,
+        constructDialogUseHeaderBar 0,
         constructMessageDialogMessageType msgType,
         constructMessageDialogButtons ButtonsTypeOk,
         constructMessageDialogText msg]
@@ -259,7 +259,7 @@ showDialogOptions :: Text             -- ^ the message
                   -> IO ()
 showDialogOptions msg msgType buttons mbIndex = do
     dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 1,
+        constructDialogUseHeaderBar 0,
         constructMessageDialogMessageType msgType,
         constructMessageDialogButtons ButtonsTypeNone,
         constructMessageDialogText msg]
