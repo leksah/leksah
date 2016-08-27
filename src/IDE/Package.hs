@@ -259,7 +259,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     let dir =  ipdPackageDir package
         pkgName = ipdPackageName package
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-    -- if we use stack, with tests enabled, we build the tests without running them
+    let flagsForLib = [pkgName <> ":lib:" <> pkgName | ipdHasLibs package && not useStack]
     let flagsForExes =
             if useStack
                 then []
@@ -267,19 +267,19 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigu
     let flagsForTests =
             if "--enable-tests" `elem` ipdConfigFlags package
                 then if useStack
-                    then ["--test", "--no-run-tests"]
+                    then ["--test", "--no-run-tests"] -- if we use stack, with tests enabled, we build the tests without running them
                     else map (\t -> pkgName <> ":test:" <> T.pack (testName t)) $ testSuites pd
                 else []
-    -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
     let flagsForBenchmarks =
             if "--enable-benchmarks" `elem` ipdConfigFlags package
                 then if useStack
-                    then ["--bench", "--no-run-benchmarks"]
+                    then ["--bench", "--no-run-benchmarks"] -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
                     else map (\t -> pkgName <> ":benchmark:" <> T.pack (benchmarkName t)) $ benchmarks pd
                 else []
     let args =  -- stack needs the package name to actually print the output info
                 (if useStack then ["build", ipdPackageName package] else ["new-build"])
                 ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
+                ++ flagsForLib
                 ++ flagsForExes
                 ++ flagsForTests
                 ++ flagsForBenchmarks
@@ -636,7 +636,7 @@ packageRunComponent component backgroundBuild jumpToWarnings package shallConfig
     catchIDE (do
         prefs <- readIDE prefs
         projectRoot <- liftIO $ findProjectRoot dir
-        ghcVersion <- liftIO $ getDefaultGhcVersion
+        ghcVersion <- liftIO getDefaultGhcVersion
         packageDBs <- liftIO $ getPackageDBs' ghcVersion dir
         let pkgId = packageIdentifierToString $ ipdPackageId package
             pkgName = ipdPackageName package
@@ -708,6 +708,8 @@ packageOpenDoc :: PackageAction
 packageOpenDoc = do
     package <- ask
     let dir = ipdPackageDir package
+        pkgId = packageIdentifierToString $ ipdPackageId package
+    projectRoot <- liftIO $ findProjectRoot dir
     useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     distDir <- if useStack
                         then do
@@ -715,9 +717,9 @@ packageOpenDoc = do
                             mvar <- liftIO newEmptyMVar
                             runExternalTool' "" "stack" ["path"] dir Nothing $ do
                                 output <- CL.consume
-                                liftIO . putMVar mvar $ head $ catMaybes $ map getDistOutput output
+                                liftIO . putMVar mvar $ head $ mapMaybe getDistOutput output
                             liftIO $ takeMVar mvar
-                        else return "dist"
+                        else return $ projectRoot </> "dist-newstyle/build" </> T.unpack pkgId
     liftIDE $ do
         prefs   <- readIDE prefs
         let path = dir </> distDir
