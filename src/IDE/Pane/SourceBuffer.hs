@@ -176,6 +176,11 @@ import GI.Gtk.Objects.Clipboard (clipboardGet)
 import GI.Gdk.Structs.Atom (atomIntern)
 import GI.Gdk.Structs.EventButton (getEventButtonType)
 import GI.Gdk.Enums (EventType(..))
+import GI.Gtk
+       (infoBarAddButton, boxPackStart, vBoxNew, Container(..),
+        infoBarSetShowCloseButton, containerAdd, infoBarGetContentArea,
+        labelNew, infoBarNew)
+import Data.GI.Base.ManagedPtr (unsafeCastTo)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -543,10 +548,10 @@ newTextBuffer panePath bn mbfn =
     where buildPane contents mModTime = do
             nb      <-  getNotebook panePath
             prefs   <-  readIDE prefs
-            let bs = candyState prefs
+            let useCandy = candyState prefs
             ct      <-  readIDE candy
             (ind,rbn) <- figureOutPaneName bn 0
-            buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs contents mModTime)
+            buildThisPane panePath nb (builder' useCandy mbfn ind bn rbn ct prefs contents mModTime)
 
 data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
     deriving (Eq)
@@ -570,8 +575,7 @@ builder' :: Bool ->
     Gtk.Notebook ->
     Gtk.Window ->
     IDEM (Maybe IDEBuffer,Connections)
-builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
-    -- display a file
+builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
     case textEditorType prefs of
         "GtkSourceView" -> newGtkBuffer mbfn fileContents >>= makeBuffer modTime
         "Yi"            -> newYiBuffer mbfn fileContents >>= makeBuffer modTime
@@ -585,9 +589,9 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         ideR <- ask
 
         beginNotUndoableAction buffer
-        let mod = modFromFileName mbfn
-        when (bs && isHaskellMode mod) $ modeTransformToCandy mod
-                                            (modeEditInCommentOrString mod) buffer
+        let mode = modeFromFileName mbfn
+        when (useCandy && isHaskellMode mode) $ modeTransformToCandy mode
+                                                    (modeEditInCommentOrString mode) buffer
         endNotUndoableAction buffer
         setModified buffer False
         siter <- getStartIter buffer
@@ -596,6 +600,14 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
 
         -- create a new SourceView Widget
         sv <- newView buffer (textviewFont prefs)
+
+        -- Files opened from the unpackDirectory are meant for documentation
+        -- and are not actually a source dependency, they should not be editable.
+        let isEditable = fromMaybe True $ do
+                            dir  <- unpackDirectory prefs
+                            file <- mbfn
+                            return (not $ (splitDirectories dir) `isPrefixOf` (splitDirectories file))
+        setEditable sv isEditable
         setShowLineNumbers sv $ showLineNumbers prefs
         setRightMargin sv $ case rightMargin prefs of
                                 (False,_) -> Nothing
@@ -613,15 +625,30 @@ builder' bs mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         liftIO $ debugM "lekash" "makeBuffer setScrolledWindowShadowType"
         setScrolledWindowShadowType sw ShadowTypeIn
         liftIO $ debugM "lekash" "makeBuffer setScrolledWindowShadowType done"
+
+
+        box <- vBoxNew False 0
+        when (not isEditable) $ liftIO $ do
+            bar <- infoBarNew
+            lab <- labelNew (Just "This file is opened in read-only mode because it comes from a non-local package")
+            area <- infoBarGetContentArea bar >>= unsafeCastTo Container
+            containerAdd area lab
+            -- infoBarAddButton bar "Enable editing" (fromIntegral . fromEnum $ ResponseTypeReject)
+            -- infoBarSetShowCloseButton bar True
+            boxPackStart box bar False False 0
+            widgetShow bar
+
+        boxPackStart box sw True True 0
+
         modTimeRef <- liftIO $ newIORef modTime
         let buf = IDEBuffer {
             fileName =  mbfn,
             bufferName = bn,
             addedIndex = ind,
             sourceView =sv,
-            scrolledWindow = sw,
+            vBox = box,
             modTime = modTimeRef,
-            mode = mod}
+            mode = mode}
         -- events
         ids1 <- afterFocusIn sv $ makeActive buf
         ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
@@ -1169,7 +1196,7 @@ fileCloseAllButPackage = do
         close' dir (buf@IDEBuffer {sourceView = sv}) = do
             (pane,_)    <-  guiPropertiesFromName (paneName buf)
             nb          <-  getNotebook pane
-            i           <-  notebookPageNum nb (scrolledWindow buf)
+            i           <-  notebookPageNum nb (vBox buf)
             if i < 0
                 then throwIDE (__ "notebook page not found: unexpected")
                 else do
@@ -1189,7 +1216,7 @@ fileCloseAllButWorkspace = do
         close' workspace (buf@IDEBuffer {sourceView = sv}) = do
             (pane,_)    <-  guiPropertiesFromName (paneName buf)
             nb          <-  getNotebook pane
-            i           <-  notebookPageNum nb (scrolledWindow buf)
+            i           <-  notebookPageNum nb (vBox buf)
             if i < 0
                 then throwIDE (__ "notebook page not found: unexpected")
                 else do
@@ -1213,7 +1240,7 @@ fileOpenThis fp =  do
                         Just fn -> equalFilePath fn fpc
                         Nothing -> False) buffers
     case buf of
-        hdb:tl -> do
+        hdb:_ -> do
             window <- getMainWindow
             md <- new' MessageDialog [
                     constructDialogUseHeaderBar 0,

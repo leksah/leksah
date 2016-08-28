@@ -155,6 +155,7 @@ class TextEditor editor where
     setRightMargin :: EditorView editor -> Maybe Int -> IDEM ()
     setShowLineNumbers :: EditorView editor -> Bool -> IDEM ()
     setTabWidth :: EditorView editor -> Int -> IDEM ()
+    setEditable :: EditorView editor -> Bool -> IDEM ()
 
     -- Events
     afterFocusIn :: EditorView editor -> IDEM () -> IDEM [Connection]

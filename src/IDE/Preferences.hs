@@ -948,7 +948,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Variables","LogCategory")
                                 ,   ("*Workspace","LogCategory")]
     ,   collectAtStart      =   True
-    ,   unpackDirectory     =   Just ("~" </> configDirName </> "packageSources")
+    ,   unpackDirectory     =   Nothing
     ,   retrieveURL         =   "http://www.leksah.org"
     ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True

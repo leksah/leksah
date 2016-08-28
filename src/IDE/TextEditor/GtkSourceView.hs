@@ -101,9 +101,10 @@ import GI.Gtk.Objects.TextTagTable
         textTagTableAdd)
 import GI.Gtk.Objects.TextMark (textMarkGetName, TextMark(..))
 import GI.Gtk.Objects.TextView
-       (onTextViewPopulatePopup, onTextViewMoveCursor,
-        afterTextViewToggleOverwrite, afterTextViewMoveCursor,
-        textViewScrollToIter, textViewScrollToMark, textViewGetOverwrite,
+       (textViewSetEditable, onTextViewPopulatePopup,
+        onTextViewMoveCursor, afterTextViewToggleOverwrite,
+        afterTextViewMoveCursor, textViewScrollToIter,
+        textViewScrollToMark, textViewGetOverwrite,
         textViewGetIterLocation, textViewGetIterAtLocation,
         textViewBufferToWindowCoords, textViewSetWrapMode,
         getTextViewBuffer)
@@ -538,4 +539,4 @@ instance TextEditor GtkSourceView where
     -- Tag
     background (GtkTag t) color = setTextTagBackground t . T.pack $ colorHexString color
     underline (GtkTag t) value = setTextTagUnderline t value
-
+    setEditable (GtkView view) b = textViewSetEditable view b

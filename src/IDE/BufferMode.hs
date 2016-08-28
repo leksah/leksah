@@ -48,6 +48,7 @@ import qualified Data.Text as T
 import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
 import GI.Gtk.Objects.Widget (toWidget)
 import GI.Gtk.Objects.Notebook (notebookPageNum, Notebook(..))
+import GI.Gtk (VBox)
 
 -- * Buffer Basics
 
@@ -59,7 +60,7 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 ,   bufferName      ::  Text
 ,   addedIndex      ::  Int
 ,   sourceView      ::  EditorView editor
-,   scrolledWindow  ::  ScrolledWindow
+,   vBox  ::  VBox
 ,   modTime         ::  IORef (Maybe UTCTime)
 ,   mode            ::  Mode
 } deriving (Typeable)
@@ -68,7 +69,7 @@ instance Pane IDEBuffer IDEM
     where
     primPaneName    =   bufferName
     getAddedIndex   =   addedIndex
-    getTopWidget    =   liftIO . toWidget . scrolledWindow
+    getTopWidget    =   liftIO . toWidget . vBox
     paneId b        =   ""
 
 data BufferState            =   BufferState FilePath Int
@@ -118,7 +119,7 @@ inBufContext :: MonadIDE m => alpha -> IDEBuffer -> (forall editor. TextEditor e
 inBufContext def (ideBuf@IDEBuffer{sourceView = v}) f = do
     (pane,_)       <-  liftIDE $ guiPropertiesFromName (paneName ideBuf)
     nb             <-  liftIDE $ getNotebook pane
-    i              <-  notebookPageNum nb (scrolledWindow ideBuf)
+    i              <-  notebookPageNum nb (vBox ideBuf)
     if i < 0
         then do
             sysMessage Normal $ bufferName ideBuf <> " notebook page not found: unexpected"
@@ -161,12 +162,12 @@ data Mode = Mode {
 
 
 -- | Assumes
-modFromFileName :: Maybe FilePath -> Mode
-modFromFileName Nothing = haskellMode
-modFromFileName (Just fn) | ".hs"    `isSuffixOf` fn = haskellMode
-                          | ".lhs"   `isSuffixOf` fn = literalHaskellMode
-                          | ".cabal" `isSuffixOf` fn = cabalMode
-                          | otherwise                = otherMode
+modeFromFileName :: Maybe FilePath -> Mode
+modeFromFileName Nothing = haskellMode
+modeFromFileName (Just fn) | ".hs"    `isSuffixOf` fn = haskellMode
+                           | ".lhs"   `isSuffixOf` fn = literalHaskellMode
+                           | ".cabal" `isSuffixOf` fn = cabalMode
+                           | otherwise                = otherMode
 
 haskellMode = Mode {
     modeName = "Haskell",

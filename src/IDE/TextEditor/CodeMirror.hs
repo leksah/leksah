@@ -540,5 +540,6 @@ instance TextEditor CodeMirror where
              reflectIDE (f menu) ideR
         return [ConnectC v id1]
     onSelectionChanged (CMBuffer cm) f = return [] -- TODO
+    setEditable _ _ = return ()
 #endif
 

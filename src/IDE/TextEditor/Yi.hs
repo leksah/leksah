@@ -329,6 +329,6 @@ instance TextEditor Yi where
                  return True)
             return [id1]
     onSelectionChanged (YiBuffer b) handler = return [] -- TODO
-
+    setEditable _ _ = return () -- TODO
 #endif
 
