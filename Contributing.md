@@ -262,26 +262,12 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 ## Text editors
 There exist currently three different editor backends:
 
-* **GtkSourceView** (default), a [C library](https://developer.gnome.org/gtksourceview/stable/) for which there are [Haskell bindings](). This is the default, stable editor which has most features implemented of the three.
-    * `src/IDE/TextEditor/GtkSourceView.hs`
-    * Syntax highlighting styles are in `xml` format, specific to GtkSourceView, found in `data/styles`
-    * Language specification files are in `xml` format, specific to GtkSourceView, found in `language-specs`
-* **CodeMirror** (unstable), a [JavaScript library](https://codemirror.net/) for in the browser which is implemented with the Haskell [JSaddle library](http://hackage.haskell.org/package/jsaddle)
-    * `src/IDE/TextEditor/CodeMirror.hs`
-    * Configure leksah with the `codemirror` cabal flag like so and rebuild:
-      
-      ```
-      cabal configure -fcodemirror
-      ```
-      Then change the text editor in the leksah Preferences window
-* **Yi** (unstable), a text editor implemented in Haskell 
-    * `src/IDE/TextEditor/Yi.hs`
-    * Build leksah with the `yi` and `dyre` flags, change the editor in the leksah Preferences window
-    
-      ```
-      cabal configure -fyi -fdyre
-      ```
-      Then change the text editor in the leksah Preferences window
+
+| Backend | Source | Description|
+|---|---|---|
+|**GtkSourceView** (default) | `src/IDE/TextEditor/GtkSourceView.hs` | A [C library](https://developer.gnome.org/gtksourceview/stable/) for which there are [Haskell bindings](). This is the default, stable editor which has most features implemented of the three. Syntax highlighting styles are in `xml` format, specific to GtkSourceView, found in `data/styles`. Language specification files are in `xml` format, specific to GtkSourceView, found in `language-specs`|
+|**CodeMirror** (unstable)| `src/IDE/TextEditor/CodeMirror.hs` | [JavaScript library](https://codemirror.net/) for in the browser which is implemented with the Haskell [JSaddle library](http://hackage.haskell.org/package/jsaddle). Configure leksah with the `codemirror` cabal flag like so and rebuild:`cabal configure -fcodemirror`. Then change the text editor in the leksah Preferences window|
+| **Yi** (unstable) |`src/IDE/TextEditor/Yi.hs`| A text editor implemented in Haskell. Build leksah with the `yi` and `dyre` flags, change the editor in the leksah Preferences window `cabal configure -fyi -fdyre`. Then change the text editor in the leksah Preferences window|
 
 All backends implement the [`TextEditor`](https://github.com/leksah/leksah/blob/master/src/IDE/TextEditor/Class.hs#L57) typeclass, which defines a common interface for text editors:
 
@@ -322,3 +308,14 @@ The names of the associated types are based on those of Gtk Text Widget ([concep
                 -> IDEM Text
      selectRange :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()
      ```
+     
+     
+## Other terms
+
+| Term | Description|
+|-----|----|
+| Pango | Pango is the core text and font handling library used in GNOME applications. It has extensive support for the different writing systems used throughout the world.|
+|GTK+|GTK+ is the primary library used to construct user interfaces in GNOME applications. It provides user interface controls and signal callbacks to control user interfaces.|
+|GDK|An intermediate layer which isolates GTK+ from the details of the windowing system.|
+|Cairo| Cairo is a 2D graphics library with support for multiple output devices. It is designed to produce consistent output on all output media while taking advantage of display hardware acceleration when available.|
+|Webkit2GTK|Web content rendering for the GNOME Platform|
