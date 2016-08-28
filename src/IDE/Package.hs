@@ -68,6 +68,7 @@ module IDE.Package (
 
 ,   idePackageFromPath
 ,   refreshPackage
+,   writeGenericPackageDescription'
 
 ) where
 
@@ -90,6 +91,7 @@ import Control.Exception (SomeException(..), catch)
 
 import IDE.Core.State
 import IDE.Utils.GUIUtils
+import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.Pane.Log
 import IDE.Pane.PackageEditor
 import IDE.Pane.SourceBuffer
@@ -113,7 +115,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (void, when, unless, liftM, forM, forM_)
 import Distribution.PackageDescription.PrettyPrint
-       (writeGenericPackageDescription)
+       (showGenericPackageDescription)
 import Debug.Trace (trace)
 import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
@@ -147,10 +149,11 @@ import Graphics.UI.Editor.Parameters
 import Data.GI.Base (set, new')
 import GI.Gtk.Objects.Widget (widgetDestroy)
 import IDE.Utils.VersionUtils (getDefaultGhcVersion)
-import IDE.Utils.CabalUtils (findProjectRoot)
+import IDE.Utils.CabalProject (findProjectRoot, getCabalProjectPackages)
 import System.Environment (getEnvironment)
 import Distribution.Simple.LocalBuildInfo
        (Component(..), Component)
+import Distribution.Simple.Utils (writeUTF8File)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -796,7 +799,7 @@ addModuleToPackageDescr moduleName locations = do
     liftIDE $ reifyIDE (\ideR -> catch (do
         gpd <- readPackageDescription normal (ipdCabalFile p)
         let npd = trace (show gpd) foldr addModule gpd locations
-        writeGenericPackageDescription (ipdCabalFile p) npd)
+        writeGenericPackageDescription' (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
             reflectIDE (ideMessage Normal (__ "Can't update package " <> T.pack (show e))) ideR
             return ()))
@@ -859,7 +862,7 @@ delModuleFromPackageDescr moduleName = do
                                                        (fromJust (condLibrary gpd))),
                     condExecutables = map (delModFromBuildInfoExe moduleName)
                                                 (condExecutables gpd)}
-        writeGenericPackageDescription (ipdCabalFile p) npd)
+        writeGenericPackageDescription' (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
             reflectIDE (ideMessage Normal (__ "Can't update package " <> T.pack (show e))) ideR
             return ()))
@@ -1111,20 +1114,12 @@ idePackageFromPath log filePath = do
     case mbRootPackage of
         Nothing -> return Nothing
         Just rootPackage -> do
-            mvar <- liftIO newEmptyMVar
             let dir = takeDirectory filePath
             useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-            paths <-
+            paths <- liftIO $
                 if useStack
-                    then liftIO $ map (dir </>) . extractStackPackageList <$> T.readFile (dir </> "stack.yaml")
-                    else do
-                        runExternalTool' "" "cabal" ["sandbox", "list-sources"] dir Nothing $ do
-                            output <- CL.consume
-                            liftIO . putMVar mvar $ case take 1 $ reverse output of
-                                [ToolExit ExitSuccess] ->
-                                    map (T.unpack . toolline) . takeWhile (/= ToolOutput "") . drop 1 $ dropWhile (/= ToolOutput "") output
-                                _ -> []
-                        liftIO $ takeMVar mvar
+                    then map (dir </>) . extractStackPackageList <$> T.readFile (dir </> "stack.yaml")
+                    else getCabalProjectPackages dir
 
             sandboxSources <- catMaybes <$> forM paths (\path -> do
                 exists <- liftIO (doesDirectoryExist path)

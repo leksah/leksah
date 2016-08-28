@@ -78,7 +78,7 @@ import IDE.SourceCandy
 import IDE.BufferMode (IDEBuffer(..), editInsertCode)
 import Data.Ord (comparing)
 import qualified Data.Foldable as F (toList)
-import IDE.Utils.CabalUtils (findProjectRoot)
+import IDE.Utils.CabalProject (findProjectRoot)
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (lift . lift . scheduleHLint . Left)

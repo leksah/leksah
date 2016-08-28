@@ -13,30 +13,19 @@
 -----------------------------------------------------------------------------
 
 module IDE.Utils.CabalUtils (
-    findProjectRoot
+    writeGenericPackageDescription'
 ) where
 
-import System.FilePath (takeDirectory, isDrive, (</>))
-import System.Directory (doesFileExist, getHomeDirectory)
+import Distribution.PackageDescription
+       (GenericPackageDescription(..))
+import Distribution.Simple.Utils (writeUTF8File)
+import Distribution.PackageDescription.PrettyPrint
+       (showGenericPackageDescription)
 
-findProjectRoot :: FilePath -> IO FilePath
-findProjectRoot curdir = do
-
-    -- Copied from cabal-install as it is not exposed
-    -- and until features like `cabal run` exist for `cabal new-build`
-    homedir <- getHomeDirectory
-
-    -- Search upwards. If we get to the users home dir or the filesystem root,
-    -- then use the current dir
-    let probe dir | isDrive dir || dir == homedir
-                  = return curdir -- implicit project root
-        probe dir = do
-          exists <- doesFileExist (dir </> "cabal.project")
-          if exists
-            then return dir       -- explicit project root
-            else probe (takeDirectory dir)
-
-    probe curdir
-   --TODO: [nice to have] add compat support for old style sandboxes
+-- | Version of writeGenericPackageDescription that drops trailing spaces
+writeGenericPackageDescription' :: FilePath -> GenericPackageDescription -> IO ()
+writeGenericPackageDescription' f = writeUTF8File f . dropTrailingSpaces . showGenericPackageDescription
+  where
+    dropTrailingSpaces = unlines . map (reverse . dropWhile (==' ') . reverse) . lines
 
 

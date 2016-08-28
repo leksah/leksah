@@ -33,6 +33,7 @@ import Distribution.Text (simpleParse, display, disp)
 import IDE.Pane.SourceBuffer
 import IDE.HLint (resolveActiveHLint)
 import IDE.Utils.GUIUtils
+import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import Text.ParserCombinators.Parsec.Language (haskellStyle)
 import Graphics.UI.Editor.MakeEditor
        (getRealWidget, FieldDescription(..), buildEditor, mkField)
@@ -70,12 +71,10 @@ import Distribution.PackageDescription.Configuration
        (flattenPackageDescription)
 import IDE.BufferMode (editInsertCode)
 import Control.Monad.IO.Class (MonadIO(..))
-import Distribution.PackageDescription.PrettyPrint
-       (writeGenericPackageDescription)
 import qualified Data.Text as T
        (takeWhile, stripPrefix, lines, dropWhile, empty, length, take,
         pack, unpack)
-import Language.Haskell.Exts (KnownExtension)
+import Language.Haskell.Exts (KnownExtension(..))
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import System.Log.Logger (debugM)
@@ -207,7 +206,7 @@ addPackages errors = do
     forM_ packs $ \(cabalFile, d) -> do
         gpd <- liftIO $ readPackageDescription normal cabalFile
         ideMessage Normal $ "Adding build-depends " <> T.pack (display d <> " to " <> cabalFile)
-        liftIO $ writeGenericPackageDescription cabalFile
+        liftIO $ writeGenericPackageDescription' cabalFile
             gpd { condLibrary     = addDepToLib d (condLibrary gpd),
                   condExecutables = map (addDepToExe d)
                                         (condExecutables gpd),
@@ -531,9 +530,11 @@ parsePerhapsYouIntendedToUse =
     concatMap (parseLine . T.dropWhile (==' ')) . T.lines
   where
     parseLine :: Text -> [KnownExtension]
+    parseLine "parse error on input ‘case’" = [LambdaCase]
     parseLine line = take 1 . mapMaybe readMaybe $ catMaybes [
         T.stripPrefix "Perhaps you intended to use -X" line
       , T.stripPrefix "Perhaps you intended to use " line
+      , T.stripPrefix "Type signatures are only allowed in patterns with " line
       , T.takeWhile (/=' ') <$> T.stripPrefix "Use -X" line
       , T.takeWhile (/=' ') <$> T.stripPrefix "Use " line
       , T.takeWhile (/=' ') <$> T.stripPrefix "(Use -X" line
