@@ -245,3 +245,80 @@ displayPane :: RecoverablePane p st IDEM
             -> IDEAction
 closePane :: RecoverablePane p st IDEM => p -> IDEM Bool
 ``` 
+
+
+### [data IDEBuffer](https://github.com/leksah/leksah/blob/master/src/IDE/BufferMode.hs#L57)
+
+This pane contains a text editor, it's confusingly located in `src/BufferMode.hs` while some of its instances are located in `src/Pane/SourceBuffer`. 
+
+```haskell
+data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
+...
+,   sourceView      ::  EditorView editor
+...
+} deriving (Typeable)
+```
+
+## Text editors
+There exist currently three different editor backends:
+
+* **GtkSourceView** (default), a [C library](https://developer.gnome.org/gtksourceview/stable/) for which there are [Haskell bindings](). This is the default, stable editor which has most features implemented of the three.
+    * `src/IDE/TextEditor/GtkSourceView.hs`
+    * Syntax highlighting styles are in `xml` format, specific to GtkSourceView, found in `data/styles`
+    * Language specification files are in `xml` format, specific to GtkSourceView, found in `language-specs`
+* **CodeMirror** (unstable), a [JavaScript library](https://codemirror.net/) for in the browser which is implemented with the Haskell [JSaddle library](http://hackage.haskell.org/package/jsaddle)
+    * `src/IDE/TextEditor/CodeMirror.hs`
+    * Configure leksah with the `codemirror` cabal flag like so and rebuild:
+      
+      ```
+      cabal configure -fcodemirror
+      ```
+      Then change the text editor in the leksah Preferences window
+* **Yi** (unstable), a text editor implemented in Haskell 
+    * `src/IDE/TextEditor/Yi.hs`
+    * Build leksah with the `yi` and `dyre` flags, change the editor in the leksah Preferences window
+    
+      ```
+      cabal configure -fyi -fdyre
+      ```
+      Then change the text editor in the leksah Preferences window
+
+All backends implement the [`TextEditor`](https://github.com/leksah/leksah/blob/master/src/IDE/TextEditor/Class.hs#L57) typeclass, which defines a common interface for text editors:
+
+```haskell
+class TextEditor editor where
+    data EditorBuffer editor
+    data EditorView editor
+    data EditorIter editor
+    ...
+    
+```
+The names of the associated types are based on those of Gtk Text Widget ([conceptual overview](https://developer.gnome.org/gtk3/stable/TextWidget.html)) as the type class is very much biased towards the GtkSourceView implementation:
+
+* `EditorBuffer editor` represents the text being edited
+    * Some related class methods:
+    
+      ```haskell
+      getModified :: EditorBuffer editor -> IDEM Bool
+      getLineCount :: EditorBuffer editor -> IDEM Int
+      ```
+* `EditorView editor` is a widget that represents the GTK widget
+    * The corresponding buffer of a view is obtained by `getBuffer :: EditorView editor -> IDEM (EditorBuffer editor)`
+    * Some related class methods:
+    
+      ```haskell
+      setShowLineNumbers :: EditorView editor -> Bool -> IDEM ()
+      setTabWidth :: EditorView editor -> Int -> IDEM ()
+      afterMoveCursor :: EditorView editor -> IDEM () -> IDEM [Connection]
+      ```
+* `EditorIter editor` is a location in the source buffer
+   * Some related class methods:
+   
+     ```haskell
+     getSlice :: EditorBuffer editor
+                -> EditorIter editor
+                -> EditorIter editor
+                -> Bool
+                -> IDEM Text
+     selectRange :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()
+     ```
