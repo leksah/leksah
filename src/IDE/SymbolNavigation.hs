@@ -74,7 +74,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
     tvb <- getBuffer sv
     ttt <- getTagTable tvb
     linkTag <- newTag ttt "link"
-    underline linkTag UnderlineSingle
+    underline linkTag UnderlineSingle Nothing
     cursor <- cursorNew CursorTypeHand2
 
     id1 <- ConnectC sw <$> onWidgetLeaveNotifyEvent sw (\e -> do

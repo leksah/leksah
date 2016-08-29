@@ -133,7 +133,9 @@ import GI.GtkSource.Flags (DrawSpacesFlags(..))
 import Data.GI.Base.BasicConversions (gflagsToWord)
 import GI.Gdk.Flags (ModifierType(..), EventMask(..))
 import GI.GLib (pattern PRIORITY_DEFAULT, idleAdd, sourceRemove)
-import GI.Gdk (getEventButtonState)
+import GI.Gdk
+       (setRGBAAlpha, setRGBABlue, setRGBAGreen, setRGBARed, newZeroRGBA,
+        RGBA, getEventButtonState)
 import GI.Gtk.Structs.TextIter
        (textIterSetOffset, textIterSetLineOffset, textIterSetLine,
         textIterGetBuffer, textIterStartsWord, textIterStartsLine,
@@ -149,6 +151,10 @@ import Data.Text.Encoding (encodeUtf8)
 import qualified GI.Gdk as Gdk (Window(..))
 import Control.Monad.Trans.Reader (ReaderT(..))
 import GI.Gtk.Objects.Menu (Menu(..))
+import Data.GI.Base.Constructible (Constructible(..))
+import Data.GI.Base.Attributes (AttrOp(..))
+import Text.PrinterParser (Color(..))
+import GI.Gtk (setTextTagUnderlineRgba)
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -325,13 +331,13 @@ instance TextEditor GtkSourceView where
                     let isDark = name `elem` ["leksah-dark", "oblivion", "cobalt"]
                         setBG (dark, light) (Just tag) = background tag (if isDark then dark else light)
                         setBG _             Nothing    = return ()
-                        setUnderline = maybe (return ()) (`underline` UnderlineError)
+                        setUnderline mbCol = maybe (return ()) (\tag -> underline tag UnderlineError mbCol)
                     lookupTag tagTable "match" >>= setBG matchBG
                     lookupTag tagTable "found" >>= setBG foundBG
-                    lookupTag tagTable (T.pack $ show ErrorRef      ) >>= setUnderline
-                    lookupTag tagTable (T.pack $ show WarningRef    ) >>= setUnderline
-                    lookupTag tagTable (T.pack $ show TestFailureRef) >>= setUnderline
-                    lookupTag tagTable (T.pack $ show LintRef       ) >>= setBG lintBG
+                    lookupTag tagTable (T.pack $ show ErrorRef      ) >>= setUnderline Nothing
+                    lookupTag tagTable (T.pack $ show WarningRef    ) >>= setUnderline (Just $ Color 214 176 4)
+                    lookupTag tagTable (T.pack $ show TestFailureRef) >>= setUnderline (Just $ Color 207 18 241)
+                    lookupTag tagTable (T.pack $ show LintRef       ) >>= setUnderline (Just $ Color 21 110 209)
                     lookupTag tagTable (T.pack $ show BreakpointRef ) >>= setBG breakpointBG
                     lookupTag tagTable (T.pack $ show ContextRef    ) >>= setBG contextBG
     setText (GtkBuffer sb) text = setTextBufferText sb text
@@ -538,5 +544,13 @@ instance TextEditor GtkSourceView where
 
     -- Tag
     background (GtkTag t) color = setTextTagBackground t . T.pack $ colorHexString color
-    underline (GtkTag t) value = setTextTagUnderline t value
+    underline (GtkTag t) value Nothing = setTextTagUnderline t value
+    underline (GtkTag t) value (Just (Color r g b)) = do
+        col <- newZeroRGBA
+        setRGBARed col (fromIntegral r / 255)
+        setRGBAGreen col (fromIntegral g / 255)
+        setRGBABlue col (fromIntegral b / 255)
+        setRGBAAlpha col 1
+        setTextTagUnderline t value
+        setTextTagUnderlineRgba t col
     setEditable (GtkView view) b = textViewSetEditable view b

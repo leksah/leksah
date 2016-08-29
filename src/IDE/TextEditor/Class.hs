@@ -229,5 +229,5 @@ class TextEditor editor where
 
     -- Tag
     background :: EditorTag editor -> Color -> IDEM ()
-    underline :: EditorTag editor -> Underline -> IDEM ()
+    underline :: EditorTag editor -> Underline -> Maybe Color -> IDEM ()
 
