@@ -15,11 +15,13 @@ Leksah requires you have **ghc >= 7.10.3** and **cabal-install >= 1.24** install
 * **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download).
 * **Linux**: [Install from Hackage](https://github.com/leksah/leksah#installing-from-hackage)
 
-Alternatively, you can build Leksah [from source](https://github.com/leksah/leksah#building-from-source)
-
 ## Installing from Hackage
 
+These instructions require GHC 7.10 (or older).  If you have GHC 8.0 please the current hackage version of leksah will not build.  For GHC 8.0 please build leksah [from github source](https://github.com/leksah/leksah#building-from-source). 
+
 ### Building on Linux
+
+
 
 Install the GtkSourceView and WebKitGtk development packages for your distribution:
 
@@ -110,11 +112,32 @@ or follow the instructions below.
 
 **Step 1**. Install the following C libraries (for Windows and OS X, see the Hackage build instructions)
 
-| Fedora | Ubuntu |
-| --- | --- |
-| `gobject-introspection-devel` | `libgirepository1.0-dev` |
-| `webkitgtk3-devel` | `libwebkitgtk-3.0-dev` |
-| `gtksourceview3-devel` | `libgtksourceview-3.0-dev` | 
+###### Fedora
+`sudo dnf install gobject-introspection-devel webkitgtk3-devel gtksourceview3-devel`
+
+###### Ubuntu
+`sudo apt-get install libgirepository1.0-dev libwebkitgtk-3.0-dev libgtksourceview-3.0-dev`
+
+###### OS X MacPorts
+`sudo port install gobject-introspection webkit-gtk3-devel gtksourceview3`
+
+You will also need to build a MacPorts compatible of GHC.  First install GHC some other way then unpack the source for the GHC version you want to use and run:
+
+```
+sudo port install libxslt gmp ncurses libiconv llvm-3.5 libffi
+./configure --prefix=/Users/hamish/ghc-8.0.1 --with-iconv-includes=/opt/local/include --with-iconv-libraries=/opt/local/lib --with-gmp-includes=/opt/local/include --with-gmp-libraries=/opt/local/lib --with-system-libffi --with-ffi-includes=/opt/local/lib/libffi-3.2.1/include --with-ffi-libraries=/opt/local/lib --with-nm=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm-classic
+make
+make install
+```
+
+###### OS X Homebrew
+Does not webkitgtk 2.4.x (newer versions only have WebKit 2 inteface)
+
+###### Windows MSYS2
+Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.org/).  Then in a shell with administrator privileges:
+`choco install ghc`
+`pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3`
+
 
 **Step 2**: Install tools
 
