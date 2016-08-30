@@ -2,7 +2,6 @@ flags: -overloaded-methods -overloaded-signals -overloaded-properties
 
 packages:
  ./
- vendor/leksah-server/
  vendor/ltk/
  vendor/haskellVCSGUI/vcsgui/
  vendor/yi/
