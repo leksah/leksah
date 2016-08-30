@@ -131,7 +131,7 @@ make install
 ```
 
 ###### OS X Homebrew
-Does not webkitgtk 2.4.x (newer versions only have WebKit 2 inteface)
+Does not WebKitGTK 2.4.x (newer versions of WebKitGTK only have WebKit 2 interface)
 
 ###### Windows MSYS2
 Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.org/).  Then in a shell with administrator privileges:
