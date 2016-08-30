@@ -123,20 +123,21 @@ or follow the instructions below.
 
 You will also need to build a MacPorts compatible of GHC.  First install GHC some other way then unpack the source for the GHC version you want to use and run:
 
-```
-sudo port install libxslt gmp ncurses libiconv llvm-3.5 libffi
-./configure --prefix=/Users/hamish/ghc-8.0.1 --with-iconv-includes=/opt/local/include --with-iconv-libraries=/opt/local/lib --with-gmp-includes=/opt/local/include --with-gmp-libraries=/opt/local/lib --with-system-libffi --with-ffi-includes=/opt/local/lib/libffi-3.2.1/include --with-ffi-libraries=/opt/local/lib --with-nm=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm-classic
-make
-make install
-```
+    sudo port install libxslt gmp ncurses libiconv llvm-3.5 libffi
+    ./configure --prefix=$HOME/ghc-8.0.1 --with-iconv-includes=/opt/local/include --with-iconv-libraries=/opt/local/lib --with-gmp-includes=/opt/local/include --with-gmp-libraries=/opt/local/lib --with-system-libffi --with-ffi-includes=/opt/local/lib/libffi-3.2.1/include --with-ffi-libraries=/opt/local/lib --with-nm=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm-classic
+    make
+    make install
+
+Then make sure the $HOME/ghc-8.0.1 is in your $PATH.
 
 ###### OS X Homebrew
-Does not WebKitGTK 2.4.x (newer versions of WebKitGTK only have WebKit 2 interface)
+Homebrew Does not have WebKitGTK 2.4.x (newer versions of WebKitGTK only have WebKit 2 interface)
 
 ###### Windows MSYS2
 Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.org/).  Then in a shell with administrator privileges:
-`choco install ghc`
-`pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3`
+
+    choco install ghc
+    pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
 
 **Step 2**: Install tools
