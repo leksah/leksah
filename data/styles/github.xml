@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+ This file is part of GtkSourceView
+
+ Copyright (C) 2006-2007 GtkSourceView team
+ Authors: Yevgen Muntyan <muntyan@tamu.edu>, Hamish Mackenzie
+
+ GtkSourceView is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+
+ GtkSourceView is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+-->
+<style-scheme id="github" _name="Industrial" version="1.0">
+  <author></author>
+  <_description>Github color scheme</_description>
+
+  <!-- Palette -->
+  <color name="white"      value="#FFFFFF"/>
+  <color name="magenta"    value="#a71d5d"/>
+  <color name="violet"     value="#795da3"/>
+  <color name="cyan"       value="#0086b3"/>
+  <color name="gray"       value="#969896"/>
+  <color name="black"      value="#333333"/>
+  <color name="darkblue"   value="#183691"/>
+  <color name="orange"     value="#F8EEC7"/>
+
+  <!-- Global Settings -->
+  <style name="text"                        foreground="black"/>
+  <style name="current-line"                background="#EFEFEF"/>
+  <style name="cursor"                      foreground="black" />
+  <style name="line-numbers"                foreground="gray"/>
+  <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
+  <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
+
+  <!-- Bracket Matching -->
+  <style name="bracket-match"               />
+  <style name="bracket-mismatch"            />
+
+  <!-- Right Margin -->
+  <style name="right-margin"                foreground="gray"/>
+
+  <!-- Search Matching -->
+  <style name="search-match"                background="orange"/>
+
+  <!-- Comments -->
+  <style name="def:comment"                 foreground="gray"/>
+  <style name="def:shebang"                 foreground="gray"/>
+  <style name="def:doc-comment-element"     italic="true"/>
+
+  <!-- Constants -->
+  <style name="def:constant"                foreground="cyan"/>
+  <style name="def:string"                  foreground="darkblue" />
+
+  <!-- Identifiers -->
+  <style name="def:identifier"              />
+
+  <!-- Keywords -->
+  <style name="def:keyword"                 foreground="magenta"/>
+
+  <!-- Statements -->
+  <style name="def:statement"               foreground="magenta"/>
+
+  <!-- Types -->
+  <style name="def:type"                    foreground="cyan"/>
+
+</style-scheme>
