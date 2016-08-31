@@ -1119,7 +1119,7 @@ idePackageFromPath log filePath = do
             paths <- liftIO $
                 if useStack
                     then map (dir </>) . extractStackPackageList <$> T.readFile (dir </> "stack.yaml")
-                    else getCabalProjectPackages dir
+                    else return []
 
             sandboxSources <- catMaybes <$> forM paths (\path -> do
                 exists <- liftIO (doesDirectoryExist path)
