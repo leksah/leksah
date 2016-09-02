@@ -1,10 +1,13 @@
+module IDE.LPaste where
+
 import Network.HTTP
 import Data.Maybe
 import Data.String.Utils
 import Network.Stream
 
 data Post = Post { title :: Maybe String,
-                   paste :: String}
+                   paste :: String
+                 }
 
 data Parameters = Parameters { private :: Bool,
                                author :: Maybe String,
@@ -12,9 +15,15 @@ data Parameters = Parameters { private :: Bool,
                                email :: Maybe String
                              }
 
+type URL = String
+
+baseUrl :: URL
+baseUrl = "http://lpaste.net"
+
 createLink :: Parameters -> Post -> String
 createLink parameters post =
-    concat [ "http://lpaste.net/new?private="
+    concat [ baseUrl ++ "/new"
+           , "?private="
            , if private parameters then "Private" else "Public"
            , "&title="
            , fromMaybe "" $ title post
@@ -41,15 +50,16 @@ headerLookup headers key = let header = filter (\(Header k v) -> k == key) heade
                             if length header == 0 then Nothing
                             else let (Header k v) = (head header) in Just v
 
-baseUrl :: String
-baseUrl = "http://lpaste.net"
+extractHeaders :: Either ConnError (Response a) -> [Header]
+extractHeaders result = case result of Left _ -> []
+                                       Right rsp -> rspHeaders rsp
+
+extractLocationHeader :: Either ConnError (Response a) -> String
+extractLocationHeader result = fromMaybe "" $ flip headerLookup HdrLocation $ extractHeaders result
 
 main :: IO ()
 main = do
       let link = createLink defaultParameters somePost
-      openURL <- getResponseBody =<< simpleHTTP (getRequest link)
       result <- simpleHTTP (getRequest link)
-      let headers = case result of Left _ -> []
-                                   Right rsp -> rspHeaders rsp
-      let location = fromMaybe "" $ headerLookup headers HdrLocation
+      let location = extractLocationHeader result
       putStrLn $ baseUrl ++ location
