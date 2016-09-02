@@ -142,6 +142,7 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 **Step 2**: Install tools
 
+    cabal update
     cabal install alex happy
     cabal install haskell-gi
 
@@ -155,7 +156,6 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 **Step 4**: Build Leksah
 
-    cabal update
     cabal new-build exe:leksah-server exe:leksah
 
 **Step 5**: Run leksah
