@@ -27,6 +27,9 @@ Install the GtkSourceView and WebKitGtk development packages for your distributi
 
     sudo apt-get install libgtksourceview-3.0-dev libwebkitgtk-3.0-dev
 
+Arch Linux
+    sudo pacman -S webkitgtk gtksourceview3
+
 Make sure `$HOME/.cabal/bin` is in your `PATH` then:
     
     cabal update
@@ -117,6 +120,9 @@ or follow the instructions below.
 
 ###### Ubuntu
 `sudo apt-get install libgirepository1.0-dev libwebkitgtk-3.0-dev libgtksourceview-3.0-dev`
+
+###### Arch Linux
+`sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkitgtk`
 
 ###### OS X MacPorts
 `sudo port install gobject-introspection webkit-gtk3-devel gtksourceview3`
