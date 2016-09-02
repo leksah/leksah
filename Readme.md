@@ -156,15 +156,10 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 **Step 3**: Clone the repo
 
-    git clone https://github.com/leksah/leksah.git
+    git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
-    git submodule update --init
 
-**Step 4**: Build Leksah
-
-    cabal new-build exe:leksah-server exe:leksah
-
-**Step 5**: Run leksah
+**Step 4**: Build and Run Leksah
 
     ./leksah.sh
     
