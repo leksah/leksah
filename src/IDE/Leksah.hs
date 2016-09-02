@@ -29,7 +29,7 @@ import System.Environment
 import Data.Version
 
 import qualified IDE.OSX as OSX
-import qualified IDE.YiConfig as Yi
+import qualified IDE.TextEditor.Yi.Config as Yi
 
 #ifdef LEKSAH_WITH_YI_DYRE
 import System.Directory (getAppUserDataDirectory)

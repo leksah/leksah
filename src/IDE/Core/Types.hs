@@ -99,7 +99,7 @@ module IDE.Core.Types (
 ) where
 
 import Control.Applicative (Applicative)
-import qualified IDE.YiConfig as Yi
+import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
