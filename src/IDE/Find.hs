@@ -364,7 +364,6 @@ constructFindReplace = do
             Just "Up"     -> doSearch toolbar Backward ideR >> return True
             Just "Escape" -> getOut ideR >> return True
             Just "Tab"    -> do
-
                 re <- getReplaceEntry toolbar
                 widgetGrabFocus re
                 --- widgetAc
