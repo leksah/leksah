@@ -49,7 +49,7 @@ F3                          ->          EditFindNext     "Find the next occurenc
 
 <shift>F3                   ->          EditFindPrevious "Find the previous occurence of the text string"
 
-<ctrl>l                     ->          EditGotoLine    "Go to line with a known index"
+<ctrl>g                     ->          EditGotoLine    "Go to line with a known index"
 
 <ctrl>d                     ->          EditComment     "Add a line style comment to the selected lies"
 <ctrl><shift>d              ->          EditUncomment   "Remove a line style comment"
