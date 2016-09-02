@@ -1,5 +1,3 @@
--- http://lpaste.net/new?private=Private&title=&author=&language=haskell&channel=&paste=mgasogpnagmoaf&email=
-
 import Network.HTTP
 import Data.Maybe
 import Data.String.Utils
@@ -37,33 +35,21 @@ defaultParameters = Parameters { private = True, author = Nothing, channel = Not
 somePost :: Post
 somePost = Post { title = Nothing, paste = "Some Post"}
 
--- headerLookup :: [Header] -> String -> Maybe String
--- headerLookup headers key = filter ()
+headerLookup :: [Header] -> HeaderName -> Maybe String
+headerLookup headers key = let header = filter (\(Header k v) -> k == key) headers
+                           in
+                            if length header == 0 then Nothing
+                            else let (Header k v) = (head header) in Just v
+
+baseUrl :: String
+baseUrl = "http://lpaste.net"
 
 main :: IO ()
 main = do
-      -- let link = "http://www.haskell.org/"
       let link = createLink defaultParameters somePost
       openURL <- getResponseBody =<< simpleHTTP (getRequest link)
-      -- print $ take 100 openURL
-      -- print link
-      -- Result r <- simpleHTTP (getRequest link)
       result <- simpleHTTP (getRequest link)
       let headers = case result of Left _ -> []
                                    Right rsp -> rspHeaders rsp
-      let location = headerLookup headers
-      print headers
-      print location
-      -- let Response x = r
-              -- fetch document and return it (as a 'String'.)
-
-      -- case rsp ofprint $ rspReason rsp
-      -- rspHeaders rsp
-      -- let headers = case rsp of Left _ -> ""
-                                -- Right x -> rspHeaders x
-      -- let headers = rspReason r
-      -- print headers
-      putStrLn ""
-      -- print $ head headers
-      -- output <- take 100 <$> getResponseBody rsp
-      -- putStrLn output
+      let location = fromMaybe "" $ headerLookup headers HdrLocation
+      putStrLn $ baseUrl ++ location
