@@ -5,26 +5,25 @@ import Data.String.Utils
 import Network.HTTP
 import Network.Stream
 
+-- | Post record type containing the @content@ and optionally the @title@.
 data Post = Post {
     title :: Maybe String,
-    paste :: String
+    content :: String
 }
 
+-- | Parameters of the LPaste upload. Maybe fields are optional
 data Parameters = Parameters {
     private :: Bool,
-    author :: Maybe String,
+    author  :: Maybe String,
     channel :: Maybe String,
-    email :: Maybe String
+    email   :: Maybe String
 }
 
-type URL = String
-
-baseUrl :: URL
-baseUrl = "http://lpaste.net"
-
-createLink :: Parameters -> Post -> String
-createLink parameters post =
-    concat [ baseUrl ++ "/new"
+-- | Make the link from a parameter and a post record
+makeLink :: Parameters -> Post -> String
+makeLink parameters post =
+    replace " " "+" $
+    concat [ "http://lpaste.net/new"
            , "?private="
            , if private parameters then "Private" else "Public"
            , "&title="
@@ -35,33 +34,37 @@ createLink parameters post =
            , "&channel="
            , fromMaybe "" $ channel parameters
            , "&paste="
-           , replace " " "+" $ paste post
+           , content post
            , "&email="
            , fromMaybe "" $ email parameters
            ]
 
+-- | Default Leksah parameters
 defaultParameters :: Parameters
-defaultParameters = Parameters { private = True, author = Nothing, channel = Nothing, email = Nothing}
+defaultParameters = Parameters {
+    private = False,
+    author = Just "Leksah Haskell IDE",
+    channel = Nothing,
+    email = Nothing
+}
 
-somePost :: Post
-somePost = Post { title = Nothing, paste = "Some Post"}
+-- | Lookup the value of the location header.
+locationLookup :: [Header] -> String
+locationLookup [] = ""
+locationLookup (Header k v:xs) =
+    if HdrLocation == k then v else locationLookup xs
 
-headerLookup :: [Header] -> HeaderName -> Maybe String
-headerLookup headers key = let header = filter (\(Header k v) -> k == key) headers
-                           in
-                            if length header == 0 then Nothing
-                            else let (Header k v) = (head header) in Just v
-
+-- | Dirty function, has to be removed or made better at leaast.. .:'(
 extractHeaders :: Either ConnError (Response a) -> [Header]
-extractHeaders result = case result of Left _ -> []
-                                       Right rsp -> rspHeaders rsp
+extractHeaders result =
+    case result of
+        Left _ -> []
+        Right rsp -> rspHeaders rsp
 
-extractLocationHeader :: Either ConnError (Response a) -> String
-extractLocationHeader result = fromMaybe "" $ flip headerLookup HdrLocation $ extractHeaders result
+-- | Main purpose function: Perform all the necessary actions for uploading and
+-- return the link to the submission.
+uploadSelected :: String -> IO String
+uploadSelected str =
+    let link = makeLink defaultParameters (Post { title = Nothing, content = str})
+    in ((++) "http://lpaste.net" . locationLookup . extractHeaders) <$> simpleHTTP (getRequest link)
 
-main :: IO ()
-main = do
-      let link = createLink defaultParameters somePost
-      result <- simpleHTTP (getRequest link)
-      let location = extractLocationHeader result
-      putStrLn $ baseUrl ++ location
