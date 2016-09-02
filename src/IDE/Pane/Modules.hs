@@ -69,7 +69,7 @@ import Graphics.UI.Editor.Simple
        (textEditor, boolEditor, staticListEditor)
 import Graphics.UI.Editor.Composite (maybeEditor)
 import IDE.Utils.GUIUtils
-       (stockIdFromType, __, treeViewContextMenu)
+       (stockIdFromType, __, treeViewContextMenu, treeViewToggleRow)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (debugM)
@@ -1015,7 +1015,7 @@ modulesSelect :: IDERef
               -> IO ()
 modulesSelect ideR store treeView path _ = do
     liftIO $ debugM "leksah" "modulesSelect"
-    treeViewExpandRow treeView path False
+    treeViewToggleRow treeView path
     mbFile <- getSelectedModuleFile <$> getSelectionTree treeView store
     case mbFile of
         Nothing -> return ()
