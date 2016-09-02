@@ -1,19 +1,21 @@
 module IDE.LPaste where
 
-import Network.HTTP
 import Data.Maybe
 import Data.String.Utils
+import Network.HTTP
 import Network.Stream
 
-data Post = Post { title :: Maybe String,
-                   paste :: String
-                 }
+data Post = Post {
+    title :: Maybe String,
+    paste :: String
+}
 
-data Parameters = Parameters { private :: Bool,
-                               author :: Maybe String,
-                               channel :: Maybe String,
-                               email :: Maybe String
-                             }
+data Parameters = Parameters {
+    private :: Bool,
+    author :: Maybe String,
+    channel :: Maybe String,
+    email :: Maybe String
+}
 
 type URL = String
 
