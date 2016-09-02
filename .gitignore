@@ -11,3 +11,4 @@ leksah.lkshw
 *.sandbox.config
 /.stack-work/
 /dist-newstyle/
+/*.local
