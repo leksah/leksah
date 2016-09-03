@@ -33,7 +33,7 @@ module IDE.Pane.PackageEditor (
 ,   standardSetup
 ) where
 
-import Control.Applicative (Applicative)
+import Control.Applicative (Applicative, (<*>), (<$>))
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.Verbosity
@@ -77,6 +77,7 @@ import IDE.Pane.SourceBuffer (fileOpenThis)
 import Control.Event (EventSource(..))
 
 import Data.List (isPrefixOf, sort, nub, sortBy)
+import Data.List.Split (splitOn)
 import Data.Text (Text)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -84,14 +85,13 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad (void, when)
 import Distribution.Version (Version(..), orLaterVersion)
 
-import Control.Applicative ((<*>), (<$>))
 import IDE.Utils.Tool (ToolOutput(..))
 import System.Exit (ExitCode(..))
 import qualified Data.Conduit.List as CL (fold)
 import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import IDE.Utils.ExternalTool (runExternalTool')
 import qualified System.IO.Strict as S (readFile)
-import Data.Char (toLower)
+import Data.Char (isDigit, isAlphaNum, toLower)
 import qualified Data.Text as T
        (replace, span, splitAt, isPrefixOf, length, toLower, lines,
         unlines, pack, unpack, null)
@@ -294,9 +294,19 @@ newPackageDialog parent workspaceDir = do
     value <- liftIO $ ext (NewPackage "" workspaceDir Nothing)
     widgetDestroy dia
     --find
-    case resp of
-        ResponseTypeOk    -> return value
-        _             -> return Nothing
+    case (resp, value) of
+        (ResponseTypeOk, Just p)
+            | validPackageName . T.unpack $ newPackageName p -> return value
+            | otherwise -> do
+                liftIO $ showErrorDialog "Invalid package name."
+                newPackageDialog parent workspaceDir
+        _              -> return Nothing
+
+validPackageName :: String -> Bool
+validPackageName = all valid . splitOn "-"
+    where
+       valid "" = False
+       valid w  = all isAlphaNum w && not (all isDigit w)
 
 packageNew' :: FilePath -> C.Sink ToolOutput IDEM () -> (Bool -> FilePath -> IDEAction) -> IDEAction
 packageNew' workspaceDir log activateAction = do
