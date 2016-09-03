@@ -98,12 +98,18 @@ import GI.Gtk.Structs.TreePath
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
+import GI.Gtk.Objects.TextView
+       (textViewSetEditable, textViewNew, TextView(..))
+import GI.Pango.Structs.FontDescription
+       (fontDescriptionSetFamily, fontDescriptionNew,
+        fontDescriptionFromString)
 import GI.Gtk.Objects.TreeView
        (treeViewRowExpanded, onTreeViewRowActivated,
         onTreeViewRowExpanded, treeViewGetSelection,
         treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
         treeViewNew, TreeView(..))
-import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
+import GI.Gtk.Objects.Widget
+       (afterWidgetFocusInEvent, toWidget, widgetModifyFont)
 import GI.Gtk.Objects.TreeViewColumn
        (treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnNew)
@@ -313,6 +319,15 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
+
+        -- set workspace font
+        fd           <- case workspaceFont prefs of
+            Just str ->  fontDescriptionFromString str
+            Nothing  -> do
+                f    <- fontDescriptionNew
+                fontDescriptionSetFamily f "Sans"
+                return f
+        widgetModifyFont treeView (Just fd)
 
         let wsPane = WorkspacePane {..}
 
