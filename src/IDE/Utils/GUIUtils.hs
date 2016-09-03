@@ -91,7 +91,7 @@ import GI.Gtk.Objects.MessageDialog
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gtk.Objects.Box (boxPackStart, Box(..))
 import GI.Gtk.Objects.Label (labelNew)
-import GI.Gtk.Objects.Entry (getEntryText, setEntryText, entryNew)
+import GI.Gtk.Objects.Entry (getEntryText, setEntryText, entryNew, onEntryActivate)
 import Graphics.UI.Editor.Parameters
        (dialogSetDefaultResponse', dialogRun', dialogAddButton',
         boxPackStart', Packing(..))
@@ -110,7 +110,7 @@ import GI.Gtk.Structs.TreePath
        (TreePath(..))
 import GI.Gtk.Objects.Widget
        (Widget(..), toWidget, noWidget, onWidgetButtonPressEvent, onWidgetPopupMenu,
-        widgetShowAll, widgetHide, widgetDestroy, widgetShow)
+        widgetShowAll, widgetHide, widgetDestroy, widgetShow, widgetActivate)
 import GI.Gdk
        (pattern BUTTON_SECONDARY, getEventButtonType, getEventButtonY,
         getEventButtonX, getEventButtonTime, getEventButtonButton)
@@ -292,7 +292,8 @@ showInputDialog msg def = do
 
     -- Can't use messageDialog because of https://github.com/gtk2hs/gtk2hs/issues/114
     dialogAddButton' dialog "Cancel" ResponseTypeCancel
-    dialogAddButton' dialog "Ok" ResponseTypeOk
+    okBtn <- dialogAddButton' dialog "Ok" ResponseTypeOk
+    onEntryActivate entry $ widgetActivate okBtn >> return ()
     dialogSetDefaultResponse' dialog ResponseTypeOk
 
     res <- dialogRun' dialog
