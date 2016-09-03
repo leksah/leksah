@@ -1,9 +1,16 @@
 module IDE.LPaste where
 
+import IDE.Core.Types
+import IDE.Core.State
+import IDE.Pane.SourceBuffer
+
 import Data.Maybe
 import Data.String.Utils
+import qualified Data.Text as T
 import Network.HTTP
 import Network.Stream
+
+import Control.Monad.IO.Class (liftIO, MonadIO)
 
 -- | Post record type containing the @content@ and optionally the @title@.
 data Post = Post {
@@ -68,3 +75,12 @@ uploadSelected str =
     let link = makeLink defaultParameters (Post { title = Nothing, content = str})
     in ((++) "http://lpaste.net" . locationLookup . extractHeaders) <$> simpleHTTP (getRequest link)
 
+uploadToLpaste :: IDEM ()
+uploadToLpaste = do
+    maybeText <- selectedTextOrCurrentLine
+    case maybeText of
+        Just text -> do
+            ideMessage Normal $ T.pack "Uploading to lpaste.net..."
+            link <- liftIO $ uploadSelected $ T.unpack text
+            ideMessage Normal $ T.pack("Done. Link: " ++ link)
+        Nothing   -> ideMessage Normal $ T.pack "Please select some text in the editor"

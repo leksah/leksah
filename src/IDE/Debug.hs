@@ -417,5 +417,3 @@ debugSetBreakOnError = debugSet breakOnErrorFlag
 
 debugSetPrintBindResult :: Bool -> IDEAction
 debugSetPrintBindResult = debugSet printBindResultFlag
-
-
