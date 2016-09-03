@@ -75,8 +75,10 @@ import Default (Default(..))
 import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
 import Control.Event (EventSource(..))
+import Text.Regex.Posix
 
 import Data.List (isPrefixOf, sort, nub, sortBy)
+import Data.List.Split (splitOn)
 import Data.Text (Text)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -295,8 +297,14 @@ newPackageDialog parent workspaceDir = do
     widgetDestroy dia
     --find
     case resp of
-        ResponseTypeOk    -> return value
-        _             -> return Nothing
+        ResponseTypeOk -> do
+            if validPackageName $ newPackageName value
+                then return value
+                else newPackageDialog parent workspaceDir
+        _              -> return Nothing
+
+validPackageName :: String -> Bool
+validPackageName = all (\w -> w =~ "^[a-zA-Z0-9]+$" && not (w =~ "^[0-9]+$")) . splitOn "-"
 
 packageNew' :: FilePath -> C.Sink ToolOutput IDEM () -> (Bool -> FilePath -> IDEAction) -> IDEAction
 packageNew' workspaceDir log activateAction = do
