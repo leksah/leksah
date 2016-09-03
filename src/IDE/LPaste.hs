@@ -1,7 +1,14 @@
 module IDE.LPaste where
 
+import IDE.Core.State
+import IDE.Core.Types
+import IDE.Pane.SourceBuffer
+
+import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.Maybe
 import Network.HTTP
+
+import qualified Data.Text as T
 
 type Parameter = (String, String)
 
@@ -36,3 +43,12 @@ uploadSelected str =
     (\(Right x) -> (++) "http://lpaste.net" . locationLookup $ rspHeaders x) <$>
     simpleHTTP (postRequest $ mkReq str)
 
+uploadToLpaste :: IDEM ()
+uploadToLpaste = do
+    maybeText <- selectedTextOrCurrentLine
+    case maybeText of
+        Just text -> do
+            ideMessage Normal $ T.pack "Uploading to lpaste.net..."
+            link <- liftIO $ uploadSelected $ T.unpack text
+            ideMessage Normal $ T.pack("Done. Link: " ++ link)
+        Nothing   -> ideMessage Normal $ T.pack "Please select some text in the editor"
