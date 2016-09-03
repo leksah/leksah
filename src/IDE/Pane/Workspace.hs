@@ -23,7 +23,7 @@
 
 module IDE.Pane.Workspace (
     WorkspaceState(..)
-,   WorkspacePane
+,   WorkspacePane(..)
 ,   getWorkspacePane
 ,   showWorkspacePane
 ,   refreshWorkspacePane

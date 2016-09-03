@@ -104,7 +104,7 @@ import GI.Gtk (constructDialogUseHeaderBar, Container(..), containerAdd)
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 8
+prefsVersion = 9
 
 runPreferencesDialog :: IDEAction
 runPreferencesDialog = do
@@ -258,17 +258,6 @@ prefsDescription configDir packages = NFDPP [
                 return (if T.null str then Nothing else Just str))
             textviewFont
             (\ b a -> a{textviewFont = b})
-            fontEditor
-            (\mbs -> do
-                buffers <- allBuffers
-                mapM_ (\(IDEBuffer {sourceView = sv}) -> setFont sv mbs) buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Workspace Font") $ emptyParams)
-            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
-            (do str <- stringParser
-                return (if T.null str then Nothing else Just str))
-            workspaceFont
-            (\ b a -> a{workspaceFont = b})
             fontEditor
             (\mbs -> do
                 buffers <- allBuffers
@@ -498,6 +487,18 @@ prefsDescription configDir packages = NFDPP [
                 log <- getLog
                 fdesc <- fontDescriptionFromString (fromMaybe "" mbs)
                 widgetModifyFont (logLaunchTextView log) (Just fdesc))
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Workspace Font") $ emptyParams)
+            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (do str <- stringParser
+                return (if T.null str then Nothing else Just str))
+            workspaceFont
+            (\ b a -> a{workspaceFont = b})
+            fontEditor
+            (\mbs -> do
+                wp <- getWorkspacePane
+                fdesc <- fontDescriptionFromString (fromMaybe "" mbs)
+                widgetModifyFont (treeView wp) (Just fdesc))
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Window default size")
                 $ paraSynopsis <<<- ParaSynopsis
