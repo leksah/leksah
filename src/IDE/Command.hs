@@ -717,7 +717,7 @@ newIcons = catch (do
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local", "ide_js", "ide_folder", "ide_source_folder",
             "ide_cabal_file", "ide_package", "ide_component", "ide_source_dependency", "ide_error",
-            "ide_warning", "ide_suggestion"  ]
+            "ide_warning", "ide_suggestion", "ide_git"  ]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
