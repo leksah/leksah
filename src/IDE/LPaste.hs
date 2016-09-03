@@ -4,8 +4,15 @@ import IDE.Core.State
 import IDE.Core.Types
 import IDE.Pane.SourceBuffer
 
-import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Monad.IO.Class (liftIO)
 import Data.Maybe
+import Data.GI.Base (new')
+import GI.Gtk.Objects.MessageDialog
+       (setMessageDialogText, constructMessageDialogButtons,
+        setMessageDialogMessageType, MessageDialog(..))
+import GI.Gtk.Enums (ButtonsType(..), MessageType(..))
+import GI.Gtk.Objects.Widget (widgetDestroy)
+import GI.Gtk.Objects.Dialog (dialogRun)
 import Network.HTTP
 
 import qualified Data.Text as T
@@ -15,7 +22,7 @@ type Parameter = (String, String)
 -- | Default Leksah parameters
 leksahParams :: [Parameter]
 leksahParams =
-    [ ("public", "Public")
+    [ ("private", "Private")
     , ("author" , "Leksah Haskell IDE")
     , ("channel", "")
     , ("language", "haskell") -- Might change in the future
@@ -24,7 +31,7 @@ leksahParams =
 
 mkReq :: String -> String
 mkReq str =
-    let post = [("title", "leksah test"), ("paste", str)] -- Randomly generate te title
+    let post = [("title", ""), ("paste", str)] -- Randomly generate title?
     in "http://lpaste.net/new?" ++ urlEncodeVars (leksahParams ++ post)
 
 -- | Lookup the value of the location header.
@@ -48,7 +55,10 @@ uploadToLpaste = do
     maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> do
-            ideMessage Normal $ T.pack "Uploading to lpaste.net..."
             link <- liftIO $ uploadSelected $ T.unpack text
-            ideMessage Normal $ T.pack("Done. Link: " ++ link)
-        Nothing   -> ideMessage Normal $ T.pack "Please select some text in the editor"
+            d <- new' MessageDialog [constructMessageDialogButtons ButtonsTypeOk]
+            setMessageDialogMessageType d MessageTypeInfo
+            setMessageDialogText d $ T.pack link
+            dialogRun d
+            widgetDestroy d
+        Nothing -> ideMessage Normal $ T.pack "Please select some text in the editor"
