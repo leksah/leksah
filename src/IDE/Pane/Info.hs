@@ -55,6 +55,7 @@ import GI.Gtk.Objects.Container (containerGetChildren)
 import GI.Gtk.Objects.MenuItem
        (onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
+import GI.Gtk.Objects.TextView (textViewSetEditable)
 
 
 -- | Represents the Info pane
@@ -90,8 +91,8 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         prefs <- readIDE prefs
         ideR <- ask
         descriptionBuffer <- newDefaultBuffer Nothing ""
-        descriptionView   <- newView descriptionBuffer (textviewFont prefs)
-
+        descriptionView@(GtkView v)   <- newView descriptionBuffer (textviewFont prefs)
+        textViewSetEditable v False
         updateStyle descriptionBuffer
 
         sw <- getScrolledWindow descriptionView

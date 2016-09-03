@@ -290,7 +290,7 @@ library
         IDE.Utils.GUIUtils
         IDE.SymbolNavigation
         IDE.Package
-        IDE.YiConfig
+        IDE.TextEditor.Yi.Config
         IDE.OSX
         IDE.GUIHistory
         IDE.SourceCandy

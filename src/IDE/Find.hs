@@ -358,6 +358,8 @@ constructFindReplace = do
         mbName <- getEventKeyKeyval e >>= keyvalName
         mods <- getEventKeyState e
         case mbName of
+            Just "Return" | ModifierTypeShiftMask `elem`  mods ->
+                                doSearch toolbar Backward ideR >> return True
             Just "Down"   -> doSearch toolbar Forward ideR >> return True
             Just "Up"     -> doSearch toolbar Backward ideR >> return True
             Just "Escape" -> getOut ideR >> return True

@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- Based on example config yi example-configs/yi-vim.hs -}
 
-module IDE.YiConfig (
+module IDE.TextEditor.Yi.Config (
     defaultYiConfig
 ,   Config
 ,   Control

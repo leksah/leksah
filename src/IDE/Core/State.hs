@@ -103,7 +103,7 @@ import Control.Concurrent (forkIO)
 import IDE.Utils.Utils as Reexported
 import qualified Data.Map as Map (empty, lookup)
 import Data.Typeable(Typeable)
-import qualified IDE.YiConfig as Yi
+import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Conduit (($$))
 import qualified Data.Conduit as C
        (transPipe, Sink, awaitForever, yield, leftover, ($$))

@@ -17,7 +17,7 @@
 module Main (main) where
 
 import IDE.Leksah (leksah)
-import IDE.YiConfig (defaultYiConfig)
+import IDE.TextEditor.Yi.Config (defaultYiConfig)
 
 #ifdef LOCALIZATION
 
