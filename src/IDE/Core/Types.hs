@@ -491,6 +491,7 @@ data Prefs = Prefs {
     ,   forceLineEnds       ::   Bool
     ,   removeTBlanks       ::   Bool
     ,   textviewFont        ::   Maybe Text
+    ,   workspaceFont       ::   Maybe Text
     ,   sourceStyle         ::   (Bool, Text)
     ,   foundBackgroundLight      ::   Color
     ,   matchBackgroundLight      ::   Color
