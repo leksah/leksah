@@ -137,6 +137,7 @@ data WorkspaceRecord =
   | AddSourceRecord IDEPackage
   | ComponentsRecord
   | ComponentRecord Text
+  | GitRecord
   deriving (Eq)
 
 instance Ord WorkspaceRecord where
@@ -186,6 +187,9 @@ toMarkup record pkg = do
                              ||
                           Just comp == mbActiveComponent)
         (if active then bold else id) comp
+     GitRecord -> "Git"
+     GitRecord -> do
+        bold ("Git" ++ getBranch)
     where
         bold str = "<b>" <> str <> "</b>"
         italic str = "<i>" <> str <> "</i>"
@@ -424,6 +428,7 @@ children record = case record of
     PackageRecord pkg   -> do
         p <- ask
         return [ ComponentsRecord
+               , GitRecord
                , AddSourcesRecord
                , DirRecord (ipdPackageDir p) False]
     _                   -> return []
