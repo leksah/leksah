@@ -153,6 +153,8 @@ import GI.Gdk.Flags (ModifierType, ModifierType(..))
 import GI.Gtk.Objects.AccelGroup (AccelGroup(..))
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
+import IDE.LPaste
+
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
 
@@ -647,12 +649,15 @@ textPopupMenu ideR menu = do
               Just t  -> searchMetaGUI searchPane t
               Nothing -> ideMessage Normal (__ "No identifier selected")
     menuShellAppend menu mi3
+    mi4 <- menuItemNewWithLabel (__ "Upload to lpaste.net")
+    onMenuItemActivate mi4 $ reflectIDE_ uploadToLpaste
+    menuShellAppend menu mi4
     let interpretingEntries = [mi16]
     let interpretingSelEntries
           = [mi1, mi11, mi12,
              mi13, mi14, mi141,
              mi15]
-    let otherEntries = [mi2, mi3]
+    let otherEntries = [mi2, mi3, mi4]
     -- isInterpreting' <- (reflectIDE isInterpreting ideR)
     selected <- reflectIDE selectedText ideR
 --    unless isInterpreting'
