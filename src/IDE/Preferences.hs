@@ -263,6 +263,17 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ (\(IDEBuffer {sourceView = sv}) -> setFont sv mbs) buffers)
     ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Workspace Font") $ emptyParams)
+            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (do str <- stringParser
+                return (if T.null str then Nothing else Just str))
+            workspaceFont
+            (\ b a -> a{workspaceFont = b})
+            fontEditor
+            (\mbs -> do
+                buffers <- allBuffers
+                mapM_ (\(IDEBuffer {sourceView = sv}) -> setFont sv mbs) buffers)
+    ,   mkFieldPP
             (paraName <<<- ParaName (__ "Right margin")
                 $ paraSynopsis <<<- ParaSynopsis (__ "Size or 0 for no right margin")
                     $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
@@ -903,6 +914,7 @@ defaultPrefs = Prefs {
     ,   forceLineEnds       =   True
     ,   removeTBlanks       =   True
     ,   textviewFont        =   Nothing
+    ,   workspaceFont       =   Nothing
     ,   sourceStyle         =   (True,"leksah")
     ,   foundBackgroundLight      = Color 65535 65535 32768
     ,   matchBackgroundLight      = Color 42064 55923 28520
