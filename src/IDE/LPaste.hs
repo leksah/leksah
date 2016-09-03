@@ -1,15 +1,21 @@
+{-# LANGUAGE OverloadedStrings#-}
 module IDE.LPaste where
 
 import IDE.Core.State
 import IDE.Core.Types
 import IDE.Pane.SourceBuffer
-import IDE.Utils.GUIUtils (showInputDialog)
+import IDE.Utils.GUIUtils (showDialog, showInputDialog)
 
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe
 import Network.HTTP
 
 import qualified Data.Text as T
+import Data.Monoid
+import GI.Gtk.Enums (MessageType(..))
+import Control.Monad (void)
+import Control.Exception (SomeException, catch)
+import Network.Stream (ConnError(..))
 
 type Parameter = (String, String)
 
@@ -39,20 +45,25 @@ locationLookup (Header k v:xs) =
 
 -- | Main purpose function: Perform all the necessary actions for uploading and
 -- return the link to the submission.
---
--- The simpleHTTP will return a Right on succes, the unwrapping is a workaround
--- and should be replaced with an Except monad.
-uploadSelected :: String -> IO String
-uploadSelected str =
-    (\(Right x) -> (++) baseUrl . locationLookup $ rspHeaders x) <$>
-    simpleHTTP (postRequest $ mkReq str)
+uploadSelected :: String -> IO (Maybe String)
+uploadSelected str = do
+    result <- simpleHTTP (postRequest $ mkReq str) `catch` handler
+    case result of
+        Right x -> return . Just . (++) baseUrl . locationLookup $ rspHeaders x
+        Left _  -> return Nothing
+    where
+        handler e = return . Left  . ErrorMisc $ show (e :: SomeException)
+
 
 uploadToLpaste :: IDEM ()
 uploadToLpaste = do
     maybeText <- selectedTextOrCurrentLine
     case maybeText of
         Just text -> do
-            link <- liftIO $ uploadSelected $ T.unpack text
-            liftIO $ showInputDialog (T.pack "LPaste link:") (T.pack link)
+            mbLink <- liftIO $ uploadSelected $ T.unpack text
+            case mbLink of
+                Just link -> void . liftIO $ showInputDialog "LPaste link:" (T.pack link)
+                Nothing   -> liftIO $ showDialog ("Could not reach " <> T.pack baseUrl) MessageTypeError
             return ()
-        Nothing -> ideMessage Normal $ T.pack "Please select some text in the editor"
+        Nothing ->
+            ideMessage Normal $ T.pack "Please select some text in the editor"
