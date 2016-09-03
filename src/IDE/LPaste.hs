@@ -3,21 +3,18 @@ module IDE.LPaste where
 import IDE.Core.State
 import IDE.Core.Types
 import IDE.Pane.SourceBuffer
+import IDE.Utils.GUIUtils (showInputDialog)
 
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe
-import Data.GI.Base (new')
-import GI.Gtk.Objects.MessageDialog
-       (setMessageDialogText, constructMessageDialogButtons,
-        setMessageDialogMessageType, MessageDialog(..))
-import GI.Gtk.Enums (ButtonsType(..), MessageType(..))
-import GI.Gtk.Objects.Widget (widgetDestroy)
-import GI.Gtk.Objects.Dialog (dialogRun)
 import Network.HTTP
 
 import qualified Data.Text as T
 
 type Parameter = (String, String)
+
+baseUrl :: String
+baseUrl = "http://lpaste.net"
 
 -- | Default Leksah parameters
 leksahParams :: [Parameter]
@@ -32,7 +29,7 @@ leksahParams =
 mkReq :: String -> String
 mkReq str =
     let post = [("title", ""), ("paste", str)] -- Randomly generate title?
-    in "http://lpaste.net/new?" ++ urlEncodeVars (leksahParams ++ post)
+    in baseUrl ++ "/new?" ++ urlEncodeVars (leksahParams ++ post)
 
 -- | Lookup the value of the location header.
 locationLookup :: [Header] -> String
@@ -47,7 +44,7 @@ locationLookup (Header k v:xs) =
 -- and should be replaced with an Except monad.
 uploadSelected :: String -> IO String
 uploadSelected str =
-    (\(Right x) -> (++) "http://lpaste.net" . locationLookup $ rspHeaders x) <$>
+    (\(Right x) -> (++) baseUrl . locationLookup $ rspHeaders x) <$>
     simpleHTTP (postRequest $ mkReq str)
 
 uploadToLpaste :: IDEM ()
@@ -56,9 +53,6 @@ uploadToLpaste = do
     case maybeText of
         Just text -> do
             link <- liftIO $ uploadSelected $ T.unpack text
-            d <- new' MessageDialog [constructMessageDialogButtons ButtonsTypeOk]
-            setMessageDialogMessageType d MessageTypeInfo
-            setMessageDialogText d $ T.pack link
-            dialogRun d
-            widgetDestroy d
+            liftIO $ showInputDialog (T.pack "LPaste link:") (T.pack link)
+            return ()
         Nothing -> ideMessage Normal $ T.pack "Please select some text in the editor"
