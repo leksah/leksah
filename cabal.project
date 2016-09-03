@@ -6,6 +6,7 @@ packages:
  vendor/ltk/
  vendor/haskellVCSGUI/vcsgui/
  vendor/yi/
+ vendor/haskellVCSWrapper/vcswrapper/
 
 package gi-atk
  flags: -overloaded-methods -overloaded-signals -overloaded-properties

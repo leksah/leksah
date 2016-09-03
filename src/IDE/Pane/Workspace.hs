@@ -193,8 +193,10 @@ toMarkup record pkg = do
         let dir = ipdPackageDir pkg
         let conf = Git.makeConfig (Just dir) Nothing Nothing
         liftIO $ Git.runVcs conf $ do
-             (branch,_) <- localBranches -- TODO What if there is no branch?
-             return branch
+             branch <- Git.localBranchesSafe
+             case branch of
+                (Right (branch,_)) -> return branch
+                (Left _)           -> return "No Git project"
     where
         bold str = "<b>" <> str <> "</b>"
         italic str = "<i>" <> str <> "</i>"
