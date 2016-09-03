@@ -50,11 +50,11 @@ Name of the keymap:
                keymap
      --The name of a keymap file in a config dir
 Categories for panes:
-               [("*Breakpoints","LogCategory"),("*Browser","ToolCategory"),("*Debug","ToolCategory"),("*Errors","ToolCategory"),("*Files","ToolCategory"),("*Flags","ToolCategory"),("*Grep","ToolCategory"),("*HLint","ToolCategory"),("*Doc","ToolCategory"),("*Info","LogCategory"),("*Log","LogCategory"),("*Inspect","LogCategory"),("*Modules","ToolCategory"),("*Out","ToolCategory"),("*Package","EditorCategory"),("*Prefs","EditorCategory"),("*Search","ToolCategory"),("*Trace","LogCategory"),("*Variables","LogCategory"),("*Workspace","LogCategory")]
+               [("*Breakpoints","LogCategory"),("*Browser","ToolCategory"),("*Debug","ToolCategory"),("*Errors","LogCategory"),("*Files","ToolCategory"),("*Flags","ToolCategory"),("*Grep","LogCategory"),("*HLint","ToolCategory"),("*Doc","ToolCategory"),("*Info","LogCategory"),("*Log","LogCategory"),("*Inspect","LogCategory"),("*Modules","ToolCategory"),("*Out","ToolCategory"),("*Package","EditorCategory"),("*Prefs","EditorCategory"),("*Search","ToolCategory"),("*Trace","LogCategory"),("*Variables","LogCategory"),("*Workspace","ExplorerCategory")]
 Pane path for category:
-               [("EditorCategory",[SplitP LeftP]),("ToolCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP])]
+               [("ExplorerCategory",[SplitP LeftP]),("EditorCategory",[SplitP RightP]),("ToolCategory",[SplitP RightP,SplitP TopP]),("LogCategory",[SplitP RightP,SplitP BottomP])]
 Default pane path:
-               [SplitP LeftP]
+               [SplitP RightP]
 Paths under which haskell sources for packages may be found:
                []
 Unpack source for cabal packages to:
