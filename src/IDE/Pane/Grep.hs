@@ -58,7 +58,7 @@ import Control.Monad (void, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (__)
+import IDE.Utils.GUIUtils (__, treeViewToggleRow)
 import System.Directory (getDirectoryContents)
 import qualified Data.Text as T (pack, take, unpack)
 import System.Log.Logger (debugM)
@@ -70,7 +70,7 @@ import GI.Gtk.Objects.ScrolledWindow
 import GI.Gtk.Objects.TreeView
        (treeViewExpandAll, treeViewGetSelection,
         treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
-        treeViewNew, TreeView(..))
+        treeViewNew, TreeView(..), onTreeViewRowActivated)
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreChange, forestStoreGetValue, ForestStore(..),
         forestStoreNew, forestStoreClear, forestStoreInsert)
@@ -184,6 +184,9 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         treeViewSetHeadersVisible treeView True
         sel <- treeViewGetSelection treeView
         treeSelectionSetMode sel SelectionModeSingle
+
+        onTreeViewRowActivated treeView $ \path col ->
+            void $ treeViewToggleRow treeView path
 
         scrolledView <- scrolledWindowNew noAdjustment noAdjustment
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
