@@ -167,7 +167,7 @@ Leksah has a mechanism for triggering and handling events.
 
 ===
 
-### [`IDEEvent`](http://hackage.haskell.org/package/leksah-0.15.1.4/docs/IDE-Core-Types.html#t:IDEEvent)
+### [`IDEEvent`](http://hackage.haskell.org/package/leksah/docs/IDE-Core-Types.html#t:IDEEvent)
 
 All the events that can be triggered. When adding a new event, also adjust the instance of `Event` and `EventSource` (both in [src/IDE/Types.hs](https://github.com/leksah/leksah/blob/master/src/IDE/Core/Types.hs)).
 
@@ -179,7 +179,7 @@ registerEvent :: IORef IDE -> Text -> (IDEEvent -> IDEAction) -> IDEAction
 
 ## Action Descriptions
 
-### [`ActionDescr`](http://hackage.haskell.org/package/leksah-0.15.1.4/docs/IDE-Core-Types.html#t:ActionDescr)
+### [`ActionDescr`](http://hackage.haskell.org/package/leksah/docs/IDE-Core-Types.html#t:ActionDescr)
 An action description is a small abstraction layer over GtkActions, which are used for menus, toolbars, and keyboard shortcuts. The structure contains info about tooltip text, menu icon etc. See [src/IDE/Command.hs](https://github.com/leksah/leksah/blob/master/src/IDE/Command.hs) for the list of all available action descriptions.
 
 
