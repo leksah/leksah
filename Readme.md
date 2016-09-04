@@ -78,41 +78,4 @@ On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
 
 #### Using `stack build` instead of `cabal new-build`
 
-** NOTE : This is currently not working.  If you can make it work let us know. **
-
-Do **Step 1** and **Step 2** as above, then
-
-**Step 4**: Install Leksah
-
-    cabal install gtk2hs-buildtools
-    cabal install ./vendor/haskell-gi ./vendor/haskell-gi-base
-    stack build
-
-**Step 5**: Run leksah
-
-    **TODO add path to path to leksah executable**
-
-### Building Leksah for Windows using Docker
-
-It may seem crazy, but this is currently the best way to bootstrap Leksah for
-Windows from source.  This is mostly because Fedora and SUSE have a much
-more complete set of MinGW packages than any thing else (including Windows).
-
-Get the leksah source:
-
-    git clone https://github.com/leksah/leksah
-    cd leksah
-    git submodule update --init
-
-Get the Fedora 23 docker image and load it:
-
-    wget https://download.fedoraproject.org/pub/fedora/linux/releases/23/Docker/x86_64/Fedora-Docker-Base-23-20151030.x86_64.tar.xz
-    sudo docker load -i Fedora-Docker-Base-23-20151030.x86_64.tar.xz
-
-Build Leksah using the Dockerfile:
-
-    sudo docker build -t leksah/build .
-
-Copy the resulting msi file out of the container (version number in the file name will match the one in the leksah.cabal file):
-
-    sudo docker run --rm --volume $HOME/output:/output leksah/build cp /leksah/win32/leksah-0.16.0.0-ghc-7.10.3.msi /output
+** NOTE : This is currently not working.  If you can make it work let us know how you did it. **
