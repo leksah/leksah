@@ -131,7 +131,7 @@ import Data.GI.Gtk.ModelView.CustomStore
 import Data.Int (Int32)
 import Data.GI.Gtk.ModelView.Types
        (treePathGetIndices', treePathNewFromIndices')
-import VCSWrapper.Git as Git
+import VCSWrapper.Git.Safe as Git
 
 
 -- | The data for a single record in the Workspace Pane
@@ -199,7 +199,7 @@ toMarkup record pkg = do
         let dir = ipdPackageDir pkg
         let conf = Git.makeConfig (Just dir) Nothing Nothing
         liftIO $ Git.runVcs conf $ do
-             branch <- Git.localBranchesSafe
+             branch <- Git.localBranches
              case branch of
                 (Right (branch,_)) -> return branch
                 (Left _)           -> return "No Git project"
