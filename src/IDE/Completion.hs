@@ -44,7 +44,7 @@ import Data.GI.Base
 import GI.Gdk.Enums (GrabStatus(..), WindowTypeHint(..))
 import GI.Gtk.Objects.Container
        (containerRemove, containerAdd, containerSetBorderWidth)
-import GI.Gtk.Objects.HPaned (hPanedNew)
+import GI.Gtk.Objects.Paned (panedNew)
 import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Widget
@@ -66,7 +66,7 @@ import GI.Pango.Structs.FontDescription
 import GI.Gtk.Objects.TreeViewColumn
        (noTreeViewColumn, treeViewColumnPackStart, setTreeViewColumnMinWidth,
         setTreeViewColumnSizing, treeViewColumnNew)
-import GI.Gtk.Enums (TreeViewColumnSizing(..), WindowType(..))
+import GI.Gtk.Enums (TreeViewColumnSizing(..), WindowType(..), Orientation(..))
 import GI.Gtk.Objects.CellRendererText
        (setCellRendererTextText, cellRendererTextNew)
 import Data.GI.Gtk.ModelView.CellLayout
@@ -175,7 +175,7 @@ initCompletion sourceView always = do
             setWindowDefaultHeight window $ fromIntegral height
             setWindowTransientFor  window $ head windows
             containerSetBorderWidth window 3
-            paned      <- hPanedNew
+            paned      <- panedNew OrientationHorizontal
             containerAdd window paned
             nameScrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
             widgetSetSizeRequest nameScrolledWindow 250 40

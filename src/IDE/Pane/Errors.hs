@@ -53,7 +53,7 @@ import Data.Tree (Forest, Tree(..), Tree)
 import Data.Function.Compat ((&))
 import System.Log.Logger (debugM)
 import Data.Foldable (forM_)
-import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
+import GI.Gtk.Objects.Box (boxNew, Box(..))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
@@ -71,7 +71,6 @@ import GI.Gtk.Objects.Widget
 import Data.GI.Base (set, get)
 import GI.Gtk.Objects.Notebook (Notebook(..))
 import GI.Gtk.Objects.Window (Window(..))
-import GI.Gtk.Objects.HBox (hBoxNew)
 import Graphics.UI.Editor.Parameters (Packing(..), boxPackStart')
 import GI.Gtk.Objects.TreeViewColumn
        (noTreeViewColumn, TreeViewColumn(..), treeViewColumnSetSizing,
@@ -83,7 +82,7 @@ import Data.GI.Gtk.ModelView.CellLayout
        (cellLayoutSetDataFunc', cellLayoutSetDataFunction)
 import GI.Gtk.Enums
        (PolicyType(..), ShadowType(..), SelectionMode(..),
-        TreeViewColumnSizing(..))
+        TreeViewColumnSizing(..), Orientation(..))
 import GI.Gtk.Objects.CellRendererText
        (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Interfaces.TreeModel
@@ -112,7 +111,7 @@ import GI.Gtk (getToggleButtonActive)
 
 -- | The representation of the Errors pane
 data ErrorsPane      =   ErrorsPane {
-    vbox              :: VBox
+    vbox              :: Box
 ,   scrolledView      :: ScrolledWindow
 ,   treeView          :: TreeView
 ,   errorStore        :: ForestStore ErrorRecord
@@ -180,10 +179,10 @@ builder' _pp _nb _windows = do
     ideR <- ask
     errorStore   <- forestStoreNew []
 
-    vbox         <- vBoxNew False 0
+    vbox         <- boxNew OrientationVertical 0
 
     -- Top box with buttons
-    hbox <- hBoxNew False 0
+    hbox <- boxNew OrientationHorizontal 0
     boxPackStart' vbox hbox PackNatural 0
 
 

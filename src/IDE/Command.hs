@@ -143,7 +143,7 @@ import GI.Gtk.Structs.IconSet (iconSetNewFromPixbuf)
 import GI.Gtk.Objects.IconTheme (iconThemeAddBuiltinIcon)
 import GI.Gtk.Objects.Window
        (IsWindow, windowAddAccelGroup, windowSetIconFromFile, Window(..))
-import GI.Gtk.Objects.VBox (vBoxNew)
+import GI.Gtk.Objects.Box (boxNew)
 import Graphics.UI.Editor.Parameters
        (boxPackEnd', Packing(..), boxPackStart')
 import GI.Gdk.Structs.EventKey
@@ -151,6 +151,7 @@ import GI.Gdk.Structs.EventKey
 import GI.Gdk.Functions (keyvalToUnicode, keyvalName)
 import GI.Gdk.Flags (ModifierType, ModifierType(..))
 import GI.Gtk.Objects.AccelGroup (AccelGroup(..))
+import GI.Gtk.Enums (Orientation(..))
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 import IDE.LPaste
@@ -802,7 +803,7 @@ instrumentWindow win prefs topWidget = do
     iconExists  <- liftIO $ doesFileExist iconPath
     when iconExists $
         windowSetIconFromFile win iconPath
-    vb <- vBoxNew False 1  -- Top-level vbox
+    vb <- boxNew OrientationVertical 1  -- Top-level vbox
     widgetSetName vb "topBox"
     (acc,menu,toolbar) <- getMenuAndToolbars uiManager'
     boxPackStart' vb menu PackNatural 0

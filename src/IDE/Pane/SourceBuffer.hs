@@ -148,7 +148,8 @@ import GI.Gtk.Objects.ScrolledWindow
        (setScrolledWindowShadowType, scrolledWindowSetPolicy)
 import GI.Gtk.Enums
        (FileChooserAction(..), WindowPosition(..), ResponseType(..),
-        ButtonsType(..), MessageType(..), ShadowType(..), PolicyType(..))
+        ButtonsType(..), MessageType(..), ShadowType(..), PolicyType(..),
+        Orientation(..))
 import GI.Gdk.Structs.EventKey
        (getEventKeyState, getEventKeyKeyval)
 import GI.Gdk.Functions (keyvalName)
@@ -177,7 +178,7 @@ import GI.Gdk.Structs.Atom (atomIntern)
 import GI.Gdk.Structs.EventButton (getEventButtonType)
 import GI.Gdk.Enums (EventType(..))
 import GI.Gtk
-       (boxPackStart, vBoxNew, Container(..),
+       (boxPackStart, boxNew, Container(..),
         containerAdd, infoBarGetContentArea,
         labelNew, infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
@@ -627,7 +628,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         liftIO $ debugM "lekash" "makeBuffer setScrolledWindowShadowType done"
 
 
-        box <- vBoxNew False 0
+        box <- boxNew OrientationVertical 0
         when (not isEditable) $ liftIO $ do
             bar <- infoBarNew
             lab <- labelNew (Just "This file is opened in read-only mode because it comes from a non-local package")

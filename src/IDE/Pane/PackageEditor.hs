@@ -110,21 +110,21 @@ import GI.Gtk.Objects.Window
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Enums
        (ShadowType(..), WindowPosition(..), ButtonsType(..),
-        MessageType(..), ResponseType(..), FileChooserAction(..))
+        MessageType(..), ResponseType(..), FileChooserAction(..),
+        Orientation(..))
 import GI.Gtk.Objects.Dialog
        (Dialog(..), constructDialogUseHeaderBar, dialogGetActionArea, dialogGetContentArea)
 import Data.GI.Base (on, unsafeCastTo, set, new')
-import GI.Gtk.Objects.Box (boxPackEnd, Box(..))
+import GI.Gtk.Objects.Box (boxNew, boxPackEnd, Box(..))
 import GI.Gtk.Objects.Widget
        (widgetSetSensitive, toWidget, widgetDestroy, widgetShowAll,
         widgetGrabDefault, setWidgetCanDefault)
 import GI.Gtk.Objects.MessageDialog
        (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
         MessageDialog(..))
-import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
 import GI.Gtk.Objects.Notebook (Notebook(..))
-import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
-import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
+import GI.Gtk.Objects.ButtonBox (buttonBoxNew)
+import GI.Gtk.Objects.Button (onButtonClicked, buttonNewWithLabel)
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
 import GI.Gtk.Objects.CellRendererText (setCellRendererTextText)
 
@@ -599,7 +599,7 @@ toEditor pd =
 --
 
 data PackagePane             =   PackagePane {
-    packageBox              ::   VBox,
+    packageBox              ::   Box,
     packageNotifer          ::   Notifier
 } deriving Typeable
 
@@ -678,13 +678,13 @@ builder' :: FilePath ->
     IDEM (Maybe PackagePane,Connections)
 builder' packageDir packageD packageDescr afterSaveAction initialPackagePath modules packageInfos fields
     origPackageD panePath nb window  = reifyIDE $ \ ideR -> do
-    vb      <-  vBoxNew False 0
-    bb      <-  hButtonBoxNew
-    save    <- buttonNewFromStock "gtk-save"
+    vb      <-  boxNew OrientationVertical 0
+    bb      <-  buttonBoxNew OrientationHorizontal
+    save    <- buttonNewWithLabel "gtk-save"
     widgetSetSensitive save False
-    closeB  <- buttonNewFromStock "gtk-close"
-    addB    <- buttonNewFromStock (__ "Add Build Info")
-    removeB <- buttonNewFromStock (__ "Remove Build Info")
+    closeB  <- buttonNewWithLabel "gtk-close"
+    addB    <- buttonNewWithLabel (__ "Add Build Info")
+    removeB <- buttonNewWithLabel (__ "Remove Build Info")
     label   <-  labelNew (Nothing :: Maybe Text)
     boxPackStart' bb addB PackNatural 0
     boxPackStart' bb removeB PackNatural 0
