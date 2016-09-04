@@ -177,8 +177,8 @@ import GI.Gdk.Structs.Atom (atomIntern)
 import GI.Gdk.Structs.EventButton (getEventButtonType)
 import GI.Gdk.Enums (EventType(..))
 import GI.Gtk
-       (infoBarAddButton, boxPackStart, vBoxNew, Container(..),
-        infoBarSetShowCloseButton, containerAdd, infoBarGetContentArea,
+       (boxPackStart, vBoxNew, Container(..),
+        containerAdd, infoBarGetContentArea,
         labelNew, infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 
