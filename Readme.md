@@ -70,11 +70,17 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 **Step 4**: Build and Run Leksah
 
-    ./leksah.sh
-
-On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
+##### OS X using MacPorts 
+Run `leksah.sh` like
 
     XDG_DATA_DIRS=/opt/local/share ./leksah.sh
+
+##### Other OS
+Run
+
+    ./leksah.sh
+
+
 
 #### Using `stack build` instead of `cabal new-build`
 
