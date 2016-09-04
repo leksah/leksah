@@ -877,15 +877,19 @@ checkModTime buf = do
                                                         revert buf
                                                         modifyIDE_ $ \ide -> ide{prefs = (prefs ide) {autoLoad = True}}
                                                         return (False, True)
-                                                    AnotherResponseType 3 -> do
-                                                        nmt2 <- liftIO $ getModificationTime fn
-                                                        liftIO $ writeIORef (modTime buf) (Just nmt2)
-                                                        return (True, True)
+                                                    AnotherResponseType 3 -> dontLoad fn
+                                                    ResponseTypeDeleteEvent -> dontLoad fn
                                                     _              -> return (False, False)
+
                                     else return (False, False)
                         else return (False, False)
                 Nothing -> return (False, False)
 
+    where
+        dontLoad fn = do
+            nmt2 <- liftIO $ getModificationTime fn
+            liftIO $ writeIORef (modTime buf) (Just nmt2)
+            return (True, True)
 setModTime :: IDEBuffer -> IDEAction
 setModTime buf = do
     let name = paneName buf
