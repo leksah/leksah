@@ -71,8 +71,6 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 **Step 4**: Build and Run Leksah
 
     ./leksah.sh
-    
-(the Cabal library has to be installed seperately because of a [cabal bug](https://github.com/haskell/cabal/issues/3436))
 
 On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
 
