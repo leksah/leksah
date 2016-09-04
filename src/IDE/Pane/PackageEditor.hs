@@ -285,6 +285,7 @@ newPackageDialog parent workspaceDir = do
     (widget,inj,ext,_) <- liftIO $ buildEditor (packageFields workspaceDir)
                                         (NewPackage "" workspaceDir Nothing)
     okButton <- dialogAddButton' dia (__"Create Package") ResponseTypeOk
+    dialogSetDefaultResponse' dia ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
     boxPackStart' upper widget PackGrow 7
     setWidgetCanDefault okButton True
@@ -428,6 +429,7 @@ clonePackageSourceDialog parent workspaceDir = do
     (widget,inj,ext,_) <- liftIO $ buildEditor (cloneFields packages workspaceDir)
                                         (ClonePackageSourceRepo "" workspaceDir)
     okButton <- dialogAddButton' dia (__"Copy Package") ResponseTypeOk
+    dialogSetDefaultResponse' dia ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
     boxPackStart' upper widget PackGrow 7
     setWidgetCanDefault okButton True

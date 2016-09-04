@@ -1362,6 +1362,7 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
     (widget,inj,ext,_) <- liftIO $ buildEditor (moduleFields sourceRoots hasLib exesTests)
                                         (AddModule modString (head sourceRoots) (Just False) Set.empty)
     okButton <- dialogAddButton' dia (__"Add Module") ResponseTypeOk
+    dialogSetDefaultResponse' dia ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
 
     errorLabel <- labelNew Nothing

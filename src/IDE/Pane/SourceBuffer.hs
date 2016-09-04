@@ -177,8 +177,8 @@ import GI.Gdk.Structs.Atom (atomIntern)
 import GI.Gdk.Structs.EventButton (getEventButtonType)
 import GI.Gdk.Enums (EventType(..))
 import GI.Gtk
-       (infoBarAddButton, boxPackStart, vBoxNew, Container(..),
-        infoBarSetShowCloseButton, containerAdd, infoBarGetContentArea,
+       (boxPackStart, vBoxNew, Container(..),
+        containerAdd, infoBarGetContentArea,
         labelNew, infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 
@@ -1154,6 +1154,7 @@ fileClose' nb _ ebuf currentBuffer i = do
                 windowSetTransientFor md (Just window)
                 dialogAddButton' md (__ "_Save") ResponseTypeYes
                 dialogAddButton' md (__ "_Don't Save") ResponseTypeNo
+                dialogSetDefaultResponse' md ResponseTypeYes
                 setWindowWindowPosition md WindowPositionCenterOnParent
                 resp <- dialogRun' md
                 widgetDestroy md
@@ -1281,6 +1282,7 @@ filePrint' nb _ ebuf currentBuffer _ = do
                                                 <> "?"
         windowSetTransientFor md (Just window)
         dialogAddButton' md (__"_Print") ResponseTypeYes
+        dialogSetDefaultResponse' md ResponseTypeYes
         dialogAddButton' md (__"_Don't Print") ResponseTypeNo
         setWindowWindowPosition md WindowPositionCenterOnParent
         resp <- dialogRun' md
@@ -1305,6 +1307,7 @@ filePrint' nb _ ebuf currentBuffer _ = do
                                                     <> "?"
                     windowSetTransientFor md (Just window)
                     dialogAddButton' md (__"_Save") ResponseTypeYes
+                    dialogSetDefaultResponse' md ResponseTypeYes
                     dialogAddButton' md (__"_Don't Save") ResponseTypeNo
                     dialogAddButton' md (__"_Cancel Printing") ResponseTypeCancel
                     setWindowWindowPosition md WindowPositionCenterOnParent
