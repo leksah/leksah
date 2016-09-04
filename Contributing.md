@@ -1,8 +1,8 @@
-Contributing to Leksah 
+Contributing to Leksah
 ===
 *This document is still work in progress*
 
-This document is meant to get you started hacking on the Leksah code base. 
+This document is meant to get you started hacking on the Leksah code base.
 
 * Join us at `#leksah` on on freenode if you have any questions
 
@@ -20,7 +20,7 @@ Making a contribution
 ===
 
 1. Have a look at the [issue tracker](https://github.com/leksah/leksah/issues) or think of something new
-2. Create a new branch to work in 
+2. Create a new branch to work in
     ```
     git checkout -b my-branch-name
     ```
@@ -116,7 +116,7 @@ Used when writing IDE actions that work with the open workspace. This is impleme
 type WorkspaceAction = WorkspaceM ()
 
 -- When no workspace open, prompts the user to open one
-workspaceTry :: WorkspaceAction -> IDEAction 
+workspaceTry :: WorkspaceAction -> IDEAction
 -- when no workspace open, fails with a message in the log pane
 workspaceTryQuiet :: WorkspaceAction -> IDEAction
 ask :: WorkspaceM Workspace
@@ -163,7 +163,7 @@ tryDebugQuiet :: DebugAction -> PackageAction
 
 ## Events
 
-Leksah has a mechanism for triggering and handling events. 
+Leksah has a mechanism for triggering and handling events.
 
 ===
 
@@ -201,25 +201,25 @@ TODO
 
 ## Panes
 
-The `ltk` library defines a set of typeclasses for panes. For every pane in the IDE there is a seperate file in [src/IDE/Pane/](https://github.com/leksah/leksah/tree/master/src/IDE/Pane) which implements these. 
+The `ltk` library defines a set of typeclasses for panes. For every pane in the IDE there is a seperate file in [src/IDE/Pane/](https://github.com/leksah/leksah/tree/master/src/IDE/Pane) which implements these.
 
 ===
 
-### [`class Pane p m`](http://hackage.haskell.org/package/ltk-0.15.0.4/docs/Graphics-UI-Frame-Panes.html#t:Pane)
+### [`class Pane p m`](http://hackage.haskell.org/package/ltk/docs/Graphics-UI-Frame-Panes.html#t:Pane)
 An instance of this typeclass defines the functions for identifying the pane of type `p`, operated on in monad `m` (all current panes use `IDEM`). Most panes consist mainly of some data and some GTK widgets.
 
 ===
 
-### [`class RecoverablePane p s m`](http://hackage.haskell.org/package/ltk-0.15.0.4/docs/Graphics-UI-Frame-Panes.html#t:RecoverablePane)
+### [`class RecoverablePane p s m`](http://hackage.haskell.org/package/ltk/docs/Graphics-UI-Frame-Panes.html#t:RecoverablePane)
 An instance of this typeclass can restore the pane representation (of type `p`) after restarting the IDE. Every pane has a piece of state (of type `s`) that will be saved to disk and reloaded on startup. For instance, the pane for the text editor uses the following type to save its state:
 
 ```haskell
 -- | State for a buffer that points to a file on disk,
 -- or an unsaved file
-data BufferState            =   BufferState 
+data BufferState            =   BufferState
                                     FilePath -- ^ The opened file
                                     Int      -- ^ Cursor position (amount of characters)
-                            |   BufferStateTrans 
+                            |   BufferStateTrans
                                     Text     -- ^ The buffer name
                                     Text     -- ^ The text in the buffer
                                     Int      -- ^ Cursor position (amount of characters)
@@ -244,12 +244,12 @@ displayPane :: RecoverablePane p st IDEM
             -> Bool      -- ^ Whether it should also grab the focus
             -> IDEAction
 closePane :: RecoverablePane p st IDEM => p -> IDEM Bool
-``` 
+```
 
 
 ### [data IDEBuffer](https://github.com/leksah/leksah/blob/master/src/IDE/BufferMode.hs#L57)
 
-This pane contains a text editor, it's confusingly located in `src/BufferMode.hs` while some of its instances are located in `src/Pane/SourceBuffer`. 
+This pane contains a text editor, it's confusingly located in `src/BufferMode.hs` while some of its instances are located in `src/Pane/SourceBuffer`.
 
 ```haskell
 data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
@@ -277,13 +277,13 @@ class TextEditor editor where
     data EditorView editor
     data EditorIter editor
     ...
-    
+
 ```
 The names of the associated types are based on those of Gtk Text Widget ([conceptual overview](https://developer.gnome.org/gtk3/stable/TextWidget.html)) as the type class is very much biased towards the GtkSourceView implementation:
 
 * `EditorBuffer editor` represents the text being edited
     * Some related class methods:
-    
+
       ```haskell
       getModified :: EditorBuffer editor -> IDEM Bool
       getLineCount :: EditorBuffer editor -> IDEM Int
@@ -291,7 +291,7 @@ The names of the associated types are based on those of Gtk Text Widget ([concep
 * `EditorView editor` is a widget that represents the GTK widget
     * The corresponding buffer of a view is obtained by `getBuffer :: EditorView editor -> IDEM (EditorBuffer editor)`
     * Some related class methods:
-    
+
       ```haskell
       setShowLineNumbers :: EditorView editor -> Bool -> IDEM ()
       setTabWidth :: EditorView editor -> Int -> IDEM ()
@@ -299,7 +299,7 @@ The names of the associated types are based on those of Gtk Text Widget ([concep
       ```
 * `EditorIter editor` is a location in the source buffer
    * Some related class methods:
-   
+
      ```haskell
      getSlice :: EditorBuffer editor
                 -> EditorIter editor
@@ -308,8 +308,8 @@ The names of the associated types are based on those of Gtk Text Widget ([concep
                 -> IDEM Text
      selectRange :: EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM ()
      ```
-     
-     
+
+
 ## Other terms
 
 | Term | Description|
