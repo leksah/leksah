@@ -313,6 +313,7 @@ isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
 
 buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
+    liftIO $ debugM "leksah" "buildPackage"
     ideR      <- ask
     prefs     <- readIDE prefs
     maybeDebug <- readIDE debugState
