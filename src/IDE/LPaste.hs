@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings#-}
-module IDE.LPaste where
+module IDE.LPaste (uploadToLpaste) where
 
 import IDE.Core.State
 import IDE.Core.Types
