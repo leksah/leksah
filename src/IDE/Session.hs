@@ -204,46 +204,22 @@ defaultSession = SessionState {
                                       , detachedSize = Nothing}
                                     (HorizontalP
                                         TerminalP {
-                                            paneGroups = Map.fromList [
-                                                ("Debug",HorizontalP
-                                                    TerminalP {
-                                                        paneGroups = Map.fromList []
-                                                      , paneTabs = Nothing
-                                                      , currentPage = -1
-                                                      , detachedId = Nothing
-                                                      , detachedSize = Nothing}
-                                                    TerminalP {
-                                                        paneGroups = Map.fromList []
-                                                      , paneTabs = Just TopP
-                                                      , currentPage = -1
-                                                      , detachedId = Nothing
-                                                      , detachedSize = Nothing} 167)]
+                                            paneGroups = Map.fromList []
                                           , paneTabs = Just TopP
-                                          , currentPage = 2
+                                          , currentPage = -1
                                           , detachedId = Nothing
                                           , detachedSize = Nothing}
                                         TerminalP {
                                             paneGroups = Map.fromList []
                                           , paneTabs = Just TopP
-                                          , currentPage = 1
+                                          , currentPage = -1
                                           , detachedId = Nothing
-                                          , detachedSize = Nothing} 456) 693
-    ,   population          =   [ (Just (InfoSt (InfoState Nothing)),[SplitP RightP,SplitP BottomP])
-                                , (Just (LogSt LogState),[SplitP RightP,SplitP BottomP])
-                                , (Just (ModulesSt
-                                    (ModulesState 200 (SystemScope,False) (Nothing,Nothing)
-                                        ExpanderState {
-                                            packageExp = ([],[])
-                                          , packageExpNoBlack = ([],[])
-                                          , packageDExp = ([],[])
-                                          , packageDExpNoBlack = ([],[])
-                                          , workspaceExp = ([],[])
-                                          , workspaceExpNoBlack = ([],[])
-                                          , workspaceDExp = ([],[])
-                                          , workspaceDExpNoBlack = ([],[])
-                                          , systemExp = ([],[])
-                                          , systemExpNoBlack = ([],[])})),[SplitP RightP,SplitP TopP])
-                                , (Just (WorkspaceSt WorkspaceState),[SplitP RightP,SplitP BottomP])]
+                                          , detachedSize = Nothing}
+                                        456)
+                                  250
+    ,   population          =   [ (Just (WorkspaceSt WorkspaceState),[SplitP LeftP])
+
+                                ]
     ,   windowSize          =   (1024,768)
     ,   fullScreen          =   False
     ,   completionSize      =   (750,400)

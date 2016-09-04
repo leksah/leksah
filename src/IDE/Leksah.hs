@@ -180,11 +180,11 @@ realMain yiConfig =
     dataDir         <- getDataDir
     args            <-  getArgs
 
-    (o,files)       <-  ideOpts $ map T.pack args
+    (flags,files)       <-  ideOpts $ map T.pack args
     isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
     let sessions      =   mapMaybe (\case
                                         SessionN s -> Just s
-                                        _          -> Nothing) o
+                                        _          -> Nothing) flags
 
     let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) $ map T.unpack files
     let workspaceFPs  =   filter (\f -> snd (splitExtension f) == leksahWorkspaceFileExtension) $ map T.unpack files
@@ -208,10 +208,10 @@ realMain yiConfig =
                                         then standardSessionFilename
                                         else emptySessionFilename
 
-    sessionFP    <-  if  EmptySession `elem` o
+    sessionFP    <-  if  EmptySession `elem` flags
                                 then getConfigFilePathForLoad
                                                         emptySessionFilename Nothing dataDir
-                                else if DefaultSession `elem` o
+                                else if DefaultSession `elem` flags
                                         then getConfigFilePathForLoad
                                                         standardSessionFilename Nothing dataDir
                                         else case mbWSessionFP of
@@ -220,19 +220,19 @@ realMain yiConfig =
                                                                     ssession Nothing dataDir
     let verbosity'      =  mapMaybe (\case
                                         Verbosity s -> Just s
-                                        _           -> Nothing) o
+                                        _           -> Nothing) flags
     let verbosity       =  case verbosity' of
                                [] -> INFO
                                h:_ -> read $ T.unpack h
     updateGlobalLogger rootLoggerName (setLevel verbosity)
-    when (VersionF `elem` o)
+    when (VersionF `elem` flags)
         (sysMessage Normal $ "Leksah the Haskell IDE, version " <> T.pack (showVersion version))
-    when (Help `elem` o)
+    when (Help `elem` flags)
         (sysMessage Normal $ "Leksah the Haskell IDE " <> T.pack (usageInfo header options))
 
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
-    when (notElem VersionF o && notElem Help o)
+    when (notElem VersionF flags && notElem Help flags)
         (startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs  prefs isFirstStart)
 
 handleExceptions inner =

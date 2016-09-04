@@ -1,20 +1,19 @@
 Version of session file format:
-               1
+               2
 Time of storage:
-               "Fri Feb 26 17:11:46 CET 2010"
-Layout:        VerticalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 1, detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = fromList [("Browser",TerminalP {paneGroups = fromList [], paneTabs = Nothing, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}), ("Debug",HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Nothing, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 1, detachedId = Nothing, detachedSize = Nothing}) 206)], paneTabs = Just TopP, currentPage = 2, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 1, detachedId = Nothing, detachedSize = Nothing}) 547) 733
-Population:    [(Just (InfoSt (InfoState Nothing)),[SplitP RightP,SplitP BottomP]),(Just (LogSt LogState),[SplitP RightP,SplitP BottomP]),(Just (ModulesSt (ModulesState 286 (SystemScope,False) (Nothing,Nothing) (ExpanderState {packageExp = ([],[]), packageExpNoBlack = ([],[]), packageDExp = ([],[]), packageDExpNoBlack = ([],[]), workspaceExp = ([],[]), workspaceExpNoBlack = ([],[]), workspaceDExp = ([],[]), workspaceDExpNoBlack = ([],[]), systemExp = ([],[]), systemExpNoBlack = ([],[])}))),[SplitP RightP,SplitP TopP,GroupP "Browser"]),(Just (WorkspaceSt WorkspaceState),[SplitP RightP,SplitP BottomP])]
-Window size:   (1076,728)
-Full screen:   True
-Dark:          True
+               "Sun Sep  4 20:03:20 CEST 2016"
+Layout:        VerticalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = -1, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 578) 336
+Population:    [(Just (ErrorsSt (ErrorsState {showErrors = True, showWarnings = True, showSuggestions = True, showTestFails = True})),[SplitP RightP,SplitP BottomP]),(Just (LogSt LogState),[SplitP RightP,SplitP BottomP]),(Just (WorkspaceSt WorkspaceState),[SplitP LeftP])]
+Window size:   (1383,850)
+Full screen:   False
 Completion size:
                (750,400)
-Workspace:     Nothing
+Workspace:     Just "/home/jacco/leksah.lkshw"
 Active pane:   Nothing
 Toolbar visible:
                True
-FindbarState:  (True,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = False, regex = False, lineNr = 1})
+FindbarState:  (False,FindState {entryStr = "maximi", entryHist = ["maximi","defaultsession"], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, regex = False, lineNr = 1})
 Recently opened files:
-               []
+               ["/home/jacco/.leksah-0.16/leksah-welcome/src/Main.hs","/home/jacco/projects/leksah/src/IDE/Session.hs","/home/jacco/projects/leksah/doc/Keybindings.svg"]
 Recently opened workspaces:
                []

@@ -38,9 +38,9 @@ Breakpoint Text Dark Background:
 Lint Text Dark Background:
                Color 0 15000 0
 Text Editor:   "GtkSourceView"
-LogView Font:  "Sans 12"
+LogView Font:  "Monospace 10"
 Workspace Font:
-               "Sans 12"
+               "Sans 10"
 Window default size:
                (1024,800)
      --Default size of the main ide window specified as pair (int,int)
