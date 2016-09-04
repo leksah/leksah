@@ -43,7 +43,7 @@ You will also need to build a MacPorts compatible of GHC.  First install GHC som
     make
     make install
 
-Then make sure the $HOME/ghc-8.0.1 is in your $PATH.
+Then make sure the $HOME/ghc-8.0.1/bin is in your $PATH.
 
 ##### OS X Homebrew
 Homebrew Does not have WebKitGTK 2.4.x (newer versions of WebKitGTK only have WebKit 2 interface)
