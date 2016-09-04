@@ -57,6 +57,7 @@ import GI.Gdk.Structs.EventMotion
 import GI.Gdk.Structs.EventButton
        (getEventButtonXRoot, getEventButtonY, getEventButtonX,
         getEventButtonState, getEventButtonTime)
+import GI.Gdk.Objects.Window (windowGetOrigin)
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
@@ -122,10 +123,13 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                     return ()
                 return True
     lineNumberBugFix <- liftIO $ newIORef Nothing
-    let fixBugWithX mods isHint (eventX, eventY) ptrx = do
+    let fixBugWithX mods isHint (eventX, eventY) ptrx' = do
+            Just window <- widgetGetWindow sw
+            (_, ox, _) <- windowGetOrigin window
+            let ptrx = ptrx' - (fromIntegral ox)
             let hasNoControlModifier = mapControlCommand ModifierTypeControlMask `notElem` mods
             lnbf <- readIORef lineNumberBugFix
-            -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",isHint,ptrx - fromMaybe (-1000) lnbf , eventX, ptrx, lnbf, hasNoControlModifier)
+            -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",isHint, eventX, ptrx, lnbf, ox, hasNoControlModifier)
             -- when (isHint && hasNoControlModifier) $
             when (abs (ptrx - eventX) > 2) $
                 -- get difference between event X and pointer x
