@@ -63,6 +63,7 @@ data-files:
     pics/ide_error_next.png
     pics/ide_error_prev.png
     pics/ide_function.png
+    pics/ide_git.png
     pics/ide_instance.png
     pics/ide_konstructor.png
     pics/ide_make.png

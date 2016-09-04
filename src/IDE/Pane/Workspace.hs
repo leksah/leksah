@@ -131,6 +131,7 @@ import Data.GI.Gtk.ModelView.CustomStore
 import Data.Int (Int32)
 import Data.GI.Gtk.ModelView.Types
        (treePathGetIndices', treePathNewFromIndices')
+import VCSWrapper.Git as Git
 
 
 -- | The data for a single record in the Workspace Pane
@@ -143,6 +144,7 @@ data WorkspaceRecord =
   | AddSourceRecord IDEPackage
   | ComponentsRecord
   | ComponentRecord Text
+  | GitRecord
   deriving (Eq)
 
 instance Ord WorkspaceRecord where
@@ -165,8 +167,8 @@ toMarkup record pkg = do
     mbActivePackage   <- readIDE activePack
     mbActiveComponent <- readIDE activeExe
 
-    return $ case record of
-     (PackageRecord p) ->
+    case record of
+     (PackageRecord p) -> return $
         let active = Just pkg == mbActivePackage
             pkgText = (if active then bold else id)
                           (packageIdentifierToString (ipdPackageId p))
@@ -177,21 +179,30 @@ toMarkup record pkg = do
                                 else ""
             pkgDir = gray . T.pack $ ipdPackageDir p
         in (pkgText <> " " <> componentText <> " " <> pkgDir)
-     (FileRecord f) -> T.pack $ takeFileName f
-     (DirRecord f _) | ipdPackageDir pkg == f -> "Files"
-                     | otherwise -> T.pack $ last (splitDirectories f)
-     AddSourcesRecord -> "Source Dependencies"
+     (FileRecord f) -> return $ T.pack $ takeFileName f
+     (DirRecord f _)
+         | ipdPackageDir pkg == f -> return $ "Files"
+         | otherwise -> return $ T.pack $ last (splitDirectories f)
+     AddSourcesRecord -> return $ "Source Dependencies"
      (AddSourceRecord p) -> do
         let pkgText = packageIdentifierToString (ipdPackageId p)
-            dirText = gray (T.pack (ipdPackageDir p))
-        pkgText <> " " <> dirText
-     ComponentsRecord -> "Components"
+        let dirText = gray (T.pack (ipdPackageDir p))
+        return $ pkgText <> " " <> dirText
+     ComponentsRecord -> return $ "Components"
      (ComponentRecord comp) -> do
         let active = Just pkg == mbActivePackage &&
                          (mbActiveComponent == Nothing && comp == "library"
                              ||
                           Just comp == mbActiveComponent)
-        (if active then bold else id) comp
+        return $ (if active then bold else id) comp
+     GitRecord -> do
+        let dir = ipdPackageDir pkg
+        let conf = Git.makeConfig (Just dir) Nothing Nothing
+        liftIO $ Git.runVcs conf $ do
+             branch <- Git.localBranchesSafe
+             case branch of
+                (Right (branch,_)) -> return branch
+                (Left _)           -> return "No Git project"
     where
         bold str = "<b>" <> str <> "</b>"
         italic str = "<i>" <> str <> "</i>"
@@ -211,6 +222,7 @@ toIcon record = case record of
     ComponentsRecord -> "ide_component"
     AddSourcesRecord -> "ide_source_dependency"
     AddSourceRecord _ -> "ide_package"
+    GitRecord         -> "ide_git"
     _ -> ""
 
 
@@ -438,6 +450,7 @@ children record = case record of
     PackageRecord pkg   -> do
         p <- ask
         return [ ComponentsRecord
+               , GitRecord
                , AddSourcesRecord
                , DirRecord (ipdPackageDir p) False]
     _                   -> return []
