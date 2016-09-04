@@ -794,17 +794,6 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a{useVado = b})
             boolEditor
             (\i -> return ())
-
-        -- cabal-dev is noot supported any more leaving this here for now
-        -- so the we don't have to udate the prefs files.
-        , mkFieldPP
-            (paraName <<<- ParaName (__ "Use cabal-dev") $ emptyParams)
-            (PP.text . show)
-            boolParser
-            (const False)
-            (\b a -> a)
-            boolEditor
-            (\i -> return ())
     ]),
     (__ "Debug", VFDPP emptyParams [
            mkFieldPP
