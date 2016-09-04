@@ -4,7 +4,7 @@ module IDE.LPaste where
 import IDE.Core.State
 import IDE.Core.Types
 import IDE.Pane.SourceBuffer
-import IDE.Utils.GUIUtils (showDialog, showInputDialog)
+import IDE.Utils.GUIUtils (showDialog, showInputDialog, showDialogOptions)
 
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe
@@ -54,16 +54,22 @@ uploadSelected str = do
     where
         handler e = return . Left  . ErrorMisc $ show (e :: SomeException)
 
-
 uploadToLpaste :: IDEM ()
 uploadToLpaste = do
     maybeText <- selectedTextOrCurrentLine
+    liftIO $ showDialogOptions
+                "Confirm upload to lpaste.net?"
+                MessageTypeQuestion
+                [("OK", uploadToLpaste' maybeText), ("Cancel", return ())]
+                (Just 0)
+
+uploadToLpaste' :: Maybe T.Text -> IO ()
+uploadToLpaste' maybeText = do
     case maybeText of
         Just text -> do
-            mbLink <- liftIO $ uploadSelected $ T.unpack text
+            mbLink <- uploadSelected $ T.unpack text
             case mbLink of
-                Just link -> void . liftIO $ showInputDialog "LPaste link:" (T.pack link)
-                Nothing   -> liftIO $ showDialog ("Could not reach " <> T.pack baseUrl) MessageTypeError
-            return ()
+                Just link -> void $ showInputDialog "LPaste link:" (T.pack link)
+                Nothing   -> showDialog ("Could not reach " <> T.pack baseUrl) MessageTypeError
         Nothing ->
-            ideMessage Normal $ T.pack "Please select some text in the editor"
+            showDialog "Please select some text in the editor" MessageTypeError
