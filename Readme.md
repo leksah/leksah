@@ -34,7 +34,7 @@ or follow the instructions below.
 `sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkitgtk`
 
 ##### OS X MacPorts
-`sudo port install gobject-introspection webkit-gtk3-devel gtksourceview3`
+`sudo port install gobject-introspection webkit-gtk3 gtksourceview3`
 
 You will also need to build a MacPorts compatible of GHC.  First install GHC some other way then unpack the source for the GHC version you want to use and run:
 
@@ -74,8 +74,8 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 On OS X using MacPorts you may need to set `XDG_DATA_DIRS` like this:
 
-    XDG_DATA_DIRS=/opt/local/share cabal new-build exe:leksah-server exe:leksah
+    XDG_DATA_DIRS=/opt/local/share ./leksah.sh
 
 #### Using `stack build` instead of `cabal new-build`
 
-** NOTE : This is currently not working.  If you can make it work let us know how you did it. **
+** NOTE : Building Leksah with stack is currently not working.  If you can make it work let us know how you did it. **
