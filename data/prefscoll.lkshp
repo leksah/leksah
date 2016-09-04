@@ -1,9 +1,9 @@
 Paths under which haskell sources for packages may be found:
                []
 Unpack source for cabal packages to:
-               Just "~/.leksah-0.15/packageSources"
+               Just "~/.leksah-0.16/packageSources"
 URL from which to download prebuilt metadata:
-               "http://www.leksah.org"
+               "http://leksah.github.io"
 Strategy for downloading prebuilt metadata:
                RetrieveThenBuild
 Port number for leksah to comunicate with leksah-server:
