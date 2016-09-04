@@ -40,16 +40,18 @@ import IDE.Package
        (packageClean', buildPackage, packageConfig',
         packageTest', packageDoc', packageBench', packageInstall')
 import IDE.Core.Types
-       (IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
+       (ipdPackageName, IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
 import Control.Event (EventSource(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (void)
 import Control.Arrow ((***))
 import Data.Text (Text)
 import Distribution.Text (disp)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
+import System.Log.Logger (debugM)
 
 -- import Debug.Trace (trace)
 trace a b = b
@@ -103,12 +105,17 @@ moNoOp = MoComposed[]
 -- The finishOp will be applied to the last target after any op succeeded,
 -- but it is applied after restOp has been tried on the last target
 makePackages ::  MakeSettings -> [IDEPackage] -> MakeOp -> MakeOp -> MakeOp -> WorkspaceAction
-makePackages ms targets firstOp restOp  finishOp = trace ("makePackages : " ++ show firstOp ++ " " ++ show restOp) $ do
+makePackages ms targets firstOp restOp  finishOp = do
+    liftIO $ debugM "leksah" $ "makePackages : "
+            <> "targets = " <> show (map ipdPackageName targets)
+            <> ", fistOp = " <> show firstOp
+            <> ", restOp = " <> show restOp
     ws <- ask
     lift $ do
         prefs' <- readIDE prefs
         let plan = constrMakeChain ms ws targets firstOp restOp finishOp
-        trace ("makeChain : " ++ show plan) $ doBuildChain ms plan
+        liftIO $ debugM "leksah" $ "makePackages : makeChain : " <> show plan
+        doBuildChain ms plan
 
 -- ** Types
 

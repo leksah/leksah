@@ -499,6 +499,7 @@ backgroundMake = catchIDE (do
 
 makePackage ::  PackageAction
 makePackage = do
+  liftIO $ debugM "leksah" "makePackage"
   p <- ask
   liftIDE $ do
     getLog >>= bringPaneToFront
