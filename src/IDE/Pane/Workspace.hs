@@ -51,7 +51,8 @@ import System.Directory
 import IDE.Core.CTypes
        (Location(..), packageIdentifierToString)
 import Graphics.UI.Frame.Panes
-       (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
+       (PaneMonad(..), RecoverablePane(..), PanePath, RecoverablePane,
+        Pane(..))
 import Graphics.UI.Frame.ViewFrame (getMainWindow, getNotebook)
 import Graphics.UI.Editor.Basics (Connection(..))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -72,9 +73,9 @@ import System.FilePath
        makeRelative, splitDirectories)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Workspaces
-       (makePackage, workspaceAddPackage', workspaceRemovePackage,
-        workspaceActivatePackage, workspaceTry, workspaceTryQuiet,
-        packageTry)
+       (workspaceOpen, makePackage, workspaceAddPackage',
+        workspaceRemovePackage, workspaceActivatePackage, workspaceTry,
+        workspaceTryQuiet, packageTry)
 import Data.List
        (isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
@@ -109,13 +110,14 @@ import GI.Gtk.Objects.TreeView
         treeViewSetHeadersVisible, treeViewAppendColumn, treeViewSetModel,
         treeViewNew, TreeView(..))
 import GI.Gtk.Objects.Widget
-       (afterWidgetFocusInEvent, toWidget, widgetModifyFont)
+       (widgetHide, widgetShowAll, afterWidgetFocusInEvent, toWidget,
+        widgetModifyFont)
 import GI.Gtk.Objects.TreeViewColumn
        (treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnNew)
 import GI.Gtk.Enums
-       (MessageType(..), PolicyType(..), ShadowType(..),
-        TreeViewColumnSizing(..))
+       (PackType(..), PackType, Orientation(..), MessageType(..),
+        PolicyType(..), ShadowType(..), TreeViewColumnSizing(..))
 import GI.Gtk.Objects.CellRendererPixbuf
        (setCellRendererPixbufStockId, cellRendererPixbufNew)
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
@@ -125,13 +127,22 @@ import Data.GI.Gtk.ModelView.CellLayout
 import GI.Gtk.Objects.CellRendererText
        (setCellRendererTextMarkup, cellRendererTextNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
-import GI.Gtk.Objects.Container (containerAdd)
+import GI.Gtk.Objects.Container (containerRemove, containerAdd)
 import Data.GI.Gtk.ModelView.CustomStore
        (customStoreGetRow)
 import Data.Int (Int32)
 import Data.GI.Gtk.ModelView.Types
        (treePathGetIndices', treePathNewFromIndices')
 import VCSWrapper.Git.Safe as Git
+import GI.Gtk.Objects.Box
+       (boxSetChildPacking, boxPackStart, boxNew, Box(..))
+import Data.GI.Base.GObject (new')
+import GI.Gtk.Objects.Label (Label(..), labelNew)
+import Graphics.UI.Editor.Parameters (Packing(..), boxPackStart')
+import GI.Gtk.Objects.LinkButton
+       (onLinkButtonActivateLink, linkButtonNewWithLabel, LinkButton(..),
+        linkButtonActivateLinkClosure, linkButtonNew)
+import Data.GI.Base.Signals (SignalHandlerId)
 
 
 -- | The data for a single record in the Workspace Pane
@@ -270,7 +281,9 @@ canExpand record pkg = case record of
 
 -- | The representation of the Workspace pane
 data WorkspacePane        =   WorkspacePane {
-    scrolledView    ::   ScrolledWindow
+    box             ::   Box
+,   scrolledView    ::   ScrolledWindow
+,   noWsText        ::   LinkButton
 ,   treeView        ::   TreeView
 ,   recordStore     ::   ForestStore WorkspaceRecord
 } deriving Typeable
@@ -284,17 +297,58 @@ data WorkspaceState = WorkspaceState
 instance Pane WorkspacePane IDEM where
     primPaneName _  =   __ "Workspace"
     getAddedIndex _ =   0
-    getTopWidget    =   liftIO . toWidget . scrolledView
+    getTopWidget    =   liftIO . toWidget . box
     paneId b        =   "*Workspace"
 
 instance RecoverablePane WorkspacePane WorkspaceState IDEM where
     saveState p     =   return (Just WorkspaceState)
+
     recoverState pp WorkspaceState =   do
         nb      <-  getNotebook pp
-        buildPane pp nb builder
+        mbPane <- buildPane pp nb builder
+        return mbPane
+
     builder pp nb windows = do
-        ideR <- ask
+        ideR        <- ask
         recordStore <-  forestStoreNew []
+
+        -- Treeview
+        treeView    <- buildTreeView recordStore
+        sigIds      <- treeViewEvents recordStore treeView
+
+        -- Scrolled view
+        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindowSetShadowType scrolledView ShadowTypeIn
+        scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
+        containerAdd scrolledView treeView
+
+        -- "Open workspace" link
+        noWsText <- linkButtonNewWithLabel "Open a workspace" (Just "Open a workspace")
+        onLinkButtonActivateLink noWsText $ do
+            reflectIDE workspaceOpen ideR
+            return False
+
+        -- Box, top-level widget of the pane
+        box <- boxNew OrientationVertical 0
+        boxPackStart box scrolledView False True 0
+        boxPackStart box noWsText True True 0
+        -- Calling refreshWorkspacePane here does not work
+        -- since the GUI is not yet running. This created strange behaviour
+        -- where the workspace was split evenly while only one of the
+        -- widgets (ScrolledView/TreeView and Openworkspace link).
+        -- Instead we initialize the packing of the TreeView to not expand
+        -- and rely on the fact that refreshWorkspacePane is called
+        -- by the WorkspaceChanged event, and the packing of the two
+        -- widgets is changed there when swapping.
+
+
+        let wsPane = WorkspacePane {..}
+
+        return (Just wsPane, sigIds)
+
+
+buildTreeView :: ForestStore WorkspaceRecord -> IDEM TreeView
+buildTreeView recordStore = do
         treeView    <-  treeViewNew
         treeViewSetModel treeView (Just recordStore)
 
@@ -313,6 +367,7 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
                 $ setCellRendererPixbufStockId renderer2 . toIcon
 
         renderer1    <- cellRendererTextNew
+        ideR <- ask
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetDataFunc' col1 renderer1 recordStore $ \iter -> do
             record <- customStoreGetRow recordStore iter
@@ -322,18 +377,8 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
                 markup <- flip reflectIDE ideR $ toMarkup record pkg
                 forM_ mbPkg $ \pkg -> setCellRendererTextMarkup renderer1 markup
 
-        -- treeViewSetActiveOnSingleClick treeView True
-        treeViewSetHeadersVisible treeView False
-        sel <- treeViewGetSelection treeView
-        -- treeSelectionSetMode sel SelectionModeSingle
-
-        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
-        scrolledWindowSetShadowType scrolledView ShadowTypeIn
-        containerAdd scrolledView treeView
-        scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
-
         -- set workspace font
-        fd           <- case workspaceFont prefs of
+        fd <- case workspaceFont prefs of
             Just str ->  fontDescriptionFromString str
             Nothing  -> do
                 f    <- fontDescriptionNew
@@ -341,13 +386,18 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
                 return f
         widgetModifyFont treeView (Just fd)
 
-        let wsPane = WorkspacePane {..}
+         -- treeViewSetActiveOnSingleClick treeView True
+        treeViewSetHeadersVisible treeView False
+        sel <- treeViewGetSelection treeView
+        -- treeSelectionSetMode sel SelectionModeSingle
 
-        cid1 <- onIDE afterWidgetFocusInEvent treeView $ do
-            liftIDE $ makeActive wsPane
-            return True
+        return treeView
 
-        onTreeViewRowExpanded treeView $ \iter path -> do
+
+treeViewEvents :: ForestStore WorkspaceRecord -> TreeView -> IDEM [Connection]
+treeViewEvents recordStore treeView = do
+    ideR <- ask
+    onTreeViewRowExpanded treeView $ \iter path -> do
             record <- forestStoreGetValue recordStore path
             mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
             forM_ mbPkg $ \pkg -> do
@@ -355,23 +405,22 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
                     workspaceTryQuiet $ do
                         runPackage (refreshPackageTreeFrom recordStore treeView path) pkg
 
-        onTreeViewRowActivated treeView $ \path col -> do
-            record <- forestStoreGetValue recordStore path
-            mbPkg    <- flip reflectIDE ideR $ treePathToPackage recordStore path
-            forM_ mbPkg $ \pkg -> do
-                expandable <- flip reflectIDE ideR $ canExpand record pkg
-                case record of
-                        FileRecord f  -> void . flip reflectIDE ideR $
-                                             goToSourceDefinition' f (Location "" 1 0 1 0)
-                        ComponentRecord name -> flip reflectIDE ideR $ workspaceTryQuiet $
-                                                          workspaceActivatePackage pkg (Just name)
-                        _ -> when expandable $ do
-                                 void $ treeViewToggleRow treeView path
+    onTreeViewRowActivated treeView $ \path col -> do
+        record <- forestStoreGetValue recordStore path
+        mbPkg    <- flip reflectIDE ideR $ treePathToPackage recordStore path
+        forM_ mbPkg $ \pkg -> do
+            expandable <- flip reflectIDE ideR $ canExpand record pkg
+            case record of
+                    FileRecord f  -> void . flip reflectIDE ideR $
+                                         goToSourceDefinition' f (Location "" 1 0 1 0)
+                    ComponentRecord name -> flip reflectIDE ideR $ workspaceTryQuiet $
+                                                      workspaceActivatePackage pkg (Just name)
+                    _ -> when expandable $ do
+                             void $ treeViewToggleRow treeView path
 
-        cids2 <- treeViewContextMenu' treeView recordStore contextMenuItems
-        refresh wsPane
+    sigIds <- treeViewContextMenu' treeView recordStore contextMenuItems
+    return sigIds
 
-        return (Just wsPane, cid1:cids2)
 
 -- | Get the Workspace pane
 getWorkspacePane :: IDEM WorkspacePane
@@ -416,16 +465,28 @@ refreshWorkspacePane = do
     workspace <- getWorkspacePane
     refresh workspace
 
--- | Needed when building the pane, since getWorkspacePane does not
+-- | Seperately defined from refreshWorkspacePane, since getWorkspacePane does not
 -- work before the building is finished
 refresh :: WorkspacePane -> IDEAction
-refresh pane = do
-    let store = recordStore pane
-    let view  = treeView pane
+refresh WorkspacePane{..} = do
+    mbWs <- readIDE workspace
 
+    -- Depending on if there is a workspace, show the tree or a message to open one
+    case mbWs of
+        Nothing -> do
+            widgetHide scrolledView
+            boxSetChildPacking box scrolledView False False 0 PackTypeStart
+            widgetShowAll noWsText
+            boxSetChildPacking box noWsText True True 0 PackTypeStart
+
+        Just ws -> do
+            widgetHide noWsText
+            boxSetChildPacking box noWsText False False 0 PackTypeStart
+            widgetShowAll scrolledView
+            boxSetChildPacking box scrolledView True True 0 PackTypeStart
     workspaceTryQuiet $ do
         packages <- sort . wsPackages <$> ask
-        setChildren Nothing store view [] (map PackageRecord packages)
+        setChildren Nothing recordStore treeView [] (map PackageRecord packages)
 
 
 -- | Mutates the 'ForestStore' with the given TreePath as root to attach new

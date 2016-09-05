@@ -75,7 +75,7 @@ import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Data.Conduit (($$))
-import Control.Monad (void, when, unless, liftM)
+import Control.Monad (forM_, void, when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
@@ -289,6 +289,7 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
             void . idleAdd PRIORITY_DEFAULT $ do
                 startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
                                 startupPrefs isFirstStart
+
                 return False
     debugM "leksah" "starting mainGUI"
     Gtk.main
@@ -450,7 +451,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         windowSetDefaultSize win (fromIntegral x) (fromIntegral y)
         registerLeksahEvents
         (tbv,fbv) <- recoverSession sessionFP
-        workspaceOpenThis False  mbWorkspaceFP
+        forM_ mbWorkspaceFP (workspaceOpenThis False)
         mapM_ fileOpenThis sourceFPs
         wins <- getWindows
         mapM_ instrumentSecWindow (tail wins)
@@ -490,7 +491,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
             defaultExists <- liftIO $ doesFileExist defaultWorkspace
             if defaultExists
-                then workspaceOpenThis False (Just defaultWorkspace)
+                then workspaceOpenThis False defaultWorkspace
                 else workspaceNewHere defaultWorkspace
             workspaceTryQuiet $ void (workspaceAddPackage' welcomeCabal)
             fileOpenThis welcomeMain

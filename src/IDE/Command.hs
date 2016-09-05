@@ -552,7 +552,7 @@ updateRecentEntries = do
             else
                 forM_ existingRecentWorkspaces $ \s -> do
                     mi <- menuItemNewWithLabel $ T.pack s
-                    onMenuItemActivate mi $ reflectIDE (workspaceOpenThis True (Just s) >> showWorkspacePane) ideR
+                    onMenuItemActivate mi $ reflectIDE (workspaceOpenThis True s >> showWorkspacePane) ideR
                     menuShellAppend recentWorkspacesMenu mi
 
         nullToNothing (menuItemGetSubmenu recentWorkspacesItem) >>= \case

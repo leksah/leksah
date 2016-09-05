@@ -234,7 +234,7 @@ openBrowser url = do
     return ()
 
 -- | Show a text dialog with an Ok button and a specific messagetype
-showDialog :: Text -> MessageType -> IO ()
+showDialog :: MonadIO m => Text -> MessageType -> m ()
 showDialog msg msgType = do
     dialog <- new' MessageDialog [
         constructDialogUseHeaderBar 0,
@@ -247,16 +247,17 @@ showDialog msg msgType = do
 
 
 -- | Show an error dialog with an Ok button
-showErrorDialog :: Text -> IO ()
+showErrorDialog :: MonadIO m => Text -> m ()
 showErrorDialog msg = showDialog msg MessageTypeError
 
 
 -- | Show a dialog with custom buttons and callbacks
-showDialogOptions :: Text             -- ^ the message
+showDialogOptions :: MonadIO m
+                  => Text             -- ^ the message
                   -> MessageType      -- ^ type of dialog
-                  -> [(Text, IO ())]  -- ^ button text and corresponding actions
+                  -> [(Text, m ())]  -- ^ button text and corresponding actions
                   -> Maybe Int        -- ^ index of button that has default focus (0-based)
-                  -> IO ()
+                  -> m ()
 showDialogOptions msg msgType buttons mbIndex = do
     dialog <- new' MessageDialog [
         constructDialogUseHeaderBar 0,
@@ -274,6 +275,8 @@ showDialogOptions msg msgType buttons mbIndex = do
     case res of
         AnotherResponseType n | n >= 0 && n < length buttons -> map snd buttons !! n
         _ -> return ()
+
+
 
 
 -- | Show a simple dialog that asks the user for some text

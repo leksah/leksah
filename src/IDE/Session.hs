@@ -421,16 +421,15 @@ loadSession sessionPath = do
     deactivatePackage
     recentFiles'      <- readIDE recentFiles
     recentWorkspaces' <- readIDE recentWorkspaces
-    b <- fileCloseAll (\_ -> return True)
-    when b $ do
-        detachedCloseAll
-        paneCloseAll
-        groupsCloseAll
-        viewCollapseAll
-        recoverSession sessionPath
-        modifyIDE_ (\ ide -> ide{ recentFiles      = recentFiles'
-                                , recentWorkspaces = recentWorkspaces'})
-        return ()
+    fileCloseAll (\_ -> return True)
+    detachedCloseAll
+    paneCloseAll
+    groupsCloseAll
+    viewCollapseAll
+    recoverSession sessionPath
+    modifyIDE_ (\ ide -> ide{ recentFiles      = recentFiles'
+                            , recentWorkspaces = recentWorkspaces'})
+    return ()
 
 detachedCloseAll :: IDEAction
 detachedCloseAll = do
@@ -527,7 +526,7 @@ recoverSession sessionPath = catchIDE (do
                             (\(_ :: SomeException) -> return defaultSession)
         uncurry (windowSetDefaultSize wdw) . (fromIntegral *** fromIntegral) $ windowSize sessionSt
         applyLayout (layoutS sessionSt)
-        workspaceOpenThis False (workspacePath sessionSt)
+        forM_ (workspacePath sessionSt) (workspaceOpenThis False)
         liftIO $ debugM "leksah" "recoverSession calling populate"
         populate (population sessionSt)
         liftIO $ debugM "leksah" "recoverSession calling setCurrentPages"

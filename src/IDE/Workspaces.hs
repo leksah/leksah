@@ -48,7 +48,7 @@ import Graphics.UI.Editor.Parameters
 import Control.Monad (filterM, void, unless, when, liftM)
 import Data.Maybe (isJust, fromJust, catMaybes)
 import IDE.Utils.GUIUtils
-    (chooseFile, chooseSaveFile, __)
+       (showDialog, showDialogOptions, chooseFile, chooseSaveFile, __)
 import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
         dropExtension, takeBaseName, addExtension, takeExtension,
@@ -139,15 +139,14 @@ workspaceNewHere filePath =
                             wsName = T.pack $ takeBaseName cPath,
                             wsFile = cPath}
         liftIO $ writeFields cPath newWorkspace Writer.workspaceDescr
-        workspaceOpenThis False (Just cPath)
+        workspaceOpenThis False cPath
         return ()
 
 workspaceOpen :: IDEAction
 workspaceOpen = do
     window     <- getMainWindow
     mbFilePath <- liftIO $ chooseWorkspaceFile window
-    workspaceOpenThis True mbFilePath
-    return ()
+    forM_ mbFilePath (workspaceOpenThis True)
 
 workspaceTryQuiet :: WorkspaceAction -> IDEAction
 workspaceTryQuiet f = do
@@ -193,7 +192,7 @@ workspaceTry f = do
                 AnotherResponseType 3 -> do
                     defaultExists <- liftIO $ doesFileExist defaultWorkspace
                     if defaultExists
-                        then workspaceOpenThis True (Just defaultWorkspace)
+                        then workspaceOpenThis True defaultWorkspace
                         else workspaceNewHere defaultWorkspace
                     postAsyncIDE $ workspaceTryQuiet f
                 _  -> return ()
@@ -201,43 +200,35 @@ workspaceTry f = do
 chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
 chooseWorkspaceFile window = chooseFile window (__ "Select leksah workspace file (.lkshw)") Nothing [("Leksah Workspace Files", ["*.lkshw"])]
 
-workspaceOpenThis :: Bool -> Maybe FilePath -> IDEAction
-workspaceOpenThis askForSession mbFilePath =
-    case mbFilePath of
-        Nothing -> return ()
-        Just filePath -> do
-            liftIO . debugM "leksah" $ "workspaceOpenThis " ++ show askForSession ++ " " ++ filePath
-            let spath =  dropExtension filePath ++ leksahSessionFileExtension
-            workspaceClose
-            exists <- liftIO $ doesFileExist spath
-            wantToLoadSession <-
-                if exists && askForSession
-                    then do
-                        window <- getMainWindow
-                        md <- new' MessageDialog [
-                            constructDialogUseHeaderBar 0,
-                            constructMessageDialogButtons ButtonsTypeNone]
-                        setMessageDialogMessageType md MessageTypeQuestion
-                        setMessageDialogText md $ __ "There are session settings stored with this workspace."
-                        windowSetTransientFor md (Just window)
-                        dialogAddButton' md (__ "_Ignore Session") ResponseTypeCancel
-                        dialogAddButton' md (__ "_Load Session") ResponseTypeYes
-                        dialogSetDefaultResponse' md ResponseTypeYes
-                        setWindowWindowPosition md WindowPositionCenterOnParent
-                        rid <- dialogRun' md
-                        widgetDestroy md
-                        return $ rid == ResponseTypeYes
-                    else return False
-            if wantToLoadSession
-                then void (triggerEventIDE (LoadSession spath))
-                else do
-                    ideR <- ask
-                    catchIDE (do
-                        workspace <- readWorkspace filePath
-                        Writer.setWorkspace (Just workspace {wsFile = filePath})
-                        VCSWS.onWorkspaceOpen workspace)
-                           (\ (e :: Exc.SomeException) -> reflectIDE
-                                (ideMessage Normal (T.pack $ printf (__ "Can't load workspace file %s\n%s") filePath (show e))) ideR)
+workspaceOpenThis :: Bool -> FilePath -> IDEAction
+workspaceOpenThis askForSession filePath = do
+    liftIO . debugM "leksah" $ "workspaceOpenThis " ++ show askForSession ++ " " ++ filePath
+    exists <- liftIO $ doesFileExist sessionPath
+    if exists
+        then workspaceClose >> if askForSession
+            then sessionDialog
+            else openWithoutSession
+        else
+            showDialog ("Could not find workspace file at " <> T.pack filePath) MessageTypeError
+    where
+        sessionPath = dropExtension filePath ++ leksahSessionFileExtension
+
+        openWithoutSession = do
+            ideR <- ask
+            catchIDE (do
+                workspace <- readWorkspace filePath
+                Writer.setWorkspace (Just workspace {wsFile = filePath})
+                VCSWS.onWorkspaceOpen workspace)
+                   (\ (e :: Exc.SomeException) -> reflectIDE
+                        (ideMessage Normal (T.pack $ printf (__ "Can't load workspace file %s\n%s") filePath (show e))) ideR)
+
+        sessionDialog = showDialogOptions
+                            "There are session settings stored with this workspace."
+                            MessageTypeQuestion
+                            [ ("_Ignore Session", openWithoutSession)
+                            , ("_Load Session"  , void (triggerEventIDE (LoadSession sessionPath))) -- Also loads the workspace from that session
+                            ]
+                            Nothing
 
 
 -- | Closes a workspace
