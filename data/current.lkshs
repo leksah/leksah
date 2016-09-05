@@ -4,16 +4,16 @@ Time of storage:
                "Sun Sep  4 20:03:20 CEST 2016"
 Layout:        VerticalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = -1, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 578) 336
 Population:    [(Just (ErrorsSt (ErrorsState {showErrors = True, showWarnings = True, showSuggestions = True, showTestFails = True})),[SplitP RightP,SplitP BottomP]),(Just (LogSt LogState),[SplitP RightP,SplitP BottomP]),(Just (WorkspaceSt WorkspaceState),[SplitP LeftP])]
-Window size:   (1383,850)
+Window size:   (1366,768)
 Full screen:   False
 Completion size:
                (750,400)
-Workspace:     Just "/home/jacco/leksah.lkshw"
+Workspace:     Nothing
 Active pane:   Nothing
 Toolbar visible:
                True
-FindbarState:  (False,FindState {entryStr = "maximi", entryHist = ["maximi","defaultsession"], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, regex = False, lineNr = 1})
+FindbarState:  (False,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, regex = False, lineNr = 1})
 Recently opened files:
-               ["/home/jacco/.leksah-0.16/leksah-welcome/src/Main.hs","/home/jacco/projects/leksah/src/IDE/Session.hs","/home/jacco/projects/leksah/doc/Keybindings.svg"]
+               []
 Recently opened workspaces:
                []
