@@ -653,7 +653,7 @@ packageRunComponent component backgroundBuild jumpToWarnings package shallConfig
             then return Nothing
             else do
                 env <- packageEnv package
-                return . Just $ ("GHC_PACKAGE_PATH", intercalate ":" packageDBs) : env
+                return . Just $ ("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] packageDBs) : env
         runExternalTool' (__ "Run " <> T.pack name) cmd (args
             ++ ipdBuildFlags package ++ ipdTestFlags package) dir mbEnv $ do
                 (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
