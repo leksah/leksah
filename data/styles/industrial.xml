@@ -23,7 +23,7 @@
 -->
 <style-scheme id="industrial" _name="Industrial" version="1.0">
   <author>Jacco Krijnen</author>
-  <_description>Industrial color scheme</_description>
+  <_description>Classic color scheme</_description>
 
   <!-- Palette -->
   <color name="white"      value="#DDDDDD"/>
@@ -33,6 +33,9 @@
   <color name="cyan"       value="#008A8C"/>
   <color name="gray"       value="#404648"/>
   <color name="darkgray"   value="#353a3b"/>
+  <color name="blackblue"   value="#1a1c22"/>
+  <color name="grayblue"   value="#22242b"/>
+  <color name="lightgrayblue"   value="#292d35"/>
   <color name="green"      value="#91cc6b"/>
   <color name="statement"  value="#CC6700"/>
   <color name="skyblue"    value="#519EC4"/>
@@ -43,11 +46,11 @@
   <color name="orange"     value="#ef9d5d"/>
 
   <!-- Global Settings -->
-  <style name="current-line"                background="gray"/>
+  <style name="current-line"                background="lightgrayblue"/>
   <style name="cursor"                      foreground="white" />
   <style name="draw-spaces"                 foreground="#aaada6"/>
-  <style name="line-numbers"                background="darkgray"/>
-  <style name="text"                        background="darkgray" foreground="white"/>
+  <style name="line-numbers"                background="grayblue"/>
+  <style name="text"                        background="grayblue" foreground="white"/>
   <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
 
