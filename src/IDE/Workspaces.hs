@@ -203,9 +203,10 @@ chooseWorkspaceFile window = chooseFile window (__ "Select leksah workspace file
 workspaceOpenThis :: Bool -> FilePath -> IDEAction
 workspaceOpenThis askForSession filePath = do
     liftIO . debugM "leksah" $ "workspaceOpenThis " ++ show askForSession ++ " " ++ filePath
-    exists <- liftIO $ doesFileExist sessionPath
+    exists <- liftIO $ doesFileExist filePath
+    sessionExists <- liftIO $ doesFileExist sessionPath
     if exists
-        then workspaceClose >> if askForSession
+        then workspaceClose >> if askForSession && sessionExists
             then sessionDialog
             else openWithoutSession
         else
