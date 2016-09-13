@@ -49,7 +49,7 @@ import IDE.Workspaces (workspaceTry, packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad (liftM, filterM, when, unless)
+import Control.Monad (liftM, filterM, when, unless, void)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr(..))
 import Foreign.ForeignPtr (withForeignPtr)
@@ -189,7 +189,11 @@ hideFindbar = do
     modifyIDE_ (\ide -> ide{findbar = (False,mbfb)})
     case mbfb of
         Nothing -> return ()
-        Just (fb,_) -> widgetHide fb
+        Just (fb,_) -> do
+            widgetHide fb
+            void $ inActiveBufContext False $ \_ sv ebuf _ _ -> do
+                removeTagByName ebuf "search-match"
+                return True
 
 showFindbar :: IDEAction
 showFindbar = do
@@ -709,7 +713,7 @@ editFindInc hint = do
     (fb,_) <- needFindbar
     case hint of
         Initial -> do
-               mbtext <- selectedTextOrCurrentIdentifier -- if no text selected, search for current identifier
+               mbtext <- selectedText -- if no text selected, search for the last query
                case mbtext of
                  Just text -> do
                      findEntry <- getFindEntry fb
