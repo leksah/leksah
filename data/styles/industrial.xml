@@ -47,7 +47,9 @@
   <color name="lightorange" value="#ecc982"/>
   <color name="orange"     value="#ef9d5d"/>
   <color name="brown"      value="#594011"/>
+  <color name="blue" value="#303f60"/>
   <color name="darkblue" value="#0f2c6f"/>
+
   <!-- Global Settings -->
   <style name="current-line"                background="lightgrayblue"/>
   <style name="cursor"                      foreground="white" />
@@ -56,7 +58,7 @@
   <style name="text"                        background="grayblue" foreground="white"/>
   <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
-  <style name="selection-match"             background="green" foreground="#FFFFFF"/>
+  <style name="selection-match"             background="blue" foreground="#FFFFFF"/>
 
   <!-- Bracket Matching -->
   <style name="bracket-match"               background="#0e2229"/>
