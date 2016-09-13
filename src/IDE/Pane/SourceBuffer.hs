@@ -682,7 +682,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                     Just fn -> Just (SrcSpan fn lStart cStart lEnd cEnd)
                     Nothing -> Nothing
 
-            let tagName = "match"
+            let tagName = "selection-match"
             hasSelection <- hasSelection buffer
             m <- liftIO $ readIORef hasMatch
             when m $ removeTagByName buffer tagName

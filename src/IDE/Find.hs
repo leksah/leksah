@@ -530,7 +530,7 @@ editFind' exp matchIndex wrapAround dummy hint =
         i1 <- getStartIter ebuf
         i2 <- getEndIter ebuf
         text <- getText ebuf i1 i2 True
-        removeTagByName ebuf "found"
+        removeTagByName ebuf "search-match"
         startMark <- getInsertMark ebuf
         st1 <- getIterAtMark ebuf startMark
         mbsr2 <-
@@ -562,7 +562,7 @@ editFind' exp matchIndex wrapAround dummy hint =
             Just (start,end,_) -> do --found
                 --widgetGrabFocus sourceView
                 scrollToIter sv start 0.2 Nothing
-                applyTagByName ebuf "found" start end
+                applyTagByName ebuf "search-match" start end
                 placeCursor ebuf start
                 return True
             Nothing -> return False

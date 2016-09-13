@@ -104,7 +104,7 @@ import GI.Gtk (constructDialogUseHeaderBar, Container(..), containerAdd)
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 9
+prefsVersion = 10
 
 runPreferencesDialog :: IDEAction
 runPreferencesDialog = do
@@ -338,106 +338,6 @@ prefsDescription configDir packages = NFDPP [
             styleEditor
             (\mbs -> do
                 setInfoStyle
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Found Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            foundBackgroundLight
-            (\ b a -> a{foundBackgroundLight = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Selection Match Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            matchBackgroundLight
-            (\ b a -> a{matchBackgroundLight = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Execution Context Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            contextBackgroundLight
-            (\ b a -> a{contextBackgroundLight = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Breakpoint Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            breakpointBackgroundLight
-            (\ b a -> a{breakpointBackgroundLight = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Lint Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            lintBackgroundLight
-            (\ b a -> a{lintBackgroundLight = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Found Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            foundBackgroundDark
-            (\ b a -> a{foundBackgroundDark = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Selection Match Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            matchBackgroundDark
-            (\ b a -> a{matchBackgroundDark = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Execution Context Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            contextBackgroundDark
-            (\ b a -> a{contextBackgroundDark = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Breakpoint Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            breakpointBackgroundDark
-            (\ b a -> a{breakpointBackgroundDark = b})
-            colorEditor
-            (\c -> do
-                buffers <- allBuffers
-                mapM_ updateStyle' buffers)
-    ,   mkFieldPP
-            (paraName <<<- ParaName (__ "Lint Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
-            lintBackgroundDark
-            (\ b a -> a{lintBackgroundDark = b})
-            colorEditor
-            (\c -> do
                 buffers <- allBuffers
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP

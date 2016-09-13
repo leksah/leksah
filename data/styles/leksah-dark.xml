@@ -44,6 +44,7 @@
   <style name="text"                        background="#202020"/>
   <style name="selection"                   background="#3B73AE" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#3B73AE" foreground="#FFFFFF"/>
+  <style name="selection-match"             background="green" foreground="#FFFFFF"/>
 
   <!-- Bracket Matching -->
   <style name="bracket-match"               foreground="white" background="gray" bold="true"/>
@@ -79,6 +80,8 @@
   <style name="def:warning"                 background="yellow"/>
   <style name="def:note"                    foreground="comment" background="yellow" bold="true"/>
   <style name="def:underlined"              italic="true" underline="false"/>
+  <style name="BreakpointRef"               background="#594011"/>
+  <style name="ContextRef"                  background="#0f2c6f"/>
 
   <!-- Language specific styles -->
   <style name="diff:added-line"             foreground="#008B8B"/>

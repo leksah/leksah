@@ -31,12 +31,14 @@
   <color name="magenta"    value="#0057DC"/>
   <color name="violet"     value="#B29EBF"/>
   <color name="cyan"       value="#008A8C"/>
+  <color name="lightgray"  value="#a0a0a0"/>
   <color name="gray"       value="#404648"/>
   <color name="darkgray"   value="#353a3b"/>
   <color name="blackblue"   value="#1a1c22"/>
   <color name="grayblue"   value="#22242b"/>
-  <color name="lightgrayblue"   value="#292d35"/>
-  <color name="green"      value="#91cc6b"/>
+  <color name="lightgrayblue"   value="#30353f"/>
+  <color name="green" value="#2a8e0b"/>
+  <color name="lightgreen"      value="#91cc6b"/>
   <color name="statement"  value="#CC6700"/>
   <color name="skyblue"    value="#519EC4"/>
   <color name="red"        value="#EF0000"/>
@@ -44,15 +46,17 @@
   <color name="gold"       value="#FFC838"/>
   <color name="lightorange" value="#ecc982"/>
   <color name="orange"     value="#ef9d5d"/>
-
+  <color name="brown"      value="#594011"/>
+  <color name="darkblue" value="#0f2c6f"/>
   <!-- Global Settings -->
   <style name="current-line"                background="lightgrayblue"/>
   <style name="cursor"                      foreground="white" />
   <style name="draw-spaces"                 foreground="#aaada6"/>
-  <style name="line-numbers"                background="grayblue"/>
+  <style name="line-numbers"                background="lightgrayblue" foreground="lightgray"/>
   <style name="text"                        background="grayblue" foreground="white"/>
   <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
+  <style name="selection-match"             background="green" foreground="#FFFFFF"/>
 
   <!-- Bracket Matching -->
   <style name="bracket-match"               background="#0e2229"/>
@@ -62,7 +66,7 @@
   <style name="right-margin"                foreground="gray"/>
 
   <!-- Search Matching -->
-  <style name="search-match"                background="yellow"/>
+  <style name="search-match"                background="green" foreground="#FFFFFF"/>
 
   <!-- Comments -->
   <style name="def:comment"                 foreground="comment"/>
@@ -71,7 +75,7 @@
 
   <!-- Constants -->
   <style name="def:constant"                foreground="violet"/>
-  <style name="def:string"                  foreground="green" />
+  <style name="def:string"                  foreground="lightgreen" />
 
   <!-- Identifiers -->
   <style name="def:identifier"              foreground="yellow"/>
@@ -92,6 +96,9 @@
   <style name="def:warning"                 background="yellow"/>
   <style name="def:note"                    foreground="comment" background="yellow" bold="true"/>
   <style name="def:underlined"              italic="true" underline="false"/>
+  <style name="BreakpointRef"               background="brown"/>
+  <style name="ContextRef"                  background="darkblue"/>
+
 
   <!-- Language specific styles -->
   <style name="diff:added-line"             foreground="#008B8B"/>

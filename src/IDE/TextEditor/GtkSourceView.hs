@@ -59,7 +59,7 @@ import Control.Arrow (Arrow(..))
 import System.Log.Logger (debugM)
 import Foreign.ForeignPtr (withForeignPtr)
 import Foreign.Ptr (nullPtr, castPtr)
-import qualified GI.GtkSource as Source (Buffer(..), View(..))
+import qualified GI.GtkSource as Source
 import GI.GtkSource
        (viewSetDrawSpaces, setViewTabWidth, setViewShowLineNumbers,
         setViewRightMarginPosition, setViewShowRightMargin,
@@ -94,8 +94,6 @@ import GI.Gtk.Objects.TextBuffer
         textBufferCopyClipboard, textBufferBeginUserAction,
         textBufferApplyTagByName, textBufferGetTagTable, textBufferSetText)
 import GI.Gtk.Objects.TextTag
-       (setTextTagUnderline, setTextTagBackground, TextTag(..),
-        textTagNew)
 import GI.Gtk.Objects.TextTagTable
        (noTextTagTable, textTagTableLookup, TextTagTable(..),
         textTagTableAdd)
@@ -155,6 +153,10 @@ import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
 import Text.PrinterParser (Color(..))
 import GI.Gtk (setTextTagUnderlineRgba)
+import GI.GtkSource.Objects.StyleScheme
+       (styleSchemeGetStyle, StyleScheme(..))
+import GI.GtkSource.Objects.Style
+import GI.Pango.Enums (Weight (..), Style (..))
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -200,13 +202,39 @@ newGtkBuffer mbFilename contents = do
     bufferEndNotUndoableAction buffer
     liftIO $ debugM "lekash" "newGtkBuffer setup tag table"
     tagTable <- textBufferGetTagTable buffer
-    textTagNew (Just "found") >>= textTagTableAdd tagTable
-    textTagNew (Just "match") >>= textTagTableAdd tagTable
+    textTagNew (Just "search-match") >>= textTagTableAdd tagTable
+    textTagNew (Just "selection-match") >>= textTagTableAdd tagTable
     textTagNew (Just "context") >>= textTagTableAdd tagTable
     textTagNew (Just "breakpoint") >>= textTagTableAdd tagTable
     forM_ [minBound .. maxBound :: LogRefType] $ \ refType ->
         textTagNew (Just . T.pack $ show refType) >>= textTagTableAdd tagTable
     return $ GtkBuffer buffer
+
+
+-- | Sets the style for a type of tag in the buffer by looking in the stylescheme
+-- for a style with the given name, otherwise use the provided action
+-- that sets some style on the TextTag (for standard sourceview styleschemes we can't
+-- edit the stylescheme files)
+setTagStyle :: Source.Buffer -> Text -> StyleScheme -> (Text -> IDEM ()) -> IDEM ()
+setTagStyle sb tagName scheme applyDefaultStyle = do
+    tagTable <- textBufferGetTagTable sb
+    mbTag    <- nullToNothing (textTagTableLookup tagTable tagName)
+    forM_ mbTag $ \tag -> do
+        mbStyle <- styleSchemeGetStyle scheme tagName
+        case mbStyle of
+            Just style -> applyStyle tag style
+            Nothing    -> applyDefaultStyle tagName
+    where
+        applyStyle :: TextTag -> Source.Style -> IDEM ()
+        applyStyle tag style = do
+            mbBg <- getStyleBackground style
+            forM_ mbBg (setTextTagBackground tag)
+            mbFg <- getStyleForeground style
+            forM_ mbFg (setTextTagForeground tag)
+            bold <- getStyleBold style
+            when bold (setTextTagWeight tag (fromIntegral . fromEnum $ WeightBold))
+            italic <- getStyleItalic style
+            when italic (setTextTagStyle tag StyleItalic)
 
 instance TextEditor GtkSourceView where
     data EditorBuffer GtkSourceView = GtkBuffer Source.Buffer
@@ -328,18 +356,26 @@ instance TextEditor GtkSourceView where
                     scheme <- styleSchemeManagerGetScheme styleManager name
                     bufferSetStyleScheme sb (Just scheme)
                     tagTable <- getTagTable (GtkBuffer sb)
-                    let isDark = name `elem` ["leksah-dark", "oblivion", "cobalt"]
+                    let isDark = name `elem` ["leksah-dark", "oblivion", "cobalt", "industrial"]
                         setBG (dark, light) (Just tag) = background tag (if isDark then dark else light)
                         setBG _             Nothing    = return ()
                         setUnderline mbCol = maybe (return ()) (\tag -> underline tag UnderlineError mbCol)
-                    lookupTag tagTable "match" >>= setBG matchBG
-                    lookupTag tagTable "found" >>= setBG foundBG
-                    lookupTag tagTable (T.pack $ show ErrorRef      ) >>= setUnderline Nothing
-                    lookupTag tagTable (T.pack $ show WarningRef    ) >>= setUnderline (Just $ Color 214 176 4)
-                    lookupTag tagTable (T.pack $ show TestFailureRef) >>= setUnderline (Just $ Color 207 18 241)
-                    lookupTag tagTable (T.pack $ show LintRef       ) >>= setUnderline (Just $ Color 21 110 209)
-                    lookupTag tagTable (T.pack $ show BreakpointRef ) >>= setBG breakpointBG
-                    lookupTag tagTable (T.pack $ show ContextRef    ) >>= setBG contextBG
+                    -- This is ugly, we just have to make sure we only provide
+                    -- styleschemes that include styles for these tags
+                    let applyDefaultStyling tagName = do
+                            mbTag <- lookupTag tagTable tagName
+                            case tagName of
+                                "selection-match" -> setBG matchBG mbTag
+                                "search-match" -> setBG foundBG mbTag
+                                "BreakpointRef" ->  setBG breakpointBG mbTag
+                                "ContextRef" -> setBG contextBG mbTag
+                                _ -> return ()
+                    let tagNames = ["selection-match", "search-match"]
+                                       ++ map (T.pack . show)
+                                              [ErrorRef, WarningRef, TestFailureRef, LintRef, BreakpointRef, ContextRef]
+                    forM_ tagNames $ \tagName -> do
+                        setTagStyle sb tagName scheme applyDefaultStyling
+
     setText (GtkBuffer sb) text = setTextBufferText sb text
     undo (GtkBuffer sb) = bufferUndo sb
 
