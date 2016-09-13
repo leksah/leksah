@@ -369,6 +369,10 @@ instance TextEditor GtkSourceView where
                                 "search-match" -> setBG foundBG mbTag
                                 "BreakpointRef" ->  setBG breakpointBG mbTag
                                 "ContextRef" -> setBG contextBG mbTag
+                                "ErrorRef" -> setUnderline Nothing mbTag
+                                "WarningRef" -> setUnderline (Just $ Color 214 176 4) mbTag
+                                "TestFailureRef" -> setUnderline (Just $ Color 207 18 241) mbTag
+                                "LintRef" -> setUnderline (Just $ Color 21 110 209) mbTag
                                 _ -> return ()
                     let tagNames = ["selection-match", "search-match"]
                                        ++ map (T.pack . show)
