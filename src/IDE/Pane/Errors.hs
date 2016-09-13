@@ -374,7 +374,9 @@ addErrorToList' unfilteredIndex ref pane = do
         when (length (T.lines (refDescription ref)) > 1) $ do
             p <- treePathNewFromIndices' [fromIntegral index]
             forestStoreInsert store p 0 (ERFullMessage (refDescription ref) (Just ref))
-            treeViewExpandToPath view =<< treePathNewFromIndices' [fromIntegral index,0]
+            collapse <- collapseErrors <$> readIDE prefs
+            unless collapse $ do
+                treeViewExpandToPath view =<< treePathNewFromIndices' [fromIntegral index,0]
 
 -- | Updates the filter buttons in the Error Pane
 updateFilterButtons :: ErrorsPane -> IDEAction

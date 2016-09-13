@@ -104,7 +104,7 @@ import GI.Gtk (constructDialogUseHeaderBar, Container(..), containerAdd)
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 10
+prefsVersion = 11
 
 runPreferencesDialog :: IDEAction
 runPreferencesDialog = do
@@ -428,6 +428,14 @@ prefsDescription configDir packages = NFDPP [
             (\b a -> a {showWorkspaceIcons = b})
             boolEditor
             (\_ -> rebuildWorkspacePane)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Collapse errors in Errors pane by default") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            showWorkspaceIcons
+            (\b a -> a {collapseErrors = b})
+            boolEditor
+            (\_ -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
             (PP.text . show)
@@ -876,6 +884,7 @@ defaultPrefs = Prefs {
     ,   showHiddenFiles     =   False
     ,   showWorkspaceIcons  =   True
     ,   hlintOnSave = True
+    ,   collapseErrors = True
     }
 
 -- ------------------------------------------------------------

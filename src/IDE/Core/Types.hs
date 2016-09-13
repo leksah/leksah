@@ -534,6 +534,7 @@ data Prefs = Prefs {
     ,   showHiddenFiles     ::   Bool
     ,   showWorkspaceIcons  ::   Bool
     ,   hlintOnSave         ::   Bool
+    ,   collapseErrors      ::   Bool
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
