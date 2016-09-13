@@ -432,7 +432,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Collapse errors in Errors pane by default") $ emptyParams)
             (PP.text . show)
             boolParser
-            showWorkspaceIcons
+            collapseErrors
             (\b a -> a {collapseErrors = b})
             boolEditor
             (\_ -> return ())
