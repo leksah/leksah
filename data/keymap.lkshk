@@ -1,5 +1,5 @@
 --Default Keymap file for Leksah
---Allowed Modifiers are <shift>	<alt> <ctrl> <control> <compose>
+--Allowed Modifiers are <shift> <alt> <ctrl> <control> <compose>
 --
 --There are two versions of control so we can map them differently on OS X
 --<ctrl>    is the Apple key on OS X
@@ -21,9 +21,9 @@
 <ctrl>s                    ->          FileSave        "Saves the current buffer"
 --<ctrl>x/<ctrl>s          ->          FileSave        "Saves the current buffer"
 
---<ctrl>x/<ctrl>w          ->          FileSaveAs      "Saves the current buffer as a new file"
+<ctrl><shift>s             ->          FileSaveAs      "Saves the current buffer as a new file"
 
-<ctrl><shift>s             ->          FileSaveAll     "Saves all modified buffers"
+--<ctrl><shift>s             ->          FileSaveAll     "Saves all modified buffers"
 
 <ctrl>w                    ->          FileClose       "Closes the current buffer"
 --<ctrl>x/k                ->          FileClose       "Closes the current buffer"
@@ -73,7 +73,7 @@ F3                          ->          EditFindNext     "Find the next occurenc
                         ->          ViewTabsUp      "Shows the tabs of the current notebook on the top"
                         ->          ViewTabsDown    "Shows the tabs of the current notebook on the bottom"
                         ->          ViewSwitchTabs  "Switches if tabs for the current notebook are visible"
-<ctrl><shift>f          ->          ViewFullScreen  "Toggle fullscreen mode"
+F11                     ->          ViewFullScreen  "Toggle fullscreen mode"
 <ctrl>t                 ->          ToggleToolbar
                         ->          HelpDebug
                         ->          HelpAbout
