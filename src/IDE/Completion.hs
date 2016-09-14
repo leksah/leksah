@@ -102,6 +102,7 @@ import GI.Gdk.Objects.Screen
 import Data.GI.Gtk.ModelView.Types
        (treePathGetIndices', treePathNewFromIndices')
 import Data.Maybe (fromJust)
+import Data.Monoid ((<>))
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -271,7 +272,8 @@ addEventHandling window sourceView tree store isWordChar always = do
                 case maybeRow of
                     Just row -> do
                         path <- treePathNewFromIndices' [row]
-                        treeViewRowActivated tree path column
+                        liftIDE $ withWord store path (replaceWordStart sourceView isWordChar True)
+                        liftIDE $ postAsyncIDE cancel
                         return True
                     Nothing -> do
                         liftIDE cancel
@@ -349,7 +351,7 @@ addEventHandling window sourceView tree store isWordChar always = do
             Nothing     -> return False)
 
     idSelected <- ConnectC tree <$> onTreeViewRowActivated tree (\treePath column -> (`reflectIDE` ideR) $ do
-        withWord store treePath (replaceWordStart sourceView isWordChar)
+        withWord store treePath (replaceWordStart sourceView isWordChar False)
         postAsyncIDE cancel)
 
     return $ concat [cidsPress, cidsRelease, [idButtonPress, idMotion, idButtonRelease, idSelected]]
@@ -362,13 +364,18 @@ withWord store treePath f =
             f value
        _ -> return ()
 
-replaceWordStart :: TextEditor editor => EditorView editor -> (Char -> Bool) -> Text -> IDEM ()
-replaceWordStart sourceView isWordChar name = do
+replaceWordStart :: TextEditor editor => EditorView editor -> (Char -> Bool) -> Bool -> Text -> IDEM ()
+replaceWordStart sourceView isWordChar returnPressed name = do
     buffer <- getBuffer sourceView
     (selStart, selEnd) <- getSelectionBounds buffer
     start <- findWordStart selStart isWordChar
     wordStart <- getText buffer start selEnd True
     case T.stripPrefix wordStart name of
+        Just "" | returnPressed -> do
+            -- Return key was pressed even though nothing needed to be done
+            -- to make the current word match the selection.
+            selectRange buffer selEnd selEnd
+            insert buffer selEnd "\n"
         Just extra -> do
             end <- findWordEnd selEnd isWordChar
             wordFinish <- getText buffer selEnd end True
@@ -481,6 +488,7 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                                 (_, newy)     <- bufferToWindowCoords sourceView (fromIntegral startx, fromIntegral (starty+height))
                                 return (oy+fromIntegral newy)
                             else return (oy+fromIntegral y)
+                        liftIO $ debugM "leksah" $ "Completion processResults " <> show (monitorRight /= monitor, monitorLeft /= monitor, ox, x, wWindow, wScreen, wNames)
                         swap <- if (monitorRight /= monitor || (ox+fromIntegral x+wWindow) > wScreen) && monitorLeft == monitor && (ox+fromIntegral x-wWindow+wNames) > 0
                             then do
                                 windowMove window (ox+fromIntegral x-wWindow+wNames) top
@@ -501,7 +509,7 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         widgetShowAll window
 
             when (newWordStart /= currentWordStart) $
-                replaceWordStart sourceView isWordChar newWordStart
+                replaceWordStart sourceView isWordChar False newWordStart
 
 getRow tree = do
     Just model <- treeViewGetModel tree
