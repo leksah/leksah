@@ -831,19 +831,19 @@ defaultPrefs = Prefs {
     ,   browser             =   "firefox"
     ,   sourceDirectories   =   []
     ,   packageBlacklist    =   []
-    ,   pathForCategory     =   [   ("EditorCategory",[SplitP LeftP])
-                                ,   ("LogCategory",[SplitP RightP, SplitP BottomP])
-                                ,   ("ToolCategory",[SplitP RightP, SplitP TopP])
+    ,   pathForCategory     =   [   ("ExplorerCategory",[SplitP LeftP])
+                                ,   ("EditorCategory",[SplitP RightP])
+                                ,   ("ToolCategory",[SplitP RightP,SplitP TopP])
+                                ,   ("LogCategory",[SplitP RightP,SplitP BottomP])
                                 ]
-    ,   defaultPath         =   [SplitP LeftP]
-    ,   categoryForPane     =   [   ("*ClassHierarchy","ToolCategory")
-                                ,   ("*Breakpoints","LogCategory")
+    ,   defaultPath         =   [SplitP RightP]
+    ,   categoryForPane     =   [   ("*Breakpoints","LogCategory")
                                 ,   ("*Browser","ToolCategory")
                                 ,   ("*Debug","ToolCategory")
-                                ,   ("*Errors","ToolCategory")
+                                ,   ("*Errors","LogCategory")
                                 ,   ("*Files","ToolCategory")
                                 ,   ("*Flags","ToolCategory")
-                                ,   ("*Grep","ToolCategory")
+                                ,   ("*Grep","LogCategory")
                                 ,   ("*HLint","ToolCategory")
                                 ,   ("*Doc","ToolCategory")
                                 ,   ("*Info","LogCategory")
@@ -856,10 +856,10 @@ defaultPrefs = Prefs {
                                 ,   ("*Search","ToolCategory")
                                 ,   ("*Trace","LogCategory")
                                 ,   ("*Variables","LogCategory")
-                                ,   ("*Workspace","LogCategory")]
+                                ,   ("*Workspace","ExplorerCategory")]
     ,   collectAtStart      =   True
-    ,   unpackDirectory     =   Nothing
-    ,   retrieveURL         =   "http://www.leksah.org"
+    ,   unpackDirectory     =   Just "~/.leksah-0.16/packageSources"
+    ,   retrieveURL         =   "http://leksah.github.io"
     ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True
     ,   docuSearchURL       =   "https://www.haskell.org/hoogle/?q="
