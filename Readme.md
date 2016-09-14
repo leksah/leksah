@@ -34,7 +34,7 @@ or follow the instructions below.
 `sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkitgtk`
 
 ##### OS X MacPorts
-`sudo port install gobject-introspection webkit-gtk3 gtksourceview3`
+`sudo port install gobject-introspection webkit-gtk3 gtksourceview3 gtk-osx-application-gtk3 adwaita-icon-theme`
 
 You will also need to build a MacPorts compatible of GHC.  First install GHC some other way then unpack the source for the GHC version you want to use and run:
 
