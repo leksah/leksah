@@ -13,17 +13,14 @@
            <menuitem name="_Package..." action="FileOpenPackage" />
            <menuitem name="_File..." action="FileOpenFile" />
        </menu>
+       <menu name="Recent Files" action="FileRecentFiles" />
+       <menu name="Recent Workspaces" action="FileRecentWorkspaces" />
        <separator />
        <menuitem name="_Save" action="FileSave" />
        <menuitem name="Save _As..." action="FileSaveAs" />
        <menuitem name="Save _All" action="FileSaveAll" />
        <menuitem name="_Close" action="FileClose" />
        <menuitem name="_Print File" action="FilePrint" />
-       <separator/>
-       <menu name="Recent Files" action="FileRecentFiles">
-       </menu>
-       <menu name="Recent Workspaces" action="FileRecentWorkspaces">
-       </menu>
        <separator/>
        <menuitem name="Close Workspace" action="FileCloseWorkspace" />
        <menuitem name="Close All" action="FileCloseAll" />
@@ -125,15 +122,14 @@
        <menuitem name="_Workspace" action="ShowWorkspace" />
      </menu>
     <menu name="_View" action="View">
-       <menuitem name="Split H_orizontal" action="ViewSplitHorizontal" />
-       <menuitem name="Split V_ertical" action="ViewSplitVertical" />
-       <menuitem name="_Collapse" action="ViewCollapse" />
+       <menuitem name="Split Top/Bottom" action="ViewSplitHorizontal" />
+       <menuitem name="Split Left/Right" action="ViewSplitVertical" />
+       <menuitem name="_Collapse Split" action="ViewCollapse" />
        <menuitem name="Close Pane" action="ViewClosePane" />
        <separator/>
        <menuitem name="_Group" action="ViewNest" />
        <menuitem name="_Detach" action="ViewDetach" />
        <menuitem name="_Full Screen" action="ViewFullScreen" />
-       <menuitem name="_Use Dark Interface" action="UseDarkInterface" />
        <separator/>
        <menuitem name="Move _Left" action="ViewMoveLeft" />
        <menuitem name="Move _Right" action="ViewMoveRight" />
@@ -150,6 +146,11 @@
        <menuitem name="Toggle Toolbar" action="ToggleToolbar" />
      </menu>
     <menu name="_Tools" action="Tools">
+       <menuitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
+       <menuitem name="BuildDocs" action="MakeDocsToggled"/>
+       <menuitem name="RunUnitTests" action="RunUnitTestsToggled"/>
+       <menuitem name="RunBenchmarks" action="RunBenchmarksToggled"/>
+       <separator/>
        <menuitem name="Update Workspace Data" action="UpdateMetadataCurrent" />
        <menuitem name="Rebuild Workspace Data" action="RebuildMetadataCurrent" />
        <menuitem name="Update System Data" action="UpdateMetadataLib" />
@@ -157,11 +158,13 @@
        <separator/>
        <menuitem name="Save Session As..." action="SaveSession" />
        <menuitem name="Load Session" action="LoadSession" />
-       <separator/>
-       <menuitem name="_Preferences" action="PrefsEdit" />
-       <separator/>
     </menu>
     <menu name="Version Con_trol" action="vcs">
+    </menu>
+    <menu name="settings" action="Settings">
+        <menuitem name="toggle-dark" action="UseDarkInterface" />
+        <separator/>
+        <menuitem name="preferences" action="PrefsEdit" />
     </menu>
     <menu name="_Help" action="Help">
        <menuitem name="_Homepage" action="HelpHomepage" />

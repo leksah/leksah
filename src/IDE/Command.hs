@@ -431,11 +431,11 @@ mkActions =
         (viewMove TopP) [] False
     ,AD "ViewMoveDown" (__ "Move _Down") Nothing Nothing
         (viewMove BottomP) [] False
-    ,AD "ViewSplitHorizontal" (__ "Split H_orizontal") Nothing Nothing
+    ,AD "ViewSplitHorizontal" (__ "Split T_op/Bottom") Nothing Nothing
         viewSplitHorizontal [] False
-    ,AD "ViewSplitVertical" (__ "Split _Vertical") Nothing Nothing
+    ,AD "ViewSplitVertical" (__ "Split L_eft/Right") Nothing Nothing
         viewSplitVertical [] False
-    ,AD "ViewCollapse" (__ "_Collapse") Nothing Nothing
+    ,AD "ViewCollapse" (__ "_Collapse Active Split") Nothing Nothing
         viewCollapse [] False
     ,AD "ViewNest" (__ "_Group") Nothing Nothing
         viewNewGroup [] False
@@ -478,6 +478,8 @@ mkActions =
         toggleToolbar [] False
 
     ,AD "Tools" (__ "_Tools") Nothing Nothing (return ()) [] False
+
+    ,AD "Settings" (__ "_Settings") Nothing Nothing (return ()) [] False
     ,AD "PrefsEdit" (__ "_Preferences") Nothing Nothing
         runPreferencesDialog [] False
 
@@ -490,13 +492,13 @@ mkActions =
     ,AD "HelpHomepage" (__ "Homepage") Nothing Nothing (openBrowser "http://leksah.org") [] False
     ,AD "HelpAbout" (__ "About") Nothing (Just "gtk-about") (liftIO aboutDialog) [] False
 
-    ,AD "BackgroundBuildToggled" (__ "_BackgroundBuild") (Just (__ "Build in the background and report errors")) (Just "ide_build")
+    ,AD "BackgroundBuildToggled" (__ "_Build in the background") (Just (__ "Build in the background and report errors")) (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "MakeDocsToggled" (__ "_MakeDocs") (Just (__ "Make documentation when building")) (Just "gtk-apply") -- TODO change icon
+    ,AD "MakeDocsToggled" (__ "Build with _documentation") (Just (__ "Make documentation when building")) (Just "gtk-apply") -- TODO change icon
         makeDocsToggled [] True
-    ,AD "RunUnitTestsToggled" (__ "_RunUnitTests") (Just (__ "Run unit tests when building")) (Just "gtk-apply") -- TODO change icon
+    ,AD "RunUnitTestsToggled" (__ "Run _unit tests when building") (Just (__ "Run unit tests when building")) (Just "gtk-apply") -- TODO change icon
         runUnitTestsToggled [] True
-    ,AD "RunBenchmarksToggled" (__ "_RunBenchmarks") (Just (__ "Run benchmarks when building")) (Just "gtk-apply") -- TODO change icon
+    ,AD "RunBenchmarksToggled" (__ "_Run benchmarks when building") (Just (__ "Run benchmarks when building")) (Just "gtk-apply") -- TODO change icon
         runBenchmarksToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True

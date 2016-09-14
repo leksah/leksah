@@ -327,12 +327,12 @@ setFullScreenState b = do
 
 getDarkState :: PaneMonad alpha => alpha Bool
 getDarkState = do
-    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" (unsafeCastTo ToggleAction)
+    ui <- getUIAction "ui/menubar/settings/toggle-dark" (unsafeCastTo ToggleAction)
     toggleActionGetActive ui
 
 setDarkState :: PaneMonad alpha => Bool -> alpha ()
 setDarkState b = do
-    ui <- getUIAction "ui/menubar/_View/_Use Dark Interface" (unsafeCastTo ToggleAction)
+    ui <- getUIAction "ui/menubar/settings/toggle-dark" (unsafeCastTo ToggleAction)
     toggleActionSetActive ui b
 
 getMenuItem :: Text -> IDEM MenuItem

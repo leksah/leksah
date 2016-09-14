@@ -26,6 +26,7 @@
   <_description>Classic color scheme</_description>
 
   <!-- Palette -->
+  <color name="black" value="#222222"/>
   <color name="white"      value="#DDDDDD"/>
   <color name="comment"    value="#758083"/>
   <color name="magenta"    value="#0057DC"/>
@@ -35,8 +36,7 @@
   <color name="gray"       value="#404648"/>
   <color name="darkgray"   value="#353a3b"/>
   <color name="blackblue"   value="#1a1c22"/>
-  <color name="grayblue"   value="#22242b"/>
-  <color name="lightgrayblue"   value="#30353f"/>
+  <color name="lightblack"   value="#3f3f3f"/>
   <color name="green" value="#2a8e0b"/>
   <color name="lightgreen"      value="#91cc6b"/>
   <color name="statement"  value="#CC6700"/>
@@ -51,17 +51,17 @@
   <color name="darkblue" value="#0f2c6f"/>
 
   <!-- Global Settings -->
-  <style name="current-line"                background="lightgrayblue"/>
+  <style name="current-line"                background="lightblack"/>
   <style name="cursor"                      foreground="white" />
   <style name="draw-spaces"                 foreground="#aaada6"/>
-  <style name="line-numbers"                background="lightgrayblue" foreground="lightgray"/>
-  <style name="text"                        background="grayblue" foreground="white"/>
+  <style name="line-numbers"                background="lightblack" foreground="lightgray"/>
+  <style name="text"                        background="black" foreground="white"/>
   <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
   <style name="selection-match"             background="blue" foreground="#FFFFFF"/>
 
   <!-- Bracket Matching -->
-  <style name="bracket-match"               background="#0e2229"/>
+  <style name="bracket-match"               underline="true" background="#0e2229"/>
   <style name="bracket-mismatch"            background="red" foreground="darkgray"/>
 
   <!-- Right Margin -->
