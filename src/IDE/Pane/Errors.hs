@@ -335,7 +335,9 @@ fillErrorList' pane = do
         when (length (T.lines (refDescription ref)) > 1) $ do
             p <- treePathNewFromIndices' [fromIntegral n]
             forestStoreInsert store p 0 (ERFullMessage (refDescription ref) (Just ref))
-            treeViewExpandToPath view =<< treePathNewFromIndices' [fromIntegral n,0]
+            collapse <- collapseErrors <$> readIDE prefs
+            unless collapse $ do
+                treeViewExpandToPath view =<< treePathNewFromIndices' [fromIntegral n,0]
 
 -- | Returns whether the `LogRef` should be visible in the errors pane
 isRefVisible :: MonadIO m => ErrorsPane -> LogRef -> m Bool
