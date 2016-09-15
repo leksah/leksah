@@ -32,8 +32,8 @@ mkdir -p SourceDir
 cp -u leksah.bat SourceDir
 cp -u leksah-server.bat SourceDir
 cp -u leksah-rebuild-metadata.bat SourceDir
+$LNDIR etc SourceDir # has to be done before copying the gtk etc folder since this has the right settings.ini
 $LNDIR "$GTK_PREFIX_U"/etc SourceDir
-$LNDIR etc SourceDir
 $LNDIR share SourceDir
 mkdir -p SourceDir/leksah
 $LNDIR "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/data SourceDir/leksah
