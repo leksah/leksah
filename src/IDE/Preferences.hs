@@ -188,11 +188,13 @@ runPreferencesDialog = do
                                 Nothing -> False
                                 Just p -> p{prefsFormat = 0, prefsSaveTime = ""} /=
                                           initialPrefs{prefsFormat = 0, prefsSaveTime = ""}
-        when (isJust mbP) $ labelSetMarkup errorLabel ""
+        when (isJust mbP) $ do
+            labelSetMarkup errorLabel ""
+            widgetSetSensitive apply True
         return (e{gtkReturn=False}))
 
     registerEvent notifier ValidationError $ \e -> do
-        labelSetMarkup errorLabel $ "<span foreground=\"red\" size=\"x-large\">The following fields have invalid values: "
+        labelSetMarkup errorLabel $ "<span foreground=\"red\">The following fields have invalid values: "
             <> eventText e <> "</span>"
         widgetSetSensitive apply False
         return e
