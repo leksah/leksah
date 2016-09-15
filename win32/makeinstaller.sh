@@ -34,7 +34,7 @@ cp -u leksah-server.bat SourceDir
 cp -u leksah-rebuild-metadata.bat SourceDir
 $LNDIR "$GTK_PREFIX_U"/etc SourceDir
 $LNDIR etc SourceDir
-$LNDir share SourceDir
+$LNDIR share SourceDir
 mkdir -p SourceDir/leksah
 $LNDIR "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/data SourceDir/leksah
 $LNDIR "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/language-specs SourceDir/leksah
