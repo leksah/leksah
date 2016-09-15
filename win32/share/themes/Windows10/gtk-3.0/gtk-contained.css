@@ -13,7 +13,7 @@
   -GtkWidget-text-handle-width: 20;
   -GtkWidget-text-handle-height: 24;
   -GtkDialog-button-spacing: 4;
-  -GtkDialog-action-area-border: 0; 
+  -GtkDialog-action-area-border: 0;
   outline-color: rgba(0, 0, 0, 0.3);
   outline-style: dashed;
   outline-offset: -3px;
@@ -476,7 +476,7 @@ button:visited {
  * GtkSpinButton *
  *****************/
 spinbutton {
-  padding: 0; 
+  padding: 0;
   border: none; }
   spinbutton:disabled {
     color: @insensitive_fg_color;
@@ -784,7 +784,7 @@ menubar,
   background-color: transparent; }
   menubar > menuitem,
   .menubar > menuitem {
-    padding: 2px 4px; 
+    padding: 2px 4px;
 	border: 1px solid transparent; }
     menubar > menuitem:hover,
     .menubar > menuitem:hover
@@ -801,11 +801,11 @@ menu,
 .menu {
   padding: 0px;
   background-color: @theme_bg_color;
-  border: 1px solid @borders; }
+  }
   menu menuitem,
   .menu menuitem {
     padding: 4px;
-    border: 1px solid transparent; }
+    }
     menu menuitem:hover,
     .menu menuitem:hover {
     border: 1px solid @menubaritem_border;
@@ -1013,7 +1013,7 @@ notebook {
       padding: 2px 10px;
       outline-offset: -4px;
       color: #818181;
-      font-weight: bold;
+      font-weight: normal;
       border-width: 1px;
       border-color: transparent; }
       notebook > header tab:hover {
@@ -1031,10 +1031,7 @@ notebook {
       notebook > header tab button.flat {
         color: rgba(44, 44, 44, 0.3);
         padding: 0;
-        margin-top: 4px;
-        margin-bottom: 4px;
-        min-width: 20px;
-        min-height: 20px; }
+        min-width: 20px; }
         notebook > header tab button.flat:hover {
           color: currentColor; }
         notebook > header tab button.flat:last-child {
@@ -1078,7 +1075,6 @@ notebook {
     notebook > header.bottom tab {
       padding-top: 2px; }
   notebook > stack:not(:only-child) {
-    border: 1px solid shade(@theme_bg_color, 0.72);
     background-color: @theme_base_color; }
 
 /**************
@@ -1487,7 +1483,7 @@ entry selection:focus,
 entry selection, modelbutton.flat:selected, popover.background checkbutton:selected,
 popover.background radiobutton:selected,
 .menuitem.button.flat:selected, treeview.view:selected, row.activatable:selected, .sidebar:selected {
-  background-color: @theme_selected_bg_color; 
+  background-color: @theme_selected_bg_color;
   color: @theme_selected_fg_color; }
 
 
@@ -1700,10 +1696,10 @@ messagedialog {
           background-image: linear-gradient(to bottom,  @theme_fg_color);
           text-shadow: none;
           -gtk-icon-shadow: none; }
-    message-dialog.csd dialog-action-area button, message-dialog.csd dialog-action-area button:hover, 
-    message-dialog.csd dialog-action-area button:active, message-dialog.csd dialog-action-area button:disabled, 
+    message-dialog.csd dialog-action-area button, message-dialog.csd dialog-action-area button:hover,
+    message-dialog.csd dialog-action-area button:active, message-dialog.csd dialog-action-area button:disabled,
     message-dialog.csd dialog-action-area button.suggested-action, message-dialog.csd dialog-action-area button.suggested-action:hover,
-    message-dialog.csd dialog-action-area button.suggested-action:active, 
+    message-dialog.csd dialog-action-area button.suggested-action:active,
     message-dialog.csd dialog-action-area button.suggested-action:disabled, message-dialog.csd dialog-action-area button.destructive-action, .message-dialog.csd .dialog-action-area button.destructive-action:hover, .message-dialog.csd .dialog-action-area button.destructive-action:active, message-dialog.csd dialog-action-area button.destructive-action:disabled {
       /*border-right-style: none;*/
       border-bottom-style: none; }
@@ -1853,8 +1849,7 @@ GtkColorChooserWidget #add-color-button {
  *********************/
 decoration {
   /*border-radius: 7px 7px 0 0;*/
-  border-width: 0px;
-  box-shadow: 0 3px 9px 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.23);
+  border: 1px solid @borders;
   /* this is used for the resize cursor area */
   margin: 10px; }
   decoration.tiled {
@@ -1882,7 +1877,7 @@ button.titlebutton {
     color: @theme_fg_color;
     background-color: shade(@theme_bg_color,0.96);}
   button.titlebutton:active {
-    color:  @theme_fg_color; 
+    color:  @theme_fg_color;
     background-color: shade(@theme_bg_color,0.85);}
  button.titlebutton.close:hover {
     color: @theme_base_color;
