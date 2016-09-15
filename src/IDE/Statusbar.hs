@@ -30,10 +30,10 @@ import GI.Gtk.Objects.Statusbar
        (Statusbar(..), statusbarNew, statusbarPush, statusbarPop)
 import GI.Gtk.Objects.Window (setWindowTitle)
 import GI.Gtk.Objects.Image
-       (Image(..), imageSetPixelSize, imageNewFromStock,
-        imageSetFromStock)
-import GI.Gtk.Enums (IconSize(..))
-import GI.Gtk.Objects.HBox (hBoxNew, HBox(..))
+       (Image(..), imageSetPixelSize, imageNewFromIconName,
+        imageSetFromIconName)
+import GI.Gtk.Enums (IconSize(..), Orientation(..))
+import GI.Gtk.Objects.Box (boxNew, Box(..))
 import GI.Gtk.Objects.Widget (widgetSetSizeRequest, widgetSetName)
 import Graphics.UI.Editor.Parameters
        (Packing(..), boxPackEnd', boxPackStart')
@@ -82,15 +82,15 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
         return ()
     changeStatusbar' (CompartmentBuild bool) =  do
         im <- getImBuild
-        imageSetFromStock im (if bool then "ide_build" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
+        imageSetFromIconName im (if bool then "ide_build" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
         return ()
     changeStatusbar' (CompartmentCollect bool) =  do
         im <- getImCollect
-        imageSetFromStock im (if bool then "ide_rebuild_meta" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
+        imageSetFromIconName im (if bool then "ide_rebuild_meta" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
         return ()
 
 
-buildStatusbar :: MonadIO m => m HBox
+buildStatusbar :: MonadIO m => m Box
 buildStatusbar = do
     sblk <- statusbarNew
     widgetSetName sblk "statusBarSpecialKeys"
@@ -116,15 +116,15 @@ buildStatusbar = do
     widgetSetName sbio "statusBarInsertOverwrite"
     widgetSetSizeRequest sbio 60 (-1)
 
-    buildImage <- imageNewFromStock "ide_empty" (fromIntegral $ fromEnum IconSizeMenu)
+    buildImage <- imageNewFromIconName "ide_empty" (fromIntegral $ fromEnum IconSizeMenu)
     widgetSetName buildImage "buildImage"
     imageSetPixelSize buildImage 16
 
-    collectImage <- imageNewFromStock "ide_empty" (fromIntegral $ fromEnum IconSizeMenu)
+    collectImage <- imageNewFromIconName "ide_empty" (fromIntegral $ fromEnum IconSizeMenu)
     widgetSetName collectImage "collectImage"
     imageSetPixelSize collectImage 16
 
-    hb <- hBoxNew False 1
+    hb <- boxNew OrientationHorizontal 1
     widgetSetName hb "statusBox"
     boxPackStart' hb sblk PackGrow 0
     boxPackStart' hb sbap PackGrow 0

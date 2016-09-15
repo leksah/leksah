@@ -51,23 +51,22 @@ import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (unwords, unpack, pack)
 import Control.Applicative ((<$>))
-import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gtk.Objects.Widget (widgetSetSensitive, Widget(..))
-import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
-import GI.Gtk.Objects.Box (boxSetSpacing)
-import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
+import GI.Gtk.Objects.Box (boxSetSpacing, Box(..), boxNew)
+import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout, buttonBoxNew)
 import GI.Gtk.Enums
-       (PolicyType(..), ShadowType(..), ButtonBoxStyle(..))
-import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
+       (PolicyType(..), ShadowType(..), ButtonBoxStyle(..),
+        Orientation(..))
+import GI.Gtk.Objects.Button (onButtonClicked, buttonNewWithLabel)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowAddWithViewport,
         scrolledWindowSetShadowType, scrolledWindowNew)
 
 data IDEFlags               =   IDEFlags {
-    flagsBox                ::   VBox
+    flagsBox                ::   Box
 } deriving Typeable
 
 data FlagsState             =   FlagsState
@@ -108,14 +107,14 @@ instance RecoverablePane IDEFlags FlagsState IDEM where
 
 -- | Builds the Flags pane
 builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
-    vb                  <-  vBoxNew False 0
+    vb                  <-  boxNew OrientationVertical 0
     let flagsPane = IDEFlags vb
-    bb                  <-  hButtonBoxNew
+    bb                  <-  buttonBoxNew OrientationHorizontal
     boxSetSpacing bb 6
     buttonBoxSetLayout bb ButtonBoxStyleSpread
-    saveB               <-  buttonNewFromStock "gtk-save"
+    saveB               <-  buttonNewWithLabel "gtk-save"
     widgetSetSensitive saveB False
-    cancelB             <-  buttonNewFromStock "gtk-cancel"
+    cancelB             <-  buttonNewWithLabel "gtk-cancel"
     boxPackStart' bb cancelB PackNatural 0
     boxPackStart' bb saveB PackNatural 0
     (widget,injb,ext,notifier)

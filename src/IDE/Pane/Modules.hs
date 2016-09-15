@@ -85,8 +85,7 @@ import Data.Monoid ((<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (writeFile)
-import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
-import GI.Gtk.Objects.HPaned (hPanedNew, HPaned(..))
+import GI.Gtk.Objects.Paned (panedNew, Paned(..))
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreInsertTree, forestStoreGetTree, forestStoreGetValue,
         ForestStore(..))
@@ -115,7 +114,8 @@ import GI.Gtk.Objects.TreeViewColumn
 import GI.Gtk.Enums
        (ButtonsType(..), MessageType(..), WindowPosition(..),
         ResponseType(..), ButtonBoxStyle(..), PolicyType(..),
-        ShadowType(..), SortType(..), TreeViewColumnSizing(..))
+        ShadowType(..), SortType(..), TreeViewColumnSizing(..),
+        Orientation(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
 import Data.GI.Gtk.ModelView.CellLayout
        (cellLayoutSetDataFunction)
@@ -136,9 +136,8 @@ import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import Graphics.UI.Frame.Rectangle
        (getRectangleY, getRectangleX, Rectangle(..))
-import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
-import GI.Gtk.Objects.Box (boxReorderChild, Box(..), boxSetSpacing)
-import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
+import GI.Gtk.Objects.Box (boxReorderChild, Box(..), boxSetSpacing, boxNew)
+import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout, buttonBoxNew)
 import GI.Gtk.Objects.ToggleButton
        (toggleButtonGetActive, onToggleButtonToggled,
         toggleButtonSetActive)
@@ -186,8 +185,8 @@ printf = S.printf . T.unpack
 type ModuleRecord = (Text, Maybe (ModuleDescr,PackageDescr))
 
 data IDEModules     =   IDEModules {
-    outer            ::   VBox
-,   paned            ::   HPaned
+    outer            ::   Box
+,   paned            ::   Paned
 ,   treeView         ::   TreeView
 ,   forestStore      ::   ForestStore ModuleRecord
 ,   descrView        ::   TreeView
@@ -380,7 +379,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         treeViewSetEnableSearch descrView True
         treeViewSetSearchEqualFunc descrView
             (\_ _ key iter -> descrViewSearch descrView descrStore key iter)
-        pane'           <-  hPanedNew
+        pane'           <-  panedNew OrientationHorizontal
         sw              <-  scrolledWindowNew noAdjustment noAdjustment
         scrolledWindowSetShadowType sw ShadowTypeIn
         containerAdd sw treeView
@@ -395,7 +394,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         x <- getRectangleX rect
         y <- getRectangleY rect
         panedSetPosition pane' (max 200 (x `quot` 2))
-        box             <-  hButtonBoxNew
+        box             <-  buttonBoxNew OrientationHorizontal
         boxSetSpacing box 2
         buttonBoxSetLayout box ButtonBoxStyleSpread
         rb1             <-  radioButtonNewWithLabel ([]::[RadioButton]) (__ "Package")
@@ -412,7 +411,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         boxPackEnd' box cb2 PackNatural 0
 
 
-        boxOuter        <-  vBoxNew False 0
+        boxOuter        <-  boxNew OrientationVertical 0
         boxPackStart' boxOuter box PackNatural 2
         boxPackStart' boxOuter pane' PackGrow 0
         oldState <- liftIO $ newIORef $ SelectionState Nothing Nothing SystemScope False

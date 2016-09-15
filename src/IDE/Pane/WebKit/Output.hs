@@ -46,7 +46,7 @@ import Control.Applicative ((<$>))
 import System.Log.Logger (debugM)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
-import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
+import GI.Gtk.Objects.Box (boxNew, Box(..))
 import GI.Gtk.Objects.Entry
        (entryGetText, onEntryActivate, entrySetText, entryNew, Entry(..))
 import GI.WebKit.Objects.WebView
@@ -61,7 +61,7 @@ import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
-import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
+import GI.Gtk.Enums (PolicyType(..), ShadowType(..), Orientation(..))
 import Graphics.UI.Editor.Parameters (Packing(..), boxPackStart')
 import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gdk (getEventKeyState, getEventKeyKeyval, keyvalName)
@@ -81,7 +81,7 @@ import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 data IDEOutput = IDEOutput {
-    vbox          :: VBox
+    vbox          :: Box
   , uriEntry      :: Entry
   , webView       :: WebView
   , alwaysHtmlRef :: IORef Bool
@@ -115,7 +115,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
                 liftIO $ writeIORef (alwaysHtmlRef p) alwaysHtml
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
-        vbox <- vBoxNew False 0
+        vbox <- boxNew OrientationVertical 0
         uriEntry <- entryNew
         entrySetText uriEntry "http://"
         scrolledView <- scrolledWindowNew noAdjustment noAdjustment

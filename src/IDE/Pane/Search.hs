@@ -51,7 +51,6 @@ import GI.Gtk.Objects.ScrolledWindow
 import Data.GI.Gtk.ModelView.SeqStore
        (seqStoreGetValue, seqStoreAppend, seqStoreClear, seqStoreNew,
         SeqStore(..))
-import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
 import GI.Gtk.Objects.Entry
        (entrySetText, entryNew, entryGetText, Entry(..))
 import GI.Gtk.Objects.TreeView
@@ -62,14 +61,13 @@ import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gtk.Objects.Widget
        (toWidget, setWidgetSensitive, onWidgetKeyReleaseEvent,
         afterWidgetFocusInEvent, Widget(..))
-import GI.Gtk.Objects.HBox (hBoxNew)
 import GI.Gtk.Objects.RadioButton
        (RadioButton(..), radioButtonNewWithLabelFromWidget,
         radioButtonNewWithLabel)
 import GI.Gtk.Objects.ToggleButton
        (toggleButtonGetActive, toggleButtonSetActive)
 import GI.Gtk.Objects.CheckButton (checkButtonNewWithLabel)
-import GI.Gtk.Objects.Box (boxPackEnd, boxPackStart)
+import GI.Gtk.Objects.Box (boxPackEnd, boxPackStart, Box(..), boxNew)
 import Graphics.UI.Editor.Parameters
        (boxPackEnd', boxPackStart', Packing(..))
 import GI.Gtk.Objects.CellRendererText (cellRendererTextNew)
@@ -84,7 +82,7 @@ import GI.Gtk.Objects.TreeSelection
        (treeSelectionSetMode)
 import GI.Gtk.Enums
        (PolicyType(..), ShadowType(..), SelectionMode(..),
-        TreeViewColumnSizing(..))
+        TreeViewColumnSizing(..), Orientation(..))
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gtk.Objects.ToggleButton (onToggleButtonToggled)
@@ -107,7 +105,7 @@ data IDESearch      =   IDESearch {
 ,   searchStore     ::   SeqStore Descr
 ,   searchScopeRef  ::   IORef Scope
 ,   searchModeRef   ::   IORef SearchMode
-,   topBox          ::   VBox
+,   topBox          ::   Box
 ,   entry           ::   Entry
 ,   scopeSelection  ::   Scope -> IDEAction
 ,   modeSelection   ::   SearchMode -> IDEAction
@@ -150,7 +148,7 @@ buildSearchPane =
         mode    = Prefix False
     in reifyIDE $ \ ideR -> do
 
-        scopebox        <-  hBoxNew True 2
+        scopebox        <-  boxNew OrientationHorizontal 2
         rb1             <-  radioButtonNewWithLabel ([]::[RadioButton]) (__ "Package")
         rb2             <-  radioButtonNewWithLabelFromWidget (Just rb1) (__ "Workspace")
         rb3             <-  radioButtonNewWithLabelFromWidget (Just rb1) (__ "System")
@@ -162,7 +160,7 @@ buildSearchPane =
         boxPackStart' scopebox rb3 PackGrow 2
         boxPackEnd' scopebox cb2 PackNatural 2
 
-        modebox         <-  hBoxNew True 2
+        modebox         <-  boxNew OrientationHorizontal 2
         mb1             <-  radioButtonNewWithLabel ([]::[RadioButton]) (__ "Exact")
         mb2             <-  radioButtonNewWithLabelFromWidget (Just mb1) (__ "Prefix")
         mb3             <-  radioButtonNewWithLabelFromWidget (Just mb1) (__ "Regex")
@@ -262,7 +260,7 @@ buildSearchPane =
 
         entry   <-  entryNew
 
-        box             <-  vBoxNew False 2
+        box             <-  boxNew OrientationVertical 2
         boxPackStart' box scopebox PackNatural 0
         boxPackStart' box sw PackGrow 0
         boxPackStart' box modebox PackNatural 0

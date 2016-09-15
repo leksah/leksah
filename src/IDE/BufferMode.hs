@@ -48,7 +48,7 @@ import qualified Data.Text as T
 import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
 import GI.Gtk.Objects.Widget (toWidget)
 import GI.Gtk.Objects.Notebook (notebookPageNum, Notebook(..))
-import GI.Gtk (VBox)
+import GI.Gtk (Box)
 
 -- * Buffer Basics
 
@@ -60,7 +60,7 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 ,   bufferName      ::  Text
 ,   addedIndex      ::  Int
 ,   sourceView      ::  EditorView editor
-,   vBox  ::  VBox
+,   vBox            ::  Box
 ,   modTime         ::  IORef (Maybe UTCTime)
 ,   mode            ::  Mode
 } deriving (Typeable)

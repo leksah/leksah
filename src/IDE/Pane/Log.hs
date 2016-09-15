@@ -68,13 +68,12 @@ import Data.Monoid (Monoid(..), (<>))
 import Data.List (elemIndex, isPrefixOf, isSuffixOf, findIndex)
 import qualified Data.Foldable as F (toList, forM_)
 import qualified Data.Sequence as Seq (empty)
-import GI.Gtk.Objects.VBox (vBoxNew, VBox(..))
+import GI.Gtk.Objects.Box (boxNew, Box(..))
 import GI.Gtk.Objects.TextView
        (textViewScrollToMark, textViewGetBuffer,
         textViewScrollMarkOnscreen, textViewGetLineAtY,
         textViewWindowToBufferCoords, onTextViewPopulatePopup,
         textViewSetBuffer, textViewSetEditable, textViewNew, TextView(..))
-import GI.Gtk.Objects.HBox (hBoxNew, HBox(..))
 import GI.Gtk.Objects.ComboBox
        (onComboBoxChanged, comboBoxSetActive, comboBoxGetActive,
         ComboBox(..))
@@ -113,7 +112,7 @@ import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Container
        (containerGetChildren, containerAdd)
 import GI.Gtk.Enums
-       (TextWindowType(..), ShadowType(..), PolicyType(..))
+       (TextWindowType(..), ShadowType(..), PolicyType(..), Orientation(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import GI.Gdk.Structs.EventButton
        (getEventButtonY, getEventButtonX, getEventButtonButton,
@@ -142,9 +141,9 @@ import Control.Monad.IO.Class (MonadIO)
 
 
 data IDELog = IDELog {
-    logMainContainer :: VBox
+    logMainContainer :: Box
 ,   logLaunchTextView :: TextView
-,   logButtons :: HBox
+,   logButtons :: Box
 ,   logLaunchBox :: ComboBox
 } deriving Typeable
 
@@ -344,10 +343,10 @@ builder' pp nb windows = do
     modifyIDE_ $ \ide -> ide { logLaunches = map}
 
     ideR <- ask
-    mainContainer <- vBoxNew False 0
+    mainContainer <- boxNew OrientationVertical 0
 
     -- top, buttons and combobox
-    hBox <- hBoxNew False 0
+    hBox <- boxNew OrientationHorizontal 0
     boxPackStart' mainContainer hBox PackNatural 0
 
     terminateBtn <- buttonNewWithLabel (__ "Terminate process")
