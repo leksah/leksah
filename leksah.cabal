@@ -92,31 +92,6 @@ data-files:
     pics/ide_error.png
     pics/ide_warning.png
     pics/ide_suggestion.png
-    doc/screenshots2/screenshot_buffer_menu.png
-    doc/screenshots2/screenshot_completion.png
-    doc/screenshots2/screenshot_config_menu.png
-    doc/screenshots2/screenshot_construct_module.png
-    doc/screenshots2/screenshot_debug_menu.png
-    doc/screenshots2/screenshot_debug_pane.png
-    doc/screenshots2/screenshot_edit_menu.png
-    doc/screenshots2/screenshot_error_pane.png
-    doc/screenshots2/screenshot_file_menu.png
-    doc/screenshots2/screenshot_findbar.png
-    doc/screenshots2/screenshot_first_start.png
-    doc/screenshots2/screenshot_grep.png
-    doc/screenshots2/screenshot_help_menu.png
-    doc/screenshots2/screenshot_metadata_prefs.png
-    doc/screenshots2/screenshot_module_browser.png
-    doc/screenshots2/screenshot_package_editor_1.png
-    doc/screenshots2/screenshot_package_flags.png
-    doc/screenshots2/screenshot_package_menu.png
-    doc/screenshots2/screenshot_panes_menu.png
-    doc/screenshots2/screenshot_prefs_editor.png
-    doc/screenshots2/screenshot_serach_pane.png
-    doc/screenshots2/screenshot_source_candy.png
-    doc/screenshots2/screenshot_view_menu.png
-    doc/screenshots2/screenshot_welcome.png
-    doc/screenshots2/screenshot_workspace_menu.png
     scripts/clean.sh
     scripts/stage.sh
     osx/bundle.sh
