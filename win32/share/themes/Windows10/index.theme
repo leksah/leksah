@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Windows10
+Comment=Windows 10 modern ui gtk theme
+Comment=Author: Maxime DOYEN
+Version=v1.5
+Encoding=UTF-8
+
+[X-GNOME-Metatheme]
+GtkTheme=Windows10
+MetacityTheme=Windows10
+IconTheme=ubuntu-mono-dark
+CursorTheme=DMZ-White
+ButtonLayout=:minimize,maximize,close
+

@@ -1,0 +1,28 @@
+/*
+# name: Windows 10
+# author: Maxime Doyen
+*/
+
+
+/*********************
+ * GtkScale's slider *
+ *********************/
+  scale.horizontal slider {
+      background-image: url("assets/slider-horiz-dark.png");
+      min-width: 11px;
+      min-height: 19px;}
+    scale.horizontal slider:hover {
+      background-image: url("assets/slider-horiz-over-dark.png"); }
+    scale slider:active { }
+    scale.horizontal slider:disabled {
+      background-image: url("assets/slider-horiz-insensitive-dark.png"); }
+  scale.vertical slider {
+      background-image: url("assets/slider-vert-dark.png");
+      min-width: 19px;
+      min-height: 11px; }
+    scale.vertical slider:hover {
+      background-image: url("assets/slider-vert-over-dark.png"); }
+    scale slider:active { }
+    scale.vertical slider:disabled {
+      background-image: url("assets/slider-vert-insensitive-dark.png"); }
+
