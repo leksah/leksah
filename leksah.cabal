@@ -92,8 +92,6 @@ data-files:
     pics/ide_error.png
     pics/ide_warning.png
     pics/ide_suggestion.png
-    doc/Keybindings.svg
-    doc/leksah_manual.lyx
     doc/screenshots2/screenshot_buffer_menu.png
     doc/screenshots2/screenshot_completion.png
     doc/screenshots2/screenshot_config_menu.png
