@@ -112,9 +112,9 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
     bb                  <-  buttonBoxNew OrientationHorizontal
     boxSetSpacing bb 6
     buttonBoxSetLayout bb ButtonBoxStyleSpread
-    saveB               <-  buttonNewWithLabel "gtk-save"
+    saveB               <-  buttonNewWithLabel "Save"
     widgetSetSensitive saveB False
-    cancelB             <-  buttonNewWithLabel "gtk-cancel"
+    cancelB             <-  buttonNewWithLabel "Cancel"
     boxPackStart' bb cancelB PackNatural 0
     boxPackStart' bb saveB PackNatural 0
     (widget,injb,ext,notifier)

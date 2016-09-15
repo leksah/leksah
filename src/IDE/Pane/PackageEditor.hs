@@ -680,9 +680,9 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
     origPackageD panePath nb window  = reifyIDE $ \ ideR -> do
     vb      <-  boxNew OrientationVertical 0
     bb      <-  buttonBoxNew OrientationHorizontal
-    save    <- buttonNewWithLabel "gtk-save"
+    save    <- buttonNewWithLabel "Save"
     widgetSetSensitive save False
-    closeB  <- buttonNewWithLabel "gtk-close"
+    closeB  <- buttonNewWithLabel "Close"
     addB    <- buttonNewWithLabel (__ "Add Build Info")
     removeB <- buttonNewWithLabel (__ "Remove Build Info")
     label   <-  labelNew (Nothing :: Maybe Text)
