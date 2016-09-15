@@ -11,6 +11,18 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   intro
+   installing
+   helloworld
+   editor
+   projects
+   modulebrowser
+   debugger
+   metadata
+   configuration
+   leksahproject
+   appendix
+
 
 
 Indices and tables

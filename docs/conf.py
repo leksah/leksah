@@ -49,8 +49,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Leksah IDE'
-copyright = u'2016, Jürgen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau'
-author = u'Jürgen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau'
+copyright = u'2016, Jürgen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau, Andrew U. Frank, Christian Gruber'
+author = u'Jürgen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau, Andrew U. Frank, Christian Gruber'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -258,10 +258,7 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
-latex_documents = [
-    (master_doc, 'LeksahIDE.tex', u'Leksah IDE Documentation',
-     u'Jürgen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau', 'manual'),
-]
+
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.
