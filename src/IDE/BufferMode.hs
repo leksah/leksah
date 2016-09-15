@@ -44,7 +44,7 @@ import Data.Time (UTCTime)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T
-       (isPrefixOf, lines, unlines, count, isInfixOf)
+       (isPrefixOf, lines, unlines, count, isInfixOf, pack)
 import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
 import GI.Gtk.Objects.Widget (toWidget)
 import GI.Gtk.Objects.Notebook (notebookPageNum, Notebook(..))
@@ -68,6 +68,7 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 instance Pane IDEBuffer IDEM
     where
     primPaneName    =   bufferName
+    paneTooltipText p =   fmap T.pack (fileName p)
     getAddedIndex   =   addedIndex
     getTopWidget    =   liftIO . toWidget . vBox
     paneId b        =   ""

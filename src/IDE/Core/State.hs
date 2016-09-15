@@ -181,7 +181,7 @@ instance PaneMonad IDEM where
                 if b1 && b2
                     then do
                         topWidget <- getTopWidget buf
-                        notebookInsertOrdered notebook topWidget (paneName buf) noLabel False
+                        notebookInsertOrdered notebook topWidget (paneName buf) noLabel (paneTooltipText buf) False
                         addPaneAdmin buf cids panePath
                         widgetSetName topWidget (paneName buf)
                         widgetShowAll topWidget
