@@ -784,7 +784,7 @@ menubar,
   background-color: transparent; }
   menubar > menuitem,
   .menubar > menuitem {
-    padding: 2px 4px;
+    padding: 2px 8px 2px 8px;
 	border: 1px solid transparent; }
     menubar > menuitem:hover,
     .menubar > menuitem:hover
@@ -801,14 +801,16 @@ menu,
 .menu {
   padding: 0px;
   background-color: @theme_bg_color;
+  border: 1px solid @borders;
   }
   menu menuitem,
   .menu menuitem {
     padding: 4px;
+    border: 1px solid transparent;
     }
     menu menuitem:hover,
     .menu menuitem:hover {
-    border: 1px solid @menubaritem_border;
+        border: 1px solid @menubaritem_border;
 	background-color: @menubaritem_bg_color;
 	color: @theme_fg_color;}
     menu menuitem:disabled,
@@ -1849,7 +1851,7 @@ GtkColorChooserWidget #add-color-button {
  *********************/
 decoration {
   /*border-radius: 7px 7px 0 0;*/
-  border: 1px solid @borders;
+  box-shadow: 0 1 2 1 rgba(0,0,0,0.2);
   /* this is used for the resize cursor area */
   margin: 10px; }
   decoration.tiled {
