@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module IDE.Completion (complete, cancel, setCompletionSize) where
+module IDE.Completion (complete, cancel, setCompletionSize, smartIndent) where
 
 import Prelude hiding(getChar, getLine)
 
@@ -22,7 +22,8 @@ import Data.Char
 import Data.IORef
 import Control.Monad
 import IDE.Core.State
-import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
+import IDE.Metainfo.Provider
+       (keywords, getDescription, getCompletionOptions)
 import IDE.TextEditor as TE
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
@@ -31,7 +32,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Applicative ((<$>))
 import Data.Text (Text)
 import qualified Data.Text as T
-       (empty, commonPrefixes, pack, unpack, null, stripPrefix,
+       (replicate, empty, commonPrefixes, pack, unpack, null, stripPrefix,
         isPrefixOf)
 import System.Log.Logger (debugM)
 import GI.Gtk.Objects.Window
@@ -216,7 +217,7 @@ initCompletion sourceView always = do
 
             onTreeSelectionChanged treeSelection $
                 treeSelectionSelectedForeach treeSelection $ \_model treePath _iter ->
-                    reflectIDE (withWord store treePath (\name -> do
+                    reflectIDE (void $ withWord store treePath (\name -> do
                             description <- getDescription name
                             setText descriptionBuffer description
                             )) ideR
@@ -267,17 +268,24 @@ addEventHandling window sourceView tree store isWordChar always = do
             (Just "Tab", _, _) -> whenVisible . liftIDE $ do
                 tryToUpdateOptions window tree store sourceView True isWordChar always
                 return True
-            (Just "Return", _, _) -> whenVisible $ do
-                maybeRow <- liftIO $ getRow tree
-                case maybeRow of
-                    Just row -> do
-                        path <- treePathNewFromIndices' [row]
-                        liftIDE $ withWord store path (replaceWordStart sourceView isWordChar True)
-                        liftIDE $ postAsyncIDE cancel
-                        return True
-                    Nothing -> do
-                        liftIDE cancel
-                        return False
+            (Just "Return", _, _) -> getWidgetVisible tree >>= \case
+                True  -> do
+                    maybeRow <- liftIO $ getRow tree
+                    case maybeRow of
+                        Just row -> do
+                            path <- treePathNewFromIndices' [row]
+                            liftIDE $ withWord store path (replaceWordStart sourceView isWordChar) >>= \case
+                                Just True -> liftIDE $ smartIndent sourceView
+                                _         -> return ()
+                            liftIDE $ postAsyncIDE cancel
+                            return True
+                        Nothing -> liftIDE $ do
+                            cancel
+                            smartIndent sourceView
+                            return True
+                False -> liftIDE $ do
+                    smartIndent sourceView
+                    return True
             (Just "Down", _, _) -> down
             (Just "Up", _, _) -> up
             (Just super, _, 'a') | super `elem` ["Super_L", "Super_R"] -> do
@@ -351,31 +359,46 @@ addEventHandling window sourceView tree store isWordChar always = do
             Nothing     -> return False)
 
     idSelected <- ConnectC tree <$> onTreeViewRowActivated tree (\treePath column -> (`reflectIDE` ideR) $ do
-        withWord store treePath (replaceWordStart sourceView isWordChar False)
+        withWord store treePath (replaceWordStart sourceView isWordChar)
         postAsyncIDE cancel)
 
     return $ concat [cidsPress, cidsRelease, [idButtonPress, idMotion, idButtonRelease, idSelected]]
 
-withWord :: SeqStore Text -> TreePath -> (Text -> IDEM ()) -> IDEM ()
-withWord store treePath f =
-   treePathGetIndices' treePath >>= \case
-       [row] -> do
-            value <- seqStoreGetValue store row
-            f value
-       _ -> return ()
+smartIndent :: TextEditor editor => EditorView editor -> IDEM ()
+smartIndent sourceView = do
+    indentWidth <- tabWidth <$> readIDE prefs
+    buffer <- getBuffer sourceView
+    (selStart, selEnd) <- getSelectionBounds buffer
+    lineStart <- backwardToLineStartC selStart
+    line <- getText buffer lineStart selStart True
+    let lastWord = reverse . takeWhile (\c -> isAlphaNum c || c `elem` ['\'','_']) . reverse $ T.unpack line
+        lastOp = reverse . takeWhile (\c -> not (isAlphaNum c) && c `notElem` ['\'','_','\"',' ',']',')','}',',',';']) . reverse $ T.unpack line
+        indentAmount = length . takeWhile (==' ') $ T.unpack line
+        extraIndent = T.pack lastWord `elem` keywords || (not (null lastOp) && lastOp `notElem` ["--", "\\"])
+        newIndent = if extraIndent
+                        then (indentAmount `div` indentWidth + 1) * indentWidth
+                        else indentAmount
+    delete buffer selStart selEnd
+    insert buffer selStart $ "\n" <> T.replicate newIndent " "
 
-replaceWordStart :: TextEditor editor => EditorView editor -> (Char -> Bool) -> Bool -> Text -> IDEM ()
-replaceWordStart sourceView isWordChar returnPressed name = do
+withWord :: SeqStore Text -> TreePath -> (Text -> IDEM a) -> IDEM (Maybe a)
+withWord store treePath f =
+    treePathGetIndices' treePath >>= \case
+        [row] -> do
+            value <- seqStoreGetValue store row
+            Just <$> f value
+        _ -> return Nothing
+
+-- Return value indicates if the we did nothing and return key should
+-- still be cause a new line to be started.
+replaceWordStart :: TextEditor editor => EditorView editor -> (Char -> Bool) -> Text -> IDEM Bool
+replaceWordStart sourceView isWordChar name = do
     buffer <- getBuffer sourceView
     (selStart, selEnd) <- getSelectionBounds buffer
     start <- findWordStart selStart isWordChar
     wordStart <- getText buffer start selEnd True
     case T.stripPrefix wordStart name of
-        Just "" | returnPressed -> do
-            -- Return key was pressed even though nothing needed to be done
-            -- to make the current word match the selection.
-            selectRange buffer selEnd selEnd
-            insert buffer selEnd "\n"
+        Just "" -> return True
         Just extra -> do
             end <- findWordEnd selEnd isWordChar
             wordFinish <- getText buffer selEnd end True
@@ -384,7 +407,8 @@ replaceWordStart sourceView isWordChar returnPressed name = do
                     selectRange buffer end end
                     insert buffer end extra2
                 _ -> insert buffer selEnd extra
-        Nothing -> return ()
+            return False
+        Nothing -> return False
 
 cancelCompletion :: Window -> TreeView -> SeqStore Text -> Connections -> IDEAction
 cancelCompletion window tree store connections = do
@@ -509,7 +533,7 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         widgetShowAll window
 
             when (newWordStart /= currentWordStart) $
-                replaceWordStart sourceView isWordChar False newWordStart
+                void $ replaceWordStart sourceView isWordChar newWordStart
 
 getRow tree = do
     Just model <- treeViewGetModel tree

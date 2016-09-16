@@ -36,6 +36,8 @@ module IDE.Metainfo.Provider (
 
 ,   getPackageImportInfo -- Scope for the import tool
 ,   getAllPackageIds
+
+,   keywords
 ) where
 
 import Prelude ()

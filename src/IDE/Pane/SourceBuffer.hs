@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -114,7 +115,7 @@ import IDE.Utils.FileUtils
 import IDE.Utils.DirectoryUtils
 import IDE.SourceCandy
 import IDE.SymbolNavigation
-import IDE.Completion as Completion (complete,cancel)
+import IDE.Completion as Completion (complete,cancel, smartIndent)
 import IDE.TextEditor
 import Data.IORef (writeIORef,readIORef,newIORef)
 import Control.Event (triggerEvent)
@@ -752,6 +753,10 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                         slice <- getSlice buffer start end True
                         triggerEventIDE (SelectInfo slice True)
                         return True
+                    (Just "Return", [], _) ->
+                        readIDE currentState >>= \case
+                            IsCompleting _ -> return False
+                            _              -> smartIndent sv >> return True
                     _ ->
                         -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
                         return False
