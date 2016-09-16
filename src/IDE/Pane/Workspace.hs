@@ -378,13 +378,10 @@ buildTreeView recordStore = do
                 forM_ mbPkg $ \pkg -> setCellRendererTextMarkup renderer1 markup
 
         -- set workspace font
-        fd <- case workspaceFont prefs of
-            Just str ->  fontDescriptionFromString str
-            Nothing  -> do
-                f    <- fontDescriptionNew
-                fontDescriptionSetFamily f "Sans"
-                return f
-        widgetModifyFont treeView (Just fd)
+        mbFd <- case workspaceFont prefs of
+            (True, Just str) ->  Just <$> fontDescriptionFromString str
+            _ -> return Nothing
+        widgetModifyFont treeView mbFd
 
          -- treeViewSetActiveOnSingleClick treeView True
         treeViewSetHeadersVisible treeView False

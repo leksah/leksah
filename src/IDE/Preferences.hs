@@ -104,7 +104,7 @@ import GI.Gtk (constructDialogUseHeaderBar, Container(..), containerAdd)
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 11
+prefsVersion = 12
 
 runPreferencesDialog :: IDEAction
 runPreferencesDialog = do
@@ -379,28 +379,34 @@ prefsDescription configDir packages = NFDPP [
             (\_ -> applyInterfaceTheme)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "LogView Font") $ emptyParams)
-            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (\(b, a) -> PP.text (if b then case a of Nothing -> show ""; Just s -> show s else show ""))
             (do str <- stringParser
-                return (if T.null str then Nothing else Just str))
+                return (if T.null str then (False, Nothing) else (True, Just str)))
             logviewFont
-            (\ b a -> a{logviewFont = b})
-            fontEditor
-            (\mbs -> do
+            (\b a -> a{logviewFont = b})
+            (disableEditor (fontEditor, emptyParams) True "Use custom font")
+            (\(b, mbFont) -> do
                 log <- getLog
-                fdesc <- fontDescriptionFromString (fromMaybe "" mbs)
-                widgetModifyFont (logLaunchTextView log) (Just fdesc))
+                fdesc <- fontDescriptionFromString (if b then fromMaybe "" mbFont else "Monospace")
+                widgetModifyFont (logLaunchTextView log) (Just fdesc)
+            )
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Workspace Font") $ emptyParams)
-            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
+            (\(b, a) -> PP.text (if b then case a of Nothing -> show ""; Just s -> show s else show ""))
             (do str <- stringParser
-                return (if T.null str then Nothing else Just str))
+                return (if T.null str then (False, Nothing) else (True, Just str)))
             workspaceFont
-            (\ b a -> a{workspaceFont = b})
-            fontEditor
-            (\mbs -> do
+            (\b a -> a{workspaceFont = b})
+            (disableEditor (fontEditor, emptyParams) True "Use custom font")
+            (\(b, mbFont) -> do
                 wp <- getWorkspacePane
-                fdesc <- fontDescriptionFromString (fromMaybe "" mbs)
-                widgetModifyFont (treeView wp) (Just fdesc))
+                case (b, mbFont) of
+                    (True, Just font) -> do
+                        fdesc <- fontDescriptionFromString (if b then fromMaybe "" mbFont else "")
+                        widgetModifyFont (treeView wp) (Just fdesc)
+                    _ -> do
+                        widgetModifyFont (treeView wp) Nothing
+            )
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Window default size")
                 $ paraSynopsis <<<- ParaSynopsis
@@ -827,8 +833,8 @@ defaultPrefs = Prefs {
     ,   lintBackgroundDark        = Color     0 15000     0
     ,   textEditorType      =   "GtkSourceView"
     ,   autoLoad            =   False
-    ,   logviewFont         =   Nothing
-    ,   workspaceFont       =   Nothing
+    ,   logviewFont         =   (False, Nothing)
+    ,   workspaceFont       =   (False, Nothing)
     ,   defaultSize         =   (1024,800)
     ,   browser             =   "firefox"
     ,   sourceDirectories   =   []

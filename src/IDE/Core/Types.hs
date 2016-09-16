@@ -491,7 +491,7 @@ data Prefs = Prefs {
     ,   forceLineEnds       ::   Bool
     ,   removeTBlanks       ::   Bool
     ,   textviewFont        ::   Maybe Text
-    ,   workspaceFont       ::   Maybe Text
+    ,   workspaceFont       ::   (Bool, Maybe Text)
     ,   sourceStyle         ::   (Bool, Text)
     ,   foundBackgroundLight      ::   Color
     ,   matchBackgroundLight      ::   Color
@@ -505,7 +505,7 @@ data Prefs = Prefs {
     ,   lintBackgroundDark        ::   Color
     ,   autoLoad            ::   Bool
     ,   textEditorType      ::   Text
-    ,   logviewFont         ::   Maybe Text
+    ,   logviewFont         ::   (Bool, Maybe Text)
     ,   defaultSize         ::   (Int,Int)
     ,   browser             ::   Text
     ,   pathForCategory     ::   [(Text, PanePath)]

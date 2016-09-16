@@ -360,10 +360,10 @@ builder' pp nb windows = do
     tv           <- textViewNew
     textViewSetEditable tv False
     fd           <- case logviewFont prefs of
-        Just str ->  fontDescriptionFromString str
-        Nothing  -> do
+        (True, Just str) ->  fontDescriptionFromString str
+        _  -> do
             f    <- fontDescriptionNew
-            fontDescriptionSetFamily f "Sans"
+            fontDescriptionSetFamily f "Monospace"
             return f
     widgetModifyFont tv (Just fd)
     sw           <- scrolledWindowNew noAdjustment noAdjustment
