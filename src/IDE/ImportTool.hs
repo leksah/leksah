@@ -408,16 +408,22 @@ scopeParser = do whiteSpace
                      return result)
                     <|>
                     (do whiteSpace
-                        mbQual <- optionMaybe
+                        (do mbQual <- optionMaybe
                                    (try
                                       (lexeme conid))
-                        result <- optionMaybe (try identifier) >>= \case
-                                     Just id -> return
-                                                  (NotInScopeParseResult mbQual id isSub False)
-                                     Nothing -> do op <- operator
-                                                   return (NotInScopeParseResult mbQual op isSub True)
-                        many anyChar
-                        return result)
+                            result <- optionMaybe (try identifier) >>= \case
+                                         Just id -> return
+                                                      (NotInScopeParseResult mbQual id isSub False)
+                                         Nothing -> do op <- operator
+                                                       return (NotInScopeParseResult mbQual op isSub True)
+                            many anyChar
+                            return result)
+                            <|> (do
+                                char '('
+                                op <- operator
+                                char ')'
+                                many anyChar
+                                return (NotInScopeParseResult Nothing op isSub True)))
     <?> "scopeParser"
 
 conid  = do
