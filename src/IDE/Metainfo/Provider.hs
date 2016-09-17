@@ -105,11 +105,13 @@ initInfo continuation = do
     where
       doLoad = do
             ideMessage Normal "Now loading metadata ..."
-            loadSystemInfo
-            ideMessage Normal "Finished loading metadata"
-            updateWorkspaceInfo' False $ \ _ -> do
-                void (triggerEventIDE (InfoChanged True))
-                continuation
+            forkIDE $ do
+                loadSystemInfo
+                postAsyncIDE $ do
+                    ideMessage Normal "Finished loading metadata"
+                    updateWorkspaceInfo' False $ \ _ -> do
+                        void (triggerEventIDE (InfoChanged True))
+                        continuation
 
 updateSystemInfo :: IDEAction
 updateSystemInfo     = do
@@ -181,26 +183,30 @@ updateSystemInfo' rebuild continuation = do
     wi              <-  getSystemInfo
     case wi of
         Nothing -> loadSystemInfo
-        Just (GenScopeC (PackScope psmap psst)) -> do
+        Just (GenScopeC (PackScope psmap psst)) -> forkIDE $ do
             packageIds      <-  getAllPackageIds
             let newPackages     =   filter (`Map.member` psmap) packageIds
             let trashPackages   =   filter (`notElem` packageIds) (Map.keys psmap)
-            if null newPackages && null trashPackages
-                then continuation True
-                else
-                    callCollector rebuild True True $ \ _ -> do
-                        collectorPath   <-  lift getCollectorPath
-                        newPackageInfos <-  liftIO $ mapM (loadInfosForPackage collectorPath)
-                                                            (nub newPackages)
-                        let psmap2      =   foldr ((\ e m -> Map.insert (pdPackage e) e m) . fromJust) psmap
-                                               (filter isJust newPackageInfos)
-                        let psmap3      =   foldr Map.delete psmap2 trashPackages
-                        let scope :: PackScope (Map Text [Descr])
-                                        =   foldr buildScope (PackScope Map.empty symEmpty)
-                                                (Map.elems psmap3)
-                        modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
-                        continuation True
-    ideMessage Normal "Finished updating system metadata"
+            postAsyncIDE $
+                if null newPackages && null trashPackages
+                    then finished
+                    else
+                        callCollector rebuild True True $ \ _ -> do
+                            collectorPath   <-  lift getCollectorPath
+                            newPackageInfos <-  liftIO $ mapM (loadInfosForPackage collectorPath)
+                                                                (nub newPackages)
+                            let psmap2      =   foldr ((\ e m -> Map.insert (pdPackage e) e m) . fromJust) psmap
+                                                   (filter isJust newPackageInfos)
+                            let psmap3      =   foldr Map.delete psmap2 trashPackages
+                            let scope :: PackScope (Map Text [Descr])
+                                            =   foldr buildScope (PackScope Map.empty symEmpty)
+                                                    (Map.elems psmap3)
+                            modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+                            finished
+  where
+    finished = do
+        postAsyncIDE $ ideMessage Normal "Finished updating system metadata"
+        continuation True
 
 getEmptyDefaultScope :: Map Text [Descr]
 getEmptyDefaultScope = symEmpty
@@ -269,20 +275,22 @@ updateWorkspaceInfo' rebuild continuation = do
                                                             (GenScopeC (addOtherToScope scope1 False),
                                                             GenScopeC(addOtherToScope scope2 False))})
                             _    -> modifyIDE_ (\ide -> ide{packageInfo = Nothing})
+                postAsyncIDE $ ideMessage Normal "Finished updating workspace metadata"
                 continuation True
-    postAsyncIDE $ ideMessage Normal "Finished updating workspace metadata"
 
 -- | Update the metadata on several packages
 updatePackageInfos :: Bool -> [IDEPackage] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
-updatePackageInfos rebuild pkgs continuation = do
-    -- calculate list of known packages once
-    knownPackages   <- getAllPackageIds
-    updatePackageInfos' [] knownPackages rebuild pkgs continuation
-    where
-        updatePackageInfos' collector _ _ [] continuation =  continuation True collector
-        updatePackageInfos' collector knownPackages rebuild (hd:tail) continuation =
-            updatePackageInfo knownPackages rebuild hd $ \ _ packDescr ->
-                updatePackageInfos' (packDescr : collector) knownPackages rebuild tail continuation
+updatePackageInfos rebuild pkgs continuation =
+    forkIDE $ do
+        -- calculate list of known packages once
+        knownPackages   <- getAllPackageIds
+        postAsyncIDE $
+            updatePackageInfos' [] knownPackages rebuild pkgs continuation
+  where
+    updatePackageInfos' collector _ _ [] continuation =  continuation True collector
+    updatePackageInfos' collector knownPackages rebuild (hd:tail) continuation =
+        updatePackageInfo knownPackages rebuild hd $ \ _ packDescr ->
+            updatePackageInfos' (packDescr : collector) knownPackages rebuild tail continuation
 
 -- | Update the metadata on one package
 updatePackageInfo :: [PackageIdentifier] -> Bool -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
