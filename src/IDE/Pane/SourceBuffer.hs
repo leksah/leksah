@@ -183,6 +183,7 @@ import GI.Gtk
         containerAdd, infoBarGetContentArea,
         labelNew, infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
+import Debug.Trace
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -605,10 +606,15 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
 
         -- Files opened from the unpackDirectory are meant for documentation
         -- and are not actually a source dependency, they should not be editable.
+        homeDir <- liftIO getHomeDirectory
         let isEditable = fromMaybe True $ do
                             dir  <- unpackDirectory prefs
+                            let expandedDir = case dir of
+                                    '~':rest -> homeDir ++ rest
+                                    rest -> rest
                             file <- mbfn
-                            return (not $ (splitDirectories dir) `isPrefixOf` (splitDirectories file))
+                            trace (show expandedDir ++ ", " ++ show file) $ return (not $ (splitDirectories expandedDir) `isPrefixOf` (splitDirectories file))
+
         setEditable sv isEditable
         setShowLineNumbers sv $ showLineNumbers prefs
         setRightMargin sv $ case rightMargin prefs of
