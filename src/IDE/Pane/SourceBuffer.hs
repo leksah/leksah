@@ -183,7 +183,6 @@ import GI.Gtk
         containerAdd, infoBarGetContentArea,
         labelNew, infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
-import Debug.Trace
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -613,7 +612,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                                     '~':rest -> homeDir ++ rest
                                     rest -> rest
                             file <- mbfn
-                            trace (show expandedDir ++ ", " ++ show file) $ return (not $ (splitDirectories expandedDir) `isPrefixOf` (splitDirectories file))
+                            return (not $ (splitDirectories expandedDir) `isPrefixOf` (splitDirectories file))
 
         setEditable sv isEditable
         setShowLineNumbers sv $ showLineNumbers prefs
