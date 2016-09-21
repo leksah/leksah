@@ -187,22 +187,21 @@ updateSystemInfo' rebuild continuation = do
             packageIds      <-  getAllPackageIds
             let newPackages     =   filter (`Map.member` psmap) packageIds
             let trashPackages   =   filter (`notElem` packageIds) (Map.keys psmap)
-            postAsyncIDE $
-                if null newPackages && null trashPackages
-                    then finished
-                    else
-                        callCollector rebuild True True $ \ _ -> do
-                            collectorPath   <-  lift getCollectorPath
-                            newPackageInfos <-  liftIO $ mapM (loadInfosForPackage collectorPath)
-                                                                (nub newPackages)
-                            let psmap2      =   foldr ((\ e m -> Map.insert (pdPackage e) e m) . fromJust) psmap
-                                                   (filter isJust newPackageInfos)
-                            let psmap3      =   foldr Map.delete psmap2 trashPackages
-                            let scope :: PackScope (Map Text [Descr])
-                                            =   foldr buildScope (PackScope Map.empty symEmpty)
-                                                    (Map.elems psmap3)
-                            modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
-                            finished
+            if null newPackages && null trashPackages
+                then finished
+                else
+                    callCollector rebuild True True $ \ _ -> do
+                        collectorPath   <-  lift getCollectorPath
+                        newPackageInfos <-  liftIO $ mapM (loadInfosForPackage collectorPath)
+                                                            (nub newPackages)
+                        let psmap2      =   foldr ((\ e m -> Map.insert (pdPackage e) e m) . fromJust) psmap
+                                               (filter isJust newPackageInfos)
+                        let psmap3      =   foldr Map.delete psmap2 trashPackages
+                        let scope :: PackScope (Map Text [Descr])
+                                        =   foldr buildScope (PackScope Map.empty symEmpty)
+                                                (Map.elems psmap3)
+                        postAsyncIDE $ modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+                        finished
   where
     finished = do
         postAsyncIDE $ ideMessage Normal "Finished updating system metadata"
