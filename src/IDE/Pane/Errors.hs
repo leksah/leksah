@@ -393,13 +393,15 @@ removeErrorsFromList True  toRemove = getErrors Nothing  >>= \ p -> removeErrors
 removeErrorsFromList' :: (LogRef -> Bool) -> ErrorsPane -> IDEAction
 removeErrorsFromList' toRemove pane = do
     liftIO $ debugM "leksah" "removeErrorsFromList"
-    refs <- F.toList <$> readIDE errorRefs
-    visibleRefs <- filterM (isRefVisible pane) refs
     let store = errorStore pane
+    trees <- forestStoreGetForest store
     updateFilterButtons pane
-    let refsToRemove = filter (toRemove . snd) $ zip [0..] visibleRefs
+    let refsToRemove = filter (treeToRemove . snd) $ zip [0..] trees
     forM_ (map fst $ reverse refsToRemove) $ \index ->
-        forestStoreRemove store =<< treePathNewFromIndices' [fromIntegral index,0]
+        forestStoreRemove store =<< treePathNewFromIndices' [fromIntegral index]
+  where
+    treeToRemove (Node (ERLogRef ref) _) = toRemove ref
+    treeToRemove _ = False
 
 -- | Updates the filter buttons in the Error Pane
 updateFilterButtons :: ErrorsPane -> IDEAction
