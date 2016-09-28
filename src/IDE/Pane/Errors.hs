@@ -22,6 +22,7 @@ module IDE.Pane.Errors (
 ,   fillErrorList
 ,   getErrors
 ,   addErrorToList
+,   removeErrorsFromList
 ,   selectMatchingErrors
 ) where
 
@@ -96,8 +97,9 @@ import GI.Gtk.Objects.Container (containerAdd)
 import Control.Monad.Reader (MonadReader(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.GI.Gtk.ModelView.ForestStore
-       (forestStoreInsert, forestStoreClear, forestStoreNew, ForestStore(..),
-        forestStoreGetTree, forestStoreGetValue, forestStoreGetForest)
+       (forestStoreRemove, forestStoreInsert, forestStoreClear,
+        forestStoreNew, ForestStore(..), forestStoreGetTree,
+        forestStoreGetValue, forestStoreGetForest)
 import GI.Gtk.Objects.Button (buttonSetLabel)
 import GI.Gtk.Structs.TreePath
        (TreePath(..))
@@ -378,6 +380,24 @@ addErrorToList' unfilteredIndex ref pane = do
             collapse <- collapseErrors <$> readIDE prefs
             unless collapse $ do
                 treeViewExpandToPath view =<< treePathNewFromIndices' [fromIntegral index,0]
+
+-- | Add any LogRef to the Errors pane at a given index
+removeErrorsFromList :: Bool -- ^ Whether to display the pane
+                     -> (LogRef -> Bool)
+                     -> IDEAction
+removeErrorsFromList False toRemove = getPane >>= maybe (return ()) (removeErrorsFromList' toRemove)
+removeErrorsFromList True  toRemove = getErrors Nothing  >>= \ p -> removeErrorsFromList' toRemove p >> displayPane p False
+
+
+-- | Add a 'LogRef' at a specific index to the Errors pane
+removeErrorsFromList' :: (LogRef -> Bool) -> ErrorsPane -> IDEAction
+removeErrorsFromList' toRemove pane = do
+    liftIO $ debugM "leksah" "removeErrorsFromList"
+    let store = errorStore pane
+    updateFilterButtons pane
+    refsToRemove <- filter (toRemove . snd) . zip [0..] . F.toList <$> readIDE errorRefs
+    forM_ (map fst $ reverse refsToRemove) $ \index ->
+        forestStoreRemove store =<< treePathNewFromIndices' [fromIntegral index,0]
 
 -- | Updates the filter buttons in the Error Pane
 updateFilterButtons :: ErrorsPane -> IDEAction

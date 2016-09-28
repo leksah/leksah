@@ -304,6 +304,7 @@ data IDEEvent  =
     |   VariablesChanged
     |   ErrorChanged Bool
     |   ErrorAdded Bool Int LogRef
+    |   ErrorsRemoved Bool (LogRef -> Bool)
     |   CurrentErrorChanged (Maybe LogRef)
     |   BreakpointChanged
     |   CurrentBreakChanged (Maybe LogRef)
@@ -331,6 +332,7 @@ instance Event IDEEvent Text where
     getSelector VariablesChanged        =   "VariablesChanged"
     getSelector (ErrorChanged _)        =   "ErrorChanged"
     getSelector (ErrorAdded _ _ _)      =   "ErrorAdded"
+    getSelector (ErrorsRemoved _ _)     =   "ErrorsRemoved"
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
     getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
@@ -360,6 +362,7 @@ instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "VariablesChanged"    = True
     canTriggerEvent _ "ErrorChanged"        = True
     canTriggerEvent _ "ErrorAdded"          = True
+    canTriggerEvent _ "ErrorsRemoved"       = True
     canTriggerEvent _ "CurrentErrorChanged" = True
     canTriggerEvent _ "BreakpointChanged"   = True
     canTriggerEvent _ "CurrentBreakChanged" = True

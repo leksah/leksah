@@ -392,7 +392,7 @@ removeLogRefs toRemove' types = do
         F.forM_ (maybe [] (fromMaybe [] . (`Map.lookup` removeDetails)) fileName) $
             removeTagByName buf . T.pack . show
 
-    triggerEventIDE (ErrorChanged False)
+    triggerEventIDE (ErrorsRemoved False toRemove)
     return ()
   where
     toRemove ref = toRemove' (logRefRootPath ref) (logRefFilePath ref)

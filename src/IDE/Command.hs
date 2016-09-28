@@ -967,6 +967,8 @@ registerLeksahEvents =    do
         (\ e@(ErrorChanged show') -> postAsyncIDE (fillErrorList show') >> return e)
     registerEvent stRef "ErrorAdded"
         (\ e@(ErrorAdded show' i ref) -> postAsyncIDE (addErrorToList show' i ref) >> return e)
+    registerEvent stRef "ErrorsRemoved"
+        (\ e@(ErrorsRemoved show' toRemove) -> postAsyncIDE (removeErrorsFromList show' toRemove) >> return e)
     registerEvent stRef "CurrentErrorChanged"
         (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (selectRef mbLogRef)  >> return e)
     registerEvent stRef "BreakpointChanged"
