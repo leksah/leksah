@@ -14,7 +14,7 @@ Leksah requires you have **ghc >= 7.10.3** and **cabal-install >= 1.24** install
 * **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download).
 * **Linux**: [Build from source](https://github.com/leksah/leksah#building-from-source)
    
-## Building from source
+## Building from source 
 
 Requirements: ghc >= **7.10.3**, cabal-install >= **1.24**
 
@@ -22,7 +22,7 @@ We have just completed a port of Leksah from Gtk2Hs to haskell-gi.  Not all
 of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
 or follow the instructions below.
 
-**Step 1**. Install the following C libraries
+###Step 1: Install the following C libraries
 
 ##### Fedora
 `sudo dnf install gobject-introspection-devel webkitgtk3-devel gtksourceview3-devel`
@@ -43,7 +43,7 @@ You will also need to build a MacPorts compatible of GHC.  First install GHC som
     make
     make install
 
-Then make sure the $HOME/ghc-8.0.1/bin is in your $PATH.
+Then make sure the `$HOME/ghc-8.0.1/bin` is in your $PATH.
 
 ##### OS X Homebrew
 Homebrew Does not have WebKitGTK 2.4.x (newer versions of WebKitGTK only have WebKit 2 interface)
@@ -55,7 +55,7 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
 
-**Step 2**: Install tools
+###Step 2: Install haskell dependencies
 
     cabal update
     cabal install alex happy
@@ -63,15 +63,14 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 (make sure `~/.cabal/bin` is in PATH)
 
-**Step 3**: Clone the repo
+###Step 3: Clone the repo
 
     git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
 
-**Step 4**: Build and Run Leksah
+###Step 4: Build and Run Leksah
 
-##### OS X using MacPorts 
-Run `leksah.sh` like
+##### OS X using MacPorts
 
     XDG_DATA_DIRS=/opt/local/share ./leksah.sh
 
@@ -81,7 +80,4 @@ Run
     ./leksah.sh
 
 
-
-#### Using `stack build` instead of `cabal new-build`
-
-** NOTE : Building Leksah with stack is currently not working.  If you can make it work let us know how you did it. **
+** NOTE : Building Leksah with stack is currently not working. If anyone has managed to acomplish this please provide us with the neccessary steps. **
