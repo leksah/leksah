@@ -18,7 +18,7 @@ Leksah requires you have **ghc >= 7.10.3** and **cabal-install >= 1.24** install
 
 Requirements: ghc >= **7.10.3**, cabal-install >= **1.24**
 
-We have just completed a port of Leksah from Gtk2Hs to haskell-gi.  Not all
+We have just completed a port of Leksah from Gtk2Hs to haskell-gi. Not all
 of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
 or follow the instructions below.
 
@@ -55,7 +55,7 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
 
-###Step 2: Install haskell dependencies
+###Step 2: Install Extra Tools
 
     cabal update
     cabal install alex happy
@@ -75,9 +75,8 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     XDG_DATA_DIRS=/opt/local/share ./leksah.sh
 
 ##### Other OS
-Run
 
     ./leksah.sh
 
 
-** NOTE : Building Leksah with stack is currently not working. If anyone has managed to acomplish this please provide us with the neccessary steps. **
+** NOTE : Building Leksah with stack is currently not working. If anyone has managed to accomplish this, please provide us with the necessary steps. **
