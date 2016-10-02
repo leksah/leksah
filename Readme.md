@@ -27,7 +27,7 @@ or follow the instructions below.
 ##### Fedora
 `sudo dnf install gobject-introspection-devel webkitgtk3-devel gtksourceview3-devel`
 
-##### Ubuntu
+##### Ubuntu/Debian
 `sudo apt-get install libgirepository1.0-dev libwebkitgtk-3.0-dev libgtksourceview-3.0-dev`
 
 ##### Arch Linux
@@ -63,7 +63,7 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 (make sure `~/.cabal/bin` is in PATH)
 
-###Step 3: Clone the repo
+###Step 3: Clone the repo and its submodules
 
     git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
@@ -79,4 +79,4 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     ./leksah.sh
 
 
-** NOTE : Building Leksah with stack is currently not working. If anyone has managed to accomplish this, please provide us with the necessary steps. **
+**NOTE : Building Leksah with stack is currently not working. If anyone has managed to accomplish this, please provide us with the necessary steps.**
