@@ -865,7 +865,12 @@ keywordDescrs = map (\s -> Real $ RealDescr
                                 True) keywords
 
 misc :: [(Text, String)]
-misc = [("--", "Haskell comment"), ("=", "Haskell definition")]
+misc = [ ("--", "Haskell comment")
+       , ("=" , "Haskell definition")
+       , ("\\", "Haskell lambda")
+       , ("->", "Haskell arrow")
+       , ("<-", "Haskell arrow")
+       , ("::", "Haskell type definition")]
 
 miscDescrs :: [Descr]
 miscDescrs = map (\(s, d) -> Real $ RealDescr
