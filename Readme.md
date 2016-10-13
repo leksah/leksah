@@ -13,8 +13,8 @@ Leksah requires you have **ghc >= 7.10.3** and **cabal-install >= 1.24** install
 
 * **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download).
 * **Linux**: [Build from source](https://github.com/leksah/leksah#building-from-source)
-   
-## Building from source 
+
+## Building from source
 
 Requirements: ghc >= **7.10.3**, cabal-install >= **1.24**
 
@@ -79,4 +79,13 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     ./leksah.sh
 
 
-**NOTE : Building Leksah with stack is currently not working. If anyone has managed to accomplish this, please provide us with the necessary steps.**
+## Build with stack
+
+```
+git clone --recursive https://github.com/leksah/leksah.git
+cd leksah
+stack install alex happy
+stack install haskell-gi
+stack install gtk2hs-buildtools
+stack install
+```
