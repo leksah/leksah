@@ -29,7 +29,8 @@ extra-deps:
 - gi-cairo-1.0.6
 - gi-gio-2.0.6
 - gi-pango-1.0.6
-- gi-gtkosxapplication-2.0.6
+# You will need to add this back in for Mac OS builds
+# - gi-gtkosxapplication-2.0.6
 
 # Override default flag values for local packages and extra-deps
 flags:
