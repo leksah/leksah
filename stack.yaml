@@ -32,57 +32,57 @@ extra-deps:
 # Override default flag values for local packages and extra-deps
 flags:
   gi-cairo:
-    overloaded-methods: true
+    overloaded-methods: false
     overloaded-signals: true
-    overloaded-properties: true
+    overloaded-properties: false
   gi-gdk:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-gdkpixbuf:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-gio:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-glib:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-gobject:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-gtk:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-gtk-hs:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-gtksource:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-javascriptcore:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-pango:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-soup:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
   gi-webkit:
-    overloaded-methods: true
-    overloaded-signals: true
-    overloaded-properties: true
+    overloaded-methods: false
+    overloaded-signals: false
+    overloaded-properties: false
 
 # Extra package databases containing global packages
 extra-package-dbs: []
