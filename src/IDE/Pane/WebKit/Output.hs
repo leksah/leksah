@@ -49,11 +49,11 @@ import qualified Data.Text as T (unpack, pack)
 import GI.Gtk.Objects.Box (boxNew, Box(..))
 import GI.Gtk.Objects.Entry
        (entryGetText, onEntryActivate, entrySetText, entryNew, Entry(..))
-import GI.WebKit.Objects.WebView
-       (webViewReload, webViewGetUri, webViewLoadString,
-        webViewGetInspector, setWebViewSettings, getWebViewSettings,
-        onWebViewLoadCommitted, webViewLoadUri, onWebViewPopulatePopup,
-        webViewGoBack, webViewZoomOut, webViewZoomIn, webViewNew,
+import GI.WebKit2.Objects.WebView
+       (webViewReload, webViewGetUri, webViewLoadHtml,
+        webViewGetInspector, setWebViewSettings, webViewGetSettings,
+        onWebViewLoadChanged, webViewLoadUri, onWebViewContextMenu,
+        webViewGoBack, webViewNew,
         setWebViewZoomLevel, getWebViewZoomLevel, WebView(..))
 import GI.Gtk.Objects.Widget
        (onWidgetKeyPressEvent, afterWidgetFocusInEvent, toWidget)
@@ -72,11 +72,8 @@ import GI.Gtk.Objects.Action (actionCreateMenuItem)
 import GI.Gtk.Objects.MenuItem
        (MenuItem(..), onMenuItemActivate, toMenuItem)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
-import GI.WebKit.Objects.WebFrame (webFrameGetUri)
-import GI.WebKit.Objects.WebSettings
-       (setWebSettingsEnableDeveloperExtras)
-import GI.WebKit.Objects.WebInspector
-       (onWebInspectorInspectWebView)
+import GI.WebKit2.Objects.Settings
+       (settingsSetEnableDeveloperExtras)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
@@ -89,7 +86,7 @@ data IDEOutput = IDEOutput {
 } deriving Typeable
 
 data OutputState = OutputState {
-    zoom :: Float
+    zoom :: Double
   , alwaysHtml :: Bool
 } deriving(Eq,Ord,Read,Show,Typeable)
 
@@ -139,25 +136,32 @@ instance RecoverablePane IDEOutput OutputState IDEM where
             key <- getEventKeyKeyval e >>= keyvalName
             mod <- getEventKeyState e
             case (key, mod) of
-                (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
-                (Just "minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True
+                (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> do
+                    zoom <- getWebViewZoomLevel webView
+                    setWebViewZoomLevel webView (zoom * 1.25)
+                    return True
+                (Just "minus",[ModifierTypeControlMask]) -> do
+                    zoom <- getWebViewZoomLevel webView
+                    setWebViewZoomLevel webView (zoom * 0.8)
+                    return True
                 (Just "BackSpace", [ModifierTypeShiftMask]) -> webViewGoBack  webView >> return True
                 _                         -> return False)
 
-        cid3 <- ConnectC webView <$> onWebViewPopulatePopup webView (\ menu -> do
+        -- TODO
+        {- cid3 <- ConnectC webView <$> onWebViewContextMenu webView (\ menu -> do
             alwaysHtml <- readIORef alwaysHtmlRef
             action <- toggleActionNew "AlwaysHTML" (Just $ __"Always HTML") Nothing Nothing
             item <- actionCreateMenuItem action >>= unsafeCastTo MenuItem
             onMenuItemActivate item $ writeIORef alwaysHtmlRef $ not alwaysHtml
             setToggleActionActive action alwaysHtml
-            menuShellAppend menu item
-            return ())
+            return ()) -}
 
         cid4 <- ConnectC uriEntry <$> onEntryActivate uriEntry (do
             uri <- entryGetText uriEntry
             webViewLoadUri webView uri
             (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri}))
 
+        {- TODO
         cid5 <- ConnectC webView <$> onWebViewLoadCommitted webView (\ frame -> do
             uri <- webFrameGetUri frame
             valueUri <- getValueUri
@@ -166,22 +170,22 @@ instance RecoverablePane IDEOutput OutputState IDEM where
                     entrySetText uriEntry uri
                     (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri})
                 else
-                    (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Nothing}))
+                    (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Nothing})) -}
 
         cid6 <- ConnectC uriEntry <$> afterWidgetFocusInEvent uriEntry (\e -> do
             liftIO $ reflectIDE (makeActive out) ideR
             return True)
 
-        settings <- getWebViewSettings webView
-        setWebSettingsEnableDeveloperExtras settings True
+        settings <- webViewGetSettings webView
+        settingsSetEnableDeveloperExtras settings True
         setWebViewSettings webView settings
         inspector <- webViewGetInspector webView
-        cid7 <- ConnectC inspector <$> onWebInspectorInspectWebView inspector (\view -> (`reflectIDE` ideR) $ do
+        {- TODO cid7 <- ConnectC inspector <$> onWebInspectorInspectWebView inspector (\view -> (`reflectIDE` ideR) $ do
             inspectPane <- getInspectPane Nothing
             displayPane inspectPane False
-            return $ inspectView inspectPane)
+            return $ inspectView inspectPane) -}
 
-        return (Just out, [cid1, cid2, cid3, cid4, cid5, cid6])
+        return (Just out, [cid1, cid2, cid4, cid6]) -- cid3, cid4, cid5, cid6, cid7])
 
 
 getOutputPane :: Maybe PanePath -> IDEM IDEOutput
@@ -210,7 +214,7 @@ setOutput command str =
             html = case (alwaysHtml, parseValue $ T.unpack str) of
                         (False, Just value) -> T.pack $ valToHtmlPage defaultHtmlOpts value
                         _                   -> str
-        webViewLoadString view html "text/html" "UTF-8" uri
+        webViewLoadHtml view html (Just uri)
 
 loadOutputUri :: FilePath -> IDEAction
 loadOutputUri uri =

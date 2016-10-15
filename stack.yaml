@@ -11,15 +11,16 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - binary-shared-0.8.3
-- ghcjs-dom-0.3.1.0
-- ghcjs-dom-jsaddle-0.3.1.0
+- ghcjs-dom-0.4.1.1
+- ghcjs-dom-jsaddle-0.4.1.0
 - gi-gtk-hs-0.3.1.0
 - gi-gtksource-3.0.6
-- gi-javascriptcore-3.0.6
+- gi-javascriptcore-4.0.6
 - gi-soup-2.4.6
-- gi-webkit-3.0.6
-- jsaddle-0.4.0.5
-- jsaddle-dom-0.2.0.1
+- gi-webkit2-4.0.6
+- ref-tf-0.4.0.1
+- jsaddle-0.5.1.1
+- jsaddle-dom-0.4.1.0
 - gi-gdk-3.0.6
 - gi-gdkpixbuf-2.0.6
 - gi-glib-2.0.6
@@ -28,6 +29,7 @@ extra-deps:
 - gi-cairo-1.0.6
 - gi-gio-2.0.6
 - gi-pango-1.0.6
+- gi-gtkosxapplication-2.0.6
 
 # Override default flag values for local packages and extra-deps
 flags:
@@ -79,7 +81,7 @@ flags:
     overloaded-methods: false
     overloaded-signals: false
     overloaded-properties: false
-  gi-webkit:
+  gi-webkit2:
     overloaded-methods: false
     overloaded-signals: false
     overloaded-properties: false

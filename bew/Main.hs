@@ -2,7 +2,7 @@ module Main (
     main
 ) where
 
-import GHCJS.DOM (runWebGUI)
+import GHCJS.DOM (run)
 
 main = do
 --  runWebGUI $ \ webView -> do

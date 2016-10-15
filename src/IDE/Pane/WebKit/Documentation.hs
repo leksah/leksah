@@ -41,8 +41,8 @@ import Graphics.UI.Editor.Basics (Connection(..))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
-import GI.WebKit.Objects.WebView
-       (webViewReload, webViewGoBack, webViewZoomOut, webViewZoomIn,
+import GI.WebKit2.Objects.WebView
+       (webViewReload, webViewGoBack,
         webViewNew, webViewLoadUri, setWebViewZoomLevel, webViewGetUri,
         getWebViewZoomLevel, WebView(..))
 import GI.Gtk.Objects.Widget
@@ -61,7 +61,7 @@ data IDEDocumentation = IDEDocumentation {
 } deriving Typeable
 
 data DocumentationState = DocumentationState {
-    zoom :: Float
+    zoom :: Double
   , uri  :: Maybe Text
 } deriving(Eq,Ord,Read,Show,Typeable)
 
@@ -104,10 +104,16 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
             key <- getEventKeyKeyval e >>= keyvalName
             mod <- getEventKeyState e
             case (key, mod) of
-                (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> webViewZoomIn  webView >> return True
-                (Just "minus",[ModifierTypeControlMask]) -> webViewZoomOut webView >> return True
-                (Just "BackSpace", [])         -> webViewGoBack  webView >> return True
-                _                         -> return False)
+                (Just "plus", [ModifierTypeShiftMask,ModifierTypeControlMask]) -> do
+                    zoom <- getWebViewZoomLevel webView
+                    setWebViewZoomLevel webView (zoom * 1.25)
+                    return True
+                (Just "minus",[ModifierTypeControlMask]) -> do
+                    zoom <- getWebViewZoomLevel webView
+                    setWebViewZoomLevel webView (zoom * 0.8)
+                    return True
+                (Just "BackSpace", []) -> webViewGoBack webView >> return True
+                _                      -> return False)
         return (Just docs, [cid1, cid2])
 
 
