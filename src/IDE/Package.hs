@@ -583,15 +583,15 @@ packageRunJavaScript' addFlagIfMissing package =
                     logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
                 (logLaunch,logName) <- buildLogLaunchByName logName
                 let dir = ipdPackageDir package
+                projectRoot <- liftIO $ findProjectRoot dir
                 prefs <- readIDE prefs
                 case exe ++ executables pd of
                     (Executable name _ _ : _) -> liftIDE $ do
                         let path = "dist-newstyle/build"
                                     </> T.unpack (packageIdentifierToString $ ipdPackageId package)
                                     </> "build" </> name </> name <.> "jsexe" </> "index.html"
-                            dir = ipdPackageDir package
                         postAsyncIDE $ do
-                            loadOutputUri ("file:///" ++ dir </> path)
+                            loadOutputUri ("file:///" ++ projectRoot </> path)
                             getOutputPane Nothing  >>= \ p -> displayPane p False
                       `catchIDE`
                         (\(e :: SomeException) -> print e)
