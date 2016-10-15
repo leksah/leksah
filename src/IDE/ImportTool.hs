@@ -540,6 +540,8 @@ parsePerhapsYouIntendedToUse =
     parseLine line = take 1 . mapMaybe readMaybe $ catMaybes [
         T.stripPrefix "Perhaps you intended to use -X" line
       , T.stripPrefix "Perhaps you intended to use " line
+      , T.stripPrefix "Illegal tuple section: use " line
+      , T.stripPrefix "Package-qualified imports are not enabled; use " line
       , T.stripPrefix "Type signatures are only allowed in patterns with " line
       , T.takeWhile (/=' ') <$> T.stripPrefix "Use -X" line
       , T.takeWhile (/=' ') <$> T.stripPrefix "Use " line
