@@ -22,7 +22,7 @@ We have just completed a port of Leksah from Gtk2Hs to haskell-gi. Not all
 of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
 or follow the instructions below.
 
-###Step 1: Install the following C libraries
+### Step 1: Install the following C libraries
 
 ##### Fedora
 `sudo dnf install gobject-introspection-devel webkitgtk3-devel gtksourceview3-devel`
@@ -55,7 +55,7 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
 
-###Step 2: Install Extra Tools
+### Step 2: Install Extra Tools
 
     cabal update
     cabal install alex happy
@@ -63,12 +63,12 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 (make sure `~/.cabal/bin` is in PATH)
 
-###Step 3: Clone the repo and its submodules
+### Step 3: Clone the repo and its submodules
 
     git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
 
-###Step 4: Build and Run Leksah
+### Step 4: Build and Run Leksah
 
 ##### OS X using MacPorts
 
@@ -81,6 +81,9 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 ## Build with stack
 
+Frist install the C libraries needed as described in
+"Step 1: Install the following C libraries" above.
+
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
@@ -88,4 +91,10 @@ stack install alex happy
 stack install haskell-gi
 stack install gtk2hs-buildtools
 stack install
+```
+
+For Mac OS replace the last `stack install` with:
+
+```
+stack install --stack-yaml stack.osx.yaml
 ```
