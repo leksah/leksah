@@ -25,7 +25,7 @@ or follow the instructions below.
 ### Step 1: Install the following C libraries
 
 ##### Fedora
-`sudo dnf install gobject-introspection-devel webkitgtk3-devel gtksourceview3-devel`
+`sudo dnf install gobject-introspection-devel webkitgtk4-devel gtksourceview3-devel`
 
 ##### Ubuntu/Debian
 `sudo apt-get install libgirepository1.0-dev libwebkit2gtk-4.0-dev libgtksourceview-3.0-dev`
@@ -34,7 +34,7 @@ or follow the instructions below.
 `sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkitgtk`
 
 ##### OS X MacPorts
-`sudo port install gobject-introspection webkit-gtk3 gtksourceview3 gtk-osx-application-gtk3 adwaita-icon-theme`
+`sudo port install gobject-introspection webkit2-gtk gtksourceview3 gtk-osx-application-gtk3 adwaita-icon-theme`
 
 You will also need to build a MacPorts compatible of GHC.  First install GHC some other way then unpack the source for the GHC version you want to use and run:
 
@@ -46,7 +46,7 @@ You will also need to build a MacPorts compatible of GHC.  First install GHC som
 Then make sure the `$HOME/ghc-8.0.1/bin` is in your $PATH.
 
 ##### OS X Homebrew
-Homebrew Does not have WebKitGTK 2.4.x (newer versions of WebKitGTK only have WebKit 2 interface)
+It might be possible to build Leksah using homebrew now we have switched to WebKit 2.  If you can figure it out please send us the details or better yet a pull request to update this file.  Raise an issue if you try and it does not work.
 
 ##### Windows MSYS2
 Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.org/).  Then in a shell with administrator privileges:
