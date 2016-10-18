@@ -31,7 +31,7 @@ or follow the instructions below.
 `sudo apt-get install libgirepository1.0-dev libwebkit2gtk-4.0-dev libgtksourceview-3.0-dev`
 
 ##### Arch Linux
-`sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkitgtk`
+`sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkit2gtk`
 
 ##### OS X MacPorts
 `sudo port install gobject-introspection webkit2-gtk gtksourceview3 gtk-osx-application-gtk3 adwaita-icon-theme`
