@@ -38,4 +38,6 @@ package gi-soup
  flags: -overloaded-methods -overloaded-signals -overloaded-properties
 package gi-webkit
  flags: -overloaded-methods -overloaded-signals -overloaded-properties
+package gi-webkit2
+ flags: -overloaded-methods -overloaded-signals -overloaded-properties
 
