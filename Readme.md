@@ -28,7 +28,7 @@ or follow the instructions below.
 `sudo dnf install gobject-introspection-devel webkitgtk3-devel gtksourceview3-devel`
 
 ##### Ubuntu/Debian
-`sudo apt-get install libgirepository1.0-dev libwebkitgtk-3.0-dev libgtksourceview-3.0-dev`
+`sudo apt-get install libgirepository1.0-dev libwebkit2gtk-4.0-dev libgtksourceview-3.0-dev`
 
 ##### Arch Linux
 `sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkitgtk`
