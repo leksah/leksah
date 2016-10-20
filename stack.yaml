@@ -89,10 +89,6 @@ flags:
     overloaded-methods: false
     overloaded-signals: false
     overloaded-properties: false
-  gi-gtkosxapplication:
-    overloaded-methods: false
-    overloaded-signals: false
-    overloaded-properties: false
 
 # Extra package databases containing global packages
 extra-package-dbs: []
