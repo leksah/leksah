@@ -34,7 +34,7 @@ import Prelude hiding (catch)
 import Data.Maybe
        (fromJust, fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, when)
-import Data.Foldable (forM_)
+import Data.Foldable (forM_, for_)
 import Data.Typeable (Typeable)
 import IDE.Core.State
        (onIDE, catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
@@ -156,7 +156,7 @@ data WorkspaceRecord =
   | ComponentsRecord
   | ComponentRecord Text
   | GitRecord
-  deriving (Eq)
+  deriving (Eq, Show)
 
 instance Ord WorkspaceRecord where
     -- | The ordering used for displaying the records
@@ -462,6 +462,7 @@ refreshWorkspacePane = do
     workspace <- getWorkspacePane
     refresh workspace
 
+
 -- | Seperately defined from refreshWorkspacePane, since getWorkspacePane does not
 -- work before the building is finished
 refresh :: WorkspacePane -> IDEAction
@@ -481,9 +482,14 @@ refresh WorkspacePane{..} = do
             boxSetChildPacking box noWsText False False 0 PackTypeStart
             widgetShowAll scrolledView
             boxSetChildPacking box scrolledView True True 0 PackTypeStart
-    workspaceTryQuiet $ do
-        packages <- sort . wsPackages <$> ask
-        setChildren Nothing recordStore treeView [] (map PackageRecord packages)
+            let packages = sort (wsPackages ws)
+            flip runWorkspace ws $
+                for_ (zip [0..] packages) $ \(n, pkg) -> do
+                    path <- liftIO $ treePathNewFromIndices' []
+                    liftIO $ forestStoreInsert recordStore path n (PackageRecord pkg)
+                    children <- flip runPackage pkg $
+                        children (PackageRecord pkg)
+                    setChildren (Just pkg) recordStore treeView [fromIntegral n] children
 
 
 -- | Mutates the 'ForestStore' with the given TreePath as root to attach new
@@ -565,19 +571,23 @@ componentsRecords = do
                           ++ ipdTests package
                           ++ ipdBenchmarks package
 
-
 -- | Recursively sets the children of the given 'TreePath' to the provided tree of 'WorkspaceRecord's. If a record
 -- is already present, it is kept in the same (expanded) state.
 -- If a the parent record is not expanded just makes sure at least one of
--- the chldren is added.
-setChildren :: Maybe IDEPackage -> ForestStore WorkspaceRecord -> TreeView -> [Int32] -> [WorkspaceRecord] -> WorkspaceAction
+-- the children is added.
+setChildren :: Maybe IDEPackage
+            -> ForestStore WorkspaceRecord
+            -> TreeView
+            -> [Int32]
+            -> [WorkspaceRecord] -> WorkspaceAction
 setChildren _ store _ [] [] = liftIO $ forestStoreClear store
 setChildren mbPkg store view parentPath kids = do
     -- We only need to get all the children right when they are visible
     expanded <- if null parentPath
                     then return True
-                    else liftIO $ treeViewRowExpanded view =<< treePathNewFromIndices' parentPath
-
+                    else do
+                        exp <- liftIO $ treeViewRowExpanded view =<< treePathNewFromIndices' parentPath
+                        return exp
     let kidsToAdd = (if expanded
                             then id
                             else take 1) kids
@@ -604,7 +614,6 @@ setChildren mbPkg store view parentPath kids = do
             _ -> do
                 parentPath' <- treePathNewFromIndices' parentPath
                 forestStoreInsert store parentPath' (fromIntegral n) record
-
       let pkg = case record of
                         PackageRecord p -> p
                         _               -> fromJust mbPkg
@@ -791,7 +800,7 @@ searchToRight compare a store (Just iter) = do
             then return $ Found iter
             else do
                 next <- treeIterCopy iter
-                treeModelIterNext store iter >>= find' next
+                treeModelIterNext store next >>= find' next
 
 
 -- | Starting at the node at the given 'TreePath', removes all sibling nodes to the right
