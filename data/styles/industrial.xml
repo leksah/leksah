@@ -61,7 +61,7 @@
   <style name="selection-match"             background="blue" foreground="#FFFFFF"/>
 
   <!-- Bracket Matching -->
-  <style name="bracket-match"               underline="true" background="#0e2229"/>
+  <style name="bracket-match"               background="#0e2229"/>
   <style name="bracket-mismatch"            background="red" foreground="darkgray"/>
 
   <!-- Right Margin -->

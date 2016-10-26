@@ -21,7 +21,7 @@
  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 -->
-<style-scheme id="github" _name="Industrial" version="1.0">
+<style-scheme id="github-dark" _name="Industrial" version="1.0">
   <author></author>
   <_description>Github color scheme</_description>
 
@@ -36,10 +36,10 @@
   <color name="orange"     value="#F8EEC7"/>
 
   <!-- Global Settings -->
-  <style name="text"                        background="white" foreground="black"/>
-  <style name="current-line"                background="#F5F5F5"/>
-  <style name="cursor"                      foreground="black" />
-  <style name="line-numbers"                foreground="gray" background="#F5F5F5"/>
+  <style name="text"                        background="black" foreground="white"/>
+  <style name="current-line"                background="#EFEFEF"/>
+  <style name="cursor"                      foreground="white" />
+  <style name="line-numbers"                foreground="gray" background="#EFEFEF"/>
   <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
 
