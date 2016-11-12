@@ -1,6 +1,6 @@
 Installing Leksah[sec:Installing-Leksah]
 ========================================
-** These docs are outdated, we are working on getting them up-to-date for the next release**
+**These docs are outdated, we are working on getting them up-to-date for the next release**
 
 How to Install: Brief Instructions
 -----------------------------------

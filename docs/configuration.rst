@@ -1,6 +1,6 @@
 Configuration
 =============
-** These docs are outdated, we are working on getting them up-to-date for the next release**
+**These docs are outdated, we are working on getting them up-to-date for the next release**
 
 Leksah is highly customizable and can be adapted to your specific needs
 and work organization. What follows here is not needed for initial use

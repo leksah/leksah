@@ -1,6 +1,6 @@
 Hello World example
 ===================
-** These docs are outdated, we are working on getting them up-to-date for the next release**
+**These docs are outdated, we are working on getting them up-to-date for the next release**
 
 -  Workspace -> New. Constructs a new workspace in a selected folder and
    give it a name (e.g. “Hello”). This produces a file Hello.lkshw.

@@ -1,6 +1,6 @@
 Working with Projects: Workspaces and Packages
 ==============================================
-** These docs are outdated, we are working on getting them up-to-date for the next release**
+**These docs are outdated, we are working on getting them up-to-date for the next release**
 
 Haskell organizes software projects in packages, which are managed
 independently. A package is compiled and linked as a unit to produce one

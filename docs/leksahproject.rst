@@ -1,6 +1,6 @@
 The Leksah Project
 ==================
-** These docs are outdated, we are working on getting them up-to-date for the next release**
+**These docs are outdated, we are working on getting them up-to-date for the next release**
 
 The development of an integrated Development Environment is a major
 undertaking and Leksah should become increasingly supported by the user

@@ -1,6 +1,6 @@
 [sub:Metadata-collection]Metadata collection
 ============================================
-** These docs are outdated, we are working on getting them up-to-date for the next release**
+**These docs are outdated, we are working on getting them up-to-date for the next release**
 
 Remember, that metadata is the data Leksah has collected from all the
 Haskell code (including .hi files for installed packages) it could reach
