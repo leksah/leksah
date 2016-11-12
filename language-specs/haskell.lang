@@ -206,11 +206,12 @@
       <keyword>=</keyword>
       <keyword>\|</keyword>
       <keyword>\</keyword>
-      <keyword>-&gt;</keyword>
-      <keyword>&lt;-</keyword>
       <keyword>@</keyword>
       <keyword>~</keyword>
       <keyword>=&gt;</keyword>
+      <keyword>-&gt;</keyword>
+      <keyword>&lt;-</keyword>
+      <keyword>\\</keyword>
     </context>
 
     <define-regex id="escaped-character" extended="true">
