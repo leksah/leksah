@@ -1,5 +1,6 @@
 Module Browser and Metadata
 ===========================
+** These docs are outdated, we are working on getting them up-to-date for the next release**
 
 o0.3
 

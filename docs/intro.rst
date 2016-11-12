@@ -1,5 +1,6 @@
 Introduction
 ============
+** These docs are outdated, we are working on getting them up-to-date for the next release**
 
 Leksah is an IDE (Integrated Development Environment) for the
 programming language Haskell. It is written in Haskell and integrates
