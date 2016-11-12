@@ -21,25 +21,26 @@
  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 -->
-<style-scheme id="github-dark" _name="Industrial" version="1.0">
+<style-scheme id="github-dark" _name="Github Dark" version="1.0">
   <author></author>
   <_description>Github color scheme</_description>
 
   <!-- Palette -->
-  <color name="white"      value="#FFFFFF"/>
-  <color name="magenta"    value="#a71d5d"/>
+  <color name="white"      value="#DDDDDD"/>
+  <color name="magenta"    value="#e2277e"/>
   <color name="violet"     value="#795da3"/>
-  <color name="cyan"       value="#0086b3"/>
+  <color name="cyan"       value="#43b2d7"/>
   <color name="gray"       value="#969896"/>
-  <color name="black"      value="#333333"/>
-  <color name="darkblue"   value="#183691"/>
-  <color name="orange"     value="#F8EEC7"/>
+  <color name="black"      value="#222222"/>
+  <color name="darkgray"   value="#333333"/>
+  <color name="darkblue"   value="#6c86d5"/>
+  <color name="orange"     value="#ecbe4f"/>
 
   <!-- Global Settings -->
   <style name="text"                        background="black" foreground="white"/>
-  <style name="current-line"                background="#EFEFEF"/>
+  <style name="current-line"                background="darkgray"/>
   <style name="cursor"                      foreground="white" />
-  <style name="line-numbers"                foreground="gray" background="#EFEFEF"/>
+  <style name="line-numbers"                foreground="gray" background="darkgray"/>
   <style name="selection"                   background="#4A90D9" foreground="#FFFFFF"/>
   <style name="selection-unfocused"         background="#4A90D9" foreground="#FFFFFF"/>
 
@@ -51,7 +52,7 @@
   <style name="right-margin"                foreground="gray"/>
 
   <!-- Search Matching -->
-  <style name="search-match"                background="orange"/>
+  <style name="search-match"                background="orange" foreground="black"/>
 
   <!-- Comments -->
   <style name="def:comment"                 foreground="gray"/>
@@ -60,7 +61,7 @@
 
   <!-- Constants -->
   <style name="def:constant"                foreground="cyan"/>
-  <style name="def:string"                  foreground="darkblue" />
+  <style name="def:string"                  foreground="orange" />
 
   <!-- Identifiers -->
   <style name="def:identifier"              />
