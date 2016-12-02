@@ -143,8 +143,8 @@
     ${prefix:leksah}/data
   </data>
 
-  <data dest="${bundle}/Contents/Resources/share/leksah/doc">
-    ${prefix:leksah}/doc
+  <data dest="${bundle}/Contents/Resources/share/leksah/docs">
+    ${prefix:leksah}/docs
   </data>
 
   <data dest="${bundle}/Contents/Resources/share/leksah/language-specs">
