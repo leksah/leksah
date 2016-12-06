@@ -101,7 +101,7 @@ import qualified GI.Gdk.Objects.Window as Gdk (noWindow)
 import GI.Gdk.Objects.Screen
        (screenGetHeight, screenGetWidth, screenGetMonitorAtPoint)
 import Data.GI.Gtk.ModelView.Types
-       (treePathGetIndices', treePathNewFromIndices')
+       (equalManagedPtr, treePathGetIndices', treePathNewFromIndices')
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
 
@@ -516,10 +516,10 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         swap <- if (monitorRight /= monitor || (ox+fromIntegral x+wWindow) > wScreen) && monitorLeft == monitor && (ox+fromIntegral x-wWindow+wNames) > 0
                             then do
                                 windowMove window (ox+fromIntegral x-wWindow+wNames) top
-                                return $ unsafeManagedPtrGetPtr first == unsafeManagedPtrGetPtr namesSW
+                                return $ first `equalManagedPtr` namesSW
                             else do
                                 windowMove window (ox+fromIntegral x) top
-                                return $ unsafeManagedPtrGetPtr first /= unsafeManagedPtrGetPtr namesSW
+                                return . not $ first `equalManagedPtr` namesSW
                         when swap $ do
                             pos <- panedGetPosition paned
                             containerRemove paned first

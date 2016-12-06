@@ -141,7 +141,7 @@ import GI.Gtk.Objects.Label (Label(..), labelNew)
 import Graphics.UI.Editor.Parameters (Packing(..), boxPackStart')
 import GI.Gtk.Objects.LinkButton
        (onLinkButtonActivateLink, linkButtonNewWithLabel, LinkButton(..),
-        linkButtonActivateLinkClosure, linkButtonNew)
+        linkButtonNew)
 import Data.GI.Base.Signals (SignalHandlerId)
 
 
