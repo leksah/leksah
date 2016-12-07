@@ -5,6 +5,7 @@ packages:
  vendor/leksah-server/
  vendor/ltk/
  vendor/yi/
+ vendor/haskellVCSWrapper/vcswrapper/
 
 package gi-atk
  flags: -overloaded-methods -overloaded-signals -overloaded-properties
