@@ -87,10 +87,12 @@ Frist install the C libraries needed as described in
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
+stack setup --upgrade-cabal
 stack install alex happy
 stack install haskell-gi
 stack install gtk2hs-buildtools
 stack install
+stack exec leksah
 ```
 
 For Mac OS replace the last `stack install` with:
