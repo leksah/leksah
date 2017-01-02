@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -41,10 +42,17 @@ import Graphics.UI.Editor.Basics (Connection(..))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
+#ifdef MIN_VERSION_gi_webkit2
 import GI.WebKit2.Objects.WebView
        (webViewReload, webViewGoBack,
         webViewNew, webViewLoadUri, setWebViewZoomLevel, webViewGetUri,
         getWebViewZoomLevel, WebView(..))
+#else
+import GI.WebKit.Objects.WebView
+       (webViewReload, webViewGoBack, webViewZoomOut, webViewZoomIn,
+        webViewNew, webViewLoadUri, setWebViewZoomLevel, webViewGetUri,
+        getWebViewZoomLevel, WebView(..))
+#endif
 import GI.Gtk.Objects.Widget
        (onWidgetKeyPressEvent, afterWidgetFocusInEvent, toWidget)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
@@ -74,7 +82,7 @@ instance Pane IDEDocumentation IDEM
 
 instance RecoverablePane IDEDocumentation DocumentationState IDEM where
     saveState p = do
-        zoom <- getWebViewZoomLevel $ webView p
+        zoom <- fmap realToFrac <$> getWebViewZoomLevel $ webView p
         uri  <- nullToNothing . webViewGetUri $ webView p
         return (Just DocumentationState{..})
     recoverState pp DocumentationState {..} = do
@@ -83,7 +91,7 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
         case mbPane of
             Nothing -> return ()
             Just p  -> do
-                setWebViewZoomLevel (webView p) zoom
+                setWebViewZoomLevel (webView p) (realToFrac zoom)
                 maybe (return ()) (webViewLoadUri (webView p)) uri
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do

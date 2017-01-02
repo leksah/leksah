@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -46,13 +47,20 @@ import qualified Data.Text as T (unpack, pack)
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
+#ifdef MIN_VERSION_gi_webkit2
 import GI.WebKit2.Objects.WebView
        (setWebViewSettings, webViewGetSettings, webViewNew, WebView(..))
+import GI.WebKit2.Objects.Settings
+       (settingsSetMonospaceFontFamily)
+#else
+import GI.WebKit.Objects.WebView
+       (setWebViewSettings, getWebViewSettings, webViewNew, WebView(..))
+import GI.WebKit.Objects.WebSettings
+       (setWebSettingsMonospaceFontFamily)
+#endif
 import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
-import GI.WebKit2.Objects.Settings
-       (settingsSetMonospaceFontFamily)
 import GI.Gtk.Objects.Container (containerAdd)
 
 data IDEInspect = IDEInspect {
@@ -80,8 +88,13 @@ instance RecoverablePane IDEInspect InspectState IDEM where
         scrolledWindowSetShadowType scrollWin ShadowTypeIn
 
         inspectView <- webViewNew
+#ifdef MIN_VERSION_gi_webkit2
         settings <- webViewGetSettings inspectView
         settingsSetMonospaceFontFamily settings "Consolas"
+#else
+        settings <- getWebViewSettings inspectView
+        setWebSettingsMonospaceFontFamily settings "Consolas"
+#endif
         setWebViewSettings inspectView settings
         alwaysHtmlRef <- newIORef False
         containerAdd scrollWin inspectView

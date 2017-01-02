@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -49,12 +50,28 @@ import qualified Data.Text as T (unpack, pack)
 import GI.Gtk.Objects.Box (boxNew, Box(..))
 import GI.Gtk.Objects.Entry
        (entryGetText, onEntryActivate, entrySetText, entryNew, Entry(..))
+#ifdef MIN_VERSION_gi_webkit2
 import GI.WebKit2.Objects.WebView
        (webViewReload, webViewGetUri, webViewLoadHtml,
         webViewGetInspector, setWebViewSettings, webViewGetSettings,
         onWebViewLoadChanged, webViewLoadUri, onWebViewContextMenu,
         webViewGoBack, webViewNew,
         setWebViewZoomLevel, getWebViewZoomLevel, WebView(..))
+import GI.WebKit2.Objects.Settings
+       (settingsSetEnableDeveloperExtras)
+#else
+import GI.WebKit.Objects.WebView
+       (webViewReload, webViewGetUri, webViewLoadString,
+        webViewGetInspector, setWebViewSettings, getWebViewSettings,
+        onWebViewLoadCommitted, webViewLoadUri, onWebViewPopulatePopup,
+        webViewGoBack, webViewZoomOut, webViewZoomIn, webViewNew,
+        setWebViewZoomLevel, getWebViewZoomLevel, WebView(..))
+import GI.WebKit.Objects.WebFrame (webFrameGetUri)
+import GI.WebKit.Objects.WebSettings
+       (setWebSettingsEnableDeveloperExtras)
+import GI.WebKit.Objects.WebInspector
+       (onWebInspectorInspectWebView)
+#endif
 import GI.Gtk.Objects.Widget
        (onWidgetKeyPressEvent, afterWidgetFocusInEvent, toWidget)
 import GI.Gtk.Objects.ScrolledWindow
@@ -72,8 +89,6 @@ import GI.Gtk.Objects.Action (actionCreateMenuItem)
 import GI.Gtk.Objects.MenuItem
        (MenuItem(..), onMenuItemActivate, toMenuItem)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
-import GI.WebKit2.Objects.Settings
-       (settingsSetEnableDeveloperExtras)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
@@ -99,7 +114,7 @@ instance Pane IDEOutput IDEM
 
 instance RecoverablePane IDEOutput OutputState IDEM where
     saveState p = do
-        zoom <- getWebViewZoomLevel $ webView p
+        zoom <- fmap realToFrac <$> getWebViewZoomLevel $ webView p
         alwaysHtml <- liftIO . readIORef $ alwaysHtmlRef p
         return (Just OutputState{..})
     recoverState pp OutputState {..} = do
@@ -108,7 +123,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         case mbPane of
             Nothing -> return ()
             Just p  -> do
-                setWebViewZoomLevel (webView p) zoom
+                setWebViewZoomLevel (webView p) (realToFrac zoom)
                 liftIO $ writeIORef (alwaysHtmlRef p) alwaysHtml
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
@@ -148,20 +163,23 @@ instance RecoverablePane IDEOutput OutputState IDEM where
                 _                         -> return False)
 
         -- TODO
-        {- cid3 <- ConnectC webView <$> onWebViewContextMenu webView (\ menu -> do
+#ifndef MIN_VERSION_gi_webkit2
+        cid3 <- ConnectC webView <$> onWebViewPopulatePopup webView (\ menu -> do
             alwaysHtml <- readIORef alwaysHtmlRef
             action <- toggleActionNew "AlwaysHTML" (Just $ __"Always HTML") Nothing Nothing
             item <- actionCreateMenuItem action >>= unsafeCastTo MenuItem
             onMenuItemActivate item $ writeIORef alwaysHtmlRef $ not alwaysHtml
             setToggleActionActive action alwaysHtml
-            return ()) -}
+            menuShellAppend menu item
+            return ())
+#endif
 
         cid4 <- ConnectC uriEntry <$> onEntryActivate uriEntry (do
             uri <- entryGetText uriEntry
             webViewLoadUri webView uri
             (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri}))
 
-        {- TODO
+#ifndef MIN_VERSION_gi_webkit2
         cid5 <- ConnectC webView <$> onWebViewLoadCommitted webView (\ frame -> do
             uri <- webFrameGetUri frame
             valueUri <- getValueUri
@@ -170,22 +188,35 @@ instance RecoverablePane IDEOutput OutputState IDEM where
                     entrySetText uriEntry uri
                     (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri})
                 else
-                    (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Nothing})) -}
+                    (`reflectIDE` ideR) $ modifyIDE_ (\ide -> ide {autoURI = Nothing}))
+#endif
 
         cid6 <- ConnectC uriEntry <$> afterWidgetFocusInEvent uriEntry (\e -> do
             liftIO $ reflectIDE (makeActive out) ideR
             return True)
 
+#ifdef MIN_VERSION_gi_webkit2
         settings <- webViewGetSettings webView
         settingsSetEnableDeveloperExtras settings True
+#else
+        settings <- getWebViewSettings webView
+        setWebSettingsEnableDeveloperExtras settings True
+#endif
         setWebViewSettings webView settings
         inspector <- webViewGetInspector webView
-        {- TODO cid7 <- ConnectC inspector <$> onWebInspectorInspectWebView inspector (\view -> (`reflectIDE` ideR) $ do
+
+#ifndef MIN_VERSION_gi_webkit2
+        cid7 <- ConnectC inspector <$> onWebInspectorInspectWebView inspector (\view -> (`reflectIDE` ideR) $ do
             inspectPane <- getInspectPane Nothing
             displayPane inspectPane False
-            return $ inspectView inspectPane) -}
+            return $ inspectView inspectPane)
+#endif
 
-        return (Just out, [cid1, cid2, cid4, cid6]) -- cid3, cid4, cid5, cid6, cid7])
+#ifdef MIN_VERSION_gi_webkit2
+        return (Just out, [cid1, cid2, cid4, cid6])
+#else
+        return (Just out, [cid1, cid2, cid3, cid4, cid5, cid6, cid7])
+#endif
 
 
 getOutputPane :: Maybe PanePath -> IDEM IDEOutput
@@ -214,7 +245,11 @@ setOutput command str =
             html = case (alwaysHtml, parseValue $ T.unpack str) of
                         (False, Just value) -> T.pack $ valToHtmlPage defaultHtmlOpts value
                         _                   -> str
+#ifdef MIN_VERSION_gi_webkit2
         webViewLoadHtml view html (Just uri)
+#else
+        webViewLoadString view html "text/html" "UTF-8" uri
+#endif
 
 loadOutputUri :: FilePath -> IDEAction
 loadOutputUri uri =
