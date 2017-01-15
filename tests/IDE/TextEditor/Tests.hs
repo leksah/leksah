@@ -20,10 +20,10 @@ module IDE.TextEditor.Tests (
     testEditors
 ) where
 
-import Graphics.UI.Gtk
-       (mainQuit, postGUIAsync, windowSetPosition, windowSetDefaultSize,
-        mainGUI, widgetShowAll, containerAdd, uiManagerNew, widgetSetName,
-        windowNew)
+import GI.Gtk
+       (mainQuit, windowSetPosition, windowSetDefaultSize,
+        widgetShowAll, containerAdd, widgetSetName,
+        windowNew, WindowPosition(..))
 import IDE.TextEditor
        (CodeMirror(..), Yi(..), GtkSourceView(..), TextEditor(..))
 import IDE.Core.Types
@@ -43,7 +43,6 @@ import IDE.TextEditor.Yi.Config (defaultYiConfig)
 import Data.IORef (newIORef)
 import IDE.Core.State (getDataDir, reflectIDE)
 import Control.Monad.IO.Class (MonadIO(..))
-import Graphics.UI.Gtk.General.Enums (WindowPosition(..))
 import System.Log.Logger (debugM)
 import Control.Concurrent (takeMVar, putMVar, newEmptyMVar)
 import Test.QuickCheck.Monadic (assert, run, monadicIO)
