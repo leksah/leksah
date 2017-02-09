@@ -9,7 +9,7 @@ The user interface is a mix of GTK+ and WebKit based components.
 Documentation can be found on [leksah.org](http://leksah.org/).
 
 ## Getting Leksah
-Leksah requires you have **ghc >= 7.10.3** and **cabal-install >= 1.24** installed
+Leksah requires you have **[ghc >= 7.10.3](https://www.haskell.org/ghc/download)** and **cabal-install >= 1.24** installed
 
 * **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download).
 * **Linux**: [Build from source](https://github.com/leksah/leksah#building-from-source)
