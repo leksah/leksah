@@ -80,9 +80,6 @@ Then in Bash shell with administrator privileges execute:
 
 #### (Stack variant) Step 2.b: Build
 
-First install the C libraries needed as described in
-"[Step 1: Install C libraries](https://github.com/leksah/leksah#step-1-install-c-libraries)" above.
-
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
