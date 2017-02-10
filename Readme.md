@@ -9,12 +9,13 @@ The user interface is a mix of GTK+ and WebKit based components.
 Documentation can be found on [leksah.org](http://leksah.org/).
 
 ## Getting Leksah
+### Installation
 Leksah requires: **[Haskell Platform](https://www.haskell.org/platform/) [>= 8.0.1](https://www.haskell.org/platform/contents.html)** OR **[ghc >= 7.10.3](https://www.haskell.org/ghc/download)**, **[cabal-install >= 1.24](https://www.haskell.org/cabal/download.html)**.
 
 * **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download).
 * **Linux**: [Build from source](https://github.com/leksah/leksah#building-from-source)
 
-## Building from source
+### Building from source
 
 Requirements: ghc >= **7.10.3**, cabal-install >= **1.24**
 
@@ -22,7 +23,7 @@ We have just completed a port of Leksah from Gtk2Hs to haskell-gi. Not all
 of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
 or follow the instructions below.
 
-### Step 1: Install the following C libraries
+#### Step 1: Install the following C libraries
 
 ##### Fedora
 `sudo dnf install gobject-introspection-devel webkitgtk4-devel gtksourceview3-devel`
@@ -54,8 +55,8 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     choco install ghc
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
-
-### Step 2: Install Extra Tools
+#### Step 2: Build using Cabal
+##### Step 2: Install Extra Tools
 
     cabal update
     cabal install alex happy
@@ -63,23 +64,22 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 (make sure `~/.cabal/bin` is in PATH)
 
-### Step 3: Clone the repo and its submodules
+##### Step 3: Clone the repo and its submodules
 
     git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
+    
+##### Step 4: Build and Run Leksah
 
-### Step 4: Build and Run Leksah
-
-##### OS X using MacPorts
+###### OS X using MacPorts
 
     XDG_DATA_DIRS=/opt/local/share ./leksah.sh
 
-##### Other OS
+###### Other OS
 
     ./leksah.sh
 
-
-## Build with stack
+#### Build with stack
 
 Frist install the C libraries needed as described in
 "Step 1: Install the following C libraries" above.
