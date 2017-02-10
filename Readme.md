@@ -16,9 +16,6 @@ Leksah requires: **[Haskell Platform](https://www.haskell.org/platform/) [>= 8.0
 * **Linux**: [Build from source](https://github.com/leksah/leksah#building-from-source)
 
 ### Building from source
-
-Requirements: ghc >= **7.10.3**, cabal-install >= **1.24**
-
 We have just completed a port of Leksah from Gtk2Hs to haskell-gi. Not all
 of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md)
 or follow the instructions below.
