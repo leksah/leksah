@@ -92,6 +92,9 @@ data-files:
     pics/ide_error.png
     pics/ide_warning.png
     pics/ide_suggestion.png
+    pics/ide_doc_build.png
+    pics/ide_bench_build.png
+    pics/ide_test_build.png
     scripts/clean.sh
     scripts/stage.sh
     osx/bundle.sh
