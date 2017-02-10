@@ -58,8 +58,8 @@ Then in Bash shell with administrator privileges execute:
     git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
 
-#### (Cabal variant) Step 2.a: Build
-##### Step 2.a.2: Install extra tools
+#### (Cabal variant) Step 3.a: Build
+##### Step 3.a.1: Install extra tools
 
     cabal update
     cabal install alex happy
@@ -67,7 +67,7 @@ Then in Bash shell with administrator privileges execute:
 
 (make sure `~/.cabal/bin` is in PATH)
    
-##### Step 2.a.3: Build and run Leksah
+##### Step 3.a.2: Build and run Leksah
 
 ###### OS X using MacPorts
 
@@ -77,7 +77,7 @@ Then in Bash shell with administrator privileges execute:
 
     ./leksah.sh
 
-#### (Stack variant) Step 2.b: Build
+#### (Stack variant) Step 3.b: Build
 
 ```
 stack setup --upgrade-cabal
