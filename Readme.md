@@ -54,12 +54,11 @@ Then in Bash shell with administrator privileges execute:
     choco install ghc
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
-#### (Cabal variant) Step 2.a: Build
-##### Step 2.a.1: Clone the repo and its submodules
-
+#### Step 2: Clone repository and its submodules
     git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
 
+#### (Cabal variant) Step 2.a: Build
 ##### Step 2.a.2: Install extra tools
 
     cabal update
@@ -81,8 +80,6 @@ Then in Bash shell with administrator privileges execute:
 #### (Stack variant) Step 2.b: Build
 
 ```
-git clone --recursive https://github.com/leksah/leksah.git
-cd leksah
 stack setup --upgrade-cabal
 stack install alex happy
 stack install haskell-gi
