@@ -55,8 +55,8 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
     choco install ghc
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
-#### Step 2: Build using Cabal
-##### Step 2: Install Extra Tools
+#### (variant) Step 2.a Build using Cabal
+##### Step 2.a.1: Install Extra Tools
 
     cabal update
     cabal install alex happy
@@ -64,12 +64,12 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
 (make sure `~/.cabal/bin` is in PATH)
 
-##### Step 3: Clone the repo and its submodules
+##### Step 2.a.2: Clone the repo and its submodules
 
     git clone --recursive https://github.com/leksah/leksah.git
     cd leksah
     
-##### Step 4: Build and Run Leksah
+##### Step 2.a.3: Build and Run Leksah
 
 ###### OS X using MacPorts
 
@@ -79,7 +79,7 @@ Install [MSYS2](https://msys2.github.io/) and [Chocolatey](https://chocolatey.or
 
     ./leksah.sh
 
-#### Build with stack
+#### (variant) Step 2.b Build using stack
 
 Frist install the C libraries needed as described in
 "Step 1: Install the following C libraries" above.
