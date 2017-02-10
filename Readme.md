@@ -91,20 +91,22 @@ XDG_DATA_DIRS=/opt/local/share ./leksah.sh
 ```
 
 #### (Stack variant) Step 3.b: Build
+##### Step 3.b.1: Install extra tools
 ```shell
 stack setup --upgrade-cabal
 stack install alex happy
 stack install haskell-gi
 stack install gtk2hs-buildtools
-stack install
 ```
-
-##### For Mac OS
+##### Step 3.a.2: Build and run Leksah
+###### For Mac OS
 ```shell
 stack install --stack-yaml stack.osx.yaml
+stack exec leksah
 ```
 
-##### All other OS'es
+###### All other OS'es
 ```shell
+stack install
 stack exec leksah
 ```
