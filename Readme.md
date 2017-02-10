@@ -13,7 +13,7 @@ Documentation can be found on [leksah.org](http://leksah.org/).
 Leksah requires: **[Haskell Platform](https://www.haskell.org/platform/) [>= 8.0.1](https://www.haskell.org/platform/contents.html)** OR **[ghc >= 7.10.3](https://www.haskell.org/ghc/download)**, **[cabal-install >= 1.24](https://www.haskell.org/cabal/download.html)**.
 
 * **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download)
-* **Linux**: [Build from source](https://github.com/leksah/leksah#building-from-source)
+* **Linux**: [build from source](https://github.com/leksah/leksah#building-from-source)
 
 ### Building from source
 We have just completed a port of Leksah from Gtk2Hs to haskell-gi. Not all of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md) or follow the instructions below.
