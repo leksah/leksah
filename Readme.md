@@ -54,7 +54,7 @@ Then in Bash shell with administrator privileges execute:
     choco install ghc
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
-#### (variant) Step 2.a Build using Cabal
+#### (Cabal variant) Step 2.a: Build
 ##### Step 2.a.1: Install extra tools
 
     cabal update
@@ -78,7 +78,7 @@ Then in Bash shell with administrator privileges execute:
 
     ./leksah.sh
 
-#### (variant) Step 2.b Build using stack
+#### (Stack variant) Step 2.b: Build
 
 First install the C libraries needed as described in
 "[Step 1: Install C libraries](https://github.com/leksah/leksah#step-1-install-c-libraries)" above.
