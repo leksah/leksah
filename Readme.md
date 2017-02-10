@@ -55,19 +55,19 @@ Then in Bash shell with administrator privileges execute:
     pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 
 #### (Cabal variant) Step 2.a: Build
-##### Step 2.a.1: Install extra tools
+##### Step 2.a.1: Clone the repo and its submodules
+
+    git clone --recursive https://github.com/leksah/leksah.git
+    cd leksah
+
+##### Step 2.a.2: Install extra tools
 
     cabal update
     cabal install alex happy
     cabal install haskell-gi
 
 (make sure `~/.cabal/bin` is in PATH)
-
-##### Step 2.a.2: Clone the repo and its submodules
-
-    git clone --recursive https://github.com/leksah/leksah.git
-    cd leksah
-    
+   
 ##### Step 2.a.3: Build and run Leksah
 
 ###### OS X using MacPorts
