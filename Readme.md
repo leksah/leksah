@@ -10,13 +10,14 @@ Documentation can be found on [leksah.org](http://leksah.org/).
 
 ## Getting Leksah
 ### Installation
-Leksah requires: **[Haskell Platform](https://www.haskell.org/platform/) [>= 8.0.1](https://www.haskell.org/platform/contents.html)** OR **[ghc >= 7.10.3](https://www.haskell.org/ghc/download)**, **[cabal-install >= 1.24](https://www.haskell.org/cabal/download.html)**.
+Leksah requires `ghc --version` >=7.10.3 and `cabal --version` >=1.24. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
 
-* **Windows** and **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download)
+* **Windows** [latest github version built with AppVeyor](https://ci.appveyor.com/project/hamishmack/leksah/build/artifacts)
+* **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download)
 * **Linux**: [build from source](https://github.com/leksah/leksah#building-from-source)
 
 ### Building from source
-We have just completed a port of Leksah from Gtk2Hs to haskell-gi. Not all of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md) or follow the instructions below.
+We have completed a port of Leksah from Gtk2Hs to haskell-gi. Not all of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md) or follow the instructions below.
 
 #### Step 1: Install C libraries
 
@@ -64,6 +65,14 @@ choco install ghc
 pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
 ```
 
+Set the following environment variables:
+```shell
+SET PATH=%APPDATA%\cabal\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.2\bin;C:\ProgramData\chocolatey\lib\cabal\tools;%PATH%
+SET PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig
+SET XDG_DATA_DIRS=C:\msys64\mingw64\share
+```
+(change `C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.2\bin` if a newer version is installed)
+
 #### Step 2: Clone repository and its submodules
 ```shell
 git clone --recursive https://github.com/leksah/leksah.git
@@ -78,7 +87,7 @@ cabal install alex happy
 cabal install haskell-gi
 echo 'PATH: '"$PATH"
 ```
-Make sure `~/.cabal/bin` is present in PATH.
+Make sure `~/.cabal/bin` is present in PATH (*Windows:* Make sure `%APPDATA%\cabal\bin` is present in PATH).
    
 ##### Step 3.a.2: Build and run Leksah
 ###### OS X using MacPorts

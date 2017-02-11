@@ -495,11 +495,11 @@ mkActions =
 
     ,AD "BackgroundBuildToggled" (__ "_Build in the background") (Just (__ "Build in the background and report errors")) (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "MakeDocsToggled" (__ "Build with _documentation") (Just (__ "Make documentation when building")) (Just "gtk-apply") -- TODO change icon
+    ,AD "MakeDocsToggled" (__ "Build with _documentation") (Just (__ "Make documentation when building")) (Just "ide_doc_build") 
         makeDocsToggled [] True
-    ,AD "RunUnitTestsToggled" (__ "Run _unit tests when building") (Just (__ "Run unit tests when building")) (Just "gtk-apply") -- TODO change icon
+    ,AD "RunUnitTestsToggled" (__ "Run _unit tests when building") (Just (__ "Run unit tests when building")) (Just "ide_test_build") 
         runUnitTestsToggled [] True
-    ,AD "RunBenchmarksToggled" (__ "_Run benchmarks when building") (Just (__ "Run benchmarks when building")) (Just "gtk-apply") -- TODO change icon
+    ,AD "RunBenchmarksToggled" (__ "_Run benchmarks when building") (Just (__ "Run benchmarks when building")) (Just "ide_bench_build") 
         runBenchmarksToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
@@ -603,7 +603,7 @@ getMenuAndToolbars uiManager = do
     menu     <- uIManagerGetWidget uiManager "/ui/menubar" >>= liftIO . unsafeCastTo MenuBar
     toolbar  <- uIManagerGetWidget uiManager "/ui/toolbar" >>= liftIO . unsafeCastTo Toolbar
     toolbarSetStyle toolbar ToolbarStyleIcons
-    toolbarSetIconSize toolbar IconSizeSmallToolbar
+    toolbarSetIconSize toolbar IconSizeLargeToolbar
     widgetSetSizeRequest toolbar 700 (-1)
     return (accGroup,menu,toolbar)
 
@@ -725,7 +725,7 @@ newIcons = catch (do
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local", "ide_js", "ide_folder", "ide_source_folder",
             "ide_cabal_file", "ide_package", "ide_component", "ide_source_dependency", "ide_error",
-            "ide_warning", "ide_suggestion", "ide_git"  ]
+            "ide_warning", "ide_suggestion", "ide_git", "ide_test_build", "ide_bench_build", "ide_doc_build"  ]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
