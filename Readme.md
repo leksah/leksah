@@ -88,14 +88,14 @@ cabal install haskell-gi
 echo 'Shell is '"$SHELL"
 echo 'With PATH='"$SHELL"' -c '"echo $PATH"
 ```
-Make sure `~/.cabal/bin` is present in PATH of your shell (*Windows:* Make sure `%APPDATA%\cabal\bin` is present in PATH).
+Make sure `~/.cabal/bin` is present in PATH of your $SHELL (*Windows:* Make sure `%APPDATA%\cabal\bin` is present in PATH).
 
-To add cabal path to BASH:
+To add cabal path to $SHELL automatically:
 ```shell
-sed -i 's;^PATH=.*;PATH='"$SHELL"' -c '"echo $PATH"':'"$HOME"'/.cabal/bin;' ~/.bashrc
+sed -i 's;^PATH=.*;PATH='"$SHELL"' -c '"echo $PATH"':'"$HOME"'/.cabal/bin;' ~/.`basename "$SHELL"`'rc'
 ```
 
-If ZSH is your `$SHELL` - change file `~/.zshrc` instead.
+This line runs "$SHELL" gets "$PATH" there and expands it with `:"$HOME"'/.cabal/bin` in according config-file.
 
 ##### Step 3.a.2: Build and run Leksah
 ###### OS X using MacPorts
