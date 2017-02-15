@@ -2,10 +2,12 @@ flags: -overloaded-methods -overloaded-signals -overloaded-properties
 
 packages:
  ./
+ vendor/haddock/haddock-api/
  vendor/leksah-server/
  vendor/ltk/
  vendor/yi/
  vendor/haskellVCSWrapper/vcswrapper/
+ vendor/haskellVCSGUI/vcsgui
 
 package gi-atk
  flags: -overloaded-methods -overloaded-signals -overloaded-properties

@@ -1,4 +1,4 @@
-resolver: nightly-2016-12-16
+resolver: lts-8.0
 packages:
 - '.'
 - 'vendor/leksah-server'
@@ -6,32 +6,37 @@ packages:
 - 'vendor/haskellVCSGUI/vcsgui'
 #- 'vendor/yi'
 - 'vendor/haskellVCSWrapper/vcswrapper'
+- location:
+    git: https://github.com/basvandijk/haddock.git
+    commit: f4c5e46ded05a4b8884f5ad6f3102f79ff3bb127
+  subdirs:
+  - haddock-api
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - binary-shared-0.8.3
-- ghcjs-dom-0.4.1.1
-- ghcjs-dom-jsaddle-0.4.1.0
+- ghcjs-dom-0.7.0.4
+- ghcjs-dom-jsaddle-0.7.0.3
 - gi-gtk-hs-0.3.4.0
-- gi-gtksource-3.0.9
-- gi-javascriptcore-4.0.9
-- gi-soup-2.4.9
-- gi-webkit2-4.0.9
+- gi-gtksource-3.0.12
+- gi-javascriptcore-4.0.11
+- gi-soup-2.4.11
+- gi-webkit2-4.0.11
 - ref-tf-0.4.0.1
-- jsaddle-0.5.1.1
-- jsaddle-dom-0.4.1.0
-- gi-gdk-3.0.9
-- gi-gdkpixbuf-2.0.9
-- gi-glib-2.0.9
-- gi-gobject-2.0.9
-- gi-gtk-3.0.9
-- gi-cairo-1.0.9
-- gi-gio-2.0.9
-- gi-pango-1.0.9
-- gi-atk-2.0.9
+- jsaddle-0.8.0.1
+- jsaddle-dom-0.7.1.0
+- gi-gdk-3.0.11
+- gi-gdkpixbuf-2.0.11
+- gi-glib-2.0.11
+- gi-gobject-2.0.11
+- gi-gtk-3.0.11
+- gi-cairo-1.0.11
+- gi-gio-2.0.11
+- gi-pango-1.0.11
+- gi-atk-2.0.11
 # You will need to add this back in for Mac OS builds
-- gi-gtkosxapplication-2.0.9
+- gi-gtkosxapplication-2.0.11
 
 # Override default flag values for local packages and extra-deps
 flags:

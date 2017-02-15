@@ -49,3 +49,6 @@
 [submodule "vendor/jsaddle-dom"]
 	path = vendor/jsaddle-dom
 	url = https://github.com/ghcjs/jsaddle-dom.git
+[submodule "vendor/haddock"]
+	path = vendor/haddock
+	url = https://github.com/haskell/haddock.git
