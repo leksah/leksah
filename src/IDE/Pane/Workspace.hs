@@ -483,6 +483,7 @@ refresh WorkspacePane{..} = do
             widgetShowAll scrolledView
             boxSetChildPacking box scrolledView True True 0 PackTypeStart
             let packages = sort (wsPackages ws)
+            forestStoreClear recordStore
             flip runWorkspace ws $
                 for_ (zip [0..] packages) $ \(n, pkg) -> do
                     path <- liftIO $ treePathNewFromIndices' []
