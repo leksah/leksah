@@ -86,7 +86,7 @@ cabal update
 cabal install alex happy
 cabal install haskell-gi
 echo 'Shell is '"$SHELL"
-echo 'With PATH='"$SHELL"' -c '"echo $PATH"
+echo 'With PATH='`"$SHELL" -c 'echo "$PATH"'`
 ```
 Make sure `~/.cabal/bin` is present in PATH of your $SHELL (*Windows:* Make sure `%APPDATA%\cabal\bin` is present in PATH).
 
