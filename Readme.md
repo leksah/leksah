@@ -92,10 +92,21 @@ Make sure `~/.cabal/bin` is present in PATH of your $SHELL (*Windows:* Make sure
 
 To add cabal path to $SHELL automatically:
 ```shell
-sed -i 's;^PATH=.*;PATH='`"$SHELL" -c 'echo "$PATH"'`':'"$HOME"'/.cabal/bin;' ~/.`basename "$SHELL"`'rc'
-```
+# construct conf filename of shell
+conf_file=~'/.'`basename "$SHELL"`'rc'
 
-This line runs "$SHELL" gets "$PATH" there and expands it with `:"$HOME"'/.cabal/bin` in according config-file.
+# directory to add
+add_dir="$HOME"'/.cabal/bin'
+
+# run "$SHELL" get its "$PATH"
+old_PATH=`"$SHELL" -c 'echo "$PATH"'`
+
+# add directory to PATH
+new_PATH="$old_PATH"':'"$add_dir"
+
+# make change of value in config file
+sed -i 's;'"$old_PATH"';'"$new_PATH"';' "$conf_file"
+```
 
 ##### Step 3.a.2: Build and run Leksah
 ###### OS X using MacPorts
