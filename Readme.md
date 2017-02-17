@@ -85,10 +85,18 @@ cd leksah
 cabal update
 cabal install alex happy
 cabal install haskell-gi
-echo 'PATH: '"$PATH"
+echo 'Shell is '"$SHELL"
+echo 'With PATH='"$SHELL"' -c '"echo $PATH"
 ```
-Make sure `~/.cabal/bin` is present in PATH (*Windows:* Make sure `%APPDATA%\cabal\bin` is present in PATH).
-   
+Make sure `~/.cabal/bin` is present in PATH of your $SHELL (*Windows:* Make sure `%APPDATA%\cabal\bin` is present in PATH).
+
+To add cabal path to $SHELL automatically:
+```shell
+sed -i 's;^PATH=.*;PATH='"$SHELL"' -c '"echo $PATH"':'"$HOME"'/.cabal/bin;' ~/.`basename "$SHELL"`'rc'
+```
+
+This line runs "$SHELL" gets "$PATH" there and expands it with `:"$HOME"'/.cabal/bin` in according config-file.
+
 ##### Step 3.a.2: Build and run Leksah
 ###### OS X using MacPorts
 ```shell
@@ -107,7 +115,7 @@ stack install alex happy
 stack install haskell-gi
 stack install gtk2hs-buildtools
 ```
-##### Step 3.a.2: Build and run Leksah
+##### Step 3.b.2: Build and run Leksah
 ###### For Mac OS
 ```shell
 stack install --stack-yaml stack.osx.yaml
