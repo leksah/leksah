@@ -92,7 +92,7 @@ Make sure `~/.cabal/bin` is present in PATH of your $SHELL (*Windows:* Make sure
 
 To add cabal path to $SHELL automatically:
 ```shell
-sed -i 's;^PATH=.*;PATH='"$SHELL"' -c '"echo $PATH"':'"$HOME"'/.cabal/bin;' ~/.`basename "$SHELL"`'rc'
+sed -i 's;^PATH=.*;PATH='`"$SHELL" -c 'echo "$PATH"'`':'"$HOME"'/.cabal/bin;' ~/.`basename "$SHELL"`'rc'
 ```
 
 This line runs "$SHELL" gets "$PATH" there and expands it with `:"$HOME"'/.cabal/bin` in according config-file.
