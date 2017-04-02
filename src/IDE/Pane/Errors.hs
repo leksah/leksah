@@ -199,10 +199,6 @@ builder' _pp _nb _windows = do
         boxPackStart' hbox b PackNatural 3
         onToggleButtonToggled b $ reflectIDE (fillErrorList False) ideR
 
-
-    boxPackStart' vbox hbox PackNatural 0
-
-
     -- TreeView for bottom part of vbox
 
     treeView     <- treeViewNew
