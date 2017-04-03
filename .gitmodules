@@ -54,4 +54,4 @@
 	url = https://github.com/haskell/haddock.git
 [submodule "vendor/nixpkgs"]
 	path = vendor/nixpkgs
-	url = git@github.com:hamishmack/nixpkgs-channels.git
+	url = https://github.com/hamishmack/nixpkgs.git
