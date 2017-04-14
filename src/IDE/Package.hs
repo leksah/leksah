@@ -512,9 +512,9 @@ packageRun' removeGhcjsFlagIfPresent package =
                             case exe ++ executables pd of
                                 [] -> return ()
                                 (Executable name _ _ : _) -> do
-                                    let exePath = projectRoot </> "dist-newstyle/build"
+                                    let exePath = projectRoot </> "dist-newstyle/build/x86_64-osx/ghc-8.0.2"
                                                     </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-                                                    </> "build" </> name </> name
+                                                    </> "c" </> name </> "build" </> name </> name
                                     IDE.Package.runPackage (addLogLaunchData logName logLaunch)
                                                            (T.pack $ printf (__ "Running %s") (T.unpack logName))
                                                            exePath
@@ -644,11 +644,8 @@ packageRunComponent component backgroundBuild jumpToWarnings package shallConfig
         packageDBs <- liftIO $ getPackageDBs' ghcVersion dir
         let pkgId = packageIdentifierToString $ ipdPackageId package
             pkgName = ipdPackageName package
-            exePath = projectRoot </> "dist-newstyle/build"
-                        </> T.unpack pkgId
-                        </> "build" </> name </> name
-            cmd  = if useStack then "stack" else exePath
-            args = if useStack then [command, pkgName <> ":" <> T.pack name] else []
+            cmd  = if useStack then "stack" else "cabal"
+            args = if useStack then [command, pkgName <> ":" <> T.pack name] else ["new-test", pkgName <> ":" <> T.pack name]
         mbEnv <- if useStack
             then return Nothing
             else do
