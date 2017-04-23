@@ -15,6 +15,12 @@ let
   makeRecursivelyOverridable = x: old: x.override old // {
     override = new: makeRecursivelyOverridable x (combineOverrides old new);
   };
+  appendGIFlags = p: appendConfigureFlag p "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
+  fixCairoGI = p: overrideCabal p (drv: {
+    preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
+      export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
+    '';
+  });
   extendHaskellPackages = haskellPackages: makeRecursivelyOverridable haskellPackages {
     overrides = self: super:
       let jsaddlePkgs = import ./vendor/jsaddle self;
@@ -33,53 +39,23 @@ let
         ghcjs-dom-jsffi = ghcjsDom.ghcjs-dom-jsffi;
         ghcjs-dom = dontCheck (dontHaddock ghcjsDom.ghcjs-dom);
 
-        gi-atk = appendConfigureFlag super.gi-atk "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-cairo = appendConfigureFlag (overrideCabal super.gi-cairo (drv: {
-          preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
-            export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
-          '';
-        })) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-gdk = appendConfigureFlag (overrideCabal super.gi-gdk (drv: {
-          preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
-            export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
-          '';
-        })) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-gdkpixbuf = appendConfigureFlag super.gi-gdkpixbuf "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-gio = appendConfigureFlag super.gi-gio "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-glib = appendConfigureFlag super.gi-glib "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-gobject = appendConfigureFlag super.gi-gobject "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-gtk = appendConfigureFlag (overrideCabal super.gi-gtk (drv: {
-          preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
-            export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
-          '';
-        })) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-javascriptcore = super.gi-javascriptcore_4_0_11;
-        gi-pango = appendConfigureFlag (overrideCabal super.gi-pango (drv: {
-          preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
-            export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
-          '';
-        })) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-soup = appendConfigureFlag super.gi-soup "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-webkit = appendConfigureFlag (super.gi-webkit.override {
-          # webkitgtk = nixpkgs.webkitgtk24x;
-        }) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-webkit2 = appendConfigureFlag (overrideCabal (super.gi-webkit2.override {
-            webkitgtk = nixpkgs.webkitgtk214x;
-          }) (drv: {
-          preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
-            export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
-          '';
-        })) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-gtksource = appendConfigureFlag (overrideCabal super.gi-gtksource (drv: {
-          preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
-            export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
-          '';
-        })) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
-        gi-gtkosxapplication = appendConfigureFlag (overrideCabal super.gi-gtkosxapplication (drv: {
-          preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
-            export LD_LIBRARY_PATH="${nixpkgs.cairo}/lib"
-          '';
-        })) "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
+        gi-atk = appendGIFlags super.gi-atk;
+        gi-cairo = appendGIFlags (fixCairoGI super.gi-cairo);
+        gi-gdk = appendGIFlags (fixCairoGI super.gi-gdk);
+        gi-gdkpixbuf = appendGIFlags super.gi-gdkpixbuf;
+        gi-gio = appendGIFlags super.gi-gio;
+        gi-glib = appendGIFlags super.gi-glib;
+        gi-gobject = appendGIFlags super.gi-gobject;
+        gi-gtk = appendGIFlags (fixCairoGI super.gi-gtk);
+        gi-javascriptcore = appendGIFlags super.gi-javascriptcore_4_0_11;
+        gi-pango = appendGIFlags (fixCairoGI super.gi-pango);
+        gi-soup = appendGIFlags super.gi-soup;
+        gi-webkit = appendGIFlags super.gi-webkit.override;
+        gi-webkit2 = appendGIFlags (fixCairoGI super.gi-webkit2);
+        gi-gtksource = appendGIFlags (fixCairoGI super.gi-gtksource);
+        gi-gtkosxapplication = appendGIFlags (fixCairoGI (super.gi-gtkosxapplication.override {
+          gtk-mac-integration-gtk3 = pkgs.gtk-mac-integration-gtk3;
+        }));
         haskell-gi = super.haskell-gi;
         haskell-gi-base = super.haskell-gi-base;
         webkit2gtk3-javascriptcore = super.webkit2gtk3-javascriptcore.override {
@@ -98,7 +74,8 @@ let
       , network-uri, old-time, parsec, pretty, pretty-show, QuickCheck
       , regex-base, regex-tdfa, regex-tdfa-text, shakespeare, split
       , stdenv, stm, strict, text, time, transformers, unix, utf8-string
-      , vado, vcsgui, vcswrapper, call-stack, HUnit, doctest, hspec
+      , vado, vcsgui, vcswrapper, call-stack, HUnit, doctest, hspec, gnome3
+      , pkgconfig
       }:
       mkDerivation {
         pname = "leksah";
@@ -115,8 +92,8 @@ let
           hlint hslogger HTTP mtl network network-uri
           old-time parsec pretty pretty-show QuickCheck regex-base regex-tdfa
           regex-tdfa-text shakespeare split stm strict text time transformers
-          unix utf8-string vado vcsgui vcswrapper call-stack HUnit doctest
-          hspec
+          unix utf8-string vado call-stack HUnit doctest
+          hspec gnome3.defaultIconTheme pkgconfig gnome3.gtk
         ];
         buildTools = [ nixpkgs.cabal-install ];
         libraryPkgconfigDepends = [ nixpkgs.gtk3 ];
