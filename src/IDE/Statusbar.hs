@@ -82,11 +82,11 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
         return ()
     changeStatusbar' (CompartmentBuild bool) =  do
         im <- getImBuild
-        imageSetFromIconName im (Just $ if bool then "ide_build" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
+        imageSetFromIconName im (if bool then "ide_build" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
         return ()
     changeStatusbar' (CompartmentCollect bool) =  do
         im <- getImCollect
-        imageSetFromIconName im (Just $ if bool then "ide_rebuild_meta" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
+        imageSetFromIconName im (if bool then "ide_rebuild_meta" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)
         return ()
 
 
@@ -116,11 +116,11 @@ buildStatusbar = do
     widgetSetName sbio "statusBarInsertOverwrite"
     widgetSetSizeRequest sbio 60 (-1)
 
-    buildImage <- imageNewFromIconName (Just "ide_empty") (fromIntegral $ fromEnum IconSizeMenu)
+    buildImage <- imageNewFromIconName "ide_empty" (fromIntegral $ fromEnum IconSizeMenu)
     widgetSetName buildImage "buildImage"
     imageSetPixelSize buildImage 16
 
-    collectImage <- imageNewFromIconName (Just "ide_empty") (fromIntegral $ fromEnum IconSizeMenu)
+    collectImage <- imageNewFromIconName "ide_empty" (fromIntegral $ fromEnum IconSizeMenu)
     widgetSetName collectImage "collectImage"
     imageSetPixelSize collectImage 16
 
