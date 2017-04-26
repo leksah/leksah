@@ -347,7 +347,7 @@ library
         gi-cairo >=1.0.6 && <1.1,
         gi-gdk >=3.0.6 && <3.1,
         gi-gdkpixbuf >=2.0.6 && <2.1,
-        gi-gtk >=3.0.6 && <3.1,
+        gi-gtk >=3.0.13 && <3.1,
         gi-pango >=1.0.6 && <1.1,
         gi-gtksource >=3.0.6 && <3.1,
         gi-gtk-hs >=0.3.0.0 && <0.4,
