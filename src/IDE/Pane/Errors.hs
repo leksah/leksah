@@ -39,7 +39,8 @@ import IDE.Utils.GUIUtils
        (treeViewContextMenu', treeViewContextMenu, __, treeViewToggleRow)
 import Data.Text (dropWhileEnd, Text)
 import Control.Applicative (Alternative(..))
-import Control.Monad (filterM, foldM_, unless, void, when)
+import Control.Monad (filterM, foldM_, unless, void, when, forever)
+import Control.Concurrent (forkIO, threadDelay, MVar, newEmptyMVar, takeMVar, tryPutMVar)
 import qualified Data.Text as T
        (unlines, dropWhileEnd, unpack, pack, intercalate, lines,
         takeWhile, length, drop)
@@ -109,6 +110,7 @@ import Data.Int (Int32)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
 import GI.Gtk (getToggleButtonActive)
+import Data.Time.Clock (getCurrentTime, diffUTCTime)
 
 
 -- | The representation of the Errors pane
@@ -122,6 +124,7 @@ data ErrorsPane      =   ErrorsPane {
 ,   warningsButton    :: ToggleButton
 ,   suggestionsButton :: ToggleButton
 ,   testFailsButton   :: ToggleButton
+,   updateButtons     :: MVar ()
 } deriving Typeable
 
 
@@ -239,6 +242,8 @@ builder' _pp _nb _windows = do
 
     autoClose <- liftIO $ newIORef False
 
+    updateButtons <- liftIO newEmptyMVar
+
     let pane = ErrorsPane {..}
     cid1 <- onIDE afterWidgetFocusInEvent treeView $ do
         liftIDE $ makeActive pane
@@ -252,6 +257,10 @@ builder' _pp _nb _windows = do
             _        -> return ())
 
     fillErrorList' pane
+    liftIO . forkIO . forever $ do
+        takeMVar updateButtons
+        reflectIDE (postSyncIDE (doUpdateFilterButtons pane)) ideR
+        threadDelay 200000
     return (Just pane, [cid1, cid4] ++ cids2)
 
 
@@ -275,12 +284,13 @@ toDescription expanded errorRec =
         (ERIDE msg)         -> formatExpandableMessage "" msg
         (ERPackage pkg msg) -> formatExpandableMessage (packageIdentifierToString (ipdPackageId pkg))
                                    (packageIdentifierToString (ipdPackageId pkg) <> ": \n" <> msg)
-        (ERFullMessage msg _) -> removeIndentation msg
+        (ERFullMessage msg _) -> removeIndentation (cutOffAt 8192 msg)
 
     where
         formatExpandableMessage location msg
             | expanded  = location
-            | otherwise = location <> ": " <> msg & removeIndentation
+            | otherwise = location <> ": " <> msg & cutOffAt 2048
+                                                  & removeIndentation
                                                   & T.lines
                                                   & map removeTrailingWhiteSpace
                                                   & T.intercalate " "
@@ -305,6 +315,14 @@ getErrors :: Maybe PanePath -> IDEM ErrorsPane
 getErrors Nothing    = forceGetPane (Right "*Errors")
 getErrors (Just pp)  = forceGetPane (Left pp)
 
+timeIt :: String -> IDEM a -> IDEM a
+timeIt name f = do
+    liftIO $ debugM "leksah" name
+    start <- liftIO getCurrentTime
+    result <- f
+    end <- liftIO getCurrentTime
+    liftIO $ debugM "leksah" $ name <> " took " <> show (diffUTCTime end start)
+    return result
 
 -- | Repopulates the Errors pane
 fillErrorList :: Bool -- ^ Whether to display the Errors pane
@@ -312,11 +330,9 @@ fillErrorList :: Bool -- ^ Whether to display the Errors pane
 fillErrorList False = getPane >>= maybe (return ()) fillErrorList'
 fillErrorList True = getErrors Nothing  >>= \ p -> fillErrorList' p >> displayPane p False
 
-
 -- | Fills the pane with the error list from the IDE state
 fillErrorList' :: ErrorsPane -> IDEAction
-fillErrorList' pane = do
-    liftIO $ debugM "leksah" "fillErrorList'"
+fillErrorList' pane = timeIt "fillErrorList'" $ do
     refs <- F.toList <$> readIDE errorRefs
     visibleRefs <- filterM (isRefVisible pane) refs
 
@@ -355,11 +371,9 @@ addErrorToList :: Bool -- ^ Whether to display the pane
 addErrorToList False index lr = getPane >>= maybe (return ()) (addErrorToList' index lr)
 addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' index lr p >> displayPane p False
 
-
 -- | Add a 'LogRef' at a specific index to the Errors pane
 addErrorToList' :: Int -> LogRef -> ErrorsPane -> IDEAction
-addErrorToList' unfilteredIndex ref pane = do
-    liftIO $ debugM "leksah" "addErrorToList'"
+addErrorToList' unfilteredIndex ref pane = timeIt "addErrorToList'" $ do
     visible <- isRefVisible pane ref
     updateFilterButtons pane
     when visible $ do
@@ -387,8 +401,7 @@ removeErrorsFromList True  toRemove = getErrors Nothing  >>= \ p -> removeErrors
 
 -- | Add a 'LogRef' at a specific index to the Errors pane
 removeErrorsFromList' :: (LogRef -> Bool) -> ErrorsPane -> IDEAction
-removeErrorsFromList' toRemove pane = do
-    liftIO $ debugM "leksah" "removeErrorsFromList"
+removeErrorsFromList' toRemove pane = timeIt "removeErrorsFromList" $ do
     let store = errorStore pane
     trees <- forestStoreGetForest store
     updateFilterButtons pane
@@ -399,10 +412,12 @@ removeErrorsFromList' toRemove pane = do
     treeToRemove (Node (ERLogRef ref) _) = toRemove ref
     treeToRemove _ = False
 
--- | Updates the filter buttons in the Error Pane
 updateFilterButtons :: ErrorsPane -> IDEAction
-updateFilterButtons pane = do
-    liftIO $ debugM "leksah" "updateFilterButtons"
+updateFilterButtons pane = void . liftIO $ tryPutMVar (updateButtons pane) ()
+
+-- | Updates the filter buttons in the Error Pane
+doUpdateFilterButtons :: ErrorsPane -> IDEAction
+doUpdateFilterButtons pane = timeIt "updateFilterButtons" $ do
     let numRefs refType = length . filter ((== refType) . logRefType) . F.toList <$> readIDE errorRefs
     let setLabel name amount button = buttonSetLabel button (name <> " (" <> T.pack (show amount) <> ")" )
 
@@ -415,7 +430,6 @@ updateFilterButtons pane = do
     setLabel "Warnings"      numWarnings    (warningsButton    pane)
     setLabel "Suggestions"   numSuggestions (suggestionsButton pane)
     setLabel "Test Failures" numTestFails   (testFailsButton   pane)
-    widgetShowAll (vbox pane)
 
 
 -- | Get the currently selected error
