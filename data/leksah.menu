@@ -130,6 +130,7 @@
        <menuitem name="_Group" action="ViewNest" />
        <menuitem name="_Detach" action="ViewDetach" />
        <menuitem name="_Full Screen" action="ViewFullScreen" />
+       <menuitem name="_Use Dark Interface" action="UseDarkInterface" />
        <separator/>
        <menuitem name="Move _Left" action="ViewMoveLeft" />
        <menuitem name="Move _Right" action="ViewMoveRight" />
@@ -158,13 +159,11 @@
        <separator/>
        <menuitem name="Save Session As..." action="SaveSession" />
        <menuitem name="Load Session" action="LoadSession" />
+       <separator/>
+       <menuitem name="_Preferences" action="PrefsEdit" />
+       <separator/>
     </menu>
     <menu name="Version Con_trol" action="vcs">
-    </menu>
-    <menu name="settings" action="Settings">
-        <menuitem name="toggle-dark" action="UseDarkInterface" />
-        <separator/>
-        <menuitem name="preferences" action="PrefsEdit" />
     </menu>
     <menu name="_Help" action="Help">
        <menuitem name="_Homepage" action="HelpHomepage" />

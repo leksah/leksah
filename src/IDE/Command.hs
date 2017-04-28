@@ -479,8 +479,6 @@ mkActions =
         toggleToolbar [] False
 
     ,AD "Tools" (__ "_Tools") Nothing Nothing (return ()) [] False
-
-    ,AD "Settings" (__ "_Settings") Nothing Nothing (return ()) [] False
     ,AD "PrefsEdit" (__ "_Preferences") Nothing Nothing
         runPreferencesDialog [] False
 
