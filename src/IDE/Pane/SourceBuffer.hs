@@ -163,7 +163,7 @@ import GI.Gtk.Objects.Dialog
        (dialogRun, constructDialogUseHeaderBar)
 import GI.Gtk.Objects.Window
        (setWindowTitle, setWindowWindowPosition, windowSetTransientFor)
-import Data.GI.Base (nullToNothing, new')
+import Data.GI.Base (new')
 import GI.Gtk.Objects.Widget
        (widgetHide, widgetShow, widgetDestroy)
 import GI.Gtk.Objects.Notebook
@@ -601,7 +601,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         iter <- getEndIter buffer
 
         -- create a new SourceView Widget
-        sv <- newView buffer (textviewFont prefs)
+        (sv, sw) <- newView buffer (textviewFont prefs)
 
         -- Files opened from the unpackDirectory are meant for documentation
         -- and are not actually a source dependency, they should not be editable.
@@ -624,8 +624,6 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         drawTabs sv
         updateStyle buffer
 
-        -- put it in a scrolled window
-        sw <- getScrolledWindow sv
         if wrapLines prefs
             then scrolledWindowSetPolicy sw PolicyTypeNever PolicyTypeAutomatic
             else scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
@@ -1016,7 +1014,7 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
             widgetShow dialog
             response <- dialogRun' dialog
             mbFileName <- case response of
-                    ResponseTypeAccept      -> nullToNothing $ fileChooserGetFilename dialog
+                    ResponseTypeAccept      -> fileChooserGetFilename dialog
                     ResponseTypeCancel      -> return Nothing
                     ResponseTypeDeleteEvent -> return Nothing
                     _                       -> return Nothing

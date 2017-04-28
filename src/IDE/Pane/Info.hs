@@ -91,11 +91,9 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         prefs <- readIDE prefs
         ideR <- ask
         descriptionBuffer <- newDefaultBuffer Nothing ""
-        descriptionView@(GtkView v)   <- newView descriptionBuffer (textviewFont prefs)
+        (descriptionView@(GtkView v), sw) <- newView descriptionBuffer (textviewFont prefs)
         textViewSetEditable v False
         updateStyle descriptionBuffer
-
-        sw <- getScrolledWindow descriptionView
 
         createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                 (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)

@@ -75,7 +75,7 @@ import GI.Gtk.Objects.Window
 import GI.Gtk.Enums
        (WindowPosition(..), MessageType(..), ButtonsType(..), MessageType,
         ResponseType(..), FileChooserAction(..))
-import Data.GI.Base (new', nullToNothing)
+import Data.GI.Base (new')
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserAddFilter, fileChooserGetFilename,
@@ -153,7 +153,7 @@ chooseDir window prompt mbFolder = do
     response <- dialogRun' dialog
     case response of
         ResponseTypeAccept -> do
-            fn <- nullToNothing $ fileChooserGetFilename dialog
+            fn <- fileChooserGetFilename dialog
             widgetDestroy dialog
             return fn
         ResponseTypeCancel -> do
@@ -184,7 +184,7 @@ chooseFile window prompt mbFolder filters = do
     response <- dialogRun' dialog
     case response of
         ResponseTypeAccept -> do
-            fn <- nullToNothing $ fileChooserGetFilename dialog
+            fn <- fileChooserGetFilename dialog
             widgetDestroy dialog
             return fn
         ResponseTypeCancel -> do
@@ -215,7 +215,7 @@ chooseSaveFile window prompt mbFolder = do
     res <- dialogRun' dialog
     case res of
         ResponseTypeAccept  ->  do
-            fileName <- nullToNothing $ fileChooserGetFilename dialog
+            fileName <- fileChooserGetFilename dialog
             widgetDestroy dialog
             return fileName
         _               ->  do

@@ -109,7 +109,7 @@ import GI.Gtk.Objects.Window
 import GI.Gtk.Enums
        (FileChooserAction(..), ResponseType(..), ButtonsType(..),
         WindowPosition(..), MessageType(..))
-import Data.GI.Base (set, nullToNothing, new')
+import Data.GI.Base (set, new')
 import GI.Gtk.Objects.Widget
        (widgetShow, widgetDestroy, widgetHide)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
@@ -531,7 +531,7 @@ fileOpen = do
     widgetShow dialog
     response <- dialogRun' dialog
     when (response == ResponseTypeAccept) $
-        nullToNothing (fileChooserGetFilename dialog) >>= mapM_ fileOpen'
+        fileChooserGetFilename dialog >>= mapM_ fileOpen'
     widgetDestroy dialog
 
 fileOpen' :: FilePath -> IDEAction

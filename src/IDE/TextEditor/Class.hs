@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RankNTypes #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor.Class
@@ -20,9 +21,10 @@ module IDE.TextEditor.Class (
   , scrollToCursor
 ) where
 
+import qualified IDE.Core.Types as Core (IDEM)
 import IDE.Core.Types
-       (LogRefType, IDE(..), IDERef, IDEM, IDEEventM, EditorStyle(..),
-        IDEAction(..), Prefs (..), editorStyle)
+       (LogRefType, IDE(..), IDERef, IDEEventM, EditorStyle(..),
+        Prefs (..), editorStyle)
 import Graphics.UI.Editor.Basics (Connection)
 import Control.Monad.Reader (ReaderT(..))
 import Foreign (Ptr)
@@ -41,6 +43,10 @@ import GI.Gtk.Objects.Menu (Menu(..))
 import GI.Gtk.Flags (TextSearchFlags)
 import Text.PrinterParser (Color(..))
 import GI.Pango (Underline)
+import GHC.Stack (HasCallStack)
+
+type IDEM a = HasCallStack => Core.IDEM a
+type IDEAction = IDEM ()
 
 updateStyle :: TextEditor editor => EditorBuffer editor -> IDEAction
 updateStyle ebuf = do
@@ -107,7 +113,7 @@ class TextEditor editor where
                -> IDEM Text
     hasSelection :: EditorBuffer editor -> IDEM Bool
     insert :: EditorBuffer editor -> EditorIter editor -> Text -> IDEM ()
-    newView :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor)
+    newView :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor, ScrolledWindow)
     pasteClipboard :: EditorBuffer editor
                       -> Clipboard
                       -> EditorIter editor

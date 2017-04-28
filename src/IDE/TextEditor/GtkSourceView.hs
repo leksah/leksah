@@ -110,7 +110,7 @@ import Data.GI.Base.ManagedPtr
        (castTo, withManagedPtr, unsafeCastTo)
 import GI.GObject.Functions
        (signalHandlersBlockMatched, signalLookup)
-import Data.GI.Base.BasicTypes (NullToNothing(..), GObject(..))
+import Data.GI.Base.BasicTypes (nullToNothing, GObject(..))
 import GI.GObject.Flags (SignalMatchType(..))
 import GI.GtkSource.Enums (SmartHomeEndType(..))
 import GI.Gtk.Enums
@@ -184,13 +184,13 @@ newGtkBuffer mbFilename contents = do
     mbLang  <- case mbFilename of
         Just filename -> do
             guess <- contentTypeGuess (Just $ T.pack filename) (Just $ encodeUtf8 contents)
-            nullToNothing $ languageManagerGuessLanguage lm (Just $ T.pack filename) $
+            languageManagerGuessLanguage lm (Just $ T.pack filename) $
                 case guess of
                     (_, True)  -> Just "text/x-haskell"
                     (t, False) -> Just t
-        Nothing -> nullToNothing $ languageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+        Nothing -> languageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
     mbLang2 <- case mbLang of
-                    Nothing -> nullToNothing $ languageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
+                    Nothing -> languageManagerGuessLanguage lm Nothing (Just "text/x-haskell")
                     _ -> return mbLang
     buffer <- case mbLang2 of
         Just sLang -> bufferNewWithLanguage sLang
@@ -218,7 +218,7 @@ newGtkBuffer mbFilename contents = do
 setTagStyle :: Source.Buffer -> Text -> StyleScheme -> (Text -> IDEM ()) -> IDEM ()
 setTagStyle sb tagName scheme applyDefaultStyle = do
     tagTable <- textBufferGetTagTable sb
-    mbTag    <- nullToNothing (textTagTableLookup tagTable tagName)
+    mbTag    <- textTagTableLookup tagTable tagName
     forM_ mbTag $ \tag -> do
         mbStyle <- styleSchemeGetStyle scheme tagName
         case mbStyle of
@@ -257,7 +257,7 @@ instance TextEditor GtkSourceView where
         n <- textIterGetLine i
         let cat  = T.pack $ show refType
             name = T.pack (show n) <> " " <> tooltip
-        mark <- nullToNothing $ textBufferGetMark sb name
+        mark <- textBufferGetMark sb name
         when (isNothing mark) . void $
             bufferCreateSourceMark sb (Just name) cat i
     cutClipboard (GtkBuffer sb) = textBufferCutClipboard sb
@@ -329,7 +329,7 @@ instance TextEditor GtkSourceView where
         sw <- scrolledWindowNew noAdjustment noAdjustment
         containerAdd sw sv
         widgetModifyFont sv (Just fd)
-        return $ GtkView sv
+        return (GtkView sv, sw)
     pasteClipboard (GtkBuffer sb) clipboard (GtkIter i) defaultEditable =
         textBufferPasteClipboard sb clipboard (Just i) defaultEditable
     placeCursor (GtkBuffer sb) (GtkIter i) = textBufferPlaceCursor sb i
@@ -350,7 +350,7 @@ instance TextEditor GtkSourceView where
                 styleManager <- liftIO styleSchemeManagerNew
                 dataDir <- liftIO getDataDir
                 styleSchemeManagerAppendSearchPath styleManager . T.pack $ dataDir </> "data/styles"
-                ids <- fromMaybe [] <$> nullToNothing (styleSchemeManagerGetSchemeIds styleManager)
+                ids <- fromMaybe [] <$> styleSchemeManagerGetSchemeIds styleManager
                 let preferedNames = if preferDark then [str<>"-dark", str] else [str]
                 forM_ (take 1 $ filter (`elem` ids) preferedNames) $ \ name -> do
                     scheme <- styleSchemeManagerGetScheme styleManager name
@@ -393,7 +393,7 @@ instance TextEditor GtkSourceView where
         textViewBufferToWindowCoords sv TextWindowTypeWidget (fromIntegral x) (fromIntegral y)
     drawTabs (GtkView sv) = viewSetDrawSpaces sv [DrawSpacesFlagsTab, DrawSpacesFlagsSpace, DrawSpacesFlagsTrailing]
     getBuffer (GtkView sv) = GtkBuffer <$> (getTextViewBuffer sv >>= (liftIO . unsafeCastTo Source.Buffer))
-    getWindow (GtkView sv) = nullToNothing $ widgetGetWindow sv
+    getWindow (GtkView sv) = widgetGetWindow sv
     getIterAtLocation (GtkView sv) x y = GtkIter
 #ifdef MIN_VERSION_GTK_3_20
         . snd
@@ -401,7 +401,9 @@ instance TextEditor GtkSourceView where
         <$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
     getIterLocation (GtkView sv) (GtkIter i) = textViewGetIterLocation sv i
     getOverwrite (GtkView sv) = textViewGetOverwrite sv
-    getScrolledWindow (GtkView sv) = nullToNothing (widgetGetParent sv) >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
+    getScrolledWindow (GtkView sv) = widgetGetParent sv >>= \case
+        Just v -> liftIO $ unsafeCastTo ScrolledWindow v
+        Nothing -> error "getScrolledWindow failed"
     getEditorWidget (GtkView sv) = liftIO $ toWidget sv
     grabFocus (GtkView sv) = widgetGrabFocus sv
     scrollToMark (GtkView sv) (GtkMark m) withMargin mbAlign = uncurry (textViewScrollToMark sv m withMargin (isJust mbAlign)) $ fromMaybe (0,0) mbAlign
@@ -580,7 +582,7 @@ instance TextEditor GtkSourceView where
         t <- textTagNew (Just name)
         textTagTableAdd tt t
         return t
-    lookupTag (GtkTagTable tt) name = fmap GtkTag <$> nullToNothing (textTagTableLookup tt name)
+    lookupTag (GtkTagTable tt) name = fmap GtkTag <$> textTagTableLookup tt name
 
     -- Tag
     background (GtkTag t) color = setTextTagBackground t . T.pack $ colorHexString color

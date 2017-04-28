@@ -90,7 +90,6 @@ import GI.Gtk.Objects.MenuItem
        (MenuItem(..), onMenuItemActivate, toMenuItem)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
-import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 data IDEOutput = IDEOutput {
     vbox          :: Box
@@ -256,7 +255,7 @@ loadOutputUri uri =
      do out <- getOutputPane Nothing
         let view = webView out
         entrySetText (uriEntry out) (T.pack uri)
-        currentUri <- nullToNothing $ webViewGetUri view
+        currentUri <- webViewGetUri view
         if Just (T.pack uri) == currentUri
             then webViewReload view
             else webViewLoadUri view (T.pack uri)

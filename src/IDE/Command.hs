@@ -493,11 +493,11 @@ mkActions =
 
     ,AD "BackgroundBuildToggled" (__ "_Build in the background") (Just (__ "Build in the background and report errors")) (Just "ide_build")
         backgroundBuildToggled [] True
-    ,AD "MakeDocsToggled" (__ "Build with _documentation") (Just (__ "Make documentation when building")) (Just "ide_doc_build") 
+    ,AD "MakeDocsToggled" (__ "Build with _documentation") (Just (__ "Make documentation when building")) (Just "ide_doc_build")
         makeDocsToggled [] True
-    ,AD "RunUnitTestsToggled" (__ "Run _unit tests when building") (Just (__ "Run unit tests when building")) (Just "ide_test_build") 
+    ,AD "RunUnitTestsToggled" (__ "Run _unit tests when building") (Just (__ "Run unit tests when building")) (Just "ide_test_build")
         runUnitTestsToggled [] True
-    ,AD "RunBenchmarksToggled" (__ "_Run benchmarks when building") (Just (__ "Run benchmarks when building")) (Just "ide_bench_build") 
+    ,AD "RunBenchmarksToggled" (__ "_Run benchmarks when building") (Just (__ "Run benchmarks when building")) (Just "ide_bench_build")
         runBenchmarksToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
@@ -535,7 +535,7 @@ updateRecentEntries = do
                     mi <- menuItemNewWithLabel $ T.pack s
                     onMenuItemActivate mi $ reflectIDE (fileOpen' s) ideR
                     menuShellAppend recentFilesMenu mi
-        nullToNothing (menuItemGetSubmenu recentFilesItem) >>= \case
+        menuItemGetSubmenu recentFilesItem >>= \case
             Just oldSubmenu -> do
                 widgetHide oldSubmenu
                 widgetDestroy oldSubmenu
@@ -556,7 +556,7 @@ updateRecentEntries = do
                     onMenuItemActivate mi $ reflectIDE (workspaceOpenThis True s >> showWorkspacePane) ideR
                     menuShellAppend recentWorkspacesMenu mi
 
-        nullToNothing (menuItemGetSubmenu recentWorkspacesItem) >>= \case
+        menuItemGetSubmenu recentWorkspacesItem >>= \case
             Just oldSubmenu -> do
                 widgetHide oldSubmenu
                 widgetDestroy oldSubmenu

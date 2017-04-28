@@ -82,7 +82,6 @@ import GI.JavaScriptCore.Structs.GlobalContext (GlobalContext(..))
 import Foreign.Ptr (castPtr)
 import Data.GI.Base.BasicConversions (gflagsToWord)
 import Data.GI.Base.Attributes (AttrOp(..))
-import Data.GI.Base.BasicTypes (nullToNothing)
 import Control.Monad (unless)
 import Data.Text (pack, unpack)
 import IDE.TextEditor.Class (TextEditor(..))
@@ -371,7 +370,7 @@ instance TextEditor CodeMirror where
     getBuffer (CMView cm) = return $ CMBuffer cm
     getWindow (CMView cm) = runCM cm $ do
         v <- webView
-        nullToNothing $ widgetGetWindow v
+        widgetGetWindow v
     getIterAtLocation (CMView cm) x y = runCM cm $ do
         m <- codeMirror
         lift $ do
@@ -389,7 +388,7 @@ instance TextEditor CodeMirror where
             b <- rect ^. bottom
             newRectangle (round l) (round t) (round $ r - l) (round $ b - t)
     getOverwrite (CMView cm) = return False -- TODO
-    getScrolledWindow (CMView (v,_)) = nullToNothing (widgetGetParent v) >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
+    getScrolledWindow (CMView (v,_)) = widgetGetParent v >>= (liftIO . unsafeCastTo ScrolledWindow . fromJust)
     getEditorWidget (CMView (v,_)) = liftIO $ toWidget v
     grabFocus (CMView cm) = runCM cm $ do
         v <- webView

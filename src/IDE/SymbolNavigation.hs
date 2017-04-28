@@ -32,7 +32,6 @@ import IDE.Core.State (reflectIDE)
 import Control.Applicative ((<$>))
 import Data.Text (Text)
 import qualified Data.Text as T (length)
-import Data.GI.Base (nullToNothing)
 import GI.Gtk.Objects.ScrolledWindow
        (getScrolledWindowVadjustment, getScrolledWindowHadjustment,
         ScrolledWindow(..))
@@ -111,7 +110,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                         else do
                             applyTagByName tvb "link" beg en
                             screen <- screenGetDefault
-                            nullToNothing (widgetGetWindow tv) >>= \case
+                            widgetGetWindow tv >>= \case
                                 Nothing -> return ()
                                 Just dw -> do
                                     pointerGrab dw False

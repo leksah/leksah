@@ -86,7 +86,7 @@ import GI.Gtk.Objects.Paned (panedSetPosition, panedGetPosition)
 import GI.Gtk.Objects.Notebook
        (notebookSetCurrentPage, notebookSetTabPos, notebookSetShowTabs,
         notebookGetCurrentPage, notebookGetTabPos, notebookGetShowTabs)
-import Data.GI.Base (unsafeCastTo, nullToNothing, new')
+import Data.GI.Base (unsafeCastTo, new')
 import Control.Arrow (Arrow(..))
 import qualified Data.Text as T (unpack, pack)
 import Data.Monoid ((<>))
@@ -409,7 +409,7 @@ loadSessionPrompt = do
     res <- dialogRun' dialog
     case res of
         ResponseTypeAccept  ->  do
-            fileName <- nullToNothing $ fileChooserGetFilename dialog
+            fileName <- fileChooserGetFilename dialog
             widgetHide dialog
             mapM_ loadSession fileName
         _ -> widgetHide dialog
@@ -481,7 +481,7 @@ mkLayout = do
         current     <-  fromIntegral <$> notebookGetCurrentPage nb
         size <- case detachedId raw of
             Just _  -> do
-                parent <- nullToNothing (widgetGetParent nb) >>= liftIO . unsafeCastTo Window . fromJust
+                parent <- widgetGetParent nb >>= liftIO . unsafeCastTo Window . fromJust
                 Just . (fromIntegral *** fromIntegral) <$> windowGetSize parent
             Nothing -> return $ detachedSize raw
         return raw {

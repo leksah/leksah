@@ -94,7 +94,7 @@ import GI.Gtk.Objects.TextBuffer
         textBufferNew)
 import GI.Gtk.Objects.TextTag
        (setTextTagBackground, setTextTagForeground, textTagNew)
-import Data.GI.Base (unsafeCastTo, set, nullToNothing)
+import Data.GI.Base (unsafeCastTo, set)
 import GI.Gtk.Objects.TextTagTable
        (noTextTagTable, textTagTableAdd)
 import GI.Gtk.Objects.Notebook (Notebook(..))
@@ -527,7 +527,7 @@ appendLog log logLaunch text tag = do
             textBufferApplyTagByName buf name iter2 strti
 
     textBufferMoveMarkByName buf "end" iter2
-    mbMark <- nullToNothing $ textBufferGetMark buf "end"
+    mbMark <- textBufferGetMark buf "end"
     line   <- textIterGetLine iter2
     F.forM_ mbMark (textViewScrollMarkOnscreen tv)
     return $ fromIntegral line
@@ -541,7 +541,7 @@ markErrorInLog log (l1,l2) = do
         iter2  <- textBufferGetIterAtLineOffset buf (fromIntegral l2) 0
         textBufferSelectRange buf iter iter2
         textBufferMoveMarkByName buf "end" iter
-        nullToNothing (textBufferGetMark buf "end") >>= \case
+        textBufferGetMark buf "end" >>= \case
             Nothing   -> return ()
             Just mark -> textViewScrollToMark tv mark 0.0 True 0.3 0.3
         return False)

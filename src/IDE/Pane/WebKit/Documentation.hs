@@ -61,7 +61,6 @@ import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gdk (getEventKeyState, keyvalName, getEventKeyKeyval)
 import GI.Gdk.Flags (ModifierType(..))
 import System.Log.Logger (debugM)
-import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 data IDEDocumentation = IDEDocumentation {
     scrolledView :: ScrolledWindow
@@ -83,7 +82,7 @@ instance Pane IDEDocumentation IDEM
 instance RecoverablePane IDEDocumentation DocumentationState IDEM where
     saveState p = do
         zoom <- fmap realToFrac <$> getWebViewZoomLevel $ webView p
-        uri  <- nullToNothing . webViewGetUri $ webView p
+        uri  <- webViewGetUri $ webView p
         return (Just DocumentationState{..})
     recoverState pp DocumentationState {..} = do
         nb     <-  getNotebook pp

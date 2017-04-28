@@ -107,7 +107,7 @@ import GI.Gtk.Enums
         WindowPosition(..), FileChooserAction(..))
 import GI.Gtk.Objects.Dialog
        (dialogRun, dialogResponse, dialogGetContentArea, dialogNew)
-import Data.GI.Base (unsafeCastTo, set, nullToNothing)
+import Data.GI.Base (unsafeCastTo, set)
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Box (Box(..))
 import GI.Gtk.Objects.ScrolledWindow
@@ -457,7 +457,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         mapM_ instrumentSecWindow (tail wins)
 
         onWidgetRealize win $
-            nullToNothing (widgetGetWindow win) >>= mapM_ OSX.allowFullscreen
+            widgetGetWindow win >>= mapM_ OSX.allowFullscreen
 
         liftIO $ debugM "leksah" "Show main window"
         widgetShowAll win
