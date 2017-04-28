@@ -36,6 +36,7 @@
   <color name="statement"  value="#CC7733"/>
   <color name="red"        value="#FF0000"/>
   <color name="yellow"     value="#FFFFC0"/>
+  <color name="brown"      value="#666600"/>
   <color name="preproc"    value="#B54A6A"/>
 
   <!-- Global Settings -->
@@ -54,7 +55,7 @@
   <style name="right-margin"                foreground="gray"/>
 
   <!-- Search Matching -->
-  <style name="search-match"                background="yellow"/>
+  <style name="search-match"                background="brown"/>
 
   <!-- Comments -->
   <style name="def:comment"                 foreground="comment"/>
