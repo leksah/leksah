@@ -343,6 +343,106 @@ prefsDescription configDir packages = NFDPP [
                 buffers <- allBuffers
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Found Text Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            foundBackgroundLight
+            (\ b a -> a{foundBackgroundLight = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Selection Match Text Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            matchBackgroundLight
+            (\ b a -> a{matchBackgroundLight = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Execution Context Text Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            contextBackgroundLight
+            (\ b a -> a{contextBackgroundLight = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Breakpoint Text Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            breakpointBackgroundLight
+            (\ b a -> a{breakpointBackgroundLight = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Lint Text Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            lintBackgroundLight
+            (\ b a -> a{lintBackgroundLight = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Found Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            foundBackgroundDark
+            (\ b a -> a{foundBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Selection Match Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            matchBackgroundDark
+            (\ b a -> a{matchBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Execution Context Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            contextBackgroundDark
+            (\ b a -> a{contextBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Breakpoint Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            breakpointBackgroundDark
+            (\ b a -> a{breakpointBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
+            (paraName <<<- ParaName (__ "Lint Text Dark Background") $ emptyParams)
+            (PP.text . show)
+            colorParser
+            lintBackgroundDark
+            (\ b a -> a{lintBackgroundDark = b})
+            colorEditor
+            (\c -> do
+                buffers <- allBuffers
+                mapM_ updateStyle' buffers)
+    ,   mkFieldPP
             (paraName <<<- ParaName (__ "Automatically load modified files modified outside of Leksah") $ emptyParams)
             (PP.text . show)
             boolParser
@@ -866,7 +966,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Variables","LogCategory")
                                 ,   ("*Workspace","ExplorerCategory")]
     ,   collectAtStart      =   True
-    ,   unpackDirectory     =   Just "~/.leksah-0.16/packageSources"
+    ,   unpackDirectory     =   Just ("~" </> configDirName </> "packageSources")
     ,   retrieveURL         =   "http://leksah.github.io"
     ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True
