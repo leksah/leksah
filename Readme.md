@@ -73,6 +73,11 @@ SET XDG_DATA_DIRS=C:\msys64\mingw64\share
 ```
 (change `C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.2\bin` if a newer version is installed)
 
+##### FreeBSD
+```shell
+pkg install devel/gobject-introspection x11-toolkits/gtksourceview3 www/webkit2-gtk3
+```
+
 #### Step 2: Clone repository and its submodules
 ```shell
 git clone --recursive https://github.com/leksah/leksah.git
