@@ -89,6 +89,7 @@ import GI.Gtk.Objects.Paned (panedNew, Paned(..))
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreInsertTree, forestStoreGetTree, forestStoreGetValue,
         ForestStore(..))
+import GI.Gtk.Objects.Button (Button (..))
 import GI.Gtk.Objects.RadioButton
        (radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel,
         RadioButton(..))
@@ -1360,7 +1361,7 @@ addModuleDialog parent modString sourceRoots hasLib exesTests = do
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
     (widget,inj,ext,_) <- liftIO $ buildEditor (moduleFields sourceRoots hasLib exesTests)
                                         (AddModule modString (head sourceRoots) (Just False) Set.empty)
-    okButton <- dialogAddButton' dia (__"Add Module") ResponseTypeOk
+    okButton <- dialogAddButton' dia (__"Add Module") ResponseTypeOk >>= liftIO . unsafeCastTo Button
     dialogSetDefaultResponse' dia ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
 

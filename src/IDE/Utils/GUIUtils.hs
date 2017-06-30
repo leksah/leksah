@@ -338,7 +338,10 @@ setDarkState b = do
 getMenuItem :: Text -> IDEM MenuItem
 getMenuItem path = (do
     uiManager' <- getUiManager
-    uIManagerGetWidget uiManager' path >>= (liftIO . unsafeCastTo MenuItem))
+    mMenuItem <- uIManagerGetWidget uiManager' path
+    case mMenuItem of
+      Nothing -> throwIDE ("State.hs>>getMenuItem: Can't find ui path " <> path)
+      Just item -> liftIO $ unsafeCastTo MenuItem item)
         `catchIDE` \(_::UnexpectedNullPointerReturn) ->
             throwIDE ("State.hs>>getMenuItem: Can't find ui path " <> path)
 

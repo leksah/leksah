@@ -86,7 +86,7 @@ import GI.Gtk.Enums
        (FileChooserAction(..), ShadowType(..), ResponseType(..),
         ButtonBoxStyle(..))
 import GI.Gtk.Objects.Button
-       (onButtonClicked, buttonNewWithLabel)
+       (onButtonClicked, buttonNewWithLabel, Button (..))
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
 import GI.Gtk.Objects.Widget
        (widgetModifyFont, widgetDestroy, widgetShowAll, widgetGrabDefault,
@@ -124,7 +124,7 @@ runPreferencesDialog = do
     actionArea <- dialogGetHeaderBar dialog >>= unsafeCastTo Container
     preview <- buttonNewWithLabel (__ "Preview")
     containerAdd actionArea preview
-    apply   <-  dialogAddButton' dialog "gtk-apply" ResponseTypeOk
+    apply   <-  dialogAddButton' dialog "gtk-apply" ResponseTypeOk >>= liftIO . unsafeCastTo Button
     dialogSetDefaultResponse' dialog ResponseTypeOk
 
     upper <-   dialogGetContentArea dialog >>= unsafeCastTo Box

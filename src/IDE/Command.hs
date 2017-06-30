@@ -598,8 +598,8 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
 getMenuAndToolbars :: MonadIO m => UIManager -> m (AccelGroup, MenuBar, Toolbar)
 getMenuAndToolbars uiManager = do
     accGroup <- uIManagerGetAccelGroup uiManager
-    menu     <- uIManagerGetWidget uiManager "/ui/menubar" >>= liftIO . unsafeCastTo MenuBar
-    toolbar  <- uIManagerGetWidget uiManager "/ui/toolbar" >>= liftIO . unsafeCastTo Toolbar
+    menu     <- uIManagerGetWidget uiManager "/ui/menubar" >>= liftIO . unsafeCastTo MenuBar . fromMaybe (error "Failed to get menu widget! (Nothing)")
+    toolbar  <- uIManagerGetWidget uiManager "/ui/toolbar" >>= liftIO . unsafeCastTo Toolbar . fromMaybe (error "Failed to get menu widget! (Nothing)")
     toolbarSetStyle toolbar ToolbarStyleIcons
     toolbarSetIconSize toolbar IconSizeLargeToolbar
     widgetSetSizeRequest toolbar 700 (-1)
