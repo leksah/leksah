@@ -124,7 +124,7 @@ runPreferencesDialog = do
     actionArea <- dialogGetHeaderBar dialog >>= unsafeCastTo Container
     preview <- buttonNewWithLabel (__ "Preview")
     containerAdd actionArea preview
-    apply   <-  dialogAddButton' dialog "gtk-apply" ResponseTypeOk >>= liftIO . unsafeCastTo Button
+    apply   <-  dialogAddButton' dialog "gtk-apply" ResponseTypeOk >>= unsafeCastTo Button
     dialogSetDefaultResponse' dialog ResponseTypeOk
 
     upper <-   dialogGetContentArea dialog >>= unsafeCastTo Box

@@ -16,16 +16,11 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - binary-shared-0.8.3
-- ghcjs-dom-0.8.0.0
-- ghcjs-dom-jsaddle-0.8.0.0
 - gi-gtk-hs-0.3.4.3
 - gi-gtksource-3.0.13
 - gi-javascriptcore-4.0.12
 - gi-soup-2.4.12
 - gi-webkit2-4.0.12
-- ref-tf-0.4.0.1
-- jsaddle-0.8.3.1
-- jsaddle-dom-0.8.0.0
 - gi-gdk-3.0.12
 - gi-gdkpixbuf-2.0.12
 - gi-glib-2.0.12

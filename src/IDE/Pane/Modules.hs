@@ -89,7 +89,6 @@ import GI.Gtk.Objects.Paned (panedNew, Paned(..))
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreInsertTree, forestStoreGetTree, forestStoreGetValue,
         ForestStore(..))
-import GI.Gtk.Objects.Button (Button (..))
 import GI.Gtk.Objects.RadioButton
        (radioButtonNewWithLabelFromWidget, radioButtonNewWithLabel,
         RadioButton(..))
@@ -171,7 +170,7 @@ import GI.Gtk.Objects.Dialog
 import GI.Gtk.Objects.Window
        (windowSetDefaultSize, setWindowTitle, setWindowTransientFor, Window(..),
         setWindowWindowPosition, windowSetTransientFor)
-import GI.Gtk.Objects.Button (onButtonClicked, buttonNewFromStock)
+import GI.Gtk.Objects.Button (Button(..), onButtonClicked, buttonNewFromStock)
 import GI.Gtk.Objects.Label
        (labelSetText, labelSetLineWrap, labelNew)
 import Data.GI.Gtk.ModelView.ForestStore (forestStoreClear, forestStoreNew)

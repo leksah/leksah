@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.OSX
@@ -51,28 +52,24 @@ applicationNew = new' Application []
 updateMenu :: Application -> UIManager -> IDEM ()
 updateMenu app uiManager = do
     ideR <- ask
-    mbMenu   <- nullToNothing $ uIManagerGetWidget uiManager "/ui/menubar" >>= unsafeCastTo MenuShell
-    case mbMenu of
+    uIManagerGetWidget uiManager "/ui/menubar" >>= mapM (liftIO . unsafeCastTo MenuShell) >>= \case
         Just menu -> do
             widgetHide menu
             applicationSetMenuBar app menu
         Nothing   -> return ()
 
-    mbQuit   <- nullToNothing $ uIManagerGetWidget uiManager "/ui/menubar/_File/_Quit"
-    case mbQuit of
+    uIManagerGetWidget uiManager "/ui/menubar/_File/_Quit" >>= \case
         Just quit -> widgetHide quit
         Nothing   -> return ()
 
-    mbAbout   <- nullToNothing $ uIManagerGetWidget uiManager "/ui/menubar/_Help/_About" >>= unsafeCastTo MenuItem
-    case mbAbout of
+    uIManagerGetWidget uiManager "/ui/menubar/_Help/_About" >>= mapM (liftIO . unsafeCastTo MenuItem) >>= \case
         Just about -> do
             applicationInsertAppMenuItem app about 0
             sep <- separatorMenuItemNew
             applicationInsertAppMenuItem app sep 1
         Nothing   -> return ()
 
-    mbPrefs   <- nullToNothing $ uIManagerGetWidget uiManager "/ui/menubar/_Tools/_Preferences" >>= unsafeCastTo MenuItem
-    case mbPrefs of
+    uIManagerGetWidget uiManager "/ui/menubar/_Tools/_Preferences" >>= mapM (liftIO . unsafeCastTo MenuItem) >>= \case
         Just prefs -> do
             applicationInsertAppMenuItem app prefs 2
         Nothing   -> return ()
