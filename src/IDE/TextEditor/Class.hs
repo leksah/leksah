@@ -131,6 +131,7 @@ class TextEditor editor where
     undo :: EditorBuffer editor -> IDEM ()
 
     -- Events
+    afterChanged :: EditorBuffer editor -> IDEM () -> IDEM [Connection]
     afterModifiedChanged :: EditorBuffer editor -> IDEM () -> IDEM [Connection]
 
     -- View

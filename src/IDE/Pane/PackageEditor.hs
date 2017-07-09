@@ -25,6 +25,7 @@ module IDE.Pane.PackageEditor (
     packageNew'
 ,   packageClone
 ,   packageEdit
+,   projectEditText
 ,   packageEditText
 ,   choosePackageDir
 ,   choosePackageFile
@@ -211,6 +212,12 @@ packageEdit = do
                     liftIDE $ editPackage flat dirName  modules (\ _ -> return ())
                     return ()
 
+projectEditText :: ProjectAction
+projectEditText = do
+    project <- ask
+    liftIDE $ fileOpenThis $ pjFile project
+    return ()
+
 packageEditText :: PackageAction
 packageEditText = do
     idePackage <- ask
@@ -247,10 +254,11 @@ hasUnknownBenchmarkTypes pd =
 data NewPackage = NewPackage {
     newPackageName :: Text,
     newPackageParentDir :: FilePath,
-    templatePackage :: Maybe Text}
+    templatePackage :: Maybe Text,
+    newPackageProject :: Maybe FilePath }
 
-packageFields :: FilePath -> FieldDescription NewPackage
-packageFields workspaceDir = VFD emptyParams [
+packageFields :: FilePath -> [Project] -> FieldDescription NewPackage
+packageFields workspaceDir projects = VFD emptyParams [
         mkField
             (paraName <<<- ParaName (__ "New package name")
                     $ emptyParams)
@@ -269,21 +277,28 @@ packageFields workspaceDir = VFD emptyParams [
                     $ emptyParams)
             templatePackage
             (\ a b -> b{templatePackage = a})
-            (maybeEditor (comboEntryEditor examplePackages, emptyParams) True "")]
+            (maybeEditor (comboEntryEditor examplePackages, emptyParams) True ""),
+        mkField
+            (paraName <<<- ParaName (__ "Add to existing project")
+                    $ emptyParams)
+            (fmap T.pack . newPackageProject)
+            (\ a b -> b{newPackageProject = T.unpack <$> a})
+            (maybeEditor (comboEntryEditor (map (T.pack . pjFile) projects), emptyParams) True "")]
 
 examplePackages = [ "hello"
                   , "gtk2hs-hello"
                   , "ghcjs-dom-hello"
                   , "jsaddle-hello"]
 
-newPackageDialog :: (Applicative m, MonadIO m) => Window -> FilePath -> m (Maybe NewPackage)
-newPackageDialog parent workspaceDir = do
+newPackageDialog :: (Applicative m, MonadIO m) => Window -> FilePath -> [Project] -> m (Maybe NewPackage)
+newPackageDialog parent workspaceDir projects = do
+    let defaultParentDir = fromMaybe workspaceDir (dropFileName . pjFile <$> listToMaybe projects)
     dia                <- new' Dialog [constructDialogUseHeaderBar 1]
     setWindowTransientFor dia parent
     setWindowTitle dia $ __ "Create New Package"
     upper              <- dialogGetContentArea dia >>= liftIO . unsafeCastTo Box
-    (widget,inj,ext,_) <- liftIO $ buildEditor (packageFields workspaceDir)
-                                        (NewPackage "" workspaceDir Nothing)
+    (widget,inj,ext,_) <- liftIO $ buildEditor (packageFields defaultParentDir projects)
+                                        (NewPackage "" defaultParentDir Nothing (pjFile <$> listToMaybe projects))
     okButton <- dialogAddButton' dia (__"Create Package") ResponseTypeOk
     dialogSetDefaultResponse' dia ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
@@ -292,7 +307,7 @@ newPackageDialog parent workspaceDir = do
     widgetGrabDefault okButton
     widgetShowAll dia
     resp  <- dialogRun' dia
-    value <- liftIO $ ext (NewPackage "" workspaceDir Nothing)
+    value <- liftIO $ ext (NewPackage "" defaultParentDir Nothing (pjFile <$> listToMaybe projects))
     widgetDestroy dia
     --find
     case (resp, value) of
@@ -300,7 +315,7 @@ newPackageDialog parent workspaceDir = do
             | validPackageName . T.unpack $ newPackageName p -> return value
             | otherwise -> do
                 liftIO $ showErrorDialog "Invalid package name."
-                newPackageDialog parent workspaceDir
+                newPackageDialog parent defaultParentDir projects
         _              -> return Nothing
 
 validPackageName :: String -> Bool
@@ -309,14 +324,15 @@ validPackageName = all valid . splitOn "-"
        valid "" = False
        valid w  = all isAlphaNum w && not (all isDigit w)
 
-packageNew' :: FilePath -> C.Sink ToolOutput IDEM () -> (Bool -> FilePath -> IDEAction) -> IDEAction
-packageNew' workspaceDir log activateAction = do
+packageNew' :: FilePath -> [Project] -> C.Sink ToolOutput IDEM () -> (Bool -> Maybe Project -> FilePath -> IDEAction) -> IDEAction
+packageNew' workspaceDir projects log activateAction = do
     windows <- getWindows
-    mbNewPackage <- newPackageDialog (head windows) workspaceDir
+    mbNewPackage <- newPackageDialog (head windows) workspaceDir projects
     case mbNewPackage of
         Nothing -> return ()
         Just NewPackage{..} | isNothing templatePackage -> do
             let dirName = newPackageParentDir </> T.unpack newPackageName
+                mbProject = listToMaybe $ filter ((== newPackageProject) . Just . pjFile) projects
             mbCabalFile <-  liftIO $ cabalFileName dirName
             window <- getMainWindow
             case mbCabalFile of
@@ -326,7 +342,7 @@ packageNew' workspaceDir log activateAction = do
                         constructMessageDialogButtons ButtonsTypeCancel]
                     setMessageDialogMessageType md MessageTypeQuestion
                     setMessageDialogText md $ T.pack (printf (__
-                          "There is already file %s in this directory. Would you like to add this package to the workspace?")
+                          "There is already file %s in this directory. Would you like to add this package to the project?")
                           (takeFileName cfn))
                     dialogAddButton' md (__ "_Add Package") (AnotherResponseType 1)
                     dialogSetDefaultResponse' md (AnotherResponseType 1)
@@ -334,7 +350,7 @@ packageNew' workspaceDir log activateAction = do
                     rid <- dialogRun' md
                     widgetDestroy md
                     when (rid == AnotherResponseType 1) $
-                        activateAction False cfn
+                        activateAction False mbProject cfn
                 Nothing -> do
                     liftIO $ createDirectoryIfMissing True dirName
                     isEmptyDir <- liftIO $ isEmptyDirectory dirName
@@ -388,9 +404,11 @@ packageNew' workspaceDir log activateAction = do
                                       , options            = [(GHC, ["-ferror-spans"])]
                                       , defaultLanguage = Just Haskell2010}}]
                           , benchmarks =  []
-                          } dirName modules (activateAction True)
+                          } dirName modules (activateAction True mbProject)
                     return ()
-        Just NewPackage{..} -> cabalUnpack newPackageParentDir (fromJust templatePackage) False (Just newPackageName) log (activateAction False)
+        Just NewPackage{..} -> do
+            let mbProject = listToMaybe $ filter ((== newPackageProject) . Just . pjFile) projects
+            cabalUnpack newPackageParentDir (fromJust templatePackage) False (Just newPackageName) log (activateAction False mbProject)
 
 standardSetup :: Text
 standardSetup = "#!/usr/bin/runhaskell \n"

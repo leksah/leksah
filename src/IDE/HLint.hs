@@ -25,9 +25,9 @@ module IDE.HLint (
 import Control.Applicative
 import Prelude hiding(getChar, getLine)
 import IDE.Core.Types
-       (logRefFullFilePath, Prefs(..), LogRef(..), LogRefType(..),
-        wsAllPackages, ipdPackageDir, IDEM, IDEAction, IDE(..),
-        IDEPackage(..), PackageAction)
+       (MonadIDE(..), logRefFullFilePath, Prefs(..), LogRef(..),
+        LogRefType(..), wsAllPackages, ipdPackageDir, IDEM, IDEAction,
+        IDE(..), IDEPackage(..), PackageAction)
 import Control.Monad.Reader (asks, MonadReader(..))
 import IDE.Core.State
        (postSyncIDE, catchIDE, MessageLevel(..), ideMessage,
@@ -81,7 +81,7 @@ import qualified Data.Foldable as F (toList)
 import IDE.Utils.CabalProject (findProjectRoot)
 
 packageHLint :: PackageAction
-packageHLint = asks ipdCabalFile >>= (lift . lift . scheduleHLint . Left)
+packageHLint = asks ipdCabalFile >>= (liftIDE . scheduleHLint . Left)
 
 scheduleHLint :: Either FilePath FilePath -> IDEAction
 scheduleHLint what = do
@@ -131,17 +131,16 @@ runHLint' package mbSourceFile = do
     paths <- case mbSourceFile of
                     Just f  -> return [f]
                     Nothing -> getSourcePaths (ipdPackageId package) modules
-    res <- forM paths $ \ full -> do
-        let file = makeRelative (ipdPackageDir package) full
-        postSyncIDE $ removeLintLogRefs (ipdPackageDir package) file
-        text <- liftIO $ T.readFile full
-        liftIO . debugM "leksah" $ "runHLint parsing " <> full
-        do result <- liftIO $ parseModuleEx flags full (Just (T.unpack text))
+    res <- forM paths $ \ path -> do
+        postSyncIDE $ removeLintLogRefs path
+        text <- liftIO $ T.readFile path
+        liftIO . debugM "leksah" $ "runHLint parsing " <> path
+        do result <- liftIO $ parseModuleEx flags path (Just (T.unpack text))
            case result of
                 Left e -> logHLintError (isJust mbSourceFile) package e >> return Nothing
                 Right r -> do
-                    liftIO . debugM "leksah" $ "runHLint parsed " <> full
-                    return $ Just (r, (full, text))
+                    liftIO . debugM "leksah" $ "runHLint parsed " <> path
+                    return $ Just (r, (path, text))
         `catchIDE` (\(e :: SomeException) -> do
             reflectIDE (ideMessage Normal . T.pack $ "HLint Exception : " <> show e) ideR
             return Nothing)

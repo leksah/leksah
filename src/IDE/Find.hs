@@ -241,7 +241,7 @@ constructFindReplace = do
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
 
-    let performGrep = reflectIDE (packageTry $ doGrep toolbar) ideR
+    let performGrep = reflectIDE (workspaceTry $ doGrep toolbar) ideR
     grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Grep"))
     toolbarInsert toolbar grepButton 0
     onToolButtonClicked grepButton performGrep
@@ -462,7 +462,7 @@ doSearch fb hint ideR   = do
     reflectIDE (addToHist search) ideR
     return ()
 
-doGrep :: Toolbar -> PackageAction
+doGrep :: Toolbar -> WorkspaceAction
 doGrep fb   = do
     package       <- ask
     ideR          <- lift ask

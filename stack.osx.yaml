@@ -6,16 +6,12 @@ packages:
 - 'vendor/haskellVCSGUI/vcsgui'
 #- 'vendor/yi'
 - 'vendor/haskellVCSWrapper/vcswrapper'
-- location:
-    git: https://github.com/basvandijk/haddock.git
-    commit: f4c5e46ded05a4b8884f5ad6f3102f79ff3bb127
-  subdirs:
-  - haddock-api
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - binary-shared-0.8.3
+- haddock-api-2.17.4
 - gi-gtk-hs-0.3.4.3
 - gi-gtksource-3.0.13
 - gi-javascriptcore-4.0.12

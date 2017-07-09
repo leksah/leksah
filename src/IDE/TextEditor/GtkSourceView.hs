@@ -79,12 +79,12 @@ import GI.GtkSource
         languageManagerNew)
 import GI.Gio (contentTypeGuess)
 import GI.Gtk.Objects.TextBuffer
-       (setTextBufferText, onTextBufferMarkSet, afterTextBufferInsertText,
-        afterTextBufferEndUserAction, afterTextBufferModifiedChanged,
-        textBufferSetModified, textBufferSelectRange,
-        textBufferRemoveTagByName, textBufferPlaceCursor,
-        textBufferPasteClipboard, textBufferInsert, textBufferGetText,
-        textBufferGetStartIter, textBufferGetSlice,
+       (afterTextBufferChanged, setTextBufferText, onTextBufferMarkSet,
+        afterTextBufferInsertText, afterTextBufferEndUserAction,
+        afterTextBufferModifiedChanged, textBufferSetModified,
+        textBufferSelectRange, textBufferRemoveTagByName,
+        textBufferPlaceCursor, textBufferPasteClipboard, textBufferInsert,
+        textBufferGetText, textBufferGetStartIter, textBufferGetSlice,
         textBufferGetSelectionBounds, textBufferGetSelectionBound,
         textBufferGetModified, textBufferGetLineCount,
         textBufferGetIterAtOffset, textBufferGetIterAtMark,
@@ -382,6 +382,11 @@ instance TextEditor GtkSourceView where
 
     setText (GtkBuffer sb) text = setTextBufferText sb text
     undo (GtkBuffer sb) = bufferUndo sb
+
+    afterChanged (GtkBuffer sb) f = do
+        ideR <- ask
+        id1 <- ConnectC sb <$> afterTextBufferChanged sb (reflectIDE f ideR)
+        return [id1]
 
     afterModifiedChanged (GtkBuffer sb) f = do
         ideR <- ask

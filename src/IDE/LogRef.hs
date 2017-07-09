@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards, ScopedTypeVariables, OverloadedStrings #-}
 -----------------------------------------------------------------------------
 --
@@ -55,7 +56,7 @@ import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import qualified IDE.Pane.Log as Log
 import IDE.Utils.Tool
-import System.FilePath (equalFilePath, makeRelative, isAbsolute)
+import System.FilePath (equalFilePath, makeRelative, isAbsolute, (</>))
 import Data.List (partition, stripPrefix, elemIndex, isPrefixOf)
 import Data.Maybe (catMaybes, isJust)
 import System.Exit (ExitCode(..))
@@ -78,6 +79,7 @@ import Data.Sequence (ViewR(..), Seq)
 import qualified Data.Foldable as F (toList, forM_)
 import qualified Data.Sequence as Seq
        (null, singleton, viewr, reverse, fromList)
+import System.Directory (doesFileExist)
 
 showSourceSpan :: LogRef -> Text
 showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
@@ -465,11 +467,23 @@ data BuildOutputState = BuildOutputState { log           :: IDELog
 initialState :: IDELog -> BuildOutputState
 initialState log = BuildOutputState log False False [] 1 [] S.empty
 
-logOutputForBuild :: IDEPackage
+-- Sometimes we get error spans relative to a build dependency
+findSourcePackage :: Project -> IDEPackage -> FilePath -> IO IDEPackage
+findSourcePackage project package file =
+    doesFileExist (ipdPackageDir package </> file) >>= \case
+        True -> return package
+        False ->
+            -- If the file only exists in one package in the project it is probably the right one
+            filterM (\p -> doesFileExist $ ipdPackageDir p </> file) (pjPackages project) >>= \case
+                [p] -> return p
+                _   -> return package -- Not really sure where this file is
+
+logOutputForBuild :: Project
+                  -> IDEPackage
                   -> Bool
                   -> Bool
                   -> C.Sink ToolOutput IDEM [LogRef]
-logOutputForBuild package backgroundBuild jumpToWarnings = do
+logOutputForBuild project package backgroundBuild jumpToWarnings = do
     liftIO $ debugM "leksah" "logOutputForBuild"
     log    <- lift getLog
     logLaunch <- lift Log.getDefaultLogLaunch
@@ -511,12 +525,13 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
                         sysMessage Normal . T.pack $ show e
                         return state { inError = False }
                     (Right ne@(ErrorLine span refType str),_) -> do
-                        let ref  = LogRef span package str Nothing (Just (lineNr,lineNr)) refType
+                        foundInPackage <- findSourcePackage project package (srcSpanFilename span)
+                        let ref  = LogRef span foundInPackage str Nothing (Just (lineNr,lineNr)) refType
                             root = logRefRootPath ref
                             file = logRefFilePath ref
                             fullFilePath = logRefFullFilePath ref
                         unless (fullFilePath `S.member` filesCompiled) $
-                            reflectIDE (removeBuildLogRefs root file) ideR
+                            reflectIDE (removeBuildLogRefs (root </> file)) ideR
                         when inError $ logPrevious errs
                         return state { inError = True
                                      , errs = ref:errs
@@ -638,11 +653,10 @@ logOutputForBuild package backgroundBuild jumpToWarnings = do
             logLn <- Log.appendLog log logLaunch (line <> "\n") LogTag
             reflectIDE (triggerEventIDE (StatusbarChanged [CompartmentState
                 (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])) ideR
-            let root = ipdPackageDir package
-                relativeFile = if isAbsolute file
-                                    then makeRelative root file
-                                    else file
-            reflectIDE (removeBuildLogRefs root relativeFile) ideR
+            f <- if isAbsolute file
+                    then return file
+                    else (</> file) . ipdPackageDir <$> findSourcePackage project package file
+            reflectIDE (removeBuildLogRefs f) ideR
             when inDocTest $ logPrevious testFails
             return state { inDocTest = False }
         (Right (DocTestFailure span exp)) -> do

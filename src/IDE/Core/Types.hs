@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -35,6 +36,10 @@ module IDE.Core.Types (
 ,   WorkspaceAction
 ,   runWorkspace
 
+,   ProjectM
+,   ProjectAction
+,   runProject
+
 ,   PackageM
 ,   PackageAction
 ,   runPackage
@@ -45,10 +50,14 @@ module IDE.Core.Types (
 
 ,   IDEPackage(..)
 ,   ipdPackageDir
-,   ipdAllDirs
 ,   ipdLib
 ,   ipdPackageName
+,   ProjectTool(..)
+,   Project(..)
+,   pjDir
+,   pjToolCommand
 ,   Workspace(..)
+,   wsPackages
 ,   wsAllPackages
 ,   VCSConf
 
@@ -151,6 +160,9 @@ import GI.Gtk.Objects.TextBuffer (TextBuffer(..))
 import Data.Word (Word32)
 import GI.Gtk.Objects.Window (Window(..))
 import Text.PrinterParser (Color(..), toGdkColor, fromGdkColor)
+import GI.Gtk.Objects.Application (Application(..))
+import Control.Monad ((>=>))
+import System.FSNotify (StopListening, WatchManager)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -160,13 +172,15 @@ import Text.PrinterParser (Color(..), toGdkColor, fromGdkColor)
 -- | The IDE state
 --
 data IDE            =  IDE {
-    frameState      ::   FrameState IDEM         -- ^ state of the windows framework
+    application     ::   Application
+,   frameState      ::   FrameState IDEM         -- ^ state of the windows framework
 ,   recentPanes     ::   [PaneName]              -- ^ a list of panes which were selected last
 ,   specialKeys     ::   SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
 ,   specialKey      ::   SpecialKeyCons IDERef   -- ^ the first of a double keystroke
 ,   candy           ::   CandyTable              -- ^ table for source candy
 ,   prefs           ::   Prefs                   -- ^ configuration preferences
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
+,   activeProject   ::   Maybe Project
 ,   activePack      ::   Maybe IDEPackage
 ,   activeExe       ::   Maybe Text
 ,   bufferProjCache ::   Map FilePath [IDEPackage] -- ^ cache the associated packages for a file
@@ -195,6 +209,9 @@ data IDE            =  IDE {
 ,   logLaunches     ::   Map.Map Text LogLaunchData
 ,   autoCommand     ::   IDEAction
 ,   autoURI         ::   Maybe Text
+,   triggerBuild    ::   MVar ()
+,   stopWorkspaceNotify :: StopListening
+,   fsnotify        ::   WatchManager
 } --deriving Show
 
 --
@@ -265,13 +282,25 @@ runWorkspace = runReaderT
 -- ---------------------------------------------------------------------
 -- Monad for functions that need an active package
 --
-type PackageM = ReaderT IDEPackage WorkspaceM
+type ProjectM = ReaderT Project WorkspaceM
+type ProjectAction = ProjectM ()
+
+instance MonadIDE ProjectM where
+    liftIDE = lift . lift
+
+runProject :: ProjectM a -> Project -> WorkspaceM a
+runProject = runReaderT
+
+-- ---------------------------------------------------------------------
+-- Monad for functions that need an active package
+--
+type PackageM = ReaderT IDEPackage ProjectM
 type PackageAction = PackageM ()
 
 instance MonadIDE PackageM where
-    liftIDE = lift . lift
+    liftIDE = lift . lift . lift
 
-runPackage :: PackageM a -> IDEPackage -> WorkspaceM a
+runPackage :: PackageM a -> IDEPackage -> ProjectM a
 runPackage = runReaderT
 
 -- ---------------------------------------------------------------------
@@ -385,6 +414,25 @@ instance EventSource IDERef IDEEvent IDEM Text where
 instance EventSelector Text
 
 -- ---------------------------------------------------------------------
+-- Project
+--
+data ProjectTool = CabalTool | StackTool deriving (Show, Eq)
+
+data Project = Project {
+    pjTool      :: ProjectTool
+,   pjFile      :: FilePath
+,   pjPackages  :: [IDEPackage]
+} deriving (Show, Eq)
+
+pjToolCommand :: Project -> FilePath
+pjToolCommand project = case pjTool project of
+                            StackTool -> "stack"
+                            CabalTool -> "cabal"
+
+pjDir :: Project -> FilePath
+pjDir = dropFileName . pjFile
+
+-- ---------------------------------------------------------------------
 -- IDEPackages
 --
 data IDEPackage     =   IDEPackage {
@@ -410,7 +458,6 @@ data IDEPackage     =   IDEPackage {
 ,   ipdRegisterFlags   ::   [Text] -- ^ Flags for register
 ,   ipdUnregisterFlags ::   [Text] -- ^ Flags for unregister
 ,   ipdSdistFlags      ::   [Text]
-,   ipdSandboxSources  ::   [IDEPackage]
 }
     deriving (Eq)
 
@@ -432,29 +479,28 @@ ipdPackageName = T.pack . (\(PackageName s) -> s) . pkgName . ipdPackageId
 ipdLib :: IDEPackage -> Maybe Text
 ipdLib pkg = if ipdHasLibs pkg then Just (ipdPackageName pkg) else Nothing
 
--- | All directory of the package and those of all its source dependencies
-ipdAllDirs :: IDEPackage -> [FilePath]
-ipdAllDirs p = ipdPackageDir p : (ipdSandboxSources p >>= ipdAllDirs)
-
 -- ---------------------------------------------------------------------
 -- Workspace
 --
 data Workspace = Workspace {
-    wsVersion       ::   Int
-,   wsSaveTime      ::   Text
-,   wsName          ::   Text
-,   wsFile          ::   FilePath
-,   wsPackages      ::   [IDEPackage]
-,   wsPackagesFiles ::   [FilePath]
-,   wsActivePackFile::   Maybe FilePath
-,   wsActiveExe     ::   Maybe Text
-,   wsNobuildPack   ::   [IDEPackage]
-,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
+    wsVersion           ::   Int
+,   wsSaveTime          ::   Text
+,   wsName              ::   Text
+,   wsFile              ::   FilePath
+,   wsProjects          ::   [Project]
+,   wsProjectFiles      ::   [FilePath]
+,   wsActiveProjectFile ::   Maybe FilePath
+,   wsActivePackFile    ::   Maybe FilePath
+,   wsActiveExe         ::   Maybe Text
+,   packageVcsConf      ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
+
+wsPackages :: Workspace -> [IDEPackage]
+wsPackages = wsProjects >=> pjPackages
 
 -- | Includes sandbox sources
 wsAllPackages :: Workspace -> [IDEPackage]
-wsAllPackages w = nubBy ((==) `on` ipdCabalFile) $ wsPackages w ++ (wsPackages w >>= ipdSandboxSources)
+wsAllPackages w = nubBy ((==) `on` ipdCabalFile) $ wsPackages w
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state
@@ -634,7 +680,7 @@ logRefFilePath lr = let
 logRefFullFilePath :: LogRef -- ^ The log ref
     -> FilePath -- ^ the result
 logRefFullFilePath lr = let
-    f =srcSpanFilename $ logRefSrcSpan lr
+    f = srcSpanFilename $ logRefSrcSpan lr
     in if isAbsolute f
             then f
             else logRefRootPath lr </> f

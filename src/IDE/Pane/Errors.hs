@@ -388,8 +388,11 @@ addErrorToList' unfilteredIndex ref pane = timeIt "addErrorToList'" $ do
             p <- treePathNewFromIndices' [fromIntegral index]
             forestStoreInsert store p 0 (ERFullMessage (refDescription ref) (Just ref))
             collapse <- collapseErrors <$> readIDE prefs
-            unless collapse $ do
+            unless collapse $
                 treeViewExpandToPath view =<< treePathNewFromIndices' [fromIntegral index,0]
+        when (index == 0) $ do
+            path <- treePathNewFromIndices' [0]
+            treeViewScrollToCell view (Just path) noTreeViewColumn False 0 0
 
 -- | Add any LogRef to the Errors pane at a given index
 removeErrorsFromList :: Bool -- ^ Whether to display the pane

@@ -183,6 +183,7 @@ import GI.Gtk
         containerAdd, infoBarGetContentArea,
         labelNew, infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
+import Control.Concurrent.MVar (tryPutMVar)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -249,7 +250,10 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
         ids2 <- sv `afterMoveCursor` writeCursorPositionInStatusbar sv
         -- ids3 <- sv `onLookupInfo` selectInfo sv       -- obsolete by hyperlinks
         ids4 <- sv `afterToggleOverwrite`  writeOverwriteInStatusbar sv
-        activateThisPane actbuf $ concat [ids1, ids2, ids4]
+        ids5 <- eBuf `afterChanged` do
+            tb <- readIDE triggerBuild
+            void . liftIO $ tryPutMVar tb ()
+        activateThisPane actbuf $ concat [ids1, ids2, ids4, ids5]
         triggerEventIDE (Sensitivity [(SensitivityEditor, True)])
         grabFocus sv
         checkModTime actbuf
@@ -398,10 +402,10 @@ removeLogRefs toRemove' types = do
     toRemove ref = toRemove' (logRefRootPath ref) (logRefFilePath ref)
                 && logRefType ref `elem` types
 
-removeFileLogRefs :: FilePath -> FilePath -> [LogRefType] -> IDEAction
-removeFileLogRefs root file types = do
-    liftIO . debugM "leksah" $ "removeFileLogRefs " <> root <> " " <> file <> " " <> show types
-    removeLogRefs (\r f -> r == root && f == file) types
+removeFileLogRefs :: FilePath -> [LogRefType] -> IDEAction
+removeFileLogRefs file types = do
+    liftIO . debugM "leksah" $ "removeFileLogRefs " <> file <> " " <> show types
+    removeLogRefs (\r f -> r </> f == file) types
 
 removeFileExtLogRefs :: FilePath -> String -> [LogRefType] -> IDEAction
 removeFileExtLogRefs root fileExt types = do
@@ -413,14 +417,14 @@ removePackageLogRefs root types = do
     liftIO . debugM "leksah" $ "removePackageLogRefs " <> root <> " " <> show types
     removeLogRefs (\r _ -> r == root) types
 
-removeBuildLogRefs :: FilePath -> FilePath -> IDEAction
-removeBuildLogRefs root file = removeFileLogRefs root file [ErrorRef, WarningRef]
+removeBuildLogRefs :: FilePath -> IDEAction
+removeBuildLogRefs file = removeFileLogRefs file [ErrorRef, WarningRef]
 
 removeTestLogRefs :: FilePath -> IDEAction
 removeTestLogRefs root = removePackageLogRefs root [TestFailureRef]
 
-removeLintLogRefs :: FilePath -> FilePath -> IDEAction
-removeLintLogRefs root file = removeFileLogRefs root file [LintRef]
+removeLintLogRefs :: FilePath -> IDEAction
+removeLintLogRefs file = removeFileLogRefs file [LintRef]
 
 canResolve :: LogRef -> Bool
 canResolve LogRef { logRefIdea = Just (_, Idea{..}) }
@@ -1240,7 +1244,7 @@ fileCloseAllButWorkspace = do
                         when (not modified && not (isSubPathOfAny workspace (fromJust (fileName buf))))
                             $ do fileClose' nb sv ebuf buf (fromIntegral i); return ()
         isSubPathOfAny workspace fileName =
-            let paths = wsPackages workspace >>= ipdAllDirs
+            let paths = ipdPackageDir <$> wsPackages workspace
             in  any (`isSubPath` fileName) paths
 
 
@@ -1563,11 +1567,11 @@ belongsToPackages' = maybe (return []) belongsToPackages . fileName
 -- | Checks whether a file belongs to a package (includes files in
 -- sandbox source dirs)
 belongsToPackage :: FilePath -> IDEPackage -> Bool
-belongsToPackage f = any (`isSubPath` f) . ipdAllDirs
+belongsToPackage f = (`isSubPath` f) . ipdPackageDir
 
 -- | Checks whether a file belongs to the workspace
 belongsToWorkspace :: MonadIDE m => FilePath -> m Bool
-belongsToWorkspace fp = liftM (not . null) (belongsToPackages fp)
+belongsToWorkspace fp = not . null <$> belongsToPackages fp
 
 -- | Checks whether a file belongs to the workspace
 belongsToWorkspace' :: MonadIDE m => IDEBuffer -> m Bool

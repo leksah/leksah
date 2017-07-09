@@ -251,7 +251,7 @@ removeActiveLogLaunchData = do
 showDefaultLogLaunch :: MonadIO m => ComboBox -> m ()
 showDefaultLogLaunch comboBox = comboBoxSetActive comboBox 0
 
-showDefaultLogLaunch' :: IDEM ()
+showDefaultLogLaunch' :: MonadIDE m => m ()
 showDefaultLogLaunch' = do
         log <- getLog
         let comboBox = logLaunchBox log
@@ -488,9 +488,9 @@ populatePopupMenu log ideR menu = do
         otherwise   -> return ()
     mapM_ widgetHide $ take 2 (reverse items)
 
-getLog :: IDEM IDELog
+getLog :: MonadIDE m => m IDELog
 getLog = do
-    mbPane <- getOrBuildPane (Right "*Log")
+    mbPane <- liftIDE $ getOrBuildPane (Right "*Log")
     case mbPane of
         Nothing ->  throwIDE (__ "Can't init log")
         Just p -> return p

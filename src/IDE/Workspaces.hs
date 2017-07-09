@@ -16,20 +16,27 @@
 -----------------------------------------------------------------------------
 module IDE.Workspaces (
     workspaceNew
+,   projectNew
 ,   workspaceOpen
+,   projectOpen
 ,   workspaceTry
 ,   workspaceOpenThis
+,   projectOpenThis
 ,   workspaceClose
 ,   workspaceClean
 ,   workspaceMake
 ,   workspaceActivatePackage
-,   workspaceAddPackage
-,   workspaceAddPackage'
-,   workspaceRemovePackage
+,   projectAddPackage
+,   projectAddPackage'
+,   workspaceRemoveProject
+,   projectRemovePackage
 ,   workspacePackageNew
-,   workspacePackageClone
+,   projectPackageClone
 ,   workspaceTryQuiet
 ,   workspaceNewHere
+,   projectNewHere
+,   projectTry
+,   projectTryQuiet
 ,   packageTry
 ,   packageTryQuiet
 
@@ -46,13 +53,13 @@ import Graphics.UI.Editor.Parameters
        (dialogRun', dialogSetDefaultResponse', dialogAddButton',
         Parameter(..), (<<<-), paraName, emptyParams)
 import Control.Monad (filterM, void, unless, when, liftM)
-import Data.Maybe (isJust, fromJust, catMaybes)
+import Data.Maybe (listToMaybe, isJust, fromJust, catMaybes)
 import IDE.Utils.GUIUtils
        (showDialog, showDialogOptions, chooseFile, chooseSaveFile, __)
 import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
         dropExtension, takeBaseName, addExtension, takeExtension,
-        takeDirectory)
+        takeDirectory, (<.>))
 import Text.PrinterParser
     (readFields,
      writeFields,
@@ -65,8 +72,9 @@ import qualified Text.PrettyPrint as  PP (text)
 import IDE.Pane.PackageEditor (packageNew', packageClone, choosePackageFile, standardSetup)
 import Data.List (delete)
 import IDE.Package
-       (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
-        deactivatePackage, idePackageFromPath, idePackageFromPath)
+       (getModuleTemplate, idePackageFromPath',
+        getPackageDescriptionAndPath, activatePackage, deactivatePackage,
+        ideProjectFromPath)
 import System.Directory
        (doesDirectoryExist, getDirectoryContents, getHomeDirectory,
         createDirectoryIfMissing, doesFileExist)
@@ -75,11 +83,11 @@ import qualified Control.Exception as Exc (SomeException(..), throw, Exception)
 import qualified Data.Map as  Map (empty)
 import IDE.Pane.SourceBuffer
        (belongsToWorkspace, IDEBuffer(..), maybeActiveBuf, fileOpenThis,
-        fileCheckAll, belongsToPackages')
+        fileCheckAll, belongsToPackages', belongsToPackage)
 import Control.Applicative ((<$>))
 import IDE.Build
 import IDE.Utils.FileUtils(myCanonicalizePath)
-import Control.Monad.Trans.Reader (ask)
+import Control.Monad.Trans.Reader (ask, asks)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import qualified Data.Set as Set (toList)
@@ -93,11 +101,12 @@ import IDE.Pane.Log (showDefaultLogLaunch', getLog)
 import IDE.LogRef (logOutputDefault)
 import Data.Foldable (forM_)
 import Data.Text (Text)
-import qualified Data.Text as T (unpack, pack)
+import qualified Data.Text as T
+       (unlines, isPrefixOf, lines, unpack, pack)
 import Data.Monoid ((<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
-import qualified Data.Text.IO as T (writeFile)
+import qualified Data.Text.IO as T (readFile, writeFile)
 import Control.Exception (SomeException(..), catch)
 import GI.Gtk.Objects.MessageDialog
        (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
@@ -127,6 +136,12 @@ workspaceNew = do
     mbFile <- liftIO $ chooseSaveFile window (__ "New file for workspace") Nothing
     forM_ mbFile workspaceNewHere
 
+projectNew :: WorkspaceAction
+projectNew = do
+    window <- liftIDE getMainWindow
+    mbFile <- liftIO $ chooseSaveFile window (__ "New cabal.project or stack.yaml") Nothing
+    forM_ mbFile projectNewHere
+
 workspaceNewHere :: FilePath -> IDEAction
 workspaceNewHere filePath =
     let realPath = if takeExtension filePath == leksahWorkspaceFileExtension
@@ -135,30 +150,54 @@ workspaceNewHere filePath =
     in do
         dir <- liftIO $ myCanonicalizePath $ dropFileName realPath
         let cPath = dir </> takeFileName realPath
-            newWorkspace = emptyWorkspace {
+            newWorkspace = Writer.emptyWorkspace {
                             wsName = T.pack $ takeBaseName cPath,
                             wsFile = cPath}
         liftIO $ writeFields cPath newWorkspace Writer.workspaceDescr
         workspaceOpenThis False cPath
         return ()
 
+projectNewHere :: FilePath -> WorkspaceAction
+projectNewHere filePath =
+    let realPath
+          | takeExtension filePath == ".project" || takeExtension filePath == ".yaml"
+            = filePath
+          | takeBaseName filePath == "cabal" = filePath <.> "project"
+          | otherwise = filePath <.> "yaml"
+    in do
+        dir <- liftIO $ myCanonicalizePath $ dropFileName realPath
+        let cPath = dir </> takeFileName realPath
+        liftIO (doesFileExist cPath) >>= \case
+            True -> ideMessage Normal $ __ "Project already exists : " <> T.pack cPath
+            False -> do
+                liftIO $ T.writeFile cPath "packages:\n"
+                projectOpenThis cPath
+
 workspaceOpen :: IDEAction
 workspaceOpen = do
     window     <- getMainWindow
-    mbFilePath <- liftIO $ chooseWorkspaceFile window
-    forM_ mbFilePath (workspaceOpenThis True)
+    liftIO (chooseWorkspaceFile window) >>= mapM_ (workspaceOpenThis True)
+
+projectOpen :: WorkspaceAction
+projectOpen = do
+    window     <- liftIDE getMainWindow
+    liftIO (chooseProjectFile window) >>= mapM_ projectOpenThis
 
 workspaceTryQuiet :: WorkspaceAction -> IDEAction
-workspaceTryQuiet f = do
-    maybeWorkspace <- readIDE workspace
-    case maybeWorkspace of
+workspaceTryQuiet f =
+    readIDE workspace >>= \case
         Just ws -> runWorkspace f ws
         Nothing -> ideMessage Normal (__ "No workspace open")
 
+projectTryQuiet :: ProjectAction -> IDEAction
+projectTryQuiet f = workspaceTryQuiet $
+    readIDE activeProject >>= \case
+        Just project -> runProject f project
+        Nothing      -> ideMessage Normal (__ "No project active")
+
 workspaceTry :: WorkspaceAction -> IDEAction
-workspaceTry f = do
-    maybeWorkspace <- readIDE workspace
-    case maybeWorkspace of
+workspaceTry f =
+    readIDE workspace >>= \case
         Just ws -> runWorkspace f ws
         Nothing -> do
             mainWindow <- getMainWindow
@@ -197,8 +236,54 @@ workspaceTry f = do
                     postAsyncIDE $ workspaceTryQuiet f
                 _  -> return ()
 
+projectTry :: ProjectAction -> IDEAction
+projectTry f = workspaceTry $
+    readIDE activeProject >>= \case
+        Just project -> runProject f project
+        Nothing -> do
+            mainWindow <- liftIDE getMainWindow
+            defaultCabal <- (</> "cabal.project") . takeDirectory <$> asks wsFile
+            defaultStack <- (</> "stack.yaml") . takeDirectory <$> asks wsFile
+            defaultCabalExists <- liftIO $ doesFileExist defaultCabal
+            md <- new' MessageDialog [
+                    constructDialogUseHeaderBar 0,
+                    constructMessageDialogButtons ButtonsTypeCancel]
+            setWindowModal md True
+            setMessageDialogMessageType md MessageTypeQuestion
+            setMessageDialogText md (
+                    __ "You need to have a project open for this to work. "
+                 <> __ "Choose cabal.project to "
+                 <> __ (if defaultCabalExists then "open project " else "create a workspace ")
+                 <> T.pack defaultCabal)
+            windowSetTransientFor md (Just mainWindow)
+            dialogAddButton' md (__ "_New Project") (AnotherResponseType 1)
+            dialogAddButton' md (__ "_Open Project") (AnotherResponseType 2)
+            dialogAddButton' md "cabal.project" (AnotherResponseType 3)
+            dialogAddButton' md "stack.yaml" (AnotherResponseType 4)
+            dialogSetDefaultResponse' md (AnotherResponseType 3)
+            setWindowWindowPosition md WindowPositionCenterOnParent
+            resp <- dialogRun' md
+            widgetHide md
+            case resp of
+                AnotherResponseType 1 -> do
+                    projectNew
+                    postAsyncIDE $ projectTryQuiet f
+                AnotherResponseType 2 -> do
+                    projectOpen
+                    postAsyncIDE $ projectTryQuiet f
+                AnotherResponseType 3 -> do
+                    defaultExists <- liftIO $ doesFileExist defaultCabal
+                    if defaultExists
+                        then projectOpenThis defaultCabal
+                        else projectNewHere defaultCabal
+                    postAsyncIDE $ projectTryQuiet f
+                _  -> return ()
+
 chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
 chooseWorkspaceFile window = chooseFile window (__ "Select leksah workspace file (.lkshw)") Nothing [("Leksah Workspace Files", ["*.lkshw"])]
+
+chooseProjectFile :: Window -> IO (Maybe FilePath)
+chooseProjectFile window = chooseFile window (__ "Select cabal.project or stack.yaml file") Nothing [("Haskell Project", ["*.project", "*.yaml"])]
 
 workspaceOpenThis :: Bool -> FilePath -> IDEAction
 workspaceOpenThis askForSession filePath = do
@@ -217,7 +302,7 @@ workspaceOpenThis askForSession filePath = do
         openWithoutSession = do
             ideR <- ask
             catchIDE (do
-                workspace <- readWorkspace filePath
+                workspace <- Writer.readWorkspace filePath
                 Writer.setWorkspace (Just workspace {wsFile = filePath})
                 VCSWS.onWorkspaceOpen workspace)
                    (\ (e :: Exc.SomeException) -> reflectIDE
@@ -231,6 +316,23 @@ workspaceOpenThis askForSession filePath = do
                             ]
                             Nothing
 
+projectOpenThis :: FilePath -> WorkspaceAction
+projectOpenThis filePath = do
+    liftIO . debugM "leksah" $ "projectOpenThis " ++ filePath
+    dir <- liftIO $ myCanonicalizePath $ dropFileName filePath
+    let cPath = dir </> takeFileName filePath
+    liftIO (doesFileExist cPath) >>= \case
+        False -> ideMessage Normal $ __ "Project does not exists : " <> T.pack cPath
+        True -> do
+            ws <- ask
+            liftIDE (ideProjectFromPath filePath) >>= \case
+                Nothing -> ideMessage Normal $ __ "Unable to load project : " <> T.pack cPath
+                Just project ->
+                    lift $ Writer.writeWorkspace $ ws {
+                        wsProjects = project : wsProjects ws
+                      , wsActiveProjectFile = Just cPath
+                      , wsActivePackFile = ipdCabalFile <$> listToMaybe (pjPackages project)
+                      , wsActiveExe = Nothing }
 
 -- | Closes a workspace
 workspaceClose :: IDEAction
@@ -254,27 +356,57 @@ workspaceClose = do
             return ()
     return ()
 
-
 workspacePackageNew :: WorkspaceAction
 workspacePackageNew = do
     ws <- ask
     let path = dropFileName (wsFile ws)
-    lift $ packageNew' path logOutputDefault (\isNew fp -> do
-        window     <-  getMainWindow
-        workspaceTry $ void (workspaceAddPackage' fp)
+    liftIDE . packageNew' path (wsProjects ws) logOutputDefault $ \isNew mbProject fp -> do
+        liftIO $ debugM "leksah" $ "workspacePackageNew " <> show (isNew, pjFile <$> mbProject, fp)
+        case mbProject of
+            Just project -> workspaceTryQuiet . (`runProject` project) . void $ projectAddPackage' fp
+            Nothing -> postAsyncIDE . workspaceTryQuiet $ do
+                let packageDir = dropFileName fp
+                liftIO (doesFileExist $ packageDir </> "cabal.project") >>= \case
+                    True -> projectOpenThis (packageDir </> "cabal.project")
+                    False ->
+                        liftIO (doesFileExist $ packageDir </> "stack.yaml") >>= \case
+                            True -> projectOpenThis (packageDir </> "stack.yaml")
+                            False -> do
+                                liftIO $ debugM "leksah" $ "workspacePackageNew show project creation dialog"
+                                window <- liftIDE getMainWindow
+                                md <- new' MessageDialog [
+                                    constructDialogUseHeaderBar 0,
+                                    constructMessageDialogButtons ButtonsTypeCancel]
+                                setMessageDialogMessageType md MessageTypeQuestion
+                                setMessageDialogText md $ __ "No project file found for this package would you like to add one?"
+                                windowSetTransientFor md (Just window)
+                                dialogAddButton' md (__ "Add cabal.project") (AnotherResponseType 1)
+                                dialogAddButton' md (__ "Add stack.yaml") (AnotherResponseType 2)
+                                dialogSetDefaultResponse' md (AnotherResponseType 2)
+                                setWindowWindowPosition md WindowPositionCenterOnParent
+                                resp <- dialogRun' md
+                                widgetHide md
+                                case resp of
+                                    AnotherResponseType 1 -> do
+                                        liftIO $ T.writeFile (packageDir </> "cabal.project") "packages:\n ./\n"
+                                        projectOpenThis (packageDir </> "cabal.project")
+                                    AnotherResponseType 2 -> do
+                                        liftIO $ T.writeFile (packageDir </> "stack.yaml") "packages:\n- '.'\n"
+                                        projectOpenThis (packageDir </> "stack.yaml")
+                                    _  -> return ()
         when isNew $ do
-            mbPack <- idePackageFromPath logOutputDefault fp
-            constructAndOpenMainModules mbPack
-        void (triggerEventIDE UpdateWorkspaceInfo))
+            mbPack <- liftIDE $ idePackageFromPath' fp
+            liftIDE $ constructAndOpenMainModules mbPack
+        liftIDE $ triggerEventIDE_ UpdateWorkspaceInfo
 
-workspacePackageClone :: WorkspaceAction
-workspacePackageClone = do
-    ws <- ask
-    let path = dropFileName (wsFile ws)
-    lift $ packageClone path logOutputDefault (\fp -> do
-        window     <-  getMainWindow
-        workspaceTry $ void (workspaceAddPackage' fp)
-        void (triggerEventIDE UpdateWorkspaceInfo))
+projectPackageClone :: ProjectAction
+projectPackageClone = do
+    project <- ask
+    let path = dropFileName (pjFile project)
+    liftIDE . packageClone path logOutputDefault $ \fp ->
+        projectTry $ do
+            projectAddPackage' fp
+            triggerEventIDE_ UpdateWorkspaceInfo
 
 constructAndOpenMainModules :: Maybe IDEPackage -> IDEAction
 constructAndOpenMainModules Nothing = return ()
@@ -294,29 +426,44 @@ constructAndOpenMainModules (Just idePackage) =
                     _ -> return ()
             Nothing     -> ideMessage Normal (__ "No package description")
 
-workspaceAddPackage :: WorkspaceAction
-workspaceAddPackage = do
-    ws <- ask
-    let path = dropFileName (wsFile ws)
-    window <-  lift getMainWindow
-    mbFilePath <- liftIO $ choosePackageFile window (Just path)
-    case mbFilePath of
+projectAddPackage :: ProjectAction
+projectAddPackage = do
+    project <- ask
+    let path = dropFileName (pjFile project)
+    window <-  liftIDE getMainWindow
+    liftIO (choosePackageFile window (Just path)) >>= \case
         Nothing -> return ()
         Just fp -> do
-            void (workspaceAddPackage' fp)
-            lift $ void (triggerEventIDE UpdateWorkspaceInfo)
+            void (projectAddPackage' fp)
+            liftIDE $ triggerEventIDE_ UpdateWorkspaceInfo
 
-workspaceAddPackage' :: FilePath -> WorkspaceM (Maybe IDEPackage)
-workspaceAddPackage' fp = do
-    ws <- ask
+projectAddPackage' :: FilePath -> ProjectM (Maybe IDEPackage)
+projectAddPackage' fp = do
+    project <- ask
+    ws <- lift ask
+    let projectFile = pjFile project
     cfp <- liftIO $ myCanonicalizePath fp
-    mbPack <- lift $ idePackageFromPath logOutputDefault cfp
-    case mbPack of
+    liftIDE (idePackageFromPath' cfp) >>= \case
         Just pack -> do
-            unless (cfp `elem` map ipdCabalFile (wsPackages ws)) $ lift $
-                Writer.writeWorkspace $ ws {wsPackages =  pack : wsPackages ws,
-                                     wsActivePackFile =  Just (ipdCabalFile pack),
-                                     wsActiveExe = Nothing}
+            let indent = case pjTool project of
+                                    StackTool -> "- "
+                                    CabalTool -> " "
+            projectText <- liftIO $ T.readFile projectFile
+            let projectLines = T.lines projectText
+                relativePath = makeRelative (dropFileName projectFile) (dropFileName cfp)
+            case span (/= "packages:") projectLines of
+                (before, _:rest) ->
+                    case span (indent `T.isPrefixOf`) rest of
+                        (packs, rest') -> liftIO $ T.writeFile projectFile . T.unlines $
+                            before <> ("packages:":packs) <> [indent <> T.pack relativePath] <> rest'
+                _ -> return ()
+            unless (cfp `elem` map ipdCabalFile (pjPackages project)) $ liftIDE $
+                Writer.writeWorkspace $ ws {
+                    wsProjects = map (\p -> if pjFile p == projectFile
+                                                    then p { pjPackages = pack : pjPackages p }
+                                                    else p) (wsProjects ws)
+                  , wsActivePackFile = Just (ipdCabalFile pack)
+                  , wsActiveExe = Nothing}
             return (Just pack)
         Nothing -> return Nothing
 
@@ -324,16 +471,17 @@ packageTryQuiet :: PackageAction -> IDEAction
 packageTryQuiet f = do
     maybePackage <- readIDE activePack
     case maybePackage of
-        Just p  -> workspaceTryQuiet $ runPackage f p
+        Just p  -> projectTryQuiet $ runPackage f p
         Nothing -> ideMessage Normal (__ "No active package")
 
 packageTry :: PackageAction -> IDEAction
 packageTry f = workspaceTry $ do
+        maybeProject <- lift $ readIDE activeProject
         maybePackage <- lift $ readIDE activePack
-        case maybePackage of
-            Just p  -> runPackage f p
-            Nothing -> do
-                window <- lift getMainWindow
+        case (maybeProject, maybePackage) of
+            (Just project, Just package)  -> runProject (runPackage f package) project
+            _ -> do
+                window <- liftIDE getMainWindow
                 md <- new' MessageDialog [
                     constructDialogUseHeaderBar 0,
                     constructMessageDialogButtons ButtonsTypeCancel]
@@ -351,73 +499,42 @@ packageTry f = workspaceTry $ do
                         workspacePackageNew
                         lift $ postAsyncIDE $ packageTryQuiet f
                     AnotherResponseType 2 -> do
-                        workspaceAddPackage
+                        workspacePackageNew
                         lift $ postAsyncIDE $ packageTryQuiet f
                     _  -> return ()
 
-workspaceRemovePackage :: IDEPackage -> WorkspaceAction
-workspaceRemovePackage pack = do
+workspaceRemoveProject :: Project -> WorkspaceAction
+workspaceRemoveProject project = do
     ws <- ask
-    when (pack `elem` wsPackages ws) $ lift $
-        Writer.writeWorkspace ws {wsPackages =  delete pack (wsPackages ws)}
-    return ()
+    when (any fileMatches $ wsProjects ws) . lift $
+        Writer.writeWorkspace ws {wsProjects = filter (not . fileMatches) (wsProjects ws)}
+  where
+    fileMatches = (== pjFile project) . pjFile
 
-workspaceActivatePackage :: IDEPackage -> Maybe Text -> WorkspaceAction
-workspaceActivatePackage pack exe = do
+projectRemovePackage :: IDEPackage -> ProjectAction
+projectRemovePackage pack = do
+--    ws <- ask
+--    when (pack `elem` wsPackages ws) $ lift $
+--        Writer.writeWorkspace ws {wsProjects =  delete pack (wsPackages ws)}
+    ideMessage Normal "projectRemovePackage not implemented"
+
+workspaceActivatePackage :: Project -> Maybe IDEPackage -> Maybe Text -> WorkspaceAction
+workspaceActivatePackage project mbPack exe = do
+    (mbPackFile, mbExe) <- liftIDE $ case mbPack of
+        Just pack | pack `elem` pjPackages project -> do
+            activatePackage (Just (ipdCabalFile pack)) (Just project) (Just pack) exe
+            return (Just (ipdCabalFile pack), exe)
+        _ -> do
+            activatePackage Nothing (Just project) Nothing Nothing
+            return (Nothing, Nothing)
     ws <- ask
-    let activePath = takeDirectory $ ipdCabalFile pack
-    lift $ activatePackage (Just activePath) (Just pack) exe
-    when (pack `elem` wsPackages ws) $ lift $ do
-        Writer.writeWorkspace ws {wsActivePackFile =  Just (ipdCabalFile pack)
-                                 ,wsActiveExe = exe}
-        return ()
-    return ()
-
-
-
-readWorkspace :: FilePath -> IDEM Workspace
-readWorkspace fp = do
-    liftIO $ debugM "leksah" "readWorkspace"
-    ws <- liftIO $ readFields fp Writer.workspaceDescr emptyWorkspace
-    ws' <- liftIO $ makePathsAbsolute ws fp
-    packages <- mapM (idePackageFromPath logOutputDefault) (wsPackagesFiles ws')
-    --TODO set package vcs here
-    return ws'{ wsPackages = catMaybes packages}
-
-
-
-
-makePathsAbsolute :: Workspace -> FilePath -> IO Workspace
-makePathsAbsolute ws bp = do
-    wsFile'                     <-  myCanonicalizePath bp
-    wsActivePackFile'           <-  case wsActivePackFile ws of
-                                        Nothing -> return Nothing
-                                        Just fp -> do
-                                            fp' <- makeAbsolute (dropFileName wsFile') fp
-                                            return (Just fp')
-    wsPackagesFiles'            <-  mapM (makeAbsolute (dropFileName wsFile')) (wsPackagesFiles ws)
-    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = wsPackagesFiles'}
-    where
-        makeAbsolute basePath relativePath  =
-            myCanonicalizePath
-               (if isAbsolute relativePath
-                    then relativePath
-                    else basePath </> relativePath)
-
-emptyWorkspace =  Workspace {
-    wsVersion       =   Writer.workspaceVersion
-,   wsSaveTime      =   ""
-,   wsName          =   ""
-,   wsFile          =   ""
-,   wsPackages      =   []
-,   wsPackagesFiles =   []
-,   wsActivePackFile =   Nothing
-,   wsActiveExe     =   Nothing
-,   wsNobuildPack   =   []
-,   packageVcsConf  =   Map.empty
-}
-
-
+    let projects = project : filter ((/= pjFile project) . pjFile) (wsProjects ws)
+    liftIDE $ Writer.writeWorkspace ws
+                             {wsProjects = projects
+                             ,wsProjectFiles = map pjFile projects
+                             ,wsActiveProjectFile = Just (pjFile project)
+                             ,wsActivePackFile = mbPackFile
+                             ,wsActiveExe = mbExe}
 
 addRecentlyUsedWorkspace :: FilePath -> IDEAction
 addRecentlyUsedWorkspace fp = do
@@ -448,7 +565,7 @@ workspaceClean = do
     settings <- lift $ do
         prefs' <- readIDE prefs
         return (defaultMakeSettings prefs')
-    makePackages settings (wsPackages ws) MoClean MoClean moNoOp
+    lift $ makePackages settings (map (\p -> (p, pjPackages p)) $ wsProjects ws) MoClean MoClean moNoOp
 
 buildSteps :: MakeSettings -> IDEM [MakeOp]
 buildSteps settings = do
@@ -468,24 +585,27 @@ workspaceMake = do
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
     build <- lift . buildSteps $ settings
-    makePackages settings (wsPackages ws) (MoComposed build) (MoComposed build) MoMetaInfo
+    lift $ makePackages settings (map (\p -> (p, pjPackages p)) $ wsProjects ws) (MoComposed build) (MoComposed build) MoMetaInfo
 
 backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
     ideR        <- ask
     prefs       <- readIDE prefs
     debug       <- isJust <$> readIDE debugState
-    modifiedPacks <- if saveAllBeforeBuild prefs
-                        then fileCheckAll belongsToPackages'
+    modifiedFiles <- catMaybes <$> if saveAllBeforeBuild prefs
+                        then fileCheckAll (return . return . fileName)
                         else return []
-    let isModified = not (null modifiedPacks)
-    when isModified $ do
-        let settings = defaultMakeSettings prefs
-        steps <- buildSteps settings
-        workspaceTryQuiet $ if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
-            then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
-            else makePackages settings modifiedPacks (MoComposed steps)
-                                (MoComposed steps) MoMetaInfo
+    workspaceTryQuiet $ do
+        ws <- ask
+        liftIDE $ do
+            let modifiedPacks = filter (not . null . snd) $
+                                  map (\project -> (project, filter (\pack -> any (`belongsToPackage` pack) modifiedFiles) (pjPackages project))) (wsProjects ws)
+                settings = defaultMakeSettings prefs
+            steps <- buildSteps settings
+            if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+                then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
+                else makePackages settings modifiedPacks (MoComposed steps)
+                                    (MoComposed steps) MoMetaInfo
     )
     (\(e :: Exc.SomeException) -> sysMessage Normal (T.pack $ show e))
 
@@ -493,26 +613,18 @@ makePackage ::  PackageAction
 makePackage = do
   liftIO $ debugM "leksah" "makePackage"
   p <- ask
+  project <- lift ask
   liftIDE $ do
     getLog >>= bringPaneToFront
     showDefaultLogLaunch'
     prefs' <- readIDE prefs
     mbWs   <- readIDE workspace
     let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
-    case mbWs of
-        Nothing -> sysMessage Normal (__ "No workspace for build.")
-        Just ws -> do
-            debug <- isJust <$> readIDE debugState
-            steps <- buildSteps settings
-            if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
-                then runWorkspace
-                        (makePackages settings [p] (MoComposed steps) (MoComposed []) moNoOp) ws
-                else
-                    runWorkspace
-                        (makePackages settings [p]
-                        (MoComposed steps)
-                        (MoComposed steps)
-                        MoMetaInfo) ws
+    debug <- isJust <$> readIDE debugState
+    steps <- buildSteps settings
+    if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+        then makePackages settings [(project, [p])] (MoComposed steps) (MoComposed []) moNoOp
+        else makePackages settings [(project, [p])] (MoComposed steps) (MoComposed steps) MoMetaInfo
 
 fileOpen :: IDEAction
 fileOpen = do
@@ -546,7 +658,7 @@ fileOpen' fp = do
                     constructMessageDialogButtons ButtonsTypeNone]
                 setMessageDialogMessageType md MessageTypeQuestion
                 setMessageDialogText md (__ "Would you like to add the package " <> T.pack fp
-                    <> __ " to the workspace so that it can be built by Leksah?")
+                    <> __ " to the active project so that it can be built by Leksah?")
                 windowSetTransientFor md (Just window)
                 dialogAddButton' md (__ "_Add " <> T.pack (takeFileName fp)) (AnotherResponseType 1)
                 dialogAddButton' md (__ "Just _open " <> T.pack (takeFileName fp)) (AnotherResponseType 2)
@@ -554,8 +666,8 @@ fileOpen' fp = do
                 resp <- dialogRun' md
                 widgetDestroy md
                 case resp of
-                    AnotherResponseType 1 -> workspaceTry $ do
-                        workspaceAddPackage' fp
+                    AnotherResponseType 1 -> projectTry $ do
+                        projectAddPackage' fp
                         return ()
                     _ -> return ()
             else liftIO (findCabalFile fp) >>= \case
@@ -568,7 +680,7 @@ fileOpen' fp = do
                     setMessageDialogText md (__ "The file " <> T.pack fp
                         <> __ " seems to belong to the package " <> T.pack cabalFile
                         <> __ " would you like to add " <> T.pack (takeFileName cabalFile)
-                        <> __ " to your workspace?")
+                        <> __ " to your active project?")
                     windowSetTransientFor md (Just window)
                     dialogAddButton' md (__ "_Add " <> T.pack (takeFileName cabalFile)) (AnotherResponseType 1)
                     dialogAddButton' md (__ "Just _open " <> T.pack (takeFileName fp)) (AnotherResponseType 2)
@@ -576,8 +688,8 @@ fileOpen' fp = do
                     resp <- dialogRun' md
                     widgetDestroy md
                     case resp of
-                        AnotherResponseType 1 -> workspaceTry $ do
-                            workspaceAddPackage' cabalFile
+                        AnotherResponseType 1 -> projectTry $ do
+                            projectAddPackage' cabalFile
                             return ()
                         _ -> return ()
     fileOpenThis fp

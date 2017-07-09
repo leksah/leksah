@@ -5,6 +5,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
@@ -72,6 +73,7 @@ module IDE.Core.State (
 --,   deactivatePaneIfActive
 --,   closePane
 ,   changePackage
+,   changeProject
 
 ,   liftYiControl
 ,   liftYi
@@ -128,6 +130,7 @@ import GI.Gtk.Objects.Notebook
 import Data.Int (Int32)
 import GI.GLib (pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, idleAdd)
 import GI.Gtk.Objects.Label (noLabel)
+import Data.Foldable (forM_)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -442,10 +445,10 @@ changePackage ideP = do
     oldWorkspace <- readIDE workspace
     case oldWorkspace of
         Nothing -> return ()
-        Just ws -> do
-            let ps = map exchange (wsPackages ws)
-            modifyIDE_ (\ide -> ide{workspace = Just ws {wsPackages = ps},
-                                    bufferProjCache = Map.empty})
+        Just ws ->
+            modifyIDE_ $ \ide -> ide{workspace = Just ws {
+                wsProjects = map (\p -> p {pjPackages = map exchange (pjPackages p)}) (wsProjects ws)},
+                bufferProjCache = Map.empty}
     mbActivePack <- readIDE activePack
     case mbActivePack of
         Just activePack | key ideP == key activePack ->
@@ -455,6 +458,30 @@ changePackage ideP = do
         key = ipdPackageDir
         idePKey = key ideP
         exchange p | key p == idePKey = ideP
+                   | otherwise        = p
+
+-- | Replaces an 'Project' in the workspace by the given 'Project' and
+-- replaces the current package if it matches.
+--  Comparison is done based on the package's build directory.
+changeProject :: Project -> IDEAction
+changeProject project = do
+    readIDE workspace >>= \case
+        Nothing -> return ()
+        Just ws -> do
+            let ps = map exchange (wsProjects ws)
+            modifyIDE_ (\ide -> ide{workspace = Just ws {wsProjects = ps},
+                                    bufferProjCache = Map.empty})
+    readIDE activeProject >>= \case
+        Just activeProject | pjFile project == pjFile activeProject ->
+            modifyIDE_ (\ide -> ide{activeProject = Just project})
+        _ -> return ()
+    readIDE activePack >>= \case
+        Just activePack -> forM_ (pjPackages project) $ \pack ->
+            when (ipdCabalFile pack == ipdCabalFile activePack) $
+                modifyIDE_ (\ide -> ide{activePack = Just pack})
+        _ -> return ()
+    where
+        exchange p | pjFile p == pjFile project = project
                    | otherwise        = p
 
 -- | Find a directory relative to the leksah install directory

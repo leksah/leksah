@@ -66,8 +66,8 @@ module IDE.Package (
 
 ,   choosePackageFile
 
-,   idePackageFromPath
-,   refreshPackage
+,   idePackageFromPath'
+,   ideProjectFromPath
 ,   writeGenericPackageDescription'
 
 ) where
@@ -123,8 +123,8 @@ import IDE.Pane.WebKit.Output (loadOutputUri, getOutputPane)
 import System.Log.Logger (debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T
-       (lines, isPrefixOf, stripPrefix, replace, unwords, takeWhile, pack,
-        unpack, isInfixOf)
+       (reverse, all, null, dropWhile, lines, isPrefixOf, stripPrefix,
+        replace, unwords, takeWhile, pack, unpack, isInfixOf)
 import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
 import Text.PrinterParser (writeFields)
 import Data.Text (Text)
@@ -134,7 +134,7 @@ import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import IDE.Metainfo.Provider (updateSystemInfo)
 import GI.GLib.Functions (timeoutAdd)
-import GI.GLib.Constants (pattern PRIORITY_DEFAULT)
+import GI.GLib.Constants (pattern PRIORITY_DEFAULT, pattern PRIORITY_LOW)
 import GI.Gtk.Objects.MessageDialog
        (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
         MessageDialog(..))
@@ -149,7 +149,7 @@ import Graphics.UI.Editor.Parameters
 import Data.GI.Base (set, new')
 import GI.Gtk.Objects.Widget (widgetDestroy)
 import IDE.Utils.VersionUtils (getDefaultGhcVersion)
-import IDE.Utils.CabalProject (findProjectRoot, getCabalProjectPackages)
+import IDE.Utils.CabalProject (getCabalProjectPackages)
 import System.Environment (getEnvironment)
 import Distribution.Simple.LocalBuildInfo
        (Component(..), Component)
@@ -172,11 +172,15 @@ myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 myTestModules pd = concatMap (moduleInfo testBuildInfo (otherModules . testBuildInfo)) (testSuites pd)
 myBenchmarkModules pd = concatMap (moduleInfo benchmarkBuildInfo (otherModules . benchmarkBuildInfo)) (benchmarks pd)
 
-activatePackage :: Maybe FilePath -> Maybe IDEPackage -> Maybe Text -> IDEM ()
-activatePackage mbPath mbPack mbExe = do
-    liftIO $ debugM "leksah" "activatePackage"
+activatePackage :: MonadIDE m => Maybe FilePath -> Maybe Project -> Maybe IDEPackage -> Maybe Text -> m ()
+activatePackage mbPath mbProject mbPack mbExe = do
+    liftIO $ debugM "leksah" $ "activatePackage " <> show (mbPath, pjFile <$> mbProject, ipdCabalFile <$> mbPack, mbExe)
     oldActivePack <- readIDE activePack
-    modifyIDE_ (\ide -> ide{activePack = mbPack, activeExe = mbExe})
+    modifyIDE_ $ \ide -> ide
+        { activeProject = mbProject
+        , activePack = mbPack
+        , activeExe = mbExe
+        }
     case mbPath of
         Just p -> liftIO $ setCurrentDirectory (dropFileName p)
         Nothing -> return ()
@@ -195,7 +199,7 @@ activatePackage mbPath mbPack mbExe = do
     return ()
 
 deactivatePackage :: IDEAction
-deactivatePackage = activatePackage Nothing Nothing Nothing
+deactivatePackage = activatePackage Nothing Nothing Nothing Nothing
 
 interruptSaveAndRun :: MonadIDE m => IDEAction -> m ()
 interruptSaveAndRun action = do
@@ -220,99 +224,83 @@ interruptSaveAndRun action = do
 
 packageConfig :: PackageAction
 packageConfig = do
+    project <- lift ask
     package <- ask
-    interruptSaveAndRun $ packageConfig' package (\ _ -> return ())
+    interruptSaveAndRun $ packageConfig' (project, package) (\ _ -> return ())
 
-packageConfig'  :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageConfig' package continuation = do
+packageConfig'  :: (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageConfig' (project, package) continuation = do
     prefs     <- readIDE prefs
-    let dir = ipdPackageDir package
-    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-    if useStack
-        then do
-            ideMessage Normal (__ "Leksah is not running \"cabal configure\" because a stack.yaml file was found.")
-            continuation True
-        else do
+    case pjTool project of
+        StackTool -> do
+            ideMessage Normal (__ "Stack projects do not require configuration.")
+            liftIDE $ continuation True
+        CabalTool -> do
             logLaunch <- getDefaultLogLaunch
             showDefaultLogLaunch'
 
+            let dir = ipdPackageDir package
             runExternalTool'        (__ "Configuring")
                                     "cabal"
                                     ("new-configure" : ipdConfigFlags package)
                                     dir Nothing $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
-                lift $ do
-                    mbPack <- idePackageFromPath (logOutput logLaunch) (ipdCabalFile package)
-                    case mbPack of
-                        Just pack -> do
-                            changePackage pack
-                            triggerEventIDE $ WorkspaceChanged False True
-                            continuation (mbLastOutput == Just (ToolExit ExitSuccess))
-                            return ()
-                        Nothing -> do
-                            postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
-                            continuation False
-                            return()
+                lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
-runCabalBuild :: Bool -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-runCabalBuild backgroundBuild jumpToWarnings withoutLinking package shallConfigure continuation = do
+runCabalBuild :: Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+runCabalBuild backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     prefs <- readIDE prefs
     pd <- liftIO $ fmap flattenPackageDescription
                      (readPackageDescription normal (ipdCabalFile package))
-    let dir =  ipdPackageDir package
+    let dir = ipdPackageDir package
         pkgName = ipdPackageName package
-    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-    let flagsForLib = [pkgName <> ":lib:" <> pkgName | ipdHasLibs package && not useStack]
-    let flagsForExes =
-            if useStack
-                then []
-                else map (\t -> pkgName <> ":exe:" <> T.pack (exeName t)) $ executables pd
+
+--    let flagsForLib = [pkgName <> ":lib:" <> pkgName | ipdHasLibs package && not useStack]
+--    let flagsForExes =
+--            if case pjTool project of
+---               StackTool -> []
+--                CabalTool -> map (\t -> pkgName <> ":exe:" <> T.pack (exeName t)) $ executables pd
     let flagsForTests =
             if "--enable-tests" `elem` ipdConfigFlags package
-                then if useStack
-                    then ["--test", "--no-run-tests"] -- if we use stack, with tests enabled, we build the tests without running them
-                    else map (\t -> pkgName <> ":test:" <> T.pack (testName t)) $ testSuites pd
+                then case pjTool project of
+                    StackTool -> ["--test", "--no-run-tests"] -- if we use stack, with tests enabled, we build the tests without running them
+                    CabalTool -> [] -- map (\t -> pkgName <> ":test:" <> T.pack (testName t)) $ testSuites pd
                 else []
     let flagsForBenchmarks =
             if "--enable-benchmarks" `elem` ipdConfigFlags package
-                then if useStack
-                    then ["--bench", "--no-run-benchmarks"] -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
-                    else map (\t -> pkgName <> ":benchmark:" <> T.pack (benchmarkName t)) $ benchmarks pd
+                then case pjTool project of
+                    StackTool -> ["--bench", "--no-run-benchmarks"] -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
+                    CabalTool -> [] -- map (\t -> pkgName <> ":benchmark:" <> T.pack (benchmarkName t)) $ benchmarks pd
                 else []
     let args =  -- stack needs the package name to actually print the output info
-                (if useStack then ["build", ipdPackageName package] else ["new-build"])
-                ++ ["--with-ld=false" | not useStack && backgroundBuild && withoutLinking]
-                ++ flagsForLib
-                ++ flagsForExes
+                (case pjTool project of
+                    StackTool -> ["build", "--stack-yaml", T.pack $ pjFile project, ipdPackageName package]
+                    CabalTool -> ["new-build"])
+                ++ ["--with-ld=false" | pjTool project == CabalTool && backgroundBuild && withoutLinking]
+--                ++ flagsForLib
+--                ++ flagsForExes
                 ++ flagsForTests
                 ++ flagsForBenchmarks
                 ++ ipdBuildFlags package
-    runExternalTool' (__ "Building") (if useStack then "stack" else "cabal") args dir Nothing $ do
-        (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
+    runExternalTool' (__ "Building") (pjToolCommand project) args dir Nothing $ do
+        (mbLastOutput, _) <- C.getZipSink $ (,)
             <$> C.ZipSink sinkLast
-            <*> C.ZipSink isConfigError
-            <*> (C.ZipSink $ logOutputForBuild package backgroundBuild jumpToWarnings)
+            <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
         lift $ do
             errs <- readIDE errorRefs
-            if shallConfigure && isConfigErr
-                then
-                    packageConfig' package (\ b ->
-                        when b $ runCabalBuild backgroundBuild jumpToWarnings withoutLinking package False continuation)
-                else do
-                    continuation (mbLastOutput == Just (ToolExit ExitSuccess))
-                    return ()
+            continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
-isConfigError :: Monad m => C.Sink ToolOutput m Bool
-isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
-    where
-    isCErr (ToolError str) = str1 `T.isInfixOf` str || str2 `T.isInfixOf` str || str3 `T.isInfixOf` str
-    isCErr _ = False
-    str1 = __ "Run the 'configure' command first"
-    str2 = __ "please re-configure"
-    str3 = __ "cannot satisfy -package-id"
+--isConfigError :: Monad m => C.Sink ToolOutput m Bool
+--isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
+--    where
+--    isCErr (ToolError str) = str1 `T.isInfixOf` str || str2 `T.isInfixOf` str || str3 `T.isInfixOf` str
+--    isCErr _ = False
+--    str1 = __ "Run the 'configure' command first"
+--    str2 = __ "please re-configure"
+--    str3 = __ "cannot satisfy -package-id"
 
-buildPackage :: Bool -> Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation = catchIDE (do
+buildPackage :: Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = catchIDE (do
     liftIO $ debugM "leksah" "buildPackage"
     ideR      <- ask
     prefs     <- readIDE prefs
@@ -324,17 +312,21 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
                 then do
                     liftIO $ debugM "leksah" "buildPackage interruptBuild"
                     interruptBuild
-                    unless backgroundBuild $ do
-                        timeoutAdd PRIORITY_DEFAULT 100 (do
-                            reflectIDE (do
-                                buildPackage backgroundBuild jumpToWarnings withoutLinking
-                                                package continuation
-                                return False) ideR
-                            return False)
-                        return ()
+                    timeoutAdd PRIORITY_DEFAULT 100 (do
+                        reflectIDE (do
+                            if backgroundBuild
+                                then do
+                                    tb <- readIDE triggerBuild
+                                    void . liftIO $ tryPutMVar tb ()
+                                else do
+                                    buildPackage backgroundBuild jumpToWarnings withoutLinking
+                                                    (project, package) continuation
+                            return False) ideR
+                        return False)
+                    return ()
                 else do
                     when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
-                    runCabalBuild backgroundBuild jumpToWarnings withoutLinking package True $ \f -> do
+                    runCabalBuild backgroundBuild jumpToWarnings withoutLinking (project, package) $ \f -> do
                         when f $ do
                             mbURI <- readIDE autoURI
                             case mbURI of
@@ -344,58 +336,67 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking package continuation 
         Just debug@(_, ghci) -> do
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
-            when ready $ do
-                let dir = ipdPackageDir package
-                when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace'; return ())
-                (`runDebug` debug) . executeDebugCommand ":reload" $ do
-                    errs <- logOutputForBuild package backgroundBuild jumpToWarnings
-                    unless (any isError errs) . lift $ do
-                        cmd <- readIDE autoCommand
-                        postSyncIDE cmd
-                        continuation True
+            if ready
+                then do
+                    let dir = ipdPackageDir package
+                    when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace'; return ())
+                    (`runDebug` debug) . executeDebugCommand ":reload" $ do
+                        errs <- logOutputForBuild project package backgroundBuild jumpToWarnings
+                        unless (any isError errs) . lift $ do
+                            cmd <- readIDE autoCommand
+                            postSyncIDE cmd
+                            continuation True
+                else do
+                    timeoutAdd PRIORITY_LOW 500 (do
+                        reflectIDE (do
+                            tb <- readIDE triggerBuild
+                            void . liftIO $ tryPutMVar tb ()
+                            return False) ideR
+                        return False)
+                    return ()
     )
     (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
 
 packageDoc :: PackageAction
 packageDoc = do
+    project <- lift ask
     package <- ask
-    interruptSaveAndRun $ packageDoc' False True package (\ _ -> return ())
+    interruptSaveAndRun $ packageDoc' False True (project, package) (\ _ -> return ())
 
-packageDoc' :: Bool -> Bool -> IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageDoc' backgroundBuild jumpToWarnings package continuation = do
+packageDoc' :: Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageDoc' backgroundBuild jumpToWarnings (project, package) continuation = do
     prefs     <- readIDE prefs
     catchIDE (do
         let dir = ipdPackageDir package
-        useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-        projectRoot <- liftIO $ findProjectRoot dir
-        runExternalTool' (__ "Documenting") (if useStack then "stack" else "cabal")
-            ((if useStack
-                then ["haddock", "--no-haddock-deps"]
-                else ["act-as-setup", "--", "haddock",
+            projectRoot = pjDir project
+        runExternalTool' (__ "Documenting") (pjToolCommand project)
+            ((case pjTool project of
+                StackTool -> ["haddock", "--no-haddock-deps"]
+                CabalTool -> ["act-as-setup", "--", "haddock",
                     T.pack ("--builddir=" <> projectRoot </> "dist-newstyle/build" </>
                         T.unpack (packageIdentifierToString $ ipdPackageId package))])
             <> ipdHaddockFlags package) dir Nothing $ do
             mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
-                logOutputForBuild package backgroundBuild jumpToWarnings)
+                logOutputForBuild project package backgroundBuild jumpToWarnings)
             lift $ postAsyncIDE reloadDoc
             lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> print e)
 
 packageClean :: PackageAction
 packageClean = do
+    project <- lift ask
     package <- ask
-    interruptSaveAndRun $ packageClean' package (\ _ -> return ())
+    interruptSaveAndRun $ packageClean' (project, package) (\ _ -> return ())
 
-packageClean' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageClean' package continuation = do
+packageClean' :: (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageClean' (project, package) continuation = do
     prefs     <- readIDE prefs
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
     let dir = ipdPackageDir package
-    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     runExternalTool' (__ "Cleaning")
-                    (if useStack then "stack" else "cabal")
+                    (pjToolCommand project)
                     ["clean"]
                     dir Nothing $ do
         mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
@@ -425,36 +426,43 @@ packageCopy = do
 
 packageInstall :: PackageAction
 packageInstall = do
+    project <- lift ask
     package <- ask
-    interruptSaveAndRun $ packageInstall' package (\ _ -> return ())
+    interruptSaveAndRun $ packageInstall' (project, package) (\ _ -> return ())
 
-packageInstall' :: IDEPackage -> (Bool -> IDEAction) -> IDEAction
-packageInstall' package continuation = do
+packageInstall' :: (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageInstall' (project, package) continuation = do
     prefs     <- readIDE prefs
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
     catchIDE (do
         let dir = ipdPackageDir package
-        useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
         runExternalTool' (__ "Installing")
-                         (if useStack then "stack" else "echo" {-cabalCommand prefs-})
-                         ((if useStack then "install" : ipdBuildFlags package else ["TODO run cabal new-install"]) ++ ipdInstallFlags package)
+                         (case pjTool project of
+                            StackTool -> "stack"
+                            CabalTool -> "echo" {-cabalCommand prefs-})
+                         ((case pjTool project of
+                            StackTool -> "install" : "--stack-yaml" : T.pack (pjFile project) : ipdBuildFlags package
+                            CabalTool -> ["TODO run cabal new-install"]) ++ ipdInstallFlags package)
                          dir Nothing $ do
                 mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
         (\(e :: SomeException) -> print e)
 
 packageRun :: PackageAction
-packageRun = ask >>= (interruptSaveAndRun . packageRun' True)
+packageRun = do
+    project <- lift ask
+    package <- ask
+    interruptSaveAndRun $ packageRun' True (project, package)
 
 packageEnv :: MonadIO m => IDEPackage -> m [(String, String)]
 packageEnv package = do
     env <- liftIO getEnvironment
     return $ (T.unpack (ipdPackageName package) <> "_datadir", ipdPackageDir package) : env
 
-packageRun' :: Bool -> IDEPackage -> IDEAction
-packageRun' removeGhcjsFlagIfPresent package =
+packageRun' :: Bool -> (Project, IDEPackage) -> IDEAction
+packageRun' removeGhcjsFlagIfPresent (project, package) =
     if removeGhcjsFlagIfPresent && "--ghcjs" `elem` ipdConfigFlags package
         then do
             window <- liftIDE getMainWindow
@@ -474,8 +482,8 @@ packageRun' removeGhcjsFlagIfPresent package =
                     let packWithNewFlags = package { ipdConfigFlags = filter (/="--ghcjs") $ ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
-                    packageConfig' packWithNewFlags $ \ ok -> when ok $
-                        packageRun' False packWithNewFlags
+                    packageConfig' (project, packWithNewFlags) $ \ ok -> when ok $
+                        packageRun' False (project, packWithNewFlags)
                 _  -> return ()
         else liftIDE $ catchIDE (do
             ideR        <- ask
@@ -492,10 +500,8 @@ packageRun' removeGhcjsFlagIfPresent package =
                 Nothing -> do
                     prefs <- readIDE prefs
                     let dir = ipdPackageDir package
-                    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-                    if useStack
-                        then
-                            IDE.Package.runPackage (addLogLaunchData logName logLaunch)
+                    case pjTool project of
+                        StackTool -> IDE.Package.runPackage (addLogLaunchData logName logLaunch)
                                                    (T.pack $ printf (__ "Running %s") (T.unpack logName))
                                                    "stack"
                                                    (concat [["exec"]
@@ -506,9 +512,9 @@ packageRun' removeGhcjsFlagIfPresent package =
                                                    dir
                                                    Nothing
                                                    (logOutput logLaunch)
-                        else do
+                        CabalTool -> do
                             env <- packageEnv package
-                            projectRoot <- liftIO $ findProjectRoot dir
+                            let projectRoot = pjDir project
                             case exe ++ executables pd of
                                 [] -> return ()
                                 (Executable name _ _ : _) -> do
@@ -536,7 +542,7 @@ packageRun' removeGhcjsFlagIfPresent package =
 
 -- | Is the given executable the active one?
 isActiveExe :: Text -> Executable -> Bool
-isActiveExe selected (Executable name _ _) = selected == T.pack name
+isActiveExe selected (Executable name _ _) = selected == "exe:" <> T.pack name
 
 -- | get executable to run
 --   no exe activated, take first one
@@ -546,10 +552,13 @@ exeToRun Nothing _ = []
 exeToRun (Just selected) exes = take 1 $ filter (isActiveExe selected) exes
 
 packageRunJavaScript :: PackageAction
-packageRunJavaScript = ask >>= (interruptSaveAndRun . packageRunJavaScript' True)
+packageRunJavaScript = do
+    project <- lift ask
+    package <- ask
+    interruptSaveAndRun $ packageRunJavaScript' True (project, package)
 
-packageRunJavaScript' :: Bool -> IDEPackage -> IDEAction
-packageRunJavaScript' addFlagIfMissing package =
+packageRunJavaScript' :: Bool -> (Project, IDEPackage) -> IDEAction
+packageRunJavaScript' addFlagIfMissing (project, package) =
     if addFlagIfMissing && ("--ghcjs" `notElem` ipdConfigFlags package)
         then do
             window <- liftIDE getMainWindow
@@ -569,10 +578,10 @@ packageRunJavaScript' addFlagIfMissing package =
                     let packWithNewFlags = package { ipdConfigFlags = "--ghcjs" : ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
-                    packageConfig' packWithNewFlags $ \ ok -> when ok $
-                        packageRunJavaScript' False packWithNewFlags
+                    packageConfig' (project, packWithNewFlags) $ \ ok -> when ok $
+                        packageRunJavaScript' False (project, packWithNewFlags)
                 _  -> return ()
-        else liftIDE $ buildPackage False False True package $ \ ok -> when ok $ liftIDE $ catchIDE (do
+        else liftIDE $ buildPackage False False True (project, package) $ \ ok -> when ok $ liftIDE $ catchIDE (do
                 ideR        <- ask
                 maybeDebug   <- readIDE debugState
                 pd <- liftIO $ fmap flattenPackageDescription
@@ -583,7 +592,7 @@ packageRunJavaScript' addFlagIfMissing package =
                     logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
                 (logLaunch,logName) <- buildLogLaunchByName logName
                 let dir = ipdPackageDir package
-                projectRoot <- liftIO $ findProjectRoot dir
+                    projectRoot = pjDir project
                 prefs <- readIDE prefs
                 case exe ++ executables pd of
                     (Executable name _ _ : _) -> liftIDE $ do
@@ -601,11 +610,12 @@ packageRunJavaScript' addFlagIfMissing package =
 
 packageTest :: PackageAction
 packageTest = do
+    project <- lift ask
     package <- ask
-    interruptSaveAndRun $ packageTest' False True package True (\ _ -> return ())
+    interruptSaveAndRun $ packageTest' False True (project, package) (\ _ -> return ())
 
-packageTest' :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation =
+packageTest' :: Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageTest' backgroundBuild jumpToWarnings (project, package) continuation =
     if "--enable-tests" `elem` ipdConfigFlags package
         then do
             removeTestLogRefs (ipdPackageDir package)
@@ -617,12 +627,12 @@ packageTest' backgroundBuild jumpToWarnings package shallConfigure continuation 
     runTests :: [TestSuite] -> IDEAction
     runTests [] = continuation True
     runTests (test:rest) =
-        packageRunComponent (CTest test) backgroundBuild jumpToWarnings package shallConfigure (\ok ->
+        packageRunComponent (CTest test) backgroundBuild jumpToWarnings (project, package) (\ok ->
             when ok $ runTests rest)
 
-packageRunComponent :: Component -> Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-packageRunComponent (CLib _) _ _ _ _ _ = error "packageRunComponent"
-packageRunComponent component backgroundBuild jumpToWarnings package shallConfigure continuation = do
+packageRunComponent :: Component -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageRunComponent (CLib _) _ _ _ _ = error "packageRunComponent"
+packageRunComponent component backgroundBuild jumpToWarnings (project, package) continuation = do
     let name = case component of
                     CLib _ -> error "packageRunComponent"
                     CExe exe -> exeName exe
@@ -634,12 +644,11 @@ packageRunComponent component backgroundBuild jumpToWarnings package shallConfig
                     CTest test -> "test"
                     CBench bench -> "bench"
         dir = ipdPackageDir package
-    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
     catchIDE (do
         prefs <- readIDE prefs
-        projectRoot <- liftIO $ findProjectRoot dir
+        let projectRoot = pjDir project
         ghcVersion <- liftIO getDefaultGhcVersion
         packageDBs <- liftIO $ getPackageDBs' ghcVersion dir
         let pkgId = packageIdentifierToString $ ipdPackageId package
@@ -647,39 +656,37 @@ packageRunComponent component backgroundBuild jumpToWarnings package shallConfig
             exePath = projectRoot </> "dist-newstyle/build"
                         </> T.unpack pkgId
                         </> "build" </> name </> name
-            cmd  = if useStack then "stack" else exePath
-            args = if useStack then [command, pkgName <> ":" <> T.pack name] else []
-        mbEnv <- if useStack
-            then return Nothing
-            else do
+            cmd  = case pjTool project of
+                        StackTool -> "stack"
+                        CabalTool -> exePath
+            args = case pjTool project of
+                        StackTool -> [command, pkgName <> ":" <> T.pack name]
+                        CabalTool -> []
+        mbEnv <- case pjTool project of
+            StackTool -> return Nothing
+            CabalTool -> do
                 env <- packageEnv package
                 return . Just $ ("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] packageDBs) : env
         runExternalTool' (__ "Run " <> T.pack name) cmd (args
             ++ ipdBuildFlags package ++ ipdTestFlags package) dir mbEnv $ do
-                (mbLastOutput, isConfigErr, _) <- C.getZipSink $ (,,)
+                (mbLastOutput, _) <- C.getZipSink $ (,)
                     <$> C.ZipSink sinkLast
-                    <*> C.ZipSink isConfigError
-                    <*> (C.ZipSink $ logOutputForBuild package backgroundBuild jumpToWarnings)
+                    <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
                 lift $ do
                     errs <- readIDE errorRefs
-                    if shallConfigure && isConfigErr
-                        then
-                            packageConfig' package (\ b ->
-                                when b $ packageRunComponent component backgroundBuild jumpToWarnings package shallConfigure continuation)
-                        else
-                            when (mbLastOutput == Just (ToolExit ExitSuccess)) $
-                                continuation True)
+                    when (mbLastOutput == Just (ToolExit ExitSuccess)) $ continuation True)
         (\(e :: SomeException) -> print e)
 
 -- | Run benchmarks as foreground action for current package
 packageBench :: PackageAction
 packageBench = do
+    project <- lift ask
     package <- ask
-    interruptSaveAndRun $ packageBench' False True package True (\ _ -> return ())
+    interruptSaveAndRun $ packageBench' False True (project, package) (\ _ -> return ())
 
 -- | Run benchmarks
-packageBench' :: Bool -> Bool -> IDEPackage -> Bool -> (Bool -> IDEAction) -> IDEAction
-packageBench' backgroundBuild jumpToWarnings package shallConfigure continuation =
+packageBench' :: Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageBench' backgroundBuild jumpToWarnings (project, package) continuation =
     if "--enable-benchmarks" `elem` ipdConfigFlags package
         then do
             pd <- liftIO $ fmap flattenPackageDescription
@@ -690,7 +697,7 @@ packageBench' backgroundBuild jumpToWarnings package shallConfigure continuation
     runBenchs :: [Benchmark] -> IDEAction
     runBenchs [] = continuation True
     runBenchs (bench:rest) =
-        packageRunComponent (CBench bench) backgroundBuild jumpToWarnings package shallConfigure (\ok ->
+        packageRunComponent (CBench bench) backgroundBuild jumpToWarnings (project, package) (\ok ->
             when ok $ runBenchs rest)
 
 packageSdist :: PackageAction
@@ -710,20 +717,20 @@ packageSdist = do
 -- | Open generated documentation for package
 packageOpenDoc :: PackageAction
 packageOpenDoc = do
+    project <- lift ask
     package <- ask
     let dir = ipdPackageDir package
         pkgId = packageIdentifierToString $ ipdPackageId package
-    projectRoot <- liftIO $ findProjectRoot dir
-    useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-    distDir <- if useStack
-                        then do
+        projectRoot = pjDir project
+    distDir <- case pjTool project of
+                        StackTool -> do
                             --ask stack where its dist directory is
                             mvar <- liftIO newEmptyMVar
                             runExternalTool' "" "stack" ["path"] dir Nothing $ do
                                 output <- CL.consume
                                 liftIO . putMVar mvar $ head $ mapMaybe getDistOutput output
                             liftIO $ takeMVar mvar
-                        else return $ projectRoot </> "dist-newstyle/build" </> T.unpack pkgId
+                        CabalTool -> return $ projectRoot </> "dist-newstyle/build" </> T.unpack pkgId
     liftIDE $ do
         prefs   <- readIDE prefs
         let path = dir </> distDir
@@ -942,7 +949,8 @@ interactiveFlags prefs =
 
 debugStart :: PackageAction
 debugStart = do
-    package   <- ask
+    project <- lift ask
+    package <- ask
     liftIDE $ catchIDE (do
         ideRef     <- ask
         prefs'     <- readIDE prefs
@@ -953,7 +961,7 @@ debugStart = do
                     name = ipdPackageName package
                 mbExe <- readIDE activeExe
                 ghci <- reifyIDE $ \ideR -> newGhci dir name mbExe (interactiveFlags prefs')
-                    $ reflectIDEI (void (logOutputForBuild package True False)) ideR
+                    $ reflectIDEI (void (logOutputForBuild project package True False)) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                 setDebugToggled True
@@ -974,7 +982,7 @@ debugStart = do
                             -- Lets build to make sure the binaries are up to date
                             mbPackage   <- readIDE activePack
                             case mbPackage of
-                                Just package -> runCabalBuild True False False package True (\ _ -> return ())
+                                Just package -> runCabalBuild True False False (project, package) (\ _ -> return ())
                                 Nothing -> return ()
                 return ()
             _ -> do
@@ -1066,13 +1074,10 @@ idePackageFromPath' ipdCabalFile = do
                 ipdSrcDirs          = case nub $ concatMap hsSourceDirs (allBuildInfo' packageD) of
                                             [] -> [".","src"]
                                             l -> l
-                ipdExes             = [ T.pack $ exeName e | e <- executables packageD
-                                          , buildable (buildInfo e) ]
+                ipdExes             = [ T.pack $ exeName e | e <- executables packageD ]
                 ipdExtensions       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
-                ipdTests            = [ T.pack $ testName t | t <- testSuites packageD
-                                          , buildable (testBuildInfo t) ]
-                ipdBenchmarks       = [ T.pack $ benchmarkName b | b <- benchmarks packageD
-                                          , buildable (benchmarkBuildInfo b) ]
+                ipdTests            = [ T.pack $ testName t | t <- testSuites packageD ]
+                ipdBenchmarks       = [ T.pack $ benchmarkName b | b <- benchmarks packageD ]
                 ipdPackageId        = package packageD
                 ipdDepends          = buildDepends packageD
                 ipdHasLibs          = hasLibs packageD
@@ -1097,32 +1102,54 @@ idePackageFromPath' ipdCabalFile = do
             return (Just pack)
 
 extractStackPackageList :: Text -> [String]
-extractStackPackageList = filter (/= ".") .
+extractStackPackageList = (\x -> if null x then ["."] else x) .
                           map (stripQuotes . T.unpack . (\x -> fromMaybe x $ T.stripPrefix "location: " x)) .
-                          mapMaybe (T.stripPrefix "- ") .
-                          takeWhile ("- " `T.isPrefixOf`) .
+                          filterSimple .
+                          filter (not . T.null) .
+                          map (T.reverse . T.dropWhile isSpace . T.reverse) .
                           drop 1 .
                           dropWhile (/= "packages:") .
+                          map (T.pack . stripStackComments . T.unpack) .
                           T.lines
   where
     stripQuotes ('\'':rest) | take 1 (reverse rest) == "\'" = init rest
     stripQuotes x = x
 
+    stripStackComments :: String -> String
+    stripStackComments "" = ""
+    stripStackComments ('#':_) = ""
+    stripStackComments (x:xs) = x:stripStackComments xs
 
-idePackageFromPath :: C.Sink ToolOutput IDEM () -> FilePath -> IDEM (Maybe IDEPackage)
-idePackageFromPath log filePath = do
-    mbRootPackage <- idePackageFromPath' filePath
-    case mbRootPackage of
-        Nothing -> return Nothing
-        Just rootPackage -> do
+    filterSimple [] = []
+    filterSimple (x:xs) = let indent = T.takeWhile (==' ') x in
+                          mapMaybe (T.stripPrefix (indent <> "- ")) $
+                          takeWhile (\l -> (indent <> "- ") `T.isPrefixOf` l || (indent <> " ") `T.isPrefixOf` l) (x:xs)
+
+extractCabalPackageList :: Text -> [String]
+extractCabalPackageList = map (T.unpack . T.dropWhile (==' ')) .
+                          takeWhile (" " `T.isPrefixOf`) .
+                          drop 1 .
+                          dropWhile (/= "packages:") .
+                          filter (not . T.null) .
+                          map (T.pack . stripCabalComments . T.unpack) .
+                          T.lines
+  where
+    stripCabalComments :: String -> String
+    stripCabalComments "" = ""
+    stripCabalComments ('-':'-':_) = ""
+    stripCabalComments (x:xs) = x:stripCabalComments xs
+
+ideProjectFromPath :: FilePath -> IDEM (Maybe Project)
+ideProjectFromPath filePath = do
+    let toolInfo = case takeExtension filePath of
+                        ".project" -> Just (CabalTool, extractCabalPackageList)
+                        ".yaml" -> Just (StackTool, extractStackPackageList)
+                        _ -> Nothing
+    case toolInfo of
+        Just (tool, extractPackageList) -> do
             let dir = takeDirectory filePath
-            useStack <- liftIO . doesFileExist $ dir </> "stack.yaml"
-            paths <- liftIO $
-                if useStack
-                    then map (dir </>) . extractStackPackageList <$> T.readFile (dir </> "stack.yaml")
-                    else return []
-
-            sandboxSources <- catMaybes <$> forM paths (\path -> do
+            paths <- liftIO $ map (dir </>) . extractPackageList <$> T.readFile filePath
+            packages <- catMaybes <$> forM paths (\path -> do
                 exists <- liftIO (doesDirectoryExist path)
                 if exists
                     then do
@@ -1130,25 +1157,26 @@ idePackageFromPath log filePath = do
                         contents <- liftIO $ getDirectoryContents cpath
                         let mbCabalFile = find ((== ".cabal") . takeExtension) contents
                         when (isNothing mbCabalFile) $
-                            ideMessage Normal ("Could not find cabal file of the add-source dependency at " <> T.pack cpath)
-                        return (fmap (path </>) mbCabalFile)
+                            ideMessage Normal ("Could not find cabal file for " <> T.pack cpath)
+                        return (fmap (cpath </>) mbCabalFile)
                     else do
-                        ideMessage Normal ("Path of add-source dependency does not exist: " <> T.pack path)
+                        ideMessage Normal ("Path does not exist: " <> T.pack path)
                         return Nothing)
-            s <- liftM catMaybes . mapM idePackageFromPath' $ nub sandboxSources
-            return . Just $ rootPackage {ipdSandboxSources = s}
+            packages <- fmap catMaybes . mapM idePackageFromPath' $ nub packages
+            return . Just $ Project { pjTool = tool, pjFile = filePath, pjPackages = packages }
+        Nothing -> return Nothing
 
-refreshPackage :: C.Sink ToolOutput IDEM () -> PackageM (Maybe IDEPackage)
-refreshPackage log = do
-    package <- ask
-    liftIDE $ do
-        mbUpdatedPack <- idePackageFromPath log (ipdCabalFile package)
-        case mbUpdatedPack of
-            Just updatedPack -> do
-                changePackage updatedPack
-                triggerEventIDE $ WorkspaceChanged False True
-                return mbUpdatedPack
-            Nothing -> do
-                postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
-                return Nothing
+--refreshPackage :: C.Sink ToolOutput IDEM () -> PackageM (Maybe IDEPackage)
+--refreshPackage log = do
+--    package <- ask
+--    liftIDE $ do
+--        mbUpdatedPack <- idePackageFromPath log (ipdCabalFile package)
+--        case mbUpdatedPack of
+--            Just updatedPack -> do
+--                changePackage updatedPack
+--                triggerEventIDE $ WorkspaceChanged False True
+--                return mbUpdatedPack
+--            Nothing -> do
+--                postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
+--                return Nothing
 

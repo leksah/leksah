@@ -155,6 +155,7 @@ import GI.Gtk.Enums (Orientation(..))
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 import IDE.LPaste
+import GI.Gio.Objects.Application (applicationQuit)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -171,6 +172,8 @@ mkActions =
     ,AD "FileNew" (__ "_New") Nothing Nothing (return ()) [] False
     ,AD "FileNewWorkspace" (__ "_Workspace...") Nothing Nothing
         (workspaceNew >> showWorkspacePane) [] False
+    ,AD "FileNewProject" (__ "Pro_ject...") Nothing Nothing
+        (showWorkspacePane >> workspaceTry projectNew) [] False
     ,AD "FileNewPackage" (__ "_Package...") Nothing Nothing
         (showWorkspacePane >> workspaceTry workspacePackageNew) [] False
     ,AD "FileNewModule" (__ "_Module...") Nothing (Just "gtk-new")
@@ -180,8 +183,10 @@ mkActions =
     ,AD "FileOpen" (__ "_Open") Nothing Nothing (return ()) [] False
     ,AD "FileOpenWorkspace" (__ "_Workspace...") Nothing Nothing
         (workspaceOpen >> showWorkspacePane) [] False
+    ,AD "FileOpenProject" (__ "Pro_ject...") Nothing Nothing
+        (showWorkspacePane >> workspaceTry projectOpen) [] False
     ,AD "FileOpenPackage" (__ "_Package...") Nothing Nothing
-        (showWorkspacePane >> workspaceTry workspaceAddPackage) [] False
+        (showWorkspacePane >> projectTry projectAddPackage) [] False
     ,AD "FileOpenFile" (__ "_File...") Nothing (Just "gtk-open")
         fileOpen [] False
     ,AD "FileRecentFiles" (__ "Recent Files") Nothing Nothing (return ()) [] False
@@ -250,9 +255,9 @@ mkActions =
 
     ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
     ,AD "WorkspaceAddPackage" (__ "_Add Package...") Nothing Nothing
-        (showWorkspacePane >> workspaceTry workspaceAddPackage) [] False
+        (showWorkspacePane >> projectTry projectAddPackage) [] False
     ,AD "WorkspaceAddPackageCopy" (__ "_Add Copy Of Installed Package...") Nothing Nothing
-    (showWorkspacePane >> workspaceTry workspacePackageClone) [] False
+        (showWorkspacePane >> projectTry projectPackageClone) [] False
     ,AD "CleanWorkspace" (__ "Cl_ean All packages") (Just (__ "Cleans all packages in the workspace")) (Just "ide_clean")
         (workspaceTry workspaceClean) [] False
     ,AD "MakeWorkspace" (__ "_Build All packages") (Just (__ "Builds all of the packages in the workspace")) (Just "ide_configure")
@@ -685,7 +690,8 @@ canQuit = do
 quit :: IDEAction
 quit = do
     can <- canQuit
-    when can $ liftIO mainQuit
+    app <- readIDE application
+    when can $ applicationQuit app
 
 --
 -- | Show the about dialog

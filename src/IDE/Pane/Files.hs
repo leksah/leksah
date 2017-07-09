@@ -31,10 +31,13 @@ import Data.Typeable (Typeable)
 import IDE.Core.State
        (catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
         wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
-        reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
+        reifyIDE, IDEM, IDEPackage)
 import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
 import Control.Applicative ((<$>))
-import System.FilePath ((</>), takeFileName, dropFileName)
+import System.FilePath
+       ((</>), takeFileName, dropFileName,
+        addTrailingPathSeparator, takeDirectory, takeExtension,
+        makeRelative, splitDirectories)
 import Distribution.Package (PackageIdentifier(..))
 import System.Directory
        (removeDirectoryRecursive, removeDirectory, createDirectory,
@@ -59,13 +62,10 @@ import IDE.Core.Types
        (ipdLib, WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
         runPackage, runWorkspace, PackageAction, PackageM, IDEPackage(..),
         IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
-import System.FilePath
-       (addTrailingPathSeparator, takeDirectory, takeExtension,
-       makeRelative, splitDirectories)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Workspaces
-       (makePackage, workspaceAddPackage', workspaceRemovePackage,
-        workspaceActivatePackage, workspaceTry, workspaceTryQuiet,
+       (makePackage, projectAddPackage', projectRemovePackage,
+        workspaceTry, workspaceTryQuiet,
         packageTry)
 import Data.List
        (isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)

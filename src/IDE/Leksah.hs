@@ -55,8 +55,8 @@ import Graphics.UI.Editor.Simple
        (stringEditor, enumEditor, textEditor)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces
-       (workspaceAddPackage', workspaceTryQuiet, workspaceNewHere,
-        workspaceOpenThis, backgroundMake)
+       (projectTryQuiet, projectAddPackage', workspaceTryQuiet,
+        workspaceNewHere, workspaceOpenThis, backgroundMake, projectOpenThis)
 import IDE.Utils.GUIUtils
 import Network (withSocketsDo)
 import Control.Exception
@@ -75,7 +75,7 @@ import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Data.Conduit (($$))
-import Control.Monad (forM_, void, when, unless, liftM)
+import Control.Monad (forever, forM_, void, when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
@@ -83,11 +83,12 @@ import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Sequence as Seq (empty)
 import qualified GI.Gtk.Functions as Gtk (main, init)
-import GI.GLib.Functions (idleAdd, timeoutAdd)
-import GI.GLib.Constants (pattern PRIORITY_DEFAULT, pattern PRIORITY_LOW)
+import GI.GLib.Functions (idleAdd, timeoutAdd, timeoutAddSeconds)
+import GI.GLib.Constants
+       (pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, pattern PRIORITY_LOW)
 import GI.Gdk.Objects.Screen (screenGetDefault)
 import GI.Gtk.Objects.CssProvider
-       (cssProviderLoadFromData, cssProviderNew)
+       (CssProvider(..), cssProviderLoadFromData, cssProviderNew)
 import GI.Gtk.Objects.StyleContext
        (styleContextAddProviderForScreen)
 import qualified Data.ByteString.Char8 as B (unlines)
@@ -95,7 +96,7 @@ import GI.GLib.Structs.Source (sourceRemove)
 import GI.Gtk.Functions
        (mainIterationDo, eventsPending, mainIteration)
 import GI.Gtk.Objects.Window
-       (setWindowDeletable, windowSetIconFromFile, IsWindow,
+       (setWindowDeletable, windowSetIconFromFile, IsWindow, toWindow,
         setWindowWindowPosition, setWindowTitle, windowSetDefaultSize, windowNew)
 import GI.Gtk.Objects.Widget
        (widgetDestroy, widgetHide, widgetShowAll, widgetGetWindow,
@@ -117,7 +118,13 @@ import GI.Gtk.Objects.Adjustment (noAdjustment)
 import Control.Monad.Reader (MonadReader(..))
 import GI.Gtk.Objects.ProgressBar
        (progressBarSetFraction, progressBarSetText, progressBarNew)
-import GI.Gtk.Objects.CssProvider (CssProvider(..))
+import GI.Gtk
+       (containerAdd, applicationNew, Application, applicationWindowNew)
+import GI.Gio (applicationRun, onApplicationActivate)
+import GI.GLib.Structs.MainContext
+       (mainContextIteration, mainContextDefault)
+import System.FSNotify
+       (watchTree, watchDir, withManager, WatchManager)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -181,7 +188,7 @@ realMain yiConfig =
     args            <-  getArgs
 
     (flags,files)       <-  ideOpts $ map T.pack args
-    isFirstStart    <-  liftM not $ hasSavedConfigFile standardPreferencesFilename
+    isFirstStart    <-  not <$> hasSavedConfigFile standardPreferencesFilename
     let sessions      =   mapMaybe (\case
                                         SessionN s -> Just s
                                         _          -> Nothing) flags
@@ -246,126 +253,58 @@ handleExceptions inner =
 
 startGUI :: Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
 startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
-  Yi.start yiConfig $ \yiControl -> do
-    st       <- Gtk.init Nothing
-    timeout  <- if rtsSupportsBoundThreads
-                    then do
-                        setNumCapabilities 2
-                        sysMessage Normal "Linked with -threaded"
-                        return Nothing
-                    else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
-    screenGetDefault >>= \case
-        Nothing -> return ()
-        Just screen -> do
-            provider <- cssProviderNew
-            cssProviderLoadFromData provider $
-                B.unlines [ ".window-frame,"
-                          , ".window-frame:backdrop {"
-                          , "  box-shadow: none;"
-                          , "  margin: 0;}"
-                          , "#errorLabel {"
-                          , "  padding: 10px;"
-                          , "  background: #F2DEDE;"
-                          , "  color: #A94442;"
-                          , "  border: 1px solid #EBCCD1;"
-                          , "  border-radius: 5px;}"
-                          ]
-            styleContextAddProviderForScreen screen provider 600
-    dataDir       <- getDataDir
-    mbStartupPrefs <- if not isFirstStart
-                                then return $ Just iprefs
-                                else do
-                                    firstStartOK <- firstStart iprefs
-                                    if not firstStartOK
-                                        then return Nothing
-                                        else do
-                                            prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-                                            prefs <- readPrefs prefsPath
-                                            return $ Just prefs
-    maybe (return ()) (void . sourceRemove) timeout
-    case mbStartupPrefs of
-        Nothing           -> return ()
-        Just startupPrefs ->
-            void . idleAdd PRIORITY_DEFAULT $ do
-                startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs
+  withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
+    app <- applicationNew (Just "org.leksah.leksah") []
+    onApplicationActivate app $ do
+        debugM "leksah" "Application Activate"
+        timeout  <- if rtsSupportsBoundThreads
+                        then do
+                            setNumCapabilities 2
+                            sysMessage Normal "Linked with -threaded"
+                            return Nothing
+                        else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
+        screenGetDefault >>= \case
+            Nothing -> return ()
+            Just screen -> do
+                debugM "leksah" "Add CSS"
+                provider <- cssProviderNew
+                cssProviderLoadFromData provider $
+                    B.unlines [ ".window-frame,"
+                              , ".window-frame:backdrop {"
+                              , "  box-shadow: none;"
+                              , "  margin: 0;}"
+                              , "#errorLabel {"
+                              , "  padding: 10px;"
+                              , "  background: #F2DEDE;"
+                              , "  color: #A94442;"
+                              , "  border: 1px solid #EBCCD1;"
+                              , "  border-radius: 5px;}"
+                              ]
+                styleContextAddProviderForScreen screen provider 600
+        dataDir       <- getDataDir
+        mbStartupPrefs <- if not isFirstStart
+                                    then return $ Just iprefs
+                                    else do
+                                        firstStartOK <- firstStart iprefs
+                                        if not firstStartOK
+                                            then return Nothing
+                                            else do
+                                                prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
+                                                prefs <- readPrefs prefsPath
+                                                return $ Just prefs
+        maybe (return ()) (void . sourceRemove) timeout
+        case mbStartupPrefs of
+            Nothing           -> return ()
+            Just startupPrefs ->
+                startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs
                                 startupPrefs isFirstStart
+    debugM "leksah" "starting applicationRun"
+    applicationRun app Nothing
+    debugM "leksah" "finished applicationRun"
 
-                return False
-    debugM "leksah" "starting mainGUI"
-    Gtk.main
-    debugM "leksah" "finished mainGUI"
-
-mainLoop :: IO () -> IO ()
-mainLoop = mainLoopSingleThread
-
-mainLoopThreaded :: IO () -> IO ()
-mainLoopThreaded onIdle = loop
-    where
-        loop = do
-            quit <- loopTillIdle
-            unless quit $ do
-                    active <- newEmptyMVar
-                    mvarSentIdleMessage <- newEmptyMVar
-                    idleThread <- forkIO $ do
-                        threadDelay 200000
-                        isActive <- isJust <$> tryTakeMVar active
-                        unless isActive $ do
-                            putMVar mvarSentIdleMessage ()
-                            void . idleAdd PRIORITY_DEFAULT $ onIdle >> return False
-                    quit <- mainIteration
-                    putMVar active ()
-                    unless quit $ do
-                            -- If an idle message was sent then wait again
-                            sentIdleMessage <- isJust <$> tryTakeMVar mvarSentIdleMessage
-                            quit <- if sentIdleMessage
-                                then mainIteration
-                                else return False
-                            unless quit loop
-        loopTillIdle =
-            eventsPending >>= \case
-                False -> return False
-                True  -> do
-                    quit <- loopn 3
-                    if quit
-                        then return True
-                        else loopTillIdle
-
-mainLoopSingleThread :: IO () -> IO ()
-mainLoopSingleThread onIdle = eventsPending >>= loop False 50
-  where
-    loop :: Bool -> Int -> Bool -> IO ()
-    loop False delay False | delay > 2000 = onIdle >> loop True delay False
-    loop isIdle delay n = do
-        quit <- if n
-                    then do
-                        timeout <- timeoutAdd PRIORITY_LOW 10 $ yield >> return True
-                        quit <- loopn 3
-                        sourceRemove timeout
-                        return quit
-                    else
-                        loopn 3
-        unless quit $ do
-                yield
-                pending <- eventsPending
-                if pending
-                    then loop False 50 pending
-                    else do
-                        threadDelay delay
-                        eventsPending >>= loop isIdle (if n
-                                                            then 50
-                                                            else min (delay+delay) 50000)
-
-loopn :: Int -> IO Bool
-loopn 0 = return False
-loopn n = do
-    quit <- mainIterationDo False
-    if quit
-        then return True
-        else loopn (n - 1)
-
-startMainWindow :: Yi.Control -> FilePath -> Maybe FilePath -> [FilePath] ->
+startMainWindow :: Application -> Yi.Control -> WatchManager -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
-startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
+startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
     timeout  <- if rtsSupportsBoundThreads
                     then return Nothing
                     else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
@@ -384,7 +323,7 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
     let accelActions = setKeymap (keyMap :: KeymapI) mkActions
     specialKeys <-  buildSpecialKeys keyMap accelActions
 
-    win         <-  windowNew WindowTypeToplevel
+    win         <-  toWindow =<< applicationWindowNew app
     widgetSetName win "Leksah Main Window"
     let fs = FrameState
             {   windows       =   [win]
@@ -396,14 +335,17 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             ,   panePathFromNB =  Map.empty
             }
 
+    triggerBuild <- newEmptyMVar
     let ide = IDE
-          {   frameState        =   fs
+          {   application       =   app
+          ,   frameState        =   fs
           ,   recentPanes       =   []
           ,   specialKeys       =   specialKeys
           ,   specialKey        =   Nothing
           ,   candy             =   candySt
           ,   prefs             =   startupPrefs
           ,   workspace         =   Nothing
+          ,   activeProject     =   Nothing
           ,   activePack        =   Nothing
           ,   activeExe         =   Nothing
           ,   bufferProjCache   =   Map.empty
@@ -432,15 +374,17 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
           ,   logLaunches       =   Map.empty
           ,   autoCommand       =   return ()
           ,   autoURI           =   Nothing
+          ,   triggerBuild      =   triggerBuild
+          ,   stopWorkspaceNotify = return ()
+          ,   fsnotify          =   fsnotify
     }
     ideR             <-  newIORef ide
     (`reflectIDE` ideR) $ do
-        menuDescription' <- liftIO $ menuDescription
+        menuDescription' <- liftIO menuDescription
         makeMenu uiManager accelActions menuDescription'
         nb               <-  newNotebook []
         afterNotebookSwitchPage nb (\_ i -> reflectIDE (handleNotebookSwitch nb (fromIntegral i)) ideR)
         widgetSetName nb "root"
-        onIDE onWidgetDeleteEvent win $ liftIDE quit >> return True
         instrumentWindow win startupPrefs nb
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
         setMakeDocs               (makeDocs        startupPrefs)
@@ -478,12 +422,14 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
         welcomeExists <- liftIO $ doesDirectoryExist welcomePath
         unless welcomeExists $ do
             let welcomeSource = dataDir</>"data"</>"leksah-welcome"
+                welcomeProject = welcomePath</>"cabal.project"
                 welcomeCabal = welcomePath</>"leksah-welcome.cabal"
                 welcomeMain  = welcomePath</>"src"</>"Main.hs"
             liftIO $ do
                 createDirectoryIfMissing True $ welcomePath</>"src"
                 createDirectoryIfMissing True $ welcomePath</>"test"
                 copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
+                copyFile (welcomeSource</>"cabal.project")        welcomeProject
                 copyFile (welcomeSource</>"leksah-welcome.cabal") welcomeCabal
                 copyFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
                 copyFile (welcomeSource</>"src"</>"Main.hs")      welcomeMain
@@ -493,21 +439,28 @@ startMainWindow yiControl sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirst
             if defaultExists
                 then workspaceOpenThis False defaultWorkspace
                 else workspaceNewHere defaultWorkspace
-            workspaceTryQuiet $ void (workspaceAddPackage' welcomeCabal)
+            workspaceTryQuiet $ projectOpenThis welcomeProject
+            projectTryQuiet $ void (projectAddPackage' welcomeCabal)
             fileOpenThis welcomeMain
         initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))
-        maybe (return ()) (void . sourceRemove) timeout
-        postAsyncIDE . liftIO . mainLoop . (`reflectIDE` ideR) $ do
-            currentPrefs <- readIDE prefs
-            when (backgroundBuild currentPrefs) backgroundMake
---        timeoutAdd PRIORITY_DEFAULT_IDLE 1000 (do
---            reflectIDE (do
---                currentPrefs <- readIDE prefs
---                when (backgroundBuild currentPrefs) $ backgroundMake) ideR
---            return True)
+        mapM_ sourceRemove timeout
+        liftIO . forkIO . forever $ do
+            takeMVar triggerBuild
+            processing <- newEmptyMVar
+            reflectIDE (postAsyncIDE' PRIORITY_LOW $
+                eventsPending >>= \case
+                    True -> do
+                        liftIO $ tryPutMVar triggerBuild ()
+                        liftIO $ putMVar processing ()
+                    False -> do
+                        liftIO $ tryTakeMVar triggerBuild
+                        liftIO $ putMVar processing ()
+                        currentPrefs <- readIDE prefs
+                        when (backgroundBuild currentPrefs) backgroundMake) ideR
+            takeMVar processing
+
         triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])
         return ()
---        mainGUI
 
 fDescription :: FilePath -> FieldDescription Prefs
 fDescription configPath = VFD emptyParams [
@@ -557,7 +510,7 @@ firstStart prefs = do
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
     boxPackStart' vb label PackNatural 7
     sw <- scrolledWindowNew noAdjustment noAdjustment
-    scrolledWindowAddWithViewport sw widget
+    containerAdd sw widget
     scrolledWindowSetPolicy sw PolicyTypeNever PolicyTypeAutomatic
     boxPackStart' vb sw PackGrow 7
     windowSetDefaultSize dialog 800 630

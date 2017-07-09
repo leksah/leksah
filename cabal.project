@@ -2,7 +2,6 @@ flags: -overloaded-methods -overloaded-signals -overloaded-properties
 
 packages:
  ./
- vendor/haddock/haddock-api/
  vendor/leksah-server/
  vendor/ltk/
  vendor/yi/

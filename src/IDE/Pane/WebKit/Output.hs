@@ -96,7 +96,7 @@ data IDEOutput = IDEOutput {
   , uriEntry      :: Entry
   , webView       :: WebView
   , alwaysHtmlRef :: IORef Bool
-  , outState      :: IORef OutputState
+--  , outState      :: IORef OutputState
 } deriving Typeable
 
 data OutputState = OutputState {

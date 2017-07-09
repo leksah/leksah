@@ -148,7 +148,7 @@ chooseDir window prompt mbFolder = do
     fileChooserSetAction dialog FileChooserActionSelectFolder
     dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
     dialogAddButton' dialog "gtk-open" ResponseTypeAccept
-    when (isJust mbFolder) . void $ fileChooserSetCurrentFolder dialog (fromJust mbFolder)
+    mapM_ (fileChooserSetCurrentFolder dialog) mbFolder
     widgetShow dialog
     response <- dialogRun' dialog
     case response of
@@ -177,8 +177,7 @@ chooseFile window prompt mbFolder filters = do
     fileChooserSetAction dialog FileChooserActionOpen
     dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
     dialogAddButton' dialog "gtk-open" ResponseTypeAccept
-    forM_ mbFolder $ \folder ->
-        void (fileChooserSetCurrentFolder dialog folder)
+    mapM_ (fileChooserSetCurrentFolder dialog) mbFolder
     forM_ filters (addFilter dialog)
     widgetShow dialog
     response <- dialogRun' dialog
@@ -210,7 +209,7 @@ chooseSaveFile window prompt mbFolder = do
     fileChooserSetAction dialog FileChooserActionSave
     dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
     dialogAddButton' dialog "gtk-open" ResponseTypeAccept
-    when (isJust mbFolder) $ void (fileChooserSetCurrentFolder dialog (fromJust mbFolder))
+    mapM_ (fileChooserSetCurrentFolder dialog) mbFolder
     widgetShow dialog
     res <- dialogRun' dialog
     case res of

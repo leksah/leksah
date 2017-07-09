@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Workspaces.Writer
@@ -15,6 +16,9 @@
 
 module IDE.Workspaces.Writer (
     writeWorkspace
+    ,readWorkspace
+    ,makePathsAbsolute
+    ,emptyWorkspace
     ,setWorkspace
     ,workspaceDescr
     ,workspaceVersion
@@ -24,11 +28,11 @@ import IDE.Core.Types
 import IDE.Core.State
 import IDE.Package
        (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
-        deactivatePackage, idePackageFromPath)
+        deactivatePackage, ideProjectFromPath)
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
 import Data.Maybe
-import Control.Monad (void, when)
+import Control.Monad (join, void, when)
 import Control.Monad.Trans (liftIO)
 import System.Time (getClockTime)
 import Text.PrinterParser
@@ -49,16 +53,65 @@ import qualified Text.PrettyPrint as  PP (text)
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (pack)
 import Data.Monoid ((<>))
+import System.FSNotify (watchDir, Event(..), watchTree)
+import Control.Monad.Reader (MonadReader(..))
+import Data.Traversable (forM)
+import qualified Data.Map as Map (empty)
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
     timeNow      <- liftIO getClockTime
     let newWs    =  ws {wsSaveTime = T.pack $ show timeNow,
                          wsVersion = workspaceVersion,
-                         wsPackagesFiles = map ipdCabalFile (wsPackages ws)}
+                         wsProjectFiles = map pjFile (wsProjects ws)}
     setWorkspace $ Just newWs
     newWs' <- liftIO $ makePathsRelative newWs
     liftIO $ writeFields (wsFile newWs') (newWs' {wsFile = ""}) workspaceDescr
+
+readWorkspace :: FilePath -> IDEM Workspace
+readWorkspace fp = do
+    liftIO $ debugM "leksah" "readWorkspace"
+    ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
+    ws' <- liftIO $ makePathsAbsolute ws fp
+    projects <- mapM ideProjectFromPath (wsProjectFiles ws')
+    --TODO set package vcs here
+    return ws'{ wsProjects = catMaybes projects}
+
+makePathsAbsolute :: Workspace -> FilePath -> IO Workspace
+makePathsAbsolute ws bp = do
+    wsFile'           <-  myCanonicalizePath bp
+    wsActivePackFile' <-  case wsActivePackFile ws of
+                                Nothing -> return Nothing
+                                Just fp -> do
+                                    fp' <- makeAbsolute (dropFileName wsFile') fp
+                                    return (Just fp')
+    wsProjectFiles'   <-  mapM (makeAbsolute (dropFileName wsFile')) (wsProjectFiles ws)
+    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsProjectFiles = wsProjectFiles'}
+    where
+        makeAbsolute basePath relativePath  =
+            myCanonicalizePath
+               (if isAbsolute relativePath
+                    then relativePath
+                    else basePath </> relativePath)
+
+emptyWorkspace =  Workspace {
+    wsVersion           =   workspaceVersion
+,   wsSaveTime          =   ""
+,   wsName              =   ""
+,   wsFile              =   ""
+,   wsProjects          =   []
+,   wsProjectFiles      =   []
+,   wsActiveProjectFile =   Nothing
+,   wsActivePackFile    =   Nothing
+,   wsActiveExe         =   Nothing
+,   packageVcsConf      =   Map.empty
+}
+
+getProject :: FilePath -> [Project] -> Maybe Project
+getProject fp projects =
+    case filter (\ p -> pjFile p == fp) projects of
+        [p] -> Just p
+        l   -> Nothing
 
 getPackage :: FilePath -> [IDEPackage] -> Maybe IDEPackage
 getPackage fp packages =
@@ -70,26 +123,29 @@ getPackage fp packages =
 -- This needs to be incremented, when the workspace format changes
 --
 workspaceVersion :: Int
-workspaceVersion = 2
+workspaceVersion = 3
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
     liftIO $ debugM "leksah" "setWorkspace"
+    ideR <- ask
     mbOldWs <- readIDE workspace
     modifyIDE_ (\ide -> ide{workspace = mbWs})
     let packFileAndExe =  case mbWs of
                             Nothing -> Nothing
-                            Just ws -> Just (wsActivePackFile ws, wsActiveExe ws)
+                            Just ws -> Just (wsActiveProjectFile ws, wsActivePackFile ws, wsActiveExe ws)
     let oldPackFileAndExe = case mbOldWs of
                             Nothing -> Nothing
-                            Just ws -> Just (wsActivePackFile ws, wsActiveExe ws)
-    let mbPackages =  case mbWs of
-                        Nothing -> Nothing
-                        Just ws -> Just (wsPackages ws)
-    when (packFileAndExe /= oldPackFileAndExe) $
-            case packFileAndExe of
-                (Just (Just p, mbExe))  -> void (activatePackage (Just p) (getPackage p (fromJust mbPackages)) mbExe)
+                            Just ws -> Just (wsActiveProjectFile ws, wsActivePackFile ws, wsActiveExe ws)
+    case (packFileAndExe, mbWs) of
+        (Just (Just pj, mbPackFile, mbExe), Just ws) ->
+            case getProject pj (wsProjects ws) of
+                Just project ->
+                    case (`getPackage` pjPackages project) =<< mbPackFile of
+                        Just package -> void (activatePackage mbPackFile (Just project) (Just package) mbExe)
+                        _ -> void (activatePackage Nothing (Just project) Nothing Nothing)
                 _ -> deactivatePackage
+        _ -> deactivatePackage
     mbPack <- readIDE activePack
     mbExe  <- readIDE activeExe
     let wsStr = case mbWs of
@@ -102,6 +158,20 @@ setWorkspace mbWs = do
                  <> (case mbExe of
                             Nothing  -> ""
                             Just exe -> " " <> exe)
+    case mbWs of
+        Just ws -> do
+            fsn <- readIDE fsnotify
+            newStop <- liftIO $ forM (wsProjects ws) (\project ->
+                watchDir fsn (dropFileName $ pjFile project) (\case
+                        Modified f _ | takeFileName f == takeFileName (pjFile project) -> True
+                        _ -> False) $ \_ ->
+                    (`reflectIDE` ideR) $ postAsyncIDE $ do
+                        ws' <- readWorkspace (wsFile ws)
+                        setWorkspace (Just ws'))
+            oldStop <- readIDE stopWorkspaceNotify
+            modifyIDE_ $ \ide -> ide { stopWorkspaceNotify = sequence_ newStop }
+            liftIO oldStop
+        Nothing -> return ()
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE (WorkspaceChanged True True)
     triggerEventIDE UpdateWorkspaceInfo
@@ -115,9 +185,9 @@ makePathsRelative ws = do
                                         Just fp -> do
                                             nfp <- liftIO $ myCanonicalizePath fp
                                             return (Just (makeRelative (dropFileName wsFile') nfp))
-    wsPackagesFiles'            <-  mapM myCanonicalizePath (wsPackagesFiles ws)
-    let relativePathes          =   map (makeRelative (dropFileName wsFile')) wsPackagesFiles'
-    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsPackagesFiles = relativePathes}
+    wsProjectFiles'            <-  mapM myCanonicalizePath (wsProjectFiles ws)
+    let relativePathes          =   map (makeRelative (dropFileName wsFile')) wsProjectFiles'
+    return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsProjectFiles = relativePathes}
 
 workspaceDescr :: [FieldDescriptionS Workspace]
 workspaceDescr = [
@@ -140,11 +210,17 @@ workspaceDescr = [
             wsName
             (\ b a -> a{wsName = b})
     ,   mkFieldS
-            (paraName <<<- ParaName "File paths of contained packages" $ emptyParams)
+            (paraName <<<- ParaName "File paths of contained projects" $ emptyParams)
             (PP.text . show)
             readParser
-            wsPackagesFiles
-            (\b a -> a{wsPackagesFiles = b})
+            wsProjectFiles
+            (\b a -> a{wsProjectFiles = b})
+    ,   mkFieldS
+            (paraName <<<- ParaName "Maybe file path of an active project" $ emptyParams)
+            (PP.text . show)
+            readParser
+            wsActiveProjectFile
+            (\fp a -> a{wsActiveProjectFile = fp})
     ,   mkFieldS
             (paraName <<<- ParaName "Maybe file path of an active package" $ emptyParams)
             (PP.text . show)

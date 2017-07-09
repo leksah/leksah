@@ -7,9 +7,11 @@
            <menuitem name="_Text File..." action="FileNewTextFile" />
            <separator />
            <menuitem name="_Workspace..." action="FileNewWorkspace" />
+           <menuitem name="Pro_ject..." action="FileNewProject" />
        </menu>
        <menu name="_Open" action="FileOpen">
            <menuitem name="_Workspace..." action="FileOpenWorkspace" />
+           <menuitem name="Pro_ject..." action="FileOpenProject" />
            <menuitem name="_Package..." action="FileOpenPackage" />
            <menuitem name="_File..." action="FileOpenFile" />
        </menu>

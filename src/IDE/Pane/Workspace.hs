@@ -32,17 +32,21 @@ module IDE.Pane.Workspace (
 
 import Prelude hiding (catch)
 import Data.Maybe
-       (fromJust, fromMaybe, maybeToList, listToMaybe, isJust)
+       (fromJust, fromMaybe, maybeToList, listToMaybe, isJust, isNothing)
 import Control.Monad (forM, void, when)
 import Data.Foldable (forM_, for_)
 import Data.Typeable (Typeable)
 import IDE.Core.State
        (onIDE, catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
         wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
-        reifyIDE, IDEM, IDEPackage, ipdSandboxSources)
-import IDE.Pane.SourceBuffer (fileNew, goToSourceDefinition')
+        reifyIDE, IDEM, IDEPackage)
+import IDE.Pane.SourceBuffer
+       (selectSourceBuf, fileNew, goToSourceDefinition')
 import Control.Applicative ((<$>))
-import System.FilePath ((</>), takeFileName, dropFileName)
+import System.FilePath
+       ((</>), takeFileName, dropFileName,
+        addTrailingPathSeparator, takeDirectory, takeExtension,
+        makeRelative, splitDirectories)
 import Distribution.Package (PackageIdentifier(..))
 import System.Directory
        (removeDirectoryRecursive, removeDirectory, createDirectory,
@@ -65,25 +69,23 @@ import qualified Data.Text as T
        (isPrefixOf, words, isSuffixOf, unpack, pack)
 import Data.Monoid ((<>))
 import IDE.Core.Types
-       (ipdLib, WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
-        runPackage, runWorkspace, PackageAction, PackageM, IDEPackage(..),
-        IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
-import System.FilePath
-       (addTrailingPathSeparator, takeDirectory, takeExtension,
-       makeRelative, splitDirectories)
+       (Project(..), ipdLib, WorkspaceAction, Workspace(..),
+        wsAllPackages, WorkspaceM, runPackage, runProject, runWorkspace, PackageAction,
+        PackageM, ProjectAction, ProjectM, IDEPackage(..), IDE(..), Prefs(..), MonadIDE(..),
+        ipdPackageDir)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Workspaces
-       (workspaceOpen, makePackage, workspaceAddPackage',
-        workspaceRemovePackage, workspaceActivatePackage, workspaceTry,
+       (workspaceOpen, makePackage, projectAddPackage', workspaceRemoveProject,
+        projectRemovePackage, workspaceActivatePackage, workspaceTry,
         workspaceTryQuiet, packageTry)
 import Data.List
-       (isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
+       (sortOn, isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
 import Data.Char (toUpper, toLower)
 import System.Log.Logger (debugM)
 import Data.Tree (Forest, Tree(..))
 import IDE.Pane.Modules (addModule)
-import IDE.Pane.PackageEditor (packageEditText)
+import IDE.Pane.PackageEditor (packageEditText, projectEditText)
 import IDE.Package (packageTest, packageRun, packageClean,packageBench)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.GI.Gtk.ModelView.ForestStore
@@ -143,6 +145,7 @@ import GI.Gtk.Objects.LinkButton
        (onLinkButtonActivateLink, linkButtonNewWithLabel, LinkButton(..),
         linkButtonNew)
 import Data.GI.Base.Signals (SignalHandlerId)
+import GI.Gtk (treeViewExpandRow)
 
 
 -- | The data for a single record in the Workspace Pane
@@ -150,9 +153,8 @@ data WorkspaceRecord =
     FileRecord FilePath
   | DirRecord FilePath
               Bool -- Whether it is a source directory
+  | ProjectRecord Project
   | PackageRecord IDEPackage
-  | AddSourcesRecord
-  | AddSourceRecord IDEPackage
   | ComponentsRecord
   | ComponentRecord Text
   | GitRecord
@@ -164,56 +166,67 @@ instance Ord WorkspaceRecord where
     compare (FileRecord _) (DirRecord _ _) = GT
     compare (FileRecord p1) (FileRecord p2) = comparing (map toLower) p1 p2
     compare (DirRecord p1 _) (DirRecord p2 _) = comparing (map toLower) p1 p2
+    compare (ProjectRecord p1) (ProjectRecord p2) = comparing (map toLower . pjFile) p1 p2
     compare (PackageRecord p1) (PackageRecord p2) = comparing (map toLower . ipdPackageDir) p1 p2
-    compare (AddSourceRecord p1) (AddSourceRecord p2) = comparing (map toLower . ipdPackageDir) p1 p2
     compare (ComponentRecord t1) (ComponentRecord t2) = comparing (map toLower . T.unpack) t1 t2
     compare _ _ = LT
 
 
 -- | The markup to show for a record
 toMarkup :: WorkspaceRecord
-         -> IDEPackage
+         -> (Maybe Project, Maybe IDEPackage)
          -> IDEM Text
-toMarkup record pkg = do
+toMarkup record (mbProject, mbPackage) = do
+    mbWorkspace       <- readIDE workspace
+    mbActiveProject   <- readIDE activeProject
     mbActivePackage   <- readIDE activePack
     mbActiveComponent <- readIDE activeExe
 
+    let worspaceRelative =
+            case mbWorkspace of
+                Just ws -> makeRelative (dropFileName (wsFile ws))
+                Nothing -> id
+        projectRelative =
+            case mbProject of
+                Just p -> makeRelative (dropFileName (pjFile p))
+                Nothing -> id
+        activeProject = mbProject == mbActiveProject
+        activePackage = activeProject && mbPackage == mbActivePackage
+
     case record of
+     (ProjectRecord p) -> return $ (if activeProject then bold else id)
+                                (T.pack $ worspaceRelative (pjFile p))
      (PackageRecord p) -> return $
-        let active = Just pkg == mbActivePackage
-            pkgText = (if active then bold else id)
+        let pkgText = (if activePackage then bold else id)
                           (packageIdentifierToString (ipdPackageId p))
             mbLib   = ipdLib p
-            componentText = if active
+            componentText = if activePackage
                                 then maybe (if isJust mbLib then "(library)" else "")
                                            (\comp -> "(" <> comp <> ")") mbActiveComponent
                                 else ""
-            pkgDir = gray . T.pack $ ipdPackageDir p
+            pkgDir = gray . T.pack . projectRelative $ ipdPackageDir p
         in (pkgText <> " " <> componentText <> " " <> pkgDir)
      (FileRecord f) -> return $ T.pack $ takeFileName f
      (DirRecord f _)
-         | ipdPackageDir pkg == f -> return $ "Files"
+         | (ipdPackageDir <$> mbPackage) == Just f -> return "Files"
          | otherwise -> return $ T.pack $ last (splitDirectories f)
-     AddSourcesRecord -> return $ "Source Dependencies"
-     (AddSourceRecord p) -> do
-        let pkgText = packageIdentifierToString (ipdPackageId p)
-        let dirText = gray (T.pack (ipdPackageDir p))
-        return $ pkgText <> " " <> dirText
-     ComponentsRecord -> return $ "Components"
+     ComponentsRecord -> return "Components"
      (ComponentRecord comp) -> do
-        let active = Just pkg == mbActivePackage &&
-                         (mbActiveComponent == Nothing && comp == "library"
+        let active = activePackage &&
+                         (isNothing mbActiveComponent && comp == "library"
                              ||
                           Just comp == mbActiveComponent)
         return $ (if active then bold else id) comp
-     GitRecord -> do
-        let dir = ipdPackageDir pkg
-        let conf = Git.makeConfig (Just dir) Nothing Nothing
-        liftIO $ Git.runVcs conf $ do
-             branch <- Git.localBranches
-             case branch of
-                (Right (branch,_)) -> return branch
-                (Left _)           -> return "No Git project"
+     GitRecord ->
+        case ipdPackageDir <$> mbPackage of
+            Nothing -> return "No Git project"
+            Just dir -> do
+                let conf = Git.makeConfig (Just dir) Nothing Nothing
+                liftIO $ Git.runVcs conf $ do
+                     branch <- Git.localBranches
+                     case branch of
+                        (Right (branch,_)) -> return branch
+                        (Left _)           -> return "No Git project"
     where
         bold str = "<b>" <> str <> "</b>"
         italic str = "<i>" <> str <> "</i>"
@@ -229,53 +242,59 @@ toIcon record = case record of
     DirRecord p isSrc
         | isSrc     -> "ide_source_folder"
         | otherwise -> "ide_folder"
+    ProjectRecord _ -> "ide_source_dependency"
     PackageRecord _ -> "ide_package"
     ComponentsRecord -> "ide_component"
-    AddSourcesRecord -> "ide_source_dependency"
-    AddSourceRecord _ -> "ide_package"
     GitRecord         -> "ide_git"
     _ -> ""
 
 
 -- | Gets the package to which a node in the tree belongs
-iterToPackage :: ForestStore WorkspaceRecord -> TreeIter -> IDEM (Maybe IDEPackage)
+iterToPackage :: ForestStore WorkspaceRecord -> TreeIter -> IDEM (Maybe Project, Maybe IDEPackage)
 iterToPackage store iter = do
     path <- treeModelGetPath store iter
     treePathToPackage store path
 
 -- | Gets the package to which a node in the tree belongs
-treePathToPackage :: ForestStore WorkspaceRecord -> TreePath -> IDEM (Maybe IDEPackage)
+treePathToPackage :: ForestStore WorkspaceRecord -> TreePath -> IDEM (Maybe Project, Maybe IDEPackage)
 treePathToPackage store p = treePathGetIndices' p >>= treePathToPackage' store
 
-treePathToPackage' :: ForestStore WorkspaceRecord -> [Int32] -> IDEM (Maybe IDEPackage)
-treePathToPackage' store (n:_) = do
-    record <- forestStoreGetValue store =<< treePathNewFromIndices' [n]
-    case record of
-        (PackageRecord pkg) -> return (Just pkg)
+treePathToPackage' :: ForestStore WorkspaceRecord -> [Int32] -> IDEM (Maybe Project, Maybe IDEPackage)
+treePathToPackage' store (n1:n2:_) = do
+    projectRecord <- forestStoreGetValue store =<< treePathNewFromIndices' [n1]
+    packageRecord <- forestStoreGetValue store =<< treePathNewFromIndices' [n1,n2]
+    case (projectRecord, packageRecord) of
+        (ProjectRecord pj, PackageRecord pkg) -> return (Just pj, Just pkg)
+        _                     -> do
+            liftIO $ debugM "leksah" "treePathToPackage: Unexpected entry in forest"
+            return (Nothing, Nothing)
+treePathToPackage' store (n:_) =
+    treePathNewFromIndices' [n] >>= forestStoreGetValue store >>= \case
+        ProjectRecord pj -> return (Just pj, Nothing)
         _                     -> do
             liftIO $ debugM "leksah" "treePathToPackage: Unexpected entry at root forest"
-            return Nothing
+            return (Nothing, Nothing)
 treePathToPackage' _ _ = do
     liftIO $ debugM "leksah" "treePathToPackage is called with empty path"
-    return Nothing
+    return (Nothing, Nothing)
 
 
 -- | Determines whether the 'WorkspaceRecord' can expand, i.e. whether
 -- it should get an expander.
-canExpand :: WorkspaceRecord -> IDEPackage -> IDEM Bool
-canExpand record pkg = case record of
+canExpand :: WorkspaceRecord -> Project -> Maybe IDEPackage -> IDEM Bool
+canExpand record pj mbPkg = case record of
+    (ProjectRecord _) -> return False
     (PackageRecord _) -> return True
     (DirRecord fp _)     -> do
         mbWs <- readIDE workspace
         case mbWs of
-            Just ws -> not . null <$> (flip runWorkspace ws . flip runPackage pkg $ dirRecords fp)
+            Just ws -> not . null <$> ((`runWorkspace` ws) . (`runProject` pj) . (`runPackage` pkg) $ dirRecords fp)
             Nothing -> return False
     ComponentsRecord    -> return . not . null $ components
-    AddSourcesRecord    -> return . not . null $ ipdSandboxSources pkg
-    (AddSourceRecord _) -> return True
     _                   -> return False
 
     where components = maybeToList (ipdLib pkg) ++ ipdExes pkg ++ ipdTests pkg ++ ipdBenchmarks pkg
+          pkg = fromJust mbPkg -- Only for record trypes that should have a package (not ProjectRecord)
 
 -- * The Workspace pane
 
@@ -305,8 +324,7 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
 
     recoverState pp WorkspaceState =   do
         nb      <-  getNotebook pp
-        mbPane <- buildPane pp nb builder
-        return mbPane
+        buildPane pp nb builder
 
     builder pp nb windows = do
         ideR        <- ask
@@ -371,11 +389,10 @@ buildTreeView recordStore = do
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetDataFunc' col1 renderer1 recordStore $ \iter -> do
             record <- customStoreGetRow recordStore iter
-            mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
-            forM_ mbPkg $ \pkg -> do
-                -- The cellrenderer is stateful, so it knows which cell this markup will be for (the cell at iter)
-                markup <- flip reflectIDE ideR $ toMarkup record pkg
-                forM_ mbPkg $ \pkg -> setCellRendererTextMarkup renderer1 markup
+            projAndPkg <- (`reflectIDE` ideR) $ iterToPackage recordStore iter
+            -- The cellrenderer is stateful, so it knows which cell this markup will be for (the cell at iter)
+            markup <- (`reflectIDE` ideR) $ toMarkup record projAndPkg
+            setCellRendererTextMarkup renderer1 markup
 
         -- set workspace font
         mbFd <- case workspaceFont prefs of
@@ -394,29 +411,30 @@ buildTreeView recordStore = do
 treeViewEvents :: ForestStore WorkspaceRecord -> TreeView -> IDEM [Connection]
 treeViewEvents recordStore treeView = do
     ideR <- ask
-    onTreeViewRowExpanded treeView $ \iter path -> do
-            record <- forestStoreGetValue recordStore path
-            mbPkg  <- flip reflectIDE ideR $ iterToPackage recordStore iter
-            forM_ mbPkg $ \pkg -> do
-                flip reflectIDE ideR $ do
-                    workspaceTryQuiet $ do
-                        runPackage (refreshPackageTreeFrom recordStore treeView path) pkg
-
-    onTreeViewRowActivated treeView $ \path col -> do
+    cid1 <- onTreeViewRowExpanded treeView $ \iter path -> do
         record <- forestStoreGetValue recordStore path
-        mbPkg    <- flip reflectIDE ideR $ treePathToPackage recordStore path
-        forM_ mbPkg $ \pkg -> do
-            expandable <- flip reflectIDE ideR $ canExpand record pkg
-            case record of
-                    FileRecord f  -> void . flip reflectIDE ideR $
-                                         goToSourceDefinition' f (Location "" 1 0 1 0)
-                    ComponentRecord name -> flip reflectIDE ideR $ workspaceTryQuiet $
-                                                      workspaceActivatePackage pkg (Just name)
-                    _ -> when expandable $ do
-                             void $ treeViewToggleRow treeView path
+        (`reflectIDE` ideR) $ iterToPackage recordStore iter >>= \case
+            (Just project, Just pkg) ->
+                workspaceTryQuiet . (`runProject` project) $
+                    refreshPackageTreeFrom recordStore treeView path
+            _ -> return ()
+
+    cid2 <- onTreeViewRowActivated treeView $ \path col -> do
+        record <- forestStoreGetValue recordStore path
+        (`reflectIDE` ideR) $ treePathToPackage recordStore path >>= \case
+            (Just project, mbPkg) -> do
+                expandable <- canExpand record project mbPkg
+                case record of
+                        ProjectRecord project -> void . selectSourceBuf $ pjFile project
+                        FileRecord f  -> void $ goToSourceDefinition' f (Location "" 1 0 1 0)
+                        ComponentRecord name -> workspaceTryQuiet $
+                                                          workspaceActivatePackage project mbPkg (Just name)
+                        _ -> when expandable $
+                                 void $ treeViewToggleRow treeView path
+            _ -> return ()
 
     sigIds <- treeViewContextMenu' treeView recordStore contextMenuItems
-    return sigIds
+    return $ sigIds <> map (ConnectC treeView) [cid1, cid2]
 
 
 -- | Get the Workspace pane
@@ -482,51 +500,48 @@ refresh WorkspacePane{..} = do
             boxSetChildPacking box noWsText False False 0 PackTypeStart
             widgetShowAll scrolledView
             boxSetChildPacking box scrolledView True True 0 PackTypeStart
-            let packages = sort (wsPackages ws)
+            let projects = wsProjects ws
             forestStoreClear recordStore
-            flip runWorkspace ws $
-                for_ (zip [0..] packages) $ \(n, pkg) -> do
-                    path <- liftIO $ treePathNewFromIndices' []
-                    liftIO $ forestStoreInsert recordStore path n (PackageRecord pkg)
-                    children <- flip runPackage pkg $
-                        children (PackageRecord pkg)
-                    setChildren (Just pkg) recordStore treeView [fromIntegral n] children
+            (`runWorkspace` ws) $ do
+                path <- liftIO $ treePathNewFromIndices' []
+                for_ (zip [0..] projects) $ \(n, project) -> do
+                    liftIO $ forestStoreInsert recordStore path n (ProjectRecord project)
+                    let packages = sort (pjPackages project)
+                    (`runProject` project) $ do
+                        path <- liftIO $ treePathNewFromIndices' [fromIntegral n]
+                        for_ (zip [0..] packages) $ \(nPkg, pkg) -> do
+                            liftIO $ forestStoreInsert recordStore path nPkg (PackageRecord pkg)
+                            children <- children (PackageRecord pkg) (Just pkg)
+                            lift $ setChildren (Just project) (Just pkg) recordStore treeView [fromIntegral n, fromIntegral nPkg] children
+                        treeViewExpandRow treeView path False
 
 
 -- | Mutates the 'ForestStore' with the given TreePath as root to attach new
 -- entries to. Walks the directory tree recursively when refreshing directories.
-refreshPackageTreeFrom :: ForestStore WorkspaceRecord -> TreeView -> TreePath -> PackageAction
+refreshPackageTreeFrom :: ForestStore WorkspaceRecord -> TreeView -> TreePath -> ProjectAction
 refreshPackageTreeFrom store view path = do
     record     <- liftIO $ forestStoreGetValue store path
-    Just pkg   <- liftIDE $ treePathToPackage store path
-    expandable <- liftIDE $ canExpand record pkg
+    (Just project, mbPkg) <- liftIDE $ treePathToPackage store path
+    expandable <- liftIDE $ canExpand record project mbPkg
 
-    kids     <- children record
+    kids     <- children record mbPkg
     path' <- treePathGetIndices' path
-    lift $ setChildren (Just pkg) store view path' kids
+    lift $ setChildren (Just project) mbPkg store view path' kids
 
 -- | Returns the children of the 'WorkspaceRecord'.
-children :: WorkspaceRecord -> PackageM [WorkspaceRecord]
-children record = case record of
-    DirRecord dir _     -> dirRecords dir
-    ComponentsRecord    -> componentsRecords
-    AddSourcesRecord    -> addSourcesRecords
-    AddSourceRecord pkg -> return []
+children :: WorkspaceRecord -> Maybe IDEPackage -> ProjectM [WorkspaceRecord]
+children record mbPkg = case record of
+    DirRecord dir _     -> runPkg $ dirRecords dir
+    ComponentsRecord    -> runPkg componentsRecords
+    ProjectRecord project -> return . map PackageRecord . sort $ pjPackages project
     PackageRecord pkg   -> do
-        p <- ask
+        p <- runPkg ask
         return [ ComponentsRecord
                , GitRecord
-               , AddSourcesRecord
                , DirRecord (ipdPackageDir p) False]
     _                   -> return []
-
-
--- | Gets the direct children, the add source dependencies
-addSourcesRecords :: PackageM [WorkspaceRecord]
-addSourcesRecords = do
-    pkg <- ask
-    return $ sort $ map AddSourceRecord (ipdSandboxSources pkg)
-
+  where
+    runPkg = (`runPackage` fromJust mbPkg)
 
 -- | Returns the contents at the given 'FilePath' as 'WorkspaceRecord's.
 -- Runs in the PackageM monad to determine if directories are
@@ -550,7 +565,7 @@ dirRecords dir = do
                               Just relativeToPackage -> do
                                   srcDirs <- ipdSrcDirs <$> ask
                                   return $ DirRecord full (relativeToPackage `elem` srcDirs)
-                              Nothing -> do
+                              Nothing ->
                                   -- It's not a descendant of the package directory (e.g. in a source dependency)
                                   return $ DirRecord full False
                       else return $ FileRecord full
@@ -564,31 +579,30 @@ componentsRecords = do
     mbActivePackage <- readIDE activePack
     activeComponent <- readIDE activeExe
 
-    return $ sort $ map (\comp -> ComponentRecord comp) (components package)
+    return $ sort $ map ComponentRecord (components package)
 
     where
-        components package = maybeToList (ipdLib package)
-                          ++ ipdExes package
-                          ++ ipdTests package
-                          ++ ipdBenchmarks package
+        components package = map ("lib:"<>) (maybeToList (ipdLib package))
+                          ++ map ("exe:"<>) (ipdExes package)
+                          ++ map ("test:"<>) (ipdTests package)
+                          ++ map ("bench:"<>) (ipdBenchmarks package)
 
 -- | Recursively sets the children of the given 'TreePath' to the provided tree of 'WorkspaceRecord's. If a record
 -- is already present, it is kept in the same (expanded) state.
 -- If a the parent record is not expanded just makes sure at least one of
 -- the children is added.
-setChildren :: Maybe IDEPackage
+setChildren :: Maybe Project
+            -> Maybe IDEPackage
             -> ForestStore WorkspaceRecord
             -> TreeView
             -> [Int32]
             -> [WorkspaceRecord] -> WorkspaceAction
-setChildren _ store _ [] [] = liftIO $ forestStoreClear store
-setChildren mbPkg store view parentPath kids = do
+setChildren _ _ store _ [] [] = liftIO $ forestStoreClear store
+setChildren mbProject mbPkg store view parentPath kids = do
     -- We only need to get all the children right when they are visible
     expanded <- if null parentPath
                     then return True
-                    else do
-                        exp <- liftIO $ treeViewRowExpanded view =<< treePathNewFromIndices' parentPath
-                        return exp
+                    else liftIO $ treeViewRowExpanded view =<< treePathNewFromIndices' parentPath
     let kidsToAdd = (if expanded
                             then id
                             else take 1) kids
@@ -602,6 +616,7 @@ setChildren mbPkg store view parentPath kids = do
                     (False, _)        -> return Nothing
             Nothing         -> return Nothing
         let compare rec1 rec2 = case (rec1, rec2) of
+                (ProjectRecord p1, ProjectRecord p2) -> pjFile p1 == pjFile p2
                 (PackageRecord p1, PackageRecord p2) -> ipdCabalFile p1 == ipdCabalFile p2
                 _ -> rec1 == rec2
         findResult <- searchToRight compare record store mbChildIter
@@ -615,13 +630,16 @@ setChildren mbPkg store view parentPath kids = do
             _ -> do
                 parentPath' <- treePathNewFromIndices' parentPath
                 forestStoreInsert store parentPath' (fromIntegral n) record
-      let pkg = case record of
-                        PackageRecord p -> p
-                        _               -> fromJust mbPkg
+      let project = case record of
+                        ProjectRecord p -> p
+                        _               -> fromJust mbProject
+          mbPkg' = case record of
+                        PackageRecord p -> Just p
+                        _               -> mbPkg
       -- Only update the grand kids if they are visible
       when expanded $ do
-          grandKids <- (`runPackage` pkg) $ children record
-          setChildren (Just pkg) store view (parentPath ++ [n]) grandKids
+          grandKids <- (`runProject` project) $ children record mbPkg'
+          setChildren (Just project) mbPkg' store view (parentPath ++ [n]) grandKids
 
     liftIO $ if null kids
         then forestStoreRemoveChildren store parentPath
@@ -631,10 +649,10 @@ setChildren mbPkg store view parentPath kids = do
 -- * Context menu
 
 contextMenuItems :: WorkspaceRecord -> TreePath -> ForestStore WorkspaceRecord -> IDEM [[(Text, IDEAction)]]
-contextMenuItems record path store = do
+contextMenuItems record path store =
     case record of
         (FileRecord fp) -> do
-            let onDeleteFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
+            let onDeleteFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef ->
                     showDialogOptions
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageTypeQuestion
@@ -647,15 +665,17 @@ contextMenuItems record path store = do
 
         DirRecord fp _ -> do
 
-            let onNewModule = flip catchIDE (\(e :: SomeException) -> print e) $ do
-                    mbPkg <- treePathToPackage store path
-                    forM_ mbPkg $ \pkg -> do
-                        mbWs <- readIDE workspace
-                        forM_ mbWs $ \ws -> do
-                            mbModulePath <- flip runWorkspace ws $ runPackage (dirToModulePath fp) pkg
-                            let modulePrefix = fromMaybe [] mbModulePath
-                            packageTry $ addModule modulePrefix
-                            refreshWorkspacePane
+            let onNewModule = flip catchIDE (\(e :: SomeException) -> print e) $
+                    treePathToPackage store path >>= \case
+                        (Just project, Just pkg) -> do
+                            mbWs <- readIDE workspace
+                            forM_ mbWs $ \ws -> do
+                                (`runWorkspace` ws) . (`runProject` project) . (`runPackage` pkg) $ do
+                                    mbModulePath <- dirToModulePath fp
+                                    let modulePrefix = fromMaybe [] mbModulePath
+                                    addModule modulePrefix
+                                refreshWorkspacePane
+                        _ -> return ()
 
             let onNewTextFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
                     mbText <- showInputDialog "File name:" ""
@@ -683,7 +703,7 @@ contextMenuItems record path store = do
                                     void $ reflectIDE refreshWorkspacePane ideRef
                         Nothing -> return ()
 
-            let onDeleteDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
+            let onDeleteDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef ->
                     showDialogOptions
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageTypeQuestion
@@ -700,50 +720,56 @@ contextMenuItems record path store = do
                      ]
                    ]
 
-        PackageRecord p -> do
-
-            let onSetActive = workspaceTryQuiet $ workspaceActivatePackage p Nothing
-                onAddModule = workspaceTryQuiet $ runPackage (addModule []) p
-                onOpenCabalFile = workspaceTryQuiet $ runPackage packageEditText p
+        ProjectRecord project -> do
+            let onSetActive = workspaceTryQuiet $ workspaceActivatePackage project Nothing Nothing
+                onOpenProjectFile = void . selectSourceBuf $ pjFile project
                 onRemoveFromWs = workspaceTryQuiet $ do
-                    workspaceRemovePackage p
+                    workspaceRemoveProject project
                     liftIDE refreshWorkspacePane
 
-            return [ [ ("New Module...", onAddModule)
-                     , ("Set As Active Package", onSetActive)
-
-                     ]
-                   , [ ("Build", workspaceTryQuiet $ runPackage makePackage p)
-                     , ("Run", workspaceTryQuiet $ runPackage packageRun p)
-                     , ("Test", workspaceTryQuiet $ runPackage packageTest p)
-                     , ("Benchmark", workspaceTryQuiet $ runPackage packageBench p)
-                     , ("Clean", workspaceTryQuiet $ runPackage packageClean p)
-                     , ("Open Package File", onOpenCabalFile)
+            return [ [ ("Set As Active Project", onSetActive)
+                     , ("Open Project File", onOpenProjectFile)
                      ]
                    , [
                      ("Remove From Workspace", onRemoveFromWs)
                      ]
                    ]
 
+        PackageRecord p ->
+            treePathToPackage store path >>= \case
+                (Just project, Just _) -> do
+
+                    let runPkg = (`runProject` project) . (`runPackage` p)
+                        onSetActive = workspaceTryQuiet $ workspaceActivatePackage project (Just p) Nothing
+                        onAddModule = workspaceTryQuiet $ runPkg $ addModule []
+                        onOpenCabalFile = void . selectSourceBuf $ ipdCabalFile p
+                        onRemoveFromProject = workspaceTryQuiet . (`runProject` project) $ do
+                            projectRemovePackage p
+                            liftIDE refreshWorkspacePane
+
+                    return [ [ ("New Module...", onAddModule)
+                             , ("Set As Active Package", onSetActive)
+
+                             ]
+                           , [ ("Build", workspaceTryQuiet $ runPkg makePackage)
+                             , ("Run", workspaceTryQuiet $ runPkg packageRun)
+                             , ("Test", workspaceTryQuiet $ runPkg packageTest)
+                             , ("Benchmark", workspaceTryQuiet $ runPkg packageBench)
+                             , ("Clean", workspaceTryQuiet $ runPkg packageClean)
+                             , ("Open Package File", onOpenCabalFile)
+                             ]
+                           , [
+                             ("Remove From Project", onRemoveFromProject)
+                             ]
+                           ]
+                _ -> return []
+
         ComponentRecord comp -> do
-            Just pkg <- treePathToPackage store path
+            (Just project, Just pkg) <- treePathToPackage store path
             let onSetActive = workspaceTryQuiet $
-                                  workspaceActivatePackage pkg (Just comp)
+                                  workspaceActivatePackage project (Just pkg) (Just comp)
             return [[ ("Activate component", onSetActive) ]]
 
-        AddSourcesRecord -> do
-            Just pkg <- treePathToPackage store path
-            return []
-
-
-        AddSourceRecord p -> do
-            Just pkg <- treePathToPackage store path
-            let onAddSourceDependencyToWs = workspaceTryQuiet . void $
-                    workspaceAddPackage' (ipdCabalFile p)
-
-            return [ [ ("Add Package To Workspace", onAddSourceDependencyToWs >> refreshWorkspacePane)
-                     ]
-                   ]
         _ -> return []
 
 
