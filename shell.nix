@@ -50,7 +50,6 @@ let
         gi-javascriptcore = appendGIFlags super.gi-javascriptcore_4_0_11;
         gi-pango = appendGIFlags (fixCairoGI super.gi-pango);
         gi-soup = appendGIFlags super.gi-soup;
-        gi-webkit = appendGIFlags super.gi-webkit.override;
         gi-webkit2 = appendGIFlags (fixCairoGI super.gi-webkit2);
         gi-gtksource = appendGIFlags (fixCairoGI super.gi-gtksource);
         gi-gtkosxapplication = appendGIFlags (fixCairoGI (super.gi-gtkosxapplication.override {
