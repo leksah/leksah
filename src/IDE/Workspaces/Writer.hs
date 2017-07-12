@@ -158,20 +158,20 @@ setWorkspace mbWs = do
                  <> (case mbExe of
                             Nothing  -> ""
                             Just exe -> " " <> exe)
-    case mbWs of
-        Just ws -> do
-            fsn <- readIDE fsnotify
-            newStop <- liftIO $ forM (wsProjects ws) (\project ->
-                watchDir fsn (dropFileName $ pjFile project) (\case
-                        Modified f _ | takeFileName f == takeFileName (pjFile project) -> True
-                        _ -> False) $ \_ ->
-                    (`reflectIDE` ideR) $ postAsyncIDE $ do
-                        ws' <- readWorkspace (wsFile ws)
-                        setWorkspace (Just ws'))
-            oldStop <- readIDE stopWorkspaceNotify
-            modifyIDE_ $ \ide -> ide { stopWorkspaceNotify = sequence_ newStop }
-            liftIO oldStop
-        Nothing -> return ()
+--    case mbWs of
+--        Just ws -> do
+--            fsn <- readIDE fsnotify
+--            newStop <- liftIO $ forM (wsProjects ws) (\project ->
+--                watchDir fsn (dropFileName $ pjFile project) (\case
+--                        Modified f _ | takeFileName f == takeFileName (pjFile project) -> True
+--                        _ -> False) $ \_ ->
+--                    (`reflectIDE` ideR) $ postAsyncIDE $ do
+--                        ws' <- readWorkspace (wsFile ws)
+--                        setWorkspace (Just ws'))
+--            oldStop <- readIDE stopWorkspaceNotify
+--            modifyIDE_ $ \ide -> ide { stopWorkspaceNotify = sequence_ newStop }
+--            liftIO oldStop
+--        Nothing -> return ()
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE (WorkspaceChanged True True)
     triggerEventIDE UpdateWorkspaceInfo
