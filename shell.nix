@@ -28,8 +28,7 @@ let
       in {
         jsaddle = jsaddlePkgs.jsaddle;
         jsaddle-warp = dontCheck jsaddlePkgs.jsaddle-warp;
-        jsaddle-wkwebview = overrideCabal jsaddlePkgs.jsaddle-wkwebview (drv: {
-        });
+        jsaddle-wkwebview = overrideCabal jsaddlePkgs.jsaddle-wkwebview;
         jsaddle-webkit2gtk = jsaddlePkgs.jsaddle-webkit2gtk;
         jsaddle-dom = overrideCabal (self.callPackage ./jsaddle-dom {}) (drv: {
           # On macOS, the jsaddle-dom build will run out of file handles the first time it runs
@@ -57,15 +56,18 @@ let
         }));
         haskell-gi = super.haskell-gi;
         haskell-gi-base = super.haskell-gi-base;
-        webkit2gtk3-javascriptcore = super.webkit2gtk3-javascriptcore.override {
-          webkitgtk = nixpkgs.webkitgtk214x;
-        };
-      };
+        webkit2gtk3-javascriptcore = overrideCabal super.webkit2gtk3-javascriptcore (drv: {
+          preConfigure = ''
+            mkdir dispatch
+            sed 's|^\(typedef void [(]\)\^\(dispatch_block_t[)][(]void[)];\)$|\1\2|' <"${pkgs.stdenv.cc.libc}/include/dispatch/object.h" >dispatch/object.h
+            '';
+        });
+     };
   };
 
   f = { mkDerivation, array, base, base-compat, binary
       , binary-shared, blaze-html, bytestring, Cabal, conduit, containers
-      , cpphs, deepseq, directory, executable-path, filepath, ghc
+      , cpphs, deepseq, directory, executable-path, filepath, fsnotify, ghc
       , ghcjs-codemirror, gi-cairo, gi-gdk, gi-gdkpixbuf, gi-gio, gi-glib
       , gi-gobject, gi-gtk, gi-gtk-hs, gi-gtkosxapplication, gi-gtksource
       , gi-pango, gi-webkit2, haskell-gi-base, haskell-src-exts
@@ -74,7 +76,7 @@ let
       , regex-base, regex-tdfa, regex-tdfa-text, shakespeare, split
       , stdenv, stm, strict, text, time, transformers, unix, utf8-string
       , vado, vcsgui, vcswrapper, call-stack, HUnit, doctest, hspec, gnome3
-      , pkgconfig
+      , pkgconfig, darwin, buildPackages
       }:
       mkDerivation {
         pname = "leksah";
@@ -85,7 +87,7 @@ let
         libraryHaskellDepends = [
           array base base-compat binary binary-shared blaze-html bytestring
           Cabal conduit containers cpphs deepseq directory executable-path
-          filepath ghc ghcjs-codemirror gi-cairo gi-gdk gi-gdkpixbuf gi-gio
+          filepath fsnotify ghc ghcjs-codemirror gi-cairo gi-gdk gi-gdkpixbuf gi-gio
           gi-glib gi-gobject gi-gtk gi-gtk-hs gi-gtkosxapplication
           gi-gtksource gi-pango gi-webkit2 haskell-gi-base haskell-src-exts
           hlint hslogger HTTP mtl network network-uri
@@ -93,21 +95,33 @@ let
           regex-tdfa-text shakespeare split stm strict text time transformers
           unix utf8-string vado call-stack HUnit doctest
           hspec gnome3.defaultIconTheme pkgconfig gnome3.gtk
-        ];
+        ] ++ (if stdenv.isDarwin then [
+          darwin.libobjc
+          buildPackages.darwin.apple_sdk.frameworks.Cocoa
+          buildPackages.darwin.apple_sdk.libs.xpc
+          (buildPackages.osx_sdk or null)
+        ] else []);
         buildTools = [ nixpkgs.cabal-install ];
         libraryPkgconfigDepends = [ nixpkgs.gtk3 ];
         executableHaskellDepends = [ base ];
-        postInstall = "echo Hello";
+        postInstall = "echo Hello!";
+        shellHook = ''
+          export PKG_CONFIG_PATH=${nixpkgs.gtk3.dev}/lib/pkgconfig:${nixpkgs.pango.dev}/lib/pkgconfig:${nixpkgs.glib.dev}/lib/pkgconfig:${nixpkgs.cairo.dev}/lib/pkgconfig:${nixpkgs.gdk_pixbuf.dev}/lib/pkgconfig:${nixpkgs.atk.dev}/lib/pkgconfig
+          export CFLAGS=$NIX_CFLAGS_COMPILE
+          export XDG_DATA_DIRS=${nixpkgs.glib.dev}/share:${nixpkgs.gtk3}/share/gsettings/${nixpkgs.gtk3.name}:$XDG_DATA_DIRS:$XDG_ICON_DIRS
+          export XDG_CONFIG_HOME=/Users/hamish/.config
+          '';
         homepage = "http://www.leksah.org";
         description = "Haskell IDE written in Haskell";
         license = "GPL";
       };
 
+  ghc = extendHaskellPackages nixpkgs.pkgs.haskell.packages.ghc802;
   haskellPackages = extendHaskellPackages (if compiler == "default"
                        then pkgs.haskellPackages
                        else pkgs.haskell.packages.${compiler});
 
-  drv = haskellPackages.callPackage f {};
+  drv = ghc.callPackage f {};
 
 in
 
