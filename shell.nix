@@ -88,7 +88,7 @@ let
           array base base-compat binary binary-shared blaze-html bytestring
           Cabal conduit containers cpphs deepseq directory executable-path
           filepath fsnotify ghc ghcjs-codemirror gi-cairo gi-gdk gi-gdkpixbuf gi-gio
-          gi-glib gi-gobject gi-gtk gi-gtk-hs gi-gtkosxapplication
+          gi-glib gi-gobject gi-gtk gi-gtk-hs
           gi-gtksource gi-pango gi-webkit2 haskell-gi-base haskell-src-exts
           hlint hslogger HTTP mtl network network-uri
           old-time parsec pretty pretty-show QuickCheck regex-base regex-tdfa
@@ -96,11 +96,13 @@ let
           unix utf8-string vado call-stack HUnit doctest
           hspec gnome3.defaultIconTheme pkgconfig gnome3.gtk
         ] ++ (if stdenv.isDarwin then [
+          gi-gtkosxapplication
           darwin.libobjc
           buildPackages.darwin.apple_sdk.frameworks.Cocoa
           buildPackages.darwin.apple_sdk.libs.xpc
           (buildPackages.osx_sdk or null)
         ] else []);
+        buildDepends = [ nixpkgs.cabal-install ];
         buildTools = [ nixpkgs.cabal-install ];
         libraryPkgconfigDepends = [ nixpkgs.gtk3 ];
         executableHaskellDepends = [ base ];
