@@ -111,7 +111,6 @@ let
           export PKG_CONFIG_PATH=${nixpkgs.gtk3.dev}/lib/pkgconfig:${nixpkgs.pango.dev}/lib/pkgconfig:${nixpkgs.glib.dev}/lib/pkgconfig:${nixpkgs.cairo.dev}/lib/pkgconfig:${nixpkgs.gdk_pixbuf.dev}/lib/pkgconfig:${nixpkgs.atk.dev}/lib/pkgconfig
           export CFLAGS=$NIX_CFLAGS_COMPILE
           export XDG_DATA_DIRS=${nixpkgs.glib.dev}/share:${nixpkgs.gtk3}/share/gsettings/${nixpkgs.gtk3.name}:$XDG_DATA_DIRS:$XDG_ICON_DIRS
-          export XDG_CONFIG_HOME=/Users/hamish/.config
           '';
         homepage = "http://www.leksah.org";
         description = "Haskell IDE written in Haskell";
