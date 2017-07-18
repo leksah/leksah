@@ -34,6 +34,7 @@ data-files:
     data/testmain.lksht
     data/module.lksht
     data/welcome.txt
+    data/leksah-welcome/cabal.project
     data/leksah-welcome/Setup.lhs
     data/leksah-welcome/leksah-welcome.cabal
     data/leksah-welcome/LICENSE
