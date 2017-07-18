@@ -70,13 +70,14 @@ let
       , cpphs, deepseq, directory, executable-path, filepath, fsnotify, ghc
       , ghcjs-codemirror, gi-cairo, gi-gdk, gi-gdkpixbuf, gi-gio, gi-glib
       , gi-gobject, gi-gtk, gi-gtk-hs, gi-gtkosxapplication, gi-gtksource
-      , gi-pango, gi-webkit2, haskell-gi-base, haskell-src-exts
+      , gi-pango, gi-webkit2, haskell-gi, haskell-gi-base, haskell-src-exts
       , hlint, hslogger, HTTP, mtl, network
       , network-uri, old-time, parsec, pretty, pretty-show, QuickCheck
       , regex-base, regex-tdfa, regex-tdfa-text, shakespeare, split
       , stdenv, stm, strict, text, time, transformers, unix, utf8-string
       , vado, vcsgui, vcswrapper, call-stack, HUnit, doctest, hspec, gnome3
-      , pkgconfig, darwin, buildPackages
+      , pkgconfig, darwin, buildPackages, gtk-mac-integration-gtk3
+      , happy, alex
       }:
       mkDerivation {
         pname = "leksah";
@@ -89,28 +90,27 @@ let
           Cabal conduit containers cpphs deepseq directory executable-path
           filepath fsnotify ghc ghcjs-codemirror gi-cairo gi-gdk gi-gdkpixbuf gi-gio
           gi-glib gi-gobject gi-gtk gi-gtk-hs
-          gi-gtksource gi-pango gi-webkit2 haskell-gi-base haskell-src-exts
+          gi-gtksource gi-pango gi-webkit2 haskell-gi haskell-gi-base haskell-src-exts
           hlint hslogger HTTP mtl network network-uri
           old-time parsec pretty pretty-show QuickCheck regex-base regex-tdfa
           regex-tdfa-text shakespeare split stm strict text time transformers
           unix utf8-string vado call-stack HUnit doctest
-          hspec gnome3.defaultIconTheme pkgconfig gnome3.gtk
+          hspec gnome3.defaultIconTheme pkgconfig gnome3.gtk gnome3.gtksourceview gnome3.webkitgtk
         ] ++ (if stdenv.isDarwin then [
           gi-gtkosxapplication
+          gtk-mac-integration-gtk3
           darwin.libobjc
           buildPackages.darwin.apple_sdk.frameworks.Cocoa
           buildPackages.darwin.apple_sdk.libs.xpc
           (buildPackages.osx_sdk or null)
         ] else []);
-        buildDepends = [ nixpkgs.cabal-install ];
-        buildTools = [ nixpkgs.cabal-install ];
-        libraryPkgconfigDepends = [ nixpkgs.gtk3 ];
+        buildDepends = [ nixpkgs.cabal-install happy alex gnome3.dconf ];
+        libraryPkgconfigDepends = [ gnome3.gtk.dev gnome3.gtksourceview gnome3.webkitgtk nixpkgs.cairo gnome3.gsettings_desktop_schemas ]
+          ++ (if stdenv.isDarwin then [ gtk-mac-integration-gtk3 ] else []);
         executableHaskellDepends = [ base ];
-        postInstall = "echo Hello!";
         shellHook = ''
-          export PKG_CONFIG_PATH=${nixpkgs.gtk3.dev}/lib/pkgconfig:${nixpkgs.pango.dev}/lib/pkgconfig:${nixpkgs.glib.dev}/lib/pkgconfig:${nixpkgs.cairo.dev}/lib/pkgconfig:${nixpkgs.gdk_pixbuf.dev}/lib/pkgconfig:${nixpkgs.atk.dev}/lib/pkgconfig
           export CFLAGS=$NIX_CFLAGS_COMPILE
-          export XDG_DATA_DIRS=${nixpkgs.glib.dev}/share:${nixpkgs.gtk3}/share/gsettings/${nixpkgs.gtk3.name}:$XDG_DATA_DIRS:$XDG_ICON_DIRS
+          export XDG_DATA_DIRS=${nixpkgs.glib.dev}/share:${nixpkgs.gtk3}/share/gsettings-schemas/${nixpkgs.gtk3.name}:$XDG_DATA_DIRS:$XDG_ICON_DIRS
           '';
         homepage = "http://www.leksah.org";
         description = "Haskell IDE written in Haskell";
