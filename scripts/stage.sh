@@ -30,12 +30,13 @@ echo Staging Leksah in $GTK_PREFIX
 # export DYLD_LIBRARY_PATH="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ImageIO.framework/Versions/A/Resources:$GTK_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
 if test "`uname`" = "Darwin"; then
-    cabal new-build --with-ghc=ghc$GHCVERSION || exit
-    cd vendor/leksah-server
-    cabal new-build --with-ghc=ghc$GHCVERSION || exit
-    cd ../../vendor/haskellVCSGUI/vcsgui
-    cabal new-build --with-ghc=ghc$GHCVERSION || exit
-    cd ../../..
+    cabal new-build --with-ghc=ghc$GHCVERSION \
+       leksah-server:exe:leksah-server \
+       leksah-server:exe:leksahecho \
+       leksah-server:exe:leksahtrue \
+       vcsgui:exe:vcsgui \
+       vcsgui:exe:vcsgui-askpass \
+       leksah:exe:leksah || exit
 else
     $WINE cabal install ./ ./vendor/ltk ./vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j1 -fwebkit -f-yi -fpango -f-vty --force-reinstalls || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
