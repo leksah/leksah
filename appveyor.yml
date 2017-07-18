@@ -5,11 +5,11 @@ cache:
 
 install:
   - git submodule update --init
-  - SET PATH=%APPDATA%\cabal\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.1\bin;C:\ProgramData\chocolatey\lib\cabal\tools;C:\Program Files (x86)/WiX Toolset v3.10\bin;%PATH%
+  - SET PATH=%APPDATA%\cabal\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.2\bin;C:\ProgramData\chocolatey\lib\cabal\tools;C:\Program Files (x86)/WiX Toolset v3.11\bin;%PATH%
   - SET PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig
   - SET XDG_DATA_DIRS=C:\msys64\mingw64\share
   - pacman --version
-  - appveyor-retry choco install ghc --version 8.0.1 | grep -v '^Extracting '
+  - appveyor-retry choco install ghc --version 8.0.2 | grep -v '^Extracting '
   - cabal --version
   - appveyor-retry choco install wixtoolset --checksum e4b826a23477d0580f1c80c976ac764c3b883a66507dfa8a9988016a10b53b21e8ff274b287f9c3cec75cc5fa8493f25fa829b00d41e4c191690584f000ef977 --checksumtype sha512
   - heat -? | grep version
