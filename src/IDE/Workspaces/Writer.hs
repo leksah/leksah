@@ -75,7 +75,8 @@ readWorkspace fp = do
     liftIO $ debugM "leksah" "readWorkspace"
     liftIO (parseFromFile workspaceVerParser fp) >>= \case
         Left pe -> error $ "Error reading file " ++ show fp ++ " " ++ show pe
-        Right version | version < 3 -> return $ Left "This workspace was created with an older version of Leksah that did not use project files to list packages in the workspace."
+        Right version | version < 3 -> return $ Left
+            "This workspace was created with an older version of Leksah that did not use project files (cabal.project and stack.yaml) to list packages in the workspace."
         _ -> do
             ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
             ws' <- liftIO $ makePathsAbsolute ws fp
