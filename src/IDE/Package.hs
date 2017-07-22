@@ -962,7 +962,7 @@ debugStart = do
                     name = ipdPackageName package
                     (tool, args) = case pjTool project of
                         CabalTool -> ("cabal", [ "new-repl"
-                                               , name <> maybe "" (":" <>) mbTarget
+                                               , name <> maybe (":lib:" <> name) (":" <>) mbTarget
                                                ])
                         StackTool -> ("stack", [ "repl"
                                                , "--stack-yaml"
