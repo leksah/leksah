@@ -233,37 +233,41 @@ openBrowser url = do
     return ()
 
 -- | Show a text dialog with an Ok button and a specific messagetype
-showDialog :: MonadIO m => Text -> MessageType -> m ()
-showDialog msg msgType = do
+showDialog :: MonadIO m => Maybe Window -> Text -> MessageType -> m ()
+showDialog parent msg msgType = do
     dialog <- new' MessageDialog [
         constructDialogUseHeaderBar 0,
         constructMessageDialogMessageType msgType,
         constructMessageDialogButtons ButtonsTypeOk,
         constructMessageDialogText msg]
+    windowSetTransientFor dialog parent
+    setWindowWindowPosition dialog WindowPositionCenterOnParent
     _ <- dialogRun' dialog
     widgetDestroy dialog
     return ()
 
 
 -- | Show an error dialog with an Ok button
-showErrorDialog :: MonadIO m => Text -> m ()
-showErrorDialog msg = showDialog msg MessageTypeError
+showErrorDialog :: MonadIO m => Maybe Window -> Text -> m ()
+showErrorDialog parent msg = showDialog parent msg MessageTypeError
 
 
 -- | Show a dialog with custom buttons and callbacks
 showDialogOptions :: MonadIO m
-                  => Text             -- ^ the message
+                  => Maybe Window     -- ^ Parent window to use with `windowSetTransientFor`
+                  -> Text             -- ^ the message
                   -> MessageType      -- ^ type of dialog
                   -> [(Text, m ())]  -- ^ button text and corresponding actions
                   -> Maybe Int        -- ^ index of button that has default focus (0-based)
                   -> m ()
-showDialogOptions msg msgType buttons mbIndex = do
+showDialogOptions parent msg msgType buttons mbIndex = do
     dialog <- new' MessageDialog [
         constructDialogUseHeaderBar 0,
         constructMessageDialogMessageType msgType,
         constructMessageDialogButtons ButtonsTypeNone,
         constructMessageDialogText msg]
 
+    windowSetTransientFor dialog parent
     forM_ (zip [0..] buttons) $ \(n,(text, _)) ->
         dialogAddButton' dialog text (AnotherResponseType n)
 
@@ -279,14 +283,16 @@ showDialogOptions msg msgType buttons mbIndex = do
 
 
 -- | Show a simple dialog that asks the user for some text
-showInputDialog :: Text -- ^ The message text
+showInputDialog :: Maybe Window -- ^ Parent window to use with `windowSetTransientFor`
+                -> Text -- ^ The message text
                 -> Text -- ^ The default value
                 -> IO (Maybe Text)
-showInputDialog msg def = do
+showInputDialog parent msg def = do
     dialog <- new' Dialog [constructDialogUseHeaderBar 1] -- Nothing [] MessageQuestion ButtonsOkCancel msg
+    windowSetTransientFor dialog parent
     vbox   <- dialogGetContentArea dialog >>= unsafeCastTo Box
-    label <- labelNew (Just msg)
-    entry <- entryNew
+    label  <- labelNew (Just msg)
+    entry  <- entryNew
     setEntryText entry def
     boxPackStart' vbox label PackNatural 0
     boxPackStart' vbox entry PackNatural 0

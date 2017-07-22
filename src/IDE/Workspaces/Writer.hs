@@ -57,6 +57,8 @@ import System.FSNotify (watchDir, Event(..), watchTree)
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
 import qualified Data.Map as Map (empty)
+import Text.ParserCombinators.Parsec (parseFromFile, CharParser)
+import Text.PrinterParser (colon, symbol)
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
@@ -68,14 +70,18 @@ writeWorkspace ws = do
     newWs' <- liftIO $ makePathsRelative newWs
     liftIO $ writeFields (wsFile newWs') (newWs' {wsFile = ""}) workspaceDescr
 
-readWorkspace :: FilePath -> IDEM Workspace
+readWorkspace :: FilePath -> IDEM (Either String Workspace)
 readWorkspace fp = do
     liftIO $ debugM "leksah" "readWorkspace"
-    ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
-    ws' <- liftIO $ makePathsAbsolute ws fp
-    projects <- mapM ideProjectFromPath (wsProjectFiles ws')
-    --TODO set package vcs here
-    return ws'{ wsProjects = catMaybes projects}
+    liftIO (parseFromFile workspaceVerParser fp) >>= \case
+        Left pe -> error $ "Error reading file " ++ show fp ++ " " ++ show pe
+        Right version | version < 3 -> return $ Left "This workspace was created with an older version of Leksah that did not use project files to list packages in the workspace."
+        _ -> do
+            ws <- liftIO $ readFields fp workspaceDescr emptyWorkspace
+            ws' <- liftIO $ makePathsAbsolute ws fp
+            projects <- mapM ideProjectFromPath (wsProjectFiles ws')
+            --TODO set package vcs here
+            return $ Right ws'{ wsProjects = catMaybes projects}
 
 makePathsAbsolute :: Workspace -> FilePath -> IO Workspace
 makePathsAbsolute ws bp = do
@@ -188,6 +194,12 @@ makePathsRelative ws = do
     wsProjectFiles'            <-  mapM myCanonicalizePath (wsProjectFiles ws)
     let relativePathes          =   map (makeRelative (dropFileName wsFile')) wsProjectFiles'
     return ws {wsActivePackFile = wsActivePackFile', wsFile = wsFile', wsProjectFiles = relativePathes}
+
+workspaceVerParser :: CharParser () Int
+workspaceVerParser = do
+    symbol "Version of workspace file format"
+    colon
+    intParser
 
 workspaceDescr :: [FieldDescriptionS Workspace]
 workspaceDescr = [

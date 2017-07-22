@@ -1344,8 +1344,8 @@ filePrint' nb _ ebuf currentBuffer _ = do
                 Just name -> do
                               status <- liftIO $ Print.print name
                               case status of
-                                Left error -> liftIO $ showDialog (T.pack $ show error) MessageTypeError
-                                Right _ -> liftIO $ showDialog "Print job has been sent successfully" MessageTypeInfo
+                                Left error -> liftIO $ showErrorDialog (Just window) (T.pack $ show error)
+                                Right _ -> liftIO $ showDialog (Just window) "Print job has been sent successfully" MessageTypeInfo
                               return ()
                 Nothing   -> return ()
 

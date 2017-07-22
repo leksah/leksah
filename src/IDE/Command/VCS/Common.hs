@@ -122,9 +122,10 @@ runActionWithContext vcsAction packageFp = do
 runSetupRepoActionWithContext :: FilePath
                               -> IDEAction
 runSetupRepoActionWithContext packageFp = do
+    mainWindow <- getMainWindow
     eConfigErr <- getVCSConf packageFp
     case eConfigErr of
-        Left error -> liftIO $ GUIUtils.showErrorDialog error
+        Left error -> liftIO $ GUIUtils.showErrorDialog (Just mainWindow) error
         Right mbConfig -> do
             ide <- ask
             liftIO $ VCSGUI.showSetupConfigGUI mbConfig (callback ide packageFp)

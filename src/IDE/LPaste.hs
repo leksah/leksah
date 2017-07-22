@@ -16,6 +16,7 @@ import GI.Gtk.Enums (MessageType(..))
 import Control.Monad (void)
 import Control.Exception (SomeException, catch)
 import Network.Stream (ConnError(..))
+import GI.Gtk (Window)
 
 type Parameter = (String, String)
 
@@ -56,20 +57,22 @@ uploadSelected str = do
 
 uploadToLpaste :: IDEM ()
 uploadToLpaste = do
+    mainWindow <- getMainWindow
     maybeText <- selectedTextOrCurrentLine
     liftIO $ showDialogOptions
+                (Just mainWindow)
                 "Confirm upload to lpaste.net?"
                 MessageTypeQuestion
-                [("OK", uploadToLpaste' maybeText), ("Cancel", return ())]
+                [("OK", uploadToLpaste' mainWindow maybeText), ("Cancel", return ())]
                 (Just 0)
 
-uploadToLpaste' :: Maybe T.Text -> IO ()
-uploadToLpaste' maybeText = do
+uploadToLpaste' :: Window -> Maybe T.Text -> IO ()
+uploadToLpaste' mainWindow maybeText =
     case maybeText of
         Just text -> do
             mbLink <- uploadSelected $ T.unpack text
             case mbLink of
-                Just link -> void $ showInputDialog "LPaste link:" (T.pack link)
-                Nothing   -> showDialog ("Could not reach " <> T.pack baseUrl) MessageTypeError
+                Just link -> void $ showInputDialog (Just mainWindow) "LPaste link:" (T.pack link)
+                Nothing   -> showDialog (Just mainWindow) ("Could not reach " <> T.pack baseUrl) MessageTypeError
         Nothing ->
-            showDialog "Please select some text in the editor" MessageTypeError
+            showDialog (Just mainWindow) "Please select some text in the editor" MessageTypeError

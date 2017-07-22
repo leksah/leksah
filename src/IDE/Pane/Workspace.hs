@@ -649,11 +649,13 @@ setChildren mbProject mbPkg store view parentPath kids = do
 -- * Context menu
 
 contextMenuItems :: WorkspaceRecord -> TreePath -> ForestStore WorkspaceRecord -> IDEM [[(Text, IDEAction)]]
-contextMenuItems record path store =
+contextMenuItems record path store = do
+    mainWindow <- getMainWindow
     case record of
         (FileRecord fp) -> do
             let onDeleteFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef ->
                     showDialogOptions
+                        (Just mainWindow)
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageTypeQuestion
                         [ ("Delete File", removeFile fp >> reflectIDE refreshWorkspacePane ideRef)
@@ -678,26 +680,26 @@ contextMenuItems record path store =
                         _ -> return ()
 
             let onNewTextFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
-                    mbText <- showInputDialog "File name:" ""
+                    mbText <- showInputDialog (Just mainWindow) "File name:" ""
                     case mbText of
                         Just t  -> do
                             let path = fp </> T.unpack t
                             exists <- doesFileExist path
                             if exists
-                                then showErrorDialog "File already exists"
+                                then showErrorDialog (Just mainWindow) "File already exists"
                                 else do
                                     writeFile path ""
                                     void $ reflectIDE (refreshWorkspacePane >> goToSourceDefinition' path (Location "" 1 0 1 0)) ideRef
                         Nothing -> return ()
 
             let onNewDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
-                    mbText <- showInputDialog "Directory name:" ""
+                    mbText <- showInputDialog (Just mainWindow) "Directory name:" ""
                     case mbText of
                         Just t  -> do
                             let path = fp </> T.unpack t
                             exists <- doesDirectoryExist path
                             if exists
-                                then showErrorDialog "Directory already exists"
+                                then showErrorDialog (Just mainWindow) "Directory already exists"
                                 else do
                                     createDirectory path
                                     void $ reflectIDE refreshWorkspacePane ideRef
@@ -705,6 +707,7 @@ contextMenuItems record path store =
 
             let onDeleteDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef ->
                     showDialogOptions
+                        (Just mainWindow)
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageTypeQuestion
                         [ ("Delete directory", removeDirectoryRecursive fp >> reflectIDE refreshWorkspacePane ideRef)

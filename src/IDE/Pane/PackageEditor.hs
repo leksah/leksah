@@ -314,7 +314,7 @@ newPackageDialog parent workspaceDir projects = do
         (ResponseTypeOk, Just p)
             | validPackageName . T.unpack $ newPackageName p -> return value
             | otherwise -> do
-                liftIO $ showErrorDialog "Invalid package name."
+                liftIO $ showErrorDialog (Just parent) "Invalid package name."
                 newPackageDialog parent defaultParentDir projects
         _              -> return Nothing
 
@@ -344,6 +344,7 @@ packageNew' workspaceDir projects log activateAction = do
                     setMessageDialogText md $ T.pack (printf (__
                           "There is already file %s in this directory. Would you like to add this package to the project?")
                           (takeFileName cfn))
+                    windowSetTransientFor md (Just window)
                     dialogAddButton' md (__ "_Add Package") (AnotherResponseType 1)
                     dialogSetDefaultResponse' md (AnotherResponseType 1)
                     setWindowWindowPosition md WindowPositionCenterOnParent
