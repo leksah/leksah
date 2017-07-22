@@ -274,7 +274,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking (project, package) c
                 else []
     let args =  -- stack needs the package name to actually print the output info
                 (case pjTool project of
-                    StackTool -> ["build", "--stack-yaml", T.pack $ pjFile project, ipdPackageName package]
+                    StackTool -> ["build", "--stack-yaml", T.pack (makeRelative dir $ pjFile project), ipdPackageName package]
                     CabalTool -> ["new-build"])
                 ++ ["--with-ld=false" | pjTool project == CabalTool && backgroundBuild && withoutLinking]
 --                ++ flagsForLib
@@ -443,7 +443,7 @@ packageInstall' (project, package) continuation = do
                             StackTool -> "stack"
                             CabalTool -> "echo" {-cabalCommand prefs-})
                          ((case pjTool project of
-                            StackTool -> "install" : "--stack-yaml" : T.pack (pjFile project) : ipdBuildFlags package
+                            StackTool -> "install" : "--stack-yaml" : T.pack (makeRelative dir $ pjFile project) : ipdBuildFlags package
                             CabalTool -> ["TODO run cabal new-install"]) ++ ipdInstallFlags package)
                          dir Nothing $ do
                 mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
@@ -957,10 +957,19 @@ debugStart = do
         maybeDebug <- readIDE debugState
         case maybeDebug of
             Nothing -> do
+                mbTarget <- readIDE activeExe
                 let dir  = ipdPackageDir  package
                     name = ipdPackageName package
-                mbExe <- readIDE activeExe
-                ghci <- reifyIDE $ \ideR -> newGhci dir name mbExe (interactiveFlags prefs')
+                    (tool, args) = case pjTool project of
+                        CabalTool -> ("cabal", [ "new-repl"
+                                               , name <> maybe "" (":" <>) mbTarget
+                                               ])
+                        StackTool -> ("stack", [ "repl"
+                                               , "--stack-yaml"
+                                               , T.pack . makeRelative dir $ pjFile project
+                                               , name <> maybe "" (":" <>) mbTarget
+                                               ])
+                ghci <- reifyIDE $ \ideR -> newGhci tool args dir (interactiveFlags prefs')
                     $ reflectIDEI (void (logOutputForBuild project package True False)) ideR
                 modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])

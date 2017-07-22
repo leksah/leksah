@@ -270,7 +270,7 @@ library
         build-depends:
             ghc >=6.10.1 && <8.1,
             haskell-src-exts >=1.13.5 && <1.19,
-            leksah-server >=0.16.1.0 && <0.17
+            leksah-server >=0.16.2.0 && <0.17
 
     exposed-modules:
         IDE.HLint
