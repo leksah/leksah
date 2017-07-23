@@ -68,5 +68,4 @@ if test -e "$LEKSAH_DMG"; then
 fi
 hdiutil create -size 800m -srcfolder "Leksah" "$LEKSAH_DMG" || exit
 
-scp "$LEKSAH_DMG" server:leksah/
 

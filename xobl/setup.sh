@@ -1,7 +1,7 @@
 #!/bin/sh -ex
 
-export VBOXVER=5.0.16
-export GHCVER=7.10.3
+export VBOXVER=5.0.26
+export GHCVER=8.0.1
 
 # Install GNOME desktop
 sudo dnf groupinstall -y "Fedora Workstation"
@@ -112,7 +112,7 @@ then
 
     # Update alex and happy
     cabal install alex happy
-    
+
     # Install Leksah
     cabal install gtk2hs-buildtools
     cabal install ./ ./vendor/gi-gtk-hs ./vendor/ltk ./vendor/leksah-server ./vendor/haskellVCSGUI/vcsgui --force-reinstalls
@@ -125,10 +125,12 @@ then
 fi
 
 # Install GHCJS
+rm -rf ~/haskell/ghcjs
 if [ ! -d ~/haskell/ghcjs ]
 then
     cd ~/haskell
     git clone https://github.com/ghcjs/ghcjs.git
+    git checkout -b ghc-8.0
 fi
 
 if [ ! -e ~/haskell/ghcjs/.cabal-sandbox/bin/ghcjs ]
@@ -270,10 +272,10 @@ then
 fi
 
 # Collect Leksah Metadata
-if [ ! -d ~/.leksah-0.15 ]
+if [ ! -d ~/.leksah-0.16 ]
 then
-    mkdir ~/.leksah-0.15
-    cd ~/.leksah-0.15
+    mkdir ~/.leksah-0.16
+    cd ~/.leksah-0.16
     wget https://raw.githubusercontent.com/leksah/leksah/master/data/prefscoll.lkshp
     # Add ~/haskell to the list of directories checked for system package source
     (head -n1 ~/.cabal/share/x86_64-linux-ghc-$GHCVER/leksah-server-*/data/prefscoll.lkshp &&
@@ -282,7 +284,7 @@ then
     cp prefs.lkshp prefscoll.lkshp
     echo 'TextView Font: "Hasklig Light 12"' >> prefs.lkshp
     leksah-server -sob
-fi    
+fi
 
 # Add Leksah application
 if [ ! -e /usr/share/applications/leksah.desktop ]
