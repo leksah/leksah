@@ -80,8 +80,8 @@ import Distribution.Verbosity
 import System.FilePath
 import Control.Concurrent
 import System.Directory
-       (canonicalizePath, setCurrentDirectory, doesFileExist,
-        getDirectoryContents, doesDirectoryExist)
+       (removeDirectoryRecursive, canonicalizePath, setCurrentDirectory,
+        doesFileExist, getDirectoryContents, doesDirectoryExist)
 import Prelude hiding (catch)
 import Data.Char (isSpace)
 import Data.Maybe
@@ -390,17 +390,21 @@ packageClean = do
 
 packageClean' :: (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 packageClean' (project, package) continuation = do
-    prefs     <- readIDE prefs
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
     let dir = ipdPackageDir package
-    runExternalTool' (__ "Cleaning")
-                    (pjToolCommand project)
-                    ["clean"]
-                    dir Nothing $ do
-        mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
-        lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+        projectRoot = pjDir project
+    case pjTool project of
+        CabalTool -> liftIO . removeDirectoryRecursive $ dropFileName (pjFile project)
+            </> "dist-newstyle/build" </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+        StackTool ->
+            runExternalTool' (__ "Cleaning")
+                            (pjToolCommand project)
+                            ["clean"]
+                            dir Nothing $ do
+                mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
+                lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
 packageCopy :: PackageAction
 packageCopy = do
