@@ -32,7 +32,6 @@ import Graphics.UI.Frame.ViewFrame
         newGroupOrBringToFront)
 import Control.Monad (void, unless, when, liftM)
 import IDE.Core.Types (frameState)
-import Graphics.UI.Editor.Parameters (Direction(..))
 import IDE.Pane.Modules (IDEModules(..))
 import IDE.Pane.Info (IDEInfo(..))
 import IDE.Pane.SourceBuffer
@@ -45,7 +44,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Pane.WebKit.Output (IDEOutput(..))
 import GI.Gtk.Objects.Notebook
        (notebookSetShowTabs, notebookSetTabPos)
-import GI.Gtk.Enums (PositionType(..))
+import GI.Gtk.Enums (Orientation(..), PositionType(..))
 import GI.Gtk.Objects.Widget (widgetSetSensitive)
 
 moveOrBuildPane :: RecoverablePane alpha beta delta => PanePath -> delta (Maybe alpha)
@@ -63,8 +62,8 @@ showBrowser = do
     layout' <- liftM layout (readIDE frameState)
     case ret of
         (Just rpp, True) -> do
-            viewSplit' rpp Horizontal
-            viewSplit' (rpp ++ [SplitP BottomP]) Horizontal
+            viewSplit' rpp OrientationHorizontal
+            viewSplit' (rpp ++ [SplitP BottomP]) OrientationHorizontal
             let lowerP =  rpp ++ [SplitP BottomP, SplitP BottomP]
             let upperP =  rpp ++ [SplitP BottomP, SplitP TopP]
             let topP = rpp ++ [SplitP TopP]
@@ -114,7 +113,7 @@ showDebugger = do
     bufs <- allBuffers
     case ret of
         (Just rpp, True) -> do
-            viewSplit' rpp Horizontal
+            viewSplit' rpp OrientationHorizontal
             let lowerP =  rpp ++ [SplitP BottomP]
             let upperP =  rpp ++ [SplitP TopP]
             lower <- getNotebook lowerP

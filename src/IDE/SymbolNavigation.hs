@@ -1,6 +1,8 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.SymbolNavigation
@@ -25,7 +27,7 @@ import IDE.Core.Types (IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (mapControlCommand)
 import Data.IORef (writeIORef, readIORef, newIORef)
-import Control.Monad (when)
+import Control.Monad (join, when)
 import Data.Maybe (fromJust, isJust)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Core.State (reflectIDE)
@@ -38,14 +40,13 @@ import GI.Gtk.Objects.ScrolledWindow
 import Graphics.UI.Editor.Basics (Connection(..), Connection)
 import GI.Pango.Enums (Underline(..))
 import GI.Gdk.Objects.Cursor (cursorNew)
-import GI.Gdk.Enums (CursorType(..))
+import GI.Gdk.Enums (GrabOwnership(..), CursorType(..))
 import GI.Gtk.Objects.Widget
        (onWidgetButtonPressEvent, onWidgetMotionNotifyEvent,
         widgetGetWindow, widgetGetAllocation, onWidgetLeaveNotifyEvent)
 import GI.Gdk.Structs.EventCrossing (getEventCrossingTime)
 import GI.Gdk.Functions (pointerGrab, pointerUngrab)
 import GI.Gtk.Objects.Adjustment (adjustmentGetValue)
-import GI.Gdk.Flags (EventMask(..), ModifierType(..))
 import Graphics.UI.Frame.Rectangle
        (getRectangleHeight, getRectangleWidth)
 import GI.Gdk.Objects.Screen (screenGetDefault)
@@ -57,6 +58,22 @@ import GI.Gdk.Structs.EventButton
        (getEventButtonXRoot, getEventButtonY, getEventButtonX,
         getEventButtonState, getEventButtonTime)
 import GI.Gdk.Objects.Window (windowGetOrigin)
+import GI.Gdk
+       (getEventButtonDevice, getEventMotionDevice,
+        deviceGetDisplay, cursorNewForDisplay, displayGetDefault)
+import Data.Foldable (forM_)
+-- TODO fix seat code
+#undef MIN_VERSION_GTK_3_20
+#ifdef MIN_VERSION_GTK_3_20
+import GI.Gdk.Flags
+       (SeatCapabilities(..), EventMask(..), ModifierType(..))
+import GI.Gdk.Objects.Device (deviceGetSeat)
+import GI.Gdk.Objects.Seat (seatGrab, seatUngrab)
+#else
+import GI.Gdk.Flags
+       (EventMask(..), ModifierType(..))
+import GI.Gdk.Objects.Device (deviceGrab, deviceUngrab)
+#endif
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
@@ -75,13 +92,20 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
     ttt <- getTagTable tvb
     linkTag <- newTag ttt "link"
     underline linkTag UnderlineSingle Nothing
-    cursor <- cursorNew CursorTypeHand2
 
-    id1 <- ConnectC sw <$> onWidgetLeaveNotifyEvent sw (\e -> do
-        getEventCrossingTime e >>= pointerUngrab
-        return True)
+--    id1 <- ConnectC sw <$> onWidgetLeaveNotifyEvent sw (\e -> do
+--        getEventCrossingTime e >>= pointerUngrab
+--        return True)
 
-    let moveOrClick eventX eventY mods eventTime click = do
+    let moveOrClick mbDevice eventX eventY mods eventTime mbMotion = do
+#ifdef MIN_VERSION_GTK_3_20
+            mbSeat <- mapM deviceGetSeat mbDevice
+            let ungrab = mapM_ seatUngrab mbSeat
+#else
+            let ungrab = mapM_ (`deviceUngrab` eventTime) mbDevice
+#endif
+            mbHand <- mapM deviceGetDisplay mbDevice
+                >>= mapM (`cursorNewForDisplay` CursorTypeHand2)
             sx <- getScrolledWindowHadjustment sw >>= adjustmentGetValue
             sy <- getScrolledWindowVadjustment sw >>= adjustmentGetValue
 
@@ -95,7 +119,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             szy <- getRectangleHeight rect
             if eventX < 0 || eventY < 0
                 || round eventX > szx || round eventY > szy then do
-                    pointerUngrab eventTime
+                    ungrab
                     return True
               else do
                 (beg, en) <- identifierMapper ctrlPressed shiftPressed iter
@@ -104,22 +128,30 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                 offs <- getLineOffset beg
                 offsc <- getLineOffset iter
                 if T.length slice > 1 then
-                    if click then do
-                            pointerUngrab eventTime
+                    case mbMotion of
+                        Nothing -> do
+                            ungrab
                             clickHandler ctrlPressed shiftPressed slice
-                        else do
+#ifdef MIN_VERSION_GTK_3_20
+                        Just motion -> do
+#else
+                        Just _ -> do
+#endif
                             applyTagByName tvb "link" beg en
                             screen <- screenGetDefault
                             widgetGetWindow tv >>= \case
                                 Nothing -> return ()
-                                Just dw -> do
-                                    pointerGrab dw False
-                                        [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
-                                        Gdk.noWindow (Just cursor) eventTime
-                                    return ()
-                  else do
-                    pointerUngrab eventTime
-                    return ()
+                                Just dw ->
+#ifdef MIN_VERSION_GTK_3_20
+                                    forM_ mbSeat $ \seat ->
+                                        seatGrab seat dw [SeatCapabilitiesPointer] False mbHand (_convertToEvent <$> motion) Nothing
+#else
+                                    forM_ mbDevice $ \device ->
+                                        deviceGrab device dw GrabOwnershipNone False
+                                            [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
+                                            mbHand eventTime
+#endif
+                  else ungrab
                 return True
     lineNumberBugFix <- liftIO $ newIORef Nothing
     let fixBugWithX mods isHint (eventX, eventY) ptrx' = do
@@ -149,9 +181,10 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
         oldX <- getEventMotionX e
         oldY <- getEventMotionY e
         rootX <- getEventMotionXRoot e
+        device <- getEventMotionDevice e
         (eventX, eventY) <- liftIO $ fixBugWithX mods isHint (oldX, oldY) rootX
         -- print ("move adjustment: isHint, old, new root", isHint, eventX, oldX, rootX)
-        (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime False
+        (`reflectIDE` ideR) $ moveOrClick device eventX eventY mods eventTime (Just e)
         return True)
     id3 <- ConnectC sw <$> onWidgetButtonPressEvent sw (\e -> do
         eventTime <- getEventButtonTime e
@@ -160,10 +193,11 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
         oldX <- getEventButtonX e
         oldY <- getEventButtonY e
         rootX <- getEventButtonXRoot e
+        device <- getEventButtonDevice e
         (eventX, eventY) <- liftIO $ fixBugWithX mods False (oldX, oldY) rootX
         -- liftIO $ print ("click adjustment: old, new", eventX, oldX)
-        (`reflectIDE` ideR) $ moveOrClick eventX eventY mods eventTime True)
+        (`reflectIDE` ideR) $ moveOrClick device eventX eventY mods eventTime Nothing)
 
-    return [id1, id2, id3]
+    return [{-id1,-} id2, id3]
 
 

@@ -1,7 +1,6 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ForeignFunctionInterface #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Find
@@ -109,6 +108,7 @@ import GI.Gtk.Structs.TreeIter (TreeIter(..))
 import GI.Gtk.Objects.Bin (Bin(..), binGetChild)
 import IDE.Core.Types (toGdkColor)
 import GI.Gtk.Structs.TreePath (treePathGetIndices)
+import GI.Gtk (noWidget, imageNewFromIconName)
 
 data FindState = FindState {
             entryStr        ::    Text
@@ -223,7 +223,11 @@ constructFindReplace = do
     toolbar <- toolbarNew
     toolbarSetStyle toolbar ToolbarStyleIcons
     toolbarSetIconSize toolbar IconSizeSmallToolbar
-    closeButton <- toolButtonNewFromStock "gtk-close"
+    let newButtonFromIconName name = imageNewFromIconName
+                                        (Just name)
+                                        (fromIntegral $ fromEnum IconSizeSmallToolbar)
+                                    >>= (`toolButtonNew` Nothing) . Just
+    closeButton <- newButtonFromIconName "window-close"
     toolbarInsert toolbar closeButton 0
 
     spinTool <- toolItemNew
@@ -242,7 +246,7 @@ constructFindReplace = do
     toolbarInsert toolbar sep1 0
 
     let performGrep = reflectIDE (workspaceTry $ doGrep toolbar) ideR
-    grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Grep"))
+    grepButton <- toolButtonNew noWidget (Just (__"Grep"))
     toolbarInsert toolbar grepButton 0
     onToolButtonClicked grepButton performGrep
     setWidgetTooltipText grepButton $ __"Search in multiple files"
@@ -250,10 +254,10 @@ constructFindReplace = do
     sep1 <- separatorToolItemNew
     toolbarInsert toolbar sep1 0
 
-    replaceAllButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Replace All"))
+    replaceAllButton <- toolButtonNew noWidget (Just (__"Replace All"))
     toolbarInsert toolbar replaceAllButton 0
 
-    replaceButton <- toolButtonNewFromStock "gtk-find-and-replace"
+    replaceButton <- newButtonFromIconName "edit-find-replace"
     toolbarInsert toolbar replaceButton 0
 
     replaceTool <- toolItemNew
@@ -267,7 +271,7 @@ constructFindReplace = do
     sep2 <- separatorToolItemNew
     toolbarInsert toolbar sep2 0
 
-    nextButton <- toolButtonNewFromStock "gtk-go-forward"
+    nextButton <- newButtonFromIconName "go-next"
     toolbarInsert toolbar nextButton 0
     setWidgetTooltipText nextButton $ __"Search for the next match in the current file"
     nextButton `onToolButtonClicked` doSearch toolbar Forward ideR
@@ -278,7 +282,7 @@ constructFindReplace = do
     toolbarInsert toolbar wrapAroundButton 0
     setWidgetTooltipText wrapAroundButton $ __"When selected searching will continue from the top when no more matches are found"
 
-    previousButton <- toolButtonNewFromStock "gtk-go-back"
+    previousButton <- newButtonFromIconName "go-previous"
     toolbarInsert toolbar previousButton 0
     setWidgetTooltipText previousButton $ __"Search for the previous match in the current file"
     previousButton `onToolButtonClicked` doSearch toolbar Backward ideR

@@ -57,12 +57,11 @@ import Graphics.UI.Editor.Composite
         multisetEditor)
 import Distribution.Text (simpleParse, display)
 import Graphics.UI.Editor.Parameters
-       (boxPackEnd', dialogSetDefaultResponse', dialogRun', Packing(..),
-        boxPackStart', dialogAddButton', paraInnerPadding,
-        paraInnerAlignment, paraOuterPadding, paraOuterAlignment,
-        Parameter(..), paraPack, Direction(..), paraDirection, paraMinSize,
-        paraShadow, paraSynopsis, (<<<-), emptyParams, paraName,
-        getParameterPrim)
+       (paraMargin, paraVAlign, paraHAlign, boxPackEnd',
+        dialogSetDefaultResponse', dialogRun', Packing(..), boxPackStart',
+        dialogAddButton', Parameter(..), paraPack,
+        paraOrientation, paraMinSize, paraShadow, paraSynopsis, (<<<-),
+        emptyParams, paraName, getParameterPrim)
 import Graphics.UI.Editor.Simple
        (stringEditor, comboEntryEditor,
         staticListMultiEditor, intEditor, boolEditor, fileEditor,
@@ -110,7 +109,7 @@ import GI.Gtk.Objects.Window
         setWindowTransientFor, Window(..))
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Enums
-       (ShadowType(..), WindowPosition(..), ButtonsType(..),
+       (Align(..), ShadowType(..), WindowPosition(..), ButtonsType(..),
         MessageType(..), ResponseType(..), FileChooserAction(..),
         Orientation(..))
 import GI.Gtk.Objects.Dialog
@@ -548,13 +547,6 @@ data PackageDescriptionEd = PDE {
     bis          :: [BuildInfo]}
         deriving Eq
 
-comparePDE a b = do
-    when (pd a /= pd b) $ putStrLn  "pd"
-    when (exes a /= exes b) $ putStrLn  "exes"
-    when (tests a /= tests b) $ putStrLn  "tests"
-    when (mbLib a /= mbLib b) $ putStrLn  "mbLib"
-    when (bis a /= bis b) $ putStrLn  "bis"
-
 fromEditor :: PackageDescriptionEd -> PackageDescription
 fromEditor (PDE pd exes'
         tests'
@@ -785,7 +777,6 @@ builder' packageDir packageD packageDescr afterSaveAction initialPackagePath mod
                                 Nothing -> False
                                 Just p -> p /= origPackageD
         when (isJust mbP) $ labelSetMarkup label ""
-        when (isJust mbP) $ comparePDE (fromJust mbP) packageD
         w <- reflectIDE (getTopWidget packagePane) ideR
         markLabel nb w hasChanged
         widgetSetSensitive save hasChanged
@@ -862,7 +853,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "License Files")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "A list of license files.")
-                    $ paraDirection <<<- ParaDirection Vertical
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
             (licenseFiles . pd)
@@ -905,7 +896,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
         mkField
             (paraName <<<- ParaName (__ "Build Dependencies")
                 $ paraSynopsis <<<- ParaSynopsis (__ "Does this package depends on other packages?")
-                    $ paraDirection <<<- ParaDirection Vertical
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
             (nub . buildDepends . pd)
@@ -924,7 +915,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
     ,   mkField
             (paraName <<<- ParaName (__ "Tested with compiler")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
-                    $ paraDirection <<<- ParaDirection Vertical
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,150)
                             $ emptyParams)
             (\a -> case (testedWith . pd) a of
@@ -938,7 +929,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Data Files")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "A list of files to be installed for run-time use by the package.")
-                    $ paraDirection <<<- ParaDirection Vertical
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
             (dataFiles . pd)
@@ -955,7 +946,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Extra Source Files")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "A list of additional files to be included in source distributions.")
-                    $ paraDirection <<<- ParaDirection Vertical
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,120)
                             $ emptyParams)
             (extraSrcFiles . pd)
@@ -965,7 +956,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<-  ParaName (__ "Extra Tmp Files")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "A list of additional files or directories to be removed by setup clean.")
-                    $ paraDirection <<<- ParaDirection Vertical
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,120)
                             $ emptyParams)
             (extraTmpFiles . pd)
@@ -978,7 +969,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                 $ paraSynopsis <<<- ParaSynopsis
                 (__ "Describe executable programs contained in the package")
                         $ paraShadow <<<- ParaShadow ShadowTypeIn
-                            $ paraDirection <<<- ParaDirection Vertical
+                            $ paraOrientation <<<- ParaOrientation OrientationVertical
                                 $ emptyParams)
             (buildType . pd)
             (\ a b -> b{pd = (pd b){buildType = a}})
@@ -987,7 +978,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Custom Fields")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
                     $ paraMinSize <<<- ParaMinSize (-1,150)
-                        $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                        $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (customFieldsPD . pd)
             (\ a b -> b{pd = (pd b){customFieldsPD = a}})
             (multisetEditor
@@ -1004,7 +995,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Executables")
                 $ paraSynopsis <<<- ParaSynopsis
                 (__ "Describe executable programs contained in the package")
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             exes
             (\ a b -> b{exes = a})
             (executablesEditor (Just fp) modules numBuildInfos)
@@ -1014,7 +1005,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Tests")
                 $ paraSynopsis <<<- ParaSynopsis
                 (__ "Describe tests contained in the package")
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             tests
             (\ a b -> b{tests = a})
             (testsEditor (Just fp) modules numBuildInfos)
@@ -1024,7 +1015,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Benchmarks")
                 $ paraSynopsis <<<- ParaSynopsis
                 (__ "Describe tests contained in the package")
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             bms
             (\ a b -> b{bms = a})
             (benchmarksEditor (Just fp) modules numBuildInfos)
@@ -1034,7 +1025,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Library")
            $ paraSynopsis <<<- ParaSynopsis
              (__ "If the package contains a library, specify the exported modules here")
-           $ paraDirection <<<- ParaDirection Vertical
+           $ paraOrientation <<<- ParaOrientation OrientationVertical
            $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             mbLib
             (\ a b -> b{mbLib = a})
@@ -1066,7 +1057,7 @@ buildInfoD fp modules i = [
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "Root directories for the source hierarchy.")
                     $ paraShadow  <<<- ParaShadow ShadowTypeIn
-                        $ paraDirection  <<<- ParaDirection Vertical
+                        $ paraOrientation  <<<- ParaOrientation OrientationVertical
                             $ paraMinSize <<<- ParaMinSize (-1,150)
                                 $ emptyParams)
             (hsSourceDirs . (!! i) . bis)
@@ -1077,7 +1068,7 @@ buildInfoD fp modules i = [
             $ paraSynopsis <<<- ParaSynopsis
                                        (__ "A list of modules used by the component but not exposed to users.")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
-                    $ paraDirection <<<- ParaDirection Vertical
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,300)
                             $ paraPack <<<- ParaPack PackGrow
                                 $ emptyParams)
@@ -1090,7 +1081,7 @@ buildInfoD fp modules i = [
     (T.pack $ printf (__ "%s Compiler ") (show (i + 1)), VFD emptyParams [
         mkField
             (paraName  <<<- ParaName (__ "Options for haskell compilers")
-            $ paraDirection <<<- ParaDirection Vertical
+            $ paraOrientation <<<- ParaOrientation OrientationVertical
             $ paraShadow <<<- ParaShadow ShadowTypeIn
             $ paraPack <<<- ParaPack PackGrow $ emptyParams)
             (options . (!! i) . bis)
@@ -1101,7 +1092,7 @@ buildInfoD fp modules i = [
                 (pairEditor
                     (compilerFlavorEditor,emptyParams)
                     (optsEditor,emptyParams),
-                        paraDirection <<<- ParaDirection Vertical
+                        paraOrientation <<<- ParaOrientation OrientationVertical
                             $ paraShadow  <<<- ParaShadow ShadowTypeIn $ emptyParams)
                 Nothing
                 Nothing)
@@ -1148,7 +1139,7 @@ buildInfoD fp modules i = [
     (T.pack $ printf (__ "%s Build Tools ") (show (i + 1)), VFD emptyParams [
         mkField
             (paraName <<<- ParaName (__ "Tools needed for a build")
-                $ paraDirection <<<- ParaDirection Vertical
+                $ paraOrientation <<<- ParaOrientation OrientationVertical
                     $ paraMinSize <<<- ParaMinSize (-1,120)
                         $ emptyParams)
             (buildTools . (!! i) . bis)
@@ -1158,7 +1149,7 @@ buildInfoD fp modules i = [
     (T.pack $ printf (__ "%s Pkg Config ") (show (i + 1)), VFD emptyParams [
         mkField
             (paraName <<<- ParaName (__ "A list of pkg-config packages, needed to build this package")
-                $ paraDirection <<<- ParaDirection Vertical
+                $ paraOrientation <<<- ParaOrientation OrientationVertical
                     $ paraMinSize <<<- ParaMinSize (-1,120)
                         $ emptyParams)
             (pkgconfigDepends . (!! i) . bis)
@@ -1168,28 +1159,28 @@ buildInfoD fp modules i = [
     (T.pack $ printf (__ "%s Opts C -1-") (show (i + 1)), VFD emptyParams [
          mkField
             (paraName <<<- ParaName (__ "Options for C compiler")
-                $ paraDirection <<<- ParaDirection Vertical
+                $ paraOrientation <<<- ParaOrientation OrientationVertical
                     $ emptyParams)
             (ccOptions . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{ccOptions = a})})
             optsEditor
     ,    mkField
             (paraName <<<- ParaName (__ "Options for linker")
-                $ paraDirection <<<- ParaDirection Vertical
+                $ paraOrientation <<<- ParaOrientation OrientationVertical
                     $ emptyParams)
             (ldOptions . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{ldOptions = a})})
             optsEditor
     ,    mkField
             (paraName <<<- ParaName (__ "A list of header files to use when compiling")
-                $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (map T.pack . includes . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{includes = map T.unpack a})})
             (textsEditor (const True) True)
      ,   mkField
             (paraName <<<- ParaName (__ "A list of header files to install")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (installIncludes . (!! i) . bis)
              (\ a b -> b{bis = update (bis b) i (\bi -> bi{installIncludes = a})})
            (filesEditor fp FileChooserActionOpen (__ "Select File"))
@@ -1198,7 +1189,7 @@ buildInfoD fp modules i = [
          mkField
             (paraName <<<- ParaName (__ "A list of directories to search for header files")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (includeDirs . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{includeDirs = a})})
             (filesEditor fp FileChooserActionSelectFolder (__ "Select Folder"))
@@ -1206,7 +1197,7 @@ buildInfoD fp modules i = [
             (paraName <<<- ParaName
                 (__ "A list of C source files to be compiled,linked with the Haskell files.")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (cSources . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{cSources = a})})
             (filesEditor fp FileChooserActionOpen (__ "Select file"))
@@ -1215,14 +1206,14 @@ buildInfoD fp modules i = [
          mkField
             (paraName <<<- ParaName (__ "A list of extra libraries to link with")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (map T.pack . extraLibs . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibs = map T.unpack a})})
             (textsEditor (const True) True)
      ,   mkField
             (paraName <<<- ParaName (__ "A list of directories to search for libraries.")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (extraLibDirs . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibDirs = a})})
             (filesEditor fp FileChooserActionSelectFolder (__ "Select Folder"))
@@ -1230,7 +1221,7 @@ buildInfoD fp modules i = [
     (T.pack $ printf (__ "%s Other") (show (i + 1)), VFD emptyParams [
          mkField
             (paraName <<<- ParaName (__ "Options for C preprocessor")
-                $ paraDirection <<<- ParaDirection Vertical
+                $ paraOrientation <<<- ParaOrientation OrientationVertical
                     $ emptyParams)
             (cppOptions . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{cppOptions = a})})
@@ -1238,7 +1229,7 @@ buildInfoD fp modules i = [
     ,   mkField
             (paraName <<<- ParaName (__ "Support frameworks for Mac OS X")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
-                    $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (map T.pack . frameworks . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{frameworks = map T.unpack a})})
             (textsEditor (const True) True)
@@ -1246,7 +1237,7 @@ buildInfoD fp modules i = [
             (paraName <<<- ParaName (__ "Custom fields build info")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
                     $ paraMinSize <<<- ParaMinSize (-1,150)
-                        $ paraDirection <<<- ParaDirection Vertical $ emptyParams)
+                        $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
              (customFieldsBI . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{customFieldsBI = a})})
             (multisetEditor
@@ -1291,7 +1282,7 @@ compilerOptRecordEditor para =
         (compilerFlavorEditor
             , paraName <<<- ParaName "Compiler" $ emptyParams)
         (optsEditor,paraName <<<- ParaName "Options" $ emptyParams)
-        (paraDirection <<<- ParaDirection Vertical $ para)
+        (paraOrientation <<<- ParaOrientation OrientationVertical $ para)
 
 compilerOptsEditor :: Editor [(CompilerFlavor, [String])]
 compilerOptsEditor p =
@@ -1299,15 +1290,15 @@ compilerOptsEditor p =
         (ColumnDescr True [("Compiler",\cell (compiler, _) -> setCellRendererTextText cell . T.pack $ show compiler)
                            ,("Options",\cell (_, opts    ) -> setCellRendererTextText cell . T.pack $ unwords opts)])
         (compilerOptRecordEditor,
-            paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
-                $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
+            paraHAlign <<<- ParaHAlign AlignFill
+                $ paraVAlign <<<- ParaVAlign AlignCenter
                    $ emptyParams)
         (Just (sortBy (\ (f1, _) (f2, _) -> compare f1 f2)))
         (Just (\ (f1, _) (f2, _) -> f1 == f2))
         (paraShadow <<<- ParaShadow ShadowTypeIn
-            $ paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
-                $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
-                    $ paraDirection  <<<-  ParaDirection Vertical
+            $ paraHAlign <<<- ParaHAlign AlignFill
+                $ paraVAlign <<<- ParaVAlign AlignCenter
+                    $ paraOrientation  <<<-  ParaOrientation OrientationVertical
                         $ paraPack <<<- ParaPack PackGrow
                             $ p)
 
@@ -1316,7 +1307,7 @@ packageEditor para noti = do
     (wid,inj,ext) <- pairEditor
         (stringEditor (not . null) True, paraName <<<- ParaName (__ "Name") $ emptyParams)
         (versionEditor, paraName <<<- ParaName (__ "Version") $ emptyParams)
-        (paraDirection <<<- ParaDirection Horizontal
+        (paraOrientation <<<- ParaOrientation OrientationHorizontal
             $ paraShadow <<<- ParaShadow ShadowTypeIn
                 $ para) noti
     let pinj (PackageIdentifier (PackageName n) v) = inj (n,v)
@@ -1340,7 +1331,7 @@ testedWithEditor =
            paraShadow <<<- ParaShadow ShadowTypeNone $ emptyParams)
           (versionRangeEditor,
            paraShadow <<<- ParaShadow ShadowTypeNone $ emptyParams),
-        paraDirection <<<- ParaDirection Vertical $ emptyParams)
+        paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
        Nothing
        (Just (==))
 
@@ -1407,7 +1398,7 @@ reposEditor p noti =
         (paraShadow <<<- ParaShadow ShadowTypeIn $
             paraOuterAlignment <<<- ParaInnerAlignment (0.0, 0.5, 1.0, 1.0)
                 $ paraInnerAlignment <<<- ParaOuterAlignment (0.0, 0.5, 1.0, 1.0)
-                    $ paraDirection  <<<-  ParaDirection Vertical
+                    $ paraOrientation  <<<-  ParaOrientation OrientationVertical
                         $ paraPack <<<- ParaPack PackGrow
                             $ p)
         noti
@@ -1432,7 +1423,7 @@ repoEditor paras noti = do
                             (maybeEditor (textEditor (const True) True,noBorder) True "Specify a branch", emptyParams)
                             (maybeEditor (textEditor (const True) True,noBorder) True "Specify a tag", emptyParams)
                             (maybeEditor (textEditor (const True) True,noBorder) True "Specify a subdir", emptyParams)
-                            (paraDirection  <<<- ParaDirection Vertical $ noBorder)
+                            (paraOrientation  <<<- ParaOrientation OrientationVertical $ noBorder)
                             noti
     return (widg,
         (\ r -> inj (repoKind r,repoType r,repoLocation r,repoModule r,repoBranch r,repoTag r,repoSubdir r)),
@@ -1552,7 +1543,7 @@ libraryEditor fp modules numBuildInfos para noti = do
                 (buildInfoEditorP numBuildInfos, paraName <<<- ParaName (__ "Build Info")
                 $ paraPack <<<- ParaPack PackNatural
                 $ para),
-                paraDirection <<<- ParaDirection Vertical
+                paraOrientation <<<- ParaOrientation OrientationVertical
                 $ emptyParams)
             (tupel3Editor
                 (modulesEditor (sort modules),
@@ -1567,9 +1558,9 @@ libraryEditor fp modules numBuildInfos para noti = do
                 paraName <<<- ParaName (__ "Exposed Signatures")
                 $ paraMinSize <<<- ParaMinSize (-1,300)
                 $ para),
-                paraDirection <<<- ParaDirection Vertical
+                paraOrientation <<<- ParaOrientation OrientationVertical
                 $ emptyParams)
-            (paraDirection <<<- ParaDirection Vertical
+            (paraOrientation <<<- ParaOrientation OrientationVertical
             $ emptyParams)
             noti
     let pinj (Library' em rmn rs es exp bi) = inj ((exp, map (T.pack . display) em,bi), (map (T.pack . display) rmn, map (T.pack . display) rs, map (T.pack . display) es))
@@ -1603,7 +1594,7 @@ libraryEditor fp modules numBuildInfos para noti = do
             (buildInfoEditorP numBuildInfos, paraName <<<- ParaName (__ "Build Info")
             $ paraPack <<<- ParaPack PackNatural
             $ para)
-            (paraDirection <<<- ParaDirection Vertical
+            (paraOrientation <<<- ParaOrientation OrientationVertical
             $ emptyParams)
             noti
     let pinj (Library' em exp bi) = inj (exp, map (T.pack . display) em,bi)
@@ -1638,16 +1629,15 @@ executableEditor fp modules countBuildInfo para noti = do
             paraName <<<- ParaName (__ "Executable Name")
             $ emptyParams)
         (stringEditor (not . null) True,
-            paraDirection <<<- ParaDirection Vertical
+            paraOrientation <<<- ParaOrientation OrientationVertical
             $ paraName <<<- ParaName (__ "File with main function")
             $ emptyParams)
         (buildInfoEditorP countBuildInfo, paraName <<<- ParaName (__ "Build Info")
-            $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
-                $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
-                    $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
-                        $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
-                            $ emptyParams)
-        (paraDirection  <<<- ParaDirection Vertical $ para)
+            $ paraHAlign <<<- ParaHAlign AlignStart
+                $ paraVAlign <<<- ParaVAlign AlignStart
+                    $ paraMargin <<<- ParaMargin (0, 0, 0, 0)
+                        $ emptyParams)
+        (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
         noti
     let pinj (Executable' s f bi) = inj (s,f,bi)
     let pext = do
@@ -1679,16 +1669,15 @@ testEditor fp modules countBuildInfo para noti = do
             paraName <<<- ParaName (__ "Test Name")
             $ emptyParams)
         (stringEditor (not . null) True,
-            paraDirection <<<- ParaDirection Vertical
+            paraOrientation <<<- ParaOrientation OrientationVertical
             $ paraName <<<- ParaName (__ "File with main function")
             $ emptyParams)
         (buildInfoEditorP countBuildInfo, paraName <<<- ParaName (__ "Build Info")
-            $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
-                $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
-                    $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
-                        $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
-                            $ emptyParams)
-        (paraDirection  <<<- ParaDirection Vertical $ para)
+            $ paraHAlign <<<- ParaHAlign AlignStart
+                $ paraVAlign <<<- ParaVAlign AlignStart
+                    $ paraMargin <<<- ParaMargin (0, 0, 0, 0)
+                        $ emptyParams)
+        (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
         noti
     let pinj (Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
         pinj _ = error "Unexpected Test Interface"
@@ -1721,16 +1710,15 @@ benchmarkEditor fp modules countBuildInfo para noti = do
             paraName <<<- ParaName (__ "Benchmark Name")
             $ emptyParams)
         (stringEditor (not . null) True,
-            paraDirection <<<- ParaDirection Vertical
+            paraOrientation <<<- ParaOrientation OrientationVertical
             $ paraName <<<- ParaName (__ "File with main function")
             $ emptyParams)
         (buildInfoEditorP countBuildInfo, paraName <<<- ParaName (__ "Build Info")
-            $ paraOuterAlignment <<<- ParaOuterAlignment  (0.0, 0.0, 0.0, 0.0)
-                $ paraOuterPadding <<<- ParaOuterPadding    (0, 0, 0, 0)
-                    $ paraInnerAlignment <<<- ParaInnerAlignment  (0.0, 0.0, 0.0, 0.0)
-                        $ paraInnerPadding <<<- ParaInnerPadding   (0, 0, 0, 0)
-                            $ emptyParams)
-        (paraDirection  <<<- ParaDirection Vertical $ para)
+            $ paraHAlign <<<- ParaHAlign AlignStart
+                $ paraVAlign <<<- ParaVAlign AlignStart
+                    $ paraMargin <<<- ParaMargin (0, 0, 0, 0)
+                        $ emptyParams)
+        (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
         noti
     let pinj (Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
         pinj _ = error "Unexpected Benchmark Interface"

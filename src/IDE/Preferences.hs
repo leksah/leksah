@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Preferences
@@ -83,8 +84,8 @@ import GI.Gtk.Objects.HButtonBox (hButtonBoxNew)
 import GI.Gtk.Objects.Box (Box(..), boxSetSpacing)
 import GI.Gtk.Objects.ButtonBox (buttonBoxSetLayout)
 import GI.Gtk.Enums
-       (FileChooserAction(..), ShadowType(..), ResponseType(..),
-        ButtonBoxStyle(..))
+       (Orientation(..), FileChooserAction(..), ShadowType(..),
+        ResponseType(..), ButtonBoxStyle(..))
 import GI.Gtk.Objects.Button
        (onButtonClicked, buttonNewWithLabel, Button (..))
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
@@ -99,7 +100,9 @@ import GI.Gtk.Objects.Settings
 import GI.GtkSource
        (styleSchemeManagerGetSchemeIds,
         styleSchemeManagerAppendSearchPath, styleSchemeManagerNew)
-import GI.Gtk (constructDialogUseHeaderBar, Container(..), containerAdd)
+import GI.Gtk
+       (widgetOverrideFont, constructDialogUseHeaderBar, Container(..),
+        containerAdd)
 
 
 -- | This needs to be incremented when the preferences format changes
@@ -488,7 +491,7 @@ prefsDescription configDir packages = NFDPP [
             (\(b, mbFont) -> do
                 log <- getLog
                 fdesc <- fontDescriptionFromString (if b then fromMaybe "" mbFont else "Monospace")
-                widgetModifyFont (logLaunchTextView log) (Just fdesc)
+                widgetOverrideFont (logLaunchTextView log) (Just fdesc)
             )
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Workspace Font") $ emptyParams)
@@ -503,9 +506,9 @@ prefsDescription configDir packages = NFDPP [
                 case (b, mbFont) of
                     (True, Just font) -> do
                         fdesc <- fontDescriptionFromString (if b then fromMaybe "" mbFont else "")
-                        widgetModifyFont (treeView wp) (Just fdesc)
+                        widgetOverrideFont (treeView wp) (Just fdesc)
                     _ -> do
-                        widgetModifyFont (treeView wp) Nothing
+                        widgetOverrideFont (treeView wp) Nothing
             )
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Window default size")
@@ -564,7 +567,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Name of the keymap")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "The name of a keymap file in a config dir")
-                    $ paraDirection <<<- ParaDirection Horizontal $ emptyParams)
+                    $ paraOrientation <<<- ParaOrientation OrientationHorizontal $ emptyParams)
             (PP.text . T.unpack)
             identifier
             keymapName
@@ -590,7 +593,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName
                 (__ "Categories for panes")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
-                     $ paraDirection <<<- ParaDirection Vertical
+                     $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
                             $ emptyParams)
             (PP.text . show)
@@ -610,7 +613,7 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName
                 (__ "Pane path for category")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
-                     $ paraDirection <<<- ParaDirection Vertical
+                     $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
                             $ emptyParams)
             (PP.text . show)

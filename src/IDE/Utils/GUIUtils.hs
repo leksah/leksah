@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, DataKinds, PatternSynonyms #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Utils.GUIUtils

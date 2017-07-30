@@ -62,8 +62,9 @@ import GI.Gtk.Enums
 import GI.Gtk.Objects.Button (onButtonClicked, buttonNewWithLabel)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.ScrolledWindow
-       (scrolledWindowSetPolicy, scrolledWindowAddWithViewport,
+       (scrolledWindowSetPolicy,
         scrolledWindowSetShadowType, scrolledWindowNew)
+import GI.Gtk (containerAdd)
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   Box
@@ -91,9 +92,7 @@ instance RecoverablePane IDEFlags FlagsState IDEM where
                 Just pack -> do
                     pp  <- getBestPathForId "*Flags"
                     nb  <- getNotebook pp
-                    case mbPack of
-                        Nothing -> return Nothing
-                        Just pack -> buildThisPane pp nb builder
+                    buildThisPane pp nb builder
                 Nothing -> return Nothing
     builder pp nb w =
         let flagsDesc       =   extractFieldDescription flagsDescription
@@ -121,7 +120,7 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                         <-  buildEditor flagsDesc idePackage
     sw <- scrolledWindowNew noAdjustment noAdjustment
     scrolledWindowSetShadowType sw ShadowTypeIn
-    scrolledWindowAddWithViewport sw widget
+    containerAdd sw widget
     scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
     onButtonClicked saveB (do
         mbPackWithNewFlags <- extract idePackage [ext]

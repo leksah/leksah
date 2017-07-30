@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 --
 -- Module      :  IDE.Pane.Log
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
@@ -129,6 +130,7 @@ import GI.GLib.Functions (idleAdd)
 import GI.GLib.Constants (pattern PRIORITY_DEFAULT)
 import Data.Int (Int32)
 import Control.Monad.IO.Class (MonadIO)
+import GI.Gtk (widgetOverrideFont)
 
 -------------------------------------------------------------------------------
 --
@@ -365,7 +367,7 @@ builder' pp nb windows = do
             f    <- fontDescriptionNew
             fontDescriptionSetFamily f "Monospace"
             return f
-    widgetModifyFont tv (Just fd)
+    widgetOverrideFont tv (Just fd)
     sw           <- scrolledWindowNew noAdjustment noAdjustment
     containerAdd sw tv
     scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic

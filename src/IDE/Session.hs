@@ -74,7 +74,8 @@ import IDE.Preferences (applyInterfaceTheme)
 import GI.Gtk.Objects.Window
        (windowUnfullscreen, windowFullscreen, windowSetDefaultSize,
         Window(..), windowSetTransientFor, setWindowTitle, windowGetSize)
-import GI.Gtk.Enums (ResponseType(..), FileChooserAction(..))
+import GI.Gtk.Enums
+       (Orientation(..), ResponseType(..), FileChooserAction(..))
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserGetFilename, fileChooserSetCurrentFolder,
@@ -582,13 +583,13 @@ applyLayout layoutS = do
         forM_ (Map.toAscList groups) $ \(group, g) ->
             applyLayout' g (pp ++ [GroupP group])
     applyLayout' (VerticalP l r pos) pp = do
-        viewSplit' pp Vertical
+        viewSplit' pp OrientationVertical
         pane        <-  getPaned pp
         panedSetPosition pane (fromIntegral pos)
         applyLayout' l (pp ++ [SplitP LeftP])
         applyLayout' r (pp ++ [SplitP RightP])
     applyLayout' (HorizontalP t b pos) pp = do
-        viewSplit' pp Horizontal
+        viewSplit' pp OrientationHorizontal
         pane        <-  getPaned pp
         panedSetPosition pane (fromIntegral pos)
         applyLayout' t (pp ++ [SplitP TopP])

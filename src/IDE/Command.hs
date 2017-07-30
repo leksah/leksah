@@ -1,8 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
-{-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module       :  IDE.Menu
@@ -101,7 +100,7 @@ import Data.Monoid (Monoid(..), (<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import GI.Gtk.Enums
-       (IconSize(..), ToolbarStyle(..), PositionType(..))
+       (IconSize(..), ToolbarStyle(..), PositionType(..), Orientation(..))
 import GI.Gtk.Objects.Menu (Menu(..), menuNew)
 import GI.Gtk.Objects.MenuItem
        (toMenuItem, menuItemSetSubmenu, menuItemGetSubmenu,
@@ -151,7 +150,6 @@ import GI.Gdk.Structs.EventKey
 import GI.Gdk.Functions (keyvalToUnicode, keyvalName)
 import GI.Gdk.Flags (ModifierType, ModifierType(..))
 import GI.Gtk.Objects.AccelGroup (AccelGroup(..))
-import GI.Gtk.Enums (Orientation(..))
 import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 import IDE.LPaste
@@ -772,7 +770,7 @@ getActionsFor' l = do
         getActionFor string = do
             uiManager' <- getUiManager
             actionGroups <- uIManagerGetActionGroups uiManager'
-            res <- nullToNothing $ actionGroupGetAction (head actionGroups) string
+            res <- actionGroupGetAction (head actionGroups) string
             when (isNothing res) $ ideMessage Normal $ T.pack $ printf (__ "Can't find UI Action %s") (T.unpack string)
             return res
 

@@ -110,7 +110,7 @@ import Data.GI.Base.ManagedPtr
        (castTo, withManagedPtr, unsafeCastTo)
 import GI.GObject.Functions
        (signalHandlersBlockMatched, signalLookup)
-import Data.GI.Base.BasicTypes (nullToNothing, GObject(..))
+import Data.GI.Base.BasicTypes (GObject(..))
 import GI.GObject.Flags (SignalMatchType(..))
 import GI.GtkSource.Enums (SmartHomeEndType(..))
 import GI.Gtk.Enums
@@ -152,7 +152,7 @@ import GI.Gtk.Objects.Menu (Menu(..))
 import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
 import Text.PrinterParser (Color(..))
-import GI.Gtk (setTextTagUnderlineRgba)
+import GI.Gtk (widgetOverrideFont, setTextTagUnderlineRgba)
 import GI.GtkSource.Objects.StyleScheme
        (styleSchemeGetStyle, StyleScheme(..))
 import GI.GtkSource.Objects.Style
@@ -321,14 +321,14 @@ instance TextEditor GtkSourceView where
             attributes <- markAttributesNew
             markAttributesSetIconName attributes icon
             onMarkAttributesQueryTooltipText attributes $ \ mark ->
-                maybe "" (T.drop 1 . T.dropWhile isDigit) <$> nullToNothing (textMarkGetName mark)
+                maybe "" (T.drop 1 . T.dropWhile isDigit) <$> textMarkGetName mark
             viewSetMarkAttributes sv cat attributes (fromIntegral $ 1 + fromEnum(maxBound :: LogRefType) - fromEnum refType)
         textViewSetWrapMode sv (if wrapLines prefs
                                     then WrapModeWord
                                     else WrapModeNone)
         sw <- scrolledWindowNew noAdjustment noAdjustment
         containerAdd sw sv
-        widgetModifyFont sv (Just fd)
+        widgetOverrideFont sv (Just fd)
         return (GtkView sv, sw)
     pasteClipboard (GtkBuffer sb) clipboard (GtkIter i) defaultEditable =
         textBufferPasteClipboard sb clipboard (Just i) defaultEditable
@@ -528,7 +528,7 @@ instance TextEditor GtkSourceView where
     onSelectionChanged (GtkBuffer sb) handler = do
         ideR <- ask
         id1 <- ConnectC sb <$> onTextBufferMarkSet sb (\ _ mark -> do
-            name <- nullToNothing (textMarkGetName mark)
+            name <- textMarkGetName mark
             when (name == Just "insert") $ reflectIDE handler ideR)
         return [id1]
 

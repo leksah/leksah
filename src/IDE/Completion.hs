@@ -104,6 +104,7 @@ import Data.GI.Gtk.ModelView.Types
        (equalManagedPtr, treePathGetIndices', treePathNewFromIndices')
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
+import GI.Gtk (widgetOverrideFont)
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -193,7 +194,7 @@ initCompletion sourceView always = do
                     f <- fontDescriptionNew
                     fontDescriptionSetFamily f "Monospace"
                     return f
-            widgetModifyFont tree (Just font)
+            widgetOverrideFont tree (Just font)
 
             column   <- treeViewColumnNew
             setTreeViewColumnSizing   column TreeViewColumnSizingFixed

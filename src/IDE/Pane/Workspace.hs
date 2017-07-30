@@ -6,6 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.Workspace
@@ -113,7 +114,7 @@ import GI.Gtk.Objects.TreeView
         treeViewNew, TreeView(..))
 import GI.Gtk.Objects.Widget
        (widgetHide, widgetShowAll, afterWidgetFocusInEvent, toWidget,
-        widgetModifyFont)
+        widgetOverrideFont)
 import GI.Gtk.Objects.TreeViewColumn
        (treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnNew)
@@ -398,7 +399,7 @@ buildTreeView recordStore = do
         mbFd <- case workspaceFont prefs of
             (True, Just str) ->  Just <$> fontDescriptionFromString str
             _ -> return Nothing
-        widgetModifyFont treeView mbFd
+        widgetOverrideFont treeView mbFd
 
          -- treeViewSetActiveOnSingleClick treeView True
         treeViewSetHeadersVisible treeView False

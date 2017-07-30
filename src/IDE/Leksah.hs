@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, LambdaCase, PatternSynonyms #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Leksah
@@ -104,7 +105,7 @@ import GI.Gtk.Objects.Widget
 import GI.Gtk.Objects.UIManager (uIManagerNew)
 import GI.Gtk.Objects.Notebook (afterNotebookSwitchPage)
 import GI.Gtk.Enums
-       (WindowType(..), PolicyType(..), ResponseType(..),
+       (Orientation(..), WindowType(..), PolicyType(..), ResponseType(..),
         WindowPosition(..), FileChooserAction(..))
 import GI.Gtk.Objects.Dialog
        (dialogRun, dialogResponse, dialogGetContentArea, dialogNew)
@@ -112,8 +113,7 @@ import Data.GI.Base (unsafeCastTo, set)
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Box (Box(..))
 import GI.Gtk.Objects.ScrolledWindow
-       (scrolledWindowSetPolicy, scrolledWindowAddWithViewport,
-        scrolledWindowNew)
+       (scrolledWindowSetPolicy, scrolledWindowNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import Control.Monad.Reader (MonadReader(..))
 import GI.Gtk.Objects.ProgressBar
@@ -466,7 +466,7 @@ fDescription :: FilePath -> FieldDescription Prefs
 fDescription configPath = VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Paths under which haskell sources for packages may be found"
-                $ paraDirection  <<<- ParaDirection Vertical
+                $ paraOrientation  <<<- ParaOrientation OrientationVertical
                     $ paraMinSize <<<- ParaMinSize (-1, 150)
                         $ emptyParams)
             sourceDirectories
