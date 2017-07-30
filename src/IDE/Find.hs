@@ -43,6 +43,7 @@ import qualified Text.Regex.TDFA as Regex
 import Text.Regex.TDFA.Text (compile)
 import Data.List (find, isPrefixOf)
 import Data.Array (bounds, (!), inRange)
+import Data.Maybe (fromJust)
 import IDE.Pane.Grep (grepWorkspace)
 import IDE.Workspaces (workspaceTry, packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -59,7 +60,7 @@ import Data.Monoid ((<>))
 import GI.Gtk.Objects.SpinButton
        (spinButtonSetRange, spinButtonNewWithRange, spinButtonSetValue,
         SpinButton(..), spinButtonGetValueAsInt)
-import Data.GI.Base (set, unsafeCastTo)
+import Data.GI.Base (set, unsafeCastTo, nullToNothing)
 import GI.Gtk.Objects.Entry
        (afterEntryActivate, onEntryActivate, entrySetCompletion,
         entrySetPlaceholderText, entryNew, entrySetText, entryGetText,
@@ -752,7 +753,7 @@ getWidget str tb = do
     widgets <- containerGetChildren tb
     entryL <-  filterM (fmap (== str) . widgetGetName) widgets
     case entryL of
-        [w] -> liftIO (unsafeCastTo Bin w) >>= binGetChild
+        [w] -> liftIO (unsafeCastTo Bin w) >>= (fmap fromJust . nullToNothing . binGetChild)
         _   -> throwIDE "Find>>getWidget not found(2)"
 
 getEntireWord, getWrapAround, getCaseSensitive, getRegex :: (Applicative m, MonadIO m) => Toolbar -> m Bool
