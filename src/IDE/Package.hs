@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Package
@@ -396,8 +397,13 @@ packageClean' (project, package) continuation = do
     let dir = ipdPackageDir package
         projectRoot = pjDir project
     case pjTool project of
-        CabalTool -> liftIO . removeDirectoryRecursive $ dropFileName (pjFile project)
-            </> "dist-newstyle/build" </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+        CabalTool -> do
+            let buildDir = dropFileName (pjFile project)
+                            </> "dist-newstyle/build"
+                            </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+            liftIO $ doesDirectoryExist buildDir >>= \case
+                True -> removeDirectoryRecursive buildDir
+                False -> return ()
         StackTool ->
             runExternalTool' (__ "Cleaning")
                             (pjToolCommand project)
