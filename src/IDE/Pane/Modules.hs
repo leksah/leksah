@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -175,6 +176,16 @@ import GI.Gtk.Objects.Label
        (labelSetText, labelSetLineWrap, labelNew)
 import Data.GI.Gtk.ModelView.ForestStore (forestStoreClear, forestStoreNew)
 import Data.Int (Int32)
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.Types.UnqualComponentName
+       (unUnqualComponentName)
+#endif
+
+#if !MIN_VERSION_Cabal(2,0,0)
+type UnqualComponentName = String
+unUnqualComponentName :: UnqualComponentName -> String
+unUnqualComponentName = id
+#endif
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -265,7 +276,7 @@ instance RecoverablePane IDEModules ModulesState IDEM where
                 mbFacetSelection    <-  getSelectionDescr (descrView m) (descrStore m) (descrSortedStore m)
                 let mbs = (case mbTreeSelection of
                             Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
-                            otherwise            -> Nothing,
+                            _                    -> Nothing,
                             case mbFacetSelection of
                                 Nothing -> Nothing
                                 Just fw -> Just (dscName fw))
@@ -952,7 +963,7 @@ getSelectedModuleFile sel =
                                 (Just fp, Just pp) -> Just $ dropFileName pp </> fp
                                 (Just fp, Nothing) -> Just fp
                                 _     ->  Nothing
-        otherwise       ->  Nothing
+        _                   ->  Nothing
 
 modulesContextMenu :: IDERef
                    -> ForestStore ModuleRecord
@@ -1004,7 +1015,7 @@ modulesContextMenu ideR store treeView theMenu = do
         Just (_,Just (m,_)) ->
             mapM_ (menuShellAppend theMenu) [item1, sep1, item2,
                 item3, item4, item5, sep2, item6, item7]
-        otherwise -> return ()
+        _ -> return ()
 
 modulesSelect :: IDERef
               -> ForestStore ModuleRecord
@@ -1119,7 +1130,7 @@ selectScope (sc,bl) = do
         fillModulesList (sc,bl)
         let mbs = (case mbTreeSelection of
                     Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
-                    otherwise -> Nothing,
+                    _ -> Nothing,
                          case mbDescrSelection of
                             Nothing -> Nothing
                             Just fw -> Just (dscName fw))
@@ -1187,7 +1198,7 @@ reloadKeepSelection isInitial = do
                     forestStoreClear (descrStore mods)
                     let mbs =  (case mbTreeSelection of
                                     Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
-                                    otherwise -> Nothing,
+                                    _ -> Nothing,
                                  case mbDescrSelection of
                                     Nothing -> Nothing
                                     Just fw -> Just (dscName fw))
@@ -1302,9 +1313,9 @@ addModule modulePrefix = do
                                in do
             window' <- liftIDE getMainWindow
             mbResp <- addModuleDialog window' modPath srcPaths (hasLibs pd) $
-                      map (T.pack . exeName)  (executables pd)
-                   ++ map (T.pack . testName) (testSuites pd)
-                   ++ map (T.pack . benchmarkName) (benchmarks pd)
+                      map (T.pack . unUnqualComponentName . exeName)  (executables pd)
+                   ++ map (T.pack . unUnqualComponentName . testName) (testSuites pd)
+                   ++ map (T.pack . unUnqualComponentName . benchmarkName) (benchmarks pd)
             case mbResp of
                 Nothing                -> return ()
                 Just addMod@(AddModule modPath srcPath libExposed exesAndTests) ->
@@ -1517,7 +1528,7 @@ recordSelHistory = do
     selDescr <- getSelectionDescr (descrView mods) (descrStore mods) (descrSortedStore mods)
     let selMod = case selTree of
                         Just (_,Just (md,_)) -> Just (modu $ mdModuleId md)
-                        otherwise -> Nothing
+                        _ -> Nothing
     let selFacet = case selDescr of
                         Nothing -> Nothing
                         Just descr -> Just (dscName descr)

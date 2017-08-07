@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
@@ -60,9 +61,15 @@ import Distribution.PackageDescription.Parse
 import Distribution.Verbosity (normal)
 import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.Version
+       (anyVersion, orLaterVersion, intersectVersionRanges,
+        earlierVersion, Version(..), versionNumbers, mkVersion)
+#else
 import Distribution.Version
        (anyVersion, orLaterVersion, intersectVersionRanges,
         earlierVersion, Version(..))
+#endif
 import Distribution.PackageDescription
        (GenericPackageDescription(..), Benchmark(..), TestSuite(..),
         Executable(..), BuildInfo(..), Library(..), CondTree(..),
@@ -92,6 +99,17 @@ import GI.Gtk.Objects.MenuItem
        (onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import GI.Gtk (constructDialogUseHeaderBar)
+
+#if !MIN_VERSION_Cabal(2,0,0)
+versionNumbers :: Version -> [Int]
+versionNumbers = versionBranch
+mkPackageName :: String -> PackageName
+mkPackageName = PackageName
+mkVersion :: [Int] -> Version
+mkVersion = (`Version` [])
+mkUnqualComponentName :: String -> String
+mkUnqualComponentName = id
+#endif
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -240,12 +258,12 @@ addPackages errors = do
                 condTreeConstraints = deps <> [d],
                 condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
     -- Empty version is probably only going to happen for ghc-prim
-    dep p | null . versionBranch $ packageVersion p = Dependency (packageName p) anyVersion
+    dep p | null . versionNumbers $ packageVersion p = Dependency (packageName p) anyVersion
     dep p = Dependency (packageName p) (
         intersectVersionRanges (orLaterVersion (packageVersion p))
                                (earlierVersion (majorAndMinor (packageVersion p))))
 
-    majorAndMinor v@Version{versionBranch = b} = v{versionBranch = nextMinor b}
+    majorAndMinor v = mkVersion . nextMinor $ versionNumbers v
     nextMinor = nextMinor' . (++[0,0])
     nextMinor' (major:minor:_) = [major, minor+1]
     nextMinor' _ = undefined

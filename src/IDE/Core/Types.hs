@@ -112,7 +112,7 @@ import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
 import Distribution.Package
-       (PackageName(..), PackageIdentifier(..), Dependency(..))
+       (PackageName(..), unPackageName, PackageIdentifier(..), Dependency(..))
 import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
@@ -473,7 +473,7 @@ ipdPackageDir = dropFileName . ipdCabalFile
 
 -- | Gets the package name
 ipdPackageName :: IDEPackage -> Text
-ipdPackageName = T.pack . (\(PackageName s) -> s) . pkgName . ipdPackageId
+ipdPackageName = T.pack . unPackageName . pkgName . ipdPackageId
 
 -- | Gets the library name if the package has a library component
 ipdLib :: IDEPackage -> Maybe Text

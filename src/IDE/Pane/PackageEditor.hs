@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -63,9 +64,9 @@ import Graphics.UI.Editor.Parameters
         paraOrientation, paraMinSize, paraShadow, paraSynopsis, (<<<-),
         emptyParams, paraName, getParameterPrim)
 import Graphics.UI.Editor.Simple
-       (stringEditor, comboEntryEditor,
-        staticListMultiEditor, intEditor, boolEditor, fileEditor,
-        comboSelectionEditor, multilineStringEditor, textEditor)
+       (enumEditor, stringEditor, comboEntryEditor, staticListMultiEditor,
+        intEditor, boolEditor, fileEditor, comboSelectionEditor,
+        multilineStringEditor, textEditor)
 import Graphics.UI.Editor.Basics
        (Notifier, Editor(..), GUIEventSelector(..), GUIEvent(..))
 import Distribution.Compiler
@@ -83,7 +84,18 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (void, when)
-import Distribution.Version (Version(..), orLaterVersion)
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.Version
+       (versionNumbers, Version(..), mkVersion, orLaterVersion)
+import Distribution.Types.UnqualComponentName
+       (UnqualComponentName(..), mkUnqualComponentName,
+        unUnqualComponentName)
+import Distribution.Types.ExecutableScope (ExecutableScope(..))
+import Distribution.Types.ForeignLib (ForeignLib(..))
+#else
+import Distribution.Version
+       (Version(..), orLaterVersion)
+#endif
 
 import IDE.Utils.Tool (ToolOutput(..))
 import System.Exit (ExitCode(..))
@@ -128,6 +140,17 @@ import GI.Gtk.Objects.Button (onButtonClicked, buttonNewWithLabel)
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
 import GI.Gtk.Objects.CellRendererText (setCellRendererTextText)
 
+#if !MIN_VERSION_Cabal(2,0,0)
+versionNumbers :: Version -> [Int]
+versionNumbers = versionBranch
+mkPackageName :: String -> PackageName
+mkPackageName = PackageName
+mkVersion :: [Int] -> Version
+mkVersion = (`Version` [])
+mkUnqualComponentName :: String -> String
+mkUnqualComponentName = id
+#endif
+
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
 
@@ -139,20 +162,25 @@ sinkLast = CL.fold (\_ a -> Just a) Nothing
 
 toGenericPackageDescription :: PackageDescription -> GenericPackageDescription
 toGenericPackageDescription pd =
-    GenericPackageDescription {
-        packageDescription = pd{
+    GenericPackageDescription
+        { packageDescription = pd{
             library = Nothing,
             executables = [],
             testSuites = [],
             benchmarks = [],
-            buildDepends = []},
-        genPackageFlags = [],
-        condLibrary = case library pd of
+            buildDepends = []}
+        , genPackageFlags = []
+        , condLibrary = case library pd of
                             Nothing -> Nothing
-                            Just lib -> Just (buildCondTreeLibrary lib),
-        condExecutables = map buildCondTreeExe (executables pd),
-        condTestSuites =  map buildCondTreeTest (testSuites pd),
-        condBenchmarks =  map buildCondTreeBenchmark (benchmarks pd)}
+                            Just lib -> Just (buildCondTreeLibrary lib)
+        , condExecutables  = map buildCondTreeExe (executables pd)
+        , condTestSuites   = map buildCondTreeTest (testSuites pd)
+        , condBenchmarks   = map buildCondTreeBenchmark (benchmarks pd)
+#if MIN_VERSION_Cabal(2,0,0)
+        , condForeignLibs  = map buildCondTreeForeignLib (foreignLibs pd)
+        , condSubLibraries = concatMap buildCondTreeSubLibraries (subLibraries pd)
+#endif
+        }
   where
     buildCondTreeLibrary lib =
         CondNode {
@@ -174,6 +202,19 @@ toGenericPackageDescription pd =
             condTreeData = bm { benchmarkBuildInfo = (benchmarkBuildInfo bm) { targetBuildDepends = buildDepends pd } },
             condTreeConstraints = buildDepends pd,
             condTreeComponents = []})
+#if MIN_VERSION_Cabal(2,0,0)
+    buildCondTreeForeignLib fl =
+        (foreignLibName fl, CondNode {
+            condTreeData = fl { foreignLibBuildInfo = (foreignLibBuildInfo fl) { targetBuildDepends = buildDepends pd } },
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})
+    buildCondTreeSubLibraries sl@Library{libName = Nothing} = []
+    buildCondTreeSubLibraries sl@Library{libName = Just ln} = [
+        (ln, CondNode {
+            condTreeData = sl { libBuildInfo = (libBuildInfo sl) { targetBuildDepends = buildDepends pd } },
+            condTreeConstraints = buildDepends pd,
+            condTreeComponents = []})]
+#endif
 
 -- ---------------------------------------------------------------------
 -- The exported stuff goes here
@@ -240,14 +281,14 @@ hasUnknownTestTypes :: PackageDescription -> Bool
 hasUnknownTestTypes pd =
     any unknown $ testSuites pd
   where
-    unknown (TestSuite _ (TestSuiteExeV10 _ _) _ _) = False
+    unknown TestSuite {testInterface = TestSuiteExeV10 _ _} = False
     unknown _ = True
 
 hasUnknownBenchmarkTypes :: PackageDescription -> Bool
 hasUnknownBenchmarkTypes pd =
     any unknown $ benchmarks pd
   where
-    unknown (Benchmark _ (BenchmarkExeV10 _ _) _ _) = False
+    unknown Benchmark {benchmarkInterface = BenchmarkExeV10 _ _} = False
     unknown _ = True
 
 data NewPackage = NewPackage {
@@ -375,32 +416,32 @@ packageNew' workspaceDir projects log activateAction = do
                         modules <- liftIO $ allModules dirName
                         let Just initialVersion = simpleParse "0.0.1"
                         editPackage emptyPackageDescription {
-                            package   = PackageIdentifier (PackageName $ T.unpack newPackageName)
+                            package   = PackageIdentifier (mkPackageName $ T.unpack newPackageName)
                                                           initialVersion
                           , buildType = Just Simple
-                          , specVersionRaw = Right (orLaterVersion (Version [1,12] []))
+                          , specVersionRaw = Right (orLaterVersion (mkVersion [1,12]))
                           , license = AllRightsReserved
                           , buildDepends = [
-                                Dependency (PackageName "base") anyVersion
-                              , Dependency (PackageName "QuickCheck") anyVersion
-                              , Dependency (PackageName "doctest") anyVersion]
+                                Dependency (mkPackageName "base") anyVersion
+                              , Dependency (mkPackageName "QuickCheck") anyVersion
+                              , Dependency (mkPackageName "doctest") anyVersion]
                           , executables = [emptyExecutable {
-                                exeName    = T.unpack newPackageName
+                                exeName    = mkUnqualComponentName $ T.unpack newPackageName
                               , modulePath = "Main.hs"
                               , buildInfo  = emptyBuildInfo {
                                     hsSourceDirs       = ["src"]
-                                  , targetBuildDepends = [Dependency (PackageName "base") anyVersion]
+                                  , targetBuildDepends = [Dependency (mkPackageName "base") anyVersion]
                                   , options            = [(GHC, ["-ferror-spans"])]
                                   , defaultLanguage    = Just Haskell2010}}]
                           , testSuites = [emptyTestSuite {
-                                    testName = "test-" ++ T.unpack newPackageName
-                                  , testInterface = TestSuiteExeV10 (Version [1,0] []) "Main.hs"
+                                    testName = mkUnqualComponentName $ "test-" ++ T.unpack newPackageName
+                                  , testInterface = TestSuiteExeV10 (mkVersion [1,0]) "Main.hs"
                                   , testBuildInfo = emptyBuildInfo {
                                         hsSourceDirs    = ["test"]
                                       , targetBuildDepends = [
-                                            Dependency (PackageName "base") anyVersion
-                                          , Dependency (PackageName "QuickCheck") anyVersion
-                                          , Dependency (PackageName "doctest") anyVersion]
+                                            Dependency (mkPackageName "base") anyVersion
+                                          , Dependency (mkPackageName "QuickCheck") anyVersion
+                                          , Dependency (mkPackageName "doctest") anyVersion]
                                       , options            = [(GHC, ["-ferror-spans"])]
                                       , defaultLanguage = Just Haskell2010}}]
                           , benchmarks =  []
@@ -552,6 +593,17 @@ fromEditor (PDE pd exes'
         tests'
         benchmarks'
         mbLib' buildInfos) =
+#if MIN_VERSION_Cabal(2,0,0)
+    let     exes = map (\ (Executable' s fb scope bii) -> if bii + 1 > length buildInfos
+                                        then Executable (mkUnqualComponentName $ T.unpack s) fb scope (buildInfos !! (length buildInfos - 1))
+                                        else Executable (mkUnqualComponentName $ T.unpack s) fb scope (buildInfos !! bii)) exes'
+            tests = map (\ (Test' s fb bii) -> if bii + 1 > length buildInfos
+                                        then TestSuite (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! (length buildInfos - 1))
+                                        else TestSuite (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! bii)) tests'
+            bms = map (\ (Benchmark' s fb bii) -> if bii + 1 > length buildInfos
+                                        then Benchmark (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! (length buildInfos - 1))
+                                        else Benchmark (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! bii)) benchmarks'
+#else
     let     exes = map (\ (Executable' s fb bii) -> if bii + 1 > length buildInfos
                                         then Executable (T.unpack s) fb (buildInfos !! (length buildInfos - 1))
                                         else Executable (T.unpack s) fb (buildInfos !! bii)) exes'
@@ -561,9 +613,14 @@ fromEditor (PDE pd exes'
             bms = map (\ (Benchmark' s fb bii) -> if bii + 1 > length buildInfos
                                         then Benchmark (T.unpack s) fb (buildInfos !! (length buildInfos - 1)) False
                                         else Benchmark (T.unpack s) fb (buildInfos !! bii) False) benchmarks'
+#endif
             mbLib = case mbLib' of
                     Nothing -> Nothing
-#if MIN_VERSION_Cabal(1,22,0)
+#if MIN_VERSION_Cabal(2,0,0)
+                    Just (Library' ln mn rmn s b bii) -> if bii + 1 > length buildInfos
+                                        then Just (Library (mkUnqualComponentName . T.unpack <$> ln) mn rmn s b (buildInfos !! (length buildInfos - 1)))
+                                        else Just (Library (mkUnqualComponentName . T.unpack <$> ln) mn rmn s b (buildInfos !! bii))
+#elif MIN_VERSION_Cabal(1,22,0)
                     Just (Library' mn rmn rs es b bii) -> if bii + 1 > length buildInfos
                                         then Just (Library mn rmn rs es b (buildInfos !! (length buildInfos - 1)))
                                         else Just (Library mn rmn rs es b (buildInfos !! bii))
@@ -581,16 +638,27 @@ fromEditor (PDE pd exes'
 
 toEditor :: PackageDescription -> PackageDescriptionEd
 toEditor pd =
+#if MIN_VERSION_Cabal(2,0,0)
+    let     (exes,exeBis) = unzip $ map (\(Executable s fb scope bi, i) -> (Executable' (T.pack $ unUnqualComponentName s) fb scope i, bi))
+                            (zip (executables pd) [0..])
+            (tests,testBis) = unzip $ map (\(TestSuite s fb bi, i) -> (Test' (T.pack $ unUnqualComponentName s) fb i, bi))
+                            (zip (testSuites pd) [length exeBis..])
+            (bms,benchmarkBis) = unzip $ map (\(Benchmark s fb bi, i) -> (Benchmark' (T.pack $ unUnqualComponentName s) fb i, bi))
+                            (zip (benchmarks pd) [length testBis..])
+#else
     let     (exes,exeBis) = unzip $ map (\(Executable s fb bi, i) -> (Executable' (T.pack s) fb i, bi))
                             (zip (executables pd) [0..])
             (tests,testBis) = unzip $ map (\(TestSuite s fb bi _, i) -> (Test' (T.pack s) fb i, bi))
                             (zip (testSuites pd) [length exeBis..])
             (bms,benchmarkBis) = unzip $ map (\(Benchmark s fb bi _, i) -> (Benchmark' (T.pack s) fb i, bi))
                             (zip (benchmarks pd) [length testBis..])
+#endif
             bis = exeBis ++ testBis ++ benchmarkBis
             (mbLib,bis2) = case library pd of
                     Nothing                -> (Nothing,bis)
-#if MIN_VERSION_Cabal(1,22,0)
+#if MIN_VERSION_Cabal(2,0,0)
+                    Just (Library ln mn rmn s b bi) -> (Just (Library' (T.pack . unUnqualComponentName <$> ln) (sort mn) rmn s b (length bis)), bis ++ [bi])
+#elif MIN_VERSION_Cabal(1,22,0)
                     Just (Library mn rmn rs es b bi) -> (Just (Library' (sort mn) rmn rs es b (length bis)), bis ++ [bi])
 #else
                     Just (Library mn b bi) -> (Just (Library' (sort mn) b (length bis)), bis ++ [bi])
@@ -1136,26 +1204,26 @@ buildInfoD fp modules i = [
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{oldExtensions = a})})
             extensionsEditor
     ]),
-    (T.pack $ printf (__ "%s Build Tools ") (show (i + 1)), VFD emptyParams [
-        mkField
-            (paraName <<<- ParaName (__ "Tools needed for a build")
-                $ paraOrientation <<<- ParaOrientation OrientationVertical
-                    $ paraMinSize <<<- ParaMinSize (-1,120)
-                        $ emptyParams)
-            (buildTools . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{buildTools = a})})
-            (dependenciesEditor [])
-    ]),
-    (T.pack $ printf (__ "%s Pkg Config ") (show (i + 1)), VFD emptyParams [
-        mkField
-            (paraName <<<- ParaName (__ "A list of pkg-config packages, needed to build this package")
-                $ paraOrientation <<<- ParaOrientation OrientationVertical
-                    $ paraMinSize <<<- ParaMinSize (-1,120)
-                        $ emptyParams)
-            (pkgconfigDepends . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{pkgconfigDepends = a})})
-            (dependenciesEditor [])
-    ]),
+--    (T.pack $ printf (__ "%s Build Tools ") (show (i + 1)), VFD emptyParams [
+--        mkField
+--            (paraName <<<- ParaName (__ "Tools needed for a build")
+--                $ paraOrientation <<<- ParaOrientation OrientationVertical
+--                    $ paraMinSize <<<- ParaMinSize (-1,120)
+--                        $ emptyParams)
+--            (map Dependency buildTools . (!! i) . bis)
+--            (\ a b -> b{bis = update (bis b) i (\bi -> bi{buildTools = a})})
+--            (dependenciesEditor [])
+--    ]),
+--    (T.pack $ printf (__ "%s Pkg Config ") (show (i + 1)), VFD emptyParams [
+--        mkField
+--            (paraName <<<- ParaName (__ "A list of pkg-config packages, needed to build this package")
+--                $ paraOrientation <<<- ParaOrientation OrientationVertical
+--                    $ paraMinSize <<<- ParaMinSize (-1,120)
+--                        $ emptyParams)
+--            (pkgconfigDepends . (!! i) . bis)
+--            (\ a b -> b{bis = update (bis b) i (\bi -> bi{pkgconfigDepends = a})})
+--            (dependenciesEditor [])
+--    ]),
     (T.pack $ printf (__ "%s Opts C -1-") (show (i + 1)), VFD emptyParams [
          mkField
             (paraName <<<- ParaName (__ "Options for C compiler")
@@ -1310,7 +1378,7 @@ packageEditor para noti = do
         (paraOrientation <<<- ParaOrientation OrientationHorizontal
             $ paraShadow <<<- ParaShadow ShadowTypeIn
                 $ para) noti
-    let pinj (PackageIdentifier (PackageName n) v) = inj (n,v)
+    let pinj (PackageIdentifier n v) = inj (unPackageName n,v)
     let pext = do
             mbp <- ext
             case mbp of
@@ -1318,7 +1386,7 @@ packageEditor para noti = do
                 Just (n,v) -> return $
                     if null n
                         then Nothing
-                        else Just $ PackageIdentifier (PackageName n) v
+                        else Just $ PackageIdentifier (mkPackageName n) v
     return (wid,pinj,pext)
 
 testedWithEditor :: Editor [(CompilerFlavor, VersionRange)]
@@ -1482,11 +1550,18 @@ repoTypeEditor paras noti = do
 -- ------------------------------------------------------------
 
 data Library' = Library'{
+#if MIN_VERSION_Cabal(2,0,0)
+    libName'           :: Maybe Text,
+#endif
     exposedModules'    :: [ModuleName]
 #if MIN_VERSION_Cabal(1,22,0)
 ,   reexportedModules' :: [ModuleReexport]
+#if MIN_VERSION_Cabal(2,0,0)
+,   signatures'        :: [ModuleName]
+#else
 ,   requiredSignatures':: [ModuleName]
 ,   exposedSignatures' :: [ModuleName]
+#endif
 #endif
 ,   libExposed'        :: Bool
 ,   libBuildInfoIdx    :: Int}
@@ -1495,7 +1570,10 @@ data Library' = Library'{
 data Executable' = Executable'{
     exeName'        :: Text
 ,   modulePath'     :: FilePath
-,   buildInfoIdx    :: Int}
+#if MIN_VERSION_Cabal(2,0,0)
+,   exeScope'       :: ExecutableScope
+#endif
+,   exeBuildInfoIdx    :: Int}
     deriving (Show, Eq)
 
 data Test' = Test'{
@@ -1511,22 +1589,82 @@ data Benchmark' = Benchmark'{
     deriving (Show, Eq)
 
 instance Default Library'
-#if MIN_VERSION_Cabal(1,22,0)
+#if MIN_VERSION_Cabal(2,0,0)
+    where getDefault =  Library' Nothing [] [] [] getDefault getDefault
+#elif MIN_VERSION_Cabal(1,22,0)
     where getDefault =  Library' [] [] [] [] getDefault getDefault
 #else
     where getDefault =  Library' [] getDefault getDefault
 #endif
 
 instance Default Executable'
+#if MIN_VERSION_Cabal(2,0,0)
+    where getDefault = Executable' getDefault getDefault ExecutableScopeUnknown getDefault
+#else
     where getDefault = Executable' getDefault getDefault getDefault
+#endif
 
 instance Default Test'
-    where getDefault = Test' getDefault (TestSuiteExeV10 (Version [1,0] []) getDefault) getDefault
+    where getDefault = Test' getDefault (TestSuiteExeV10 (mkVersion [1,0]) getDefault) getDefault
 
 instance Default Benchmark'
-    where getDefault = Benchmark' getDefault (BenchmarkExeV10 (Version [1,0] []) getDefault) getDefault
+    where getDefault = Benchmark' getDefault (BenchmarkExeV10 (mkVersion [1,0]) getDefault) getDefault
 
-#if MIN_VERSION_Cabal(1,22,0)
+#if MIN_VERSION_Cabal(2,0,0)
+libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
+libraryEditor fp modules numBuildInfos para noti = do
+    (wid,inj,ext) <-
+        pairEditor
+            (tupel3Editor
+                (boolEditor,
+                    paraName <<<- ParaName (__ "Exposed")
+                    $ paraSynopsis <<<- ParaSynopsis (__ "Is the lib to be exposed by default?")
+                    $ emptyParams)
+                (maybeEditor (textEditor (const True) True, paraName <<<- ParaName (__ "Name") $ emptyParams) True "Named?",
+                    paraSynopsis <<<- ParaSynopsis (__ "Is this a namesd library?")
+                    $ emptyParams)
+                (modulesEditor (sort modules),
+                    paraName <<<- ParaName (__ "Exposed Modules")
+                    $ paraMinSize <<<- ParaMinSize (-1,300)
+                    $ para),
+                paraOrientation <<<- ParaOrientation OrientationVertical
+                $ emptyParams)
+            (tupel3Editor
+                (buildInfoEditorP numBuildInfos, paraName <<<- ParaName (__ "Build Info")
+                    $ paraPack <<<- ParaPack PackNatural
+                    $ para)
+                (modulesEditor (sort modules),
+                    paraName <<<- ParaName (__ "Reexported Modules")
+                    $ paraMinSize <<<- ParaMinSize (-1,300)
+                    $ para)
+                (modulesEditor (sort modules),
+                    paraName <<<- ParaName (__ "Signatures Needing Implementations")
+                    $ paraMinSize <<<- ParaMinSize (-1,300)
+                    $ para),
+                paraOrientation <<<- ParaOrientation OrientationVertical
+                $ emptyParams)
+            (paraOrientation <<<- ParaOrientation OrientationVertical
+            $ emptyParams)
+            noti
+    let pinj (Library' ln em rmn s exp bi) = inj (
+              (exp, ln, map (T.pack . display) em)
+            , (bi, map (T.pack . display) rmn, map (T.pack . display) s)
+            )
+        parseModuleNames = map (\s -> forceJust (simpleParse $ T.unpack s)
+                    "SpecialEditor >> libraryEditor: no parse for moduile name")
+        parseRexportedModules = map (\s -> forceJust (simpleParse $ T.unpack s)
+                    "SpecialEditor >> libraryEditor: no parse for moduile name")
+        pext = do
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just ((exp,ln,em), (bi, rmn, s)) -> return (Just $ Library'
+                    ln
+                    (parseModuleNames em)
+                    (parseRexportedModules rmn)
+                    (parseModuleNames s) exp bi)
+    return (wid,pinj,pext)
+#elif MIN_VERSION_Cabal(1,22,0)
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
     (wid,inj,ext) <-
@@ -1613,15 +1751,51 @@ modulesEditor modules   =   staticListMultiEditor (map (T.pack . display) module
 executablesEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Executable']
 executablesEditor fp modules countBuildInfo p =
     multisetEditor
-        (ColumnDescr True [(__ "Executable Name",\cell (Executable' exeName _ _) -> setCellRendererTextText cell exeName)
-                           ,(__ "Module Path",\cell (Executable'  _ mp _) -> setCellRendererTextText cell $ T.pack mp)
-                           ,(__ "Build info index",\cell (Executable'  _ _ bii) -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
+        (ColumnDescr True [(__ "Executable Name",\cell Executable' {exeName' = exeName} -> setCellRendererTextText cell exeName)
+                           ,(__ "Module Path",\cell Executable' {modulePath' = mp} -> setCellRendererTextText cell $ T.pack mp)
+                           ,(__ "Build info index",\cell Executable' {exeBuildInfoIdx = bii} -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
         (executableEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
         (paraShadow  <<<- ParaShadow ShadowTypeIn
             $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
 
+#if MIN_VERSION_Cabal(2,0,0)
+executableEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Executable'
+executableEditor fp modules countBuildInfo para noti = do
+    (wid,inj,ext) <-
+        pairEditor
+            ( tupel3Editor
+                (textEditor (not . T.null) True,
+                    paraName <<<- ParaName (__ "Executable Name")
+                    $ emptyParams)
+                (stringEditor (not . null) True,
+                    paraOrientation <<<- ParaOrientation OrientationVertical
+                    $ paraName <<<- ParaName (__ "File with main function")
+                    $ emptyParams)
+                (buildInfoEditorP countBuildInfo, paraName <<<- ParaName (__ "Build Info")
+                    $ paraHAlign <<<- ParaHAlign AlignStart
+                        $ paraVAlign <<<- ParaVAlign AlignStart
+                            $ paraMargin <<<- ParaMargin (0, 0, 0, 0)
+                                $ emptyParams)
+            , paraOrientation <<<- ParaOrientation OrientationVertical
+                $ emptyParams)
+            (comboSelectionEditor [ExecutableScopeUnknown, ExecutablePublic, ExecutablePrivate] (\case
+                    ExecutableScopeUnknown -> "Scope Unknown"
+                    ExecutablePublic       -> "Public"
+                    ExecutablePrivate      -> "Private"),
+                paraName <<<- ParaName (__ "Executable Name")
+                    $ emptyParams)
+        (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
+        noti
+    let pinj (Executable' s f scope bi) = inj ((s,f,bi), scope)
+    let pext = do
+            mbp <- ext
+            case mbp of
+                Nothing -> return Nothing
+                Just ((s,f,bi), scope) -> return (Just $Executable' s f scope bi)
+    return (wid,pinj,pext)
+#else
 executableEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Executable'
 executableEditor fp modules countBuildInfo para noti = do
     (wid,inj,ext) <- tupel3Editor
@@ -1646,6 +1820,7 @@ executableEditor fp modules countBuildInfo para noti = do
                 Nothing -> return Nothing
                 Just (s,f,bi) -> return (Just $Executable' s f bi)
     return (wid,pinj,pext)
+#endif
 
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
@@ -1679,13 +1854,13 @@ testEditor fp modules countBuildInfo para noti = do
                         $ emptyParams)
         (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
         noti
-    let pinj (Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
+    let pinj (Test' s (TestSuiteExeV10 v f) bi) | versionNumbers v == [1,0] = inj (s,f,bi)
         pinj _ = error "Unexpected Test Interface"
     let pext = do
             mbp <- ext
             case mbp of
                 Nothing -> return Nothing
-                Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (Version [1,0] []) f) bi)
+                Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (mkVersion [1,0]) f) bi)
     return (wid,pinj,pext)
 
 benchmarksEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Benchmark']
@@ -1720,13 +1895,13 @@ benchmarkEditor fp modules countBuildInfo para noti = do
                         $ emptyParams)
         (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
         noti
-    let pinj (Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi) = inj (s,f,bi)
+    let pinj (Benchmark' s (BenchmarkExeV10 v f) bi) | versionNumbers v == [1,0] = inj (s,f,bi)
         pinj _ = error "Unexpected Benchmark Interface"
     let pext = do
             mbp <- ext
             case mbp of
                 Nothing -> return Nothing
-                Just (s,f,bi) -> return (Just $Benchmark' s (BenchmarkExeV10 (Version [1,0] []) f) bi)
+                Just (s,f,bi) -> return (Just $Benchmark' s (BenchmarkExeV10 (mkVersion [1,0]) f) bi)
     return (wid,pinj,pext)
 
 buildInfoEditorP :: Int -> Editor Int
@@ -1753,14 +1928,28 @@ instance Default BuildInfo
     where getDefault =  emptyBuildInfo
 
 instance Default Library
-    where getDefault =  Library []
-#if MIN_VERSION_Cabal(1,22,0)
-                            [] [] []
+#if MIN_VERSION_Cabal(2,0,0)
+    where getDefault =  Library Nothing [] [] [] getDefault getDefault
+#elif MIN_VERSION_Cabal(1,22,0)
+    where getDefault =  Library [] [] [] [] getDefault getDefault
+#else
+    where getDefault =  Library [] getDefault getDefault
 #endif
-                            getDefault getDefault
+
+#if MIN_VERSION_Cabal(2,0,0)
+instance Default ExecutableScope
+    where getDefault = ExecutableScopeUnknown
+
+instance Default UnqualComponentName
+    where getDefault = mkUnqualComponentName ""
+#endif
 
 instance Default Executable
+#if MIN_VERSION_Cabal(2,0,0)
+    where getDefault = Executable getDefault getDefault getDefault getDefault
+#else
     where getDefault = Executable getDefault getDefault getDefault
+#endif
 
 instance Default RepoType
     where getDefault = Darcs

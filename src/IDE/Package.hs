@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -155,6 +156,20 @@ import System.Environment (getEnvironment)
 import Distribution.Simple.LocalBuildInfo
        (Component(..), Component)
 import Distribution.Simple.Utils (writeUTF8File)
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.Types.ForeignLib (foreignLibName)
+import Distribution.Types.UnqualComponentName
+       (UnqualComponentName(..), mkUnqualComponentName,
+        unUnqualComponentName)
+#endif
+
+#if !MIN_VERSION_Cabal(2,0,0)
+type UnqualComponentName = String
+mkUnqualComponentName :: String -> UnqualComponentName
+mkUnqualComponentName = id
+unUnqualComponentName :: UnqualComponentName -> String
+unUnqualComponentName = id
+#endif
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -168,7 +183,11 @@ moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
 
 myLibModules pd = case library pd of
                     Nothing -> []
+#if MIN_VERSION_Cabal(2,0,0)
+                    Just l -> moduleInfo libBuildInfo explicitLibModules l
+#else
                     Just l -> moduleInfo libBuildInfo libModules l
+#endif
 myExeModules pd = concatMap (moduleInfo buildInfo exeModules) (executables pd)
 myTestModules pd = concatMap (moduleInfo testBuildInfo (otherModules . testBuildInfo)) (testSuites pd)
 myBenchmarkModules pd = concatMap (moduleInfo benchmarkBuildInfo (otherModules . benchmarkBuildInfo)) (benchmarks pd)
@@ -503,7 +522,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
             mbExe <- readIDE activeExe
             let exe = exeToRun mbExe $ executables pd
             let defaultLogName = ipdPackageName package
-                logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
+                logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . unUnqualComponentName . exeName) exe
             (logLaunch,logName) <- buildLogLaunchByName logName
             showLog
             case maybeDebug of
@@ -516,7 +535,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                                                    "stack"
                                                    (concat [["exec"]
                                                         , ipdBuildFlags package
-                                                        , map (T.pack . exeName) exe
+                                                        , map (T.pack . unUnqualComponentName . exeName) exe
                                                         , ["--"]
                                                         , ipdExeFlags package])
                                                    dir
@@ -527,10 +546,10 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                             let projectRoot = pjDir project
                             case exe ++ executables pd of
                                 [] -> return ()
-                                (Executable name _ _ : _) -> do
+                                (Executable {exeName = name} : _) -> do
                                     let exePath = projectRoot </> "dist-newstyle/build"
                                                     </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-                                                    </> "build" </> name </> name
+                                                    </> "build" </> unUnqualComponentName name </> unUnqualComponentName name
                                     IDE.Package.runPackage (addLogLaunchData logName logLaunch)
                                                            (T.pack $ printf (__ "Running %s") (T.unpack logName))
                                                            exePath
@@ -542,7 +561,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                     -- TODO check debug package matches active package
                     runDebug (do
                         case exe of
-                            [Executable name mainFilePath _] ->
+                            [Executable {exeName = name, modulePath = mainFilePath}] ->
                                 executeDebugCommand (":module *" <> T.pack (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath)))
                                                     (logOutput logLaunch)
                             _ -> return ()
@@ -552,7 +571,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
 
 -- | Is the given executable the active one?
 isActiveExe :: Text -> Executable -> Bool
-isActiveExe selected (Executable name _ _) = selected == "exe:" <> T.pack name
+isActiveExe selected Executable {exeName = name} = selected == "exe:" <> T.pack (unUnqualComponentName name)
 
 -- | get executable to run
 --   no exe activated, take first one
@@ -599,16 +618,16 @@ packageRunJavaScript' addFlagIfMissing (project, package) =
                 mbExe <- readIDE activeExe
                 let exe = exeToRun mbExe $ executables pd
                 let defaultLogName = ipdPackageName package
-                    logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . exeName) exe
+                    logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . unUnqualComponentName . exeName) exe
                 (logLaunch,logName) <- buildLogLaunchByName logName
                 let dir = ipdPackageDir package
                     projectRoot = pjDir project
                 prefs <- readIDE prefs
                 case exe ++ executables pd of
-                    (Executable name _ _ : _) -> liftIDE $ do
+                    (Executable {exeName = name} : _) -> liftIDE $ do
                         let path = "dist-newstyle/build"
                                     </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-                                    </> "build" </> name </> name <.> "jsexe" </> "index.html"
+                                    </> "build" </> unUnqualComponentName name </> unUnqualComponentName name <.> "jsexe" </> "index.html"
                         postAsyncIDE $ do
                             loadOutputUri ("file:///" ++ projectRoot </> path)
                             getOutputPane Nothing  >>= \ p -> displayPane p False
@@ -648,11 +667,17 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
                     CExe exe -> exeName exe
                     CTest test -> testName test
                     CBench bench -> benchmarkName bench
+#if MIN_VERSION_Cabal(2,0,0)
+                    CFLib flib -> foreignLibName flib
+#endif
         command = case component of
                     CLib _ -> error "packageRunComponent"
                     CExe exe -> "run"
                     CTest test -> "test"
                     CBench bench -> "bench"
+#if MIN_VERSION_Cabal(2,0,0)
+                    CFLib flib -> "flib"
+#endif
         dir = ipdPackageDir package
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
@@ -665,19 +690,19 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
             pkgName = ipdPackageName package
             exePath = projectRoot </> "dist-newstyle/build"
                         </> T.unpack pkgId
-                        </> "build" </> name </> name
+                        </> "build" </> unUnqualComponentName name </> unUnqualComponentName name
             cmd  = case pjTool project of
                         StackTool -> "stack"
                         CabalTool -> exePath
             args = case pjTool project of
-                        StackTool -> [command, pkgName <> ":" <> T.pack name]
+                        StackTool -> [command, pkgName <> ":" <> T.pack (unUnqualComponentName name)]
                         CabalTool -> []
         mbEnv <- case pjTool project of
             StackTool -> return Nothing
             CabalTool -> do
                 env <- packageEnv package
                 return . Just $ ("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] packageDBs) : env
-        runExternalTool' (__ "Run " <> T.pack name) cmd (args
+        runExternalTool' (__ "Run " <> T.pack (unUnqualComponentName name)) cmd (args
             ++ ipdBuildFlags package ++ ipdTestFlags package) dir mbEnv $ do
                 (mbLastOutput, _) <- C.getZipSink $ (,)
                     <$> C.ZipSink sinkLast
@@ -826,7 +851,7 @@ addModuleToPackageDescr moduleName locations = do
         gpd {condLibrary = Just (addModToLib moduleName lib)}
     addModule LibOtherMod gpd@GenericPackageDescription{condLibrary = Just lib} =
         gpd {condLibrary = Just (addModToBuildInfoLib moduleName lib)}
-    addModule (ExeOrTestMod name') gpd = let name = T.unpack name' in gpd {
+    addModule (ExeOrTestMod name') gpd = let name = mkUnqualComponentName (T.unpack name') in gpd {
           condExecutables = map (addModToBuildInfoExe  name moduleName) (condExecutables gpd)
         , condTestSuites  = map (addModToBuildInfoTest name moduleName) (condTestSuites gpd)
         }
@@ -843,15 +868,15 @@ addModToBuildInfoLib modName ct@CondNode{condTreeData = lib} =
     ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules = modName
         `inOrderAdd` otherModules (libBuildInfo lib)}}}
 
-addModToBuildInfoExe :: String -> ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
-    (String, CondTree ConfVar [Dependency] Executable)
+addModToBuildInfoExe :: UnqualComponentName -> ModuleName -> (UnqualComponentName, CondTree ConfVar [Dependency] Executable) ->
+    (UnqualComponentName, CondTree ConfVar [Dependency] Executable)
 addModToBuildInfoExe name modName (str,ct@CondNode{condTreeData = exe}) | str == name =
     (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules = modName
         `inOrderAdd` otherModules (buildInfo exe)}}})
 addModToBuildInfoExe name _ x = x
 
-addModToBuildInfoTest :: String -> ModuleName -> (String, CondTree ConfVar [Dependency] TestSuite) ->
-    (String, CondTree ConfVar [Dependency] TestSuite)
+addModToBuildInfoTest :: UnqualComponentName -> ModuleName -> (UnqualComponentName, CondTree ConfVar [Dependency] TestSuite) ->
+    (UnqualComponentName, CondTree ConfVar [Dependency] TestSuite)
 addModToBuildInfoTest name modName (str,ct@CondNode{condTreeData = test}) | str == name =
     (str, ct{condTreeData = test{testBuildInfo = (testBuildInfo test){otherModules = modName
         `inOrderAdd` otherModules (testBuildInfo test)}}})
@@ -896,8 +921,8 @@ delModFromBuildInfoLib modName ct@CondNode{condTreeData = lib} =
     ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules =
         delete modName (otherModules (libBuildInfo lib))}}}
 
-delModFromBuildInfoExe :: ModuleName -> (String, CondTree ConfVar [Dependency] Executable) ->
-    (String, CondTree ConfVar [Dependency] Executable)
+delModFromBuildInfoExe :: ModuleName -> (UnqualComponentName, CondTree ConfVar [Dependency] Executable) ->
+    (UnqualComponentName, CondTree ConfVar [Dependency] Executable)
 delModFromBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
     (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules =
         delete modName (otherModules (buildInfo exe))}}})
@@ -1087,16 +1112,16 @@ idePackageFromPath' ipdCabalFile = do
             let ipdModules          = Map.fromList $ myLibModules packageD ++ myExeModules packageD
                                         ++ myTestModules packageD ++ myBenchmarkModules packageD
                 ipdMain             = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
-                                        ++ [ (f, bi, True) | TestSuite _ (TestSuiteExeV10 _ f) bi _ <- testSuites packageD ]
-                                        ++ [ (f, bi, True) | Benchmark _ (BenchmarkExeV10 _ f) bi _ <- benchmarks packageD ]
+                                        ++ [ (f, bi, True) | TestSuite {testInterface = TestSuiteExeV10 _ f, testBuildInfo = bi} <- testSuites packageD ]
+                                        ++ [ (f, bi, True) | Benchmark {benchmarkInterface = BenchmarkExeV10 _ f, benchmarkBuildInfo = bi} <- benchmarks packageD ]
                 ipdExtraSrcs        = Set.fromList $ extraSrcFiles packageD
                 ipdSrcDirs          = case nub $ concatMap hsSourceDirs (allBuildInfo' packageD) of
                                             [] -> [".","src"]
                                             l -> l
-                ipdExes             = [ T.pack $ exeName e | e <- executables packageD ]
+                ipdExes             = [ T.pack . unUnqualComponentName $ exeName e | e <- executables packageD ]
                 ipdExtensions       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
-                ipdTests            = [ T.pack $ testName t | t <- testSuites packageD ]
-                ipdBenchmarks       = [ T.pack $ benchmarkName b | b <- benchmarks packageD ]
+                ipdTests            = [ T.pack . unUnqualComponentName $ testName t | t <- testSuites packageD ]
+                ipdBenchmarks       = [ T.pack . unUnqualComponentName $ benchmarkName b | b <- benchmarks packageD ]
                 ipdPackageId        = package packageD
                 ipdDepends          = buildDepends packageD
                 ipdHasLibs          = hasLibs packageD
@@ -1145,7 +1170,7 @@ extractStackPackageList = (\x -> if null x then ["."] else x) .
                           takeWhile (\l -> (indent <> "- ") `T.isPrefixOf` l || (indent <> " ") `T.isPrefixOf` l) (x:xs)
 
 extractCabalPackageList :: Text -> [String]
-extractCabalPackageList = map (T.unpack . T.dropWhile (==' ')) .
+extractCabalPackageList = map (dirOnly .T.unpack . T.dropWhile (==' ')) .
                           takeWhile (" " `T.isPrefixOf`) .
                           drop 1 .
                           dropWhile (/= "packages:") .
@@ -1157,6 +1182,8 @@ extractCabalPackageList = map (T.unpack . T.dropWhile (==' ')) .
     stripCabalComments "" = ""
     stripCabalComments ('-':'-':_) = ""
     stripCabalComments (x:xs) = x:stripCabalComments xs
+    dirOnly :: FilePath -> FilePath
+    dirOnly f = if takeExtension f == "cabal" then dropFileName f else f
 
 ideProjectFromPath :: FilePath -> IDEM (Maybe Project)
 ideProjectFromPath filePath = do
