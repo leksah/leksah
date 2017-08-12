@@ -181,7 +181,7 @@ toMarkup record (mbProject, mbPackage) = do
     mbWorkspace       <- readIDE workspace
     mbActiveProject   <- readIDE activeProject
     mbActivePackage   <- readIDE activePack
-    mbActiveComponent <- readIDE activeExe
+    mbActiveComponent <- readIDE activeComponent
 
     let worspaceRelative =
             case mbWorkspace of
@@ -578,7 +578,7 @@ componentsRecords :: PackageM [WorkspaceRecord]
 componentsRecords = do
     package         <- ask
     mbActivePackage <- readIDE activePack
-    activeComponent <- readIDE activeExe
+    activeComponent <- readIDE activeComponent
 
     return $ sort $ map ComponentRecord (components package)
 

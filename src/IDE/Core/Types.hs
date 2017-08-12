@@ -182,7 +182,7 @@ data IDE            =  IDE {
 ,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   activeProject   ::   Maybe Project
 ,   activePack      ::   Maybe IDEPackage
-,   activeExe       ::   Maybe Text
+,   activeComponent ::   Maybe Text
 ,   bufferProjCache ::   Map FilePath [IDEPackage] -- ^ cache the associated packages for a file
 ,   allLogRefs      ::   Seq LogRef
 ,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)

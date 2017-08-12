@@ -154,7 +154,7 @@ setWorkspace mbWs = do
                 _ -> deactivatePackage
         _ -> deactivatePackage
     mbPack <- readIDE activePack
-    mbExe  <- readIDE activeExe
+    mbComponent <- readIDE activeComponent
     let wsStr = case mbWs of
                     Nothing -> ""
                     Just ws -> wsName ws
@@ -162,9 +162,9 @@ setWorkspace mbWs = do
                  <> (case mbPack of
                             Nothing  -> ""
                             Just p   -> packageIdentifierToString (ipdPackageId p))
-                 <> (case mbExe of
+                 <> (case mbComponent of
                             Nothing  -> ""
-                            Just exe -> " " <> exe)
+                            Just component -> " " <> component)
 --    case mbWs of
 --        Just ws -> do
 --            fsn <- readIDE fsnotify
