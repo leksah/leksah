@@ -39,7 +39,7 @@ chmod +x bundle.sh launcher.sh || exit
 
 echo Bundle Leksah
 if test -e "Leksah"; then
-    rm -rf "Leksah"
+    rm -rf "Leksah" || rm -rf "Leksah"
 fi
 JHBUILD_PREFIX=/opt/local ./bundle.sh || exit
 
