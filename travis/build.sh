@@ -14,8 +14,8 @@ if ghc-pkg --package-db /root/.cabal/store/ghc-`ghc --numeric-version`/package.d
     cabal new-build
     all_done=true
 else
-    # Just build ghcjs-dom
-    cabal new-build ghcjs-dom
+    # Just build some haskell-gi stuff
+    cabal new-build gi-gtksource gi-webkit2
     all_done=false
 fi
 

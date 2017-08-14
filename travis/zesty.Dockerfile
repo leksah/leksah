@@ -1,4 +1,4 @@
-FROM ubuntu:xenial
+FROM ubuntu:zesty
 
 RUN apt-get update && \
     apt-get -y install software-properties-common && \
