@@ -90,6 +90,8 @@ readWorkspace fp = do
         Left pe -> error $ "Error reading file " ++ show fp ++ " " ++ show pe
         Right version | version < 3 -> return $ Left
             "This workspace was created with an older version of Leksah that did not use project files (cabal.project and stack.yaml) to list packages in the workspace."
+        Right version | version < workspaceVersion -> return $ Left
+            "This workspace was created with an older version of Leksah."
         _ -> do
             ws <- liftIO $ readFields fp workspaceDescr emptyWorkspaceFile
             ws' <- makePathsAbsolute ws fp
@@ -163,7 +165,7 @@ getPackage fp packages =
 -- This needs to be incremented, when the workspace format changes
 --
 workspaceVersion :: Int
-workspaceVersion = 3
+workspaceVersion = 4
 
 setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
