@@ -14,8 +14,8 @@ if ghc-pkg --package-db /root/.cabal/store/ghc-`ghc --numeric-version`/package.d
     cabal new-build
     all_done=true
 else
-    # Just build some haskell-gi stuff
-    cabal new-build gi-gtksource gi-webkit2
+    # Just build ltk and leksah-server
+    cabal new-build ltk leksah-server
     all_done=false
 fi
 
