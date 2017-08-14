@@ -27,21 +27,22 @@ module IDE.Build (
 import Data.Map (Map)
 import IDE.Core.State
        (postAsyncIDE, postSyncIDE, triggerEventIDE, readIDE, IDEAction,
-        Workspace(..), Project(..), ipdPackageId, ipdDepends, IDEPackage)
+        Workspace(..), Project(..), ipdPackageId, ipdDepends, IDEPackage(..))
 import qualified Data.Map as Map
        (insert, empty, lookup, toList, fromList)
 import Data.Graph
        (edges, topSort, graphFromEdges, Vertex, Graph,
         transposeG)
 import Distribution.Package (pkgVersion, pkgName, Dependency(..))
-import Data.List (delete, nub, (\\), find)
+import Data.List (deleteFirstsBy, nubBy, delete, nub, (\\), find)
 import Distribution.Version (withinRange)
 import Data.Maybe (fromMaybe, mapMaybe)
 import IDE.Package
        (packageClean', buildPackage, packageConfig',
         packageTest', packageDoc', packageBench', packageInstall')
 import IDE.Core.Types
-       (ipdPackageName, IDEEvent(..), Prefs(..), IDE(..), WorkspaceAction)
+       (ipdPackageName, pjPackages, IDEEvent(..), Prefs(..), IDE(..),
+        WorkspaceAction)
 import Control.Event (EventSource(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -53,6 +54,8 @@ import Distribution.Text (disp)
 import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
 import System.Log.Logger (debugM)
+import qualified Control.Arrow as Arrow (Arrow(..))
+import qualified Data.Function as F (on)
 
 -- import Debug.Trace (trace)
 trace a b = b
@@ -118,9 +121,7 @@ makePackages ms targets firstOp restOp  finishOp = do
 
 -- ** Types
 
-type MyGraph a = Map a [a]
-
-type MakeGraph = MyGraph IDEPackage
+type MakeGraph = [(IDEPackage, [IDEPackage])]
 
 data Chain alpha beta  =
     Chain {
@@ -149,7 +150,7 @@ constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
                     firstOp restOp finishOp False
   where
         depGraph packages | makeMode  = constrDepGraph packages
-                          | otherwise = Map.empty
+                          | otherwise = []
         addTopSorted (project, targets) = (project, targets, reverse $ topSortGraph $ constrParentGraph $ pjPackages project, depGraph $ pjPackages project)
 
 -- Constructs a make chain
@@ -167,6 +168,9 @@ chainFor project target settings op cont mbNegCont = Chain {
         mcPos    =  cont,
         mcNeg    =  mbNegCont}
 
+equalOnCabalFile :: IDEPackage -> IDEPackage -> Bool
+equalOnCabalFile = (==) `F.on` ipdCabalFile
+
 -- Recursive building of a make chain
 -- The first list of packages are the targets
 -- The second list of packages is the topsorted graph of all deps of all targets
@@ -180,13 +184,14 @@ constrElem ((project, currentTargets, tops, depGraph):rest) ms
     | null currentTargets || null tops = constrElem rest ms
                                                 firstOp restOp finishOp doneAnything
 -- operations have to be applied to current
-    | head tops `elem` currentTargets =
+    | ipdCabalFile (head tops) `elem` map ipdCabalFile currentTargets =
         let current = head tops
             dependents = fromMaybe
                             (trace ("Build>>constrMakeChain: unknown package" ++ show current)
                                [])
-                            (Map.lookup current depGraph)
-            withoutInstall = msDontInstallLast ms && null (delete current dependents)
+                            (Map.lookup (ipdCabalFile current) depMap)
+            depMap = Map.fromList $ map (Arrow.first ipdCabalFile) depGraph
+            withoutInstall = msDontInstallLast ms && all (equalOnCabalFile current) dependents
             filteredOps = case firstOp of
                             MoComposed l -> MoComposed (filter (/= MoInstall) l)
                             MoInstall    -> MoComposed []
@@ -194,7 +199,7 @@ constrElem ((project, currentTargets, tops, depGraph):rest) ms
         in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
             $
             chainFor project current ms (if withoutInstall then filteredOps else firstOp)
-                (constrElem ((project, nub $ currentTargets ++ dependents, tail tops, depGraph):rest)
+                (constrElem ((project, nubBy equalOnCabalFile $ currentTargets ++ dependents, tail tops, depGraph):rest)
                         ms restOp restOp finishOp True)
                 (Just $ if doneAnything
                             then chainFor project current ms finishOp EmptyChain Nothing
@@ -235,8 +240,7 @@ constrCont ms pos _ _ = doBuildChain ms pos
 constrParentGraph :: [IDEPackage] -> MakeGraph
 constrParentGraph targets = trace (T.unpack $ "parentGraph : " <> showGraph parGraph) parGraph
   where
-    parGraph = Map.fromList
-        $ map (\ p -> (p,nub $ mapMaybe (depToTarget targets)(ipdDepends p))) targets
+    parGraph = map (\ p -> (p,nubBy equalOnCabalFile $ mapMaybe (depToTarget targets)(ipdDepends p))) targets
 
 -- | Construct a dependency graph for a package
 -- pointing to the packages which depend on the subject package
@@ -248,8 +252,8 @@ constrDepGraph packages = trace (T.unpack $ "depGraph : " <> showGraph depGraph)
 showGraph :: MakeGraph -> Text
 showGraph mg =
     T.pack $ show
-        $ map (\(k,v) -> (disp (ipdPackageId k), map (disp . ipdPackageId) v))
-            $ Map.toList mg
+        $ map (\(k,v) -> (k, map (disp . ipdPackageId) v))
+            $ mg
 
 showTopSorted :: [IDEPackage] -> Text
 showTopSorted = T.pack . show . map (disp .ipdPackageId)
@@ -264,37 +268,36 @@ depToTarget list dep = find (doesMatch dep) list
             name == pkgName (ipdPackageId thePack)
             &&  withinRange (pkgVersion (ipdPackageId thePack)) versionRange
 
-reverseGraph :: Ord alpha => MyGraph alpha -> MyGraph alpha
+reverseGraph :: MakeGraph -> MakeGraph
 reverseGraph = withIndexGraph transposeG
 
-topSortGraph :: Ord alpha => MyGraph alpha -> [alpha]
-topSortGraph myGraph =  map ((\ (_,x,_)-> x) . lookup) $ topSort graph
+topSortGraph :: MakeGraph -> [IDEPackage]
+topSortGraph myGraph =  map ((\ (x,_,_)-> x) . lookup) $ topSort graph
   where
     (graph,lookup,_) = fromMyGraph myGraph
 
-withIndexGraph :: Ord alpha => (Graph -> Graph) -> MyGraph alpha -> MyGraph alpha
+withIndexGraph :: (Graph -> Graph) -> MakeGraph -> MakeGraph
 withIndexGraph idxOp myGraph = toMyGraph (idxOp graph) lookup
   where
     (graph,lookup,_) = fromMyGraph myGraph
 
-fromMyGraph :: Ord alpha => MyGraph alpha -> (Graph, Vertex -> ((), alpha , [alpha]), alpha -> Maybe Vertex)
-fromMyGraph myGraph =
+fromMyGraph :: MakeGraph -> (Graph, Vertex -> (IDEPackage, FilePath, [FilePath]), FilePath -> Maybe Vertex)
+fromMyGraph graphList =
     graphFromEdges
-        $ map (\(e,l)-> ((),e,l))
+        $ map (\(e,l)-> (e,ipdCabalFile e, map ipdCabalFile l))
             $ graphList ++ map (\e-> (e,[])) missingEdges
   where
-    mentionedEdges = nub $ concatMap snd graphList
-    graphList = Map.toList myGraph
-    missingEdges = mentionedEdges \\ map fst graphList
+    mentionedEdges = nubBy equalOnCabalFile $ concatMap snd graphList
+    missingEdges = deleteFirstsBy equalOnCabalFile mentionedEdges $ map fst graphList
 
-toMyGraph ::  Ord alpha =>  Graph -> (Vertex -> ((), alpha, [alpha])) -> MyGraph alpha
-toMyGraph graph lookup = foldr constr Map.empty myEdges
+toMyGraph :: Graph -> (Vertex -> (IDEPackage, FilePath, [FilePath])) -> MakeGraph
+toMyGraph graph lookup' = foldr constr [] myEdges
   where
-    constr (from,to) map = case Map.lookup from map of
-                                Nothing -> Map.insert from [to] map
-                                Just l -> Map.insert from (to : l) map
+    constr (from,to) m = case lookup (ipdCabalFile from) (map (Arrow.first ipdCabalFile) m) of
+                                Nothing -> (from, [to]):m
+                                Just l -> (from, (to : l)):m
     myEdges              = map (lookItUp *** lookItUp) $ edges graph
-    lookItUp             =  (\(_,e,_)-> e) . lookup
+    lookItUp             =  (\(e,_,_)-> e) . lookup'
 
 
 

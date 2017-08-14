@@ -125,6 +125,8 @@ import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserGetFilename, fileChooserSetCurrentFolder,
         fileChooserSetAction)
+import IDE.Workspaces.Writer (WorkspaceFile(..))
+import qualified Data.Map as M (member, delete, adjust, insert)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -150,9 +152,9 @@ workspaceNewHere filePath =
     in do
         dir <- liftIO $ myCanonicalizePath $ dropFileName realPath
         let cPath = dir </> takeFileName realPath
-            newWorkspace = Writer.emptyWorkspace {
-                            wsName = T.pack $ takeBaseName cPath,
-                            wsFile = cPath}
+            newWorkspace = Writer.emptyWorkspaceFile {
+                            wsfName = T.pack $ takeBaseName cPath
+                            }
         liftIO $ writeFields cPath newWorkspace Writer.workspaceDescr
         workspaceOpenThis False cPath
         return ()
@@ -340,7 +342,7 @@ projectOpenThis filePath = do
                         wsProjects = project : wsProjects ws
                       , wsActiveProjectFile = Just cPath
                       , wsActivePackFile = ipdCabalFile <$> listToMaybe (pjPackages project)
-                      , wsActiveExe = Nothing }
+                      , wsActiveComponent = Nothing }
 
 -- | Closes a workspace
 workspaceClose :: IDEAction
@@ -468,10 +470,10 @@ projectAddPackage' fp = do
             unless (cfp `elem` map ipdCabalFile (pjPackages project)) $ liftIDE $
                 Writer.writeWorkspace $ ws {
                     wsProjects = map (\p -> if pjFile p == projectFile
-                                                    then p { pjPackages = pack : pjPackages p }
-                                                    else p) (wsProjects ws)
+                                                then p { pjPackageMap = M.insert (ipdCabalFile pack) pack $ pjPackageMap p }
+                                                else p)  (wsProjects ws)
                   , wsActivePackFile = Just (ipdCabalFile pack)
-                  , wsActiveExe = Nothing}
+                  , wsActiveComponent = Nothing}
             return (Just pack)
         Nothing -> return Nothing
 
@@ -511,13 +513,11 @@ packageTry f = workspaceTry $ do
                         lift $ postAsyncIDE $ packageTryQuiet f
                     _  -> return ()
 
-workspaceRemoveProject :: Project -> WorkspaceAction
-workspaceRemoveProject project = do
+workspaceRemoveProject :: FilePath -> WorkspaceAction
+workspaceRemoveProject projectFile = do
     ws <- ask
-    when (any fileMatches $ wsProjects ws) . lift $
-        Writer.writeWorkspace ws {wsProjects = filter (not . fileMatches) (wsProjects ws)}
-  where
-    fileMatches = (== pjFile project) . pjFile
+    when (any ((/= projectFile) . pjFile) $ wsProjects ws) . lift $
+        Writer.writeWorkspace ws {wsProjects = filter ((/= projectFile) . pjFile) $ wsProjects ws}
 
 projectRemovePackage :: IDEPackage -> ProjectAction
 projectRemovePackage pack = do
@@ -529,7 +529,7 @@ projectRemovePackage pack = do
 workspaceActivatePackage :: Project -> Maybe IDEPackage -> Maybe Text -> WorkspaceAction
 workspaceActivatePackage project mbPack exe = do
     (mbPackFile, mbExe) <- liftIDE $ case mbPack of
-        Just pack | pack `elem` pjPackages project -> do
+        Just pack | ipdCabalFile pack `elem` map ipdCabalFile (pjPackages project) -> do
             activatePackage (Just (ipdCabalFile pack)) (Just project) (Just pack) exe
             return (Just (ipdCabalFile pack), exe)
         _ -> do
@@ -539,10 +539,9 @@ workspaceActivatePackage project mbPack exe = do
     let projects = project : filter ((/= pjFile project) . pjFile) (wsProjects ws)
     liftIDE $ Writer.writeWorkspace ws
                              {wsProjects = projects
-                             ,wsProjectFiles = map pjFile projects
                              ,wsActiveProjectFile = Just (pjFile project)
                              ,wsActivePackFile = mbPackFile
-                             ,wsActiveExe = mbExe}
+                             ,wsActiveComponent = mbExe}
 
 addRecentlyUsedWorkspace :: FilePath -> IDEAction
 addRecentlyUsedWorkspace fp = do

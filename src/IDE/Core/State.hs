@@ -447,13 +447,9 @@ changePackage ideP = do
         Nothing -> return ()
         Just ws ->
             modifyIDE_ $ \ide -> ide{workspace = Just ws {
-                wsProjects = map (\p -> p {pjPackages = map exchange (pjPackages p)}) (wsProjects ws)},
+                wsProjects = map (\p -> p {
+                    pjPackageMap = mkPackageMap $ map exchange (pjPackages p)}) (wsProjects ws)},
                 bufferProjCache = Map.empty}
-    mbActivePack <- readIDE activePack
-    case mbActivePack of
-        Just activePack | key ideP == key activePack ->
-            modifyIDE_ (\ide -> ide{activePack = Just ideP})
-        _ -> return ()
     where
         key = ipdPackageDir
         idePKey = key ideP
@@ -464,22 +460,13 @@ changePackage ideP = do
 -- replaces the current package if it matches.
 --  Comparison is done based on the package's build directory.
 changeProject :: Project -> IDEAction
-changeProject project = do
+changeProject project =
     readIDE workspace >>= \case
         Nothing -> return ()
         Just ws -> do
             let ps = map exchange (wsProjects ws)
             modifyIDE_ (\ide -> ide{workspace = Just ws {wsProjects = ps},
                                     bufferProjCache = Map.empty})
-    readIDE activeProject >>= \case
-        Just activeProject | pjFile project == pjFile activeProject ->
-            modifyIDE_ (\ide -> ide{activeProject = Just project})
-        _ -> return ()
-    readIDE activePack >>= \case
-        Just activePack -> forM_ (pjPackages project) $ \pack ->
-            when (ipdCabalFile pack == ipdCabalFile activePack) $
-                modifyIDE_ (\ide -> ide{activePack = Just pack})
-        _ -> return ()
     where
         exchange p | pjFile p == pjFile project = project
                    | otherwise        = p

@@ -345,9 +345,6 @@ startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startup
           ,   candy             =   candySt
           ,   prefs             =   startupPrefs
           ,   workspace         =   Nothing
-          ,   activeProject     =   Nothing
-          ,   activePack        =   Nothing
-          ,   activeComponent   =   Nothing
           ,   bufferProjCache   =   Map.empty
           ,   allLogRefs        =   Seq.empty
           ,   currentHist       =   0

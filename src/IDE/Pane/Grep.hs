@@ -98,6 +98,7 @@ import Data.GI.Gtk.ModelView.TreeModel
        (treeModelGetIter, treeModelIterNChildren)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
+import qualified Data.Function as F (on)
 
 -- | Represents a single search result
 data GrepRecord = GrepRecord {
@@ -283,7 +284,7 @@ grepWorkspace regexString caseSensitive = do
     ws <- ask
     maybeActive <- lift $ readIDE activePack
     let packages = case maybeActive of
-            Just active -> active : filter (/= active) (wsAllPackages ws)
+            Just active -> active : filter (((/=) `F.on` ipdCabalFile) active) (wsAllPackages ws)
             Nothing     -> wsAllPackages ws
     lift $ grepDirectories regexString caseSensitive $
             map ipdPackageDir packages

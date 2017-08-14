@@ -130,7 +130,6 @@ data ErrorsPane      =   ErrorsPane {
 
 -- | The data for a single row in the Errors pane
 data ErrorRecord = ERLogRef LogRef
-                 | ERPackage IDEPackage Text
                  | ERIDE Text
                  | ERFullMessage Text (Maybe LogRef)
     deriving (Eq)
@@ -272,7 +271,6 @@ toIcon (ERLogRef logRef) =
         LintRef        -> "ide_suggestion"
         TestFailureRef -> "software-update-urgent"
         _              -> ""
-toIcon (ERPackage _ _) = "dialog-error"
 toIcon (ERIDE _) = "dialog-error"
 toIcon (ERFullMessage _ _) = ""
 
@@ -282,8 +280,6 @@ toDescription expanded errorRec =
     case errorRec of
         (ERLogRef logRef)   -> formatExpandableMessage (T.pack $ logRefFilePath logRef) (refDescription logRef)
         (ERIDE msg)         -> formatExpandableMessage "" msg
-        (ERPackage pkg msg) -> formatExpandableMessage (packageIdentifierToString (ipdPackageId pkg))
-                                   (packageIdentifierToString (ipdPackageId pkg) <> ": \n" <> msg)
         (ERFullMessage msg _) -> removeIndentation (cutOffAt 8192 msg)
 
     where
@@ -497,7 +493,6 @@ contextMenuItems record path store = return
         case record of
                ERLogRef logRef -> resolveMenuItems logRef ++ [clipboardItem (refDescription logRef)]
                ERIDE msg       -> [clipboardItem msg]
-               ERPackage _ msg -> [clipboardItem msg]
                _               -> []
     ]
   where

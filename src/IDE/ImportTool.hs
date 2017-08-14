@@ -219,7 +219,7 @@ addPackages errors = do
     let packs = nub $ mapMaybe (\error ->
                     case parseHiddenModule $ refDescription error of
                         Nothing -> Nothing
-                        Just (HiddenModuleResult _ pack) -> Just (ipdCabalFile (logRefPackage error), dep pack)) errors
+                        Just (HiddenModuleResult _ pack) -> Just (logRefCabalFile error, dep pack)) errors
 
     forM_ packs $ \(cabalFile, d) -> do
         gpd <- liftIO $ readPackageDescription normal cabalFile

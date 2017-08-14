@@ -22,6 +22,9 @@
 
 module IDE.Core.Types (
     IDE(..)
+,   activeProject
+,   activePack
+,   activeComponent
 ,   IDEState(..)
 ,   IDERef
 ,   IDEM
@@ -49,14 +52,21 @@ module IDE.Core.Types (
 ,   runDebug
 
 ,   IDEPackage(..)
+,   mkPackageMap
 ,   ipdPackageDir
 ,   ipdLib
 ,   ipdPackageName
 ,   ProjectTool(..)
 ,   Project(..)
+,   pjPackages
+,   pjLookupPackage
 ,   pjDir
 ,   pjToolCommand
 ,   Workspace(..)
+,   wsProjectFiles
+,   wsLookupProject
+,   wsActiveProject
+,   wsActivePackage
 ,   wsPackages
 ,   wsAllPackages
 ,   VCSConf
@@ -116,7 +126,7 @@ import Distribution.Package
 import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
-import Data.List (nubBy)
+import Data.List (find, nubBy)
 import Control.Concurrent (MVar)
 import Distribution.ModuleName (ModuleName(..))
 import System.Time (ClockTime(..))
@@ -163,6 +173,7 @@ import Text.PrinterParser (Color(..), toGdkColor, fromGdkColor)
 import GI.Gtk.Objects.Application (Application(..))
 import Control.Monad ((>=>))
 import System.FSNotify (StopListening, WatchManager)
+import qualified Data.Map as M (fromList, lookup, keys, elems)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -172,47 +183,53 @@ import System.FSNotify (StopListening, WatchManager)
 -- | The IDE state
 --
 data IDE            =  IDE {
-    application     ::   Application
-,   frameState      ::   FrameState IDEM         -- ^ state of the windows framework
-,   recentPanes     ::   [PaneName]              -- ^ a list of panes which were selected last
-,   specialKeys     ::   SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
-,   specialKey      ::   SpecialKeyCons IDERef   -- ^ the first of a double keystroke
-,   candy           ::   CandyTable              -- ^ table for source candy
-,   prefs           ::   Prefs                   -- ^ configuration preferences
-,   workspace       ::   Maybe Workspace         -- ^ may be a workspace (set of packages)
-,   activeProject   ::   Maybe Project
-,   activePack      ::   Maybe IDEPackage
-,   activeComponent ::   Maybe Text
-,   bufferProjCache ::   Map FilePath [IDEPackage] -- ^ cache the associated packages for a file
-,   allLogRefs      ::   Seq LogRef
-,   currentEBC      ::   (Maybe LogRef, Maybe LogRef, Maybe LogRef)
-,   currentHist     ::   Int
-,   systemInfo      ::   Maybe GenScope              -- ^ the system scope
-,   packageInfo     ::   Maybe (GenScope, GenScope) -- ^ the second are the imports
-,   workspaceInfo   ::   Maybe (GenScope, GenScope) -- ^ the second are the imports
-,   workspInfoCache ::   PackageDescrCache
-,   handlers        ::   Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
-,   currentState    ::   IDEState
-,   guiHistory      ::   (Bool,[GUIHistory],Int)
-,   findbar         ::   (Bool,Maybe (Toolbar,SeqStore Text))
-,   toolbar         ::   (Bool,Maybe Toolbar)
-,   recentFiles     ::   [FilePath]
-,   recentWorkspaces ::  [FilePath]
-,   runningTool     ::   Maybe ProcessHandle
-,   debugState      ::   Maybe (IDEPackage, ToolState)
-,   completion      ::   ((Int, Int), Maybe CompletionWindow)
-,   yiControl       ::   Yi.Control
-,   serverQueue     ::   Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
-,   server          ::   Maybe Handle
-,   hlintQueue      ::   Maybe (TVar [Either FilePath FilePath])
-,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
-,   logLaunches     ::   Map.Map Text LogLaunchData
-,   autoCommand     ::   IDEAction
-,   autoURI         ::   Maybe Text
-,   triggerBuild    ::   MVar ()
+    application         :: Application
+,   frameState          :: FrameState IDEM         -- ^ state of the windows framework
+,   recentPanes         :: [PaneName]              -- ^ a list of panes which were selected last
+,   specialKeys         :: SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
+,   specialKey          :: SpecialKeyCons IDERef   -- ^ the first of a double keystroke
+,   candy               :: CandyTable              -- ^ table for source candy
+,   prefs               :: Prefs                   -- ^ configuration preferences
+,   workspace           :: Maybe Workspace         -- ^ may be a workspace (set of packages)
+,   bufferProjCache     :: Map FilePath [IDEPackage] -- ^ cache the associated packages for a file
+,   allLogRefs          :: Seq LogRef
+,   currentEBC          :: (Maybe LogRef, Maybe LogRef, Maybe LogRef)
+,   currentHist         :: Int
+,   systemInfo          :: Maybe GenScope              -- ^ the system scope
+,   packageInfo         :: Maybe (GenScope, GenScope) -- ^ the second are the imports
+,   workspaceInfo       :: Maybe (GenScope, GenScope) -- ^ the second are the imports
+,   workspInfoCache     :: PackageDescrCache
+,   handlers            :: Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
+,   currentState        :: IDEState
+,   guiHistory          :: (Bool,[GUIHistory],Int)
+,   findbar             :: (Bool,Maybe (Toolbar,SeqStore Text))
+,   toolbar             :: (Bool,Maybe Toolbar)
+,   recentFiles         :: [FilePath]
+,   recentWorkspaces    :: [FilePath]
+,   runningTool         :: Maybe ProcessHandle
+,   debugState          :: Maybe (IDEPackage, ToolState)
+,   completion          :: ((Int, Int), Maybe CompletionWindow)
+,   yiControl           :: Yi.Control
+,   serverQueue         :: Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
+,   server              :: Maybe Handle
+,   hlintQueue          :: Maybe (TVar [Either FilePath FilePath])
+,   vcsData             :: (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
+,   logLaunches         :: Map.Map Text LogLaunchData
+,   autoCommand         :: IDEAction
+,   autoURI             :: Maybe Text
+,   triggerBuild        :: MVar ()
 ,   stopWorkspaceNotify :: StopListening
-,   fsnotify        ::   WatchManager
+,   fsnotify            :: WatchManager
 } --deriving Show
+
+activeProject :: IDE -> Maybe Project
+activeProject ide = workspace ide >>= wsActiveProject
+
+activePack :: IDE -> Maybe IDEPackage
+activePack ide = workspace ide >>= wsActivePackage
+
+activeComponent :: IDE -> Maybe Text
+activeComponent ide = workspace ide >>= wsActiveComponent
 
 --
 -- | A mutable reference to the IDE state
@@ -419,10 +436,16 @@ instance EventSelector Text
 data ProjectTool = CabalTool | StackTool deriving (Show, Eq)
 
 data Project = Project {
-    pjTool      :: ProjectTool
-,   pjFile      :: FilePath
-,   pjPackages  :: [IDEPackage]
-} deriving (Show, Eq)
+    pjTool       :: ProjectTool
+,   pjFile       :: FilePath
+,   pjPackageMap :: Map FilePath IDEPackage
+} deriving (Show)
+
+pjPackages :: Project -> [IDEPackage]
+pjPackages = M.elems . pjPackageMap
+
+pjLookupPackage :: FilePath -> Project -> Maybe IDEPackage
+pjLookupPackage f = M.lookup f . pjPackageMap
 
 pjToolCommand :: Project -> FilePath
 pjToolCommand project = case pjTool project of
@@ -451,7 +474,7 @@ data IDEPackage     =   IDEPackage {
 ,   ipdConfigFlags     ::   [Text] -- ^ Flag for configure
 ,   ipdBuildFlags      ::   [Text] -- ^ Flags for building
 ,   ipdTestFlags       ::   [Text]  -- ^ Flags for test runs
-,   ipdBenchmarkFlags       ::   [Text] -- ^ flags for benchmark runs
+,   ipdBenchmarkFlags  ::   [Text] -- ^ flags for benchmark runs
 ,   ipdHaddockFlags    ::   [Text] -- ^ Flags for haddock generation
 ,   ipdExeFlags        ::   [Text] -- ^ Flags for executable runs
 ,   ipdInstallFlags    ::   [Text] -- ^ Flags for install
@@ -463,9 +486,6 @@ data IDEPackage     =   IDEPackage {
 
 instance Show IDEPackage where
     show p = show "IDEPackage for " ++ (render . disp) (ipdPackageId p)
-
-instance Ord IDEPackage where
-    compare x y     =   compare (ipdPackageId x) (ipdPackageId y)
 
 -- | The directory of the cabal file
 ipdPackageDir :: IDEPackage -> FilePath
@@ -479,6 +499,9 @@ ipdPackageName = T.pack . unPackageName . pkgName . ipdPackageId
 ipdLib :: IDEPackage -> Maybe Text
 ipdLib pkg = if ipdHasLibs pkg then Just (ipdPackageName pkg) else Nothing
 
+mkPackageMap :: [IDEPackage] -> Map FilePath IDEPackage
+mkPackageMap = M.fromList . map (\p -> (ipdCabalFile p, p))
+
 -- ---------------------------------------------------------------------
 -- Workspace
 --
@@ -488,12 +511,25 @@ data Workspace = Workspace {
 ,   wsName              ::   Text
 ,   wsFile              ::   FilePath
 ,   wsProjects          ::   [Project]
-,   wsProjectFiles      ::   [FilePath]
 ,   wsActiveProjectFile ::   Maybe FilePath
 ,   wsActivePackFile    ::   Maybe FilePath
-,   wsActiveExe         ::   Maybe Text
+,   wsActiveComponent   ::   Maybe Text
 ,   packageVcsConf      ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
+
+wsProjectFiles :: Workspace -> [FilePath]
+wsProjectFiles = map pjFile . wsProjects
+
+wsLookupProject :: FilePath -> Workspace -> Maybe Project
+wsLookupProject f = find ((==f) . pjFile) . wsProjects
+
+wsActiveProject :: Workspace -> Maybe Project
+wsActiveProject w = wsActiveProjectFile w >>= (`wsLookupProject` w)
+
+wsActivePackage :: Workspace -> Maybe IDEPackage
+wsActivePackage w = do
+    project <- wsActiveProject w
+    wsActivePackFile w >>= (`pjLookupPackage` project)
 
 wsPackages :: Workspace -> [IDEPackage]
 wsPackages = wsProjects >=> pjPackages
@@ -645,12 +681,12 @@ data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | Warni
 -- | Represents a message about a part of the source code
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
-,   logRefPackage       ::   IDEPackage
+,   logRefCabalFile     ::   FilePath
 ,   refDescription      ::   Text
 ,   logRefIdea          ::   Maybe (Text, Idea)
 ,   logLines            ::   Maybe (Int, Int)
 ,   logRefType          ::   LogRefType
-}   deriving (Eq)
+} deriving(Eq)
 
 instance Show LogRef where
     show lr = T.unpack (refDescription lr) ++ displaySrcSpan (logRefSrcSpan lr)
@@ -666,7 +702,7 @@ displaySrcSpan s = srcSpanFilename s ++ ":" ++
 
 -- | The root folder of the package the message references
 logRefRootPath :: LogRef -> FilePath
-logRefRootPath = ipdPackageDir . logRefPackage
+logRefRootPath = dropFileName . logRefCabalFile
 
 -- | The file path the message references, relative to the root path
 logRefFilePath :: LogRef -> FilePath

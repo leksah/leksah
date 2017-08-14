@@ -208,7 +208,7 @@ logHLintResult fileScope package allIdeas getText = do
             fixTail (x:xs) = T.take (HSE.srcSpanEndColumn ideaSpan - 1) x : xs
             from = T.reverse . T.drop 1 . T.reverse
                  . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
-            ref = LogRef srcSpan package (T.pack $ showHLint idea)
+            ref = LogRef srcSpan (ipdCabalFile package) (T.pack $ showHLint idea)
                     (Just (from, idea)) Nothing LintRef
         postSyncIDE $ addLogRef fileScope fileScope ref
     return ()
@@ -221,7 +221,7 @@ logHLintError fileScope package error = do
                           (HSE.srcColumn loc - 1)
                           (HSE.srcLine loc)
                           (HSE.srcColumn loc - 1)
-        ref = LogRef srcSpan package ("Hlint Parse Error: " <> T.pack (parseErrorMessage error)) Nothing Nothing LintRef
+        ref = LogRef srcSpan (ipdCabalFile package) ("Hlint Parse Error: " <> T.pack (parseErrorMessage error)) Nothing Nothing LintRef
     postSyncIDE $ addLogRef fileScope fileScope ref
 
 -- Cut down version of showEx from HLint

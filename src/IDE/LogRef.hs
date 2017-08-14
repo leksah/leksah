@@ -526,7 +526,7 @@ logOutputForBuild project package backgroundBuild jumpToWarnings = do
                         return state { inError = False }
                     (Right ne@(ErrorLine span refType str),_) -> do
                         foundInPackage <- findSourcePackage project package (srcSpanFilename span)
-                        let ref  = LogRef span foundInPackage str Nothing (Just (lineNr,lineNr)) refType
+                        let ref  = LogRef span (ipdCabalFile foundInPackage) str Nothing (Just (lineNr,lineNr)) refType
                             root = logRefRootPath ref
                             file = logRefFilePath ref
                             fullFilePath = logRefFullFilePath ref
@@ -539,7 +539,7 @@ logOutputForBuild project package backgroundBuild jumpToWarnings = do
                                      , filesCompiled = S.insert fullFilePath filesCompiled
                                      }
                     (Right (ElmFile efile str),_) -> do
-                        let ref  = LogRef (SrcSpan efile 1 0 1 0) package str Nothing (Just (lineNr,lineNr)) ErrorRef
+                        let ref  = LogRef (SrcSpan efile 1 0 1 0) (ipdCabalFile package) str Nothing (Just (lineNr,lineNr)) ErrorRef
                             root = logRefRootPath ref
                             file = logRefFilePath ref
                             fullFilePath = logRefFullFilePath ref
@@ -664,7 +664,7 @@ logOutputForBuild project package backgroundBuild jumpToWarnings = do
             when inDocTest $ logPrevious testFails
             return state { inDocTest = True
                          , testFails = LogRef span
-                                package
+                                (ipdCabalFile package)
                                 exp
                                 Nothing (Just (logLn,logLn)) TestFailureRef : testFails
                          }
@@ -685,7 +685,7 @@ logOutputForBreakpoints package logLaunch = do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 case parse breaksLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span package line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
+                        return $ Just $ LogRef span (ipdCabalFile package) line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log logLaunch out
@@ -702,7 +702,7 @@ logOutputForSetBreakpoint package logLaunch = do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 case parse setBreakpointLineParser "" $ T.unpack line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span package line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
+                        return $ Just $ LogRef span (ipdCabalFile package) line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log logLaunch out
@@ -727,7 +727,7 @@ logOutputForContext package loglaunch getContexts = do
                 let contexts = getContexts line
                 if null contexts
                     then return Nothing
-                    else return $ Just $ LogRef (last contexts) package line Nothing (Just (logLineNumber, logLineNumber)) ContextRef
+                    else return $ Just $ LogRef (last contexts) (ipdCabalFile package) line Nothing (Just (logLineNumber, logLineNumber)) ContextRef
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)

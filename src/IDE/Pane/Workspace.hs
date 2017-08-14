@@ -70,10 +70,11 @@ import qualified Data.Text as T
        (isPrefixOf, words, isSuffixOf, unpack, pack)
 import Data.Monoid ((<>))
 import IDE.Core.Types
-       (Project(..), ipdLib, WorkspaceAction, Workspace(..),
-        wsAllPackages, WorkspaceM, runPackage, runProject, runWorkspace, PackageAction,
-        PackageM, ProjectAction, ProjectM, IDEPackage(..), IDE(..), Prefs(..), MonadIDE(..),
-        ipdPackageDir)
+       (pjLookupPackage, wsLookupProject, pjPackages, activeComponent,
+        activePack, activeProject, Project(..), ipdLib, WorkspaceAction,
+        Workspace(..), wsAllPackages, WorkspaceM, runPackage, runProject,
+        runWorkspace, PackageAction, PackageM, ProjectAction, ProjectM,
+        IDEPackage(..), IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Workspaces
        (workspaceOpen, makePackage, projectAddPackage', workspaceRemoveProject,
@@ -83,7 +84,7 @@ import Data.List
        (sortOn, isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
 import Data.Char (toUpper, toLower)
-import System.Log.Logger (debugM)
+import System.Log.Logger (errorM, debugM)
 import Data.Tree (Forest, Tree(..))
 import IDE.Pane.Modules (addModule)
 import IDE.Pane.PackageEditor (packageEditText, projectEditText)
@@ -154,8 +155,8 @@ data WorkspaceRecord =
     FileRecord FilePath
   | DirRecord FilePath
               Bool -- Whether it is a source directory
-  | ProjectRecord Project
-  | PackageRecord IDEPackage
+  | ProjectRecord FilePath
+  | PackageRecord FilePath
   | ComponentsRecord
   | ComponentRecord Text
   | GitRecord
@@ -167,8 +168,8 @@ instance Ord WorkspaceRecord where
     compare (FileRecord _) (DirRecord _ _) = GT
     compare (FileRecord p1) (FileRecord p2) = comparing (map toLower) p1 p2
     compare (DirRecord p1 _) (DirRecord p2 _) = comparing (map toLower) p1 p2
-    compare (ProjectRecord p1) (ProjectRecord p2) = comparing (map toLower . pjFile) p1 p2
-    compare (PackageRecord p1) (PackageRecord p2) = comparing (map toLower . ipdPackageDir) p1 p2
+    compare (ProjectRecord p1) (ProjectRecord p2) = comparing (map toLower) p1 p2
+    compare (PackageRecord p1) (PackageRecord p2) = comparing (map toLower) p1 p2
     compare (ComponentRecord t1) (ComponentRecord t2) = comparing (map toLower . T.unpack) t1 t2
     compare _ _ = LT
 
@@ -177,61 +178,62 @@ instance Ord WorkspaceRecord where
 toMarkup :: WorkspaceRecord
          -> (Maybe Project, Maybe IDEPackage)
          -> IDEM Text
-toMarkup record (mbProject, mbPackage) = do
-    mbWorkspace       <- readIDE workspace
-    mbActiveProject   <- readIDE activeProject
-    mbActivePackage   <- readIDE activePack
-    mbActiveComponent <- readIDE activeComponent
+toMarkup record (mbProject, mbPackage) =
+    readIDE workspace >>= \case
+        Nothing -> return "Error Workspace Closed"
+        Just ws -> do
+            mbActiveProject   <- readIDE activeProject
+            mbActivePackage   <- readIDE activePack
+            mbActiveComponent <- readIDE activeComponent
 
-    let worspaceRelative =
-            case mbWorkspace of
-                Just ws -> makeRelative (dropFileName (wsFile ws))
-                Nothing -> id
-        projectRelative =
-            case mbProject of
-                Just p -> makeRelative (dropFileName (pjFile p))
-                Nothing -> id
-        activeProject = mbProject == mbActiveProject
-        activePackage = activeProject && mbPackage == mbActivePackage
+            let worspaceRelative = makeRelative (dropFileName (wsFile ws))
+                projectRelative =
+                    case mbProject of
+                        Just p -> makeRelative (dropFileName (pjFile p))
+                        Nothing -> id
+                activeProject = (pjFile <$> mbProject) == (pjFile <$> mbActiveProject)
+                activePackage = activeProject && (ipdCabalFile <$> mbPackage) == (ipdCabalFile <$> mbActivePackage)
 
-    case record of
-     (ProjectRecord p) -> return $ (if activeProject then bold else id)
-                                (T.pack $ worspaceRelative (pjFile p))
-     (PackageRecord p) -> return $
-        let pkgText = (if activePackage then bold else id)
-                          (packageIdentifierToString (ipdPackageId p))
-            mbLib   = ipdLib p
-            componentText = if activePackage
-                                then maybe (if isJust mbLib then "(library)" else "")
-                                           (\comp -> "(" <> comp <> ")") mbActiveComponent
-                                else ""
-            pkgDir = gray . T.pack . projectRelative $ ipdPackageDir p
-        in (pkgText <> " " <> componentText <> " " <> pkgDir)
-     (FileRecord f) -> return $ T.pack $ takeFileName f
-     (DirRecord f _)
-         | (ipdPackageDir <$> mbPackage) == Just f -> return "Files"
-         | otherwise -> return $ T.pack $ last (splitDirectories f)
-     ComponentsRecord -> return "Components"
-     (ComponentRecord comp) -> do
-        let active = activePackage &&
-                         (isNothing mbActiveComponent && comp == "library"
-                             ||
-                          Just comp == mbActiveComponent)
-        return $ (if active then bold else id) comp
-     GitRecord ->
-        case ipdPackageDir <$> mbPackage of
-            Nothing -> return "No Git project"
-            Just dir -> do
-                let conf = Git.makeConfig (Just dir) Nothing Nothing
-                liftIO $ Git.runVcs conf $ do
-                     branch <- Git.localBranches
-                     case branch of
-                        (Right (branch,_)) -> return branch
-                        (Left _)           -> return "No Git project"
-    where
-        bold str = "<b>" <> str <> "</b>"
-        italic str = "<i>" <> str <> "</i>"
-        gray str = "<span foreground=\"#999999\">" <> str <> "</span>"
+            case record of
+             (ProjectRecord p) -> return $ (if activeProject then bold else id)
+                                        (T.pack $ worspaceRelative p)
+             (PackageRecord pFile) -> return $ case mbPackage of
+                Nothing -> "Error package not found " <> T.pack pFile
+                Just p ->
+                    let pkgText = (if activePackage then bold else id)
+                                      (packageIdentifierToString (ipdPackageId p))
+                        mbLib   = ipdLib p
+                        componentText = if activePackage
+                                            then maybe (if isJust mbLib then "(library)" else "")
+                                                       (\comp -> "(" <> comp <> ")") mbActiveComponent
+                                            else ""
+                        pkgDir = gray . T.pack . projectRelative $ ipdPackageDir p
+                    in (pkgText <> " " <> componentText <> " " <> pkgDir)
+             (FileRecord f) -> return $ T.pack $ takeFileName f
+             (DirRecord f _)
+                 | (ipdPackageDir <$> mbPackage) == Just f -> return "Files"
+                 | otherwise -> return $ T.pack $ last (splitDirectories f)
+             ComponentsRecord -> return "Components"
+             (ComponentRecord comp) -> do
+                let active = activePackage &&
+                                 (isNothing mbActiveComponent && comp == "library"
+                                     ||
+                                  Just comp == mbActiveComponent)
+                return $ (if active then bold else id) comp
+             GitRecord ->
+                case ipdPackageDir <$> mbPackage of
+                    Nothing -> return "No Git project"
+                    Just dir -> do
+                        let conf = Git.makeConfig (Just dir) Nothing Nothing
+                        liftIO $ Git.runVcs conf $ do
+                             branch <- Git.localBranches
+                             case branch of
+                                (Right (branch,_)) -> return branch
+                                (Left _)           -> return "No Git project"
+            where
+                bold str = "<b>" <> str <> "</b>"
+                italic str = "<i>" <> str <> "</i>"
+                gray str = "<span foreground=\"#999999\">" <> str <> "</span>"
 
 
 -- | The icon to show for a record
@@ -265,13 +267,33 @@ treePathToPackage' store (n1:n2:_) = do
     projectRecord <- forestStoreGetValue store =<< treePathNewFromIndices' [n1]
     packageRecord <- forestStoreGetValue store =<< treePathNewFromIndices' [n1,n2]
     case (projectRecord, packageRecord) of
-        (ProjectRecord pj, PackageRecord pkg) -> return (Just pj, Just pkg)
-        _                     -> do
-            liftIO $ debugM "leksah" "treePathToPackage: Unexpected entry in forest"
+        (ProjectRecord pjFile, PackageRecord pkgFile) -> readIDE workspace >>= \case
+            Just ws -> case wsLookupProject pjFile ws of
+                Just pj -> case pjLookupPackage pkgFile pj of
+                    Just pkg -> return (Just pj, Just pkg)
+                    _ -> do
+                        liftIO . errorM "leksah" $ "treePathToPackage: could not find pakcage " <> pkgFile
+                        return (Nothing, Nothing)
+                _ -> do
+                    liftIO . errorM "leksah" $ "treePathToPackage: Could not find project " <> pjFile
+                    return (Nothing, Nothing)
+            _ -> do
+                liftIO $ errorM "leksah" "treePathToPackage: No workspace"
+                return (Nothing, Nothing)
+        _ -> do
+            liftIO $ errorM "leksah" "treePathToPackage: Unexpected entry in forest"
             return (Nothing, Nothing)
 treePathToPackage' store (n:_) =
     treePathNewFromIndices' [n] >>= forestStoreGetValue store >>= \case
-        ProjectRecord pj -> return (Just pj, Nothing)
+        ProjectRecord pjFile -> readIDE workspace >>= \case
+            Just ws -> case wsLookupProject pjFile ws of
+                Just pj -> return (Just pj, Nothing)
+                _ -> do
+                    liftIO . errorM "leksah" $ "treePathToPackage: Could not find project " <> pjFile
+                    return (Nothing, Nothing)
+            _ -> do
+                liftIO $ errorM "leksah" "treePathToPackage: No workspace"
+                return (Nothing, Nothing)
         _                     -> do
             liftIO $ debugM "leksah" "treePathToPackage: Unexpected entry at root forest"
             return (Nothing, Nothing)
@@ -426,7 +448,7 @@ treeViewEvents recordStore treeView = do
             (Just project, mbPkg) -> do
                 expandable <- canExpand record project mbPkg
                 case record of
-                        ProjectRecord project -> void . selectSourceBuf $ pjFile project
+                        ProjectRecord project -> void $ selectSourceBuf project
                         FileRecord f  -> void $ goToSourceDefinition' f (Location "" 1 0 1 0)
                         ComponentRecord name -> workspaceTryQuiet $
                                                           workspaceActivatePackage project mbPkg (Just name)
@@ -506,13 +528,13 @@ refresh WorkspacePane{..} = do
             (`runWorkspace` ws) $ do
                 path <- liftIO $ treePathNewFromIndices' []
                 for_ (zip [0..] projects) $ \(n, project) -> do
-                    liftIO $ forestStoreInsert recordStore path n (ProjectRecord project)
-                    let packages = sort (pjPackages project)
+                    liftIO $ forestStoreInsert recordStore path n (ProjectRecord $ pjFile project)
+                    let packages = pjPackages project
                     (`runProject` project) $ do
                         path <- liftIO $ treePathNewFromIndices' [fromIntegral n]
                         for_ (zip [0..] packages) $ \(nPkg, pkg) -> do
-                            liftIO $ forestStoreInsert recordStore path nPkg (PackageRecord pkg)
-                            children <- children (PackageRecord pkg) (Just pkg)
+                            liftIO $ forestStoreInsert recordStore path nPkg (PackageRecord $ ipdCabalFile pkg)
+                            children <- children (PackageRecord $ ipdCabalFile pkg) (Just pkg)
                             lift $ setChildren (Just project) (Just pkg) recordStore treeView [fromIntegral n, fromIntegral nPkg] children
                         treeViewExpandRow treeView path False
 
@@ -534,7 +556,11 @@ children :: WorkspaceRecord -> Maybe IDEPackage -> ProjectM [WorkspaceRecord]
 children record mbPkg = case record of
     DirRecord dir _     -> runPkg $ dirRecords dir
     ComponentsRecord    -> runPkg componentsRecords
-    ProjectRecord project -> return . map PackageRecord . sort $ pjPackages project
+    ProjectRecord project ->
+        readIDE workspace >>= \case
+            Nothing -> return []
+            Just ws -> return $ maybe [] (map (PackageRecord . ipdCabalFile) . pjPackages)
+                                    $ wsLookupProject project ws
     PackageRecord pkg   -> do
         p <- runPkg ask
         return [ ComponentsRecord
@@ -600,6 +626,7 @@ setChildren :: Maybe Project
             -> [WorkspaceRecord] -> WorkspaceAction
 setChildren _ _ store _ [] [] = liftIO $ forestStoreClear store
 setChildren mbProject mbPkg store view parentPath kids = do
+    ws <- ask
     -- We only need to get all the children right when they are visible
     expanded <- if null parentPath
                     then return True
@@ -617,8 +644,8 @@ setChildren mbProject mbPkg store view parentPath kids = do
                     (False, _)        -> return Nothing
             Nothing         -> return Nothing
         let compare rec1 rec2 = case (rec1, rec2) of
-                (ProjectRecord p1, ProjectRecord p2) -> pjFile p1 == pjFile p2
-                (PackageRecord p1, PackageRecord p2) -> ipdCabalFile p1 == ipdCabalFile p2
+                (ProjectRecord p1, ProjectRecord p2) -> p1 == p2
+                (PackageRecord p1, PackageRecord p2) -> p1 == p2
                 _ -> rec1 == rec2
         findResult <- searchToRight compare record store mbChildIter
         case (mbChildIter, findResult) of
@@ -632,10 +659,10 @@ setChildren mbProject mbPkg store view parentPath kids = do
                 parentPath' <- treePathNewFromIndices' parentPath
                 forestStoreInsert store parentPath' (fromIntegral n) record
       let project = case record of
-                        ProjectRecord p -> p
+                        ProjectRecord p -> fromJust $ wsLookupProject p ws
                         _               -> fromJust mbProject
           mbPkg' = case record of
-                        PackageRecord p -> Just p
+                        PackageRecord p -> pjLookupPackage p project
                         _               -> mbPkg
       -- Only update the grand kids if they are visible
       when expanded $ do
@@ -724,11 +751,15 @@ contextMenuItems record path store = do
                      ]
                    ]
 
-        ProjectRecord project -> do
-            let onSetActive = workspaceTryQuiet $ workspaceActivatePackage project Nothing Nothing
-                onOpenProjectFile = void . selectSourceBuf $ pjFile project
+        ProjectRecord projectFile -> do
+            let onSetActive = workspaceTryQuiet $ do
+                    ws <- ask
+                    case wsLookupProject projectFile ws of
+                        Just project -> workspaceActivatePackage project Nothing Nothing
+                        Nothing -> liftIO . errorM "leksah" $ "onSetActive: Project not found " <> projectFile
+                onOpenProjectFile = void $ selectSourceBuf projectFile
                 onRemoveFromWs = workspaceTryQuiet $ do
-                    workspaceRemoveProject project
+                    workspaceRemoveProject projectFile
                     liftIDE refreshWorkspacePane
 
             return [ [ ("Set As Active Project", onSetActive)
@@ -739,9 +770,9 @@ contextMenuItems record path store = do
                      ]
                    ]
 
-        PackageRecord p ->
+        PackageRecord _ ->
             treePathToPackage store path >>= \case
-                (Just project, Just _) -> do
+                (Just project, Just p) -> do
 
                     let runPkg = (`runProject` project) . (`runPackage` p)
                         onSetActive = workspaceTryQuiet $ workspaceActivatePackage project (Just p) Nothing

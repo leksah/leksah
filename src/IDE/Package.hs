@@ -198,11 +198,6 @@ activatePackage :: MonadIDE m => Maybe FilePath -> Maybe Project -> Maybe IDEPac
 activatePackage mbPath mbProject mbPack mbComponent = do
     liftIO $ debugM "leksah" $ "activatePackage " <> show (mbPath, pjFile <$> mbProject, ipdCabalFile <$> mbPack, mbComponent)
     oldActivePack <- readIDE activePack
-    modifyIDE_ $ \ide -> ide
-        { activeProject = mbProject
-        , activePack = mbPack
-        , activeComponent = mbComponent
-        }
     case mbPath of
         Just p -> liftIO $ setCurrentDirectory (dropFileName p)
         Nothing -> return ()
@@ -1216,7 +1211,7 @@ ideProjectFromPath filePath = do
                         ideMessage Normal ("Path does not exist: " <> T.pack path)
                         return Nothing)
             packages <- fmap catMaybes . mapM idePackageFromPath' $ nub packages
-            return . Just $ Project { pjTool = tool, pjFile = filePath, pjPackages = packages }
+            return . Just $ Project { pjTool = tool, pjFile = filePath, pjPackageMap = mkPackageMap packages }
         Nothing -> return Nothing
 
 --refreshPackage :: C.Sink ToolOutput IDEM () -> PackageM (Maybe IDEPackage)
