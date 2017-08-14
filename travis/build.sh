@@ -10,7 +10,7 @@ fi
 cabal update
 
 # Detect if the cache is warmed up.  If so build both versions.
-if ghc-pkg --package-db /root/.cabal/store/ghc-`ghc --numeric-version`/package.db list | grep ghcjs-dom; then
+if ghc-pkg --package-db /root/.cabal/store/ghc-`ghc --numeric-version`/package.db list | grep gi-gtk; then
     cabal new-build
     all_done=true
 else
