@@ -15,7 +15,7 @@ description:
     An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
 author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
-tested-with: GHC ==7.2.2
+tested-with: GHC == 8.2.1, GHC == 8.0.2
 data-files:
     LICENSE
     Readme.md
