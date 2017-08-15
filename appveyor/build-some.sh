@@ -2,6 +2,7 @@
 
 if [ ! -d cache1 ]; then
   cabal update
+  cabal install cabal-install --disable-documentation
   cabal install -j1 alex happy --disable-documentation
   cabal install -j1 haskell-gi --disable-documentation
   cabal install -j1 gi-cairo gi-gdk gi-gdkpixbuf gi-gio gi-glib gi-gobject gi-gtk gi-gtksource gi-javascriptcore gi-pango gi-webkit gi-atk gi-soup \
