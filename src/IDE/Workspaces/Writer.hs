@@ -101,6 +101,11 @@ readWorkspace fp = do
 makePathsAbsolute :: WorkspaceFile -> FilePath -> IDEM Workspace
 makePathsAbsolute ws bp = do
     wsFile'           <-  liftIO $ myCanonicalizePath bp
+    wsActiveProjectFile' <-  case wsfActiveProjectFile ws of
+                                Nothing -> return Nothing
+                                Just fp -> do
+                                    fp' <- liftIO $ makeAbsolute (dropFileName wsFile') fp
+                                    return (Just fp')
     wsActivePackFile' <-  case wsfActivePackFile ws of
                                 Nothing -> return Nothing
                                 Just fp -> do
@@ -114,7 +119,7 @@ makePathsAbsolute ws bp = do
                 , wsSaveTime          = wsfSaveTime ws
                 , wsName              = wsfName ws
                 , wsProjects          = projects
-                , wsActiveProjectFile = wsfActiveProjectFile ws
+                , wsActiveProjectFile = wsActiveProjectFile'
                 , wsActivePackFile    = wsActivePackFile'
                 , wsActiveComponent   = wsfActiveComponent ws
                 , packageVcsConf      = wsfPackageVcsConf ws

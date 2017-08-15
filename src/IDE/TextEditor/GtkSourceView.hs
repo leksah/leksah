@@ -477,11 +477,10 @@ instance TextEditor GtkSourceView where
                                              || a == '!'  || a == '@' || a == '%' || a == '&' || a == '?'
                 if T.all isIdent text || T.all isOp text
                     then do
-                        (hasSel, iterC, _) <- textBufferGetSelectionBounds sb
+                        (hasSel, _, _) <- textBufferGetSelectionBounds sb
                         if not hasSel
                             then do
-                                atC <- textIterEqual iter iterC
-                                when atC $ reflectIDE start ideR
+                                reflectIDE start ideR
                                 return False
                             else do
                                 reflectIDE cancel ideR
@@ -491,7 +490,9 @@ instance TextEditor GtkSourceView where
                         return False
             writeIORef lastHandler (Just h)
             return ())
-        id2 <- ConnectC sv <$> onTextViewMoveCursor sv (\_ _ _ -> reflectIDE cancel ideR)
+        id2 <- ConnectC sv <$> onTextViewMoveCursor sv (\_ _ _ -> do
+            readIORef lastHandler >>= mapM_ sourceRemove . maybeToList
+            reflectIDE cancel ideR)
         id3 <- ConnectC sv <$> onWidgetButtonPressEvent sv (\e -> reflectIDE cancel ideR >> return False)
         id4 <- ConnectC sv <$> onWidgetFocusOutEvent sv (\e -> reflectIDE cancel ideR >> return False)
         return [id1, id2, id3, id4]
