@@ -49,6 +49,7 @@ module IDE.Core.State (
 ,   withIDE
 ,   getIDE
 ,   throwIDE
+,   packageDebugState
 
 ,   reifyIDE
 ,   reflectIDE
@@ -131,6 +132,9 @@ import Data.Int (Int32)
 import GI.GLib (pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, idleAdd)
 import GI.Gtk.Objects.Label (noLabel)
 import Data.Foldable (forM_)
+import qualified Data.Map as M (lookup, member)
+import IDE.Utils.Tool (ToolState(..))
+import Control.Monad.Trans.Class (MonadTrans(..))
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -300,9 +304,9 @@ isStartingOrClosing IsStartingUp    = True
 isStartingOrClosing IsShuttingDown  = True
 isStartingOrClosing _               = False
 
-isInterpreting :: MonadIDE m => m Bool
-isInterpreting =
-    readIDE debugState >>= \mb -> return (isJust mb)
+isInterpreting :: MonadIDE m => (FilePath, FilePath) -> m Bool
+isInterpreting projectAndPackage =
+    M.member projectAndPackage <$> readIDE debugState
 
 triggerEventIDE :: MonadIDE m => IDEEvent -> m IDEEvent
 triggerEventIDE e = liftIDE $ ask >>= \ideR -> triggerEvent ideR e
@@ -361,7 +365,7 @@ postAsyncIDEIdle = postAsyncIDE' PRIORITY_DEFAULT_IDLE
 
 onIDE onSignal obj callback = do
     ideRef <- ask
-    liftIO (ConnectC obj <$> onSignal obj (\e -> runReaderT (runReaderT callback ideRef) e))
+    liftIO (ConnectC obj <$> onSignal obj (runReaderT (runReaderT callback ideRef)))
 
 -- ---------------------------------------------------------------------
 -- Convenience methods for accesing the IDE State
@@ -371,7 +375,7 @@ onIDE onSignal obj callback = do
 readIDE :: MonadIDE m => (IDE -> beta) -> m beta
 readIDE f = do
     e <- liftIDE ask
-    liftIO $ liftM f (readIORef e)
+    liftIO $ f <$> readIORef e
 
 -- | Modify the contents, without returning a value
 modifyIDE_ :: MonadIDE m => (IDE -> IDE) -> m ()
@@ -402,6 +406,12 @@ withoutRecordingDo act = do
         (b,l,n) <- readIDE guiHistory
         modifyIDE_ (\ide -> ide{guiHistory = (False,l,n)})
         else act
+
+packageDebugState :: PackageM (Maybe (IDEPackage, ToolState))
+packageDebugState = do
+    project <- lift ask
+    package <- ask
+    M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState
 
 -- ---------------------------------------------------------------------
 -- Activating and deactivating Panes.

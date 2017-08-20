@@ -125,6 +125,7 @@ import GI.GLib.Structs.MainContext
        (mainContextIteration, mainContextDefault)
 import System.FSNotify
        (watchTree, watchDir, withManager, WatchManager)
+import qualified Data.Map as M (empty)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -361,7 +362,7 @@ startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startup
           ,   recentFiles       =   []
           ,   recentWorkspaces  =   []
           ,   runningTool       =   Nothing
-          ,   debugState        =   Nothing
+          ,   debugState        =   M.empty
           ,   completion        =   ((750,400),Nothing)
           ,   yiControl         =   yiControl
           ,   serverQueue       =   Nothing
@@ -384,6 +385,9 @@ startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startup
         widgetSetName nb "root"
         instrumentWindow win startupPrefs nb
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
+        setNativeToggled          (native          startupPrefs)
+        setJavaScriptToggled      (javaScript      startupPrefs)
+        setDebugToggled           (debug           startupPrefs)
         setMakeDocs               (makeDocs        startupPrefs)
         setRunUnitTests           (runUnitTests    startupPrefs)
         setRunBenchmarks          (runBenchmarks   startupPrefs)

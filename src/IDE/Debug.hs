@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings, LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Debug
@@ -65,7 +65,14 @@ module IDE.Debug (
 ,   debugSetPrintBindResult
 ) where
 
+import IDE.Core.Types (IDEEvent(..), MonadIDE(..), Prefs(..))
+import IDE.Core.CTypes (pdModules, mdModuleId, modu)
 import IDE.Core.State
+       (breakpointRefs, packageDebugState, MessageLevel(..), ideMessage,
+        postSyncIDE, readIDE, modifyIDE_, runDebug, catchIDE,
+        triggerEventIDE, LogRef, currentHist, autoURI, autoCommand,
+        PackageAction, prefs, IDEAction, DebugAction, IDEM,
+        packageDebugState)
 import IDE.LogRef
 import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
@@ -95,6 +102,8 @@ import qualified Data.Text as T
 import System.Exit (ExitCode(..))
 import IDE.Pane.WebKit.Output (loadOutputUri)
 import qualified Data.Sequence as Seq (filter, empty)
+import qualified Data.Map as M (lookup)
+import Control.Monad (unless, when)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
@@ -114,18 +123,12 @@ debugCommand' command handler = do
 debugToggled :: IDEAction
 debugToggled = do
     toggled <- getDebugToggled
-    maybeDebug <- readIDE debugState
-    case (toggled, maybeDebug) of
-        (True, Nothing) -> packageTry debugStart
-        (False, Just _) -> debugQuit
-        _               -> return ()
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){debug = toggled}})
 
-debugQuit :: IDEAction
-debugQuit = do
-    maybeDebug <- readIDE debugState
-    case maybeDebug of
-        Just debug -> runDebug (debugCommand ":quit" logOutputDefault) debug
-        _          -> return ()
+debugQuit :: PackageAction
+debugQuit =
+    packageDebugState >>=
+        liftIDE . mapM_ (runDebug (debugCommand ":quit" logOutputDefault))
 
 -- | Remove haddock code prefix from selected text so it can be run
 -- in ghci
@@ -214,11 +217,10 @@ debugForward = packageTry $ do
         (debugPackage, _) <- ask
         debugCommand ":forward" (logOutputForHistoricContextDefault debugPackage)
 
-debugStop :: IDEAction
-debugStop = do
-    maybeDebug <- readIDE debugState
-    liftIO $ case maybeDebug of
-        Just (_, ghci) -> toolProcess ghci >>= interruptProcessGroupOf
+debugStop :: PackageAction
+debugStop =
+    packageDebugState >>= \case
+        Just (_, ghci) -> liftIO $ toolProcess ghci >>= interruptProcessGroupOf
         Nothing -> return ()
 
 debugContinue :: IDEAction

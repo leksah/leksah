@@ -27,6 +27,7 @@ module IDE.Pane.Workspace (
 ,   WorkspacePane(..)
 ,   getWorkspacePane
 ,   showWorkspacePane
+,   redrawWorkspacePane
 ,   refreshWorkspacePane
 ,   rebuildWorkspacePane
 ) where
@@ -45,7 +46,7 @@ import IDE.Pane.SourceBuffer
        (selectSourceBuf, fileNew, goToSourceDefinition')
 import Control.Applicative ((<$>))
 import System.FilePath
-       ((</>), takeFileName, dropFileName,
+       ((<.>), (</>), takeFileName, dropFileName,
         addTrailingPathSeparator, takeDirectory, takeExtension,
         makeRelative, splitDirectories)
 import Distribution.Package (PackageIdentifier(..))
@@ -147,7 +148,8 @@ import GI.Gtk.Objects.LinkButton
        (onLinkButtonActivateLink, linkButtonNewWithLabel, LinkButton(..),
         linkButtonNew)
 import Data.GI.Base.Signals (SignalHandlerId)
-import GI.Gtk (treeViewExpandRow)
+import GI.Gtk (widgetQueueDraw, treeViewExpandRow)
+import qualified Data.Map as M (member)
 
 
 -- | The data for a single record in the Workspace Pane
@@ -237,19 +239,31 @@ toMarkup record (mbProject, mbPackage) =
 
 
 -- | The icon to show for a record
-toIcon :: WorkspaceRecord -> Text
-toIcon record = case record of
-    FileRecord path
-        | takeExtension path == ".hs"    -> "ide_source"
-        | takeExtension path == ".cabal" -> "ide_cabal_file"
-    DirRecord p isSrc
-        | isSrc     -> "ide_source_folder"
-        | otherwise -> "ide_folder"
-    ProjectRecord _ -> "ide_source_dependency"
-    PackageRecord _ -> "ide_package"
-    ComponentsRecord -> "ide_component"
-    GitRecord         -> "ide_git"
-    _ -> ""
+toIcon :: WorkspaceRecord
+         -> (Maybe Project, Maybe IDEPackage)
+         -> IDEM Text
+toIcon record (mbProject, mbPackage) =
+    readIDE workspace >>= \case
+        Nothing -> return ""
+        Just ws ->
+            case record of
+                FileRecord path
+                    | takeExtension path == ".hs"    -> return "ide_source"
+                    | takeExtension path == ".cabal" -> return "ide_cabal_file"
+                DirRecord p isSrc
+                    | isSrc     -> return "ide_source_folder"
+                    | otherwise -> return "ide_folder"
+                ProjectRecord _ -> return "ide_source_dependency"
+                PackageRecord pFile -> case (mbProject, mbPackage) of
+                    (Just project, Just package) -> do
+                        ds <- readIDE debugState
+                        return $ if (pjFile project, ipdCabalFile package) `M.member` ds
+                                    then "ide_debug"
+                                    else "ide_package"
+                    _ -> return "ide_package"
+                ComponentsRecord -> return "ide_component"
+                GitRecord         -> return "ide_git"
+                _ -> return ""
 
 
 -- | Gets the package to which a node in the tree belongs
@@ -399,16 +413,19 @@ buildTreeView recordStore = do
         treeViewColumnSetReorderable col1 True
         treeViewAppendColumn treeView col1
 
+        ideR <- ask
         prefs <- readIDE prefs
         when (showWorkspaceIcons prefs) $ do
             renderer2    <- cellRendererPixbufNew
             cellLayoutPackStart col1 renderer2 False
             setCellRendererPixbufStockId renderer2 ""
-            cellLayoutSetDataFunction col1 renderer2 recordStore
-                $ setCellRendererPixbufStockId renderer2 . toIcon
+            cellLayoutSetDataFunc' col1 renderer2 recordStore $ \iter -> do
+                record <- customStoreGetRow recordStore iter
+                projAndPkg <- (`reflectIDE` ideR) $ iterToPackage recordStore iter
+                icon <- (`reflectIDE` ideR) $ toIcon record projAndPkg
+                setCellRendererPixbufStockId renderer2 icon
 
         renderer1    <- cellRendererTextNew
-        ideR <- ask
         cellLayoutPackStart col1 renderer1 True
         cellLayoutSetDataFunc' col1 renderer1 recordStore $ \iter -> do
             record <- customStoreGetRow recordStore iter
@@ -493,6 +510,11 @@ fileGetPackage path = do
 
 -- * Actions for refreshing the Workspace pane
 
+redrawWorkspacePane :: IDEAction
+redrawWorkspacePane = do
+    liftIO $ debugM "leksah" "redrawWorkspacePane"
+    w <- getWorkspacePane
+    widgetQueueDraw $ treeView w
 
 
 -- | Refreshes the Workspace pane, lists all packages and synchronizes the expanded
@@ -758,12 +780,16 @@ contextMenuItems record path store = do
                         Just project -> workspaceActivatePackage project Nothing Nothing
                         Nothing -> liftIO . errorM "leksah" $ "onSetActive: Project not found " <> projectFile
                 onOpenProjectFile = void $ selectSourceBuf projectFile
+                onOpenProjectConfigurationFile =
+                    when (takeExtension projectFile == ".project") $
+                        void $ selectSourceBuf $ projectFile <.> "local"
                 onRemoveFromWs = workspaceTryQuiet $ do
                     workspaceRemoveProject projectFile
                     liftIDE refreshWorkspacePane
 
             return [ [ ("Set As Active Project", onSetActive)
                      , ("Open Project File", onOpenProjectFile)
+                     , ("Open Project Configuration File", onOpenProjectConfigurationFile)
                      ]
                    , [
                      ("Remove From Workspace", onRemoveFromWs)

@@ -29,6 +29,13 @@ else
   echo "Unknown cabal version $(cabal --numeric-version)"
 fi
 
+if [[ "$(cabal --numeric-version)" == "2.1.0.0" ]]; then
+  RUN_LEKSAH="cabal new-run exe:leksah --"
+else
+  export leksah_datadir="$DIR"
+  RUN_LEKSAH="$LEKSAH_BUILD_DIR/leksah/leksah"
+fi
+
 cabal new-configure --with-ghc="ghc-$GHCVER"
 cabal new-build -j4 exe:leksah-server exe:leksah exe:leksahecho || exit
-PATH="$LEKSAH_SERVER_BUILD_DIR/leksah-server:$LEKSAH_SERVER_BUILD_DIR/leksahecho:$PATH" leksah_datadir="$DIR" "$LEKSAH_BUILD_DIR/leksah/leksah" $@
+PATH="$LEKSAH_SERVER_BUILD_DIR/leksah-server:$LEKSAH_SERVER_BUILD_DIR/leksahecho:$PATH" $RUN_LEKSAH $@

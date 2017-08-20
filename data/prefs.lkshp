@@ -79,6 +79,12 @@ Automatically save all files before building:
                True
 Background build:
                True
+Native:
+               True
+JavaScript:
+               False
+Debug:
+               True
 Run unit tests when building:
                False
 Make mode:

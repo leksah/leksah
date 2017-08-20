@@ -38,6 +38,10 @@ module IDE.Utils.GUIUtils (
 ,   setRunBenchmarks
 ,   getMakeModeToggled
 ,   setMakeModeToggled
+,   getNativeToggled
+,   setNativeToggled
+,   getJavaScriptToggled
+,   setJavaScriptToggled
 ,   getDebugToggled
 ,   setDebugToggled
 
@@ -399,6 +403,26 @@ getMakeModeToggled = do
 setMakeModeToggled :: PaneMonad alpha => Bool -> alpha ()
 setMakeModeToggled b = do
     ui <- getUIAction "ui/toolbar/BuildToolItems/MakeMode" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
+
+getNativeToggled :: PaneMonad alpha => alpha Bool
+getNativeToggled = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/Native" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
+
+setNativeToggled :: PaneMonad alpha => Bool -> alpha ()
+setNativeToggled b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/Native" (unsafeCastTo ToggleAction)
+    toggleActionSetActive ui b
+
+getJavaScriptToggled :: PaneMonad alpha => alpha Bool
+getJavaScriptToggled = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/JavaScript" (unsafeCastTo ToggleAction)
+    toggleActionGetActive ui
+
+setJavaScriptToggled :: PaneMonad alpha => Bool -> alpha ()
+setJavaScriptToggled b = do
+    ui <- getUIAction "ui/toolbar/BuildToolItems/JavaScript" (unsafeCastTo ToggleAction)
     toggleActionSetActive ui b
 
 getDebugToggled :: PaneMonad alpha => alpha Bool

@@ -575,13 +575,12 @@ workspaceClean = do
     lift $ makePackages settings (map (\p -> (p, pjPackages p)) $ wsProjects ws) MoClean MoClean moNoOp
 
 buildSteps :: MakeSettings -> IDEM [MakeOp]
-buildSteps settings = do
-    debug <- isJust <$> readIDE debugState
+buildSteps settings =
     return $ MoBuild
          : [MoDocu    | msMakeDocs settings]
-        ++ [MoTest    | not debug && msRunUnitTests settings]
-        ++ [MoInstall | not debug]
-        ++ [MoBench   | not debug && msRunBenchmarks settings]
+        ++ [MoTest    | msRunUnitTests settings]
+        ++ [MoInstall]
+        ++ [MoBench   | msRunBenchmarks settings]
 
 workspaceMake :: WorkspaceAction
 workspaceMake = do
@@ -598,7 +597,6 @@ backgroundMake :: IDEAction
 backgroundMake = catchIDE (do
     ideR        <- ask
     prefs       <- readIDE prefs
-    debug       <- isJust <$> readIDE debugState
     modifiedFiles <- catMaybes <$> if saveAllBeforeBuild prefs
                         then fileCheckAll (return . return . fileName)
                         else return []
@@ -609,7 +607,7 @@ backgroundMake = catchIDE (do
                                   map (\project -> (project, filter (\pack -> any (`belongsToPackage` pack) modifiedFiles) (pjPackages project))) (wsProjects ws)
                 settings = defaultMakeSettings prefs
             steps <- buildSteps settings
-            if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+            if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
                 then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
                 else makePackages settings modifiedPacks (MoComposed steps)
                                     (MoComposed steps) MoMetaInfo
@@ -627,9 +625,8 @@ makePackage = do
     prefs' <- readIDE prefs
     mbWs   <- readIDE workspace
     let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
-    debug <- isJust <$> readIDE debugState
     steps <- buildSteps settings
-    if debug || msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+    if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
         then makePackages settings [(project, [p])] (MoComposed steps) (MoComposed []) moNoOp
         else makePackages settings [(project, [p])] (MoComposed steps) (MoComposed steps) MoMetaInfo
 

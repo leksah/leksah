@@ -34,6 +34,9 @@ module IDE.Find (
 
 import Control.Applicative (Applicative)
 import IDE.Core.State
+       (MessageLevel(..), sysMessage, (?>>=), triggerEventIDE, onIDE,
+        reflectIDE, modifyIDE_, readIDE, WorkspaceAction, IDEAction, IDEM,
+        toolbar, findbar, IDERef, Color(..), throwIDE, reifyIDE)
 import IDE.Utils.GUIUtils
 import IDE.TextEditor hiding(afterFocusIn)
 import IDE.Pane.SourceBuffer
@@ -107,9 +110,12 @@ import GI.Gdk.Flags (ModifierType(..))
 import Data.GI.Base.GValue (IsGValue(..))
 import GI.Gtk.Structs.TreeIter (TreeIter(..))
 import GI.Gtk.Objects.Bin (Bin(..), binGetChild)
-import IDE.Core.Types (toGdkColor)
+import IDE.Core.Types
+       (SensitivityMask(..), IDEEvent(..), MonadIDE(..), SearchHint(..),
+        toGdkColor)
 import GI.Gtk.Structs.TreePath (treePathGetIndices)
 import GI.Gtk (noWidget, imageNewFromIconName)
+import Graphics.UI.Frame.Panes (RecoverablePane(..))
 
 data FindState = FindState {
             entryStr        ::    Text

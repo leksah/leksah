@@ -203,6 +203,9 @@
        <toolitem name="Forward" action="ViewHistoryForth"/>
        <separator/>
        <toolitem name="BackgroundBuild" action="BackgroundBuildToggled"/>
+       <toolitem name="Native" action="NativeToggled"/>
+       <toolitem name="JavaScript" action="JavaScriptToggled"/>
+       <toolitem name="Debug" action="DebugToggled"/>
        <toolitem name="MakeDocs" action="MakeDocsToggled"/>
        <toolitem name="RunUnitTests" action="RunUnitTestsToggled"/>
        <toolitem name="RunBenchmarks" action="RunBenchmarksToggled"/>
@@ -210,7 +213,6 @@
        <separator/>
        <toolitem name="Update Project" action="UpdateMetadataCurrent" />
        <separator/>
-       <toolitem name="Debug" action="DebugToggled"/>
        <toolitem name="Step" action="DebugStep"/>
        <toolitem name="StepLocal" action="DebugStepLocal"/>
        <toolitem name="StepModule" action="DebugStepModule"/>

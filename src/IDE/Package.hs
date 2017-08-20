@@ -54,6 +54,8 @@ module IDE.Package (
 ,   makeDocsToggled
 ,   runUnitTestsToggled
 ,   runBenchmarksToggled
+,   nativeToggled
+,   javaScriptToggled
 ,   makeModeToggled
 
 ,   debugStart
@@ -158,11 +160,13 @@ import System.Environment (getEnvironment)
 import Distribution.Simple.LocalBuildInfo
        (Component(..), Component)
 import Distribution.Simple.Utils (writeUTF8File)
+import qualified Data.Map as M (member, delete, insert, lookup)
 #if MIN_VERSION_Cabal(2,0,0)
 import Distribution.Types.ForeignLib (foreignLibName)
 import Distribution.Types.UnqualComponentName
        (UnqualComponentName(..), mkUnqualComponentName,
         unUnqualComponentName)
+import Distribution.Compiler (CompilerFlavor(..), CompilerFlavor)
 #endif
 
 #if !MIN_VERSION_Cabal(2,0,0)
@@ -264,8 +268,8 @@ packageConfig' (project, package) continuation = do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
-runCabalBuild :: Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
-runCabalBuild backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
+runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     prefs <- readIDE prefs
     pd <- liftIO $ fmap flattenPackageDescription
                      (readPackageDescription normal (ipdCabalFile package))
@@ -291,6 +295,7 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking (project, package) c
                 (case pjTool project of
                     StackTool -> ["build", "--stack-yaml", T.pack (makeRelative dir $ pjFile project), ipdPackageName package]
                     CabalTool -> ["new-build", "--project-file", T.pack (makeRelative dir $ pjFile project)])
+                ++ ["--ghcjs" | compiler == GHCJS]
                 ++ ["--with-ld=false" | pjTool project == CabalTool && backgroundBuild && withoutLinking]
                 ++ (if isActivePackage then maybeToList mbActiveComponent else [])
                 ++ flagsForTests
@@ -316,37 +321,13 @@ runCabalBuild backgroundBuild jumpToWarnings withoutLinking (project, package) c
 buildPackage :: Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = catchIDE (do
     liftIO $ debugM "leksah" "buildPackage"
-    ideR      <- ask
+    ideR      <- liftIDE ask
     prefs     <- readIDE prefs
-    maybeDebug <- readIDE debugState
-    case maybeDebug of
-        Nothing -> do
-            alreadyRunning <- isRunning
-            if alreadyRunning
-                then do
-                    liftIO $ debugM "leksah" "buildPackage interruptBuild"
-                    interruptBuild
-                    timeoutAdd PRIORITY_DEFAULT 100 (do
-                        reflectIDE (do
-                            if backgroundBuild
-                                then do
-                                    tb <- readIDE triggerBuild
-                                    void . liftIO $ tryPutMVar tb ()
-                                else do
-                                    buildPackage backgroundBuild jumpToWarnings withoutLinking
-                                                    (project, package) continuation
-                            return False) ideR
-                        return False)
-                    return ()
-                else do
-                    when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
-                    runCabalBuild backgroundBuild jumpToWarnings withoutLinking (project, package) $ \f -> do
-                        when f $ do
-                            mbURI <- readIDE autoURI
-                            case mbURI of
-                                Just uri -> postSyncIDE . loadOutputUri $ T.unpack uri
-                                Nothing  -> return ()
-                        continuation f
+    let compile' = compile ([GHC | native prefs || debug prefs] ++ [GHCJS | javaScript prefs && pjTool project == CabalTool])
+    M.member (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
+        False | debug prefs -> readIDE workspace >>= mapM_ (runWorkspace $ runProject (IDE.Core.State.runPackage debugStart package) project)
+        _ -> return ()
+    M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
         Just debug@(_, ghci) -> do
             -- TODO check debug package matches active package
             ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
@@ -359,7 +340,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                         unless (any isError errs) . lift $ do
                             cmd <- readIDE autoCommand
                             postSyncIDE cmd
-                            continuation True
+                            compile'
                 else do
                     timeoutAdd PRIORITY_LOW 500 (do
                         reflectIDE (do
@@ -368,8 +349,41 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                             return False) ideR
                         return False)
                     return ()
+        Nothing -> compile'
     )
     (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
+  where
+    compile :: [CompilerFlavor] -> IDEAction
+    compile [] = continuation True
+    compile (compiler:compilers) = do
+        ideR      <- liftIDE ask
+        prefs     <- readIDE prefs
+        alreadyRunning <- isRunning
+        if alreadyRunning
+            then do
+                liftIO $ debugM "leksah" "buildPackage interruptBuild"
+                interruptBuild
+                timeoutAdd PRIORITY_DEFAULT 100 (do
+                    reflectIDE (do
+                        if backgroundBuild
+                            then do
+                                tb <- readIDE triggerBuild
+                                void . liftIO $ tryPutMVar tb ()
+                            else
+                                buildPackage backgroundBuild jumpToWarnings withoutLinking
+                                                (project, package) continuation
+                        return False) ideR
+                    return False)
+                return ()
+            else do
+                when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
+                runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) $ \f ->
+                    when f $ do
+                        mbURI <- readIDE autoURI
+                        case mbURI of
+                            Just uri -> postSyncIDE . loadOutputUri $ T.unpack uri
+                            Nothing  -> return ()
+                        compile compilers
 
 packageDoc :: PackageAction
 packageDoc = do
@@ -514,7 +528,6 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                 _  -> return ()
         else liftIDE $ catchIDE (do
             ideR        <- ask
-            maybeDebug   <- readIDE debugState
             pd <- liftIO $ fmap flattenPackageDescription
                              (readPackageDescription normal (ipdCabalFile package))
             mbComponent <- readIDE activeComponent
@@ -523,7 +536,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                 logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . unUnqualComponentName . exeName) exe
             (logLaunch,logName) <- buildLogLaunchByName logName
             showLog
-            case maybeDebug of
+            M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
                 Nothing -> do
                     prefs <- readIDE prefs
                     let dir = ipdPackageDir package
@@ -951,6 +964,16 @@ runBenchmarksToggled = do
     toggled <- getRunBenchmarks
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){runBenchmarks = toggled}})
 
+nativeToggled :: IDEAction
+nativeToggled = do
+    toggled <- getNativeToggled
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){native = toggled}})
+
+javaScriptToggled :: IDEAction
+javaScriptToggled = do
+    toggled <- getJavaScriptToggled
+    modifyIDE_ (\ide -> ide{prefs = (prefs ide){javaScript = toggled}})
+
 makeModeToggled :: IDEAction
 makeModeToggled = do
     toggled <- getMakeModeToggled
@@ -986,11 +1009,11 @@ debugStart :: PackageAction
 debugStart = do
     project <- lift ask
     package <- ask
+    let projectAndPackage = (pjFile project, ipdCabalFile package)
     liftIDE $ catchIDE (do
         ideRef     <- ask
         prefs'     <- readIDE prefs
-        maybeDebug <- readIDE debugState
-        case maybeDebug of
+        M.lookup projectAndPackage <$> readIDE debugState >>= \case
             Nothing -> do
                 mbTarget <- readIDE activeComponent
                 let dir  = ipdPackageDir  package
@@ -1004,32 +1027,21 @@ debugStart = do
                         StackTool -> ("stack", [ "repl"
                                                , "--stack-yaml"
                                                , T.pack . makeRelative dir $ pjFile project
-                                               , name <> maybe "" (":" <>) mbTarget
+                                               , name <> maybe ":lib" (":" <>) mbTarget
                                                ])
                 ghci <- reifyIDE $ \ideR -> newGhci tool args dir (interactiveFlags prefs')
                     $ reflectIDEI (void (logOutputForBuild project package True False)) ideR
-                modifyIDE_ (\ide -> ide {debugState = Just (package, ghci)})
+                modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
-                setDebugToggled True
+                triggerEventIDE (DebugStart projectAndPackage)
                 -- Fork a thread to wait for the output from the process to close
                 liftIO $ forkIO $ do
                     readMVar (outputClosed ghci)
                     (`reflectIDE` ideRef) . postSyncIDE $ do
-                        setDebugToggled False
-                        modifyIDE_ (\ide -> ide {debugState = Nothing, autoCommand = return ()})
+                        modifyIDE_ (\ide -> ide {debugState = M.delete projectAndPackage (debugState ide), autoCommand = return ()})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
-                        -- Kick of a build if one is not already due
-                        modifiedPacks <- fileCheckAll belongsToPackages'
-                        let modified = not (null modifiedPacks)
-                        prefs <- readIDE prefs
-                        when (not modified && backgroundBuild prefs) $ do
-                            -- So although none of the pakages are modified,
-                            -- they may have been modified in ghci mode.
-                            -- Lets build to make sure the binaries are up to date
-                            mbPackage   <- readIDE activePack
-                            case mbPackage of
-                                Just package -> runCabalBuild True False False (project, package) (\ _ -> return ())
-                                Nothing -> return ()
+                        triggerEventIDE (DebugStop projectAndPackage)
+                        return ()
                 return ()
             _ -> do
                 sysMessage Normal (__ "Debugger already running")
@@ -1038,12 +1050,14 @@ debugStart = do
 
 tryDebug :: DebugAction -> PackageAction
 tryDebug f = do
-    maybeDebug <- liftIDE $ readIDE debugState
-    case maybeDebug of
-        Just debug ->
-            -- TODO check debug package matches active package
-            liftIDE $ runDebug f debug
-        _ -> do
+    prefs <- readIDE prefs
+    packageDebugState >>= \case
+        Just d -> liftIDE $ runDebug f d
+        _ | debug prefs -> do
+                debugStart
+                packageDebugState >>=
+                    mapM_ (liftIDE . postAsyncIDE . runDebug f)
+          | otherwise -> do
             window <- liftIDE getMainWindow
             md <- new' MessageDialog [
                     constructDialogUseHeaderBar 0,
@@ -1059,21 +1073,17 @@ tryDebug f = do
             case resp of
                 AnotherResponseType 1 -> do
                     debugStart
-                    maybeDebug <- liftIDE $ readIDE debugState
-                    case maybeDebug of
-                        Just debug -> liftIDE $ postAsyncIDE $ runDebug f debug
-                        _ -> return ()
+                    liftIDE $ setDebugToggled True
+                    packageDebugState >>=
+                        mapM_ (liftIDE . postAsyncIDE . runDebug f)
                 _  -> return ()
 
 tryDebugQuiet :: DebugAction -> PackageAction
 tryDebugQuiet f = do
-    maybeDebug <- liftIDE $ readIDE debugState
-    case maybeDebug of
-        Just debug ->
-            -- TODO check debug package matches active package
-            liftIDE $ runDebug f debug
-        _ ->
-            return ()
+    project <- lift ask
+    package <- ask
+    M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>=
+        mapM_ (liftIDE . runDebug f)
 
 executeDebugCommand :: Text -> C.Sink ToolOutput IDEM () -> DebugAction
 executeDebugCommand command handler = do

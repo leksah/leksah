@@ -60,7 +60,31 @@ import Distribution.ModuleName
 import Control.DeepSeq
 import IDE.Utils.VersionUtils (supportedGhcVersions)
 import IDE.Utils.FileUtils
+import IDE.Core.Types (IDEEvent(..), IDEState(..), SearchMode(..))
+import IDE.Core.CTypes
+       (modu, dscMbModu, Descr(..), dscTypeHint, isReexported, dscName,
+        dscExported, Present(..), metadataVersion,
+        packageIdentifierToString, moduleKeyToName, displayModuleKey,
+        ModuleKey(..), SymbolTable(..), Scope(..), Scope, mdIdDescriptions,
+        GenScope, SymbolTable, mdMbSourcePath, wcModList, ModuleDescr(..),
+        wcPath, ModuleKey, wcPackage, pdBuildDepends, wcRebuild, pdModules,
+        ServerCommand(..), pdMbSourcePath, ServerAnswer(..), pdPackage,
+        PackageDescr(..), TypeDescr(..), dscExported', Descr, dscTypeHint',
+        PackScope(..), dscMbComment', GenScope(..), dscMbLocation',
+        dscMbModu', dscMbTypeStr', dscName', RealDescr(..),
+        SimpleDescr(..))
 import IDE.Core.State
+       (sysMessage, throwIDE, ipdCabalFile, ipdDepends, ipdMain,
+        ipdModules, ipdPackageId, activePack, modifyIDE_, wsAllPackages,
+        ipdPackageDir, workspace, currentState, triggerEventIDE,
+        postAsyncIDE, forkIDE, MessageLevel(..), ideMessage,
+        collectAtStart, prefs, readIDE, SearchMode, ModuleDescrCache,
+        workspInfoCache, IDEPackage, packageInfo, workspaceInfo,
+        systemInfo, IDEM, IDEAction)
+import IDE.Utils.Utils
+       (leksahMetadataPathFileExtension,
+        leksahMetadataSystemFileExtension,
+        leksahMetadataWorkspaceFileExtension)
 import Data.Char (toLower,isUpper,toUpper,isLower)
 import Text.Regex.TDFA
 import qualified Text.Regex.TDFA as Regex

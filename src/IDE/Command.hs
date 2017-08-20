@@ -311,7 +311,7 @@ mkActions =
     ,AD "StartDebugger" (__ "_Start Debugger") (Just (__ "Starts using the GHCi debugger for build and run")) Nothing
         (packageTry debugStart) [] False
     ,AD "QuitDebugger" (__ "_Quit Debugger") (Just (__ "Quit the GHCi debugger if it is running")) Nothing
-        debugQuit [] False
+        (packageTry debugQuit) [] False
     ,AD "ExecuteSelection" (__ "_Execute Selection") (Just (__ "Sends the selected text to the debugger")) Nothing
         debugExecuteSelection [] False
 
@@ -329,7 +329,7 @@ mkActions =
     ,AD "DebugAbandon" (__ "Abandon") (Just (__ "At a breakpoint, abandon current computation")) Nothing
         debugAbandon [] False
     ,AD "DebugStop" (__ "Stop") (Just (__ "Interrupt the running operation.")) Nothing
-        debugStop [] False
+        (packageTry debugStop) [] False
 
     ,AD "DebugStep" (__ "Step") (Just (__ "Single-step after stopping at a breakpoint")) (Just "ide_step")
         debugStep [] False
@@ -504,6 +504,10 @@ mkActions =
         runBenchmarksToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
+    ,AD "NativeToggled" "_Enable GHC" (Just (__ "Use GHC to compile")) (Just "ide_make")
+        nativeToggled [] True
+    ,AD "JavaScriptToggled" "_Enable GHCJS" (Just (__ "Use GHCJS to compile")) (Just "ide_js")
+        javaScriptToggled [] True
     ,AD "DebugToggled" "_Enable GHCi" (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
         debugToggled [] True
     ,AD "OpenDocu" (__ "_OpenDocu") (Just (__ "Opens a browser for a search of the selected data")) Nothing
@@ -822,6 +826,9 @@ instrumentWindow win prefs topWidget = do
     windowAddAccelGroup win acc
     containerAdd win vb
     setBackgroundBuildToggled (backgroundBuild prefs)
+    setNativeToggled          (native          prefs)
+    setJavaScriptToggled      (javaScript      prefs)
+    setDebugToggled           (debug           prefs)
     setMakeDocs               (makeDocs        prefs)
     setRunUnitTests           (runUnitTests    prefs)
     setRunBenchmarks          (runBenchmarks   prefs)
@@ -995,6 +1002,10 @@ registerLeksahEvents =    do
               when (hlintOnSave prefs && takeExtension file `elem` [".hs", ".lhs"]) $
                   scheduleHLint (Right file)
               return e)
+    registerEvent stRef "DebugStart"
+        (\ e@(DebugStart projectAndPackage) -> redrawWorkspacePane >> return e)
+    registerEvent stRef "DebugStop"
+        (\ e@(DebugStop projectAndPackage) -> redrawWorkspacePane >> return e)
 
     return ()
 

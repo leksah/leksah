@@ -207,7 +207,7 @@ data IDE            =  IDE {
 ,   recentFiles         :: [FilePath]
 ,   recentWorkspaces    :: [FilePath]
 ,   runningTool         :: Maybe ProcessHandle
-,   debugState          :: Maybe (IDEPackage, ToolState)
+,   debugState          :: Map (FilePath, FilePath) (IDEPackage, ToolState)
 ,   completion          :: ((Int, Int), Maybe CompletionWindow)
 ,   yiControl           :: Yi.Control
 ,   serverQueue         :: Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
@@ -360,6 +360,8 @@ data IDEEvent  =
     |   WorkspaceChanged Bool Bool -- ^ showPane updateFileCache
     |   SelectSrcSpan (Maybe SrcSpan)
     |   SavedFile FilePath
+    |   DebugStart (FilePath, FilePath)
+    |   DebugStop (FilePath, FilePath)
 
 instance Event IDEEvent Text where
     getSelector (InfoChanged _)         =   "InfoChanged"
@@ -388,6 +390,8 @@ instance Event IDEEvent Text where
     getSelector (WorkspaceChanged _ _)  =   "WorkspaceChanged"
     getSelector (SelectSrcSpan _)       =   "SelectSrcSpan"
     getSelector (SavedFile _)           =   "SavedFile"
+    getSelector (DebugStart _)          =   "DebugStart"
+    getSelector (DebugStop _)           =   "DebugStop"
 
 instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "InfoChanged"         = True
@@ -418,6 +422,8 @@ instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "WorkspaceChanged"    = True
     canTriggerEvent _ "SelectSrcSpan"       = True
     canTriggerEvent _ "SavedFile"           = True
+    canTriggerEvent _ "DebugStart"          = True
+    canTriggerEvent _ "DebugStop"           = True
     canTriggerEvent _ _                   = False
     getHandlers ideRef = do
         ide <- liftIO $ readIORef ideRef
@@ -605,6 +611,9 @@ data Prefs = Prefs {
     ,   jumpToWarnings      ::   Bool
     ,   useVado             ::   Bool
     ,   backgroundBuild     ::   Bool
+    ,   native              ::   Bool
+    ,   javaScript          ::   Bool
+    ,   debug               ::   Bool
     ,   makeDocs            ::   Bool -- ^ Make documentation on build
     ,   runUnitTests        ::   Bool -- ^ Run unit tests on build?
     ,   runBenchmarks        ::   Bool -- ^ Run benchmarks on build?

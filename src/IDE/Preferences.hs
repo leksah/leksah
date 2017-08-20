@@ -756,6 +756,30 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\i -> return ())
          , mkFieldPP
+            (paraName <<<- ParaName (__ "Native") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            native
+            (\b a -> a{native = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName (__ "JavaScript") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            javaScript
+            (\b a -> a{javaScript = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
+            (paraName <<<- ParaName (__ "Debug") $ emptyParams)
+            (PP.text . show)
+            boolParser
+            debug
+            (\b a -> a{debug = b})
+            boolEditor
+            (\i -> return ())
+         , mkFieldPP
             (paraName <<<- ParaName (__ "Make documentation when building") $ emptyParams)
             (PP.text . show)
             boolParser
@@ -979,6 +1003,9 @@ defaultPrefs = Prefs {
     ,   jumpToWarnings      =   True
     ,   useVado             =   False
     ,   backgroundBuild     =   True
+    ,   native              =   True
+    ,   javaScript          =   True
+    ,   debug               =   True
     ,   makeDocs            =   False
     ,   runUnitTests        =   False
     ,   runBenchmarks       =   False
