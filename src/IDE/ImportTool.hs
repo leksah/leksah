@@ -277,7 +277,7 @@ getScopeForActiveBuffer = do
             packages <- belongsToPackages' buf
             case packages of
                 [] -> return Nothing
-                pack:_ -> getPackageImportInfo pack
+                (_,pack):_ -> getPackageImportInfo pack
 
 addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
 addImport' nis filePath descr descrList continuation =  do

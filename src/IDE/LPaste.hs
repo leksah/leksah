@@ -63,7 +63,7 @@ uploadToLpaste = do
                 (Just mainWindow)
                 "Confirm upload to lpaste.net?"
                 MessageTypeQuestion
-                [("OK", uploadToLpaste' mainWindow maybeText), ("Cancel", return ())]
+                [("OK", uploadToLpaste' mainWindow (snd <$> maybeText)), ("Cancel", return ())]
                 (Just 0)
 
 uploadToLpaste' :: Window -> Maybe T.Text -> IO ()

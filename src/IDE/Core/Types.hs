@@ -68,6 +68,7 @@ module IDE.Core.Types (
 ,   wsActiveProject
 ,   wsActivePackage
 ,   wsPackages
+,   wsProjectAndPackages
 ,   wsAllPackages
 ,   VCSConf
 
@@ -191,7 +192,7 @@ data IDE            =  IDE {
 ,   candy               :: CandyTable              -- ^ table for source candy
 ,   prefs               :: Prefs                   -- ^ configuration preferences
 ,   workspace           :: Maybe Workspace         -- ^ may be a workspace (set of packages)
-,   bufferProjCache     :: Map FilePath [IDEPackage] -- ^ cache the associated packages for a file
+,   bufferProjCache     :: Map FilePath [(Project, IDEPackage)] -- ^ cache the associated packages for a file
 ,   allLogRefs          :: Seq LogRef
 ,   currentEBC          :: (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   currentHist         :: Int
@@ -539,6 +540,9 @@ wsActivePackage w = do
 
 wsPackages :: Workspace -> [IDEPackage]
 wsPackages = wsProjects >=> pjPackages
+
+wsProjectAndPackages :: Workspace -> [(Project, IDEPackage)]
+wsProjectAndPackages = wsProjects >=> (\project -> (\pack -> (project, pack)) <$> pjPackages project)
 
 -- | Includes sandbox sources
 wsAllPackages :: Workspace -> [IDEPackage]

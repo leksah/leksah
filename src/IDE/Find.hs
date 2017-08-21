@@ -724,7 +724,7 @@ editFindInc hint = do
     (fb,_) <- needFindbar
     case hint of
         Initial -> do
-               mbtext <- selectedText -- if no text selected, search for the last query
+               mbtext <- snd <$> selectedText -- if no text selected, search for the last query
                case mbtext of
                  Just text -> do
                      findEntry <- getFindEntry fb

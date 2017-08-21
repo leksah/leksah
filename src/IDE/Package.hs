@@ -160,13 +160,13 @@ import System.Environment (getEnvironment)
 import Distribution.Simple.LocalBuildInfo
        (Component(..), Component)
 import Distribution.Simple.Utils (writeUTF8File)
+import Distribution.Compiler (CompilerFlavor(..))
 import qualified Data.Map as M (member, delete, insert, lookup)
 #if MIN_VERSION_Cabal(2,0,0)
 import Distribution.Types.ForeignLib (foreignLibName)
 import Distribution.Types.UnqualComponentName
        (UnqualComponentName(..), mkUnqualComponentName,
         unUnqualComponentName)
-import Distribution.Compiler (CompilerFlavor(..), CompilerFlavor)
 #endif
 
 #if !MIN_VERSION_Cabal(2,0,0)

@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -1474,20 +1475,20 @@ removeRecentlyUsedFile fp = do
         return ()
 
 -- | Get the currently selected text or Nothing is no text is selected
-selectedText :: IDEM (Maybe Text)
+selectedText :: IDEM (Maybe IDEBuffer, Maybe Text)
 selectedText = do
     candy' <- readIDE candy
-    inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
+    inActiveBufContext (Nothing, Nothing) $ \_ _ ebuf currentBuffer _ -> do
         hasSelection <- hasSelection ebuf
         if hasSelection
             then do
                 (i1,i2)   <- getSelectionBounds ebuf
                 text      <- getCandylessPart candy' ebuf i1 i2
-                return $ Just text
-            else return Nothing
+                return (Just currentBuffer, Just text)
+            else return (Just currentBuffer, Nothing)
 
 -- | Get the currently selected text, or, if none, the current line text
-selectedTextOrCurrentLine :: IDEM (Maybe Text)
+selectedTextOrCurrentLine :: IDEM (Maybe (IDEBuffer, Text))
 selectedTextOrCurrentLine = do
     candy' <- readIDE candy
     inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
@@ -1500,22 +1501,23 @@ selectedTextOrCurrentLine = do
                 iStart <- getIterAtLine ebuf line
                 iEnd <- forwardToLineEndC iStart
                 return (iStart, iEnd)
-        Just <$> getCandylessPart candy' ebuf i1 i2
+        Just . (currentBuffer,) <$> getCandylessPart candy' ebuf i1 i2
 
 -- | Get the currently selected text, or, if none, tries to selected the current identifier (the one under the cursor)
-selectedTextOrCurrentIdentifier :: IDEM (Maybe Text)
+selectedTextOrCurrentIdentifier :: IDEM (Maybe IDEBuffer, Maybe Text)
 selectedTextOrCurrentIdentifier = do
     st <- selectedText
-    case st of
-        Just t -> return $ Just t
+    case snd st of
+        Just t -> return st
         Nothing -> do
             candy' <- readIDE candy
-            inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
+            inActiveBufContext (Nothing, Nothing) $ \_ _ ebuf currentBuffer _ -> do
                         (l,r)   <- getIdentifierUnderCursor ebuf
                         t <- getCandylessPart candy' ebuf l r
-                        return $ if T.null t
-                                                then Nothing
-                                                else Just t
+                        return ( Just currentBuffer
+                               , if T.null t
+                                        then Nothing
+                                        else Just t)
 
 selectedLocation :: IDEM (Maybe (Int, Int))
 selectedLocation = do
@@ -1546,22 +1548,21 @@ insertTextAfterSelection str = do
 
 -- | Returns the packages to which this file belongs
 --   uses the 'bufferProjCache' and might extend it
-belongsToPackages :: MonadIDE m => FilePath -> m [IDEPackage]
+belongsToPackages :: MonadIDE m => FilePath -> m [(Project, IDEPackage)]
 belongsToPackages fp = do
     bufferToProject' <-  readIDE bufferProjCache
-    ws               <-  readIDE workspace
     case Map.lookup fp bufferToProject' of
         Just p  -> return p
-        Nothing -> case ws of
+        Nothing -> readIDE workspace >>= \case
                         Nothing   -> return []
                         Just workspace -> do
-                            let res = filter (belongsToPackage fp) (wsPackages workspace)
+                            let res = filter (belongsToPackage fp . snd) $ wsProjectAndPackages workspace
                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
-                            return res
+                            return . reverse $ sortOn (length . ipdPackageDir . snd) res
 
 -- | Returns the packages to which this buffer belongs
 --   uses the 'bufferProjCache' and might extend it
-belongsToPackages' :: MonadIDE m => IDEBuffer -> m [IDEPackage]
+belongsToPackages' :: MonadIDE m => IDEBuffer -> m [(Project, IDEPackage)]
 belongsToPackages' = maybe (return []) belongsToPackages . fileName
 
 -- | Checks whether a file belongs to a package (includes files in

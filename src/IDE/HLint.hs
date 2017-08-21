@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.HLint
@@ -25,9 +26,10 @@ module IDE.HLint (
 import Control.Applicative
 import Prelude hiding(getChar, getLine)
 import IDE.Core.Types
-       (MonadIDE(..), logRefFullFilePath, Prefs(..), LogRef(..),
-        LogRefType(..), wsAllPackages, ipdPackageDir, IDEM, IDEAction,
-        IDE(..), IDEPackage(..), PackageAction)
+       (pjDir, ProjectTool(..), Project(..), MonadIDE(..),
+        logRefFullFilePath, Prefs(..), LogRef(..), LogRefType(..),
+        wsProjectAndPackages, ipdPackageDir, IDEM, IDEAction, IDE(..),
+        IDEPackage(..), PackageAction)
 import Control.Monad.Reader (asks, MonadReader(..))
 import IDE.Core.State
        (postSyncIDE, catchIDE, MessageLevel(..), ideMessage,
@@ -68,8 +70,8 @@ import IDE.Metainfo.Provider (getWorkspaceInfo)
 import qualified Language.Haskell.Exts.SrcLoc as HSE
        (SrcLoc(..), SrcSpan(..))
 import IDE.Pane.SourceBuffer
-       (useCandyFor, selectSourceBuf, fileSave, inActiveBufContext,
-        addLogRef, belongsToPackage, removeLintLogRefs)
+       (belongsToPackages, useCandyFor, selectSourceBuf, fileSave,
+        inActiveBufContext, addLogRef, belongsToPackage, removeLintLogRefs)
 import qualified Data.Text.IO as T (readFile)
 import Data.Text (Text)
 import IDE.TextEditor (TextEditor(..))
@@ -79,6 +81,7 @@ import IDE.BufferMode (IDEBuffer(..), editInsertCode)
 import Data.Ord (comparing)
 import qualified Data.Foldable as F (toList)
 import IDE.Utils.CabalProject (findProjectRoot)
+import IDE.Utils.FileUtils (cabalProjectBuildDir)
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (liftIDE . scheduleHLint . Left)
@@ -111,22 +114,21 @@ scheduleHLint what = do
 runHLint :: Either FilePath FilePath -> IDEAction
 runHLint (Right sourceFile) = do
     liftIO . debugM "leksah" $ "runHLint"
-    packages <- maybe [] wsAllPackages <$> readIDE workspace
-    case sortBy (flip (comparing (length . ipdPackageDir))) $ filter (belongsToPackage sourceFile) packages of
+    belongsToPackages sourceFile >>= \case
         (package:_) -> runHLint' package (Just sourceFile)
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> sourceFile
 runHLint (Left cabalFile) = do
     liftIO . debugM "leksah" $ "runHLint"
-    packages <- maybe [] wsAllPackages <$> readIDE workspace
-    case find ((== cabalFile) . ipdCabalFile) packages of
+    packages <- maybe [] wsProjectAndPackages <$> readIDE workspace
+    case find ((== cabalFile) . ipdCabalFile . snd) packages of
         Just package -> runHLint' package Nothing
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> cabalFile
 
-runHLint' :: IDEPackage -> Maybe FilePath -> IDEAction
-runHLint' package mbSourceFile = do
+runHLint' :: (Project, IDEPackage) -> Maybe FilePath -> IDEAction
+runHLint' (project, package) mbSourceFile = do
     liftIO . debugM "leksah" $ "runHLint'"
     ideR <- ask
-    (flags, classify, hint) <- hlintSettings package
+    (flags, classify, hint) <- hlintSettings project package
     let modules = M.keys (ipdModules package)
     paths <- case mbSourceFile of
                     Just f  -> return [f]
@@ -169,13 +171,18 @@ getSourcePaths packId names = do
                     []         -> Nothing
             Nothing -> Nothing
 
-hlintSettings :: IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
-hlintSettings package = do
+hlintSettings :: Project -> IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
+hlintSettings project package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    projectRoot <- liftIO $ findProjectRoot (ipdPackageDir package)
-    let cabalMacros = projectRoot </> "dist-newstyle/build"
-                        </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-                        </> "build/autogen/cabal_macros.h"
+    let dir = ipdPackageDir package
+        projectRoot = pjDir project
+    cabalMacros <- case pjTool project of
+        CabalTool -> do
+            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project)
+            return $ buildDir </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+                              </> "build/autogen/cabal_macros.h"
+        StackTool -> return $ ipdPackageDir package </> ".stack-work/dist/x86_64-osx/Cabal-1.24.2.0/build/autogen/cabal_macros.h"
+                        -- TODO run stack path --dist-dir
     cabalMacrosExist <- liftIO $ doesFileExist cabalMacros
     defines <- liftIO $ if cabalMacrosExist
                             then do
