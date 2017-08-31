@@ -155,7 +155,8 @@ import Graphics.UI.Editor.Parameters
 import Data.GI.Base (set, new')
 import GI.Gtk.Objects.Widget (widgetDestroy)
 import IDE.Utils.VersionUtils (getDefaultGhcVersion)
-import IDE.Utils.CabalProject (getCabalProjectPackages)
+import IDE.Utils.CabalProject
+       (findProjectRoot, getCabalProjectPackages)
 import System.Environment (getEnvironment)
 import Distribution.Simple.LocalBuildInfo
        (Component(..), Component)
@@ -268,6 +269,20 @@ packageConfig' (project, package) continuation = do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
+projectFileArguments :: MonadIO m => Project -> FilePath -> m [Text]
+projectFileArguments project dir = do
+    let projectFile = T.pack . makeRelative dir $ pjFile project
+    case pjTool project of
+        CabalTool -> do
+            defaultProjectRoot <- liftIO $ findProjectRoot dir
+            return $ if pjFile project /= defaultProjectRoot </> "cabal.project"
+                                then [ "--project-file", projectFile ]
+                                else []
+        StackTool ->
+            return $ if projectFile /= "stack.yaml"
+                                then [ "--stack-yaml", projectFile ]
+                                else []
+
 runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     prefs <- readIDE prefs
@@ -279,6 +294,7 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
     isActiveProject   <- maybe False (on (==) pjFile project) <$> readIDE activeProject
     isActivePackage   <- (isActiveProject &&) . maybe False (on (==) ipdCabalFile package) <$> readIDE activePack
     mbActiveComponent <- readIDE activeComponent
+    pjFileArgs <- projectFileArguments project dir
     let flagsForTests =
             if "--enable-tests" `elem` ipdConfigFlags package
                 then case pjTool project of
@@ -293,8 +309,8 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                 else []
     let args =  -- stack needs the package name to actually print the output info
                 (case pjTool project of
-                    StackTool -> ["build", "--stack-yaml", T.pack (makeRelative dir $ pjFile project), ipdPackageName package]
-                    CabalTool -> ["new-build", "--project-file", T.pack (makeRelative dir $ pjFile project)])
+                    StackTool -> ["build"] <> pjFileArgs <> [ipdPackageName package]
+                    CabalTool -> "new-build" : pjFileArgs)
                 ++ ["--ghcjs" | compiler == GHCJS]
                 ++ ["--with-ld=false" | pjTool project == CabalTool && backgroundBuild && withoutLinking]
                 ++ (if isActivePackage then maybeToList mbActiveComponent else [])
@@ -1018,17 +1034,14 @@ debugStart = do
                 mbTarget <- readIDE activeComponent
                 let dir  = ipdPackageDir  package
                     name = ipdPackageName package
-                    (tool, args) = case pjTool project of
-                        CabalTool -> ("cabal", [ "new-repl"
-                                               , "--project-file"
-                                               , T.pack . makeRelative dir $ pjFile project
-                                               , name <> maybe (":lib:" <> name) (":" <>) mbTarget
-                                               ])
-                        StackTool -> ("stack", [ "repl"
-                                               , "--stack-yaml"
-                                               , T.pack . makeRelative dir $ pjFile project
-                                               , name <> maybe ":lib" (":" <>) mbTarget
-                                               ])
+                pjFileArgs <- projectFileArguments project dir
+                let (tool, args) = case pjTool project of
+                        CabalTool -> ("cabal", [ "new-repl" ]
+                                            <> pjFileArgs
+                                            <> [ name <> maybe (":lib:" <> name) (":" <>) mbTarget ])
+                        StackTool -> ("stack", [ "repl" ]
+                                            <> pjFileArgs
+                                            <> [ name <> maybe ":lib" (":" <>) mbTarget ])
                 ghci <- reifyIDE $ \ideR -> newGhci tool args dir (interactiveFlags prefs')
                     $ reflectIDEI (void (logOutputForBuild project package True False)) ideR
                 modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})
