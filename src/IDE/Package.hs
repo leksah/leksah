@@ -380,7 +380,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
         let compile' = compile ([GHC | native prefs || debug prefs] ++ [GHCJS | javaScript prefs && pjTool project == CabalTool])
         M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
             Just debug@(_, ghci) -> do
-                readIDE runningTool >>= mapM showProcessHandle >>= mapM_ (liftIO . errorM "leksah" . ("runningTool already set to : " <>))
+                readIDE runningTool >>= mapM showProcessHandle >>= mapM_ (liftIO . debugM "leksah" . ("runningTool already set to : " <>))
                 proc <- liftIO $ toolProcess ghci
                 modifyIDE_ $ \ide -> ide {runningTool = Just proc}
                 showProcessHandle proc >>= liftIO . debugM "leksah" . ("runningTool set to : " <>)
