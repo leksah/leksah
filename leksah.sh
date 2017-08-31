@@ -37,5 +37,5 @@ else
 fi
 
 cabal new-configure --with-ghc="ghc-$GHCVER"
-cabal new-build -j4 exe:leksah-server exe:leksah exe:leksahecho || exit
+cabal new-build exe:leksah-server exe:leksah exe:leksahecho || exit
 PATH="$LEKSAH_SERVER_BUILD_DIR/leksah-server:$LEKSAH_SERVER_BUILD_DIR/leksahecho:$PATH" $RUN_LEKSAH $@
