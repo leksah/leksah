@@ -287,6 +287,14 @@ projectFileArguments project dir = do
                                 then [ "--stack-yaml", projectFile ]
                                 else []
 
+getActiveComponent :: Project -> IDEPackage -> IDEM (Maybe Text)
+getActiveComponent project package = do
+    isActiveProject   <- maybe False (on (==) pjFile project) <$> readIDE activeProject
+    isActivePackage   <- (isActiveProject &&) . maybe False (on (==) ipdCabalFile package) <$> readIDE activePack
+    if isActivePackage
+        then readIDE activeComponent
+        else return Nothing
+
 runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     prefs <- readIDE prefs
@@ -295,9 +303,7 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
     let dir = ipdPackageDir package
         pkgName = ipdPackageName package
 
-    isActiveProject   <- maybe False (on (==) pjFile project) <$> readIDE activeProject
-    isActivePackage   <- (isActiveProject &&) . maybe False (on (==) ipdCabalFile package) <$> readIDE activePack
-    mbActiveComponent <- readIDE activeComponent
+    mbActiveComponent <- getActiveComponent project package
     pjFileArgs <- projectFileArguments project dir
     let flagsForTests =
             if "--enable-tests" `elem` ipdConfigFlags package
@@ -317,7 +323,7 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                     CabalTool -> "new-build" : pjFileArgs)
                 ++ ["--ghcjs" | compiler == GHCJS]
                 ++ ["--with-ld=false" | pjTool project == CabalTool && backgroundBuild && withoutLinking]
-                ++ (if isActivePackage then maybeToList mbActiveComponent else [])
+                ++ maybeToList mbActiveComponent
                 ++ flagsForTests
                 ++ flagsForBenchmarks
                 ++ ipdBuildFlags package
@@ -1031,17 +1037,17 @@ debugStart = do
         prefs'     <- readIDE prefs
         M.lookup projectAndPackage <$> readIDE debugState >>= \case
             Nothing -> do
-                mbTarget <- readIDE activeComponent
+                mbActiveComponent <- getActiveComponent project package
                 let dir  = ipdPackageDir  package
                     name = ipdPackageName package
                 pjFileArgs <- projectFileArguments project dir
                 let (tool, args) = case pjTool project of
                         CabalTool -> ("cabal", [ "new-repl" ]
                                             <> pjFileArgs
-                                            <> [ name <> maybe (":lib:" <> name) (":" <>) mbTarget | ipdHasLibs package || isJust mbTarget ])
+                                            <> [ name <> maybe (":lib:" <> name) (":" <>) mbActiveComponent | ipdHasLibs package || isJust mbActiveComponent ])
                         StackTool -> ("stack", [ "repl" ]
                                             <> pjFileArgs
-                                            <> [ name <> maybe ":lib" (":" <>) mbTarget ])
+                                            <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ])
                 ghci <- reifyIDE $ \ideR -> newGhci tool args dir (interactiveFlags prefs')
                     $ reflectIDEI (void (logOutputForBuild project package True False)) ideR
                 modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})
