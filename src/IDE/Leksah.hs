@@ -370,7 +370,7 @@ startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startup
           ,   hlintQueue        =   Nothing
           ,   vcsData           =   (Map.empty, Nothing)
           ,   logLaunches       =   Map.empty
-          ,   autoCommand       =   return ()
+          ,   autoCommand       =   (("", ""), return ())
           ,   autoURI           =   Nothing
           ,   triggerBuild      =   triggerBuild
           ,   stopWorkspaceNotify = return ()

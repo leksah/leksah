@@ -216,7 +216,7 @@ data IDE            =  IDE {
 ,   hlintQueue          :: Maybe (TVar [Either FilePath FilePath])
 ,   vcsData             :: (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
 ,   logLaunches         :: Map.Map Text LogLaunchData
-,   autoCommand         :: IDEAction
+,   autoCommand         :: ((FilePath, FilePath), IDEAction)
 ,   autoURI             :: Maybe Text
 ,   triggerBuild        :: MVar ()
 ,   stopWorkspaceNotify :: StopListening

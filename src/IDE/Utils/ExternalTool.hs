@@ -64,8 +64,8 @@ withProcessHandle
         -> IO a
 withProcessHandle (ProcessHandleLike m _) = withMVar m
 
-showProcessHandle :: ProcessHandle -> IO String
-showProcessHandle h = withProcessHandle (unsafeCoerce h) $ \case
+showProcessHandle :: MonadIO m => ProcessHandle -> m String
+showProcessHandle h = liftIO . withProcessHandle (unsafeCoerce h) $ \case
         (OpenHandle (CPid pid)) -> do
             CPid gid <- getProcessGroupIDOf (CPid pid)
             return $ "pid " <> show pid <> " gid " <> show gid
@@ -73,8 +73,8 @@ showProcessHandle h = withProcessHandle (unsafeCoerce h) $ \case
 
 showSignalMask = ("mask INT "<>) . show . (sigINT `inSignalSet`) <$> getSignalMask
 #else
-showProcessHandle :: ProcessHandle -> IO String
-showProcessHandle _ = return ""
+showProcessHandle :: MonadIO m => ProcessHandle -> m String
+showProcessHandle _ = return "?"
 showSignalMask = return ""
 #endif
 

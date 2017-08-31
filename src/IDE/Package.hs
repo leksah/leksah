@@ -108,7 +108,9 @@ import IDE.LogRef
 import Distribution.ModuleName (ModuleName(..))
 import Data.List
        (intercalate, isInfixOf, nub, foldl', delete, find)
-import IDE.Utils.Tool (ToolOutput(..), runTool, newGhci, ToolState(..), toolline, ProcessHandle, executeGhciCommand)
+import IDE.Utils.Tool
+       (toolProcess, ToolOutput(..), runTool, newGhci, ToolState(..),
+        toolline, ProcessHandle, executeGhciCommand)
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
@@ -126,12 +128,14 @@ import Debug.Trace (trace)
 import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
 import IDE.Pane.WebKit.Output (loadOutputUri, getOutputPane)
-import System.Log.Logger (debugM)
+import System.Log.Logger (errorM, debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T
        (reverse, all, null, dropWhile, lines, isPrefixOf, stripPrefix,
         replace, unwords, takeWhile, pack, unpack, isInfixOf)
-import IDE.Utils.ExternalTool (runExternalTool', runExternalTool, isRunning, interruptBuild)
+import IDE.Utils.ExternalTool
+       (showProcessHandle, runExternalTool', runExternalTool, isRunning,
+        interruptBuild)
 import Text.PrinterParser (writeFields)
 import Data.Text (Text)
 import Data.Monoid ((<>))
@@ -335,71 +339,67 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
 --    str3 = __ "cannot satisfy -package-id"
 
 buildPackage :: Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
-buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = catchIDE (do
+buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     liftIO $ debugM "leksah" "buildPackage"
-    ideR      <- liftIDE ask
-    prefs     <- readIDE prefs
-    let compile' = compile ([GHC | native prefs || debug prefs] ++ [GHCJS | javaScript prefs && pjTool project == CabalTool])
-    M.member (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
-        False | debug prefs -> readIDE workspace >>= mapM_ (runWorkspace $ runProject (IDE.Core.State.runPackage debugStart package) project)
-        _ -> return ()
-    M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
-        Just debug@(_, ghci) -> do
-            -- TODO check debug package matches active package
-            ready <- liftIO $ isEmptyMVar (currentToolCommand ghci)
-            if ready
-                then do
-                    let dir = ipdPackageDir package
-                    when (saveAllBeforeBuild prefs) (do fileSaveAll belongsToWorkspace'; return ())
-                    (`runDebug` debug) . executeDebugCommand ":reload" $ do
-                        errs <- logOutputForBuild project package backgroundBuild jumpToWarnings
-                        unless (any isError errs) . lift $ do
-                            cmd <- readIDE autoCommand
-                            postSyncIDE cmd
-                            compile'
-                else do
-                    timeoutAdd PRIORITY_LOW 500 (do
-                        reflectIDE (do
+    ideR  <- liftIDE ask
+    prefs <- readIDE prefs
+    alreadyRunning <- isRunning
+    if alreadyRunning
+        then do
+            liftIO $ debugM "leksah" "buildPackage interruptBuild"
+            interruptBuild
+            timeoutAdd PRIORITY_DEFAULT 100 (do
+                reflectIDE (do
+                    if backgroundBuild
+                        then do
                             tb <- readIDE triggerBuild
                             void . liftIO $ tryPutMVar tb ()
-                            return False) ideR
-                        return False)
-                    return ()
-        Nothing -> compile'
-    )
-    (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
+                        else
+                            buildPackage backgroundBuild jumpToWarnings withoutLinking
+                                            (project, package) continuation
+                    return False) ideR
+                return False)
+            return ()
+        else do
+            when (saveAllBeforeBuild prefs) . void $ fileSaveAll belongsToWorkspace'
+            M.member (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
+                False | debug prefs -> do
+                    readIDE workspace >>= mapM_ (runWorkspace $ runProject (IDE.Core.State.runPackage debugStart package) project)
+                    doBuild True
+                _ -> doBuild False
   where
+    doBuild debugStarting = catchIDE (do
+        ideR  <- liftIDE ask
+        prefs <- readIDE prefs
+        let compile' = compile ([GHC | native prefs || debug prefs] ++ [GHCJS | javaScript prefs && pjTool project == CabalTool])
+        M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
+            Just debug@(_, ghci) -> do
+                readIDE runningTool >>= mapM showProcessHandle >>= mapM_ (liftIO . errorM "leksah" . ("runningTool already set to : " <>))
+                proc <- liftIO $ toolProcess ghci
+                modifyIDE_ $ \ide -> ide {runningTool = Just proc}
+                showProcessHandle proc >>= liftIO . debugM "leksah" . ("runningTool set to : " <>)
+                (`runDebug` debug) . executeDebugCommand ":reload" $ do
+                    errs <- logOutputForBuild project package backgroundBuild jumpToWarnings
+                    lift . postAsyncIDE $ do
+                        modifyIDE_ $ \ide -> ide {runningTool = Nothing}
+                        showProcessHandle proc >>= liftIO . debugM "leksah" . ("runningTool cleared. Was : " <>)
+                        unless (any isError errs) $ do
+                            (autoPack, cmd) <- readIDE autoCommand
+                            when (autoPack == (pjFile project, ipdCabalFile package)) cmd
+                            compile'
+            Nothing -> compile'
+        )
+        (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
     compile :: [CompilerFlavor] -> IDEAction
     compile [] = continuation True
-    compile (compiler:compilers) = do
-        ideR      <- liftIDE ask
-        prefs     <- readIDE prefs
-        alreadyRunning <- isRunning
-        if alreadyRunning
-            then do
-                liftIO $ debugM "leksah" "buildPackage interruptBuild"
-                interruptBuild
-                timeoutAdd PRIORITY_DEFAULT 100 (do
-                    reflectIDE (do
-                        if backgroundBuild
-                            then do
-                                tb <- readIDE triggerBuild
-                                void . liftIO $ tryPutMVar tb ()
-                            else
-                                buildPackage backgroundBuild jumpToWarnings withoutLinking
-                                                (project, package) continuation
-                        return False) ideR
-                    return False)
-                return ()
-            else do
-                when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
-                runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) $ \f ->
-                    when f $ do
-                        mbURI <- readIDE autoURI
-                        case mbURI of
-                            Just uri -> postSyncIDE . loadOutputUri $ T.unpack uri
-                            Nothing  -> return ()
-                        compile compilers
+    compile (compiler:compilers) =
+        runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) $ \f ->
+            when f $ do
+                mbURI <- readIDE autoURI
+                case mbURI of
+                    Just uri -> postSyncIDE . loadOutputUri $ T.unpack uri
+                    Nothing  -> return ()
+                compile compilers
 
 packageDoc :: PackageAction
 packageDoc = do
@@ -1051,7 +1051,7 @@ debugStart = do
                 liftIO $ forkIO $ do
                     readMVar (outputClosed ghci)
                     (`reflectIDE` ideRef) . postSyncIDE $ do
-                        modifyIDE_ (\ide -> ide {debugState = M.delete projectAndPackage (debugState ide), autoCommand = return ()})
+                        modifyIDE_ (\ide -> ide {debugState = M.delete projectAndPackage (debugState ide)})
                         triggerEventIDE (Sensitivity [(SensitivityInterpreting, False)])
                         triggerEventIDE (DebugStop projectAndPackage)
                         return ()

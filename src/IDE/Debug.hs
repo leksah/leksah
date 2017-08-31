@@ -66,8 +66,8 @@ module IDE.Debug (
 ) where
 
 import IDE.Core.Types
-       (DebugM, runPackage, runProject, IDEEvent(..), MonadIDE(..),
-        Prefs(..))
+       (IDEPackage(..), Project(..), DebugM, runPackage, runProject,
+        IDEEvent(..), MonadIDE(..), Prefs(..))
 import IDE.Core.CTypes (pdModules, mdModuleId, modu)
 import IDE.Core.State
        (debugState, breakpointRefs, packageDebugState, MessageLevel(..),
@@ -155,10 +155,7 @@ debugExecuteSelection = do
     case maybeText of
         Nothing   -> ideMessage Normal "Please select some text in the editor to execute"
         Just (buf, text) -> do
-            runDebug <- belongsToPackages' buf >>= \case
-                [] -> return (packageTry . tryDebug)
-                (project, package):_ -> return (workspaceTry . (`runProject` project) . (`runPackage` package) . tryDebug)
-            let command = runDebug $ do
+            let command = do
                     debugSetLiberalScope
                     buffer <- liftIO $ newIORef mempty
                     debugCommand (stripComments text) $ do
@@ -169,8 +166,12 @@ debugExecuteSelection = do
                         case mbURI of
                             Just uri -> lift . postSyncIDE . loadOutputUri $ T.unpack uri
                             Nothing -> return ()
-            modifyIDE_ $ \ide -> ide {autoCommand = command, autoURI = Nothing}
-            command
+            autoCmd <- belongsToPackages' buf >>= \case
+                [] -> return (("", ""), packageTry $ tryDebug command)
+                (project, package):_ -> return ((pjFile project, ipdCabalFile package),
+                    workspaceTry . (`runProject` project) . (`runPackage` package) $ tryDebug command)
+            modifyIDE_ $ \ide -> ide {autoCommand = autoCmd, autoURI = Nothing}
+            snd autoCmd
 
 debugBuffer :: IDEBuffer -> DebugAction -> IDEAction
 debugBuffer buf f =
