@@ -50,8 +50,8 @@ hello s = "Hello " <> s
 --
 -- To run it
 --   * Select Leksah menu item Package -> Run (or the cogs on the toolbar)
---   * Select "exeMain" and press Ctrl+Enter to run them in ghci
+--   * Select `main` and press Ctrl+Enter to run them in ghci
 --   * Run "leksah-wellcome" from the command line
 main :: IO ()
-main = putStrLn (hello "World")
+main = putStrLn (hello "World!")
 

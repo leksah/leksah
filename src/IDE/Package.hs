@@ -1038,7 +1038,7 @@ debugStart = do
                 let (tool, args) = case pjTool project of
                         CabalTool -> ("cabal", [ "new-repl" ]
                                             <> pjFileArgs
-                                            <> [ name <> maybe (":lib:" <> name) (":" <>) mbTarget ])
+                                            <> [ name <> maybe (":lib:" <> name) (":" <>) mbTarget | ipdHasLibs package || isJust mbTarget ])
                         StackTool -> ("stack", [ "repl" ]
                                             <> pjFileArgs
                                             <> [ name <> maybe ":lib" (":" <>) mbTarget ])
