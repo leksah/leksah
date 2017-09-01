@@ -10,7 +10,7 @@ Documentation can be found on [leksah.org](http://leksah.org/).
 
 ## Getting Leksah
 ### Installation
-Leksah requires `ghc --version` >=7.10.3 and `cabal --version` >=1.24. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
+Leksah requires `ghc --version` >=8.0.2 and `cabal --version` >=1.24. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
 
 * **Windows** [latest github version built with AppVeyor](https://ci.appveyor.com/project/hamishmack/leksah/build/artifacts)
 * **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download)
@@ -36,7 +36,7 @@ sudo apt-get install libgirepository1.0-dev libwebkit2gtk-4.0-dev libgtksourcevi
 sudo pacman -S gobject-introspection gobject-introspection-runtime gtksourceview3 webkit2gtk
 ```
 
-##### OS X MacPorts
+##### macOS with MacPorts
 ```shell
 sudo port install gobject-introspection webkit2-gtk gtksourceview3 gtk-osx-application-gtk3 adwaita-icon-theme`
 ```
@@ -51,7 +51,7 @@ echo 'PATH: '"$PATH"
 
 Make sure the `$HOME/ghc-8.0.1/bin` is present in PATH.
 
-##### OS X Homebrew
+##### macOS with Homebrew
 It might be possible to build Leksah using Homebrew now we have switched to WebKit 2.  If you can figure it out please send us the details or better yet a pull request to update this file.  Raise an issue if you try and it does not work.
 
 ##### Windows MSYS2
@@ -94,11 +94,11 @@ cabal install haskell-gi
 Make sure `~/.cabal/bin` is present in the PATH (*Windows:* Make sure `%APPDATA%\cabal\bin` is present in the PATH).
 
 ##### Step 3.a.2: Build and run Leksah
-###### OS X using MacPorts
+###### macOS using MacPorts
 ```shell
 XDG_DATA_DIRS=/opt/local/share ./leksah.sh
 ```
-###### All other OS'es
+###### Other OS
 ```shell
 ./leksah.sh
 ```
@@ -111,15 +111,36 @@ stack install alex happy
 stack install haskell-gi
 stack install gtk2hs-buildtools
 ```
-##### Step 3.b.2: Build and run Leksah
-###### For Mac OS
+
+Leksah needs `cabal` for the metadate feature to work correctly
+(even when using `stack`):
+
 ```shell
-stack install --stack-yaml stack.osx.yaml
+stack install cabal-install
+cabal update
+```
+
+##### Step 3.b.2: Build and run Leksah
+###### macOS using MacPorts
+```shell
+XDG_DATA_DIRS=/opt/local/share stack install --stack-yaml stack.osx.yaml
 stack exec leksah
 ```
 
-###### All other OS'es
+###### Other OS with Gtk+ 3.20 (or newer)
 ```shell
 stack install
+stack exec leksah
+```
+
+###### Other OS with Gtk+ 3.18 (e.g. Ubuntu 16.04)
+```shell
+stack install --flag ltk:-gtk-320 --flag leksah:-gtk-320
+stack exec leksah
+```
+
+###### Other OS with Gtk+ 3.16
+```shell
+stack install --flag ltk:-gdk-318 --flag ltk:-gtk-318 --flag leksah:-gtk-318 --flag ltk:-gtk-320 --flag leksah:-gtk-320
 stack exec leksah
 ```
