@@ -84,7 +84,7 @@ git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
 ```
 
-#### (Cabal variant) Step 3.a: Build
+#### Step 3.a: Build - cabal new-build variant
 ##### Step 3.a.1: Install extra tools
 ```shell
 cabal update
@@ -103,7 +103,7 @@ XDG_DATA_DIRS=/opt/local/share ./leksah.sh
 ./leksah.sh
 ```
 
-#### (Stack variant) Step 3.b: Build
+#### Step 3.b: Build - stack variant
 ##### Step 3.b.1: Install extra tools
 ```shell
 stack setup --upgrade-cabal
@@ -124,23 +124,23 @@ cabal update
 ###### macOS using MacPorts
 ```shell
 XDG_DATA_DIRS=/opt/local/share stack install --stack-yaml stack.osx.yaml
-stack exec leksah
+stack exec --no-ghc-package-path leksah
 ```
 
 ###### Other OS with Gtk+ 3.20 (or newer)
 ```shell
 stack install
-stack exec leksah
+stack exec --no-ghc-package-path leksah
 ```
 
 ###### Other OS with Gtk+ 3.18 (e.g. Ubuntu 16.04)
 ```shell
 stack install --flag ltk:-gtk-320 --flag leksah:-gtk-320
-stack exec leksah
+stack exec --no-ghc-package-path leksah
 ```
 
 ###### Other OS with Gtk+ 3.16
 ```shell
 stack install --flag ltk:-gdk-318 --flag ltk:-gtk-318 --flag leksah:-gtk-318 --flag ltk:-gtk-320 --flag leksah:-gtk-320
-stack exec leksah
+stack exec --no-ghc-package-path leksah
 ```
