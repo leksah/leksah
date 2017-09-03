@@ -125,6 +125,10 @@ let
 
   build = pkgs.stdenv.lib.overrideDerivation drv (oldAttrs: {
     nativeBuildInputs = (oldAttrs.nativeBuildInputs or []) ++ (with pkgs; [ wrapGAppsHook makeWrapper ]);
+    postInstall = if pkgs.stdenv.isLinux then ''
+      mkdir -p $out/share
+      cp -r linux/. $out/share/
+    '' else "";
     postFixup = ''
       wrapProgram $out/bin/leksah \
         --prefix 'PATH' ':' "${extendedHaskellPackages.leksah-server}/bin"
