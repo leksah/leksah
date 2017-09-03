@@ -12,3 +12,4 @@ leksah.lkshw
 /.stack-work/
 /dist-newstyle/
 /*.local
+/result
