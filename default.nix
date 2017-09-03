@@ -102,65 +102,28 @@ let
       nixpkgs.lib.all (i: toString i != path) [ ./.git ./dist-newstyle ./cabal.project.local ] # TODO: what else?
       ) ./.;
 
-  # TODO: try to autogenerate this blob using `callCabal2Nix` (+ `overrideCabal` for Darwin tweaks)
-  drv =
-    { mkDerivation, array, base, base-compat, binary
-    , binary-shared, blaze-html, bytestring, Cabal, conduit, containers
-    , cpphs, deepseq, directory, executable-path, filepath, fsnotify, ghc
-    , ghcjs-codemirror, gi-cairo, gi-gdk, gi-gdkpixbuf, gi-gio, gi-glib
-    , gi-gobject, gi-gtk, gi-gtk-hs, gi-gtkosxapplication, gi-gtksource
-    , gi-pango, gi-webkit2, haskell-gi, haskell-gi-base, haskell-src-exts
-    , hlint, hslogger, HTTP, mtl, network
-    , network-uri, old-time, parsec, pretty, pretty-show, QuickCheck
-    , regex-base, regex-tdfa, regex-tdfa-text, shakespeare, split
-    , stdenv, stm, strict, text, time, transformers, unix, utf8-string
-    , vado, vcsgui, vcswrapper, call-stack, HUnit, doctest, hspec, gnome3
-    , pkgconfig, darwin, buildPackages, gtk-mac-integration-gtk3
-    , happy, alex
+  drv = overrideCabal (extendedHaskellPackages.callCabal2nix "leksah" cleanSrc {}) (oldAttrs: with pkgs; with extendedHaskellPackages; {
 
-    , haskell-gi-overloading, ltk, leksah-server
-    }:
-    mkDerivation {
-      pname = "leksah";
-      version = "0.16.2.2";
-      src = cleanSrc;
-      isLibrary = true;
-      isExecutable = true;
-      libraryHaskellDepends = [
-        array base base-compat binary binary-shared blaze-html bytestring
-        Cabal conduit containers cpphs deepseq directory executable-path
-        filepath fsnotify ghc ghcjs-codemirror gi-cairo gi-gdk gi-gdkpixbuf gi-gio
-        gi-glib gi-gobject gi-gtk gi-gtk-hs
-        gi-gtksource gi-pango gi-webkit2 haskell-gi haskell-gi-base haskell-src-exts
-        hlint hslogger HTTP mtl network network-uri
-        old-time parsec pretty pretty-show QuickCheck regex-base regex-tdfa
-        regex-tdfa-text shakespeare split stm strict text time transformers
-        unix utf8-string vado call-stack HUnit doctest
-        hspec gnome3.defaultIconTheme pkgconfig gnome3.gtk gnome3.gtksourceview gnome3.webkitgtk
+    libraryHaskellDepends = (oldAttrs.libraryHaskellDepends or [])
+      ++ (if stdenv.isDarwin then [
+            gi-gtkosxapplication
+            gtk-mac-integration-gtk3 # TODO: does this need to be in 2 places?
+            darwin.libobjc
+            buildPackages.darwin.apple_sdk.frameworks.Cocoa
+            buildPackages.darwin.apple_sdk.libs.xpc
+            (buildPackages.osx_sdk or null)
+          ] else []);
 
-        haskell-gi-overloading vcswrapper vcsgui ltk leksah-server
-      ] ++ (if stdenv.isDarwin then [
-        gi-gtkosxapplication
-        gtk-mac-integration-gtk3
-        darwin.libobjc
-        buildPackages.darwin.apple_sdk.frameworks.Cocoa
-        buildPackages.darwin.apple_sdk.libs.xpc
-        (buildPackages.osx_sdk or null)
-      ] else []);
-      buildDepends = [ nixpkgs.cabal-install happy alex gnome3.dconf ];
-      libraryPkgconfigDepends = [ gnome3.gtk.dev gnome3.gtksourceview gnome3.webkitgtk nixpkgs.cairo gnome3.gsettings_desktop_schemas ]
-        ++ (if stdenv.isDarwin then [ gtk-mac-integration-gtk3 ] else []);
-      executableHaskellDepends = [ base ];
-      homepage = "http://www.leksah.org";
-      description = "Haskell IDE written in Haskell";
-      license = "GPL";
-    };
+    buildDepends = (oldAttrs.buildDepends or [])
+      ++ [ happy alex gnome3.dconf ];
 
-  build = pkgs.stdenv.lib.overrideDerivation (overrideCabal (extendedHaskellPackages.callPackage drv {}) (oldAttrs: {
+    libraryPkgconfigDepends = (oldAttrs.libraryPkgconfigDepends or [])
+      ++ [ gnome3.gtk.dev gnome3.gtksourceview gnome3.webkitgtk cairo gnome3.gsettings_desktop_schemas ]
+      ++ (if stdenv.isDarwin then [ gtk-mac-integration-gtk3 ] else []);
 
-    # TODO: add Darwin tweaks here.
+  });
 
-  })) (oldAttrs: {
+  build = pkgs.stdenv.lib.overrideDerivation drv (oldAttrs: {
     nativeBuildInputs = (oldAttrs.nativeBuildInputs or []) ++ (with pkgs; [ wrapGAppsHook makeWrapper ]);
     postFixup = ''
       wrapProgram $out/bin/leksah \
@@ -169,11 +132,13 @@ let
   });
 
   env = pkgs.stdenv.lib.overrideDerivation build.env (oldAttrs: {
-    # TODO: perhaps add some additional stuff to nix-shell PATH?
+    buildInputs = oldAttrs.buildInputs ++ [
+      extendedHaskellPackages.leksah-server
+      # TODO: perhaps add some additional stuff to nix-shell PATH
+    ];
     shellHook = ''
       export CFLAGS="$NIX_CFLAGS_COMPILE" # TODO: why is this needed?
       export XDG_DATA_DIRS="$GSETTINGS_SCHEMAS_PATH:$XDG_DATA_DIRS" # TODO: how to do this better?
-      export PATH="${extendedHaskellPackages.leksah-server}/bin:$PATH"
     '';
   });
 
