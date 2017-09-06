@@ -207,7 +207,7 @@ data IDE            =  IDE {
 ,   toolbar             :: (Bool,Maybe Toolbar)
 ,   recentFiles         :: [FilePath]
 ,   recentWorkspaces    :: [FilePath]
-,   runningTool         :: Maybe ProcessHandle
+,   runningTool         :: Maybe (ProcessHandle, Bool)
 ,   debugState          :: Map (FilePath, FilePath) (IDEPackage, ToolState)
 ,   completion          :: ((Int, Int), Maybe CompletionWindow)
 ,   yiControl           :: Yi.Control

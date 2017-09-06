@@ -126,7 +126,7 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
                                         _ -> return (executable, args)
             -- Run the tool
             (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
-            modifyIDE_ (\ide -> ide{runningTool = Just pid})
+            modifyIDE_ (\ide -> ide{runningTool = Just (pid, True)})
             reifyIDE $ \ideR -> forkIO $
                 reflectIDE (do
                     pidHandler pid
@@ -145,18 +145,19 @@ isRunning :: MonadIDE m => m Bool
 isRunning = do
     maybeProcess <- readIDE runningTool
     case maybeProcess of
-       Just process ->
+       Just (process, _) ->
             liftIO $ isNothing <$> getProcessExitCode process
        Nothing -> return False
 
 interruptBuild :: MonadIDE m => m ()
 interruptBuild = do
     maybeProcess <- readIDE runningTool
-    liftIO $ case maybeProcess of
-            Just h -> do
-                pid <- showProcessHandle h
-                debugM "leksah" $ "interruptBuild " <> pid
-                interruptProcessGroupOf h
-            _ -> debugM "leksah" "interruptBuild Nothing"
+    case maybeProcess of
+        Just (h, True) -> do
+            pid <- liftIO $ showProcessHandle h
+            liftIO $ debugM "leksah" $ "interruptBuild " <> pid
+            liftIO $ interruptProcessGroupOf h
+            modifyIDE_ $ \ide -> ide {runningTool = Just (h, False)}
+        _ -> liftIO $ debugM "leksah" "interruptBuild Nothing"
 
 
