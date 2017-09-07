@@ -157,7 +157,7 @@ interruptBuild = do
             pid <- liftIO $ showProcessHandle h
             liftIO $ debugM "leksah" $ "interruptBuild " <> pid
             liftIO $ interruptProcessGroupOf h
-            modifyIDE_ $ \ide -> ide {runningTool = Just (h, False)}
+--            modifyIDE_ $ \ide -> ide {runningTool = Just (h, False)}
         _ -> liftIO $ debugM "leksah" "interruptBuild Nothing"
 
 
