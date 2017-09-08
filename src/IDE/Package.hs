@@ -1048,7 +1048,7 @@ debugStart = do
                         StackTool -> ("stack", [ "repl" ]
                                             <> pjFileArgs
                                             <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ])
-                ghci <- reifyIDE $ \ideR -> newGhci tool args dir (interactiveFlags prefs')
+                ghci <- reifyIDE $ \ideR -> newGhci tool args dir ("+c":"-ferror-spans":interactiveFlags prefs')
                     $ reflectIDEI (void (logOutputForBuild project package True False)) ideR
                 modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
