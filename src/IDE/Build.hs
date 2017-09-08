@@ -71,7 +71,8 @@ data MakeSettings = MakeSettings {
     msRunUnitTests                   :: Bool,
     msRunBenchmarks                  :: Bool,
     msJumpToWarnings                 :: Bool,
-    msDontInstallLast                :: Bool}
+    msDontInstallLast                :: Bool,
+    msSuccessAction                  :: IDEAction}
 
 -- | Take make settings from preferences
 defaultMakeSettings :: Prefs -> MakeSettings
@@ -84,7 +85,8 @@ defaultMakeSettings prefs = MakeSettings  {
     msRunUnitTests                   = runUnitTests prefs,
     msRunBenchmarks                  = runBenchmarks prefs,
     msJumpToWarnings                 = jumpToWarnings prefs,
-    msDontInstallLast                = dontInstallLast prefs}
+    msDontInstallLast                = dontInstallLast prefs,
+    msSuccessAction                  = return ()}
 
 -- | a make operation
 data MakeOp =
@@ -212,7 +214,7 @@ constrElem ((project, currentTargets, tops, depGraph):rest) ms
 
 -- | Performs the operations of a build chain
 doBuildChain :: MakeSettings -> Chain MakeOp (Project, IDEPackage) -> IDEAction
-doBuildChain _ EmptyChain = return ()
+doBuildChain ms EmptyChain = msSuccessAction ms
 doBuildChain ms chain@Chain{mcAction = MoConfigure} =
     postAsyncIDE $ packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoBuild} =

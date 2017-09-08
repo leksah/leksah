@@ -61,7 +61,7 @@ import IDE.Workspaces
 import IDE.Utils.GUIUtils
 import Network (withSocketsDo)
 import Control.Exception
-import System.Exit(exitFailure)
+import System.Exit (ExitCode(..), exitWith, exitFailure)
 import qualified IDE.StrippedPrefs as SP
 import IDE.Utils.Tool (runTool, toolline, waitForProcess)
 import System.Log
@@ -131,7 +131,7 @@ import qualified Data.Map as M (empty)
 -- Command line options
 --
 
-data Flag =  VersionF | SessionN Text | EmptySession | DefaultSession | Help | Verbosity Text
+data Flag =  VersionF | SessionN Text | EmptySession | DefaultSession | Help | Verbosity Text | DevelopLeksah
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
@@ -141,6 +141,9 @@ options =   [Option "e" ["emptySession"] (NoArg EmptySession)
                 "Start with default session (can be used together with a source file)"
          ,   Option "l" ["loadSession"] (ReqArg (SessionN . T.pack) "NAME")
                 "Load session"
+
+         ,   Option "" ["develop-leksah"] (NoArg DevelopLeksah)
+                "Exit Leksah when the 'leksah' package is rebuilt."
 
          ,   Option "h" ["help"] (NoArg Help)
                 "Display command line options"
@@ -183,7 +186,8 @@ leksah yiConfig = leksahDriver (yiConfig, Nothing)
 leksah = realMain
 #endif
 
-realMain yiConfig =
+realMain yiConfig = do
+  exitCode <- newIORef ExitSuccess
   withSocketsDo $ handleExceptions $ do
     dataDir         <- getDataDir
     args            <-  getArgs
@@ -232,6 +236,7 @@ realMain yiConfig =
     let verbosity       =  case verbosity' of
                                [] -> INFO
                                h:_ -> read $ T.unpack h
+    let developLeksah = DevelopLeksah `elem` flags
     updateGlobalLogger rootLoggerName (setLevel verbosity)
     when (VersionF `elem` flags)
         (sysMessage Normal $ "Leksah the Haskell IDE, version " <> T.pack (showVersion version))
@@ -241,7 +246,8 @@ realMain yiConfig =
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     prefs           <- readPrefs prefsPath
     when (notElem VersionF flags && notElem Help flags)
-        (startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs  prefs isFirstStart)
+        (startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs  prefs isFirstStart)
+  readIORef exitCode >>= exitWith
 
 handleExceptions inner =
   catch inner (\(exception :: SomeException) -> do
@@ -252,8 +258,8 @@ handleExceptions inner =
 -- ---------------------------------------------------------------------
 -- | Start the GUI
 
-startGUI :: Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
-startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
+startGUI :: IORef ExitCode -> Bool -> Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
+startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
   withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
     app <- applicationNew (Just "org.leksah.leksah") []
     onApplicationActivate app $ do
@@ -297,15 +303,15 @@ startGUI yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
         case mbStartupPrefs of
             Nothing           -> return ()
             Just startupPrefs ->
-                startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs
+                startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs
                                 startupPrefs isFirstStart
     debugM "leksah" "starting applicationRun"
     applicationRun app Nothing
     debugM "leksah" "finished applicationRun"
 
-startMainWindow :: Application -> Yi.Control -> WatchManager -> FilePath -> Maybe FilePath -> [FilePath] ->
+startMainWindow :: IORef ExitCode -> Bool -> Application -> Yi.Control -> WatchManager -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
-startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
+startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
     timeout  <- if rtsSupportsBoundThreads
                     then return Nothing
                     else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
@@ -339,6 +345,7 @@ startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startup
     triggerBuild <- newEmptyMVar
     let ide = IDE
           {   application       =   app
+          ,   exitCode          =   exitCode
           ,   frameState        =   fs
           ,   recentPanes       =   []
           ,   specialKeys       =   specialKeys
@@ -375,6 +382,7 @@ startMainWindow app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startup
           ,   triggerBuild      =   triggerBuild
           ,   stopWorkspaceNotify = return ()
           ,   fsnotify          =   fsnotify
+          ,   developLeksah     =   developLeksah
     }
     ideR             <-  newIORef ide
     (`reflectIDE` ideR) $ do

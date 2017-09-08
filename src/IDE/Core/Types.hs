@@ -175,6 +175,7 @@ import GI.Gtk.Objects.Application (Application(..))
 import Control.Monad ((>=>))
 import System.FSNotify (StopListening, WatchManager)
 import qualified Data.Map as M (fromList, lookup, keys, elems)
+import System.Exit (ExitCode)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -185,6 +186,7 @@ import qualified Data.Map as M (fromList, lookup, keys, elems)
 --
 data IDE            =  IDE {
     application         :: Application
+,   exitCode            :: IORef ExitCode
 ,   frameState          :: FrameState IDEM         -- ^ state of the windows framework
 ,   recentPanes         :: [PaneName]              -- ^ a list of panes which were selected last
 ,   specialKeys         :: SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
@@ -221,6 +223,7 @@ data IDE            =  IDE {
 ,   triggerBuild        :: MVar ()
 ,   stopWorkspaceNotify :: StopListening
 ,   fsnotify            :: WatchManager
+,   developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
 } --deriving Show
 
 activeProject :: IDE -> Maybe Project

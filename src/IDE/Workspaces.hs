@@ -127,6 +127,9 @@ import GI.Gtk.Interfaces.FileChooser
         fileChooserSetAction)
 import IDE.Workspaces.Writer (WorkspaceFile(..))
 import qualified Data.Map as M (member, delete, adjust, insert)
+import GI.Gio (applicationQuit)
+import Data.IORef (writeIORef)
+import System.Exit (ExitCode(..))
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -614,9 +617,9 @@ backgroundMake = catchIDE (do
     )
     (\(e :: Exc.SomeException) -> sysMessage Normal (T.pack $ show e))
 
-makePackage ::  PackageAction
+makePackage :: PackageAction
 makePackage = do
-  liftIO $ debugM "leksah" "makePackage"
+  liftIO $ debugM "leksah" "makePackage'"
   p <- ask
   project <- lift ask
   liftIDE $ do
@@ -624,7 +627,14 @@ makePackage = do
     showDefaultLogLaunch'
     prefs' <- readIDE prefs
     mbWs   <- readIDE workspace
-    let settings = (defaultMakeSettings prefs'){msBackgroundBuild = False}
+    let settings = (defaultMakeSettings prefs')
+            { msBackgroundBuild = False
+            , msSuccessAction = when (ipdPackageName p == "leksah") $
+                readIDE developLeksah >>= \case
+                    False -> return ()
+                    True -> do
+                        readIDE exitCode >>= liftIO . (`writeIORef` ExitFailure 2) -- Exit code to trigger leksah.sh to restart
+                        readIDE application >>= applicationQuit }
     steps <- buildSteps settings
     if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
         then makePackages settings [(project, [p])] (MoComposed steps) (MoComposed []) moNoOp
