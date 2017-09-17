@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
@@ -19,7 +20,6 @@ module IDE.Utils.ExternalTool (
   , runExternalTool
   , isRunning
   , interruptBuild
-  , showProcessHandle
 ) where
 
 import qualified Data.Conduit as C (Sink)
@@ -31,6 +31,7 @@ import IDE.Core.State
         reifyIDE, triggerEventIDE, saveAllBeforeBuild, prefs, readIDE,
         IDEAction, IDEM, MonadIDE(..))
 import Control.Monad (void, unless, when)
+import Control.Exception (catch, SomeException(..))
 import IDE.Pane.SourceBuffer (belongsToWorkspace, fileSaveAll)
 import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
 import Control.Concurrent (forkIO)
@@ -54,27 +55,8 @@ import System.Posix.Signals (inSignalSet, sigINT, getSignalMask)
 #endif
 
 #if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
-type PHANDLE = CPid
-data ProcessHandle__ = OpenHandle PHANDLE | ClosedHandle ExitCode
-data ProcessHandleLike = ProcessHandleLike !(MVar ProcessHandle__) !Bool
-
-withProcessHandle
-        :: ProcessHandleLike
-        -> (ProcessHandle__ -> IO a)
-        -> IO a
-withProcessHandle (ProcessHandleLike m _) = withMVar m
-
-showProcessHandle :: MonadIO m => ProcessHandle -> m String
-showProcessHandle h = liftIO . withProcessHandle (unsafeCoerce h) $ \case
-        (OpenHandle (CPid pid)) -> do
-            CPid gid <- getProcessGroupIDOf (CPid pid)
-            return $ "pid " <> show pid <> " gid " <> show gid
-        (ClosedHandle _)        -> return "closed handle"
-
 showSignalMask = ("mask INT "<>) . show . (sigINT `inSignalSet`) <$> getSignalMask
 #else
-showProcessHandle :: MonadIO m => ProcessHandle -> m String
-showProcessHandle _ = return "?"
 showSignalMask = return ""
 #endif
 
@@ -126,16 +108,12 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
                                         _ -> return (executable, args)
             -- Run the tool
             (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
-            modifyIDE_ (\ide -> ide{runningTool = Just (pid, True)})
+            modifyIDE_ (\ide -> ide{runningTool = Just (pid, interruptProcessGroupOf pid)})
             reifyIDE $ \ideR -> forkIO $
                 reflectIDE (do
                     pidHandler pid
-                    liftIO $ do
-                        s <- showProcessHandle pid
-                        m <- showSignalMask
-                        debugM "leksah" $ "runExternalTool " <> m <> " " <> s <> " " <>
-                                            unwords (executable' : map T.unpack args')
-                    output $$ handleOutput) ideR
+                    output $$ handleOutput
+                    modifyIDE_ $ \ide -> ide{runningTool = Nothing}) ideR
             return ()
 
 -- ---------------------------------------------------------------------
@@ -153,11 +131,10 @@ interruptBuild :: MonadIDE m => m ()
 interruptBuild = do
     maybeProcess <- readIDE runningTool
     case maybeProcess of
-        Just (h, True) -> do
-            pid <- liftIO $ showProcessHandle h
-            liftIO $ debugM "leksah" $ "interruptBuild " <> pid
-            liftIO $ interruptProcessGroupOf h
---            modifyIDE_ $ \ide -> ide {runningTool = Just (h, False)}
+        Just (h, interrupt) ->
+            liftIO $ interrupt `catch` (\(_ :: SomeException) ->
+                debugM "leksah" "interruptBuild Nothing")
+--            modifyIDE_ $ \ide -> ide {runningTool = Just (h, return ())}
         _ -> liftIO $ debugM "leksah" "interruptBuild Nothing"
 
 

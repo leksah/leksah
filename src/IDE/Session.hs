@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Session
@@ -65,8 +66,8 @@ import IDE.Pane.Workspace (WorkspaceState(..))
 import IDE.Workspaces (workspaceOpenThis)
 import IDE.Completion (setCompletionSize)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (void, when)
-import System.Log.Logger (debugM)
+import Control.Monad ((>=>), void, when)
+import System.Log.Logger (errorM, debugM)
 import Data.Text (Text)
 import Data.Traversable (forM)
 import Data.Foldable (forM_)
@@ -168,11 +169,10 @@ recover pp (WorkspaceSt p)      =   void (recoverState pp p)
 -- | *Implementation
 
 sessionClosePane :: IDEAction
-sessionClosePane = do
-    activePane'     <-  getActivePane
-    case activePane' of
-        Nothing     ->  return ()
-        Just (pn,_) ->  do
+sessionClosePane =
+    getActivePane >>= \case
+        (Nothing, _)     ->  return ()
+        (Just (pn,_), _) ->  do
             (PaneC p) <- paneFromName pn
             closePane p
             return ()
@@ -186,7 +186,7 @@ data SessionState = SessionState {
     ,   fullScreen          ::   Bool
     ,   completionSize      ::   (Int,Int)
     ,   workspacePath       ::   Maybe FilePath
-    ,   activePaneN         ::   Maybe Text
+    ,   activePaneN         ::   [Text]
     ,   toolbarVisibleS     ::   Bool
     ,   findbarState        ::   (Bool,FindState)
     ,   recentOpenedFiles   ::   [FilePath]
@@ -225,7 +225,7 @@ defaultSession = SessionState {
     ,   fullScreen          =   False
     ,   completionSize      =   (750,400)
     ,   workspacePath       =   Nothing
-    ,   activePaneN         =   Nothing
+    ,   activePaneN         =   []
     ,   toolbarVisibleS     =   True
     ,   findbarState        =   (False,FindState{
             entryStr        =   ""
@@ -352,10 +352,7 @@ saveSessionAs sessionPath mbSecondPath = do
     fullScreen      <-  getFullScreenState
     (completionSize,_) <- readIDE completion
     mbWs            <-  readIDE workspace
-    activePane'     <-  getActivePane
-    let activeP =   case activePane' of
-                        Nothing -> Nothing
-                        Just (s,_) -> Just s
+    mru             <-  getMRUPanes
     (toolbarVisible,_)  <- readIDE toolbar
     findState       <- getFindState
     (findbarVisible,_)  <- readIDE findbar
@@ -373,7 +370,7 @@ saveSessionAs sessionPath mbSecondPath = do
     ,   workspacePath       =   case mbWs of
                                     Nothing -> Nothing
                                     Just ws -> Just (wsFile ws)
-    ,   activePaneN         =   activeP
+    ,   activePaneN         =   mru
     ,   toolbarVisibleS     =   toolbarVisible
     ,   findbarState        =   (findbarVisible,findState)
     ,   recentOpenedFiles   =   recentFiles'
@@ -520,23 +517,26 @@ getActive = do
 
 recoverSession :: FilePath -> IDEM (Bool,Bool)
 recoverSession sessionPath = catchIDE (do
-        liftIO $ debugM "leksah" "recoverSession"
+        liftIO $ debugM "leksah" $ "recoverSession " <> sessionPath
         wdw         <-  getMainWindow
         sessionSt    <- liftIO $ catch
                             (readFields sessionPath sessionDescr defaultSession)
-                            (\(_ :: SomeException) -> return defaultSession)
+                            (\(e :: SomeException) -> do
+                                 liftIO $ errorM "leksah" $ "Error reading session file " <> sessionPath
+                                                            <> " : " <> show e
+                                 return defaultSession)
+        liftIO $ debugM "leksah" "recoverSession windowSetDefaultSize"
         uncurry (windowSetDefaultSize wdw) . (fromIntegral *** fromIntegral) $ windowSize sessionSt
+        liftIO $ debugM "leksah" "recoverSession applyLayout"
         applyLayout (layoutS sessionSt)
+        liftIO $ debugM "leksah" "recoverSession open workspace (if any)"
         forM_ (workspacePath sessionSt) (workspaceOpenThis False)
         liftIO $ debugM "leksah" "recoverSession calling populate"
         populate (population sessionSt)
         liftIO $ debugM "leksah" "recoverSession calling setCurrentPages"
         setCurrentPages (layoutS sessionSt)
-        when (isJust (activePaneN sessionSt)) $ do
-            mbPane <- mbPaneFromName (fromJust (activePaneN sessionSt))
-            case mbPane of
-                Nothing -> return ()
-                Just (PaneC p) -> makeActive p
+        forM_ (reverse $ activePaneN sessionSt) $
+            mbPaneFromName >=> mapM_ (\(PaneC p) -> makeActive p)
         liftIO $ debugM "leksah" "recoverSession setting up toolbars"
         setFindState ((snd . findbarState) sessionSt)
         if toolbarVisibleS sessionSt

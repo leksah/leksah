@@ -336,7 +336,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
             {   windows       =   [win]
             ,   uiManager     =   uiManager
             ,   panes         =   Map.empty
-            ,   activePane    =   Nothing
+            ,   activePane    =   (Nothing, [])
             ,   paneMap       =   Map.empty
             ,   layout        =   TerminalP Map.empty Nothing (-1) Nothing Nothing
             ,   panePathFromNB =  Map.empty
@@ -347,7 +347,6 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           {   application       =   app
           ,   exitCode          =   exitCode
           ,   frameState        =   fs
-          ,   recentPanes       =   []
           ,   specialKeys       =   specialKeys
           ,   specialKey        =   Nothing
           ,   candy             =   candySt
@@ -363,6 +362,8 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           ,   workspInfoCache   =   Map.empty
           ,   handlers          =   Map.empty
           ,   currentState      =   IsStartingUp
+          ,   flipper           =   Nothing
+          ,   typeTip           =   Nothing
           ,   guiHistory        =   (False,[],-1)
           ,   findbar           =   (False,Nothing)
           ,   toolbar           =   (True,Nothing)

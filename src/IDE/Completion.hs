@@ -209,6 +209,8 @@ initCompletion sourceView always = do
             descriptionBuffer <- newDefaultBuffer Nothing ""
             (descriptionView, descriptionScrolledWindow) <- newView descriptionBuffer (textviewFont prefs)
             updateStyle descriptionBuffer
+            setShowLineMarks descriptionView False
+            setHighlightCurrentLine descriptionView False
 
             visible    <- liftIO $ newIORef False
             activeView <- liftIO $ newIORef Nothing

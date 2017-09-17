@@ -276,6 +276,7 @@ library
         IDE.HLint
         IDE.Leksah
         IDE.Completion
+        IDE.TypeTip
         IDE.ImportTool
         IDE.Find
         IDE.Session

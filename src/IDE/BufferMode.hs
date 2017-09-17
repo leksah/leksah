@@ -82,7 +82,7 @@ maybeActiveBuf = do
     mbActivePane <- getActivePane
     mbPane       <- lastActiveBufferPane
     case (mbPane,mbActivePane) of
-        (Just paneName1, Just (paneName2,_)) | paneName1 == paneName2 -> do
+        (Just paneName1, (Just (paneName2,_), _)) | paneName1 == paneName2 -> do
             (PaneC pane) <- paneFromName paneName1
             let mbActbuf = cast pane
             return mbActbuf
@@ -97,9 +97,9 @@ lastActiveBufferPane = do
 
 recentSourceBuffers :: IDEM [PaneName]
 recentSourceBuffers = do
-    recentPanes' <- readIDE recentPanes
+    recentPanes' <- getMRUPanes
     mbBufs       <- mapM mbPaneFromName recentPanes'
-    return $ map paneName (mapMaybe (\ (PaneC p) -> cast p) (catMaybes mbBufs) :: [IDEBuffer])
+    return $ map (\ (PaneC p) -> paneName p) (catMaybes mbBufs)
 
 getStartAndEndLineOfSelection :: TextEditor editor => EditorBuffer editor -> IDEM (Int,Int)
 getStartAndEndLineOfSelection ebuf = do

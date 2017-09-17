@@ -751,15 +751,11 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                         delete buffer here there
                         return True
                     (Just "underscore",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
-                        (start, end) <- getIdentifierUnderCursor buffer
-                        slice <- getSlice buffer start end True
-                        triggerEventIDE (SelectInfo slice False)
+                        selectInfo buf buffer True False
                         return True
                         -- Redundant should become a go to definition directly
                     (Just "minus",[ModifierTypeControlMask],_) -> do
-                        (start, end) <- getIdentifierUnderCursor buffer
-                        slice <- getSlice buffer start end True
-                        triggerEventIDE (SelectInfo slice True)
+                        selectInfo buf buffer True True
                         return True
                     (Just "Return", [], _) ->
                         readIDE currentState >>= \case
@@ -771,14 +767,12 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         ids7 <- do
             ideR <- ask
             sw <- getScrolledWindow sv
-            createHyperLinkSupport sv sw (\ctrl shift iter -> do
-                (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
-                return (beg, if ctrl then en else beg)) (\_ shift' slice ->
-                            unless (T.null slice) $ do
-                                -- liftIO$ print ("slice",slice)
-                                triggerEventIDE (SelectInfo slice shift')
-                                return ()
-                            )
+            createHyperLinkSupport sv sw
+                (\ctrl shift iter -> do
+                    (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
+                    when ctrl $ selectInfo' buf buffer beg en False False
+                    return (beg, if ctrl then en else beg))
+                (\_ shift' (beg, en) -> selectInfo' buf buffer beg en True True)
         return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6, ids7])
 
     forwardApplying :: TextEditor editor
@@ -823,7 +817,7 @@ getIdentifierUnderCursorFromIter (startSel, endSel) = do
     mbEndChar <- getChar endSel
     let isSelectChar =
             case mbStartChar of
-                Just startChar | isIdent startChar -> isIdent
+                Just startChar | isIdent startChar -> \a -> isIdent a || a == '.'
                 Just startChar | isOp    startChar -> isOp
                 _                                  -> const False
     start <- case mbStartChar of
@@ -959,14 +953,19 @@ writeOverwriteInStatusbar sv = do
     triggerEventIDE (StatusbarChanged [CompartmentOverlay mode])
     return ()
 
-selectInfo :: TextEditor editor => EditorView editor -> IDEAction
-selectInfo sv = do
-    ideR    <- ask
-    buf     <- getBuffer sv
-    (l,r)   <- getIdentifierUnderCursor buf
-    symbol  <- getText buf l r True
-    triggerEvent ideR (SelectInfo symbol False)
-    return ()
+selectInfo' :: TextEditor e => IDEBuffer -> EditorBuffer e -> EditorIter e -> EditorIter e -> Bool -> Bool -> IDEAction
+selectInfo' buf ebuf start end activatePanes gotoSource = do
+    candy' <- readIDE candy
+    sTxt   <- getCandylessPart candy' ebuf start end
+    startPos <- getLocation buf ebuf start
+    endPos <- getLocation buf ebuf end
+    unless (T.null sTxt) $
+        triggerEventIDE_ (SelectInfo (SymbolEvent sTxt ((, startPos, endPos) <$> fileName buf) activatePanes gotoSource))
+
+selectInfo :: TextEditor e => IDEBuffer -> EditorBuffer e -> Bool -> Bool -> IDEAction
+selectInfo buf ebuf activatePanes gotoSource = do
+    (l,r)   <- getIdentifierUnderCursor ebuf
+    selectInfo' buf ebuf l r activatePanes gotoSource
 
 markActiveLabelAsChanged :: IDEAction
 markActiveLabelAsChanged = do
@@ -1519,18 +1518,21 @@ selectedTextOrCurrentIdentifier = do
                                         then Nothing
                                         else Just t)
 
+getLocation :: TextEditor e => IDEBuffer -> EditorBuffer e -> EditorIter e -> IDEM (Int, Int)
+getLocation buf ebuf iter = do
+    candy'     <- readIDE candy
+    useCandy   <- useCandyFor buf
+    line       <- getLine iter
+    lineOffset <- getLineOffset iter
+    if useCandy
+        then positionFromCandy candy' ebuf (line, lineOffset)
+        else return (line, lineOffset)
+
 selectedLocation :: IDEM (Maybe (Int, Int))
-selectedLocation = do
-    candy'      <- readIDE candy
+selectedLocation =
     inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ -> do
-        useCandy   <- useCandyFor currentBuffer
         (start, _) <- getSelectionBounds ebuf
-        line       <- getLine start
-        lineOffset <- getLineOffset start
-        res <- if useCandy
-            then positionFromCandy candy' ebuf (line, lineOffset)
-            else return (line, lineOffset)
-        return $ Just res
+        Just <$> getLocation currentBuffer ebuf start
 
 insertTextAfterSelection :: Text -> IDEAction
 insertTextAfterSelection str = do
@@ -1592,5 +1594,4 @@ switchBuffersCandy = do
         if candyState prefs
             then modeTransformToCandy (mode b) (modeEditInCommentOrString (mode b)) buf
             else modeTransformFromCandy (mode b) buf
-
 

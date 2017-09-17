@@ -56,6 +56,7 @@ import GI.Gtk.Objects.MenuItem
        (onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import GI.Gtk.Objects.TextView (textViewSetEditable)
+import IDE.SourceCandy (getCandylessPart)
 
 
 -- | Represents the Info pane
@@ -91,18 +92,21 @@ instance RecoverablePane IDEInfo InfoState IDEM where
         prefs <- readIDE prefs
         ideR <- ask
         descriptionBuffer <- newDefaultBuffer Nothing ""
-        (descriptionView@(GtkView v), sw) <- newView descriptionBuffer (textviewFont prefs)
-        textViewSetEditable v False
+        (descriptionView, sw) <- newView descriptionBuffer (textviewFont prefs)
         updateStyle descriptionBuffer
+        setEditable descriptionView False
+        setShowLineMarks descriptionView False
+        setHighlightCurrentLine descriptionView False
 
         createHyperLinkSupport descriptionView sw (\_ _ iter -> do
                 (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
-                return (beg, en)) (\_ shift' slice ->
-                                    unless (T.null slice) $ do
-                                        -- liftIO$ print ("slice",slice)
-                                        triggerEventIDE (SelectInfo slice shift')
-                                        return ()
-                                    )
+                return (beg, en)) (\_ shift' (beg, en) -> do
+                    candy' <- readIDE candy
+                    sTxt   <- getCandylessPart candy' descriptionBuffer beg en
+                    unless (T.null sTxt) $ do
+                        triggerEventIDE (SelectInfo (SymbolEvent sTxt Nothing True shift'))
+                        return ()
+                    )
 
         scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
 

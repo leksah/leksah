@@ -457,8 +457,8 @@ instance RecoverablePane IDEModules ModulesState IDEM where
             return ()
         return (Just modules, [cid1, cid2, cid5, cid8] ++ cids3 ++ cids6)
 
-selectIdentifier :: Descr -> Bool -> IDEAction
-selectIdentifier idDescr openSource= do
+selectIdentifier :: Descr -> Bool -> Bool -> IDEAction
+selectIdentifier idDescr activatePanes openSource= do
     liftIO $ debugM "leksah" "selectIdentifier"
     systemScope     <- getSystemInfo
     workspaceScope  <- getWorkspaceInfo
@@ -470,7 +470,7 @@ selectIdentifier idDescr openSource= do
                         Nothing -> return ()
                         Just sc -> do
                             when (fst currentScope < sc) (setScope (sc,snd currentScope))
-                            selectIdentifier' (modu pm) (dscName idDescr)
+                            selectIdentifier' (modu pm) (dscName idDescr) activatePanes
     when openSource (goToDefinition idDescr)
 
 scopeForDescr :: PackModule -> Maybe (GenScope,GenScope) ->
@@ -506,11 +506,11 @@ scopeForDescr pm packageScope workspaceScope systemScope =
                                                          | otherwise -> (False, False)
 
 
-selectIdentifier' :: ModuleName -> Text -> IDEAction
-selectIdentifier'  moduleName symbol =
+selectIdentifier' :: ModuleName -> Text -> Bool -> IDEAction
+selectIdentifier'  moduleName symbol activatePanes =
     let nameArray = map T.pack $ components moduleName
     in do
-        liftIO $ debugM "leksah" $ "selectIdentifier' " <> show moduleName <> " " <> T.unpack symbol
+        liftIO $ debugM "leksah" $ "selectIdentifier' " <> show moduleName <> " " <> T.unpack symbol <> " " <> show activatePanes
         mods            <- getModules Nothing
         mbTree          <- forestStoreGetTreeSave (forestStore mods) =<< treePathNewFromIndices' []
         case treePathFromNameArray mbTree nameArray [] of
@@ -531,7 +531,7 @@ selectIdentifier'  moduleName symbol =
                         treeSelectionSelectPath selF path
                         Just col <- treeViewGetColumn (descrView mods) 0
                         treeViewScrollToCell (descrView mods) (Just path) (Just col) True 0.3 0.3
-                bringPaneToFront mods
+                when activatePanes $ bringPaneToFront mods
             Nothing         ->  return ()
 
 findPathFor :: Text -> Maybe (Tree Descr) -> Maybe [Int]

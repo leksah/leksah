@@ -197,24 +197,19 @@ instance PaneMonad IDEM where
                         return (Just buf)
                     else return Nothing
     --activateThisPane :: forall alpha beta . RecoverablePane alpha beta delta => alpha -> Connections -> delta ()
-    activateThisPane pane conn = do
-        mbAP <- getActivePane
-        case mbAP of
-            Just (pn,_) | pn == paneName pane -> return ()
-            _  -> do
+    activateThisPane pane conn =
+        getActivePane >>= \case
+            (Just (pn,_), _) | pn == paneName pane -> return ()
+            (mbActive, panes) -> do
                 deactivatePaneWithout
                 triggerEventIDE (StatusbarChanged [CompartmentPane (Just (PaneC pane))])
                 bringPaneToFront pane
-                setActivePane (Just (paneName pane,conn))
-                trigger (Just (paneName pane))
-                    (case mbAP of
-                        Nothing -> Nothing
-                        Just (pn,_) -> Just pn)
-                modifyIDE_ updateRecent
+                let mru = filter (/=paneName pane) panes
+                    mru' = maybe mru ((:mru) . fst) mbActive
+                setActivePane (Just (paneName pane, conn), mru')
+                trigger (Just (paneName pane)) (fst <$> mbActive)
                 return ()
         where
-            updateRecent (ide@IDE{currentState = IsFlipping _}) = ide
-            updateRecent ide = ide{recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
             trigger :: Maybe Text -> Maybe Text -> IDEAction
             trigger s1 s2 = do
                 triggerEventIDE (RecordHistory (PaneSelected s1, PaneSelected s2))
@@ -234,7 +229,10 @@ instance PaneMonad IDEM where
                 notebookRemovePage nb i
                 widgetDestroy =<< getTopWidget pane
                 removePaneAdmin pane
-                modifyIDE_ (\ide -> ide{recentPanes = filter (/= paneName pane) (recentPanes ide)})
+                modifyIDE_ $ \ide -> ide{
+                    frameState = (frameState ide){
+                        activePane = ( fst (activePane (frameState ide))
+                                     , filter (/= paneName pane) (snd (activePane (frameState ide))))}}
                 return True
 
 data MessageLevel = Silent | Normal | High
@@ -420,11 +418,10 @@ packageDebugState = do
 --
 
 deactivatePane :: IDEAction
-deactivatePane = do
-    mbAP    <-  getActivePane
-    case mbAP of
-        Nothing      -> return ()
-        Just (pn, _) -> do
+deactivatePane =
+    getActivePane >>= \case
+        (Nothing,_)      -> return ()
+        (Just (pn, _),_) -> do
             deactivatePaneWithout
             triggerEventIDE (RecordHistory (PaneSelected Nothing,
                 PaneSelected (Just pn)))
@@ -434,18 +431,17 @@ deactivatePane = do
 deactivatePaneWithout :: IDEAction
 deactivatePaneWithout = do
     triggerEventIDE (StatusbarChanged [CompartmentPane Nothing])
-    mbAP    <-  getActivePane
-    case mbAP of
-        Just (_,signals) -> signalDisconnectAll signals
-        Nothing -> return ()
-    setActivePane Nothing
+    getActivePane >>= \case
+        (Just (n,signals), mru) -> do
+            signalDisconnectAll signals
+            setActivePane (Nothing, n:mru)
+        (Nothing, _) -> return ()
 
 deactivatePaneIfActive :: RecoverablePane alpha beta IDEM => alpha -> IDEAction
-deactivatePaneIfActive pane = do
-    mbActive <- getActivePane
-    case mbActive of
-        Nothing -> return ()
-        Just (n,_) -> when (n == paneName pane) deactivatePane
+deactivatePaneIfActive pane =
+    getActivePane >>= \case
+        (Nothing, _) -> return ()
+        (Just (n,_), _) -> when (n == paneName pane) deactivatePane
 
 -- | Replaces an 'IDEPackage' in the workspace by the given 'IDEPackage' and
 -- replaces the current package if it matches.

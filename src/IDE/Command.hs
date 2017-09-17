@@ -66,7 +66,7 @@ import IDE.LogRef
 import IDE.Debug
 import System.Directory (doesFileExist)
 import qualified Data.Map as  Map (lookup, empty)
-import Data.List (sort)
+import Data.List (intersperse, sort)
 import Control.Event (registerEvent)
 import IDE.Pane.Breakpoints
        (showBreakpoints, fillBreakpointList, selectBreak)
@@ -81,8 +81,10 @@ import IDE.Pane.Grep (getGrep)
 import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.WebKit.Output (getOutputPane)
 import IDE.Pane.WebKit.Inspect (getInspectPane)
+import IDE.TypeTip (setTypeTip)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (unless, when, forM_, filterM, liftM)
+import Control.Monad
+       (forever, join, void, unless, when, forM_, filterM, liftM)
 import Control.Monad.Trans.Reader (ask)
 import System.Log.Logger (debugM)
 import Foreign.C.Types (CInt(..))
@@ -91,7 +93,8 @@ import Foreign.ForeignPtr (withForeignPtr)
 import IDE.Session
        (saveSessionAs, loadSession, saveSession, sessionClosePane,
         loadSessionPrompt, saveSessionAsPrompt, viewFullScreen)
-import qualified Data.Text as T (unpack, pack)
+import qualified Data.Text as T
+       (unlines, uncons, concat, takeWhile, splitOn, unpack, pack)
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 import Data.Text (Text)
@@ -154,6 +157,16 @@ import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 import IDE.LPaste
 import GI.Gio.Objects.Application (applicationQuit)
+import IDE.Utils.Tool (ToolOutput(..))
+import Text.Parsec (parse)
+import Data.IORef (writeIORef)
+import GHC.IO.Exception (ExitCode(..))
+import Control.Concurrent.MVar
+       (tryTakeMVar, MVar, takeMVar, putMVar, newEmptyMVar)
+import Distribution.Text (simpleParse)
+import Control.Concurrent (tryPutMVar, threadDelay, forkIO)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Data.Char (isUpper)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -682,8 +695,7 @@ canQuit :: IDEM Bool
 canQuit = do
     modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
     prefs <- readIDE prefs
-    when (saveSessionOnClose prefs) $
-        saveSession
+    when (saveSessionOnClose prefs) saveSession
     can <- fileCloseAll (\_ -> return True)
     unless can $ modifyIDE_ (\ide -> ide{currentState = IsRunning})
     return can
@@ -902,25 +914,120 @@ handleSpecialKeystrokes ideR e = do
     printMods :: [ModifierType] -> Text
     printMods = mconcat . map (T.pack . show)
 
-setSymbol :: Text -> Bool -> IDEAction
-setSymbol symbol openSource = do
-    currentInfo' <- getWorkspaceInfo
-    search <- getSearch Nothing
-    case currentInfo' of
-        Nothing -> return ()
-        Just (GenScopeC (PackScope _ symbolTable1),
-               GenScopeC (PackScope _ symbolTable2)) ->
-            case filter (not . isReexported) (getIdentifierDescr symbol symbolTable1 symbolTable2) of
-                []     -> return ()
-                [a]   -> selectIdentifier a openSource
-                [a, b] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
-                            isNear (dscMbLocation a) (dscMbLocation b)
-                                then selectIdentifier a openSource
-                                else setChoices search [a,b]
-                l      -> setChoices search l
+setSymbolThread :: MVar SymbolEvent -> IDEAction
+setSymbolThread mvar = do
+    ideR <- ask
+    void . liftIO . forkIO . (`reflectIDE` ideR) $
+        loop (SymbolEvent "" Nothing False False)
   where
+    loop :: SymbolEvent -> IDEAction
+    loop last = do
+        s <- liftIO $ takeMVar mvar
+        if s == last
+            then loop last
+            else do
+                setSymbol s
+                loop s
+    setSymbol :: SymbolEvent -> IDEAction
+    setSymbol s@(SymbolEvent symbol (Just (file, (sLine, sCol), (eLine, eCol))) activatePanes openDefinition) = do
+        let fallback = setSymbol s{location = Nothing}
+        prefs <- readIDE prefs
+        if debug prefs
+            then do
+                ideR <- ask
+                belongsToPackages file >>= \case
+                    [] -> fallback
+                    (project, package):_ -> do
+                        lookup :: MVar IDEAction <- liftIO newEmptyMVar
+                        let f = case pjTool project of
+                                    CabalTool -> makeRelative (ipdPackageDir package) file
+                                    StackTool -> file
+                        postAsyncIDE . workspaceTry . (`runProject`  project) . (`runPackage` package) . tryDebug $ do
+                            defaultLogLaunch <- lift getDefaultLogLaunch
+                            debugCommand (":type-at "
+                                            <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
+                                            <> " " <> symbol) $ do
+                                lines <- foldOutputLines defaultLogLaunch (\log logLaunch t output ->
+                                    case output of
+                                        ToolInput  line -> do
+                                            liftIO . void $ appendLog log logLaunch (line <> "\n") InputTag
+                                            return t
+                                        ToolOutput line -> do
+                                            liftIO . void $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            return $ t <> [line]
+                                        ToolError  line -> do
+                                            liftIO . void $ appendLog log logLaunch (line <> "\n") ErrorTag
+                                            return t
+                                        ToolPrompt _    -> do
+                                            liftIO . void $ defaultLineLogger' log logLaunch output
+                                            return t
+                                        ToolExit _      -> do
+                                            liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                                            return t) []
+                                lift . postAsyncIDE . setTypeTip $ T.concat $ intersperse "\n" lines
+                            debugCommand (":loc-at "
+                                            <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
+                                            <> " " <> symbol) $
+                                logOutputLinesDefault_ $ \log logLaunch output ->
+                                    case output of
+                                        ToolInput  line -> liftIO . void $ appendLog log logLaunch (line <> "\n") InputTag
+                                        ToolOutput line -> do
+                                            liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            case parse srcSpanParser "" $ T.unpack line of
+                                                Right (SrcSpan f sl sc el ec) ->
+                                                    liftIO . putMVar lookup . when openDefinition . void . postSyncIDE $ goToSourceDefinition (ipdPackageDir package) (Location f sl (succ sc) el ec)
+                                                Left err -> liftIO $ putMVar lookup fallback
+                                        ToolError  line -> do
+                                            liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            case T.splitOn ":" line of
+                                                [p, _, m] -> do
+                                                    descrs <- getSymbols symbol
+                                                    case (simpleParse . T.unpack $ T.takeWhile (/='@') p, simpleParse $ T.unpack m) of
+                                                        (Just pid, Just mName) -> do
+                                                            descrs <- getSymbols symbol
+                                                            case filter (\case
+                                                                    Real rd -> dscMbModu' rd == Just (PM pid mName)
+                                                                    _ -> False) descrs of
+                                                                [a] -> liftIO . putMVar lookup . postSyncIDE $ selectIdentifier a activatePanes openDefinition
+                                                                _   -> liftIO $ putMVar lookup fallback
+                                                        _ -> liftIO $ putMVar lookup fallback
+                                                _ -> liftIO $ putMVar lookup fallback
+                                        ToolPrompt _    -> liftIO . void $ defaultLineLogger' log logLaunch output
+                                        ToolExit _      -> liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                        liftIO . forkIO $ do
+                            threadDelay 2000000
+                            putMVar lookup $ do
+                                ideMessage Normal "Timed out looking up symbol with ghci"
+                                fallback
+                        join . liftIO $ takeMVar lookup
+            else fallback
+    setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition) = postSyncIDE $ do
+        search <- getSearch Nothing
+        let unqual = T.concat . intersperse "." . dropQual $ T.splitOn "." symbol
+        descrs <- getSymbols unqual
+        case filter (not . isReexported) descrs of
+            []     -> return ()
+            [a]   -> selectIdentifier a activatePanes openDefinition
+            [a, b] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
+                        isNear (dscMbLocation a) (dscMbLocation b)
+                            then selectIdentifier a activatePanes openDefinition
+                            else when activatePanes $ setChoices search [a,b]
+            l      -> when activatePanes $ setChoices search l
     isNear (Just a) (Just b) = abs (locationSLine a - locationSLine b) <= 3
     isNear _ _               = False
+    dropQual [] = []
+    dropQual [a] = [a]
+    dropQual (q:rest) = case T.uncons q of
+                            Just (l, _) | isUpper l -> dropQual rest
+                            _ -> q:rest
+
+getSymbols :: Text -> IDEM [Descr]
+getSymbols name =
+    getWorkspaceInfo >>= \case
+        Nothing -> return []
+        Just (GenScopeC (PackScope _ symbolTable1),
+              GenScopeC (PackScope _ symbolTable2)) -> return $
+                    getIdentifierDescr name symbolTable1 symbolTable2
 
 --
 -- | Register handlers for IDE events
@@ -938,11 +1045,13 @@ registerLeksahEvents =    do
                 liftIO $ appendLog log defaultLogLaunch s t
                 return ()
             return e)
+    setSymbolMVar <- liftIO newEmptyMVar
+    setSymbolThread setSymbolMVar
     registerEvent stRef "SelectInfo"
-        (\ e@(SelectInfo str gotoSource)
-                                  -> setSymbol str gotoSource >> return e)
+        (\ e@(SelectInfo se)
+                                  -> liftIO $ tryTakeMVar setSymbolMVar >> putMVar setSymbolMVar se >> return e)
     registerEvent stRef "SelectIdent"
-        (\ e@(SelectIdent id)     -> selectIdentifier id False >> return e)
+        (\ e@(SelectIdent id)     -> selectIdentifier id True False >> return e)
     registerEvent stRef "InfoChanged"
         (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e)
     registerEvent stRef "UpdateWorkspaceInfo"
@@ -1006,6 +1115,14 @@ registerLeksahEvents =    do
         (\ e@(DebugStart projectAndPackage) -> redrawWorkspacePane >> return e)
     registerEvent stRef "DebugStop"
         (\ e@(DebugStop projectAndPackage) -> redrawWorkspacePane >> return e)
+    registerEvent stRef "QuitToRestart"
+        (\ e@QuitToRestart -> do
+            can <- canQuit
+            app <- readIDE application
+            when can $ do
+                readIDE exitCode >>= liftIO . (`writeIORef` ExitFailure 2) -- Exit code to trigger leksah.sh to restart
+                applicationQuit app
+            return e)
 
     return ()
 

@@ -114,6 +114,7 @@ class TextEditor editor where
     hasSelection :: EditorBuffer editor -> IDEM Bool
     insert :: EditorBuffer editor -> EditorIter editor -> Text -> IDEM ()
     newView :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor, ScrolledWindow)
+    newViewNoScroll :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor, Widget)
     pasteClipboard :: EditorBuffer editor
                       -> Clipboard
                       -> EditorIter editor
@@ -161,6 +162,8 @@ class TextEditor editor where
     setWrapMode :: EditorView editor -> Bool -> IDEM ()
     setRightMargin :: EditorView editor -> Maybe Int -> IDEM ()
     setShowLineNumbers :: EditorView editor -> Bool -> IDEM ()
+    setShowLineMarks :: EditorView editor -> Bool -> IDEM ()
+    setHighlightCurrentLine :: EditorView editor -> Bool -> IDEM ()
     setTabWidth :: EditorView editor -> Int -> IDEM ()
     setEditable :: EditorView editor -> Bool -> IDEM ()
 

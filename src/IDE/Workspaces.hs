@@ -127,9 +127,6 @@ import GI.Gtk.Interfaces.FileChooser
         fileChooserSetAction)
 import IDE.Workspaces.Writer (WorkspaceFile(..))
 import qualified Data.Map as M (member, delete, adjust, insert)
-import GI.Gio (applicationQuit)
-import Data.IORef (writeIORef)
-import System.Exit (ExitCode(..))
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -632,9 +629,7 @@ makePackage = do
             , msSuccessAction = when (ipdPackageName p == "leksah") $
                 readIDE developLeksah >>= \case
                     False -> return ()
-                    True -> do
-                        readIDE exitCode >>= liftIO . (`writeIORef` ExitFailure 2) -- Exit code to trigger leksah.sh to restart
-                        readIDE application >>= applicationQuit }
+                    True -> triggerEventIDE_ QuitToRestart }
     steps <- buildSteps settings
     if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
         then makePackages settings [(project, [p])] (MoComposed steps) (MoComposed []) moNoOp

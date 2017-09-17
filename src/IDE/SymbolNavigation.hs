@@ -84,7 +84,7 @@ createHyperLinkSupport
     => EditorView editor -- ^ source buffer view
     -> ScrolledWindow    -- ^ container window
     -> (Bool -> Bool -> EditorIter editor -> IDEM (EditorIter editor, EditorIter editor)) -- ^ identifiermapper (bools=control,shift)
-    -> (Bool -> Bool -> Text -> IDEM ()) -- ^ click handler
+    -> (Bool -> Bool -> (EditorIter editor, EditorIter editor) -> IDEM ()) -- ^ click handler
     -> IDEM [Connection]
 createHyperLinkSupport sv sw identifierMapper clickHandler = do
     tv <- getEditorWidget sv
@@ -131,7 +131,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                     case mbMotion of
                         Nothing -> do
                             ungrab
-                            clickHandler ctrlPressed shiftPressed slice
+                            clickHandler ctrlPressed shiftPressed (beg, en)
 #ifdef MIN_VERSION_GTK_3_20
                         Just motion -> do
 #else

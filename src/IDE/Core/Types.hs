@@ -31,6 +31,7 @@ module IDE.Core.Types (
 ,   IDEEventM
 ,   IDEAction
 ,   IDEEvent(..)
+,   SymbolEvent(..)
 ,   MonadIDE
 ,   liftIDE
 ,   (?>>=)
@@ -103,6 +104,7 @@ module IDE.Core.Types (
 ,   ModuleDescrCache
 
 ,   CompletionWindow(..)
+,   TypeTip(..)
 ,   LogLaunch(..)
 ,   LogLaunchData(..)
 ,   LogTag(..)
@@ -188,7 +190,6 @@ data IDE            =  IDE {
     application         :: Application
 ,   exitCode            :: IORef ExitCode
 ,   frameState          :: FrameState IDEM         -- ^ state of the windows framework
-,   recentPanes         :: [PaneName]              -- ^ a list of panes which were selected last
 ,   specialKeys         :: SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
 ,   specialKey          :: SpecialKeyCons IDERef   -- ^ the first of a double keystroke
 ,   candy               :: CandyTable              -- ^ table for source candy
@@ -204,12 +205,14 @@ data IDE            =  IDE {
 ,   workspInfoCache     :: PackageDescrCache
 ,   handlers            :: Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   currentState        :: IDEState
+,   flipper             :: Maybe TreeView             -- ^ used to select the active pane
+,   typeTip             :: Maybe TypeTip
 ,   guiHistory          :: (Bool,[GUIHistory],Int)
 ,   findbar             :: (Bool,Maybe (Toolbar,SeqStore Text))
 ,   toolbar             :: (Bool,Maybe Toolbar)
 ,   recentFiles         :: [FilePath]
 ,   recentWorkspaces    :: [FilePath]
-,   runningTool         :: Maybe (ProcessHandle, Bool)
+,   runningTool         :: Maybe (ProcessHandle, IO ())
 ,   debugState          :: Map (FilePath, FilePath) (IDEPackage, ToolState)
 ,   completion          :: ((Int, Int), Maybe CompletionWindow)
 ,   yiControl           :: Yi.Control
@@ -259,8 +262,6 @@ data IDEState =
     |   IsShuttingDown
         -- | Leksah is running
     |   IsRunning
-        -- | The flipper is used to switch between sources
-    |   IsFlipping TreeView
         -- | The completion feature is used
     |   IsCompleting Connections
 
@@ -340,7 +341,7 @@ runDebug = runReaderT
 data IDEEvent  =
         InfoChanged Bool-- is it the initial = True else False
     |   UpdateWorkspaceInfo
-    |   SelectInfo Text Bool -- navigate to source (== True)
+    |   SelectInfo SymbolEvent
     |   SelectIdent Descr
     |   LogMessage Text LogTag
     |   RecordHistory GUIHistory
@@ -366,12 +367,20 @@ data IDEEvent  =
     |   SavedFile FilePath
     |   DebugStart (FilePath, FilePath)
     |   DebugStop (FilePath, FilePath)
+    |   QuitToRestart
+
+data SymbolEvent = SymbolEvent
+    { selection :: Text
+    , location :: Maybe (FilePath, (Int, Int), (Int, Int))
+    , activatePanes :: Bool
+    , openDefinition :: Bool
+    } deriving (Show, Eq)
 
 instance Event IDEEvent Text where
     getSelector (InfoChanged _)         =   "InfoChanged"
     getSelector UpdateWorkspaceInfo     =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
-    getSelector (SelectInfo _ _)        =   "SelectInfo"
+    getSelector (SelectInfo _)          =   "SelectInfo"
     getSelector (SelectIdent _)         =   "SelectIdent"
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
@@ -396,6 +405,7 @@ instance Event IDEEvent Text where
     getSelector (SavedFile _)           =   "SavedFile"
     getSelector (DebugStart _)          =   "DebugStart"
     getSelector (DebugStop _)           =   "DebugStop"
+    getSelector QuitToRestart           =   "QuitToRestart"
 
 instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "InfoChanged"         = True
@@ -428,6 +438,7 @@ instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "SavedFile"           = True
     canTriggerEvent _ "DebugStart"          = True
     canTriggerEvent _ "DebugStop"           = True
+    canTriggerEvent _ "QuitToRestart"       = True
     canTriggerEvent _ _                   = False
     getHandlers ideRef = do
         ide <- liftIO $ readIORef ideRef
@@ -805,6 +816,10 @@ data CompletionWindow = CompletionWindow {
     cwWindow :: Window,
     cwTreeView :: TreeView,
     cwSeqStore :: SeqStore Text}
+
+data TypeTip = TypeTip {
+    ttWindow :: Window,
+    ttSetText :: Text -> IDEM ()}
 
 data StatusbarCompartment =
         CompartmentCommand Text

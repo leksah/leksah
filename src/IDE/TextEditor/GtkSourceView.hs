@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor.GtkSourceView
@@ -287,7 +288,12 @@ instance TextEditor GtkSourceView where
         textBufferGetText sb first last includeHidenChars
     hasSelection (GtkBuffer sb) = (\(b, _, _) -> b) <$> textBufferGetSelectionBounds sb
     insert (GtkBuffer sb) (GtkIter i) text = textBufferInsert sb i text (-1)
-    newView (GtkBuffer sb) mbFontString = do
+    newView sb mbFontString = do
+        (GtkView sv, _) <- newViewNoScroll sb mbFontString
+        sw <- scrolledWindowNew noAdjustment noAdjustment
+        containerAdd sw sv
+        return (GtkView sv, sw)
+    newViewNoScroll (GtkBuffer sb) mbFontString = do
         liftIO $ debugM "lekash" "newView (GtkSourceView)"
         prefs <- readIDE prefs
         fd <- fontDescription mbFontString
@@ -326,10 +332,9 @@ instance TextEditor GtkSourceView where
         textViewSetWrapMode sv (if wrapLines prefs
                                     then WrapModeWord
                                     else WrapModeNone)
-        sw <- scrolledWindowNew noAdjustment noAdjustment
-        containerAdd sw sv
         widgetOverrideFont sv (Just fd)
-        return (GtkView sv, sw)
+        (GtkView sv,) <$> toWidget sv
+
     pasteClipboard (GtkBuffer sb) clipboard (GtkIter i) defaultEditable =
         textBufferPasteClipboard sb clipboard (Just i) defaultEditable
     placeCursor (GtkBuffer sb) (GtkIter i) = textBufferPlaceCursor sb i
@@ -432,7 +437,9 @@ instance TextEditor GtkSourceView where
                 setViewShowRightMargin sv True
                 setViewRightMarginPosition sv (fromIntegral n)
             Nothing -> setViewShowRightMargin sv False
-    setShowLineNumbers (GtkView sv) show = setViewShowLineNumbers sv show
+    setShowLineNumbers (GtkView sv) = setViewShowLineNumbers sv
+    setShowLineMarks (GtkView sv) = setViewShowLineMarks sv
+    setHighlightCurrentLine (GtkView sv) = setViewHighlightCurrentLine sv
     setTabWidth (GtkView sv) width = setViewTabWidth sv (fromIntegral width)
 
     -- Events
@@ -602,3 +609,4 @@ instance TextEditor GtkSourceView where
         setTextTagUnderline t value
         setTextTagUnderlineRgba t col
     setEditable (GtkView view) b = textViewSetEditable view b
+

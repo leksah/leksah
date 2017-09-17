@@ -26,6 +26,7 @@ module IDE.LogRef (
 ,   unmarkLogRefs
 ,   defaultLineLogger
 ,   defaultLineLogger'
+,   foldOutputLines
 ,   logOutputLines
 ,   logOutputLines_
 ,   logOutputLinesDefault_
@@ -410,6 +411,16 @@ paneLineLogger' log logLaunch out =
         ToolExit   (ExitFailure n) -> appendLog' (T.pack (take 41 ("========== " ++ show n ++ " " ++ repeat '=')) <> "\n") FrameTag >> return Nothing
     where
         appendLog' = Log.appendLog log logLaunch
+
+foldOutputLines :: LogLaunch -- ^ logLaunch
+               -> (IDELog -> LogLaunch -> a -> ToolOutput -> IDEM a)
+               -> a
+               -> C.Sink ToolOutput IDEM a
+foldOutputLines logLaunch lineLogger a = do
+    log :: Log.IDELog <- lift $ postSyncIDE Log.getLog
+    results <- CL.foldM (\a b -> postSyncIDE $ lineLogger log logLaunch a b) a
+    lift . postSyncIDE $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
+    return results
 
 logOutputLines :: LogLaunch -- ^ logLaunch
                -> (IDELog -> LogLaunch -> ToolOutput -> IDEM a)

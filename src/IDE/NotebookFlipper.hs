@@ -61,20 +61,12 @@ import Data.GI.Gtk.ModelView.Types
         treePathNewFromIndices')
 
 flipDown :: IDEAction
-flipDown = do
-    currentState' <- readIDE currentState
-    case currentState' of
-        IsFlipping tv -> moveFlipperDown tv
-        IsRunning     -> initFlipper True
-        _             -> return ()
+flipDown =
+    readIDE flipper >>= maybe (initFlipper True) moveFlipperDown
 
 flipUp :: IDEAction
-flipUp = do
-    currentState' <- readIDE currentState
-    case currentState' of
-        IsFlipping  tv -> moveFlipperUp tv
-        IsRunning      -> initFlipper False
-        _              -> return ()
+flipUp =
+    readIDE flipper >>= maybe (initFlipper False) moveFlipperUp
 
 -- | Moves down in the Flipper state
 moveFlipperDown :: IsTreeView alpha => alpha -> IDEAction
@@ -153,14 +145,11 @@ initFlipper direction = do
             reflectIDE (do
                 mbPane <- mbPaneFromName string
                 case mbPane of
-                    Just (PaneC pane) -> do
-                        makeActive pane
-                        modifyIDE_ $ \ide -> ide{
-                            recentPanes = paneName pane : filter (/= paneName pane) (recentPanes ide)}
+                    Just (PaneC pane) -> makeActive pane
                     Nothing   -> return ()) ideR
             widgetHide window
             widgetDestroy window
-            reflectIDE (modifyIDE_ (\ide -> ide{currentState = IsRunning})) ideR)
+            reflectIDE (modifyIDE_ (\ide -> ide{flipper = Nothing})) ideR)
 
         treeSelection <- treeViewGetSelection tree
         _ <- onTreeSelectionChanged treeSelection $ do
@@ -171,15 +160,20 @@ initFlipper direction = do
                     reflectIDE (do
                         mbPane <- mbPaneFromName string
                         case mbPane of
-                            Just (PaneC pane) -> makeActive pane
+                            Just (PaneC pane) -> do
+                                -- Activate the pane but do not update the activePane order yet
+                                save <- readIDE (activePane . frameState)
+                                modifyIDE_ $ \ide -> ide { frameState = (frameState ide) { activePane = (Nothing, snd save) } }
+                                makeActive pane
+                                modifyIDE_ $ \ide -> ide { frameState = (frameState ide) { activePane = save } }
                             Nothing   -> return ()) ideR
                 _ -> return ()
 
         setWindowWindowPosition window WindowPositionCenterOnParent
         widgetShowAll window
         return (tree, store)
-    modifyIDE_ (\ide -> ide{currentState = IsFlipping tree'})
-    -- This is done after currentState is set so we know not to update the
+    modifyIDE_ (\ide -> ide{flipper = Just tree'})
+    -- This is done after flipper is set so we know not to update the
     -- previous panes list
     n <- treeModelIterNChildren store' Nothing
     p <- treePathNewFromIndices' [if direction then min 1 (n - 1) else n - 1]
@@ -189,10 +183,9 @@ handleKeyRelease :: IsTreeView alpha => alpha -> IDERef -> EventKey -> IO Bool
 handleKeyRelease tree ideR e = do
     name <- getEventKeyKeyval e >>= keyvalName
     case name of
-        Just ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") -> do
-            currentState' <- reflectIDE (readIDE currentState) ideR
-            case currentState' of
-                IsFlipping _tv ->
+        Just ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") ->
+            reflectIDE (readIDE flipper) ideR >>= \case
+                Just _tv ->
                     treeViewGetCursor tree >>= \case
                         (Just treePath, _) -> do
                             Just column <- treeViewGetColumn tree 0

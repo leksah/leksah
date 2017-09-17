@@ -99,12 +99,12 @@ unset APPLELANGUAGES L
 
 # If we didn't get a language from the language list, try the Collation preference, in case it's the only setting that exists.
 APPLECOLLATION=`defaults read .GlobalPreferences AppleCollationOrder`
-if test -z ${LANG} -a -n $APPLECOLLATION; then
+if test -z "${LANG}" -a -n "$APPLECOLLATION"; then
     if test -f "$I18NDIR/${APPLECOLLATION:0:2}/LC_MESSAGES/$APP.mo"; then
 	export LANG=${APPLECOLLATION:0:2}
     fi
 fi
-if test ! -z $APPLECOLLATION; then
+if test ! -z "$APPLECOLLATION"; then
     export LC_COLLATE=$APPLECOLLATION
 fi
 unset APPLECOLLATION

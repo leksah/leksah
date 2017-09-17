@@ -659,6 +659,7 @@ setChildren mbProject mbPkg store view parentPath kids = do
 
     forM_ (zip [0..] kidsToAdd) $ \(n, record) -> do
       liftIO $ do
+        putStrLn $ "setChildren " <> show parentPath
         mbChildIter <- (treeModelGetIter store =<< treePathNewFromIndices' parentPath) >>= \case
             Just parentIter ->
                 treeModelIterNthChild store (Just parentIter) n >>= \case

@@ -13,7 +13,7 @@ export LEKSAH_SERVER_BIN_DIR=`pwd`/dist-newstyle/build/x86_64-osx/ghc-$GHCVERSIO
 export LEKSAH_SERVER_PREFIX=`pwd`/vendor/leksah-server
 export VCSGUI_BIN_DIR=`pwd`/`ls -d dist-newstyle/build/x86_64-osx/ghc-$GHCVERSIONNUM/vcsgui-*`
 export VCSGUI_PREFIX=`pwd`/vendor/haskellVCSGUI/vcsgui
-export HLINT_PREFIX=$CABAL_STORE/`sed 's/^.*\(hlint-[0-9\.]*-[0-9a-f]*\).*$/\1/' < dist-newstyle/cache/plan.json`
+export HLINT_PREFIX=$CABAL_STORE/`jq -r '."install-plan" | map(select(."pkg-name" == "hlint" and ."component-name" == "lib")) | .[0].id' dist-newstyle/cache/plan.json`
 
 #export SANDBOX_BIN_DIR=$PWD/.cabal-sandbox
 #export SANDBOX_SHARE=$PWD/.cabal-sandbox/share/x86_64-osx-ghc-`ghc$GHCVERSION --numeric-version`

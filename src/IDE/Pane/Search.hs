@@ -110,7 +110,7 @@ data IDESearch      =   IDESearch {
 ,   scopeSelection  ::   Scope -> IDEAction
 ,   modeSelection   ::   SearchMode -> IDEAction
 ,   searchMetaGUI   ::   Text -> IDEAction
-,   setChoices     ::   [Descr] -> IDEAction
+,   setChoices      ::   [Descr] -> IDEAction
 } deriving Typeable
 
 data SearchState    =   SearchState {

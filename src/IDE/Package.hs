@@ -110,7 +110,7 @@ import Data.List
        (intercalate, isInfixOf, nub, foldl', delete, find)
 import IDE.Utils.Tool
        (toolProcess, ToolOutput(..), runTool, newGhci, ToolState(..),
-        toolline, ProcessHandle, executeGhciCommand)
+        toolline, ProcessHandle, executeGhciCommand, interruptTool)
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
@@ -134,7 +134,7 @@ import qualified Data.Text as T
        (reverse, all, null, dropWhile, lines, isPrefixOf, stripPrefix,
         replace, unwords, takeWhile, pack, unpack, isInfixOf)
 import IDE.Utils.ExternalTool
-       (showProcessHandle, runExternalTool', runExternalTool, isRunning,
+       (runExternalTool', runExternalTool, isRunning,
         interruptBuild)
 import Text.PrinterParser (writeFields)
 import Data.Text (Text)
@@ -377,18 +377,15 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
     doBuild debugStarting = catchIDE (do
         ideR  <- liftIDE ask
         prefs <- readIDE prefs
-        let compile' = compile ([GHC | native prefs || debug prefs] ++ [GHCJS | javaScript prefs && pjTool project == CabalTool])
+        let compile' = compile ([GHC | native prefs] ++ [GHCJS | javaScript prefs && pjTool project == CabalTool])
         M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
             Just debug@(_, ghci) -> do
-                readIDE runningTool >>= mapM (showProcessHandle . fst) >>= mapM_ (liftIO . debugM "leksah" . ("runningTool already set to : " <>))
                 proc <- liftIO $ toolProcess ghci
-                showProcessHandle proc >>= liftIO . debugM "leksah" . ("runningTool set to : " <>)
-                modifyIDE_ $ \ide -> ide {runningTool = Just (proc, True)}
+                modifyIDE_ $ \ide -> ide {runningTool = Just (proc, interruptTool ghci)}
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild project package backgroundBuild jumpToWarnings
-                    lift . postAsyncIDE $ do
-                        modifyIDE_ $ \ide -> ide {runningTool = Nothing}
-                        showProcessHandle proc >>= liftIO . debugM "leksah" . ("runningTool cleared. Was : " <>)
+                    lift . modifyIDE_ $ \ide -> ide {runningTool = Nothing}
+                    lift . postAsyncIDE $
                         unless (any isError errs) $ do
                             (autoPack, cmd) <- readIDE autoCommand
                             when (autoPack == (pjFile project, ipdCabalFile package)) cmd
@@ -499,19 +496,21 @@ packageInstall' (project, package) continuation = do
     logLaunch <- getDefaultLogLaunch
     showDefaultLogLaunch'
 
-    catchIDE (do
-        let dir = ipdPackageDir package
-        runExternalTool' (__ "Installing")
-                         (case pjTool project of
-                            StackTool -> "stack"
-                            CabalTool -> "echo" {-cabalCommand prefs-})
-                         ((case pjTool project of
-                            StackTool -> "install" : "--stack-yaml" : T.pack (makeRelative dir $ pjFile project) : ipdBuildFlags package
-                            CabalTool -> ["TODO run cabal new-install"]) ++ ipdInstallFlags package)
-                         dir Nothing $ do
-                mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
-                lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> print e)
+    if native prefs && pjTool project == StackTool
+        then catchIDE (do
+            let dir = ipdPackageDir package
+            runExternalTool' (__ "Installing")
+                             (case pjTool project of
+                                StackTool -> "stack"
+                                CabalTool -> "echo" {-cabalCommand prefs-})
+                             ((case pjTool project of
+                                StackTool -> "install" : "--stack-yaml" : T.pack (makeRelative dir $ pjFile project) : ipdBuildFlags package
+                                CabalTool -> ["TODO run cabal new-install"]) ++ ipdInstallFlags package)
+                             dir Nothing $ do
+                    mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
+                    lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
+            (\(e :: SomeException) -> print e)
+        else continuation True
 
 packageRun :: PackageAction
 packageRun = do
@@ -1048,8 +1047,9 @@ debugStart = do
                         StackTool -> ("stack", [ "repl" ]
                                             <> pjFileArgs
                                             <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ])
-                ghci <- reifyIDE $ \ideR -> newGhci tool args dir ("+c":"-ferror-spans":interactiveFlags prefs')
-                    $ reflectIDEI (void (logOutputForBuild project package True False)) ideR
+                let logOut = reflectIDEI (void (logOutputForBuild project package True False)) ideRef
+                ghci <- liftIO $ newGhci tool args dir ("+c":"-ferror-spans":interactiveFlags prefs') logOut
+                liftIO $ executeGhciCommand ghci ":reload" logOut
                 modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                 triggerEventIDE (DebugStart projectAndPackage)
