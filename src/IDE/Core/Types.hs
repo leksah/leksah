@@ -178,6 +178,7 @@ import Control.Monad ((>=>))
 import System.FSNotify (StopListening, WatchManager)
 import qualified Data.Map as M (fromList, lookup, keys, elems)
 import System.Exit (ExitCode)
+import Data.Int (Int32)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -374,6 +375,7 @@ data SymbolEvent = SymbolEvent
     , location :: Maybe (FilePath, (Int, Int), (Int, Int))
     , activatePanes :: Bool
     , openDefinition :: Bool
+    , typeTipLocation :: (Int32, Int32)
     } deriving (Show, Eq)
 
 instance Event IDEEvent Text where
@@ -819,7 +821,7 @@ data CompletionWindow = CompletionWindow {
 
 data TypeTip = TypeTip {
     ttWindow :: Window,
-    ttSetText :: Text -> IDEM ()}
+    ttSetText :: Int32 -> Int32 -> Text -> IDEM ()}
 
 data StatusbarCompartment =
         CompartmentCommand Text

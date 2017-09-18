@@ -73,6 +73,7 @@ import GI.Gdk.Objects.Seat (seatGrab, seatUngrab)
 import GI.Gdk.Flags
        (EventMask(..), ModifierType(..))
 import GI.Gdk.Objects.Device (deviceGrab, deviceUngrab)
+import IDE.TypeTip (setTypeTip)
 #endif
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
@@ -132,6 +133,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                         Nothing -> do
                             ungrab
                             clickHandler ctrlPressed shiftPressed (beg, en)
+                            setTypeTip (0, 0) ""
 #ifdef MIN_VERSION_GTK_3_20
                         Just motion -> do
 #else
@@ -151,7 +153,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                                             [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
                                             mbHand eventTime
 #endif
-                  else ungrab
+                  else setTypeTip (0, 0) "" >> ungrab
                 return True
     lineNumberBugFix <- liftIO $ newIORef Nothing
     let fixBugWithX mods isHint (eventX, eventY) ptrx' = do

@@ -918,7 +918,7 @@ setSymbolThread :: MVar SymbolEvent -> IDEAction
 setSymbolThread mvar = do
     ideR <- ask
     void . liftIO . forkIO . (`reflectIDE` ideR) $
-        loop (SymbolEvent "" Nothing False False)
+        loop (SymbolEvent "" Nothing False False (0, 0))
   where
     loop :: SymbolEvent -> IDEAction
     loop last = do
@@ -929,7 +929,7 @@ setSymbolThread mvar = do
                 setSymbol s
                 loop s
     setSymbol :: SymbolEvent -> IDEAction
-    setSymbol s@(SymbolEvent symbol (Just (file, (sLine, sCol), (eLine, eCol))) activatePanes openDefinition) = do
+    setSymbol s@(SymbolEvent symbol (Just (file, (sLine, sCol), (eLine, eCol))) activatePanes openDefinition typeTipLocation) = do
         let fallback = setSymbol s{location = Nothing}
         prefs <- readIDE prefs
         if debug prefs
@@ -964,7 +964,7 @@ setSymbolThread mvar = do
                                         ToolExit _      -> do
                                             liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
                                             return t) []
-                                lift . postAsyncIDE . setTypeTip $ T.concat $ intersperse "\n" lines
+                                lift . postAsyncIDE . setTypeTip typeTipLocation $ T.concat $ intersperse "\n" lines
                             debugCommand (":loc-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
                                             <> " " <> symbol) $
@@ -1001,7 +1001,7 @@ setSymbolThread mvar = do
                                 fallback
                         join . liftIO $ takeMVar lookup
             else fallback
-    setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition) = postSyncIDE $ do
+    setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition typeTipLocation) = postSyncIDE $ do
         search <- getSearch Nothing
         let unqual = T.concat . intersperse "." . dropQual $ T.splitOn "." symbol
         descrs <- getSymbols unqual

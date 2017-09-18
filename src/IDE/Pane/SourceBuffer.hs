@@ -185,6 +185,9 @@ import GI.Gtk
         labelNew, infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import Control.Concurrent.MVar (tryPutMVar)
+import Data.Int (Int32)
+import Graphics.UI.Frame.Rectangle (getRectangleY, getRectangleX)
+import GI.Gdk (windowGetOrigin)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -751,11 +754,11 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                         delete buffer here there
                         return True
                     (Just "underscore",[ModifierTypeControlMask, ModifierTypeControlMask],_) -> do
-                        selectInfo buf buffer True False
+                        selectInfo buf buffer sv True False
                         return True
                         -- Redundant should become a go to definition directly
                     (Just "minus",[ModifierTypeControlMask],_) -> do
-                        selectInfo buf buffer True True
+                        selectInfo buf buffer sv True True
                         return True
                     (Just "Return", [], _) ->
                         readIDE currentState >>= \case
@@ -770,9 +773,9 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
             createHyperLinkSupport sv sw
                 (\ctrl shift iter -> do
                     (beg, en) <- getIdentifierUnderCursorFromIter (iter, iter)
-                    when ctrl $ selectInfo' buf buffer beg en False False
+                    when ctrl $ selectInfo' buf buffer sv beg en False False
                     return (beg, if ctrl then en else beg))
-                (\_ shift' (beg, en) -> selectInfo' buf buffer beg en True True)
+                (\_ shift' (beg, en) -> selectInfo' buf buffer sv beg en True True)
         return (Just buf,concat [ids1, ids2, ids3, ids4, ids5, ids6, ids7])
 
     forwardApplying :: TextEditor editor
@@ -953,19 +956,27 @@ writeOverwriteInStatusbar sv = do
     triggerEventIDE (StatusbarChanged [CompartmentOverlay mode])
     return ()
 
-selectInfo' :: TextEditor e => IDEBuffer -> EditorBuffer e -> EditorIter e -> EditorIter e -> Bool -> Bool -> IDEAction
-selectInfo' buf ebuf start end activatePanes gotoSource = do
+selectInfo' :: TextEditor e => IDEBuffer -> EditorBuffer e -> EditorView e -> EditorIter e -> EditorIter e -> Bool -> Bool -> IDEAction
+selectInfo' buf ebuf view start end activatePanes gotoSource = do
     candy' <- readIDE candy
     sTxt   <- getCandylessPart candy' ebuf start end
     startPos <- getLocation buf ebuf start
     endPos <- getLocation buf ebuf end
-    unless (T.null sTxt) $
-        triggerEventIDE_ (SelectInfo (SymbolEvent sTxt ((, startPos, endPos) <$> fileName buf) activatePanes gotoSource))
+    unless (T.null sTxt) $ do
+        rect <- getIterLocation view end
+        bx   <- getRectangleX rect
+        by   <- getRectangleY rect
+        (x, y) <- bufferToWindowCoords view (fromIntegral bx, fromIntegral by)
+        getWindow view >>= \case
+            Nothing -> return ()
+            Just drawWindow -> do
+                (_, ox, oy)  <- windowGetOrigin drawWindow
+                triggerEventIDE_ (SelectInfo (SymbolEvent sTxt ((, startPos, endPos) <$> fileName buf) activatePanes gotoSource (ox + fromIntegral x, oy + fromIntegral y)))
 
-selectInfo :: TextEditor e => IDEBuffer -> EditorBuffer e -> Bool -> Bool -> IDEAction
-selectInfo buf ebuf activatePanes gotoSource = do
+selectInfo :: TextEditor e => IDEBuffer -> EditorBuffer e -> EditorView e -> Bool -> Bool -> IDEAction
+selectInfo buf ebuf view activatePanes gotoSource = do
     (l,r)   <- getIdentifierUnderCursor ebuf
-    selectInfo' buf ebuf l r activatePanes gotoSource
+    selectInfo' buf ebuf view l r activatePanes gotoSource
 
 markActiveLabelAsChanged :: IDEAction
 markActiveLabelAsChanged = do

@@ -5,6 +5,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -fwarn-unused-imports #-}
 -----------------------------------------------------------------------------
 --
@@ -57,6 +58,8 @@ import GI.Gtk.Objects.MenuItem
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import GI.Gtk.Objects.TextView (textViewSetEditable)
 import IDE.SourceCandy (getCandylessPart)
+import Graphics.UI.Frame.Rectangle (getRectangleY, getRectangleX)
+import GI.Gdk (windowGetOrigin)
 
 
 -- | Represents the Info pane
@@ -104,8 +107,15 @@ instance RecoverablePane IDEInfo InfoState IDEM where
                     candy' <- readIDE candy
                     sTxt   <- getCandylessPart candy' descriptionBuffer beg en
                     unless (T.null sTxt) $ do
-                        triggerEventIDE (SelectInfo (SymbolEvent sTxt Nothing True shift'))
-                        return ()
+                        rect <- getIterLocation descriptionView en
+                        bx   <- getRectangleX rect
+                        by   <- getRectangleY rect
+                        (x, y) <- bufferToWindowCoords descriptionView (fromIntegral bx, fromIntegral by)
+                        getWindow descriptionView >>= \case
+                            Nothing -> return ()
+                            Just drawWindow -> do
+                                (_, ox, oy)  <- windowGetOrigin drawWindow
+                                triggerEventIDE_ (SelectInfo (SymbolEvent sTxt Nothing True shift' (ox + fromIntegral x, oy + fromIntegral y)))
                     )
 
         scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
