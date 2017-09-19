@@ -24,22 +24,14 @@ let
   });
 
   extendedHaskellPackages = haskellPackages.override {
-    overrides = self: super:
-      let
-        jsaddlePkgs = import ./vendor/jsaddle   self; # FIXME: unused?   # TODO: if not, use `fetchFromGitHub`?
-        ghcjsDom    = import ./vendor/ghcjs-dom self; # TODO: use `fetchFromGitHub`?
-      in {
-        jsaddle = jsaddlePkgs.jsaddle;
-        jsaddle-warp = dontCheck jsaddlePkgs.jsaddle-warp;
-        jsaddle-wkwebview = overrideCabal jsaddlePkgs.jsaddle-wkwebview;
-        jsaddle-webkit2gtk = jsaddlePkgs.jsaddle-webkit2gtk;
-        jsaddle-dom = overrideCabal (self.callPackage ./jsaddle-dom {}) (drv: {
+    overrides = self: super: {
+        jsaddle-warp = dontCheck super.jsaddle-warp;
+        jsaddle-dom = overrideCabal super.jsaddle-dom (drv: {
           # On macOS, the jsaddle-dom build will run out of file handles the first time it runs
           preBuild = ''./setup build || true'';
         });
-        ghcjs-dom-jsaddle = dontHaddock ghcjsDom.ghcjs-dom-jsaddle;
-        ghcjs-dom-jsffi = ghcjsDom.ghcjs-dom-jsffi;
-        ghcjs-dom = dontCheck (dontHaddock ghcjsDom.ghcjs-dom);
+        ghcjs-dom-jsaddle = dontHaddock super.ghcjs-dom-jsaddle;
+        ghcjs-dom = dontCheck (dontHaddock super.ghcjs-dom);
 
         gi-cairo = fixCairoGI super.gi-cairo;
         gi-gdk = fixCairoGI super.gi-gdk;
