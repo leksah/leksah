@@ -2,21 +2,9 @@
     # Default for CI reproducibility, optionally override in your configuration.nix.
     (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
       owner = "NixOS"; repo = "nixpkgs";
-      rev = "b61238243c978cde19a0676f3da9e3fd575e55fc";
-      sha256 = "0s8s68ax8xvn99gq5xjs78fbs88azjbmqdwqjvizkjl9bjzl8sxx";
-    }) {
-      # We need updated Hackage hashes to be able to use `callHackage`
-      # below. Remove this after switching to a sufficient version of
-      # Nixpkgs.
-      config.packageOverrides = super: let self = super.pkgs; in {
-        all-cabal-hashes = self.fetchFromGitHub {
-          owner = "commercialhaskell";
-          repo = "all-cabal-hashes";
-          rev = "5a1b0706a7b8f53517408c20a260789a70b8fe54";
-          sha256 = "0x30j503ygfin7zdgggv79ghm3sjnj15fdgigic8rg5rjpvnk1rz";
-        };
-      };
-    })
+      rev = "c8e7aab0c8bae8a49ec5bd87ace65b237c8e3d18";
+      sha256 = "0dq2ymqygc6dadrlm1jcbqsg7w34yihb7gss9yk42lknajzvm9pm";
+    }) {})
 , compiler ? "ghc802" # TODO: try using "default"?
 , haskellPackages ? if compiler == "default"
                       then nixpkgs.pkgs.haskellPackages
@@ -28,8 +16,6 @@ with nixpkgs.pkgs.haskell.lib;
 let
 
   inherit (nixpkgs) pkgs;
-
-  appendGIFlags = p: appendConfigureFlag p "-f-overloaded-methods -f-overloaded-signals -f-overloaded-properties";
 
   fixCairoGI = p: overrideCabal p (drv: {
     preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
@@ -55,24 +41,16 @@ let
         ghcjs-dom-jsffi = ghcjsDom.ghcjs-dom-jsffi;
         ghcjs-dom = dontCheck (dontHaddock ghcjsDom.ghcjs-dom);
 
-        gi-atk = appendGIFlags super.gi-atk;
-        gi-cairo = appendGIFlags (fixCairoGI super.gi-cairo);
-        gi-gdk = appendGIFlags (fixCairoGI super.gi-gdk);
-        gi-gdkpixbuf = appendGIFlags super.gi-gdkpixbuf;
-        gi-gio = appendGIFlags super.gi-gio;
-        gi-glib = appendGIFlags super.gi-glib;
-        gi-gobject = appendGIFlags super.gi-gobject;
-        gi-gtk = appendGIFlags (fixCairoGI super.gi-gtk);
-        gi-javascriptcore = appendGIFlags super.gi-javascriptcore_4_0_11;
-        gi-pango = appendGIFlags (fixCairoGI super.gi-pango);
-        gi-soup = appendGIFlags super.gi-soup;
-        gi-webkit2 = appendGIFlags (fixCairoGI super.gi-webkit2);
-        gi-gtksource = appendGIFlags (fixCairoGI super.gi-gtksource);
-        gi-gtkosxapplication = appendGIFlags (fixCairoGI (super.gi-gtkosxapplication.override {
+        gi-cairo = fixCairoGI super.gi-cairo;
+        gi-gdk = fixCairoGI super.gi-gdk;
+        gi-gtk = fixCairoGI super.gi-gtk;
+        gi-javascriptcore = super.gi-javascriptcore_4_0_11;
+        gi-pango = fixCairoGI super.gi-pango;
+        gi-webkit2 = fixCairoGI super.gi-webkit2;
+        gi-gtksource = fixCairoGI super.gi-gtksource;
+        gi-gtkosxapplication = fixCairoGI (super.gi-gtkosxapplication.override {
           gtk-mac-integration-gtk3 = pkgs.gtk-mac-integration-gtk3;
-        }));
-        haskell-gi = super.haskell-gi;
-        haskell-gi-base = super.haskell-gi-base;
+        });
         webkit2gtk3-javascriptcore = overrideCabal super.webkit2gtk3-javascriptcore (drv: {
           preConfigure = ''
             mkdir dispatch
@@ -80,7 +58,7 @@ let
             '';
         });
 
-        haskell-gi-overloading = dontHaddock (self.callHackage "haskell-gi-overloading" "0.0" {});
+        haskell-gi-overloading = super.haskell-gi-overloading_0_0;
 
         # FIXME: do we really need them as Git submodules?
         vcswrapper = self.callCabal2nix "vcswrapper" ./vendor/haskellVCSWrapper/vcswrapper {};
@@ -99,7 +77,10 @@ let
 
   cleanSrc =
     builtins.filterSource (path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
-      nixpkgs.lib.all (i: toString i != path) [ ./.git ./dist-newstyle ./cabal.project.local ] # TODO: what else?
+      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ]
+        && nixpkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
+      	&& nixpkgs.lib.all (i: !(nixpkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" ]
+      	# TODO: what else?
       ) ./.;
 
   drv = overrideCabal (extendedHaskellPackages.callCabal2nix "leksah" cleanSrc {}) (oldAttrs: with pkgs; with extendedHaskellPackages; {

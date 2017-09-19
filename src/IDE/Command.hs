@@ -918,31 +918,34 @@ setSymbolThread :: MVar SymbolEvent -> IDEAction
 setSymbolThread mvar = do
     ideR <- ask
     void . liftIO . forkIO . (`reflectIDE` ideR) $
-        loop (SymbolEvent "" Nothing False False (0, 0))
+        loop (SymbolEvent "" Nothing False False (0, 0), return ())
   where
-    loop :: SymbolEvent -> IDEAction
-    loop last = do
+    loop :: (SymbolEvent, IDEAction) -> IDEAction
+    loop (last, reshow) = do
         s <- liftIO $ takeMVar mvar
         if s == last
-            then loop last
+            then do
+                reshow
+                loop (last, reshow)
             else do
-                setSymbol s
-                loop s
-    setSymbol :: SymbolEvent -> IDEAction
+                r <- setSymbol s
+                loop (s, r)
+    setSymbol :: SymbolEvent -> IDEM IDEAction
     setSymbol s@(SymbolEvent symbol (Just (file, (sLine, sCol), (eLine, eCol))) activatePanes openDefinition typeTipLocation) = do
-        let fallback = setSymbol s{location = Nothing}
+        let fallback = void $ setSymbol s{location = Nothing}
         prefs <- readIDE prefs
         if debug prefs
             then do
                 ideR <- ask
                 belongsToPackages file >>= \case
-                    [] -> fallback
+                    [] -> fallback >> return (return ())
                     (project, package):_ -> do
+                        setTTMVar :: MVar IDEAction <- liftIO newEmptyMVar
                         lookup :: MVar IDEAction <- liftIO newEmptyMVar
                         let f = case pjTool project of
                                     CabalTool -> makeRelative (ipdPackageDir package) file
                                     StackTool -> file
-                        postAsyncIDE . workspaceTry . (`runProject`  project) . (`runPackage` package) . tryDebug $ do
+                        postAsyncIDE . workspaceTry . (`runProject` project) . (`runPackage` package) . tryDebug $ do
                             defaultLogLaunch <- lift getDefaultLogLaunch
                             debugCommand (":type-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
@@ -964,7 +967,10 @@ setSymbolThread mvar = do
                                         ToolExit _      -> do
                                             liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
                                             return t) []
-                                lift . postAsyncIDE . setTypeTip typeTipLocation $ T.concat $ intersperse "\n" lines
+                                liftIO . putMVar setTTMVar $
+                                    if null lines
+                                        then return ()
+                                        else postAsyncIDE . setTypeTip typeTipLocation $ T.concat $ intersperse "\n" lines
                             debugCommand (":loc-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
                                             <> " " <> symbol) $
@@ -999,20 +1005,25 @@ setSymbolThread mvar = do
                             putMVar lookup $ do
                                 ideMessage Normal "Timed out looking up symbol with ghci"
                                 fallback
+                        setTT <- liftIO $ takeMVar setTTMVar
+                        setTT
                         join . liftIO $ takeMVar lookup
-            else fallback
-    setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition typeTipLocation) = postSyncIDE $ do
-        search <- getSearch Nothing
-        let unqual = T.concat . intersperse "." . dropQual $ T.splitOn "." symbol
-        descrs <- getSymbols unqual
-        case filter (not . isReexported) descrs of
-            []     -> return ()
-            [a]   -> selectIdentifier a activatePanes openDefinition
-            [a, b] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
-                        isNear (dscMbLocation a) (dscMbLocation b)
-                            then selectIdentifier a activatePanes openDefinition
-                            else when activatePanes $ setChoices search [a,b]
-            l      -> when activatePanes $ setChoices search l
+                        return setTT
+            else fallback >> return (return ())
+    setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition typeTipLocation) = do
+        postSyncIDE $ do
+            search <- getSearch Nothing
+            let unqual = T.concat . intersperse "." . dropQual $ T.splitOn "." symbol
+            descrs <- getSymbols unqual
+            case filter (not . isReexported) descrs of
+                []     -> return ()
+                [a]   -> selectIdentifier a activatePanes openDefinition
+                [a, b] -> if isJust (dscMbModu a) && dscMbModu a == dscMbModu b &&
+                            isNear (dscMbLocation a) (dscMbLocation b)
+                                then selectIdentifier a activatePanes openDefinition
+                                else when activatePanes $ setChoices search [a,b]
+                l      -> when activatePanes $ setChoices search l
+        return (return ())
     isNear (Just a) (Just b) = abs (locationSLine a - locationSLine b) <= 3
     isNear _ _               = False
     dropQual [] = []

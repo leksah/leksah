@@ -1569,9 +1569,10 @@ belongsToPackages fp = do
         Nothing -> readIDE workspace >>= \case
                         Nothing   -> return []
                         Just workspace -> do
-                            let res = filter (belongsToPackage fp . snd) $ wsProjectAndPackages workspace
+                            let res = reverse . sortOn (length . ipdPackageDir . snd)
+                                        . filter (belongsToPackage fp . snd) $ wsProjectAndPackages workspace
                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
-                            return . reverse $ sortOn (length . ipdPackageDir . snd) res
+                            return res
 
 -- | Returns the packages to which this buffer belongs
 --   uses the 'bufferProjCache' and might extend it

@@ -29,17 +29,17 @@ else
   echo "Unknown cabal version $(cabal --numeric-version)"
 fi
 
-if [[ "$(cabal --numeric-version)" == "2.1.0.0" ]]; then
-  RUN_LEKSAH="cabal new-run exe:leksah --"
-else
+#if [[ "$(cabal --numeric-version)" == "2.1.0.0" ]]; then
+#  RUN_LEKSAH="cabal new-run exe:leksah --"
+#else
   export leksah_datadir="$DIR"
   RUN_LEKSAH="$LEKSAH_BUILD_DIR/leksah/leksah"
-fi
+#fi
 
 cabal new-configure --with-ghc="ghc-$GHCVER"
 LEKSAH_EXIT_CODE=2
 while [ $LEKSAH_EXIT_CODE -eq 2 ]; do
-  cabal new-build exe:leksah-server exe:leksah exe:leksahecho || exit
+  cabal new-build exe:leksah-server exe:leksah exe:leksahecho || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
   PATH="$LEKSAH_SERVER_BUILD_DIR/leksah-server:$LEKSAH_SERVER_BUILD_DIR/leksahecho:$PATH" $RUN_LEKSAH --develop-leksah $@
   LEKSAH_EXIT_CODE=$?
 done

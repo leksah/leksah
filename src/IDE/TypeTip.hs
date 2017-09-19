@@ -28,7 +28,7 @@ import GI.Gtk
        (windowMove, windowResize, widgetHide, containerAdd, widgetShowAll,
         containerSetBorderWidth, setWindowTransientFor,
         setWindowDefaultHeight, setWindowDefaultWidth, setWindowResizable,
-        setWindowDecorated, setWindowTypeHint, windowNew)
+        setWindowDecorated, setWindowTypeHint, windowNew, windowGetPosition)
 import GI.Gtk.Enums (WindowType(..))
 import GI.Gdk.Enums (WindowTypeHint(..))
 import IDE.TextEditor (updateStyle, newDefaultBuffer)
@@ -38,7 +38,7 @@ import Data.IORef (newIORef)
 import Data.Int (Int32)
 import Data.Monoid ((<>))
 import Data.List (intersperse)
-import Control.Monad (void)
+import Control.Monad (void, when)
 import GI.GLib.Constants (pattern PRIORITY_DEFAULT_IDLE)
 
 setTypeTip :: (Int32, Int32) -> Text -> IDEM ()
@@ -80,12 +80,20 @@ initTypeTip x y tip = do
             if T.null t
                 then liftIO $ widgetHide window
                 else do
-                    widgetHide window
-                    setText buffer t
-                    windowMove window (x+2) (y-1)
-                    postAsyncIDE' PRIORITY_DEFAULT_IDLE $ do
-                        windowResize window 10 10
-                        liftIO $ widgetShowAll window
+                    let (x', y') = (x+2, y-1)
+                    s <- getStartIter buffer
+                    e <- getEndIter buffer
+                    curText <- getText buffer s e True
+                    curPos <- windowGetPosition window
+                    if t /= curText || (x', y') /= curPos
+                        then do
+                            widgetHide window
+                            setText buffer t
+                            windowMove window x' y'
+                            postAsyncIDE' PRIORITY_DEFAULT_IDLE $ do
+                                windowResize window 10 10
+                                liftIO $ widgetShowAll window
+                        else liftIO $ widgetShowAll window
 
     modifyIDE_ $ \ide -> ide{typeTip = Just (TypeTip window updateTypeTip)}
 

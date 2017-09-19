@@ -13,3 +13,4 @@ leksah.lkshw
 /dist-newstyle/
 /*.local
 /result
+*.ghc.environment.*

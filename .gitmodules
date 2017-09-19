@@ -1,9 +1,6 @@
 [submodule "vendor/CodeMirror"]
 	path = vendor/CodeMirror
 	url = https://github.com/ghcjs/CodeMirror.git
-[submodule "vendor/ghcjs-dom"]
-	path = vendor/ghcjs-dom
-	url = https://github.com/ghcjs/ghcjs-dom.git
 [submodule "vendor/haskellVCSGUI"]
 	path = vendor/haskellVCSGUI
 	url = https://github.com/leksah/haskellVCSGUI.git
@@ -40,15 +37,3 @@
 [submodule "vendor/gi-gtk-hs"]
 	path = vendor/gi-gtk-hs
 	url = https://github.com/haskell-gi/gi-gtk-hs.git
-[submodule "vendor/haskell-gi"]
-	path = vendor/haskell-gi
-	url = https://github.com/hamishmack/haskell-gi.git
-[submodule "vendor/haskell-gi-base"]
-	path = vendor/haskell-gi-base
-	url = https://github.com/haskell-gi/haskell-gi-base.git
-[submodule "vendor/jsaddle-dom"]
-	path = vendor/jsaddle-dom
-	url = https://github.com/ghcjs/jsaddle-dom.git
-[submodule "vendor/haddock"]
-	path = vendor/haddock
-	url = https://github.com/haskell/haddock.git
