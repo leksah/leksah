@@ -71,8 +71,8 @@ let
     builtins.filterSource (path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
       nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ]
         && nixpkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
-      	&& nixpkgs.lib.all (i: !(nixpkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" ]
-      	# TODO: what else?
+        && nixpkgs.lib.all (i: !(nixpkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" ]
+        # TODO: what else?
       ) ./.;
 
   drv = overrideCabal (extendedHaskellPackages.callCabal2nix "leksah" cleanSrc {}) (oldAttrs: with pkgs; with extendedHaskellPackages; {
@@ -88,7 +88,7 @@ let
           ] else []);
 
     buildDepends = (oldAttrs.buildDepends or [])
-      ++ [ happy alex gnome3.dconf ];
+      ++ [ happy alex gnome3.dconf gnome3.defaultIconTheme ];
 
     libraryPkgconfigDepends = (oldAttrs.libraryPkgconfigDepends or [])
       ++ [ gnome3.gtk.dev gnome3.gtksourceview gnome3.webkitgtk cairo gnome3.gsettings_desktop_schemas ]
