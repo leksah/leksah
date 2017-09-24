@@ -517,9 +517,9 @@ mkActions =
         runBenchmarksToggled [] True
     ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
         makeModeToggled [] True
-    ,AD "NativeToggled" "_Enable GHC" (Just (__ "Use GHC to compile")) (Just "ide_make")
+    ,AD "NativeToggled" "_Enable GHC" (Just (__ "Use GHC to compile")) (Just "ide_target_binary")
         nativeToggled [] True
-    ,AD "JavaScriptToggled" "_Enable GHCJS" (Just (__ "Use GHCJS to compile")) (Just "ide_js")
+    ,AD "JavaScriptToggled" "_Enable GHCJS" (Just (__ "Use GHCJS to compile")) (Just "ide_target_js")
         javaScriptToggled [] True
     ,AD "DebugToggled" "_Enable GHCi" (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
         debugToggled [] True
@@ -743,7 +743,8 @@ newIcons = catch (do
             "ide_debug", "ide_step", "ide_local", "ide_module", "ide_continue", "ide_rebuild_meta",
             "ide_empty","ide_source_local", "ide_js", "ide_folder", "ide_source_folder",
             "ide_cabal_file", "ide_package", "ide_component", "ide_source_dependency", "ide_error",
-            "ide_warning", "ide_suggestion", "ide_git", "ide_test_build", "ide_bench_build", "ide_doc_build"  ]
+            "ide_warning", "ide_suggestion", "ide_git", "ide_test_build", "ide_bench_build", "ide_doc_build",
+            "ide_target_binary", "ide_target_js" ]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
