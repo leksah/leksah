@@ -57,22 +57,22 @@
   -->
   <plist>${project}/Info.plist</plist>
 
-  <main-binary>${prefix:leksah-bin}/c/leksah/build/leksah/leksah</main-binary>
+  <main-binary>${prefix:leksah-bin}/x/leksah/build/leksah/leksah</main-binary>
 
   <binary dest="${bundle}/Contents/Resources/bin/leksahecho">
-    ${prefix:leksah-server-bin}/c/leksahecho/build/leksahecho/leksahecho
+    ${prefix:leksah-server-bin}/x/leksahecho/build/leksahecho/leksahecho
   </binary>
   <binary dest="${bundle}/Contents/Resources/bin/leksahtrue">
-    ${prefix:leksah-server-bin}/c/leksahtrue/build/leksahtrue/leksahtrue
+    ${prefix:leksah-server-bin}/x/leksahtrue/build/leksahtrue/leksahtrue
   </binary>
   <binary dest="${bundle}/Contents/Resources/bin/leksah-server">
-    ${prefix:leksah-server-bin}/c/leksah-server/build/leksah-server/leksah-server
+    ${prefix:leksah-server-bin}/x/leksah-server/build/leksah-server/leksah-server
   </binary>
   <binary dest="${bundle}/Contents/Resources/bin/vcsgui">
-    ${prefix:vcsgui-bin}/c/vcsgui/build/vcsgui/vcsgui
+    ${prefix:vcsgui-bin}/x/vcsgui/build/vcsgui/vcsgui
   </binary>
   <binary dest="${bundle}/Contents/Resources/bin/vcsgui-askpass">
-    ${prefix:vcsgui-bin}/c/vcsgui-askpass/build/vcsgui-askpass/vcsgui-askpass
+    ${prefix:vcsgui-bin}/x/vcsgui-askpass/build/vcsgui-askpass/vcsgui-askpass
   </binary>
 
   <!-- Copy in the input methods. Dunno if they actually work with

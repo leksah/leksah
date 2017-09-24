@@ -579,12 +579,15 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                             case exe ++ executables pd of
                                 [] -> return ()
                                 (Executable {exeName = name} : _) -> do
-                                    let exePath = buildDir
+                                    let path' c = buildDir
                                                     </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-                                                    </> cDir (unUnqualComponentName name) </> unUnqualComponentName name </> unUnqualComponentName name
+                                                    </> c </> unUnqualComponentName name </> unUnqualComponentName name
+                                    path <- liftIO $ doesFileExist (path' "build") >>= \case
+                                        True -> return $ path' "build"
+                                        False -> return . path' $ cDir "x" (unUnqualComponentName name)
                                     IDE.Package.runPackage (addLogLaunchData logName logLaunch)
                                                            (T.pack $ printf (__ "Running %s") (T.unpack logName))
-                                                           exePath
+                                                           path
                                                            (ipdExeFlags package)
                                                            dir
                                                            (Just env)
@@ -658,9 +661,14 @@ packageRunJavaScript' addFlagIfMissing (project, package) =
                 case exe ++ executables pd of
                     (Executable {exeName = name} : _) -> liftIDE $ do
                         (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project)
-                        let path = buildDir
+                        let path' c = buildDir
                                     </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-                                    </> cDir (unUnqualComponentName name) </> unUnqualComponentName name </> unUnqualComponentName name <.> "jsexe" </> "index.html"
+                                    </> c </> unUnqualComponentName name </> unUnqualComponentName name <.> "jsexe" </> "index.html"
+
+                        path <- liftIO $ doesFileExist (path' "build") >>= \case
+                            True -> return $ path' "build"
+                            False -> return . path' $ cDir "x" (unUnqualComponentName name)
+
                         postAsyncIDE $ do
                             loadOutputUri ("file:///" ++ path)
                             getOutputPane Nothing  >>= \ p -> displayPane p False
@@ -695,21 +703,13 @@ packageTest' backgroundBuild jumpToWarnings (project, package) continuation =
 packageRunComponent :: Component -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 packageRunComponent (CLib _) _ _ _ _ = error "packageRunComponent"
 packageRunComponent component backgroundBuild jumpToWarnings (project, package) continuation = do
-    let name = case component of
+    let (cType, name, command) = case component of
                     CLib _ -> error "packageRunComponent"
-                    CExe exe -> exeName exe
-                    CTest test -> testName test
-                    CBench bench -> benchmarkName bench
+                    CExe exe -> ("x", exeName exe, "run")
+                    CTest test -> ("t", testName test, "test")
+                    CBench bench -> ("b", benchmarkName bench, "bench")
 #if MIN_VERSION_Cabal(2,0,0)
-                    CFLib flib -> foreignLibName flib
-#endif
-        command = case component of
-                    CLib _ -> error "packageRunComponent"
-                    CExe exe -> "run"
-                    CTest test -> "test"
-                    CBench bench -> "bench"
-#if MIN_VERSION_Cabal(2,0,0)
-                    CFLib flib -> "flib"
+                    CFLib flib -> ("f", foreignLibName flib, "flib") -- TODO check if "f" is correct
 #endif
         dir = ipdPackageDir package
     logLaunch <- getDefaultLogLaunch
@@ -729,9 +729,14 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
             CabalTool -> do
                 (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project)
                 env <- packageEnv package
+                let path' c = buildDir </> T.unpack pkgId </> c
+                            </> unUnqualComponentName name </> unUnqualComponentName name
+                liftIO . debugM "leksah" $ "Looking for " <> path' "build"
+                path <- liftIO $ doesFileExist (path' "build") >>= \case
+                    True -> return $ path' "build"
+                    False -> return . path' $ cDir cType (unUnqualComponentName name)
                 return
-                    ( buildDir </> T.unpack pkgId </> cDir (unUnqualComponentName name)
-                        </> unUnqualComponentName name </> unUnqualComponentName name
+                    ( path
                     , Just $ ("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] packageDBs) : env
                     )
         runExternalTool' (__ "Run " <> T.pack (unUnqualComponentName name)) cmd (args
