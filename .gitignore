@@ -14,3 +14,4 @@ leksah.lkshw
 /*.local
 /result
 *.ghc.environment.*
+/dist-ghcjs/

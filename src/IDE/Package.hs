@@ -327,7 +327,15 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                 ++ flagsForTests
                 ++ flagsForBenchmarks
                 ++ ipdBuildFlags package
-    runExternalTool' (__ "Building") (pjToolCommand project) args dir Nothing $ do
+
+    mbEnv <- if compiler == GHCJS
+                then do
+                    env <- packageEnv package
+                    dataDir <- getDataDir
+                    emptyFile <- liftIO $ getConfigFilePathForLoad "empty-file" Nothing dataDir
+                    return . Just $ ("GHC_ENVIRONMENT", emptyFile) : env
+                else return Nothing
+    runExternalTool' (__ "Building") (pjToolCommand project) args dir mbEnv $ do
         (mbLastOutput, _) <- C.getZipSink $ (,)
             <$> C.ZipSink sinkLast
             <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
