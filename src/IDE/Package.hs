@@ -321,7 +321,7 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                 (case pjTool project of
                     StackTool -> ["build"] <> pjFileArgs <> [ipdPackageName package]
                     CabalTool -> "new-build" : pjFileArgs)
-                ++ ["--ghcjs" | compiler == GHCJS]
+                ++ (if compiler == GHCJS then ["--ghcjs", "--builddir=dist-ghcjs"] else [])
                 ++ ["--with-ld=false" | pjTool project == CabalTool && backgroundBuild && withoutLinking]
                 ++ maybeToList mbActiveComponent
                 ++ flagsForTests
@@ -418,7 +418,7 @@ packageDoc' backgroundBuild jumpToWarnings (project, package) continuation = do
         flags <- case pjTool project of
                         StackTool -> return ["haddock", "--no-haddock-deps"]
                         CabalTool -> do
-                            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project)
+                            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
                             return
                                 [ "act-as-setup"
                                 , "--"
@@ -448,12 +448,8 @@ packageClean' (project, package) continuation = do
         projectRoot = pjDir project
     case pjTool project of
         CabalTool -> do
-            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project)
-            let packageBuildDir = buildDir
-                            </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-            liftIO $ doesDirectoryExist packageBuildDir >>= \case
-                True -> removeDirectoryRecursive packageBuildDir
-                False -> return ()
+            cleanCabal "dist-newstyle"
+            cleanCabal "dist-ghcjs"
         StackTool ->
             runExternalTool' (__ "Cleaning")
                             (pjToolCommand project)
@@ -461,6 +457,14 @@ packageClean' (project, package) continuation = do
                             dir Nothing $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+  where
+    cleanCabal buildDir = do
+        (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) buildDir
+        let packageBuildDir = buildDir
+                        </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+        liftIO $ doesDirectoryExist packageBuildDir >>= \case
+            True -> removeDirectoryRecursive packageBuildDir
+            False -> return ()
 
 packageCopy :: PackageAction
 packageCopy = do
@@ -574,7 +578,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                                                    Nothing
                                                    (logOutput logLaunch)
                         CabalTool -> do
-                            (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project)
+                            (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
                             env <- packageEnv package
                             case exe ++ executables pd of
                                 [] -> return ()
@@ -623,60 +627,61 @@ packageRunJavaScript = do
 
 packageRunJavaScript' :: Bool -> (Project, IDEPackage) -> IDEAction
 packageRunJavaScript' addFlagIfMissing (project, package) =
-    if addFlagIfMissing && ("--ghcjs" `notElem` ipdConfigFlags package)
-        then do
-            window <- liftIDE getMainWindow
-            md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
-                    constructMessageDialogButtons ButtonsTypeCancel]
-            setMessageDialogMessageType md MessageTypeQuestion
-            setMessageDialogText md $ __ "Package is not configured to use GHCJS.  Would you like to add --ghcjs to the configure flags and rebuild?"
-            windowSetTransientFor md (Just window)
-            dialogAddButton' md (__ "Use _GHCJS") (AnotherResponseType 1)
-            dialogSetDefaultResponse' md (AnotherResponseType 1)
-            setWindowWindowPosition md WindowPositionCenterOnParent
-            resp <- dialogRun' md
-            widgetDestroy md
-            case resp of
-                AnotherResponseType 1 -> do
-                    let packWithNewFlags = package { ipdConfigFlags = "--ghcjs" : ipdConfigFlags package }
-                    changePackage packWithNewFlags
-                    liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
-                    packageConfig' (project, packWithNewFlags) $ \ ok -> when ok $
-                        packageRunJavaScript' False (project, packWithNewFlags)
-                _  -> return ()
-        else liftIDE $ buildPackage False False True (project, package) $ \ ok -> when ok $ liftIDE $ catchIDE (do
-                ideR        <- ask
-                maybeDebug   <- readIDE debugState
-                pd <- liftIO $ fmap flattenPackageDescription
-                                 (readPackageDescription normal (ipdCabalFile package))
-                mbComponent <- readIDE activeComponent
-                let exe = exeToRun mbComponent $ executables pd
-                let defaultLogName = ipdPackageName package
-                    logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . unUnqualComponentName . exeName) exe
-                (logLaunch,logName) <- buildLogLaunchByName logName
-                let dir = ipdPackageDir package
-                    projectRoot = pjDir project
-                prefs <- readIDE prefs
-                case exe ++ executables pd of
-                    (Executable {exeName = name} : _) -> liftIDE $ do
-                        (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project)
-                        let path' c = buildDir
-                                    </> T.unpack (packageIdentifierToString $ ipdPackageId package)
-                                    </> c </> unUnqualComponentName name </> unUnqualComponentName name <.> "jsexe" </> "index.html"
+    if pjTool project == StackTool
+        then ideMessage Normal (__ "Leksah does not know how to run stack.yaml projects built with GHCJS.  Please use a cabal.project file instead (or send a pull request to fix Leksah).")
+        else do
+            prefs' <- readIDE prefs
+            if addFlagIfMissing && not (javaScript prefs')
+                then do
+                    window <- liftIDE getMainWindow
+                    md <- new' MessageDialog [
+                            constructDialogUseHeaderBar 0,
+                            constructMessageDialogButtons ButtonsTypeCancel]
+                    setMessageDialogMessageType md MessageTypeQuestion
+                    setMessageDialogText md $ __ "Would you like to enable the GHCJS as a build target and rebuild?"
+                    windowSetTransientFor md (Just window)
+                    dialogAddButton' md (__ "Enable _GHCJS") (AnotherResponseType 1)
+                    dialogSetDefaultResponse' md (AnotherResponseType 1)
+                    setWindowWindowPosition md WindowPositionCenterOnParent
+                    resp <- dialogRun' md
+                    widgetDestroy md
+                    case resp of
+                        AnotherResponseType 1 -> do
+                            setJavaScriptToggled True
+                            buildPackage False False False (project, package) $ \ ok -> when ok $
+                                packageRunJavaScript' False (project, package)
+                        _  -> return ()
+                else liftIDE $ buildPackage False False True (project, package) $ \ ok -> when ok $ liftIDE $ catchIDE (do
+                        ideR        <- ask
+                        maybeDebug   <- readIDE debugState
+                        pd <- liftIO $ fmap flattenPackageDescription
+                                         (readPackageDescription normal (ipdCabalFile package))
+                        mbComponent <- readIDE activeComponent
+                        let exe = exeToRun mbComponent $ executables pd
+                        let defaultLogName = ipdPackageName package
+                            logName = fromMaybe defaultLogName . listToMaybe $ map (T.pack . unUnqualComponentName . exeName) exe
+                        (logLaunch,logName) <- buildLogLaunchByName logName
+                        let dir = ipdPackageDir package
+                            projectRoot = pjDir project
+                        case exe ++ executables pd of
+                            (Executable {exeName = name} : _) -> liftIDE $ do
+                                (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-ghcjs"
+                                let path' c = buildDir
+                                            </> T.unpack (packageIdentifierToString $ ipdPackageId package)
+                                            </> c </> unUnqualComponentName name </> unUnqualComponentName name <.> "jsexe" </> "index.html"
 
-                        path <- liftIO $ doesFileExist (path' "build") >>= \case
-                            True -> return $ path' "build"
-                            False -> return . path' $ cDir "x" (unUnqualComponentName name)
+                                path <- liftIO $ doesFileExist (path' "build") >>= \case
+                                    True -> return $ path' "build"
+                                    False -> return . path' $ cDir "x" (unUnqualComponentName name)
 
-                        postAsyncIDE $ do
-                            loadOutputUri ("file:///" ++ path)
-                            getOutputPane Nothing  >>= \ p -> displayPane p False
-                      `catchIDE`
+                                postAsyncIDE $ do
+                                    loadOutputUri ("file:///" ++ path)
+                                    getOutputPane Nothing  >>= \ p -> displayPane p False
+                              `catchIDE`
+                                (\(e :: SomeException) -> print e)
+
+                            _ -> return ())
                         (\(e :: SomeException) -> print e)
-
-                    _ -> return ())
-                (\(e :: SomeException) -> print e)
 
 packageTest :: PackageAction
 packageTest = do
@@ -727,7 +732,7 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
         (cmd, mbEnv) <- case pjTool project of
             StackTool -> return ("stack", Nothing)
             CabalTool -> do
-                (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project)
+                (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
                 env <- packageEnv package
                 let path' c = buildDir </> T.unpack pkgId </> c
                             </> unUnqualComponentName name </> unUnqualComponentName name
@@ -803,7 +808,7 @@ packageOpenDoc = do
                                 liftIO . putMVar mvar $ head $ mapMaybe getDistOutput output
                             liftIO $ takeMVar mvar
                         CabalTool -> do
-                            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project)
+                            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
                             return $ buildDir </> T.unpack pkgId
     liftIDE $ do
         prefs   <- readIDE prefs
