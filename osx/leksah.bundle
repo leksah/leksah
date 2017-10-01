@@ -74,6 +74,9 @@
   <binary dest="${bundle}/Contents/Resources/bin/vcsgui-askpass">
     ${prefix:vcsgui-bin}/x/vcsgui-askpass/build/vcsgui-askpass/vcsgui-askpass
   </binary>
+  <data dest="${bundle}/Contents/Resources/bin/run">
+    ${project}/run
+  </data>
 
   <!-- Copy in the input methods. Dunno if they actually work with
        OSX. Note the ${gtkdir} macro, which expands to the correct
