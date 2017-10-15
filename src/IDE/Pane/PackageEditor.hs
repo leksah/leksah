@@ -185,34 +185,39 @@ toGenericPackageDescription pd =
     buildCondTreeLibrary lib =
         CondNode {
             condTreeData = lib { libBuildInfo = (libBuildInfo lib) { targetBuildDepends = buildDepends pd } },
-            condTreeConstraints = buildDepends pd,
+            condTreeConstraints = [],
             condTreeComponents = []}
     buildCondTreeExe exe =
         (exeName exe, CondNode {
-            condTreeData = exe { buildInfo = (buildInfo exe) { targetBuildDepends = buildDepends pd } },
-            condTreeConstraints = buildDepends pd,
+            condTreeData = exe {
+#if MIN_VERSION_Cabal(2,0,0) && !MIN_VERSION_Cabal(2,1,0)
+                -- Without this Cabal 2.0.0.2 ppCondExecutables is broken (it is missing some parens).
+                exeScope = ExecutablePublic,
+#endif
+                buildInfo = (buildInfo exe) { targetBuildDepends = buildDepends pd } },
+            condTreeConstraints = [],
             condTreeComponents = []})
     buildCondTreeTest test =
         (testName test, CondNode {
             condTreeData = test { testBuildInfo = (testBuildInfo test) { targetBuildDepends = buildDepends pd } },
-            condTreeConstraints = buildDepends pd,
+            condTreeConstraints = [],
             condTreeComponents = []})
     buildCondTreeBenchmark bm =
         (benchmarkName bm, CondNode {
             condTreeData = bm { benchmarkBuildInfo = (benchmarkBuildInfo bm) { targetBuildDepends = buildDepends pd } },
-            condTreeConstraints = buildDepends pd,
+            condTreeConstraints = [],
             condTreeComponents = []})
 #if MIN_VERSION_Cabal(2,0,0)
     buildCondTreeForeignLib fl =
         (foreignLibName fl, CondNode {
             condTreeData = fl { foreignLibBuildInfo = (foreignLibBuildInfo fl) { targetBuildDepends = buildDepends pd } },
-            condTreeConstraints = buildDepends pd,
+            condTreeConstraints = [],
             condTreeComponents = []})
     buildCondTreeSubLibraries sl@Library{libName = Nothing} = []
     buildCondTreeSubLibraries sl@Library{libName = Just ln} = [
         (ln, CondNode {
             condTreeData = sl { libBuildInfo = (libBuildInfo sl) { targetBuildDepends = buildDepends pd } },
-            condTreeConstraints = buildDepends pd,
+            condTreeConstraints = [],
             condTreeComponents = []})]
 #endif
 

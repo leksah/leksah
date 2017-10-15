@@ -426,7 +426,8 @@ constructAndOpenMainModules (Just idePackage) =
         case mbPD of
             Just (pd,_) ->
                 case hsSourceDirs bi of
-                    path:_ -> do
+                    path':_ -> do
+                        let path = ipdPackageDir idePackage </> path'
                         liftIO $ createDirectoryIfMissing True path
                         alreadyExists <- liftIO $ doesFileExist (path </> target)
                         unless alreadyExists $ do
