@@ -123,7 +123,7 @@ cabal update
 ##### Step 3.b.2: Build and run Leksah
 ###### macOS using MacPorts
 ```shell
-XDG_DATA_DIRS=/opt/local/share stack install --stack-yaml stack.osx.yaml
+XDG_DATA_DIRS=/opt/local/share stack install
 stack exec --no-ghc-package-path leksah
 ```
 
