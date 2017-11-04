@@ -1,6 +1,6 @@
 environment:
   matrix:
-    - GHCVER: 8.0.2
+#    - GHCVER: 8.0.2
     - GHCVER: 8.2.1
 
 cache:
