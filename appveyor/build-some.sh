@@ -18,7 +18,7 @@ elif [ ! -d cache2 ]; then
 elif [ ! -d cache3 ]; then
   mv cache2/* $APPDATA
   cabal update
-  cabal install -j1 ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui -fwebkit -f-yi -fpango -f-vty --only-dependencies
+  cabal install -j1 ./ vendor/ltk vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui -fwebkit -f-yi -fpango -f-vty --constraint='haskell-gi-overloading==0.*' --only-dependencies
   mkdir cache3
   mv $APPDATA/ghc $APPDATA/cabal cache3
 else
