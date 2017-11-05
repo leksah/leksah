@@ -54,6 +54,7 @@ import System.Posix.Process (getProcessGroupIDOf)
 import System.Posix.Signals (inSignalSet, sigINT, getSignalMask)
 #endif
 
+showSignalMask :: IO String
 #if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
 showSignalMask = ("mask INT "<>) . show . (sigINT `inSignalSet`) <$> getSignalMask
 #else
