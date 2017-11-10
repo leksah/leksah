@@ -1,7 +1,7 @@
 #!/bin/bash
 
-LEKSAH_SERVER_VERSION='0.16.2.0'
-LEKSAH_VERSION='0.16.2.2'
+LEKSAH_SERVER_VERSION='0.16.3.0'
+LEKSAH_VERSION='0.16.3.0'
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
