@@ -178,7 +178,7 @@ hlintSettings project package = do
         projectRoot = pjDir project
     cabalMacros <- case pjTool project of
         CabalTool -> do
-            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
+            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
             return $ buildDir </> T.unpack (packageIdentifierToString $ ipdPackageId package)
                               </> "build/autogen/cabal_macros.h"
         StackTool -> return $ ipdPackageDir package </> ".stack-work/dist/x86_64-osx/Cabal-1.24.2.0/build/autogen/cabal_macros.h"

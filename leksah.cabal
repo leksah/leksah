@@ -1,5 +1,5 @@
 name: leksah
-version: 0.16.3.0
+version: 0.16.3.1
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
@@ -268,7 +268,7 @@ library
         build-depends:
             ghc >=6.10.1 && <8.3,
             haskell-src-exts >=1.13.5 && <1.19,
-            leksah-server >=0.16.3.0 && <0.17
+            leksah-server >=0.16.3.1 && <0.17
 
     exposed-modules:
         IDE.HLint

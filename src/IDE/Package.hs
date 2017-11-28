@@ -107,7 +107,7 @@ import IDE.Utils.FileUtils
 import IDE.LogRef
 import Distribution.ModuleName (ModuleName(..))
 import Data.List
-       (intercalate, isInfixOf, nub, foldl', delete, find)
+       (isPrefixOf, intercalate, isInfixOf, nub, foldl', delete, find)
 import IDE.Utils.Tool
        (toolProcess, ToolOutput(..), runTool, newGhci, ToolState(..),
         toolline, ProcessHandle, executeGhciCommand, interruptTool)
@@ -426,13 +426,16 @@ packageDoc' backgroundBuild jumpToWarnings (project, package) continuation = do
         flags <- case pjTool project of
                         StackTool -> return ["haddock", "--no-haddock-deps"]
                         CabalTool -> do
-                            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
-                            return
-                                [ "act-as-setup"
-                                , "--"
-                                , "haddock"
-                                , T.pack ("--builddir=" <> (buildDir </>
-                                    T.unpack (packageIdentifierToString $ ipdPackageId package)))]
+                            (buildDir, _, cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
+                            case cabalVer of
+                                Just v | "1.24." `isPrefixOf` v ->
+                                    return
+                                        [ "act-as-setup"
+                                        , "--"
+                                        , "haddock"
+                                        , T.pack ("--builddir=" <> (buildDir </>
+                                            T.unpack (packageIdentifierToString $ ipdPackageId package)))]
+                                _ -> return ["new-haddock"]
         runExternalTool' (__ "Documenting") (pjToolCommand project)
             (flags <> ipdHaddockFlags package) dir Nothing $ do
             mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
@@ -467,7 +470,7 @@ packageClean' (project, package) continuation = do
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
   where
     cleanCabal buildDir = do
-        (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) buildDir
+        (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir project) buildDir
         let packageBuildDir = buildDir
                         </> T.unpack (packageIdentifierToString $ ipdPackageId package)
         liftIO $ doesDirectoryExist packageBuildDir >>= \case
@@ -586,7 +589,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                                                    Nothing
                                                    (logOutput logLaunch)
                         CabalTool -> do
-                            (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
+                            (buildDir, cDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
                             env <- packageEnv package
                             case exe ++ executables pd of
                                 [] -> return ()
@@ -673,7 +676,7 @@ packageRunJavaScript' addFlagIfMissing (project, package) =
                             projectRoot = pjDir project
                         case exe ++ executables pd of
                             (Executable {exeName = name} : _) -> liftIDE $ do
-                                (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-ghcjs"
+                                (buildDir, cDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-ghcjs"
                                 let path' c = buildDir
                                             </> T.unpack (packageIdentifierToString $ ipdPackageId package)
                                             </> c </> unUnqualComponentName name </> unUnqualComponentName name <.> "jsexe" </> "index.html"
@@ -734,26 +737,32 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
         packageDBs <- liftIO $ getPackageDBs' ghcVersion dir
         let pkgId = packageIdentifierToString $ ipdPackageId package
             pkgName = ipdPackageName package
-            args = case pjTool project of
-                        StackTool -> [command, pkgName <> ":" <> T.pack (unUnqualComponentName name)]
-                        CabalTool -> []
-        (cmd, mbEnv) <- case pjTool project of
-            StackTool -> return ("stack", Nothing)
+        (cmd, mbEnv, args) <- case pjTool project of
+            StackTool -> return ("stack", Nothing, [command, pkgName <> ":" <> T.pack (unUnqualComponentName name)])
             CabalTool -> do
-                (buildDir, cDir) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
-                env <- packageEnv package
-                let path' c = buildDir </> T.unpack pkgId </> c
-                            </> unUnqualComponentName name </> unUnqualComponentName name
-                liftIO . debugM "leksah" $ "Looking for " <> path' "build"
-                path <- liftIO $ doesFileExist (path' "build") >>= \case
-                    True -> return $ path' "build"
-                    False -> return . path' $ cDir cType (unUnqualComponentName name)
-                return
-                    ( path
-                    , Just $ ("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] packageDBs) : env
-                    )
+                (buildDir, cDir, cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
+                case cabalVer of
+                    Just v | "1.24." `isPrefixOf` v -> do
+                        env <- packageEnv package
+                        let path' c = buildDir </> T.unpack pkgId </> c
+                                    </> unUnqualComponentName name </> unUnqualComponentName name
+                        liftIO . debugM "leksah" $ "Looking for " <> path' "build"
+                        path <- liftIO $ doesFileExist (path' "build") >>= \case
+                            True -> return $ path' "build"
+                            False -> return . path' $ cDir cType (unUnqualComponentName name)
+                        return
+                            ( path
+                            , Just $ ("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] packageDBs) : env
+                            , []
+                            )
+                    _ ->
+                        return
+                            ( "cabal"
+                            , Nothing
+                            , ["new-" <> command, pkgName <> ":" <> T.pack (unUnqualComponentName name)]
+                            )
         runExternalTool' (__ "Run " <> T.pack (unUnqualComponentName name)) cmd (args
-            ++ ipdBuildFlags package ++ ipdTestFlags package) dir mbEnv $ do
+            ++ ipdTestFlags package) dir mbEnv $ do
                 (mbLastOutput, _) <- C.getZipSink $ (,)
                     <$> C.ZipSink sinkLast
                     <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
@@ -816,7 +825,7 @@ packageOpenDoc = do
                                 liftIO . putMVar mvar $ head $ mapMaybe getDistOutput output
                             liftIO $ takeMVar mvar
                         CabalTool -> do
-                            (buildDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
+                            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
                             return $ buildDir </> T.unpack pkgId
     liftIDE $ do
         prefs   <- readIDE prefs
