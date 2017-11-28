@@ -87,7 +87,8 @@ import qualified GI.Gtk.Functions as Gtk (main, init)
 import GI.GLib.Functions (idleAdd, timeoutAdd, timeoutAddSeconds)
 import GI.GLib.Constants
        (pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, pattern PRIORITY_LOW)
-import GI.Gdk.Objects.Screen (screenGetDefault)
+import GI.Gdk.Objects.Screen
+       (screenGetDefault, screenSetResolution)
 import GI.Gtk.Objects.CssProvider
        (CssProvider(..), cssProviderLoadFromData, cssProviderNew)
 import GI.Gtk.Objects.StyleContext
@@ -273,6 +274,9 @@ startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs ipref
         screenGetDefault >>= \case
             Nothing -> return ()
             Just screen -> do
+#if defined(darwin_HOST_OS)
+                screenSetResolution screen 72
+#endif
                 debugM "leksah" "Add CSS"
                 provider <- cssProviderNew
                 cssProviderLoadFromData provider $
