@@ -9,15 +9,31 @@ The user interface is a mix of GTK+ and WebKit based components.
 Documentation can be found on [leksah.org](http://leksah.org/).
 
 ## Getting Leksah
-### Installation
+
+### Nix
+
+Using [Nix](https://nixos.org/nix/) is the easiest way to get Leksah.  It works well on Linux and MacOS.  Please let us know it it works on the Windows Subsystem for Linux (WSL).
+
+```
+git clone --recursive https://github.com/leksah/leksah.git
+cd leksah
+nix-env -f . -i
+```
+
+When you run `leksah` it will expect to see `ghc` and `cabal` in the `PATH`.  You can install these with `nix-env -i ghc cabal` or you can run `leksah` inside a suitable `nix-shell`.  The [Reflex Platform](https://github.com/reflex-frp/reflex-platform#reflex-platform-) has a `./try-reflex` shell that includes `ghc`, `ghcjs` and `cabal`.
+
+If you want to make changes to Leksah run the `./leksah-nix.sh` script to start Leksah itself in a nix-shell with everything needed to work on Leksah.  Then open the Leksah `cabal.project` file.
+
+On macOS the Leksah window start below other active application windows you can use Command+Shift+Tab to bring it to the top ([issue 461](https://github.com/leksah/leksah/issues/461)).
+
+### Installation (without Nix)
 Leksah requires `ghc --version` >=8.0.2 and `cabal --version` >=1.24. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
 
 * **Windows** [latest github version built with AppVeyor](https://ci.appveyor.com/project/hamishmack/leksah/build/artifacts)
 * **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download)
 * **Linux**: [build from source](https://github.com/leksah/leksah#building-from-source)
 
-### Building from source
-We have completed a port of Leksah from Gtk2Hs to haskell-gi. Not all of the code is in Hackage yet so to build it you can either use [Xobl](xobl/Readme.md) or follow the instructions below.
+### Building from source (without Nix)
 
 #### Step 1: Install C libraries
 
