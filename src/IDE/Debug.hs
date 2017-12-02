@@ -139,9 +139,9 @@ debugQuit =
 --
 -- Press Ctrl + Enter on these to try it out...
 --
--- > stripComments "-- > Wow this is meta"
+-- > stripComments $ T.pack "-- > Wow this is meta"
 --
--- > stripComments "-- This is still a comment"
+-- > stripComments $ T.pack "-- This is still a comment"
 stripComments :: Text -> Text
 stripComments t = maybe t (T.concat . intersperse "\n") $
         mapM (T.stripPrefix "-- >>>") lines'

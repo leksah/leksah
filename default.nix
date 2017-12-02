@@ -17,6 +17,15 @@ let
 
   inherit (nixpkgs) pkgs;
 
+  filterSubmodule = src:
+    builtins.filterSource (path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
+      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./default.nix ]
+        && nixpkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
+        && nixpkgs.lib.all (i: !(nixpkgs.lib.hasSuffix i path)) [ ".lkshf" ]
+        && nixpkgs.lib.all (i: !(nixpkgs.lib.hasPrefix i path)) [ ".ghc.environment." ]
+        # TODO: what else?
+      ) src;
+  
   fixCairoGI = p: overrideCabal p (drv: {
     preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
       export LD_LIBRARY_PATH="${pkgs.cairo}/lib"
@@ -53,12 +62,12 @@ let
         haskell-gi-overloading = super.haskell-gi-overloading_0_0;
 
         # FIXME: do we really need them as Git submodules?
-        vcswrapper = self.callCabal2nix "vcswrapper" ./vendor/haskellVCSWrapper/vcswrapper {};
-        vcsgui = self.callCabal2nix "vcsgui" ./vendor/haskellVCSGUI/vcsgui {};
-        ltk = overrideCabal (self.callCabal2nix "ltk" ./vendor/ltk {}) (drv: {
+        vcswrapper = self.callCabal2nix "vcswrapper" (filterSubmodule ./vendor/haskellVCSWrapper/vcswrapper) {};
+        vcsgui = self.callCabal2nix "vcsgui" (filterSubmodule ./vendor/haskellVCSGUI/vcsgui) {};
+        ltk = overrideCabal (self.callCabal2nix "ltk" (filterSubmodule ./vendor/ltk) {}) (drv: {
           libraryPkgconfigDepends = with pkgs; [ gnome3.gtk.dev ] ++ (if stdenv.isDarwin then [ gtk-mac-integration-gtk3 ] else []);
         });
-        leksah-server = dontCheck (self.callCabal2nix "leksah-server" ./vendor/leksah-server {}); # FIXME: really `dontCheck`?
+        leksah-server = dontCheck (self.callCabal2nix "leksah-server" (filterSubmodule ./vendor/leksah-server) {}); # FIXME: really `dontCheck`?
 
         # TODO: optionally add:
         # • yi >=0.12.4 && <0.13,
@@ -69,7 +78,7 @@ let
 
   cleanSrc =
     builtins.filterSource (path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
-      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ]
+      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ./vendor ]
         && nixpkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
         && nixpkgs.lib.all (i: !(nixpkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" ]
         && nixpkgs.lib.all (i: !(nixpkgs.lib.hasPrefix i path)) [ ".ghc.environment." ]
