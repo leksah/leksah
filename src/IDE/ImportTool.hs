@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -99,6 +100,7 @@ import GI.Gtk.Objects.MenuItem
        (onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import GI.Gtk (constructDialogUseHeaderBar)
+import Control.Exception (SomeException)
 
 #if !MIN_VERSION_Cabal(2,0,0)
 versionNumbers :: Version -> [Int]
@@ -232,7 +234,8 @@ addPackages errors = do
                                         (condTestSuites gpd),
                   condBenchmarks  = map (addDepToBenchmark d)
                                         (condBenchmarks gpd)}
-        return True
+      `catchIDE`
+        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
     return . not $ null packs
   where

@@ -120,7 +120,7 @@ debugCommand' :: Text -> C.Sink ToolOutput IDEM () -> DebugAction
 debugCommand' command handler = do
     ghci <- ask
     lift $ catchIDE (runDebug (executeDebugCommand command handler) ghci)
-        (\(e :: SomeException) -> (print e))
+        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 debugToggled :: IDEAction
 debugToggled = do

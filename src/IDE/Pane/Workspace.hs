@@ -704,7 +704,7 @@ contextMenuItems record path store = do
     mainWindow <- getMainWindow
     case record of
         (FileRecord fp) -> do
-            let onDeleteFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef ->
+            let onDeleteFile = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef ->
                     showDialogOptions
                         (Just mainWindow)
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
@@ -718,7 +718,7 @@ contextMenuItems record path store = do
 
         DirRecord fp _ -> do
 
-            let onNewModule = flip catchIDE (\(e :: SomeException) -> print e) $
+            let onNewModule = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $
                     treePathToPackage store path >>= \case
                         (Just project, Just pkg) -> do
                             mbWs <- readIDE workspace
@@ -730,7 +730,7 @@ contextMenuItems record path store = do
                                 refreshWorkspacePane
                         _ -> return ()
 
-            let onNewTextFile = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
+            let onNewTextFile = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef -> do
                     mbText <- showInputDialog (Just mainWindow) "File name:" ""
                     case mbText of
                         Just t  -> do
@@ -743,7 +743,7 @@ contextMenuItems record path store = do
                                     void $ reflectIDE (refreshWorkspacePane >> goToSourceDefinition' path (Location "" 1 0 1 0)) ideRef
                         Nothing -> return ()
 
-            let onNewDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef -> do
+            let onNewDir = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef -> do
                     mbText <- showInputDialog (Just mainWindow) "Directory name:" ""
                     case mbText of
                         Just t  -> do
@@ -756,7 +756,7 @@ contextMenuItems record path store = do
                                     void $ reflectIDE refreshWorkspacePane ideRef
                         Nothing -> return ()
 
-            let onDeleteDir = flip catchIDE (\(e :: SomeException) -> print e) $ reifyIDE $ \ideRef ->
+            let onDeleteDir = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef ->
                     showDialogOptions
                         (Just mainWindow)
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")

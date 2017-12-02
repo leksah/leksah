@@ -305,16 +305,15 @@ workspaceOpenThis askForSession filePath = do
         sessionPath = dropExtension filePath ++ leksahSessionFileExtension
 
         openWithoutSession :: IDEAction
-        openWithoutSession = do
-            ideR <- ask
+        openWithoutSession =
             catchIDE (
                 Writer.readWorkspace filePath >>= \case
                     Left errorMsg -> showDialog (Just mainWindow) (T.pack $ "Could not open " <> filePath <> ". " <> errorMsg) MessageTypeError
                     Right workspace -> do
                         Writer.setWorkspace (Just workspace {wsFile = filePath})
                         VCSWS.onWorkspaceOpen workspace)
-                   (\ (e :: Exc.SomeException) -> reflectIDE
-                        (ideMessage Normal (T.pack $ printf (__ "Can't load workspace file %s\n%s") filePath (show e))) ideR)
+                   (\ (e :: Exc.SomeException) ->
+                        ideMessage Normal (T.pack $ printf (__ "Can't load workspace file %s\n%s") filePath (show e)))
 
         sessionDialog :: IDEAction
         sessionDialog = showDialogOptions

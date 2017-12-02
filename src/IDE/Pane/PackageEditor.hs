@@ -236,26 +236,29 @@ choosePackageFile window mbfp
 packageEdit :: PackageAction
 packageEdit = do
     idePackage <- ask
-    let dirName = ipdPackageDir idePackage
-    modules <- liftIO $ allModules dirName
-    package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
-    if hasConfigs package
-        then do
-            liftIDE $ ideMessage High
-                (__ "Cabal file with configurations can't be edited with the current version of the editor")
-            liftIDE $ fileOpenThis $ ipdCabalFile idePackage
-            return ()
-        else do
-            let flat = flattenPackageDescription package
-            if hasUnknownTestTypes flat || hasUnknownBenchmarkTypes flat
-                then do
-                    liftIDE $ ideMessage High
-                        (__ "Cabal file with tests or benchmarks of this type can't be edited with the current version of the editor")
-                    liftIDE $ fileOpenThis $ ipdCabalFile idePackage
-                    return ()
-                else do
-                    liftIDE $ editPackage flat dirName  modules (\ _ -> return ())
-                    return ()
+    liftIDE $ do
+        let dirName = ipdPackageDir idePackage
+        modules <- liftIO $ allModules dirName
+        package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
+        if hasConfigs package
+            then do
+                liftIDE $ ideMessage High
+                    (__ "Cabal file with configurations can't be edited with the current version of the editor")
+                liftIDE $ fileOpenThis $ ipdCabalFile idePackage
+                return ()
+            else do
+                let flat = flattenPackageDescription package
+                if hasUnknownTestTypes flat || hasUnknownBenchmarkTypes flat
+                    then do
+                        liftIDE $ ideMessage High
+                            (__ "Cabal file with tests or benchmarks of this type can't be edited with the current version of the editor")
+                        liftIDE $ fileOpenThis $ ipdCabalFile idePackage
+                        return ()
+                    else do
+                        liftIDE $ editPackage flat dirName  modules (\ _ -> return ())
+                        return ()
+      `catchIDE`
+        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 projectEditText :: ProjectAction
 projectEditText = do
@@ -508,7 +511,7 @@ clonePackageSourceDialog parent workspaceDir = do
         _             -> return Nothing
 
 packageClone :: FilePath -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
-packageClone workspaceDir log activateAction = flip catchIDE (\(e :: SomeException) -> print e) $ do
+packageClone workspaceDir log activateAction = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ do
     windows  <- getWindows
     mbResult <- clonePackageSourceDialog (head windows) workspaceDir
     case mbResult of

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-LEKSAH_SERVER_VERSION='0.16.3.0'
-LEKSAH_VERSION='0.16.3.0'
+LEKSAH_SERVER_VERSION=`grep '^version: ' vendor/leksah-server/leksah-server.cabal | sed 's|version: ||' | tr -d '\r'`
+LEKSAH_VERSION=`grep '^version: ' leksah.cabal | sed 's|version: ||' | tr -d '\r'`
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 

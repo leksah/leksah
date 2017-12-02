@@ -342,6 +342,8 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
         lift $ do
             errs <- readIDE errorRefs
             continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+  `catchIDE`
+    (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 --isConfigError :: Monad m => C.Sink ToolOutput m Bool
 --isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
@@ -442,7 +444,7 @@ packageDoc' backgroundBuild jumpToWarnings (project, package) continuation = do
                 logOutputForBuild project package backgroundBuild jumpToWarnings)
             lift $ postAsyncIDE reloadDoc
             lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
-        (\(e :: SomeException) -> print e)
+        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 packageClean :: PackageAction
 packageClean = do
@@ -497,7 +499,7 @@ packageCopy = do
                                     ["copy", "--destdir=" <> T.pack fp]
                                     dir Nothing
                                     (logOutput logLaunch))
-            (\(e :: SomeException) -> print e)
+            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 packageInstall :: PackageAction
 packageInstall = do
@@ -524,7 +526,7 @@ packageInstall' (project, package) continuation = do
                              dir Nothing $ do
                     mbLastOutput <- C.getZipSink $ (const <$> C.ZipSink sinkLast) <*> C.ZipSink (logOutput logLaunch)
                     lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
-            (\(e :: SomeException) -> print e)
+            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
         else continuation True
 
 packageRun :: PackageAction
@@ -563,7 +565,6 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                         packageRun' False (project, packWithNewFlags)
                 _  -> return ()
         else liftIDE $ catchIDE (do
-            ideR        <- ask
             pd <- liftIO $ fmap flattenPackageDescription
                              (readPackageDescription normal (ipdCabalFile package))
             mbComponent <- readIDE activeComponent
@@ -617,7 +618,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                             _ -> return ()
                         executeDebugCommand (":main " <> T.unwords (ipdExeFlags package)) (logOutput logLaunch))
                         debug)
-            (\(e :: SomeException) -> print e)
+            (\(e :: SomeException) -> ideMessage High (T.pack $ show e))
 
 -- | Is the given executable the active one?
 isActiveExe :: Text -> Executable -> Bool
@@ -689,10 +690,10 @@ packageRunJavaScript' addFlagIfMissing (project, package) =
                                     loadOutputUri ("file:///" ++ path)
                                     getOutputPane Nothing  >>= \ p -> displayPane p False
                               `catchIDE`
-                                (\(e :: SomeException) -> print e)
+                                (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
                             _ -> return ())
-                        (\(e :: SomeException) -> print e)
+                        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 packageTest :: PackageAction
 packageTest = do
@@ -708,6 +709,8 @@ packageTest' backgroundBuild jumpToWarnings (project, package) continuation =
             pd <- liftIO $ fmap flattenPackageDescription
                              (readPackageDescription normal (ipdCabalFile package))
             runTests $ testSuites pd
+          `catchIDE`
+            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
         else continuation True
   where
     runTests :: [TestSuite] -> IDEAction
@@ -769,7 +772,7 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
                 lift $ do
                     errs <- readIDE errorRefs
                     when (mbLastOutput == Just (ToolExit ExitSuccess)) $ continuation True)
-        (\(e :: SomeException) -> print e)
+        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 -- | Run benchmarks as foreground action for current package
 packageBench :: PackageAction
@@ -786,6 +789,8 @@ packageBench' backgroundBuild jumpToWarnings (project, package) continuation =
             pd <- liftIO $ fmap flattenPackageDescription
                              (readPackageDescription normal (ipdCabalFile package))
             runBenchs $ benchmarks pd
+          `catchIDE`
+            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
         else continuation True
   where
     runBenchs :: [Benchmark] -> IDEAction
@@ -805,7 +810,7 @@ packageSdist = do
             prefs <- readIDE prefs
             let dir = ipdPackageDir package
             runExternalTool' (__ "Source Dist") "cabal" ("sdist" : ipdSdistFlags package) dir Nothing (logOutput logLaunch))
-            (\(e :: SomeException) -> print e)
+            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 
 -- | Open generated documentation for package
@@ -836,7 +841,7 @@ packageOpenDoc = do
         loadDoc . T.pack $ "file://" ++ path
         getDocumentation Nothing  >>= \ p -> displayPane p False
       `catchIDE`
-        (\(e :: SomeException) -> print e)
+        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
   where
     -- get dist directory from stack path output
     getDistOutput (ToolOutput o) | Just t<-T.stripPrefix "dist-dir:" o = Just $ dropWhile isSpace $ T.unpack t
@@ -865,14 +870,12 @@ getPackageDescriptionAndPath = do
         Nothing -> do
             ideMessage Normal (__ "No active package")
             return Nothing
-        Just p  -> do
-            ideR <- ask
-            reifyIDE (\ideR -> catch (do
-                pd <- readPackageDescription normal (ipdCabalFile p)
+        Just p  -> catchIDE (do
+                pd <- liftIO $ readPackageDescription normal (ipdCabalFile p)
                 return (Just (flattenPackageDescription pd,ipdCabalFile p)))
                     (\(e :: SomeException) -> do
-                        reflectIDE (ideMessage Normal (__ "Can't load package " <> T.pack (show e))) ideR
-                        return Nothing))
+                        ideMessage Normal (__ "Can't load package " <> T.pack (show e))
+                        return Nothing)
 
 getEmptyModuleTemplate :: PackageDescription -> Text -> IO Text
 getEmptyModuleTemplate pd modName = getModuleTemplate "module" pd modName "" ""
@@ -900,13 +903,13 @@ data ModuleLocation = LibExposedMod | LibOtherMod | ExeOrTestMod Text
 addModuleToPackageDescr :: ModuleName -> [ModuleLocation] -> PackageAction
 addModuleToPackageDescr moduleName locations = do
     p    <- ask
-    liftIDE $ reifyIDE (\ideR -> catch (do
+    liftIDE $ catchIDE (liftIO $ do
         gpd <- readPackageDescription normal (ipdCabalFile p)
         let npd = trace (show gpd) foldr addModule gpd locations
         writeGenericPackageDescription' (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal (__ "Can't update package " <> T.pack (show e))) ideR
-            return ()))
+            ideMessage Normal (__ "Can't update package " <> T.pack (show e))
+            return ())
   where
     addModule LibExposedMod gpd@GenericPackageDescription{condLibrary = Just lib} =
         gpd {condLibrary = Just (addModToLib moduleName lib)}
@@ -950,7 +953,7 @@ inOrderAdd a list = let (before, after) = span (< a) list in before ++ [a] ++ af
 delModuleFromPackageDescr :: ModuleName -> PackageAction
 delModuleFromPackageDescr moduleName = do
     p    <- ask
-    liftIDE $ reifyIDE (\ideR -> catch (do
+    liftIDE $ catchIDE (liftIO $ do
         gpd <- readPackageDescription normal (ipdCabalFile p)
         let isExposedAndJust = isExposedModule moduleName (condLibrary gpd)
         let npd = if isExposedAndJust
@@ -968,8 +971,8 @@ delModuleFromPackageDescr moduleName = do
                                                 (condExecutables gpd)}
         writeGenericPackageDescription' (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal (__ "Can't update package " <> T.pack (show e))) ideR
-            return ()))
+            ideMessage Normal (__ "Can't update package " <> T.pack (show e))
+            return ())
 
 delModFromLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
     CondTree ConfVar [Dependency] Library
@@ -1092,7 +1095,7 @@ debugStart = do
             _ -> do
                 sysMessage Normal (__ "Debugger already running")
                 return ())
-            (\(e :: SomeException) -> print e)
+            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 tryDebug :: DebugAction -> PackageAction
 tryDebug f = do
@@ -1157,12 +1160,11 @@ testMainPath _ = []
 
 idePackageFromPath' :: FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath' ipdCabalFile = do
-    mbPackageD <- reifyIDE (\ideR -> catch (do
-        pd <- readPackageDescription normal ipdCabalFile
-        return (Just (flattenPackageDescription pd)))
-            (\ (e  :: SomeException) -> do
-                reflectIDE (ideMessage Normal (__ "Can't activate package " <> T.pack (show e))) ideR
-                return Nothing))
+    mbPackageD <- catchIDE (liftIO $
+        Just . flattenPackageDescription <$> readPackageDescription normal ipdCabalFile)
+            (\ (e :: SomeException) -> do
+                ideMessage Normal (__ "Can't activate package " <> T.pack (show e))
+                return Nothing)
     case mbPackageD of
         Nothing       -> return Nothing
         Just packageD -> do

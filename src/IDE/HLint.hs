@@ -144,7 +144,7 @@ runHLint' (project, package) mbSourceFile = do
                     liftIO . debugM "leksah" $ "runHLint parsed " <> path
                     return $ Just (r, (path, text))
         `catchIDE` (\(e :: SomeException) -> do
-            reflectIDE (ideMessage Normal . T.pack $ "HLint Exception : " <> show e) ideR
+            ideMessage Normal . T.pack $ "HLint Exception : " <> show e
             return Nothing)
     liftIO $ debugM "leksah" "runHLint parse complete"
     let results = catMaybes res
