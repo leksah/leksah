@@ -1246,12 +1246,11 @@ extractCabalPackageList = map (dirOnly .T.unpack . T.dropWhile (==' ')) .
     dirOnly f = if takeExtension f == "cabal" then dropFileName f else f
 
 ideProjectFromPath :: FilePath -> IDEM (Maybe Project)
-ideProjectFromPath filePath = do
-    let toolInfo = case takeExtension filePath of
-                        ".project" -> Just (CabalTool, extractCabalPackageList)
-                        ".yaml" -> Just (StackTool, extractStackPackageList)
-                        _ -> Nothing
-    case toolInfo of
+ideProjectFromPath filePath =
+    case (case takeExtension filePath of
+                ".project" -> Just (CabalTool, extractCabalPackageList)
+                ".yaml" -> Just (StackTool, extractStackPackageList)
+                _ -> Nothing) of
         Just (tool, extractPackageList) -> do
             let dir = takeDirectory filePath
             paths <- liftIO $ map (dir </>) . extractPackageList <$> T.readFile filePath
@@ -1270,6 +1269,10 @@ ideProjectFromPath filePath = do
                         return Nothing)
             packages <- fmap catMaybes . mapM idePackageFromPath' $ nub packages
             return . Just $ Project { pjTool = tool, pjFile = filePath, pjPackageMap = mkPackageMap packages }
+          `catchIDE`
+             (\(e :: SomeException) -> do
+                ideMessage Normal . T.pack $ show e
+                return Nothing)
         Nothing -> return Nothing
 
 --refreshPackage :: C.Sink ToolOutput IDEM () -> PackageM (Maybe IDEPackage)
