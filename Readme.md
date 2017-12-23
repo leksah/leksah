@@ -73,7 +73,7 @@ With cask hombrew and cask already installed execute:
 brew cask install leksah
 ```
 Otherwise follow this instructions to install brew cask
-* [Max Appstore Leksah](http://macappstore.org/leksah/)
+* [Mac Appstore Leksah](http://macappstore.org/leksah/)
 
 ##### Windows MSYS2
 Install:
