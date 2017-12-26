@@ -135,7 +135,6 @@ interruptBuild = do
         Just (h, interrupt) ->
             liftIO $ interrupt `catch` (\(_ :: SomeException) ->
                 debugM "leksah" "interruptBuild Nothing")
---            modifyIDE_ $ \ide -> ide {runningTool = Just (h, return ())}
         _ -> liftIO $ debugM "leksah" "interruptBuild Nothing"
 
 

@@ -110,7 +110,8 @@ import Data.List
        (isPrefixOf, intercalate, isInfixOf, nub, foldl', delete, find)
 import IDE.Utils.Tool
        (toolProcess, ToolOutput(..), runTool, newGhci, ToolState(..),
-        toolline, ProcessHandle, executeGhciCommand, interruptTool)
+        toolline, ProcessHandle, executeGhciCommand, interruptTool,
+        terminateProcess)
 import qualified Data.Set as  Set (fromList)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
@@ -354,6 +355,8 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
 --    str2 = __ "please re-configure"
 --    str3 = __ "cannot satisfy -package-id"
 
+data ReloadState = ReloadRunning | ReloadInterrupting | ReloadComplete deriving (Eq, Show)
+
 buildPackage :: Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     liftIO $ debugM "leksah" "buildPackage"
@@ -391,12 +394,32 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
         M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>= \case
             Just debug@(_, ghci) -> do
                 proc <- liftIO $ toolProcess ghci
-                modifyIDE_ $ \ide -> ide {runningTool = Just (proc, interruptTool ghci)}
+                reloadComplete <- liftIO $ newMVar ReloadRunning
+                let interruptReload =
+                        void . modifyMVar_ reloadComplete $ \case
+                            ReloadComplete -> return ReloadComplete
+                            ReloadInterrupting -> do
+                                interruptTool ghci
+                                return ReloadInterrupting
+                            ReloadRunning -> do
+                                interruptTool ghci
+                                forkIO $ do
+                                    threadDelay 5000000
+                                    void . modifyMVar_ reloadComplete $ \case
+                                        ReloadComplete -> return ReloadComplete
+                                        _ -> do
+                                            reflectIDE (ideMessage High (__ "Interrupting :reload took too long. Terminating ghci.")) ideR
+                                            terminateProcess proc
+                                            return ReloadComplete
+                                return ReloadInterrupting
+                modifyIDE_ $ \ide -> ide {runningTool = Just (proc, interruptReload)}
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild project package backgroundBuild jumpToWarnings
                     lift . modifyIDE_ $ \ide -> ide {runningTool = Nothing}
-                    lift . postAsyncIDE $
-                        unless (any isError errs) $ do
+                    lift . postAsyncIDE $ do
+                        wasInterrupted <- liftIO . modifyMVar reloadComplete $ \s ->
+                            return (ReloadComplete, s /= ReloadRunning)
+                        unless (any isError errs || wasInterrupted) $ do
                             (autoPack, cmd) <- readIDE autoCommand
                             when (autoPack == (pjFile project, ipdCabalFile package)) cmd
                             compile'
