@@ -29,7 +29,7 @@ import IDE.Utils.Tool
 import IDE.Core.State
        (postSyncIDE, runningTool, modifyIDE_, reflectIDE, useVado,
         reifyIDE, triggerEventIDE, saveAllBeforeBuild, prefs, readIDE,
-        IDEAction, IDEM, MonadIDE(..))
+        IDEAction, IDEM, MonadIDE(..), postAsyncIDE)
 import Control.Monad (void, unless, when)
 import Control.Exception (catch, SomeException(..))
 import IDE.Pane.SourceBuffer (belongsToWorkspace, fileSaveAll)
@@ -114,7 +114,7 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
                 reflectIDE (do
                     pidHandler pid
                     output $$ handleOutput
-                    modifyIDE_ $ \ide -> ide{runningTool = Nothing}) ideR
+                    postAsyncIDE . modifyIDE_ $ \ide -> ide{runningTool = Nothing}) ideR
             return ()
 
 -- ---------------------------------------------------------------------

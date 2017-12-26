@@ -415,8 +415,8 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                 modifyIDE_ $ \ide -> ide {runningTool = Just (proc, interruptReload)}
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild project package backgroundBuild jumpToWarnings
-                    lift . modifyIDE_ $ \ide -> ide {runningTool = Nothing}
                     lift . postAsyncIDE $ do
+                        modifyIDE_ $ \ide -> ide {runningTool = Nothing}
                         wasInterrupted <- liftIO . modifyMVar reloadComplete $ \s ->
                             return (ReloadComplete, s /= ReloadRunning)
                         unless (any isError errs || wasInterrupted) $ do
