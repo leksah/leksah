@@ -33,7 +33,7 @@ import Control.Applicative ((<$>))
 import Data.Text (Text)
 import qualified Data.Text as T
        (replicate, empty, commonPrefixes, pack, unpack, null, stripPrefix,
-        isPrefixOf)
+        isPrefixOf, length)
 import System.Log.Logger (debugM)
 import GI.Gtk.Objects.Window
        (windowMove, windowGetScreen, windowGetSize, Window(..),
@@ -436,12 +436,14 @@ tryToUpdateOptions window tree store sourceView selectLCP isWordChar always = do
         then return False
         else do
             wordStart <- getText buffer start end True
-            liftIO $ do  -- dont use postGUIAsync - it causes bugs related to several repeated tryToUpdateOptions in thread
-                reflectIDE (do
-                    options <- getCompletionOptions wordStart
-                    processResults window tree store sourceView wordStart options selectLCP isWordChar always) ideR
-                return ()
-            return True
+            if T.length wordStart < 2
+                then return False
+                else do
+                    liftIO $  -- dont use postGUIAsync - it causes bugs related to several repeated tryToUpdateOptions in thread
+                        reflectIDE (do
+                            options <- getCompletionOptions wordStart
+                            processResults window tree store sourceView wordStart options selectLCP isWordChar always) ideR
+                    return True
 
 findWordStart :: TextEditor editor => EditorIter editor -> (Char -> Bool) -> IDEM (EditorIter editor)
 findWordStart iter isWordChar = do
