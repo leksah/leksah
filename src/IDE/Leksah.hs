@@ -460,18 +460,14 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
         mapM_ sourceRemove timeout
         liftIO . forkIO . forever $ do
             takeMVar triggerBuild
-            processing <- newEmptyMVar
-            reflectIDE (postAsyncIDE' PRIORITY_LOW $
+            reflectIDE (postSyncIDE' PRIORITY_LOW $
                 eventsPending >>= \case
-                    True -> do
-                        liftIO $ tryPutMVar triggerBuild ()
-                        liftIO $ putMVar processing ()
+                    True ->
+                        liftIO . void $ tryPutMVar triggerBuild ()
                     False -> do
                         liftIO $ tryTakeMVar triggerBuild
-                        liftIO $ putMVar processing ()
                         currentPrefs <- readIDE prefs
                         when (backgroundBuild currentPrefs) backgroundMake) ideR
-            takeMVar processing
 
         triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])
         return ()
