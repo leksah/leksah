@@ -20,7 +20,7 @@ cd leksah
 nix-env -f . -i
 ```
 
-When you run `leksah` it will expect to see `ghc` and `cabal` in the `PATH`.  You can install these with `nix-env -i ghc cabal` or you can run `leksah` inside a suitable `nix-shell`.  The [Reflex Platform](https://github.com/reflex-frp/reflex-platform#reflex-platform-) has a `./try-reflex` shell that includes `ghc`, `ghcjs` and `cabal`.
+When you run `leksah` it will expect to see `ghc` and `cabal` in the `PATH`.  You can install these with `nix-env -i ghc cabal-install` or you can run `leksah` inside a suitable `nix-shell`.  The [Reflex Platform](https://github.com/reflex-frp/reflex-platform#reflex-platform-) has a `./try-reflex` shell that includes `ghc`, `ghcjs` and `cabal`.
 
 If you want to make changes to Leksah run the `./leksah-nix.sh` script to start Leksah itself in a nix-shell with everything needed to work on Leksah.  Then open the Leksah `cabal.project` file.
 
