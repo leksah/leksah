@@ -597,9 +597,9 @@ makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
     return ())
     where
         actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
-            let (acc,accString) = if null accs
-                                    then (Just "", "=" <> name)
-                                    else (Just (head accs), head accs <> "=" <> name)
+            let (acc,accString) = case accs of
+                                    [] -> (Just "", "=" <> name)
+                                    a:_ -> (Just a, a <> "=" <> name)
             if isToggle
                 then do
                     act <- toggleActionNew name (Just label) tooltip stockId
@@ -780,16 +780,16 @@ getActionsFor SensitivityInterpreting = getActionsFor' ["QuitDebugger"]
 getActionsFor SensitivityWorkspaceOpen = return [] --TODO add here
 
 getActionsFor' :: [Text] -> IDEM[Action]
-getActionsFor' l = do
-    r <- mapM getActionFor l
-    return (catMaybes r)
+getActionsFor' = fmap catMaybes . mapM getActionFor
     where
         getActionFor string = do
             uiManager' <- getUiManager
-            actionGroups <- uIManagerGetActionGroups uiManager'
-            res <- actionGroupGetAction (head actionGroups) string
-            when (isNothing res) $ ideMessage Normal $ T.pack $ printf (__ "Can't find UI Action %s") (T.unpack string)
-            return res
+            uIManagerGetActionGroups uiManager' >>= \case
+                actionGroup:_ -> do
+                    res <- actionGroupGetAction actionGroup string
+                    when (isNothing res) $ ideMessage Normal $ T.pack $ printf (__ "Can't find UI Action %s") (T.unpack string)
+                    return res
+                _ -> return Nothing
 
 getAdditionalActionsFor :: SensitivityMask -> [Bool -> IDEAction]
 getAdditionalActionsFor SensitivityInterpreting = [setSensitivityDebugger]
@@ -942,7 +942,8 @@ setSymbolThread mvar = do
                     [] -> fallback >> return (return ())
                     (project, package):_ -> do
                         setTTMVar :: MVar IDEAction <- liftIO newEmptyMVar
-                        lookup :: MVar IDEAction <- liftIO newEmptyMVar
+                        lookup :: MVar (Maybe IDEAction) <- liftIO newEmptyMVar
+                        result :: MVar Bool <- liftIO newEmptyMVar
                         let f = case pjTool project of
                                     CabalTool -> makeRelative (ipdPackageDir package) file
                                     StackTool -> file
@@ -968,22 +969,25 @@ setSymbolThread mvar = do
                                         ToolExit _      -> do
                                             liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
                                             return t) []
-                                liftIO . putMVar setTTMVar $
+                                liftIO . void . tryPutMVar setTTMVar $
                                     if null lines
                                         then return ()
                                         else postAsyncIDE . setTypeTip typeTipLocation $ T.concat $ intersperse "\n" lines
                             debugCommand (":loc-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
-                                            <> " " <> symbol) $
-                                logOutputLinesDefault_ $ \log logLaunch output ->
+                                            <> " " <> symbol) $ do
+                                worked <- foldOutputLines defaultLogLaunch (\log logLaunch worked output ->
                                     case output of
-                                        ToolInput  line -> liftIO . void $ appendLog log logLaunch (line <> "\n") InputTag
+                                        ToolInput  line -> do
+                                            liftIO $ appendLog log logLaunch (line <> "\n") InputTag
+                                            return worked
                                         ToolOutput line -> do
                                             liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
                                             case parse srcSpanParser "" $ T.unpack line of
-                                                Right (SrcSpan f sl sc el ec) ->
-                                                    liftIO . putMVar lookup . when openDefinition . void . postSyncIDE $ goToSourceDefinition (ipdPackageDir package) (Location f sl (succ sc) el ec)
-                                                Left err -> liftIO $ putMVar lookup fallback
+                                                Right (SrcSpan f sl sc el ec) -> do
+                                                    liftIO . tryPutMVar lookup . Just . when openDefinition . postAsyncIDE . void $ goToSourceDefinition (ipdPackageDir package) (Location f sl (succ sc) el ec)
+                                                    return True
+                                                Left err -> return worked
                                         ToolError  line -> do
                                             liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
                                             case T.splitOn ":" line of
@@ -995,20 +999,35 @@ setSymbolThread mvar = do
                                                             case filter (\case
                                                                     Real rd -> dscMbModu' rd == Just (PM pid mName)
                                                                     _ -> False) descrs of
-                                                                [a] -> liftIO . putMVar lookup . postSyncIDE $ selectIdentifier a activatePanes openDefinition
-                                                                _   -> liftIO $ putMVar lookup fallback
-                                                        _ -> liftIO $ putMVar lookup fallback
-                                                _ -> liftIO $ putMVar lookup fallback
-                                        ToolPrompt _    -> liftIO . void $ defaultLineLogger' log logLaunch output
-                                        ToolExit _      -> liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                                                                [a] -> do
+                                                                    liftIO . tryPutMVar lookup . Just . postAsyncIDE $ selectIdentifier a activatePanes openDefinition
+                                                                    return True
+                                                                _   -> return worked
+                                                        _ -> return worked
+                                                _ -> return worked
+                                        ToolPrompt _    -> do
+                                            liftIO $ defaultLineLogger' log logLaunch output
+                                            return worked
+                                        ToolExit _      -> do
+                                            liftIO $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                                            return worked) False
+                                liftIO $ putMVar result worked
                         liftIO . forkIO $ do
                             threadDelay 2000000
-                            putMVar lookup $ do
-                                ideMessage Normal "Timed out looking up symbol with ghci"
-                                fallback
+                            tryPutMVar setTTMVar $ return ()
+                            tryPutMVar lookup Nothing
+                            return ()
                         setTT <- liftIO $ takeMVar setTTMVar
                         setTT
-                        join . liftIO $ takeMVar lookup
+                        liftIO (takeMVar lookup) >>= \case
+                            Nothing -> do
+                                ideMessage Normal "Timed out looking up symbol with ghci"
+                                fallback
+                                liftIO $ takeMVar result
+                                return ()
+                            Just l -> do
+                                l
+                                liftIO (takeMVar result) >>= (`unless` fallback)
                         return setTT
             else fallback >> return (return ())
     setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition typeTipLocation) = do
