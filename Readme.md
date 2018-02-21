@@ -22,7 +22,7 @@ cd leksah
 nix-env -f . -i
 ```
 
-If your project has a default.nix file along side it (in the same directory
+If your project has a `default.nix` file along side it (in the same directory
 as your `cabal.project` file), leksah will use `nix-shell -A shells.ghc --run`
 commands that need `ghc` and `ghci`.  It will use `nix-shell -A shells.ghcjs --run`
 for commands that need `ghcjs`.
