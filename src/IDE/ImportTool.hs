@@ -293,47 +293,49 @@ addImport' nis filePath descr descrList continuation =  do
             inActiveBufContext () $ \ nb _ gtkbuf idebuf n -> do
                 ideMessage Normal $ "addImport " <> T.pack (show $ dscName descr) <> " from "
                     <> T.pack (render $ disp mod)
-                doServerCommand (ParseHeaderCommand filePath)  $ \ res ->
-                    case res of
-                         ServerHeader (Left imports) ->
-                            case filter (qualifyAsImportStatement mod) imports of
-                                []     ->   let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
-                                                lastLine = F.foldr (max . locationELine . importLoc) 0 imports
-                                            in do
-                                                i1 <- getIterAtLine gtkbuf lastLine
-                                                editInsertCode gtkbuf i1 newLine
-                                                fileSave False
-                                                setModified gtkbuf True
-                                                continuation (True, descr : descrList)
-                                l@(impDecl:_) ->
-                                                let newDecl     =  addToDecl impDecl
-                                                    newLine     =  prettyPrint newDecl <> "\n"
-                                                    myLoc       =  importLoc impDecl
-                                                    lineStart   =  locationSLine myLoc
-                                                    lineEnd     =  locationELine myLoc
+                belongsToPackages filePath >>= \case
+                    [] -> return ()
+                    (project, package):_ ->
+                        doServerCommand (ParseHeaderCommand (pjFile project) (ipdCabalFile package) filePath) $ \case
+                             ServerHeader (Left imports) ->
+                                case filter (qualifyAsImportStatement mod) imports of
+                                    []     ->   let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
+                                                    lastLine = F.foldr (max . locationELine . importLoc) 0 imports
                                                 in do
-                                                    i1 <- getIterAtLine gtkbuf (lineStart - 1)
-                                                    i2 <- getIterAtLine gtkbuf lineEnd
-                                                    delete gtkbuf i1 i2
+                                                    i1 <- getIterAtLine gtkbuf lastLine
                                                     editInsertCode gtkbuf i1 newLine
                                                     fileSave False
                                                     setModified gtkbuf True
                                                     continuation (True, descr : descrList)
-                         ServerHeader (Right lastLine) ->
-                                            let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
-                                            in do
-                                                i1 <- getIterAtLine gtkbuf lastLine
-                                                editInsertCode gtkbuf i1 newLine
-                                                fileSave False
-                                                setModified gtkbuf True
-                                                continuation (True, descr : descrList)
-                         ServerFailed string -> do
-                            ideMessage Normal ("Can't parse module header " <> T.pack filePath <>
-                                    " failed with: " <> string)
-                            continuation (False,[])
-                         _ ->    do
-                            ideMessage Normal "ImportTool>>addImport: Impossible server answer"
-                            continuation (False,[])
+                                    l@(impDecl:_) ->
+                                                    let newDecl     =  addToDecl impDecl
+                                                        newLine     =  prettyPrint newDecl <> "\n"
+                                                        myLoc       =  importLoc impDecl
+                                                        lineStart   =  locationSLine myLoc
+                                                        lineEnd     =  locationELine myLoc
+                                                    in do
+                                                        i1 <- getIterAtLine gtkbuf (lineStart - 1)
+                                                        i2 <- getIterAtLine gtkbuf lineEnd
+                                                        delete gtkbuf i1 i2
+                                                        editInsertCode gtkbuf i1 newLine
+                                                        fileSave False
+                                                        setModified gtkbuf True
+                                                        continuation (True, descr : descrList)
+                             ServerHeader (Right lastLine) ->
+                                                let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
+                                                in do
+                                                    i1 <- getIterAtLine gtkbuf lastLine
+                                                    editInsertCode gtkbuf i1 newLine
+                                                    fileSave False
+                                                    setModified gtkbuf True
+                                                    continuation (True, descr : descrList)
+                             ServerFailed string -> do
+                                ideMessage Normal ("Can't parse module header " <> T.pack filePath <>
+                                        " failed with: " <> string)
+                                continuation (False,[])
+                             _ ->    do
+                                ideMessage Normal "ImportTool>>addImport: Impossible server answer"
+                                continuation (False,[])
         _  -> return ()
     where
         qualifyAsImportStatement :: D.ModuleName -> ImportDecl -> Bool

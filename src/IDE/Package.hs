@@ -168,6 +168,8 @@ import Distribution.Simple.LocalBuildInfo
 import Distribution.Simple.Utils (writeUTF8File)
 import Distribution.Compiler (CompilerFlavor(..))
 import qualified Data.Map as M (member, delete, insert, lookup)
+import Control.Lens ((<&>))
+import System.Process (showCommandForUser)
 #if MIN_VERSION_Cabal(2,0,0)
 import Distribution.Types.ForeignLib (foreignLibName)
 import Distribution.Types.UnqualComponentName
@@ -336,7 +338,8 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                     emptyFile <- liftIO $ getConfigFilePathForLoad "empty-file" Nothing dataDir
                     return . Just $ ("GHC_ENVIRONMENT", emptyFile) : env
                 else return Nothing
-    runExternalTool' (__ "Building") (pjToolCommand project) args dir mbEnv $ do
+    (cmd, args') <- pjToolCommand project compiler args
+    runExternalTool' (__ "Building") cmd args' dir mbEnv $ do
         (mbLastOutput, _) <- C.getZipSink $ (,)
             <$> C.ZipSink sinkLast
             <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
@@ -395,6 +398,8 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
             Just debug@(_, ghci) -> do
                 proc <- liftIO $ toolProcess ghci
                 reloadComplete <- liftIO $ newMVar ReloadRunning
+                done <- liftIO newEmptyMVar
+                liftIO . forkIO $ takeMVar done >> reflectIDE (modifyIDE_ (\ide -> ide {runningTool = Nothing})) ideR
                 let interruptReload =
                         void . modifyMVar_ reloadComplete $ \case
                             ReloadComplete -> return ReloadComplete
@@ -407,17 +412,20 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                                     threadDelay 5000000
                                     void . modifyMVar_ reloadComplete $ \case
                                         ReloadComplete -> return ReloadComplete
-                                        _ -> do
-                                            reflectIDE (ideMessage High (__ "Interrupting :reload took too long. Terminating ghci.")) ideR
-                                            terminateProcess proc
+                                        _ -> (`reflectIDE` ideR) $ do
+                                            ideMessage High (__ "Interrupting :reload took too long. Terminating ghci.")
+                                            liftIO $ terminateProcess proc
+                                            modifyIDE_ (\ide -> ide {runningTool = Nothing})
                                             return ReloadComplete
                                 return ReloadInterrupting
                 modifyIDE_ $ \ide -> ide {runningTool = Just (proc, interruptReload)}
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     errs <- logOutputForBuild project package backgroundBuild jumpToWarnings
                     lift . postAsyncIDE $ do
-                        modifyIDE_ $ \ide -> ide {runningTool = Nothing}
-                        wasInterrupted <- liftIO . modifyMVar reloadComplete $ \s ->
+                        liftIO $ debugM "leksah" "Reload done"
+                        liftIO $ tryPutMVar done ()
+                        wasInterrupted <- liftIO . modifyMVar reloadComplete $ \s -> do
+                            unless (s == ReloadComplete) $ reflectIDE (modifyIDE_ (\ide -> ide {runningTool = Nothing})) ideR
                             return (ReloadComplete, s /= ReloadRunning)
                         unless (any isError errs || wasInterrupted) $ do
                             (autoPack, cmd) <- readIDE autoCommand
@@ -461,8 +469,9 @@ packageDoc' backgroundBuild jumpToWarnings (project, package) continuation = do
                                         , T.pack ("--builddir=" <> (buildDir </>
                                             T.unpack (packageIdentifierToString $ ipdPackageId package)))]
                                 _ -> return ["new-haddock"]
-        runExternalTool' (__ "Documenting") (pjToolCommand project)
-            (flags <> ipdHaddockFlags package) dir Nothing $ do
+        (cmd, args) <- pjToolCommand project GHC $ flags <> ipdHaddockFlags package
+        runExternalTool' (__ "Documenting") cmd
+            args dir Nothing $ do
             mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
                 logOutputForBuild project package backgroundBuild jumpToWarnings)
             lift $ postAsyncIDE reloadDoc
@@ -488,7 +497,7 @@ packageClean' (project, package) continuation = do
             cleanCabal "dist-ghcjs"
         StackTool ->
             runExternalTool' (__ "Cleaning")
-                            (pjToolCommand project)
+                            (pjToolCommand' project)
                             ["clean"]
                             dir Nothing $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
@@ -758,9 +767,9 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
     showDefaultLogLaunch'
     catchIDE (do
         prefs <- readIDE prefs
-        let projectRoot = pjDir project
+        let projectFile = pjFile project
         ghcVersion <- liftIO getDefaultGhcVersion
-        packageDBs <- liftIO $ getPackageDBs' ghcVersion dir
+        packageDBs <- liftIO $ getPackageDBs' ghcVersion (Just projectFile)
         let pkgId = packageIdentifierToString $ ipdPackageId package
             pkgName = ipdPackageName package
         (cmd, mbEnv, args) <- case pjTool project of
@@ -1093,13 +1102,14 @@ debugStart = do
                 let dir  = ipdPackageDir  package
                     name = ipdPackageName package
                 pjFileArgs <- projectFileArguments project dir
-                let (tool, args) = case pjTool project of
-                        CabalTool -> ("cabal", [ "new-repl" ]
+                (tool, args) <- pjToolCommand project GHC $
+                    case pjTool project of
+                        CabalTool -> [ "new-repl" ]
                                             <> pjFileArgs
-                                            <> [ name <> maybe (":lib:" <> name) (":" <>) mbActiveComponent | ipdHasLibs package || isJust mbActiveComponent ])
-                        StackTool -> ("stack", [ "repl" ]
+                                            <> [ name <> maybe (":lib:" <> name) (":" <>) mbActiveComponent | ipdHasLibs package || isJust mbActiveComponent ]
+                        StackTool -> [ "repl" ]
                                             <> pjFileArgs
-                                            <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ])
+                                            <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ]
                 let logOut = reflectIDEI (void (logOutputForBuild project package True False)) ideRef
                 ghci <- liftIO $ newGhci tool args dir ("+c":"-ferror-spans":interactiveFlags prefs') logOut
                 liftIO $ executeGhciCommand ghci ":reload" logOut

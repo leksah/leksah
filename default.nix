@@ -78,7 +78,7 @@ let
 
   cleanSrc =
     builtins.filterSource (path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
-      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ./vendor ]
+      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ./vendor ./result ]
         && nixpkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
         && nixpkgs.lib.all (i: !(nixpkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" ]
         && nixpkgs.lib.all (i: !(nixpkgs.lib.hasPrefix i path)) [ ".ghc.environment." ]
@@ -106,19 +106,34 @@ let
 
   });
 
-  build = pkgs.stdenv.lib.overrideDerivation drv (oldAttrs: {
-    nativeBuildInputs = (oldAttrs.nativeBuildInputs or []) ++ (with pkgs; [ wrapGAppsHook makeWrapper ]);
-    postInstall = if pkgs.stdenv.isLinux then ''
-      mkdir -p $out/share
-      cp -r linux/. $out/share/
-    '' else "";
-    postFixup = ''
-      wrapProgram $out/bin/leksah \
-        --prefix 'PATH' ':' "${extendedHaskellPackages.leksah-server}/bin"
-    '';
-  });
+  leksah = nixpkgs.stdenv.mkDerivation {
+      name = "leksah";
+      nativeBuildInputs = with pkgs; [ wrapGAppsHook makeWrapper ];
+      buildInputs = with pkgs; [
+        gnome3.gtk
+        gnome3.dconf
+        gnome3.defaultIconTheme
+        gnome3.gsettings_desktop_schemas
+      ];
+      src = ./linux;
+      buildPhase =
+        if pkgs.stdenv.isLinux then ''
+          mkdir -p $out/share
+          cp -r * $out/share/
+        '' else ''
+          mkdir -p $out
+        '';
+      installPhase = ''
+        mkdir -p $out/bin
+        ln -s ${drv}/bin/leksah $out/bin
+        wrapProgram $out/bin/leksah \
+          --prefix 'PATH' ':' "${extendedHaskellPackages.leksah-server}/bin" \
+          --suffix 'PATH' ':' "${extendedHaskellPackages.ghcWithPackages (self: [])}/bin" \
+          --suffix 'PATH' ':' "${extendedHaskellPackages.cabal-install}/bin"
+      '';
+  };
 
-  env = pkgs.stdenv.lib.overrideDerivation build.env (oldAttrs: {
+  env = pkgs.stdenv.lib.overrideDerivation drv.env (oldAttrs: {
     buildInputs = oldAttrs.buildInputs ++ [
       extendedHaskellPackages.leksah-server
       # TODO: perhaps add some additional stuff to nix-shell PATH
@@ -128,5 +143,7 @@ let
       export XDG_DATA_DIRS="$GSETTINGS_SCHEMAS_PATH:$XDG_DATA_DIRS" # TODO: how to do this better?
     '';
   });
-
-in build // { inherit env; }
+  shells = {
+    ghc = env;
+  };
+in leksah // { inherit env shells; }

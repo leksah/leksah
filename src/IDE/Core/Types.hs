@@ -4,6 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -63,6 +64,7 @@ module IDE.Core.Types (
 ,   pjLookupPackage
 ,   pjDir
 ,   pjToolCommand
+,   pjToolCommand'
 ,   Workspace(..)
 ,   wsProjectFiles
 ,   wsLookupProject
@@ -179,6 +181,11 @@ import System.FSNotify (StopListening, WatchManager)
 import qualified Data.Map as M (fromList, lookup, keys, elems)
 import System.Exit (ExitCode)
 import Data.Int (Int32)
+import System.Directory (doesFileExist)
+import Control.Lens ((<&>))
+import Data.Monoid ((<>))
+import Distribution.Compiler (CompilerFlavor(..))
+import System.Process (showCommandForUser)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -470,10 +477,17 @@ pjPackages = M.elems . pjPackageMap
 pjLookupPackage :: FilePath -> Project -> Maybe IDEPackage
 pjLookupPackage f = M.lookup f . pjPackageMap
 
-pjToolCommand :: Project -> FilePath
-pjToolCommand project = case pjTool project of
+pjToolCommand' :: Project -> FilePath
+pjToolCommand' project = case pjTool project of
                             StackTool -> "stack"
                             CabalTool -> "cabal"
+
+pjToolCommand :: MonadIO m => Project -> CompilerFlavor -> [Text] -> m (FilePath, [Text])
+pjToolCommand project compiler args =
+    liftIO (doesFileExist $ pjDir project </> "default.nix") <&> (\case
+        True -> ("nix-shell", [ T.pack (pjDir project </> "default.nix"), "-A", "shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
+                              , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args])
+        False -> (pjToolCommand' project, args))
 
 pjDir :: Project -> FilePath
 pjDir = dropFileName . pjFile

@@ -230,7 +230,8 @@ toMarkup record (mbProject, mbPackage) =
                         liftIO $ Git.runVcs conf $ do
                              branch <- Git.localBranches
                              case branch of
-                                (Right (branch,_)) -> return branch
+                                (Right (Just branch,_)) -> return branch
+                                (Right (Nothing,_)) -> return "No Git branch"
                                 (Left _)           -> return "No Git project"
             where
                 bold str = "<b>" <> str <> "</b>"
@@ -602,7 +603,7 @@ dirRecords dir = do
                             `catch` \(e :: IOError) -> return []
    let filtered = if showHiddenFiles prefs
                       then filter (`notElem` [".", ".."]) contents
-                      else filter ((/= '.') . head) contents
+                      else filter (not . isPrefixOf ".") contents
    records <- forM filtered $ \f -> do
                   let full = dir </> f
                   isDir <- liftIO $ doesDirectoryExist full
@@ -659,7 +660,7 @@ setChildren mbProject mbPkg store view parentPath kids = do
 
     forM_ (zip [0..] kidsToAdd) $ \(n, record) -> do
       liftIO $ do
-        putStrLn $ "setChildren " <> show parentPath
+        debugM "leksah" $ "setChildren " <> show parentPath
         mbChildIter <- (treeModelGetIter store =<< treePathNewFromIndices' parentPath) >>= \case
             Just parentIter ->
                 treeModelIterNthChild store (Just parentIter) n >>= \case

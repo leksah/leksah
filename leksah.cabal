@@ -1,5 +1,5 @@
 name: leksah
-version: 0.16.3.1
+version: 0.17.0.0
 cabal-version: >=1.18
 build-type: Simple
 license: GPL
@@ -170,6 +170,7 @@ flag webkit2
 flag yi
     description:
         Experimental Yi support
+    manual: True
     default: False
 
 flag codemirror
@@ -201,6 +202,13 @@ flag gtk-318
 flag gtk-320
     description:
         GTK+ is 3.20 or later
+
+flag check-gtk-version
+    description:
+        This flag can be used to disable the pkgconfig-depends
+        as they can cause problems on macOS when using nix.
+    manual: True
+    default: True
 
 library
 
@@ -256,19 +264,23 @@ library
         build-depends:
             network >=2.2 && <2.6
 
-    if flag(gtk-318)
-        cpp-options: -DMIN_VERSION_GTK_3_18
-        pkgconfig-depends: gtk+-3.0 >=3.18
+    if flag(check-gtk-version)
+        if flag(gtk-318)
+            cpp-options: -DMIN_VERSION_GTK_3_18
+            pkgconfig-depends: gtk+-3.0 >=3.18
 
-    if flag(gtk-320)
-        cpp-options: -DMIN_VERSION_GTK_3_20
+        if flag(gtk-320)
+            cpp-options: -DMIN_VERSION_GTK_3_20
+            pkgconfig-depends: gtk+-3.0 >=3.20
+    else
+        pkgconfig-depends: gtk+-3.0 >=3.18
         pkgconfig-depends: gtk+-3.0 >=3.20
 
     if !impl(ghcjs)
         build-depends:
             ghc >=6.10.1 && <8.3,
-            haskell-src-exts >=1.13.5 && <1.19,
-            leksah-server >=0.16.3.1 && <0.17
+            haskell-src-exts >=1.13.5 && <1.21,
+            leksah-server >=0.17.0.0 && <0.18
 
     exposed-modules:
         IDE.HLint
@@ -340,7 +352,7 @@ library
         IDE.LPaste
     build-depends:
         base-compat >=0.9.0 && <0.10,
-        haskell-gi-base >=0.18 && <0.21,
+        haskell-gi-base >=0.18 && <0.22,
         gi-glib >=2.0.6 && <2.1,
         gi-gobject >=2.0.6 && <2.1,
         gi-gio >=2.0.6 && <2.1,
@@ -380,10 +392,10 @@ library
         text >=0.11.1.5 && <1.3,
         transformers >=0.2.2.0 && <0.6,
         executable-path >=0.0.3 && <0.1,
-        vcsgui >=0.2.0 && <0.3,
-        vcswrapper >=0.1.0 && <0.2,
-        QuickCheck >=2.4.2 && <2.10,
-        hlint >=1.9.21 && <2.1,
+        vcsgui >=0.3.0 && <0.4,
+        vcswrapper >=0.2.0 && <0.3,
+        QuickCheck >=2.4.2 && <2.11,
+        hlint >=1.9.21 && <2.2,
         vado >=0.0.1 && <0.1,
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.21,
@@ -391,7 +403,9 @@ library
         split >= 0.2.3.1,
         HTTP >= 4000.3.3,
         fsnotify >=0.2.1 && <0.3,
-        haskell-gi-overloading ==0.0.*
+        haskell-gi-overloading ==0.0.*,
+        lens >=4.15.4 && <4.16,
+        process >=1.4.3.0 && <1.7
     default-language: Haskell2010
     default-extensions: ViewPatterns
     hs-source-dirs: src
@@ -464,7 +478,7 @@ executable leksah
 --    build-depends:
 --        base >=4.0.0.0 && <4.11,
 --        Cabal >=1.24.0.0 && <2.1,
---        QuickCheck >=2.4.2 && <2.10,
+--        QuickCheck >=2.4.2 && <2.11,
 --        leksah,
 --        containers -any,
 --        ltk -any,

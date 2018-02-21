@@ -48,7 +48,8 @@ import qualified Data.Text as T
 import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
 import GI.Gtk.Objects.Widget (toWidget)
 import GI.Gtk.Objects.Notebook (notebookPageNum, Notebook(..))
-import GI.Gtk (Box)
+import GI.Gtk (MessageDialog, Box)
+import Control.Concurrent (MVar)
 
 -- * Buffer Basics
 
@@ -63,6 +64,7 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 ,   vBox            ::  Box
 ,   modTime         ::  IORef (Maybe UTCTime)
 ,   mode            ::  Mode
+,   reloadDialog    ::  MVar (Maybe MessageDialog)
 } deriving (Typeable)
 
 instance Pane IDEBuffer IDEM

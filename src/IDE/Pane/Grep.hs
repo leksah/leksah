@@ -52,7 +52,7 @@ import Control.DeepSeq
 import qualified Data.Conduit as C
        (Sink)
 import qualified Data.Conduit.List as CL
-       (foldM, head, isolate, sinkNull)
+       (foldM, isolate, sinkNull)
 import Data.Conduit (($$), (=$))
 import Control.Monad (void, foldM, when)
 import Control.Monad.Trans.Reader (ask)

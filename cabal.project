@@ -2,7 +2,6 @@ packages:
  ./
  vendor/leksah-server/
  vendor/ltk/
- vendor/yi/
  vendor/haskellVCSWrapper/vcswrapper/
  vendor/haskellVCSGUI/vcsgui
 

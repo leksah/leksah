@@ -695,8 +695,8 @@ findDescription md st s     =
     case filter (\id -> case dsMbModu id of
                             Nothing -> False
                             Just pm -> md == pm) (symLookup s st) of
-        [] -> Nothing
-        l  -> Just (s,head l)
+        l:_  -> Just (s, l)
+        _ -> Nothing
 
 getEmptyDefaultScope :: Map Text [Descr]
 getEmptyDefaultScope = Map.empty

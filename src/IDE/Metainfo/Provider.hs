@@ -2,6 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider
@@ -67,7 +68,7 @@ import IDE.Core.CTypes
         packageIdentifierToString, moduleKeyToName, displayModuleKey,
         ModuleKey(..), SymbolTable(..), Scope(..), Scope, mdIdDescriptions,
         GenScope, SymbolTable, mdMbSourcePath, wcModList, ModuleDescr(..),
-        wcPath, ModuleKey, wcPackage, pdBuildDepends, wcRebuild, pdModules,
+        wcProject, wcPackageFile, ModuleKey, wcPackage, pdBuildDepends, wcRebuild, pdModules,
         ServerCommand(..), pdMbSourcePath, ServerAnswer(..), pdPackage,
         PackageDescr(..), TypeDescr(..), dscExported', Descr, dscTypeHint',
         PackScope(..), dscMbComment', GenScope(..), dscMbLocation',
@@ -80,7 +81,8 @@ import IDE.Core.State
         postAsyncIDE, forkIDE, MessageLevel(..), ideMessage,
         collectAtStart, prefs, readIDE, SearchMode, ModuleDescrCache,
         workspInfoCache, IDEPackage, packageInfo, workspaceInfo,
-        systemInfo, IDEM, IDEAction)
+        systemInfo, IDEM, IDEAction, wsProjectFiles, Project,
+        pjFile, wsProjectAndPackages)
 import IDE.Utils.Utils
        (leksahMetadataPathFileExtension,
         leksahMetadataSystemFileExtension,
@@ -166,11 +168,11 @@ rebuildWorkspaceInfo = do
     updateWorkspaceInfo' True $ \ _ ->
         void (triggerEventIDE (InfoChanged False))
 
-getAllPackages :: IDEM [(UnitId, [FilePath])]
+getAllPackages :: IDEM [(UnitId, Maybe FilePath)]
 getAllPackages = do
     mbWorkspace <- readIDE workspace
     liftIO $ getInstalledPackages VERSION_ghc
-            $ map ipdPackageDir (maybe [] wsAllPackages mbWorkspace)
+            $ maybe [] wsProjectFiles mbWorkspace
 
 getAllPackageIds :: IDEM [PackageIdentifier]
 getAllPackageIds =
@@ -180,7 +182,7 @@ getAllPackageIds =
 getAllPackageDBs :: IDEM [[FilePath]]
 getAllPackageDBs = do
     mbWorkspace <- readIDE workspace
-    liftIO . getPackageDBs $ map ipdPackageDir (maybe [] wsAllPackages mbWorkspace)
+    liftIO . getPackageDBs $ maybe [] wsProjectFiles mbWorkspace
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -258,7 +260,7 @@ updateWorkspaceInfo' rebuild continuation = do
             modifyIDE_ (\ide -> ide{workspaceInfo = Nothing, packageInfo = Nothing})
             continuation False
         Just ws ->
-            updatePackageInfos rebuild (wsAllPackages ws) $ \ _ packDescrs -> do
+            updatePackageInfos rebuild (wsProjectAndPackages ws) $ \ _ packDescrs -> do
                 let dependPackIds = nub (concatMap pdBuildDepends packDescrs) \\ map pdPackage packDescrs
                 let packDescrsI =   case systemInfo' of
                                         Nothing -> []
@@ -302,7 +304,7 @@ updateWorkspaceInfo' rebuild continuation = do
                 continuation True
 
 -- | Update the metadata on several packages
-updatePackageInfos :: Bool -> [IDEPackage] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
+updatePackageInfos :: Bool -> [(Project, IDEPackage)] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
 updatePackageInfos rebuild pkgs continuation =
     forkIDE $ do
         -- calculate list of known packages once
@@ -311,13 +313,13 @@ updatePackageInfos rebuild pkgs continuation =
             updatePackageInfos' [] knownPackages rebuild pkgs continuation
   where
     updatePackageInfos' collector _ _ [] continuation =  continuation True collector
-    updatePackageInfos' collector knownPackages rebuild (hd:tail) continuation =
-        updatePackageInfo knownPackages rebuild hd $ \ _ packDescr ->
+    updatePackageInfos' collector knownPackages rebuild ((project, package):tail) continuation =
+        updatePackageInfo knownPackages rebuild project package $ \ _ packDescr ->
             updatePackageInfos' (packDescr : collector) knownPackages rebuild tail continuation
 
 -- | Update the metadata on one package
-updatePackageInfo :: [PackageIdentifier] -> Bool -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
-updatePackageInfo knownPackages rebuild idePack continuation = do
+updatePackageInfo :: [PackageIdentifier] -> Bool -> Project -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
+updatePackageInfo knownPackages rebuild project idePack continuation = do
     liftIO $ infoM "leksah" ("updatePackageInfo " ++ show rebuild ++ " " ++ show (ipdPackageId idePack))
     workspInfoCache'     <- readIDE workspInfoCache
     let (packageMap, ic) =  case pi  `Map.lookup` workspInfoCache' of
@@ -346,8 +348,8 @@ updatePackageInfo knownPackages rebuild idePack continuation = do
     liftIO . infoM "leksah" $ "updatePackageInfo modToUpdate " ++ show (map (displayModuleKey.fst) modToUpdate)
     callCollectorWorkspace
         rebuild
-        (ipdPackageDir idePack)
-        (ipdPackageId idePack)
+        project
+        idePack
         (map (\(x,y) -> (T.pack $ display (moduleKeyToName x),y)) modToUpdate)
         (\ b -> do
             let buildDepends         = findFittingPackages knownPackages (ipdDepends idePack)
@@ -806,42 +808,41 @@ callCollector :: Bool -> Bool -> Bool -> (Bool -> IDEAction) -> IDEAction
 callCollector scRebuild scSources scExtract cont = do
     liftIO $ infoM "leksah" "callCollector"
     scPackageDBs <- getAllPackageDBs
-    doServerCommand SystemCommand {..} $ \ res ->
-        case res of
-            ServerOK         -> do
-                liftIO $ infoM "leksah" "callCollector finished"
-                cont True
-            ServerFailed str -> do
-                liftIO $ infoM "leksah" (T.unpack str)
-                cont False
-            _                -> do
-                liftIO $ infoM "leksah" "impossible server answer"
-                cont False
+    doServerCommand SystemCommand {..} $ \case
+        ServerOK         -> do
+            liftIO $ infoM "leksah" "callCollector finished"
+            cont True
+        ServerFailed str -> do
+            liftIO $ infoM "leksah" (T.unpack str)
+            cont False
+        _                -> do
+            liftIO $ infoM "leksah" "impossible server answer"
+            cont False
 
-callCollectorWorkspace :: Bool -> FilePath -> PackageIdentifier -> [(Text,FilePath)] ->
+callCollectorWorkspace :: Bool -> Project -> IDEPackage -> [(Text,FilePath)] ->
     (Bool -> IDEAction) -> IDEAction
-callCollectorWorkspace rebuild fp  pi modList cont = do
+callCollectorWorkspace rebuild project package modList cont = do
     liftIO $ infoM "leksah" "callCollectorWorkspace"
     if null modList
         then do
             liftIO $ infoM "leksah" "callCollectorWorkspace: Nothing to do"
             cont True
         else
-            doServerCommand command  $ \ res ->
-                case res of
-                    ServerOK         -> do
-                        liftIO $ infoM "leksah" "callCollectorWorkspace finished"
-                        cont True
-                    ServerFailed str -> do
-                        liftIO $ infoM "leksah" (T.unpack str)
-                        cont False
-                    _                -> do
-                        liftIO $ infoM "leksah" "impossible server answer"
-                        cont False
+            doServerCommand command  $ \case
+                ServerOK         -> do
+                    liftIO $ infoM "leksah" "callCollectorWorkspace finished"
+                    cont True
+                ServerFailed str -> do
+                    liftIO $ infoM "leksah" (T.unpack str)
+                    cont False
+                _                -> do
+                    liftIO $ infoM "leksah" "impossible server answer"
+                    cont False
     where command = WorkspaceCommand {
             wcRebuild     = rebuild,
-            wcPackage     = pi,
-            wcPath        = fp,
+            wcPackage     = ipdPackageId package,
+            wcProject     = pjFile project,
+            wcPackageFile = ipdCabalFile package,
             wcModList     = modList}
 
 -- ---------------------------------------------------------------------

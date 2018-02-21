@@ -38,6 +38,7 @@ import GI.Gtk.Objects.Widget (widgetSetSizeRequest, widgetSetName)
 import Graphics.UI.Editor.Parameters
        (Packing(..), boxPackEnd', boxPackStart')
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
+import Data.Maybe (listToMaybe, fromMaybe)
 
 changeStatusbar :: [StatusbarCompartment] -> IDEAction
 changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
@@ -58,7 +59,7 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
         statusbarPush sb 1 ""
         return ()
     changeStatusbar' (CompartmentState string) =  do
-        let realStr = if '\n' `elem` T.unpack string then head (T.lines string) <> " ..." else string
+        let realStr = if '\n' `elem` T.unpack string then fromMaybe "" (listToMaybe $ T.lines string) <> " ..." else string
         sb <- getSBErrors
         statusbarPop sb 1
         statusbarPush sb 1 realStr

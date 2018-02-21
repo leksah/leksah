@@ -124,7 +124,7 @@ import IDE.Metainfo.Provider (getSystemInfo, getWorkspaceInfo)
 import IDE.BufferMode
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (filterM, void, unless, when, liftM, forM_)
+import Control.Monad (filterM, void, unless, when, forM_)
 import Control.Exception as E (catch, SomeException)
 
 import qualified IDE.Command.Print as Print
@@ -180,14 +180,15 @@ import GI.Gdk.Structs.Atom (atomIntern)
 import GI.Gdk.Structs.EventButton (getEventButtonType)
 import GI.Gdk.Enums (EventType(..))
 import GI.Gtk
-       (boxPackStart, boxNew, Container(..),
-        containerAdd, infoBarGetContentArea,
-        labelNew, infoBarNew)
+       (onDialogResponse, widgetShowAll, boxPackStart, boxNew,
+        Container(..), containerAdd, infoBarGetContentArea, labelNew,
+        infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import Control.Concurrent.MVar (tryPutMVar)
 import Data.Int (Int32)
 import Graphics.UI.Frame.Rectangle (getRectangleY, getRectangleX)
 import GI.Gdk (windowGetOrigin)
+import Control.Concurrent (modifyMVar_, putMVar, takeMVar, newMVar)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -653,6 +654,8 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
 
         boxPackStart box sw True True 0
 
+        reloadDialog <- liftIO $ newMVar Nothing
+
         modTimeRef <- liftIO $ newIORef modTime
         let buf = IDEBuffer {
             fileName =  mbfn,
@@ -661,7 +664,8 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
             sourceView =sv,
             vBox = box,
             modTime = modTimeRef,
-            mode = mode}
+            mode = mode,
+            reloadDialog = reloadDialog}
         -- events
         ids1 <- afterFocusIn sv $ makeActive buf
         ids2 <- onCompletion sv (Completion.complete sv False) Completion.cancel
@@ -839,11 +843,11 @@ getIdentifierUnderCursorFromIter (startSel, endSel) = do
         _ -> return endSel
     return (start, end)
 
-checkModTime :: MonadIDE m => IDEBuffer -> m (Bool, Bool)
+checkModTime :: MonadIDE m => IDEBuffer -> m Bool
 checkModTime buf = do
     currentState' <- readIDE currentState
     case  currentState' of
-        IsShuttingDown -> return (False, False)
+        IsShuttingDown -> return False
         _              -> do
             let name = paneName buf
             case fileName buf of
@@ -864,43 +868,50 @@ checkModTime buf = do
                                             then do
                                                 ideMessage Normal $ __ "Auto Loading " <> T.pack fn
                                                 revert buf
-                                                return (False, True)
-                                            else do
-                                                window <- liftIDE getMainWindow
-                                                md <- new' MessageDialog [
-                                                    constructDialogUseHeaderBar 0,
-                                                    constructMessageDialogButtons ButtonsTypeNone]
-                                                setMessageDialogMessageType md MessageTypeQuestion
-                                                setMessageDialogText md (__ "File \"" <> name <> __ "\" has changed on disk.")
-                                                windowSetTransientFor md (Just window)
-                                                dialogAddButton' md (__ "_Load From Disk") (AnotherResponseType 1)
-                                                dialogAddButton' md (__ "_Always Load From Disk") (AnotherResponseType 2)
-                                                dialogAddButton' md (__ "_Don't Load") (AnotherResponseType 3)
-                                                dialogSetDefaultResponse' md (AnotherResponseType 1)
-                                                setWindowWindowPosition md WindowPositionCenterOnParent
-                                                resp <- dialogRun' md
-                                                widgetDestroy md
-                                                case resp of
-                                                    AnotherResponseType 1 -> do
-                                                        revert buf
-                                                        return (False, True)
-                                                    AnotherResponseType 2 -> do
-                                                        revert buf
-                                                        modifyIDE_ $ \ide -> ide{prefs = (prefs ide) {autoLoad = True}}
-                                                        return (False, True)
-                                                    AnotherResponseType 3 -> dontLoad fn
-                                                    ResponseTypeDeleteEvent -> dontLoad fn
-                                                    _              -> return (False, False)
+                                                return True
+                                            else
+                                                liftIO (takeMVar $ reloadDialog buf) >>= \case
+                                                    Just md -> do
+                                                        liftIO $ putMVar (reloadDialog buf) (Just md)
+                                                        return True
+                                                    Nothing -> do
+                                                        window <- liftIDE getMainWindow
+                                                        md <- new' MessageDialog [
+                                                            constructDialogUseHeaderBar 0,
+                                                            constructMessageDialogButtons ButtonsTypeNone]
+                                                        liftIO $ putMVar (reloadDialog buf) (Just md)
+                                                        setMessageDialogMessageType md MessageTypeQuestion
+                                                        setMessageDialogText md (__ "File \"" <> name <> __ "\" has changed on disk.")
+                                                        windowSetTransientFor md (Just window)
+                                                        dialogAddButton' md (__ "_Load From Disk") (AnotherResponseType 1)
+                                                        dialogAddButton' md (__ "_Always Load From Disk") (AnotherResponseType 2)
+                                                        dialogAddButton' md (__ "_Don't Load") (AnotherResponseType 3)
+                                                        dialogSetDefaultResponse' md (AnotherResponseType 1)
+                                                        setWindowWindowPosition md WindowPositionCenterOnParent
+                                                        widgetShowAll md
+                                                        ideR <- liftIDE ask
+                                                        onDialogResponse md $ \n32 -> (`reflectIDE` ideR) $ do
+                                                            liftIO $ modifyMVar_ (reloadDialog buf) . const $ return Nothing
+                                                            widgetDestroy md
+                                                            case toEnum (fromIntegral n32) of
+                                                                AnotherResponseType 1 ->
+                                                                    revert buf
+                                                                AnotherResponseType 2 -> do
+                                                                    revert buf
+                                                                    modifyIDE_ $ \ide -> ide{prefs = (prefs ide) {autoLoad = True}}
+                                                                AnotherResponseType 3 -> dontLoad fn
+                                                                ResponseTypeDeleteEvent -> dontLoad fn
+                                                                _ -> return ()
+                                                        return True
 
-                                    else return (False, False)
-                        else return (False, False)
-                Nothing -> return (False, False)
-
+                                    else return False
+                        else return False
+                Nothing -> return False
     where
         dontLoad fn = do
             nmt2 <- liftIO $ getModificationTime fn
             liftIO $ writeIORef (modTime buf) (Just nmt2)
-            return (True, True)
+
 setModTime :: IDEBuffer -> IDEAction
 setModTime buf = do
     let name = paneName buf
@@ -1007,9 +1018,9 @@ fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $
     let mbfn = fileName ideBuf
     page <- liftIO $ notebookGetNthPage nb (fromIntegral i)
     if isJust mbfn && not query
-        then do (modifiedOnDiskNotLoaded, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
+        then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
                 modifiedInBuffer <- getModified ebuf
-                if modifiedOnDiskNotLoaded || modifiedInBuffer
+                if modifiedInBuffer
                     then do
                         fileSave' (forceLineEnds prefs) (removeTBlanks prefs) nb ideBuf
                             useCandy candy $fromJust mbfn
@@ -1137,7 +1148,7 @@ fileCheckBuffer :: (MonadIDE m, TextEditor editor) => Notebook -> EditorView edi
 fileCheckBuffer nb _ ebuf ideBuf i = do
     let mbfn = fileName ideBuf
     if isJust mbfn
-        then do (_, modifiedOnDisk) <- checkModTime ideBuf -- The user is given option to reload
+        then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
                 modifiedInBuffer    <- liftIDE $ getModified ebuf
                 return (modifiedOnDisk || modifiedInBuffer)
         else return False
@@ -1145,7 +1156,7 @@ fileCheckBuffer nb _ ebuf ideBuf i = do
 fileCheckAll :: MonadIDE m => (IDEBuffer -> m [alpha]) -> m [alpha]
 fileCheckAll filterFunc = do
     bufs     <- allBuffers
-    liftM concat . forM bufs $ \ buf -> do
+    fmap concat . forM bufs $ \ buf -> do
         ps <- filterFunc buf
         case ps of
             [] -> return []
@@ -1205,10 +1216,10 @@ fileCloseAll :: (IDEBuffer -> IDEM Bool)  -> IDEM Bool
 fileCloseAll filterFunc = do
     bufs    <- allBuffers
     filtered <- filterM filterFunc bufs
-    if null filtered
-        then return True
-        else do
-            makeActive (head filtered)
+    case filtered of
+        [] -> return True
+        (h:_) -> do
+            makeActive h
             r <- fileClose
             if r
                 then fileCloseAll filterFunc
