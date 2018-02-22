@@ -113,17 +113,17 @@ let
 
   shells = project.shells // {
     ghc = project.shells.ghc.overrideAttrs (oldAttrs: {
-      #buildInputs = (oldAttrs.buildInputs or [])
-      #  ++ [ nixpkgs.gnome3.gtk
-      #   nixpkgs.gnome3.dconf
-      #   nixpkgs.gnome3.defaultIconTheme 
-      #   nixpkgs.gnome3.gsettings_desktop_schemas
-      #   ];
-      #shellHook = (oldAttrs.shellHook or "") + ''
-      #  export CFLAGS="$NIX_CFLAGS_COMPILE" # TODO: why is this needed?
-      #  export XDG_DATA_DIRS="$XDG_ICON_DIRS:$GSETTINGS_SCHEMAS_PATH:$XDG_DATA_DIRS" # TODO: how to do this better?
-      #  export PKG_CONFIG_PATH='' + nixpkgs.lib.concatMapStrings (p: "${p}/lib/pkgconfig:") pkgConfigPackages + ''$PKG_CONFIG_PATH
-      #'';
+      buildInputs = (oldAttrs.buildInputs or [])
+        ++ [ nixpkgs.gnome3.gtk
+         nixpkgs.gnome3.dconf
+         nixpkgs.gnome3.defaultIconTheme 
+         nixpkgs.gnome3.gsettings_desktop_schemas
+         ];
+      shellHook = (oldAttrs.shellHook or "") + ''
+        export CFLAGS="$NIX_CFLAGS_COMPILE" # TODO: why is this needed?
+        export XDG_DATA_DIRS="$XDG_ICON_DIRS:$GSETTINGS_SCHEMAS_PATH:$XDG_DATA_DIRS" # TODO: how to do this better?
+        export PKG_CONFIG_PATH='' + nixpkgs.lib.concatMapStrings (p: "${p}/lib/pkgconfig:") pkgConfigPackages + ''$PKG_CONFIG_PATH
+      '';
     });
   };
 

@@ -5,4 +5,10 @@ packages:
  vendor/haskellVCSWrapper/vcswrapper/
  vendor/haskellVCSGUI/vcsgui
 
-
+-- The following are needed for default-reflex.nix
+-- package ltk
+--  flags: -check-gtk-version
+-- package leksah
+--  flags: -check-gtk-version
+-- package leksah-server
+--  extra-framework-dirs: /System/Library/Frameworks
