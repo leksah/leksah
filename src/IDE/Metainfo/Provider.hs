@@ -179,7 +179,7 @@ getAllPackageIds =
     nub . mapMaybe (unitIdToPackageId . fst) <$>
         getAllPackages
 
-getAllPackageDBs :: IDEM [[FilePath]]
+getAllPackageDBs :: IDEM [(Maybe FilePath, [FilePath])]
 getAllPackageDBs = do
     mbWorkspace <- readIDE workspace
     liftIO . getPackageDBs $ maybe [] wsProjectFiles mbWorkspace
