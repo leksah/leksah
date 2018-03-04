@@ -398,12 +398,13 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
     (cmd, args', nixEnv) <- pjToolCommand project compiler args
     mbEnv <- if compiler == GHCJS
                 then do
-                    env <- packageEnv package
+                    env <- packageEnv package =<<
+                        maybe (liftIO getEnvironment) return (M.toList <$> nixEnv)
                     dataDir <- getDataDir
                     emptyFile <- liftIO $ getConfigFilePathForLoad "empty-file" Nothing dataDir
-                    return $ M.insert "GHC_ENVIRONMENT" emptyFile <$> (nixEnv <> Just (M.fromList env))
-                else return nixEnv
-    runExternalTool' (__ "Building") cmd args' dir (M.toList <$> mbEnv) $ do
+                    return . Just $ ("GHC_ENVIRONMENT", emptyFile) : env
+                else return $ M.toList <$> nixEnv
+    runExternalTool' (__ "Building") cmd args' dir mbEnv $ do
         (mbLastOutput, _) <- C.getZipSink $ (,)
             <$> C.ZipSink sinkLast
             <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
@@ -631,9 +632,8 @@ packageRun = do
     package <- ask
     interruptSaveAndRun $ packageRun' True (project, package)
 
-packageEnv :: MonadIO m => IDEPackage -> m [(String, String)]
-packageEnv package = do
-    env <- liftIO getEnvironment
+packageEnv :: MonadIO m => IDEPackage -> [(String, String)] -> m [(String, String)]
+packageEnv package env =
     return $ (T.unpack (ipdPackageName package) <> "_datadir", ipdPackageDir package) : env
 
 packageRun' :: Bool -> (Project, IDEPackage) -> IDEAction
@@ -687,7 +687,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                                                    (logOutput logLaunch)
                         CabalTool -> do
                             (buildDir, cDir, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
-                            env <- packageEnv package
+                            env <- packageEnv package =<< liftIO getEnvironment
                             case exe ++ executables pd of
                                 [] -> return ()
                                 (Executable {exeName = name} : _) -> do
@@ -842,7 +842,7 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
                 (buildDir, cDir, cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
                 case cabalVer of
                     Just v | "1.24." `isPrefixOf` v -> do
-                        env <- packageEnv package
+                        env <- packageEnv package =<< liftIO getEnvironment
                         let path' c = buildDir </> T.unpack pkgId </> c
                                     </> unUnqualComponentName name </> unUnqualComponentName name
                         liftIO . debugM "leksah" $ "Looking for " <> path' "build"
