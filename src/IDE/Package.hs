@@ -20,7 +20,9 @@
 ---------------------------------------------------------------------------------
 
 module IDE.Package (
-    packageConfig
+    projectRefreshNix
+,   projectRefreshNix'
+,   packageConfig
 ,   packageConfig'
 ,   buildPackage
 
@@ -94,7 +96,24 @@ import Data.Maybe
 import Data.Function (on)
 import Control.Exception (SomeException(..), catch)
 
+import qualified IDE.Core.State (pjToolCommand, runPackage)
 import IDE.Core.State
+       (ProjectAction, mkPackageMap, packageDebugState, reflectIDEI,
+        printBindResult, breakOnError, breakOnException, printEvldWithShow,
+        changePackage, pjToolCommand', postSyncIDE, autoURI, sysMessage,
+        autoCommand, isError, postAsyncIDE, runDebug, modifyIDE_,
+        runProject, runWorkspace, debug, triggerBuild, MessageLevel(..),
+        catchIDE, errorRefs, getDataDir, ipdPackageName, pjDir, useVado,
+        activeComponent, activeProject, ideMessage, ipdPackageDir,
+        saveAllBeforeBuild, reflectIDE, wsName, workspace, triggerEventIDE,
+        activePack, readIDE, IDEPackage(..), Project(..), pjPackageMap,
+        pjFile, pjTool, DebugAction, debugState, Prefs, makeMode,
+        javaScript, native, runBenchmarks, runUnitTests, makeDocs,
+        backgroundBuild, prefs, ipdConfigFlags, runningTool, IDEM,
+        PackageAction, IDEAction, MonadIDE, StatusbarCompartment(..),
+        IDEEvent(..), SensitivityMask(..), MonadIDE(..), ProjectTool(..),
+        packageIdentifierToString, getMainWindow,
+        leksahTemplateFileExtension, leksahFlagFileExtension, displayPane)
 import IDE.Utils.GUIUtils
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.Pane.Log
@@ -103,7 +122,8 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags (writeFlags, readFlags)
 import Distribution.Text (display)
 import IDE.Utils.FileUtils
-       (cabalProjectBuildDir, getConfigFilePathForLoad, getPackageDBs')
+       (cabalProjectBuildDir, getConfigFilePathForLoad, getPackageDBs',
+        saveNixCache)
 import IDE.LogRef
 import Distribution.ModuleName (ModuleName(..))
 import Data.List
@@ -113,6 +133,8 @@ import IDE.Utils.Tool
         toolline, ProcessHandle, executeGhciCommand, interruptTool,
         terminateProcess)
 import qualified Data.Set as  Set (fromList)
+import Data.Either (isRight)
+import Data.Map (Map)
 import qualified Data.Map as  Map (empty, fromList)
 import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>), (<*>))
@@ -167,7 +189,8 @@ import Distribution.Simple.LocalBuildInfo
        (Component(..), Component)
 import Distribution.Simple.Utils (writeUTF8File)
 import Distribution.Compiler (CompilerFlavor(..))
-import qualified Data.Map as M (member, delete, insert, lookup)
+import qualified Data.Map as M
+       (toList, fromList, member, delete, insert, lookup)
 import Control.Lens ((<&>))
 import System.Process (showCommandForUser)
 #if MIN_VERSION_Cabal(2,0,0)
@@ -251,6 +274,40 @@ interruptSaveAndRun action = do
         when (saveAllBeforeBuild prefs) . liftIDE . void $ fileSaveAll belongsToWorkspace'
         action
 
+projectRefreshNix :: ProjectAction
+projectRefreshNix = do
+    project <- ask
+    interruptSaveAndRun $ projectRefreshNix' project (\ _ -> return ())
+
+projectRefreshNix'  :: Project -> (Bool -> IDEAction) -> IDEAction
+projectRefreshNix' project continuation = do
+    prefs     <- readIDE prefs
+    case pjTool project of
+        StackTool ->
+            liftIDE $ continuation True
+        CabalTool ->
+            updateNixCache (["ghc" | native prefs] <> ["ghcjs" | javaScript prefs])
+  where
+    updateNixCache :: [Text] -> IDEAction
+    updateNixCache [] = continuation True
+    updateNixCache (compiler:compilers) = do
+        logLaunch <- getDefaultLogLaunch
+        showDefaultLogLaunch'
+
+        let dir = pjDir project
+        let nixFile = dir </> "default.nix"
+        liftIO (doesFileExist nixFile) >>= \case
+            True ->
+                runExternalTool'        (__ "Nix")
+                                        "nix-shell"
+                                        [T.pack nixFile, "-A", "shells." <> compiler, "--run", "( set -o posix ; set )"]
+                                        dir Nothing $ do
+                    out <- C.getZipSink $ const <$> C.ZipSink CL.consume <*> C.ZipSink (logOutput logLaunch)
+                    when (take 1 (reverse out) == [ToolExit ExitSuccess]) $ do
+                        saveNixCache (pjFile project) compiler out
+                        lift $ updateNixCache compilers
+            False -> updateNixCache compilers
+
 packageConfig :: PackageAction
 packageConfig = do
     project <- lift ask
@@ -298,6 +355,13 @@ getActiveComponent project package = do
         then readIDE activeComponent
         else return Nothing
 
+pjToolCommand :: MonadIDE m => Project -> CompilerFlavor -> [Text] -> m (FilePath, [Text], Maybe (Map String String))
+pjToolCommand project compiler args = do
+    prefs <- readIDE prefs
+    -- Nix cache will not work over vado
+    enableNixCache <- if useVado prefs then liftIO $ isRight <$> getMountPoint (pjDir project) else return True
+    IDE.Core.State.pjToolCommand enableNixCache project compiler args
+
 runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     prefs <- readIDE prefs
@@ -331,15 +395,15 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                 ++ flagsForBenchmarks
                 ++ ipdBuildFlags package
 
+    (cmd, args', nixEnv) <- pjToolCommand project compiler args
     mbEnv <- if compiler == GHCJS
                 then do
                     env <- packageEnv package
                     dataDir <- getDataDir
                     emptyFile <- liftIO $ getConfigFilePathForLoad "empty-file" Nothing dataDir
-                    return . Just $ ("GHC_ENVIRONMENT", emptyFile) : env
-                else return Nothing
-    (cmd, args') <- pjToolCommand project compiler args
-    runExternalTool' (__ "Building") cmd args' dir mbEnv $ do
+                    return $ M.insert "GHC_ENVIRONMENT" emptyFile <$> (nixEnv <> Just (M.fromList env))
+                else return nixEnv
+    runExternalTool' (__ "Building") cmd args' dir (M.toList <$> mbEnv) $ do
         (mbLastOutput, _) <- C.getZipSink $ (,)
             <$> C.ZipSink sinkLast
             <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
@@ -469,9 +533,9 @@ packageDoc' backgroundBuild jumpToWarnings (project, package) continuation = do
                                         , T.pack ("--builddir=" <> (buildDir </>
                                             T.unpack (packageIdentifierToString $ ipdPackageId package)))]
                                 _ -> return ["new-haddock"]
-        (cmd, args) <- pjToolCommand project GHC $ flags <> ipdHaddockFlags package
+        (cmd, args, nixEnv) <- pjToolCommand project GHC $ flags <> ipdHaddockFlags package
         runExternalTool' (__ "Documenting") cmd
-            args dir Nothing $ do
+            args dir (M.toList <$> nixEnv) $ do
             mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
                 logOutputForBuild project package backgroundBuild jumpToWarnings)
             lift $ postAsyncIDE reloadDoc
@@ -1102,7 +1166,7 @@ debugStart = do
                 let dir  = ipdPackageDir  package
                     name = ipdPackageName package
                 pjFileArgs <- projectFileArguments project dir
-                (tool, args) <- pjToolCommand project GHC $
+                (tool, args, nixEnv) <- pjToolCommand project GHC $
                     case pjTool project of
                         CabalTool -> [ "new-repl" ]
                                             <> pjFileArgs
@@ -1111,7 +1175,7 @@ debugStart = do
                                             <> pjFileArgs
                                             <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ]
                 let logOut = reflectIDEI (void (logOutputForBuild project package True False)) ideRef
-                ghci <- liftIO $ newGhci tool args dir ("+c":"-ferror-spans":interactiveFlags prefs') logOut
+                ghci <- liftIO $ newGhci tool args dir nixEnv ("+c":"-ferror-spans":interactiveFlags prefs') logOut
                 liftIO $ executeGhciCommand ghci ":reload" logOut
                 modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])

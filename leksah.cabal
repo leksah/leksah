@@ -98,6 +98,7 @@ data-files:
     pics/ide_test_build.png
     pics/ide_target_binary.png
     pics/ide_target_js.png
+    pics/ide_nix.png
     scripts/clean.sh
     scripts/stage.sh
     osx/bundle.sh

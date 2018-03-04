@@ -89,7 +89,7 @@ import System.Log.Logger (errorM, debugM)
 import Data.Tree (Forest, Tree(..))
 import IDE.Pane.Modules (addModule)
 import IDE.Pane.PackageEditor (packageEditText, projectEditText)
-import IDE.Package (packageTest, packageRun, packageClean,packageBench)
+import IDE.Package (packageTest, packageRun, packageClean, packageBench, projectRefreshNix)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreGetTree, forestStoreGetValue, ForestStore(..),
@@ -781,6 +781,11 @@ contextMenuItems record path store = do
                     case wsLookupProject projectFile ws of
                         Just project -> workspaceActivatePackage project Nothing Nothing
                         Nothing -> liftIO . errorM "leksah" $ "onSetActive: Project not found " <> projectFile
+                onRefreshNix = workspaceTryQuiet $ do
+                    ws <- ask
+                    case wsLookupProject projectFile ws of
+                        Just project -> runProject projectRefreshNix project
+                        Nothing -> liftIO . errorM "leksah" $ "onSetActive: Project not found " <> projectFile
                 onOpenProjectFile = void $ selectSourceBuf projectFile
                 onOpenProjectConfigurationFile =
                     when (takeExtension projectFile == ".project") $
@@ -792,6 +797,7 @@ contextMenuItems record path store = do
             return [ [ ("Set As Active Project", onSetActive)
                      , ("Open Project File", onOpenProjectFile)
                      , ("Open Project Configuration File", onOpenProjectConfigurationFile)
+                     , ("Refresh Nix Environment Varialbes", onRefreshNix)
                      ]
                    , [
                      ("Remove From Workspace", onRemoveFromWs)

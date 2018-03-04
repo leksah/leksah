@@ -72,6 +72,7 @@
        <menuitem name="Edit Package as _Text" action="EditPackageText" />
        <menuitem name="Command _Flags" action="PackageFlags" />
        <separator/>
+       <menuitem name="Refresh Ni_x Project" action="RefreshNixProject" />
        <menuitem name="Clea_n" action="CleanPackage" />
        <menuitem name="_Configure" action="ConfigPackage" />
        <menuitem name="_Build" action="BuildPackage" />
@@ -191,6 +192,7 @@
      </placeholder>
      <placeholder name="BuildToolItems">
        <separator/>
+       <toolitem name="RefreshNixProject" action="RefreshNixProject"/>
        <toolitem name="CleanPackage" action="CleanPackage"/>
        <toolitem name="Configure" action="ConfigPackage"/>
        <toolitem name="Build" action="BuildPackage"/>

@@ -278,6 +278,9 @@ mkActions =
     ,AD "PreviousError" (__ "_Previous Error") (Just (__ "Go to the previous error")) (Just "ide_error_prev")
         previousError [] False
 
+    ,AD "RefreshNixProject" (__ "Refresh Ni_x Project") (Just (__ "Refresh the Leksah's cached nix environment variables for this project")) (Just "ide_nix")
+        (projectTry projectRefreshNix) [] False
+
     ,AD "Package" (__ "_Package") Nothing Nothing (return ()) [] False
 --    ,AD "RecentPackages" "_Recent Packages" Nothing Nothing (return ()) [] False
     ,AD "PackageEdit" (__ "_Edit") Nothing Nothing (return ()) [] False
@@ -744,7 +747,7 @@ newIcons = catch (do
             "ide_empty","ide_source_local", "ide_js", "ide_folder", "ide_source_folder",
             "ide_cabal_file", "ide_package", "ide_component", "ide_source_dependency", "ide_error",
             "ide_warning", "ide_suggestion", "ide_git", "ide_test_build", "ide_bench_build", "ide_doc_build",
-            "ide_target_binary", "ide_target_js" ]
+            "ide_target_binary", "ide_target_js", "ide_nix" ]
         iconFactoryAddDefault iconFactory)
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where

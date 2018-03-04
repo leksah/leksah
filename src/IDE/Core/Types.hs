@@ -186,6 +186,7 @@ import Control.Lens ((<&>))
 import Data.Monoid ((<>))
 import Distribution.Compiler (CompilerFlavor(..))
 import System.Process (showCommandForUser)
+import IDE.Utils.FileUtils (loadNixEnv)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -482,12 +483,17 @@ pjToolCommand' project = case pjTool project of
                             StackTool -> "stack"
                             CabalTool -> "cabal"
 
-pjToolCommand :: MonadIO m => Project -> CompilerFlavor -> [Text] -> m (FilePath, [Text])
-pjToolCommand project compiler args =
-    liftIO (doesFileExist $ pjDir project </> "default.nix") <&> (\case
-        True -> ("nix-shell", [ T.pack (pjDir project </> "default.nix"), "-A", "shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
-                              , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args])
-        False -> (pjToolCommand' project, args))
+pjToolCommand :: MonadIO m => Bool -> Project -> CompilerFlavor -> [Text] -> m (FilePath, [Text], Maybe (Map String String))
+pjToolCommand enableNixCache project compiler args =
+    liftIO (doesFileExist $ pjDir project </> "default.nix") >>= \case
+        True ->
+            (if enableNixCache
+                    then loadNixEnv (pjFile project) (if compiler == GHCJS then "ghcjs" else "ghc")
+                    else return Nothing) >>= \case
+                Just nixEnv -> return (pjToolCommand' project, args, Just nixEnv)
+                Nothing -> return ("nix-shell", [ T.pack (pjDir project </> "default.nix"), "-A", "shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
+                              , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Nothing)
+        False -> return (pjToolCommand' project, args, Nothing)
 
 pjDir :: Project -> FilePath
 pjDir = dropFileName . pjFile
