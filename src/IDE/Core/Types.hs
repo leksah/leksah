@@ -490,7 +490,7 @@ pjToolCommand enableNixCache project compiler args =
             (if enableNixCache
                     then loadNixEnv (pjFile project) (if compiler == GHCJS then "ghcjs" else "ghc")
                     else return Nothing) >>= \case
-                Just nixEnv -> return (pjToolCommand' project, args, Just nixEnv)
+                Just nixEnv -> return ("bash", ["-c", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Just nixEnv)
                 Nothing -> return ("nix-shell", [ T.pack (pjDir project </> "default.nix"), "-A", "shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
                               , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Nothing)
         False -> return (pjToolCommand' project, args, Nothing)
