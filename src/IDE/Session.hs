@@ -98,7 +98,7 @@ import GI.Gtk (constructDialogUseHeaderBar)
 -- This needs to be incremented, when the session format changes
 --
 theSessionVersion :: Int
-theSessionVersion = 2
+theSessionVersion = 3
 
 -- ---------------------------------------------------------------------
 -- All pane types must be in here !

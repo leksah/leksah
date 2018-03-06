@@ -1,5 +1,5 @@
 Version of session file format:
-               2
+               3
 Time of storage:
                "Sun Sep  4 20:03:20 CEST 2016"
 Layout:        VerticalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = -1, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 578) 336
@@ -9,7 +9,7 @@ Full screen:   False
 Completion size:
                (750,400)
 Workspace:     Nothing
-Active pane:   Nothing
+Active pane:   []
 Toolbar visible:
                True
 FindbarState:  (False,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, regex = False, lineNr = 1})

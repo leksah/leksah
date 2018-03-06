@@ -70,7 +70,7 @@ import System.Log.Logger
         rootLoggerName, setLevel)
 import Data.List (stripPrefix)
 import System.Directory
-       (doesDirectoryExist, copyFile, createDirectoryIfMissing,
+       (doesDirectoryExist, createDirectoryIfMissing,
         getHomeDirectory, doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
 import qualified Data.Conduit as C
@@ -80,6 +80,7 @@ import Control.Monad (forever, forM_, void, when, unless, liftM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
+import qualified Data.Text.IO as T (readFile, writeFile)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Sequence as Seq (empty)
@@ -439,15 +440,16 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
                 welcomeProject = welcomePath</>"cabal.project"
                 welcomeCabal = welcomePath</>"leksah-welcome.cabal"
                 welcomeMain  = welcomePath</>"src"</>"Main.hs"
+                newFile src dest = T.readFile src >>= T.writeFile dest
             liftIO $ do
                 createDirectoryIfMissing True $ welcomePath</>"src"
                 createDirectoryIfMissing True $ welcomePath</>"test"
-                copyFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
-                copyFile (welcomeSource</>"cabal.project")        welcomeProject
-                copyFile (welcomeSource</>"leksah-welcome.cabal") welcomeCabal
-                copyFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
-                copyFile (welcomeSource</>"src"</>"Main.hs")      welcomeMain
-                copyFile (welcomeSource</>"test"</>"Main.hs")     (welcomePath</>"test"</>"Main.hs")
+                newFile (welcomeSource</>"Setup.lhs")            (welcomePath</>"Setup.lhs")
+                newFile (welcomeSource</>"cabal.project")        welcomeProject
+                newFile (welcomeSource</>"leksah-welcome.cabal") welcomeCabal
+                newFile (welcomeSource</>"LICENSE")              (welcomePath</>"LICENSE")
+                newFile (welcomeSource</>"src"</>"Main.hs")      welcomeMain
+                newFile (welcomeSource</>"test"</>"Main.hs")     (welcomePath</>"test"</>"Main.hs")
             defaultWorkspace <- liftIO $ (</> "leksah.lkshw") <$> getHomeDirectory
             defaultExists <- liftIO $ doesFileExist defaultWorkspace
             if defaultExists
