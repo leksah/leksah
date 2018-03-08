@@ -469,7 +469,7 @@ selectIdentifier idDescr activatePanes openSource= do
         Just pm -> case scopeForDescr pm packageScope workspaceScope systemScope of
                         Nothing -> return ()
                         Just sc -> do
-                            when (fst currentScope < sc) (setScope (sc,snd currentScope))
+                            when (fst currentScope < sc) (setScope activatePanes (sc,snd currentScope))
                             selectIdentifier' (modu pm) (dscName idDescr) activatePanes
     when openSource (goToDefinition idDescr)
 
@@ -1067,8 +1067,8 @@ descrViewSelect ideR store descrSortedStore path _ = do
     descr <- forestStoreGetValue store unsortedp
     reflectIDE (goToDefinition descr) ideR
 
-setScope :: (Scope,Bool) -> IDEAction
-setScope (sc,bl) = do
+setScope :: Bool -> (Scope,Bool) -> IDEAction
+setScope bringToFront (sc,bl) = do
     liftIO $ debugM "leksah" "setScope"
     mods  <-  getModules Nothing
     case sc of
@@ -1092,7 +1092,7 @@ setScope (sc,bl) = do
             toggleButtonSetActive (systemScopeB mods) True
             widgetSetSensitive (dependsB mods) False
     toggleButtonSetActive (blacklistB mods) bl
-    selectScope (sc,bl)
+    selectScope bringToFront (sc,bl)
 
 getScope :: IDEM (Scope,Bool)
 getScope = do
@@ -1113,11 +1113,10 @@ scopeSelection :: IDEAction
 scopeSelection = do
     liftIO $ debugM "leksah" "scopeSelection"
     (sc,bl) <- getScope
-    setScope (sc,bl)
-    selectScope (sc,bl)
+    setScope False (sc,bl)
 
-selectScope :: (Scope,Bool) -> IDEAction
-selectScope (sc,bl) = do
+selectScope :: Bool -> (Scope,Bool) -> IDEAction
+selectScope brintToFront (sc,bl) = do
     liftIO $ debugM "leksah" "selectScope"
     recordExpanderState
     mods                <-  getModules Nothing
@@ -1138,7 +1137,7 @@ selectScope (sc,bl) = do
         selectNames mbs
     recordScopeHistory
     applyExpanderState
-    bringPaneToFront mods
+    when brintToFront $ bringPaneToFront mods
 
 selectNames :: (Maybe ModuleName, Maybe Text) -> IDEAction
 selectNames (mbModuleName, mbIdName) = do
@@ -1207,7 +1206,7 @@ reloadKeepSelection isInitial = do
                     selectNames mbs
                 else when isInitial $ do
                             SelectionState moduleS' facetS' sc bl <- liftIO $ readIORef (oldSelection mods)
-                            setScope (sc,bl)
+                            setScope False (sc,bl)
                             fillModulesList (sc, bl)
                             selectNames (moduleS', facetS')
                             applyExpanderState
@@ -1568,6 +1567,6 @@ replayScopeHistory sc bl = do
         toggleButtonSetActive (packageScopeB mods)   (sc == PackageScope False)
         toggleButtonSetActive (workspaceScopeB mods) (sc == PackageScope True)
         toggleButtonSetActive (systemScopeB mods)    (sc == SystemScope)
-    setScope (sc,bl)
+    setScope False (sc,bl)
     oldSel <- liftIO $ readIORef (oldSelection mods)
     liftIO $ writeIORef (oldSelection mods) (oldSel{scope'= sc, blacklist' = bl})
