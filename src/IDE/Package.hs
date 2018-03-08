@@ -1175,7 +1175,8 @@ debugStart = do
                                             <> pjFileArgs
                                             <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ]
                 let logOut = reflectIDEI (void (logOutputForBuild project package True False)) ideRef
-                ghci <- liftIO $ newGhci tool args dir nixEnv ("+c":"-ferror-spans":interactiveFlags prefs') logOut
+                    logIdle = reflectIDEI logOutputDefault ideRef
+                ghci <- liftIO $ newGhci tool args dir nixEnv ("+c":"-ferror-spans":interactiveFlags prefs') logOut logIdle
                 liftIO $ executeGhciCommand ghci ":reload" logOut
                 modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})
                 triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
