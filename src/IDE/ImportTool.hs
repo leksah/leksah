@@ -49,11 +49,11 @@ import Graphics.UI.Editor.Simple (staticListEditor)
 import Control.Monad
        (forM_, void, MonadPlus(..), unless, forM, when)
 import Control.Applicative ((<$>))
-import Data.List (stripPrefix, sort, nub, nubBy)
+import Data.List (intercalate, stripPrefix, sort, nub, nubBy)
 import IDE.Utils.ServerConnection
 import Text.PrinterParser (prettyPrint)
 import IDE.TextEditor (delete, setModified, insert, getIterAtLine)
-import qualified Distribution.ModuleName as D (ModuleName(..))
+import qualified Distribution.ModuleName as D (ModuleName, components, fromString)
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
@@ -167,6 +167,19 @@ addOneImport = do
             return ()
         Just ref -> addImport ref [] (\ _ -> return ())
 
+mapDescr :: Descr -> Descr
+mapDescr (Real d) = Real d { dscMbModu' = mapPackModule <$> dscMbModu' d }
+mapDescr (Reexported d) = Reexported d { dsrMbModu = mapPackModule <$> dsrMbModu d }
+
+mapPackModule :: PackModule -> PackModule
+mapPackModule m@PM{ modu = n } = m { modu = D.fromString . intercalate "." . mapModuleName $ D.components n }
+
+mapModuleName :: [String] -> [String]
+mapModuleName ("JSDOM":"Generated":rest) = "GHCJS":"DOM":rest
+mapModuleName ("JSDOM":"Custom":rest) = "GHCJS":"DOM":rest
+mapModuleName ("JSDOM":rest) = "GHCJS":"DOM":rest
+mapModuleName n = n
+
 -- | Add one missing import
 -- Returns a boolean, if the process should be stopped in case of multiple addition
 -- Returns a list of already added descrs, so that it will not be added two times and can
@@ -183,8 +196,8 @@ addImport error descrList continuation =
                 (_, Nothing) -> continuation (True,descrList)
                 (Just (GenScopeC(PackScope _ symbolTable1),GenScopeC(PackScope _ symbolTable2)),
                     Just (GenScopeC(PackScope _ symbolTable3),GenScopeC(PackScope _ symbolTable4))) ->
-                    let list = getIdentifierDescr (id' nis) symbolTable1 symbolTable2
-                        wslist = getIdentifierDescr (id' nis) symbolTable3 symbolTable4
+                    let list = map mapDescr $ getIdentifierDescr (id' nis) symbolTable1 symbolTable2
+                        wslist = map mapDescr $ getIdentifierDescr (id' nis) symbolTable3 symbolTable4
                     in case (list, wslist) of
                         ([], []) ->  do
                             ideMessage Normal $ "Identifier " <> id' nis <> " not found"

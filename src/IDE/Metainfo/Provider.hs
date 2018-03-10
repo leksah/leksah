@@ -108,8 +108,23 @@ import qualified Data.Text as T (null, isPrefixOf, unpack, pack)
 import Data.Monoid ((<>))
 import qualified Control.Arrow as A (Arrow(..))
 import Data.Function (on)
-import Distribution.Package (PackageIdentifier)
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.Package (PackageName, unPackageName, mkPackageName, PackageIdentifier(..))
+import Distribution.Version (Version, versionNumbers, mkVersion)
+#else
+import Distribution.Package (PackageName(..), unPackageName, PackageIdentifier(..))
+import Distribution.Version (Version(..))
+#endif
 import IDE.Utils.CabalPlan (unitIdToPackageId)
+
+#if !MIN_VERSION_Cabal(2,0,0)
+versionNumbers :: Version -> [Int]
+versionNumbers = versionBranch
+mkPackageName :: String -> PackageName
+mkPackageName = PackageName
+mkVersion :: [Int] -> Version
+mkVersion = (`Version` [])
+#endif
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -513,7 +528,7 @@ findFittingPackages
     -> [Dependency]  -- ^ the dependencies
     -> [PackageIdentifier] -- ^ the known packages matching the dependencies
 findFittingPackages knownPackages =
-    concatMap (fittingKnown knownPackages)
+    concatMap (fittingKnown knownPackages) . concatMap addReexportDeps
     where
     fittingKnown packages (Dependency dname versionRange) =
         -- find matching packages
@@ -524,6 +539,13 @@ findFittingPackages knownPackages =
         in  if length filtered > 1
                 then [maximumBy (compare `on` pkgVersion) filtered]
                 else filtered
+
+-- Some packages rexport modules and we don't handle that correctly yet.
+-- For now we should just consider these packages as "fitting".
+addReexportDeps d@(Dependency dname versionRange)
+    | dname == mkPackageName "ghcjs-dom"  = [d, Dependency (mkPackageName "jsaddle-dom")     anyVersion]
+    | dname == mkPackageName "reflex-dom" = [d, Dependency (mkPackageName "reflex-dom-core") anyVersion]
+addReexportDeps d = [d]
 
 -- ---------------------------------------------------------------------
 -- Looking up and searching metadata
