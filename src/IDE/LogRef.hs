@@ -483,7 +483,7 @@ logIdleOutput project package = loop
                         Right span ->
                             lift . liftIDE . postSyncIDE $ do
                                 foundInPackage <- liftIO $ findSourcePackage project package (srcSpanFilename span)
-                                let loc = Location (srcSpanFilename span) (srcSpanStartLine span) (srcSpanStartColumn span + 1) (srcSpanEndLine span) (srcSpanEndColumn span + 1)
+                                let loc = Location (srcSpanFilename span) (srcSpanStartLine span) (srcSpanStartColumn span + 1) (srcSpanEndLine span) (srcSpanEndColumn span)
                                 goToSourceDefinition (ipdPackageDir foundInPackage) loc >>= mapM_ bringPaneToFront
                     Nothing -> return ()
             _ -> return ()
