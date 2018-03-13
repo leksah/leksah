@@ -1175,7 +1175,7 @@ debugStart = do
                                             <> pjFileArgs
                                             <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ]
                 let logOut = reflectIDEI (void (logOutputForBuild project package True False)) ideRef
-                    logIdle = reflectIDEI logOutputDefault ideRef
+                    logIdle = reflectIDEI (C.getZipSink $ const <$> C.ZipSink (logIdleOutput project package) <*> C.ZipSink logOutputDefault) ideRef
                 ghci <- liftIO $ newGhci tool args dir nixEnv ("+c":"-ferror-spans":interactiveFlags prefs') logOut logIdle
                 liftIO $ executeGhciCommand ghci ":reload" logOut
                 modifyIDE_ (\ide -> ide {debugState = M.insert projectAndPackage (package, ghci) (debugState ide)})

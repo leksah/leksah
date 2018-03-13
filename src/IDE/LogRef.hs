@@ -33,6 +33,7 @@ module IDE.LogRef (
 ,   logOutput
 ,   logOutputDefault
 ,   logOutputPane
+,   logIdleOutput
 ,   logOutputForBuild
 ,   logOutputForBreakpoints
 ,   logOutputForSetBreakpoint
@@ -81,6 +82,8 @@ import qualified Data.Foldable as F (toList, forM_)
 import qualified Data.Sequence as Seq
        (null, singleton, viewr, reverse, fromList)
 import System.Directory (doesFileExist)
+import Text.Read (readMaybe)
+import IDE.Metainfo.WorkspaceCollector (srcSpanToLocation)
 
 showSourceSpan :: LogRef -> Text
 showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
@@ -464,6 +467,27 @@ logOutputPane command buffer = do
         new <- liftIO . atomicModifyIORef buffer $ \x -> let new = x ++ result in (new, new)
         mbURI <- lift $ readIDE autoURI
         unless (isJust mbURI) . lift . postSyncIDE . setOutput command $ T.unlines new
+
+logIdleOutput
+    :: Project
+    -> IDEPackage
+    -> C.Sink ToolOutput IDEM ()
+logIdleOutput project package = loop
+  where
+    loop = C.await >>= maybe (return ()) (\output -> do
+        case output of
+            ToolError s ->
+                case T.stripPrefix "OPEN " s of
+                    Just locStr -> case parse srcSpanParser "" $ T.unpack locStr of
+                        Left _ -> return ()
+                        Right span ->
+                            lift . liftIDE . postSyncIDE $ do
+                                foundInPackage <- liftIO $ findSourcePackage project package (srcSpanFilename span)
+                                let loc = Location (srcSpanFilename span) (srcSpanStartLine span) (srcSpanStartColumn span + 1) (srcSpanEndLine span) (srcSpanEndColumn span + 1)
+                                goToSourceDefinition (ipdPackageDir foundInPackage) loc >>= mapM_ bringPaneToFront
+                    Nothing -> return ()
+            _ -> return ()
+        loop)
 
 data BuildOutputState = BuildOutputState { log           :: IDELog
                                          , inError       :: Bool
