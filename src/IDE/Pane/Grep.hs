@@ -186,9 +186,6 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         sel <- treeViewGetSelection treeView
         treeSelectionSetMode sel SelectionModeSingle
 
-        onTreeViewRowActivated treeView $ \path col ->
-            void $ treeViewToggleRow treeView path
-
         scrolledView <- scrolledWindowNew noAdjustment noAdjustment
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
@@ -229,6 +226,10 @@ instance RecoverablePane IDEGrep GrepState IDEM where
                         -- gotoSource True
                     _ -> return False
         ideR <- ask
+        onTreeViewRowActivated treeView $ \path col -> do
+            void $ treeViewToggleRow treeView path
+            void (reflectIDE (gotoSource False) ideR)
+
         onTreeSelectionChanged sel (void (reflectIDE (gotoSource False) ideR))
 
         return (Just grep,[cid1, cid2])
