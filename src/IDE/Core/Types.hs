@@ -26,6 +26,7 @@ module IDE.Core.Types (
 ,   activeProject
 ,   activePack
 ,   activeComponent
+,   nixEnv
 ,   IDEState(..)
 ,   IDERef
 ,   IDEM
@@ -63,7 +64,6 @@ module IDE.Core.Types (
 ,   pjPackages
 ,   pjLookupPackage
 ,   pjDir
-,   pjToolCommand
 ,   pjToolCommand'
 ,   Workspace(..)
 ,   wsProjectFiles
@@ -236,6 +236,7 @@ data IDE            =  IDE {
 ,   stopWorkspaceNotify :: StopListening
 ,   fsnotify            :: WatchManager
 ,   developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
+,   nixCache            :: Map (FilePath, Text) (Map String String)
 } --deriving Show
 
 activeProject :: IDE -> Maybe Project
@@ -246,6 +247,9 @@ activePack ide = workspace ide >>= wsActivePackage
 
 activeComponent :: IDE -> Maybe Text
 activeComponent ide = workspace ide >>= wsActiveComponent
+
+nixEnv :: FilePath -> Text -> IDE -> Maybe (Map String String)
+nixEnv project compiler ide = M.lookup (project, compiler) $ nixCache ide
 
 --
 -- | A mutable reference to the IDE state
@@ -482,18 +486,6 @@ pjToolCommand' :: Project -> FilePath
 pjToolCommand' project = case pjTool project of
                             StackTool -> "stack"
                             CabalTool -> "cabal"
-
-pjToolCommand :: MonadIO m => Bool -> Project -> CompilerFlavor -> [Text] -> m (FilePath, [Text], Maybe (Map String String))
-pjToolCommand enableNixCache project compiler args =
-    liftIO (doesFileExist $ pjDir project </> "default.nix") >>= \case
-        True ->
-            (if enableNixCache
-                    then loadNixEnv (pjFile project) (if compiler == GHCJS then "ghcjs" else "ghc")
-                    else return Nothing) >>= \case
-                Just nixEnv -> return ("bash", ["-c", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Just nixEnv)
-                Nothing -> return ("nix-shell", [ T.pack (pjDir project </> "default.nix"), "-A", "shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
-                              , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Nothing)
-        False -> return (pjToolCommand' project, args, Nothing)
 
 pjDir :: Project -> FilePath
 pjDir = dropFileName . pjFile

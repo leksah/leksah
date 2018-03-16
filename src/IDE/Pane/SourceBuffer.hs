@@ -185,7 +185,6 @@ import GI.Gtk
         infoBarNew)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import Control.Concurrent.MVar (tryPutMVar)
-import Data.Int (Int32)
 import Graphics.UI.Frame.Rectangle (getRectangleY, getRectangleX)
 import GI.Gdk (windowGetOrigin)
 import Control.Concurrent (modifyMVar_, putMVar, takeMVar, newMVar)
@@ -217,7 +216,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
     recoverState pp (BufferState n i) =   do
         mbbuf    <-  newTextBuffer pp (T.pack $ takeFileName n) (Just n)
         case mbbuf of
-            Just (IDEBuffer {sourceView=v}) -> do
+            Just IDEBuffer {sourceView=v} -> do
                 postAsyncIDEIdle $ do
                     liftIO $ debugM "leksah" "SourceBuffer recoverState idle callback"
                     gtkBuf  <- getBuffer v
@@ -274,7 +273,7 @@ startComplete = do
     currentState' <- readIDE currentState
     case mbBuf of
         Nothing     -> return ()
-        Just (IDEBuffer {sourceView=v}) -> complete v True
+        Just IDEBuffer{sourceView = v} -> complete v True
 
 -- selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
 selectSourceBuf fp = do
@@ -287,7 +286,7 @@ selectSourceBuf fp = do
         hdb:tl -> do
             makeActive hdb
             return (Just hdb)
-        otherwise -> do
+        _ -> do
             fe <- liftIO $ doesFileExist fpc
             if fe
                 then do
@@ -396,7 +395,7 @@ removeLogRefs toRemove' types = do
 
     buffers <- allBuffers
     let matchingBufs = filter (maybe False (`Map.member` removeDetails) . fileName) buffers
-    F.forM_ matchingBufs $ \ (IDEBuffer {..}) -> do
+    F.forM_ matchingBufs $ \ IDEBuffer {..} -> do
         buf <- getBuffer sourceView
         F.forM_ (maybe [] (fromMaybe [] . (`Map.lookup` removeDetails)) fileName) $
             removeTagByName buf . T.pack . show
@@ -437,7 +436,7 @@ canResolve LogRef { logRefIdea = Just (_, Idea{..}) }
 canResolve _ = False
 
 addLogRef :: Bool -> Bool -> LogRef -> IDEAction
-addLogRef hlintFileScope backgroundBuild ref = do
+addLogRef hlintFileScope backgroundBuild ref = unless (srcSpanFilename (logRefSrcSpan ref) == "<interactive>") $ do
     liftIO . debugM "leksah" $ "addLogRef " <> show hlintFileScope <> " " <> show (logRefType ref) <> " " <> logRefFullFilePath ref
     -- Put most important errors first.
     -- If the importance of two errors is the same then
@@ -621,7 +620,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
                                     '~':rest -> homeDir ++ rest
                                     rest -> rest
                             file <- mbfn
-                            return (not $ (splitDirectories expandedDir) `isPrefixOf` (splitDirectories file))
+                            return (not $ splitDirectories expandedDir `isPrefixOf` splitDirectories file)
 
         setEditable sv isEditable
         setShowLineNumbers sv $ showLineNumbers prefs
@@ -642,7 +641,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
 
 
         box <- boxNew OrientationVertical 0
-        when (not isEditable) $ liftIO $ do
+        unless isEditable $ liftIO $ do
             bar <- infoBarNew
             lab <- labelNew (Just "This file is opened in read-only mode because it comes from a non-local package")
             area <- infoBarGetContentArea bar >>= unsafeCastTo Container

@@ -600,7 +600,7 @@ backgroundMake = catchIDE (do
     modifiedFiles <- catMaybes <$> if saveAllBeforeBuild prefs
                         then fileCheckAll (return . return . fileName)
                         else return []
-    workspaceTryQuiet $ do
+    unless (null modifiedFiles) . postAsyncIDE . workspaceTryQuiet $ do
         ws <- ask
         liftIDE $ do
             let modifiedPacks = filter (not . null . snd) $

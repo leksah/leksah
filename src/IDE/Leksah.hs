@@ -83,6 +83,7 @@ import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
 import qualified Data.Text.IO as T (readFile, writeFile)
 import Data.Text (Text)
 import Data.Monoid ((<>))
+import qualified Data.Map as M (empty)
 import qualified Data.Sequence as Seq (empty)
 import qualified GI.Gtk.Functions as Gtk (main, init)
 import GI.GLib.Functions (idleAdd, timeoutAdd, timeoutAddSeconds)
@@ -127,7 +128,7 @@ import GI.GLib.Structs.MainContext
        (mainContextIteration, mainContextDefault)
 import System.FSNotify
        (watchTree, watchDir, withManager, WatchManager)
-import qualified Data.Map as M (empty)
+import Criterion.Measurement (initializeTime)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -189,6 +190,7 @@ leksah = realMain
 #endif
 
 realMain yiConfig = do
+  initializeTime
   exitCode <- newIORef ExitSuccess
   withSocketsDo $ handleExceptions $ do
     dataDir         <- getDataDir
@@ -348,6 +350,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
             }
 
     triggerBuild <- newEmptyMVar
+    nixCache <- loadNixCache
     let ide = IDE
           {   application       =   app
           ,   exitCode          =   exitCode
@@ -389,6 +392,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           ,   stopWorkspaceNotify = return ()
           ,   fsnotify          =   fsnotify
           ,   developLeksah     =   developLeksah
+          ,   nixCache          =   nixCache
     }
     ideR             <-  newIORef ide
     (`reflectIDE` ideR) $ do

@@ -38,21 +38,23 @@ import Data.Maybe
 import Control.Monad (forM, void, when)
 import Data.Foldable (forM_, for_)
 import Data.Typeable (Typeable)
+import qualified Data.Map as M (member)
+import Control.Lens ((<&>))
 import IDE.Core.State
-       (onIDE, catchIDE, window, getIDE, MessageLevel(..), ipdPackageId,
-        wsPackages, workspace, readIDE, IDEAction, ideMessage, reflectIDE,
-        reifyIDE, IDEM, IDEPackage)
+       (pjDir, onIDE, catchIDE, window, getIDE, MessageLevel(..),
+        ipdPackageId, wsPackages, workspace, readIDE, IDEAction,
+        ideMessage, reflectIDE, reifyIDE, IDEM, IDEPackage)
 import IDE.Pane.SourceBuffer
        (selectSourceBuf, fileNew, goToSourceDefinition')
 import Control.Applicative ((<$>))
 import System.FilePath
-       ((<.>), (</>), takeFileName, dropFileName,
+       (isDrive, (<.>), (</>), takeFileName, dropFileName,
         addTrailingPathSeparator, takeDirectory, takeExtension,
         makeRelative, splitDirectories)
 import Distribution.Package (PackageIdentifier(..))
 import System.Directory
-       (removeDirectoryRecursive, removeDirectory, createDirectory,
-        doesFileExist, removeFile, doesDirectoryExist,
+       (getHomeDirectory, removeDirectoryRecursive, removeDirectory,
+        createDirectory, doesFileExist, removeFile, doesDirectoryExist,
         getDirectoryContents, getPermissions, readable)
 import IDE.Core.CTypes
        (Location(..), packageIdentifierToString)
@@ -75,7 +77,8 @@ import IDE.Core.Types
         activePack, activeProject, Project(..), ipdLib, WorkspaceAction,
         Workspace(..), wsAllPackages, WorkspaceM, runPackage, runProject,
         runWorkspace, PackageAction, PackageM, ProjectAction, ProjectM,
-        IDEPackage(..), IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir)
+        IDEPackage(..), IDE(..), Prefs(..), MonadIDE(..), ipdPackageDir,
+        nixEnv)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Workspaces
        (workspaceOpen, makePackage, projectAddPackage', workspaceRemoveProject,
@@ -149,8 +152,18 @@ import GI.Gtk.Objects.LinkButton
         linkButtonNew)
 import Data.GI.Base.Signals (SignalHandlerId)
 import GI.Gtk (widgetQueueDraw, treeViewExpandRow)
-import qualified Data.Map as M (member)
+import Criterion.Measurement (getTime, secs)
+import IDE.Utils.FileUtils (loadNixEnv)
+import Data.Git (isRepo)
+import Data.Git.Monad (headGet, withRepo, refNameRaw)
+import Data.String (IsString(..))
+import Data.Word (Word16)
+import qualified GI.Gdk as Gdk (Color(..))
+import GI.Gdk
+       (setColorGreen, setColorRed, colorToString, setColorBlue)
+import Data.GI.Base.Constructible (Constructible(..))
 
+type LocalPath = FilePath
 
 -- | The data for a single record in the Workspace Pane
 data WorkspaceRecord =
@@ -214,7 +227,8 @@ toMarkup record (mbProject, mbPackage) =
              (FileRecord f) -> return $ T.pack $ takeFileName f
              (DirRecord f _)
                  | (ipdPackageDir <$> mbPackage) == Just f -> return "Files"
-                 | otherwise -> return $ T.pack $ last (splitDirectories f)
+                 | (pjDir <$> mbProject) == Just f -> return "Files"
+                 | otherwise -> return $ T.pack $ takeFileName f
              ComponentsRecord -> return "Components"
              (ComponentRecord comp) -> do
                 let active = activePackage &&
@@ -224,20 +238,63 @@ toMarkup record (mbProject, mbPackage) =
                 return $ (if active then bold else id) comp
              GitRecord ->
                 case ipdPackageDir <$> mbPackage of
-                    Nothing -> return "No Git project"
-                    Just dir -> do
-                        let conf = Git.makeConfig (Just dir) Nothing Nothing
-                        liftIO $ Git.runVcs conf $ do
-                             branch <- Git.localBranches
-                             case branch of
-                                (Right (Just branch,_)) -> return branch
-                                (Right (Nothing,_)) -> return "No Git branch"
-                                (Left _)           -> return "No Git project"
+                    Nothing -> return "No Git repository"
+                    Just dir -> liftIO $
+                        (findRepoMaybe dir >>= \case
+                            Nothing -> return "No Git repository"
+                            Just repoPath -> either T.pack id <$>
+                                withRepo (fromString repoPath) (
+                                    headGet >>= \case
+                                        Left sha -> return . T.pack $ show sha
+                                        Right name -> return . T.pack $ refNameRaw name))
+                         `catch` (\(_ :: SomeException) -> return "No Git branch")
             where
                 bold str = "<b>" <> str <> "</b>"
                 italic str = "<i>" <> str <> "</i>"
                 gray str = "<span foreground=\"#999999\">" <> str <> "</span>"
 
+findRepoMaybe :: FilePath -> IO (Maybe FilePath)
+findRepoMaybe absoluteDir = do
+    homedir <- getHomeDirectory
+    let probe dir | isDrive dir || dir == homedir
+                  = return Nothing
+        probe dir = do
+            let gitDir = dir </> ".git"
+            isRepo (fromString gitDir) >>= \case
+                True -> return $ Just gitDir
+                False -> probe $ takeDirectory dir
+    probe absoluteDir
+
+timeMarkup
+    :: MonadIDE m
+    => m Text
+    -> m Text
+timeMarkup f = do
+    dark <- darkUserInterface <$> readIDE prefs
+    start <- liftIO getTime
+    markup <- f
+    duration <- subtract start <$> liftIO getTime
+    c <- colorToString =<< colour dark duration
+    return $ markup <> " <span foreground=\"" <> c <> "\">" <> T.pack (secs duration) <> "</span>"
+  where
+    colour True duration | duration < 0.001 = rgb
+                                            (round $ 20000 + duration * 1000 * 20000)
+                                            (round $ 20000 + duration * 1000 * 20000)
+                                            (round $ 20000 + duration * 1000 * 10000)
+                         | otherwise = rgb 40000 20000 20000
+    colour False duration | duration < 0.00001 = rgb
+                                            (round $ 60000 - duration * 1000 * 10000)
+                                            (round $ 60000 - duration * 1000 * 10000)
+                                            (round $ 60000 - duration * 1000 * 20000)
+                         | otherwise = rgb 50000 30000 30000
+
+rgb :: MonadIO m => Word16 -> Word16 -> Word16 -> m Gdk.Color
+rgb r g b = do
+    c <- new Gdk.Color  []
+    setColorRed   c r
+    setColorGreen c g
+    setColorBlue  c b
+    return c
 
 -- | The icon to show for a record
 toIcon :: WorkspaceRecord
@@ -254,7 +311,10 @@ toIcon record (mbProject, mbPackage) =
                 DirRecord p isSrc
                     | isSrc     -> return "ide_source_folder"
                     | otherwise -> return "ide_folder"
-                ProjectRecord _ -> return "ide_source_dependency"
+                ProjectRecord project ->
+                    readIDE (nixEnv project "ghc") <&> \case
+                        Just _ -> "ide_nix"
+                        Nothing -> "ide_source_dependency"
                 PackageRecord pFile -> case (mbProject, mbPackage) of
                     (Just project, Just package) -> do
                         ds <- readIDE debugState
@@ -282,13 +342,15 @@ treePathToPackage' store (n1:n2:_) = do
     projectRecord <- forestStoreGetValue store =<< treePathNewFromIndices' [n1]
     packageRecord <- forestStoreGetValue store =<< treePathNewFromIndices' [n1,n2]
     case (projectRecord, packageRecord) of
-        (ProjectRecord pjFile, PackageRecord pkgFile) -> readIDE workspace >>= \case
+        (ProjectRecord pjFile, mbPkg) -> readIDE workspace >>= \case
             Just ws -> case wsLookupProject pjFile ws of
-                Just pj -> case pjLookupPackage pkgFile pj of
-                    Just pkg -> return (Just pj, Just pkg)
-                    _ -> do
-                        liftIO . errorM "leksah" $ "treePathToPackage: could not find pakcage " <> pkgFile
-                        return (Nothing, Nothing)
+                Just pj -> case mbPkg of
+                    PackageRecord pkgFile -> case pjLookupPackage pkgFile pj of
+                        Just pkg -> return (Just pj, Just pkg)
+                        _ -> do
+                            liftIO . errorM "leksah" $ "treePathToPackage: could not find pakcage " <> pkgFile
+                            return (Nothing, Nothing)
+                    _ -> return (Just pj, Nothing)
                 _ -> do
                     liftIO . errorM "leksah" $ "treePathToPackage: Could not find project " <> pjFile
                     return (Nothing, Nothing)
@@ -326,7 +388,7 @@ canExpand record pj mbPkg = case record of
     (DirRecord fp _)     -> do
         mbWs <- readIDE workspace
         case mbWs of
-            Just ws -> not . null <$> ((`runWorkspace` ws) . (`runProject` pj) . (`runPackage` pkg) $ dirRecords fp)
+            Just ws -> not . null <$> ((`runWorkspace` ws) . (`runProject` pj) $ dirRecords fp mbPkg)
             Nothing -> return False
     ComponentsRecord    -> return . not . null $ components
     _                   -> return False
@@ -432,7 +494,7 @@ buildTreeView recordStore = do
             record <- customStoreGetRow recordStore iter
             projAndPkg <- (`reflectIDE` ideR) $ iterToPackage recordStore iter
             -- The cellrenderer is stateful, so it knows which cell this markup will be for (the cell at iter)
-            markup <- (`reflectIDE` ideR) $ toMarkup record projAndPkg
+            markup <- (`reflectIDE` ideR) . timeMarkup $ toMarkup record projAndPkg
             setCellRendererTextMarkup renderer1 markup
 
         -- set workspace font
@@ -455,7 +517,7 @@ treeViewEvents recordStore treeView = do
     cid1 <- onTreeViewRowExpanded treeView $ \iter path -> do
         record <- forestStoreGetValue recordStore path
         (`reflectIDE` ideR) $ iterToPackage recordStore iter >>= \case
-            (Just project, Just pkg) ->
+            (Just project, _) ->
                 workspaceTryQuiet . (`runProject` project) $
                     refreshPackageTreeFrom recordStore treeView path
             _ -> return ()
@@ -551,14 +613,13 @@ refresh WorkspacePane{..} = do
             (`runWorkspace` ws) $ do
                 path <- liftIO $ treePathNewFromIndices' []
                 for_ (zip [0..] projects) $ \(n, project) -> do
-                    liftIO $ forestStoreInsert recordStore path n (ProjectRecord $ pjFile project)
-                    let packages = pjPackages project
+                    let projectRecord = ProjectRecord $ pjFile project
+                    liftIO $ debugM "leksah" $ pjFile project
+                    liftIO $ forestStoreInsert recordStore path n projectRecord
                     (`runProject` project) $ do
                         path <- liftIO $ treePathNewFromIndices' [fromIntegral n]
-                        for_ (zip [0..] packages) $ \(nPkg, pkg) -> do
-                            liftIO $ forestStoreInsert recordStore path nPkg (PackageRecord $ ipdCabalFile pkg)
-                            children <- children (PackageRecord $ ipdCabalFile pkg) (Just pkg)
-                            lift $ setChildren (Just project) (Just pkg) recordStore treeView [fromIntegral n, fromIntegral nPkg] children
+                        projectChildren <- children projectRecord Nothing
+                        lift $ setChildren (Just project) Nothing recordStore treeView [fromIntegral n] projectChildren
                         treeViewExpandRow treeView path False
 
 
@@ -577,18 +638,17 @@ refreshPackageTreeFrom store view path = do
 -- | Returns the children of the 'WorkspaceRecord'.
 children :: WorkspaceRecord -> Maybe IDEPackage -> ProjectM [WorkspaceRecord]
 children record mbPkg = case record of
-    DirRecord dir _     -> runPkg $ dirRecords dir
+    DirRecord dir _     -> dirRecords dir mbPkg
     ComponentsRecord    -> runPkg componentsRecords
-    ProjectRecord project ->
-        readIDE workspace >>= \case
+    ProjectRecord project -> (<> [DirRecord (dropFileName project) False]) <$>
+        (readIDE workspace >>= \case
             Nothing -> return []
             Just ws -> return $ maybe [] (map (PackageRecord . ipdCabalFile) . pjPackages)
-                                    $ wsLookupProject project ws
-    PackageRecord pkg   -> do
-        p <- runPkg ask
+                                    $ wsLookupProject project ws)
+    PackageRecord pkg   ->
         return [ ComponentsRecord
                , GitRecord
-               , DirRecord (ipdPackageDir p) False]
+               , DirRecord (dropFileName pkg) False]
     _                   -> return []
   where
     runPkg = (`runPackage` fromJust mbPkg)
@@ -596,8 +656,8 @@ children record mbPkg = case record of
 -- | Returns the contents at the given 'FilePath' as 'WorkspaceRecord's.
 -- Runs in the PackageM monad to determine if directories are
 -- source directories (as specified in the cabal file)
-dirRecords :: FilePath -> PackageM [WorkspaceRecord]
-dirRecords dir = do
+dirRecords :: FilePath -> Maybe IDEPackage -> ProjectM [WorkspaceRecord]
+dirRecords dir mbPkg = do
    prefs    <- readIDE prefs
    contents <- liftIO $ getDirectoryContents dir
                             `catch` \(e :: IOError) -> return []
@@ -608,16 +668,18 @@ dirRecords dir = do
                   let full = dir </> f
                   isDir <- liftIO $ doesDirectoryExist full
                   if isDir
-                      then do
+                      then case mbPkg of
+                        Just pkg -> do
                           -- find out if it is a source directory of the project
-                          pkgDir <- (addTrailingPathSeparator . takeDirectory . ipdCabalFile) <$> ask
+                          let pkgDir = addTrailingPathSeparator . takeDirectory $ ipdCabalFile pkg
                           case stripPrefix pkgDir full of
                               Just relativeToPackage -> do
-                                  srcDirs <- ipdSrcDirs <$> ask
+                                  let srcDirs = ipdSrcDirs pkg
                                   return $ DirRecord full (relativeToPackage `elem` srcDirs)
                               Nothing ->
                                   -- It's not a descendant of the package directory (e.g. in a source dependency)
                                   return $ DirRecord full False
+                        Nothing -> return $ DirRecord full False
                       else return $ FileRecord full
    return (sort records)
 
