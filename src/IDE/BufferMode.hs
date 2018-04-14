@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -50,6 +51,8 @@ import GI.Gtk.Objects.Widget (toWidget)
 import GI.Gtk.Objects.Notebook (notebookPageNum, Notebook(..))
 import GI.Gtk (MessageDialog, Box)
 import Control.Concurrent (MVar)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 -- * Buffer Basics
 
@@ -77,7 +80,10 @@ instance Pane IDEBuffer IDEM
 
 data BufferState            =   BufferState FilePath Int
                             |   BufferStateTrans Text Text Int
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON BufferState
+instance FromJSON BufferState
 
 maybeActiveBuf :: IDEM (Maybe IDEBuffer)
 maybeActiveBuf = do

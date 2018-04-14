@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -131,6 +132,8 @@ import GI.GLib.Constants (pattern PRIORITY_DEFAULT)
 import Data.Int (Int32)
 import Control.Monad.IO.Class (MonadIO)
 import GI.Gtk (widgetOverrideFont)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 -------------------------------------------------------------------------------
 --
@@ -278,7 +281,10 @@ showLogLaunch name = do
     liftIO $ putStrLn "switched to loglaunch"
 
 data LogState               =   LogState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON LogState
+instance FromJSON LogState
 
 instance Pane IDELog IDEM
     where

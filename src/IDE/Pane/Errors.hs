@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances, TypeSynonymInstances,
@@ -111,6 +112,8 @@ import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
 import GI.Gtk (getToggleButtonActive)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 
 -- | The representation of the Errors pane
@@ -142,8 +145,10 @@ data ErrorsState = ErrorsState
     , showSuggestions :: Bool
     , showTestFails :: Bool
     }
-   deriving (Eq,Ord,Read,Show,Typeable)
+   deriving (Eq,Ord,Read,Show,Typeable,Generic)
 
+instance ToJSON ErrorsState
+instance FromJSON ErrorsState
 
 instance Pane ErrorsPane IDEM
     where

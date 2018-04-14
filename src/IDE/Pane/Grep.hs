@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -99,6 +100,8 @@ import Data.GI.Gtk.ModelView.TreeModel
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
 import qualified Data.Function as F (on)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 -- | Represents a single search result
 data GrepRecord = GrepRecord {
@@ -127,8 +130,10 @@ data IDEGrep        =   IDEGrep {
 
 -- | The additional state used when recovering the pane
 data GrepState      =   GrepState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
 
+instance ToJSON GrepState
+instance FromJSON GrepState
 
 instance Pane IDEGrep IDEM
     where

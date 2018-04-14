@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -78,6 +79,8 @@ import IDE.Pane.PackageEditor (packageEditText)
 import IDE.Package (packageTest, packageRun, packageClean)
 import GI.Gtk.Objects.Label (labelNew, Label(..))
 import GI.Gtk.Objects.Widget (toWidget)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 
 -- * The Files pane
@@ -91,7 +94,10 @@ data IDEFiles        =   IDEFiles {
 -- | The additional state used when recovering the pane
 --   (none, the package directories come from the IDE state)
 data FilesState      =   FilesState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON FilesState
+instance FromJSON FilesState
 
 instance Pane IDEFiles IDEM where
     primPaneName _  =   __ "Files"

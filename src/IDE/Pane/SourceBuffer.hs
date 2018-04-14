@@ -34,6 +34,7 @@ module IDE.Pane.SourceBuffer (
 ,   goToSourceDefinition
 ,   goToSourceDefinition'
 ,   goToDefinition
+,   goToLocation
 ,   insertInBuffer
 
 ,   fileNew
@@ -301,7 +302,10 @@ selectSourceBuf fp = do
                     return Nothing
 
 goToDefinition :: Descr -> IDEAction
-goToDefinition idDescr  = do
+goToDefinition idDescr = goToLocation (dscMbModu idDescr) (dscMbLocation idDescr)
+
+goToLocation :: Maybe PackModule -> Maybe Location -> IDEAction
+goToLocation mbMod mbLoc = do
 
     mbWorkspaceInfo     <-  getWorkspaceInfo
     mbSystemInfo        <-  getSystemInfo
@@ -310,8 +314,8 @@ goToDefinition idDescr  = do
         mbSourcePath = (mbWorkspaceInfo  >>= (sourcePathFromScope . fst))
                         <|> (mbSystemInfo >>= sourcePathFromScope)
 
-    liftIO . debugM "leksah" $ show (mbPackagePath, dscMbLocation idDescr, mbSourcePath)
-    case (mbPackagePath, dscMbLocation idDescr, mbSourcePath) of
+    liftIO . debugM "leksah" $ show (mbPackagePath, mbLoc, mbSourcePath)
+    case (mbPackagePath, mbLoc, mbSourcePath) of
         (Just packagePath, Just loc, _) -> void (goToSourceDefinition (dropFileName packagePath) loc)
         (_, Just loc, Just sourcePath)  -> void (goToSourceDefinition' sourcePath loc)
         (_, _, Just sp) -> void (selectSourceBuf sp)
@@ -319,7 +323,7 @@ goToDefinition idDescr  = do
   where
     packagePathFromScope :: GenScope -> Maybe FilePath
     packagePathFromScope (GenScopeC (PackScope l _)) =
-        case dscMbModu idDescr of
+        case mbMod of
             Just mod -> case pack mod `Map.lookup` l of
                             Just pack -> pdMbSourcePath pack
                             Nothing   -> Nothing
@@ -327,10 +331,10 @@ goToDefinition idDescr  = do
 
     sourcePathFromScope :: GenScope -> Maybe FilePath
     sourcePathFromScope (GenScopeC (PackScope l _)) =
-        case dscMbModu idDescr of
+        case mbMod of
             Just mod -> case pack mod `Map.lookup` l of
                             Just pack ->
-                                case filter (\md -> mdModuleId md == fromJust (dscMbModu idDescr))
+                                case filter (\md -> mdModuleId md == mod)
                                                     (pdModules pack) of
                                     (mod : tl) ->  mdMbSourcePath mod
                                     []         -> Nothing
@@ -385,7 +389,7 @@ insertInBuffer idDescr = do
 updateStyle' :: IDEBuffer -> IDEAction
 updateStyle' IDEBuffer {sourceView = sv} = getBuffer sv >>= updateStyle
 
-removeLogRefs :: (FilePath -> FilePath -> Bool) -> [LogRefType] -> IDEAction
+removeLogRefs :: (Log -> FilePath -> Bool) -> [LogRefType] -> IDEAction
 removeLogRefs toRemove' types = do
     (remove, keep) <- Seq.partition toRemove <$> readIDE allLogRefs
     let removeDetails = Map.fromListWith (<>) . nub $ map (\ref ->
@@ -403,29 +407,29 @@ removeLogRefs toRemove' types = do
     triggerEventIDE (ErrorsRemoved False toRemove)
     return ()
   where
-    toRemove ref = toRemove' (logRefRootPath ref) (logRefFilePath ref)
+    toRemove ref = toRemove' (logRefLog ref) (logRefFilePath ref)
                 && logRefType ref `elem` types
 
 removeFileLogRefs :: FilePath -> [LogRefType] -> IDEAction
 removeFileLogRefs file types = do
     liftIO . debugM "leksah" $ "removeFileLogRefs " <> file <> " " <> show types
-    removeLogRefs (\r f -> r </> f == file) types
+    removeLogRefs (\l f -> logRootPath l </> f == file) types
 
-removeFileExtLogRefs :: FilePath -> String -> [LogRefType] -> IDEAction
-removeFileExtLogRefs root fileExt types = do
-    liftIO . debugM "leksah" $ "removeFileTypeLogRefs " <> root <> " " <> fileExt <> " " <> show types
-    removeLogRefs (\r f -> r == root && takeExtension f == fileExt) types
+removeFileExtLogRefs :: Log -> String -> [LogRefType] -> IDEAction
+removeFileExtLogRefs log fileExt types = do
+    liftIO . debugM "leksah" $ "removeFileTypeLogRefs " <> show log <> " " <> fileExt <> " " <> show types
+    removeLogRefs (\l f -> l == log && takeExtension f == fileExt) types
 
-removePackageLogRefs :: FilePath -> [LogRefType] -> IDEAction
-removePackageLogRefs root types = do
-    liftIO . debugM "leksah" $ "removePackageLogRefs " <> root <> " " <> show types
-    removeLogRefs (\r _ -> r == root) types
+removePackageLogRefs :: Log -> [LogRefType] -> IDEAction
+removePackageLogRefs log types = do
+    liftIO . debugM "leksah" $ "removePackageLogRefs " <> show log <> " " <> show types
+    removeLogRefs (\l _ -> l == log) types
 
 removeBuildLogRefs :: FilePath -> IDEAction
 removeBuildLogRefs file = removeFileLogRefs file [ErrorRef, WarningRef]
 
-removeTestLogRefs :: FilePath -> IDEAction
-removeTestLogRefs root = removePackageLogRefs root [TestFailureRef]
+removeTestLogRefs :: Log -> IDEAction
+removeTestLogRefs log = removePackageLogRefs log [TestFailureRef]
 
 removeLintLogRefs :: FilePath -> IDEAction
 removeLintLogRefs file = removeFileLogRefs file [LintRef]

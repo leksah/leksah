@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -78,6 +79,8 @@ import GI.Gtk.Objects.MenuItem
        (toMenuItem, onMenuItemActivate, menuItemNewWithLabel)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 
 -- | Represents the Breakpoints pane
@@ -90,8 +93,10 @@ data IDEBreakpoints    =   IDEBreakpoints {
 
 -- | The additional state used when recovering the pane
 data BreakpointsState  =   BreakpointsState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
 
+instance ToJSON BreakpointsState
+instance FromJSON BreakpointsState
 
 instance Pane IDEBreakpoints IDEM
     where

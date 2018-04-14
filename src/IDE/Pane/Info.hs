@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -60,6 +61,8 @@ import GI.Gtk.Objects.TextView (textViewSetEditable)
 import IDE.SourceCandy (getCandylessPart)
 import Graphics.UI.Frame.Rectangle (getRectangleY, getRectangleX)
 import GI.Gdk (windowGetOrigin)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 
 -- | Represents the Info pane
@@ -72,8 +75,10 @@ data IDEInfo        =   forall editor. TextEditor editor => IDEInfo {
 
 -- | The additional state used when recovering the pane
 data InfoState              =   InfoState (Maybe Descr)
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
 
+instance ToJSON InfoState
+instance FromJSON InfoState
 
 instance Pane IDEInfo IDEM
     where

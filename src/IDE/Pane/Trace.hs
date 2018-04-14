@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances, TypeSynonymInstances,
    MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
@@ -28,25 +29,10 @@ import IDE.Debug
     (debugForward, debugBack, debugCommand')
 import IDE.Utils.Tool (ToolOutput(..))
 import IDE.LogRef (srcSpanParser)
-import Text.ParserCombinators.Parsec
-    (anyChar,
-     skipMany,
-     (<|>),
-     optional,
-     eof,
-     try,
-     parse,
-     (<?>),
-     noneOf,
-     many,
-     CharParser)
-import qualified Text.ParserCombinators.Parsec.Token as  P
-    (integer, whiteSpace, colon, symbol, makeTokenParser)
-import Text.ParserCombinators.Parsec.Language (emptyDef)
 import System.Log.Logger (debugM)
 import IDE.Workspaces (packageTry)
 import qualified Data.Conduit.List as CL (consume)
-import Control.Applicative ((<$>))
+import Control.Applicative (optional, (<$>), (<|>), many)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
@@ -92,6 +78,13 @@ import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import Control.Monad.Reader (MonadReader(..))
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
+import Data.Attoparsec.Text
+       (string, manyTill, char, (<?>), endOfInput, anyChar, skipMany, try,
+        parseOnly, Parser)
+import qualified Data.Attoparsec.Text as AP
+       (decimal, string, skipSpace)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -105,7 +98,10 @@ data IDETrace    =   IDETrace {
 } deriving Typeable
 
 data TraceState  =   TraceState {
-}   deriving(Eq,Ord,Read,Show,Typeable)
+}   deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON TraceState
+instance FromJSON TraceState
 
 data TraceHist = TraceHist {
     thSelected      ::  Bool,
@@ -221,7 +217,7 @@ fillTraceList = packageTry $ do
         Just tracePane -> tryDebug $ debugCommand' ":history" $ do
             to <- CL.consume
             lift $ postAsyncIDE $ do
-                let parseRes = parse tracesParser "" . T.unpack $ selectString to
+                let parseRes = parseOnly tracesParser $ selectString to
                 r <- case parseRes of
                         Left err     -> do
                             liftIO $ debugM "leksah" (printf (__ "trace parse error %s\ninput: %s") (show err)
@@ -276,35 +272,36 @@ traceContextMenu ideR store treeView theMenu = do
     onMenuItemActivate item3 $ reflectIDE fillTraceList ideR
     mapM_ (menuShellAppend theMenu) [item1, sep1, item2, item3]
 
-tracesParser :: CharParser () [TraceHist]
+tracesParser :: Parser [TraceHist]
 tracesParser = try (do
         whiteSpace
-        symbol (T.unpack $ __ "Empty history.")
+        symbol (__ "Empty history.")
         skipMany anyChar
-        eof
+        endOfInput
         return [])
     <|> do
         traces <- many (try traceParser)
         whiteSpace
-        symbol (T.unpack $ __ "<end of history>")
-        eof
+        symbol (__ "<end of history>")
+        endOfInput
         return traces
     <|> do
         whiteSpace
-        symbol (T.unpack $ __ "Not stopped at a breakpoint")
+        symbol (__ "Not stopped at a breakpoint")
         skipMany anyChar
-        eof
+        endOfInput
         return []
     <?>
         T.unpack (__ "traces parser")
 
-traceParser :: CharParser () TraceHist
+traceParser :: Parser TraceHist
 traceParser = do
     whiteSpace
     index    <- int
-    colon
+    char ':'
+    whiteSpace
     optional (symbol "\ESC[1m")
-    function <- T.pack <$> many (noneOf "(\ESC")
+    function <- T.pack <$> manyTill anyChar (string "(\ESC")
     optional (symbol "\ESC[0m")
     symbol "("
     span     <- srcSpanParser
@@ -312,11 +309,9 @@ traceParser = do
     return (TraceHist False index function span)
     <?> T.unpack (__ "trace parser")
 
-lexer  = P.makeTokenParser emptyDef
-colon  = P.colon lexer
-symbol = P.symbol lexer
-whiteSpace = P.whiteSpace lexer
-int = fromInteger <$> P.integer lexer
+whiteSpace = AP.skipSpace
+symbol = AP.string
+int = AP.decimal
 
 
 

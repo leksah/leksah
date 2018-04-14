@@ -60,14 +60,6 @@ import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
         dropExtension, takeBaseName, addExtension, takeExtension,
         takeDirectory, (<.>))
-import Text.PrinterParser
-    (readFields,
-     writeFields,
-     readParser,
-     stringParser,
-     intParser,
-     mkFieldS,
-     FieldDescriptionS(..))
 import qualified Text.PrettyPrint as  PP (text)
 import IDE.Pane.PackageEditor (packageNew', packageClone, choosePackageFile, standardSetup)
 import Data.List (delete)
@@ -127,6 +119,8 @@ import GI.Gtk.Interfaces.FileChooser
         fileChooserSetAction)
 import IDE.Workspaces.Writer (WorkspaceFile(..))
 import qualified Data.Map as M (member, delete, adjust, insert)
+import qualified Data.ByteString.Lazy as LBS (writeFile)
+import Data.Aeson (encode)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -155,7 +149,7 @@ workspaceNewHere filePath =
             newWorkspace = Writer.emptyWorkspaceFile {
                             wsfName = T.pack $ takeBaseName cPath
                             }
-        liftIO $ writeFields cPath newWorkspace Writer.workspaceDescr
+        liftIO . LBS.writeFile cPath $ encode newWorkspace
         workspaceOpenThis False cPath
         return ()
 
@@ -406,7 +400,7 @@ workspacePackageNew = do
         when isNew $ do
             mbPack <- liftIDE $ idePackageFromPath' fp
             liftIDE $ constructAndOpenMainModules mbPack
-        liftIDE $ triggerEventIDE_ UpdateWorkspaceInfo
+        liftIDE $ triggerEventIDE_ (UpdateWorkspaceInfo False)
 
 projectPackageClone :: ProjectAction
 projectPackageClone = do
@@ -415,7 +409,7 @@ projectPackageClone = do
     liftIDE . packageClone path logOutputDefault $ \fp ->
         projectTry $ do
             projectAddPackage' fp
-            triggerEventIDE_ UpdateWorkspaceInfo
+            triggerEventIDE_ (UpdateWorkspaceInfo False)
 
 constructAndOpenMainModules :: Maybe IDEPackage -> IDEAction
 constructAndOpenMainModules Nothing = return ()
@@ -445,7 +439,7 @@ projectAddPackage = do
         Nothing -> return ()
         Just fp -> do
             void (projectAddPackage' fp)
-            liftIDE $ triggerEventIDE_ UpdateWorkspaceInfo
+            liftIDE $ triggerEventIDE_ (UpdateWorkspaceInfo False)
 
 projectAddPackage' :: FilePath -> ProjectM (Maybe IDEPackage)
 projectAddPackage' fp = do
@@ -626,7 +620,7 @@ makePackage = do
     mbWs   <- readIDE workspace
     let settings = (defaultMakeSettings prefs')
             { msBackgroundBuild = False
-            , msSuccessAction = when (ipdPackageName p == "leksah") $
+            , msSuccessAction = when (ipdPackageName p == "leksah" && native prefs') $
                 readIDE developLeksah >>= \case
                     False -> return ()
                     True -> triggerEventIDE_ QuitToRestart }

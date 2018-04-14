@@ -152,7 +152,7 @@ import Control.Monad.Trans.Reader (ReaderT(..))
 import GI.Gtk.Objects.Menu (Menu(..))
 import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
-import Text.PrinterParser (Color(..))
+import Graphics.UI.Editor.Simple (Color(..))
 import GI.Gtk (widgetOverrideFont, setTextTagUnderlineRgba)
 import GI.GtkSource.Objects.StyleScheme
        (styleSchemeGetStyle, StyleScheme(..))

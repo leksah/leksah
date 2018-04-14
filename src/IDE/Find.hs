@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
@@ -116,6 +117,8 @@ import IDE.Core.Types
 import GI.Gtk.Structs.TreePath (treePathGetIndices)
 import GI.Gtk (noWidget, imageNewFromIconName)
 import Graphics.UI.Frame.Panes (RecoverablePane(..))
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 data FindState = FindState {
             entryStr        ::    Text
@@ -127,7 +130,10 @@ data FindState = FindState {
         ,   wrapAround      ::    Bool
         ,   regex           ::    Bool
         ,   lineNr          ::    Int}
-    deriving(Eq,Ord,Show,Read)
+    deriving(Eq,Ord,Show,Read,Generic)
+
+instance ToJSON FindState
+instance FromJSON FindState
 
 getFindState :: IDEM FindState
 getFindState = do

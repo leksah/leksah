@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -38,7 +39,6 @@ import qualified Data.Set as Set
 import IDE.Core.State
 import IDE.Utils.GUIUtils
 import IDE.Utils.FileUtils
-import Text.PrinterParser
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Graphics.UI.Editor.Parameters
 import IDE.TextEditor
@@ -93,6 +93,9 @@ import Control.Arrow (Arrow(..))
 import qualified Data.Text as T (unpack, pack)
 import Data.Monoid ((<>))
 import GI.Gtk (constructDialogUseHeaderBar)
+import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
+import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
+import GHC.Generics (Generic)
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the session format changes
@@ -121,7 +124,10 @@ data PaneState      =   BufferSt BufferState
                     |   VariablesSt VariablesState
                     |   ErrorsSt ErrorsState
                     |   WorkspaceSt WorkspaceState
-    deriving(Eq,Ord,Read,Show)
+    deriving(Eq, Ord, Read, Show, Generic)
+
+instance ToJSON PaneState
+instance FromJSON PaneState
 
 asPaneState :: RecoverablePane alpha beta gamma => beta -> PaneState
 asPaneState s | isJust (cast s :: Maybe BufferState)      =   BufferSt (fromJust $ cast s)
@@ -191,7 +197,10 @@ data SessionState = SessionState {
     ,   findbarState        ::   (Bool,FindState)
     ,   recentOpenedFiles   ::   [FilePath]
     ,   recentOpenedWorksp  ::   [FilePath]
-}
+} deriving(Eq, Show, Generic)
+
+instance ToJSON SessionState
+instance FromJSON SessionState
 
 defaultSession = SessionState {
         sessionVersion      =   theSessionVersion
@@ -240,87 +249,6 @@ defaultSession = SessionState {
     ,   recentOpenedFiles   =   []
     ,   recentOpenedWorksp  =   []
 }
-
-sessionDescr :: [FieldDescriptionS SessionState]
-sessionDescr = [
-        mkFieldS
-            (paraName <<<- ParaName "Version of session file format" $ emptyParams)
-            (PP.text . show)
-            intParser
-            sessionVersion
-            (\ b a -> a{sessionVersion = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Time of storage" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            saveTime
-            (\ b a -> a{saveTime = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Layout" $ emptyParams)
-            (PP.text . show)
-            readParser
-            layoutS
-            (\ b a -> a{layoutS = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Population" $ emptyParams)
-            (PP.text . show)
-            readParser
-            population
-            (\ b a -> a{population = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Window size" $ emptyParams)
-            (PP.text . show)
-            (pairParser intParser)
-            windowSize
-            (\(c,d) a -> a{windowSize = (c,d)})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Full screen" $ emptyParams)
-            (PP.text . show)
-            readParser
-            fullScreen
-            (\b a -> a{fullScreen = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Completion size" $ emptyParams)
-            (PP.text . show)
-            (pairParser intParser)
-            completionSize
-            (\(c,d) a -> a{completionSize = (c,d)})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Workspace" $ emptyParams)
-            (PP.text . show)
-            readParser
-            workspacePath
-            (\fp a -> a{workspacePath = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Active pane" $ emptyParams)
-            (PP.text . show)
-            readParser
-            activePaneN
-            (\fp a -> a{activePaneN = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Toolbar visible" $ emptyParams)
-            (PP.text . show)
-            readParser
-            toolbarVisibleS
-            (\fp a -> a{toolbarVisibleS = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "FindbarState" $ emptyParams)
-            (PP.text . show)
-            readParser
-            findbarState
-            (\fp a -> a{findbarState = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Recently opened files" $ emptyParams)
-            (PP.text . show)
-            readParser
-            recentOpenedFiles
-            (\fp a -> a{recentOpenedFiles = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Recently opened workspaces" $ emptyParams)
-            (PP.text . show)
-            readParser
-            recentOpenedWorksp
-            (\fp a -> a{recentOpenedWorksp = fp})]
 
 --
 -- | Get and save the current session
@@ -375,9 +303,9 @@ saveSessionAs sessionPath mbSecondPath = do
     ,   findbarState        =   (findbarVisible,findState)
     ,   recentOpenedFiles   =   recentFiles'
     ,   recentOpenedWorksp  =   recentWorkspaces'}
-    liftIO $ writeFields sessionPath state sessionDescr
-    when (isJust mbSecondPath) $
-        liftIO $ writeFields (fromJust mbSecondPath) state sessionDescr
+    liftIO $ LBS.writeFile sessionPath $ encode state
+    forM_ mbSecondPath $ \secondPath ->
+        liftIO $ LBS.writeFile secondPath $ encode state
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do
@@ -520,11 +448,13 @@ recoverSession sessionPath = catchIDE (do
         liftIO $ debugM "leksah" $ "recoverSession " <> sessionPath
         wdw         <-  getMainWindow
         sessionSt    <- liftIO $ catch
-                            (readFields sessionPath sessionDescr defaultSession)
-                            (\(e :: SomeException) -> do
-                                 liftIO $ errorM "leksah" $ "Error reading session file " <> sessionPath
-                                                            <> " : " <> show e
-                                 return defaultSession)
+                            (eitherDecode <$> LBS.readFile sessionPath)
+                            (\(e :: SomeException) -> return . Left $ show e) >>= \case
+                                Left msg -> do
+                                    errorM "leksah" $ "Error reading session file " <> sessionPath
+                                                            <> " : " <> msg
+                                    return defaultSession
+                                Right s -> return s
         liftIO $ debugM "leksah" "recoverSession windowSetDefaultSize"
         uncurry (windowSetDefaultSize wdw) . (fromIntegral *** fromIntegral) $ windowSize sessionSt
         liftIO $ debugM "leksah" "recoverSession applyLayout"

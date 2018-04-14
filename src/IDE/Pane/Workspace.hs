@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -88,7 +89,8 @@ import Data.List
        (sortOn, isSuffixOf, find, stripPrefix, isPrefixOf, sortBy, sort)
 import Data.Ord (comparing)
 import Data.Char (toUpper, toLower)
-import System.Log.Logger (errorM, debugM)
+import System.Log.Logger
+       (Priority(..), getLevel, getRootLogger, errorM, debugM)
 import Data.Tree (Forest, Tree(..))
 import IDE.Pane.Modules (addModule)
 import IDE.Pane.PackageEditor (packageEditText, projectEditText)
@@ -162,6 +164,8 @@ import qualified GI.Gdk as Gdk (Color(..))
 import GI.Gdk
        (setColorGreen, setColorRed, colorToString, setColorBlue)
 import Data.GI.Base.Constructible (Constructible(..))
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 type LocalPath = FilePath
 
@@ -270,12 +274,15 @@ timeMarkup
     => m Text
     -> m Text
 timeMarkup f = do
-    dark <- darkUserInterface <$> readIDE prefs
     start <- liftIO getTime
     markup <- f
     duration <- subtract start <$> liftIO getTime
-    c <- colorToString =<< colour dark duration
-    return $ markup <> " <span foreground=\"" <> c <> "\">" <> T.pack (secs duration) <> "</span>"
+    liftIO (getLevel <$> getRootLogger) >>= \case
+        Just priority | priority < INFO -> do
+            dark <- darkUserInterface <$> readIDE prefs
+            c <- colorToString =<< colour dark duration
+            return $ markup <> " <span foreground=\"" <> c <> "\">" <> T.pack (secs duration) <> "</span>"
+        _ -> return markup
   where
     colour True duration | duration < 0.001 = rgb
                                             (round $ 20000 + duration * 1000 * 20000)
@@ -411,7 +418,10 @@ data WorkspacePane        =   WorkspacePane {
 -- | The additional state used when recovering the pane
 --   (none)
 data WorkspaceState = WorkspaceState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON WorkspaceState
+instance FromJSON WorkspaceState
 
 instance Pane WorkspacePane IDEM where
     primPaneName _  =   __ "Workspace"

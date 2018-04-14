@@ -492,7 +492,7 @@ fDescription configPath = VFD emptyParams [
             (paraName <<<- ParaName "Unpack source for cabal packages to" $ emptyParams)
             unpackDirectory
             (\b a -> a{unpackDirectory = b})
-            (maybeEditor (stringEditor (const True) True,emptyParams) True "")
+            (maybeEditor "" (stringEditor (const True) True,emptyParams) True "")
     ,   mkField
             (paraName <<<- ParaName "URL from which to download prebuilt metadata" $ emptyParams)
             retrieveURL

@@ -25,7 +25,7 @@ let
         && nixpkgs.lib.all (i: !(nixpkgs.lib.hasPrefix i path)) [ ".ghc.environment." ]
         # TODO: what else?
       ) src;
-  
+
   fixCairoGI = p: overrideCabal p (drv: {
     preCompileBuildDriver = (drv.preCompileBuildDriver or "") + ''
       export LD_LIBRARY_PATH="${pkgs.cairo}/lib"
@@ -67,7 +67,7 @@ let
         ltk = overrideCabal (self.callCabal2nix "ltk" (filterSubmodule ./vendor/ltk) {}) (drv: {
           libraryPkgconfigDepends = with pkgs; [ gnome3.gtk.dev ] ++ (if stdenv.isDarwin then [ gtk-mac-integration-gtk3 ] else []);
         });
-        leksah-server = dontCheck (self.callCabal2nix "leksah-server" (filterSubmodule ./vendor/leksah-server) {}); # FIXME: really `dontCheck`?
+        leksah-server = self.callCabal2nix "leksah-server" (filterSubmodule ./vendor/leksah-server) {}; # FIXME: really `dontCheck`?
 
         # TODO: optionally add:
         # • yi >=0.12.4 && <0.13,
@@ -106,6 +106,25 @@ let
 
   });
 
+  # Work around bug in slightly old nixpkgs.writeShellScriptBin
+  writeShellScriptBin = name : text :
+    nixpkgs.writeTextFile {
+      inherit name;
+      executable = true;
+      destination = "/bin/${name}";
+      text = ''
+        #!${nixpkgs.stdenv.shell}
+        ${text}
+        '';
+      checkPhase = ''
+        ${nixpkgs.stdenv.shell} -n $out/bin/${name}
+      '';
+    };
+
+  launch-leksah = writeShellScriptBin "launch-leksah" ''
+    "$@"
+  '';
+
   leksah = nixpkgs.stdenv.mkDerivation {
       name = "leksah";
       nativeBuildInputs = with pkgs; [ wrapGAppsHook makeWrapper ];
@@ -129,7 +148,15 @@ let
         wrapProgram $out/bin/leksah \
           --prefix 'PATH' ':' "${extendedHaskellPackages.leksah-server}/bin" \
           --suffix 'PATH' ':' "${extendedHaskellPackages.ghcWithPackages (self: [])}/bin" \
-          --suffix 'PATH' ':' "${extendedHaskellPackages.cabal-install}/bin"
+          --suffix 'PATH' ':' "${extendedHaskellPackages.cabal-install}/bin" \
+          --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib"
+
+        ln -s ${launch-leksah}/bin/launch-leksah $out/bin
+        wrapProgram $out/bin/launch-leksah \
+          --suffix 'PATH' ':' "${extendedHaskellPackages.leksah-server}/bin" \
+          --suffix 'PATH' ':' "${extendedHaskellPackages.ghcWithPackages (self: [])}/bin" \
+          --suffix 'PATH' ':' "${extendedHaskellPackages.cabal-install}/bin" \
+          --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib"
       '';
   };
 
@@ -138,12 +165,19 @@ let
       extendedHaskellPackages.leksah-server
       # TODO: perhaps add some additional stuff to nix-shell PATH
     ];
+    src = ./linux;
     shellHook = ''
       export CFLAGS="$NIX_CFLAGS_COMPILE" # TODO: why is this needed?
       export XDG_DATA_DIRS="$GSETTINGS_SCHEMAS_PATH:$XDG_DATA_DIRS" # TODO: how to do this better?
+      export LD_LIBRARY_PATH="${pkgs.cairo}/lib"
+    '';
+    installPhase = ''
     '';
   });
   shells = {
     ghc = env;
   };
-in leksah // { inherit env shells; }
+in leksah // {
+  inherit env shells;
+  ghc = extendedHaskellPackages;
+}

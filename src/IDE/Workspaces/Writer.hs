@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
@@ -21,7 +22,6 @@ module IDE.Workspaces.Writer (
     ,WorkspaceFile(..)
     ,emptyWorkspaceFile
     ,setWorkspace
-    ,workspaceDescr
     ,workspaceVersion
 ) where
 
@@ -36,14 +36,6 @@ import Data.Maybe
 import Control.Monad (join, void, when)
 import Control.Monad.Trans (liftIO)
 import System.Time (getClockTime)
-import Text.PrinterParser
-    (readFields,
-     writeFields,
-     readParser,
-     stringParser,
-     intParser,
-     mkFieldS,
-     FieldDescriptionS(..))
 import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
         dropExtension, takeBaseName, addExtension, takeExtension,
@@ -59,9 +51,17 @@ import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
 import qualified Data.Map as Map (empty)
 import Text.ParserCombinators.Parsec (parseFromFile, CharParser)
-import Text.PrinterParser (colon, symbol)
 import Data.Text (Text)
 import Data.Map (Map)
+import GHC.Generics (Generic)
+import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
+import Data.Aeson
+       (eitherDecode, encode, ToJSON(..), FromJSON(..))
+import Data.Aeson.Types
+       (Options, genericParseJSON, genericToEncoding, genericToJSON,
+        defaultOptions, fieldLabelModifier)
+import Data.List (stripPrefix)
+import Data.Char (toLower)
 
 data WorkspaceFile = WorkspaceFile {
     wsfVersion           ::   Int
@@ -72,7 +72,20 @@ data WorkspaceFile = WorkspaceFile {
 ,   wsfActivePackFile    ::   Maybe FilePath
 ,   wsfActiveComponent   ::   Maybe Text
 ,   wsfPackageVcsConf    ::   Map FilePath VCSConf
-} deriving Show
+} deriving (Show, Generic)
+
+wsfAesonOptions :: Options
+wsfAesonOptions = defaultOptions
+    { fieldLabelModifier = \x -> case fromMaybe x $ stripPrefix "wsf" x of
+                                (i:rest) -> toLower i:rest
+                                _ -> error "Empty Field Name"
+    }
+
+instance ToJSON WorkspaceFile where
+    toJSON     = genericToJSON wsfAesonOptions
+    toEncoding = genericToEncoding wsfAesonOptions
+instance FromJSON WorkspaceFile where
+    parseJSON = genericParseJSON wsfAesonOptions
 
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
@@ -81,19 +94,14 @@ writeWorkspace ws = do
                          wsVersion = workspaceVersion}
     setWorkspace $ Just newWs
     newWs' <- liftIO $ makePathsRelative newWs (wsFile ws)
-    liftIO $ writeFields (wsFile ws) newWs' workspaceDescr
+    liftIO . LBS.writeFile (wsFile ws) $ encode newWs'
 
 readWorkspace :: FilePath -> IDEM (Either String Workspace)
 readWorkspace fp = do
     liftIO $ debugM "leksah" "readWorkspace"
-    liftIO (parseFromFile workspaceVerParser fp) >>= \case
+    liftIO (eitherDecode <$> LBS.readFile fp) >>= \case
         Left pe -> error $ "Error reading file " ++ show fp ++ " " ++ show pe
-        Right version | version < 3 -> return $ Left
-            "This workspace was created with an older version of Leksah that did not use project files (cabal.project and stack.yaml) to list packages in the workspace."
-        Right version | version < workspaceVersion -> return $ Left
-            "This workspace was created with an older version of Leksah."
-        _ -> do
-            ws <- liftIO $ readFields fp workspaceDescr emptyWorkspaceFile
+        Right ws -> do
             ws' <- makePathsAbsolute ws fp
             --TODO set package vcs here
             return $ Right ws'
@@ -222,7 +230,7 @@ setWorkspace mbWs = do
         Nothing -> return ()
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE (WorkspaceChanged True True)
-    triggerEventIDE UpdateWorkspaceInfo
+    triggerEventIDE $ UpdateWorkspaceInfo True
     return ()
 
 makePathsRelative :: Workspace -> FilePath -> IO WorkspaceFile
@@ -250,59 +258,3 @@ makePathsRelative ws wsFile' = do
                 , wsfPackageVcsConf    = packageVcsConf ws
                 }
 
-workspaceVerParser :: CharParser () Int
-workspaceVerParser = do
-    symbol "Version of workspace file format"
-    colon
-    intParser
-
-workspaceDescr :: [FieldDescriptionS WorkspaceFile]
-workspaceDescr = [
-        mkFieldS
-            (paraName <<<- ParaName "Version of workspace file format" $ emptyParams)
-            (PP.text . show)
-            intParser
-            wsfVersion
-            (\ b a -> a{wsfVersion = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Time of storage" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            wsfSaveTime
-            (\ b a -> a{wsfSaveTime = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Name of the workspace" $ emptyParams)
-            (PP.text . show)
-            stringParser
-            wsfName
-            (\ b a -> a{wsfName = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "File paths of contained projects" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsfProjectFiles
-            (\b a -> a{wsfProjectFiles = b})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Maybe file path of an active project" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsfActiveProjectFile
-            (\fp a -> a{wsfActiveProjectFile = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Maybe file path of an active package" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsfActivePackFile
-            (\fp a -> a{wsfActivePackFile = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Maybe name of an active component" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsfActiveComponent
-            (\fp a -> a{wsfActiveComponent = fp})
-    ,   mkFieldS
-            (paraName <<<- ParaName "Version Control System configurations for packages" $ emptyParams)
-            (PP.text . show)
-            readParser
-            wsfPackageVcsConf
-            (\filePath a -> a{wsfPackageVcsConf = filePath})]

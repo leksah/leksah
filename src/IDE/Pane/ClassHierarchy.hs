@@ -52,7 +52,10 @@ data IDEClassHierarchy     =   IDEClassHierarchy {
 
 data ClassHierarchyState =   ClassHierarchyState Int (Scope,Bool)
                                     (Maybe Text, Maybe Text)
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON ClassHierarchyState
+instance FromJSON ClassHierarchyState
 
 instance IDEObject IDEClassHierarchy
 

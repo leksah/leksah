@@ -41,7 +41,7 @@ import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
 import GI.Gtk.Objects.Widget (Widget(..))
 import GI.Gtk.Objects.Menu (Menu(..))
 import GI.Gtk.Flags (TextSearchFlags)
-import Text.PrinterParser (Color(..))
+import Graphics.UI.Editor.Simple (Color(..))
 import GI.Pango (Underline)
 import GHC.Stack (HasCallStack)
 

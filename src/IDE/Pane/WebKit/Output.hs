@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -25,6 +26,7 @@ module IDE.Pane.WebKit.Output (
   , getOutputPane
   , setOutput
   , loadOutputUri
+  , loadOutputHtmlFile
 ) where
 
 import Graphics.UI.Frame.Panes
@@ -58,7 +60,7 @@ import GI.WebKit2.Objects.WebView
         webViewGoBack, webViewNew,
         setWebViewZoomLevel, getWebViewZoomLevel, WebView(..))
 import GI.WebKit2.Objects.Settings
-       (settingsSetEnableDeveloperExtras)
+       (settingsSetEnableDeveloperExtras, settingsSetAllowFileAccessFromFileUrls)
 #else
 import GI.WebKit.Objects.WebView
        (webViewReload, webViewGetUri, webViewLoadString,
@@ -90,6 +92,9 @@ import GI.Gtk.Objects.MenuItem
        (MenuItem(..), onMenuItemActivate, toMenuItem)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
+import qualified Data.Text.IO as T (readFile)
+import Data.Aeson (FromJSON, ToJSON, FromJSON)
+import GHC.Generics (Generic)
 
 data IDEOutput = IDEOutput {
     vbox          :: Box
@@ -102,7 +107,10 @@ data IDEOutput = IDEOutput {
 data OutputState = OutputState {
     zoom :: Double
   , alwaysHtml :: Bool
-} deriving(Eq,Ord,Read,Show,Typeable)
+} deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON OutputState
+instance FromJSON OutputState
 
 instance Pane IDEOutput IDEM
     where
@@ -197,6 +205,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
 #ifdef MIN_VERSION_gi_webkit2
         settings <- webViewGetSettings webView
         settingsSetEnableDeveloperExtras settings True
+        settingsSetAllowFileAccessFromFileUrls settings True
 #else
         settings <- getWebViewSettings webView
         setWebSettingsEnableDeveloperExtras settings True
@@ -259,4 +268,21 @@ loadOutputUri uri =
         if Just (T.pack uri) == currentUri
             then webViewReload view
             else webViewLoadUri view (T.pack uri)
+
+loadOutputHtmlFile :: FilePath -> IDEAction
+loadOutputHtmlFile file = do
+    out <- getOutputPane Nothing
+    let view = webView out
+    html <- liftIO $ T.readFile file
+    let uri = "file:///" ++ file
+    entrySetText (uriEntry out) (T.pack uri)
+    currentUri <- webViewGetUri view
+#ifdef MIN_VERSION_gi_webkit2
+    webViewLoadHtml view html (Just $ T.pack uri)
+#else
+    webViewLoadString view html "text/html" "UTF-8" uri
+#endif
+--    if Just (T.pack uri) == currentUri
+--        then webViewReload view
+--        else webViewLoadUri view (T.pack uri)
 

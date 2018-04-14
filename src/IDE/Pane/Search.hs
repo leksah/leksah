@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -95,6 +96,8 @@ import Data.GI.Gtk.ModelView.Types
 import GI.Gtk
        (setCellRendererTextScaleSet, setCellRendererTextScale,
         setCellRendererPixbufStockId, setCellRendererTextText)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 -- | A search pane description
 --
@@ -117,7 +120,10 @@ data SearchState    =   SearchState {
     searchString    ::   Text
 ,   searchScope     ::   Scope
 ,   searchMode      ::   SearchMode
-}   deriving(Eq,Ord,Read,Show,Typeable)
+}   deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON SearchState
+instance FromJSON SearchState
 
 instance Pane IDESearch IDEM
     where

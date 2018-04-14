@@ -1,9 +1,12 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Pane.PackageFlags
@@ -37,11 +40,9 @@ import Graphics.UI.Editor.Basics
 import Graphics.UI.Editor.MakeEditor
 import Graphics.UI.Editor.Simple
 import Graphics.UI.Editor.Parameters
-import Text.PrinterParser hiding (fieldParser,parameters)
 import Control.Event (registerEvent)
 import Graphics.UI.Editor.DescriptionPP
-    (flattenFieldDescriptionPPToS,
-     extractFieldDescription,
+    (extractFieldDescription,
      FieldDescriptionPP(..),
      mkFieldPP)
 import Text.ParserCombinators.Parsec hiding(Parser)
@@ -49,6 +50,7 @@ import IDE.Utils.GUIUtils (__)
 import Control.Monad (void)
 import Data.Text (Text)
 import Data.Monoid ((<>))
+import Data.Aeson (eitherDecode, encode, FromJSON, ToJSON)
 import qualified Data.Text as T (unwords, unpack, pack)
 import Control.Applicative ((<$>))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -65,13 +67,22 @@ import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy,
         scrolledWindowSetShadowType, scrolledWindowNew)
 import GI.Gtk (containerAdd)
+import GHC.Generics (Generic)
+import qualified Control.Exception as E (catch)
+import qualified Data.ByteString.Lazy as LBS (writeFile, readFile)
+import Control.Exception (IOException)
+import Data.Maybe (fromMaybe)
+import System.Log.Logger (errorM)
 
 data IDEFlags               =   IDEFlags {
     flagsBox                ::   Box
 } deriving Typeable
 
 data FlagsState             =   FlagsState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON FlagsState
+instance FromJSON FlagsState
 
 instance Pane IDEFlags IDEM
     where
@@ -130,9 +141,9 @@ builder' idePackage flagsDesc flatflagsDesc pp nb window ideR = do
                 reflectIDE (do
                         changePackage packWithNewFlags
                         closePane flagsPane) ideR
-                writeFields (dropExtension (ipdCabalFile packWithNewFlags) ++
+                writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++
                                 leksahFlagFileExtension)
-                    packWithNewFlags flatFlagsDescription)
+                    packWithNewFlags)
     onButtonClicked cancelB (reflectIDE (void (closePane flagsPane)) ideR)
     registerEvent notifier FocusIn (\e -> do
         reflectIDE (makeActive flagsPane) ideR
@@ -211,90 +222,65 @@ args s = case parse argsParser "" $ T.unpack s of
             _ -> [s]
 
 
--- | The flattened description of the fields in the pane
-flatFlagsDescription :: [FieldDescriptionS IDEPackage]
-flatFlagsDescription = flattenFieldDescriptionPPToS flagsDescription
-
-
 -- | The description of the fields in the pane
 flagsDescription :: FieldDescriptionPP IDEPackage IDEM
 flagsDescription = VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName (__ "Config flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdConfigFlags)
             (\ b a -> a{ipdConfigFlags = args b})
             (textEditor (const True) True)
             (\ _ -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Build flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdBuildFlags)
             (\ b a -> a{ipdBuildFlags = args b})
             (textEditor (const True) True)
             (\ _ ->  return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Test flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdTestFlags)
             (\ b a -> a{ipdTestFlags = args b})
             (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Benchmark flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdBenchmarkFlags)
             (\ b a -> a{ipdBenchmarkFlags = args b})
             (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Haddock flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdHaddockFlags)
             (\ b a -> a{ipdHaddockFlags = args b})
             (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Executable flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdExeFlags)
             (\ b a -> a{ipdExeFlags = args b})
             (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Install flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdInstallFlags)
             (\ b a -> a{ipdInstallFlags = args b})
             (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Register flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdRegisterFlags)
             (\ b a -> a{ipdRegisterFlags = args b})
             (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Unregister flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdUnregisterFlags)
             (\ b a -> a{ipdUnregisterFlags = args b})
             (textEditor (const True) True)
             (\ _ ->   return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Source Distribution flags") $ emptyParams)
-            (PP.text . show)
-            readParser
             (unargs . ipdSdistFlags)
             (\ b a -> a{ipdSdistFlags = args b})
             (textEditor (const True) True)
@@ -304,9 +290,61 @@ flagsDescription = VFDPP emptyParams [
 -- * Parsing
 -- ------------------------------------------------------------
 
+data FlagsFile = FlagsFile
+  { configFlags     :: Maybe [Text]
+  , buildFlags      :: Maybe [Text]
+  , testFlags       :: Maybe [Text]
+  , benchmarkFlags  :: Maybe [Text]
+  , haddockFlags    :: Maybe [Text]
+  , exeFlags        :: Maybe [Text]
+  , installFlags    :: Maybe [Text]
+  , registerFlags   :: Maybe [Text]
+  , unregisterFlags :: Maybe [Text]
+  , sdistFlags      :: Maybe [Text]
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON FlagsFile
+instance FromJSON FlagsFile
+
+setFlags :: IDEPackage -> FlagsFile -> IDEPackage
+setFlags p@IDEPackage{..} FlagsFile{..} = p
+  { ipdConfigFlags     = fromMaybe [] configFlags
+  , ipdBuildFlags      = fromMaybe [] buildFlags
+  , ipdTestFlags       = fromMaybe [] testFlags
+  , ipdBenchmarkFlags  = fromMaybe [] benchmarkFlags
+  , ipdHaddockFlags    = fromMaybe [] haddockFlags
+  , ipdExeFlags        = fromMaybe [] exeFlags
+  , ipdInstallFlags    = fromMaybe [] installFlags
+  , ipdRegisterFlags   = fromMaybe [] registerFlags
+  , ipdUnregisterFlags = fromMaybe [] unregisterFlags
+  , ipdSdistFlags      = fromMaybe [] sdistFlags
+  }
+
+getFlagsFile :: IDEPackage -> FlagsFile
+getFlagsFile IDEPackage{..} = FlagsFile
+  { configFlags     = Just ipdConfigFlags
+  , buildFlags      = Just ipdBuildFlags
+  , testFlags       = Just ipdTestFlags
+  , benchmarkFlags  = Just ipdBenchmarkFlags
+  , haddockFlags    = Just ipdHaddockFlags
+  , exeFlags        = Just ipdExeFlags
+  , installFlags    = Just ipdInstallFlags
+  , registerFlags   = Just ipdRegisterFlags
+  , unregisterFlags = Just ipdUnregisterFlags
+  , sdistFlags      = Just ipdSdistFlags
+  }
+
 -- | Read all the field values from the given 'FilePath'
 readFlags :: FilePath -> IDEPackage -> IO IDEPackage
-readFlags fn = readFields fn flatFlagsDescription
+readFlags file pkg = E.catch (
+    eitherDecode <$> LBS.readFile file >>= \case
+        Left e -> do
+            liftIO . errorM "leksah" $ "Error reading file " ++ show file ++ " " ++ show e
+            return pkg
+        Right f -> return $ setFlags pkg f)
+    (\ (e::IOException) -> do
+        liftIO . errorM "leksah" $ "Error reading file " ++ show file ++ " " ++ show e
+        return pkg)
 
 -- ------------------------------------------------------------
 -- * Printing
@@ -314,7 +352,5 @@ readFlags fn = readFields fn flatFlagsDescription
 
 -- | Write all field values to the given 'FilePath'
 writeFlags :: FilePath -> IDEPackage -> IO ()
-writeFlags fpath flags = writeFields fpath flags flatFlagsDescription
-
-
+writeFlags file = LBS.writeFile file . encode . getFlagsFile
 

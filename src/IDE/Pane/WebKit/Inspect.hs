@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -62,6 +63,8 @@ import GI.Gtk.Objects.Widget (afterWidgetFocusInEvent, toWidget)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
 import GI.Gtk.Objects.Container (containerAdd)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 data IDEInspect = IDEInspect {
     scrollWin     :: ScrolledWindow
@@ -69,7 +72,10 @@ data IDEInspect = IDEInspect {
 } deriving Typeable
 
 data InspectState = InspectState {
-} deriving(Eq,Ord,Read,Show,Typeable)
+} deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON InspectState
+instance FromJSON InspectState
 
 instance Pane IDEInspect IDEM
     where

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -74,7 +75,7 @@ import IDE.Utils.GUIUtils
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (debugM)
-import Default (Default(..))
+import Data.Default (Default(..))
 import IDE.Workspaces (packageTry)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad (when, void)
@@ -176,6 +177,8 @@ import GI.Gtk.Objects.Label
        (labelSetText, labelSetLineWrap, labelNew)
 import Data.GI.Gtk.ModelView.ForestStore (forestStoreClear, forestStoreNew)
 import Data.Int (Int32)
+import Data.Aeson (FromJSON(..), ToJSON(..))
+import GHC.Generics (Generic)
 #if MIN_VERSION_Cabal(2,0,0)
 import Distribution.Types.UnqualComponentName
        (unUnqualComponentName)
@@ -212,10 +215,17 @@ data IDEModules     =   IDEModules {
 ,   expanderState    ::   IORef ExpanderState
 } deriving Typeable
 
+instance ToJSON ModuleName where
+    toJSON = toJSON . T.pack . show
+instance FromJSON ModuleName where
+    parseJSON v = read . T.unpack <$> parseJSON v
 
 data ModulesState           =   ModulesState Int (Scope,Bool)
                                     (Maybe ModuleName, Maybe Text) ExpanderState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON ModulesState
+instance FromJSON ModulesState
 
 data ExpanderState =  ExpanderState {
     packageExp              :: ExpanderFacet
@@ -228,7 +238,10 @@ data ExpanderState =  ExpanderState {
 ,   workspaceDExpNoBlack    :: ExpanderFacet
 ,   systemExp               :: ExpanderFacet
 ,   systemExpNoBlack        :: ExpanderFacet
-}   deriving (Eq,Ord,Show,Read)
+}   deriving (Eq,Ord,Show,Read,Generic)
+
+instance ToJSON ExpanderState
+instance FromJSON ExpanderState
 
 type ExpanderFacet      = ([[Int]], [[Int]])
 
@@ -885,7 +898,7 @@ buildFacetForrest modDescr =
 
 
 defaultRoot :: Tree ModuleRecord
-defaultRoot = Node ("",Just (getDefault,getDefault)) []
+defaultRoot = Node ("", Just (def, def)) []
 
 type ModTree = Tree ModuleRecord
 --
@@ -1425,7 +1438,7 @@ moduleFields list hasLibs exesTests = VFD emptyParams $ [
               (paraName <<<- ParaName (__ "Library should") $ emptyParams)
               libExposed
               (\ a b -> b{libExposed = a})
-              (maybeEditor
+              (maybeEditor True
                  (boolEditor,
                   paraName <<<- ParaName (__ "Expose module") $ emptyParams)
                  True

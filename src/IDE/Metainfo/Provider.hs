@@ -75,14 +75,14 @@ import IDE.Core.CTypes
         dscMbModu', dscMbTypeStr', dscName', RealDescr(..),
         SimpleDescr(..))
 import IDE.Core.State
-       (sysMessage, throwIDE, ipdCabalFile, ipdDepends, ipdMain,
-        ipdModules, ipdPackageId, activePack, modifyIDE_, wsAllPackages,
-        ipdPackageDir, workspace, currentState, triggerEventIDE,
-        postAsyncIDE, forkIDE, MessageLevel(..), ideMessage,
-        collectAtStart, prefs, readIDE, SearchMode, ModuleDescrCache,
-        workspInfoCache, IDEPackage, packageInfo, workspaceInfo,
-        systemInfo, IDEM, IDEAction, wsProjectFiles, Project,
-        pjFile, wsProjectAndPackages)
+       (postSyncIDE, sysMessage, throwIDE, ipdCabalFile, ipdDepends,
+        ipdMain, ipdModules, ipdPackageId, activePack, modifyIDE_,
+        wsAllPackages, ipdPackageDir, workspace, currentState,
+        triggerEventIDE, postAsyncIDE, forkIDE, MessageLevel(..),
+        ideMessage, collectAtStart, prefs, readIDE, SearchMode,
+        ModuleDescrCache, workspInfoCache, IDEPackage, packageInfo,
+        workspaceInfo, systemInfo, IDEM, IDEAction, wsProjectFiles,
+        Project, pjFile, wsProjectAndPackages)
 import IDE.Utils.Utils
        (leksahMetadataPathFileExtension,
         leksahMetadataSystemFileExtension,
@@ -102,7 +102,7 @@ import IDE.Utils.ServerConnection(doServerCommand)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Distribution.PackageDescription (hsSourceDirs)
-import System.Log.Logger (infoM)
+import System.Log.Logger (debugM, infoM)
 import Data.Text (Text)
 import qualified Data.Text as T (null, isPrefixOf, unpack, pack)
 import Data.Monoid ((<>))
@@ -157,8 +157,12 @@ initInfo continuation = do
 updateSystemInfo :: IDEAction
 updateSystemInfo     = do
     liftIO $ infoM "leksah" "update sys info called"
-    updateSystemInfo' False $ \ _ ->
-        updateWorkspaceInfo' False $ \ _ -> void (triggerEventIDE (InfoChanged False))
+    currentState' <- readIDE currentState
+    case currentState' of
+        IsStartingUp -> return ()
+        _ ->
+            updateSystemInfo' False $ \ _ ->
+                updateWorkspaceInfo' False $ \ _ -> void (triggerEventIDE (InfoChanged False))
 
 rebuildSystemInfo :: IDEAction
 rebuildSystemInfo    = do
@@ -205,6 +209,7 @@ getAllPackageDBs = do
 --
 loadSystemInfo :: IDEAction
 loadSystemInfo = do
+    liftIO $ debugM "leksah" "loadSystemInfo"
     collectorPath   <-  liftIO getCollectorPath
     packageIds      <-  getAllPackageIds
     packageList     <-  liftIO $ mapM (loadInfosForPackage collectorPath) packageIds
@@ -225,9 +230,13 @@ updateSystemInfo' rebuild continuation = do
     case wi of
         Nothing -> loadSystemInfo
         Just (GenScopeC (PackScope psmap psst)) -> forkIDE $ do
+            liftIO $ debugM "leksah" "A"
             packageIds      <-  getAllPackageIds
-            let newPackages     =   filter (`Map.member` psmap) packageIds
+            liftIO . debugM "leksah" $ "packageIds = " <> show packageIds
+            let newPackages     =   filter (`Map.notMember` psmap) packageIds
             let trashPackages   =   filter (`notElem` packageIds) (Map.keys psmap)
+            liftIO . debugM "leksah" $ "newPackages = " <> show newPackages
+            liftIO . debugM "leksah" $ "trashPackages = " <> show trashPackages
             if null newPackages && null trashPackages
                 then finished
                 else
@@ -235,14 +244,15 @@ updateSystemInfo' rebuild continuation = do
                         collectorPath   <-  lift getCollectorPath
                         newPackageInfos <-  liftIO $ mapM (loadInfosForPackage collectorPath)
                                                             (nub newPackages)
-                        let psmap2      =   foldr ((\ e m -> Map.insert (pdPackage e) e m) . fromJust) psmap
-                                               (filter isJust newPackageInfos)
+                        let psmap2      =   foldr (\ e m -> Map.insert (pdPackage e) e m) psmap
+                                               (catMaybes newPackageInfos)
                         let psmap3      =   foldr Map.delete psmap2 trashPackages
                         let scope :: PackScope (Map Text [Descr])
                                         =   foldr buildScope (PackScope Map.empty symEmpty)
                                                 (Map.elems psmap3)
-                        postAsyncIDE $ modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
-                        finished
+                        postAsyncIDE $ do
+                            modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+                            finished
   where
     finished = do
         postAsyncIDE $ ideMessage Normal "Finished updating system metadata"
@@ -368,6 +378,7 @@ updatePackageInfo knownPackages rebuild project idePack continuation = do
         (map (\(x,y) -> (T.pack $ display (moduleKeyToName x),y)) modToUpdate)
         (\ b -> do
             let buildDepends         = findFittingPackages knownPackages (ipdDepends idePack)
+            liftIO . putStrLn $ "buildDepends = " <> show buildDepends
             collectorPath        <- liftIO getCollectorPath
             let packageCollectorPath = collectorPath </> T.unpack (packageIdentifierToString pi)
             (moduleDescrs,packageMap, changed, modWithout)

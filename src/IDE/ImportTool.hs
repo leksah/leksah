@@ -51,7 +51,6 @@ import Control.Monad
 import Control.Applicative ((<$>))
 import Data.List (intercalate, stripPrefix, sort, nub, nubBy)
 import IDE.Utils.ServerConnection
-import Text.PrinterParser (prettyPrint)
 import IDE.TextEditor (delete, setModified, insert, getIterAtLine)
 import qualified Distribution.ModuleName as D (ModuleName, components, fromString)
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -231,10 +230,12 @@ addImport error descrList continuation =
 
 addPackages :: [LogRef] -> IDEM Bool
 addPackages errors = do
-    let packs = nub $ mapMaybe (\error ->
-                    case parseHiddenModule $ refDescription error of
-                        Nothing -> Nothing
-                        Just (HiddenModuleResult _ pack) -> Just (logRefCabalFile error, dep pack)) errors
+    let packs = nub $ mapMaybe (\case
+                    error@LogRef{logRefLog = LogCabal cabalFile} ->
+                        case parseHiddenModule $ refDescription error of
+                            Nothing -> Nothing
+                            Just (HiddenModuleResult _ pack) -> Just (cabalFile, dep pack)
+                    _ -> Nothing) errors
 
     forM_ packs $ \(cabalFile, d) -> do
         gpd <- liftIO $ readPackageDescription normal cabalFile

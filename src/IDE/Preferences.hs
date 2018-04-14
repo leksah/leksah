@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -5,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
@@ -43,7 +44,6 @@ import Graphics.UI.Editor.Composite
 import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.MakeEditor hiding (parameters)
 import Graphics.UI.Editor.DescriptionPP
-import Text.PrinterParser hiding (fieldParser,parameters)
 import IDE.TextEditor
 import IDE.Pane.SourceBuffer
 import IDE.Pane.Log
@@ -58,7 +58,7 @@ import IDE.Debug
      debugSetPrintEvldWithShow)
 import System.Time (getClockTime)
 import qualified IDE.StrippedPrefs as SP
-import Control.Exception(SomeException,catch)
+import Control.Exception (IOException, SomeException, catch)
 import Prelude hiding(catch)
 import Data.List (isSuffixOf, sortBy)
 import Data.Maybe (mapMaybe, catMaybes, fromMaybe, isJust)
@@ -103,6 +103,10 @@ import GI.GtkSource
 import GI.Gtk
        (widgetOverrideFont, constructDialogUseHeaderBar, Container(..),
         containerAdd)
+import qualified Control.Exception as E (catch)
+import qualified Data.ByteString.Lazy as LBS (writeFile, readFile)
+import Data.Aeson (encode, eitherDecode)
+import Data.Default (Default(..))
 
 
 -- | This needs to be incremented when the preferences format changes
@@ -229,8 +233,6 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Version number of preferences file format")
                 $ paraSynopsis <<<- ParaSynopsis (__ "Integer")
                     $ paraShowLabel <<<- ParaShowLabel False $ emptyParams)
-            (PP.text . show)
-            intParser
             prefsFormat
             (\ b a -> a{prefsFormat = b})
             (noEditor 0)
@@ -238,8 +240,6 @@ prefsDescription configDir packages = NFDPP [
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Time of last storage")
                 $ paraShowLabel <<<- ParaShowLabel False $ emptyParams)
-            (PP.text . show)
-            stringParser
             prefsSaveTime
             (\ b a -> a{prefsSaveTime = b})
             (noEditor "")
@@ -248,8 +248,6 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Show line numbers")
                 $ paraSynopsis <<<- ParaSynopsis (__ "(True/False)")
                     $ emptyParams)
-            (PP.text . show)
-            boolParser
             showLineNumbers
             (\ b a -> a{showLineNumbers = b})
             boolEditor
@@ -258,9 +256,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ (\(IDEBuffer {sourceView = sv}) -> setShowLineNumbers sv b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "TextView Font") $ emptyParams)
-            (\a -> PP.text (case a of Nothing -> show ""; Just s -> show s))
-            (do str <- stringParser
-                return (if T.null str then Nothing else Just str))
             textviewFont
             (\ b a -> a{textviewFont = b})
             fontEditor
@@ -271,11 +266,9 @@ prefsDescription configDir packages = NFDPP [
             (paraName <<<- ParaName (__ "Right margin")
                 $ paraSynopsis <<<- ParaSynopsis (__ "Size or 0 for no right margin")
                     $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
-            (PP.text . show)
-            readParser
             rightMargin
             (\b a -> a{rightMargin = b})
-            (disableEditor (intEditor (1.0, 200.0, 5.0), paraName <<<- ParaName (__ "Position")
+            (disableEditor def (intEditor (1.0, 200.0, 5.0), paraName <<<- ParaName (__ "Position")
                     $ emptyParams)
                     True (__ "Show it ?"))
             (\b -> do
@@ -286,8 +279,6 @@ prefsDescription configDir packages = NFDPP [
                                     (False,_) -> Nothing)) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Tab width") $ emptyParams)
-            (PP.text . show)
-            intParser
             tabWidth
             (\b a -> a{tabWidth = b})
             (intEditor (1.0, 20.0, 1.0))
@@ -296,8 +287,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ (\(IDEBuffer {sourceView = sv}) -> setIndentWidth sv i) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Wrap lines") $ emptyParams)
-            (PP.text . show)
-            boolParser
             wrapLines
             (\b a -> a{wrapLines = b})
             boolEditor
@@ -306,16 +295,12 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ (\(IDEBuffer {sourceView = sv}) -> setWrapMode sv b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use standard line ends even on windows") $ emptyParams)
-            (PP.text . show)
-            boolParser
             forceLineEnds
             (\b a -> a{forceLineEnds = b})
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Remove trailing blanks when saving a file") $ emptyParams)
-            (PP.text . show)
-            boolParser
             removeTBlanks
             (\b a -> a{removeTBlanks = b})
             boolEditor
@@ -325,19 +310,14 @@ prefsDescription configDir packages = NFDPP [
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "Empty for do not use or the name of a candy file in a config dir")
                     $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
-            (PP.text . show)
-            readParser
             sourceCandy (\b a -> a{sourceCandy = b})
-            (disableEditor (textEditor (not . T.null) True,
+            (disableEditor "" (textEditor (not . T.null) True,
                 paraName <<<- ParaName (__ "Candy specification")
                                     $ emptyParams)
                     True (__ "Use it ?"))
             (\_ -> switchBuffersCandy)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Editor Style") $ emptyParams)
-            (\a -> PP.text (case a of (False,_) -> show ""; (True, s) -> show s))
-            (do str <- stringParser
-                return (if T.null str then (False, __ "classic") else (True,str)))
             sourceStyle
             (\b a -> a{sourceStyle = b})
             styleEditor
@@ -347,8 +327,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Found Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             foundBackgroundLight
             (\ b a -> a{foundBackgroundLight = b})
             colorEditor
@@ -357,8 +335,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Selection Match Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             matchBackgroundLight
             (\ b a -> a{matchBackgroundLight = b})
             colorEditor
@@ -367,8 +343,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Execution Context Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             contextBackgroundLight
             (\ b a -> a{contextBackgroundLight = b})
             colorEditor
@@ -377,8 +351,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Breakpoint Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             breakpointBackgroundLight
             (\ b a -> a{breakpointBackgroundLight = b})
             colorEditor
@@ -387,8 +359,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Lint Text Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             lintBackgroundLight
             (\ b a -> a{lintBackgroundLight = b})
             colorEditor
@@ -397,8 +367,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Found Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             foundBackgroundDark
             (\ b a -> a{foundBackgroundDark = b})
             colorEditor
@@ -407,8 +375,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Selection Match Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             matchBackgroundDark
             (\ b a -> a{matchBackgroundDark = b})
             colorEditor
@@ -417,8 +383,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Execution Context Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             contextBackgroundDark
             (\ b a -> a{contextBackgroundDark = b})
             colorEditor
@@ -427,8 +391,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Breakpoint Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             breakpointBackgroundDark
             (\ b a -> a{breakpointBackgroundDark = b})
             colorEditor
@@ -437,8 +399,6 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Lint Text Dark Background") $ emptyParams)
-            (PP.text . show)
-            colorParser
             lintBackgroundDark
             (\ b a -> a{lintBackgroundDark = b})
             colorEditor
@@ -447,16 +407,12 @@ prefsDescription configDir packages = NFDPP [
                 mapM_ updateStyle' buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Automatically load modified files modified outside of Leksah") $ emptyParams)
-            (PP.text . show)
-            boolParser
             autoLoad
             (\b a -> a{autoLoad = b})
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Text Editor") $ emptyParams)
-            (PP.text . show)
-            stringParser
             textEditorType
             (\b a -> a{textEditorType = b})
             (comboSelectionEditor
@@ -474,20 +430,15 @@ prefsDescription configDir packages = NFDPP [
         mkFieldPP
             -- TODO: be able to load different gtk themes
             (paraName <<<- ParaName (__ "User interface theme") $ emptyParams)
-            (PP.text . show)
-            stringParser
             (\prefs -> if darkUserInterface prefs then "Dark" else "Light")
             (\str a -> a {darkUserInterface = str == "Dark"})
             (comboSelectionEditor ["Dark", "Light"] id)
             (\_ -> applyInterfaceTheme)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "LogView Font") $ emptyParams)
-            (\(b, a) -> PP.text (if b then case a of Nothing -> show ""; Just s -> show s else show ""))
-            (do str <- stringParser
-                return (if T.null str then (False, Nothing) else (True, Just str)))
             logviewFont
             (\b a -> a{logviewFont = b})
-            (disableEditor (fontEditor, emptyParams) True "Use custom font")
+            (disableEditor def (fontEditor, emptyParams) True "Use custom font")
             (\(b, mbFont) -> do
                 log <- getLog
                 fdesc <- fontDescriptionFromString (if b then fromMaybe "" mbFont else "Monospace")
@@ -495,12 +446,9 @@ prefsDescription configDir packages = NFDPP [
             )
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Workspace Font") $ emptyParams)
-            (\(b, a) -> PP.text (if b then case a of Nothing -> show ""; Just s -> show s else show ""))
-            (do str <- stringParser
-                return (if T.null str then (False, Nothing) else (True, Just str)))
             workspaceFont
             (\b a -> a{workspaceFont = b})
-            (disableEditor (fontEditor, emptyParams) True "Use custom font")
+            (disableEditor def (fontEditor, emptyParams) True "Use custom font")
             (\(b, mbFont) -> do
                 wp <- getWorkspacePane
                 case (b, mbFont) of
@@ -515,8 +463,6 @@ prefsDescription configDir packages = NFDPP [
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "Default size of the main ide window specified as pair")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
-            (PP.text.show)
-            (pairParser intParser)
             defaultSize (\(c,d) a -> a{defaultSize = (c,d)})
             (pairEditor (intEditor (0.0, 3000.0, 25.0),
                             paraName <<<- ParaName "X" $ emptyParams)
@@ -525,40 +471,30 @@ prefsDescription configDir packages = NFDPP [
             (\a -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Show hidden files in workspace") $ emptyParams)
-            (PP.text . show)
-            boolParser
             showHiddenFiles
             (\b a -> a {showHiddenFiles = b})
             boolEditor
             (\_ -> refreshWorkspacePane)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Show icons in the Workspace pane") $ emptyParams)
-            (PP.text . show)
-            boolParser
             showWorkspaceIcons
             (\b a -> a {showWorkspaceIcons = b})
             boolEditor
             (\_ -> rebuildWorkspacePane)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Collapse errors in Errors pane by default") $ emptyParams)
-            (PP.text . show)
-            boolParser
             collapseErrors
             (\b a -> a {collapseErrors = b})
             boolEditor
             (\_ -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use ctrl Tab for Notebook flipper") $ emptyParams)
-            (PP.text . show)
-            boolParser
             useCtrlTabFlipping
             (\b a -> a{useCtrlTabFlipping = b})
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Complete only on Hotkey") $ emptyParams)
-            (PP.text . show)
-            boolParser
             completeRestricted
             (\b a -> a{completeRestricted = b})
             boolEditor
@@ -568,8 +504,6 @@ prefsDescription configDir packages = NFDPP [
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "The name of a keymap file in a config dir")
                     $ paraOrientation <<<- ParaOrientation OrientationHorizontal $ emptyParams)
-            (PP.text . T.unpack)
-            identifier
             keymapName
             (\b a -> a{keymapName = b})
             (textEditor (not . T.null) True)
@@ -581,8 +515,6 @@ prefsDescription configDir packages = NFDPP [
                 paraSynopsis <<<- ParaSynopsis
                     (__ "Save the session (open files, pane positioning and sizing, etc) before closing a workspace")
                     $ paraShadow <<<- ParaShadow ShadowTypeIn  $ emptyParams)
-            (PP.text . show)
-            boolParser
             saveSessionOnClose
             (\b a -> a{saveSessionOnClose = b})
             boolEditor
@@ -596,11 +528,9 @@ prefsDescription configDir packages = NFDPP [
                      $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
                             $ emptyParams)
-            (PP.text . show)
-            readParser
             categoryForPane
             (\b a -> a{categoryForPane = b})
-            (multisetEditor
+            (multisetEditor ("", "")
                 (ColumnDescr True [(__ "Pane Id", \cell (n, _) -> setCellRendererTextText cell n)
                                    ,(__ "Pane Category", \cell (_, v) -> setCellRendererTextText cell v)])
                 (pairEditor
@@ -616,11 +546,9 @@ prefsDescription configDir packages = NFDPP [
                      $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,130)
                             $ emptyParams)
-            (PP.text . show)
-            readParser
             pathForCategory
             (\b a -> a{pathForCategory = b})
-            (multisetEditor
+            (multisetEditor ("", def)
                 (ColumnDescr True [(__ "Pane category", \cell (n, _) -> setCellRendererTextText cell n)
                                    ,(__ "Pane path", \cell (_, v) -> setCellRendererTextText cell . T.pack $ show v)])
                 (pairEditor (textEditor (not . T.null) True, emptyParams)
@@ -631,8 +559,6 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Default pane path") $ emptyParams)
-            (PP.text . show)
-            readParser
             defaultPath
             (\b a -> a{defaultPath = b})
             genericEditor
@@ -644,32 +570,24 @@ prefsDescription configDir packages = NFDPP [
                 (__ "Paths under which haskell sources for packages may be found")
                         $ paraMinSize <<<- ParaMinSize (-1,100)
                             $ emptyParams)
-            (PP.text . show)
-            readParser
             sourceDirectories
             (\b a -> a{sourceDirectories = b})
             (filesEditor Nothing FileChooserActionSelectFolder (__ "Select folder"))
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Unpack source for cabal packages to") $ emptyParams)
-            (PP.text . show)
-            readParser
             unpackDirectory
             (\b a -> a{unpackDirectory = b})
-            (maybeEditor (stringEditor (const True) True,emptyParams) True "")
+            (maybeEditor "" (stringEditor (const True) True,emptyParams) True "")
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "URL from which to download prebuilt metadata") $ emptyParams)
-            (PP.text . show)
-            stringParser
             retrieveURL
             (\b a -> a{retrieveURL = b})
             (textEditor (const True) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Strategy for downloading prebuilt metadata") $ emptyParams)
-            (PP.text . show)
-            readParser
             retrieveStrategy
             (\b a -> a{retrieveStrategy = b})
             (enumEditor [__ "Try to download and then build locally if that fails",
@@ -678,32 +596,24 @@ prefsDescription configDir packages = NFDPP [
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Update metadata at startup") $ emptyParams)
-            (PP.text . show)
-            boolParser
             collectAtStart
             (\b a -> a{collectAtStart = b})
             boolEditor
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Port number for leksah to comunicate with leksah-server") $ emptyParams)
-            (PP.text . show)
-            intParser
             serverPort
             (\b a -> a{serverPort = b})
             (intEditor (1.0, 65535.0, 1.0))
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "IP address for leksah to comunicate with leksah-server") $ emptyParams)
-            (PP.text . show)
-            stringParser
             serverIP
             (\b a -> a{serverIP = b})
             (textEditor (not . T.null) True)
             (\i -> return ())
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Stop the leksah-server process when leksah disconnects") $ emptyParams)
-            (PP.text . show)
-            boolParser
             endWithLastConn
             (\b a -> a{endWithLastConn = b})
             boolEditor
@@ -715,8 +625,6 @@ prefsDescription configDir packages = NFDPP [
                 (__ "Packages which are excluded from the modules pane")
                         $ paraMinSize <<<- ParaMinSize (-1,200)
                             $ emptyParams)
-            (PP.text . show . map display)
-            (fmap (mapMaybe simpleParse) readParser)
             packageBlacklist
             (\b a -> a{packageBlacklist = b})
             (dependenciesEditor packages)
@@ -725,88 +633,66 @@ prefsDescription configDir packages = NFDPP [
     (__ "Build", VFDPP emptyParams [
          mkFieldPP
             (paraName <<<- ParaName (__ "Automatically save all files before building") $ emptyParams)
-            (PP.text . show)
-            boolParser
             saveAllBeforeBuild
             (\b a -> a{saveAllBeforeBuild = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
                (paraName <<<- ParaName (__ "Run HLint when saving a source file") $ emptyParams)
-               (PP.text . show)
-               boolParser
                hlintOnSave
                (\b a -> a{hlintOnSave = b})
                boolEditor
                (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Select first warning if built without errors") $ emptyParams)
-            (PP.text . show)
-            boolParser
             jumpToWarnings
             (\b a -> a{jumpToWarnings = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Background build") $ emptyParams)
-            (PP.text . show)
-            boolParser
             backgroundBuild
             (\b a -> a{backgroundBuild = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Native") $ emptyParams)
-            (PP.text . show)
-            boolParser
             native
             (\b a -> a{native = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "JavaScript") $ emptyParams)
-            (PP.text . show)
-            boolParser
             javaScript
             (\b a -> a{javaScript = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Debug") $ emptyParams)
-            (PP.text . show)
-            boolParser
             debug
             (\b a -> a{debug = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Make documentation when building") $ emptyParams)
-            (PP.text . show)
-            boolParser
             makeDocs
             (\b a -> a{makeDocs = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Run unit tests when building") $ emptyParams)
-            (PP.text . show)
-            boolParser
             runUnitTests
             (\b a -> a{runUnitTests = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Run benchmarks when building") $ emptyParams)
-            (PP.text . show)
-            boolParser
             runBenchmarks
             (\b a -> a{runBenchmarks = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Make mode") $ emptyParams)
-            (PP.text . show)
-            boolParser
             makeMode
             (\b a -> a{makeMode = b})
             (boolEditor2 (__ "Single mode"))
@@ -814,16 +700,12 @@ prefsDescription configDir packages = NFDPP [
 
          , mkFieldPP
             (paraName <<<- ParaName (__ "Single build without linking") $ emptyParams)
-            (PP.text . show)
-            boolParser
             singleBuildWithoutLinking
             (\b a -> a{singleBuildWithoutLinking = b})
             boolEditor
             (\i -> return ())
          , mkFieldPP
             (paraName <<<- ParaName (__ "Don't install last package") $ emptyParams)
-            (PP.text . show)
-            boolParser
             dontInstallLast
             (\b a -> a{dontInstallLast = b})
             boolEditor
@@ -831,8 +713,6 @@ prefsDescription configDir packages = NFDPP [
 
         , mkFieldPP
             (paraName <<<- ParaName (__ "Use vado to run commands on the remote machine") $ emptyParams)
-            (PP.text . show)
-            boolParser
             useVado
             (\b a -> a{useVado = b})
             boolEditor
@@ -841,32 +721,24 @@ prefsDescription configDir packages = NFDPP [
     (__ "Debug", VFDPP emptyParams [
            mkFieldPP
             (paraName <<<- ParaName (__ "Enable usage of Show instances in :print") $ emptyParams)
-            (PP.text . show)
-            boolParser
             printEvldWithShow
             (\b a -> a{printEvldWithShow = b})
             boolEditor
             debugSetPrintEvldWithShow
          , mkFieldPP
             (paraName <<<- ParaName (__ "Break on any exception thrown") $ emptyParams)
-            (PP.text . show)
-            boolParser
             breakOnException
             (\b a -> a{breakOnException = b})
             boolEditor
             debugSetBreakOnException
          , mkFieldPP
             (paraName <<<- ParaName (__ "Break on uncaught exceptions and errors") $ emptyParams)
-            (PP.text . show)
-            boolParser
             breakOnError
             (\b a -> a{breakOnError = b})
             boolEditor
             debugSetBreakOnError
          , mkFieldPP
             (paraName <<<- ParaName (__ "Turn on printing of binding results in GHCi") $ emptyParams)
-            (PP.text . show)
-            boolParser
             printBindResult
             (\b a -> a{printBindResult = b})
             boolEditor
@@ -875,8 +747,6 @@ prefsDescription configDir packages = NFDPP [
     (__ "Help", VFDPP emptyParams [
         mkFieldPP
             (paraName <<<- ParaName (__ "Browser") $ emptyParams)
-            (PP.text . show)
-            stringParser
             browser
             (\b a -> a{browser = b})
             (textEditor (not . T.null) True)
@@ -887,8 +757,6 @@ prefsDescription configDir packages = NFDPP [
                     ("e.g https://www.haskell.org/hoogle/?q= or " <>
                         "Hayoo: http://hayoo.fh-wedel.de/?query=")
                         $ emptyParams)
-            (PP.text . show)
-            stringParser
             docuSearchURL
             (\b a -> a{docuSearchURL = b})
             (textEditor (not . T.null) True)
@@ -929,7 +797,7 @@ styleEditor p n = do
     styleSchemeManagerAppendSearchPath styleManager . T.pack $ dataDir </> "data/styles"
     ids <- fromMaybe [] <$> styleSchemeManagerGetSchemeIds styleManager
     let notDarkIds = filter (not . T.isSuffixOf "-dark") ids
-    disableEditor (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
+    disableEditor "" (comboSelectionEditor notDarkIds id, p) True (__ "Select a special style?") p n
 
 
 -- | The default preferences
@@ -1025,18 +893,162 @@ defaultPrefs = Prefs {
     ,   collapseErrors = True
     }
 
+mergePrefsFile :: Prefs -> PrefsFile -> Prefs
+mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
+  { prefsFormat = fromMaybe prefsFormat prefsFormat_
+  , prefsSaveTime = fromMaybe prefsSaveTime prefsSaveTime_
+  , showLineNumbers = fromMaybe showLineNumbers showLineNumbers_
+  , rightMargin = fromMaybe rightMargin rightMargin_
+  , tabWidth = fromMaybe tabWidth tabWidth_
+  , wrapLines = fromMaybe wrapLines wrapLines_
+  , sourceCandy = fromMaybe sourceCandy sourceCandy_
+  , darkUserInterface = fromMaybe darkUserInterface darkUserInterface_
+  , saveSessionOnClose = fromMaybe saveSessionOnClose saveSessionOnClose_
+  , keymapName = fromMaybe keymapName keymapName_
+  , forceLineEnds = fromMaybe forceLineEnds forceLineEnds_
+  , removeTBlanks = fromMaybe removeTBlanks removeTBlanks_
+  , textviewFont = fromMaybe textviewFont textviewFont_
+  , sourceStyle = fromMaybe sourceStyle sourceStyle_
+  , foundBackgroundLight = fromMaybe foundBackgroundLight foundBackgroundLight_
+  , matchBackgroundLight = fromMaybe matchBackgroundLight matchBackgroundLight_
+  , contextBackgroundLight = fromMaybe contextBackgroundLight contextBackgroundLight_
+  , breakpointBackgroundLight = fromMaybe breakpointBackgroundLight breakpointBackgroundLight_
+  , lintBackgroundLight = fromMaybe lintBackgroundLight lintBackgroundLight_
+  , foundBackgroundDark = fromMaybe foundBackgroundDark foundBackgroundDark_
+  , matchBackgroundDark = fromMaybe matchBackgroundDark matchBackgroundDark_
+  , contextBackgroundDark = fromMaybe contextBackgroundDark contextBackgroundDark_
+  , breakpointBackgroundDark = fromMaybe breakpointBackgroundDark breakpointBackgroundDark_
+  , lintBackgroundDark = fromMaybe lintBackgroundDark lintBackgroundDark_
+  , textEditorType = fromMaybe textEditorType textEditorType_
+  , autoLoad = fromMaybe autoLoad autoLoad_
+  , logviewFont = fromMaybe logviewFont logviewFont_
+  , workspaceFont = fromMaybe workspaceFont workspaceFont_
+  , defaultSize = fromMaybe defaultSize defaultSize_
+  , browser = fromMaybe browser browser_
+  , sourceDirectories = fromMaybe sourceDirectories sourceDirectories_
+  , packageBlacklist = fromMaybe packageBlacklist (packageBlacklist_ >>= mapM (simpleParse . T.unpack))
+  , pathForCategory = fromMaybe pathForCategory pathForCategory_
+  , defaultPath = fromMaybe defaultPath defaultPath_
+  , categoryForPane = fromMaybe categoryForPane categoryForPane_
+  , collectAtStart = fromMaybe collectAtStart collectAtStart_
+  , unpackDirectory = fromMaybe unpackDirectory unpackDirectory_
+  , retrieveURL = fromMaybe retrieveURL retrieveURL_
+  , retrieveStrategy = fromMaybe retrieveStrategy retrieveStrategy_
+  , useCtrlTabFlipping = fromMaybe useCtrlTabFlipping useCtrlTabFlipping_
+  , docuSearchURL = fromMaybe docuSearchURL docuSearchURL_
+  , completeRestricted = fromMaybe completeRestricted completeRestricted_
+  , saveAllBeforeBuild = fromMaybe saveAllBeforeBuild saveAllBeforeBuild_
+  , jumpToWarnings = fromMaybe jumpToWarnings jumpToWarnings_
+  , useVado = fromMaybe useVado useVado_
+  , backgroundBuild = fromMaybe backgroundBuild backgroundBuild_
+  , native = fromMaybe native native_
+  , javaScript = fromMaybe javaScript javaScript_
+  , debug = fromMaybe debug debug_
+  , makeDocs = fromMaybe makeDocs makeDocs_
+  , runUnitTests = fromMaybe runUnitTests runUnitTests_
+  , runBenchmarks = fromMaybe runBenchmarks runBenchmarks_
+  , makeMode = fromMaybe makeMode makeMode_
+  , singleBuildWithoutLinking = fromMaybe singleBuildWithoutLinking singleBuildWithoutLinking_
+  , dontInstallLast = fromMaybe dontInstallLast dontInstallLast_
+  , printEvldWithShow = fromMaybe printEvldWithShow printEvldWithShow_
+  , breakOnException = fromMaybe breakOnException breakOnException_
+  , breakOnError = fromMaybe breakOnError breakOnError_
+  , printBindResult = fromMaybe printBindResult printBindResult_
+  , serverPort = fromMaybe serverPort serverPort_
+  , serverIP = fromMaybe serverIP serverIP_
+  , endWithLastConn = fromMaybe endWithLastConn endWithLastConn_
+  , showHiddenFiles = fromMaybe showHiddenFiles showHiddenFiles_
+  , showWorkspaceIcons = fromMaybe showWorkspaceIcons showWorkspaceIcons_
+  , hlintOnSave = fromMaybe hlintOnSave hlintOnSave_
+  , collapseErrors = fromMaybe collapseErrors collapseErrors_
+  }
+
+toPrefsFile :: Prefs -> PrefsFile
+toPrefsFile Prefs{..} = PrefsFile
+  { prefsFormat_ = Just prefsFormat
+  , prefsSaveTime_ = Just prefsSaveTime
+  , showLineNumbers_ = Just showLineNumbers
+  , rightMargin_ = Just rightMargin
+  , tabWidth_ = Just tabWidth
+  , wrapLines_ = Just wrapLines
+  , sourceCandy_ = Just sourceCandy
+  , darkUserInterface_ = Just darkUserInterface
+  , saveSessionOnClose_ = Just saveSessionOnClose
+  , keymapName_ = Just keymapName
+  , forceLineEnds_ = Just forceLineEnds
+  , removeTBlanks_ = Just removeTBlanks
+  , textviewFont_ = Just textviewFont
+  , sourceStyle_ = Just sourceStyle
+  , foundBackgroundLight_ = Just foundBackgroundLight
+  , matchBackgroundLight_ = Just matchBackgroundLight
+  , contextBackgroundLight_ = Just contextBackgroundLight
+  , breakpointBackgroundLight_ = Just breakpointBackgroundLight
+  , lintBackgroundLight_ = Just lintBackgroundLight
+  , foundBackgroundDark_ = Just foundBackgroundDark
+  , matchBackgroundDark_ = Just matchBackgroundDark
+  , contextBackgroundDark_ = Just contextBackgroundDark
+  , breakpointBackgroundDark_ = Just breakpointBackgroundDark
+  , lintBackgroundDark_ = Just lintBackgroundDark
+  , textEditorType_ = Just textEditorType
+  , autoLoad_ = Just autoLoad
+  , logviewFont_ = Just logviewFont
+  , workspaceFont_ = Just workspaceFont
+  , defaultSize_ = Just defaultSize
+  , browser_ = Just browser
+  , sourceDirectories_ = Just sourceDirectories
+  , packageBlacklist_ = Just (map (T.pack . display) packageBlacklist)
+  , pathForCategory_ = Just pathForCategory
+  , defaultPath_ = Just defaultPath
+  , categoryForPane_ = Just categoryForPane
+  , collectAtStart_ = Just collectAtStart
+  , unpackDirectory_ = Just unpackDirectory
+  , retrieveURL_ = Just retrieveURL
+  , retrieveStrategy_ = Just retrieveStrategy
+  , useCtrlTabFlipping_ = Just useCtrlTabFlipping
+  , docuSearchURL_ = Just docuSearchURL
+  , completeRestricted_ = Just completeRestricted
+  , saveAllBeforeBuild_ = Just saveAllBeforeBuild
+  , jumpToWarnings_ = Just jumpToWarnings
+  , useVado_ = Just useVado
+  , backgroundBuild_ = Just backgroundBuild
+  , native_ = Just native
+  , javaScript_ = Just javaScript
+  , debug_ = Just debug
+  , makeDocs_ = Just makeDocs
+  , runUnitTests_ = Just runUnitTests
+  , runBenchmarks_ = Just runBenchmarks
+  , makeMode_ = Just makeMode
+  , singleBuildWithoutLinking_ = Just singleBuildWithoutLinking
+  , dontInstallLast_ = Just dontInstallLast
+  , printEvldWithShow_ = Just printEvldWithShow
+  , breakOnException_ = Just breakOnException
+  , breakOnError_ = Just breakOnError
+  , printBindResult_ = Just printBindResult
+  , serverPort_ = Just serverPort
+  , serverIP_ = Just serverIP
+  , endWithLastConn_ = Just endWithLastConn
+  , showHiddenFiles_ = Just showHiddenFiles
+  , showWorkspaceIcons_ = Just showWorkspaceIcons
+  , hlintOnSave_ = Just hlintOnSave
+  , collapseErrors_ = Just collapseErrors
+  }
+
 -- ------------------------------------------------------------
 -- * Parsing
 -- ------------------------------------------------------------
 
 -- | Read the preference file
 readPrefs :: FilePath -> IO Prefs
-readPrefs fn = catch (do
-    configDir <- getConfigDir
-    readFields fn (flattenFieldDescriptionPPToS (prefsDescription configDir [])) defaultPrefs)
+readPrefs file = E.catch (
+    eitherDecode <$> LBS.readFile file >>= \case
+        Left e -> do
+            sysMessage Normal . T.pack $  "Error reading file " ++ show file ++ " " ++ show e
+            return defaultPrefs
+        Right r -> return $ mergePrefsFile defaultPrefs r)
         (\ (e :: SomeException) -> do
-            sysMessage Normal (T.pack $ show e)
+            sysMessage Normal . T.pack $ show e
             return defaultPrefs)
+
 -- ------------------------------------------------------------
 -- * Printing
 -- ------------------------------------------------------------
@@ -1047,6 +1059,6 @@ writePrefs fpath prefs = do
     timeNow         <- liftIO getClockTime
     configDir <- getConfigDir
     let newPrefs    =   prefs {prefsSaveTime = T.pack $ show timeNow, prefsFormat = prefsVersion}
-    writeFields fpath newPrefs (flattenFieldDescriptionPPToS (prefsDescription configDir []))
+    LBS.writeFile fpath . encode $ toPrefsFile prefs
 
 

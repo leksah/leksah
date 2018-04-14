@@ -72,7 +72,7 @@ import Graphics.UI.Editor.Basics
 import Distribution.Compiler
     (CompilerFlavor(..))
 import Distribution.Simple (knownExtensions, Extension(..), VersionRange, anyVersion)
-import Default (Default(..))
+import Data.Default (Default(..))
 import IDE.Utils.GUIUtils
 import IDE.Pane.SourceBuffer (fileOpenThis)
 import Control.Event (EventSource(..))
@@ -111,7 +111,6 @@ import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (writeFile, readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
-import MyMissing (forceJust)
 import Language.Haskell.Extension (Language(..))
 import Distribution.License (License(..))
 import Control.Exception (SomeException(..))
@@ -325,13 +324,13 @@ packageFields workspaceDir projects = VFD emptyParams [
                     $ emptyParams)
             templatePackage
             (\ a b -> b{templatePackage = a})
-            (maybeEditor (comboEntryEditor examplePackages, emptyParams) True ""),
+            (maybeEditor "" (comboEntryEditor examplePackages, emptyParams) True ""),
         mkField
             (paraName <<<- ParaName (__ "Add to existing project")
                     $ emptyParams)
             (fmap T.pack . newPackageProject)
             (\ a b -> b{newPackageProject = T.unpack <$> a})
-            (maybeEditor (comboEntryEditor (map (T.pack . pjFile) projects), emptyParams) True "")]
+            (maybeEditor "" (comboEntryEditor (map (T.pack . pjFile) projects), emptyParams) True "")]
 
 examplePackages = [ "hello"
                   , "gtk2hs-hello"
@@ -1049,7 +1048,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                                 $ emptyParams)
             (buildType . pd)
             (\ a b -> b{pd = (pd b){buildType = a}})
-            (maybeEditor (buildTypeEditor, emptyParams) True (__ "Specify?"))
+            (maybeEditor def (buildTypeEditor, emptyParams) True (__ "Specify?"))
     ,   mkField
             (paraName <<<- ParaName (__ "Custom Fields")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
@@ -1057,7 +1056,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                         $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
             (customFieldsPD . pd)
             (\ a b -> b{pd = (pd b){customFieldsPD = a}})
-            (multisetEditor
+            (multisetEditor def
                 (ColumnDescr True [(__ "Name",\cell (n,_) -> setCellRendererTextText cell $ T.pack n)
                                    ,(__ "Value",\cell (_,v) -> setCellRendererTextText cell $ T.pack v)])
                 (pairEditor (stringxEditor (const True), emptyParams)
@@ -1105,7 +1104,7 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
            $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             mbLib
             (\ a b -> b{mbLib = a})
-            (maybeEditor (libraryEditor (Just fp) modules numBuildInfos,
+            (maybeEditor def (libraryEditor (Just fp) modules numBuildInfos,
                 paraName <<<- ParaName (__ "Specify exported modules")
                 $ emptyParams) True
                 (__ "Does this package contain a library?"))
@@ -1150,8 +1149,7 @@ buildInfoD fp modules i = [
                                 $ emptyParams)
             (map (T.pack . display) . otherModules . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi ->
-                bi{otherModules = map (\i -> forceJust (simpleParse $ T.unpack i)
-                "   PackageEditor >> buildInfoD: no parse for moduile name" ) a})})
+                bi{otherModules = map (fromMaybe (error "no parse for moduile name") . simpleParse . T.unpack) a})})
             (modulesEditor modules)
     ]),
     (T.pack $ printf (__ "%s Compiler ") (show (i + 1)), VFD emptyParams [
@@ -1162,7 +1160,7 @@ buildInfoD fp modules i = [
             $ paraPack <<<- ParaPack PackGrow $ emptyParams)
             (options . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = a})})
-            (multisetEditor
+            (multisetEditor def
                 (ColumnDescr True [( __ "Compiler Flavor",\cell (cv,_) -> setCellRendererTextText cell . T.pack $ show cv)
                                    ,(__ "Options",\cell (_,op) -> setCellRendererTextText cell . T.pack $ concatMap (\s -> ' ' : s) op)])
                 (pairEditor
@@ -1316,7 +1314,7 @@ buildInfoD fp modules i = [
                         $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
              (customFieldsBI . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{customFieldsBI = a})})
-            (multisetEditor
+            (multisetEditor def
                 (ColumnDescr True [(__ "Name",\cell (n,_) -> setCellRendererTextText cell $ T.pack n)
                                    ,(__ "Value",\cell (_,v) -> setCellRendererTextText cell $ T.pack v)])
                 (pairEditor
@@ -1362,7 +1360,7 @@ compilerOptRecordEditor para =
 
 compilerOptsEditor :: Editor [(CompilerFlavor, [String])]
 compilerOptsEditor p =
-    multisetEditor
+    multisetEditor def
         (ColumnDescr True [("Compiler",\cell (compiler, _) -> setCellRendererTextText cell . T.pack $ show compiler)
                            ,("Options",\cell (_, opts    ) -> setCellRendererTextText cell . T.pack $ unwords opts)])
         (compilerOptRecordEditor,
@@ -1399,7 +1397,7 @@ packageEditor para noti = do
 
 testedWithEditor :: Editor [(CompilerFlavor, VersionRange)]
 testedWithEditor =
-    multisetEditor
+    multisetEditor def
        (ColumnDescr True [(__ "Compiler Flavor",\cell (cv,_) -> setCellRendererTextText cell . T.pack $ show cv)
                            ,(__ "Version Range",\cell (_,vr) -> setCellRendererTextText cell . T.pack $ display vr)])
        (pairEditor
@@ -1413,7 +1411,7 @@ testedWithEditor =
 
 compilerFlavorEditor :: Editor CompilerFlavor
 compilerFlavorEditor para noti = do
-    (wid,inj,ext) <- eitherOrEditor
+    (wid,inj,ext) <- eitherOrEditor def ""
         (comboSelectionEditor flavors (T.pack . show), paraName <<<- ParaName (__ "Select compiler") $ emptyParams)
         (textEditor (not . T.null) True, paraName <<<- ParaName (__ "Specify compiler") $ emptyParams)
         (__ "Other")
@@ -1434,7 +1432,7 @@ compilerFlavorEditor para noti = do
 
 buildTypeEditor :: Editor BuildType
 buildTypeEditor para noti = do
-    (wid,inj,ext) <- eitherOrEditor
+    (wid,inj,ext) <- eitherOrEditor def ""
         (comboSelectionEditor flavors (T.pack . show), paraName <<<- ParaName (__ "Select") $ emptyParams)
         (textEditor (const True) True, paraName <<<- ParaName (__ "Unknown") $ emptyParams)
         (__ "Unknown")
@@ -1598,25 +1596,23 @@ data Benchmark' = Benchmark'{
 
 instance Default Library'
 #if MIN_VERSION_Cabal(2,0,0)
-    where getDefault =  Library' Nothing [] [] [] getDefault getDefault
-#elif MIN_VERSION_Cabal(1,22,0)
-    where getDefault =  Library' [] [] [] [] getDefault getDefault
+    where def =  Library' Nothing [] [] [] True def
 #else
-    where getDefault =  Library' [] getDefault getDefault
+    where def =  Library' [] [] [] [] True def
 #endif
 
 instance Default Executable'
 #if MIN_VERSION_Cabal(2,0,0)
-    where getDefault = Executable' getDefault getDefault ExecutableScopeUnknown getDefault
+    where def = Executable' "" def ExecutableScopeUnknown def
 #else
-    where getDefault = Executable' getDefault getDefault getDefault
+    where def = Executable' "" def def
 #endif
 
 instance Default Test'
-    where getDefault = Test' getDefault (TestSuiteExeV10 (mkVersion [1,0]) getDefault) getDefault
+    where def = Test' "" (TestSuiteExeV10 (mkVersion [1,0]) def) def
 
 instance Default Benchmark'
-    where getDefault = Benchmark' getDefault (BenchmarkExeV10 (mkVersion [1,0]) getDefault) getDefault
+    where def = Benchmark' "" (BenchmarkExeV10 (mkVersion [1,0]) def) def
 
 #if MIN_VERSION_Cabal(2,0,0)
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
@@ -1658,10 +1654,8 @@ libraryEditor fp modules numBuildInfos para noti = do
               (exp, ln, map (T.pack . display) em)
             , (bi, map (T.pack . display) rmn, map (T.pack . display) s)
             )
-        parseModuleNames = map (\s -> forceJust (simpleParse $ T.unpack s)
-                    "SpecialEditor >> libraryEditor: no parse for moduile name")
-        parseRexportedModules = map (\s -> forceJust (simpleParse $ T.unpack s)
-                    "SpecialEditor >> libraryEditor: no parse for moduile name")
+        parseModuleNames = map (fromMaybe (error "no parse for moduile name") . simpleParse . T.unpack)
+        parseRexportedModules = map (fromMaybe (error "no parse for moduile name") . simpleParse . T.unpack)
         pext = do
             mbp <- ext
             case mbp of
@@ -1672,7 +1666,7 @@ libraryEditor fp modules numBuildInfos para noti = do
                     (parseRexportedModules rmn)
                     (parseModuleNames s) exp bi)
     return (wid,pinj,pext)
-#elif MIN_VERSION_Cabal(1,22,0)
+#else
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor fp modules numBuildInfos para noti = do
     (wid,inj,ext) <-
@@ -1710,10 +1704,8 @@ libraryEditor fp modules numBuildInfos para noti = do
             $ emptyParams)
             noti
     let pinj (Library' em rmn rs es exp bi) = inj ((exp, map (T.pack . display) em,bi), (map (T.pack . display) rmn, map (T.pack . display) rs, map (T.pack . display) es))
-        parseModuleNames = map (\s -> forceJust (simpleParse $ T.unpack s)
-                    "SpecialEditor >> libraryEditor: no parse for moduile name")
-        parseRexportedModules = map (\s -> forceJust (simpleParse $ T.unpack s)
-                    "SpecialEditor >> libraryEditor: no parse for moduile name")
+        parseModuleNames = map (fromMaybe (error "no parse for moduile name") . simpleParse . T.unpack)
+        parseRexportedModules = map (fromMaybe (error "no parse for moduile name") . simpleParse . T.unpack)
         pext = do
             mbp <- ext
             case mbp of
@@ -1724,33 +1716,6 @@ libraryEditor fp modules numBuildInfos para noti = do
                     (parseModuleNames rs)
                     (parseModuleNames es) exp bi)
     return (wid,pinj,pext)
-#else
-libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
-libraryEditor fp modules numBuildInfos para noti = do
-    (wid,inj,ext) <-
-        tupel3Editor
-            (boolEditor,
-            paraName <<<- ParaName (__ "Exposed")
-            $ paraSynopsis <<<- ParaSynopsis (__ "Is the lib to be exposed by default?")
-            $ emptyParams)
-            (modulesEditor (sort modules),
-            paraName <<<- ParaName (__ "Exposed Modules")
-            $ paraMinSize <<<- ParaMinSize (-1,300)
-            $ para)
-            (buildInfoEditorP numBuildInfos, paraName <<<- ParaName (__ "Build Info")
-            $ paraPack <<<- ParaPack PackNatural
-            $ para)
-            (paraOrientation <<<- ParaOrientation OrientationVertical
-            $ emptyParams)
-            noti
-    let pinj (Library' em exp bi) = inj (exp, map (T.pack . display) em,bi)
-    let pext = do
-            mbp <- ext
-            case mbp of
-                Nothing -> return Nothing
-                Just (exp,em,bi) -> return (Just $ Library' (map (\s -> forceJust (simpleParse $ T.unpack s)
-                    "SpecialEditor >> libraryEditor: no parse for moduile name") em) exp bi)
-    return (wid,pinj,pext)
 #endif
 
 modulesEditor :: [ModuleName] -> Editor [Text]
@@ -1758,7 +1723,7 @@ modulesEditor modules   =   staticListMultiEditor (map (T.pack . display) module
 
 executablesEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Executable']
 executablesEditor fp modules countBuildInfo p =
-    multisetEditor
+    multisetEditor def
         (ColumnDescr True [(__ "Executable Name",\cell Executable' {exeName' = exeName} -> setCellRendererTextText cell exeName)
                            ,(__ "Module Path",\cell Executable' {modulePath' = mp} -> setCellRendererTextText cell $ T.pack mp)
                            ,(__ "Build info index",\cell Executable' {exeBuildInfoIdx = bii} -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
@@ -1832,7 +1797,7 @@ executableEditor fp modules countBuildInfo para noti = do
 
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
-    multisetEditor
+    multisetEditor def
         (ColumnDescr True [(__ "Test Name",\cell (Test' testName _ _) -> setCellRendererTextText cell testName)
                            ,(__ "Interface",\cell (Test'  _ i _) -> setCellRendererTextText cell . T.pack $ interfaceName i)
                            ,(__ "Build info index",\cell (Test'  _ _ bii) -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
@@ -1873,7 +1838,7 @@ testEditor fp modules countBuildInfo para noti = do
 
 benchmarksEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Benchmark']
 benchmarksEditor fp modules countBuildInfo p =
-    multisetEditor
+    multisetEditor def
         (ColumnDescr True [(__ "Benchmark Name",\cell (Benchmark' benchmarkName _ _) -> setCellRendererTextText cell benchmarkName)
                            ,(__ "Interface",\cell (Benchmark'  _ i _) -> setCellRendererTextText cell . T.pack $ interfaceName i)
                            ,(__ "Build info index",\cell (Benchmark'  _ _ bii) -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
@@ -1930,46 +1895,44 @@ buildInfoEditorP numberOfBuildInfos para noti = do
 
 
 instance Default CompilerFlavor
-    where getDefault =  GHC
+    where def =  GHC
 
 instance Default BuildInfo
-    where getDefault =  emptyBuildInfo
+    where def =  emptyBuildInfo
 
 instance Default Library
 #if MIN_VERSION_Cabal(2,0,0)
-    where getDefault =  Library Nothing [] [] [] getDefault getDefault
-#elif MIN_VERSION_Cabal(1,22,0)
-    where getDefault =  Library [] [] [] [] getDefault getDefault
+    where def =  Library Nothing [] [] [] True def
 #else
-    where getDefault =  Library [] getDefault getDefault
+    where def =  Library [] [] [] [] True def
 #endif
 
 #if MIN_VERSION_Cabal(2,0,0)
 instance Default ExecutableScope
-    where getDefault = ExecutableScopeUnknown
+    where def = ExecutableScopeUnknown
 
 instance Default UnqualComponentName
-    where getDefault = mkUnqualComponentName ""
+    where def = mkUnqualComponentName ""
 #endif
 
 instance Default Executable
 #if MIN_VERSION_Cabal(2,0,0)
-    where getDefault = Executable getDefault getDefault getDefault getDefault
+    where def = Executable def def def def
 #else
-    where getDefault = Executable getDefault getDefault getDefault
+    where def = Executable def def def
 #endif
 
 instance Default RepoType
-    where getDefault = Darcs
+    where def = Darcs
 
 instance Default RepoKind
-    where getDefault = RepoThis
+    where def = RepoThis
 
 instance Default SourceRepo
-    where getDefault =  SourceRepo getDefault getDefault getDefault getDefault getDefault
-                                    getDefault getDefault
+    where def =  SourceRepo def def def def def
+                                    def def
 
 instance Default BuildType
-    where getDefault = Simple
+    where def = Simple
 
 

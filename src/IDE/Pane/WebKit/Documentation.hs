@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -61,6 +62,8 @@ import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gdk (getEventKeyState, keyvalName, getEventKeyKeyval)
 import GI.Gdk.Flags (ModifierType(..))
 import System.Log.Logger (debugM)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 data IDEDocumentation = IDEDocumentation {
     scrolledView :: ScrolledWindow
@@ -70,7 +73,10 @@ data IDEDocumentation = IDEDocumentation {
 data DocumentationState = DocumentationState {
     zoom :: Double
   , uri  :: Maybe Text
-} deriving(Eq,Ord,Read,Show,Typeable)
+} deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON DocumentationState
+instance FromJSON DocumentationState
 
 instance Pane IDEDocumentation IDEM
     where

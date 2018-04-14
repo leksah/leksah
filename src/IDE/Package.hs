@@ -114,7 +114,7 @@ import IDE.Core.State
         IDEEvent(..), SensitivityMask(..), MonadIDE(..), ProjectTool(..),
         packageIdentifierToString, getMainWindow, nixCache, modifyIDE,
         leksahTemplateFileExtension, leksahFlagFileExtension, displayPane,
-        nixEnv)
+        nixEnv, Log(..))
 import IDE.Utils.GUIUtils
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.Pane.Log
@@ -151,7 +151,7 @@ import Distribution.PackageDescription.PrettyPrint
 import Debug.Trace (trace)
 import IDE.Pane.WebKit.Documentation
        (getDocumentation, loadDoc, reloadDoc)
-import IDE.Pane.WebKit.Output (loadOutputUri, getOutputPane)
+import IDE.Pane.WebKit.Output (loadOutputUri, loadOutputHtmlFile, getOutputPane)
 import System.Log.Logger (errorM, debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T
@@ -160,13 +160,12 @@ import qualified Data.Text as T
 import IDE.Utils.ExternalTool
        (runExternalTool', runExternalTool, isRunning,
         interruptBuild)
-import Text.PrinterParser (writeFields)
 import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
-import IDE.Metainfo.Provider (updateSystemInfo)
+import IDE.Metainfo.Provider (updateSystemInfo, updateSystemInfo)
 import GI.GLib.Functions (timeoutAdd)
 import GI.GLib.Constants (pattern PRIORITY_DEFAULT, pattern PRIORITY_LOW)
 import GI.Gtk.Objects.MessageDialog
@@ -287,13 +286,13 @@ projectRefreshNix' project continuation = do
         StackTool ->
             continuation
         CabalTool ->
-            updateNixCache project (["ghc" | native prefs] <> ["ghcjs" | javaScript prefs]) continuation
+            updateNixCache project ("ghc":["ghcjs" | javaScript prefs]) continuation
 
 updateNixCache :: MonadIDE m => Project -> [Text] -> IDEAction -> m ()
 updateNixCache project compilers continuation = loop compilers
   where
     loop :: MonadIDE m => [Text] -> m ()
-    loop [] = liftIDE continuation
+    loop [] = liftIDE updateSystemInfo
     loop (compiler:rest) = do
         logLaunch <- getDefaultLogLaunch
         showDefaultLogLaunch'
@@ -306,7 +305,9 @@ updateNixCache project compilers continuation = loop compilers
                                  "nix-shell"
                                  [T.pack nixFile, "-A", "shells." <> compiler, "--run", "( set -o posix ; set )"]
                                  dir Nothing $ do
-                    out <- C.getZipSink $ const <$> C.ZipSink CL.consume <*> C.ZipSink (logOutput logLaunch)
+                    out <- C.getZipSink $ const
+                        <$> C.ZipSink CL.consume
+                        <*> C.ZipSink (logOutputForBuild project (LogNix nixFile ("shells." <> compiler)) False False)
                     when (take 1 (reverse out) == [ToolExit ExitSuccess]) $ do
                         saveNixCache (pjFile project) compiler out
                         newCache <- loadNixCache
@@ -424,7 +425,7 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
         runExternalTool' (__ "Building") cmd args' dir mbEnv $ do
             (mbLastOutput, _) <- C.getZipSink $ (,)
                 <$> C.ZipSink sinkLast
-                <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
+                <*> (C.ZipSink $ logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
             lift $ do
                 errs <- readIDE errorRefs
                 continuation (mbLastOutput == Just (ToolExit ExitSuccess))
@@ -501,7 +502,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                 (`runDebug` debug) . executeDebugCommand ":reload" $ do
                     (lastOutput, errs) <- C.getZipSink $ (,)
                         <$> C.ZipSink sinkLast
-                        <*> C.ZipSink (logOutputForBuild project package backgroundBuild jumpToWarnings)
+                        <*> C.ZipSink (logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
                     lift . postAsyncIDE $ do
                         liftIO $ debugM "leksah" "Reload done"
                         modifyIDE_ (\ide -> ide {runningTool = Nothing})
@@ -553,7 +554,7 @@ packageDoc' backgroundBuild jumpToWarnings (project, package) continuation = do
             runExternalTool' (__ "Documenting") cmd
                 args dir (M.toList <$> nixEnv) $ do
                 mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> (C.ZipSink $
-                    logOutputForBuild project package backgroundBuild jumpToWarnings)
+                    logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
                 lift $ postAsyncIDE reloadDoc
                 lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess)))
             (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
@@ -798,7 +799,7 @@ packageRunJavaScript' addFlagIfMissing (project, package) =
                                     False -> return . path' $ cDir "x" (unUnqualComponentName name)
 
                                 postAsyncIDE $ do
-                                    loadOutputUri ("file:///" ++ path)
+                                    loadOutputHtmlFile path
                                     getOutputPane Nothing  >>= \ p -> displayPane p False
                               `catchIDE`
                                 (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
@@ -816,7 +817,7 @@ packageTest' :: Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> 
 packageTest' backgroundBuild jumpToWarnings (project, package) continuation =
     if "--enable-tests" `elem` ipdConfigFlags package
         then do
-            removeTestLogRefs (ipdPackageDir package)
+            removeTestLogRefs (LogCabal $ ipdCabalFile package)
             pd <- liftIO $ fmap flattenPackageDescription
                              (readPackageDescription normal (ipdCabalFile package))
             runTests $ testSuites pd
@@ -879,7 +880,7 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
             ++ ipdTestFlags package) dir mbEnv $ do
                 (mbLastOutput, _) <- C.getZipSink $ (,)
                     <$> C.ZipSink sinkLast
-                    <*> (C.ZipSink $ logOutputForBuild project package backgroundBuild jumpToWarnings)
+                    <*> (C.ZipSink $ logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
                 lift $ do
                     errs <- readIDE errorRefs
                     when (mbLastOutput == Just (ToolExit ExitSuccess)) $ continuation True)
@@ -1189,7 +1190,7 @@ debugStart = do
                             StackTool -> [ "repl" ]
                                                 <> pjFileArgs
                                                 <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ]) $ \(tool, args, nixEnv) -> do
-                    let logOut = reflectIDEI (void (logOutputForBuild project package True False)) ideRef
+                    let logOut = reflectIDEI (void (logOutputForBuild project (LogCabal $ ipdCabalFile package) True False)) ideRef
                         logIdle = reflectIDEI (C.getZipSink $ const <$> C.ZipSink (logIdleOutput project package) <*> C.ZipSink logOutputDefault) ideRef
                     ghci <- liftIO $ newGhci tool args dir nixEnv ("+c":"-ferror-spans":interactiveFlags prefs') logOut logIdle
                     liftIO $ executeGhciCommand ghci ":reload" logOut

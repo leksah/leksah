@@ -167,6 +167,7 @@ import Distribution.Text (simpleParse)
 import Control.Concurrent (tryPutMVar, threadDelay, forkIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.Char (isUpper)
+import Data.Attoparsec.Text (parseOnly)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -986,7 +987,7 @@ setSymbolThread mvar = do
                                             return worked
                                         ToolOutput line -> do
                                             liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
-                                            case parse srcSpanParser "" $ T.unpack line of
+                                            case parseOnly srcSpanParser line of
                                                 Right (SrcSpan f sl sc el ec) -> do
                                                     liftIO . tryPutMVar lookup . Just . when openDefinition . postAsyncIDE . void $ goToSourceDefinition (ipdPackageDir package) (Location f sl (succ sc) el ec)
                                                     return True
@@ -1089,7 +1090,7 @@ registerLeksahEvents =    do
     registerEvent stRef "InfoChanged"
         (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e)
     registerEvent stRef "UpdateWorkspaceInfo"
-        (\ e@UpdateWorkspaceInfo  -> updateWorkspaceInfo >> return e)
+        (\ e@(UpdateWorkspaceInfo sys) -> (if sys then updateSystemInfo else updateWorkspaceInfo) >> return e)
     registerEvent stRef "WorkspaceChanged"
         (\ e@(WorkspaceChanged showPane updateFileCache) -> do
                                      postAsyncIDE $ do

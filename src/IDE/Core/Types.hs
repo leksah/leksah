@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveGeneric #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -80,11 +81,14 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
+,   PrefsFile(..)
 ,   candyState
 ,   EditorStyle(..)
 ,   editorStyle
 
 ,   LogRefType(..)
+,   Log(..)
+,   logRootPath
 ,   LogRef(..)
 ,   logRefRootPath
 ,   logRefFilePath
@@ -174,7 +178,7 @@ import GI.Gdk.Flags (ModifierType)
 import GI.Gtk.Objects.TextBuffer (TextBuffer(..))
 import Data.Word (Word32)
 import GI.Gtk.Objects.Window (Window(..))
-import Text.PrinterParser (Color(..), toGdkColor, fromGdkColor)
+import Graphics.UI.Editor.Simple (Color(..), toGdkColor, fromGdkColor)
 import GI.Gtk.Objects.Application (Application(..))
 import Control.Monad ((>=>))
 import System.FSNotify (StopListening, WatchManager)
@@ -187,6 +191,11 @@ import Data.Monoid ((<>))
 import Distribution.Compiler (CompilerFlavor(..))
 import System.Process (showCommandForUser)
 import IDE.Utils.FileUtils (loadNixEnv)
+import Data.Aeson (FromJSON(..), ToJSON(..))
+import GHC.Generics (Generic)
+import Data.Aeson.Types
+       (genericParseJSON, genericToEncoding, genericToJSON,
+        defaultOptions, fieldLabelModifier, Options)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -353,7 +362,7 @@ runDebug = runReaderT
 
 data IDEEvent  =
         InfoChanged Bool-- is it the initial = True else False
-    |   UpdateWorkspaceInfo
+    |   UpdateWorkspaceInfo Bool
     |   SelectInfo SymbolEvent
     |   SelectIdent Descr
     |   LogMessage Text LogTag
@@ -392,7 +401,7 @@ data SymbolEvent = SymbolEvent
 
 instance Event IDEEvent Text where
     getSelector (InfoChanged _)         =   "InfoChanged"
-    getSelector UpdateWorkspaceInfo     =   "UpdateWorkspaceInfo"
+    getSelector (UpdateWorkspaceInfo _) =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
     getSelector (SelectInfo _)          =   "SelectInfo"
     getSelector (SelectIdent _)         =   "SelectIdent"
@@ -668,7 +677,87 @@ data Prefs = Prefs {
     ,   retrieveURL         ::   Text
     ,   retrieveStrategy    ::   RetrieveStrategy
     ,   endWithLastConn     ::   Bool
-} deriving(Eq,Show)
+} deriving(Eq, Show, Generic)
+
+data PrefsFile = PrefsFile {
+    prefsFormat_         :: Maybe Int
+  , prefsSaveTime_       :: Maybe Text
+  , showLineNumbers_     :: Maybe Bool
+  , rightMargin_         :: Maybe (Bool, Int)
+  , tabWidth_            :: Maybe Int
+  , wrapLines_           :: Maybe Bool
+  , sourceCandy_         :: Maybe (Bool,Text)
+  , darkUserInterface_   :: Maybe Bool
+  , saveSessionOnClose_  :: Maybe Bool
+  , keymapName_          :: Maybe Text
+  , forceLineEnds_       :: Maybe Bool
+  , removeTBlanks_       :: Maybe Bool
+  , textviewFont_        :: Maybe (Maybe Text)
+  , workspaceFont_       :: Maybe (Bool, Maybe Text)
+  , sourceStyle_         :: Maybe (Bool, Text)
+  , foundBackgroundLight_      :: Maybe Color
+  , matchBackgroundLight_      :: Maybe Color
+  , contextBackgroundLight_    :: Maybe Color
+  , breakpointBackgroundLight_ :: Maybe Color
+  , lintBackgroundLight_       :: Maybe Color
+  , foundBackgroundDark_       :: Maybe Color
+  , matchBackgroundDark_       :: Maybe Color
+  , contextBackgroundDark_     :: Maybe Color
+  , breakpointBackgroundDark_  :: Maybe Color
+  , lintBackgroundDark_        :: Maybe Color
+  , autoLoad_            :: Maybe Bool
+  , textEditorType_      :: Maybe Text
+  , logviewFont_         :: Maybe (Bool, Maybe Text)
+  , defaultSize_         :: Maybe (Int,Int)
+  , browser_             :: Maybe Text
+  , pathForCategory_     :: Maybe [(Text, PanePath)]
+  , defaultPath_         :: Maybe PanePath
+  , categoryForPane_     :: Maybe [(Text, Text)]
+  , packageBlacklist_    :: Maybe [Text]
+  , collectAtStart_      :: Maybe Bool
+  , useCtrlTabFlipping_  :: Maybe Bool
+  , docuSearchURL_       :: Maybe Text
+  , completeRestricted_  :: Maybe Bool
+  , saveAllBeforeBuild_  :: Maybe Bool
+  , jumpToWarnings_      :: Maybe Bool
+  , useVado_             :: Maybe Bool
+  , backgroundBuild_     :: Maybe Bool
+  , native_              :: Maybe Bool
+  , javaScript_          :: Maybe Bool
+  , debug_               :: Maybe Bool
+  , makeDocs_            :: Maybe Bool -- ^ Make documentation on build
+  , runUnitTests_        :: Maybe Bool -- ^ Run unit tests on build?
+  , runBenchmarks_        :: Maybe Bool -- ^ Run benchmarks on build?
+  , makeMode_            :: Maybe Bool
+  , singleBuildWithoutLinking_ :: Maybe Bool
+  , dontInstallLast_     :: Maybe Bool
+  , printEvldWithShow_   :: Maybe Bool
+  , breakOnException_    :: Maybe Bool
+  , breakOnError_        :: Maybe Bool
+  , printBindResult_     :: Maybe Bool
+  , serverIP_            :: Maybe Text
+  , showHiddenFiles_     :: Maybe Bool
+  , showWorkspaceIcons_  :: Maybe Bool
+  , hlintOnSave_         :: Maybe Bool
+  , collapseErrors_      :: Maybe Bool
+  , serverPort_          :: Maybe Int
+  , sourceDirectories_   :: Maybe [FilePath]
+  , unpackDirectory_     :: Maybe (Maybe FilePath)
+  , retrieveURL_         :: Maybe Text
+  , retrieveStrategy_    :: Maybe RetrieveStrategy
+  , endWithLastConn_     :: Maybe Bool
+} deriving(Eq, Show, Generic)
+
+prefsAesonOptions :: Options
+prefsAesonOptions = defaultOptions
+    { fieldLabelModifier = init
+    }
+
+instance ToJSON PrefsFile where
+    toJSON     = genericToJSON prefsAesonOptions
+    toEncoding = genericToEncoding prefsAesonOptions
+instance FromJSON PrefsFile where
+    parseJSON = genericParseJSON prefsAesonOptions
 
 candyState :: Prefs -> Bool
 candyState = fst . sourceCandy
@@ -718,11 +807,19 @@ data LogLaunch = LogLaunch {
 data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
     deriving (Eq, Ord, Show, Enum, Bounded)
 
+data Log =
+    LogCabal {logCabalFile :: FilePath}
+  | LogNix {logNixFile :: FilePath, logNixAttribute :: Text}
+  deriving(Eq, Show)
+
+logRootPath :: Log -> FilePath
+logRootPath LogCabal{..} = dropFileName logCabalFile
+logRootPath LogNix{..} = dropFileName logNixFile
 
 -- | Represents a message about a part of the source code
 data LogRef = LogRef {
     logRefSrcSpan       ::   SrcSpan
-,   logRefCabalFile     ::   FilePath
+,   logRefLog           ::   Log
 ,   refDescription      ::   Text
 ,   logRefIdea          ::   Maybe (Text, Idea)
 ,   logLines            ::   Maybe (Int, Int)
@@ -743,7 +840,7 @@ displaySrcSpan s = srcSpanFilename s ++ ":" ++
 
 -- | The root folder of the package the message references
 logRefRootPath :: LogRef -> FilePath
-logRefRootPath = dropFileName . logRefCabalFile
+logRefRootPath = logRootPath . logRefLog
 
 -- | The file path the message references, relative to the root path
 logRefFilePath :: LogRef -> FilePath
@@ -824,7 +921,10 @@ data SensitivityMask =
 
 data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
                 | Regex {caseSense :: Bool}
-    deriving (Eq,Ord,Read,Show)
+    deriving (Eq,Ord,Read,Show,Generic)
+
+instance ToJSON SearchMode
+instance FromJSON SearchMode
 
 data CompletionWindow = CompletionWindow {
     cwWindow :: Window,

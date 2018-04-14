@@ -231,7 +231,7 @@ doBuildChain ms chain@Chain{mcAction = MoInstall} =
 doBuildChain ms chain@Chain{mcAction = MoClean} =
     postAsyncIDE $ packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoMetaInfo} =
-    postAsyncIDE . void $ triggerEventIDE UpdateWorkspaceInfo
+    postAsyncIDE . void $ triggerEventIDE (UpdateWorkspaceInfo False)
 doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont ms pos (Just neg) False = doBuildChain ms neg

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveDataTypeable #-}
@@ -34,13 +35,18 @@ import Data.Text (Text)
 import GI.Gtk.Objects.Label (labelNew, Label(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import GI.Gtk.Objects.Widget (toWidget, Widget(..))
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 data IDEHLint       =   IDEHLint {
     deprecatedLabel :: Label
 } deriving Typeable
 
 data HLintState      =   HLintState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+
+instance ToJSON HLintState
+instance FromJSON HLintState
 
 instance Pane IDEHLint IDEM
     where

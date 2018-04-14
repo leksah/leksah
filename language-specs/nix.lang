@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+ Author: Luca Bruno <lucabru@src.gnome.org
+ Copyright (C) 2014 Luca Bruno <lucabru@src.gnome.org>
+
+ GtkSourceView is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+
+ GtkSourceView is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+-->
+<language id="nix" _name="Nix" version="2.0" _section="Others">
+  <metadata>
+    <property name="globs">*.nix</property>
+    <property name="line-comment-start">#</property>
+    <property name="block-comment-start">/*</property>
+    <property name="block-comment-end">*/</property>
+  </metadata>
+
+  <styles>
+    <style id="escape" _name="Escaped Character" map-to="def:special-char"/>
+    <style id="null-value" _name="Null Value" map-to="def:special-constant"/>
+    <style id="boolean" _name="Boolean Value" map-to="def:boolean"/>
+    <style id="keyword" _name="Keyword" map-to="def:keyword"/>
+    <style id="string" _name="String" map-to="def:string"/>
+    <style id="function" _name="Function" map-to="def:builtin"/>
+    <style id="indented-string" _name="Indented string" map-to="def:string"/>
+    <style id="path" _name="Path" map-to="def:underlined"/>
+    <style id="uri" _name="URI" map-to="def:underlined"/>
+  </styles>
+
+  <definitions>
+
+    <!--contexts NOT used in the main context-->
+	<context id="antiquotation" style-ref="def:statement">
+	 <start>\${</start>
+	 <end>}</end>
+	 <include>
+	  <context ref="nix"/>
+	 </include>
+	</context>
+	
+    <context id="null-value" style-ref="null-value">
+      <keyword>null</keyword>
+    </context>
+
+    <context id="boolean" style-ref="boolean">
+      <keyword>false</keyword>
+      <keyword>true</keyword>
+    </context>
+
+    <context id="keywords" style-ref="keyword">
+      <keyword>builtins</keyword>
+      <keyword>assert</keyword>
+      <keyword>if</keyword>
+      <keyword>then</keyword>
+      <keyword>else</keyword>
+      <keyword>let</keyword>
+      <keyword>in</keyword>
+      <keyword>with</keyword>
+      <keyword>import</keyword>
+	  <keyword>rec</keyword>
+	  <keyword>inherit</keyword>
+    </context>
+
+    <context id="functions" style-ref="function">
+      <keyword>abort</keyword>
+      <keyword>add</keyword>
+      <keyword>attrNames</keyword>
+      <keyword>baseNameOf</keyword>
+      <keyword>compareVersions</keyword>
+      <keyword>concatLists</keyword>
+      <keyword>currentSystem</keyword>
+      <keyword>derivation</keyword>
+      <keyword>dirOf</keyword>
+      <keyword>div</keyword>
+      <keyword>elem</keyword>
+      <keyword>elemAt</keyword>
+      <keyword>filter</keyword>
+      <keyword>filterSource</keyword>
+      <keyword>getAttr</keyword>
+      <keyword>getEnv</keyword>
+      <keyword>hasAttr</keyword>
+      <keyword>hashString</keyword>
+      <keyword>head</keyword>
+      <keyword>intersectAttrs</keyword>
+      <keyword>isAttrs</keyword>
+      <keyword>isList</keyword>
+      <keyword>isFunction</keyword>
+      <keyword>isString</keyword>
+      <keyword>isInt</keyword>
+      <keyword>isBool</keyword>
+      <keyword>isNull</keyword>
+      <keyword>length</keyword>
+      <keyword>lessThan</keyword>
+      <keyword>listToAttrs</keyword>
+      <keyword>map</keyword>
+      <keyword>mul</keyword>
+      <keyword>parseDrvName</keyword>
+      <keyword>pathExists</keyword>
+      <keyword>readFile</keyword>
+      <keyword>removeAttrs</keyword>
+      <keyword>stringLength</keyword>
+      <keyword>sub</keyword>
+      <keyword>substring</keyword>
+      <keyword>tail</keyword>
+      <keyword>throw</keyword>
+      <keyword>toFile</keyword>
+      <keyword>toJSON</keyword>
+      <keyword>toPath</keyword>
+      <keyword>toString</keyword>
+      <keyword>toXML</keyword>
+      <keyword>trace</keyword>
+      <keyword>typeOf</keyword>
+    </context>
+
+	<context id="indented-string" style-ref="indented-string" class="string" class-disabled="no-spell-check">
+      <start>''</start>
+      <end>''</end>
+      <include>
+		<context id="indented-string-escape-antiquotation" style-ref="escape">
+		 <match>''\${</match>
+		</context>
+		<context id="indented-string-escape" style-ref="escape">
+		 <match>''\\.</match>
+		</context>
+		<context ref="antiquotation"/>
+      </include>
+    </context>
+
+	<context id="string" style-ref="indented-string" class="string" class-disabled="no-spell-check">
+      <start>"</start>
+      <end>"</end>
+      <include>
+		<context ref="def:escape"/>
+		<context ref="antiquotation"/>
+      </include>
+    </context>
+
+	<context id="operators" style-ref="def:operator" extend-parent="false">
+      <match>@|:|(//)|\+|\?|(==)|(\|\|)|(&amp;&amp;)|!|(->)</match>
+    </context>
+
+    <context id="path" style-ref="path" class="path">
+	 <match case-sensitive="false">(/|\./|\.\./)[a-zA-Z0-9\./\-_]*</match>
+	</context>
+
+	<context id="uri" style-ref="uri" class="uri">
+	 <match case-sensitive="false">\%{def:net-address}</match>
+	</context>
+	
+    <!--main context-->
+    <context id="nix" class="no-spell-check">
+      <include>
+        <context ref="def:shell-like-comment"/>
+        <context ref="def:c-like-comment-multiline"/>
+        <context ref="def:c-like-close-comment-outside-comment"/>
+        <context ref="indented-string"/>
+        <context ref="string" style-ref="string"/>
+        <context ref="def:float"/>
+        <context ref="def:decimal"/>
+        <context ref="boolean"/>
+        <context ref="keywords"/>
+        <context ref="functions"/>
+        <context ref="null-value"/>
+        <context ref="operators"/>
+		<context ref="path"/>
+		<context ref="uri"/>
+      </include>
+    </context>
+    <!--main context-->
+
+  </definitions>
+</language>

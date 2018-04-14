@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances, TypeSynonymInstances,
    MultiParamTypeClasses, DeriveDataTypeable, OverloadedStrings #-}
 -----------------------------------------------------------------------------
@@ -90,6 +91,8 @@ import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows', treePathNewFromIndices')
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 -- | Represents the Variables pane
 data IDEVariables    =   IDEVariables {
@@ -108,8 +111,10 @@ data VarDescription = VarDescription {
 
 -- | The additional state used when recovering the pane
 data VariablesState  =   VariablesState
-    deriving(Eq,Ord,Read,Show,Typeable)
+    deriving(Eq,Ord,Read,Show,Typeable,Generic)
 
+instance ToJSON VariablesState
+instance FromJSON VariablesState
 
 instance Pane IDEVariables IDEM
     where
