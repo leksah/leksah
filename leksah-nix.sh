@@ -22,6 +22,7 @@ export PATH="$LEKSAH_BUILD_DIR/x/leksah/build/leksah:$LEKSAH_BUILD_DIR/c/leksah/
 RUN_LEKSAH="$LEKSAH_BUILD_DIR/c/leksah/build/leksah/leksah"
 
 export leksah_datadir="$DIR"
+export leksah_server_datadir="$DIR/vendor/leksah-server"
 
 nix-shell --show-trace -j 4 --cores 5 -A shells.ghc --run 'cabal new-build exe:leksah-server exe:leksah exe:leksahecho' || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
 
