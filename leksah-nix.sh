@@ -23,6 +23,7 @@ RUN_LEKSAH="$LEKSAH_BUILD_DIR/c/leksah/build/leksah/leksah"
 
 export leksah_datadir="$DIR"
 export leksah_server_datadir="$DIR/vendor/leksah-server"
+export vcsgui_datadir="$DIR/vendor/haskellVCSGUI/vcsgui"
 
 nix-shell --show-trace -j 4 --cores 5 -A shells.ghc --run 'cabal new-build exe:leksah-server exe:leksah exe:leksahecho' || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
 

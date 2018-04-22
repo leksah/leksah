@@ -147,6 +147,7 @@ let
         ln -s ${drv}/bin/leksah $out/bin
         wrapProgram $out/bin/leksah \
           --prefix 'PATH' ':' "${extendedHaskellPackages.leksah-server}/bin" \
+          --prefix 'PATH' ':' "${extendedHaskellPackages.vcsgui}/bin" \
           --suffix 'PATH' ':' "${extendedHaskellPackages.ghcWithPackages (self: [])}/bin" \
           --suffix 'PATH' ':' "${extendedHaskellPackages.cabal-install}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
@@ -155,6 +156,7 @@ let
         ln -s ${launch-leksah}/bin/launch-leksah $out/bin
         wrapProgram $out/bin/launch-leksah \
           --suffix 'PATH' ':' "${extendedHaskellPackages.leksah-server}/bin" \
+          --prefix 'PATH' ':' "${extendedHaskellPackages.vcsgui}/bin" \
           --suffix 'PATH' ':' "${extendedHaskellPackages.ghcWithPackages (self: [])}/bin" \
           --suffix 'PATH' ':' "${extendedHaskellPackages.cabal-install}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
@@ -165,6 +167,7 @@ let
   env = pkgs.stdenv.lib.overrideDerivation drv.env (oldAttrs: {
     buildInputs = oldAttrs.buildInputs ++ [
       extendedHaskellPackages.leksah-server
+      extendedHaskellPackages.vcsgui
       extendedHaskellPackages.cabal-install
       # TODO: perhaps add some additional stuff to nix-shell PATH
     ];
