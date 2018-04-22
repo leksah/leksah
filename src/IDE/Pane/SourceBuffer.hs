@@ -531,7 +531,8 @@ markRefInSourceBuf buf logRef scrollTo = do
         unless isOldContext $ do
             liftIO $ debugM "lekash" "markRefInSourceBuf calling applyTagByName"
             lineStart <- backwardToLineStartC iter
-            createMark sv (logRefType logRef) lineStart $ refDescription logRef
+            createMark sv (logRefType logRef) lineStart . T.unlines
+                . zipWith ($) (replicate 30 id <> [const "..."]) . T.lines $ refDescription logRef
             applyTagByName ebuf tagName iter iter2
         when scrollTo $ do
             liftIO $ debugM "lekash" "markRefInSourceBuf triggered placeCursor"
