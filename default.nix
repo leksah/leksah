@@ -115,7 +115,7 @@ let
       text = ''
         #!${nixpkgs.stdenv.shell}
         ${text}
-        '';
+      '';
       checkPhase = ''
         ${nixpkgs.stdenv.shell} -n $out/bin/${name}
       '';

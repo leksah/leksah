@@ -303,7 +303,7 @@ updateNixCache project compilers continuation = loop compilers
             True ->
                 runExternalTool' (__ "Nix")
                                  "nix-shell"
-                                 [T.pack nixFile, "-A", "shells." <> compiler, "--run", "( set -o posix ; set )"]
+                                 ["-E", "let x = (let fn = import " <> T.pack nixFile <> "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = x.env; }; } // x).shells." <> compiler, "--run", "( set -o posix ; set )"]
                                  dir Nothing $ do
                     out <- C.getZipSink $ const
                         <$> C.ZipSink CL.consume
@@ -376,8 +376,10 @@ withToolCommand project compiler args continuation = do
                 Just env -> liftIDE $ nixContinuation env
                 Nothing -> updateNixCache project [nixCompilerName] $
                     readIDE (nixEnv (pjFile project) nixCompilerName) >>= mapM_ nixContinuation
-        True -> liftIDE $ continuation ("nix-shell", [ T.pack (pjDir project </> "default.nix"), "-A", "shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
-                              , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Nothing)
+        True -> liftIDE $ continuation ("nix-shell", [ "-E"
+                    , "let x = (let fn = import " <> T.pack (pjDir project </> "default.nix") <>
+                                    "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = x.env; }; } // x).shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
+                    , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Nothing)
         False -> liftIDE $ continuation (pjToolCommand' project, args, Nothing)
 
 runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
