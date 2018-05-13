@@ -41,6 +41,7 @@ data-files:
     data/leksah-welcome/src/Main.hs
     data/leksah-welcome/test/Main.hs
     data/empty.lkshs
+    data/empty-file
     data/.gtkrc-2.0
     data/styles/leksah.xml
     data/styles/leksah-dark.xml
