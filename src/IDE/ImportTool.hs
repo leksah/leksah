@@ -1,5 +1,5 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
@@ -56,8 +56,6 @@ import qualified Distribution.ModuleName as D (ModuleName, components, fromStrin
 import qualified Text.ParserCombinators.Parsec.Token as P
        (operator, dot, identifier, symbol, lexeme, whiteSpace,
         makeTokenParser)
-import Distribution.PackageDescription.Parse
-       (readPackageDescription)
 import Distribution.Verbosity (normal)
 import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
@@ -65,10 +63,19 @@ import Distribution.Package
 import Distribution.Version
        (anyVersion, orLaterVersion, intersectVersionRanges,
         earlierVersion, Version(..), versionNumbers, mkVersion)
+#if MIN_VERSION_Cabal(2,2,0)
+import Distribution.PackageDescription.Parsec
+       (readGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse
+       (readGenericPackageDescription)
+#endif
 #else
 import Distribution.Version
        (anyVersion, orLaterVersion, intersectVersionRanges,
         earlierVersion, Version(..))
+import Distribution.PackageDescription.Parse
+       (readPackageDescription)
 #endif
 import Distribution.PackageDescription
        (GenericPackageDescription(..), Benchmark(..), TestSuite(..),
@@ -110,6 +117,7 @@ mkVersion :: [Int] -> Version
 mkVersion = (`Version` [])
 mkUnqualComponentName :: String -> String
 mkUnqualComponentName = id
+readGenericPackageDescription = readGenericPackageDescription
 #endif
 
 readMaybe :: Read a => Text -> Maybe a
@@ -188,7 +196,7 @@ addImport error descrList continuation =
     case parseNotInScope $ refDescription error of
         Nothing -> continuation (True,descrList)
         Just nis -> do
-            currentInfo' <- getScopeForActiveBuffer
+            currentInfo' <- getScopeForRef error
             wsInfo' <- getWorkspaceInfo
             case (currentInfo', wsInfo') of
                 (Nothing, _) -> continuation (True,descrList)
@@ -238,7 +246,7 @@ addPackages errors = do
                     _ -> Nothing) errors
 
     forM_ packs $ \(cabalFile, d) -> do
-        gpd <- liftIO $ readPackageDescription normal cabalFile
+        gpd <- liftIO $ readGenericPackageDescription normal cabalFile
         ideMessage Normal $ "Adding build-depends " <> T.pack (display d <> " to " <> cabalFile)
         liftIO $ writeGenericPackageDescription' cabalFile
             gpd { condLibrary     = addDepToLib d (condLibrary gpd),
@@ -285,14 +293,12 @@ addPackages errors = do
     nextMinor' (major:minor:_) = [major, minor+1]
     nextMinor' _ = undefined
 
-getScopeForActiveBuffer :: IDEM (Maybe (GenScope, GenScope))
-getScopeForActiveBuffer = do
-    mbActiveBuf <- maybeActiveBuf
-    case mbActiveBuf of
+getScopeForRef :: LogRef -> IDEM (Maybe (GenScope, GenScope))
+getScopeForRef ref =
+    selectSourceBuf (logRefFullFilePath ref) >>= \case
         Nothing -> return Nothing
-        Just buf -> do
-            packages <- belongsToPackages' buf
-            case packages of
+        Just buf ->
+            belongsToPackages' buf >>= \case
                 [] -> return Nothing
                 (_,pack):_ -> getPackageImportInfo pack
 

@@ -66,7 +66,7 @@ import qualified IDE.StrippedPrefs as SP
 import IDE.Utils.Tool (runTool, toolline, waitForProcess)
 import System.Log
 import System.Log.Logger
-       (getLevel, getRootLogger, debugM, updateGlobalLogger,
+       (errorM, getLevel, getRootLogger, debugM, updateGlobalLogger,
         rootLoggerName, setLevel)
 import Data.List (stripPrefix)
 import System.Directory
@@ -265,7 +265,7 @@ handleExceptions inner =
 startGUI :: IORef ExitCode -> Bool -> Yi.Config -> FilePath -> Maybe FilePath -> [FilePath] -> Prefs -> Bool -> IO ()
 startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
   withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
-    app <- applicationNew (Just "org.leksah.leksah") []
+    Just app <- applicationNew (Just "org.leksah.leksah") []
     onApplicationActivate app $ do
         debugM "leksah" "Application Activate"
         timeout  <- if rtsSupportsBoundThreads

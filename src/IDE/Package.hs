@@ -80,7 +80,6 @@ module IDE.Package (
 
 import Distribution.Package hiding (depends,packageId)
 import Distribution.PackageDescription
-import Distribution.PackageDescription.Parse
 import Distribution.PackageDescription.Configuration
 import Distribution.Verbosity
 import System.FilePath
@@ -198,6 +197,17 @@ import Distribution.Types.ForeignLib (foreignLibName)
 import Distribution.Types.UnqualComponentName
        (UnqualComponentName(..), mkUnqualComponentName,
         unUnqualComponentName)
+#if MIN_VERSION_Cabal(2,2,0)
+import Distribution.PackageDescription.Parsec
+       (readGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse
+       (readGenericPackageDescription)
+#endif
+#else
+import Distribution.PackageDescription.Parse
+       (readPackageDescription)
+import qualified System.FilePath.Glob as Glob (globDir, compile)
 #endif
 
 #if !MIN_VERSION_Cabal(2,0,0)
@@ -382,11 +392,19 @@ withToolCommand project compiler args continuation = do
                     , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Nothing)
         False -> liftIDE $ continuation (pjToolCommand' project, args, Nothing)
 
+#if !MIN_VERSION_Cabal(2,0,0)
+readGenericPackageDescription = readPackageDescription
+#endif
+
+readAndFlattenPackageDescription :: MonadIDE m => IDEPackage -> m PackageDescription
+readAndFlattenPackageDescription package =
+    liftIO $ flattenPackageDescription <$>
+         readGenericPackageDescription normal (ipdCabalFile package)
+
 runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, package) continuation = do
     prefs <- readIDE prefs
-    pd <- liftIO $ fmap flattenPackageDescription
-                     (readPackageDescription normal (ipdCabalFile package))
+    pd <- readAndFlattenPackageDescription package
     let dir = ipdPackageDir package
         pkgName = ipdPackageName package
 
@@ -431,8 +449,8 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
             lift $ do
                 errs <- readIDE errorRefs
                 continuation (mbLastOutput == Just (ToolExit ExitSuccess))
-      `catchIDE`
-        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
+  `catchIDE`
+      (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 --isConfigError :: Monad m => C.Sink ToolOutput m Bool
 --isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
@@ -679,8 +697,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                         packageRun' False (project, packWithNewFlags)
                 _  -> return ()
         else liftIDE $ catchIDE (do
-            pd <- liftIO $ fmap flattenPackageDescription
-                             (readPackageDescription normal (ipdCabalFile package))
+            pd <- readAndFlattenPackageDescription package
             mbComponent <- readIDE activeComponent
             let exe = exeToRun mbComponent $ executables pd
             let defaultLogName = ipdPackageName package
@@ -780,8 +797,7 @@ packageRunJavaScript' addFlagIfMissing (project, package) =
                 else liftIDE $ buildPackage False False True (project, package) $ \ ok -> when ok $ liftIDE $ catchIDE (do
                         ideR        <- ask
                         maybeDebug   <- readIDE debugState
-                        pd <- liftIO $ fmap flattenPackageDescription
-                                         (readPackageDescription normal (ipdCabalFile package))
+                        pd <- readAndFlattenPackageDescription package
                         mbComponent <- readIDE activeComponent
                         let exe = exeToRun mbComponent $ executables pd
                         let defaultLogName = ipdPackageName package
@@ -820,8 +836,7 @@ packageTest' backgroundBuild jumpToWarnings (project, package) continuation =
     if "--enable-tests" `elem` ipdConfigFlags package
         then do
             removeTestLogRefs (LogCabal $ ipdCabalFile package)
-            pd <- liftIO $ fmap flattenPackageDescription
-                             (readPackageDescription normal (ipdCabalFile package))
+            pd <- readAndFlattenPackageDescription package
             runTests $ testSuites pd
           `catchIDE`
             (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
@@ -854,39 +869,20 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
         packageDBs <- liftIO $ getPackageDBs' ghcVersion (Just projectFile)
         let pkgId = packageIdentifierToString $ ipdPackageId package
             pkgName = ipdPackageName package
-        (cmd, mbEnv, args) <- case pjTool project of
-            StackTool -> return ("stack", Nothing, [command, pkgName <> ":" <> T.pack (unUnqualComponentName name)])
-            CabalTool -> do
-                (buildDir, cDir, cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
-                case cabalVer of
-                    Just v | "1.24." `isPrefixOf` v -> do
-                        env <- packageEnv package =<< liftIO getEnvironment
-                        let path' c = buildDir </> T.unpack pkgId </> c
-                                    </> unUnqualComponentName name </> unUnqualComponentName name
-                        liftIO . debugM "leksah" $ "Looking for " <> path' "build"
-                        path <- liftIO $ doesFileExist (path' "build") >>= \case
-                            True -> return $ path' "build"
-                            False -> return . path' $ cDir cType (unUnqualComponentName name)
-                        return
-                            ( path
-                            , Just $ ("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] packageDBs) : env
-                            , []
-                            )
-                    _ ->
-                        return
-                            ( "cabal"
-                            , Nothing
-                            , ["new-" <> command, pkgName <> ":" <> T.pack (unUnqualComponentName name)]
-                            )
-        runExternalTool' (__ "Run " <> T.pack (unUnqualComponentName name)) cmd (args
-            ++ ipdTestFlags package) dir mbEnv $ do
-                (mbLastOutput, _) <- C.getZipSink $ (,)
-                    <$> C.ZipSink sinkLast
-                    <*> (C.ZipSink $ logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
-                lift $ do
-                    errs <- readIDE errorRefs
-                    when (mbLastOutput == Just (ToolExit ExitSuccess)) $ continuation True)
-        (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
+        pjFileArgs <- projectFileArguments project dir
+        let args = case pjTool project of
+                        StackTool -> [command] <> pjFileArgs <> [pkgName <> ":" <> T.pack (unUnqualComponentName name)]
+                        CabalTool -> ["new-" <> command] <> pjFileArgs <> [pkgName <> ":" <> T.pack (unUnqualComponentName name)]
+        withToolCommand project GHC (args ++ ipdTestFlags package) $ \(cmd, args', nixEnv) ->
+            runExternalTool' (__ "Run " <> T.pack (unUnqualComponentName name))
+                    cmd args' dir (M.toList <$> nixEnv) $ do
+                    (mbLastOutput, _) <- C.getZipSink $ (,)
+                        <$> C.ZipSink sinkLast
+                        <*> (C.ZipSink $ logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
+                    lift $ do
+                        errs <- readIDE errorRefs
+                        when (mbLastOutput == Just (ToolExit ExitSuccess)) $ continuation True)
+            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 -- | Run benchmarks as foreground action for current package
 packageBench :: PackageAction
@@ -900,8 +896,7 @@ packageBench' :: Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) ->
 packageBench' backgroundBuild jumpToWarnings (project, package) continuation =
     if "--enable-benchmarks" `elem` ipdConfigFlags package
         then do
-            pd <- liftIO $ fmap flattenPackageDescription
-                             (readPackageDescription normal (ipdCabalFile package))
+            pd <- readAndFlattenPackageDescription package
             runBenchs $ benchmarks pd
           `catchIDE`
             (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
@@ -985,7 +980,7 @@ getPackageDescriptionAndPath = do
             ideMessage Normal (__ "No active package")
             return Nothing
         Just p  -> catchIDE (do
-                pd <- liftIO $ readPackageDescription normal (ipdCabalFile p)
+                pd <- liftIO $ readGenericPackageDescription normal (ipdCabalFile p)
                 return (Just (flattenPackageDescription pd,ipdCabalFile p)))
                     (\(e :: SomeException) -> do
                         ideMessage Normal (__ "Can't load package " <> T.pack (show e))
@@ -1000,7 +995,13 @@ getModuleTemplate templateName pd modName exports body = catch (do
     filePath <- getConfigFilePathForLoad (templateName <> leksahTemplateFileExtension) Nothing dataDir
     template <- T.readFile filePath
     return (foldl' (\ a (from, to) -> T.replace from to a) template
-        [   ("@License@"      , (T.pack . display . license) pd)
+        [   ("@License@"      , (T.pack .
+#if MIN_VERSION_Cabal(2,2,0)
+                                          show
+#else
+                                          display
+#endif
+                                                  . license) pd)
         ,   ("@Maintainer@"   , T.pack $ maintainer pd)
         ,   ("@Stability@"    , T.pack $ stability pd)
         ,   ("@Portability@"  , "")
@@ -1018,7 +1019,7 @@ addModuleToPackageDescr :: ModuleName -> [ModuleLocation] -> PackageAction
 addModuleToPackageDescr moduleName locations = do
     p    <- ask
     liftIDE $ catchIDE (liftIO $ do
-        gpd <- readPackageDescription normal (ipdCabalFile p)
+        gpd <- readGenericPackageDescription normal (ipdCabalFile p)
         let npd = trace (show gpd) foldr addModule gpd locations
         writeGenericPackageDescription' (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
@@ -1068,7 +1069,7 @@ delModuleFromPackageDescr :: ModuleName -> PackageAction
 delModuleFromPackageDescr moduleName = do
     p    <- ask
     liftIDE $ catchIDE (liftIO $ do
-        gpd <- readPackageDescription normal (ipdCabalFile p)
+        gpd <- readGenericPackageDescription normal (ipdCabalFile p)
         let isExposedAndJust = isExposedModule moduleName (condLibrary gpd)
         let npd = if isExposedAndJust
                 then gpd{
@@ -1277,7 +1278,7 @@ testMainPath _ = []
 idePackageFromPath' :: FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath' ipdCabalFile = do
     mbPackageD <- catchIDE (liftIO $
-        Just . flattenPackageDescription <$> readPackageDescription normal ipdCabalFile)
+        Just . flattenPackageDescription <$> readGenericPackageDescription normal ipdCabalFile)
             (\ (e :: SomeException) -> do
                 ideMessage Normal (__ "Can't activate package " <> T.pack (show e))
                 return Nothing)
@@ -1345,15 +1346,19 @@ extractStackPackageList = (\x -> if null x then ["."] else x) .
                           mapMaybe (T.stripPrefix (indent <> "- ")) $
                           takeWhile (\l -> (indent <> "- ") `T.isPrefixOf` l || (indent <> " ") `T.isPrefixOf` l) (x:xs)
 
+
 extractCabalPackageList :: Text -> [String]
-extractCabalPackageList = map (dirOnly .T.unpack . T.dropWhile (==' ')) .
+extractCabalPackageList = extractList "packages:" <> extractList "optional-packages:"
+  where
+    extractList :: Text -> Text -> [String]
+    extractList listName = map (dirOnly .T.unpack . T.dropWhile (==' ')) .
                           takeWhile (" " `T.isPrefixOf`) .
                           drop 1 .
-                          dropWhile (/= "packages:") .
+                          dropWhile (/= listName) .
                           filter (not . T.null) .
                           map (T.pack . stripCabalComments . T.unpack) .
                           T.lines
-  where
+
     stripCabalComments :: String -> String
     stripCabalComments "" = ""
     stripCabalComments ('-':'-':_) = ""
@@ -1369,21 +1374,10 @@ ideProjectFromPath filePath =
                 _ -> Nothing) of
         Just (tool, extractPackageList) -> do
             let dir = takeDirectory filePath
-            paths <- liftIO $ map (dir </>) . extractPackageList <$> T.readFile filePath
-            packages <- catMaybes <$> forM paths (\path -> do
-                exists <- liftIO (doesDirectoryExist path)
-                if exists
-                    then do
-                        cpath <- liftIO $ canonicalizePath path
-                        contents <- liftIO $ getDirectoryContents cpath
-                        let mbCabalFile = find ((== ".cabal") . takeExtension) contents
-                        when (isNothing mbCabalFile) $
-                            ideMessage Normal ("Could not find cabal file for " <> T.pack cpath)
-                        return (fmap (cpath </>) mbCabalFile)
-                    else do
-                        ideMessage Normal ("Path does not exist: " <> T.pack path)
-                        return Nothing)
-            packages <- fmap catMaybes . mapM idePackageFromPath' $ nub packages
+            patterns <- liftIO $ map (Glob.compile . (</> "*.cabal")) . extractPackageList <$> T.readFile filePath
+            cabalFiles <- liftIO $ mapM canonicalizePath =<< map (dir </>) . concat <$>
+                              Glob.globDir patterns dir
+            packages <- fmap catMaybes . mapM idePackageFromPath' $ nub cabalFiles
             return . Just $ Project { pjTool = tool, pjFile = filePath, pjPackageMap = mkPackageMap packages }
           `catchIDE`
              (\(e :: SomeException) -> do

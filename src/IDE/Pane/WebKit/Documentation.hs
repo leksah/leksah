@@ -48,7 +48,7 @@ import GI.WebKit2.Objects.WebView
        (webViewReload, webViewGoBack,
         webViewNew, webViewLoadUri, setWebViewZoomLevel, webViewGetUri,
         getWebViewZoomLevel, WebView(..))
-#else
+#elif defined(MIN_VERSION_gi_webkit)
 import GI.WebKit.Objects.WebView
        (webViewReload, webViewGoBack, webViewZoomOut, webViewZoomIn,
         webViewNew, webViewLoadUri, setWebViewZoomLevel, webViewGetUri,
@@ -67,7 +67,9 @@ import GHC.Generics (Generic)
 
 data IDEDocumentation = IDEDocumentation {
     scrolledView :: ScrolledWindow
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
   , webView      :: WebView
+#endif
 } deriving Typeable
 
 data DocumentationState = DocumentationState {
@@ -87,28 +89,38 @@ instance Pane IDEDocumentation IDEM
 
 instance RecoverablePane IDEDocumentation DocumentationState IDEM where
     saveState p = do
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         zoom <- fmap realToFrac <$> getWebViewZoomLevel $ webView p
         uri  <- webViewGetUri $ webView p
+#else
+        let zoom = 1.0
+            uri = Nothing
+#endif
         return (Just DocumentationState{..})
     recoverState pp DocumentationState {..} = do
         nb     <-  getNotebook pp
         mbPane <- buildPane pp nb builder
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         case mbPane of
             Nothing -> return ()
             Just p  -> do
                 setWebViewZoomLevel (webView p) (realToFrac zoom)
                 maybe (return ()) (webViewLoadUri (webView p)) uri
+#endif
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
         scrolledView <- scrolledWindowNew noAdjustment noAdjustment
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
 
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         webView <- webViewNew
         containerAdd scrolledView webView
+#endif
 
         scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
         let docs = IDEDocumentation {..}
 
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         cid1 <- ConnectC webView <$> afterWidgetFocusInEvent webView (\e -> do
             liftIO $ reflectIDE (makeActive docs) ideR
             return True)
@@ -128,7 +140,9 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
                 (Just "BackSpace", []) -> webViewGoBack webView >> return True
                 _                      -> return False)
         return (Just docs, [cid1, cid2])
-
+#else
+        return (Just docs, [])
+#endif
 
 getDocumentation :: Maybe PanePath -> IDEM IDEDocumentation
 getDocumentation Nothing    = forceGetPane (Right "*Doc")
@@ -137,12 +151,17 @@ getDocumentation (Just pp)  = forceGetPane (Left pp)
 loadDoc :: Text -> IDEAction
 loadDoc uri =
      do doc <- getDocumentation Nothing
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         let view = webView doc
         webViewLoadUri view uri
+#endif
+        return ()
 
 reloadDoc :: IDEAction
 reloadDoc =
      do doc <- getDocumentation Nothing
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         let view = webView doc
         webViewReload view
-
+#endif
+        return ()

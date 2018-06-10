@@ -61,7 +61,7 @@ import GI.WebKit2.Objects.WebView
         setWebViewZoomLevel, getWebViewZoomLevel, WebView(..))
 import GI.WebKit2.Objects.Settings
        (settingsSetEnableDeveloperExtras, settingsSetAllowFileAccessFromFileUrls)
-#else
+#elif defined(MIN_VERSION_gi_webkit)
 import GI.WebKit.Objects.WebView
        (webViewReload, webViewGetUri, webViewLoadString,
         webViewGetInspector, setWebViewSettings, getWebViewSettings,
@@ -99,7 +99,9 @@ import GHC.Generics (Generic)
 data IDEOutput = IDEOutput {
     vbox          :: Box
   , uriEntry      :: Entry
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
   , webView       :: WebView
+#endif
   , alwaysHtmlRef :: IORef Bool
 --  , outState      :: IORef OutputState
 } deriving Typeable
@@ -121,7 +123,11 @@ instance Pane IDEOutput IDEM
 
 instance RecoverablePane IDEOutput OutputState IDEM where
     saveState p = do
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         zoom <- fmap realToFrac <$> getWebViewZoomLevel $ webView p
+#else
+        let zoom = 1.0
+#endif
         alwaysHtml <- liftIO . readIORef $ alwaysHtmlRef p
         return (Just OutputState{..})
     recoverState pp OutputState {..} = do
@@ -130,7 +136,9 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         case mbPane of
             Nothing -> return ()
             Just p  -> do
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
                 setWebViewZoomLevel (webView p) (realToFrac zoom)
+#endif
                 liftIO $ writeIORef (alwaysHtmlRef p) alwaysHtml
         return mbPane
     builder pp nb windows = reifyIDE $ \ ideR -> do
@@ -142,13 +150,16 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         boxPackStart' vbox uriEntry PackNatural 0
         boxPackStart' vbox scrolledView PackGrow 0
 
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         webView <- webViewNew
-        alwaysHtmlRef <- newIORef False
         containerAdd scrolledView webView
+#endif
 
+        alwaysHtmlRef <- newIORef False
         scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
         let out = IDEOutput {..}
 
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         cid1 <- ConnectC webView <$> afterWidgetFocusInEvent webView (\e -> do
             liftIO $ reflectIDE (makeActive out) ideR
             return True)
@@ -226,6 +237,10 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         return (Just out, [cid1, cid2, cid3, cid4, cid5, cid6, cid7])
 #endif
 
+#else
+        return (Just out, [])
+#endif
+
 
 getOutputPane :: Maybe PanePath -> IDEM IDEOutput
 getOutputPane Nothing    = forceGetPane (Right "*Out")
@@ -249,6 +264,7 @@ setOutput command str =
         entrySetText (uriEntry out) (T.pack $ show command)
         uri <- getValueUri
         alwaysHtml <- liftIO . readIORef $ alwaysHtmlRef out
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         let view = webView out
             html = case (alwaysHtml, parseValue $ T.unpack str) of
                         (False, Just value) -> T.pack $ valToHtmlPage defaultHtmlOpts value
@@ -258,20 +274,26 @@ setOutput command str =
 #else
         webViewLoadString view html "text/html" "UTF-8" uri
 #endif
+#endif
+        return ()
 
 loadOutputUri :: FilePath -> IDEAction
 loadOutputUri uri =
      do out <- getOutputPane Nothing
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         let view = webView out
         entrySetText (uriEntry out) (T.pack uri)
         currentUri <- webViewGetUri view
         if Just (T.pack uri) == currentUri
             then webViewReload view
             else webViewLoadUri view (T.pack uri)
+#endif
+        return ()
 
 loadOutputHtmlFile :: FilePath -> IDEAction
 loadOutputHtmlFile file = do
     out <- getOutputPane Nothing
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
     let view = webView out
     html <- liftIO $ T.readFile file
     let uri = "file:///" ++ file
@@ -282,6 +304,8 @@ loadOutputHtmlFile file = do
 #else
     webViewLoadString view html "text/html" "UTF-8" uri
 #endif
+#endif
+    return ()
 --    if Just (T.pack uri) == currentUri
 --        then webViewReload view
 --        else webViewLoadUri view (T.pack uri)

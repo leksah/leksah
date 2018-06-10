@@ -317,7 +317,7 @@ grepDirectories regexString caseSensitive dirs = do
         totalFound <- foldM (\a dir -> do
             subDirs <- liftIO $ filter (\f ->
                    not ("." `isPrefixOf` f)
-                && f `notElem` ["_darcs", "dist", "dist-newstyle", "vendor"]) <$> getDirectoryContents dir
+                && f `notElem` ["_darcs", "dist", "dist-newstyle", "dist-ghcjs", "vendor"]) <$> getDirectoryContents dir
             nooneWaiting <- liftIO $ isEmptyMVar (waitingGrep grep)
             found <- if nooneWaiting
                 then do

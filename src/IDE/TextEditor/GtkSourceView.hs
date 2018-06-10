@@ -451,7 +451,7 @@ instance TextEditor GtkSourceView where
         ideR <- ask
         (GtkBuffer sb) <- getBuffer v
         id1 <- ConnectC sv <$> afterTextViewMoveCursor sv (\_ _ _ -> reflectIDE f ideR)
-        widgetAddEvents sv (gflagsToWord [EventMaskButtonReleaseMask])
+        widgetAddEvents sv [EventMaskButtonReleaseMask]
         id2 <- ConnectC sv <$> onWidgetButtonReleaseEvent sv (\e -> reflectIDE f ideR >> return False)
         id3 <- ConnectC sb <$> afterTextBufferEndUserAction sb (reflectIDE f ideR)
         return [id1, id2, id3]
@@ -516,7 +516,7 @@ instance TextEditor GtkSourceView where
         id1 <- onIDE onWidgetKeyReleaseEvent sv f
         return [id1]
     onLookupInfo (GtkView sv) f = do
-        widgetAddEvents sv $ gflagsToWord [EventMaskButtonReleaseMask]
+        widgetAddEvents sv [EventMaskButtonReleaseMask]
         id1 <- onIDE onWidgetButtonReleaseEvent sv $ do
             e <- lift ask
             mod <- getEventButtonState e
@@ -525,9 +525,9 @@ instance TextEditor GtkSourceView where
                 _             -> return False
         return [id1]
     onMotionNotifyEvent (GtkView sv) handler = do
-        widgetAddEvents sv $ gflagsToWord [EventMaskButtonMotionMask, EventMaskButton1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
+        widgetAddEvents sv [EventMaskButtonMotionMask, EventMaskButton1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
         id1 <- onIDE onWidgetMotionNotifyEvent sv handler  --TODO this is potentially slowing leksah, a better event (if there was any) could be more efficient here
-        widgetAddEvents sv $ gflagsToWord [EventMaskButtonMotionMask, EventMaskButton1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
+        widgetAddEvents sv [EventMaskButtonMotionMask, EventMaskButton1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
         return [id1]
     onPopulatePopup (GtkView sv) f = do
         ideR <- ask

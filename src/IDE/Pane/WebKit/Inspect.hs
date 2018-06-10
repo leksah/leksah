@@ -53,7 +53,7 @@ import GI.WebKit2.Objects.WebView
        (setWebViewSettings, webViewGetSettings, webViewNew, WebView(..))
 import GI.WebKit2.Objects.Settings
        (settingsSetMonospaceFontFamily)
-#else
+#elif defined(MIN_VERSION_gi_webkit)
 import GI.WebKit.Objects.WebView
        (setWebViewSettings, getWebViewSettings, webViewNew, WebView(..))
 import GI.WebKit.Objects.WebSettings
@@ -68,7 +68,9 @@ import GHC.Generics (Generic)
 
 data IDEInspect = IDEInspect {
     scrollWin     :: ScrolledWindow
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
   , inspectView   :: WebView
+#endif
 } deriving Typeable
 
 data InspectState = InspectState {
@@ -93,6 +95,7 @@ instance RecoverablePane IDEInspect InspectState IDEM where
         scrollWin <- scrolledWindowNew noAdjustment noAdjustment
         scrolledWindowSetShadowType scrollWin ShadowTypeIn
 
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         inspectView <- webViewNew
 #ifdef MIN_VERSION_gi_webkit2
         settings <- webViewGetSettings inspectView
@@ -102,18 +105,22 @@ instance RecoverablePane IDEInspect InspectState IDEM where
         setWebSettingsMonospaceFontFamily settings "Consolas"
 #endif
         setWebViewSettings inspectView settings
-        alwaysHtmlRef <- newIORef False
         containerAdd scrollWin inspectView
+#endif
 
+        alwaysHtmlRef <- newIORef False
         scrolledWindowSetPolicy scrollWin PolicyTypeAutomatic PolicyTypeAutomatic
         let inspect = IDEInspect {..}
 
+#if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)
         cid1 <- ConnectC inspectView <$> afterWidgetFocusInEvent inspectView ( \e -> do
             liftIO $ reflectIDE (makeActive inspect) ideR
             return True)
 
         return (Just inspect, [cid1])
-
+#else
+        return (Just inspect, [])
+#endif
 
 getInspectPane :: Maybe PanePath -> IDEM IDEInspect
 getInspectPane Nothing    = forceGetPane (Right "*Inspect")

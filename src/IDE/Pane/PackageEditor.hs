@@ -47,7 +47,6 @@ import IDE.Core.State
 import IDE.Utils.FileUtils
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import Graphics.UI.Editor.MakeEditor
-import Distribution.PackageDescription.Parse (readPackageDescription)
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName)
 import Data.Typeable (Typeable(..))
@@ -92,9 +91,15 @@ import Distribution.Types.UnqualComponentName
         unUnqualComponentName)
 import Distribution.Types.ExecutableScope (ExecutableScope(..))
 import Distribution.Types.ForeignLib (ForeignLib(..))
+#if MIN_VERSION_Cabal(2,2,0)
+import Distribution.PackageDescription.Parsec (readGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse (readGenericPackageDescription)
+#endif
 #else
 import Distribution.Version
        (Version(..), orLaterVersion)
+import Distribution.PackageDescription.Parse (readPackageDescription)
 #endif
 
 import IDE.Utils.Tool (ToolOutput(..))
@@ -148,6 +153,7 @@ mkVersion :: [Int] -> Version
 mkVersion = (`Version` [])
 mkUnqualComponentName :: String -> String
 mkUnqualComponentName = id
+readGenericPackageDescription = readPackageDescription
 #endif
 
 printf :: PrintfType r => Text -> r
@@ -238,7 +244,7 @@ packageEdit = do
     liftIDE $ do
         let dirName = ipdPackageDir idePackage
         modules <- liftIO $ allModules dirName
-        package <- liftIO $ readPackageDescription normal (ipdCabalFile idePackage)
+        package <- liftIO $ readGenericPackageDescription normal (ipdCabalFile idePackage)
         if hasConfigs package
             then do
                 liftIDE $ ideMessage High
@@ -425,9 +431,17 @@ packageNew' workspaceDir projects log activateAction = do
                         editPackage emptyPackageDescription {
                             package   = PackageIdentifier (mkPackageName $ T.unpack newPackageName)
                                                           initialVersion
+#if MIN_VERSION_Cabal(2,2,0)
+                          , buildTypeRaw = Just Simple
+#else
                           , buildType = Just Simple
+#endif
                           , specVersionRaw = Right (orLaterVersion (mkVersion [1,12]))
+#if MIN_VERSION_Cabal(2,2,0)
+                          , licenseRaw = Right AllRightsReserved
+#else
                           , license = AllRightsReserved
+#endif
                           , buildDepends = [
                                 Dependency (mkPackageName "base") anyVersion
                               , Dependency (mkPackageName "QuickCheck") anyVersion
@@ -627,14 +641,10 @@ fromEditor (PDE pd exes'
                     Just (Library' ln mn rmn s b bii) -> if bii + 1 > length buildInfos
                                         then Just (Library (mkUnqualComponentName . T.unpack <$> ln) mn rmn s b (buildInfos !! (length buildInfos - 1)))
                                         else Just (Library (mkUnqualComponentName . T.unpack <$> ln) mn rmn s b (buildInfos !! bii))
-#elif MIN_VERSION_Cabal(1,22,0)
+#else
                     Just (Library' mn rmn rs es b bii) -> if bii + 1 > length buildInfos
                                         then Just (Library mn rmn rs es b (buildInfos !! (length buildInfos - 1)))
                                         else Just (Library mn rmn rs es b (buildInfos !! bii))
-#else
-                    Just (Library' mn b bii) -> if bii + 1 > length buildInfos
-                                        then Just (Library mn b (buildInfos !! (length buildInfos - 1)))
-                                        else Just (Library mn b (buildInfos !! bii))
 #endif
     in pd {
         library = mbLib
@@ -665,10 +675,8 @@ toEditor pd =
                     Nothing                -> (Nothing,bis)
 #if MIN_VERSION_Cabal(2,0,0)
                     Just (Library ln mn rmn s b bi) -> (Just (Library' (T.pack . unUnqualComponentName <$> ln) (sort mn) rmn s b (length bis)), bis ++ [bi])
-#elif MIN_VERSION_Cabal(1,22,0)
-                    Just (Library mn rmn rs es b bi) -> (Just (Library' (sort mn) rmn rs es b (length bis)), bis ++ [bi])
 #else
-                    Just (Library mn b bi) -> (Just (Library' (sort mn) b (length bis)), bis ++ [bi])
+                    Just (Library mn rmn rs es b bi) -> (Just (Library' (sort mn) rmn rs es b (length bis)), bis ++ [bi])
 #endif
             bis3 = if null bis2
                         then [emptyBuildInfo]
@@ -924,7 +932,6 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
 --            (\ a b -> b{pd = (pd b){license = a}})
 --            (comboSelectionEditor [GPL, LGPL, BSD3, BSD4, PublicDomain, AllRightsReserved, OtherLicense] show)
     ,   mkField
-#if MIN_VERSION_Cabal(1,22,0)
             (paraName <<<- ParaName (__ "License Files")
                 $ paraSynopsis <<<- ParaSynopsis
                     (__ "A list of license files.")
@@ -934,12 +941,6 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (licenseFiles . pd)
             (\ a b -> b{pd = (pd b){licenseFiles = a}})
             (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
-#else
-            (paraName <<<- ParaName (__ "License File") $ emptyParams)
-            (licenseFile . pd)
-            (\ a b -> b{pd = (pd b){licenseFile = a}})
-            (fileEditor (Just fp) FileChooserActionOpen (__ "Select file"))
-#endif
     ,   mkField
             (paraName <<<- ParaName (__ "Copyright") $ emptyParams)
             (copyright . pd)
@@ -1047,8 +1048,18 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                             $ paraOrientation <<<- ParaOrientation OrientationVertical
                                 $ emptyParams)
             (buildType . pd)
-            (\ a b -> b{pd = (pd b){buildType = a}})
+            (\ a b -> b{pd = (pd b){
+#if MIN_VERSION_Cabal(2,2,0)
+              buildTypeRaw = Just a
+#else
+              buildType = a
+#endif
+              }})
+#if MIN_VERSION_Cabal(2,2,0)
+            buildTypeEditor
+#else
             (maybeEditor def (buildTypeEditor, emptyParams) True (__ "Specify?"))
+#endif
     ,   mkField
             (paraName <<<- ParaName (__ "Custom Fields")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
@@ -1170,7 +1181,6 @@ buildInfoD fp modules i = [
                             $ paraShadow  <<<- ParaShadow ShadowTypeIn $ emptyParams)
                 Nothing
                 Nothing)
-#if MIN_VERSION_Cabal(1,22,0)
      ,  mkField
             (paraName <<<- ParaName (__ "Additional options for GHC when built with profiling")
            $ emptyParams)
@@ -1183,20 +1193,6 @@ buildInfoD fp modules i = [
             (sharedOptions . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{sharedOptions = a})})
             compilerOptsEditor
-#else
-     ,  mkField
-            (paraName <<<- ParaName (__ "Additional options for GHC when built with profiling")
-           $ emptyParams)
-            (ghcProfOptions . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{ghcProfOptions = a})})
-            optsEditor
-     ,  mkField
-            (paraName <<<- ParaName (__ "Additional options for GHC when the package is built as shared library")
-           $ emptyParams)
-            (ghcSharedOptions . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{ghcSharedOptions = a})})
-            optsEditor
-#endif
     ]),
     (T.pack $ printf (__ "%s Extensions ") (show (i + 1)), VFD emptyParams [
         mkField
@@ -1432,22 +1428,11 @@ compilerFlavorEditor para noti = do
 
 buildTypeEditor :: Editor BuildType
 buildTypeEditor para noti = do
-    (wid,inj,ext) <- eitherOrEditor def ""
-        (comboSelectionEditor flavors (T.pack . show), paraName <<<- ParaName (__ "Select") $ emptyParams)
-        (textEditor (const True) True, paraName <<<- ParaName (__ "Unknown") $ emptyParams)
-        (__ "Unknown")
+    (wid,inj,ext) <- -- eitherOrEditor def ""
+        comboSelectionEditor flavors (T.pack . show) --, paraName <<<- ParaName (__ "Select") $ emptyParams)
         (paraName <<<- ParaName (__ "Select") $ para)
         noti
-    let cfinj comp  = case comp of
-                        (UnknownBuildType str) -> inj (Right $ T.pack str)
-                        other               -> inj (Left other)
-    let cfext = do
-            mbp <- ext
-            case mbp of
-                Nothing -> return Nothing
-                Just (Right s) -> return (Just . UnknownBuildType $ T.unpack s)
-                Just (Left other) -> return (Just other)
-    return (wid,cfinj,cfext)
+    return (wid,inj,ext)
         where
         flavors = [Simple, Configure, Make, Custom]
 
@@ -1560,14 +1545,12 @@ data Library' = Library'{
     libName'           :: Maybe Text,
 #endif
     exposedModules'    :: [ModuleName]
-#if MIN_VERSION_Cabal(1,22,0)
 ,   reexportedModules' :: [ModuleReexport]
 #if MIN_VERSION_Cabal(2,0,0)
 ,   signatures'        :: [ModuleName]
 #else
 ,   requiredSignatures':: [ModuleName]
 ,   exposedSignatures' :: [ModuleName]
-#endif
 #endif
 ,   libExposed'        :: Bool
 ,   libBuildInfoIdx    :: Int}
@@ -1603,7 +1586,7 @@ instance Default Library'
 
 instance Default Executable'
 #if MIN_VERSION_Cabal(2,0,0)
-    where def = Executable' "" def ExecutableScopeUnknown def
+    where def = Executable' "" def mempty def
 #else
     where def = Executable' "" def def
 #endif
@@ -1624,7 +1607,7 @@ libraryEditor fp modules numBuildInfos para noti = do
                     paraName <<<- ParaName (__ "Exposed")
                     $ paraSynopsis <<<- ParaSynopsis (__ "Is the lib to be exposed by default?")
                     $ emptyParams)
-                (maybeEditor (textEditor (const True) True, paraName <<<- ParaName (__ "Name") $ emptyParams) True "Named?",
+                (maybeEditor "" (textEditor (const True) True, paraName <<<- ParaName (__ "Name") $ emptyParams) True "Named?",
                     paraSynopsis <<<- ParaSynopsis (__ "Is this a namesd library?")
                     $ emptyParams)
                 (modulesEditor (sort modules),
@@ -1753,8 +1736,12 @@ executableEditor fp modules countBuildInfo para noti = do
                                 $ emptyParams)
             , paraOrientation <<<- ParaOrientation OrientationVertical
                 $ emptyParams)
-            (comboSelectionEditor [ExecutableScopeUnknown, ExecutablePublic, ExecutablePrivate] (\case
+            (comboSelectionEditor
+                [ ExecutablePublic
+                , ExecutablePrivate] (\case
+#if !MIN_VERSION_Cabal(2,2,0)
                     ExecutableScopeUnknown -> "Scope Unknown"
+#endif
                     ExecutablePublic       -> "Public"
                     ExecutablePrivate      -> "Private"),
                 paraName <<<- ParaName (__ "Executable Name")
@@ -1909,7 +1896,7 @@ instance Default Library
 
 #if MIN_VERSION_Cabal(2,0,0)
 instance Default ExecutableScope
-    where def = ExecutableScopeUnknown
+    where def = mempty
 
 instance Default UnqualComponentName
     where def = mkUnqualComponentName ""
