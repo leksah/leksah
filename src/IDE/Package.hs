@@ -207,8 +207,8 @@ import Distribution.PackageDescription.Parse
 #else
 import Distribution.PackageDescription.Parse
        (readPackageDescription)
-import qualified System.FilePath.Glob as Glob (globDir, compile)
 #endif
+import qualified System.FilePath.Glob as Glob (globDir, compile)
 
 #if !MIN_VERSION_Cabal(2,0,0)
 type UnqualComponentName = String

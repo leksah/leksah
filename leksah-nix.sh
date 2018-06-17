@@ -4,7 +4,7 @@ LEKSAH_SERVER_VERSION=`grep '^version: ' vendor/leksah-server/leksah-server.caba
 LEKSAH_VERSION=`grep '^version: ' leksah.cabal | sed 's|version: ||' | tr -d '\r'`
 GHCNIX=`nix-build -A ghc.ghc`/bin/ghc
 GHCVER=`$GHCNIX --numeric-version`
-LAUNCH_LEKSAH=`nix-build -A ghc.launch-leksah`/bin/launch-leksah
+LAUNCH_LEKSAH=`nix-build -A launch-leksah`/bin/launch-leksah
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
