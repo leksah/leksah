@@ -195,6 +195,7 @@ let
 
 in leksah // {
   inherit ghc ghc802 ghc822 ghc843;
+  inherit leksah-ghc802 leksah-ghc822 leksah-ghc843;
   inherit (ghc) launch-leksah;
   
   shells = {
