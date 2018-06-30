@@ -5,7 +5,7 @@ environment:
 
   matrix:
 #    - GHCVER: 8.0.2
-    - GHCVER: 8.2.2
+    - GHCVER: 8.4.3
 
 cache:
   - cache1 -> appveyor\cleanup-cache1.txt
