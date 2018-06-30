@@ -28,7 +28,7 @@ export leksah_server_datadir="$DIR/vendor/leksah-server"
 export vcsgui_datadir="$DIR/vendor/haskellVCSGUI/vcsgui"
 
 rm -f .ghc.environment.*
-nix-shell --show-trace -j 4 --cores 5 -A shells.ghc --run 'cabal new-build exe:leksah-server exe:leksah exe:leksahecho' || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
+$LAUNCH_LEKSAH nix-shell --show-trace -j 4 --cores 5 -A shells.ghc --run 'cabal new-build exe:leksah-server exe:leksah exe:leksahecho' || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
 rm -f .ghc.environment.*
 
 LEKSAH_EXIT_CODE=2
