@@ -4,6 +4,7 @@ script:
  - timeout 30m nix-build
 
 cache:
+  timeout: 1000
   directories:
   - /nix
 
