@@ -212,7 +212,7 @@ library
 
     if os(windows)
         build-depends:
-            Win32 >=2.2.0.0 && <2.6
+            Win32 >=2.2.0.0 && <2.7
         extra-libraries:
             kernel32
     else
@@ -416,7 +416,7 @@ executable leksah
 
     if os(windows)
         build-depends:
-            Win32 >=2.2.0.0 && <2.6
+            Win32 >=2.2.0.0 && <2.7
         extra-libraries:
             kernel32
 
