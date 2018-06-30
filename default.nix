@@ -44,10 +44,10 @@ let
   };
 
   ghcjs-dom-github = nixpkgs.fetchFromGitHub {
-     owner = "ghcjs";
-     repo = "ghcjs-dom";
-     rev = "a6d51fcf0e79e7de50a0cb2088042e323133a7a8";
-     sha256 = "06g0vvgvxxxzw9h2jqwkykam5jpngk6xlph29jyg92c00jms2bl4";
+    owner = "ghcjs";
+    repo = "ghcjs-dom";
+    rev = "a6d51fcf0e79e7de50a0cb2088042e323133a7a8";
+    sha256 = "06g0vvgvxxxzw9h2jqwkykam5jpngk6xlph29jyg92c00jms2bl4";
   };
 
   launch-leksah-script = nixpkgs.writeShellScriptBin "launch-leksah" ''
@@ -60,7 +60,12 @@ let
       leksah-server = filterSubmodule ./vendor/leksah-server;
       vcswrapper = filterSubmodule ./vendor/haskellVCSWrapper/vcswrapper;
       vcsgui = filterSubmodule ./vendor/haskellVCSGUI/vcsgui;
-      git = filterSubmodule ../hs-git;
+      git = nixpkgs.fetchFromGitHub {
+        owner = "hamishmack";
+        repo = "hs-git";
+        rev = "c829ec133f603e376177deaa57a333ef84308af3";
+        sha256 = "1hcl5izpcpi9sjfvmv1g5si1wg0jw9v9wbk5hvn30q67xcxwx891";
+      };
     })).extend( self: super:
       let jsaddlePkgs = import jsaddle-github self;
           ghcjsDom = import ghcjs-dom-github self;
