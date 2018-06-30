@@ -1,7 +1,7 @@
 language: nix
 
 script:
- - nix-build
+ - timeout 30m nix-build
 
 cache:
   directories:
