@@ -1,27 +1,11 @@
-sudo: required
-services:
- - docker
+language: nix
+
+script:
+ - nix-build
 
 cache:
   directories:
-    - .cabal
-    - .ghc
-
-env:
- - CABALVER=1.24 GHCVER=8.0.2 OSVER=xenial
- - CABALVER=2.0 GHCVER=8.2.1 OSVER=xenial
- - CABALVER=2.0 GHCVER=8.0.2 OSVER=zesty
- - CABALVER=2.0 GHCVER=8.2.1 OSVER=zesty
-
-before_install:
- - docker build -t leksah -f travis/$OSVER.Dockerfile travis
-
-script:
- - docker run -v `pwd`:/build leksah
-   bash -x -c "
-      apt-get install -y cabal-install-$CABALVER ghc-$GHCVER &&
-      export PATH=\$HOME/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/alex/3.1.7/bin:/opt/happy/1.19.5/bin:\$PATH &&
-      ./travis/build.sh"
+  - /nix
 
 notifications:
   irc:
