@@ -12,7 +12,7 @@ if [ ! -d cache1 ]; then
 elif [ ! -d cache2 ]; then
   mv cache1/* $APPDATA
   cabal update
-  cabal install -j1 gi-gtk-hs vendor/ltk ghcjs-dom --disable-documentation --force-reinstalls --constraint='haskell-gi-overloading==0.*'
+  cabal install -j1 gi-gtk-hs vendor/ltk --disable-documentation --force-reinstalls --constraint='haskell-gi-overloading==0.*'
   mkdir cache2
   mv $APPDATA/ghc $APPDATA/cabal cache2
 elif [ ! -d cache3 ]; then
