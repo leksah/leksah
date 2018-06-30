@@ -1,4 +1,8 @@
 environment:
+  global:
+   # https://github.com/haskell/cabal/issues/5386
+   TMP: "c:\\tmp"
+
   matrix:
 #    - GHCVER: 8.0.2
     - GHCVER: 8.2.2
