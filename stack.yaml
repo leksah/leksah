@@ -1,4 +1,4 @@
-resolver: lts-9.9
+resolver: lts-11.15
 packages:
 - '.'
 - 'vendor/leksah-server'
@@ -11,23 +11,23 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - binary-shared-0.8.3
-- haddock-api-2.17.4
+- haddock-api-2.18.1
 - haskell-gi-overloading-0.0
-- gi-gtk-hs-0.3.5.0
-- gi-gtksource-3.0.15
-- gi-javascriptcore-4.0.14
-- gi-soup-2.4.14
-- gi-webkit2-4.0.14
-- gi-gdk-3.0.14
-- gi-gdkpixbuf-2.0.14
-- gi-glib-2.0.14
-- gi-gobject-2.0.14
-- gi-gtk-3.0.17
-- gi-cairo-1.0.14
-- gi-gio-2.0.14
-- gi-pango-1.0.15
-- gi-atk-2.0.14
-- gi-gtkosxapplication-2.0.14
+- gi-gtk-hs-0.3.6.1
+- gi-gtksource-3.0.16
+- gi-javascriptcore-4.0.15
+- gi-soup-2.4.16
+- gi-webkit2-4.0.19
+- gi-gdk-3.0.16
+- gi-gdkpixbuf-2.0.16
+- gi-glib-2.0.16
+- gi-gobject-2.0.16
+- gi-gtk-3.0.23
+- gi-cairo-1.0.17
+- gi-gio-2.0.18
+- gi-pango-1.0.16
+- gi-atk-2.0.15
+- gi-gtkosxapplication-2.0.15
 
 # Override default flag values for local packages and extra-deps
 flags:
