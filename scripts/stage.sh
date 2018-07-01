@@ -38,7 +38,13 @@ if test "`uname`" = "Darwin"; then
        vcsgui:exe:vcsgui-askpass \
        leksah:exe:leksah || exit
 else
-    $WINE cabal install ./ ./vendor/ltk ./vendor/leksah-server vendor/haskellVCSWrapper/vcswrapper vendor/haskellVCSGUI/vcsgui --with-ghc=ghc$GHCVERSION -j1 -fwebkit -f-yi -fpango -f-vty --force-reinstalls || exit
+    $WINE cabal new-build --with-ghc=ghc$GHCVERSION \
+       leksah-server:exe:leksah-server \
+       leksah-server:exe:leksahecho \
+       leksah-server:exe:leksahtrue \
+       vcsgui:exe:vcsgui \
+       vcsgui:exe:vcsgui-askpass \
+       leksah:exe:leksah -f-yi -fpango -f-vty || exit
 #  if [ "$GHC_VER" != "7.0.3" ] && [ "$GHC_VER" != "7.0.4" ] && [ "$GHC_VER" != "7.6.1" ]; then
 #    echo https://github.com/yi-editor/yi.git >> sources.txt
 #    export LEKSAH_CONFIG_ARGS="$LEKSAH_CONFIG_ARGS -fyi -f-vty -f-dyre -fpango"
