@@ -3,7 +3,7 @@
 if [ ! -d cache1 ]; then
   cabal update
   cabal --version
-  cabal new-build gi-cairo gi-gdk gi-gdkpixbuf gi-gio gi-glib gi-gobject gi-gtk gi-gtksource gi-javascriptcore gi-pango gi-webkit gi-atk gi-soup \
+  cabal new-build gi-cairo gi-gdk gi-gdkpixbuf gi-gio gi-glib gi-gobject gi-gtk gi-gtksource gi-pango gi-atk \
           -f-enable-overloading --disable-documentation --constraint='haskell-gi-overloading==0.*'
   mkdir cache1
   mv $APPDATA/ghc $APPDATA/cabal cache1
