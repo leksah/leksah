@@ -104,7 +104,7 @@ let
         # });
 
         # Cabal2nix adds gtk3 to libraryPkgconfigDepends instead of gnome3.gtk.
-        gtk3 = super.gnome3.gtk;
+        gtk3 = nixpkgs.pkgs.gnome3.gtk;
 
         # FIXME: do we really need them as Git submodules?
         ltk = overrideCabal (appendConfigureFlag super.ltk "-f-check-gtk-version")

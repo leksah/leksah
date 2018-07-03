@@ -8,45 +8,63 @@ The user interface is a mix of GTK+ and WebKit based components.
 
 Documentation can be found on [leksah.org](http://leksah.org/).
 
+## Leksah's Nix Support
+
+Nix is great and we have added some features to make it easier
+to use Nix projects with Leksah.
+
+If your project has a `default.nix` file along side it (in the same directory
+as your `cabal.project` file), leksah can use `nix-shell -A shells.ghc`
+to make a cached environment for running `ghc` and `ghci`.  Click on the Nix
+button on the toolbar to set this up for the active project
+(if the `ghcjs` build button is active it will also build a
+cached environment for `nix-shell -A shells.ghc`).
+
+If you change your `default.nix` file click the Nix button again to refresh
+the cached environment.  Caching the environment in this way makes calls
+to `cabal new-build` faster (avoiding the startup overhead of `nix-shell`).
+
+A great way to set up a suitable `default.nix` for your project is
+described in [project-development.md](https://github.com/reflex-frp/reflex-platform/blob/develop/docs/project-development.md).
+This works even if you are not planning on using reflex in your project.
+
 ## Getting Leksah
 
-### Nix
+### Nix (Recommended for Linux and macOS users)
 
-Using [Nix](https://nixos.org/nix/) is the easiest way to get Leksah.
-It works well on Linux and MacOS.  Please let us know it it works on the
-Windows Subsystem for Linux (WSL).
+Install [Nix](https://nixos.org/nix/).
 
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
-nix-env -f . -i
+./leksah-nix.sh
 ```
-
-If your project has a `default.nix` file along side it (in the same directory
-as your `cabal.project` file), leksah will use `nix-shell -A shells.ghc --run`
-commands that need `ghc` and `ghci`.  It will use `nix-shell -A shells.ghcjs --run`
-for commands that need `ghcjs`.
-
-A great way to set up a suitable `default.nix` for your project is
-described in [project-development.md](https://github.com/reflex-frp/reflex-platform/blob/develop/docs/project-development.md).
-This works even if you are not planning on using reflex.
-
-If you want to make changes to Leksah run the `./leksah-nix.sh` script to start Leksah
-itself in a nix-shell with everything needed to work on Leksah.  Then open the Leksah
-`cabal.project` file.
 
 On macOS the Leksah window start below other active application windows you can use
 Command+Shift+Tab to bring it to the top
 ([issue 461](https://github.com/leksah/leksah/issues/461)).
 
-### Installation (without Nix)
+
+### Chocolatey and MSYS2 (Recommended for Windows users)
+
+Install [Chocolatey](https://chocolatey.org/).
+
+Right click on `Command Prompt` and choose `Run as Administrator`.  In the window run:
+```shell
+choco install ghc --version 8.2.2
+choco install msys2
+```
+
+Close the `Command Prompt` window and open a new one (not as administrator).  This time run:
+```shell
+git clone --recursive https://github.com/leksah/leksah.git
+cd leksah
+leksah.bat
+```
+
+### Alternative Installation Method
+
 Leksah requires `ghc --version` >=8.0.2 and `cabal --version` >=1.24. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
-
-* **Windows** [latest github version built with AppVeyor](https://ci.appveyor.com/project/hamishmack/leksah/build/artifacts)
-* **OS X**: [official binaries](https://github.com/leksah/leksah/wiki/download)
-* **Linux**: [build from source](https://github.com/leksah/leksah#building-from-source)
-
-### Building from source (without Nix)
 
 #### Step 1: Install C libraries
 
@@ -82,25 +100,6 @@ Make sure the `$HOME/ghc-8.0.1/bin` is present in PATH.
 
 ##### macOS with Homebrew
 It might be possible to build Leksah using Homebrew now we have switched to WebKit 2.  If you can figure it out please send us the details or better yet a pull request to update this file.  Raise an issue if you try and it does not work.
-
-##### Windows MSYS2
-Install:
-* [MSYS2](https://msys2.github.io/)
-* [Chocolatey](https://chocolatey.org/)
-
-Then in Bash shell with administrator privileges execute:
-```shell
-choco install ghc
-pacman -S mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3
-```
-
-Set the following environment variables:
-```shell
-SET PATH=%APPDATA%\cabal\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.2\bin;C:\ProgramData\chocolatey\lib\cabal\tools;%PATH%
-SET PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig
-SET XDG_DATA_DIRS=C:\msys64\mingw64\share
-```
-(change `C:\ProgramData\chocolatey\lib\ghc\tools\ghc-8.0.2\bin` if a newer version is installed)
 
 ##### FreeBSD
 ```shell

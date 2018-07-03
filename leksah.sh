@@ -38,7 +38,7 @@ fi
 
 export leksah_datadir="$DIR"
 
-cabal new-configure --with-ghc="ghc-$GHCVER"
+cabal new-configure --with-ghc="$(which ghc-$GHCVER)"
 LEKSAH_EXIT_CODE=2
 while [ $LEKSAH_EXIT_CODE -eq 2 ]; do
   cabal new-build exe:leksah-server exe:leksah exe:leksahecho || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."

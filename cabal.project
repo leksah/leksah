@@ -4,6 +4,7 @@ packages:
  vendor/ltk/
  vendor/haskellVCSWrapper/vcswrapper/
  vendor/haskellVCSGUI/vcsgui
+ vendor/hs-git
 
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk

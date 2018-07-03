@@ -27,9 +27,9 @@ export leksah_datadir="$DIR"
 export leksah_server_datadir="$DIR/vendor/leksah-server"
 export vcsgui_datadir="$DIR/vendor/haskellVCSGUI/vcsgui"
 
-rm -f .ghc.environment.*
+rm -f .ghc.environment.* cabal.project.local
 $LAUNCH_LEKSAH nix-shell --show-trace -j 4 --cores 5 -A shells.ghc --run 'cabal new-build exe:leksah-server exe:leksah exe:leksahecho' || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
-rm -f .ghc.environment.*
+rm -f .ghc.environment.* cabal.project.local
 
 LEKSAH_EXIT_CODE=2
 while [ $LEKSAH_EXIT_CODE -eq 2 ]; do
