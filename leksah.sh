@@ -39,6 +39,8 @@ else
 fi
 
 export leksah_datadir="$DIR"
+export leksah_server_datadir="$DIR/vendor/leksah-server"
+export vcsgui_datadir="$DIR/vendor/haskellVCSGUI/vcsgui"
 
 cabal new-configure --with-ghc="$(which ghc-$GHCVER)"
 LEKSAH_EXIT_CODE=2

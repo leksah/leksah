@@ -135,6 +135,8 @@ import Data.Foldable (forM_)
 import qualified Data.Map as M (lookup, member)
 import IDE.Utils.Tool (ToolState(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Distribution.Compat.Exception (catchIO)
+import System.Environment (getEnv)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -497,11 +499,13 @@ leksahSubDir subDir = do
 leksahOrPackageDir :: FilePath    -- ^ Sub directory to look for
                    -> IO FilePath -- ^ Used to get the package dir if we can't find the leksah one
                    -> IO FilePath
-leksahOrPackageDir subDir getPackageDir = do
-    mbResult <- leksahSubDir subDir
-    case mbResult of
-        Just result -> return result
-        Nothing     -> getPackageDir
+leksahOrPackageDir subDir getPackageDir =
+    catchIO (not . null <$> getEnv (subDir <> "_datadir")) (\_ -> return False) >>= \case
+        True -> getPackageDir
+        False ->
+            leksahSubDir subDir >>= \case
+                Just result -> return result
+                Nothing     -> getPackageDir
 
 getDataDir :: MonadIO m => m FilePath
 getDataDir = liftIO $ leksahOrPackageDir "leksah" P.getDataDir
