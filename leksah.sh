@@ -5,7 +5,9 @@ LEKSAH_VERSION=`grep '^version: ' leksah.cabal | sed 's|version: ||' | tr -d '\r
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-if [[ "$(uname -s)" == "Darwin" ]]; then
+if [[ "$(uname -s)" == MSYS* ]]; then
+  OS="windows"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
   OS="osx"
 else
   OS="linux"
