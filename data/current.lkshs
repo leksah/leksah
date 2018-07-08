@@ -1,19 +1,101 @@
-Version of session file format:
-               3
-Time of storage:
-               "Sun Sep  4 20:03:20 CEST 2016"
-Layout:        VerticalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) (HorizontalP (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = -1, detachedId = Nothing, detachedSize = Nothing}) (TerminalP {paneGroups = fromList [], paneTabs = Just TopP, currentPage = 0, detachedId = Nothing, detachedSize = Nothing}) 578) 336
-Population:    [(Just (ErrorsSt (ErrorsState {showErrors = True, showWarnings = True, showSuggestions = True, showTestFails = True})),[SplitP RightP,SplitP BottomP]),(Just (LogSt LogState),[SplitP RightP,SplitP BottomP]),(Just (WorkspaceSt WorkspaceState),[SplitP LeftP])]
-Window size:   (1366,768)
-Full screen:   False
-Completion size:
-               (750,400)
-Workspace:     Nothing
-Active pane:   []
-Toolbar visible:
-               True
-FindbarState:  (False,FindState {entryStr = "", entryHist = [], replaceStr = "", replaceHist = [], caseSensitive = False, entireWord = False, wrapAround = True, regex = False, lineNr = 1})
-Recently opened files:
-               []
-Recently opened workspaces:
-               []
+{
+  "recentOpenedWorksp": [],
+  "activePaneN": [
+    "Log",
+    "Workspace"
+  ],
+  "workspacePath": null,
+  "recentOpenedFiles": [],
+  "windowSize": [
+    1366,
+    768
+  ],
+  "completionSize": [
+    750,
+    400
+  ],
+  "toolbarVisibleS": true,
+  "sessionVersion": 3,
+  "saveTime": "Sun Sep  4 20:03:20 CEST 2016",
+  "fullScreen": false,
+  "population": [
+    [
+      {
+        "tag": "LogSt",
+        "contents": []
+      },
+      [
+        {
+          "tag": "SplitP",
+          "contents": "RightP"
+        },
+        {
+          "tag": "SplitP",
+          "contents": "BottomP"
+        }
+      ]
+    ],
+    [
+      {
+        "tag": "WorkspaceSt",
+        "contents": []
+      },
+      [
+        {
+          "tag": "SplitP",
+          "contents": "LeftP"
+        }
+      ]
+    ]
+  ],
+  "findbarState": [
+    false,
+    {
+      "wrapAround": true,
+      "entryHist": [],
+      "regex": false,
+      "entryStr": "",
+      "entireWord": false,
+      "replaceHist": [],
+      "lineNr": 1,
+      "caseSensitive": false,
+      "replaceStr": ""
+    }
+  ],
+  "layoutS": {
+    "tag": "VerticalP",
+    "contents": [
+      {
+        "tag": "TerminalP",
+        "currentPage": 0,
+        "detachedId": null,
+        "paneTabs": "TopP",
+        "detachedSize": null,
+        "paneGroups": {}
+      },
+      {
+        "tag": "HorizontalP",
+        "contents": [
+          {
+            "tag": "TerminalP",
+            "currentPage": -1,
+            "detachedId": null,
+            "paneTabs": "TopP",
+            "detachedSize": null,
+            "paneGroups": {}
+          },
+          {
+            "tag": "TerminalP",
+            "currentPage": 0,
+            "detachedId": null,
+            "paneTabs": "TopP",
+            "detachedSize": null,
+            "paneGroups": {}
+          },
+          578
+        ]
+      },
+      336
+    ]
+  }
+}

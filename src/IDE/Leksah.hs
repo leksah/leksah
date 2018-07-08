@@ -299,7 +299,7 @@ startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs ipref
         mbStartupPrefs <- if not isFirstStart
                                     then return $ Just iprefs
                                     else do
-                                        firstStartOK <- firstStart iprefs
+                                        firstStartOK <- firstStart
                                         if not firstStartOK
                                             then return Nothing
                                             else do
@@ -507,11 +507,8 @@ fDescription configPath = VFD emptyParams [
 --
 -- | Called when leksah is first called (the .leksah-xx directory does not exist)
 --
-firstStart :: Prefs -> IO Bool
-firstStart prefs = do
-    dataDir     <- getDataDir
-    prefsPath   <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-    prefs       <- readPrefs prefsPath
+firstStart' :: Prefs -> IO (Maybe Prefs)
+firstStart' prefs = do
     configDir   <- getConfigDir
     dialog      <- dialogNew
     setLeksahIcon dialog
@@ -521,8 +518,11 @@ firstStart prefs = do
     dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
     vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
     label       <- labelNew (Just (
-        "Before you start using Leksah it will collect and download metadata about your installed Haskell packages.\n" <>
-        "You can add folders under which you have sources for Haskell packages not available from Hackage."))
+        "Before Leksah can provide features like autocompletion and jump to source definition " <>
+        "it needs to collect and download metadata about the Haskell packages that are being used.\n" <>
+        "You can add folders under which you have sources for Haskell packages not available from Hackage.\n" <>
+        "You do not need to change anything in this dialog if you are happy for Leksah to use its" <>
+        "default metadata collection settings"))
     (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
     boxPackStart' vb label PackNatural 7
     sw <- scrolledWindowNew noAdjustment noAdjustment
@@ -537,26 +537,56 @@ firstStart prefs = do
         ResponseTypeOk -> do
             mbNewPrefs <- liftIO $ extract prefs [getExt]
             widgetDestroy dialog
-            case mbNewPrefs of
-                Nothing -> do
-                    liftIO $ sysMessage Normal "No dialog results"
-                    return False
-                Just newPrefs -> do
-                    fp <- liftIO $ getConfigFilePathForSave standardPreferencesFilename
-                    liftIO $ writePrefs fp newPrefs
-                    fp2  <-  liftIO $ getConfigFilePathForSave strippedPreferencesFilename
-                    liftIO $ SP.writeStrippedPrefs fp2
-                            SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
-                                       SP.unpackDirectory   = unpackDirectory newPrefs,
-                                       SP.retrieveURL       = retrieveURL newPrefs,
-                                       SP.retrieveStrategy  = retrieveStrategy newPrefs,
-                                       SP.serverPort        = serverPort newPrefs,
-                                       SP.endWithLastConn   = endWithLastConn newPrefs}
-                    firstBuild newPrefs
-                    return True
+            return mbNewPrefs
         _ -> do
             widgetDestroy dialog
-            return False
+            return Nothing
+
+--
+-- | Called when leksah is first called (the .leksah-xx directory does not exist)
+--
+firstStart :: IO Bool
+firstStart = do
+    dataDir     <- getDataDir
+    prefsPath   <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
+    prefs       <- readPrefs prefsPath
+    configDir   <- getConfigDir
+    dialog      <- dialogNew
+    setLeksahIcon dialog
+    setWindowTitle dialog "Welcome to Leksah, the Haskell IDE"
+    setWindowWindowPosition dialog WindowPositionCenter
+    dialogAddButton' dialog (__ "_Customize metadata collection") (AnotherResponseType 1)
+    dialogAddButton' dialog (__ "Use _defaults") (AnotherResponseType 2)
+    vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
+    label       <- labelNew . Just $
+        "Before Leksah can provide features like autocompletion \n" <>
+        "and jump to source definition it needs to collect and \n" <>
+        "download metadata about the Haskell packages that are \n" <>
+        "being used."
+    boxPackStart' vb label PackNatural 7
+    widgetShowAll dialog
+    response <- dialogRun' dialog
+    widgetHide dialog
+    widgetDestroy dialog
+    mbNewPrefs <- case response of
+        AnotherResponseType 1 -> firstStart' prefs
+        AnotherResponseType 2 -> return $ Just prefs
+        _ -> return Nothing
+    case mbNewPrefs of
+        Nothing -> return False
+        Just newPrefs -> do
+            fp <- liftIO $ getConfigFilePathForSave standardPreferencesFilename
+            liftIO $ writePrefs fp newPrefs
+            fp2  <-  liftIO $ getConfigFilePathForSave strippedPreferencesFilename
+            liftIO $ SP.writeStrippedPrefs fp2
+                    SP.Prefs {SP.sourceDirectories = sourceDirectories newPrefs,
+                               SP.unpackDirectory   = unpackDirectory newPrefs,
+                               SP.retrieveURL       = retrieveURL newPrefs,
+                               SP.retrieveStrategy  = retrieveStrategy newPrefs,
+                               SP.serverPort        = serverPort newPrefs,
+                               SP.endWithLastConn   = endWithLastConn newPrefs}
+--            firstBuild newPrefs
+            return True
 
 setLeksahIcon :: (IsWindow self) => self -> IO ()
 setLeksahIcon window = do
@@ -573,11 +603,17 @@ firstBuild newPrefs = do
     setWindowTitle dialog "Leksah: Updating Metadata"
     setWindowWindowPosition dialog WindowPositionCenter
     setWindowDeletable dialog False
+    dialogAddButton' dialog (__ "Continue in background") (AnotherResponseType 1)
     vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
+    label       <- labelNew . Just $
+        "Collecting metadata about the Haskell \n" <>
+        "packages that are being used."
+    boxPackStart' vb label PackGrow 7
     progressBar <- progressBarNew
-    progressBarSetText progressBar $ Just "Please wait while Leksah collects information about Haskell packages on your system"
+    progressBarSetText progressBar $ Just "Collecting information about Haskell packages"
     progressBarSetFraction progressBar 0.0
     boxPackStart' vb progressBar PackGrow 7
+    done <- newEmptyMVar
     forkIO $ do
         logger <- getRootLogger
         let verbosity = case getLevel logger of
@@ -586,13 +622,16 @@ firstBuild newPrefs = do
         (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing Nothing
         output $$ CL.mapM_ (update progressBar)
         waitForProcess pid
-        void . idleAdd PRIORITY_DEFAULT $ do
-            dialogResponse' dialog ResponseTypeOk
-            return False
+        tryTakeMVar done >>= \case
+            Nothing ->
+                void . idleAdd PRIORITY_DEFAULT $ do
+                    dialogResponse' dialog ResponseTypeOk
+                    return False
+            _ -> return ()
     widgetShowAll dialog
     dialogRun dialog
+    putMVar done ()
     widgetHide dialog
-    widgetDestroy dialog
     return ()
     where
         update pb to = do
@@ -602,7 +641,6 @@ firstBuild newPrefs = do
                     progressBarSetFraction pb (read $ T.unpack rest)
                     return False
                 Nothing   -> debugM "leksah" $ T.unpack str
-
 
 
 
