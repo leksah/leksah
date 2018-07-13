@@ -145,7 +145,7 @@ let
             cp launch-leksah/Info.plist $out/bin
             wrapProgram $out/bin/launch-leksah \
               --suffix 'PATH' ':' "${self.ghcWithPackages (self: [])}/bin" \
-              --suffix 'PATH' ':' "${nixpkgs.cabal-install}/bin" \
+              --prefix 'PATH' ':' "${nixpkgs.cabal-install}/bin" \
               --suffix 'LD_LIBRARY_PATH' ':' "${nixpkgs.cairo}/lib" \
               --set 'XDG_DATA_DIRS' ""
           '';
