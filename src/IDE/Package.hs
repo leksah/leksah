@@ -122,7 +122,7 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags (writeFlags, readFlags)
 import Distribution.Text (display)
 import IDE.Utils.FileUtils
-       (loadNixCache, loadNixEnv, cabalProjectBuildDir,
+       (loadNixCache, loadNixEnv, cabalProjectBuildDir, nixShellFile,
         getConfigFilePathForLoad, getPackageDBs', saveNixCache)
 import IDE.LogRef
 import Distribution.ModuleName (ModuleName(..))
@@ -308,12 +308,11 @@ updateNixCache project compilers continuation = loop compilers
         showDefaultLogLaunch'
 
         let dir = pjDir project
-        let nixFile = dir </> "default.nix"
-        liftIO (doesFileExist nixFile) >>= \case
-            True ->
+        nixShellFile dir >>= \case
+            Just nixFile ->
                 runExternalTool' (__ "Nix")
                                  "nix-shell"
-                                 ["-E", "let x = (let fn = import " <> T.pack nixFile <> "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = x.env; }; } // x).shells." <> compiler, "--run", "( set -o posix ; set )"]
+                                 ["-E", "let x = (let fn = import " <> T.pack nixFile <> "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = ({ env = x; } // x).env; }; } // x).shells." <> compiler, "--run", "( set -o posix ; set )"]
                                  dir Nothing $ do
                     out <- C.getZipSink $ const
                         <$> C.ZipSink CL.consume
@@ -324,7 +323,7 @@ updateNixCache project compilers continuation = loop compilers
                         lift $ do
                             modifyIDE_ (\ide -> ide { nixCache = newCache})
                             loop rest
-            False -> loop rest
+            _ -> loop rest
 
 packageConfig :: PackageAction
 packageConfig = do
@@ -378,19 +377,19 @@ withToolCommand project compiler args continuation = do
     prefs <- readIDE prefs
     -- Nix cache will not work over vado
     enableNixCache <- if useVado prefs then liftIO $ isRight <$> getMountPoint (pjDir project) else return True
-    liftIO (doesFileExist $ pjDir project </> "default.nix") >>= \case
-        True | enableNixCache -> do
+    nixShellFile (pjDir project) >>= \case
+        Just _ | enableNixCache -> do
             let nixCompilerName = if compiler == GHCJS then "ghcjs" else "ghc"
                 nixContinuation env = continuation ("bash", ["-c", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Just env)
             readIDE (nixEnv (pjFile project) nixCompilerName) >>= \case
                 Just env -> liftIDE $ nixContinuation env
                 Nothing -> updateNixCache project [nixCompilerName] $
                     readIDE (nixEnv (pjFile project) nixCompilerName) >>= mapM_ nixContinuation
-        True -> liftIDE $ continuation ("nix-shell", [ "-E"
-                    , "let x = (let fn = import " <> T.pack (pjDir project </> "default.nix") <>
-                                    "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = x.env; }; } // x).shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
+        Just nixFile -> liftIDE $ continuation ("nix-shell", [ "-E"
+                    , "let x = (let fn = import " <> T.pack nixFile <>
+                                    "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = ({ env = x; } // x).env; }; } // x).shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
                     , "--run", T.pack . showCommandForUser (pjToolCommand' project) $ map T.unpack args], Nothing)
-        False -> liftIDE $ continuation (pjToolCommand' project, args, Nothing)
+        Nothing -> liftIDE $ continuation (pjToolCommand' project, args, Nothing)
 
 #if !MIN_VERSION_Cabal(2,0,0)
 readGenericPackageDescription = readPackageDescription
