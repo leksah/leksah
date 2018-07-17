@@ -279,7 +279,7 @@ mkActions =
     ,AD "PreviousError" (__ "_Previous Error") (Just (__ "Go to the previous error")) (Just "ide_error_prev")
         previousError [] False
 
-    ,AD "RefreshNixProject" (__ "Refresh Ni_x Project") (Just (__ "Refresh the Leksah's cached nix environment variables for this project")) (Just "ide_nix")
+    ,AD "RefreshNixProject" (__ "Refresh Ni_x Project") (Just (__ "Refresh Leksah's cached nix environment variables for the active project")) (Just "ide_nix")
         (projectTry projectRefreshNix) [] False
 
     ,AD "Package" (__ "_Package") Nothing Nothing (return ()) [] False
