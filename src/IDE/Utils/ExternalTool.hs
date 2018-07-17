@@ -114,7 +114,10 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
                 reflectIDE (do
                     pidHandler pid
                     output $$ handleOutput
-                    postAsyncIDE . modifyIDE_ $ \ide -> ide{runningTool = Nothing}) ideR
+                    -- We should not set runningTool = Nothing here becasuse the getProcessExitCode
+                    -- in isRunning will let us know it is not in a running state and the next process
+                    -- might already have started.
+                    ) ideR
             return ()
 
 -- ---------------------------------------------------------------------
@@ -122,8 +125,7 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
 --
 isRunning :: MonadIDE m => m Bool
 isRunning = do
-    maybeProcess <- readIDE runningTool
-    case maybeProcess of
+    readIDE runningTool >>= \case
        Just (process, _) ->
             liftIO $ isNothing <$> getProcessExitCode process
        Nothing -> return False

@@ -527,9 +527,13 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                     (lastOutput, errs) <- C.getZipSink $ (,)
                         <$> C.ZipSink sinkLast
                         <*> C.ZipSink (logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
+                    -- If the tool has exited we should not clear the runningTool.  The isRunning function will
+                    -- already be returning False and the next process may have already srtarted.
+                    case lastOutput of
+                        Just (ToolExit _) -> return ()
+                        _ -> lift $ modifyIDE_ (\ide -> ide {runningTool = Nothing})
                     lift . postAsyncIDE $ do
                         liftIO $ debugM "leksah" "Reload done"
-                        modifyIDE_ (\ide -> ide {runningTool = Nothing})
                         wasInterrupted <- liftIO . modifyMVar reloadComplete $ \s ->
                             return (ReloadComplete, s /= ReloadRunning)
                         unless (any isError errs || wasInterrupted || not (maybe False isToolPrompt lastOutput)) $ do
