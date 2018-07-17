@@ -146,6 +146,7 @@ let
             wrapProgram $out/bin/launch-leksah \
               --suffix 'PATH' ':' "${self.ghcWithPackages (self: [])}/bin" \
               --prefix 'PATH' ':' "${nixpkgs.cabal-install}/bin" \
+              --suffix 'PATH' ':' "${self.doctest}/bin" \
               --suffix 'LD_LIBRARY_PATH' ':' "${nixpkgs.cairo}/lib" \
               --set 'XDG_DATA_DIRS' ""
           '';
@@ -175,7 +176,8 @@ let
               --prefix 'PATH' ':' "${self.leksah-server}/bin" \
               --prefix 'PATH' ':' "${self.vcsgui}/bin" \
               --suffix 'PATH' ':' "${self.ghcWithPackages (self: [])}/bin" \
-              --suffix 'PATH' ':' "${nixpkgs.cabal-install}/bin" \
+              --prefix 'PATH' ':' "${nixpkgs.cabal-install}/bin" \
+              --suffix 'PATH' ':' "${self.doctest}/bin" \
               --suffix 'LD_LIBRARY_PATH' ':' "${nixpkgs.cairo}/lib" \
               --set 'XDG_DATA_DIRS' ""
           '';
@@ -192,7 +194,7 @@ let
   ghc822 = extendedHaskellPackages "ghc822" nixpkgs.pkgs.haskell.packages.ghc822;
   ghc843 = extendedHaskellPackages "ghc843" nixpkgs.pkgs.haskell.packages.ghc843;
   ghc = ghc802;
-  
+
   leksah = ghc.wrapped-leksah "";
   leksah-ghc802 = ghc802.wrapped-leksah "-ghc802";
   leksah-ghc822 = ghc822.wrapped-leksah "-ghc822";
@@ -202,7 +204,7 @@ in leksah // {
   inherit ghc ghc802 ghc822 ghc843;
   inherit leksah-ghc802 leksah-ghc822 leksah-ghc843;
   inherit (ghc) launch-leksah;
-  
+
   shells = {
     ghc = ghc.shellFor {
       packages = p: [ p.leksah p.leksah-server p.ltk p.vcswrapper p.vcsgui ];

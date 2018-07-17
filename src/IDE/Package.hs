@@ -192,6 +192,11 @@ import qualified Data.Map as M
        (toList, fromList, member, delete, insert, lookup)
 import Control.Lens ((<&>))
 import System.Process (showCommandForUser)
+#ifdef MIN_VERSION_unix
+import System.Posix (sigKILL, signalProcess)
+import System.Process.Internals
+       (withProcessHandle, ProcessHandle__(..))
+#endif
 #if MIN_VERSION_Cabal(2,0,0)
 import Distribution.Types.ForeignLib (foreignLibName)
 import Distribution.Types.UnqualComponentName
@@ -514,7 +519,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                                         ReloadComplete -> return ReloadComplete
                                         _ -> (`reflectIDE` ideR) $ do
                                             ideMessage High (__ "Interrupting :reload took too long. Terminating ghci.")
-                                            liftIO $ terminateProcess proc
+                                            liftIO $ killProcess proc
                                             return ReloadComplete
                                 return ReloadInterrupting
                 modifyIDE_ $ \ide -> ide {runningTool = Just (proc, interruptReload)}
@@ -544,6 +549,16 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                     Just uri -> postSyncIDE . loadOutputUri $ T.unpack uri
                     Nothing  -> return ()
                 compile compilers
+
+#ifdef MIN_VERSION_unix
+killProcess :: ProcessHandle -> IO ()
+killProcess ph =
+  withProcessHandle ph $ \case
+      OpenHandle pid -> signalProcess sigKILL pid
+      ClosedHandle _ -> return ()
+#else
+killProcess = terminateProcess
+#endif
 
 packageDoc :: PackageAction
 packageDoc = do
@@ -835,8 +850,10 @@ packageTest' backgroundBuild jumpToWarnings (project, package) continuation =
     if "--enable-tests" `elem` ipdConfigFlags package
         then do
             removeTestLogRefs (LogCabal $ ipdCabalFile package)
-            pd <- readAndFlattenPackageDescription package
-            runTests $ testSuites pd
+            packageRunDocTests backgroundBuild jumpToWarnings (project, package) $ \ok ->
+                when ok $ do
+                    pd <- readAndFlattenPackageDescription package
+                    runTests $ testSuites pd
           `catchIDE`
             (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
         else continuation True
@@ -846,6 +863,38 @@ packageTest' backgroundBuild jumpToWarnings (project, package) continuation =
     runTests (test:rest) =
         packageRunComponent (CTest test) backgroundBuild jumpToWarnings (project, package) (\ok ->
             when ok $ runTests rest)
+
+packageRunDocTests :: Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
+packageRunDocTests backgroundBuild jumpToWarnings (project, package) continuation =
+    case pjTool project of
+        StackTool -> do
+            ideMessage Normal "Skipping automatic doctests (not implemented for stack yet)."
+            continuation True
+        CabalTool -> do
+            let dir = ipdPackageDir package
+            logLaunch <- getDefaultLogLaunch
+            showDefaultLogLaunch'
+            catchIDE (do
+                prefs <- readIDE prefs
+                let projectFile = pjFile project
+                ghcVersion <- liftIO getDefaultGhcVersion
+                packageDBs <- liftIO $ getPackageDBs' ghcVersion (Just projectFile)
+                let pkgId = packageIdentifierToString $ ipdPackageId package
+                (buildDir, _, cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
+                let args = [ "act-as-setup"
+                           , "--"
+                           , "doctest"
+                           , T.pack ("--builddir=" <> (buildDir </> T.unpack pkgId))]
+                withToolCommand project GHC (args ++ ipdTestFlags package) $ \(cmd, args', nixEnv) ->
+                    runExternalTool' (__ "Doctest")
+                            cmd args' dir (Just $ [("GHC_PACKAGE_PATH", intercalate  [searchPathSeparator] packageDBs)] <> maybe [] M.toList nixEnv) $ do
+                            (mbLastOutput, _) <- C.getZipSink $ (,)
+                                <$> C.ZipSink sinkLast
+                                <*> (C.ZipSink $ logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
+                            lift $ do
+                                errs <- readIDE errorRefs
+                                when (mbLastOutput == Just (ToolExit ExitSuccess)) $ continuation True)
+                    (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
 packageRunComponent :: Component -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 packageRunComponent (CLib _) _ _ _ _ = error "packageRunComponent"
