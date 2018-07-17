@@ -13,6 +13,7 @@
           rev = "ee1faf5881aeb0d1c17c4fd1e1882d5281ab1bef";
           sha256 = "1s4p6404kzyzx89f8x2cwrbhkr5nmzxy9vf8jrvzazi0crwpsm1h";
         }) {})
+, compiler ? "ghc843"
 }:
 
 with nixpkgs.pkgs.haskell.lib;
@@ -81,7 +82,7 @@ let
                               then dontCheck (self.callHackage "haddock-api" "2.20.0" {})
                               else super.haddock-api;
         jsaddle = jsaddlePkgs.jsaddle;
-        jsaddle-warp = jsaddlePkgs.jsaddle-warp;
+        jsaddle-warp = dontCheck jsaddlePkgs.jsaddle-warp;
         jsaddle-dom = import (nixpkgs.fetchFromGitHub {
            owner = "ghcjs";
            repo = "jsaddle-dom";
@@ -193,7 +194,7 @@ let
   ghc802 = extendedHaskellPackages "ghc802" nixpkgs.pkgs.haskell.packages.ghc802;
   ghc822 = extendedHaskellPackages "ghc822" nixpkgs.pkgs.haskell.packages.ghc822;
   ghc843 = extendedHaskellPackages "ghc843" nixpkgs.pkgs.haskell.packages.ghc843;
-  ghc = ghc802;
+  ghc = extendedHaskellPackages compiler nixpkgs.pkgs.haskell.packages.${compiler};
 
   leksah = ghc.wrapped-leksah "";
   leksah-ghc802 = ghc802.wrapped-leksah "-ghc802";

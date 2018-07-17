@@ -34,16 +34,21 @@ This works even if you are not planning on using reflex in your project.
 
 Install [Nix](https://nixos.org/nix/).
 
+Then download, build and run Leksah with:
+
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
-./leksah-nix.sh
+./leksah-nix.sh ghc843
 ```
 
 On macOS the Leksah window start below other active application windows you can use
 Command+Shift+Tab to bring it to the top
 ([issue 461](https://github.com/leksah/leksah/issues/461)).
 
+The `ghc843` argument indicates Leksah should be built using GHC 8.4.3.  Leksah works best if
+it is built with the same version of GHC that your projects use.  To work on a project that
+uses GHC 8.2.2, just exit leksah and run `./leksah-nix.sh ghc822`.
 
 ### Chocolatey and MSYS2 (Recommended for Windows users)
 
