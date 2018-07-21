@@ -94,7 +94,8 @@ import qualified Data.Text as T (unpack, pack)
 import Data.Monoid ((<>))
 import GI.Gtk (constructDialogUseHeaderBar)
 import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
-import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
+import Data.Aeson (FromJSON, ToJSON, eitherDecode)
+import Data.Aeson.Encode.Pretty (encodePretty)
 import GHC.Generics (Generic)
 
 -- ---------------------------------------------------------------------
@@ -303,9 +304,9 @@ saveSessionAs sessionPath mbSecondPath = do
     ,   findbarState        =   (findbarVisible,findState)
     ,   recentOpenedFiles   =   recentFiles'
     ,   recentOpenedWorksp  =   recentWorkspaces'}
-    liftIO $ LBS.writeFile sessionPath $ encode state
+    liftIO $ LBS.writeFile sessionPath $ encodePretty state
     forM_ mbSecondPath $ \secondPath ->
-        liftIO $ LBS.writeFile secondPath $ encode state
+        liftIO $ LBS.writeFile secondPath $ encodePretty state
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do

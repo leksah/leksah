@@ -105,7 +105,8 @@ import GI.Gtk
         containerAdd)
 import qualified Control.Exception as E (catch)
 import qualified Data.ByteString.Lazy as LBS (writeFile, readFile)
-import Data.Aeson (encode, eitherDecode)
+import Data.Aeson (eitherDecode)
+import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Default (Default(..))
 
 
@@ -1059,6 +1060,6 @@ writePrefs fpath prefs = do
     timeNow         <- liftIO getClockTime
     configDir <- getConfigDir
     let newPrefs    =   prefs {prefsSaveTime = T.pack $ show timeNow, prefsFormat = prefsVersion}
-    LBS.writeFile fpath . encode $ toPrefsFile prefs
+    LBS.writeFile fpath . encodePretty $ toPrefsFile prefs
 
 

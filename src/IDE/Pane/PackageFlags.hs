@@ -50,7 +50,8 @@ import IDE.Utils.GUIUtils (__)
 import Control.Monad (void)
 import Data.Text (Text)
 import Data.Monoid ((<>))
-import Data.Aeson (eitherDecode, encode, FromJSON, ToJSON)
+import Data.Aeson (eitherDecode, FromJSON, ToJSON)
+import Data.Aeson.Encode.Pretty (encodePretty)
 import qualified Data.Text as T (unwords, unpack, pack)
 import Control.Applicative ((<$>))
 import Control.Monad.IO.Class (MonadIO(..))
@@ -352,5 +353,5 @@ readFlags file pkg = E.catch (
 
 -- | Write all field values to the given 'FilePath'
 writeFlags :: FilePath -> IDEPackage -> IO ()
-writeFlags file = LBS.writeFile file . encode . getFlagsFile
+writeFlags file = LBS.writeFile file . encodePretty . getFlagsFile
 

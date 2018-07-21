@@ -120,7 +120,7 @@ import GI.Gtk.Interfaces.FileChooser
 import IDE.Workspaces.Writer (WorkspaceFile(..))
 import qualified Data.Map as M (member, delete, adjust, insert)
 import qualified Data.ByteString.Lazy as LBS (writeFile)
-import Data.Aeson (encode)
+import Data.Aeson.Encode.Pretty (encodePretty)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -149,7 +149,7 @@ workspaceNewHere filePath =
             newWorkspace = Writer.emptyWorkspaceFile {
                             wsfName = T.pack $ takeBaseName cPath
                             }
-        liftIO . LBS.writeFile cPath $ encode newWorkspace
+        liftIO . LBS.writeFile cPath $ encodePretty newWorkspace
         workspaceOpenThis False cPath
         return ()
 

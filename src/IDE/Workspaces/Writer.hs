@@ -60,6 +60,7 @@ import Data.Aeson
 import Data.Aeson.Types
        (Options, genericParseJSON, genericToEncoding, genericToJSON,
         defaultOptions, fieldLabelModifier)
+import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.List (stripPrefix)
 import Data.Char (toLower)
 
@@ -94,7 +95,7 @@ writeWorkspace ws = do
                          wsVersion = workspaceVersion}
     setWorkspace $ Just newWs
     newWs' <- liftIO $ makePathsRelative newWs (wsFile ws)
-    liftIO . LBS.writeFile (wsFile ws) $ encode newWs'
+    liftIO . LBS.writeFile (wsFile ws) $ encodePretty newWs'
 
 readWorkspace :: FilePath -> IDEM (Either String Workspace)
 readWorkspace fp = do
