@@ -614,7 +614,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         iter <- getEndIter buffer
 
         -- create a new SourceView Widget
-        (sv, sw) <- newView buffer (textviewFont prefs)
+        (sv, sw, grid) <- newViewWithMap buffer (textviewFont prefs)
 
         -- Files opened from the unpackDirectory are meant for documentation
         -- and are not actually a source dependency, they should not be editable.
@@ -656,7 +656,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
             boxPackStart box bar False False 0
             widgetShow bar
 
-        boxPackStart box sw True True 0
+        boxPackStart box grid True True 0
 
         reloadDialog <- liftIO $ newMVar Nothing
 

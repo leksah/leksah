@@ -274,7 +274,10 @@ buildOutputParser = try (do
         char ':'
         whiteSpace
         text <- takeText
-        return $ DocTestFailure (SrcSpan (T.unpack file) line 7 line (T.length text - 7)) $ "Failure in " <> text)
+        let colGuess = T.length $ case T.unpack text of
+                        ('\\':_) -> "-- prop> "
+                        _        -> "-- >>> "
+        return $ DocTestFailure (SrcSpan (T.unpack file) line colGuess line (T.length text - colGuess)) $ "Failure in " <> text)
     <?> "buildOutputParser"
 
 data BuildError =   BuildLine

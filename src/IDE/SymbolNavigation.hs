@@ -27,7 +27,7 @@ import IDE.Core.Types (IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (mapControlCommand)
 import Data.IORef (writeIORef, readIORef, newIORef)
-import Control.Monad (join, when)
+import Control.Monad (void, join, when)
 import Data.Maybe (fromJust, isJust)
 import Control.Monad.Reader.Class (MonadReader(..))
 import IDE.Core.State (reflectIDE)
@@ -74,6 +74,7 @@ import GI.Gdk.Flags
        (EventMask(..), ModifierType(..))
 import GI.Gdk.Objects.Device (deviceGrab, deviceUngrab)
 import IDE.TypeTip (setTypeTip)
+import qualified IDE.TextEditor.Class as E (TextEditor(..))
 #endif
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
@@ -93,6 +94,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
     ttt <- getTagTable tvb
     linkTag <- newTag ttt "link"
     underline linkTag UnderlineSingle Nothing
+    linkLocIORef <- liftIO $ newIORef Nothing
 
 --    id1 <- ConnectC sw <$> onWidgetLeaveNotifyEvent sw (\e -> do
 --        getEventCrossingTime e >>= pointerUngrab
@@ -118,14 +120,14 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             rect <- widgetGetAllocation sw
             szx <- getRectangleWidth rect
             szy <- getRectangleHeight rect
-            if eventX < 0 || eventY < 0
+            linkIters <- if not ctrlPressed || eventX < 0 || eventY < 0
                 || round eventX > szx || round eventY > szy then do
                     ungrab
-                    return True
+                    setTypeTip (0, 0) ""
+                    return Nothing
               else do
                 (beg, en) <- identifierMapper ctrlPressed shiftPressed iter
                 slice <- getSlice tvb beg en True
-                removeTagByName tvb "link"
                 offs <- getLineOffset beg
                 offsc <- getLineOffset iter
                 if T.length slice > 1 then
@@ -134,12 +136,12 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                             ungrab
                             clickHandler ctrlPressed shiftPressed (beg, en)
                             setTypeTip (0, 0) ""
+                            return Nothing
 #ifdef MIN_VERSION_GTK_3_20
                         Just motion -> do
 #else
                         Just _ -> do
 #endif
-                            applyTagByName tvb "link" beg en
                             screen <- screenGetDefault
                             widgetGetWindow tv >>= \case
                                 Nothing -> return ()
@@ -153,8 +155,20 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                                             [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
                                             mbHand eventTime
 #endif
-                  else setTypeTip (0, 0) "" >> ungrab
-                return True
+                            return $ Just (beg, en)
+                  else setTypeTip (0, 0) "" >> ungrab >> return Nothing
+            oldLoc <- liftIO $ readIORef linkLocIORef
+            case linkIters of
+                Just (beg, en) -> do
+                    linkLoc <- sequence [E.getLine beg, getLineOffset beg, E.getLine en, getLineOffset en]
+                    when (Just linkLoc /= oldLoc) $ do
+                        removeTagByName tvb "link"
+                        applyTagByName tvb "link" beg en
+                        liftIO $ writeIORef linkLocIORef (Just linkLoc)
+                Nothing -> do
+                    when (isJust oldLoc) $ removeTagByName tvb "link"
+                    liftIO $ writeIORef linkLocIORef Nothing
+            return True
     lineNumberBugFix <- liftIO $ newIORef Nothing
     let fixBugWithX mods isHint (eventX, eventY) ptrx' = do
             Just window <- widgetGetWindow sw
@@ -200,6 +214,6 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
         -- liftIO $ print ("click adjustment: old, new", eventX, oldX)
         (`reflectIDE` ideR) $ moveOrClick device eventX eventY mods eventTime Nothing)
 
-    return [{-id1,-} id2, id3]
+    return [{-id1,-} {- id2, -} id3]
 
 

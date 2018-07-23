@@ -44,6 +44,7 @@ import GI.Gtk.Flags (TextSearchFlags)
 import Graphics.UI.Editor.Simple (Color(..))
 import GI.Pango (Underline)
 import GHC.Stack (HasCallStack)
+import GI.Gtk (Grid)
 
 type IDEM a = HasCallStack => Core.IDEM a
 type IDEAction = IDEM ()
@@ -113,6 +114,7 @@ class TextEditor editor where
                -> IDEM Text
     hasSelection :: EditorBuffer editor -> IDEM Bool
     insert :: EditorBuffer editor -> EditorIter editor -> Text -> IDEM ()
+    newViewWithMap :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor, ScrolledWindow, Grid)
     newView :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor, ScrolledWindow)
     newViewNoScroll :: EditorBuffer editor -> Maybe Text -> IDEM (EditorView editor, Widget)
     pasteClipboard :: EditorBuffer editor

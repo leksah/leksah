@@ -62,10 +62,10 @@ import Foreign.ForeignPtr (withForeignPtr)
 import Foreign.Ptr (nullPtr, castPtr)
 import qualified GI.GtkSource as Source
 import GI.GtkSource
-       (viewSetDrawSpaces, setViewTabWidth, setViewShowLineNumbers,
-        setViewRightMarginPosition, setViewShowRightMargin,
-        setViewIndentWidth, setViewDrawSpaces, bufferUndo,
-        bufferSetStyleScheme, styleSchemeManagerGetScheme,
+       (mapSetView, mapNew, viewSetDrawSpaces, setViewTabWidth,
+        setViewShowLineNumbers, setViewRightMarginPosition,
+        setViewShowRightMargin, setViewIndentWidth, setViewDrawSpaces,
+        bufferUndo, bufferSetStyleScheme, styleSchemeManagerGetScheme,
         styleSchemeManagerGetSchemeIds, styleSchemeManagerAppendSearchPath,
         styleSchemeManagerNew, bufferRemoveSourceMarks, bufferRedo,
         viewSetMarkAttributes, onMarkAttributesQueryTooltipText,
@@ -153,7 +153,10 @@ import GI.Gtk.Objects.Menu (Menu(..))
 import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
 import Graphics.UI.Editor.Simple (Color(..))
-import GI.Gtk (widgetOverrideFont, setTextTagUnderlineRgba)
+import GI.Gtk
+       (scrollableSetVscrollPolicy, scrollableSetHscrollPolicy,
+        widgetSetVexpand, widgetSetHexpand, frameNew, gridNew,
+        widgetOverrideFont, setTextTagUnderlineRgba, Widget(..))
 import GI.GtkSource.Objects.StyleScheme
        (styleSchemeGetStyle, StyleScheme(..))
 import GI.GtkSource.Objects.Style
@@ -288,6 +291,20 @@ instance TextEditor GtkSourceView where
         textBufferGetText sb first last includeHidenChars
     hasSelection (GtkBuffer sb) = (\(b, _, _) -> b) <$> textBufferGetSelectionBounds sb
     insert (GtkBuffer sb) (GtkIter i) text = textBufferInsert sb i text (-1)
+    newViewWithMap sb mbFontString = do
+        (GtkView sv, _) <- newViewNoScroll sb mbFontString
+        grid <- gridNew
+        sw <- scrolledWindowNew noAdjustment noAdjustment
+        containerAdd sw sv
+        mapFrame <- frameNew Nothing
+        sMap <- mapNew
+        mapSetView sMap sv
+        containerAdd mapFrame sMap
+        widgetSetHexpand sw True
+        widgetSetVexpand sw True
+        containerAdd grid sw
+        containerAdd grid mapFrame
+        return (GtkView sv, sw, grid)
     newView sb mbFontString = do
         (GtkView sv, _) <- newViewNoScroll sb mbFontString
         sw <- scrolledWindowNew noAdjustment noAdjustment
