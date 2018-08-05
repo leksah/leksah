@@ -46,6 +46,7 @@
        <menuitem name="Find_Previous" action="EditFindPrevious" />
        <menuitem name="_Goto Line" action="EditGotoLine" />
        <separator/>
+       <menuitem name="Reformat" action="EditReformat" />
        <menuitem name="Comment" action="EditComment" />
        <menuitem name="Uncomment" action="EditUncomment" />
        <menuitem name="Shift Left" action="EditShiftLeft" />

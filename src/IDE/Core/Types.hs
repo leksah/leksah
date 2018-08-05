@@ -246,6 +246,7 @@ data IDE            =  IDE {
 ,   fsnotify            :: WatchManager
 ,   developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
 ,   nixCache            :: Map (FilePath, Text) (Map String String)
+,   externalModified    :: MVar (Set FilePath)
 } --deriving Show
 
 activeProject :: IDE -> Maybe Project
@@ -933,7 +934,8 @@ data CompletionWindow = CompletionWindow {
 
 data TypeTip = TypeTip {
     ttWindow :: Window,
-    ttSetText :: Int32 -> Int32 -> Text -> IDEM ()}
+    ttSetText :: Int32 -> Int32 -> Text -> IDEM (),
+    ttUpdateStyle :: IDEAction}
 
 data StatusbarCompartment =
         CompartmentCommand Text

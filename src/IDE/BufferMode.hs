@@ -6,6 +6,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.BufferMode
@@ -38,7 +40,7 @@ import IDE.SourceCandy
        (getCandylessText, keystrokeCandy, transformFromCandy,
         transformToCandy)
 import Control.Monad (when)
-import Data.Maybe (mapMaybe, catMaybes)
+import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import IDE.Utils.FileUtils
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Time (UTCTime)
@@ -53,6 +55,8 @@ import GI.Gtk (MessageDialog, Box)
 import Control.Concurrent (MVar)
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
+import IDE.Brittany (runBrittany)
+import Control.Exception (SomeException)
 
 -- * Buffer Basics
 
@@ -66,6 +70,7 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 ,   sourceView      ::  EditorView editor
 ,   vBox            ::  Box
 ,   modTime         ::  IORef (Maybe UTCTime)
+,   modifiedOnDisk  ::  IORef Bool
 ,   mode            ::  Mode
 ,   reloadDialog    ::  MVar (Maybe MessageDialog)
 } deriving (Typeable)
@@ -166,7 +171,8 @@ data Mode = Mode {
     modeEditFromCandy      :: IDEAction,
     modeEditKeystrokeCandy :: Char -> (Text -> Bool) -> IDEAction,
     modeEditInsertCode     :: forall editor . TextEditor editor => Text -> EditorIter editor -> EditorBuffer editor -> IDEAction,
-    modeEditInCommentOrString :: Text -> Bool
+    modeEditInCommentOrString :: Text -> Bool,
+    modeEditReformat       :: Maybe IDEAction
     }
 
 
@@ -218,7 +224,22 @@ haskellMode = Mode {
     modeEditInsertCode = \ str iter buf ->
         insert buf iter str,
     modeEditInCommentOrString = \ line -> ("--" `T.isInfixOf` line)
-                                        || odd (T.count "\"" line)
+                                        || odd (T.count "\"" line),
+    modeEditReformat = Just $ do
+        inActiveBufContext () $ \_ _ ebuf currentBuffer _ -> hasSelection ebuf >>= \case
+          False -> return ()
+          True -> do
+            (start, end) <- getSelectionBounds ebuf
+            text <- getText ebuf start end True
+            (runBrittany Nothing text >>= \case
+                Left e -> liftIO $ putStrLn "Brittany Errors"
+                Right newText -> do
+                    beginUserAction ebuf
+                    delete ebuf start end
+                    insert ebuf start newText
+                    endUserAction ebuf)
+                `catchIDE` (\(e :: SomeException) -> liftIO . putStrLn $ "Brittany Error : " <> show e)
+        return ()
     }
 
 literalHaskellMode = Mode {
@@ -266,8 +287,8 @@ literalHaskellMode = Mode {
     modeEditInsertCode = \ str iter buf ->
         insert buf iter (T.unlines $ map (\ s -> "> " <> s) $ T.lines str),
     modeEditInCommentOrString = \ line -> not (T.isPrefixOf ">" line)
-                                        || odd (T.count "\"" line)
-    }
+                                        || odd (T.count "\"" line),
+    modeEditReformat = Nothing}
 
 cabalMode = Mode {
     modeName                 = "Cabal",
@@ -290,8 +311,8 @@ cabalMode = Mode {
     modeEditFromCandy        = return (),
     modeEditKeystrokeCandy   = \ _ _ -> return (),
     modeEditInsertCode       = \ str iter buf -> insert buf iter str,
-    modeEditInCommentOrString = T.isPrefixOf "--"
-
+    modeEditInCommentOrString = T.isPrefixOf "--",
+    modeEditReformat         = Nothing
     }
 
 otherMode = Mode {
@@ -305,7 +326,8 @@ otherMode = Mode {
     modeEditFromCandy        = return (),
     modeEditKeystrokeCandy   = \_ _ -> return (),
     modeEditInsertCode       = \str iter buf -> insert buf iter str,
-    modeEditInCommentOrString = const False
+    modeEditInCommentOrString = const False,
+    modeEditReformat         = Nothing
     }
 
 isHaskellMode mode = modeName mode == "Haskell" || modeName mode == "Literal Haskell"
@@ -339,6 +361,9 @@ editKeystrokeCandy c = withCurrentMode () (\m -> modeEditKeystrokeCandy m c
 editInsertCode :: TextEditor editor => EditorBuffer editor -> EditorIter editor -> Text -> IDEAction
 editInsertCode buffer iter str = withCurrentMode ()
                                             (\ m -> modeEditInsertCode m str iter buffer)
+
+editReformat :: IDEAction
+editReformat = withCurrentMode () (fromMaybe (return ()) . modeEditReformat)
 
 
 

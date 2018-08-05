@@ -91,7 +91,6 @@ import GI.Gtk.Objects.Notebook
 import Data.GI.Base (unsafeCastTo, new')
 import Control.Arrow (Arrow(..))
 import qualified Data.Text as T (unpack, pack)
-import Data.Monoid ((<>))
 import GI.Gtk (constructDialogUseHeaderBar)
 import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
 import Data.Aeson (FromJSON, ToJSON, eitherDecode)

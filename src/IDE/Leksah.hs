@@ -82,7 +82,6 @@ import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
 import qualified Data.Text.IO as T (readFile, writeFile)
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import qualified Data.Map as M (empty)
 import qualified Data.Sequence as Seq (empty)
 import qualified GI.Gtk.Functions as Gtk (main, init)
@@ -351,6 +350,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
 
     triggerBuild <- newEmptyMVar
     nixCache <- loadNixCache
+    externalModified <- newMVar mempty
     let ide = IDE
           {   application       =   app
           ,   exitCode          =   exitCode
@@ -393,6 +393,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           ,   fsnotify          =   fsnotify
           ,   developLeksah     =   developLeksah
           ,   nixCache          =   nixCache
+          ,   externalModified  =   externalModified
     }
     ideR             <-  newIORef ide
     (`reflectIDE` ideR) $ do

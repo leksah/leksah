@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module IDE.TypeTip (setTypeTip) where
+module IDE.TypeTip (setTypeTip, updateTypeTipStyle) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -52,6 +52,12 @@ setTypeTip (x, y) t = do
     readIDE typeTip >>= \case
         Just TypeTip {..} -> ttSetText x y trimmed
         Nothing           -> initTypeTip x y trimmed
+
+updateTypeTipStyle :: IDEAction
+updateTypeTipStyle =
+    readIDE typeTip >>= \case
+        Just TypeTip {..} -> ttUpdateStyle
+        Nothing           -> return ()
 
 initTypeTip :: Int32 -> Int32 -> Text -> IDEAction
 initTypeTip x y tip = do
@@ -94,7 +100,8 @@ initTypeTip x y tip = do
                                 windowResize window 10 10
                                 liftIO $ widgetShowAll window
                         else liftIO $ widgetShowAll window
+        updateTypeTipStyle = updateStyle buffer
 
-    modifyIDE_ $ \ide -> ide{typeTip = Just (TypeTip window updateTypeTip)}
+    modifyIDE_ $ \ide -> ide{typeTip = Just (TypeTip window updateTypeTip updateTypeTipStyle)}
 
     widgetShowAll window

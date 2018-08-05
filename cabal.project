@@ -5,6 +5,12 @@ packages:
  vendor/haskellVCSWrapper/vcswrapper/
  vendor/haskellVCSGUI/vcsgui
  vendor/hs-git
+ vendor/brittany
+-- vendor/HaRe
+-- vendor/HaRe/submodules/cabal-helper
+-- vendor/HaRe/submodules/ghc-exactprint
+-- vendor/HaRe/submodules/ghc-mod
+-- vendor/HaRe/submodules/ghc-mod/core
 
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk

@@ -66,7 +66,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (null, all, drop, tail, init, take, reverse, isSuffixOf,
         isPrefixOf, pack, length, unpack)
-import Data.Monoid (Monoid(..), (<>))
+import Data.Monoid (Monoid(..))
 import Data.List (elemIndex, isPrefixOf, isSuffixOf, findIndex)
 import qualified Data.Foldable as F (toList, forM_)
 import qualified Data.Sequence as Seq (empty)

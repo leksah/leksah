@@ -99,7 +99,7 @@ import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 import Data.Text (Text)
 import qualified Data.Text.IO as T (readFile)
-import Data.Monoid (Monoid(..), (<>))
+import Data.Monoid (Monoid(..))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import GI.Gtk.Enums
@@ -246,6 +246,8 @@ mkActions =
     ,AD "EditGotoLine" (__ "_Goto Line") Nothing (Just "gtk-jump")
         editGotoLine [] False
 
+    ,AD "EditReformat" (__ "Re_format") Nothing Nothing
+        editReformat [] False
     ,AD "EditComment" (__ "_Comment") Nothing Nothing
         editComment [] False
     ,AD "EditUncomment" (__ "_Uncomment") Nothing Nothing

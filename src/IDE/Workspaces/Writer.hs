@@ -33,7 +33,7 @@ import IDE.Package
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
 import Data.Maybe
-import Control.Monad (join, void, when)
+import Control.Monad (unless, join, void, when)
 import Control.Monad.Trans (liftIO)
 import System.Time (getClockTime)
 import System.FilePath
@@ -44,9 +44,9 @@ import Graphics.UI.Editor.Parameters
     (Parameter(..), (<<<-), paraName, emptyParams)
 import qualified Text.PrettyPrint as  PP (text)
 import System.Log.Logger (debugM)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T (unpack, pack)
 import Data.Monoid ((<>))
-import System.FSNotify (watchDir, Event(..), watchTree)
+import System.FSNotify (watchDir, Event(..), watchTree, eventPath, isPollingManager)
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
 import qualified Data.Map as Map (empty)
@@ -61,8 +61,13 @@ import Data.Aeson.Types
        (Options, genericParseJSON, genericToEncoding, genericToJSON,
         defaultOptions, fieldLabelModifier)
 import Data.Aeson.Encode.Pretty (encodePretty)
-import Data.List (stripPrefix)
+import Data.List (isPrefixOf, stripPrefix)
 import Data.Char (toLower)
+import IDE.Pane.SourceBuffer (setModifiedOnDisk)
+import System.Directory (doesDirectoryExist)
+import Control.Concurrent (putMVar, takeMVar, tryPutMVar)
+import qualified Data.Set as S (insert)
+import Control.Exception (evaluate)
 
 data WorkspaceFile = WorkspaceFile {
     wsfVersion           ::   Int
@@ -217,17 +222,41 @@ setWorkspace mbWs = do
     case mbWs of
         Just ws -> do
             fsn <- readIDE fsnotify
-            newStop <- liftIO $ forM (wsProjects ws) (\project ->
-                watchDir fsn (dropFileName $ pjFile project) (\case
-                        Modified f _ | takeFileName f == takeFileName (pjFile project) -> True
-                        _ -> False) $ \_ ->
-                    (`reflectIDE` ideR) $ postAsyncIDE $ do
-                      readWorkspace (wsFile ws) >>= \case
-                        Left _ -> return ()
-                        Right ws' -> setWorkspace (Just ws'))
-            oldStop <- readIDE stopWorkspaceNotify
-            modifyIDE_ $ \ide -> ide { stopWorkspaceNotify = sequence_ newStop }
-            liftIO oldStop
+            tb <- readIDE triggerBuild
+            extModsMVar <- readIDE externalModified
+            let rebuild = void . liftIO $ tryPutMVar tb ()
+            unless (isPollingManager fsn) $ do
+                newStop <- liftIO $ forM (zip [0..] $ wsProjects ws) (\(n, project) -> do
+                    stopSrc <- forM (pjPackages project) $ \package -> do
+                        nonRootSrcPaths <- map (<>"/") . filter (/=ipdPackageDir package) <$>
+                            mapM (myCanonicalizePath . (ipdPackageDir package </>)) (ipdSrcDirs package)
+
+                        watchTree fsn (ipdPackageDir package) (\case
+                            Modified f _ _ -> True
+                            _ -> False) $ \event -> do
+                                let f = eventPath event
+                                (`reflectIDE` ideR) $ setModifiedOnDisk f >>= \case
+                                    True -> rebuild
+                                    False ->
+                                        when (any (`isPrefixOf` f) nonRootSrcPaths) $ do
+                                          liftIO $ debugM "leksah" $ "Modified source file " <> f <> " in " <> T.unpack (ipdPackageName package)
+                                          extMods <- liftIO $ takeMVar extModsMVar
+                                          liftIO $ putMVar extModsMVar =<< evaluate (S.insert f extMods)
+                                          rebuild
+                    stopProjectFile <- watchDir fsn (pjDir project) (\case
+                          Modified f _ _ -> True
+                          _ -> False) $ \event -> do
+                              let f = eventPath event
+                              (`reflectIDE` ideR) $ setModifiedOnDisk f
+                              when (takeFileName f == takeFileName (pjFile project)) $
+                                  (`reflectIDE` ideR) $ postAsyncIDE $
+                                      readWorkspace (wsFile ws) >>= \case
+                                          Left _ -> return ()
+                                          Right ws' -> setWorkspace (Just ws')
+                    return . sequence_ $ stopProjectFile : stopSrc)
+                oldStop <- readIDE stopWorkspaceNotify
+                modifyIDE_ $ \ide -> ide { stopWorkspaceNotify = sequence_ newStop }
+                liftIO oldStop
         Nothing -> return ()
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE (WorkspaceChanged True True)

@@ -4,14 +4,14 @@
       then
         (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
           owner = "hamishmack"; repo = "nixpkgs";
-          rev = "0abfa434814e08fa88fa9680800bcda4d4724af0";
-          sha256 = "0vaqp4qn138dqa0q72084ph09ncskbdxlnrvqfynl7lr12jncz6p";
+          rev = "a6dd1a2e77ed9e9a564fe2391925fddbec433040";
+          sha256 = "0z06dgn26mh6x3vbbbvlm3i1nx2d1nqqs50bl93xif55rnd0by6p";
         }) {})
       else
         (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
-          owner = "hamishmack"; repo = "nixpkgs";
-          rev = "ee1faf5881aeb0d1c17c4fd1e1882d5281ab1bef";
-          sha256 = "1s4p6404kzyzx89f8x2cwrbhkr5nmzxy9vf8jrvzazi0crwpsm1h";
+          owner = "NixOS"; repo = "nixpkgs";
+          rev = "f8e8ecde51b49132d7f8d5adb971c0e37eddcdc2";
+          sha256 = "14b7945442q5hlhvhnm15y3cds2lmm6kn52srv2bbr3yla6b2pv9";
         }) {})
 , compiler ? "ghc843"
 }:
@@ -56,32 +56,47 @@ let
   '';
 
   extendedHaskellPackages = compiler: haskellPackages: (haskellPackages.extend (packageSourceOverrides {
-      leksah = cleanSrc;
-      ltk = filterSubmodule ./vendor/ltk;
-      leksah-server = filterSubmodule ./vendor/leksah-server;
-      vcswrapper = filterSubmodule ./vendor/haskellVCSWrapper/vcswrapper;
-      vcsgui = filterSubmodule ./vendor/haskellVCSGUI/vcsgui;
+      leksah         = cleanSrc;
+      ltk            = filterSubmodule ./vendor/ltk;
+      leksah-server  = filterSubmodule ./vendor/leksah-server;
+      vcswrapper     = filterSubmodule ./vendor/haskellVCSWrapper/vcswrapper;
+      vcsgui         = filterSubmodule ./vendor/haskellVCSGUI/vcsgui;
+      cabal-plan     = nixpkgs.fetchFromGitHub {
+        owner = "haskell-hvr";
+        repo = "cabal-plan";
+        rev = "7e9bc5d83cbaeca3fa6327d645775aee5f48c662";
+        sha256 = "1kv0vm9fpy8nvppjjsjjqybscq4c7pi2y13nvdmaxhjralcrh44c";
+      };
+      brittany       = filterSubmodule ./vendor/brittany;
+      HaRe           = filterSubmodule ./vendor/HaRe;
+      cabal-helper   = filterSubmodule ./vendor/HaRe/submodules/cabal-helper;
+      ghc-exactprint = filterSubmodule ./vendor/HaRe/submodules/ghc-exactprint;
+      ghc-mod        = filterSubmodule ./vendor/HaRe/submodules/ghc-mod;
+      ghc-mod-core   = filterSubmodule ./vendor/HaRe/submodules/ghc-mod/core;
       git = nixpkgs.fetchFromGitHub {
         owner = "hamishmack";
         repo = "hs-git";
         rev = "c829ec133f603e376177deaa57a333ef84308af3";
         sha256 = "1hcl5izpcpi9sjfvmv1g5si1wg0jw9v9wbk5hvn30q67xcxwx891";
       };
+      haskell-gi-overloading = "0.0";
+      base-compat-batteries = "0.10.4";
+      contravariant = "1.5";
     })).extend( self: super:
       let jsaddlePkgs = import jsaddle-github self;
           ghcjsDom = import ghcjs-dom-github self;
       in {
         haddock-library = if compiler == "ghc822"
-                            then dontHaddock (self.callHackage "haddock-library" "1.4.4" {})
+                            then dontCheck (dontHaddock (self.callHackage "haddock-library" "1.4.4" {}))
                             else if compiler == "ghc842" || compiler == "ghc843"
                               then dontCheck (dontHaddock (self.callHackage "haddock-library" "1.6.0" {}))
                               else super.haddock-library;
         haddock-api = if compiler == "ghc822"
-                            then self.callHackage "haddock-api" "2.18.1" {}
+                            then dontCheck (self.callHackage "haddock-api" "2.18.1" {})
                             else if compiler == "ghc842" || compiler == "ghc843"
                               then dontCheck (self.callHackage "haddock-api" "2.20.0" {})
                               else super.haddock-api;
-        jsaddle = jsaddlePkgs.jsaddle;
+        jsaddle = doJailbreak (jsaddlePkgs.jsaddle);
         jsaddle-warp = dontCheck jsaddlePkgs.jsaddle-warp;
         jsaddle-dom = import (nixpkgs.fetchFromGitHub {
            owner = "ghcjs";
@@ -92,9 +107,20 @@ let
         vado = doJailbreak super.vado;
         criterion = doJailbreak super.criterion;
         ghcjs-dom-jsaddle = ghcjsDom.ghcjs-dom-jsaddle;
-        gi-gtkosxapplication = super.gi-gtkosxapplication.override {
+        gi-gdk = super.gi-gdk.overrideAttrs(drv: {strictDeps = true;});
+        gi-gtk = super.gi-gtk.overrideAttrs(drv: {strictDeps = true;});
+        gi-gtksource = super.gi-gtksource.overrideAttrs(drv: {strictDeps = true;});
+        gi-gtkosxapplication = (super.gi-gtkosxapplication.override {
           gtk-mac-integration-gtk3 = nixpkgs.gtk-mac-integration-gtk3;
-        };
+        }).overrideAttrs(drv: {strictDeps = true;});
+
+        cabal-plan          = if compiler == "ghc802" then null else super.cabal-plan;
+        hlint               = dontCheck super.hlint;
+        constrained-dynamic = doJailbreak super.constrained-dynamic;
+        megaparsec          = dontCheck super.megaparsec;
+        ghc-exactprint      = dontCheck super.ghc-exactprint;
+        leksah-server       = dontCheck super.leksah-server;
+        HaRe                = dontHaddock (dontCheck super.HaRe);
 
         # This is a fix for macOS that may be needed again one day
         # webkit2gtk3-javascriptcore = overrideCabal super.webkit2gtk3-javascriptcore (drv: {
@@ -208,7 +234,7 @@ in leksah // {
 
   shells = {
     ghc = ghc.shellFor {
-      packages = p: [ p.leksah p.leksah-server p.ltk p.vcswrapper p.vcsgui ];
+      packages = p: [ p.leksah p.leksah-server p.ltk p.vcswrapper p.vcsgui p.HaRe p.cabal-helper p.ghc-exactprint p.ghc-mod p.ghc-mod-core ];
     };
   };
 }

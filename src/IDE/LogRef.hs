@@ -237,6 +237,11 @@ srcSpanParser = try (do
         char ':'
         col <- int
         return $ SrcSpan filePath line (fixColumn col) line (fixColumn col))
+    <|> try (do
+        filePath <- srcPathParser
+        char ':'
+        line <- int
+        return $ SrcSpan filePath line 0 line 0)
     <?> "srcSpanParser"
 
 data BuildOutput = BuildProgress Int Int FilePath
@@ -320,6 +325,9 @@ buildErrorParser = try (do
             <|> (do
                 symbol "Error:" <|> symbol "error:"
                 return ErrorRef)
+            <|> (do
+                symbol "failure"
+                return TestFailureRef)
             <|> return ErrorRef
         text <- takeText
         return (ErrorLine span refType text))

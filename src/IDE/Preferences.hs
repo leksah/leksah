@@ -108,6 +108,7 @@ import qualified Data.ByteString.Lazy as LBS (writeFile, readFile)
 import Data.Aeson (eitherDecode)
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Default (Default(..))
+import IDE.TypeTip (updateTypeTipStyle)
 
 
 -- | This needs to be incremented when the preferences format changes
@@ -774,6 +775,7 @@ getActiveSettings = do
 applyInterfaceTheme :: IDEAction
 applyInterfaceTheme = do
     setInfoStyle
+    updateTypeTipStyle
     fillErrorList False
     prefs <- readIDE prefs
     buffers <- allBuffers

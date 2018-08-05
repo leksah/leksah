@@ -78,7 +78,7 @@ import IDE.Pane.SourceBuffer
         fileCheckAll, belongsToPackages', belongsToPackage)
 import Control.Applicative ((<$>))
 import IDE.Build
-import IDE.Utils.FileUtils(myCanonicalizePath)
+import IDE.Utils.FileUtils (myCanonicalizePath)
 import Control.Monad.Trans.Reader (ask, asks)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
@@ -95,7 +95,6 @@ import Data.Foldable (forM_)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unlines, isPrefixOf, lines, unpack, pack)
-import Data.Monoid ((<>))
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (readFile, writeFile)
@@ -121,6 +120,8 @@ import IDE.Workspaces.Writer (WorkspaceFile(..))
 import qualified Data.Map as M (member, delete, adjust, insert)
 import qualified Data.ByteString.Lazy as LBS (writeFile)
 import Data.Aeson.Encode.Pretty (encodePretty)
+import qualified Data.Set as S (toList)
+import Control.Concurrent (putMVar, takeMVar)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -568,9 +569,9 @@ workspaceClean = do
         return (defaultMakeSettings prefs')
     lift $ makePackages settings (map (\p -> (p, pjPackages p)) $ wsProjects ws) MoClean MoClean moNoOp
 
-buildSteps :: MakeSettings -> IDEM [MakeOp]
+buildSteps :: MakeSettings -> [MakeOp]
 buildSteps settings =
-    return $ MoBuild
+    MoBuild
          : [MoDocu    | msMakeDocs settings]
         ++ [MoTest    | msRunUnitTests settings]
         ++ [MoInstall]
@@ -584,7 +585,7 @@ workspaceMake = do
         return ((defaultMakeSettings prefs'){
                     msMakeMode           = True,
                     msBackgroundBuild    = False})
-    build <- lift . buildSteps $ settings
+    let build = buildSteps settings
     lift $ makePackages settings (map (\p -> (p, pjPackages p)) $ wsProjects ws) (MoComposed build) (MoComposed build) MoMetaInfo
 
 backgroundMake :: IDEAction
@@ -594,13 +595,16 @@ backgroundMake = catchIDE (do
     modifiedFiles <- catMaybes <$> if saveAllBeforeBuild prefs
                         then fileCheckAll (return . return . fileName)
                         else return []
-    unless (null modifiedFiles) . postAsyncIDE . workspaceTryQuiet $ do
+    extModsMVar <- readIDE externalModified
+    extMods <- liftIO $ S.toList <$> takeMVar extModsMVar
+    liftIO $ putMVar extModsMVar mempty
+    workspaceTryQuiet $ do
         ws <- ask
-        liftIDE $ do
+        liftIDE . forkIDE $ do
             let modifiedPacks = filter (not . null . snd) $
-                                  map (\project -> (project, filter (\pack -> any (`belongsToPackage` pack) modifiedFiles) (pjPackages project))) (wsProjects ws)
+                                  map (\project -> (project, filter (\pack -> any (`belongsToPackage` pack) $ modifiedFiles <> extMods) (pjPackages project))) (wsProjects ws)
                 settings = defaultMakeSettings prefs
-            steps <- buildSteps settings
+                steps = buildSteps settings
             if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
                 then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
                 else makePackages settings modifiedPacks (MoComposed steps)
@@ -624,7 +628,7 @@ makePackage = do
                 readIDE developLeksah >>= \case
                     False -> return ()
                     True -> triggerEventIDE_ QuitToRestart }
-    steps <- buildSteps settings
+    let steps = buildSteps settings
     if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
         then makePackages settings [(project, [p])] (MoComposed steps) (MoComposed []) moNoOp
         else makePackages settings [(project, [p])] (MoComposed steps) (MoComposed steps) MoMetaInfo

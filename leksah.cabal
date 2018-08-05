@@ -1,12 +1,13 @@
+cabal-version: >=1.24
 name: leksah
 version: 0.17.0.0
-cabal-version: >=1.24
-build-type: Simple
 license: GPL
 license-file: LICENSE
 copyright: 2007-2016 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 maintainer: maintainer@leksah.org
+author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 stability: provisional
+tested-with: ghc ==8.2.1 ghc ==8.0.2
 homepage: http://www.leksah.org
 package-url: http://code.haskell.org/leksah
 bug-reports: https://github.com/leksah/leksah/issues
@@ -14,8 +15,9 @@ synopsis: Haskell IDE written in Haskell
 description:
     An Integrated Development Environment for Haskell written in Haskell.
 category: Development, IDE, Editor
-author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
-tested-with: GHC == 8.2.1, GHC == 8.0.2
+x-gettext-po-files: po/*.po
+x-gettext-domain-name: leksah
+build-type: Simple
 data-files:
     LICENSE
     Readme.md
@@ -158,8 +160,6 @@ extra-source-files:
     SetupLocale.lhs
     po/*.pot
     po/*.po
-x-gettext-po-files: po/*.po
-x-gettext-domain-name: leksah
 
 source-repository head
     type: git
@@ -168,8 +168,8 @@ source-repository head
 flag yi
     description:
         Experimental Yi support
-    manual: True
     default: False
+    manual: True
 
 flag codemirror
     description:
@@ -206,76 +206,11 @@ flag check-gtk-version
         This flag can be used to disable the pkgconfig-depends
         as they can cause problems on macOS when using nix.
     manual: True
-    default: True
 
 library
-
-    if os(windows)
-        build-depends:
-            Win32 >=2.2.0.0 && <2.7
-        extra-libraries:
-            kernel32
-    else
-        build-depends:
-            unix >=2.3.1.0 && <2.8
-
-    if os(osx)
-        build-depends:
-            gi-gtkosxapplication >=2.0.2 && <2.1
-
-    if os(linux)
-        build-depends:
-            gi-webkit2 >=4.0.6 && <4.1
-
-    if flag(yi)
-        build-depends:
-            yi >=0.12.4 && <0.13,
-            yi-language >=0.2.0 && <0.3,
-            yi-rope >=0.7.0.1 && <0.8
-        cpp-options: -DLEKSAH_WITH_YI
-
-    if (flag(yi) && flag(dyre))
-        build-depends:
-            dyre >=0.8.3 && <0.9
-        cpp-options: -DLEKSAH_WITH_YI_DYRE
-
-    if (flag(codemirror))
-        cpp-options: -DLEKSAH_WITH_CODE_MIRROR
-
-    if (flag(loc) && os(linux))
-        build-depends:
-            hgettext -any,
-            setlocale -any
-        cpp-options: -DLOCALIZATION
-
-    if flag(network-uri)
-        build-depends:
-            network-uri >=2.6 && <2.7,
-            network >=2.6 && <2.7
-    else
-        build-depends:
-            network >=2.2 && <2.6
-
-    if flag(check-gtk-version)
-        if flag(gtk-318)
-            cpp-options: -DMIN_VERSION_GTK_3_18
-            pkgconfig-depends: gtk+-3.0 >=3.18
-
-        if flag(gtk-320)
-            cpp-options: -DMIN_VERSION_GTK_3_20
-            pkgconfig-depends: gtk+-3.0 >=3.20
-    else
-        cpp-options: -DMIN_VERSION_GTK_3_18
-        cpp-options: -DMIN_VERSION_GTK_3_20
-
-    if !impl(ghcjs)
-        build-depends:
-            ghc >=6.10.1 && <8.5,
-            haskell-src-exts >=1.13.5 && <1.21,
-            leksah-server >=0.17.0.0 && <0.18
-
     exposed-modules:
         IDE.HLint
+        IDE.HaRe
         IDE.Leksah
         IDE.Completion
         IDE.TypeTip
@@ -285,6 +220,7 @@ library
         IDE.Command
         IDE.Keymap
         IDE.Utils.CabalUtils
+        IDE.Utils.DebugUtils
         IDE.Utils.DirectoryUtils
         IDE.Utils.GUIUtils
         IDE.SymbolNavigation
@@ -342,6 +278,14 @@ library
         IDE.TextEditor.GtkSourceView
         IDE.Utils.ExternalTool
         IDE.LPaste
+        IDE.Brittany
+    hs-source-dirs: src
+    other-modules:
+        Paths_leksah
+    default-language: Haskell2010
+    default-extensions: ViewPatterns
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
+                 -ferror-spans
     build-depends:
         base-compat >=0.9.0 && <0.11,
         haskell-gi-base >=0.18 && <0.22,
@@ -357,7 +301,7 @@ library
         gi-gtk-hs >=0.3.0.0 && <0.4,
         ghcjs-codemirror -any,
         blaze-html -any,
-        pretty-show >=1.6.3 && <1.7,
+        pretty-show >=1.6.3 && <1.8,
         Cabal >=1.24 && <2.3,
         base >=4.0.0.0 && <4.12,
         binary >=0.5.0.0 && <0.9,
@@ -386,15 +330,15 @@ library
         executable-path >=0.0.3 && <0.1,
         vcsgui >=0.3.0 && <0.4,
         vcswrapper >=0.2.0 && <0.3,
-        QuickCheck >=2.4.2 && <2.11,
+        QuickCheck >=2.4.2 && <2.12,
         hlint >=1.9.21 && <2.2,
         vado >=0.0.1 && <0.1,
         shakespeare >=2.0.0.1 && <2.1,
         cpphs >=1.19 && <1.21,
         stm >=2.4.4 && <2.5,
-        split >= 0.2.3.1,
-        HTTP >= 4000.3.3,
-        fsnotify >=0.2.1 && <0.3,
+        split >=0.2.3.1,
+        HTTP >=4000.3.3,
+        fsnotify >=0.3.0.1 && <0.4,
         haskell-gi-overloading ==0.0.*,
         lens >=4.15.4 && <4.17,
         process >=1.4.3.0 && <1.7,
@@ -405,21 +349,91 @@ library
         aeson-pretty >=0.8.7 && <0.9,
         data-default >=0.7.1.1 && <0.8,
         jsaddle >=0.9.4.0 && <0.10,
-        Glob >= 0.9.2 && <0.10
-    default-language: Haskell2010
-    default-extensions: ViewPatterns
-    hs-source-dirs: src
-    other-modules:
-        Paths_leksah
-    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
-
-executable leksah
+        Glob >=0.9.2 && <0.10,
+        brittany >=0.11.0.0 && <0.12
+--        HaRe >=0.8.4.1 && <0.9
 
     if os(windows)
-        build-depends:
-            Win32 >=2.2.0.0 && <2.7
         extra-libraries:
             kernel32
+        build-depends:
+            Win32 >=2.2.0.0 && <2.7
+    else
+        build-depends:
+            unix >=2.3.1.0 && <2.8
+
+    if os(osx)
+        build-depends:
+            gi-gtkosxapplication >=2.0.2 && <2.1
+
+    if os(linux)
+        build-depends:
+            gi-webkit2 >=4.0.6 && <4.1
+
+    if flag(yi)
+        cpp-options: -DLEKSAH_WITH_YI
+        build-depends:
+            yi >=0.12.4 && <0.13,
+            yi-language >=0.2.0 && <0.3,
+            yi-rope >=0.7.0.1 && <0.8
+
+    if (flag(yi) && flag(dyre))
+        cpp-options: -DLEKSAH_WITH_YI_DYRE
+        build-depends:
+            dyre >=0.8.3 && <0.9
+
+    if flag(codemirror)
+        cpp-options: -DLEKSAH_WITH_CODE_MIRROR
+
+    if (flag(loc) && os(linux))
+        cpp-options: -DLOCALIZATION
+        build-depends:
+            hgettext -any,
+            setlocale -any
+
+    if flag(network-uri)
+        build-depends:
+            network-uri >=2.6 && <2.7,
+            network >=2.6 && <2.7
+    else
+        build-depends:
+            network >=2.2 && <2.6
+
+    if flag(check-gtk-version)
+
+        if flag(gtk-318)
+            cpp-options: -DMIN_VERSION_GTK_3_18
+            pkgconfig-depends: gtk+-3.0 >=3.18
+
+        if flag(gtk-320)
+            cpp-options: -DMIN_VERSION_GTK_3_20
+            pkgconfig-depends: gtk+-3.0 >=3.20
+    else
+        cpp-options: -DMIN_VERSION_GTK_3_18 -DMIN_VERSION_GTK_3_20
+
+    if !impl(ghcjs -any)
+        build-depends:
+            ghc >=6.10.1 && <8.5,
+            haskell-src-exts >=1.13.5 && <1.21,
+            leksah-server >=0.17.0.0 && <0.18
+
+executable leksah
+    main-is: Main.hs
+    hs-source-dirs: main
+    default-language: Haskell2010
+    ghc-options: -rtsopts -fwarn-missing-fields
+                 -fwarn-incomplete-patterns -ferror-spans
+    build-depends:
+        leksah -any,
+        base >=4.0.0.0 && <4.12,
+        gi-gtk-hs >=0.3.1.0 && <0.4,
+        stm >=2.4.4 && <2.5
+
+    if os(windows)
+        extra-libraries:
+            kernel32
+        build-depends:
+            Win32 >=2.2.0.0 && <2.7
 
     if flag(yi)
         cpp-options: -DLEKSAH_WITH_YI
@@ -431,27 +445,17 @@ executable leksah
         ghc-options: -threaded
 
     if (os(linux) && flag(loc))
+        cpp-options: -DLOCALIZATION
         build-depends:
             hgettext -any,
             setlocale -any
-        cpp-options: -DLOCALIZATION
 
     if os(osx)
         ghc-options: -optl-headerpad_max_install_names
 
-    if !impl(ghcjs)
+    if !impl(ghcjs -any)
         build-depends:
             leksah-server -any
-
-    main-is: Main.hs
-    build-depends:
-        leksah,
-        base >=4.0.0.0 && <4.12,
-        gi-gtk-hs >=0.3.1.0 && <0.4,
-        stm >=2.4.4 && <2.5
-    default-language: Haskell2010
-    hs-source-dirs: main
-    ghc-options: -rtsopts -fwarn-missing-fields -fwarn-incomplete-patterns -ferror-spans
 
 --executable bewleksah
 --    main-is: Main.hs

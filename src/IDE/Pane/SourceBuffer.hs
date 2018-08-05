@@ -57,6 +57,7 @@ module IDE.Pane.SourceBuffer (
 ,   editDelete
 ,   editSelectAll
 
+,   editReformat
 ,   editComment
 ,   editUncomment
 ,   editShiftRight
@@ -97,6 +98,7 @@ module IDE.Pane.SourceBuffer (
 ,   belongsToWorkspace'
 ,   getIdentifierUnderCursorFromIter
 ,   useCandyFor
+,   setModifiedOnDisk
 
 ) where
 
@@ -276,18 +278,19 @@ startComplete = do
         Nothing     -> return ()
         Just IDEBuffer{sourceView = v} -> complete v True
 
--- selectSourceBuf :: FilePath -> IDEM (Maybe IDEBuffer)
-selectSourceBuf fp = do
+findSourceBuf :: MonadIDE m => FilePath -> m [IDEBuffer]
+findSourceBuf fp = do
     fpc <- liftIO $ myCanonicalizePath fp
-    buffers <- allBuffers
-    let buf = filter (\b -> case fileName b of
-                                Just fn -> equalFilePath fn fpc
-                                Nothing -> False) buffers
-    case buf of
-        hdb:tl -> do
+    filter (maybe False (equalFilePath fpc) . fileName) <$> allBuffers
+
+selectSourceBuf :: MonadIDE m => FilePath -> m (Maybe IDEBuffer)
+selectSourceBuf fp =
+    findSourceBuf fp >>= \case
+        hdb:tl -> liftIDE $ do
             makeActive hdb
             return (Just hdb)
-        _ -> do
+        _ -> liftIDE $ do
+            fpc <- liftIO $ myCanonicalizePath fp
             fe <- liftIO $ doesFileExist fpc
             if fe
                 then do
@@ -661,6 +664,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
         reloadDialog <- liftIO $ newMVar Nothing
 
         modTimeRef <- liftIO $ newIORef modTime
+        modifiedOnDiskRef <- liftIO $ newIORef False
         let buf = IDEBuffer {
             fileName =  mbfn,
             bufferName = bn,
@@ -668,6 +672,7 @@ builder' useCandy mbfn ind bn rbn ct prefs fileContents modTime pp nb windows =
             sourceView =sv,
             vBox = box,
             modTime = modTimeRef,
+            modifiedOnDisk = modifiedOnDiskRef,
             mode = mode,
             reloadDialog = reloadDialog}
         -- events
@@ -847,12 +852,23 @@ getIdentifierUnderCursorFromIter (startSel, endSel) = do
         _ -> return endSel
     return (start, end)
 
+setModifiedOnDisk :: MonadIDE m => FilePath -> m Bool
+setModifiedOnDisk fp = do
+    bufs <- findSourceBuf fp
+    forM_ bufs $ \buf ->
+        liftIO $ writeIORef (modifiedOnDisk buf) True
+    return . not $ null bufs
+
 checkModTime :: MonadIDE m => IDEBuffer -> m Bool
 checkModTime buf = do
-    currentState' <- readIDE currentState
-    case  currentState' of
-        IsShuttingDown -> return False
-        _              -> do
+  currentState' <- readIDE currentState
+  case  currentState' of
+    IsShuttingDown -> return False
+    _              ->
+      liftIO (readIORef (modifiedOnDisk buf)) >>= \case
+        False -> return False
+        True  -> do
+            liftIO $ writeIORef (modifiedOnDisk buf) False
             let name = paneName buf
             case fileName buf of
                 Just fn -> do
@@ -1149,11 +1165,11 @@ fileSaveAll filterFunc = do
     return $ True `elem` results
 
 fileCheckBuffer :: (MonadIDE m, TextEditor editor) => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> m Bool
-fileCheckBuffer nb _ ebuf ideBuf i = do
+fileCheckBuffer _ _ ebuf ideBuf _ = do
     let mbfn = fileName ideBuf
     if isJust mbfn
-        then do modifiedOnDisk <- checkModTime ideBuf -- The user is given option to reload
-                modifiedInBuffer    <- liftIDE $ getModified ebuf
+        then do modifiedOnDisk   <- checkModTime ideBuf -- The user is given option to reload
+                modifiedInBuffer <- liftIDE $ getModified ebuf
                 return (modifiedOnDisk || modifiedInBuffer)
         else return False
 
@@ -1278,12 +1294,8 @@ fileOpenThis :: FilePath -> IDEAction
 fileOpenThis fp =  do
     liftIO . debugM "leksah" $ "fileOpenThis " ++ fp
     prefs <- readIDE prefs
-    fpc <-  liftIO $ myCanonicalizePath fp
-    buffers <- allBuffers
-    let buf = filter (\b -> case fileName b of
-                        Just fn -> equalFilePath fn fpc
-                        Nothing -> False) buffers
-    case buf of
+    fpc <- liftIO $ myCanonicalizePath fp
+    findSourceBuf fp >>= \case
         hdb:_ -> do
             window <- getMainWindow
             md <- new' MessageDialog [

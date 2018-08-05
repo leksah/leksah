@@ -45,7 +45,6 @@ import Control.Monad (void)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack, null)
 import System.Log.Logger (debugM)
-import Data.Monoid ((<>))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
