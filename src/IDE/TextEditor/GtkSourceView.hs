@@ -206,12 +206,12 @@ newGtkBuffer mbFilename contents = do
     bufferEndNotUndoableAction buffer
     liftIO $ debugM "lekash" "newGtkBuffer setup tag table"
     tagTable <- textBufferGetTagTable buffer
+    forM_ (reverse [minBound .. maxBound :: LogRefType]) $ \ refType ->
+        textTagNew (Just . T.pack $ show refType) >>= textTagTableAdd tagTable
     textTagNew (Just "search-match") >>= textTagTableAdd tagTable
     textTagNew (Just "selection-match") >>= textTagTableAdd tagTable
     textTagNew (Just "context") >>= textTagTableAdd tagTable
     textTagNew (Just "breakpoint") >>= textTagTableAdd tagTable
-    forM_ [minBound .. maxBound :: LogRefType] $ \ refType ->
-        textTagNew (Just . T.pack $ show refType) >>= textTagTableAdd tagTable
     return $ GtkBuffer buffer
 
 
@@ -343,8 +343,9 @@ instance TextEditor GtkSourceView where
                         ContextRef     -> "media-playback-start"
             attributes <- markAttributesNew
             markAttributesSetIconName attributes icon
-            onMarkAttributesQueryTooltipText attributes $ \ mark ->
-                maybe "" (T.drop 1 . T.dropWhile isDigit) <$> textMarkGetName mark
+            onMarkAttributesQueryTooltipText attributes $
+              fmap (maybe "" (T.drop 1 . T.dropWhile isDigit)) .
+                 textMarkGetName
             viewSetMarkAttributes sv cat attributes (fromIntegral $ 1 + fromEnum(maxBound :: LogRefType) - fromEnum refType)
         textViewSetWrapMode sv (if wrapLines prefs
                                     then WrapModeWord
@@ -381,7 +382,7 @@ instance TextEditor GtkSourceView where
                     let isDark = name `elem` ["leksah-dark", "oblivion", "cobalt", "industrial"]
                         setBG (dark, light) (Just tag) = background tag (if isDark then dark else light)
                         setBG _             Nothing    = return ()
-                        setUnderline mbCol = maybe (return ()) (\tag -> underline tag UnderlineError mbCol)
+                        setUnderline mbCol uType = maybe (return ()) (\tag -> underline tag uType mbCol)
                     -- This is ugly, we just have to make sure we only provide
                     -- styleschemes that include styles for these tags
                     let applyDefaultStyling tagName = do
@@ -391,10 +392,10 @@ instance TextEditor GtkSourceView where
                                 "search-match" -> setBG foundBG mbTag
                                 "BreakpointRef" ->  setBG breakpointBG mbTag
                                 "ContextRef" -> setBG contextBG mbTag
-                                "ErrorRef" -> setUnderline Nothing mbTag
-                                "WarningRef" -> setUnderline (Just $ Color 214 176 4) mbTag
-                                "TestFailureRef" -> setUnderline (Just $ Color 207 18 241) mbTag
-                                "LintRef" -> setUnderline (Just $ Color 21 110 209) mbTag
+                                "ErrorRef" -> setUnderline (Just $ Color 214 0 0) UnderlineError mbTag
+                                "WarningRef" -> setUnderline (Just $ Color 214 176 4) UnderlineError mbTag
+                                "TestFailureRef" -> setUnderline (Just $ Color 207 18 241) UnderlineError mbTag
+                                "LintRef" -> setUnderline (Just $ Color 21 110 209) UnderlineSingle mbTag
                                 _ -> return ()
                     let tagNames = ["selection-match", "search-match"]
                                        ++ map (T.pack . show)
