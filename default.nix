@@ -121,6 +121,7 @@ let
         ghc-exactprint      = dontCheck super.ghc-exactprint;
         leksah-server       = dontCheck super.leksah-server;
         HaRe                = dontHaddock (dontCheck super.HaRe);
+        text-replace        = doJailbreak super.text-replace;
 
         # This is a fix for macOS that may be needed again one day
         # webkit2gtk3-javascriptcore = overrideCabal super.webkit2gtk3-javascriptcore (drv: {

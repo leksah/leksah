@@ -136,6 +136,8 @@ import IDE.Utils.Tool (ToolState(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Distribution.Compat.Exception (catchIO)
 import System.Environment (getEnv)
+import IDE.Utils.DebugUtils (traceTimeTaken)
+import GHC.Stack (HasCallStack)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -340,27 +342,27 @@ catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) (\e ->
 forkIDE :: MonadIDE m => IDEAction  -> m ()
 forkIDE block = reifyIDE (void . forkIO . reflectIDE block)
 
-postSyncIDE' :: MonadIDE m => Int32 -> IDEM a -> m a
+postSyncIDE' :: (MonadIDE m, HasCallStack) => Int32 -> IDEM a -> m a
 postSyncIDE' priority f = reifyIDE $ \ideR -> do
     resultVar <- newEmptyMVar
-    idleAdd priority $ reflectIDE f ideR >>= putMVar resultVar >> return False
+    idleAdd priority $ reflectIDE (traceTimeTaken "postSyncIDE'" f) ideR >>= putMVar resultVar >> return False
     takeMVar resultVar
 
-postSyncIDE :: MonadIDE m => IDEM a -> m a
-postSyncIDE = postSyncIDE' PRIORITY_DEFAULT
+postSyncIDE :: (MonadIDE m, HasCallStack) => IDEM a -> m a
+postSyncIDE = postSyncIDE' PRIORITY_DEFAULT . traceTimeTaken "postSyncIDE"
 
-postSyncIDEIdle :: MonadIDE m => IDEM a -> m a
-postSyncIDEIdle = postSyncIDE' PRIORITY_DEFAULT_IDLE
+postSyncIDEIdle :: (MonadIDE m, HasCallStack) => IDEM a -> m a
+postSyncIDEIdle = postSyncIDE' PRIORITY_DEFAULT_IDLE . traceTimeTaken "postSyncIDEIdle"
 
-postAsyncIDE' :: MonadIDE m => Int32 -> IDEM () -> m ()
+postAsyncIDE' :: (MonadIDE m, HasCallStack) => Int32 -> IDEM () -> m ()
 postAsyncIDE' priority f = reifyIDE $ \ideR ->
-    void . idleAdd priority $ reflectIDE f ideR >> return False
+    void . idleAdd priority $ reflectIDE (traceTimeTaken "postAsyncIDE'" f) ideR >> return False
 
-postAsyncIDE :: MonadIDE m => IDEM () -> m ()
-postAsyncIDE = postAsyncIDE' PRIORITY_DEFAULT
+postAsyncIDE :: (MonadIDE m, HasCallStack) => IDEM () -> m ()
+postAsyncIDE = postAsyncIDE' PRIORITY_DEFAULT . traceTimeTaken "postAsyncIDE"
 
-postAsyncIDEIdle :: MonadIDE m => IDEM () -> m ()
-postAsyncIDEIdle = postAsyncIDE' PRIORITY_DEFAULT_IDLE
+postAsyncIDEIdle :: (MonadIDE m, HasCallStack) => IDEM () -> m ()
+postAsyncIDEIdle = postAsyncIDE' PRIORITY_DEFAULT_IDLE . traceTimeTaken "postAsyncIDEIdle"
 
 onIDE onSignal obj callback = do
     ideRef <- ask

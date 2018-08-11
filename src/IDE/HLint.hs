@@ -248,7 +248,7 @@ showHLint Idea{..} = intercalate "\n" $
                   use _ = True
 
 resolveActiveHLint :: IDEM Bool
-resolveActiveHLint = inActiveBufContext False  $ \_ _ ebuf ideBuf _ -> do
+resolveActiveHLint = inActiveBufContext False  $ \_ ebuf ideBuf -> do
     liftIO $ debugM "leksah" "resolveActiveHLint"
     allLogRefs <- readIDE allLogRefs
     (iStart, iEnd) <- getSelectionBounds ebuf
@@ -293,7 +293,7 @@ replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Ju
     liftIO . debugM "leksah" $ "replaceHLintSource From: " <> show from <> "\nreplaceHLintSource To:   " <> show to
     mbBuf <- selectSourceBuf srcSpanFilename
     case mbBuf of
-        Just buf -> inActiveBufContext (changed, delta) $ \_ sv ebuf _ _ -> do
+        Just buf -> inActiveBufContext (changed, delta) $ \sv ebuf _ -> do
             useCandy   <- useCandyFor buf
             candy'     <- readIDE candy
             realString <- if useCandy then stringToCandy candy' to else return to

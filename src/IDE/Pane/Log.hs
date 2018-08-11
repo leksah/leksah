@@ -543,7 +543,7 @@ appendLog log logLaunch text tag = do
 markErrorInLog :: IDELog -> (Int,Int) -> IDEAction
 markErrorInLog log (l1,l2) = do
     let tv = logLaunchTextView log
-    idleAdd PRIORITY_DEFAULT (do
+    postAsyncIDEIdle . liftIO $ do
         buf    <- textViewGetBuffer tv
         iter   <- textBufferGetIterAtLineOffset buf (fromIntegral l1-1) 0
         iter2  <- textBufferGetIterAtLineOffset buf (fromIntegral l2) 0
@@ -552,7 +552,6 @@ markErrorInLog log (l1,l2) = do
         textBufferGetMark buf "end" >>= \case
             Nothing   -> return ()
             Just mark -> textViewScrollToMark tv mark 0.0 True 0.3 0.3
-        return False)
     return ()
 
 

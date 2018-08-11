@@ -22,12 +22,12 @@
 -- doesn't work yet?  "=<<"   (0x3D, EQUALS SIGN) + (0x226A, MUCH LESS-THAN)
 
 -- Data.Bool.Unicode
-"&&"        0x2227                  --LOGICAL AND               
-"||"        0x2228                  --LOGICAL OR                
+"&&"        0x2227                  --LOGICAL AND
+"||"        0x2228                  --LOGICAL OR
 "not"       0x00ac                  --NOT SIGN
 
 -- Data.Eq.Unicode
-"=="        0x2261                  --IDENTICAL TO              
+"=="        0x2261                  --IDENTICAL TO
 "/="        0x2262                  --NOT IDENTICAL TO
 
 -- Data.Foldable.Unicode
@@ -63,13 +63,13 @@
 "Ratio Integer" 0x2124              -- DOUBLE-STRUCK CAPITAL Q
 
 -- Leksah specific?
-"->"        0x2192                  --RIGHTWARDS ARROW          
-"<-"        0x2190   Trimming       --LEFTWARDS ARROW           
-"=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW   
-"::"        0x2237 Trimming         --PROPORTION              
-".."        0x2025                  --TWO DOT LEADER            
-"^"         0x2191                  --UPWARDS ARROW             
-"\"         0x03bb                  --GREEK SMALL LETTER LAMBDA 
+"->"        0x2192                  --RIGHTWARDS ARROW
+"<-"        0x2190   Trimming       --LEFTWARDS ARROW
+"=>"        0x21d2                  --RIGHTWARDS DOUBLE ARROW
+"::"        0x2237 Trimming         --PROPORTION
+".."        0x2025                  --TWO DOT LEADER
+"^"         0x2191                  --UPWARDS ARROW
+"\"         0x03bb                  --GREEK SMALL LETTER LAMBDA
 "forall"    0x2200                  --FOR ALL
 "exist"     0x2203                  --THERE EXISTS
 

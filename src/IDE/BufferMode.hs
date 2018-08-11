@@ -142,8 +142,17 @@ inBufContext def (ideBuf@IDEBuffer{sourceView = v}) f = do
             ebuf <- liftIDE $ getBuffer v
             f nb v ebuf ideBuf (fromIntegral i)
 
-inActiveBufContext :: alpha -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
+inActiveBufContext :: alpha -> (forall editor. TextEditor editor => EditorView editor -> EditorBuffer editor -> IDEBuffer -> IDEM alpha) -> IDEM alpha
 inActiveBufContext def f = do
+    mbBuf <- maybeActiveBuf
+    case mbBuf of
+        Nothing         -> return def
+        Just (ideBuf@IDEBuffer{sourceView = v}) -> do
+            ebuf <- getBuffer v
+            f v ebuf ideBuf
+
+inActiveBufContext' :: alpha -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> IDEM alpha) -> IDEM alpha
+inActiveBufContext' def f = do
     mbBuf <- maybeActiveBuf
     case mbBuf of
         Nothing         -> return def
@@ -151,7 +160,7 @@ inActiveBufContext def f = do
             inBufContext def ideBuf f
 
 doForSelectedLines :: [a] -> (forall editor. TextEditor editor => EditorBuffer editor -> Int -> IDEM a) -> IDEM [a]
-doForSelectedLines d f = inActiveBufContext d $ \_ _ ebuf currentBuffer _ -> do
+doForSelectedLines d f = inActiveBufContext d $ \_ ebuf currentBuffer -> do
     (start,end) <- getStartAndEndLineOfSelection ebuf
     beginUserAction ebuf
     result <- mapM (f ebuf) [start .. end]
@@ -199,7 +208,7 @@ haskellMode = Mode {
             when (str == "--") $ delete ebuf sol sol2
         return (),
     modeSelectedModuleName =
-        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ ->
+        inActiveBufContext Nothing $ \_ ebuf currentBuffer ->
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -211,22 +220,22 @@ haskellMode = Mode {
         transformFromCandy ct buf,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ ->
+        inActiveBufContext () $ \_ ebuf _ ->
             transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ ->
+        inActiveBufContext () $ \_ ebuf _ ->
             transformFromCandy ct ebuf,
     modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ ->
+        inActiveBufContext () $ \_ ebuf _ ->
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
         insert buf iter str,
     modeEditInCommentOrString = \ line -> ("--" `T.isInfixOf` line)
                                         || odd (T.count "\"" line),
     modeEditReformat = Just $ do
-        inActiveBufContext () $ \_ _ ebuf currentBuffer _ -> hasSelection ebuf >>= \case
+        inActiveBufContext () $ \_ ebuf currentBuffer -> hasSelection ebuf >>= \case
           False -> return ()
           True -> do
             (start, end) <- getSelectionBounds ebuf
@@ -262,7 +271,7 @@ literalHaskellMode = Mode {
                 (insert ebuf sol ">")
         return (),
     modeSelectedModuleName =
-        inActiveBufContext Nothing $ \_ _ ebuf currentBuffer _ ->
+        inActiveBufContext Nothing $ \_ ebuf currentBuffer ->
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -274,15 +283,15 @@ literalHaskellMode = Mode {
         transformFromCandy ct buf,
     modeEditToCandy = \ inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ ->
+        inActiveBufContext () $ \_ ebuf _ ->
             transformToCandy ct ebuf inCommentOrString,
     modeEditFromCandy = do
         ct      <-  readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ ->
+        inActiveBufContext () $ \_ ebuf _ ->
             transformFromCandy ct ebuf,
     modeEditKeystrokeCandy = \c inCommentOrString -> do
         ct <- readIDE candy
-        inActiveBufContext () $ \_ _ ebuf _ _ ->
+        inActiveBufContext () $ \_ ebuf _ ->
             keystrokeCandy ct c ebuf inCommentOrString,
     modeEditInsertCode = \ str iter buf ->
         insert buf iter (T.unlines $ map (\ s -> "> " <> s) $ T.lines str),

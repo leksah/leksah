@@ -249,7 +249,12 @@ instance TextEditor GtkSourceView where
     data EditorTag GtkSourceView = GtkTag TextTag
 
     newBuffer = newGtkBuffer
-    applyTagByName (GtkBuffer sb) name (GtkIter first) (GtkIter last) =
+    applyTagByName (GtkBuffer sb) name (GtkIter first) (GtkIter last) = do
+        let createOrMoveMark n i g = textBufferGetMark sb n >>= \case
+                                      Just m -> textBufferMoveMark sb m i
+                                      Nothing -> void $ textBufferCreateMark sb (Just n) i g
+        createOrMoveMark (name <> "_start") first True
+        createOrMoveMark (name <> "_end") last False
         textBufferApplyTagByName sb name first last
     beginNotUndoableAction (GtkBuffer sb) = bufferBeginNotUndoableAction sb
     beginUserAction (GtkBuffer sb) = textBufferBeginUserAction sb
@@ -259,11 +264,12 @@ instance TextEditor GtkSourceView where
     createMark (GtkView sv) refType (GtkIter i) tooltip = do
         sb <- getTextViewBuffer sv >>= liftIO . unsafeCastTo Source.Buffer
         n <- textIterGetLine i
+        iLine <- textBufferGetIterAtLine sb n
         let cat  = T.pack $ show refType
             name = T.pack (show n) <> " " <> tooltip
         mark <- textBufferGetMark sb name
         when (isNothing mark) . void $
-            bufferCreateSourceMark sb (Just name) cat i
+            bufferCreateSourceMark sb (Just name) cat iLine
     cutClipboard (GtkBuffer sb) = textBufferCutClipboard sb
     delete (GtkBuffer sb) (GtkIter first) (GtkIter last) =
         textBufferDelete sb first last
@@ -291,15 +297,22 @@ instance TextEditor GtkSourceView where
         textBufferGetText sb first last includeHidenChars
     hasSelection (GtkBuffer sb) = (\(b, _, _) -> b) <$> textBufferGetSelectionBounds sb
     insert (GtkBuffer sb) (GtkIter i) text = textBufferInsert sb i text (-1)
-    newViewWithMap sb mbFontString = do
-        (GtkView sv, _) <- newViewNoScroll sb mbFontString
+    newViewWithMap (GtkBuffer sb) mbFontString = do
+        (GtkView sv, _) <- newViewNoScroll (GtkBuffer sb) mbFontString
+        setTextViewBottomMargin sv 400
         grid <- gridNew
         sw <- scrolledWindowNew noAdjustment noAdjustment
         containerAdd sw sv
         mapFrame <- frameNew Nothing
-        sMap <- mapNew
-        mapSetView sMap sv
-        containerAdd mapFrame sMap
+-- Source map makes things too slow
+--        sMap <- mapNew
+--        signal <- signalLookup "source_mark_updated" =<< liftIO (gobjectType (undefined :: Source.Buffer))
+--        liftIO $ withManagedPtr sMap $ \svPtr ->
+--            signalHandlersBlockMatched sb [SignalMatchTypeId, SignalMatchTypeData]
+--                signal 0 Nothing nullPtr (castPtr svPtr)
+--        mapSetView sMap sv
+--        setTextViewBottomMargin sMap 20
+--        containerAdd mapFrame sMap
         widgetSetHexpand sw True
         widgetSetVexpand sw True
         containerAdd grid sw
@@ -360,6 +373,8 @@ instance TextEditor GtkSourceView where
     removeTagByName (GtkBuffer sb) name = do
         first <- textBufferGetStartIter sb
         last <- textBufferGetEndIter sb
+        i1 <- fmap (fromMaybe first) $ mapM (textBufferGetIterAtMark sb) =<< textBufferGetMark sb (name <> "_start")
+        i2 <- fmap (fromMaybe last) $ mapM (textBufferGetIterAtMark sb) =<< textBufferGetMark sb (name <> "_end")
         textBufferRemoveTagByName sb name first last
         bufferRemoveSourceMarks sb first last (Just name)
     selectRange (GtkBuffer sb) (GtkIter first) (GtkIter last) =

@@ -204,7 +204,7 @@ hideFindbar = do
         Nothing -> return ()
         Just (fb,_) -> do
             widgetHide fb
-            void $ inActiveBufContext False $ \_ sv ebuf _ _ -> do
+            void $ inActiveBufContext False $ \_ ebuf _ -> do
                 removeTagByName ebuf "search-match"
                 return True
 
@@ -405,7 +405,7 @@ constructFindReplace = do
                         ctrl $ T.toLower name
            _ -> return False
 
-    onIDE afterWidgetFocusInEvent spinL . liftIDE $ inActiveBufContext True $ \ _ _ ebuf _ _ -> do
+    onIDE afterWidgetFocusInEvent spinL . liftIDE $ inActiveBufContext True $ \_ ebuf _ -> do
         max <- getLineCount ebuf
         spinButtonSetRange spinL 1.0 (fromIntegral max)
         return True
@@ -422,7 +422,7 @@ constructFindReplace = do
             Just name | mapControlCommand ModifierTypeControlMask `elem` mods -> ctrl $ T.toLower name
             _ -> return False
 
-    afterEntryActivate spinL . (`reflectIDE` ideR) $ inActiveBufContext () $ \ _ sv ebuf _ _ -> do
+    afterEntryActivate spinL . (`reflectIDE` ideR) $ inActiveBufContext () $ \sv ebuf _ -> do
         line <- spinButtonGetValueAsInt spinL
         iter <- getIterAtLine ebuf (fromIntegral line - 1)
         placeCursor ebuf iter
@@ -547,7 +547,7 @@ editFind entireWord caseSensitive wrapAround regex search dummy hint = do
 
 editFind' :: Regex -> Int -> Bool -> Text -> SearchHint -> IDEM Bool
 editFind' exp matchIndex wrapAround dummy hint =
-    inActiveBufContext False $ \_ sv ebuf _ _ -> do
+    inActiveBufContext False $ \sv ebuf _ -> do
         i1 <- getStartIter ebuf
         i2 <- getEndIter ebuf
         text <- getText ebuf i1 i2 True
@@ -638,7 +638,7 @@ editReplace entireWord caseSensitive wrapAround regex search replace hint =
 
 editReplace' :: Bool -> Bool -> Bool -> Bool -> Text -> Text -> SearchHint -> Bool -> IDEM Bool
 editReplace' entireWord caseSensitive wrapAround regex search replace hint fromStart =
-    inActiveBufContext False $ \_ _ ebuf _ _ -> do
+    inActiveBufContext False $ \_ ebuf _ -> do
         insertMark <- getInsertMark ebuf
         iter       <- getIterAtMark ebuf insertMark
         offset   <- getOffset iter

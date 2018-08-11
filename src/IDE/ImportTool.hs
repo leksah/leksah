@@ -310,7 +310,7 @@ addImport' nis filePath descr descrList continuation =  do
                     Just pm -> Just (modu pm)
     case (mbBuf,mbMod) of
         (Just buf,Just mod) ->
-            inActiveBufContext () $ \ nb _ gtkbuf idebuf n -> do
+            inActiveBufContext () $ \_ gtkbuf idebuf -> do
                 ideMessage Normal $ "addImport " <> T.pack (show $ dscName descr) <> " from "
                     <> T.pack (render $ disp mod)
                 belongsToPackages filePath >>= \case
@@ -605,7 +605,7 @@ addExtension' ext filePath continuation =  do
     mbBuf  <- selectSourceBuf filePath
     case mbBuf of
         Just buf ->
-            inActiveBufContext () $ \ nb _ gtkbuf idebuf n -> do
+            inActiveBufContext () $ \_ gtkbuf idebuf -> do
                 ideMessage Normal $ "addExtension " <> ext
                 i1 <- getIterAtLine gtkbuf 0
                 editInsertCode gtkbuf i1 $ "{-# LANGUAGE " <> ext <> " #-}\n"

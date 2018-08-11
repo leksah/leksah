@@ -36,14 +36,17 @@ import Text.ParserCombinators.Parsec as P
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import qualified Data.Set as Set
+import Text.Replace (listToTrie, replaceWithTrie,
+        string'fromString)
+import qualified Text.Replace as TR (Replace(..))
 
 import IDE.Core.State
 import IDE.TextEditor
 import Control.Monad (when, unless)
 import Data.Text (Text)
 import qualified Data.Text as T
-       (pack, singleton, replicate, head, takeWhile, isSuffixOf, length,
-        index)
+       (unpack, pack, singleton, replicate, head, takeWhile, isSuffixOf,
+        length, index)
 import Data.Monoid ((<>))
 import Control.Monad.IO.Class (MonadIO(..))
 import GI.Gtk.Objects.TextBuffer
@@ -168,24 +171,17 @@ simpleGtkBuffer contents = GtkBuffer <$> do
     return buffer
 
 getCandylessText :: TextEditor editor => CandyTable -> EditorBuffer editor -> IDEM Text
-getCandylessText (CT(_,transformTableBack)) ebuf = do
+getCandylessText ct ebuf = do
     i1          <-  getStartIter ebuf
     i2          <-  getEndIter ebuf
-    text1       <-  getText ebuf i1 i2 True
-    workBuffer  <-  simpleGtkBuffer text1
-    mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
-    i1          <-  getStartIter workBuffer
-    i2          <-  getEndIter workBuffer
-    getText workBuffer i1 i2 True
+    getCandylessPart ct ebuf i1 i2
 
 getCandylessPart :: TextEditor editor => CandyTable -> EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM Text
 getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
-    text1       <-  getText ebuf i1 i2 True
-    workBuffer  <-  simpleGtkBuffer text1
-    mapM_ (\tbl ->  replaceFrom workBuffer tbl 0) transformTableBack
-    i1          <-  getStartIter workBuffer
-    i2          <-  getEndIter workBuffer
-    getText workBuffer i1 i2 True
+    text1 <- getText ebuf i1 i2 True
+    let replacements = listToTrie [TR.Replace (string'fromString $ T.unpack from <> replicate n ' ') (T.unpack to)
+                                    | (to, from, spaces) <- transformTableBack, n <- [0..spaces]]
+    return . T.pack . replaceWithTrie replacements $ T.unpack text1
 
 stringToCandy :: CandyTable -> Text -> IDEM Text
 stringToCandy  candyTable text = do
