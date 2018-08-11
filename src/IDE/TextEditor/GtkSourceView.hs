@@ -154,7 +154,8 @@ import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
 import Graphics.UI.Editor.Simple (Color(..))
 import GI.Gtk
-       (scrollableSetVscrollPolicy, scrollableSetHscrollPolicy,
+       (setTextViewBottomMargin, textBufferCreateMark, textBufferMoveMark,
+        scrollableSetVscrollPolicy, scrollableSetHscrollPolicy,
         widgetSetVexpand, widgetSetHexpand, frameNew, gridNew,
         widgetOverrideFont, setTextTagUnderlineRgba, Widget(..))
 import GI.GtkSource.Objects.StyleScheme
