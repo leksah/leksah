@@ -22,8 +22,6 @@
 module IDE.Package (
     projectRefreshNix
 ,   projectRefreshNix'
-,   packageConfig
-,   packageConfig'
 ,   buildPackage
 
 ,   packageDoc
@@ -329,31 +327,6 @@ updateNixCache project compilers continuation = loop compilers
                             modifyIDE_ (\ide -> ide { nixCache = newCache})
                             loop rest
             _ -> loop rest
-
-packageConfig :: PackageAction
-packageConfig = do
-    project <- lift ask
-    package <- ask
-    interruptSaveAndRun $ packageConfig' (project, package) (\ _ -> return ())
-
-packageConfig'  :: (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
-packageConfig' (project, package) continuation = do
-    prefs     <- readIDE prefs
-    case pjTool project of
-        StackTool -> do
-            ideMessage Normal (__ "Stack projects do not require configuration.")
-            liftIDE $ continuation True
-        CabalTool -> do
-            logLaunch <- getDefaultLogLaunch
-            showDefaultLogLaunch'
-
-            let dir = ipdPackageDir package
-            runExternalTool'        (__ "Configuring")
-                                    "cabal"
-                                    ("new-configure" : ipdConfigFlags package)
-                                    dir Nothing $ do
-                mbLastOutput <- C.getZipSink $ const <$> C.ZipSink sinkLast <*> C.ZipSink (logOutput logLaunch)
-                lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
 
 projectFileArguments :: MonadIO m => Project -> FilePath -> m [Text]
 projectFileArguments project dir = do
@@ -711,8 +684,7 @@ packageRun' removeGhcjsFlagIfPresent (project, package) =
                     let packWithNewFlags = package { ipdConfigFlags = filter (/="--ghcjs") $ ipdConfigFlags package }
                     changePackage packWithNewFlags
                     liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
-                    packageConfig' (project, packWithNewFlags) $ \ ok -> when ok $
-                        packageRun' False (project, packWithNewFlags)
+                    packageRun' False (project, packWithNewFlags)
                 _  -> return ()
         else liftIDE $ catchIDE (do
             pd <- readAndFlattenPackageDescription package

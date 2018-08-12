@@ -54,7 +54,7 @@ import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
 import Data.Typeable (Typeable(..))
 import Control.Exception (SomeException(..),catch)
-import IDE.Package (packageConfig,addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
+import IDE.Package (addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
 import Distribution.PackageDescription
        (PackageDescription, BuildInfo, hsSourceDirs,
         hasLibs, executables, testSuites, exeName, testName, benchmarks,
@@ -1017,7 +1017,6 @@ modulesContextMenu ideR store treeView theMenu = do
                          reflectIDE (packageTry $ delModule treeView store)ideR
                        else
                          reflectIDE (packageTry $ delModule treeView store)ideR
-                    reflectIDE (packageTry packageConfig) ideR
                     return ()
     sel <- getSelectionTree treeView store
     case sel of
@@ -1341,12 +1340,10 @@ addModule modulePrefix = do
                                 then do
                                     liftIDE $ ideMessage Normal (T.pack $ printf (__ "File already exists! Importing existing file %s.hs") (takeBaseName target))
                                     addModuleToPackageDescr moduleName $ addModuleLocations addMod
-                                    packageConfig
                                 else do
                                     template <- liftIO $ getEmptyModuleTemplate pd modPath
                                     liftIO $ T.writeFile target template
                                     addModuleToPackageDescr moduleName $ addModuleLocations addMod
-                                    packageConfig
                                     liftIDE $ fileOpenThis target
 
 

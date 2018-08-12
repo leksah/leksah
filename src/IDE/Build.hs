@@ -38,7 +38,7 @@ import Data.List (deleteFirstsBy, nubBy, delete, nub, (\\), find)
 import Distribution.Version (withinRange)
 import Data.Maybe (fromMaybe, mapMaybe)
 import IDE.Package
-       (packageClean', buildPackage, packageConfig',
+       (packageClean', buildPackage,
         packageTest', packageDoc', packageBench', packageInstall')
 import IDE.Core.Types
        (ipdPackageName, pjPackages, IDEEvent(..), Prefs(..), IDE(..),
@@ -90,8 +90,7 @@ defaultMakeSettings prefs = MakeSettings  {
 
 -- | a make operation
 data MakeOp =
-    MoConfigure
-    | MoBuild
+    MoBuild
     | MoTest
     | MoBench
     | MoInstall
@@ -215,8 +214,6 @@ constrElem ((project, currentTargets, tops, depGraph):rest) ms
 -- | Performs the operations of a build chain
 doBuildChain :: MakeSettings -> Chain MakeOp (Project, IDEPackage) -> IDEAction
 doBuildChain ms EmptyChain = msSuccessAction ms
-doBuildChain ms chain@Chain{mcAction = MoConfigure} =
-    postAsyncIDE $ packageConfig' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain ms chain@Chain{mcAction = MoBuild} =
     postAsyncIDE $ buildPackage (msBackgroundBuild ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
         (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))

@@ -298,8 +298,6 @@ mkActions =
 
     ,AD "CleanPackage" (__ "Cl_ean") (Just (__ "Cleans the package")) (Just "ide_clean")
         (packageTry packageClean) [] False
-    ,AD "ConfigPackage" (__ "_Configure") (Just (__ "Configures the package")) (Just "ide_configure")
-        (packageTry packageConfig) [] False
     ,AD "BuildPackage" (__ "_Build") (Just (__ "Builds the package")) (Just "ide_make")
         (packageTry makePackage) [] False
     ,AD "DocPackage" (__ "_Build Documentation") (Just (__ "Builds the documentation")) Nothing
@@ -772,7 +770,7 @@ getActionsFor :: SensitivityMask -> IDEM [Action]
 getActionsFor SensitivityForwardHist = getActionsFor' ["ViewHistoryForth"]
 getActionsFor SensitivityBackwardHist = getActionsFor' ["ViewHistoryBack"]
 getActionsFor SensitivityProjectActive = getActionsFor'
-    ["EditPackage", "PackageFlags", "ConfigPackage", "BuildPackage"
+    ["EditPackage", "PackageFlags", "BuildPackage"
     ,"DocPackage", "CleanPackage", "CopyPackage", "RunPackage"
     ,"InstallPackage", "TestPackage","SdistPackage"
     ,"OpenDocPackage","FileCloseAll"]
