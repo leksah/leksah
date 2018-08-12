@@ -138,7 +138,7 @@ import System.Exit (ExitCode(..))
 import Control.Applicative ((<$>), (<*>))
 import qualified Data.Conduit as C (Sink, ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (foldM, fold, consume)
-import Data.Conduit (($$))
+import Data.Conduit (ConduitT, ($$))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Class (lift)
@@ -212,6 +212,7 @@ import Distribution.PackageDescription.Parse
        (readPackageDescription)
 #endif
 import qualified System.FilePath.Glob as Glob (globDir, compile)
+import Data.Void (Void)
 
 #if !MIN_VERSION_Cabal(2,0,0)
 type UnqualComponentName = String
@@ -532,7 +533,7 @@ killProcess :: ProcessHandle -> IO ()
 killProcess ph =
   withProcessHandle ph $ \case
       OpenHandle pid -> signalProcess sigKILL pid
-      ClosedHandle _ -> return ()
+      _ -> return ()
 #else
 killProcess = terminateProcess
 #endif
@@ -987,7 +988,7 @@ runPackage ::  (ProcessHandle -> IDEAction)
             -> [Text]
             -> FilePath
             -> Maybe [(String,String)]
-            -> C.Sink ToolOutput IDEM ()
+            -> ConduitT ToolOutput Void IDEM ()
             -> IDEAction
 runPackage = runExternalTool (return True) -- TODO here one could check if package to be run is building/configuring/etc atm
 
@@ -1275,7 +1276,7 @@ tryDebugQuiet f = do
     M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState >>=
         mapM_ (liftIDE . runDebug f)
 
-executeDebugCommand :: Text -> C.Sink ToolOutput IDEM () -> DebugAction
+executeDebugCommand :: Text -> ConduitT ToolOutput Void IDEM () -> DebugAction
 executeDebugCommand command handler = do
     (_, ghci) <- ask
     lift $ do

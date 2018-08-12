@@ -106,17 +106,19 @@ import IDE.Pane.WebKit.Output (loadOutputUri)
 import qualified Data.Sequence as Seq (filter, empty)
 import qualified Data.Map as M (elems, lookup)
 import Control.Monad (unless, when)
+import Data.Conduit (ConduitT)
+import Data.Void (Void)
 
 -- | Get the last item
 sinkLast = CL.fold (\_ a -> Just a) Nothing
 
-debugCommand :: Text -> C.Sink ToolOutput IDEM () -> DebugAction
+debugCommand :: Text -> ConduitT ToolOutput Void IDEM () -> DebugAction
 debugCommand command handler = do
     debugCommand' command handler
     lift $ triggerEventIDE VariablesChanged
     return ()
 
-debugCommand' :: Text -> C.Sink ToolOutput IDEM () -> DebugAction
+debugCommand' :: Text -> ConduitT ToolOutput Void IDEM () -> DebugAction
 debugCommand' command handler = do
     ghci <- ask
     lift $ catchIDE (runDebug (executeDebugCommand command handler) ghci)

@@ -107,7 +107,7 @@ import IDE.Utils.Utils as Reexported
 import qualified Data.Map as Map (empty, lookup)
 import Data.Typeable(Typeable)
 import qualified IDE.TextEditor.Yi.Config as Yi
-import Data.Conduit (($$))
+import Data.Conduit (ConduitT, ($$))
 import qualified Data.Conduit as C
        (transPipe, Sink, awaitForever, yield, leftover, ($$))
 import qualified Data.Conduit.List as CL
@@ -138,6 +138,7 @@ import Distribution.Compat.Exception (catchIO)
 import System.Environment (getEnv)
 import IDE.Utils.DebugUtils (traceTimeTaken)
 import GHC.Stack (HasCallStack)
+import Data.Void (Void)
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -325,7 +326,7 @@ reifyIDE = liftIDE . ReaderT
 reflectIDE :: IDEM a -> IDERef -> IO a
 reflectIDE = runReaderT
 
-reflectIDEI :: C.Sink a IDEM () -> IDERef -> C.Sink a IO ()
+reflectIDEI :: ConduitT a Void IDEM () -> IDERef -> ConduitT a Void IO ()
 reflectIDEI c ideR = C.transPipe (`reflectIDE` ideR) c
 
 liftYiControl :: Yi.ControlM a -> IDEM a

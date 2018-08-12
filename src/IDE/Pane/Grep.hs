@@ -54,7 +54,7 @@ import qualified Data.Conduit as C
        (Sink)
 import qualified Data.Conduit.List as CL
        (foldM, isolate, sinkNull)
-import Data.Conduit (($$), (=$))
+import Data.Conduit (ConduitT, (.|), runConduit, ($$), (=$))
 import Control.Monad (void, foldM, when)
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -102,6 +102,7 @@ import Data.GI.Gtk.ModelView.Types
 import qualified Data.Function as F (on)
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
+import Data.Void (Void)
 
 -- | Represents a single search result
 data GrepRecord = GrepRecord {
@@ -328,9 +329,9 @@ grepDirectories regexString caseSensitive dirs = do
                             "--exclude-dir=_darcs",
                             "--exclude-dir=.git",
                             regexString] ++ map T.pack subDirs) (Just dir) Nothing
-                    output $$ do
+                    runConduit $ output .| do
                         let max = 1000
-                        CL.isolate max =$ do
+                        CL.isolate max .| do
                             n <- setGrepResults dir
                             when (n >= max) $ do
                                 liftIO $ debugM "leksah" "interrupting grep process"
@@ -357,7 +358,7 @@ grepDirectories regexString caseSensitive dirs = do
 
 
 -- | A Sink for processing lines of grep output and counting them
-setGrepResults :: FilePath -> C.Sink ToolOutput IDEM Int
+setGrepResults :: FilePath -> ConduitT ToolOutput Void IDEM Int
 setGrepResults dir = do
     ideRef <- lift ask
     grep <- lift $ getGrep Nothing

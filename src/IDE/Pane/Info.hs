@@ -57,7 +57,6 @@ import GI.Gtk.Objects.Container (containerGetChildren)
 import GI.Gtk.Objects.MenuItem
        (onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
-import GI.Gtk.Objects.TextView (textViewSetEditable)
 import IDE.SourceCandy (getCandylessPart)
 import Graphics.UI.Frame.Rectangle (getRectangleY, getRectangleX)
 import GI.Gdk (windowGetOrigin)

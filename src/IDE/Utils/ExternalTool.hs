@@ -36,7 +36,7 @@ import IDE.Pane.SourceBuffer (belongsToWorkspace, fileSaveAll)
 import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
 import Control.Concurrent (forkIO)
 import System.Process.Vado (vado, readSettings, getMountPoint)
-import Data.Conduit (($$))
+import Data.Conduit ((.|), runConduit, ConduitT, ($$))
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Maybe (isNothing)
 import Control.Applicative ((<$>))
@@ -52,6 +52,7 @@ import Control.Concurrent.MVar (withMVar, MVar)
 import Unsafe.Coerce (unsafeCoerce)
 import System.Posix.Process (getProcessGroupIDOf)
 import System.Posix.Signals (inSignalSet, sigINT, getSignalMask)
+import Data.Void (Void)
 #endif
 
 showSignalMask :: IO String
@@ -67,7 +68,7 @@ runExternalTool' :: MonadIDE m
                 -> [Text]
                 -> FilePath
                 -> Maybe [(String,String)]
-                -> C.Sink ToolOutput IDEM ()
+                -> ConduitT ToolOutput Void IDEM ()
                 -> m ()
 runExternalTool' description executable args dir mbEnv handleOutput = do
         runExternalTool (do
@@ -90,7 +91,7 @@ runExternalTool :: MonadIDE m
                 -> [Text]
                 -> FilePath
                 -> Maybe [(String,String)]
-                -> C.Sink ToolOutput IDEM ()
+                -> ConduitT ToolOutput Void IDEM ()
                 -> m ()
 runExternalTool runGuard pidHandler description executable args dir mbEnv handleOutput  = do
         prefs <- readIDE prefs
@@ -113,7 +114,7 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
             reifyIDE $ \ideR -> forkIO $
                 reflectIDE (do
                     pidHandler pid
-                    output $$ handleOutput
+                    runConduit $ output .| handleOutput
                     -- We should not set runningTool = Nothing here becasuse the getProcessExitCode
                     -- in isRunning will let us know it is not in a running state and the next process
                     -- might already have started.

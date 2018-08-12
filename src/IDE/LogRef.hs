@@ -67,7 +67,7 @@ import IDE.Utils.FileUtils(myCanonicalizePath)
 import IDE.Pane.Log (getDefaultLogLaunch, IDELog(..), getLog)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
-import Data.Conduit ((=$))
+import Data.Conduit ((.|), ConduitT, (=$))
 import IDE.Pane.WebKit.Output(setOutput)
 import Data.IORef (atomicModifyIORef, IORef, readIORef)
 import Data.Text (Text)
@@ -94,6 +94,7 @@ import Data.Char (isDigit)
 import Data.Attoparsec.Combinator (lookAhead)
 import GHC.Stack (SrcLoc(..))
 import Distribution.Text (simpleParse)
+import Data.Void (Void)
 
 showSourceSpan :: LogRef -> Text
 showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan
@@ -445,7 +446,7 @@ paneLineLogger' log logLaunch out =
 foldOutputLines :: LogLaunch -- ^ logLaunch
                -> (IDELog -> LogLaunch -> a -> ToolOutput -> IDEM a)
                -> a
-               -> C.Sink ToolOutput IDEM a
+               -> ConduitT ToolOutput Void IDEM a
 foldOutputLines logLaunch lineLogger a = do
     log :: Log.IDELog <- lift $ postSyncIDE Log.getLog
     results <- CL.foldM (\a b -> postSyncIDE $ lineLogger log logLaunch a b) a
@@ -454,38 +455,38 @@ foldOutputLines logLaunch lineLogger a = do
 
 logOutputLines :: LogLaunch -- ^ logLaunch
                -> (IDELog -> LogLaunch -> ToolOutput -> IDEM a)
-               -> C.Sink ToolOutput IDEM [a]
+               -> ConduitT ToolOutput Void IDEM [a]
 logOutputLines logLaunch lineLogger = do
     log :: Log.IDELog <- lift $ postSyncIDE Log.getLog
-    results <- CL.mapM (postSyncIDE . lineLogger log logLaunch) =$ CL.consume
+    results <- CL.mapM (postSyncIDE . lineLogger log logLaunch) .| CL.consume
     lift . postSyncIDE $ triggerEventIDE (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
 logOutputLines_ :: LogLaunch
                 -> (IDELog -> LogLaunch -> ToolOutput -> IDEM a)
-                -> C.Sink ToolOutput IDEM ()
+                -> ConduitT ToolOutput Void IDEM ()
 logOutputLines_ logLaunch lineLogger = do
     logOutputLines logLaunch lineLogger
     return ()
 
 logOutputLinesDefault_ :: (IDELog -> LogLaunch -> ToolOutput -> IDEM a)
-                       -> C.Sink ToolOutput IDEM ()
+                       -> ConduitT ToolOutput Void IDEM ()
 logOutputLinesDefault_ lineLogger = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputLines_  defaultLogLaunch lineLogger
 
 logOutput :: LogLaunch
-          -> C.Sink ToolOutput IDEM ()
+          -> ConduitT ToolOutput Void IDEM ()
 logOutput logLaunch = do
     logOutputLines logLaunch defaultLineLogger
     return ()
 
-logOutputDefault :: C.Sink ToolOutput IDEM ()
+logOutputDefault :: ConduitT ToolOutput Void IDEM ()
 logOutputDefault = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     logOutput defaultLogLaunch
 
-logOutputPane :: Text -> IORef [Text] -> C.Sink ToolOutput IDEM ()
+logOutputPane :: Text -> IORef [Text] -> ConduitT ToolOutput Void IDEM ()
 logOutputPane command buffer = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     result <- catMaybes <$> logOutputLines defaultLogLaunch paneLineLogger
@@ -514,7 +515,7 @@ idleOutputParser = try (do
 logIdleOutput
     :: Project
     -> IDEPackage
-    -> C.Sink ToolOutput IDEM ()
+    -> ConduitT ToolOutput Void IDEM ()
 logIdleOutput project package = loop
   where
     loop = C.await >>= maybe (return ()) (\output -> do
@@ -575,7 +576,7 @@ logOutputForBuild :: Project
                   -> Log
                   -> Bool
                   -> Bool
-                  -> C.Sink ToolOutput IDEM [LogRef]
+                  -> ConduitT ToolOutput Void IDEM [LogRef]
 logOutputForBuild project logSource backgroundBuild jumpToWarnings = do
     liftIO $ debugM "leksah" "logOutputForBuild"
     log    <- lift getLog
@@ -783,7 +784,7 @@ logOutputForBuild project logSource backgroundBuild jumpToWarnings = do
 
 logOutputForBreakpoints :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
-                        -> C.Sink ToolOutput IDEM ()
+                        -> ConduitT ToolOutput Void IDEM ()
 logOutputForBreakpoints package logLaunch = do
     breaks <- logOutputLines logLaunch (\log logLaunch out -> postSyncIDE $
         case out of
@@ -800,7 +801,7 @@ logOutputForBreakpoints package logLaunch = do
 
 logOutputForSetBreakpoint :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
-                        -> C.Sink ToolOutput IDEM ()
+                        -> ConduitT ToolOutput Void IDEM ()
 logOutputForSetBreakpoint package logLaunch = do
     breaks <- logOutputLines logLaunch (\log logLaunch out ->
         case out of
@@ -816,7 +817,7 @@ logOutputForSetBreakpoint package logLaunch = do
     lift . postSyncIDE . addLogRefs . Seq.fromList $ catMaybes breaks
 
 logOutputForSetBreakpointDefault :: IDEPackage
-                                 -> C.Sink ToolOutput IDEM ()
+                                 -> ConduitT ToolOutput Void IDEM ()
 logOutputForSetBreakpointDefault package = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputForSetBreakpoint package defaultLogLaunch
@@ -824,7 +825,7 @@ logOutputForSetBreakpointDefault package = do
 logOutputForContext :: IDEPackage
                     -> LogLaunch                   -- ^ loglaunch
                     -> (Text -> [SrcSpan])
-                    -> C.Sink ToolOutput IDEM ()
+                    -> ConduitT ToolOutput Void IDEM ()
 logOutputForContext package loglaunch getContexts = do
     refs <- catMaybes <$> logOutputLines loglaunch (\log logLaunch out ->
         case out of
@@ -858,13 +859,13 @@ contextsParser = try (
 
 logOutputForLiveContext :: IDEPackage
                         -> LogLaunch           -- ^ loglaunch
-                        -> C.Sink ToolOutput IDEM ()
+                        -> ConduitT ToolOutput Void IDEM ()
 logOutputForLiveContext package logLaunch = logOutputForContext package logLaunch getContexts
     where
         getContexts line = either (const []) id $ parseOnly contextsParser line
 
 logOutputForLiveContextDefault :: IDEPackage
-                               -> C.Sink ToolOutput IDEM ()
+                               -> ConduitT ToolOutput Void IDEM ()
 logOutputForLiveContextDefault package = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputForLiveContext package defaultLogLaunch
@@ -872,7 +873,7 @@ logOutputForLiveContextDefault package = do
 
 logOutputForHistoricContext :: IDEPackage
                             -> LogLaunch           -- ^ loglaunch
-                            -> C.Sink ToolOutput IDEM ()
+                            -> ConduitT ToolOutput Void IDEM ()
 logOutputForHistoricContext package logLaunch = logOutputForContext package logLaunch getContexts
     where
         getContexts line = case parseOnly contextParser line of
@@ -880,7 +881,7 @@ logOutputForHistoricContext package logLaunch = logOutputForContext package logL
                                 _          -> []
 
 logOutputForHistoricContextDefault :: IDEPackage
-                                   -> C.Sink ToolOutput IDEM ()
+                                   -> ConduitT ToolOutput Void IDEM ()
 logOutputForHistoricContextDefault package = do
     defaultLogLaunch <- lift getDefaultLogLaunch
     logOutputForHistoricContext package defaultLogLaunch

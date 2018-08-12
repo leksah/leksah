@@ -143,6 +143,8 @@ import GI.Gtk.Objects.ButtonBox (buttonBoxNew)
 import GI.Gtk.Objects.Button (onButtonClicked, buttonNewWithLabel)
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
 import GI.Gtk.Objects.CellRendererText (setCellRendererTextText)
+import Data.Conduit (ConduitT)
+import Data.Void (Void)
 
 #if !MIN_VERSION_Cabal(2,0,0)
 versionNumbers :: Version -> [Int]
@@ -377,7 +379,7 @@ validPackageName = all valid . splitOn "-"
        valid "" = False
        valid w  = all isAlphaNum w && not (all isDigit w)
 
-packageNew' :: FilePath -> [Project] -> C.Sink ToolOutput IDEM () -> (Bool -> Maybe Project -> FilePath -> IDEAction) -> IDEAction
+packageNew' :: FilePath -> [Project] -> ConduitT ToolOutput Void IDEM () -> (Bool -> Maybe Project -> FilePath -> IDEAction) -> IDEAction
 packageNew' workspaceDir projects log activateAction = do
     windows <- getWindows
     mbNewPackage <- newPackageDialog (head windows) workspaceDir projects
@@ -523,7 +525,7 @@ clonePackageSourceDialog parent workspaceDir = do
         ResponseTypeOk    -> return value
         _             -> return Nothing
 
-packageClone :: FilePath -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
+packageClone :: FilePath -> ConduitT ToolOutput Void IDEM () -> (FilePath -> IDEAction) -> IDEAction
 packageClone workspaceDir log activateAction = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ do
     windows  <- getWindows
     mbResult <- clonePackageSourceDialog (head windows) workspaceDir
@@ -531,7 +533,7 @@ packageClone workspaceDir log activateAction = flip catchIDE (\(e :: SomeExcepti
         Nothing -> return ()
         Just ClonePackageSourceRepo{..} -> cabalUnpack cloneParentDir packageToClone True Nothing log activateAction
 
-cabalUnpack :: FilePath -> Text -> Bool -> Maybe Text -> C.Sink ToolOutput IDEM () -> (FilePath -> IDEAction) -> IDEAction
+cabalUnpack :: FilePath -> Text -> Bool -> Maybe Text -> ConduitT ToolOutput Void IDEM () -> (FilePath -> IDEAction) -> IDEAction
 cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = do
     let tempDir = parentDir </> (T.unpack packageToUnpack ++ ".leksah.temp")
     liftIO $ do

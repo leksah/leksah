@@ -171,7 +171,7 @@ import Data.GI.Base (new')
 import GI.Gtk.Objects.Widget
        (widgetHide, widgetShow, widgetDestroy)
 import GI.Gtk.Objects.Notebook
-       (notebookPageNum, notebookGetNthPage, Notebook(..))
+       (notebookGetNthPage, Notebook(..))
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserGetFilename, fileChooserSelectFilename,
