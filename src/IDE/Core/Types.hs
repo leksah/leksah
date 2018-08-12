@@ -242,8 +242,8 @@ data IDE            =  IDE {
 ,   autoCommand         :: ((FilePath, FilePath), IDEAction)
 ,   autoURI             :: Maybe Text
 ,   triggerBuild        :: MVar ()
-,   stopWorkspaceNotify :: StopListening
 ,   fsnotify            :: WatchManager
+,   watchers            :: MVar (Map FilePath StopListening, Map FilePath StopListening)
 ,   developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
 ,   nixCache            :: Map (FilePath, Text) (Map String String)
 ,   externalModified    :: MVar (Set FilePath)

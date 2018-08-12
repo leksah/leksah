@@ -351,6 +351,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
     triggerBuild <- newEmptyMVar
     nixCache <- loadNixCache
     externalModified <- newMVar mempty
+    watchers <- newMVar (mempty, mempty)
     let ide = IDE
           {   application       =   app
           ,   exitCode          =   exitCode
@@ -389,8 +390,8 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           ,   autoCommand       =   (("", ""), return ())
           ,   autoURI           =   Nothing
           ,   triggerBuild      =   triggerBuild
-          ,   stopWorkspaceNotify = return ()
           ,   fsnotify          =   fsnotify
+          ,   watchers          =   watchers
           ,   developLeksah     =   developLeksah
           ,   nixCache          =   nixCache
           ,   externalModified  =   externalModified

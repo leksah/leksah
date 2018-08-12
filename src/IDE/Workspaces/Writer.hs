@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -66,8 +67,11 @@ import Data.Char (toLower)
 import IDE.Pane.SourceBuffer (setModifiedOnDisk)
 import System.Directory (doesDirectoryExist)
 import Control.Concurrent (putMVar, takeMVar, tryPutMVar)
-import qualified Data.Set as S (insert)
+import qualified Data.Set as S (fromList, insert, member)
 import Control.Exception (evaluate)
+import qualified Data.Map as M
+       (partitionWithKey, partition, fromList, member)
+import Data.Foldable (forM_)
 
 data WorkspaceFile = WorkspaceFile {
     wsfVersion           ::   Int
@@ -223,40 +227,49 @@ setWorkspace mbWs = do
         Just ws -> do
             fsn <- readIDE fsnotify
             tb <- readIDE triggerBuild
+            watchersMVar <- readIDE watchers
             extModsMVar <- readIDE externalModified
             let rebuild = void . liftIO $ tryPutMVar tb ()
-            unless (isPollingManager fsn) $ do
-                newStop <- liftIO $ forM (zip [0..] $ wsProjects ws) (\(n, project) -> do
-                    stopSrc <- forM (pjPackages project) $ \package -> do
-                        nonRootSrcPaths <- map (<>"/") . filter (/=ipdPackageDir package) <$>
-                            mapM (myCanonicalizePath . (ipdPackageDir package </>)) (ipdSrcDirs package)
+            unless (isPollingManager fsn) . liftIO $ do
+                oldWatchers <- takeMVar watchersMVar
+                let projectFiles = S.fromList $ map pjFile $ wsProjects ws
+                    packageFiles = S.fromList $ map ipdCabalFile $ pjPackages =<< wsProjects ws
+                    newProjects = filter (not . (`M.member` fst oldWatchers) . pjFile) $ wsProjects ws
+                    newPackages = filter (not . (`M.member` snd oldWatchers) . ipdCabalFile) $ pjPackages =<< wsProjects ws
+                newProjectWatchers <- forM newProjects $ \project -> do
+                    debugM "leksah" $ "Watching project " <> show (pjFile project)
+                    fmap (pjFile project,) <$> watchDir fsn (pjDir project) (\case
+                        Modified f _ _ -> True
+                        _ -> False) $ \event -> do
+                            let f = eventPath event
+                            (`reflectIDE` ideR) $ setModifiedOnDisk f
+                            when (takeFileName f == takeFileName (pjFile project)) $
+                                (`reflectIDE` ideR) $ postAsyncIDE $
+                                    readWorkspace (wsFile ws) >>= \case
+                                        Left _ -> return ()
+                                        Right ws' -> setWorkspace (Just ws')
+                newPackageWatchers <- forM newPackages $ \package -> do
+                    debugM "leksah" $ "Watching package " <> show (ipdCabalFile package)
+                    nonRootSrcPaths <- map (<>"/") . filter (/=ipdPackageDir package) <$>
+                        mapM (myCanonicalizePath . (ipdPackageDir package </>)) (ipdSrcDirs package)
 
-                        watchTree fsn (ipdPackageDir package) (\case
-                            Modified f _ _ -> True
-                            _ -> False) $ \event -> do
-                                let f = eventPath event
-                                (`reflectIDE` ideR) $ setModifiedOnDisk f >>= \case
-                                    True -> rebuild
-                                    False ->
-                                        when (any (`isPrefixOf` f) nonRootSrcPaths) $ do
-                                          liftIO $ debugM "leksah" $ "Modified source file " <> f <> " in " <> T.unpack (ipdPackageName package)
-                                          extMods <- liftIO $ takeMVar extModsMVar
-                                          liftIO $ putMVar extModsMVar =<< evaluate (S.insert f extMods)
-                                          rebuild
-                    stopProjectFile <- watchDir fsn (pjDir project) (\case
-                          Modified f _ _ -> True
-                          _ -> False) $ \event -> do
-                              let f = eventPath event
-                              (`reflectIDE` ideR) $ setModifiedOnDisk f
-                              when (takeFileName f == takeFileName (pjFile project)) $
-                                  (`reflectIDE` ideR) $ postAsyncIDE $
-                                      readWorkspace (wsFile ws) >>= \case
-                                          Left _ -> return ()
-                                          Right ws' -> setWorkspace (Just ws')
-                    return . sequence_ $ stopProjectFile : stopSrc)
-                oldStop <- readIDE stopWorkspaceNotify
-                modifyIDE_ $ \ide -> ide { stopWorkspaceNotify = sequence_ newStop }
-                liftIO oldStop
+                    fmap (ipdCabalFile package,) <$> watchTree fsn (ipdPackageDir package) (\case
+                        Modified f _ _ -> True
+                        _ -> False) $ \event -> do
+                            let f = eventPath event
+                            (`reflectIDE` ideR) $ setModifiedOnDisk f >>= \case
+                                True -> rebuild
+                                False ->
+                                    when (any (`isPrefixOf` f) nonRootSrcPaths) $ do
+                                        liftIO $ debugM "leksah" $ "Modified source file " <> f <> " in " <> T.unpack (ipdPackageName package)
+                                        extMods <- liftIO $ takeMVar extModsMVar
+                                        liftIO $ putMVar extModsMVar =<< evaluate (S.insert f extMods)
+                                        rebuild
+                let (keepProjectWatchers, discardProjectWatches) = M.partitionWithKey (\f _ -> f `S.member` projectFiles) $ fst oldWatchers
+                    (keepPackageWatchers, discardPackageWatches) = M.partitionWithKey (\f _ -> f `S.member` packageFiles) $ snd oldWatchers
+                forM_ discardProjectWatches id
+                forM_ discardPackageWatches id
+                putMVar watchersMVar (keepProjectWatchers <> M.fromList newProjectWatchers, keepPackageWatchers <> M.fromList newPackageWatchers)
         Nothing -> return ()
     triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE (WorkspaceChanged True True)
