@@ -191,6 +191,7 @@ import Control.Concurrent.MVar (tryPutMVar)
 import Graphics.UI.Frame.Rectangle (getRectangleY, getRectangleX)
 import GI.Gdk (windowGetOrigin)
 import Control.Concurrent (modifyMVar_, putMVar, takeMVar, newMVar)
+import IDE.Utils.DebugUtils (traceTimeTaken)
 
 --time :: MonadIO m => String -> m a -> m a
 --time name action = do
@@ -487,7 +488,7 @@ addLogRef hlintFileScope backgroundBuild ref = unless (srcSpanFilename (logRefSr
     return ()
 
 markRefInSourceBuf :: IDEBuffer -> LogRef -> Bool -> IDEAction
-markRefInSourceBuf (buf@IDEBuffer{sourceView = sv}) logRef scrollTo = do
+markRefInSourceBuf (buf@IDEBuffer{sourceView = sv}) logRef scrollTo = traceTimeTaken "markRefInSourceBuf" $ do
     useCandy    <- useCandyFor buf
     candy'      <- readIDE candy
     contextRefs <- readIDE contextRefs
@@ -533,9 +534,9 @@ markRefInSourceBuf (buf@IDEBuffer{sourceView = sv}) logRef scrollTo = do
                             _ -> False
     unless isOldContext $ do
         liftIO $ debugM "lekash" "markRefInSourceBuf calling applyTagByName"
-        createMark sv (logRefType logRef) iter . T.unlines
+        traceTimeTaken "createMark" $ createMark sv (logRefType logRef) iter . T.unlines
             . zipWith ($) (replicate 30 id <> [const "..."]) . T.lines $ refDescription logRef
-        applyTagByName ebuf tagName iter iter2
+        traceTimeTaken "applyTagByName" $ applyTagByName ebuf tagName iter iter2
     when scrollTo $ do
         liftIO $ debugM "lekash" "markRefInSourceBuf triggered placeCursor"
         placeCursor ebuf iter

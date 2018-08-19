@@ -84,17 +84,14 @@ import IDE.Pane.WebKit.Inspect (getInspectPane)
 import IDE.TypeTip (setTypeTip)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad
-       (forever, join, void, unless, when, forM_, filterM, liftM)
+       (void, unless, when, forM_, filterM)
 import Control.Monad.Trans.Reader (ask)
 import System.Log.Logger (debugM)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr(..))
-import Foreign.ForeignPtr (withForeignPtr)
 import IDE.Session
        (saveSessionAs, loadSession, saveSession, sessionClosePane,
         loadSessionPrompt, saveSessionAsPrompt, viewFullScreen)
 import qualified Data.Text as T
-       (unlines, uncons, concat, takeWhile, splitOn, unpack, pack)
+       (uncons, concat, takeWhile, splitOn, unpack, pack)
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 import Data.Text (Text)
@@ -110,7 +107,7 @@ import GI.Gtk.Objects.MenuItem
         onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.Widget
        (IsWidget, onWidgetKeyPressEvent, widgetSetName,
-        Widget(..), widgetShow, widgetSetSizeRequest, widgetShowAll,
+        widgetShow, widgetSetSizeRequest, widgetShowAll,
         widgetDestroy, widgetHide, widgetSetSensitive)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import GI.Gtk.Objects.UIManager
@@ -124,17 +121,15 @@ import GI.Gtk.Objects.ToggleAction
        (onToggleActionToggled, toggleActionNew)
 import GI.Gtk.Objects.Action
        (onActionActivate, Action(..), actionSetSensitive, actionNew)
-import Data.GI.Base (on, set, unsafeCastTo)
+import Data.GI.Base (unsafeCastTo)
 import GI.Gtk.Objects.MenuBar (MenuBar(..))
 import GI.Gtk.Objects.Toolbar
        (toolbarSetIconSize, toolbarSetStyle, Toolbar(..))
 import GI.Gtk.Objects.Container
-       (containerAdd, containerGetChildren, Container(..))
+       (containerAdd, containerGetChildren)
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
-import GI.Gtk.Functions (mainQuit)
 import GI.Gtk.Objects.AboutDialog
-       (aboutDialogSetAuthors, setAboutDialogAuthors,
-        setAboutDialogProgramName, setAboutDialogAuthors, setAboutDialogWebsite,
+       (aboutDialogSetAuthors, setAboutDialogProgramName, setAboutDialogWebsite,
         setAboutDialogLicense, setAboutDialogComments, setAboutDialogCopyright,
         setAboutDialogVersion, aboutDialogNew)
 import GI.Gtk.Objects.Dialog (dialogRun)
@@ -144,7 +139,7 @@ import GI.GdkPixbuf.Objects.Pixbuf (pixbufNewFromFile)
 import GI.Gtk.Structs.IconSet (iconSetNewFromPixbuf)
 import GI.Gtk.Objects.IconTheme (iconThemeAddBuiltinIcon)
 import GI.Gtk.Objects.Window
-       (IsWindow, windowAddAccelGroup, windowSetIconFromFile, Window(..))
+       (windowAddAccelGroup, windowSetIconFromFile, Window(..))
 import GI.Gtk.Objects.Box (boxNew)
 import Graphics.UI.Editor.Parameters
        (boxPackEnd', Packing(..), boxPackStart')
@@ -153,12 +148,10 @@ import GI.Gdk.Structs.EventKey
 import GI.Gdk.Functions (keyvalToUnicode, keyvalName)
 import GI.Gdk.Flags (ModifierType, ModifierType(..))
 import GI.Gtk.Objects.AccelGroup (AccelGroup(..))
-import Data.GI.Base.BasicTypes (NullToNothing(..))
 
 import IDE.LPaste
 import GI.Gio.Objects.Application (applicationQuit)
 import IDE.Utils.Tool (ToolOutput(..))
-import Text.Parsec (parse)
 import Data.IORef (writeIORef)
 import GHC.IO.Exception (ExitCode(..))
 import Control.Concurrent.MVar
@@ -168,6 +161,9 @@ import Control.Concurrent (tryPutMVar, threadDelay, forkIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.Char (isUpper)
 import Data.Attoparsec.Text (parseOnly)
+import IDE.HaRe
+       (deleteDef, rmOneParameter, addOneParameter, rename, liftOneLevel,
+        liftToTopLevel, duplicateDef, ifToCase, demote)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -204,21 +200,21 @@ mkActions =
     ,AD "FileRecentFiles" (__ "Recent Files") Nothing Nothing (return ()) [] False
     ,AD "FileRecentWorkspaces" (__ "Recent Workspaces") Nothing Nothing (return ()) [] False
     ,AD "FileSave" (__ "_Save") Nothing (Just "gtk-save")
-        (do fileSave False; return ()) [] False
+        (void $ fileSave False) [] False
     ,AD "FileSaveAs" (__ "Save _As...") Nothing (Just "gtk-save-as")
-        (do fileSave True; return ()) [] False
+        (void $ fileSave True) [] False
     ,AD "FileSaveAll" (__ "Save A_ll") Nothing Nothing
-        (do fileSaveAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
+        (void . fileSaveAll $ \ b -> return (bufferName b /= "_Eval.hs")) [] False
     ,AD "FileClose" (__ "_Close") Nothing (Just "gtk-close")
-        (do fileClose; return ()) [] False
+        (void fileClose) [] False
     ,AD "FileCloseWorkspace" (__ "Close Workspace") Nothing Nothing
         workspaceClose [] False
     ,AD "FileCloseAll" (__ "Close All") Nothing Nothing
-        (do fileCloseAll (\ b -> return (bufferName b /= "_Eval.hs")); return ()) [] False
+        (void . fileCloseAll $ \ b -> return (bufferName b /= "_Eval.hs")) [] False
     ,AD "FileCloseAllButPackage" (__ "Close All But Package") Nothing Nothing
-        (do fileCloseAllButPackage; return ()) [] False
+        (void fileCloseAllButPackage) [] False
     ,AD "FileCloseAllButWorkspace" (__ "Close All But Workspace") Nothing Nothing
-        (do fileCloseAllButWorkspace; return ()) [] False
+        (void fileCloseAllButWorkspace) [] False
     ,AD "Quit" (__ "_Quit") Nothing (Just "gtk-quit")
         quit [] False
 
@@ -248,6 +244,25 @@ mkActions =
 
     ,AD "EditReformat" (__ "Re_format") Nothing Nothing
         editReformat [] False
+    ,AD "EditRefactor" (__ "Ref_actor") Nothing Nothing (return ()) [] False
+    ,AD "EditRefactorIfToCase" (__ "_If To Case") Nothing Nothing
+        ifToCase [] False
+    ,AD "EditRefactorDuplicateDef" (__ "_Duplicate Definition") Nothing Nothing
+        duplicateDef [] False
+    ,AD "EditRefactorLiftToTopLevel" (__ "_Lift To Top Level") Nothing Nothing
+        liftToTopLevel [] False
+    ,AD "EditRefactorLiftOneLevel" (__ "Lift _One Level") Nothing Nothing
+        liftOneLevel [] False
+    ,AD "EditRefactorDemote" (__ "De_mote") Nothing Nothing
+        demote [] False
+    ,AD "EditRefactorRename" (__ "_Rename") Nothing Nothing
+        rename [] False
+    ,AD "EditRefactorAddOneParameter" (__ "Add One _Parameter") Nothing Nothing
+        addOneParameter [] False
+    ,AD "EditRefactorRmOneParameter" (__ "Remove One Parameter") Nothing Nothing
+        rmOneParameter [] False
+    ,AD "EditRefactorDeleteDef" (__ "Delete Definition") Nothing Nothing
+        deleteDef [] False
     ,AD "EditComment" (__ "_Comment") Nothing Nothing
         editComment [] False
     ,AD "EditUncomment" (__ "_Uncomment") Nothing Nothing
@@ -504,8 +519,8 @@ mkActions =
 
     ,AD "Help" (__ "_Help") Nothing Nothing (return ()) [] False
     ,AD "HelpDebug" (__ "Debug") Nothing Nothing (do
-            pack <- readIDE activePack
-            ideMessage Normal (T.pack $ show pack)) [] False
+            p <- readIDE activePack
+            ideMessage Normal (T.pack $ show p)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
     ,AD "HelpManual" (__ "Manual") Nothing Nothing (openBrowser "http://leksah.org/leksah_manual.pdf") [] False
     ,AD "HelpHomepage" (__ "Homepage") Nothing Nothing (openBrowser "http://leksah.org") [] False
@@ -557,7 +572,7 @@ updateRecentEntries = do
             else
                 forM_ recentFiles' $ \s -> do
                     mi <- menuItemNewWithLabel $ T.pack s
-                    onMenuItemActivate mi $ reflectIDE (fileOpen' s) ideR
+                    void $ onMenuItemActivate mi $ reflectIDE (fileOpen' s) ideR
                     menuShellAppend recentFilesMenu mi
         menuItemGetSubmenu recentFilesItem >>= \case
             Just oldSubmenu -> do
@@ -577,7 +592,7 @@ updateRecentEntries = do
             else
                 forM_ existingRecentWorkspaces $ \s -> do
                     mi <- menuItemNewWithLabel $ T.pack s
-                    onMenuItemActivate mi $ reflectIDE (workspaceOpenThis True s >> showWorkspacePane) ideR
+                    void $ onMenuItemActivate mi $ reflectIDE (workspaceOpenThis True s >> showWorkspacePane) ideR
                     menuShellAppend recentWorkspacesMenu mi
 
         menuItemGetSubmenu recentWorkspacesItem >>= \case

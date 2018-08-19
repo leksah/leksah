@@ -62,10 +62,12 @@ import Foreign.ForeignPtr (withForeignPtr)
 import Foreign.Ptr (nullPtr, castPtr)
 import qualified GI.GtkSource as Source
 import GI.GtkSource
-       (mapSetView, mapNew, viewSetDrawSpaces, setViewTabWidth,
-        setViewShowLineNumbers, setViewRightMarginPosition,
-        setViewShowRightMargin, setViewIndentWidth, setViewDrawSpaces,
-        bufferUndo, bufferSetStyleScheme, styleSchemeManagerGetScheme,
+       (spaceDrawerSetEnableMatrix, spaceDrawerSetTypesForLocations,
+        viewGetSpaceDrawer, mapSetView, mapNew, viewSetDrawSpaces,
+        setViewTabWidth, setViewShowLineNumbers,
+        setViewRightMarginPosition, setViewShowRightMargin,
+        setViewIndentWidth, setViewDrawSpaces, bufferUndo,
+        bufferSetStyleScheme, styleSchemeManagerGetScheme,
         styleSchemeManagerGetSchemeIds, styleSchemeManagerAppendSearchPath,
         styleSchemeManagerNew, bufferRemoveSourceMarks, bufferRedo,
         viewSetMarkAttributes, onMarkAttributesQueryTooltipText,
@@ -128,7 +130,8 @@ import GI.Gtk.Objects.Widget
         afterWidgetFocusInEvent, widgetGrabFocus, toWidget,
         widgetGetParent, widgetGetWindow, widgetModifyFont)
 import GI.Pango.Enums (Underline(..))
-import GI.GtkSource.Flags (DrawSpacesFlags(..))
+import GI.GtkSource.Flags
+       (SpaceTypeFlags(..), SpaceLocationFlags(..), DrawSpacesFlags(..))
 import Data.GI.Base.BasicConversions (gflagsToWord)
 import GI.Gdk.Flags (ModifierType(..), EventMask(..))
 import GI.GLib (pattern PRIORITY_DEFAULT, idleAdd, sourceRemove)
@@ -154,14 +157,26 @@ import Data.GI.Base.Constructible (Constructible(..))
 import Data.GI.Base.Attributes (AttrOp(..))
 import Graphics.UI.Editor.Simple (Color(..))
 import GI.Gtk
-       (setTextViewBottomMargin, textBufferCreateMark, textBufferMoveMark,
+       (cssProviderLoadFromData, pattern STYLE_PROVIDER_PRIORITY_APPLICATION,
+        styleContextAddProvider, widgetGetStyleContext,
+        widgetGetPangoContext, cssProviderNew, CssProvider,
+        setTextViewBottomMargin, textBufferCreateMark, textBufferMoveMark,
         scrollableSetVscrollPolicy, scrollableSetHscrollPolicy,
         widgetSetVexpand, widgetSetHexpand, frameNew, gridNew,
         widgetOverrideFont, setTextTagUnderlineRgba, Widget(..))
 import GI.GtkSource.Objects.StyleScheme
        (styleSchemeGetStyle, StyleScheme(..))
 import GI.GtkSource.Objects.Style
-import GI.Pango.Enums (Weight (..), Style (..))
+import GI.Pango.Enums (Variant(..), Weight(..), Style(..))
+import GI.Pango
+       (fontDescriptionGetVariant, fontDescriptionGetStyle,
+        FontDescription, fontDescriptionGetWeight, fontDescriptionGetSize,
+        pattern SCALE, fontDescriptionGetSetFields, fontDescriptionGetFamily,
+        contextSetFontDescription)
+import qualified Data.Text.Encoding as T (encodeUtf8)
+import Data.Int (Int32)
+import GI.Pango.Flags (FontMask(..))
+import Graphics.UI.Utils (fontDescriptionToCssProps)
 
 transformGtkIter :: EditorIter GtkSourceView -> (TextIter -> IO a) -> IDEM (EditorIter GtkSourceView)
 transformGtkIter (GtkIter i) f = do
@@ -241,9 +256,15 @@ setTagStyle sb tagName scheme applyDefaultStyle = do
             italic <- getStyleItalic style
             when italic (setTextTagStyle tag StyleItalic)
 
+setTextViewFont :: MonadIO m => CssProvider -> FontDescription -> m ()
+setTextViewFont provider fd = do
+  cssProps <- fontDescriptionToCssProps fd
+  cssProviderLoadFromData provider . T.encodeUtf8
+    $ "textview { " <> cssProps <> "}"
+
 instance TextEditor GtkSourceView where
     data EditorBuffer GtkSourceView = GtkBuffer Source.Buffer
-    data EditorView GtkSourceView = GtkView Source.View
+    data EditorView GtkSourceView = GtkView Source.View CssProvider
     data EditorMark GtkSourceView = GtkMark TextMark
     data EditorIter GtkSourceView = GtkIter TextIter
     data EditorTagTable GtkSourceView = GtkTagTable TextTagTable
@@ -262,7 +283,7 @@ instance TextEditor GtkSourceView where
     canRedo (GtkBuffer sb) = getBufferCanRedo sb
     canUndo (GtkBuffer sb) = getBufferCanUndo sb
     copyClipboard (GtkBuffer sb) = textBufferCopyClipboard sb
-    createMark (GtkView sv) refType (GtkIter i) tooltip = do
+    createMark (GtkView sv _) refType (GtkIter i) tooltip = do
         sb <- getTextViewBuffer sv >>= liftIO . unsafeCastTo Source.Buffer
         n <- textIterGetLine i
         iLine <- textBufferGetIterAtLine sb n
@@ -299,7 +320,7 @@ instance TextEditor GtkSourceView where
     hasSelection (GtkBuffer sb) = (\(b, _, _) -> b) <$> textBufferGetSelectionBounds sb
     insert (GtkBuffer sb) (GtkIter i) text = textBufferInsert sb i text (-1)
     newViewWithMap (GtkBuffer sb) mbFontString = do
-        (GtkView sv, _) <- newViewNoScroll (GtkBuffer sb) mbFontString
+        (GtkView sv p, _) <- newViewNoScroll (GtkBuffer sb) mbFontString
         setTextViewBottomMargin sv 400
         grid <- gridNew
         sw <- scrolledWindowNew noAdjustment noAdjustment
@@ -318,12 +339,12 @@ instance TextEditor GtkSourceView where
         widgetSetVexpand sw True
         containerAdd grid sw
         containerAdd grid mapFrame
-        return (GtkView sv, sw, grid)
+        return (GtkView sv p, sw, grid)
     newView sb mbFontString = do
-        (GtkView sv, _) <- newViewNoScroll sb mbFontString
+        (GtkView sv p, _) <- newViewNoScroll sb mbFontString
         sw <- scrolledWindowNew noAdjustment noAdjustment
         containerAdd sw sv
-        return (GtkView sv, sw)
+        return (GtkView sv p, sw)
     newViewNoScroll (GtkBuffer sb) mbFontString = do
         liftIO $ debugM "lekash" "newView (GtkSourceView)"
         prefs <- readIDE prefs
@@ -364,8 +385,12 @@ instance TextEditor GtkSourceView where
         textViewSetWrapMode sv (if wrapLines prefs
                                     then WrapModeWord
                                     else WrapModeNone)
-        widgetOverrideFont sv (Just fd)
-        (GtkView sv,) <$> toWidget sv
+        provider <- cssProviderNew
+        styleContext <- widgetGetStyleContext sv
+        setTextViewFont provider fd
+        styleContextAddProvider styleContext provider (fromIntegral STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        (GtkView sv provider,) <$> toWidget sv
 
     pasteClipboard (GtkBuffer sb) clipboard (GtkIter i) defaultEditable =
         textBufferPasteClipboard sb clipboard (Just i) defaultEditable
@@ -416,10 +441,10 @@ instance TextEditor GtkSourceView where
                     let tagNames = ["selection-match", "search-match"]
                                        ++ map (T.pack . show)
                                               [ErrorRef, WarningRef, TestFailureRef, LintRef, BreakpointRef, ContextRef]
-                    forM_ tagNames $ \tagName -> do
+                    forM_ tagNames $ \tagName ->
                         setTagStyle sb tagName scheme applyDefaultStyling
 
-    setText (GtkBuffer sb) text = setTextBufferText sb text
+    setText (GtkBuffer sb) = setTextBufferText sb
     undo (GtkBuffer sb) = bufferUndo sb
 
     afterChanged (GtkBuffer sb) f = do
@@ -433,30 +458,35 @@ instance TextEditor GtkSourceView where
         return [id1]
 
     -- View
-    bufferToWindowCoords (GtkView sv) (x, y) = (fromIntegral *** fromIntegral) <$>
+    bufferToWindowCoords (GtkView sv _) (x, y) = (fromIntegral *** fromIntegral) <$>
         textViewBufferToWindowCoords sv TextWindowTypeWidget (fromIntegral x) (fromIntegral y)
-    drawTabs (GtkView sv) = viewSetDrawSpaces sv [DrawSpacesFlagsTab, DrawSpacesFlagsSpace, DrawSpacesFlagsTrailing]
-    getBuffer (GtkView sv) = GtkBuffer <$> (getTextViewBuffer sv >>= (liftIO . unsafeCastTo Source.Buffer))
-    getWindow (GtkView sv) = widgetGetWindow sv
-    getIterAtLocation (GtkView sv) x y = GtkIter
+    drawTabs (GtkView sv _) = do
+        sd <- viewGetSpaceDrawer sv
+        spaceDrawerSetTypesForLocations sd [SpaceLocationFlagsLeading] [SpaceTypeFlagsTab]
+        spaceDrawerSetTypesForLocations sd [SpaceLocationFlagsInsideText] [SpaceTypeFlagsTab]
+        spaceDrawerSetTypesForLocations sd [SpaceLocationFlagsTrailing] [SpaceTypeFlagsTab, SpaceTypeFlagsNbsp, SpaceTypeFlagsSpace]
+        spaceDrawerSetEnableMatrix sd True
+    getBuffer (GtkView sv _) = GtkBuffer <$> (getTextViewBuffer sv >>= (liftIO . unsafeCastTo Source.Buffer))
+    getWindow (GtkView sv _) = widgetGetWindow sv
+    getIterAtLocation (GtkView sv _) x y = GtkIter
 #ifdef MIN_VERSION_GTK_3_20
         . snd
 #endif
         <$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
-    getIterLocation (GtkView sv) (GtkIter i) = textViewGetIterLocation sv i
-    getOverwrite (GtkView sv) = textViewGetOverwrite sv
-    getScrolledWindow (GtkView sv) = widgetGetParent sv >>= \case
+    getIterLocation (GtkView sv _) (GtkIter i) = textViewGetIterLocation sv i
+    getOverwrite (GtkView sv _) = textViewGetOverwrite sv
+    getScrolledWindow (GtkView sv _) = widgetGetParent sv >>= \case
         Just v -> liftIO $ unsafeCastTo ScrolledWindow v
         Nothing -> error "getScrolledWindow failed"
-    getEditorWidget (GtkView sv) = liftIO $ toWidget sv
-    grabFocus (GtkView sv) = widgetGrabFocus sv
-    scrollToMark (GtkView sv) (GtkMark m) withMargin mbAlign = uncurry (textViewScrollToMark sv m withMargin (isJust mbAlign)) $ fromMaybe (0,0) mbAlign
-    scrollToIter (GtkView sv) (GtkIter i) withMargin mbAlign = void $ uncurry (textViewScrollToIter sv i withMargin (isJust mbAlign)) $ fromMaybe (0,0) mbAlign
-    setFont (GtkView sv) mbFontString = do
+    getEditorWidget (GtkView sv _) = liftIO $ toWidget sv
+    grabFocus (GtkView sv _) = widgetGrabFocus sv
+    scrollToMark (GtkView sv _) (GtkMark m) withMargin mbAlign = uncurry (textViewScrollToMark sv m withMargin (isJust mbAlign)) $ fromMaybe (0,0) mbAlign
+    scrollToIter (GtkView sv _) (GtkIter i) withMargin mbAlign = void $ uncurry (textViewScrollToIter sv i withMargin (isJust mbAlign)) $ fromMaybe (0,0) mbAlign
+    setFont (GtkView sv provider) mbFontString = do
         fd <- fontDescription mbFontString
-        widgetModifyFont sv (Just fd)
-    setIndentWidth (GtkView sv) width = setViewIndentWidth sv (fromIntegral width)
-    setWrapMode v@(GtkView sv) wrapLines = do
+        setTextViewFont provider fd
+    setIndentWidth (GtkView sv _) width = setViewIndentWidth sv (fromIntegral width)
+    setWrapMode v@(GtkView sv _) wrapLines = do
         sw <- getScrolledWindow v
         if wrapLines
             then do
@@ -465,23 +495,23 @@ instance TextEditor GtkSourceView where
             else do
                 textViewSetWrapMode sv WrapModeNone
                 scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
-    setRightMargin (GtkView sv) mbRightMargin =
+    setRightMargin (GtkView sv _) mbRightMargin =
         case mbRightMargin of
             Just n -> do
                 setViewShowRightMargin sv True
                 setViewRightMarginPosition sv (fromIntegral n)
             Nothing -> setViewShowRightMargin sv False
-    setShowLineNumbers (GtkView sv) = setViewShowLineNumbers sv
-    setShowLineMarks (GtkView sv) = setViewShowLineMarks sv
-    setHighlightCurrentLine (GtkView sv) = setViewHighlightCurrentLine sv
-    setTabWidth (GtkView sv) width = setViewTabWidth sv (fromIntegral width)
+    setShowLineNumbers (GtkView sv _) = setViewShowLineNumbers sv
+    setShowLineMarks (GtkView sv _) = setViewShowLineMarks sv
+    setHighlightCurrentLine (GtkView sv _) = setViewHighlightCurrentLine sv
+    setTabWidth (GtkView sv _) width = setViewTabWidth sv (fromIntegral width)
 
     -- Events
-    afterFocusIn (GtkView sv) f = do
+    afterFocusIn (GtkView sv _) f = do
         ideR <- ask
         id1 <- ConnectC sv <$> afterWidgetFocusInEvent sv (\e -> reflectIDE f ideR >> return False)
         return [id1]
-    afterMoveCursor v@(GtkView sv) f = do
+    afterMoveCursor v@(GtkView sv _) f = do
         ideR <- ask
         (GtkBuffer sb) <- getBuffer v
         id1 <- ConnectC sv <$> afterTextViewMoveCursor sv (\_ _ _ -> reflectIDE f ideR)
@@ -489,17 +519,17 @@ instance TextEditor GtkSourceView where
         id2 <- ConnectC sv <$> onWidgetButtonReleaseEvent sv (\e -> reflectIDE f ideR >> return False)
         id3 <- ConnectC sb <$> afterTextBufferEndUserAction sb (reflectIDE f ideR)
         return [id1, id2, id3]
-    afterToggleOverwrite (GtkView sv) f = do
+    afterToggleOverwrite (GtkView sv _) f = do
         ideR <- ask
         id1 <- ConnectC sv <$> afterTextViewToggleOverwrite sv (reflectIDE f ideR)
         return [id1]
-    onButtonPress (GtkView sv) f = do
+    onButtonPress (GtkView sv _) f = do
         id1 <- onIDE onWidgetButtonPressEvent sv f
         return [id1]
-    onButtonRelease (GtkView sv) f = do
+    onButtonRelease (GtkView sv _) f = do
         id1 <- onIDE onWidgetButtonReleaseEvent sv f
         return [id1]
-    onCompletion v@(GtkView sv) start cancel = do
+    onCompletion v@(GtkView sv _) start cancel = do
         ideR <- ask
         (GtkBuffer sb) <- getBuffer v
         -- when multiple afterBufferInsertText are called quickly,
@@ -537,19 +567,19 @@ instance TextEditor GtkSourceView where
         id3 <- ConnectC sv <$> onWidgetButtonPressEvent sv (\e -> reflectIDE cancel ideR >> return False)
         id4 <- ConnectC sv <$> onWidgetFocusOutEvent sv (\e -> reflectIDE cancel ideR >> return False)
         return [id1, id2, id3, id4]
-    onKeyPress (GtkView sv) f = do
+    onKeyPress (GtkView sv _) f = do
         id1 <- onIDE onWidgetKeyPressEvent sv f
         return [id1]
-    onMotionNotify (GtkView sv) f = do
+    onMotionNotify (GtkView sv _) f = do
         id1 <- onIDE onWidgetMotionNotifyEvent sv f
         return [id1]
-    onLeaveNotify (GtkView sv) f = do
+    onLeaveNotify (GtkView sv _) f = do
         id1 <- onIDE onWidgetLeaveNotifyEvent sv f
         return [id1]
-    onKeyRelease (GtkView sv) f = do
+    onKeyRelease (GtkView sv _) f = do
         id1 <- onIDE onWidgetKeyReleaseEvent sv f
         return [id1]
-    onLookupInfo (GtkView sv) f = do
+    onLookupInfo (GtkView sv _) f = do
         widgetAddEvents sv [EventMaskButtonReleaseMask]
         id1 <- onIDE onWidgetButtonReleaseEvent sv $ do
             e <- lift ask
@@ -558,12 +588,12 @@ instance TextEditor GtkSourceView where
                 [ModifierTypeControlMask] -> f >> return True
                 _             -> return False
         return [id1]
-    onMotionNotifyEvent (GtkView sv) handler = do
+    onMotionNotifyEvent (GtkView sv _) handler = do
         widgetAddEvents sv [EventMaskButtonMotionMask, EventMaskButton1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
         id1 <- onIDE onWidgetMotionNotifyEvent sv handler  --TODO this is potentially slowing leksah, a better event (if there was any) could be more efficient here
         widgetAddEvents sv [EventMaskButtonMotionMask, EventMaskButton1MotionMask]  -- TODO: this doesn't work yet event gets fired anyways: restrict event to being fired when left mouse button is pressed down
         return [id1]
-    onPopulatePopup (GtkView sv) f = do
+    onPopulatePopup (GtkView sv _) f = do
         ideR <- ask
         id1 <- ConnectC sv <$> onTextViewPopulatePopup sv (\menu -> reflectIDE (f =<< liftIO (unsafeCastTo Menu menu)) ideR)
         return [id1]
@@ -642,5 +672,5 @@ instance TextEditor GtkSourceView where
         setRGBAAlpha col 1
         setTextTagUnderline t value
         setTextTagUnderlineRgba t col
-    setEditable (GtkView view) b = textViewSetEditable view b
+    setEditable (GtkView view _) b = textViewSetEditable view b
 

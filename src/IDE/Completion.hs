@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, OverloadedStrings, LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings, LambdaCase, PatternSynonyms #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
@@ -21,6 +21,7 @@ import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
 import Data.IORef
 import Control.Monad
+import Foreign (castPtr)
 import IDE.Core.State
 import IDE.Metainfo.Provider
        (keywords, getDescription, getCompletionOptions)
@@ -34,6 +35,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (replicate, empty, commonPrefixes, pack, unpack, null, stripPrefix,
         isPrefixOf, length)
+import qualified Data.Text.Encoding as T (encodeUtf8)
 import System.Log.Logger (debugM)
 import GI.Gtk.Objects.Window
        (windowMove, windowGetScreen, windowGetSize, Window(..),
@@ -41,7 +43,7 @@ import GI.Gtk.Objects.Window
         setWindowDefaultWidth, setWindowResizable, setWindowDecorated,
         setWindowTypeHint, windowResize)
 import Data.GI.Base
-       (unsafeManagedPtrGetPtr, unsafeCastTo, get, set)
+       (unsafeManagedPtrGetPtr, unsafeCastTo, castTo, get, set, newBoxed, withManagedPtr)
 import GI.Gdk.Enums (GrabStatus(..), WindowTypeHint(..))
 import GI.Gtk.Objects.Container
        (containerRemove, containerAdd, containerSetBorderWidth)
@@ -88,7 +90,7 @@ import GI.Gtk.Interfaces.TreeModel
 import GI.Gdk.Structs.EventButton
        (getEventButtonTime, getEventButtonY, getEventButtonX,
         getEventButtonButton)
-import GI.Gdk.Flags (EventMask(..))
+import GI.Gdk.Flags (SeatCapabilities(..), EventMask(..))
 import GI.Gdk.Objects.Cursor (noCursor)
 import GI.Gdk.Structs.EventMotion
        (getEventMotionY, getEventMotionX)
@@ -104,7 +106,17 @@ import Data.GI.Gtk.ModelView.Types
        (equalManagedPtr, treePathGetIndices', treePathNewFromIndices')
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
-import GI.Gtk (widgetOverrideFont)
+import GI.Gtk
+       (widgetGetScreen, getCurrentEventDevice,
+        pattern STYLE_PROVIDER_PRIORITY_APPLICATION, styleContextAddProvider,
+        cssProviderLoadFromData, widgetGetStyleContext, cssProviderNew,
+        widgetOverrideFont)
+import Graphics.UI.Utils (fontDescriptionToCssProps)
+import GI.Gdk
+       (monitorGetGeometry, displayGetMonitorAtPoint, windowGetDisplay,
+        seatUngrab, Event(..), EventButton(..), noSeatGrabPrepareFunc,
+        cursorNewFromName, screenGetDisplay, seatGrab, deviceGetSeat,
+        Monitor(..))
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
@@ -194,7 +206,12 @@ initCompletion sourceView always = do
                     f <- fontDescriptionNew
                     fontDescriptionSetFamily f "Monospace"
                     return f
-            widgetOverrideFont tree (Just font)
+            provider <- cssProviderNew
+            styleContext <- widgetGetStyleContext tree
+            cssProps <- fontDescriptionToCssProps font
+            cssProviderLoadFromData provider . T.encodeUtf8
+              $ "treeview { " <> cssProps <> "}"
+            styleContextAddProvider styleContext provider (fromIntegral STYLE_PROVIDER_PRIORITY_APPLICATION)
 
             column   <- treeViewColumnNew
             setTreeViewColumnSizing   column TreeViewColumnSizingFixed
@@ -318,23 +335,30 @@ addEventHandling window sourceView tree store isWordChar always = do
         button     <- getEventButtonButton e
         x          <- getEventButtonX e
         y          <- getEventButtonY e
-        time       <- getEventButtonTime e
 
         widgetGetWindow window >>= \case
             Nothing -> return ()
-            Just drawWindow -> do
-                status <- pointerGrab
-                    drawWindow
-                    False
-                    [EventMaskPointerMotionMask, EventMaskButtonReleaseMask]
-                    Gdk.noWindow
-                    noCursor
-                    time
-                when (status == GrabStatusSuccess) $ do
-                    (width, height) <- windowGetSize window
-                    liftIO $ writeIORef resizeHandler $ Just $ \newX newY ->
-                        reflectIDE (
-                            setCompletionSize (fromIntegral width + floor (newX - x)) (fromIntegral height + floor (newY - y))) ideR
+            Just drawWindow ->
+                getCurrentEventDevice >>= mapM deviceGetSeat >>= \case
+                    Nothing -> return ()
+                    Just seat -> do
+                        screen <- widgetGetScreen window
+                        display <- screenGetDisplay screen
+                        mbCursor <- cursorNewFromName display "crosshair"
+                        e' <- withManagedPtr e $ newBoxed Event . castPtr
+                        status <- seatGrab
+                            seat
+                            drawWindow
+                            [SeatCapabilitiesAllPointing]
+                            False
+                            mbCursor
+                            (Just e')
+                            noSeatGrabPrepareFunc
+                        when (status == GrabStatusSuccess) $ do
+                            (width, height) <- windowGetSize window
+                            liftIO $ writeIORef resizeHandler $ Just $ \newX newY ->
+                                reflectIDE (
+                                    setCompletionSize (fromIntegral width + floor (newX - x)) (fromIntegral height + floor (newY - y))) ideR
 
         return True)
 
@@ -355,7 +379,9 @@ addEventHandling window sourceView tree store isWordChar always = do
                 x <- getEventButtonX e
                 y <- getEventButtonY e
                 resize x y
-                getEventButtonTime e >>= pointerUngrab
+                getCurrentEventDevice >>= mapM deviceGetSeat >>= \case
+                    Nothing -> return ()
+                    Just seat -> seatUngrab seat
                 liftIO $ writeIORef resizeHandler Nothing
                 return True
             Nothing     -> return False)
@@ -502,13 +528,21 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         Just first   <- panedGetChild1 paned
                         Just second  <- panedGetChild2 paned
                         screen       <- windowGetScreen window
-                        monitor      <- screenGetMonitorAtPoint screen (ox+fromIntegral x) (oy+fromIntegral y)
-                        monitorLeft  <- screenGetMonitorAtPoint screen (ox+fromIntegral x-wWindow+wNames) (oy+fromIntegral y)
-                        monitorRight <- screenGetMonitorAtPoint screen (ox+fromIntegral x+wWindow) (oy+fromIntegral y)
-                        monitorBelow <- screenGetMonitorAtPoint screen (ox+fromIntegral x) (oy+fromIntegral y+hWindow)
-                        wScreen      <- screenGetWidth screen
-                        hScreen      <- screenGetHeight screen
-                        top <- if monitorBelow /= monitor || (oy+fromIntegral y+hWindow) > hScreen
+                        display      <- windowGetDisplay drawWindow
+                        monitor      <- displayGetMonitorAtPoint display (ox+fromIntegral x) (oy+fromIntegral y)
+                        monitorLeft  <- displayGetMonitorAtPoint display (ox+fromIntegral x-wWindow+wNames) (oy+fromIntegral y)
+                        monitorRight <- displayGetMonitorAtPoint display (ox+fromIntegral x+wWindow) (oy+fromIntegral y)
+                        monitorBelow <- displayGetMonitorAtPoint display (ox+fromIntegral x) (oy+fromIntegral y+hWindow)
+                        monitorRect  <- monitorGetGeometry monitor
+                        monitorW     <- getRectangleWidth monitorRect
+                        monitorH     <- getRectangleHeight monitorRect
+                        let eqMonitor (Monitor m1) (Monitor m2) = liftIO $
+                                withManagedPtr m1 $ \ptr1 ->
+                                    withManagedPtr m2 $ \ptr2 ->
+                                        return $ ptr1 == ptr2
+
+                        sameMonitorBelow <- eqMonitor monitorBelow monitor
+                        top <- if not sameMonitorBelow || (oy+fromIntegral y+hWindow) > monitorH
                             then do
                                 sourceSW <- getScrolledWindow sourceView
                                 hSource <- widgetGetAllocation sourceSW >>= getRectangleHeight
@@ -516,8 +550,10 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                                 (_, newy)     <- bufferToWindowCoords sourceView (fromIntegral startx, fromIntegral (starty+height))
                                 return (oy+fromIntegral newy)
                             else return (oy+fromIntegral y)
-                        liftIO $ debugM "leksah" $ "Completion processResults " <> show (monitorRight /= monitor, monitorLeft /= monitor, ox, x, wWindow, wScreen, wNames)
-                        swap <- if (monitorRight /= monitor || (ox+fromIntegral x+wWindow) > wScreen) && monitorLeft == monitor && (ox+fromIntegral x-wWindow+wNames) > 0
+                        sameMonitorLeft <- eqMonitor monitorLeft monitor
+                        sameMonitorRight <- eqMonitor monitorRight monitor
+                        liftIO $ debugM "leksah" $ "Completion processResults " <> show (not sameMonitorRight, sameMonitorLeft, ox, x, wWindow, monitorW, wNames)
+                        swap <- if (not sameMonitorRight || (ox+fromIntegral x+wWindow) > monitorW) && sameMonitorLeft && (ox+fromIntegral x-wWindow+wNames) > 0
                             then do
                                 windowMove window (ox+fromIntegral x-wWindow+wNames) top
                                 return $ first `equalManagedPtr` namesSW

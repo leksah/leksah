@@ -47,6 +47,17 @@
        <menuitem name="_Goto Line" action="EditGotoLine" />
        <separator/>
        <menuitem name="Reformat" action="EditReformat" />
+       <menu name="Refactor" action="EditRefactor">
+         <menuitem name="If To Case" action="EditRefactorIfToCase" />
+         <menuitem name="Duplicate Definition" action="EditRefactorDuplicateDef" />
+         <menuitem name="Lift To Top Level" action="EditRefactorLiftToTopLevel" />
+         <menuitem name="Lift One Level" action="EditRefactorLiftOneLevel" />
+         <menuitem name="Demote" action="EditRefactorDemote" />
+         <menuitem name="Rename" action="EditRefactorRename" />
+         <menuitem name="Add One Parameter" action="EditRefactorAddOneParameter" />
+         <menuitem name="Remove One Parameter" action="EditRefactorRmOneParameter" />
+         <menuitem name="Delete Definition" action="EditRefactorDeleteDef" />
+       </menu>
        <menuitem name="Comment" action="EditComment" />
        <menuitem name="Uncomment" action="EditUncomment" />
        <menuitem name="Shift Left" action="EditShiftLeft" />

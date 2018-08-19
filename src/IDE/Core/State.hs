@@ -350,20 +350,20 @@ postSyncIDE' priority f = reifyIDE $ \ideR -> do
     takeMVar resultVar
 
 postSyncIDE :: (MonadIDE m, HasCallStack) => IDEM a -> m a
-postSyncIDE = postSyncIDE' PRIORITY_DEFAULT . traceTimeTaken "postSyncIDE"
+postSyncIDE = postSyncIDE' PRIORITY_DEFAULT
 
 postSyncIDEIdle :: (MonadIDE m, HasCallStack) => IDEM a -> m a
-postSyncIDEIdle = postSyncIDE' PRIORITY_DEFAULT_IDLE . traceTimeTaken "postSyncIDEIdle"
+postSyncIDEIdle = postSyncIDE' PRIORITY_DEFAULT_IDLE
 
 postAsyncIDE' :: (MonadIDE m, HasCallStack) => Int32 -> IDEM () -> m ()
 postAsyncIDE' priority f = reifyIDE $ \ideR ->
     void . idleAdd priority $ reflectIDE (traceTimeTaken "postAsyncIDE'" f) ideR >> return False
 
 postAsyncIDE :: (MonadIDE m, HasCallStack) => IDEM () -> m ()
-postAsyncIDE = postAsyncIDE' PRIORITY_DEFAULT . traceTimeTaken "postAsyncIDE"
+postAsyncIDE = postAsyncIDE' PRIORITY_DEFAULT
 
 postAsyncIDEIdle :: (MonadIDE m, HasCallStack) => IDEM () -> m ()
-postAsyncIDEIdle = postAsyncIDE' PRIORITY_DEFAULT_IDLE . traceTimeTaken "postAsyncIDEIdle"
+postAsyncIDEIdle = postAsyncIDE' PRIORITY_DEFAULT_IDLE
 
 onIDE onSignal obj callback = do
     ideRef <- ask

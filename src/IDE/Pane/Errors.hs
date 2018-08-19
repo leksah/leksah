@@ -113,6 +113,7 @@ import GI.Gtk (getToggleButtonActive)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
+import IDE.Utils.DebugUtils (traceTimeTaken)
 
 
 -- | The representation of the Errors pane
@@ -315,24 +316,15 @@ getErrors :: Maybe PanePath -> IDEM ErrorsPane
 getErrors Nothing    = forceGetPane (Right "*Errors")
 getErrors (Just pp)  = forceGetPane (Left pp)
 
-timeIt :: String -> IDEM a -> IDEM a
-timeIt name f = do
-    liftIO $ debugM "leksah" name
-    start <- liftIO getCurrentTime
-    result <- f
-    end <- liftIO getCurrentTime
-    liftIO $ debugM "leksah" $ name <> " took " <> show (diffUTCTime end start)
-    return result
-
 -- | Repopulates the Errors pane
 fillErrorList :: Bool -- ^ Whether to display the Errors pane
               -> IDEAction
-fillErrorList False = getPane >>= maybe (return ()) fillErrorList'
-fillErrorList True = getErrors Nothing  >>= \ p -> fillErrorList' p >> displayPane p False
+fillErrorList False = traceTimeTaken "fillErrorList False" $ getPane >>= maybe (return ()) fillErrorList'
+fillErrorList True = traceTimeTaken "fillErrorList True" $ getErrors Nothing  >>= \ p -> fillErrorList' p >> displayPane p False
 
 -- | Fills the pane with the error list from the IDE state
 fillErrorList' :: ErrorsPane -> IDEAction
-fillErrorList' pane = timeIt "fillErrorList'" $ do
+fillErrorList' pane = traceTimeTaken "fillErrorList'" $ do
     refs <- F.toList <$> readIDE errorRefs
     visibleRefs <- filterM (isRefVisible pane) refs
 
@@ -373,7 +365,7 @@ addErrorToList True  index lr = getErrors Nothing  >>= \ p -> addErrorToList' in
 
 -- | Add a 'LogRef' at a specific index to the Errors pane
 addErrorToList' :: Int -> LogRef -> ErrorsPane -> IDEAction
-addErrorToList' unfilteredIndex ref pane = timeIt "addErrorToList'" $ do
+addErrorToList' unfilteredIndex ref pane = traceTimeTaken "addErrorToList'" $ do
     visible <- isRefVisible pane ref
     updateFilterButtons pane
     when visible $ do
@@ -398,13 +390,13 @@ addErrorToList' unfilteredIndex ref pane = timeIt "addErrorToList'" $ do
 removeErrorsFromList :: Bool -- ^ Whether to display the pane
                      -> (LogRef -> Bool)
                      -> IDEAction
-removeErrorsFromList False toRemove = getPane >>= maybe (return ()) (removeErrorsFromList' toRemove)
-removeErrorsFromList True  toRemove = getErrors Nothing  >>= \ p -> removeErrorsFromList' toRemove p >> displayPane p False
+removeErrorsFromList False toRemove = traceTimeTaken "removeErrorsFromList False" $ getPane >>= maybe (return ()) (removeErrorsFromList' toRemove)
+removeErrorsFromList True  toRemove = traceTimeTaken "removeErrorsFromList True" $ getErrors Nothing  >>= \ p -> removeErrorsFromList' toRemove p >> displayPane p False
 
 
 -- | Add a 'LogRef' at a specific index to the Errors pane
 removeErrorsFromList' :: (LogRef -> Bool) -> ErrorsPane -> IDEAction
-removeErrorsFromList' toRemove pane = timeIt "removeErrorsFromList" $ do
+removeErrorsFromList' toRemove pane = traceTimeTaken "removeErrorsFromList'" $ do
     let store = errorStore pane
     trees <- forestStoreGetForest store
     updateFilterButtons pane
@@ -420,7 +412,7 @@ updateFilterButtons pane = void . liftIO $ tryPutMVar (updateButtons pane) ()
 
 -- | Updates the filter buttons in the Error Pane
 doUpdateFilterButtons :: ErrorsPane -> IDEAction
-doUpdateFilterButtons pane = timeIt "updateFilterButtons" $ do
+doUpdateFilterButtons pane = traceTimeTaken "updateFilterButtons" $ do
     let numRefs refType = length . filter ((== refType) . logRefType) . F.toList <$> readIDE errorRefs
     let setLabel name amount button = buttonSetLabel button (name <> " (" <> T.pack (show amount) <> ")" )
 

@@ -207,6 +207,11 @@ flag check-gtk-version
         as they can cause problems on macOS when using nix.
     manual: True
 
+flag hare
+    description:
+        Enable HaRe based features.
+    default: False
+
 library
     exposed-modules:
         IDE.HLint
@@ -352,7 +357,6 @@ library
         Glob >=0.9.2 && <0.10,
         brittany >=0.11.0.0 && <0.12,
         text-replace >=0.0.0.1 && <0.1
---        HaRe >=0.8.4.1 && <0.9
 
     if os(windows)
         extra-libraries:
@@ -417,6 +421,12 @@ library
             ghc >=6.10.1 && <8.5,
             haskell-src-exts >=1.13.5 && <1.21,
             leksah-server >=0.17.0.0 && <0.18
+
+    if flag(hare)
+        build-depends:
+            HaRe >=0.8.4.1 && <0.9,
+            ghc-mod-core >=5.9.0.0 && <5.10,
+            monad-control >=1.0.2.3 && <1.1
 
 executable leksah
     main-is: Main.hs
