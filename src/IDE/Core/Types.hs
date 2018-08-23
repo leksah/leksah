@@ -196,6 +196,7 @@ import GHC.Generics (Generic)
 import Data.Aeson.Types
        (genericParseJSON, genericToEncoding, genericToJSON,
         defaultOptions, fieldLabelModifier, Options)
+import GI.Gtk (CssProvider)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -226,7 +227,7 @@ data IDE            =  IDE {
 ,   flipper             :: Maybe TreeView             -- ^ used to select the active pane
 ,   typeTip             :: Maybe TypeTip
 ,   guiHistory          :: (Bool,[GUIHistory],Int)
-,   findbar             :: (Bool,Maybe (Toolbar,SeqStore Text))
+,   findbar             :: (Bool,Maybe (Toolbar,SeqStore Text,CssProvider))
 ,   toolbar             :: (Bool,Maybe Toolbar)
 ,   recentFiles         :: [FilePath]
 ,   recentWorkspaces    :: [FilePath]
