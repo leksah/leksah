@@ -42,10 +42,10 @@
 	url = https://github.com/hamishmack/hs-git.git
 [submodule "vendor/cabal-helper"]
 	path = vendor/cabal-helper
-	url = git@github.com:alanz/cabal-helper.git
+	url = https://github.com/alanz/cabal-helper.git
 [submodule "vendor/HaRe"]
 	path = vendor/HaRe
-	url = git@github.com:alanz/HaRe.git
+	url = https://github.com/alanz/HaRe.git
 [submodule "vendor/brittany"]
 	path = vendor/brittany
-	url = git@github.com:lspitzner/brittany.git
+	url = https://github.com/lspitzner/brittany.git
