@@ -1,4 +1,5 @@
 language: nix
+sudo: true
 
 script:
  - timeout 30m nix-build
