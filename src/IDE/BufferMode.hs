@@ -8,6 +8,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wall #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.BufferMode
@@ -25,22 +26,21 @@
 module IDE.BufferMode where
 
 import Prelude hiding(getLine)
+import Data.Foldable (forM_)
 import IDE.Core.State
-import Data.List (isPrefixOf, elemIndices, isInfixOf, isSuffixOf)
+import Data.List (isSuffixOf)
 import IDE.TextEditor
-       (getOffset, startsLine, getIterAtMark, EditorView(..),
+       (startsLine, getIterAtMark, EditorView(..),
         getSelectionBoundMark, getInsertMark, getBuffer,
         delete, getText, forwardCharsC, insert, getIterAtLine,
         getLine, TextEditor(..), EditorBuffer(..),
         EditorIter(..))
 import Data.IORef (IORef)
-import System.Time (ClockTime)
 import Data.Typeable (cast, Typeable)
 import IDE.SourceCandy
-       (getCandylessText, keystrokeCandy, transformFromCandy,
-        transformToCandy)
-import Control.Monad (when)
-import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
+       (keystrokeCandy, transformFromCandy, transformToCandy)
+import Control.Monad (void, when)
+import Data.Maybe (fromMaybe, catMaybes)
 import IDE.Utils.FileUtils
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Time (UTCTime)
@@ -48,7 +48,6 @@ import Data.Text (Text)
 import Data.Monoid ((<>))
 import qualified Data.Text as T
        (isPrefixOf, lines, unlines, count, isInfixOf, pack)
-import GI.Gtk.Objects.ScrolledWindow (ScrolledWindow(..))
 import GI.Gtk.Objects.Widget (toWidget)
 import GI.Gtk.Objects.Notebook (notebookPageNum, Notebook(..))
 import GI.Gtk (MessageDialog, Box)
@@ -56,6 +55,7 @@ import Control.Concurrent (MVar)
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
 import IDE.Brittany (runBrittany)
+import Language.Haskell.Brittany.Internal.Types (BrittanyError(..))
 import Control.Exception (SomeException)
 
 -- * Buffer Basics
@@ -77,11 +77,11 @@ data IDEBuffer = forall editor. TextEditor editor => IDEBuffer {
 
 instance Pane IDEBuffer IDEM
     where
-    primPaneName    =   bufferName
+    primPaneName      =   bufferName
     paneTooltipText p =   fmap T.pack (fileName p)
-    getAddedIndex   =   addedIndex
-    getTopWidget    =   liftIO . toWidget . vBox
-    paneId b        =   ""
+    getAddedIndex     =   addedIndex
+    getTopWidget      =   liftIO . toWidget . vBox
+    paneId _b         =   ""
 
 data BufferState            =   BufferState FilePath Int
                             |   BufferStateTrans Text Text Int
@@ -130,7 +130,7 @@ getStartAndEndLineOfSelection ebuf = do
     return (startLine',endLineReal)
 
 inBufContext :: MonadIDE m => alpha -> IDEBuffer -> (forall editor. TextEditor editor => Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> m alpha) -> m alpha
-inBufContext def (ideBuf@IDEBuffer{sourceView = v}) f = do
+inBufContext def ideBuf@IDEBuffer{sourceView = v} f = do
     (pane,_)       <-  liftIDE $ guiPropertiesFromName (paneName ideBuf)
     nb             <-  liftIDE $ getNotebook pane
     i              <-  notebookPageNum nb (vBox ideBuf)
@@ -147,7 +147,7 @@ inActiveBufContext def f = do
     mbBuf <- maybeActiveBuf
     case mbBuf of
         Nothing         -> return def
-        Just (ideBuf@IDEBuffer{sourceView = v}) -> do
+        Just ideBuf@IDEBuffer{sourceView = v} -> do
             ebuf <- getBuffer v
             f v ebuf ideBuf
 
@@ -160,7 +160,7 @@ inActiveBufContext' def f = do
             inBufContext def ideBuf f
 
 doForSelectedLines :: [a] -> (forall editor. TextEditor editor => EditorBuffer editor -> Int -> IDEM a) -> IDEM [a]
-doForSelectedLines d f = inActiveBufContext d $ \_ ebuf currentBuffer -> do
+doForSelectedLines d f = inActiveBufContext d $ \_ ebuf _currentBuffer -> do
     (start,end) <- getStartAndEndLineOfSelection ebuf
     beginUserAction ebuf
     result <- mapM (f ebuf) [start .. end]
@@ -193,22 +193,21 @@ modeFromFileName (Just fn) | ".hs"    `isSuffixOf` fn = haskellMode
                            | ".cabal" `isSuffixOf` fn = cabalMode
                            | otherwise                = otherMode
 
+haskellMode :: Mode
 haskellMode = Mode {
     modeName = "Haskell",
-    modeEditComment = do
-        doForSelectedLines [] $ \ebuf lineNr -> do
+    modeEditComment =
+        void $ doForSelectedLines [] $ \ebuf lineNr -> do
             sol <- getIterAtLine ebuf lineNr
-            insert ebuf sol "--"
-        return (),
-    modeEditUncomment = do
-        doForSelectedLines [] $ \ebuf lineNr -> do
+            insert ebuf sol "--",
+    modeEditUncomment =
+        void $ doForSelectedLines [] $ \ebuf lineNr -> do
             sol <- getIterAtLine ebuf lineNr
             sol2 <- forwardCharsC sol 2
             str   <- getText ebuf sol sol2 True
-            when (str == "--") $ delete ebuf sol sol2
-        return (),
+            when (str == "--") $ delete ebuf sol sol2,
     modeSelectedModuleName =
-        inActiveBufContext Nothing $ \_ ebuf currentBuffer ->
+        inActiveBufContext Nothing $ \_ _ebuf currentBuffer ->
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -235,13 +234,19 @@ haskellMode = Mode {
     modeEditInCommentOrString = \ line -> ("--" `T.isInfixOf` line)
                                         || odd (T.count "\"" line),
     modeEditReformat = Just $ do
-        inActiveBufContext () $ \_ ebuf currentBuffer -> hasSelection ebuf >>= \case
+        inActiveBufContext () $ \_ ebuf _currentBuffer -> hasSelection ebuf >>= \case
           False -> return ()
           True -> do
             (start, end) <- getSelectionBounds ebuf
             text <- getText ebuf start end True
             (runBrittany Nothing text >>= \case
-                Left e -> liftIO $ putStrLn "Brittany Errors"
+                Left errs -> forM_ errs $ \case
+                    ErrorInput         str -> ideMessage Normal $ T.pack str
+                    ErrorUnusedComment str -> ideMessage Normal $ T.pack str
+                    LayoutWarning      str -> ideMessage Normal $ T.pack str
+                    ErrorUnknownNode str _ -> ideMessage Normal $ T.pack str
+                    ErrorMacroConfig str _ -> ideMessage Normal . T.pack $ "when parsing inline config: " ++ str
+                    ErrorOutputCheck       -> ideMessage Normal "Output is not syntactically valid."
                 Right newText -> do
                     beginUserAction ebuf
                     delete ebuf start end
@@ -251,27 +256,25 @@ haskellMode = Mode {
         return ()
     }
 
+literalHaskellMode :: Mode
 literalHaskellMode = Mode {
     modeName = "Literal Haskell",
-    modeEditComment = do
-        doForSelectedLines [] $ \ebuf lineNr -> do
+    modeEditComment =
+        void $ doForSelectedLines [] $ \ebuf lineNr -> do
             sol <- getIterAtLine ebuf lineNr
             sol2 <- forwardCharsC sol 1
             str   <- getText ebuf sol sol2 True
             when (str == ">")
-                (delete ebuf sol sol2)
-        return (),
-    modeEditUncomment = do
-        doForSelectedLines [] $ \ebuf lineNr -> do
-            sol <- getIterAtLine ebuf lineNr
+                (delete ebuf sol sol2),
+    modeEditUncomment =
+        void $ doForSelectedLines [] $ \ebuf lineNr -> do
             sol <- getIterAtLine ebuf lineNr
             sol2 <- forwardCharsC sol 1
             str  <- getText ebuf sol sol2 True
             when (str /= ">")
-                (insert ebuf sol ">")
-        return (),
+                (insert ebuf sol ">"),
     modeSelectedModuleName =
-        inActiveBufContext Nothing $ \_ ebuf currentBuffer ->
+        inActiveBufContext Nothing $ \_ _ebuf currentBuffer ->
             case fileName currentBuffer of
                 Just filePath -> liftIO $ moduleNameFromFilePath filePath
                 Nothing       -> return Nothing,
@@ -299,20 +302,19 @@ literalHaskellMode = Mode {
                                         || odd (T.count "\"" line),
     modeEditReformat = Nothing}
 
+cabalMode :: Mode
 cabalMode = Mode {
     modeName                 = "Cabal",
-    modeEditComment = do
-        doForSelectedLines [] $ \ebuf lineNr -> do
+    modeEditComment =
+        void $ doForSelectedLines [] $ \ebuf lineNr -> do
             sol <- getIterAtLine ebuf lineNr
-            insert ebuf sol "--"
-        return (),
-    modeEditUncomment = do
-        doForSelectedLines [] $ \ebuf lineNr -> do
+            insert ebuf sol "--",
+    modeEditUncomment =
+        void $ doForSelectedLines [] $ \ebuf lineNr -> do
             sol <- getIterAtLine ebuf lineNr
             sol2 <- forwardCharsC sol 2
             str   <- getText ebuf sol sol2 True
-            when (str == "--") $ delete ebuf sol sol2
-        return (),
+            when (str == "--") $ delete ebuf sol sol2,
     modeSelectedModuleName   = return Nothing,
     modeTransformToCandy     = \ _ _ -> return (),
     modeTransformFromCandy   = \_ -> return (),
@@ -324,6 +326,7 @@ cabalMode = Mode {
     modeEditReformat         = Nothing
     }
 
+otherMode :: Mode
 otherMode = Mode {
     modeName                 = "Unknown",
     modeEditComment          = return (),
@@ -339,7 +342,8 @@ otherMode = Mode {
     modeEditReformat         = Nothing
     }
 
-isHaskellMode mode = modeName mode == "Haskell" || modeName mode == "Literal Haskell"
+isHaskellMode :: Mode -> Bool
+isHaskellMode m = modeName m == "Haskell" || modeName m == "Literal Haskell"
 
 withCurrentMode :: alpha -> (Mode -> IDEM alpha) -> IDEM alpha
 withCurrentMode def act = do

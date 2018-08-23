@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall #-}
 module IDE.Brittany (
   runBrittany
 ) where
