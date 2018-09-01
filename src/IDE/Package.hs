@@ -191,7 +191,7 @@ import qualified Data.Map as M
 import Control.Lens ((<&>))
 import System.Process (showCommandForUser)
 #ifdef MIN_VERSION_unix
-import System.Posix (sigKILL, signalProcess)
+import System.Posix (sigKILL, signalProcessGroup, getProcessGroupIDOf)
 import System.Process.Internals
        (withProcessHandle, ProcessHandle__(..))
 #endif
@@ -532,7 +532,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
 killProcess :: ProcessHandle -> IO ()
 killProcess ph =
   withProcessHandle ph $ \case
-      OpenHandle pid -> signalProcess sigKILL pid
+      OpenHandle pid -> signalProcessGroup sigKILL =<< getProcessGroupIDOf pid
       _ -> return ()
 #else
 killProcess = terminateProcess
