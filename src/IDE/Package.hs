@@ -189,7 +189,7 @@ import Distribution.Compiler (CompilerFlavor(..))
 import qualified Data.Map as M
        (toList, fromList, member, delete, insert, lookup)
 import Control.Lens ((<&>))
-import System.Process (showCommandForUser)
+import System.Process (getProcessExitCode, showCommandForUser)
 #ifdef MIN_VERSION_unix
 import System.Posix (sigKILL, signalProcessGroup, getProcessGroupIDOf)
 import System.Process.Internals
@@ -492,8 +492,10 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, package) co
                                     void . modifyMVar_ reloadComplete $ \case
                                         ReloadComplete -> return ReloadComplete
                                         _ -> (`reflectIDE` ideR) $ do
-                                            ideMessage High (__ "Interrupting :reload took too long. Terminating ghci.")
-                                            liftIO $ killProcess proc
+                                            stillRunning <- liftIO $ isNothing <$> getProcessExitCode proc
+                                            when stillRunning $ do
+                                                ideMessage High (__ "Interrupting :reload took too long. Terminating ghci.")
+                                                liftIO $ killProcess proc
                                             return ReloadComplete
                                 return ReloadInterrupting
                 modifyIDE_ $ \ide -> ide {runningTool = Just (proc, interruptReload)}
