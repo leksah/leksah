@@ -12,6 +12,9 @@ packages:
 -- vendor/HaRe/submodules/ghc-mod
 -- vendor/HaRe/submodules/ghc-mod/core
 
+allow-newer:
+ text-replace:base
+
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk
  flags: -check-gtk-version
