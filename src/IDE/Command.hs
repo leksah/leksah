@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
-{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wall #-}
 -----------------------------------------------------------------------------
 --
 -- Module       :  IDE.Menu
@@ -36,13 +37,30 @@ module IDE.Command (
 ) where
 
 import Prelude ()
-import Prelude.Compat
+import Prelude.Compat hiding (log)
 import System.FilePath
 import Data.Version
 import Control.Exception
 import Data.Maybe
 
 import IDE.Core.State
+       (runPackage, runProject, postAsyncIDE, ipdPackageDir, pjTool,
+        specialKeys, candyState, useCtrlTabFlipping, makeMode,
+        runBenchmarks, runUnitTests, makeDocs, debug, javaScript, native,
+        backgroundBuild, throwIDE, version, application,
+        saveSessionOnClose, modifyIDE_, triggerEventIDE, reflectIDE,
+        reifyIDE, recentWorkspaces, recentFiles, getDataDir,
+        MessageLevel(..), ideMessage, activePack, readIDE, bufferProjCache,
+        location, SymbolEvent(..), specialKey, toolbar, Prefs, prefs,
+        darkUserInterface, SensitivityMask, currentState, IDEM, IDEAction,
+        IDERef, ActionDescr, SearchHint(..), SensitivityMask(..),
+        ActionDescr(..), IDEEvent(..), ProjectTool(..), PackScope(..),
+        GenScope(..), Descr, Descr(..), SrcSpan(..), IDEState(..),
+        StatusbarCompartment(..), PackModule(..), dscMbModu', displayPane,
+        viewMove, PaneDirection(..), viewSplitHorizontal, viewSplitVertical,
+        viewCollapse, viewNewGroup, viewTabsPos, viewSwitchTabs, getUiManager,
+        viewDetach, Location(..), postSyncIDE, isReexported, dscMbModu,
+        dscMbLocation, hlintOnSave, exitCode)
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
@@ -164,6 +182,7 @@ import Data.Attoparsec.Text (parseOnly)
 import IDE.HaRe
        (deleteDef, rmOneParameter, addOneParameter, rename, liftOneLevel,
         liftToTopLevel, duplicateDef, ifToCase, demote)
+import GI.Gtk (iconThemeAddResourcePath, iconThemeGetDefault)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -608,80 +627,78 @@ updateRecentEntries = do
 -- | Building the Menu
 --
 makeMenu :: UIManager -> [ActionDescr IDERef] -> Text -> IDEAction
-makeMenu uiManager actions menuDescription = reifyIDE (\ideR -> do
+makeMenu uiMgr actions description = reifyIDE $ \ideR -> do
     actionGroupGlobal <- actionGroupNew "global"
     mapM_ (actm ideR actionGroupGlobal) actions
-    uIManagerInsertActionGroup uiManager actionGroupGlobal 1
-    uIManagerAddUiFromString uiManager menuDescription (-1)
-    return ())
-    where
-        actm ideR ag (AD name label tooltip stockId ideAction accs isToggle) = do
-            let (acc,accString) = case accs of
-                                    [] -> (Just "", "=" <> name)
-                                    a:_ -> (Just a, a <> "=" <> name)
-            if isToggle
-                then do
-                    act <- toggleActionNew name (Just label) tooltip stockId
-                    onToggleActionToggled act $ doAction ideAction ideR accString
-                    actionGroupAddActionWithAccel ag act acc
-                else do
-                    act <- actionNew name (Just label) tooltip stockId
-                    onActionActivate act $ doAction ideAction ideR accString
-                    actionGroupAddActionWithAccel ag act acc
-        doAction ideAction ideR accStr =
-            reflectIDE (do
-                ideAction
-                triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])
-                return ()) ideR
+    uIManagerInsertActionGroup uiMgr actionGroupGlobal 1
+    void $ uIManagerAddUiFromString uiMgr description (-1)
+  where
+    actm ideR ag AD{..} = do
+        let (acc,accString) = case accelerator of
+                                [] -> (Just "", "=" <> name)
+                                a:_ -> (Just a, a <> "=" <> name)
+        if isToggle
+            then do
+                act <- toggleActionNew name (Just label) tooltip stockID
+                void . onToggleActionToggled act $ doAction action ideR accString
+                actionGroupAddActionWithAccel ag act acc
+            else do
+                act <- actionNew name (Just label) tooltip stockID
+                void . onActionActivate act $ doAction action ideR accString
+                actionGroupAddActionWithAccel ag act acc
+    doAction ideAction ideR accStr =
+        reflectIDE (do
+            void ideAction
+            void $ triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])) ideR
 
 getMenuAndToolbars :: MonadIO m => UIManager -> m (AccelGroup, MenuBar, Toolbar)
-getMenuAndToolbars uiManager = do
-    accGroup <- uIManagerGetAccelGroup uiManager
-    menu     <- uIManagerGetWidget uiManager "/ui/menubar" >>= liftIO . unsafeCastTo MenuBar . fromMaybe (error "Failed to get /ui/menubar!")
-    toolbar  <- uIManagerGetWidget uiManager "/ui/toolbar" >>= liftIO . unsafeCastTo Toolbar . fromMaybe (error "Failed to get /ui/toolbar!")
-    toolbarSetStyle toolbar ToolbarStyleIcons
-    toolbarSetIconSize toolbar IconSizeLargeToolbar
-    widgetSetSizeRequest toolbar 700 (-1)
-    return (accGroup,menu,toolbar)
+getMenuAndToolbars uiMgr = do
+    accGroup <- uIManagerGetAccelGroup uiMgr
+    menu     <- uIManagerGetWidget uiMgr "/ui/menubar" >>= liftIO . unsafeCastTo MenuBar . fromMaybe (error "Failed to get /ui/menubar!")
+    toolbar' <- uIManagerGetWidget uiMgr "/ui/toolbar" >>= liftIO . unsafeCastTo Toolbar . fromMaybe (error "Failed to get /ui/toolbar!")
+    toolbarSetStyle toolbar' ToolbarStyleIcons
+    toolbarSetIconSize toolbar' IconSizeLargeToolbar
+    widgetSetSizeRequest toolbar' 700 (-1)
+    return (accGroup,menu,toolbar')
 
 textPopupMenu :: IDERef -> Menu -> IO ()
 textPopupMenu ideR menu = do
     let reflectIDE_ x = reflectIDE x ideR
     items <- containerGetChildren menu
     mi1 <- menuItemNewWithLabel (__ "Eval")
-    onMenuItemActivate mi1 $ reflectIDE_ debugExecuteSelection
+    void . onMenuItemActivate mi1 $ reflectIDE_ debugExecuteSelection
     menuShellAppend menu mi1
     mi11 <- menuItemNewWithLabel (__ "Eval & Insert")
-    onMenuItemActivate mi11 $
+    void . onMenuItemActivate mi11 $
       reflectIDE_ debugExecuteAndShowSelection
     menuShellAppend menu mi11
     mi12 <- menuItemNewWithLabel (__ "Step")
-    onMenuItemActivate mi12 $ reflectIDE_ debugStepExpression
+    void . onMenuItemActivate mi12 $ reflectIDE_ debugStepExpression
     menuShellAppend menu mi12
     mi13 <- menuItemNewWithLabel (__ "Trace")
-    onMenuItemActivate mi13 $ reflectIDE_ debugTraceExpression
+    void . onMenuItemActivate mi13 $ reflectIDE_ debugTraceExpression
     menuShellAppend menu mi13
     mi16 <- menuItemNewWithLabel (__ "Set Breakpoint")
-    onMenuItemActivate mi16 $ reflectIDE_ debugSetBreakpoint
+    void . onMenuItemActivate mi16 $ reflectIDE_ debugSetBreakpoint
     menuShellAppend menu mi16
     sep1 <- separatorMenuItemNew >>= liftIO . toMenuItem
     menuShellAppend menu sep1
     mi14 <- menuItemNewWithLabel (__ "Type")
-    onMenuItemActivate mi14 $ reflectIDE_ debugType
+    void . onMenuItemActivate mi14 $ reflectIDE_ debugType
     menuShellAppend menu mi14
     mi141 <- menuItemNewWithLabel (__ "Info")
-    onMenuItemActivate mi141 $ reflectIDE_ debugInformation
+    void . onMenuItemActivate mi141 $ reflectIDE_ debugInformation
     menuShellAppend menu mi141
     mi15 <- menuItemNewWithLabel (__ "Kind")
-    onMenuItemActivate mi15 $ reflectIDE_ debugKind
+    void . onMenuItemActivate mi15 $ reflectIDE_ debugKind
     menuShellAppend menu mi15
     sep2 <- separatorMenuItemNew >>= liftIO . toMenuItem
     menuShellAppend menu sep2
     mi2 <- menuItemNewWithLabel (__ "Find (text)")
-    onMenuItemActivate mi2 $ reflectIDE_ (editFindInc Initial)
+    void . onMenuItemActivate mi2 $ reflectIDE_ (editFindInc Initial)
     menuShellAppend menu mi2
     mi3 <- menuItemNewWithLabel (__ "Search (metadata)")
-    onMenuItemActivate mi3 $
+    void . onMenuItemActivate mi3 $
       reflectIDE_ $ do
          mbtext <- snd <$> selectedTextOrCurrentIdentifier -- if no text selected, search for current identifier
          searchPane <- getSearch Nothing
@@ -690,7 +707,7 @@ textPopupMenu ideR menu = do
               Nothing -> ideMessage Normal (__ "No identifier selected")
     menuShellAppend menu mi3
     mi4 <- menuItemNewWithLabel (__ "Upload to lpaste.net")
-    onMenuItemActivate mi4 $ reflectIDE_ uploadToLpaste
+    void . onMenuItemActivate mi4 $ reflectIDE_ uploadToLpaste
     menuShellAppend menu mi4
     let interpretingEntries = [mi16]
     let interpretingSelEntries
@@ -699,7 +716,7 @@ textPopupMenu ideR menu = do
              mi15]
     let otherEntries = [mi2, mi3, mi4]
     -- isInterpreting' <- (reflectIDE isInterpreting ideR)
-    selected <- reflectIDE selectedText ideR
+    _selected <- reflectIDE selectedText ideR
 --    unless isInterpreting'
 --        $ mapM_ (\w -> widgetSetSensitive w False) (interpretingEntries ++ interpretingSelEntries)
 --    unless (isJust selected)
@@ -713,8 +730,8 @@ textPopupMenu ideR menu = do
 canQuit :: IDEM Bool
 canQuit = do
     modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
-    prefs <- readIDE prefs
-    when (saveSessionOnClose prefs) saveSession
+    p <- readIDE prefs
+    when (saveSessionOnClose p) saveSession
     can <- fileCloseAll (\_ -> return True)
     unless can $ modifyIDE_ (\ide -> ide{currentState = IsRunning})
     return can
@@ -744,7 +761,7 @@ aboutDialog = do
     setAboutDialogLicense d license
     setAboutDialogWebsite d "http://leksah.org/"
     aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken","Hamish Mackenzie","Jacco Krijnen","JP Moresmau"]
-    dialogRun d
+    void $ dialogRun d
     widgetDestroy d
     return ()
 
@@ -772,6 +789,13 @@ newIcons = catch (do
         icon    <-  iconSetNewFromPixbuf pb
         iconFactoryAdd iconFactory (T.pack name) icon
         iconThemeAddBuiltinIcon (T.pack name) 16 pb
+
+--newIcons :: IO ()
+--newIcons = catch (do
+--        dataDir <- getDataDir
+--        iconTheme <- iconThemeGetDefault
+--        iconThemeAddResourcePath iconTheme . T.pack $ dataDir </> "pics")
+--    (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
 
 setSensitivity :: [(SensitivityMask, Bool)] -> IDEAction
 setSensitivity = mapM_ setSensitivitySingle
@@ -802,8 +826,8 @@ getActionsFor' :: [Text] -> IDEM[Action]
 getActionsFor' = fmap catMaybes . mapM getActionFor
     where
         getActionFor string = do
-            uiManager' <- getUiManager
-            uIManagerGetActionGroups uiManager' >>= \case
+            uiMgr <- getUiManager
+            uIManagerGetActionGroups uiMgr >>= \case
                 actionGroup:_ -> do
                     res <- actionGroupGetAction actionGroup string
                     when (isNothing res) $ ideMessage Normal $ T.pack $ printf (__ "Can't find UI Action %s") (T.unpack string)
@@ -819,7 +843,7 @@ viewDetachInstrumented = do
     mbPair <- viewDetach
     case mbPair of
         Nothing     -> return ()
-        Just (win,wid) -> do
+        Just (win, _wid) -> do
             instrumentSecWindow win
             widgetShowAll win
 
@@ -837,7 +861,7 @@ instrumentWindow :: IsWidget topWidget => Window -> Prefs -> topWidget -> IDEAct
 instrumentWindow win prefs topWidget = do
     -- sets the icon
     ideR <- ask
-    uiManager' <- getUiManager
+    uiMgr <- getUiManager
     dataDir <- getDataDir
     let iconPath = dataDir </> "pics" </> "leksah.png"
     iconExists  <- liftIO $ doesFileExist iconPath
@@ -845,7 +869,7 @@ instrumentWindow win prefs topWidget = do
         windowSetIconFromFile win iconPath
     vb <- boxNew OrientationVertical 1  -- Top-level vbox
     widgetSetName vb "topBox"
-    (acc,menu,toolbar) <- getMenuAndToolbars uiManager'
+    (acc,menu,toolbar) <- getMenuAndToolbars uiMgr
     boxPackStart' vb menu PackNatural 0
     boxPackStart' vb toolbar PackNatural 0
     boxPackStart' vb topWidget PackGrow 0
@@ -854,7 +878,7 @@ instrumentWindow win prefs topWidget = do
     boxPackStart' vb findbar PackNatural 0
     statusBar <- buildStatusbar
     boxPackEnd' vb statusBar PackNatural 0
-    onWidgetKeyPressEvent win $ handleSpecialKeystrokes ideR
+    void . onWidgetKeyPressEvent win $ handleSpecialKeystrokes ideR
     windowAddAccelGroup win acc
     containerAdd win vb
     setBackgroundBuildToggled (backgroundBuild prefs)
@@ -870,7 +894,7 @@ instrumentSecWindow :: Window -> IDEAction
 instrumentSecWindow win = do
     liftIO $ debugM "leksah" "instrumentSecWindow"
     ideR <- ask
-    uiManager' <- getUiManager
+    uiMgr <- getUiManager
     liftIO $ do
         dataDir <- getDataDir
         let iconPath = dataDir </> "data" </> "leksah.png"
@@ -878,10 +902,9 @@ instrumentSecWindow win = do
         when iconExists $
             windowSetIconFromFile win iconPath
 
-        (acc,_,_) <-  getMenuAndToolbars uiManager'
+        (acc,_,_) <-  getMenuAndToolbars uiMgr
         windowAddAccelGroup win acc
-        onWidgetKeyPressEvent win $ handleSpecialKeystrokes ideR
-        return ()
+        void . onWidgetKeyPressEvent win $ handleSpecialKeystrokes ideR
 
 --
 -- | Callback function for onKeyPress of the main window, so 'preprocess' any key
@@ -911,21 +934,20 @@ handleSpecialKeystrokes ideR e = do
                     Nothing ->
                         case Map.lookup (keyVal,sort mods) sks of
                             Nothing -> do
-                                triggerEventIDE (StatusbarChanged [CompartmentCommand ""])
+                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand ""])
                                 return False
-                            Just map -> do
+                            Just m -> do
                                 let sym = printMods mods <> name
-                                triggerEventIDE (StatusbarChanged [CompartmentCommand sym])
-                                modifyIDE_ (\ide -> ide{specialKey = Just (map,sym)})
+                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand sym])
+                                modifyIDE_ (\ide -> ide{specialKey = Just (m,sym)})
                                 return True
-                    Just (map,sym) -> do
-                        case Map.lookup (keyVal,sort mods) map of
-                            Nothing -> do
-                                triggerEventIDE (StatusbarChanged [CompartmentCommand
+                    Just (m,sym) -> do
+                        case Map.lookup (keyVal,sort mods) m of
+                            Nothing ->
+                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand
                                     (sym <> printMods mods <> name <> "?")])
-                                return ()
                             Just (AD actname _ _ _ ideAction _ _) -> do
-                                triggerEventIDE (StatusbarChanged [CompartmentCommand
+                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand
                                     (sym <> " " <> printMods mods <> name <> "=" <> actname)])
                                 ideAction
                         modifyIDE_ (\ide -> ide{specialKey = Nothing})
@@ -941,12 +963,12 @@ setSymbolThread mvar = do
         loop (SymbolEvent "" Nothing False False (0, 0), return ())
   where
     loop :: (SymbolEvent, IDEAction) -> IDEAction
-    loop (last, reshow) = do
+    loop (lastEvent, reshow) = do
         s <- liftIO $ takeMVar mvar
-        if s == last
+        if s == lastEvent
             then do
                 reshow
-                loop (last, reshow)
+                loop (lastEvent, reshow)
             else do
                 r <- setSymbol s
                 loop (s, r)
@@ -955,13 +977,12 @@ setSymbolThread mvar = do
         let fallback = void $ setSymbol s{location = Nothing}
         prefs <- readIDE prefs
         if debug prefs
-            then do
-                ideR <- ask
+            then
                 belongsToPackages file >>= \case
                     [] -> fallback >> return (return ())
                     (project, package):_ -> do
                         setTTMVar :: MVar IDEAction <- liftIO newEmptyMVar
-                        lookup :: MVar (Maybe IDEAction) <- liftIO newEmptyMVar
+                        lookupMVar :: MVar (Maybe IDEAction) <- liftIO newEmptyMVar
                         result :: MVar Bool <- liftIO newEmptyMVar
                         let f = case pjTool project of
                                     CabalTool -> makeRelative (ipdPackageDir package) file
@@ -971,7 +992,7 @@ setSymbolThread mvar = do
                             debugCommand (":type-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
                                             <> " " <> symbol) $ do
-                                lines <- foldOutputLines defaultLogLaunch (\log logLaunch t output ->
+                                lines' <- foldOutputLines defaultLogLaunch (\log logLaunch t output ->
                                     case output of
                                         ToolInput  line -> do
                                             liftIO . void $ appendLog log logLaunch (line <> "\n") InputTag
@@ -989,29 +1010,28 @@ setSymbolThread mvar = do
                                             liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
                                             return t) []
                                 liftIO . void . tryPutMVar setTTMVar $
-                                    if null lines
+                                    if null lines'
                                         then return ()
-                                        else postAsyncIDE . setTypeTip typeTipLocation $ T.concat $ intersperse "\n" lines
+                                        else postAsyncIDE . setTypeTip typeTipLocation $ T.concat $ intersperse "\n" lines'
                             debugCommand (":loc-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
                                             <> " " <> symbol) $ do
                                 worked <- foldOutputLines defaultLogLaunch (\log logLaunch worked output ->
                                     case output of
                                         ToolInput  line -> do
-                                            liftIO $ appendLog log logLaunch (line <> "\n") InputTag
+                                            void . liftIO $ appendLog log logLaunch (line <> "\n") InputTag
                                             return worked
                                         ToolOutput line -> do
-                                            liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            void . liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
                                             case parseOnly srcSpanParser line of
-                                                Right (SrcSpan f sl sc el ec) -> do
-                                                    liftIO . tryPutMVar lookup . Just . when openDefinition . postAsyncIDE . void $ goToSourceDefinition (ipdPackageDir package) (Location f sl (succ sc) el ec)
+                                                Right (SrcSpan f' sl sc el ec) -> do
+                                                    void . liftIO . tryPutMVar lookupMVar . Just . when openDefinition . postAsyncIDE . void $ goToSourceDefinition (ipdPackageDir package) (Location f' sl (succ sc) el ec)
                                                     return True
-                                                Left err -> return worked
+                                                Left _err -> return worked
                                         ToolError  line -> do
-                                            liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            void . liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
                                             case T.splitOn ":" line of
-                                                [p, _, m] -> do
-                                                    descrs <- getSymbols symbol
+                                                [p, _, m] ->
                                                     case (simpleParse . T.unpack $ T.takeWhile (/='@') p, simpleParse $ T.unpack m) of
                                                         (Just pid, Just mName) -> do
                                                             descrs <- getSymbols symbol
@@ -1019,37 +1039,35 @@ setSymbolThread mvar = do
                                                                     Real rd -> dscMbModu' rd == Just (PM pid mName)
                                                                     _ -> False) descrs of
                                                                 [a] -> do
-                                                                    liftIO . tryPutMVar lookup . Just . postAsyncIDE $ selectIdentifier a activatePanes openDefinition
+                                                                    void . liftIO . tryPutMVar lookupMVar . Just . postAsyncIDE $ selectIdentifier a activatePanes openDefinition
                                                                     return True
                                                                 _   -> return worked
                                                         _ -> return worked
                                                 _ -> return worked
                                         ToolPrompt _    -> do
-                                            liftIO $ defaultLineLogger' log logLaunch output
+                                            void . liftIO $ defaultLineLogger' log logLaunch output
                                             return worked
                                         ToolExit _      -> do
-                                            liftIO $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                                            void . liftIO $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
                                             return worked) False
                                 liftIO $ putMVar result worked
-                        liftIO . forkIO $ do
+                        void . liftIO . forkIO $ do
                             threadDelay 2000000
-                            tryPutMVar setTTMVar $ return ()
-                            tryPutMVar lookup Nothing
-                            return ()
+                            void . tryPutMVar setTTMVar $ return ()
+                            void $ tryPutMVar lookupMVar Nothing
                         setTT <- liftIO $ takeMVar setTTMVar
                         setTT
-                        liftIO (takeMVar lookup) >>= \case
+                        liftIO (takeMVar lookupMVar) >>= \case
                             Nothing -> do
                                 ideMessage Normal "Timed out looking up symbol with ghci"
                                 fallback
-                                liftIO $ takeMVar result
-                                return ()
+                                void . liftIO $ takeMVar result
                             Just l -> do
                                 l
                                 liftIO (takeMVar result) >>= (`unless` fallback)
                         return setTT
             else fallback >> return (return ())
-    setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition typeTipLocation) = do
+    setSymbol (SymbolEvent symbol Nothing activatePanes openDefinition _typeTipLocation) = do
         postSyncIDE $ do
             search <- getSearch Nothing
             let unqual = T.concat . intersperse "." . dropQual $ T.splitOn "." symbol
@@ -1086,95 +1104,90 @@ registerLeksahEvents :: IDEAction
 registerLeksahEvents =    do
     stRef   <-  ask
     liftIO $ debugM "leksah" "registerLeksahEvents"
-    defaultLogLaunch <- getDefaultLogLaunch
-    registerEvent stRef "LogMessage"
-        (\e@(LogMessage s t)      -> do
+    void . registerEvent stRef "LogMessage" $
+        \e@(LogMessage s t) -> do
             postAsyncIDE $ do
                 log <- getLog
                 defaultLogLaunch <- getDefaultLogLaunch
-                liftIO $ appendLog log defaultLogLaunch s t
-                return ()
-            return e)
+                void . liftIO $ appendLog log defaultLogLaunch s t
+            return e
     setSymbolMVar <- liftIO newEmptyMVar
     setSymbolThread setSymbolMVar
-    registerEvent stRef "SelectInfo"
-        (\ e@(SelectInfo se)
-                                  -> liftIO $ tryTakeMVar setSymbolMVar >> putMVar setSymbolMVar se >> return e)
-    registerEvent stRef "SelectIdent"
-        (\ e@(SelectIdent id)     -> selectIdentifier id True False >> return e)
-    registerEvent stRef "InfoChanged"
-        (\ e@(InfoChanged b)      -> reloadKeepSelection b >> return e)
-    registerEvent stRef "UpdateWorkspaceInfo"
-        (\ e@(UpdateWorkspaceInfo sys) -> (if sys then updateSystemInfo else updateWorkspaceInfo) >> return e)
-    registerEvent stRef "WorkspaceChanged"
-        (\ e@(WorkspaceChanged showPane updateFileCache) -> do
+    void . registerEvent stRef "SelectInfo" $
+        \e@(SelectInfo se)      -> liftIO $ tryTakeMVar setSymbolMVar >> putMVar setSymbolMVar se >> return e
+    void . registerEvent stRef "SelectIdent" $
+        \e@(SelectIdent id')     -> selectIdentifier id' True False >> return e
+    void . registerEvent stRef "InfoChanged" $
+        \e@(InfoChanged b)      -> reloadKeepSelection b >> return e
+    void . registerEvent stRef "UpdateWorkspaceInfo" $
+        \e@(UpdateWorkspaceInfo sys) -> (if sys then updateSystemInfo else updateWorkspaceInfo) >> return e
+    void . registerEvent stRef "WorkspaceChanged" $
+        \e@(WorkspaceChanged showPane updateFileCache) -> do
                                      postAsyncIDE $ do
                                          refreshWorkspacePane
                                          when showPane
                                             showWorkspacePane
                                          when updateFileCache $
                                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
-                                     return e)
-    registerEvent stRef "RecordHistory"
-        (\ rh@(RecordHistory h)   -> recordHistory h >> return rh)
-    registerEvent stRef "Sensitivity"
-        (\ s@(Sensitivity h)      -> setSensitivity h >> return s)
-    registerEvent stRef "SearchMeta"
-        (\ e@(SearchMeta string)  -> getSearch Nothing >>= flip searchMetaGUI string >> return e)
-    registerEvent stRef "StartFindInitial"
-        (\ e@StartFindInitial     -> editFindInc Initial >> return e)
-    registerEvent stRef "LoadSession"
-        (\ e@(LoadSession fp)     -> loadSession fp >> return e)
-    registerEvent stRef "SaveSession"
-        (\ e@(SaveSession fp)     -> saveSessionAs fp Nothing >> return e)
-    registerEvent stRef "UpdateRecent"
-        (\ e@UpdateRecent         -> updateRecentEntries >> return e)
-    registerEvent stRef "VariablesChanged"
-        (\ e@VariablesChanged     -> fillVariablesListQuiet >> return e)
-    registerEvent stRef "ErrorChanged"
-        (\ e@(ErrorChanged show') -> postAsyncIDE (fillErrorList show') >> return e)
-    registerEvent stRef "ErrorAdded"
-        (\ e@(ErrorAdded show' i ref) -> postAsyncIDE (addErrorToList show' i ref) >> return e)
-    registerEvent stRef "ErrorsRemoved"
-        (\ e@(ErrorsRemoved show' toRemove) -> postAsyncIDE (removeErrorsFromList show' toRemove) >> return e)
-    registerEvent stRef "CurrentErrorChanged"
-        (\ e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (selectRef mbLogRef)  >> return e)
-    registerEvent stRef "BreakpointChanged"
-        (\ e@BreakpointChanged    -> postAsyncIDE fillBreakpointList >> return e)
-    registerEvent stRef "CurrentBreakChanged"
-        (\ e@(CurrentBreakChanged mbLogRef) -> postAsyncIDE (do
+                                     return e
+    void . registerEvent stRef "RecordHistory" $
+        \rh@(RecordHistory h)   -> recordHistory h >> return rh
+    void . registerEvent stRef "Sensitivity" $
+        \s@(Sensitivity h)      -> setSensitivity h >> return s
+    void . registerEvent stRef "SearchMeta" $
+        \e@(SearchMeta string)  -> getSearch Nothing >>= flip searchMetaGUI string >> return e
+    void . registerEvent stRef "StartFindInitial" $
+        \e@StartFindInitial     -> editFindInc Initial >> return e
+    void . registerEvent stRef "LoadSession" $
+        \e@(LoadSession fp)     -> loadSession fp >> return e
+    void . registerEvent stRef "SaveSession" $
+        \e@(SaveSession fp)     -> saveSessionAs fp Nothing >> return e
+    void . registerEvent stRef "UpdateRecent" $
+        \e@UpdateRecent         -> updateRecentEntries >> return e
+    void . registerEvent stRef "VariablesChanged" $
+        \e@VariablesChanged     -> fillVariablesListQuiet >> return e
+    void . registerEvent stRef "ErrorChanged" $
+        \e@(ErrorChanged show') -> postAsyncIDE (fillErrorList show') >> return e
+    void . registerEvent stRef "ErrorAdded" $
+        \e@(ErrorAdded show' i ref) -> postAsyncIDE (addErrorToList show' i ref) >> return e
+    void . registerEvent stRef "ErrorsRemoved" $
+        \e@(ErrorsRemoved show' toRemove) -> postAsyncIDE (removeErrorsFromList show' toRemove) >> return e
+    void . registerEvent stRef "CurrentErrorChanged" $
+        \e@(CurrentErrorChanged mbLogRef) -> postAsyncIDE (selectRef mbLogRef)  >> return e
+    void . registerEvent stRef "BreakpointChanged" $
+        \e@BreakpointChanged    -> postAsyncIDE fillBreakpointList >> return e
+    void . registerEvent stRef "CurrentBreakChanged" $
+        \e@(CurrentBreakChanged mbLogRef) -> postAsyncIDE (do
             selectRef mbLogRef
-            selectBreak mbLogRef) >> return e)
-    registerEvent stRef "TraceChanged"
-        (\ e@TraceChanged         -> fillTraceList >> return e)
-    registerEvent stRef "GotoDefinition"
-        (\ e@(GotoDefinition descr)         -> goToDefinition descr >> return e)
-    registerEvent stRef "GetTextPopup"
-        (\ e@(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu)))
-    registerEvent stRef "StatusbarChanged"
-        (\ e@(StatusbarChanged args) -> changeStatusbar args >> return e)
-    registerEvent stRef "SelectSrcSpan"
-        (\ e@(SelectSrcSpan mbSpan) -> selectMatchingErrors mbSpan >> return e)
-    registerEvent stRef "SavedFile"
-        (\ e@(SavedFile file) -> do
+            selectBreak mbLogRef) >> return e
+    void . registerEvent stRef "TraceChanged" $
+        \e@TraceChanged         -> fillTraceList >> return e
+    void . registerEvent stRef "GotoDefinition" $
+        \e@(GotoDefinition descr) -> goToDefinition descr >> return e
+    void . registerEvent stRef "GetTextPopup" $
+        \(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu))
+    void . registerEvent stRef "StatusbarChanged" $
+        \e@(StatusbarChanged args) -> changeStatusbar args >> return e
+    void . registerEvent stRef "SelectSrcSpan" $
+        \e@(SelectSrcSpan mbSpan) -> selectMatchingErrors mbSpan >> return e
+    void . registerEvent stRef "SavedFile" $
+        \e@(SavedFile file) -> do
               prefs <- readIDE prefs
               when (hlintOnSave prefs && takeExtension file `elem` [".hs", ".lhs"]) $
                   scheduleHLint (Right file)
-              return e)
-    registerEvent stRef "DebugStart"
-        (\ e@(DebugStart projectAndPackage) -> redrawWorkspacePane >> return e)
-    registerEvent stRef "DebugStop"
-        (\ e@(DebugStop projectAndPackage) -> redrawWorkspacePane >> return e)
-    registerEvent stRef "QuitToRestart"
-        (\ e@QuitToRestart -> do
+              return e
+    void . registerEvent stRef "DebugStart" $
+        \e@(DebugStart _projectAndPackage) -> redrawWorkspacePane >> return e
+    void . registerEvent stRef "DebugStop" $
+        \e@(DebugStop _projectAndPackage) -> redrawWorkspacePane >> return e
+    void . registerEvent stRef "QuitToRestart" $
+        \e@QuitToRestart -> do
             can <- canQuit
             app <- readIDE application
             when can $ do
                 readIDE exitCode >>= liftIO . (`writeIORef` ExitFailure 2) -- Exit code to trigger leksah.sh to restart
                 applicationQuit app
-            return e)
-
-    return ()
+            return e
 
 
 
