@@ -44,6 +44,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack, null)
 import System.Log.Logger (debugM)
 import Data.Monoid ((<>))
+import Data.Void (Void)
 
 #if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
 import System.Posix.Types (CPid(..))
@@ -52,7 +53,6 @@ import Control.Concurrent.MVar (withMVar, MVar)
 import Unsafe.Coerce (unsafeCoerce)
 import System.Posix.Process (getProcessGroupIDOf)
 import System.Posix.Signals (inSignalSet, sigINT, getSignalMask)
-import Data.Void (Void)
 #endif
 
 showSignalMask :: IO String
