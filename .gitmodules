@@ -49,3 +49,6 @@
 [submodule "vendor/brittany"]
 	path = vendor/brittany
 	url = https://github.com/lspitzner/brittany.git
+[submodule "vendor/haskell-filesystem"]
+	path = vendor/haskell-filesystem
+	url = https://github.com/hamishmack/haskell-filesystem.git

@@ -5,6 +5,7 @@ packages:
  vendor/haskellVCSWrapper/vcswrapper/
  vendor/haskellVCSGUI/vcsgui
  vendor/hs-git
+ vendor/haskell-filesystem/system-fileio
  vendor/brittany
 -- vendor/HaRe
 -- vendor/HaRe/submodules/cabal-helper
