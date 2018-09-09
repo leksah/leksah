@@ -193,10 +193,6 @@ flag network-uri
     description:
         Get Network.URI from the network-uri package
 
-flag gtk-318
-    description:
-        GTK+ is 3.18 or later
-
 flag gtk-320
     description:
         GTK+ is 3.20 or later
@@ -406,15 +402,11 @@ library
 
     if flag(check-gtk-version)
 
-        if flag(gtk-318)
-            cpp-options: -DMIN_VERSION_GTK_3_18
-            pkgconfig-depends: gtk+-3.0 >=3.18
-
         if flag(gtk-320)
             cpp-options: -DMIN_VERSION_GTK_3_20
             pkgconfig-depends: gtk+-3.0 >=3.20
     else
-        cpp-options: -DMIN_VERSION_GTK_3_18 -DMIN_VERSION_GTK_3_20
+        cpp-options: -DMIN_VERSION_GTK_3_20
 
     if !impl(ghcjs -any)
         build-depends:

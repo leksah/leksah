@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wall -fno-warn-deprecations #-}
 -----------------------------------------------------------------------------
 --
 -- Module       :  IDE.Menu
@@ -182,7 +182,6 @@ import Data.Attoparsec.Text (parseOnly)
 import IDE.HaRe
        (deleteDef, rmOneParameter, addOneParameter, rename, liftOneLevel,
         liftToTopLevel, duplicateDef, ifToCase, demote)
-import GI.Gtk (iconThemeAddResourcePath, iconThemeGetDefault)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack

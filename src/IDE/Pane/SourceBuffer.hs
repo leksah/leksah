@@ -112,6 +112,7 @@ import Data.List hiding(insert, delete)
 import Data.Maybe
 import Data.Char
 import Data.Typeable
+import Data.Ord (Down(..))
 
 import IDE.Core.State
 import IDE.Utils.GUIUtils
@@ -206,7 +207,7 @@ allBuffers :: MonadIDE m => m [IDEBuffer]
 allBuffers = liftIDE getPanes
 
 instance RecoverablePane IDEBuffer BufferState IDEM where
-    saveState (p@IDEBuffer {sourceView=v}) = do
+    saveState p@IDEBuffer{sourceView = v} = do
                             buf    <- getBuffer v
                             ins    <- getInsertMark buf
                             iter   <- getIterAtMark buf ins
@@ -234,7 +235,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
     recoverState pp (BufferStateTrans bn text i) =   do
         mbbuf    <-  newTextBuffer pp bn Nothing
         case mbbuf of
-            Just (buf@IDEBuffer {sourceView=v}) -> do
+            Just buf@IDEBuffer{sourceView = v} -> do
                 postAsyncIDEIdle $ do
                     liftIO $ debugM "leksah" "SourceBuffer recoverState idle callback"
                     useCandy <- useCandyFor buf
@@ -249,7 +250,7 @@ instance RecoverablePane IDEBuffer BufferState IDEM where
                     liftIO $ debugM "leksah" "SourceBuffer recoverState done"
                 return (Just buf)
             Nothing -> return Nothing
-    makeActive (actbuf@IDEBuffer {sourceView=sv}) = do
+    makeActive actbuf@IDEBuffer{sourceView = sv} = do
         ideR    <-  ask
         eBuf    <- getBuffer sv
         writeCursorPositionInStatusbar sv
@@ -384,7 +385,7 @@ insertInBuffer idDescr = do
             let mbBuf = cast p
             case mbBuf of
                 Nothing -> return ()
-                Just (buf@IDEBuffer{sourceView = v}) -> do
+                Just buf@IDEBuffer{sourceView = v} -> do
                     ebuf <- getBuffer v
                     mark <- getInsertMark ebuf
                     iter <- getIterAtMark ebuf mark
@@ -488,7 +489,7 @@ addLogRef hlintFileScope backgroundBuild ref = unless (srcSpanFilename (logRefSr
     return ()
 
 markRefInSourceBuf :: IDEBuffer -> LogRef -> Bool -> IDEAction
-markRefInSourceBuf (buf@IDEBuffer{sourceView = sv}) logRef scrollTo = traceTimeTaken "markRefInSourceBuf" $ do
+markRefInSourceBuf buf@IDEBuffer{sourceView = sv} logRef scrollTo = traceTimeTaken "markRefInSourceBuf" $ do
     useCandy    <- useCandyFor buf
     candy'      <- readIDE candy
     contextRefs <- readIDE contextRefs
@@ -568,7 +569,7 @@ newTextBuffer panePath bn mbfn =
             prefs   <-  readIDE prefs
             let useCandy = candyState prefs
             ct      <-  readIDE candy
-            (ind,rbn) <- figureOutPaneName bn 0
+            (ind,rbn) <- figureOutPaneName bn
             buildThisPane panePath nb (builder' useCandy mbfn ind bn rbn ct prefs contents mModTime)
 
 data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
@@ -950,7 +951,7 @@ fileRevert = inActiveBufContext () $ \_ _ currentBuffer ->
     revert currentBuffer
 
 revert :: MonadIDE m => IDEBuffer -> m ()
-revert (buf@IDEBuffer{sourceView = sv}) = do
+revert buf@IDEBuffer{sourceView = sv} = do
     useCandy    <-  useCandyFor buf
     ct          <-  readIDE candy
     let name    =   paneName buf
@@ -968,7 +969,6 @@ revert (buf@IDEBuffer{sourceView = sv}) = do
                     buffer
             endNotUndoableAction buffer
             setModified buffer False
-            return mt
             liftIO $ writeIORef (modTime buf) (Just mt)
 
 writeCursorPositionInStatusbar :: TextEditor editor => EditorView editor -> IDEAction
@@ -1020,7 +1020,7 @@ markActiveLabelAsChanged = do
           F.forM_ mbBS (markLabelAsChanged nb)
 
 markLabelAsChanged :: Notebook -> IDEBuffer -> IDEAction
-markLabelAsChanged nb (buf@IDEBuffer{sourceView = sv}) = do
+markLabelAsChanged nb buf@IDEBuffer{sourceView = sv} = do
     liftIO $ debugM "leksah" "markLabelAsChanged"
     ebuf   <- getBuffer sv
     modified <- getModified ebuf
@@ -1028,7 +1028,7 @@ markLabelAsChanged nb (buf@IDEBuffer{sourceView = sv}) = do
     markLabel nb w modified
 
 fileSaveBuffer :: (MonadIDE m, TextEditor editor) => Bool -> Notebook -> EditorView editor -> EditorBuffer editor -> IDEBuffer -> Int -> m Bool
-fileSaveBuffer query nb _ ebuf (ideBuf@IDEBuffer{sourceView = sv}) i = liftIDE $ do
+fileSaveBuffer query nb _ ebuf ideBuf@IDEBuffer{sourceView = sv} i = liftIDE $ do
     ideR    <- ask
     window  <- getMainWindow
     prefs   <- readIDE prefs
@@ -1165,7 +1165,7 @@ fileSaveAll filterFunc = do
     return $ True `elem` results
 
 fileCheckBuffer :: (MonadIDE m) => IDEBuffer -> m Bool
-fileCheckBuffer (ideBuf@IDEBuffer{sourceView = v}) = do
+fileCheckBuffer ideBuf@IDEBuffer{sourceView = v} =
     case fileName ideBuf of
         Just fn -> do
             modifiedOnDisk   <- checkModTime ideBuf -- The user is given option to reload
@@ -1253,7 +1253,7 @@ fileCloseAllButPackage = do
         Just p -> mapM_ (close' p) bufs
         Nothing -> return ()
     where
-        close' dir (buf@IDEBuffer {sourceView = sv}) = do
+        close' dir buf@IDEBuffer{sourceView = sv} = do
             ebuf <- getBuffer sv
             when (isJust (fileName buf)) $ do
                 modified <- getModified ebuf
@@ -1267,7 +1267,7 @@ fileCloseAllButWorkspace = do
     when (not (null bufs) && isJust mbWorkspace) $
         mapM_ (close' (fromJust mbWorkspace)) bufs
     where
-        close' workspace (buf@IDEBuffer {sourceView = sv}) = do
+        close' workspace buf@IDEBuffer{sourceView = sv} = do
             ebuf <- getBuffer sv
             when (isJust (fileName buf)) $ do
                 modified <- getModified ebuf
@@ -1584,8 +1584,8 @@ belongsToPackages fp = do
         Nothing -> readIDE workspace >>= \case
                         Nothing   -> return []
                         Just workspace -> do
-                            let res = reverse . sortOn (length . ipdPackageDir . snd)
-                                        . filter (belongsToPackage fp . snd) $ wsProjectAndPackages workspace
+                            let res = sortOn (Down . length . ipdPackageDir . snd) .
+                                         filter (belongsToPackage fp . snd) $ wsProjectAndPackages workspace
                             modifyIDE_ (\ide -> ide{bufferProjCache = Map.insert fp res bufferToProject'})
                             return res
 

@@ -61,6 +61,7 @@ let
       leksah-server  = filterSubmodule ./vendor/leksah-server;
       vcswrapper     = filterSubmodule ./vendor/haskellVCSWrapper/vcswrapper;
       vcsgui         = filterSubmodule ./vendor/haskellVCSGUI/vcsgui;
+      system-fileio  = filterSubmodule ./vendor/haskell-filesystem/system-fileio;
       cabal-plan     = nixpkgs.fetchFromGitHub {
         owner = "haskell-hvr";
         repo = "cabal-plan";
@@ -104,6 +105,7 @@ let
            rev = "bb8516918043d9164c05d016f37448ac13f6fe71";
            sha256 = "1a79y1prgynjhgfp7nfp3xws9bybyh0wdis44vfhkmc6bvz425fl";
         }) self;
+
         vado = doJailbreak super.vado;
         criterion = doJailbreak super.criterion;
         ghcjs-dom-jsaddle = ghcjsDom.ghcjs-dom-jsaddle;
@@ -122,6 +124,7 @@ let
         leksah-server       = dontCheck super.leksah-server;
         HaRe                = dontHaddock (dontCheck super.HaRe);
         text-replace        = doJailbreak super.text-replace;
+        system-fileio       = dontCheck super.system-fileio;
 
         # This is a fix for macOS that may be needed again one day
         # webkit2gtk3-javascriptcore = overrideCabal super.webkit2gtk3-javascriptcore (drv: {
