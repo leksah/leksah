@@ -172,8 +172,3 @@ stack install --flag ltk:-gtk-320 --flag leksah:-gtk-320
 stack exec --no-ghc-package-path leksah
 ```
 
-###### Other OS with Gtk+ 3.16
-```shell
-stack install --flag ltk:-gdk-318 --flag ltk:-gtk-318 --flag leksah:-gtk-318 --flag ltk:-gtk-320 --flag leksah:-gtk-320
-stack exec --no-ghc-package-path leksah
-```
