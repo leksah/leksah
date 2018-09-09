@@ -22,6 +22,8 @@ module IDE.GUIHistory (
 ,   withoutRecordingDo
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State
 import IDE.Pane.Modules
 import IDE.Pane.Info

@@ -102,8 +102,9 @@ module IDE.Pane.SourceBuffer (
 
 ) where
 
-import Prelude hiding(getChar, getLine)
-import Control.Applicative
+import Prelude ()
+import Prelude.Compat hiding(getChar, getLine)
+import Control.Applicative ((<|>))
 import System.FilePath
 import System.Directory
 import qualified Data.Map as Map
@@ -138,7 +139,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (length, findIndex, replicate, lines,
         dropWhileEnd, unlines, strip, null, pack, unpack)
-import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
 import qualified Data.Foldable as F (Foldable(..), forM_, toList)

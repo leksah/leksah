@@ -19,6 +19,8 @@ module IDE.Command.VCS.Common (
     ,getVCSConf'
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Utils.GUIUtils

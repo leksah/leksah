@@ -15,7 +15,8 @@
 
 module IDE.Completion (complete, cancel, setCompletionSize, smartIndent) where
 
-import Prelude hiding(getChar, getLine)
+import Prelude ()
+import Prelude.Compat hiding(getChar, getLine)
 
 import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
@@ -47,7 +48,9 @@ import Data.GI.Base
 import GI.Gdk.Enums (GrabStatus(..), WindowTypeHint(..))
 import GI.Gtk.Objects.Container
        (containerRemove, containerAdd, containerSetBorderWidth)
-import GI.Gtk.Objects.Paned (panedNew)
+import GI.Gtk.Objects.Paned
+       (panedNew, panedSetPosition, panedGetPosition, panedGetChild2, Paned(..),
+        panedGetChild1, panedAdd2, panedAdd1)
 import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
 import GI.Gtk.Objects.Widget
@@ -78,9 +81,6 @@ import GI.Gtk.Objects.TreeSelection
        (treeSelectionGetSelected, treeSelectionSelectPath,
         treeSelectionSelectedForeach,
         onTreeSelectionChanged)
-import GI.Gtk.Objects.Paned
-       (panedSetPosition, panedGetPosition, panedGetChild2, Paned(..),
-        panedGetChild1, panedAdd2, panedAdd1)
 import GI.Gdk.Structs.EventKey
        (getEventKeyKeyval, getEventKeyState)
 import GI.Gdk.Functions
@@ -105,7 +105,6 @@ import GI.Gdk.Objects.Screen
 import Data.GI.Gtk.ModelView.Types
        (equalManagedPtr, treePathGetIndices', treePathNewFromIndices')
 import Data.Maybe (fromJust)
-import Data.Monoid ((<>))
 import GI.Gtk
        (widgetGetScreen, getCurrentEventDevice,
         pattern STYLE_PROVIDER_PRIORITY_APPLICATION, styleContextAddProvider,

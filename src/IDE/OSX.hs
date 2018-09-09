@@ -24,6 +24,8 @@ module IDE.OSX (
 ,   allowFullscreen
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Control.Monad.IO.Class (MonadIO(..))
 import GI.Gdk.Objects.Window (IsWindow)
 import GI.Gtk.Objects.UIManager (uIManagerGetWidget, UIManager(..))

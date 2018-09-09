@@ -6,7 +6,7 @@
 --
 -- Maintainer  :  maintainer@leksah.org
 -- Stability   :  provisional
--- Portability :  
+-- Portability :
 --
 -- |
 --
@@ -16,5 +16,7 @@ module IDE.Command.VCS (
 
 ) where
 
+import Prelude ()
+import Prelude.Compat
 
 

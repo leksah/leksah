@@ -21,6 +21,8 @@ module IDE.Command.VCS.GIT (
     ,mkGITActions
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.Types
 import IDE.Core.State
 

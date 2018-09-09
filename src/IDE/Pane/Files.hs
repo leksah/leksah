@@ -25,7 +25,8 @@ module IDE.Pane.Files (
 ,   FilesState(..)
 ) where
 
-import Prelude hiding (catch)
+import Prelude ()
+import Prelude.Compat hiding (catch)
 import Data.Maybe (fromMaybe, maybeToList, listToMaybe, isJust)
 import Control.Monad (forM, void, forM_, when)
 import Data.Typeable (Typeable)
@@ -58,7 +59,6 @@ import Control.Exception (SomeException(..), catch)
 import Data.Text (Text)
 import qualified Data.Text as T
        (isPrefixOf, words, isSuffixOf, unpack, pack)
-import Data.Monoid ((<>))
 import IDE.Core.Types
        (ipdLib, WorkspaceAction, Workspace(..), wsAllPackages, WorkspaceM,
         runPackage, runWorkspace, PackageAction, PackageM, IDEPackage(..),
@@ -86,7 +86,7 @@ import GHC.Generics (Generic)
 -- * The Files pane
 
 -- | The representation of the Files pane
-data IDEFiles        =   IDEFiles {
+newtype IDEFiles = IDEFiles {
     deprecatedLabel :: Label
 } deriving Typeable
 

@@ -22,6 +22,8 @@ module IDE.Utils.ExternalTool (
   , interruptBuild
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import qualified Data.Conduit as C (Sink)
 import IDE.Utils.Tool
        (interruptProcessGroupOf, getProcessExitCode, runTool,
@@ -43,7 +45,6 @@ import Control.Applicative ((<$>))
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack, null)
 import System.Log.Logger (debugM)
-import Data.Monoid ((<>))
 import Data.Void (Void)
 
 #if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
@@ -71,9 +72,7 @@ runExternalTool' :: MonadIDE m
                 -> ConduitT ToolOutput Void IDEM ()
                 -> m ()
 runExternalTool' description executable args dir mbEnv handleOutput = do
-        runExternalTool (do
-                            run <- isRunning
-                            return (not run))
+        runExternalTool (not <$> isRunning)
                         (\_ -> return ())
                         description
                         executable
@@ -125,7 +124,7 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
 -- | Handling of Compiler errors
 --
 isRunning :: MonadIDE m => m Bool
-isRunning = do
+isRunning =
     readIDE runningTool >>= \case
        Just (process, _) ->
             liftIO $ isNothing <$> getProcessExitCode process

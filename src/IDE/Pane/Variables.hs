@@ -23,6 +23,8 @@ module IDE.Pane.Variables (
 ,   fillVariablesListQuiet
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Package (tryDebug, tryDebugQuiet)
@@ -49,7 +51,6 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
 import Control.Applicative ((<$>))
 import GI.Gtk.Objects.ScrolledWindow
@@ -334,14 +335,14 @@ variablesContextMenu ideR store treeView theMenu = do
         mbSel  <-  getSelectedVariable treeView store
         case mbSel of
             Just (varDescr,path) -> reflectIDE (forceVariable varDescr path store) ideR
-            otherwise     -> return ()
+            _ -> return ()
     sep1 <- separatorMenuItemNew >>= liftIO . toMenuItem
     item2           <-  menuItemNewWithLabel (__ "Print")
     onMenuItemActivate item2 $ do
         mbSel  <-  getSelectedVariable treeView store
         case mbSel of
             Just (varDescr,path) -> reflectIDE (printVariable varDescr path store) ideR
-            otherwise     -> return ()
+            _ -> return ()
     item3           <-  menuItemNewWithLabel (__ "Update")
     onMenuItemActivate item3 $ reflectIDE (postAsyncIDE fillVariablesList) ideR
     mapM_ (menuShellAppend theMenu) [item1, item2, sep1, item3]

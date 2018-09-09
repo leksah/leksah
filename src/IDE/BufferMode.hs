@@ -25,7 +25,8 @@
 
 module IDE.BufferMode where
 
-import Prelude hiding(getLine)
+import Prelude ()
+import Prelude.Compat hiding(getLine)
 import Data.Foldable (forM_)
 import IDE.Core.State
 import Data.List (isSuffixOf)
@@ -45,7 +46,6 @@ import IDE.Utils.FileUtils
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Time (UTCTime)
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import qualified Data.Text as T
        (isPrefixOf, lines, unlines, count, isInfixOf, pack)
 import GI.Gtk.Objects.Widget (toWidget)

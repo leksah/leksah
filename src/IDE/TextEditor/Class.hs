@@ -21,6 +21,8 @@ module IDE.TextEditor.Class (
   , scrollToCursor
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import qualified IDE.Core.Types as Core (IDEM)
 import IDE.Core.Types
        (LogRefType, IDE(..), IDERef, IDEEventM, EditorStyle(..),

@@ -34,6 +34,8 @@ module IDE.TextEditor.GtkSourceView (
 
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.TextEditor.Class (TextEditor(..), EditorStyle(..))
 import IDE.Core.Types
        (LogRefType(..), LogRef(..), LogRefType, colorHexString, Prefs(..),
@@ -55,7 +57,6 @@ import IDE.Utils.GUIUtils (fontDescription)
 import Data.Text (Text)
 import qualified Data.Text as T
        (drop, dropWhile, all, length, pack)
-import Data.Monoid ((<>))
 import Control.Arrow (Arrow(..))
 import System.Log.Logger (debugM)
 import Foreign.ForeignPtr (withForeignPtr)
@@ -129,7 +130,7 @@ import GI.Gtk.Objects.Widget
         onWidgetButtonReleaseEvent, widgetAddEvents,
         afterWidgetFocusInEvent, widgetGrabFocus, toWidget,
         widgetGetParent, widgetGetWindow, widgetModifyFont)
-import GI.Pango.Enums (Underline(..))
+import GI.Pango.Enums (Underline(..), Variant(..), Weight(..), Style(..))
 import GI.GtkSource.Flags
        (SpaceTypeFlags(..), SpaceLocationFlags(..), DrawSpacesFlags(..))
 import Data.GI.Base.BasicConversions (gflagsToWord)
@@ -167,7 +168,6 @@ import GI.Gtk
 import GI.GtkSource.Objects.StyleScheme
        (styleSchemeGetStyle, StyleScheme(..))
 import GI.GtkSource.Objects.Style
-import GI.Pango.Enums (Variant(..), Weight(..), Style(..))
 import GI.Pango
        (fontDescriptionGetVariant, fontDescriptionGetStyle,
         FontDescription, fontDescriptionGetWeight, fontDescriptionGetSize,

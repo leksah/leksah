@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -76,6 +77,8 @@ module IDE.Package (
 
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Distribution.Package hiding (depends,packageId)
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
@@ -158,7 +161,6 @@ import IDE.Utils.ExternalTool
        (runExternalTool', runExternalTool, isRunning,
         interruptBuild)
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
@@ -229,7 +231,7 @@ printf = S.printf . T.unpack
 sinkLast = CL.fold (\_ a -> Just a) Nothing
 
 moduleInfo :: (a -> BuildInfo) -> (a -> [ModuleName]) -> a -> [(ModuleName, BuildInfo)]
-moduleInfo bi mods a = map (\m -> (m, buildInfo)) $ mods a
+moduleInfo bi mods a = map (, buildInfo) $ mods a
     where buildInfo = bi a
 
 myLibModules pd = case library pd of

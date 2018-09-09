@@ -65,6 +65,8 @@ module IDE.Debug (
 ,   debugSetPrintBindResult
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.Types
        (IDEPackage(..), Project(..), DebugM, runPackage, runProject,
         IDEEvent(..), MonadIDE(..), Prefs(..))
@@ -96,7 +98,6 @@ import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative (Alternative(..), (<$>), (<*>))
 import Data.IORef (newIORef)
-import Data.Monoid ((<>), Monoid(..))
 import Data.Text (Text)
 import qualified Data.Text as T
        (concat, intersperse, pack, lines, stripPrefix, unlines,

@@ -35,6 +35,8 @@ module IDE.Pane.PackageEditor (
 ,   standardSetup
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Control.Applicative (Applicative, (<*>), (<$>))
 import Distribution.Package
 import Distribution.PackageDescription
@@ -112,7 +114,6 @@ import Data.Char (isDigit, isAlphaNum, toLower)
 import qualified Data.Text as T
        (replace, span, splitAt, isPrefixOf, length, toLower, lines,
         unlines, pack, unpack, null)
-import Data.Monoid ((<>))
 import qualified Data.Text.IO as T (writeFile, readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
@@ -347,7 +348,7 @@ examplePackages = [ "hello"
 
 newPackageDialog :: (Applicative m, MonadIO m) => Window -> FilePath -> [Project] -> m (Maybe NewPackage)
 newPackageDialog parent workspaceDir projects = do
-    let defaultParentDir = fromMaybe workspaceDir (dropFileName . pjFile <$> listToMaybe projects)
+    let defaultParentDir = maybe workspaceDir (dropFileName . pjFile) (listToMaybe projects)
     dia                <- new' Dialog [constructDialogUseHeaderBar 1]
     setWindowTransientFor dia parent
     setWindowTitle dia $ __ "Create New Package"
@@ -355,7 +356,7 @@ newPackageDialog parent workspaceDir projects = do
     (widget,inj,ext,_) <- liftIO $ buildEditor (packageFields defaultParentDir projects)
                                         (NewPackage "" defaultParentDir Nothing (pjFile <$> listToMaybe projects))
     okButton <- dialogAddButton' dia (__"Create Package") ResponseTypeOk
-    dialogSetDefaultResponse' dia ResponseTypeOk
+    _ <- dialogSetDefaultResponse' dia ResponseTypeOk
     dialogAddButton' dia (__"Cancel") ResponseTypeCancel
     boxPackStart' upper widget PackGrow 7
     setWidgetCanDefault okButton True
@@ -469,7 +470,6 @@ packageNew' workspaceDir projects log activateAction = do
                                       , defaultLanguage = Just Haskell2010}}]
                           , benchmarks =  []
                           } dirName modules (activateAction True mbProject)
-                    return ()
         Just NewPackage{..} -> do
             let mbProject = listToMaybe $ filter ((== newPackageProject) . Just . pjFile) projects
             cabalUnpack newPackageParentDir (fromJust templatePackage) False (Just newPackageName) log (activateAction False mbProject)
@@ -552,7 +552,7 @@ cabalUnpack parentDir packageToUnpack sourceRepo mbNewName log activateAction = 
                         liftIO $ removeDirectoryRecursive tempDir
                         lift $ ideMessage High $ "Nothing found in " <> T.pack tempDir <> " after doing a cabal unpack."
                     [repoName] -> do
-                        let destDir = parentDir </> fromMaybe repoName (T.unpack <$> mbNewName)
+                        let destDir = parentDir </> maybe repoName T.unpack mbNewName
                         exists <- liftIO $ (||) <$> doesDirectoryExist destDir <*> doesFileExist destDir
                         if exists
                             then lift $ ideMessage High $ T.pack destDir <> " already exists"
@@ -754,7 +754,7 @@ initPackage packageDir packageD packageDescr panePath nb modules afterSaveAction
             initialPackagePath modules packageInfos fields origPackageD)
     case mbP of
         Nothing -> return ()
-        Just (PackagePane{packageNotifer = pn}) -> do
+        Just PackagePane{packageNotifer = pn} -> do
             liftIO $ triggerEvent pn GUIEvent{selector = MayHaveChanged, eventText = "",
                                               gtkReturn = True}
             return ()
@@ -1326,7 +1326,7 @@ stringxEditor :: (String -> Bool) -> Editor String
 stringxEditor val para noti = do
     (wid,inj,ext) <- stringEditor val True para noti
     let
-        xinj ("") = inj ""
+        xinj "" = inj ""
         xinj ('x':'-':rest) = inj rest
         xinj _ = throwIDE "PackageEditor>>stringxEditor: field without leading x-"
         xext = do

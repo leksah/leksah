@@ -18,9 +18,9 @@ module IDE.HaRe (
  , deleteDef
 ) where
 
-import Prelude hiding(getChar, getLine)
-
 #ifdef MIN_VERSION_HaRe
+import Prelude ()
+import Prelude.Compat hiding(getChar, getLine)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Map (Map)
 import qualified Data.Text as T (unpack)

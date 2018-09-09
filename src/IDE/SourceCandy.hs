@@ -27,8 +27,8 @@ module IDE.SourceCandy (
 ,   positionFromCandy   -- ::   CandyTable -> TextBuffer -> (Int,Int) -> IO (Int,Int)
 ) where
 
-import Control.Applicative
-import Prelude hiding(getChar, getLine)
+import Prelude ()
+import Prelude.Compat hiding(getChar, getLine)
 
 import Data.Char(chr)
 import Data.List (elemIndices, isInfixOf, isSuffixOf)
@@ -47,7 +47,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, singleton, replicate, head, takeWhile, isSuffixOf,
         length, index)
-import Data.Monoid ((<>))
 import Control.Monad.IO.Class (MonadIO(..))
 import GI.Gtk.Objects.TextBuffer
        (textBufferGetIterAtMark, textBufferCreateMark, textBufferSetText)

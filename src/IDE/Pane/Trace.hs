@@ -22,6 +22,8 @@ module IDE.Pane.Trace (
 ,   fillTraceList
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Typeable (Typeable(..))
 import IDE.Core.State
 import IDE.Package (tryDebug)
@@ -37,7 +39,6 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)

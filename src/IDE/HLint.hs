@@ -23,8 +23,8 @@ module IDE.HLint (
   , resolveActiveHLint
 ) where
 
-import Control.Applicative
-import Prelude hiding(getChar, getLine)
+import Prelude ()
+import Prelude.Compat hiding(getChar, getLine)
 import IDE.Core.Types
        (pjDir, ProjectTool(..), Project(..), MonadIDE(..),
         logRefFullFilePath, Prefs(..), Log(..), LogRef(..), LogRefType(..),
@@ -53,7 +53,6 @@ import qualified System.IO.Strict as S (readFile)
 import Language.Preprocessor.Cpphs
        (defaultCpphsOptions, runCpphsReturningSymTab, CpphsOptions(..))
 import System.Log.Logger (debugM)
-import Data.Monoid ((<>))
 import Data.List (sortBy, intercalate, find)
 import qualified Data.Map as M (keys, lookup)
 import qualified Data.Text as T
@@ -218,7 +217,6 @@ logHLintResult fileScope package allIdeas getText = do
             ref = LogRef srcSpan (LogCabal $ ipdCabalFile package) (T.pack $ showHLint idea)
                     (Just (from, idea)) Nothing LintRef
         postSyncIDE $ addLogRef fileScope fileScope ref
-    return ()
 
 logHLintError :: Bool -> IDEPackage -> ParseError -> IDEAction
 logHLintError fileScope package error = do

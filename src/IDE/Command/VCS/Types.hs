@@ -19,6 +19,9 @@ module IDE.Command.VCS.Types (
     ,readIDE'
     ,reflectIDE'
 ) where
+
+import Prelude ()
+import Prelude.Compat
 import Control.Monad.Reader
 import Control.Applicative
 import IDE.Core.Types

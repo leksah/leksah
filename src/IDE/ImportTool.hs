@@ -25,6 +25,8 @@ module IDE.ImportTool (
 ,   HiddenModuleResult(..)
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State
 import Data.Maybe
        (mapMaybe, fromMaybe, catMaybes, fromJust, isNothing, isJust)
@@ -90,7 +92,6 @@ import qualified Data.Text as T
         pack, unpack)
 import Language.Haskell.Exts (KnownExtension(..))
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import System.Log.Logger (debugM)
 import qualified Data.Traversable as Tr (forM)
 import qualified Data.Foldable as F (toList, foldr, or)

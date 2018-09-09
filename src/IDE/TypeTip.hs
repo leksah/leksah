@@ -15,6 +15,8 @@
 
 module IDE.TypeTip (setTypeTip, updateTypeTipStyle) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Text (Text)
 import qualified Data.Text as T
        (concat, drop, lines, length, splitOn, null)
@@ -36,7 +38,6 @@ import IDE.TextEditor.Class (TextEditor(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.IORef (newIORef)
 import Data.Int (Int32)
-import Data.Monoid ((<>))
 import Data.List (intersperse)
 import Control.Monad (void, when)
 import GI.GLib.Constants (pattern PRIORITY_DEFAULT_IDLE)

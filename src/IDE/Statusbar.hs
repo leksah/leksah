@@ -17,6 +17,9 @@ module IDE.Statusbar (
     changeStatusbar
 ,   buildStatusbar
 ) where
+
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State
        (postAsyncIDE, getMainWindow, widgetGet, PaneMonad(..),
         IDEAction(..), StatusbarCompartment(..))
@@ -25,7 +28,6 @@ import Text.Printf (printf)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Text (Text)
 import qualified Data.Text as T (pack, lines, unpack)
-import Data.Monoid ((<>))
 import GI.Gtk.Objects.Statusbar
        (Statusbar(..), statusbarNew, statusbarPush, statusbarPop)
 import GI.Gtk.Objects.Window (setWindowTitle)

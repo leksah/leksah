@@ -17,6 +17,8 @@ module IDE.Command.VCS.Mercurial (
     mkMercurialActions
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.Types
 import IDE.Core.State
 

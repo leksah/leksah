@@ -32,6 +32,8 @@ module IDE.Pane.Info (
 ,   openDocu
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.IORef
 import Data.Typeable
 import Data.Char (isAlphaNum)
@@ -47,7 +49,6 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad (unless, void)
 import Data.Foldable (forM_)
 import qualified Data.Text as T (unpack, pack, null)
-import Data.Monoid ((<>))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, ScrolledWindow(..))
 import GI.Gtk.Objects.Widget (widgetHide, widgetShowAll, toWidget)
@@ -73,7 +74,7 @@ data IDEInfo        =   forall editor. TextEditor editor => IDEInfo {
 
 
 -- | The additional state used when recovering the pane
-data InfoState              =   InfoState (Maybe Descr)
+newtype InfoState = InfoState (Maybe Descr)
     deriving(Eq,Ord,Read,Show,Typeable,Generic)
 
 instance ToJSON InfoState
@@ -173,7 +174,7 @@ setInfo identifierDescr = do
     setInfo' info
     displayPane info False
   where
-    setInfo' (info@IDEInfo{descriptionView = v}) = do
+    setInfo' info@IDEInfo{descriptionView = v} = do
         oldDescr <- liftIO $ readIORef (currentDescr info)
         liftIO $ writeIORef (currentDescr info) (Just identifierDescr)
         tb <- getBuffer v
@@ -243,6 +244,5 @@ populatePopupMenu ideR currentDescr' menu = do
     menuShellAppend menu item2
     widgetShowAll menu
     mapM_ widgetHide $ take 2 (reverse items)
-    return ()
 
 

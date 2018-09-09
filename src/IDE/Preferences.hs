@@ -31,6 +31,8 @@ module IDE.Preferences (
 , defaultPrefs
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Distribution.Package
 import Data.IORef
@@ -67,7 +69,6 @@ import Control.Monad (void, when)
 import System.FilePath ((</>))
 import Data.Text (Text)
 import qualified Data.Text as T (isSuffixOf, unpack, pack, null)
-import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 import Distribution.Text (display, simpleParse)
 import Data.Foldable (forM_)
@@ -218,7 +219,7 @@ runPreferencesDialog = do
 
 
 -- | Represents the Preferences dialog
-data PreferencesDialog = PreferencesDialog {
+newtype PreferencesDialog = PreferencesDialog {
     editorsBox ::   VBox
 } deriving Typeable
 
@@ -255,7 +256,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\(IDEBuffer {sourceView = sv}) -> setShowLineNumbers sv b) buffers)
+                mapM_ (\IDEBuffer{sourceView = sv} -> setShowLineNumbers sv b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "TextView Font") $ emptyParams)
             textviewFont
@@ -263,7 +264,7 @@ prefsDescription configDir packages = NFDPP [
             fontEditor
             (\mbs -> do
                 buffers <- allBuffers
-                mapM_ (\(IDEBuffer {sourceView = sv}) -> setFont sv mbs) buffers)
+                mapM_ (\IDEBuffer{sourceView = sv} -> setFont sv mbs) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Right margin")
                 $ paraSynopsis <<<- ParaSynopsis (__ "Size or 0 for no right margin")
@@ -275,7 +276,7 @@ prefsDescription configDir packages = NFDPP [
                     True (__ "Show it ?"))
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\(IDEBuffer {sourceView = sv}) -> setRightMargin sv
+                mapM_ (\IDEBuffer{sourceView = sv} -> setRightMargin sv
                                 (case b of
                                     (True,v) -> Just v
                                     (False,_) -> Nothing)) buffers)
@@ -286,7 +287,7 @@ prefsDescription configDir packages = NFDPP [
             (intEditor (1.0, 20.0, 1.0))
             (\i -> do
                 buffers <- allBuffers
-                mapM_ (\(IDEBuffer {sourceView = sv}) -> setIndentWidth sv i) buffers)
+                mapM_ (\IDEBuffer{sourceView = sv} -> setIndentWidth sv i) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Wrap lines") $ emptyParams)
             wrapLines
@@ -294,7 +295,7 @@ prefsDescription configDir packages = NFDPP [
             boolEditor
             (\b -> do
                 buffers <- allBuffers
-                mapM_ (\(IDEBuffer {sourceView = sv}) -> setWrapMode sv b) buffers)
+                mapM_ (\IDEBuffer{sourceView = sv} -> setWrapMode sv b) buffers)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Use standard line ends even on windows") $ emptyParams)
             forceLineEnds
@@ -317,7 +318,7 @@ prefsDescription configDir packages = NFDPP [
                 paraName <<<- ParaName (__ "Candy specification")
                                     $ emptyParams)
                     True (__ "Use it ?"))
-            (\_ -> switchBuffersCandy)
+            (const switchBuffersCandy)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Editor Style") $ emptyParams)
             sourceStyle
@@ -435,7 +436,7 @@ prefsDescription configDir packages = NFDPP [
             (\prefs -> if darkUserInterface prefs then "Dark" else "Light")
             (\str a -> a {darkUserInterface = str == "Dark"})
             (comboSelectionEditor ["Dark", "Light"] id)
-            (\_ -> applyInterfaceTheme)
+            (const applyInterfaceTheme)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "LogView Font") $ emptyParams)
             logviewFont
@@ -457,7 +458,7 @@ prefsDescription configDir packages = NFDPP [
                     (True, Just font) -> do
                         fdesc <- fontDescriptionFromString (if b then fromMaybe "" mbFont else "")
                         widgetOverrideFont (treeView wp) (Just fdesc)
-                    _ -> do
+                    _ ->
                         widgetOverrideFont (treeView wp) Nothing
             )
     ,   mkFieldPP
@@ -476,13 +477,13 @@ prefsDescription configDir packages = NFDPP [
             showHiddenFiles
             (\b a -> a {showHiddenFiles = b})
             boolEditor
-            (\_ -> refreshWorkspacePane)
+            (const refreshWorkspacePane)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Show icons in the Workspace pane") $ emptyParams)
             showWorkspaceIcons
             (\b a -> a {showWorkspaceIcons = b})
             boolEditor
-            (\_ -> rebuildWorkspacePane)
+            (const rebuildWorkspacePane)
     ,   mkFieldPP
             (paraName <<<- ParaName (__ "Collapse errors in Errors pane by default") $ emptyParams)
             collapseErrors

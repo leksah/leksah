@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -26,6 +26,8 @@ module IDE.Pane.WebKit.Inspect (
   , getInspectPane
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import IDE.Utils.GUIUtils
@@ -34,8 +36,7 @@ import IDE.Core.Types (IDEAction, IDEM, IDE(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Graphics.UI.Frame.ViewFrame (getNotebook)
 import IDE.Core.State
-       (modifyIDE_, postSyncIDE, reifyIDE, leksahOrPackageDir)
-import IDE.Core.State (reflectIDE)
+       (modifyIDE_, postSyncIDE, reifyIDE, leksahOrPackageDir, reflectIDE)
 import Graphics.UI.Editor.Basics (Connection(..))
 import Text.Show.Pretty
        (HtmlOpts(..), defaultHtmlOpts, valToHtmlPage, parseValue, getDataDir)

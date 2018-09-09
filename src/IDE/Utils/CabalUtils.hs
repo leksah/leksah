@@ -16,6 +16,8 @@ module IDE.Utils.CabalUtils (
     writeGenericPackageDescription'
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Distribution.PackageDescription
        (GenericPackageDescription(..))
 import Distribution.Simple.Utils (writeUTF8File)

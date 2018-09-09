@@ -22,6 +22,8 @@ module IDE.SymbolNavigation (
     mapControlCommand
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.TextEditor (TextEditor(..), EditorView(..), EditorIter(..))
 import IDE.Core.Types (IDEM)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -173,7 +175,7 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
     let fixBugWithX mods isHint (eventX, eventY) ptrx' = do
             Just window <- widgetGetWindow sw
             (_, ox, _) <- windowGetOrigin window
-            let ptrx = ptrx' - (fromIntegral ox)
+            let ptrx = ptrx' - fromIntegral ox
             let hasNoControlModifier = mapControlCommand ModifierTypeControlMask `notElem` mods
             lnbf <- readIORef lineNumberBugFix
             -- print ("ishint?, adjusted, event.x, ptr.x, adjustment,hasControl?",isHint, eventX, ptrx, lnbf, ox, hasNoControlModifier)

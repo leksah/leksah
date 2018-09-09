@@ -32,6 +32,8 @@ module IDE.Pane.PackageFlags (
 ,   getFlags
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import qualified Text.PrettyPrint.HughesPJ as PP
 import Data.Typeable
 import System.FilePath.Posix
@@ -49,7 +51,6 @@ import Text.ParserCombinators.Parsec hiding(Parser)
 import IDE.Utils.GUIUtils (__)
 import Control.Monad (void)
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import Data.Aeson (eitherDecode, FromJSON, ToJSON)
 import Data.Aeson.Encode.Pretty (encodePretty)
 import qualified Data.Text as T (unwords, unpack, pack)
@@ -75,7 +76,7 @@ import Control.Exception (IOException)
 import Data.Maybe (fromMaybe)
 import System.Log.Logger (errorM)
 
-data IDEFlags               =   IDEFlags {
+newtype IDEFlags = IDEFlags {
     flagsBox                ::   Box
 } deriving Typeable
 

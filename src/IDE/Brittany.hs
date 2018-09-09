@@ -3,6 +3,8 @@ module IDE.Brittany (
   runBrittany
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Lens (runIdentity)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)

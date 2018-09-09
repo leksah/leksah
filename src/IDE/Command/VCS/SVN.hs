@@ -20,6 +20,8 @@ module IDE.Command.VCS.SVN (
     ,mkSVNActions
 ) where
 
+import Prelude ()
+import Prelude.Compat
 
 import IDE.Core.Types
 import IDE.Core.State

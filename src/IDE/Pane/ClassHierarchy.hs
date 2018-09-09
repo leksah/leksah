@@ -22,6 +22,8 @@ module IDE.Pane.ClassHierarchy (
 --,   reloadKeepSelection
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Graphics.UI.Gtk hiding (get)
 import Data.Maybe
 import Control.Monad.Reader
@@ -216,12 +218,12 @@ buildClassHierarchyTree ((_,sc1),(_,sc2)) =
             -> Tree ClassWrapper -> (ClassHierarchy,Bool)
         insertInTree wrapper superS (forest,bool) n@(Node w@(symbol,super,idDescr) subForest) =
             if superS == symbol
-                then (Node w ((Node wrapper []) : subForest) : forest, True)
+                then (Node w (Node wrapper [] : subForest) : forest, True)
                 else
                     let (newSubForest,newBool) = foldl' (insertInTree wrapper superS) ([],False)
                                                     subForest
                     in if newBool
-                        then ((Node w newSubForest) : forest, True)
+                        then (Node w newSubForest : forest, True)
                         else (n: forest, bool)
 
 

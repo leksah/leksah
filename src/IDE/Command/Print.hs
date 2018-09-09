@@ -18,8 +18,9 @@ module IDE.Command.Print (
     , PrintError (..)
 ) where
 
-import System.Exit
-import Prelude hiding (print)
+import Prelude ()
+import Prelude.Compat hiding (print)
+import System.Exit (ExitCode(..))
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Utils.Tool (readProcessWithExitCode)

@@ -18,6 +18,9 @@ module IDE.Command.VCS.Common.Workspaces (
     , onWorkspaceClose
 ) where
 
+import Prelude ()
+import Prelude.Compat
+
 -- VCS imports
 import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import qualified IDE.Utils.GUIUtils as GUIUtils
@@ -39,7 +42,6 @@ import Graphics.UI.Frame.Panes
 import Data.Maybe
 import Data.List
 import System.Log.Logger (debugM)
-import Data.Monoid ((<>))
 import qualified Data.Text as T (unpack, pack)
 import GI.Gtk.Objects.MenuItem (menuItemSetSubmenu)
 import GI.Gtk.Objects.Menu (noMenu, menuNew)

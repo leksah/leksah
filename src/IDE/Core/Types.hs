@@ -126,7 +126,8 @@ module IDE.Core.Types (
 ,   KeyVal
 ) where
 
-import Control.Applicative (Applicative)
+import Prelude ()
+import Prelude.Compat
 import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
@@ -187,7 +188,6 @@ import System.Exit (ExitCode)
 import Data.Int (Int32)
 import System.Directory (doesFileExist)
 import Control.Lens ((<&>))
-import Data.Monoid ((<>))
 import Distribution.Compiler (CompilerFlavor(..))
 import System.Process (showCommandForUser)
 import IDE.Utils.FileUtils (loadNixEnv)
@@ -410,14 +410,14 @@ instance Event IDEEvent Text where
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
     getSelector (SearchMeta _)          =   "SearchMeta"
-    getSelector (StartFindInitial)      =   "StartFindInitial"
+    getSelector StartFindInitial        =   "StartFindInitial"
     getSelector (GotoDefinition _)      =   "GotoDefinition"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
     getSelector VariablesChanged        =   "VariablesChanged"
     getSelector (ErrorChanged _)        =   "ErrorChanged"
-    getSelector (ErrorAdded _ _ _)      =   "ErrorAdded"
+    getSelector ErrorAdded{}            =   "ErrorAdded"
     getSelector (ErrorsRemoved _ _)     =   "ErrorsRemoved"
     getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
     getSelector BreakpointChanged       =   "BreakpointChanged"
@@ -800,7 +800,7 @@ data LogLaunchData = LogLaunchData {
 ,   mbPid :: Maybe ProcessHandle
 }
 
-data LogLaunch = LogLaunch {
+newtype LogLaunch = LogLaunch {
     logBuffer   :: TextBuffer
 } deriving Typeable
 

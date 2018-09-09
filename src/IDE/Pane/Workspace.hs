@@ -33,7 +33,8 @@ module IDE.Pane.Workspace (
 ,   rebuildWorkspacePane
 ) where
 
-import Prelude hiding (catch)
+import Prelude ()
+import Prelude.Compat hiding (catch)
 import Data.Maybe
        (fromJust, fromMaybe, maybeToList, listToMaybe, isJust, isNothing)
 import Control.Monad (forM, void, when)
@@ -72,7 +73,6 @@ import Control.Exception (SomeException(..), catch)
 import Data.Text (Text)
 import qualified Data.Text as T
        (isPrefixOf, words, isSuffixOf, unpack, pack)
-import Data.Monoid ((<>))
 import IDE.Core.Types
        (pjLookupPackage, wsLookupProject, pjPackages, activeComponent,
         activePack, activeProject, Project(..), ipdLib, WorkspaceAction,

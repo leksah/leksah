@@ -15,6 +15,8 @@ module IDE.TextEditor.Yi.Config (
 
 #ifdef LEKSAH_WITH_YI
 
+import Prelude ()
+import Prelude.Compat
 import Data.List (reverse, isPrefixOf)
 
 import Yi
@@ -30,7 +32,6 @@ import Yi.UI.Pango.Control
 import Control.Monad (replicateM_)
 import Control.Applicative (Alternative(..))
 import qualified Data.Text as T (singleton)
-import Data.Monoid ((<>))
 import qualified Yi.Rope as R (toText)
 
 start yiConfig f =

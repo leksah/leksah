@@ -29,6 +29,8 @@ module IDE.Pane.WebKit.Output (
   , loadOutputHtmlFile
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), PanePath, RecoverablePane, Pane(..))
 import IDE.Utils.GUIUtils

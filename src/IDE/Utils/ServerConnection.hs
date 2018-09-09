@@ -18,6 +18,8 @@ module IDE.Utils.ServerConnection (
     doServerCommand,
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State
 import Network (connectTo,PortID(..))
 import Network.Socket (PortNumber(..))
@@ -33,7 +35,6 @@ import Control.Monad.Reader (ask)
 import System.Log.Logger (getLevel, getRootLogger, debugM)
 import Control.Monad (void, forever)
 import qualified Data.Text as T (pack, unpack)
-import Data.Monoid ((<>))
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEAction
 doServerCommand command cont = do

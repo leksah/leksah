@@ -19,6 +19,8 @@ module IDE.NotebookFlipper (
 ,   flipUp
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State hiding (window, name)
 import Control.Monad (when)
 import IDE.Pane.SourceBuffer(recentSourceBuffers)

@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings#-}
 module IDE.LPaste (uploadToLpaste) where
 
+import Prelude ()
+import Prelude.Compat
+
 import IDE.Core.State
 import IDE.Core.Types
 import IDE.Pane.SourceBuffer
@@ -11,7 +14,6 @@ import Data.Maybe
 import Network.HTTP
 
 import qualified Data.Text as T
-import Data.Monoid
 import GI.Gtk.Enums (MessageType(..))
 import Control.Monad (void)
 import Control.Exception (SomeException, catch)

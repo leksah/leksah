@@ -25,6 +25,8 @@ module IDE.Build (
     defaultMakeSettings
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State
        (postAsyncIDE, triggerEventIDE, IDEAction,
         Project(..), ipdPackageId, ipdDepends, IDEPackage(..))
@@ -47,7 +49,6 @@ import Control.Monad (void)
 import Control.Arrow ((***))
 import Data.Text (Text)
 import Distribution.Text (disp)
-import Data.Monoid ((<>))
 import qualified Data.Text as T (pack, unpack)
 import System.Log.Logger (debugM)
 import qualified Control.Arrow as Arrow (Arrow(..))

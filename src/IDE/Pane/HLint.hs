@@ -25,6 +25,8 @@ module IDE.Pane.HLint (
    HLintState(..)
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Graphics.UI.Frame.Panes
        (RecoverablePane(..), RecoverablePane, Pane(..))
 import Data.Typeable (Typeable)
@@ -38,11 +40,11 @@ import GI.Gtk.Objects.Widget (toWidget, Widget(..))
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
 
-data IDEHLint       =   IDEHLint {
+newtype IDEHLint = IDEHLint {
     deprecatedLabel :: Label
 } deriving Typeable
 
-data HLintState      =   HLintState
+data HLintState = HLintState
     deriving(Eq,Ord,Read,Show,Typeable,Generic)
 
 instance ToJSON HLintState

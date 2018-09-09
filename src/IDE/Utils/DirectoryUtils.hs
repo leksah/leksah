@@ -17,6 +17,8 @@ module IDE.Utils.DirectoryUtils (
     setModificationTimeOnOSX
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Time.Clock (UTCTime(..))
 #ifdef darwin_HOST_OS
 import Data.Tuple (swap)

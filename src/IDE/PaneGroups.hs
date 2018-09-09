@@ -23,6 +23,8 @@ module IDE.PaneGroups (
 
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.State (IDEM(..), readIDE, IDEAction(..))
 import Graphics.UI.Frame.Panes
        (RecoverablePane, PanePath, getTopWidget, getPane, getOrBuildPane,
@@ -59,7 +61,7 @@ showBrowser :: IDEAction
 showBrowser = do
     pp   <- panePathForGroup "*Browser"
     ret  <- newGroupOrBringToFront "Browser" pp
-    layout' <- liftM layout (readIDE frameState)
+    layout' <- layout <$> readIDE frameState
     case ret of
         (Just rpp, True) -> do
             viewSplit' rpp OrientationHorizontal
@@ -109,7 +111,7 @@ showDebugger :: IDEAction
 showDebugger = do
     pp   <- panePathForGroup "*Debug"
     ret  <- newGroupOrBringToFront "Debug" pp
-    layout' <- liftM layout (readIDE frameState)
+    layout' <- layout <$> readIDE frameState
     bufs <- allBuffers
     case ret of
         (Just rpp, True) -> do
@@ -137,5 +139,4 @@ showDebugger = do
             newTextBuffer upperP "_Eval.hs" Nothing >>= \case
                 Nothing   -> return ()
                 Just pane -> viewMoveTo upperP pane
-        return ()
 

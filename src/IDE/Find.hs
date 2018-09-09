@@ -36,6 +36,8 @@ module IDE.Find (
 ,   toggleToolbar
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Control.Applicative (Applicative)
 import IDE.Core.State
        (MessageLevel(..), sysMessage, (?>>=), triggerEventIDE, onIDE,
@@ -60,7 +62,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (pack, unpack, singleton, isPrefixOf, length, null, toLower)
 import qualified Data.Text.Encoding as T (encodeUtf8)
-import Data.Monoid ((<>))
 import GI.Gtk.Objects.SpinButton
        (spinButtonSetRange, spinButtonNewWithRange, spinButtonSetValue,
         SpinButton(..), spinButtonGetValueAsInt)

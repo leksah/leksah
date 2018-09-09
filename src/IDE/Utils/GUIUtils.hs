@@ -60,6 +60,8 @@ module IDE.Utils.GUIUtils (
 ,   fontDescription
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Utils.Tool (runProcess)
 import Data.Maybe
        (listToMaybe, fromMaybe, catMaybes, fromJust, isJust)
@@ -68,7 +70,6 @@ import IDE.Core.State
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Exception as E
 import Data.Text (Text)
-import Data.Monoid ((<>))
 import qualified Data.Text as T (unpack, pack)
 import Control.Applicative ((<$>))
 import Data.List (intercalate)
@@ -306,7 +307,7 @@ showInputDialog parent msg def = do
     -- Can't use messageDialog because of https://github.com/gtk2hs/gtk2hs/issues/114
     dialogAddButton' dialog "Cancel" ResponseTypeCancel
     okBtn <- dialogAddButton' dialog "Ok" ResponseTypeOk
-    onEntryActivate entry $ widgetActivate okBtn >> return ()
+    onEntryActivate entry $ void $ widgetActivate okBtn
     dialogSetDefaultResponse' dialog ResponseTypeOk
 
     res <- dialogRun' dialog

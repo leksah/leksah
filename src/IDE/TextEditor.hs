@@ -33,6 +33,8 @@ module IDE.TextEditor (
 #endif
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.TextEditor.Class as Exported
 import IDE.TextEditor.GtkSourceView as Exported
 import IDE.TextEditor.Yi as Exported

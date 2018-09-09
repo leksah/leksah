@@ -37,6 +37,8 @@ module IDE.TextEditor.CodeMirror (
 #endif
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Typeable (Typeable)
 import Data.Text (Text)
 import Text.Show (Show)

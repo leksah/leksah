@@ -32,6 +32,8 @@ module IDE.TextEditor.Yi (
 #endif
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import Data.Typeable (Typeable)
 
 #ifdef LEKSAH_WITH_YI

@@ -26,6 +26,8 @@ module IDE.Workspaces.Writer (
     ,workspaceVersion
 ) where
 
+import Prelude ()
+import Prelude.Compat
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Package
@@ -46,7 +48,6 @@ import Graphics.UI.Editor.Parameters
 import qualified Text.PrettyPrint as  PP (text)
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (unpack, pack)
-import Data.Monoid ((<>))
 import System.FSNotify (watchDir, Event(..), watchTree, eventPath, isPollingManager)
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)

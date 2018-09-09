@@ -51,6 +51,9 @@ module IDE.LogRef (
 ,   srcSpanParser
 ) where
 
+import Prelude ()
+import Prelude.Compat
+
 import Control.Monad.Reader
 
 import IDE.Core.State
@@ -75,7 +78,6 @@ import Control.Applicative ((<$>), (<|>))
 import qualified Data.Text as T
        (dropEnd, length, stripPrefix, isPrefixOf, unpack, unlines, pack,
         null)
-import Data.Monoid ((<>))
 import qualified Data.Set as S (notMember, member, insert, empty)
 import Data.Set (Set)
 import Data.Sequence (ViewR(..), Seq)
