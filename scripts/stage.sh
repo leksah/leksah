@@ -34,6 +34,7 @@ if test "`uname`" = "Darwin"; then
        leksah-server:exe:leksah-server \
        leksah-server:exe:leksahecho \
        leksah-server:exe:leksahtrue \
+       vcswrapper:exe:vcswrapper \
        vcsgui:exe:vcsgui \
        vcsgui:exe:vcsgui-askpass \
        leksah:exe:leksah || exit
@@ -42,6 +43,7 @@ else
        leksah-server:exe:leksah-server \
        leksah-server:exe:leksahecho \
        leksah-server:exe:leksahtrue \
+       vcswrapper:exe:vcswrapper \
        vcsgui:exe:vcsgui \
        vcsgui:exe:vcsgui-askpass \
        leksah:exe:leksah -f-yi -fpango -f-vty || exit

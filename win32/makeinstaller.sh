@@ -23,8 +23,6 @@ export PRETTY_SHOW_X_X=`$WINE ghc-pkg$GHCVERSION list |grep '^ *pretty-show-' | 
 export GHCJS_CODEMIRROR_X_X_X_X=`$WINE ghc-pkg$GHCVERSION list |grep '^ *ghcjs-codemirror-' | tail -n1 | tr -d ' \r\n'`
 export GTK_PREFIX_U=`$WINEPATH_U "$GTK_PREFIX"`
 
-sed 's|\<ctrl\>q|\<alt\>F4|' <data/keymap.lkshk >"$LEKSAH_PREFIX/$LEKSAH_X_X_X_X/data/keymap.lkshk" || exit
-
 cd win32 || exit
 
 export PATH=$PATH:/c/Program\ Files\ \(x86\)/WiX\ Toolset\ v3.8/bin:/c/Program\ Files/WiX\ Toolset\ v3.8/bin
@@ -36,31 +34,32 @@ $LNDIR etc SourceDir # has to be done before copying the gtk etc folder since th
 $LNDIR "$GTK_PREFIX_U"/etc SourceDir
 $LNDIR share SourceDir
 mkdir -p SourceDir/leksah
-$LNDIR "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/data SourceDir/leksah
-$LNDIR "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/language-specs SourceDir/leksah
-$LNDIR "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/pics SourceDir/leksah
-$LN  "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/LICENSE SourceDir/leksah
-$LN  "$LEKSAH_PREFIX/$LEKSAH_X_X_X_X"/Readme.md SourceDir/leksah
+$LNDIR ../data SourceDir/leksah
+sed 's|\<ctrl\>q|\<alt\>F4|' <../data/keymap.lkshk >"SourceDir/leksah/data/keymap.lkshk" || exit
+$LNDIR ../language-specs SourceDir/leksah
+$LNDIR ../pics SourceDir/leksah
+$LN  ../LICENSE SourceDir/leksah
+$LN  ../Readme.md SourceDir/leksah
 mkdir -p SourceDir/hlint
-$LNDIR "$LEKSAH_PREFIX/$HLINT_X_X_X_X"/* SourceDir/hlint
+# $LNDIR "$LEKSAH_PREFIX/$HLINT_X_X_X_X"/* SourceDir/hlint
 # TODO put this back once JavaScriptCore works win mingw webkitgtk
 # mkdir -p SourceDir/pretty-show
 # $LNDIR "$LEKSAH_PREFIX/$PRETTY_SHOW_X_X"/style SourceDir/pretty-show
-mkdir -p SourceDir/pretty-show/style
-$LN "$LEKSAH_PREFIX/$PRETTY_SHOW_X_X"/style/pretty-show.css SourceDir/pretty-show/style
-mkdir -p SourceDir/ghcjs-codemirror
-$LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/mode SourceDir/ghcjs-codemirror
-$LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/lib SourceDir/ghcjs-codemirror
-$LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/keymap SourceDir/ghcjs-codemirror
-$LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/theme SourceDir/ghcjs-codemirror
+# mkdir -p SourceDir/pretty-show/style
+# $LN "$LEKSAH_PREFIX/$PRETTY_SHOW_X_X"/style/pretty-show.css SourceDir/pretty-show/style
+# mkdir -p SourceDir/ghcjs-codemirror
+# $LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/mode SourceDir/ghcjs-codemirror
+# $LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/lib SourceDir/ghcjs-codemirror
+# $LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/keymap SourceDir/ghcjs-codemirror
+# $LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/theme SourceDir/ghcjs-codemirror
 mkdir -p SourceDir/bin
-$LN  "$CABAL_USER_BIN"/leksah.exe SourceDir/bin
-$LN  "$CABAL_USER_BIN"/vcswrapper.exe SourceDir/bin
-$LN  "$CABAL_USER_BIN"/vcsgui.exe SourceDir/bin
-$LN  "$CABAL_USER_BIN"/vcsgui-askpass.exe SourceDir/bin
-$LN  "$CABAL_USER_BIN"/leksah-server.exe SourceDir/bin
-$LN  "$CABAL_USER_BIN"/leksahecho.exe SourceDir/bin
-$LN  "$CABAL_USER_BIN"/leksahtrue.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/$LEKSAH_X_X_X_X"/x/leksah/build/leksah/leksah.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/vcswrapper-0.2.0"/x/vcsgui/build/vcswrapper/vcswrapper.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/vcsgui-0.3.0.0"/x/vcsgui/build/vcsgui/vcsgui.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/vcsgui-0.3.0.0"/x/vcsgui-askpass/build/vcsgui-askpass/vcsgui-askpass.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/$LEKSAH_SERVER_X_X_X_X"/x/leksah-server/build/leksah-server/leksah-server.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/$LEKSAH_SERVER_X_X_X_X"/x/leksahecho/build/leksahecho/leksahecho.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/$LEKSAH_SERVER_X_X_X_X"/x/leksahtrue/build/leksahtrue/leksahtrue.exe SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libiconv-2.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libicu*.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libatk-1.0-0.dll SourceDir/bin
@@ -68,13 +67,15 @@ $LN  "$GTK_PREFIX_U"/bin/libbz2-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libcairo-2.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libcairo-gobject-2.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libdbus*.dll SourceDir/bin
-$LN  "$GTK_PREFIX_U"/bin/libenchant.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libdatrie-1.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libenchant-2.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libepoxy-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libexpat-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libexslt-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libffi-6.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libfontconfig-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libfreetype-6.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libfribidi-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgailutil-3-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgcc_s_seh-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libgdk-3-0.dll SourceDir/bin
@@ -113,6 +114,7 @@ $LN  "$GTK_PREFIX_U"/bin/libsoup-2.4-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libsqlite3-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libstdc++-6.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libtasn1-6.dll SourceDir/bin
+$LN  "$GTK_PREFIX_U"/bin/libthai-0.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libxml2-2.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libxslt-1.dll SourceDir/bin
 $LN  "$GTK_PREFIX_U"/bin/libwebkitgtk-3.0-0.dll SourceDir/bin
@@ -131,6 +133,8 @@ $LNDIR "$GTK_PREFIX_U"/libexec/gstreamer-1.0 SourceDir/libexec
 
 $LNDIR "$GTK_PREFIX_U"/include SourceDir
 $LNDIR "$GTK_PREFIX_U"/lib SourceDir
+
+strip SourceDir/bin/*.exe
 
 # mkdir -p SourceDir/fonts
 # cp -ru /c/Windows/Fonts/DejaVuS*.ttf SourceDir
