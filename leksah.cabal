@@ -346,7 +346,7 @@ library
         criterion >=1.1.4.0 && <1.5,
         git >=0.2.0 && <0.3,
         attoparsec >=0.10.0.3 && <0.14,
-        aeson >=1.1.2.0 && <1.4,
+        aeson >=1.1.2.0 && <1.5,
         aeson-pretty >=0.8.7 && <0.9,
         data-default >=0.7.1.1 && <0.8,
         jsaddle >=0.9.4.0 && <0.10,
