@@ -54,7 +54,7 @@ mkdir -p SourceDir/hlint
 # $LNDIR "$LEKSAH_PREFIX/$GHCJS_CODEMIRROR_X_X_X_X"/theme SourceDir/ghcjs-codemirror
 mkdir -p SourceDir/bin
 $LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/$LEKSAH_X_X_X_X"/x/leksah/build/leksah/leksah.exe SourceDir/bin
-$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/vcswrapper-0.2.0"/x/vcsgui/build/vcswrapper/vcswrapper.exe SourceDir/bin
+$LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/vcswrapper-0.2.0"/x/vcswrapper/build/vcswrapper/vcswrapper.exe SourceDir/bin
 $LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/vcsgui-0.3.0.0"/x/vcsgui/build/vcsgui/vcsgui.exe SourceDir/bin
 $LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/vcsgui-0.3.0.0"/x/vcsgui-askpass/build/vcsgui-askpass/vcsgui-askpass.exe SourceDir/bin
 $LN  "../dist-newstyle/build/x86_64-windows/ghc-$GHC_VER/$LEKSAH_SERVER_X_X_X_X"/x/leksah-server/build/leksah-server/leksah-server.exe SourceDir/bin
