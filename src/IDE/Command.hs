@@ -292,13 +292,13 @@ mkActions =
 
     --,AD "Align" "_Align" Nothing Nothing (return ()) [] False
     ,AD "EditAlignEqual" (__ "Align _=") Nothing Nothing
-        (align '=') [] False
+        (align "=") [] False
     ,AD "EditAlignRightArrow" (__ "Align -_>") Nothing Nothing
-        (align '>') [] False
+        (align "->") [] False
     ,AD "EditAlignLeftArrow" (__ "Align _<-") Nothing Nothing
-        (align '<') [] False
+        (align "<-") [] False
     ,AD "EditAlignTypeSig" (__ "Align _::") Nothing Nothing
-        (align ':') [] False
+        (align "::") [] False
 
     ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
     ,AD "WorkspaceAddPackage" (__ "_Add Package...") Nothing Nothing

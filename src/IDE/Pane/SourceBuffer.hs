@@ -137,8 +137,8 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import System.Log.Logger (errorM, warningM, debugM)
 import Data.Text (Text)
 import qualified Data.Text as T
-       (length, findIndex, replicate, lines,
-        dropWhileEnd, unlines, strip, null, pack, unpack)
+       (singleton, isInfixOf, breakOn, length, replicate,
+        lines, dropWhileEnd, unlines, strip, null, pack, unpack)
 import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Time (UTCTime(..))
 import qualified Data.Foldable as F (Foldable(..), forM_, toList)
@@ -1447,37 +1447,42 @@ editShiftRight = do
         insert ebuf sol str
     return ()
 
-alignChar :: Char -> IDEAction
-alignChar char = do
+align :: Text -> IDEAction
+align pat' = inActiveBufContext () $ \_ ebuf ideBuf -> do
+    useCandy <- useCandyFor ideBuf
+    let pat = if useCandy
+                     then transChar pat'
+                     else pat'
+    (start,end) <- getStartAndEndLineOfSelection ebuf
+    beginUserAction ebuf
+    let positionsOfChar :: IDEM [(Int, Maybe Int)]
+        positionsOfChar = forM [start .. end] $ \lineNr -> do
+                sol <- getIterAtLine ebuf lineNr
+                eol <- forwardToLineEndC sol
+                line  <- getText ebuf sol eol True
+                return (lineNr,
+                    if pat `T.isInfixOf` line
+                        then Just . T.length . fst $ T.breakOn pat line
+                        else Nothing)
+        alignChar :: Map Int (Maybe Int) -> Int -> IDEM ()
+        alignChar positions alignTo =
+                forM_ [start .. end] $ \lineNr ->
+                    case lineNr `Map.lookup` positions of
+                        Just (Just n)  ->  do
+                            sol       <- getIterAtLine ebuf lineNr
+                            insertLoc <- forwardCharsC sol n
+                            insert ebuf insertLoc (T.replicate (alignTo - n) " ")
+                        _              ->  return ()
     positions     <- positionsOfChar
     let alignTo = F.foldl' max 0 (mapMaybe snd positions)
     when (alignTo > 0) $ alignChar (Map.fromList positions) alignTo
-    where
-    positionsOfChar :: IDEM [(Int, Maybe Int)]
-    positionsOfChar = doForSelectedLines [] $ \ebuf lineNr -> do
-            sol <- getIterAtLine ebuf lineNr
-            eol <- forwardToLineEndC sol
-            line  <- getText ebuf sol eol True
-            return (lineNr, T.findIndex (==char) line)
-    alignChar :: Map Int (Maybe Int) -> Int -> IDEM ()
-    alignChar positions alignTo = do
-            doForSelectedLines [] $ \ebuf lineNr ->
-                case lineNr `Map.lookup` positions of
-                    Just (Just n)  ->  do
-                        sol       <- getIterAtLine ebuf lineNr
-                        insertLoc <- forwardCharsC sol n
-                        insert ebuf insertLoc (T.replicate (alignTo - n) " ")
-                    _              ->  return ()
-            return ()
+    endUserAction ebuf
 
-transChar :: Char -> Char
-transChar ':' = toEnum 0x2237 --PROPORTION
-transChar '>' = toEnum 0x2192 --RIGHTWARDS ARROW
-transChar '<' = toEnum (toEnum 0x2190) --LEFTWARDS ARROW
-transChar c   = c
-
-align :: Char -> IDEAction
-align = alignChar . transChar
+transChar :: Text -> Text
+transChar "::" = T.singleton $ toEnum 0x2237 --PROPORTION
+transChar "->" = T.singleton $ toEnum 0x2192 --RIGHTWARDS ARROW
+transChar "<-" = T.singleton $ toEnum (toEnum 0x2190) --LEFTWARDS ARROW
+transChar t    = t
 
 addRecentlyUsedFile :: FilePath -> IDEAction
 addRecentlyUsedFile fp = do
