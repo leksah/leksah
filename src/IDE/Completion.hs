@@ -579,6 +579,6 @@ getRow tree = do
     selection  <- treeViewGetSelection tree
     treeSelectionGetSelected selection >>= \case
         (True, _, iter) -> do
-            [row] <- treeModelGetPath model iter >>= treePathGetIndices
+            Just [row] <- treeModelGetPath model iter >>= treePathGetIndices
             return $ Just row
         _ -> return Nothing

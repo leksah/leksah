@@ -4,14 +4,14 @@
       then
         (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
           owner = "hamishmack"; repo = "nixpkgs";
-          rev = "a6dd1a2e77ed9e9a564fe2391925fddbec433040";
-          sha256 = "0z06dgn26mh6x3vbbbvlm3i1nx2d1nqqs50bl93xif55rnd0by6p";
+          rev = "c4516a6b729d4e66d793ebfb04e350c73dcb7526";
+          sha256 = "0sx92vddzx5raqyxg00p0166i7cr5ai0ff3nbxhz0mwsa8r9026l";
         }) {})
       else
         (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
           owner = "NixOS"; repo = "nixpkgs";
-          rev = "f8e8ecde51b49132d7f8d5adb971c0e37eddcdc2";
-          sha256 = "14b7945442q5hlhvhnm15y3cds2lmm6kn52srv2bbr3yla6b2pv9";
+          rev = "d9d92218ec53129a18740f385a3873973c95ec0d";
+          sha256 = "0xxvy8nz8i3ma57qhrkwh9yf2hld52p3h5li1c2hyazjcdz2vsw0";
         }) {})
 , compiler ? "ghc843"
 }:
@@ -40,8 +40,8 @@ let
   jsaddle-github = nixpkgs.fetchFromGitHub {
     owner = "ghcjs";
     repo = "jsaddle";
-    rev = "7eb50cb73a7cbc31ec16916f85a3a89164b4908b";
-    sha256 = "1dq99q12ibvsm6jz35jxmcv154n0jcb0k8lfhnx5c28ckgk3g8q7";
+    rev = "68208be806c49a2a0c9f037dfac85feae10a8c80";
+    sha256 = "0acj0x716ikfb08ndib36jmwxkwq399lvkip46sfkh1ynn0pvc1c";
   };
 
   ghcjs-dom-github = nixpkgs.fetchFromGitHub {
@@ -49,6 +49,13 @@ let
     repo = "ghcjs-dom";
     rev = "a6d51fcf0e79e7de50a0cb2088042e323133a7a8";
     sha256 = "06g0vvgvxxxzw9h2jqwkykam5jpngk6xlph29jyg92c00jms2bl4";
+  };
+
+  haddock-ghc86 = nixpkgs.fetchFromGitHub {
+    owner = "haskell";
+    repo = "haddock";
+    rev = "39f591b945bc3e507c3c54ba762b26cb0fb9ded7";
+    sha256 = "08hr6pg8dbb71f0hm6fqx0dxscmnpkp618anmjs5jqc492k7xbwg";
   };
 
   launch-leksah-script = nixpkgs.writeShellScriptBin "launch-leksah" ''
@@ -83,6 +90,46 @@ let
       haskell-gi-overloading = "0.0";
       base-compat-batteries = "0.10.4";
       contravariant = "1.5";
+
+#      Stuff that GHC 8.6.1 might need
+#      http-types = "0.12.2";
+#      aeson = "1.4.1.0";
+#      haskell-src-exts = "1.20.3";
+#      concurrent-output = "1.10.7";
+#      unliftio = "0.2.8.1";
+#      lifted-async = "0.10.0.3";
+#      hedgehog = "0.6.1";
+#      semigroupoids = "5.3.1";
+#      base-orphans = "0.8";
+#      free = "5.1";
+#      lens = "4.17";
+#      criterion = "1.5.1.0";
+#      microlens-th = "${nixpkgs.fetchFromGitHub {
+#        owner = "monadfix";
+#        repo = "microlens";
+#        rev = "b7a3f9c3c87343975aa8d67a8e238a92c132f62c";
+#        sha256 = "1y0dbq9bhfsp6zdxrdpw9ifpqf91iadfd2rmr6szb8nilx04lyx5";
+#      }}/microlens-th";
+#      multistate = nixpkgs.fetchFromGitHub {
+#        owner = "lspitzner";
+#        repo = "multistate";
+#        rev = "5c24daac43df086be952ffa6cb9d361681b44f6e";
+#        sha256 = "18fnvv1rn9i7v65mfrqzdx54560h6z6sv0mxdyq8a3si946n189g";
+#      };
+#      haddock-library = "${haddock-ghc86}/haddock-library";
+#      haddock-api = "${haddock-ghc86}/haddock-api";
+#      hslogger = nixpkgs.fetchFromGitHub {
+#        owner = "hamishmack";
+#        repo = "hslogger";
+#        rev = "e6cc40e095a5be77ede6aca8cb92d570b8c338d5";
+#        sha256 = "0kn0zphiagx9raajkf6lvbz310hzadiqhvlc2g31h8slfqa02042";
+#      };
+#      memory = nixpkgs.fetchFromGitHub {
+#        owner = "vincenthz";
+#        repo = "hs-memory";
+#        rev = "feee6256e19ed178dc75b071dc54983bc6320f26";
+#        sha256 = "1vv1js5asaxbahvryxlxch14x3jq15a09xixhz330m3d77zfyiw9";
+#      };
     })).extend( self: super:
       let jsaddlePkgs = import jsaddle-github self;
           ghcjsDom = import ghcjs-dom-github self;
@@ -125,6 +172,22 @@ let
         HaRe                = dontHaddock (dontCheck super.HaRe);
         text-replace        = doJailbreak super.text-replace;
         system-fileio       = dontCheck super.system-fileio;
+        ref-tf              = doJailbreak super.ref-tf;
+
+#        Stuff that GHC 8.6.1 might need
+#        czipwith            = doJailbreak super.czipwith;
+#        data-tree-print     = doJailbreak super.data-tree-print;
+#        neat-interpolation = dontCheck super.neat-interpolation;
+#        HTF = null;
+#        polyparse = null;
+#        cpphs = null;
+#        brittany = null;
+#        haskell-src-exts = dontCheck super.haskell-src-exts;
+#        vector-binary-instances = doJailbreak super.vector-binary-instances;
+#        butcher = null;
+#        monad-par = dontCheck super.monad-par;
+#        http-types = dontCheck super.http-types;
+#        aeson = doJailbreak super.aeson;
 
         # This is a fix for macOS that may be needed again one day
         # webkit2gtk3-javascriptcore = overrideCabal super.webkit2gtk3-javascriptcore (drv: {

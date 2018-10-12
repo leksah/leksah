@@ -482,8 +482,8 @@ matchFunc :: (Applicative m, MonadIO m) => SeqStore Text -> EntryCompletion -> T
 matchFunc model _completion str iter = do
   tp <- treeModelGetPath model iter >>= treePathGetIndices
   case tp of
-         (i:_) -> do row <- seqStoreGetValue model i
-                     return (T.isPrefixOf (T.toLower str) (T.toLower row) && T.length str < T.length row)
+         Just (i:_) -> do row <- seqStoreGetValue model i
+                          return (T.isPrefixOf (T.toLower str) (T.toLower row) && T.length str < T.length row)
          _     -> return False
 
 addToHist :: Text -> IDEAction
