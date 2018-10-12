@@ -173,6 +173,7 @@ let
         text-replace        = doJailbreak super.text-replace;
         system-fileio       = dontCheck super.system-fileio;
         ref-tf              = doJailbreak super.ref-tf;
+        concurrent-output   = doJailbreak super.concurrent-output;
 
 #        Stuff that GHC 8.6.1 might need
 #        czipwith            = doJailbreak super.czipwith;
