@@ -69,7 +69,7 @@ leksah.bat
 
 ### Alternative Installation Method
 
-Leksah requires `ghc --version` >=8.0.2 and `cabal --version` >=1.24. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
+Leksah requires `ghc --version` >=8.2.2 and `cabal --version` >=2.0. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
 
 #### Step 1: Install C libraries
 
@@ -95,13 +95,13 @@ sudo port install gobject-introspection webkit2-gtk gtksourceview3 gtk-osx-appli
 You will also need to build a MacPorts compatible of GHC. First install GHC some other way then unpack the source for the GHC version you want to use and run:
 ```shell
 sudo port install libxslt gmp ncurses libiconv llvm-3.5 libffi
-./configure --prefix=$HOME/ghc-8.0.1 --with-iconv-includes=/opt/local/include --with-iconv-libraries=/opt/local/lib --with-gmp-includes=/opt/local/include --with-gmp-libraries=/opt/local/lib --with-system-libffi --with-ffi-includes=/opt/local/lib/libffi-3.2.1/include --with-ffi-libraries=/opt/local/lib --with-nm=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm-classic
+./configure --prefix=$HOME/ghc-8.4.3 --with-iconv-includes=/opt/local/include --with-iconv-libraries=/opt/local/lib --with-gmp-includes=/opt/local/include --with-gmp-libraries=/opt/local/lib --with-system-libffi --with-ffi-includes=/opt/local/lib/libffi-3.2.1/include --with-ffi-libraries=/opt/local/lib --with-nm=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm-classic
 make
 make install
 echo 'PATH: '"$PATH"
 ```
 
-Make sure the `$HOME/ghc-8.0.1/bin` is present in PATH.
+Make sure the `$HOME/ghc-8.4.3/bin` is present in PATH.
 
 ##### macOS with Homebrew
 It might be possible to build Leksah using Homebrew now we have switched to WebKit 2.  If you can figure it out please send us the details or better yet a pull request to update this file.  Raise an issue if you try and it does not work.
