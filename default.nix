@@ -85,7 +85,10 @@ let
       brittany       = filterSubmodule ./vendor/brittany;
       HaRe           = filterSubmodule ./vendor/HaRe;
       cabal-helper   = filterSubmodule ./vendor/HaRe/submodules/cabal-helper;
-      ghc-exactprint = filterSubmodule ./vendor/HaRe/submodules/ghc-exactprint;
+      ghc-exactprint = builtins.fetchTarball {
+        url = "http://hackage.haskell.org/package/ghc-exactprint-0.5.8.2/ghc-exactprint-0.5.8.2.tar.gz";
+        sha256 = "1y5bvnazplpjv38398vxg2vq1477jn1l5ymwg3vrxr3w4llywlsv";
+      };
       ghc-mod        = filterSubmodule ./vendor/HaRe/submodules/ghc-mod;
       ghc-mod-core   = filterSubmodule ./vendor/HaRe/submodules/ghc-mod/core;
       git = nixpkgs.fetchFromGitHub {
@@ -180,6 +183,8 @@ let
           gtk-mac-integration-gtk3 = nixpkgs.gtk-mac-integration-gtk3;
         }).overrideAttrs(drv: {strictDeps = true;});
 
+        cabal-helper        = dontCheck super.cabal-helper;
+        
         cabal-plan          = if compiler == "ghc802" then null else super.cabal-plan;
         hlint               = dontCheck super.hlint;
         constrained-dynamic = doJailbreak super.constrained-dynamic;
