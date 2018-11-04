@@ -4,16 +4,16 @@
       then
         (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
           owner = "hamishmack"; repo = "nixpkgs";
-          rev = "c4516a6b729d4e66d793ebfb04e350c73dcb7526";
-          sha256 = "0sx92vddzx5raqyxg00p0166i7cr5ai0ff3nbxhz0mwsa8r9026l";
+          rev = "38f730fe9c5da285d8a7e52f9c319b871391dcd6"; # branch leksah-nixpkgs-11
+          sha256 = "0jcyyxm6bci2kfba3937pglcplild56vcgasxygcnyah665zgy20";
         }) {})
       else
         (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
-          owner = "NixOS"; repo = "nixpkgs";
-          rev = "d9d92218ec53129a18740f385a3873973c95ec0d";
-          sha256 = "0xxvy8nz8i3ma57qhrkwh9yf2hld52p3h5li1c2hyazjcdz2vsw0";
+          owner = "hamishmack"; repo = "nixpkgs";
+          rev = "1a4b5101de556738c8b8d9941f15c4b2d852f6c0"; # branch gnome-3.30
+          sha256 = "0fac2jjkjn1ad5zgnmmcwmgkh40h0dj0s5vcfl2qml9lqzb6ja1b";
         }) {})
-, compiler ? "ghc843"
+, compiler ? "ghc844"
 }:
 
 with nixpkgs.pkgs.haskell.lib;
@@ -136,12 +136,12 @@ let
       in {
         haddock-library = if compiler == "ghc822"
                             then dontCheck (dontHaddock (self.callHackage "haddock-library" "1.4.4" {}))
-                            else if compiler == "ghc842" || compiler == "ghc843"
+                            else if compiler == "ghc842" || compiler == "ghc843" || compiler == "ghc844"
                               then dontCheck (dontHaddock (self.callHackage "haddock-library" "1.6.0" {}))
                               else super.haddock-library;
         haddock-api = if compiler == "ghc822"
                             then dontCheck (self.callHackage "haddock-api" "2.18.1" {})
-                            else if compiler == "ghc842" || compiler == "ghc843"
+                            else if compiler == "ghc842" || compiler == "ghc843" || compiler == "ghc844"
                               then dontCheck (self.callHackage "haddock-api" "2.20.0" {})
                               else super.haddock-api;
         jsaddle = doJailbreak (jsaddlePkgs.jsaddle);
@@ -288,16 +288,18 @@ let
   ghc802 = extendedHaskellPackages "ghc802" nixpkgs.pkgs.haskell.packages.ghc802;
   ghc822 = extendedHaskellPackages "ghc822" nixpkgs.pkgs.haskell.packages.ghc822;
   ghc843 = extendedHaskellPackages "ghc843" nixpkgs.pkgs.haskell.packages.ghc843;
+  ghc844 = extendedHaskellPackages "ghc844" nixpkgs.pkgs.haskell.packages.ghc844;
   ghc = extendedHaskellPackages compiler nixpkgs.pkgs.haskell.packages.${compiler};
 
   leksah = ghc.wrapped-leksah "";
   leksah-ghc802 = ghc802.wrapped-leksah "-ghc802";
   leksah-ghc822 = ghc822.wrapped-leksah "-ghc822";
   leksah-ghc843 = ghc843.wrapped-leksah "-ghc843";
+  leksah-ghc844 = ghc844.wrapped-leksah "-ghc844";
 
 in leksah // {
-  inherit ghc ghc802 ghc822 ghc843;
-  inherit leksah-ghc802 leksah-ghc822 leksah-ghc843;
+  inherit ghc ghc802 ghc822 ghc843 ghc844;
+  inherit leksah-ghc802 leksah-ghc822 leksah-ghc843 leksah-ghc844;
   inherit (ghc) launch-leksah;
 
   shells = {

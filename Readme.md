@@ -56,7 +56,7 @@ Install [Chocolatey](https://chocolatey.org/).
 
 Right click on `Command Prompt` and choose `Run as Administrator`.  In the window run:
 ```shell
-choco install ghc --version 8.2.2
+choco install ghc --version 8.4.4
 choco install msys2
 ```
 
