@@ -37,6 +37,13 @@ let
         # TODO: what else?
       ) src;
 
+  haskell-gi-github = nixpkgs.fetchFromGitHub {
+    owner = "haskell-gi";
+    repo = "haskell-gi";
+    rev = "41335d28392d95751877fbafdc439dace63357a7";
+    sha256 = "1gmm96b5y6ikikn3am1zsjrkasc11llfzij2f6bvv7bfk8w61csv";
+  };
+
   jsaddle-github = nixpkgs.fetchFromGitHub {
     owner = "ghcjs";
     repo = "jsaddle";
@@ -88,6 +95,10 @@ let
         sha256 = "1hcl5izpcpi9sjfvmv1g5si1wg0jw9v9wbk5hvn30q67xcxwx891";
       };
       haskell-gi-overloading = "0.0";
+      gi-javascriptcore = builtins.fetchTarball {
+        url = "http://hackage.haskell.org/package/gi-javascriptcore-4.0.16/gi-javascriptcore-4.0.16.tar.gz";
+        sha256 = "1wznff7qhr11d4cjmvz8fij7p54qbx5ibbr4vlbds5ml2ms2gx0p";
+      };
       base-compat-batteries = "0.10.4";
       contravariant = "1.5";
 
@@ -156,6 +167,12 @@ let
         vado = doJailbreak super.vado;
         criterion = doJailbreak super.criterion;
         ghcjs-dom-jsaddle = ghcjsDom.ghcjs-dom-jsaddle;
+        haskell-gi = super.haskell-gi.overrideAttrs (drv: {
+          src = "${haskell-gi-github}";
+        });
+        haskell-gi-base = super.haskell-gi-base.overrideAttrs (drv: {
+          src = "${haskell-gi-github}/base";
+        });
         gi-gdk = super.gi-gdk.overrideAttrs(drv: {strictDeps = true;});
         gi-gtk = super.gi-gtk.overrideAttrs(drv: {strictDeps = true;});
         gi-gtksource = super.gi-gtksource.overrideAttrs(drv: {strictDeps = true;});
