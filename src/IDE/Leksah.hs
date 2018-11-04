@@ -379,7 +379,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           ,   recentFiles       =   []
           ,   recentWorkspaces  =   []
           ,   runningTool       =   Nothing
-          ,   debugState        =   M.empty
+          ,   debugState        =   []
           ,   completion        =   ((750,400),Nothing)
           ,   yiControl         =   yiControl
           ,   serverQueue       =   Nothing
@@ -396,7 +396,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           ,   nixCache          =   nixCache
           ,   externalModified  =   externalModified
     }
-    ideR             <-  newIORef ide
+    ideR             <-  newMVar ide
     (`reflectIDE` ideR) $ do
         menuDescription' <- liftIO menuDescription
         makeMenu uiManager accelActions menuDescription'

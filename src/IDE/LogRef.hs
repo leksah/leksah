@@ -753,7 +753,7 @@ logOutputForBuild project logSource backgroundBuild jumpToWarnings = do
                                             ++ show (length testFails) ++ " doctest failures -----\n") FrameTag
                 return state { inError = False, inDocTest = False }
     -- process output line as normal, otherwise calls given alternative
-    processNormalOutput :: IORef IDE -> LogLaunch -> BuildOutputState -> ([LogRef]->IO()) -> Text -> IO BuildOutputState -> IO BuildOutputState
+    processNormalOutput :: IDERef -> LogLaunch -> BuildOutputState -> ([LogRef]->IO()) -> Text -> IO BuildOutputState -> IO BuildOutputState
     processNormalOutput ideR logLaunch state@BuildOutputState {..} logPrevious line altFunction =
       case parseOnly buildOutputParser line of
         (Right (BuildProgress n total file)) -> do
@@ -801,34 +801,34 @@ logOutputForBreakpoints package logLaunch = do
                 return Nothing)
     lift . setBreakpointList . Seq.fromList $ catMaybes breaks
 
-logOutputForSetBreakpoint :: IDEPackage
+logOutputForSetBreakpoint :: FilePath
                         -> LogLaunch           -- ^ loglaunch
                         -> ConduitT ToolOutput Void IDEM ()
-logOutputForSetBreakpoint package logLaunch = do
+logOutputForSetBreakpoint basePath logLaunch = do
     breaks <- logOutputLines logLaunch (\log logLaunch out ->
         case out of
             ToolOutput line -> do
                 logLineNumber <- liftIO $ Log.appendLog log logLaunch (line <> "\n") LogTag
                 case parseOnly setBreakpointLineParser line of
                     Right (BreakpointDescription n span) ->
-                        return $ Just $ LogRef span (LogCabal $ ipdCabalFile package) line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
+                        return $ Just $ LogRef span (LogProject basePath) line Nothing (Just (logLineNumber, logLineNumber)) BreakpointRef
                     _ -> return Nothing
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)
     lift . postSyncIDE . addLogRefs . Seq.fromList $ catMaybes breaks
 
-logOutputForSetBreakpointDefault :: IDEPackage
+logOutputForSetBreakpointDefault :: FilePath
                                  -> ConduitT ToolOutput Void IDEM ()
-logOutputForSetBreakpointDefault package = do
+logOutputForSetBreakpointDefault basePath = do
     defaultLogLaunch <- lift getDefaultLogLaunch
-    logOutputForSetBreakpoint package defaultLogLaunch
+    logOutputForSetBreakpoint basePath defaultLogLaunch
 
-logOutputForContext :: IDEPackage
+logOutputForContext :: FilePath
                     -> LogLaunch                   -- ^ loglaunch
                     -> (Text -> [SrcSpan])
                     -> ConduitT ToolOutput Void IDEM ()
-logOutputForContext package loglaunch getContexts = do
+logOutputForContext basePath loglaunch getContexts = do
     refs <- catMaybes <$> logOutputLines loglaunch (\log logLaunch out ->
         case out of
             ToolOutput line -> do
@@ -836,7 +836,7 @@ logOutputForContext package loglaunch getContexts = do
                 let contexts = getContexts line
                 if null contexts
                     then return Nothing
-                    else return $ Just $ LogRef (last contexts) (LogCabal $ ipdCabalFile package) line Nothing (Just (logLineNumber, logLineNumber)) ContextRef
+                    else return $ Just $ LogRef (last contexts) (LogProject basePath) line Nothing (Just (logLineNumber, logLineNumber)) ContextRef
             _ -> do
                 defaultLineLogger log logLaunch out
                 return Nothing)
@@ -859,31 +859,31 @@ contextsParser = try (
           <|> (anyChar >> pure Nothing)))
     <?> "contextsParser"
 
-logOutputForLiveContext :: IDEPackage
+logOutputForLiveContext :: FilePath
                         -> LogLaunch           -- ^ loglaunch
                         -> ConduitT ToolOutput Void IDEM ()
-logOutputForLiveContext package logLaunch = logOutputForContext package logLaunch getContexts
+logOutputForLiveContext basePath logLaunch = logOutputForContext basePath logLaunch getContexts
     where
         getContexts line = either (const []) id $ parseOnly contextsParser line
 
-logOutputForLiveContextDefault :: IDEPackage
+logOutputForLiveContextDefault :: FilePath
                                -> ConduitT ToolOutput Void IDEM ()
-logOutputForLiveContextDefault package = do
+logOutputForLiveContextDefault basePath = do
     defaultLogLaunch <- lift getDefaultLogLaunch
-    logOutputForLiveContext package defaultLogLaunch
+    logOutputForLiveContext basePath defaultLogLaunch
 
 
-logOutputForHistoricContext :: IDEPackage
+logOutputForHistoricContext :: FilePath
                             -> LogLaunch           -- ^ loglaunch
                             -> ConduitT ToolOutput Void IDEM ()
-logOutputForHistoricContext package logLaunch = logOutputForContext package logLaunch getContexts
+logOutputForHistoricContext basePath logLaunch = logOutputForContext basePath logLaunch getContexts
     where
         getContexts line = case parseOnly contextParser line of
                                 Right desc -> [desc]
                                 _          -> []
 
-logOutputForHistoricContextDefault :: IDEPackage
+logOutputForHistoricContextDefault :: FilePath
                                    -> ConduitT ToolOutput Void IDEM ()
-logOutputForHistoricContextDefault package = do
+logOutputForHistoricContextDefault basePath = do
     defaultLogLaunch <- lift getDefaultLogLaunch
-    logOutputForHistoricContext package defaultLogLaunch
+    logOutputForHistoricContext basePath defaultLogLaunch

@@ -24,6 +24,7 @@
 
 module IDE.Core.Types (
     IDE(..)
+,   DebugState(..)
 ,   activeProject
 ,   activePack
 ,   activeComponent
@@ -137,7 +138,7 @@ import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map(..))
 import Data.Set (Set(..))
 import Data.List (find, nubBy)
-import Control.Concurrent (MVar)
+import Control.Concurrent (modifyMVar_, readMVar, MVar)
 import Distribution.ModuleName (ModuleName(..))
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
@@ -232,7 +233,7 @@ data IDE            =  IDE {
 ,   recentFiles         :: [FilePath]
 ,   recentWorkspaces    :: [FilePath]
 ,   runningTool         :: Maybe (ProcessHandle, IO ())
-,   debugState          :: Map (FilePath, FilePath) (IDEPackage, ToolState)
+,   debugState          :: [DebugState]
 ,   completion          :: ((Int, Int), Maybe CompletionWindow)
 ,   yiControl           :: Yi.Control
 ,   serverQueue         :: Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
@@ -250,6 +251,13 @@ data IDE            =  IDE {
 ,   externalModified    :: MVar (Set FilePath)
 } --deriving Show
 
+data DebugState = DebugState
+    { dsProjectFile :: FilePath
+    , dsPackages    :: [IDEPackage]
+    , dsBasePath    :: FilePath
+    , dsToolState   :: ToolState
+    }
+
 activeProject :: IDE -> Maybe Project
 activeProject ide = workspace ide >>= wsActiveProject
 
@@ -265,7 +273,7 @@ nixEnv project compiler ide = M.lookup (project, compiler) $ nixCache ide
 --
 -- | A mutable reference to the IDE state
 --
-type IDERef = IORef IDE
+type IDERef = MVar IDE
 
 --
 -- | The IDE Monad
@@ -352,10 +360,10 @@ runPackage = runReaderT
 -- ---------------------------------------------------------------------
 -- Monad for functions that need to use the GHCi debugger
 --
-type DebugM = ReaderT (IDEPackage, ToolState) IDEM
+type DebugM = ReaderT DebugState IDEM
 type DebugAction = DebugM ()
 
-runDebug :: DebugM a -> (IDEPackage, ToolState) -> IDEM a
+runDebug :: DebugM a -> DebugState -> IDEM a
 runDebug = runReaderT
 
 -- ---------------------------------------------------------------------
@@ -465,12 +473,11 @@ instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "DebugStop"           = True
     canTriggerEvent _ "QuitToRestart"       = True
     canTriggerEvent _ _                   = False
-    getHandlers ideRef = do
-        ide <- liftIO $ readIORef ideRef
-        return (handlers ide)
-    setHandlers ideRef nh = do
-        ide <- liftIO $ readIORef ideRef
-        liftIO $ writeIORef ideRef (ide {handlers= nh})
+    getHandlers ideRef =
+        liftIO $ handlers <$> readMVar ideRef
+    setHandlers ideRef nh =
+        liftIO $ modifyMVar_ ideRef (\ide ->
+            return ide {handlers= nh})
     myUnique _ =
         liftIO newUnique
 
@@ -495,8 +502,8 @@ pjLookupPackage f = M.lookup f . pjPackageMap
 
 pjToolCommand' :: Project -> FilePath
 pjToolCommand' project = case pjTool project of
-                            StackTool -> "stack"
-                            CabalTool -> "cabal"
+                            StackTool   -> "stack"
+                            CabalTool   -> "cabal"
 
 pjDir :: Project -> FilePath
 pjDir = dropFileName . pjFile
@@ -810,11 +817,13 @@ data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | Warni
     deriving (Eq, Ord, Show, Enum, Bounded)
 
 data Log =
-    LogCabal {logCabalFile :: FilePath}
+    LogProject {logBasePath :: FilePath}
+  | LogCabal {logCabalFile :: FilePath}
   | LogNix {logNixFile :: FilePath, logNixAttribute :: Text}
   deriving(Eq, Show)
 
 logRootPath :: Log -> FilePath
+logRootPath LogProject{..} = logBasePath
 logRootPath LogCabal{..} = dropFileName logCabalFile
 logRootPath LogNix{..} = dropFileName logNixFile
 

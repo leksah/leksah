@@ -43,9 +43,9 @@ import Data.Typeable (Typeable)
 import qualified Data.Map as M (member)
 import Control.Lens ((<&>))
 import IDE.Core.State
-       (pjDir, onIDE, catchIDE, window, getIDE, MessageLevel(..),
-        ipdPackageId, wsPackages, workspace, readIDE, IDEAction,
-        ideMessage, reflectIDE, reifyIDE, IDEM, IDEPackage)
+       (isInterpreting, pjDir, onIDE, catchIDE, window, getIDE,
+        MessageLevel(..), ipdPackageId, wsPackages, workspace, readIDE,
+        IDEAction, ideMessage, reflectIDE, reifyIDE, IDEM, IDEPackage)
 import IDE.Pane.SourceBuffer
        (selectSourceBuf, fileNew, goToSourceDefinition')
 import Control.Applicative ((<$>))
@@ -323,11 +323,10 @@ toIcon record (mbProject, mbPackage) =
                         Just _ -> "ide_nix"
                         Nothing -> "ide_source_dependency"
                 PackageRecord pFile -> case (mbProject, mbPackage) of
-                    (Just project, Just package) -> do
-                        ds <- readIDE debugState
-                        return $ if (pjFile project, ipdCabalFile package) `M.member` ds
-                                    then "ide_debug"
-                                    else "ide_package"
+                    (Just project, Just package) ->
+                        isInterpreting (pjFile project, ipdCabalFile package) <&> \case
+                                    True   -> "ide_debug"
+                                    False -> "ide_package"
                     _ -> return "ide_package"
                 ComponentsRecord -> return "ide_component"
                 GitRecord         -> return "ide_git"

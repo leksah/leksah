@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -33,6 +35,7 @@ module IDE.Core.State (
 ,   setCurrentError
 ,   setCurrentBreak
 ,   setCurrentContext
+,   lookupDebugState
 ,   isInterpreting
 
 ,   isStartingOrClosing
@@ -46,6 +49,8 @@ module IDE.Core.State (
 ,   readIDE
 ,   modifyIDE
 ,   modifyIDE_
+,   modifyIDEM
+,   modifyIDEM_
 ,   withIDE
 ,   getIDE
 ,   throwIDE
@@ -98,11 +103,12 @@ import Graphics.UI.Frame.Panes as Reexported
 import Graphics.UI.Frame.ViewFrame as Reexported --hiding (notebookInsertOrdered)
 import Control.Event
 import System.IO
-import Data.Maybe (isJust)
+import Data.Maybe (listToMaybe, isJust)
 import System.FilePath
        (dropFileName, takeDirectory, (</>), takeFileName)
 import IDE.Core.CTypes as Reexported
-import Control.Concurrent (forkIO)
+import Control.Concurrent
+       (modifyMVar, modifyMVar_, readMVar, forkIO)
 import IDE.Utils.Utils as Reexported
 import qualified Data.Map as Map (empty, lookup)
 import Data.Typeable(Typeable)
@@ -112,7 +118,7 @@ import qualified Data.Conduit as C
        (transPipe, Sink, awaitForever, yield, leftover, ($$))
 import qualified Data.Conduit.List as CL
        (sourceList)
-import Control.Monad (void, liftM, when)
+import Control.Monad (join, void, liftM, when)
 import Control.Monad.Trans.Reader (ask, ReaderT(..))
 import qualified Paths_leksah as P
 import System.Environment.Executable (getExecutablePath)
@@ -139,6 +145,7 @@ import System.Environment (getEnv)
 import IDE.Utils.DebugUtils (traceTimeTaken)
 import GHC.Stack (HasCallStack)
 import Data.Void (Void)
+import Data.Functor.Compat ((<&>))
 
 instance PaneMonad IDEM where
     getFrameState   =   readIDE frameState
@@ -306,9 +313,12 @@ isStartingOrClosing IsStartingUp    = True
 isStartingOrClosing IsShuttingDown  = True
 isStartingOrClosing _               = False
 
+lookupDebugState :: MonadIDE m => (FilePath, FilePath) -> m (Maybe DebugState)
+lookupDebugState (project, package) =
+    listToMaybe . filter (\DebugState{..} -> dsProjectFile == project && any ((== package) . ipdCabalFile) dsPackages) <$> readIDE debugState
+
 isInterpreting :: MonadIDE m => (FilePath, FilePath) -> m Bool
-isInterpreting projectAndPackage =
-    M.member projectAndPackage <$> readIDE debugState
+isInterpreting = fmap isJust . lookupDebugState
 
 triggerEventIDE :: MonadIDE m => IDEEvent -> m IDEEvent
 triggerEventIDE e = liftIDE $ ask >>= \ideR -> triggerEvent ideR e
@@ -377,27 +387,37 @@ onIDE onSignal obj callback = do
 readIDE :: MonadIDE m => (IDE -> beta) -> m beta
 readIDE f = do
     e <- liftIDE ask
-    liftIO $ f <$> readIORef e
+    liftIO $ f <$> readMVar e
 
 -- | Modify the contents, without returning a value
 modifyIDE_ :: MonadIDE m => (IDE -> IDE) -> m ()
-modifyIDE_ f = let f' a  = (f a,()) in do
-    e <- liftIDE ask
-    liftIO (atomicModifyIORef e f')
+modifyIDE_ f = modifyIDEM_ (return . f)
 
 -- | Variation on modifyIDE_ that lets you return a value
 modifyIDE :: MonadIDE m => (IDE -> (IDE,beta)) -> m beta
-modifyIDE f = do
+modifyIDE f = modifyIDEM (return . f)
+
+-- | Modify the contents, without returning a value
+--   Do not use function that may block on IDE MVar
+modifyIDEM_ :: MonadIDE m => (IDE -> IO IDE) -> m ()
+modifyIDEM_ f = do
     e <- liftIDE ask
-    liftIO (atomicModifyIORef e f)
+    liftIO $ modifyMVar_ e f
+
+-- | Variation on modifyIDE_ that lets you return a value
+--   Do not use function that may block on IDE MVar
+modifyIDEM :: MonadIDE m => (IDE -> IO (IDE,beta)) -> m beta
+modifyIDEM f = do
+    e <- liftIDE ask
+    liftIO $ modifyMVar e f
 
 withIDE :: MonadIDE m => (IDE -> IO alpha) -> m alpha
 withIDE f = do
     e <- liftIDE ask
-    liftIO $ f =<< readIORef e
+    liftIO $ f =<< readMVar e
 
 getIDE :: MonadIDE m => m IDE
-getIDE = liftIDE ask >>= (liftIO . readIORef)
+getIDE = liftIDE ask >>= (liftIO . readMVar)
 
 withoutRecordingDo :: IDEAction -> IDEAction
 withoutRecordingDo act = do
@@ -409,11 +429,11 @@ withoutRecordingDo act = do
         modifyIDE_ (\ide -> ide{guiHistory = (False,l,n)})
         else act
 
-packageDebugState :: PackageM (Maybe (IDEPackage, ToolState))
+packageDebugState :: PackageM (Maybe DebugState)
 packageDebugState = do
     project <- lift ask
     package <- ask
-    M.lookup (pjFile project, ipdCabalFile package) <$> readIDE debugState
+    lookupDebugState (pjFile project, ipdCabalFile package)
 
 -- ---------------------------------------------------------------------
 -- Activating and deactivating Panes.

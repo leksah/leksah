@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables, OverloadedStrings, LambdaCase #-}
 -----------------------------------------------------------------------------
 --
@@ -75,7 +76,7 @@ import IDE.Core.State
        (debugState, breakpointRefs, packageDebugState, MessageLevel(..),
         ideMessage, postSyncIDE, readIDE, modifyIDE_, runDebug, catchIDE,
         triggerEventIDE, LogRef, currentHist, autoURI, autoCommand,
-        PackageAction, prefs, IDEAction, DebugAction, IDEM)
+        PackageAction, prefs, IDEAction, DebugAction, IDEM, DebugState(..))
 import IDE.LogRef
 import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
@@ -130,7 +131,7 @@ debugToggled = do
     toggled <- getDebugToggled
     modifyIDE_ (\ide -> ide{prefs = (prefs ide){debug = toggled}})
     unless toggled $
-        readIDE debugState >>= (mapM_ (runDebug (debugCommand ":quit" logOutputDefault)) . M.elems)
+        readIDE debugState >>= mapM_ (runDebug (debugCommand ":quit" logOutputDefault))
 
 debugQuit :: PackageAction
 debugQuit =
@@ -233,26 +234,26 @@ debugBack :: IDEAction
 debugBack = do
     modifyIDE_ (\ide -> ide{currentHist = min (currentHist ide - 1) 0})
     debugSelection' $ \_ -> do
-        (debugPackage, _) <- ask
-        debugCommand ":back" (logOutputForHistoricContextDefault debugPackage)
+        basePath <- dsBasePath <$> ask
+        debugCommand ":back" (logOutputForHistoricContextDefault basePath)
 
 debugForward :: IDEAction
 debugForward = do
     modifyIDE_ (\ide -> ide{currentHist = currentHist ide + 1})
     debugSelection' $ \_ -> do
-        (debugPackage, _) <- ask
-        debugCommand ":forward" (logOutputForHistoricContextDefault debugPackage)
+        basePath <- dsBasePath <$> ask
+        debugCommand ":forward" (logOutputForHistoricContextDefault basePath)
 
 debugStop :: PackageAction
 debugStop =
     packageDebugState >>= \case
-        Just (_, ghci) -> liftIO $ toolProcess ghci >>= interruptProcessGroupOf
+        Just DebugState{..} -> liftIO $ toolProcess dsToolState >>= interruptProcessGroupOf
         Nothing -> return ()
 
 debugContinue :: IDEAction
 debugContinue = debugSelection' $ \_ -> do
-    (debugPackage, _) <- ask
-    debugCommand ":continue" (logOutputForHistoricContextDefault debugPackage)
+    basePath <- dsBasePath <$> ask
+    debugCommand ":continue" (logOutputForHistoricContextDefault basePath)
 
 debugDeleteAllBreakpoints :: IDEAction
 debugDeleteAllBreakpoints = do
@@ -284,9 +285,9 @@ debugSimplePrint = debugSelection "Please select an name in the editor" $ \text 
 
 debugStep :: IDEAction
 debugStep = debugSelection' $ \_ -> do
-    (debugPackage, _) <- ask
+    basePath <- dsBasePath <$> ask
     debugSetLiberalScope
-    debugCommand ":step" (logOutputForHistoricContextDefault debugPackage)
+    debugCommand ":step" (logOutputForHistoricContextDefault basePath)
 
 debugStepExpression :: IDEAction
 debugStepExpression = debugSelection' $ \maybeText -> do
@@ -295,20 +296,20 @@ debugStepExpression = debugSelection' $ \maybeText -> do
 
 debugStepExpr :: Maybe Text -> DebugAction
 debugStepExpr maybeText = do
-    (debugPackage, _) <- ask
+    basePath <- dsBasePath <$> ask
     case maybeText of
-        Just text -> debugCommand (":step " <> stripComments text) (logOutputForHistoricContextDefault debugPackage)
+        Just text -> debugCommand (":step " <> stripComments text) (logOutputForHistoricContextDefault basePath)
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 debugStepLocal :: IDEAction
 debugStepLocal = debugSelection' $ \_ -> do
-    (debugPackage, _) <- ask
-    debugCommand ":steplocal" (logOutputForHistoricContextDefault debugPackage)
+    basePath <- dsBasePath <$> ask
+    debugCommand ":steplocal" (logOutputForHistoricContextDefault basePath)
 
 debugStepModule :: IDEAction
 debugStepModule = debugSelection' $ \_ -> do
-    (debugPackage, _) <- ask
-    debugCommand ":stepmodule" (logOutputForHistoricContextDefault debugPackage)
+    basePath <- dsBasePath <$> ask
+    debugCommand ":stepmodule" (logOutputForHistoricContextDefault basePath)
 
 
 logTraceOutput debugPackage = do
@@ -318,8 +319,8 @@ logTraceOutput debugPackage = do
 
 debugTrace :: IDEAction
 debugTrace = debugSelection' $ \_ -> do
-    (debugPackage, _) <- ask
-    debugCommand ":trace" $ logTraceOutput debugPackage
+    basePath <- dsBasePath <$> ask
+    debugCommand ":trace" $ logTraceOutput basePath
 
 debugTraceExpression :: IDEAction
 debugTraceExpression = debugSelection' $ \maybeText -> do
@@ -328,9 +329,9 @@ debugTraceExpression = debugSelection' $ \maybeText -> do
 
 debugTraceExpr :: Maybe Text -> DebugAction
 debugTraceExpr maybeText = do
-    (debugPackage, _) <- ask
+    basePath <- dsBasePath <$> ask
     case maybeText of
-        Just text -> debugCommand (":trace " <> stripComments text) $ logTraceOutput debugPackage
+        Just text -> debugCommand (":trace " <> stripComments text) $ logTraceOutput basePath
         Nothing   -> lift $ ideMessage Normal "Please select an expression in the editor"
 
 
@@ -339,13 +340,13 @@ debugShowBindings = debugSelection' $ \_ -> debugCommand ":show bindings" logOut
 
 debugShowBreakpoints :: IDEAction
 debugShowBreakpoints = debugSelection' $ \_ -> do
-    (debugPackage, _) <- ask
-    debugCommand ":show breaks" (logOutputForSetBreakpointDefault debugPackage)
+    basePath <- dsBasePath <$> ask
+    debugCommand ":show breaks" (logOutputForSetBreakpointDefault basePath)
 
 debugShowContext :: IDEAction
 debugShowContext = debugSelection' $ \_ -> do
-    (debugPackage, _) <- ask
-    debugCommand ":show context" (logOutputForHistoricContextDefault debugPackage)
+    basePath <- dsBasePath <$> ask
+    debugCommand ":show context" (logOutputForHistoricContextDefault basePath)
 
 debugShowModules :: IDEAction
 debugShowModules = debugSelection' $ \_ -> debugCommand ":show modules" $
@@ -390,16 +391,16 @@ debugSetBreakpoint = do
             maybeText <- selectedText
             case maybeText of
                 (Just buf, Just text) -> debugBuffer buf $ do
-                    (debugPackage, _) <- ask
+                    basePath <- dsBasePath <$> ask
                     debugCommand (":module *" <> moduleName) logOutputDefault
-                    debugCommand (":break " <> text) (logOutputForSetBreakpointDefault debugPackage)
+                    debugCommand (":break " <> text) (logOutputForSetBreakpointDefault basePath)
                 (mbBuf, _) -> do
                     maybeLocation <- selectedLocation
                     case maybeLocation of
                         Just (line, lineOffset) -> maybe (packageTry . tryDebug) debugBuffer mbBuf $ do
-                            (debugPackage, _) <- ask
+                            basePath <- dsBasePath <$> ask
                             debugCommand (":break " <> moduleName <> " " <> T.pack (show $ line + 1) <> " " <> T.pack (show lineOffset))
-                                         (logOutputForSetBreakpointDefault debugPackage)
+                                         (logOutputForSetBreakpointDefault basePath)
                         Nothing -> ideMessage Normal "Unknown error setting breakpoint"
             ref <- ask
             return ()
