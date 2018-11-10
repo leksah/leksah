@@ -261,7 +261,7 @@ setWorkspace mbWs = do
                             (`reflectIDE` ideR) $ setModifiedOnDisk f >>= \case
                                 True -> rebuild
                                 False ->
-                                    when (any (`isPrefixOf` f) nonRootSrcPaths) $ do
+                                    when (any (`isSourceIn` f) nonRootSrcPaths) $ do
                                         liftIO $ debugM "leksah" $ "Modified source file " <> f <> " in " <> T.unpack (ipdPackageName package)
                                         extMods <- liftIO $ takeMVar extModsMVar
                                         liftIO $ putMVar extModsMVar =<< evaluate (S.insert f extMods)
@@ -276,6 +276,11 @@ setWorkspace mbWs = do
     triggerEventIDE (WorkspaceChanged True True)
     triggerEventIDE $ UpdateWorkspaceInfo True
     return ()
+  where
+    isSourceIn srcDir f =
+        case stripPrefix srcDir f of
+            Just rest -> not $ any (`isPrefixOf` rest) ["dist/", "dist-", "."]
+            _ -> False
 
 makePathsRelative :: Workspace -> FilePath -> IO WorkspaceFile
 makePathsRelative ws wsFile' = do
