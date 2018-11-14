@@ -545,7 +545,7 @@ treeViewEvents recordStore treeView = do
                                  void $ treeViewToggleRow treeView path
             _ -> return ()
 
-    sigIds <- treeViewContextMenu' treeView recordStore contextMenuItems
+    sigIds <- treeViewContextMenu' treeView recordStore $ contextMenuItems treeView
     return $ sigIds <> map (ConnectC treeView) [cid1, cid2]
 
 
@@ -771,9 +771,17 @@ setChildren mbProject mbPkg store view parentPath kids = do
 
 -- * Context menu
 
-contextMenuItems :: WorkspaceRecord -> TreePath -> ForestStore WorkspaceRecord -> IDEM [[(Text, IDEAction)]]
-contextMenuItems record path store = do
+contextMenuItems :: TreeView -> WorkspaceRecord -> TreePath -> ForestStore WorkspaceRecord -> IDEM [[(Text, IDEAction)]]
+contextMenuItems view record path store = do
     mainWindow <- getMainWindow
+    let refreshTree p =
+            treePathToPackage store p >>= \case
+                (Just project, _) -> workspaceTryQuiet . (`runProject` project) $
+                    refreshPackageTreeFrom store view p
+                _ -> refreshWorkspacePane
+
+    parentPath <- treePathNewFromIndices' =<< (reverse . drop 1 . reverse <$> treePathGetIndices' path)
+
     case record of
         (FileRecord fp) -> do
             let onDeleteFile = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef ->
@@ -781,7 +789,7 @@ contextMenuItems record path store = do
                         (Just mainWindow)
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageTypeQuestion
-                        [ ("Delete File", removeFile fp >> reflectIDE refreshWorkspacePane ideRef)
+                        [ ("Delete File", removeFile fp >> reflectIDE (refreshTree parentPath) ideRef)
                         , ("Cancel", return ())
                         ]
                         (Just 0)
@@ -792,40 +800,39 @@ contextMenuItems record path store = do
 
             let onNewModule = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $
                     treePathToPackage store path >>= \case
-                        (Just project, Just pkg) -> do
-                            mbWs <- readIDE workspace
-                            forM_ mbWs $ \ws -> do
-                                (`runWorkspace` ws) . (`runProject` project) . (`runPackage` pkg) $ do
-                                    mbModulePath <- dirToModulePath fp
-                                    let modulePrefix = fromMaybe [] mbModulePath
-                                    addModule modulePrefix
-                                refreshWorkspacePane
+                        (Just project, Just pkg) ->
+                            workspaceTryQuiet . (`runProject` project) . (`runPackage` pkg) $ do
+                                mbModulePath <- dirToModulePath fp
+                                let modulePrefix = fromMaybe [] mbModulePath
+                                addModule modulePrefix
+                                packagePath <- treePathNewFromIndices' =<< (take 2 <$> treePathGetIndices' path)
+                                lift $ refreshPackageTreeFrom store view packagePath
                         _ -> return ()
 
             let onNewTextFile = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef -> do
                     mbText <- showInputDialog (Just mainWindow) "File name:" ""
                     case mbText of
                         Just t  -> do
-                            let path = fp </> T.unpack t
-                            exists <- doesFileExist path
+                            let filepath = fp </> T.unpack t
+                            exists <- doesFileExist filepath
                             if exists
                                 then showErrorDialog (Just mainWindow) "File already exists"
                                 else do
-                                    writeFile path ""
-                                    void $ reflectIDE (refreshWorkspacePane >> goToSourceDefinition' path (Location "" 1 0 1 0)) ideRef
+                                    writeFile filepath ""
+                                    void $ reflectIDE (refreshTree path >> goToSourceDefinition' filepath (Location "" 1 0 1 0)) ideRef
                         Nothing -> return ()
 
             let onNewDir = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef -> do
                     mbText <- showInputDialog (Just mainWindow) "Directory name:" ""
                     case mbText of
                         Just t  -> do
-                            let path = fp </> T.unpack t
-                            exists <- doesDirectoryExist path
+                            let filepath = fp </> T.unpack t
+                            exists <- doesDirectoryExist filepath
                             if exists
                                 then showErrorDialog (Just mainWindow) "Directory already exists"
                                 else do
-                                    createDirectory path
-                                    void $ reflectIDE refreshWorkspacePane ideRef
+                                    createDirectory filepath
+                                    void $ reflectIDE (refreshTree path) ideRef
                         Nothing -> return ()
 
             let onDeleteDir = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef ->
@@ -833,7 +840,7 @@ contextMenuItems record path store = do
                         (Just mainWindow)
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
                         MessageTypeQuestion
-                        [ ("Delete directory", removeDirectoryRecursive fp >> reflectIDE refreshWorkspacePane ideRef)
+                        [ ("Delete directory", removeDirectoryRecursive fp >> reflectIDE (refreshTree parentPath) ideRef)
                         , ("Cancel", return ())
                         ]
                         (Just 0)
