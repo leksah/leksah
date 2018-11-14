@@ -138,7 +138,7 @@ data Chain alpha beta  =
 -- The first op is applied to the first target.
 
 constrMakeChain :: MakeSettings -> [(Project, [IDEPackage])] -> MakeOp ->
-    MakeOp -> MakeOp -> Chain MakeOp (Project, IDEPackage)
+    MakeOp -> MakeOp -> Chain MakeOp (Project, [IDEPackage])
 -- No more targets
 constrMakeChain _ [] _ _ _ = EmptyChain
 
@@ -153,9 +153,9 @@ constrMakeChain ms@MakeSettings{msMakeMode = makeMode}
         addTopSorted (project, targets') = (project, targets', reverse $ topSortGraph $ constrParentGraph $ pjPackages project, depGraph $ pjPackages project)
 
 -- Constructs a make chain
-chainFor :: Project -> IDEPackage ->  MakeSettings -> MakeOp -> Chain MakeOp (Project, IDEPackage)
-                -> Maybe (Chain MakeOp (Project, IDEPackage))
-                -> Chain MakeOp (Project, IDEPackage)
+chainFor :: Project -> [IDEPackage] ->  MakeSettings -> MakeOp -> Chain MakeOp (Project, [IDEPackage])
+                -> Maybe (Chain MakeOp (Project, [IDEPackage]))
+                -> Chain MakeOp (Project, [IDEPackage])
 chainFor project target settings (MoComposed [hdOp]) cont mbNegCont =
     chainFor project target settings hdOp cont mbNegCont
 chainFor project target settings (MoComposed (hdOp:rest)) cont mbNegCont =
@@ -174,43 +174,34 @@ equalOnCabalFile = (==) `F.on` ipdCabalFile
 -- The first list of packages are the targets
 -- The second list of packages is the topsorted graph of all deps of all targets
 constrElem  :: [(Project, [IDEPackage], [IDEPackage], MakeGraph)] -> MakeSettings
-    -> MakeOp -> MakeOp -> MakeOp -> Bool -> Chain MakeOp (Project, IDEPackage)
+    -> MakeOp -> MakeOp -> MakeOp -> Bool -> Chain MakeOp (Project, [IDEPackage])
 constrElem [] _ _ _ _ _ = EmptyChain
 constrElem ((project, currentTargets, tops, depGraph):rest) ms
-    firstOp restOp finishOp doneAnything
-
--- finished traversing the topsorted deps or no targets
-    | null currentTargets || null tops = constrElem rest ms
-                                                firstOp restOp finishOp doneAnything
--- operations have to be applied to current
-    | ipdCabalFile (head tops) `elem` map ipdCabalFile currentTargets =
-        let current = head tops
-            dependents = fromMaybe
-                            (trace ("Build>>constrMakeChain: unknown package" ++ show current)
-                               [])
-                            (Map.lookup (ipdCabalFile current) depMap)
-            depMap = Map.fromList $ map (Arrow.first ipdCabalFile) depGraph
-            withoutInstall = msDontInstallLast ms && all (equalOnCabalFile current) dependents
-            filteredOps = case firstOp of
-                            MoComposed l -> MoComposed (filter (/= MoInstall) l)
-                            MoInstall    -> MoComposed []
-                            other        -> other
-        in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
-            $
-            chainFor project current ms (if withoutInstall then filteredOps else firstOp)
-                (constrElem ((project, nubBy equalOnCabalFile $ currentTargets ++ dependents, tail tops, depGraph):rest)
-                        ms restOp restOp finishOp True)
-                (Just $ if doneAnything
-                            then chainFor project current ms finishOp EmptyChain Nothing
-                            else EmptyChain)
--- no operations have to be applied to current, just try the next
-    | otherwise  = trace ("constrElem2 " ++ show restOp) $
-        constrElem ((project, currentTargets, tail tops, depGraph):rest) ms
-            firstOp restOp finishOp doneAnything
+    firstOp restOp finishOp doneAnything =
+    case filter (\p -> ipdCabalFile p `elem` map ipdCabalFile currentTargets) tops of
+        [] -> constrElem rest ms firstOp restOp finishOp doneAnything
+        sorted@(current:_) ->
+            let dependents = fromMaybe
+                                (trace ("Build>>constrMakeChain: unknown package" ++ show current)
+                                   [])
+                                (Map.lookup (ipdCabalFile current) depMap)
+                depMap = Map.fromList $ map (Arrow.first ipdCabalFile) depGraph
+                withoutInstall = msDontInstallLast ms && all (equalOnCabalFile current) dependents
+                filteredOps = case firstOp of
+                                MoComposed l -> MoComposed (filter (/= MoInstall) l)
+                                MoInstall    -> MoComposed []
+                                other        -> other
+            in trace ("constrElem1 deps: " ++ show dependents ++ " withoutInstall: " ++ show withoutInstall)
+                $
+                chainFor project sorted ms (if withoutInstall then filteredOps else firstOp)
+                    (constrElem rest ms firstOp restOp finishOp doneAnything)
+                    (Just $ if doneAnything
+                                then chainFor project sorted ms finishOp EmptyChain Nothing
+                                else EmptyChain)
 
 
 -- | Performs the operations of a build chain
-doBuildChain :: MakeSettings -> Chain MakeOp (Project, IDEPackage) -> IDEAction
+doBuildChain :: MakeSettings -> Chain MakeOp (Project, [IDEPackage]) -> IDEAction
 doBuildChain ms EmptyChain = msSuccessAction ms
 doBuildChain ms chain@Chain{mcAction = MoBuild} =
     postAsyncIDE $ buildPackage (msBackgroundBuild ms) (msJumpToWarnings ms) (not (msMakeMode ms) && msSingleBuildWithoutLinking ms)
@@ -231,8 +222,8 @@ doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont
   :: MakeSettings
-  -> Chain MakeOp (Project, IDEPackage)
-  -> Maybe (Chain MakeOp (Project, IDEPackage))
+  -> Chain MakeOp (Project, [IDEPackage])
+  -> Maybe (Chain MakeOp (Project, [IDEPackage]))
   -> Bool
   -> IDEAction
 constrCont ms _pos (Just neg) False = doBuildChain ms neg
