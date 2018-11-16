@@ -158,8 +158,8 @@ import IDE.Pane.WebKit.Output (loadOutputUri, loadOutputHtmlFile, getOutputPane)
 import System.Log.Logger (errorM, debugM)
 import System.Process.Vado (getMountPoint, vado, readSettings)
 import qualified Data.Text as T
-       (reverse, all, null, dropWhile, lines, isPrefixOf, stripPrefix,
-        replace, unwords, takeWhile, pack, unpack, isInfixOf)
+       (unlines, reverse, all, null, dropWhile, lines, isPrefixOf,
+        stripPrefix, replace, unwords, takeWhile, pack, unpack, isInfixOf)
 import IDE.Utils.ExternalTool
        (runExternalTool', runExternalTool, isRunning,
         interruptBuild)
@@ -1263,7 +1263,9 @@ debugStart = do
                     let logOut = reflectIDEI (void (logOutputForBuild project (LogProject basePath) True False)) ideRef
                         logIdle = reflectIDEI (C.getZipSink $ const <$> C.ZipSink (logIdleOutput project package) <*> C.ZipSink logOutputDefault) ideRef
                     ghci <- liftIO $ (if isObelisk then newGhci "ob" ["repl"] (pjDir project) Nothing else newGhci tool args dir nixEnv) ("+c":"-ferror-spans":interactiveFlags prefs') logOut logIdle
-                    liftIO $ executeGhciCommand ghci ":reload" logOut
+                    liftIO $ do
+                        executeGhciCommand ghci ghciFork logOut
+                        executeGhciCommand ghci ":reload" logOut
                     modifyIDE_ (\ide -> ide {debugState = DebugState (pjFile project) debugPackages basePath ghci : debugState ide})
                     triggerEventIDE (Sensitivity [(SensitivityInterpreting, True)])
                     triggerEventIDE (DebugStart projectAndPackage)
@@ -1467,3 +1469,41 @@ ideProjectFromPath filePath =
 --                postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
 --                return Nothing
 
+ghciFork :: Text
+ghciFork = T.unlines
+  [ ":def! fork (\\s ->"
+  , "  let (slot, code) = Data.List.span (\\c -> case c of"
+  , "          '_' -> True"
+  , "          ' ' -> False"
+  , "          '\\n' -> False"
+  , "          _ -> if Data.Char.isAlphaNum c"
+  , "                  then True"
+  , "                  else GHC.Base.error \" Slot name must contain alpha, numbers and '_' only. Usage :fork slotName putStrLn \\\" Hello World\\\"\") s"
+  , "  in Control.Monad.return $ Data.String.unlines"
+  , "    [\" :{\" "
+  , "    ,\" System.Environment.lookupEnv \\\" GHCI_FORK_\"  Data.Monoid.<> slot Data.Monoid.<> \" \\\"  Control.Monad.>>=\" "
+  , "    ,\" (\\\\s ->\" "
+  , "    ,\"   ( case s Control.Monad.>>= Text.Read.readMaybe of\" "
+  , "    ,\"       Just n ->\" "
+  , "    ,\"         let sPtr = Foreign.StablePtr.castPtrToStablePtr (Foreign.Ptr.wordPtrToPtr n)\" "
+  , "    ,\"         in  Foreign.StablePtr.deRefStablePtr sPtr Control.Monad.>>=\" "
+  , "    ,\"             (\\\\(t, running) -> Control.Concurrent.killThread t Control.Monad.>>\" "
+  , "    ,\"             Foreign.StablePtr.freeStablePtr sPtr Control.Monad.>>\" "
+  , "    ,\"             Control.Monad.return running)\" "
+  , "    ,\"       Nothing -> Control.Concurrent.newEmptyMVar\" "
+  , "    ,\"   ) Control.Monad.>>=\" "
+  , "    ,\" (\\\\running -> Control.Concurrent.newEmptyMVar >>=\" "
+  , "    ,\" (\\\\sPtrSet -> Control.Concurrent.forkFinally\" "
+  , "    ,\"   ( Control.Concurrent.takeMVar sPtrSet Control.Monad.>>\" "
+  , "    ,\"     Control.Concurrent.putMVar running () Control.Monad.>>\" "
+  , "    ,\"     (\" "
+  , "    ,     Data.List.drop 1 code"
+  , "    ,\"     )\" "
+  , "    ,\"   ) (\\\\_ -> Control.Concurrent.takeMVar running) Control.Monad.>>=\" "
+  , "    ,\" (\\\\t -> Foreign.StablePtr.newStablePtr (t, running) >>=\" "
+  , "    ,\" (\\\\sPtr -> System.Environment.setEnv \\\" GHCI_FORK_\"  Data.Monoid.<> slot Data.Monoid.<> \" \\\"  (GHC.Show.show\" "
+  , "    ,\"   (Foreign.Ptr.ptrToWordPtr (Foreign.StablePtr.castStablePtrToPtr sPtr))) Control.Monad.>>\" "
+  , "    ,\" Control.Concurrent.putMVar sPtrSet ())))))\" "
+  , "    ,\" :}\" "
+  , "    ])"
+  ]
