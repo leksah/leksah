@@ -115,7 +115,8 @@ import IDE.Core.State
         IDEEvent(..), SensitivityMask(..), MonadIDE(..), ProjectTool(..),
         packageIdentifierToString, getMainWindow, nixCache, modifyIDE,
         leksahTemplateFileExtension, leksahFlagFileExtension, displayPane,
-        nixEnv, Log(..), lookupDebugState, modifyIDEM_, DebugState(..))
+        nixEnv, Log(..), lookupDebugState, modifyIDEM_, DebugState(..),
+        PackageDBs(..))
 import IDE.Utils.GUIUtils
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.Pane.Log
@@ -898,7 +899,7 @@ packageRunDocTests backgroundBuild jumpToWarnings (project, package) continuatio
                            , T.pack ("--builddir=" <> (buildDir </> T.unpack pkgId))]
                 withToolCommand project GHC (args ++ ipdTestFlags package) $ \(cmd, args', nixEnv) ->
                     runExternalTool' (__ "Doctest")
-                            cmd args' dir (Just $ [("GHC_PACKAGE_PATH", intercalate  [searchPathSeparator] packageDBs)] <> maybe [] M.toList nixEnv) $ do
+                            cmd args' dir (Just $ [("GHC_PACKAGE_PATH", intercalate  [searchPathSeparator] (pDBsPaths packageDBs))] <> maybe [] M.toList nixEnv) $ do
                             (mbLastOutput, _) <- C.getZipSink $ (,)
                                 <$> C.ZipSink sinkLast
                                 <*> (C.ZipSink $ logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)

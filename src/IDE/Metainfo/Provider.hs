@@ -73,7 +73,7 @@ import IDE.Core.CTypes
         PackageDescr(..), TypeDescr(..), dscExported', Descr, dscTypeHint',
         PackScope(..), dscMbComment', GenScope(..), dscMbLocation',
         dscMbModu', dscMbTypeStr', dscName', RealDescr(..),
-        SimpleDescr(..))
+        SimpleDescr(..), PackageDBs)
 import IDE.Core.State
        (postSyncIDE, sysMessage, throwIDE, ipdCabalFile, ipdDepends,
         ipdMain, ipdModules, ipdPackageId, activePack, modifyIDE_,
@@ -197,7 +197,7 @@ getAllPackageIds =
     nub . mapMaybe (unitIdToPackageId . fst) <$>
         getAllPackages
 
-getAllPackageDBs :: IDEM [(Maybe FilePath, [FilePath])]
+getAllPackageDBs :: IDEM [PackageDBs]
 getAllPackageDBs = do
     mbWorkspace <- readIDE workspace
     liftIO . getPackageDBs $ maybe [] wsProjectFiles mbWorkspace
