@@ -150,8 +150,23 @@ stripComments :: Text -> Text
 stripComments t = maybe t (T.concat . intersperse "\n") $
         mapM (T.stripPrefix "-- >>>") lines'
     <|> mapM (T.stripPrefix "-- >") lines'
+    <|> stripBlock lines'
   where
     lines' = T.lines t
+
+    stripBlock ("-- > :{":rest) =
+        case reverse rest of
+            "-- :}":revBody -> mapM (T.stripPrefix "-- ") (reverse revBody)
+            _ -> Nothing
+    stripBlock ("-- >>> :{":rest) =
+        case reverse rest of
+            "-- :}":revBody -> mapM (T.stripPrefix "-- ") (reverse revBody)
+            _ -> Nothing
+    stripBlock (first:rest) | "> :{" `T.isSuffixOf` first =
+        case reverse rest of
+            ":}":revBody -> Just $ reverse revBody
+            _ -> Nothing
+    stripBlock _ = Nothing
 
 debugExecuteSelection :: IDEAction
 debugExecuteSelection = do
