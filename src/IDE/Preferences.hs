@@ -805,6 +805,7 @@ styleEditor p n = do
 
 
 -- | The default preferences
+defaultPrefs :: Prefs
 defaultPrefs = Prefs {
         prefsFormat         =   prefsVersion
     ,   prefsSaveTime       =   ""
@@ -881,7 +882,7 @@ defaultPrefs = Prefs {
     ,   makeDocs            =   False
     ,   runUnitTests        =   False
     ,   runBenchmarks       =   False
-    ,   makeMode            =   True
+    ,   makeMode            =   False
     ,   singleBuildWithoutLinking  = False
     ,   dontInstallLast     =   False
     ,   printEvldWithShow   =   True

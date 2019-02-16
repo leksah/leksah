@@ -667,7 +667,7 @@ data Prefs = Prefs {
     ,   makeDocs            ::   Bool -- ^ Make documentation on build
     ,   runUnitTests        ::   Bool -- ^ Run unit tests on build?
     ,   runBenchmarks        ::   Bool -- ^ Run benchmarks on build?
-    ,   makeMode            ::   Bool
+    ,   makeMode            ::   Bool -- ^ Also build other packages in workspace that depend on the active package
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool
     ,   printEvldWithShow   ::   Bool
@@ -737,7 +737,7 @@ data PrefsFile = PrefsFile {
   , makeDocs_            :: Maybe Bool -- ^ Make documentation on build
   , runUnitTests_        :: Maybe Bool -- ^ Run unit tests on build?
   , runBenchmarks_        :: Maybe Bool -- ^ Run benchmarks on build?
-  , makeMode_            :: Maybe Bool
+  , makeMode_            :: Maybe Bool -- ^ Also build other packages in workspace that depend on the active package
   , singleBuildWithoutLinking_ :: Maybe Bool
   , dontInstallLast_     :: Maybe Bool
   , printEvldWithShow_   :: Maybe Bool

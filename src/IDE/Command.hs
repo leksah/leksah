@@ -552,7 +552,7 @@ mkActions =
         runUnitTestsToggled [] True
     ,AD "RunBenchmarksToggled" (__ "_Run benchmarks when building") (Just (__ "Run benchmarks when building")) (Just "ide_bench_build")
         runBenchmarksToggled [] True
-    ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Make dependent packages")) (Just "ide_make")
+    ,AD "MakeModeToggled" (__ "_MakeMode") (Just (__ "Also build other workspace packages that depend on the active package")) (Just "ide_make")
         makeModeToggled [] True
     ,AD "NativeToggled" "_Enable GHC" (Just (__ "Use GHC to compile")) (Just "ide_target_binary")
         nativeToggled [] True
