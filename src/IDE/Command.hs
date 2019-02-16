@@ -301,7 +301,7 @@ mkActions =
         (align "::") [] False
 
     ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
-    ,AD "WorkspaceAddPackage" (__ "_Add Package...") Nothing Nothing
+    ,AD "WorkspaceAddPackage" (__ "_Add Local Package...") Nothing Nothing
         (showWorkspacePane >> projectTry projectAddPackage) [] False
     ,AD "WorkspaceAddPackageCopy" (__ "_Add Copy Of Installed Package...") Nothing Nothing
         (showWorkspacePane >> projectTry projectPackageClone) [] False
