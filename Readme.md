@@ -104,12 +104,7 @@ echo 'PATH: '"$PATH"
 Make sure the `$HOME/ghc-8.4.3/bin` is present in PATH.
 
 ##### macOS with Homebrew
-With cask hombrew and cask already installed execute:
-```shell
-brew cask install leksah
-```
-Otherwise follow this instructions to install brew cask
-* [Mac Appstore Leksah](http://macappstore.org/leksah/)
+It might be possible to build Leksah using Homebrew now we have switched to WebKit 2.  If you can figure it out please send us the details or better yet a pull request to update this file.  Raise an issue if you try and it does not work.
 
 ##### FreeBSD
 ```shell
