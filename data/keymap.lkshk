@@ -32,11 +32,11 @@
 --<ctrl>x/<ctrl>c          ->          Quit            "Quits this program"
 
 --Edit
-<ctrl>z                    ->          EditUndo        "Undos the last user action"
---<ctrl>x/u                ->          EditUndo        "Undos the last user action"
+<ctrl>z                    ->          EditUndo        "Undoes the last user action"
+--<ctrl>x/u                ->          EditUndo        "Undoes the last user action"
 
-<shift><ctrl>z             ->          EditRedo        "Redos the last user action"
---<ctrl>x/r                ->          EditRedo        "Redos the last user action"
+<shift><ctrl>z             ->          EditRedo        "Redoes the last user action"
+--<ctrl>x/r                ->          EditRedo        "Redoes the last user action"
 
 --<ctrl>x     ->          EditCut
 --<ctrl>c     ->          EditCopy

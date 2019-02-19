@@ -14,9 +14,9 @@
 
 
 --Edit
-<ctrl>x/u               ->          EditUndo        "Undos the last user action"
---<ctrl><shift>_          ->          EditUndo        "Undos the last user action"
-<ctrl>x/r               ->          EditRedo        "Redos the last user action"
+<ctrl>x/u               ->          EditUndo        "Undoes the last user action"
+--<ctrl><shift>_          ->          EditUndo        "Undoes the last user action"
+<ctrl>x/r               ->          EditRedo        "Redoes the last user action"
 <ctrl>w                 ->          EditCut
 <alt>w                  ->          EditCopy
 <ctrl>y                 ->          EditPaste
