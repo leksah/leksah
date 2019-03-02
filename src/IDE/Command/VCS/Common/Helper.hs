@@ -31,7 +31,9 @@ import qualified VCSGui.Common as VCSGUI
 
 import Control.Monad.Reader
 import Control.Monad.Trans(liftIO)
+import Control.Lens ((.~), (?~), (^.))
 import Data.Maybe
+import Data.Function ((&))
 import qualified Data.Map as Map
 
 {- |
@@ -69,14 +71,14 @@ mergeToolSetter ideRef cabalFp mergeTool =
 workspaceSetMergeTool :: FilePath -> VCSGUI.MergeTool -> IDEAction
 workspaceSetMergeTool pathToPackage mergeTool = do
     modifyIDE_ (\ide -> do
-        let oldWs = fromJust (workspace ide)
-        let oldMap = packageVcsConf oldWs
+        let oldWs = fromJust (ide ^. workspace)
+        let oldMap = oldWs ^. packageVcsConf
         case Map.lookup pathToPackage oldMap of
             Nothing -> ide --TODO error
             Just (vcsType,config,_) -> do
                 let vcsConf = (vcsType,config,Just mergeTool)
                 let newMap = Map.insert pathToPackage vcsConf oldMap
-                let newWs = oldWs { packageVcsConf = newMap }
-                ide {workspace = Just newWs })
+                let newWs = oldWs & packageVcsConf .~ newMap
+                ide & workspace ?~ newWs)
     newWs <- readIDE workspace
     Writer.writeWorkspace $ fromJust newWs

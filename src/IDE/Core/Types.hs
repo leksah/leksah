@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -6,6 +7,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -24,6 +29,7 @@
 
 module IDE.Core.Types (
     IDE(..)
+,   IDEGtk
 ,   DebugState(..)
 ,   activeProject
 ,   activePack
@@ -104,54 +110,88 @@ module IDE.Core.Types (
 ,   CandyTableForth
 ,   CandyTableBack
 ,   KeymapI(..)
-,   SpecialKeyTable
-,   SpecialKeyCons
 
 ,   PackageDescrCache
 ,   ModuleDescrCache
 
-,   CompletionWindow(..)
-,   TypeTip(..)
-,   LogLaunch(..)
 ,   LogLaunchData(..)
 ,   LogTag(..)
-,   GUIHistory
-,   GUIHistory'(..)
 ,   SensitivityMask(..)
 ,   SearchMode(..)
 ,   StatusbarCompartment(..)
 
-,   Color(..)
-,   toGdkColor
-,   fromGdkColor
-,   KeyVal
+-- IDE
+,   ideGtk
+,   exitCode
+,   candy
+,   prefs
+,   workspace
+,   bufferProjCache
+,   allLogRefs
+,   currentEBC
+,   currentHist
+,   systemInfo
+,   packageInfo
+,   workspaceInfo
+,   workspInfoCache
+,   handlers
+,   currentState
+,   recentFiles
+,   recentWorkspaces
+,   runningTool
+,   debugState
+,   yiControl
+,   serverQueue
+,   server
+,   hlintQueue
+,   logLaunches
+,   autoCommand
+,   autoURI
+,   triggerBuild
+,   fsnotify
+,   watchers
+,   developLeksah
+,   nixCache
+,   externalModified
+,   jsContexts
+,   logLineMap
+
+-- Workspace
+,   wsVersion
+,   wsSaveTime
+,   wsName
+,   wsFile
+,   wsProjects
+,   wsActiveProjectFile
+,   wsActivePackFile
+,   wsActiveComponent
+,   packageVcsConf
+
+,   __
 ) where
 
 import Prelude ()
 import Prelude.Compat
 import qualified IDE.TextEditor.Yi.Config as Yi
-import Data.Unique (newUnique, Unique(..))
-import Graphics.UI.Frame.Panes
+import Data.Unique (newUnique, Unique)
 import Distribution.Package
-       (PackageName(..), unPackageName, PackageIdentifier(..), Dependency(..))
+       (unPackageName, PackageIdentifier(..), Dependency(..))
 import Distribution.PackageDescription (BuildInfo)
-import Data.Map (Map(..))
-import Data.Set (Set(..))
+import Data.Map (Map)
+import Data.Set (Set)
 import Data.List (find, nubBy)
 import Control.Concurrent (modifyMVar_, readMVar, MVar)
 import Distribution.ModuleName (ModuleName(..))
-import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
 import IDE.Utils.Tool (ToolState(..), ProcessHandle)
-import Data.IORef (writeIORef, readIORef, IORef(..))
+import Data.IORef (IORef)
 import Numeric (showHex)
-import Control.Event
-    (EventSelector(..), EventSource(..), Event(..))
-import System.FilePath (dropFileName, (</>), isAbsolute, makeRelative)
+import System.FilePath
+       (dropFileName, (</>), isAbsolute, makeRelative)
 import IDE.Core.CTypes
 import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
-import Distribution.Text (display, disp)
+import Distribution.Text (disp)
 import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
@@ -159,10 +199,7 @@ import Control.Monad.Trans.Reader (ReaderT(..))
 import Data.Time (UTCTime(..))
 
 import qualified VCSWrapper.Common as VCS
-import qualified VCSGui.Common as VCSGUI
 import qualified Data.Map as Map (Map)
-import Data.Typeable (Typeable)
-import Foreign (Ptr)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
@@ -170,34 +207,32 @@ import Language.Haskell.HLint3 (Idea(..))
 import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
-import Data.Maybe (maybeToList)
-import GI.Gtk.Objects.Toolbar (Toolbar(..))
-import Data.GI.Gtk.ModelView.SeqStore (SeqStore(..))
-import GI.Gtk.Objects.MenuItem (MenuItem(..))
-import GI.Gtk.Objects.TreeView (TreeView(..))
-import GI.Gtk.Objects.Menu (Menu(..))
-import GI.Gdk.Flags (ModifierType)
-import GI.Gtk.Objects.TextBuffer (TextBuffer(..))
-import Data.Word (Word32)
-import GI.Gtk.Objects.Window (Window(..))
-import Graphics.UI.Editor.Simple (Color(..), toGdkColor, fromGdkColor)
-import GI.Gtk.Objects.Application (Application(..))
 import Control.Monad ((>=>))
 import System.FSNotify (StopListening, WatchManager)
-import qualified Data.Map as M (fromList, lookup, keys, elems)
+import qualified Data.Map as M (fromList, lookup, elems)
 import System.Exit (ExitCode)
 import Data.Int (Int32)
-import System.Directory (doesFileExist)
-import Control.Lens ((<&>))
-import Distribution.Compiler (CompilerFlavor(..))
-import System.Process (showCommandForUser)
-import IDE.Utils.FileUtils (loadNixEnv)
 import Data.Aeson (FromJSON(..), ToJSON(..))
 import GHC.Generics (Generic)
 import Data.Aeson.Types
        (genericParseJSON, genericToEncoding, genericToJSON,
         defaultOptions, fieldLabelModifier, Options)
-import GI.Gtk (CssProvider)
+import Language.Javascript.JSaddle (JSContextRef)
+import Control.Lens (makeLenses, (^.), Getter, to, view)
+import Control.Event
+       (EventSelector, EventSource(..), Event(..))
+import IDE.Gtk.Types
+       (IDEState(..), IDEGtk, IDEGtkEvent, Color(..), PanePath,
+       MergeTool, LogLaunchData(..), getGtkEventSelector,
+       ActionString, KeyString, ActionDescr(..))
+
+#ifdef LOCALIZATION
+
+import Text.I18N.GetText
+import System.IO.Unsafe (unsafePerformIO)
+
+#endif
+
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -206,50 +241,43 @@ import GI.Gtk (CssProvider)
 --
 -- | The IDE state
 --
+
 data IDE            =  IDE {
-    application         :: Application
-,   exitCode            :: IORef ExitCode
-,   frameState          :: FrameState IDEM         -- ^ state of the windows framework
-,   specialKeys         :: SpecialKeyTable IDERef  -- ^ a structure for emacs like keystrokes
-,   specialKey          :: SpecialKeyCons IDERef   -- ^ the first of a double keystroke
-,   candy               :: CandyTable              -- ^ table for source candy
-,   prefs               :: Prefs                   -- ^ configuration preferences
-,   workspace           :: Maybe Workspace         -- ^ may be a workspace (set of packages)
-,   bufferProjCache     :: Map FilePath [(Project, IDEPackage)] -- ^ cache the associated packages for a file
-,   allLogRefs          :: Seq LogRef
-,   currentEBC          :: (Maybe LogRef, Maybe LogRef, Maybe LogRef)
-,   currentHist         :: Int
-,   systemInfo          :: Maybe GenScope              -- ^ the system scope
-,   packageInfo         :: Maybe (GenScope, GenScope) -- ^ the second are the imports
-,   workspaceInfo       :: Maybe (GenScope, GenScope) -- ^ the second are the imports
-,   workspInfoCache     :: PackageDescrCache
-,   handlers            :: Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
-,   currentState        :: IDEState
-,   flipper             :: Maybe TreeView             -- ^ used to select the active pane
-,   typeTip             :: Maybe TypeTip
-,   guiHistory          :: (Bool,[GUIHistory],Int)
-,   findbar             :: (Bool,Maybe (Toolbar,SeqStore Text,CssProvider))
-,   toolbar             :: (Bool,Maybe Toolbar)
-,   recentFiles         :: [FilePath]
-,   recentWorkspaces    :: [FilePath]
-,   runningTool         :: Maybe (ProcessHandle, IO ())
-,   debugState          :: [DebugState]
-,   completion          :: ((Int, Int), Maybe CompletionWindow)
-,   yiControl           :: Yi.Control
-,   serverQueue         :: Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
-,   server              :: Maybe Handle
-,   hlintQueue          :: Maybe (TVar [Either FilePath FilePath])
-,   vcsData             :: (Map FilePath MenuItem, Maybe (Maybe Text)) -- menus for packages, password
-,   logLaunches         :: Map.Map Text LogLaunchData
-,   autoCommand         :: ((FilePath, FilePath), IDEAction)
-,   autoURI             :: Maybe Text
-,   triggerBuild        :: MVar ()
-,   fsnotify            :: WatchManager
-,   watchers            :: MVar (Map FilePath StopListening, Map FilePath StopListening)
-,   developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
-,   nixCache            :: Map (FilePath, Text) (Map String String)
-,   externalModified    :: MVar (Set FilePath)
-} --deriving Show
+    _ideGtk              :: Maybe (IDEGtk IDEM IDERef)
+,   _exitCode            :: IORef ExitCode
+,   _candy               :: CandyTable              -- ^ table for source candy
+,   _prefs               :: Prefs                   -- ^ configuration preferences
+,   _workspace           :: Maybe Workspace         -- ^ may be a workspace (set of packages)
+,   _bufferProjCache     :: Map FilePath [(Project, IDEPackage)] -- ^ cache the associated packages for a file
+,   _allLogRefs          :: Seq LogRef
+,   _currentEBC          :: (Maybe LogRef, Maybe LogRef, Maybe LogRef)
+,   _currentHist         :: Int
+,   _systemInfo          :: Maybe GenScope              -- ^ the system scope
+,   _packageInfo         :: Maybe (GenScope, GenScope) -- ^ the second are the imports
+,   _workspaceInfo       :: Maybe (GenScope, GenScope) -- ^ the second are the imports
+,   _workspInfoCache     :: PackageDescrCache
+,   _handlers            :: Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
+,   _currentState        :: IDEState
+,   _recentFiles         :: [FilePath]
+,   _recentWorkspaces    :: [FilePath]
+,   _runningTool         :: Maybe (ProcessHandle, IO ())
+,   _debugState          :: [DebugState]
+,   _yiControl           :: Yi.Control
+,   _serverQueue         :: Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
+,   _server              :: Maybe Handle
+,   _hlintQueue          :: Maybe (TVar [Either FilePath FilePath])
+,   _logLaunches         :: Map.Map Text LogLaunchData
+,   _autoCommand         :: ((FilePath, FilePath), IDEAction)
+,   _autoURI             :: Maybe Text
+,   _triggerBuild        :: MVar ()
+,   _fsnotify            :: WatchManager
+,   _watchers            :: MVar (Map FilePath StopListening, Map FilePath StopListening)
+,   _developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
+,   _nixCache            :: Map (FilePath, Text) (Map String String)
+,   _externalModified    :: MVar (Set FilePath)
+,   _jsContexts          :: [JSContextRef]
+,   _logLineMap          :: Map Int (Text, LogTag)
+} -- deriving Show
 
 data DebugState = DebugState
     { dsProjectFile :: FilePath
@@ -258,22 +286,10 @@ data DebugState = DebugState
     , dsToolState   :: ToolState
     }
 
-activeProject :: IDE -> Maybe Project
-activeProject ide = workspace ide >>= wsActiveProject
-
-activePack :: IDE -> Maybe IDEPackage
-activePack ide = workspace ide >>= wsActivePackage
-
-activeComponent :: IDE -> Maybe Text
-activeComponent ide = workspace ide >>= wsActiveComponent
-
-nixEnv :: FilePath -> Text -> IDE -> Maybe (Map String String)
-nixEnv project compiler ide = M.lookup (project, compiler) $ nixCache ide
-
 --
 -- | A mutable reference to the IDE state
 --
-type IDERef = MVar IDE
+type IDERef = MVar (IDE -> IO (), IDE)
 
 --
 -- | The IDE Monad
@@ -285,17 +301,6 @@ type IDEM = ReaderT IDERef IO
 --   which does not return a value
 --
 type IDEAction = IDEM ()
-
-
-data IDEState =
-        -- | Leksah is in startup mode
-        IsStartingUp
-        -- | Leksah is about to go down
-    |   IsShuttingDown
-        -- | Leksah is running
-    |   IsRunning
-        -- | The completion feature is used
-    |   IsCompleting Connections
 
 
 class (Applicative m, Monad m, MonadIO m) => MonadIDE m where
@@ -376,7 +381,6 @@ data IDEEvent  =
     |   SelectInfo SymbolEvent
     |   SelectIdent Descr
     |   LogMessage Text LogTag
-    |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
     |   SearchMeta Text
     |   StartFindInitial
@@ -392,7 +396,6 @@ data IDEEvent  =
     |   BreakpointChanged
     |   CurrentBreakChanged (Maybe LogRef)
     |   TraceChanged
-    |   GetTextPopup (Maybe (IDERef -> Menu -> IO ()))
     |   StatusbarChanged [StatusbarCompartment]
     |   WorkspaceChanged Bool Bool -- ^ showPane updateFileCache
     |   SelectSrcSpan (Maybe SrcSpan)
@@ -400,6 +403,7 @@ data IDEEvent  =
     |   DebugStart (FilePath, FilePath)
     |   DebugStop (FilePath, FilePath)
     |   QuitToRestart
+    |   GtkEvent (IDEGtkEvent IDERef)
 
 data SymbolEvent = SymbolEvent
     { selection :: Text
@@ -409,13 +413,14 @@ data SymbolEvent = SymbolEvent
     , typeTipLocation :: (Int32, Int32)
     } deriving (Show, Eq)
 
+instance EventSelector Text
+
 instance Event IDEEvent Text where
     getSelector (InfoChanged _)         =   "InfoChanged"
     getSelector (UpdateWorkspaceInfo _) =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
     getSelector (SelectInfo _)          =   "SelectInfo"
     getSelector (SelectIdent _)         =   "SelectIdent"
-    getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
     getSelector (SearchMeta _)          =   "SearchMeta"
     getSelector StartFindInitial        =   "StartFindInitial"
@@ -431,7 +436,6 @@ instance Event IDEEvent Text where
     getSelector BreakpointChanged       =   "BreakpointChanged"
     getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
     getSelector TraceChanged            =   "TraceChanged"
-    getSelector (GetTextPopup _)        =   "GetTextPopup"
     getSelector (StatusbarChanged _)    =   "StatusbarChanged"
     getSelector (WorkspaceChanged _ _)  =   "WorkspaceChanged"
     getSelector (SelectSrcSpan _)       =   "SelectSrcSpan"
@@ -439,6 +443,7 @@ instance Event IDEEvent Text where
     getSelector (DebugStart _)          =   "DebugStart"
     getSelector (DebugStop _)           =   "DebugStop"
     getSelector QuitToRestart           =   "QuitToRestart"
+    getSelector (GtkEvent e)            =   getGtkEventSelector e
 
 instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "InfoChanged"         = True
@@ -474,14 +479,12 @@ instance EventSource IDERef IDEEvent IDEM Text where
     canTriggerEvent _ "QuitToRestart"       = True
     canTriggerEvent _ _                   = False
     getHandlers ideRef =
-        liftIO $ handlers <$> readMVar ideRef
+        liftIO $ _handlers . snd <$> readMVar ideRef
     setHandlers ideRef nh =
-        liftIO $ modifyMVar_ ideRef (\ide ->
-            return ide {handlers= nh})
+        liftIO $ modifyMVar_ ideRef (\(a, ide) ->
+            return (a, ide {_handlers= nh}))
     myUnique _ =
         liftIO newUnique
-
-instance EventSelector Text
 
 -- ---------------------------------------------------------------------
 -- Project
@@ -516,7 +519,8 @@ data IDEPackage     =   IDEPackage {
 ,   ipdCabalFile       ::   FilePath
 ,   ipdDepends         ::   [Dependency]
 ,   ipdModules         ::   Map ModuleName BuildInfo
-,   ipdHasLibs         ::   Bool
+,   ipdHasLib          ::   Bool
+,   ipdSubLibraries    ::   [Text]
 ,   ipdExes            ::   [Text]
 ,   ipdTests           ::   [Text]
 ,   ipdBenchmarks      ::   [Text]
@@ -538,7 +542,7 @@ data IDEPackage     =   IDEPackage {
     deriving (Eq)
 
 instance Show IDEPackage where
-    show p = show "IDEPackage for " ++ (render . disp) (ipdPackageId p)
+    show p = "IDEPackage for " ++ (render . disp) (ipdPackageId p)
 
 -- | The directory of the cabal file
 ipdPackageDir :: IDEPackage -> FilePath
@@ -550,7 +554,7 @@ ipdPackageName = T.pack . unPackageName . pkgName . ipdPackageId
 
 -- | Gets the library name if the package has a library component
 ipdLib :: IDEPackage -> Maybe Text
-ipdLib pkg = if ipdHasLibs pkg then Just (ipdPackageName pkg) else Nothing
+ipdLib pkg = if ipdHasLib pkg then Just (ipdPackageName pkg) else Nothing
 
 mkPackageMap :: [IDEPackage] -> Map FilePath IDEPackage
 mkPackageMap = M.fromList . map (\p -> (ipdCabalFile p, p))
@@ -559,61 +563,16 @@ mkPackageMap = M.fromList . map (\p -> (ipdCabalFile p, p))
 -- Workspace
 --
 data Workspace = Workspace {
-    wsVersion           ::   Int
-,   wsSaveTime          ::   Text
-,   wsName              ::   Text
-,   wsFile              ::   FilePath
-,   wsProjects          ::   [Project]
-,   wsActiveProjectFile ::   Maybe FilePath
-,   wsActivePackFile    ::   Maybe FilePath
-,   wsActiveComponent   ::   Maybe Text
-,   packageVcsConf      ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
+    _wsVersion           ::   Int
+,   _wsSaveTime          ::   Text
+,   _wsName              ::   Text
+,   _wsFile              ::   FilePath
+,   _wsProjects          ::   [Project]
+,   _wsActiveProjectFile ::   Maybe FilePath
+,   _wsActivePackFile    ::   Maybe FilePath
+,   _wsActiveComponent   ::   Maybe Text
+,   _packageVcsConf      ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
-
-wsProjectFiles :: Workspace -> [FilePath]
-wsProjectFiles = map pjFile . wsProjects
-
-wsLookupProject :: FilePath -> Workspace -> Maybe Project
-wsLookupProject f = find ((==f) . pjFile) . wsProjects
-
-wsActiveProject :: Workspace -> Maybe Project
-wsActiveProject w = wsActiveProjectFile w >>= (`wsLookupProject` w)
-
-wsActivePackage :: Workspace -> Maybe IDEPackage
-wsActivePackage w = do
-    project <- wsActiveProject w
-    wsActivePackFile w >>= (`pjLookupPackage` project)
-
-wsPackages :: Workspace -> [IDEPackage]
-wsPackages = wsProjects >=> pjPackages
-
-wsProjectAndPackages :: Workspace -> [(Project, IDEPackage)]
-wsProjectAndPackages = wsProjects >=> (\project -> (\pack -> (project, pack)) <$> pjPackages project)
-
--- | Includes sandbox sources
-wsAllPackages :: Workspace -> [IDEPackage]
-wsAllPackages w = nubBy ((==) `on` ipdCabalFile) $ wsPackages w
-
--- ---------------------------------------------------------------------
--- Other data structures which are used in the state
---
-
---
--- | ActionDescr is a data structure from which GtkActions are build, which are used for
---   menus, toolbars, and accelerator keystrokes
---
-data ActionDescr alpha = AD {
-    name        ::   ActionString
-,   label       ::   Text
-,   tooltip     ::   Maybe Text
-,   stockID     ::   Maybe Text
-,   action      ::   ReaderT alpha IO ()
-,   accelerator ::   [KeyString]
-,   isToggle    ::   Bool
-}
-
-type ActionString = Text
-type KeyString = Text
 
 --
 -- | Preferences is a data structure to hold configuration data
@@ -666,7 +625,7 @@ data Prefs = Prefs {
     ,   debug               ::   Bool
     ,   makeDocs            ::   Bool -- ^ Make documentation on build
     ,   runUnitTests        ::   Bool -- ^ Run unit tests on build?
-    ,   runBenchmarks        ::   Bool -- ^ Run benchmarks on build?
+    ,   runBenchmarks       ::   Bool -- ^ Run benchmarks on build?
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool
@@ -796,21 +755,11 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
 -- Version-Control-System Configuration
-type VCSConf = (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)
+type VCSConf = (VCS.VCSType, VCS.Config, Maybe MergeTool)
 
 --
 -- | Other types
 --
-
-data LogLaunchData = LogLaunchData {
-    logLaunch :: LogLaunch
-,   mbPid :: Maybe ProcessHandle
-}
-
-newtype LogLaunch = LogLaunch {
-    logBuffer   :: TextBuffer
-} deriving Typeable
-
 
 -- Order determines priority of the icons in the gutter
 data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
@@ -840,6 +789,7 @@ data LogRef = LogRef {
 instance Show LogRef where
     show lr = T.unpack (refDescription lr) ++ displaySrcSpan (logRefSrcSpan lr)
 
+displaySrcSpan :: SrcSpan -> String
 displaySrcSpan s = srcSpanFilename s ++ ":" ++
     if srcSpanStartLine s == srcSpanEndLine s
         then show (srcSpanStartLine s) ++ ":" ++
@@ -876,10 +826,11 @@ isError = (== ErrorRef) . logRefType
 isBreakpoint :: LogRef -> Bool
 isBreakpoint = (== BreakpointRef) . logRefType
 
-isContext :: LogRef -> Bool
-isContext = (== ContextRef) . logRefType
+--isContext :: LogRef -> Bool
+--isContext = (== ContextRef) . logRefType
 
 -- This should probably be in Gtk2Hs allong with a suitable parser
+colorHexString :: Color -> String
 colorHexString (Color r g b) = '#' : pad (showHex r "")
                                   ++ pad (showHex g "")
                                   ++ pad (showHex b "")
@@ -895,29 +846,7 @@ type CandyTableBack     =   [(Text,Text,Int)]
 newtype KeymapI         =   KM  (Map ActionString
                                 [(Maybe (Either KeyString (KeyString,KeyString)), Maybe Text)])
 
-type KeyVal = Word32
-
-type SpecialKeyTable alpha  =   Map (KeyVal,[ModifierType]) (Map (KeyVal,[ModifierType]) (ActionDescr alpha))
-
-type SpecialKeyCons  alpha  =   Maybe (Map (KeyVal, [ModifierType]) (ActionDescr alpha), Text)
-
-data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag
-
--- | the first one is the new and the second the old state
-type GUIHistory = (GUIHistory', GUIHistory')
-
-data GUIHistory' =
-        ModuleSelected  {
-            moduleS :: Maybe ModuleName
-        ,   facetS  :: Maybe Text}
-    |   ScopeSelected {
-            scope   :: Scope
-        ,   blacklist :: Bool}
-    |   InfoElementSelected {
-            mbInfo  :: Maybe Descr}
-    |   PaneSelected {
-            paneN   :: Maybe Text}
-   deriving (Eq, Ord, Show)
+data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag deriving(Eq, Ord, Show)
 
 data SensitivityMask =
         SensitivityForwardHist
@@ -937,19 +866,9 @@ data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
 instance ToJSON SearchMode
 instance FromJSON SearchMode
 
-data CompletionWindow = CompletionWindow {
-    cwWindow :: Window,
-    cwTreeView :: TreeView,
-    cwSeqStore :: SeqStore Text}
-
-data TypeTip = TypeTip {
-    ttWindow :: Window,
-    ttSetText :: Int32 -> Int32 -> Text -> IDEM (),
-    ttUpdateStyle :: IDEAction}
-
 data StatusbarCompartment =
         CompartmentCommand Text
-    |   CompartmentPane (Maybe (IDEPane IDEM))
+    |   CompartmentPane Text
     |   CompartmentPackage Text
     |   CompartmentState Text
     |   CompartmentOverlay Bool
@@ -959,4 +878,70 @@ data StatusbarCompartment =
 
 type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
 type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)
+
+makeLenses ''IDE
+makeLenses ''Workspace
+
+wsProjectFiles :: Getter Workspace [FilePath]
+wsProjectFiles = wsProjects . to (map pjFile)
+
+wsLookupProject :: FilePath -> Workspace -> Maybe Project
+wsLookupProject f = find ((==f) . pjFile) . _wsProjects
+
+_wsActiveProject :: Workspace -> Maybe Project
+_wsActiveProject w = (w ^. wsActiveProjectFile) >>= (`wsLookupProject` w)
+
+wsActiveProject :: Getter Workspace (Maybe Project)
+wsActiveProject = to _wsActiveProject
+
+_wsActivePackage :: Workspace -> Maybe IDEPackage
+_wsActivePackage w = do
+    project <- _wsActiveProject w
+    _wsActivePackFile w >>= (`pjLookupPackage` project)
+
+wsActivePackage :: Getter Workspace (Maybe IDEPackage)
+wsActivePackage = to _wsActivePackage
+
+wsPackages :: Getter Workspace [IDEPackage]
+wsPackages = to (_wsProjects >=> pjPackages)
+
+_wsProjectAndPackages :: Workspace -> [(Project, IDEPackage)]
+_wsProjectAndPackages = _wsProjects >=> (\project -> (project,) <$> pjPackages project)
+
+wsProjectAndPackages :: Getter Workspace [(Project, IDEPackage)]
+wsProjectAndPackages = to _wsProjectAndPackages
+
+-- | Includes sandbox sources
+_wsAllPackages :: Workspace -> [IDEPackage]
+_wsAllPackages w = nubBy ((==) `on` ipdCabalFile) $ w ^. wsPackages
+
+wsAllPackages :: Getter Workspace [IDEPackage]
+wsAllPackages = to _wsAllPackages
+
+activeProject :: Getter IDE (Maybe Project)
+activeProject = workspace . to (>>= view wsActiveProject)
+
+activePack :: Getter IDE (Maybe IDEPackage)
+activePack = workspace . to (>>= view wsActivePackage)
+
+activeComponent :: Getter IDE (Maybe Text)
+activeComponent = workspace . to (>>= view wsActiveComponent)
+
+nixEnv :: FilePath -> Text -> IDE -> Maybe (Map String String)
+nixEnv project compiler ide = M.lookup (project, compiler) $ ide ^. nixCache
+
+#ifdef LOCALIZATION
+
+-- | For i18n using hgettext
+__ :: Text -> Text
+__ = T.pack . unsafePerformIO . getText . T.unpack
+
+
+#else
+
+-- | For i18n support. Not included in this build.
+__ :: Text -> Text
+__ = id
+
+#endif
 

@@ -1,6 +1,8 @@
 {-# LANGUAGE CPP #-}
+#if defined(darwin_HOST_OS)
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+#endif
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
@@ -26,7 +28,7 @@ module IDE.OSX (
 
 import Prelude ()
 import Prelude.Compat
-import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.IO.Class (MonadIO)
 import GI.Gdk.Objects.Window (IsWindow)
 import GI.Gtk.Objects.UIManager (uIManagerGetWidget, UIManager(..))
 import IDE.Core.State
@@ -35,7 +37,6 @@ import IDE.Core.State
 
 import Control.Monad.Reader.Class (ask)
 import IDE.Command (canQuit)
-import Data.Text (Text)
 import GI.GtkosxApplication
        (Application(..), applicationReady,
         applicationSetUseQuartzAccelerators,
@@ -46,8 +47,7 @@ import Data.GI.Base (unsafeCastTo, new')
 import GI.Gtk.Objects.MenuShell (MenuShell(..))
 import GI.Gtk.Objects.MenuItem (MenuItem(..))
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
-import Control.Monad.IO.Class (MonadIO)
-import Data.GI.Base.BasicTypes (NullToNothing(..))
+import Control.Monad.IO.Class (MonadIO(..))
 
 applicationNew :: MonadIO m => m Application
 applicationNew = new' Application []
@@ -73,11 +73,11 @@ updateMenu app uiManager = do
         Nothing   -> return ()
 
     uIManagerGetWidget uiManager "/ui/menubar/_Tools/_Preferences" >>= mapM (liftIO . unsafeCastTo MenuItem) >>= \case
-        Just prefs -> do
-            applicationInsertAppMenuItem app prefs 2
+        Just prefs' -> do
+            applicationInsertAppMenuItem app prefs' 2
         Nothing   -> return ()
 
-    onApplicationNSApplicationBlockTermination app $ reflectIDE (fmap not canQuit) ideR
+    _ <- onApplicationNSApplicationBlockTermination app $ reflectIDE (fmap not canQuit) ideR
 
     applicationSetUseQuartzAccelerators app True
 

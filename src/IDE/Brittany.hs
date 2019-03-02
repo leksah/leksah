@@ -22,7 +22,7 @@ import Language.Haskell.Brittany
         CForwardOptions(..), CConfig(..), CLayoutConfig(..),
         findLocalConfigPath)
 
-import IDE.Core.Types (IDE(prefs), MonadIDE, Prefs(tabWidth))
+import IDE.Core.Types (prefs, MonadIDE, Prefs(tabWidth))
 import IDE.Core.State (readIDE)
 
 runBrittany :: MonadIDE m

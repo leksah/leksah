@@ -4,21 +4,25 @@ module IDE.LPaste (uploadToLpaste) where
 import Prelude ()
 import Prelude.Compat
 
-import IDE.Core.State
-import IDE.Core.Types
-import IDE.Pane.SourceBuffer
-import IDE.Utils.GUIUtils (showDialog, showInputDialog, showDialogOptions)
-
-import Control.Monad.IO.Class (liftIO)
-import Data.Maybe
-import Network.HTTP
-
-import qualified Data.Text as T
-import GI.Gtk.Enums (MessageType(..))
-import Control.Monad (void)
 import Control.Exception (SomeException, catch)
-import Network.Stream (ConnError(..))
+import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
+
+import Data.Text (Text)
+import qualified Data.Text as T (pack, unpack)
+
 import GI.Gtk (Window)
+import GI.Gtk.Enums (MessageType(..))
+
+import Network.HTTP
+       (rspHeaders, postRequest, simpleHTTP, urlEncodeVars, Header(..))
+import Network.Stream (ConnError(..))
+
+import IDE.Core.State (IDEM)
+import IDE.Gtk.State (getMainWindow)
+import IDE.Pane.SourceBuffer (selectedTextOrCurrentLine)
+import IDE.Utils.GUIUtils (showDialog, showInputDialog, showDialogOptions)
+import Network.HTTP.Headers (HeaderName(..))
 
 type Parameter = (String, String)
 
@@ -68,7 +72,7 @@ uploadToLpaste = do
                 [("OK", uploadToLpaste' mainWindow (snd <$> maybeText)), ("Cancel", return ())]
                 (Just 0)
 
-uploadToLpaste' :: Window -> Maybe T.Text -> IO ()
+uploadToLpaste' :: Window -> Maybe Text -> IO ()
 uploadToLpaste' mainWindow maybeText =
     case maybeText of
         Just text -> do

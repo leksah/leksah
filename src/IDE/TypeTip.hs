@@ -20,11 +20,12 @@ import Prelude.Compat
 import Data.Text (Text)
 import qualified Data.Text as T
        (concat, drop, lines, length, splitOn, null)
-import IDE.Core.Types
-       (Prefs(..), IDE(..), IDEAction, IDEM, IDE(typeTip), TypeTip(..))
 import IDE.Core.State
-       (postAsyncIDE', postAsyncIDE, modifyIDE_, readIDE)
-import Control.Monad.Trans.Reader (ask)
+       (MonadIDE, Prefs(..), IDEAction, IDEM, ideGtk, prefs,
+        modifyIDE_, readIDE)
+import IDE.Gtk.State
+       (typeTip, TypeTip(..), typeTip, postAsyncIDE')
+import Control.Lens ((?~), pre, _Just)
 import Graphics.UI.Frame.ViewFrame (getWindows)
 import GI.Gtk
        (windowMove, windowResize, widgetHide, containerAdd, widgetShowAll,
@@ -36,35 +37,35 @@ import GI.Gdk.Enums (WindowTypeHint(..))
 import IDE.TextEditor (updateStyle, newDefaultBuffer)
 import IDE.TextEditor.Class (TextEditor(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.IORef (newIORef)
 import Data.Int (Int32)
 import Data.List (intersperse)
-import Control.Monad (void, when)
 import GI.GLib.Constants (pattern PRIORITY_DEFAULT_IDLE)
 
+withTypeTip :: MonadIDE m => (Maybe (TypeTip IDEM) -> m ()) -> m ()
+withTypeTip f = readIDE (pre $ ideGtk . _Just . typeTip) >>= mapM_ f
+
 setTypeTip :: (Int32, Int32) -> Text -> IDEM ()
-setTypeTip (x, y) t = do
+setTypeTip (x', y) t = do
     let (indent, s) = case T.splitOn " :: " t of
-                        (x:y:_) | not (T.null x) -> (T.length (last $ T.lines x) + 1, T.drop (T.length x + 1) t)
+                        (x:_:_) | not (T.null x) -> (T.length (last $ T.lines x) + 1, T.drop (T.length x + 1) t)
                         _ -> (0, t)
         trimmed = case T.lines s of
                     (first:rest) -> T.concat (intersperse "\n" (first : map (T.drop indent) rest))
                     [] -> ""
-    readIDE typeTip >>= \case
-        Just TypeTip {..} -> ttSetText x y trimmed
-        Nothing           -> initTypeTip x y trimmed
+    withTypeTip $ \case
+        Just TypeTip {..} -> ttSetText x' y trimmed
+        Nothing           -> initTypeTip x' y trimmed
 
 updateTypeTipStyle :: IDEAction
 updateTypeTipStyle =
-    readIDE typeTip >>= \case
+    withTypeTip $ \case
         Just TypeTip {..} -> ttUpdateStyle
         Nothing           -> return ()
 
 initTypeTip :: Int32 -> Int32 -> Text -> IDEAction
-initTypeTip x y tip = do
-    ideR <- ask
+initTypeTip initX initY tip = do
     windows    <- getWindows
-    prefs      <- readIDE prefs
+    prefs'     <- readIDE prefs
     window     <- windowNew WindowTypePopup
     setWindowTypeHint      window WindowTypeHintUtility
     setWindowDecorated     window False
@@ -73,10 +74,10 @@ initTypeTip x y tip = do
     setWindowDefaultHeight window 10
     setWindowTransientFor  window $ head windows
     containerSetBorderWidth window 1
-    windowMove window (x+2) y
+    windowMove window (initX+2) initY
 
     buffer <- newDefaultBuffer Nothing tip
-    (view, viewWidget) <- newViewNoScroll buffer (textviewFont prefs)
+    (view, viewWidget) <- newViewNoScroll buffer (textviewFont prefs')
     postAsyncIDE' PRIORITY_DEFAULT_IDLE $ updateStyle buffer
     setEditable view False
     setShowLineMarks view False
@@ -101,8 +102,8 @@ initTypeTip x y tip = do
                                 windowResize window 10 10
                                 liftIO $ widgetShowAll window
                         else liftIO $ widgetShowAll window
-        updateTypeTipStyle = updateStyle buffer
+        updateTypeTipStyle' = updateStyle buffer
 
-    modifyIDE_ $ \ide -> ide{typeTip = Just (TypeTip window updateTypeTip updateTypeTipStyle)}
+    modifyIDE_ $ ideGtk . _Just . typeTip ?~ TypeTip window updateTypeTip updateTypeTipStyle'
 
     widgetShowAll window

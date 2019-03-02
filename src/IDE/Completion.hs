@@ -1,4 +1,7 @@
-{-# LANGUAGE ScopedTypeVariables, OverloadedStrings, LambdaCase, PatternSynonyms #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings#-}
+{-# LANGUAGE PatternSynonyms#-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Completion
@@ -18,20 +21,31 @@ module IDE.Completion (complete, cancel, setCompletionSize, smartIndent) where
 import Prelude ()
 import Prelude.Compat hiding(getChar, getLine)
 
-import Data.List as List (stripPrefix, isPrefixOf, filter)
-import Data.Char
-import Data.IORef
-import Control.Monad
+import Data.List as List (filter)
+import Data.Char (isAlphaNum, isSymbol)
+import Data.IORef (newIORef, readIORef, writeIORef)
+import Control.Monad (when, void, unless)
+import Control.Monad.Fail.Compat (MonadFail)
+import Data.Foldable (forM_)
 import Foreign (castPtr)
 import IDE.Core.State
+       (IDEAction, IDEState(..), IDEM,
+        readIDE, currentState, prefs, ideGtk,
+        completeRestricted, modifyIDE_,
+        textviewFont, reflectIDE, liftIDE,
+        tabWidth)
+import IDE.Gtk.State
+       (CompletionWindow(..), Connections,
+        completion, getWindows, postAsyncIDE,
+        Connection(..), signalDisconnectAll)
 import IDE.Metainfo.Provider
        (keywords, getDescription, getCompletionOptions)
 import IDE.TextEditor as TE
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
-import qualified Control.Monad.Reader as Gtk (liftIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Applicative ((<$>))
+import Control.Lens (pre, (.~), _1, _2, _Just)
 import Data.Text (Text)
 import qualified Data.Text as T
        (replicate, empty, commonPrefixes, pack, unpack, null, stripPrefix,
@@ -39,12 +53,12 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T (encodeUtf8)
 import System.Log.Logger (debugM)
 import GI.Gtk.Objects.Window
-       (windowMove, windowGetScreen, windowGetSize, Window(..),
+       (windowMove, windowGetSize, Window(..),
         windowNew, setWindowTransientFor, setWindowDefaultHeight,
         setWindowDefaultWidth, setWindowResizable, setWindowDecorated,
         setWindowTypeHint, windowResize)
 import Data.GI.Base
-       (unsafeManagedPtrGetPtr, unsafeCastTo, castTo, get, set, newBoxed, withManagedPtr)
+       (unsafeCastTo, newBoxed, withManagedPtr)
 import GI.Gdk.Enums (GrabStatus(..), WindowTypeHint(..))
 import GI.Gtk.Objects.Container
        (containerRemove, containerAdd, containerSetBorderWidth)
@@ -57,11 +71,11 @@ import GI.Gtk.Objects.Widget
        (Widget(..), widgetShowAll, widgetGetAllocation, widgetGetParent,
         widgetHide, onWidgetButtonReleaseEvent, onWidgetMotionNotifyEvent,
         widgetGetWindow, onWidgetButtonPressEvent, getWidgetVisible,
-        widgetModifyFont, widgetSetSizeRequest)
+        widgetSetSizeRequest)
 import GI.Gtk.Objects.TreeView
-       (treeViewSetCursor, onTreeViewRowActivated, treeViewRowActivated,
-        treeViewScrollToCell, treeViewGetColumn, treeViewGetModel,
-        TreeView(..), treeViewGetSelection, setTreeViewHeadersVisible,
+       (IsTreeView, treeViewSetCursor, onTreeViewRowActivated,
+        treeViewScrollToCell, treeViewGetModel, TreeView(..),
+        treeViewGetSelection, setTreeViewHeadersVisible,
         treeViewAppendColumn, treeViewSetModel, treeViewNew)
 import Data.GI.Gtk.ModelView.SeqStore
        (seqStoreAppend, seqStoreClear, seqStoreGetValue, SeqStore(..),
@@ -84,46 +98,42 @@ import GI.Gtk.Objects.TreeSelection
 import GI.Gdk.Structs.EventKey
        (getEventKeyKeyval, getEventKeyState)
 import GI.Gdk.Functions
-       (pointerUngrab, pointerGrab, keyvalToUnicode, keyvalName)
+       (keyvalToUnicode, keyvalName)
 import GI.Gtk.Interfaces.TreeModel
        (treeModelGetPath, treeModelIterNChildren)
 import GI.Gdk.Structs.EventButton
-       (getEventButtonTime, getEventButtonY, getEventButtonX,
-        getEventButtonButton)
-import GI.Gdk.Flags (SeatCapabilities(..), EventMask(..))
-import GI.Gdk.Objects.Cursor (noCursor)
+       (getEventButtonY, getEventButtonX)
+import GI.Gdk.Flags (SeatCapabilities(..))
 import GI.Gdk.Structs.EventMotion
        (getEventMotionY, getEventMotionX)
 import GI.Gtk.Structs.TreePath (treePathGetIndices, TreePath(..))
 import Graphics.UI.Frame.Rectangle
        (getRectangleHeight, getRectangleWidth, getRectangleY,
-        getRectangleX, Rectangle(..))
+        getRectangleX)
 import GI.Gdk.Objects.Window (windowGetOrigin)
-import qualified GI.Gdk.Objects.Window as Gdk (noWindow)
-import GI.Gdk.Objects.Screen
-       (screenGetHeight, screenGetWidth, screenGetMonitorAtPoint)
 import Data.GI.Gtk.ModelView.Types
        (equalManagedPtr, treePathGetIndices', treePathNewFromIndices')
 import Data.Maybe (fromJust)
 import GI.Gtk
        (widgetGetScreen, getCurrentEventDevice,
         pattern STYLE_PROVIDER_PRIORITY_APPLICATION, styleContextAddProvider,
-        cssProviderLoadFromData, widgetGetStyleContext, cssProviderNew,
-        widgetOverrideFont)
+        cssProviderLoadFromData, widgetGetStyleContext, cssProviderNew)
 import Graphics.UI.Utils (fontDescriptionToCssProps)
 import GI.Gdk
        (monitorGetGeometry, displayGetMonitorAtPoint, windowGetDisplay,
         seatUngrab, Event(..), EventButton(..), noSeatGrabPrepareFunc,
         cursorNewFromName, screenGetDisplay, seatGrab, deviceGetSeat,
         Monitor(..))
+import Data.Int (Int32)
 
 complete :: TextEditor editor => EditorView editor -> Bool -> IDEAction
 complete sourceView always = do
     currentState'    <- readIDE currentState
     prefs'           <- readIDE prefs
-    (_, completion') <- readIDE completion
+    completion'      <- readIDE (pre $ ideGtk . _Just . completion . _2)
     case (currentState',completion') of
-        (IsCompleting c, Just (CompletionWindow window tv st)) -> do
+        (_, Nothing) -> return ()
+        (IsCompleting c, Just (Just (CompletionWindow window tv st))) -> do
                             isWordChar <- getIsWordChar sourceView
                             updateOptions window tv st sourceView c isWordChar always
         (IsRunning,_)   ->  when (always || not (completeRestricted prefs'))
@@ -133,24 +143,24 @@ complete sourceView always = do
 cancel :: IDEAction
 cancel = do
     currentState'    <- readIDE currentState
-    (_, completion') <- readIDE completion
+    completion'      <- readIDE (pre $ ideGtk . _Just . completion . _2)
     case (currentState',completion') of
-        (IsCompleting conn , Just (CompletionWindow window tv st)) ->
+        (_, Nothing) -> return ()
+        (IsCompleting conn , Just (Just (CompletionWindow window tv st))) ->
             cancelCompletion window tv st conn
         _            -> return ()
 
 setCompletionSize :: Int -> Int -> IDEAction
-setCompletionSize x y | x > 10 && y > 10 = do
-    (_, completion) <- readIDE completion
-    case completion of
-        Just (CompletionWindow window _ _) -> windowResize window (fromIntegral x) (fromIntegral y)
-        Nothing                            -> return ()
-    modifyIDE_ $ \ide -> ide{completion = ((x, y), completion)}
+setCompletionSize x y | x > 10 && y > 10 =
+    readIDE (pre $ ideGtk . _Just . completion . _2) >>= mapM_ (\c -> do
+        case c of
+            Just (CompletionWindow window _ _) -> windowResize window (fromIntegral x) (fromIntegral y)
+            Nothing                            -> return ()
+        modifyIDE_ $ ideGtk . _Just . completion . _1 .~ (x, y))
 setCompletionSize _ _ = return ()
 
 getIsWordChar :: forall editor. TextEditor editor => EditorView editor -> IDEM (Char -> Bool)
 getIsWordChar sourceView = do
-    ideR <- ask
     buffer <- getBuffer sourceView
     (_, end) <- getSelectionBounds buffer
     sol <- backwardToLineStartC end
@@ -162,92 +172,88 @@ getIsWordChar sourceView = do
         isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
                                  || a == '!'  || a == '@'  || a == '%' || a == '&' || a == '?'
     prev <- backwardCharC end
-    prevChar <- getChar prev
-    case prevChar of
+    getChar prev >>= \case
         Just prevChar | isIdent prevChar -> return isIdent
-        Just prevChar | isOp    prevChar -> return isOp
+                      | isOp    prevChar -> return isOp
         _                                -> return $ const False
 
 initCompletion :: forall editor. TextEditor editor => EditorView editor -> Bool -> IDEAction
 initCompletion sourceView always = do
     ideR <- ask
-    ((width, height), completion') <- readIDE completion
-    isWordChar <- getIsWordChar sourceView
-    case completion' of
-        Just (CompletionWindow window' tree' store') -> do
-            cids <- addEventHandling window' sourceView tree' store' isWordChar always
-            modifyIDE_ (\ide -> ide{currentState = IsCompleting cids})
-            updateOptions window' tree' store' sourceView cids isWordChar always
-        Nothing -> do
-            windows    <- getWindows
-            prefs      <- readIDE prefs
-            window     <- windowNew WindowTypePopup
-            setWindowTypeHint      window WindowTypeHintUtility
-            setWindowDecorated     window False
-            setWindowResizable     window True
-            setWindowDefaultWidth  window $ fromIntegral width
-            setWindowDefaultHeight window $ fromIntegral height
-            setWindowTransientFor  window $ head windows
-            containerSetBorderWidth window 3
-            paned      <- panedNew OrientationHorizontal
-            containerAdd window paned
-            nameScrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
-            widgetSetSizeRequest nameScrolledWindow 250 40
-            tree       <- treeViewNew
-            containerAdd nameScrolledWindow tree
-            store      <- seqStoreNew []
-            treeViewSetModel tree (Just store)
+    readIDE (pre $ ideGtk . _Just . completion) >>= mapM_ (\((width, height), completion') -> do
+        isWordChar <- getIsWordChar sourceView
+        case completion' of
+            Just (CompletionWindow window' tree' store') -> do
+                cids <- addEventHandling window' sourceView tree' store' isWordChar always
+                modifyIDE_ $ currentState .~ IsCompleting cids
+                updateOptions window' tree' store' sourceView cids isWordChar always
+            Nothing -> do
+                windows    <- getWindows
+                prefs'     <- readIDE prefs
+                window     <- windowNew WindowTypePopup
+                setWindowTypeHint      window WindowTypeHintUtility
+                setWindowDecorated     window False
+                setWindowResizable     window True
+                setWindowDefaultWidth  window $ fromIntegral width
+                setWindowDefaultHeight window $ fromIntegral height
+                setWindowTransientFor  window $ head windows
+                containerSetBorderWidth window 3
+                paned      <- panedNew OrientationHorizontal
+                containerAdd window paned
+                nameScrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
+                widgetSetSizeRequest nameScrolledWindow 250 40
+                tree       <- treeViewNew
+                containerAdd nameScrolledWindow tree
+                store      <- seqStoreNew []
+                treeViewSetModel tree (Just store)
 
-            font <- case textviewFont prefs of
-                Just str ->
-                    fontDescriptionFromString str
-                Nothing -> do
-                    f <- fontDescriptionNew
-                    fontDescriptionSetFamily f "Monospace"
-                    return f
-            provider <- cssProviderNew
-            styleContext <- widgetGetStyleContext tree
-            cssProps <- fontDescriptionToCssProps font
-            cssProviderLoadFromData provider . T.encodeUtf8
-              $ "treeview { " <> cssProps <> "}"
-            styleContextAddProvider styleContext provider (fromIntegral STYLE_PROVIDER_PRIORITY_APPLICATION)
+                font <- case textviewFont prefs' of
+                    Just str ->
+                        fontDescriptionFromString str
+                    Nothing -> do
+                        f <- fontDescriptionNew
+                        fontDescriptionSetFamily f "Monospace"
+                        return f
+                provider <- cssProviderNew
+                styleContext <- widgetGetStyleContext tree
+                cssProps <- fontDescriptionToCssProps font
+                cssProviderLoadFromData provider . T.encodeUtf8
+                  $ "treeview { " <> cssProps <> "}"
+                styleContextAddProvider styleContext provider (fromIntegral STYLE_PROVIDER_PRIORITY_APPLICATION)
 
-            column   <- treeViewColumnNew
-            setTreeViewColumnSizing   column TreeViewColumnSizingFixed
-            setTreeViewColumnMinWidth column 800 -- OSX does not like it if there is no hscroll
-            treeViewAppendColumn tree column
-            renderer <- cellRendererTextNew
-            treeViewColumnPackStart column renderer True
-            cellLayoutSetDataFunction column renderer store $ setCellRendererTextText renderer
+                column   <- treeViewColumnNew
+                setTreeViewColumnSizing   column TreeViewColumnSizingFixed
+                setTreeViewColumnMinWidth column 800 -- OSX does not like it if there is no hscroll
+                _ <- treeViewAppendColumn tree column
+                renderer <- cellRendererTextNew
+                treeViewColumnPackStart column renderer True
+                cellLayoutSetDataFunction column renderer store $ setCellRendererTextText renderer
 
-            setTreeViewHeadersVisible tree False
+                setTreeViewHeadersVisible tree False
 
-            descriptionBuffer <- newDefaultBuffer Nothing ""
-            (descriptionView, descriptionScrolledWindow) <- newView descriptionBuffer (textviewFont prefs)
-            updateStyle descriptionBuffer
-            setShowLineMarks descriptionView False
-            setHighlightCurrentLine descriptionView False
+                descriptionBuffer <- newDefaultBuffer Nothing ""
+                (descriptionView, descriptionScrolledWindow) <- newView descriptionBuffer (textviewFont prefs')
+                updateStyle descriptionBuffer
+                setShowLineMarks descriptionView False
+                setHighlightCurrentLine descriptionView False
 
-            visible    <- liftIO $ newIORef False
-            activeView <- liftIO $ newIORef Nothing
+                treeSelection <- treeViewGetSelection tree
 
-            treeSelection <- treeViewGetSelection tree
+                _ <- onTreeSelectionChanged treeSelection $
+                    treeSelectionSelectedForeach treeSelection $ \_model treePath _iter ->
+                        reflectIDE (void $ withWord store treePath (\name -> do
+                                description <- getDescription name
+                                setText descriptionBuffer description
+                                )) ideR
 
-            onTreeSelectionChanged treeSelection $
-                treeSelectionSelectedForeach treeSelection $ \_model treePath _iter ->
-                    reflectIDE (void $ withWord store treePath (\name -> do
-                            description <- getDescription name
-                            setText descriptionBuffer description
-                            )) ideR
+                panedAdd1 paned nameScrolledWindow
+                panedAdd2 paned descriptionScrolledWindow
 
-            panedAdd1 paned nameScrolledWindow
-            panedAdd2 paned descriptionScrolledWindow
+                cids <- addEventHandling window sourceView tree store isWordChar always
 
-            cids <- addEventHandling window sourceView tree store isWordChar always
-
-            modifyIDE_ (\ide -> ide{currentState = IsCompleting cids,
-                completion = ((width, height), Just (CompletionWindow window tree store))})
-            updateOptions window tree store sourceView cids isWordChar always
+                modifyIDE_ $ (currentState .~ IsCompleting cids)
+                    . (ideGtk . _Just . completion .~ ((width, height), Just (CompletionWindow window tree store)))
+                updateOptions window tree store sourceView cids isWordChar always)
 
 addEventHandling :: TextEditor editor => Window -> EditorView editor -> TreeView -> SeqStore Text
                  -> (Char -> Bool) -> Bool -> IDEM Connections
@@ -262,7 +268,7 @@ addEventHandling window sourceView tree store isWordChar always = do
         Just model  <- treeViewGetModel tree
         selection   <- treeViewGetSelection tree
         count       <- treeModelIterNChildren model Nothing
-        Just column <- treeViewGetColumn tree 0
+        -- Just column <- treeViewGetColumn tree 0
         let whenVisible f = getWidgetVisible tree >>= \case
                                 True  -> f
                                 False -> return False
@@ -284,7 +290,7 @@ addEventHandling window sourceView tree store isWordChar always = do
                 return True
         case (name, modifier, char) of
             (Just "Tab", _, _) -> whenVisible . liftIDE $ do
-                tryToUpdateOptions window tree store sourceView True isWordChar always
+                _ <- tryToUpdateOptions window tree store sourceView True isWordChar always
                 return True
             (Just "Return", _, _) -> getWidgetVisible tree >>= \case
                 True  -> do
@@ -331,7 +337,6 @@ addEventHandling window sourceView tree store isWordChar always = do
     resizeHandler <- liftIO $ newIORef Nothing
 
     idButtonPress <- ConnectC window <$> onWidgetButtonPressEvent window (\e -> do
-        button     <- getEventButtonButton e
         x          <- getEventButtonX e
         y          <- getEventButtonY e
 
@@ -385,8 +390,8 @@ addEventHandling window sourceView tree store isWordChar always = do
                 return True
             Nothing     -> return False)
 
-    idSelected <- ConnectC tree <$> onTreeViewRowActivated tree (\treePath column -> (`reflectIDE` ideR) $ do
-        withWord store treePath (replaceWordStart sourceView isWordChar)
+    idSelected <- ConnectC tree <$> onTreeViewRowActivated tree (\treePath _column -> (`reflectIDE` ideR) $ do
+        _ <- withWord store treePath (replaceWordStart sourceView isWordChar)
         postAsyncIDE cancel)
 
     return $ concat [cidsPress, cidsRelease, [idButtonPress, idMotion, idButtonRelease, idSelected]]
@@ -438,11 +443,11 @@ replaceWordStart sourceView isWordChar name = do
         Nothing -> return False
 
 cancelCompletion :: Window -> TreeView -> SeqStore Text -> Connections -> IDEAction
-cancelCompletion window tree store connections = do
+cancelCompletion window _tree store connections = do
     seqStoreClear (store :: SeqStore Text)
     signalDisconnectAll connections
     widgetHide window
-    modifyIDE_ (\ide -> ide{currentState = IsRunning})
+    modifyIDE_ $ currentState .~ IsRunning
 
 updateOptions :: forall editor. TextEditor editor => Window -> TreeView -> SeqStore Text -> EditorView editor -> Connections -> (Char -> Bool) -> Bool -> IDEAction
 updateOptions window tree store sourceView connections isWordChar always = do
@@ -484,6 +489,7 @@ findWordEnd iter isWordChar = do
         Nothing -> forwardToLineEndC iter
         Just we -> return we
 
+longestCommonPrefix :: Text -> Text -> Text
 longestCommonPrefix a b = case T.commonPrefixes a b of
                             Nothing        -> T.empty
                             Just (p, _, _) -> p
@@ -510,7 +516,7 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                 rect                 <- getIterLocation sourceView start
                 startx               <- getRectangleX rect
                 starty               <- getRectangleY rect
-                width                <- getRectangleWidth rect
+                _width               <- getRectangleWidth rect
                 height               <- getRectangleHeight rect
                 (wWindow, hWindow)   <- windowGetSize window
                 (x, y)               <- bufferToWindowCoords sourceView (fromIntegral startx, fromIntegral (starty+height))
@@ -522,11 +528,10 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                         Just namesSW <- widgetGetParent tree
                         rNames       <- widgetGetAllocation namesSW
                         wNames       <- getRectangleWidth rNames
-                        hNames       <- getRectangleHeight rNames
+                        _hNames      <- getRectangleHeight rNames
                         paned        <- widgetGetParent namesSW >>= liftIO . unsafeCastTo Paned . fromJust
                         Just first   <- panedGetChild1 paned
                         Just second  <- panedGetChild2 paned
-                        screen       <- windowGetScreen window
                         display      <- windowGetDisplay drawWindow
                         monitor      <- displayGetMonitorAtPoint display (ox+fromIntegral x) (oy+fromIntegral y)
                         monitorLeft  <- displayGetMonitorAtPoint display (ox+fromIntegral x-wWindow+wNames) (oy+fromIntegral y)
@@ -574,6 +579,10 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
             when (newWordStart /= currentWordStart) $
                 void $ replaceWordStart sourceView isWordChar newWordStart
 
+getRow
+  :: (MonadIO m, MonadFail m, IsTreeView a)
+  => a
+  -> m (Maybe Int32)
 getRow tree = do
     Just model <- treeViewGetModel tree
     selection  <- treeViewGetSelection tree

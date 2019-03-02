@@ -18,9 +18,7 @@ module IDE.Command.VCS.Mercurial (
 ) where
 
 import Prelude ()
-import Prelude.Compat
-import IDE.Core.Types
-import IDE.Core.State
+import Prelude.Compat ()
 
 import qualified IDE.Command.VCS.Common.Helper as Helper
 import qualified IDE.Command.VCS.Types as Types

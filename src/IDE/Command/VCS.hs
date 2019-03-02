@@ -16,7 +16,5 @@ module IDE.Command.VCS (
 
 ) where
 
-import Prelude ()
-import Prelude.Compat
 
 

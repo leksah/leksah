@@ -20,13 +20,14 @@ module IDE.Statusbar (
 
 import Prelude ()
 import Prelude.Compat
+import Control.Monad (void)
 import IDE.Core.State
-       (postAsyncIDE, getMainWindow, widgetGet, PaneMonad(..),
-        IDEAction(..), StatusbarCompartment(..))
-import Graphics.UI.Frame.Panes (IDEPane(..), paneName)
+       (IDEAction, StatusbarCompartment(..))
+import IDE.Gtk.State
+       (getMainWindow, widgetGet, PaneMonad(..),
+        postAsyncIDE)
 import Text.Printf (printf)
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.Text (Text)
 import qualified Data.Text as T (pack, lines, unpack)
 import GI.Gtk.Objects.Statusbar
        (Statusbar(..), statusbarNew, statusbarPush, statusbarPop)
@@ -48,41 +49,30 @@ changeStatusbar = postAsyncIDE . mapM_ changeStatusbar'
     changeStatusbar' (CompartmentCommand accStr) =  do
         sb <- getSBSpecialKeys
         statusbarPop sb 1
-        statusbarPush sb 1 accStr
-        return ()
-    changeStatusbar' (CompartmentPane (Just (PaneC pane))) =  do
+        void $ statusbarPush sb 1 accStr
+    changeStatusbar' (CompartmentPane s) =  do
         sb <- getSBActivePane
         statusbarPop sb 1
-        statusbarPush sb 1 (paneName pane)
-        return ()
-    changeStatusbar' (CompartmentPane Nothing) =  do
-        sb <- getSBActivePane
-        statusbarPop sb 1
-        statusbarPush sb 1 ""
-        return ()
+        void $ statusbarPush sb 1 s
     changeStatusbar' (CompartmentState string) =  do
         let realStr = if '\n' `elem` T.unpack string then fromMaybe "" (listToMaybe $ T.lines string) <> " ..." else string
         sb <- getSBErrors
         statusbarPop sb 1
-        statusbarPush sb 1 realStr
-        return ()
+        void $ statusbarPush sb 1 realStr
     changeStatusbar' (CompartmentPackage string) =  do
         sb <- getSBActivePackage
         window <- getMainWindow
         statusbarPop sb 1
-        statusbarPush sb 1 string
+        void $ statusbarPush sb 1 string
         setWindowTitle window $ "Leksah: " <> string
-        return ()
     changeStatusbar' (CompartmentBufferPos (line,col)) =  do
         sb <- getStatusbarLC
         statusbarPop sb 1
-        statusbarPush sb 1 (T.pack $ printf "Ln %4d, Col %3d" (line + 1) (col + 1))
-        return ()
+        void $ statusbarPush sb 1 (T.pack $ printf "Ln %4d, Col %3d" (line + 1) (col + 1))
     changeStatusbar' (CompartmentOverlay modi) =  do
         sb <- getStatusbarIO
         statusbarPop sb 1
-        statusbarPush sb 1 $ if modi then "OVR" else "INS"
-        return ()
+        void $ statusbarPush sb 1 $ if modi then "OVR" else "INS"
     changeStatusbar' (CompartmentBuild bool) =  do
         im <- getImBuild
         imageSetFromIconName im (Just $ if bool then "ide_build" else "ide_empty") (fromIntegral . fromEnum $ IconSizeMenu)

@@ -1,5 +1,7 @@
 {-# LANGUAGE CPP #-}
+#ifdef LEKSAH_WITH_YI
 {-# LANGUAGE OverloadedStrings #-}
+#endif
 {- Based on example config yi example-configs/yi-vim.hs -}
 
 module IDE.TextEditor.Yi.Config (
@@ -112,13 +114,13 @@ myModes = [
 
 data Config = Config
 data Control = Control
-data ControlM a = ControlM
-data YiM a = YiM
+data ControlM a
+data YiM a
 
 defaultYiConfig :: Config
 defaultYiConfig = Config
 start :: Config -> (Control -> IO a) -> IO a
-start yiConfig f = f Control
+start _yiConfig f = f Control
 runControl :: ControlM a -> Control -> IO a
 runControl = undefined
 liftYi :: YiM a -> ControlM a

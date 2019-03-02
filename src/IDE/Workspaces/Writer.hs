@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -30,35 +31,31 @@ import Prelude ()
 import Prelude.Compat
 import IDE.Core.Types
 import IDE.Core.State
+import IDE.Gtk.State
 import IDE.Package
-       (getModuleTemplate, getPackageDescriptionAndPath, activatePackage,
-        deactivatePackage, ideProjectFromPath)
+       (activatePackage, deactivatePackage, ideProjectFromPath)
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
 import Data.Maybe
-import Control.Monad (unless, join, void, when)
+import Data.Function ((&))
+import Control.Monad (unless, void, when)
 import Control.Monad.Trans (liftIO)
+import Control.Lens ((^.), (.~))
 import System.Time (getClockTime)
 import System.FilePath
-       (takeFileName, (</>), isAbsolute, dropFileName, makeRelative,
-        dropExtension, takeBaseName, addExtension, takeExtension,
-        takeDirectory)
-import Graphics.UI.Editor.Parameters
-    (Parameter(..), (<<<-), paraName, emptyParams)
-import qualified Text.PrettyPrint as  PP (text)
+       (takeFileName, (</>), isAbsolute, dropFileName, makeRelative)
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (unpack, pack)
 import System.FSNotify (watchDir, Event(..), watchTree, eventPath, isPollingManager)
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
 import qualified Data.Map as Map (empty)
-import Text.ParserCombinators.Parsec (parseFromFile, CharParser)
 import Data.Text (Text)
 import Data.Map (Map)
 import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
 import Data.Aeson
-       (eitherDecode, encode, ToJSON(..), FromJSON(..))
+       (eitherDecode, ToJSON(..), FromJSON(..))
 import Data.Aeson.Types
        (Options, genericParseJSON, genericToEncoding, genericToJSON,
         defaultOptions, fieldLabelModifier)
@@ -66,12 +63,11 @@ import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.List (isPrefixOf, stripPrefix)
 import Data.Char (toLower)
 import IDE.Pane.SourceBuffer (setModifiedOnDisk)
-import System.Directory (doesDirectoryExist)
 import Control.Concurrent (putMVar, takeMVar, tryPutMVar)
 import qualified Data.Set as S (fromList, insert, member)
 import Control.Exception (evaluate)
 import qualified Data.Map as M
-       (partitionWithKey, partition, fromList, member)
+       (partitionWithKey, fromList, member)
 import Data.Foldable (forM_)
 
 data WorkspaceFile = WorkspaceFile {
@@ -101,11 +97,11 @@ instance FromJSON WorkspaceFile where
 writeWorkspace :: Workspace -> IDEAction
 writeWorkspace ws = do
     timeNow      <- liftIO getClockTime
-    let newWs    =  ws {wsSaveTime = T.pack $ show timeNow,
-                         wsVersion = workspaceVersion}
+    let newWs    =  ws & wsSaveTime .~ T.pack (show timeNow)
+                       & wsVersion .~ workspaceVersion
     setWorkspace $ Just newWs
-    newWs' <- liftIO $ makePathsRelative newWs (wsFile ws)
-    liftIO . LBS.writeFile (wsFile ws) $ encodePretty newWs'
+    newWs' <- liftIO $ makePathsRelative newWs (ws ^. wsFile)
+    liftIO . LBS.writeFile (ws ^. wsFile) $ encodePretty newWs'
 
 readWorkspace :: FilePath -> IDEM (Either String Workspace)
 readWorkspace fp = do
@@ -133,15 +129,15 @@ makePathsAbsolute ws bp = do
     projectFiles      <- liftIO $ mapM (makeAbsolute (dropFileName wsFile')) (wsfProjectFiles ws)
     projects          <- catMaybes <$> mapM ideProjectFromPath projectFiles
     return Workspace
-                { wsFile              = wsFile'
-                , wsVersion           = wsfVersion ws
-                , wsSaveTime          = wsfSaveTime ws
-                , wsName              = wsfName ws
-                , wsProjects          = projects
-                , wsActiveProjectFile = wsActiveProjectFile'
-                , wsActivePackFile    = wsActivePackFile'
-                , wsActiveComponent   = wsfActiveComponent ws
-                , packageVcsConf      = wsfPackageVcsConf ws
+                { _wsFile              = wsFile'
+                , _wsVersion           = wsfVersion ws
+                , _wsSaveTime          = wsfSaveTime ws
+                , _wsName              = wsfName ws
+                , _wsProjects          = projects
+                , _wsActiveProjectFile = wsActiveProjectFile'
+                , _wsActivePackFile    = wsActivePackFile'
+                , _wsActiveComponent   = wsfActiveComponent ws
+                , _packageVcsConf      = wsfPackageVcsConf ws
                 }
     where
         makeAbsolute basePath relativePath  =
@@ -150,18 +146,20 @@ makePathsAbsolute ws bp = do
                     then relativePath
                     else basePath </> relativePath)
 
-emptyWorkspace =  Workspace {
-    wsVersion            =   workspaceVersion
-,   wsSaveTime           =   ""
-,   wsName               =   ""
-,   wsFile               =   ""
-,   wsProjects           =   []
-,   wsActiveProjectFile  =   Nothing
-,   wsActivePackFile     =   Nothing
-,   wsActiveComponent    =   Nothing
-,   packageVcsConf       =   Map.empty
-}
+--emptyWorkspace :: Workspace
+--emptyWorkspace =  Workspace {
+--    _wsVersion            =   workspaceVersion
+--,   _wsSaveTime           =   ""
+--,   _wsName               =   ""
+--,   _wsFile               =   ""
+--,   _wsProjects           =   []
+--,   _wsActiveProjectFile  =   Nothing
+--,   _wsActivePackFile     =   Nothing
+--,   _wsActiveComponent    =   Nothing
+--,   _packageVcsConf       =   Map.empty
+--}
 
+emptyWorkspaceFile :: WorkspaceFile
 emptyWorkspaceFile =  WorkspaceFile {
     wsfVersion           =   workspaceVersion
 ,   wsfSaveTime          =   ""
@@ -177,13 +175,13 @@ getProject :: FilePath -> [Project] -> Maybe Project
 getProject fp projects =
     case filter (\ p -> pjFile p == fp) projects of
         [p] -> Just p
-        l   -> Nothing
+        _   -> Nothing
 
 getPackage :: FilePath -> [IDEPackage] -> Maybe IDEPackage
 getPackage fp packages =
     case filter (\ p -> ipdCabalFile p == fp) packages of
         [p] -> Just p
-        l   -> Nothing
+        _   -> Nothing
 
 -- ---------------------------------------------------------------------
 -- This needs to be incremented, when the workspace format changes
@@ -195,17 +193,17 @@ setWorkspace :: Maybe Workspace -> IDEAction
 setWorkspace mbWs = do
     liftIO $ debugM "leksah" "setWorkspace"
     ideR <- ask
-    mbOldWs <- readIDE workspace
-    modifyIDE_ (\ide -> ide{workspace = mbWs})
+--    mbOldWs <- readIDE workspace
+    modifyIDE_ $ workspace .~ mbWs
     let packFileAndExe =  case mbWs of
                             Nothing -> Nothing
-                            Just ws -> Just (wsActiveProjectFile ws, wsActivePackFile ws, wsActiveComponent ws)
-    let oldPackFileAndExe = case mbOldWs of
-                            Nothing -> Nothing
-                            Just ws -> Just (wsActiveProjectFile ws, wsActivePackFile ws, wsActiveComponent ws)
+                            Just ws -> Just (ws ^. wsActiveProjectFile, ws ^. wsActivePackFile, ws ^. wsActiveComponent)
+--    let oldPackFileAndExe = case mbOldWs of
+--                            Nothing -> Nothing
+--                            Just ws -> Just (ws ^. wsActiveProjectFile, ws ^. wsActivePackFile , ws ^. wsActiveComponent)
     case (packFileAndExe, mbWs) of
         (Just (Just pj, mbPackFile, mbExe), Just ws) ->
-            case getProject pj (wsProjects ws) of
+            case getProject pj (ws ^. wsProjects) of
                 Just project ->
                     case (`getPackage` pjPackages project) =<< mbPackFile of
                         Just package -> void (activatePackage mbPackFile (Just project) (Just package) mbExe)
@@ -216,7 +214,7 @@ setWorkspace mbWs = do
     mbComponent <- readIDE activeComponent
     let wsStr = case mbWs of
                     Nothing -> ""
-                    Just ws -> wsName ws
+                    Just ws -> ws ^. wsName
     let txt = wsStr <> " "
                  <> (case mbPack of
                             Nothing  -> ""
@@ -233,20 +231,20 @@ setWorkspace mbWs = do
             let rebuild = void . liftIO $ tryPutMVar tb ()
             unless (isPollingManager fsn) . liftIO $ do
                 oldWatchers <- takeMVar watchersMVar
-                let projectFiles = S.fromList $ map pjFile $ wsProjects ws
-                    packageFiles = S.fromList $ map ipdCabalFile $ pjPackages =<< wsProjects ws
-                    newProjects = filter (not . (`M.member` fst oldWatchers) . pjFile) $ wsProjects ws
-                    newPackages = filter (not . (`M.member` snd oldWatchers) . ipdCabalFile) $ pjPackages =<< wsProjects ws
+                let projectFiles = S.fromList $ map pjFile $ ws ^. wsProjects
+                    packageFiles = S.fromList $ map ipdCabalFile $ pjPackages =<< ws ^. wsProjects
+                    newProjects = filter (not . (`M.member` fst oldWatchers) . pjFile) $ ws ^. wsProjects
+                    newPackages = filter (not . (`M.member` snd oldWatchers) . ipdCabalFile) $ pjPackages =<< ws ^. wsProjects
                 newProjectWatchers <- forM newProjects $ \project -> do
                     debugM "leksah" $ "Watching project " <> show (pjFile project)
                     fmap (pjFile project,) <$> watchDir fsn (pjDir project) (\case
-                        Modified f _ _ -> True
+                        Modified {} -> True
                         _ -> False) $ \event -> do
                             let f = eventPath event
-                            (`reflectIDE` ideR) $ setModifiedOnDisk f
+                            void . (`reflectIDE` ideR) $ setModifiedOnDisk f
                             when (takeFileName f == takeFileName (pjFile project)) $
                                 (`reflectIDE` ideR) $ postAsyncIDE $
-                                    readWorkspace (wsFile ws) >>= \case
+                                    readWorkspace (ws ^. wsFile) >>= \case
                                         Left _ -> return ()
                                         Right ws' -> setWorkspace (Just ws')
                 newPackageWatchers <- forM newPackages $ \package -> do
@@ -255,7 +253,7 @@ setWorkspace mbWs = do
                         mapM (myCanonicalizePath . (ipdPackageDir package </>)) (ipdSrcDirs package)
 
                     fmap (ipdCabalFile package,) <$> watchTree fsn (ipdPackageDir package) (\case
-                        Modified f _ _ -> True
+                        Modified {} -> True
                         _ -> False) $ \event -> do
                             let f = eventPath event
                             (`reflectIDE` ideR) $ setModifiedOnDisk f >>= \case
@@ -272,10 +270,9 @@ setWorkspace mbWs = do
                 forM_ discardPackageWatches id
                 putMVar watchersMVar (keepProjectWatchers <> M.fromList newProjectWatchers, keepPackageWatchers <> M.fromList newPackageWatchers)
         Nothing -> return ()
-    triggerEventIDE (StatusbarChanged [CompartmentPackage txt])
-    triggerEventIDE (WorkspaceChanged True True)
-    triggerEventIDE $ UpdateWorkspaceInfo True
-    return ()
+    triggerEventIDE_ (StatusbarChanged [CompartmentPackage txt])
+    triggerEventIDE_ (WorkspaceChanged True True)
+    triggerEventIDE_ $ UpdateWorkspaceInfo True
   where
     isSourceIn srcDir f =
         case stripPrefix srcDir f of
@@ -284,26 +281,26 @@ setWorkspace mbWs = do
 
 makePathsRelative :: Workspace -> FilePath -> IO WorkspaceFile
 makePathsRelative ws wsFile' = do
-    wsActiveProjectFile' <- case wsActiveProjectFile ws of
+    wsActiveProjectFile' <- case ws ^. wsActiveProjectFile of
                             Nothing -> return Nothing
                             Just fp -> do
                                 nfp <- liftIO $ myCanonicalizePath fp
                                 return (Just (makeRelative (dropFileName wsFile') nfp))
-    wsActivePackFile' <- case wsActivePackFile ws of
+    wsActivePackFile' <- case ws ^. wsActivePackFile of
                             Nothing -> return Nothing
                             Just fp -> do
                                 nfp <- liftIO $ myCanonicalizePath fp
                                 return (Just (makeRelative (dropFileName wsFile') nfp))
-    wsProjectFiles' <- mapM myCanonicalizePath (wsProjectFiles ws)
+    wsProjectFiles' <- mapM myCanonicalizePath (ws ^. wsProjectFiles)
     let relativePaths = map (makeRelative (dropFileName wsFile')) wsProjectFiles'
     return WorkspaceFile
-                { wsfVersion           = wsVersion ws
-                , wsfSaveTime          = wsSaveTime ws
-                , wsfName              = wsName ws
+                { wsfVersion           = ws ^. wsVersion
+                , wsfSaveTime          = ws ^. wsSaveTime
+                , wsfName              = ws ^. wsName
                 , wsfProjectFiles      = relativePaths
                 , wsfActiveProjectFile = wsActiveProjectFile'
                 , wsfActivePackFile    = wsActivePackFile'
-                , wsfActiveComponent   = wsActiveComponent ws
-                , wsfPackageVcsConf    = packageVcsConf ws
+                , wsfActiveComponent   = ws ^. wsActiveComponent
+                , wsfPackageVcsConf    = ws ^. packageVcsConf
                 }
 

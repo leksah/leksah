@@ -21,28 +21,21 @@ module IDE.Command.VCS.Common.Workspaces (
 import Prelude ()
 import Prelude.Compat
 
+import GHC.Stack (HasCallStack)
+
 -- VCS imports
-import IDE.Utils.FileUtils(getConfigFilePathForLoad)
 import qualified IDE.Utils.GUIUtils as GUIUtils
-import IDE.Core.Types
 import IDE.Core.State
+       (IDEAction, MonadIDE, Workspace, IDEPackage, IDEM,
+       VCSConf, readIDE, ideGtk, wsAllPackages, ipdCabalFile)
 import qualified IDE.Command.VCS.Common as Common
-import qualified IDE.Command.VCS.SVN as SVN (mkSVNActions)
-import qualified IDE.Command.VCS.GIT as GIT (mkGITActions)
-import qualified IDE.Command.VCS.Common.GUI as GUI
 
-import qualified VCSWrapper.Common as VCS
-import qualified VCSGui.Common as VCSGUI
+import Control.Monad.Reader(liftIO, when)
 
-import Data.IORef(writeIORef, readIORef, IORef(..))
-import Control.Monad.Reader(liftIO,ask,when)
-
-import Graphics.UI.Frame.Panes
-
+import Control.Lens (to, (^.))
 import Data.Maybe
-import Data.List
 import System.Log.Logger (debugM)
-import qualified Data.Text as T (unpack, pack)
+import qualified Data.Text as T (unpack)
 import GI.Gtk.Objects.MenuItem (menuItemSetSubmenu)
 import GI.Gtk.Objects.Menu (noMenu, menuNew)
 import GI.Gtk.Objects.Widget (widgetShowAll)
@@ -52,34 +45,36 @@ onWorkspaceClose = do
     vcsItem <- GUIUtils.getVCS
     menuItemSetSubmenu vcsItem noMenu
 
-onWorkspaceOpen :: Workspace -> IDEAction
+whenIDEGtk :: MonadIDE m => m () -> m ()
+whenIDEGtk f = readIDE (ideGtk . to isJust) >>= (`when` f)
+
+onWorkspaceOpen :: HasCallStack => Workspace -> IDEAction
 onWorkspaceOpen ws = do
     liftIO $ debugM "leksah" "onWorkspaceOpen"
-    let mbPackages = wsAllPackages ws
-    packages <- mapM (mapper ws)
-                             mbPackages
-    vcsItem <- GUIUtils.getVCS
-    vcsMenu <- liftIO menuNew
+    whenIDEGtk $ do
+        let mbPackages = ws ^. wsAllPackages
+        packages <- mapM (mapper ws)
+                                 mbPackages
+        vcsItem <- GUIUtils.getVCS
+        vcsMenu <- liftIO menuNew
 
-    ideR <- ask
+        --for each package add an extra menu containing vcs specific menuitems
+        mapM_ (\(p,mbVcsConf) -> do
+                    Common.setMenuForPackage vcsMenu (ipdCabalFile p) mbVcsConf
+                    menuItemSetSubmenu vcsItem (Just vcsMenu)
+                    )
+               packages
 
-    --for each package add an extra menu containing vcs specific menuitems
-    mapM_ (\(p,mbVcsConf) -> do
-                Common.setMenuForPackage vcsMenu (ipdCabalFile p) mbVcsConf
-                menuItemSetSubmenu vcsItem (Just vcsMenu)
-                )
-           packages
-
-    widgetShowAll vcsItem
-    return ()
+        widgetShowAll vcsItem
+        return ()
     where
     mapper :: Workspace -> IDEPackage -> IDEM (IDEPackage, Maybe VCSConf)
     mapper workspace p = do
         let fp = ipdCabalFile p
         eErrConf <- Common.getVCSConf' workspace fp
         case eErrConf of
-            Left error -> do
-                liftIO . putStrLn . T.unpack $ "Could not retrieve vcs-conf due to '"<>error<>"'."
+            Left err -> do
+                liftIO . putStrLn . T.unpack $ "Could not retrieve vcs-conf due to '"<>err<>"'."
                 return (p, Nothing)
             Right mbConf -> case mbConf of
                                 Nothing -> do

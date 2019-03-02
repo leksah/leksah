@@ -1,20 +1,30 @@
-{ nixpkgs ?
+{ nixpkgsFunc ?
     # Default for CI reproducibility, optionally override in your configuration.nix.
     if (import <nixpkgs> {}).stdenv.isDarwin
       then
-        (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
+        import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
           owner = "hamishmack"; repo = "nixpkgs";
-          rev = "38f730fe9c5da285d8a7e52f9c319b871391dcd6"; # branch leksah-nixpkgs-11
-          sha256 = "0jcyyxm6bci2kfba3937pglcplild56vcgasxygcnyah665zgy20";
-        }) {})
+          rev = "6a3d5a996aa77c0c9703ecb2d06f8c661a6169dc"; # branch leksah-nixpkgs-11
+          sha256 = "199ss7xignbxwi2gr0fiv4l8qgf2604n69qp0rx5q31m16ax7c2s";
+        })
       else
-        (import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
+        import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
           owner = "hamishmack"; repo = "nixpkgs";
           rev = "1a4b5101de556738c8b8d9941f15c4b2d852f6c0"; # branch gnome-3.30
           sha256 = "0fac2jjkjn1ad5zgnmmcwmgkh40h0dj0s5vcfl2qml9lqzb6ja1b";
-        }) {})
-, compiler ? "ghc844"
+        })
+, compiler ? "ghc863"
 }:
+
+let
+  reflex-platform = import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
+    owner = "reflex-frp";
+    repo = "reflex-platform";
+    rev = "ca2dc8a7768abbcdf3edd3ede9c359144c84dd3f";
+    sha256 = "0zqg9fq7bnl1zr673ij73cd0z95w38qp9i1r7gjc1f5zi8gmpwhx";
+  }) { inherit nixpkgsFunc; };
+  nixpkgs = reflex-platform.nixpkgs;
+in
 
 with nixpkgs.pkgs.haskell.lib;
 
@@ -37,33 +47,40 @@ let
         # TODO: what else?
       ) src;
 
-  haskell-gi-github = nixpkgs.fetchFromGitHub {
-    owner = "haskell-gi";
-    repo = "haskell-gi";
-    rev = "41335d28392d95751877fbafdc439dace63357a7";
-    sha256 = "1gmm96b5y6ikikn3am1zsjrkasc11llfzij2f6bvv7bfk8w61csv";
-  };
+#  haskell-gi-github = nixpkgs.fetchFromGitHub {
+#    owner = "haskell-gi";
+#    repo = "haskell-gi";
+#    rev = "41335d28392d95751877fbafdc439dace63357a7";
+#    sha256 = "1gmm96b5y6ikikn3am1zsjrkasc11llfzij2f6bvv7bfk8w61csv";
+#  };
 
   jsaddle-github = nixpkgs.fetchFromGitHub {
     owner = "ghcjs";
     repo = "jsaddle";
-    rev = "68208be806c49a2a0c9f037dfac85feae10a8c80";
-    sha256 = "0acj0x716ikfb08ndib36jmwxkwq399lvkip46sfkh1ynn0pvc1c";
+    rev = "98a00b334b0ce62bf6bd3a4af682b25a8ea28193";
+    sha256 = "057a4imgyq4aabsqhlv9zd3z855cwii2qq8i5hmfnfmc9wcx403l";
   };
 
   ghcjs-dom-github = nixpkgs.fetchFromGitHub {
     owner = "ghcjs";
     repo = "ghcjs-dom";
-    rev = "a6d51fcf0e79e7de50a0cb2088042e323133a7a8";
-    sha256 = "06g0vvgvxxxzw9h2jqwkykam5jpngk6xlph29jyg92c00jms2bl4";
+    rev = "f525eee4405c5c59dfb2b90e5f4226bbc881be8d";
+    sha256 = "1pmpxw06hhkc7dvaqg2pw9a9sad42wwhx8ggfnpsx53g2vmcr2sp";
   };
 
-  haddock-ghc86 = nixpkgs.fetchFromGitHub {
-    owner = "haskell";
-    repo = "haddock";
-    rev = "39f591b945bc3e507c3c54ba762b26cb0fb9ded7";
-    sha256 = "08hr6pg8dbb71f0hm6fqx0dxscmnpkp618anmjs5jqc492k7xbwg";
+  reflex-dom-github = nixpkgs.fetchFromGitHub {
+    owner = "reflex-frp";
+    repo = "reflex-dom";
+    rev = "a8518844e423b7a10fa496d6c4443500256a1ac6";
+    sha256 = "1hiyilyn93afy2f8gk4gxq1wnv0rngp13xklc6z2dpx0mqq0p785";
   };
+
+#  haddock-ghc86 = nixpkgs.fetchFromGitHub {
+#    owner = "haskell";
+#    repo = "haddock";
+#    rev = "39f591b945bc3e507c3c54ba762b26cb0fb9ded7";
+#    sha256 = "08hr6pg8dbb71f0hm6fqx0dxscmnpkp618anmjs5jqc492k7xbwg";
+#  };
 
   launch-leksah-script = nixpkgs.writeShellScriptBin "launch-leksah" ''
     "$@"
@@ -76,39 +93,60 @@ let
       vcswrapper     = filterSubmodule ./vendor/haskellVCSWrapper/vcswrapper;
       vcsgui         = filterSubmodule ./vendor/haskellVCSGUI/vcsgui;
       system-fileio  = filterSubmodule ./vendor/haskell-filesystem/system-fileio;
-      cabal-plan     = nixpkgs.fetchFromGitHub {
-        owner = "haskell-hvr";
-        repo = "cabal-plan";
-        rev = "7e9bc5d83cbaeca3fa6327d645775aee5f48c662";
-        sha256 = "1kv0vm9fpy8nvppjjsjjqybscq4c7pi2y13nvdmaxhjralcrh44c";
-      };
+#      cabal-plan     = nixpkgs.fetchFromGitHub {
+#        owner = "haskell-hvr";
+#        repo = "cabal-plan";
+#        rev = "7e9bc5d83cbaeca3fa6327d645775aee5f48c662";
+#        sha256 = "1kv0vm9fpy8nvppjjsjjqybscq4c7pi2y13nvdmaxhjralcrh44c";
+#      };
       brittany       = filterSubmodule ./vendor/brittany;
       HaRe           = filterSubmodule ./vendor/HaRe;
       cabal-helper   = filterSubmodule ./vendor/HaRe/submodules/cabal-helper;
-      ghc-exactprint = builtins.fetchTarball {
-        url = "http://hackage.haskell.org/package/ghc-exactprint-0.5.8.2/ghc-exactprint-0.5.8.2.tar.gz";
-        sha256 = "1y5bvnazplpjv38398vxg2vq1477jn1l5ymwg3vrxr3w4llywlsv";
-      };
+#      ghc-exactprint = builtins.fetchTarball {
+#        url = "http://hackage.haskell.org/package/ghc-exactprint-0.5.8.2/ghc-exactprint-0.5.8.2.tar.gz";
+#        sha256 = "1y5bvnazplpjv38398vxg2vq1477jn1l5ymwg3vrxr3w4llywlsv";
+#      };
       ghc-mod        = filterSubmodule ./vendor/HaRe/submodules/ghc-mod;
       ghc-mod-core   = filterSubmodule ./vendor/HaRe/submodules/ghc-mod/core;
-      git = nixpkgs.fetchFromGitHub {
-        owner = "hamishmack";
-        repo = "hs-git";
-        rev = "c829ec133f603e376177deaa57a333ef84308af3";
-        sha256 = "1hcl5izpcpi9sjfvmv1g5si1wg0jw9v9wbk5hvn30q67xcxwx891";
-      };
+#      git = nixpkgs.fetchFromGitHub {
+#        owner = "hamishmack";
+#        repo = "hs-git";
+#        rev = "c829ec133f603e376177deaa57a333ef84308af3";
+#        sha256 = "1hcl5izpcpi9sjfvmv1g5si1wg0jw9v9wbk5hvn30q67xcxwx891";
+#      };
       haskell-gi-overloading = "0.0";
       gi-javascriptcore = builtins.fetchTarball {
         url = "http://hackage.haskell.org/package/gi-javascriptcore-4.0.16/gi-javascriptcore-4.0.16.tar.gz";
         sha256 = "1wznff7qhr11d4cjmvz8fij7p54qbx5ibbr4vlbds5ml2ms2gx0p";
       };
-      base-compat-batteries = "0.10.4";
-      contravariant = "1.5";
+#      base-compat-batteries = "0.10.4";
+#      contravariant = "1.5";
+#      jsaddle-dom = nixpkgs.fetchFromGitHub {
+#         owner = "ghcjs";
+#         repo = "jsaddle-dom";
+#         rev = "6ba167147476adebe7783e1521591aa3fd13da28";
+#         sha256 = "0nj2g2lmcx880v6bgy3y7aalhfrpsx7kz8kswjbkyscxws6vkfli";
+#      };
+      reflex = nixpkgs.fetchFromGitHub {
+         owner = "reflex-frp";
+         repo = "reflex";
+         rev = "2e20b188761cdf13909b7edfc6788241682c0ee4";
+         sha256 = "08kid1qv00lg7fbk3w1878200c0zn97y61g1gqw1qj835xf4893z";
+      };
+      reflex-dom-core = "${reflex-dom-github}/reflex-dom-core";
+      reflex-dom-svg = nixpkgs.fetchFromGitHub {
+        owner = "qfpl";
+        repo = "reflex-dom-svg";
+        rev = "8c985fa9c210a061fc70893823b58c765bfdb7c3";
+        sha256 = "0cqdc3nz9lk8q0vh651wsc8siaz7aam03vvqwxgfpj6dnl9biq6r";
+      };
+#      monoidal-containers = "0.4.0.0";
 
 #      Stuff that GHC 8.6.1 might need
 #      http-types = "0.12.2";
 #      aeson = "1.4.1.0";
-#      haskell-src-exts = "1.20.3";
+      haskell-src-exts = "1.21.0";
+      haskell-src-meta = "0.8.1";
 #      concurrent-output = "1.10.7";
 #      unliftio = "0.2.8.1";
 #      lifted-async = "0.10.0.3";
@@ -157,45 +195,47 @@ let
                             then dontCheck (self.callHackage "haddock-api" "2.18.1" {})
                             else if compiler == "ghc842" || compiler == "ghc843" || compiler == "ghc844"
                               then dontCheck (self.callHackage "haddock-api" "2.20.0" {})
-                              else super.haddock-api;
+                              else dontCheck (dontHaddock super.haddock-api);
         jsaddle = doJailbreak (jsaddlePkgs.jsaddle);
         jsaddle-warp = dontCheck jsaddlePkgs.jsaddle-warp;
-        jsaddle-dom = import (nixpkgs.fetchFromGitHub {
-           owner = "ghcjs";
-           repo = "jsaddle-dom";
-           rev = "bb8516918043d9164c05d016f37448ac13f6fe71";
-           sha256 = "1a79y1prgynjhgfp7nfp3xws9bybyh0wdis44vfhkmc6bvz425fl";
-        }) self;
+        jsaddle-wkwebview = dontCheck jsaddlePkgs.jsaddle-wkwebview;
 
         vado = doJailbreak super.vado;
-        criterion = doJailbreak super.criterion;
-        ghcjs-dom-jsaddle = ghcjsDom.ghcjs-dom-jsaddle;
-        haskell-gi = super.haskell-gi.overrideAttrs (drv: {
-          src = "${haskell-gi-github}";
-        });
-        haskell-gi-base = super.haskell-gi-base.overrideAttrs (drv: {
-          src = "${haskell-gi-github}/base";
-        });
-        gi-gdk = super.gi-gdk.overrideAttrs(drv: {strictDeps = true;});
-        gi-gtk = super.gi-gtk.overrideAttrs(drv: {strictDeps = true;});
-        gi-gtksource = super.gi-gtksource.overrideAttrs(drv: {strictDeps = true;});
+        brittany = doJailbreak super.brittany;
+#        criterion = doJailbreak super.criterion;
+        ghcjs-dom-jsaddle = dontHaddock ghcjsDom.ghcjs-dom-jsaddle;
+        ghcjs-dom = ghcjsDom.ghcjs-dom;
+        reflex-dom-core = dontHaddock (doJailbreak (dontCheck super.reflex-dom-core));
+#        haskell-gi = super.haskell-gi.overrideAttrs (drv: {
+#          src = "${haskell-gi-github}";
+#        });
+#        haskell-gi-base = super.haskell-gi-base.overrideAttrs (drv: {
+#          src = "${haskell-gi-github}/base";
+#        });
+#        gi-gdk = super.gi-gdk.overrideAttrs(drv: {strictDeps = true;});
+#        gi-gtk = super.gi-gtk.overrideAttrs(drv: {strictDeps = true;});
+#        gi-gtksource = super.gi-gtksource.overrideAttrs(drv: {strictDeps = true;});
         gi-gtkosxapplication = (super.gi-gtkosxapplication.override {
           gtk-mac-integration-gtk3 = nixpkgs.gtk-mac-integration-gtk3;
         }).overrideAttrs(drv: {strictDeps = true;});
 
         cabal-helper        = dontCheck super.cabal-helper;
-        
+
         cabal-plan          = if compiler == "ghc802" then null else super.cabal-plan;
-        hlint               = dontCheck super.hlint;
-        constrained-dynamic = doJailbreak super.constrained-dynamic;
-        megaparsec          = dontCheck super.megaparsec;
+#        hlint               = dontCheck super.hlint;
+#        constrained-dynamic = doJailbreak super.constrained-dynamic;
+#        megaparsec          = dontCheck super.megaparsec;
         ghc-exactprint      = dontCheck super.ghc-exactprint;
         leksah-server       = dontCheck super.leksah-server;
         HaRe                = dontHaddock (dontCheck super.HaRe);
-        text-replace        = doJailbreak super.text-replace;
+#        text-replace        = doJailbreak super.text-replace;
         system-fileio       = dontCheck super.system-fileio;
-        ref-tf              = doJailbreak super.ref-tf;
-        concurrent-output   = doJailbreak super.concurrent-output;
+#        ref-tf              = doJailbreak super.ref-tf;
+#        concurrent-output   = doJailbreak super.concurrent-output;
+        reflex              = dontCheck super.reflex;
+        clay                = dontCheck super.clay;
+        multistate          = dontCheck super.multistate;
+        Diff                = dontCheck super.Diff;
 
 #        Stuff that GHC 8.6.1 might need
 #        czipwith            = doJailbreak super.czipwith;
@@ -326,7 +366,7 @@ in leksah // {
 
   shells = {
     ghc = ghc.shellFor {
-      packages = p: [ p.leksah p.leksah-server p.ltk p.vcswrapper p.vcsgui p.HaRe p.cabal-helper p.ghc-exactprint p.ghc-mod p.ghc-mod-core ];
+      packages = p: [ p.leksah p.leksah-server p.ltk p.vcswrapper p.vcsgui p.HaRe p.cabal-helper p.ghc-exactprint p.ghc-mod p.ghc-mod-core p.reflex p.reflex-dom-core p.reflex-dom-svg ];
     };
   };
 }

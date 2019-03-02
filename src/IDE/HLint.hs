@@ -25,61 +25,66 @@ module IDE.HLint (
 
 import Prelude ()
 import Prelude.Compat hiding(getChar, getLine)
-import IDE.Core.Types
-       (pjDir, ProjectTool(..), Project(..), MonadIDE(..),
-        logRefFullFilePath, Prefs(..), Log(..), LogRef(..), LogRefType(..),
-        wsProjectAndPackages, ipdPackageDir, IDEM, IDEAction, IDE(..),
-        IDEPackage(..), PackageAction)
-import Control.Monad.Reader (asks, MonadReader(..))
-import IDE.Core.State
-       (postSyncIDE, catchIDE, MessageLevel(..), ideMessage,
-        leksahSubDir, reflectIDE, modifyIDE_, readIDE)
+
+import Control.Concurrent (forkIO)
 import Control.Concurrent.STM.TVar
        (newTVarIO, writeTVar, readTVar)
-import Control.Concurrent (forkIO)
+import Control.Exception (SomeException(..))
+import Control.Lens ((?~), _Just)
 import Control.Monad
        (void, when, foldM, forM_, forM, unless, forever)
-import Control.Monad.STM (retry, atomically)
-import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Reader (asks, MonadReader(..))
+import Control.Monad.STM (retry, atomically)
+
+import Data.List (intercalate, find)
+import qualified Data.Map as M (keys, lookup)
+import Data.Maybe (isJust, mapMaybe, catMaybes)
+import qualified Data.Foldable as F (toList)
+import Data.Text (Text)
+import qualified Data.Text as T
+       (replicate, init, unlines, reverse, take, drop, lines, unpack,
+        pack)
+import qualified Data.Text.IO as T (readFile)
+
+import Distribution.Package (PackageIdentifier(..))
+import Distribution.ModuleName (ModuleName)
+
+import qualified Language.Haskell.Exts.SrcLoc as HSE
+       (SrcLoc(..), SrcSpan(..))
 import Language.Haskell.HLint3
        (Note(..), Idea(..), Severity(..), applyHints, ParseError(..),
         parseModuleEx, CppFlags(..), defaultParseFlags,
         parseFlagsAddFixities, resolveHints, readSettingsFile,
         findSettings, Hint(..), Classify(..), ParseFlags(..))
+import Language.Preprocessor.Cpphs
+       (defaultCpphsOptions, runCpphsReturningSymTab, CpphsOptions(..))
+
 import System.FilePath.Windows (makeRelative, equalFilePath, (</>))
 import System.Directory (doesFileExist)
 import qualified System.IO.Strict as S (readFile)
-import Language.Preprocessor.Cpphs
-       (defaultCpphsOptions, runCpphsReturningSymTab, CpphsOptions(..))
 import System.Log.Logger (debugM)
-import Data.List (sortBy, intercalate, find)
-import qualified Data.Map as M (keys, lookup)
-import qualified Data.Text as T
-       (replicate, init, unlines, reverse, take, drop, lines, unpack,
-        pack)
-import Control.Exception (SomeException(..))
-import Data.Maybe (isJust, mapMaybe, catMaybes)
-import Distribution.Package (PackageIdentifier(..))
-import Distribution.ModuleName (ModuleName)
+
 import IDE.Core.CTypes
        (SrcSpan(..), mdMbSourcePath, pdModules, mdModuleId, modu,
         PackScope(..), GenScope(..), GenScope, packageIdentifierToString)
+import IDE.Core.Types
+       (pjDir, ProjectTool(..), Project(..), MonadIDE(..),
+        logRefFullFilePath, Prefs(..), Log(..), LogRef(..), LogRefType(..),
+        wsProjectAndPackages, ipdPackageDir, IDEM, IDEAction,
+        IDEPackage(..), PackageAction, hlintQueue, workspace, allLogRefs, prefs, candy)
+import IDE.Core.State
+       (catchIDE, MessageLevel(..), ideMessage,
+        leksahSubDir, reflectIDE, modifyIDE_, readIDE)
+import IDE.BufferMode (IDEBuffer(..), editInsertCode)
+import IDE.Gtk.SourceCandy
+       (getCandylessPart, positionToCandy, stringToCandy)
+import IDE.Gtk.State (postSyncIDE)
 import IDE.Metainfo.Provider (getWorkspaceInfo)
-import qualified Language.Haskell.Exts.SrcLoc as HSE
-       (SrcLoc(..), SrcSpan(..))
 import IDE.Pane.SourceBuffer
        (belongsToPackages, useCandyFor, selectSourceBuf, fileSave,
-        inActiveBufContext, addLogRef, belongsToPackage, removeLintLogRefs)
-import qualified Data.Text.IO as T (readFile)
-import Data.Text (Text)
-import IDE.TextEditor (TextEditor(..))
-import IDE.SourceCandy
-       (getCandylessPart, positionToCandy, stringToCandy)
-import IDE.BufferMode (IDEBuffer(..), editInsertCode)
-import Data.Ord (comparing)
-import qualified Data.Foldable as F (toList)
-import IDE.Utils.CabalProject (findProjectRoot)
+        inActiveBufContext, addLogRef, removeLintLogRefs)
+import IDE.TextEditor (TextEditor(getSelectionBounds, getLine, getLineOffset, setModified, getIterAtLine, forwardCharsC, beginUserAction, delete, endUserAction))
 import IDE.Utils.FileUtils (cabalProjectBuildDir)
 
 packageHLint :: PackageAction
@@ -93,8 +98,8 @@ scheduleHLint what = do
                 Nothing -> do
                     ideR <- ask
                     queue <- liftIO $ newTVarIO []
-                    modifyIDE_ $ \ide -> ide { hlintQueue = Just queue }
-                    liftIO . forkIO . forever $ do
+                    modifyIDE_ $ hlintQueue ?~ queue
+                    _ <- liftIO . forkIO . forever $ do
                         x <- atomically $ do
                                 schedule <- readTVar queue
                                 case schedule of
@@ -118,7 +123,7 @@ runHLint (Right sourceFile) = do
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> sourceFile
 runHLint (Left cabalFile) = do
     liftIO . debugM "leksah" $ "runHLint"
-    packages <- maybe [] wsProjectAndPackages <$> readIDE workspace
+    packages <- readIDE (workspace . _Just . wsProjectAndPackages)
     case find ((== cabalFile) . ipdCabalFile . snd) packages of
         Just package -> runHLint' package Nothing
         _ -> liftIO . debugM "leksah" $ "runHLint package not found for " <> cabalFile
@@ -126,7 +131,6 @@ runHLint (Left cabalFile) = do
 runHLint' :: (Project, IDEPackage) -> Maybe FilePath -> IDEAction
 runHLint' (project, package) mbSourceFile = do
     liftIO . debugM "leksah" $ "runHLint'"
-    ideR <- ask
     (flags, classify, hint) <- hlintSettings project package
     let modules = M.keys (ipdModules package)
     paths <- case mbSourceFile of
@@ -149,8 +153,8 @@ runHLint' (project, package) mbSourceFile = do
     let results = catMaybes res
         ideas = map fst results
         texts = map snd results
-        getText f = maybe "" snd $ find (equalFilePath f . fst) texts
-    logHLintResult (isJust mbSourceFile) package (applyHints classify hint ideas) getText
+        getText' f = maybe "" snd $ find (equalFilePath f . fst) texts
+    logHLintResult (isJust mbSourceFile) package (applyHints classify hint ideas) getText'
 
 
 getSourcePaths :: PackageIdentifier -> [ModuleName] -> IDEM [FilePath]
@@ -166,15 +170,13 @@ getSourcePaths packId names = do
             Just pack ->
                 case filter (\md -> modu (mdModuleId md) == mn)
                                     (pdModules pack) of
-                    (mod : tl) ->  mdMbSourcePath mod
+                    (mod' : _) ->  mdMbSourcePath mod'
                     []         -> Nothing
             Nothing -> Nothing
 
 hlintSettings :: Project -> IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
 hlintSettings project package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    let dir = ipdPackageDir package
-        projectRoot = pjDir project
     cabalMacros <- case pjTool project of
         CabalTool -> do
             (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
@@ -200,7 +202,7 @@ logHLintResult fileScope package allIdeas getText = do
     let ideas = filter (\Idea{..} -> ideaSeverity /= Ignore) allIdeas
     forM_ ideas $ \ idea@Idea{..} -> do
         let text = getText (HSE.srcSpanFilename ideaSpan)
-            fixColumn c = max 0 (c - 1)
+            -- fixColumn c = max 0 (c - 1)
             srcSpan = SrcSpan (makeRelative (ipdPackageDir package) $ HSE.srcSpanFilename ideaSpan)
                               (HSE.srcSpanStartLine ideaSpan)
                               (HSE.srcSpanStartColumn ideaSpan - 1)
@@ -219,14 +221,14 @@ logHLintResult fileScope package allIdeas getText = do
         postSyncIDE $ addLogRef fileScope fileScope ref
 
 logHLintError :: Bool -> IDEPackage -> ParseError -> IDEAction
-logHLintError fileScope package error = do
-    let loc = parseErrorLocation error
+logHLintError fileScope package err = do
+    let loc = parseErrorLocation err
         srcSpan = SrcSpan (makeRelative (ipdPackageDir package) $ HSE.srcFilename loc)
                           (HSE.srcLine loc)
                           (HSE.srcColumn loc - 1)
                           (HSE.srcLine loc)
                           (HSE.srcColumn loc - 1)
-        ref = LogRef srcSpan (LogCabal $ ipdCabalFile package) ("Hlint Parse Error: " <> T.pack (parseErrorMessage error)) Nothing Nothing LintRef
+        ref = LogRef srcSpan (LogCabal $ ipdCabalFile package) ("Hlint Parse Error: " <> T.pack (parseErrorMessage err)) Nothing Nothing LintRef
     postSyncIDE $ addLogRef fileScope fileScope ref
 
 -- Cut down version of showEx from HLint
@@ -237,7 +239,7 @@ showHLint Idea{..} = intercalate "\n" $
     f "Why not" ideaTo ++
     ["Note: " ++ n | let n = showNotes ideaNote, n /= ""]
     where
-        f msg Nothing = []
+        f _ Nothing = []
         f msg (Just x) | null x = [msg ++ " remove it."]
                        | otherwise = (msg ++ ":") : map ("  "++) (lines x)
         showNotes :: [Note] -> String
@@ -248,14 +250,14 @@ showHLint Idea{..} = intercalate "\n" $
 resolveActiveHLint :: IDEM Bool
 resolveActiveHLint = inActiveBufContext False  $ \_ ebuf ideBuf -> do
     liftIO $ debugM "leksah" "resolveActiveHLint"
-    allLogRefs <- readIDE allLogRefs
+    allLogRefs' <- readIDE allLogRefs
     (iStart, iEnd) <- getSelectionBounds ebuf
     lStart <- getLine iStart
     cStart <- getLineOffset iStart
     lEnd <- getLine iEnd
     cEnd <- getLineOffset iEnd
     let fn = fileName ideBuf
-    let selectedRefs = [ref | ref@LogRef{..} <- F.toList allLogRefs,
+    let selectedRefs = [ref | ref@LogRef{..} <- F.toList allLogRefs',
                             logRefType == LintRef
                          && fn == Just (logRefFullFilePath ref)
                          && maybe "" (ideaHint . snd) logRefIdea /= "Reduce duplication"
@@ -265,8 +267,8 @@ resolveActiveHLint = inActiveBufContext False  $ \_ ebuf ideBuf -> do
                                                srcSpanStartColumn logRefSrcSpan)]
         safeRefs = takeWhileNotOverlapping selectedRefs
     (changed, _) <- foldM replaceHLintSource (False, 0) . catMaybes $ map logRefIdea safeRefs
-    prefs <- readIDE prefs
-    when changed $ if backgroundBuild prefs
+    prefs' <- readIDE prefs
+    when changed $ if backgroundBuild prefs'
                         then setModified ebuf True
                         else void $ fileSave False
     return changed
@@ -279,9 +281,9 @@ resolveActiveHLint = inActiveBufContext False  $ \_ ebuf ideBuf -> do
 
 indentHLintText :: Int -> Text -> Text
 indentHLintText startColumn text =
-    T.init $ T.unlines (take 1 lines <> drop 1 (map (indent <>) lines))
+    T.init $ T.unlines (take 1 lines' <> drop 1 (map (indent <>) lines'))
   where
-    lines = T.lines text
+    lines' = T.lines text
     indent = T.replicate startColumn " "
 
 replaceHLintSource :: (Bool, Int) -> (Text, Idea) -> IDEM (Bool, Int)
@@ -291,7 +293,7 @@ replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Ju
     liftIO . debugM "leksah" $ "replaceHLintSource From: " <> show from <> "\nreplaceHLintSource To:   " <> show to
     mbBuf <- selectSourceBuf srcSpanFilename
     case mbBuf of
-        Just buf -> inActiveBufContext (changed, delta) $ \sv ebuf _ -> do
+        Just buf -> inActiveBufContext (changed, delta) $ \_sv ebuf _ -> do
             useCandy   <- useCandyFor buf
             candy'     <- readIDE candy
             realString <- if useCandy then stringToCandy candy' to else return to
@@ -305,8 +307,7 @@ replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Ju
             i1' <- forwardCharsC i1 columnS'
             i2  <- getIterAtLine ebuf lineE'
             i2' <- forwardCharsC i2 columnE'
-            candy <- readIDE candy
-            check <- getCandylessPart candy ebuf i1' i2'
+            check <- getCandylessPart candy' ebuf i1' i2'
             if check == from
                 then do
                     beginUserAction ebuf

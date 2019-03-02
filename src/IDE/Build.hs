@@ -28,8 +28,9 @@ module IDE.Build (
 import Prelude ()
 import Prelude.Compat
 import IDE.Core.State
-       (postAsyncIDE, triggerEventIDE, IDEAction,
-        Project(..), ipdPackageId, ipdDepends, IDEPackage(..))
+       (triggerEventIDE_, IDEAction, Project(..), ipdPackageId,
+        ipdDepends, IDEPackage(..))
+import IDE.Gtk.State (postAsyncIDE)
 import qualified Data.Map as Map
        (lookup, fromList)
 import Data.Graph
@@ -45,7 +46,6 @@ import IDE.Package
 import IDE.Core.Types
        (ipdPackageName, pjPackages, IDEEvent(..), Prefs(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad (void)
 import Control.Arrow ((***))
 import Data.Text (Text)
 import Distribution.Text (disp)
@@ -217,7 +217,7 @@ doBuildChain ms chain@Chain{mcAction = MoInstall} =
 doBuildChain ms chain@Chain{mcAction = MoClean} =
     postAsyncIDE $ packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain _ms Chain{mcAction = MoMetaInfo} =
-    postAsyncIDE . void $ triggerEventIDE (UpdateWorkspaceInfo False)
+    postAsyncIDE $ triggerEventIDE_ (UpdateWorkspaceInfo False)
 doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont

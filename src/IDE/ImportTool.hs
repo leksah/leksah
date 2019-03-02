@@ -27,44 +27,29 @@ module IDE.ImportTool (
 
 import Prelude ()
 import Prelude.Compat
-import IDE.Core.State
+
+import Control.Applicative ((<$>))
+import Control.Exception (SomeException)
+import Control.Lens ((%~))
+import Control.Monad
+       (forM_, void, MonadPlus(..), unless, when)
+import Control.Monad.IO.Class (MonadIO(..))
+
+import qualified Data.Foldable as F (toList, foldr)
+import Data.Functor.Identity (Identity(..))
+import Data.List (intercalate, sort, nub, nubBy)
 import Data.Maybe
        (mapMaybe, fromMaybe, catMaybes, fromJust, isNothing, isJust)
-import IDE.Metainfo.Provider
-       (getWorkspaceInfo, getPackageImportInfo, getIdentifierDescr)
-import Text.PrettyPrint (render)
-import Distribution.Text (simpleParse, display, disp)
-import IDE.Pane.SourceBuffer
-import IDE.HLint (resolveActiveHLint)
-import IDE.Utils.GUIUtils
-import IDE.Utils.CabalUtils (writeGenericPackageDescription')
-import Text.ParserCombinators.Parsec.Language (haskellStyle)
-import Graphics.UI.Editor.MakeEditor
-       (getRealWidget, FieldDescription(..), buildEditor, mkField)
-import Graphics.UI.Editor.Parameters
-       (dialogRun', dialogSetDefaultResponse', Packing(..), boxPackStart',
-        dialogAddButton', (<<<-), paraMinSize, emptyParams, Parameter(..),
-        paraMultiSel, paraName)
-import Text.ParserCombinators.Parsec hiding (parse)
-import qualified Text.ParserCombinators.Parsec as Parsec (parse)
-import Graphics.UI.Editor.Simple (staticListEditor)
-import Control.Monad
-       (forM_, void, MonadPlus(..), unless, forM, when)
-import Control.Applicative ((<$>))
-import Data.List (intercalate, stripPrefix, sort, nub, nubBy)
-import IDE.Utils.ServerConnection
-import IDE.TextEditor (delete, setModified, insert, getIterAtLine)
+import Data.Text (Text)
+import qualified Data.Text as T
+       (takeWhile, stripPrefix, lines, dropWhile, empty, pack, unpack)
+
 import qualified Distribution.ModuleName as D (ModuleName, components, fromString)
-import qualified Text.ParserCombinators.Parsec.Token as P
-       (operator, dot, identifier, symbol, lexeme, whiteSpace,
-        makeTokenParser)
-import Distribution.Verbosity (normal)
-import IDE.Pane.PackageEditor (hasConfigs)
 import Distribution.Package
-#if MIN_VERSION_Cabal(2,0,0)
-import Distribution.Version
-       (anyVersion, orLaterVersion, intersectVersionRanges,
-        earlierVersion, Version(..), versionNumbers, mkVersion)
+import Distribution.PackageDescription
+       (GenericPackageDescription(..), Benchmark(..), TestSuite(..),
+        Executable(..), BuildInfo(..), Library(..), CondTree(..),
+        condExecutables, condLibrary)
 #if MIN_VERSION_Cabal(2,2,0)
 import Distribution.PackageDescription.Parsec
        (readGenericPackageDescription)
@@ -72,54 +57,66 @@ import Distribution.PackageDescription.Parsec
 import Distribution.PackageDescription.Parse
        (readGenericPackageDescription)
 #endif
-#else
+import Distribution.Text (simpleParse, display, disp)
+import Distribution.Verbosity (normal)
 import Distribution.Version
        (anyVersion, orLaterVersion, intersectVersionRanges,
-        earlierVersion, Version(..))
-import Distribution.PackageDescription.Parse
-       (readPackageDescription)
-#endif
-import Distribution.PackageDescription
-       (GenericPackageDescription(..), Benchmark(..), TestSuite(..),
-        Executable(..), BuildInfo(..), Library(..), CondTree(..),
-        condExecutables, condLibrary, packageDescription, buildDepends)
-import Distribution.PackageDescription.Configuration
-       (flattenPackageDescription)
-import IDE.BufferMode (editInsertCode)
-import Control.Monad.IO.Class (MonadIO(..))
-import qualified Data.Text as T
-       (takeWhile, stripPrefix, lines, dropWhile, empty, length, take,
-        pack, unpack)
+        earlierVersion, versionNumbers, mkVersion)
+
 import Language.Haskell.Exts (KnownExtension(..))
-import Data.Text (Text)
+
 import System.Log.Logger (debugM)
-import qualified Data.Traversable as Tr (forM)
-import qualified Data.Foldable as F (toList, foldr, or)
-import GI.Gtk.Objects.Window (setWindowTransientFor, Window(..))
-import GI.Gtk.Objects.Dialog (Dialog(..), dialogGetContentArea)
-import Data.GI.Base (new', unsafeCastTo, set)
+
+import Text.Parsec (ParsecT)
+import Text.Parsec.Token (GenTokenParser)
+import Text.ParserCombinators.Parsec hiding (parse)
+import Text.ParserCombinators.Parsec.Language (haskellStyle)
+import qualified Text.ParserCombinators.Parsec as Parsec (parse)
+import qualified Text.ParserCombinators.Parsec.Token as P
+       (operator, dot, identifier, symbol, lexeme, whiteSpace,
+        makeTokenParser)
+import Text.PrettyPrint (render)
+
+import Data.GI.Base (new', unsafeCastTo)
+import GI.Gtk (constructDialogUseHeaderBar)
 import GI.Gtk.Enums (ResponseType(..))
-import GI.Gtk.Objects.Box (Box(..), boxPackStart)
+import GI.Gtk.Objects.Box (Box(..))
+import GI.Gtk.Objects.Dialog (Dialog(..), dialogGetContentArea)
+import GI.Gtk.Objects.MenuItem
+       (onMenuItemActivate, menuItemNewWithLabel)
+import GI.Gtk.Objects.MenuShell (IsMenuShell, menuShellAppend)
 import GI.Gtk.Objects.Widget
        (widgetDestroy, widgetHide, widgetGrabDefault, setWidgetCanDefault,
         widgetShowAll)
-import GI.Gtk.Objects.MenuItem
-       (onMenuItemActivate, menuItemNewWithLabel)
-import GI.Gtk.Objects.MenuShell (menuShellAppend)
-import GI.Gtk (constructDialogUseHeaderBar)
-import Control.Exception (SomeException)
+import GI.Gtk.Objects.Window (setWindowTransientFor, Window(..))
 
-#if !MIN_VERSION_Cabal(2,0,0)
-versionNumbers :: Version -> [Int]
-versionNumbers = versionBranch
-mkPackageName :: String -> PackageName
-mkPackageName = PackageName
-mkVersion :: [Int] -> Version
-mkVersion = (`Version` [])
-mkUnqualComponentName :: String -> String
-mkUnqualComponentName = id
-readGenericPackageDescription = readGenericPackageDescription
-#endif
+import Graphics.UI.Editor.MakeEditor
+       (FieldDescription(..), buildEditor, mkField)
+import Graphics.UI.Editor.Parameters
+       (dialogRun', dialogSetDefaultResponse', Packing(..), boxPackStart',
+        dialogAddButton', (<<<-), paraMinSize, emptyParams, Parameter(..),
+        paraMultiSel, paraName)
+import Graphics.UI.Editor.Simple (staticListEditor)
+
+import IDE.Core.State
+       (IDEAction, backgroundBuild, LogRef, Descr(..), IDEM, LogRef,
+        dscMbModu', dsrMbModu, PackModule(..), modu, GenScope(..),
+        PackScope(..), LogRef(..), Log(..), ServerAnswer(..),
+        ImportDecl, ImportSpecList(..), ImportDecl(..), ImportSpec(..),
+        TypeDescr(..), IDERef, readIDE, prefs, modifyIDE_, errorRefs,
+        ideMessage, MessageLevel(..), currentError,
+        logRefFullFilePath, catchIDE, dsMbModu, dscName, ServerCommand(..),
+        pjFile, ipdCabalFile, prettyPrint, locationELine, locationSLine,
+        throwIDE, Location(..), dsrDescr, dscTypeHint', __, reflectIDE)
+import IDE.BufferMode (editInsertCode)
+import IDE.Gtk.State (getMainWindow)
+import IDE.HLint (resolveActiveHLint)
+import IDE.Metainfo.Provider
+       (getWorkspaceInfo, getPackageImportInfo, getIdentifierDescr)
+import IDE.Pane.SourceBuffer
+import IDE.TextEditor (delete, setModified, getIterAtLine)
+import IDE.Utils.CabalUtils (writeGenericPackageDescription')
+import IDE.Utils.ServerConnection
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -133,7 +130,7 @@ resolveErrors = do
     prefs' <- readIDE prefs
     let buildInBackground = backgroundBuild prefs'
     when buildInBackground $
-        modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = False}})
+        modifyIDE_ $ prefs %~ (\p -> p{backgroundBuild = False})
     errors <- F.toList <$> readIDE errorRefs
     addPackageResult <- addPackages errors
     let notInScopes = [ y | (x,y) <-
@@ -157,9 +154,8 @@ resolveErrors = do
         addAllExtensions _ _                   =  finally
 
         finally = do
-            when buildInBackground $ do
-                prefs' <- readIDE prefs
-                modifyIDE_ (\ide -> ide{prefs = prefs'{backgroundBuild = True}})
+            when buildInBackground $
+                modifyIDE_ $ prefs %~ (\p -> p{backgroundBuild = True})
             when (not addPackageResult && null notInScopes && null extensions) $ do
                 hlintResolved <- resolveActiveHLint
                 unless hlintResolved $ ideMessage Normal "No errors, warnings or selected hlints that can be auto resolved"
@@ -167,7 +163,6 @@ resolveErrors = do
 -- | Add import for current error ...
 addOneImport :: IDEAction
 addOneImport = do
-    errors'     <- readIDE errorRefs
     currentErr' <- readIDE currentError
     case currentErr' of
         Nothing -> do
@@ -193,11 +188,11 @@ mapModuleName n = n
 -- Returns a list of already added descrs, so that it will not be added two times and can
 -- be used for default selection
 addImport :: LogRef -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
-addImport error descrList continuation =
-    case parseNotInScope $ refDescription error of
+addImport err descrList continuation =
+    case parseNotInScope $ refDescription err of
         Nothing -> continuation (True,descrList)
         Just nis -> do
-            currentInfo' <- getScopeForRef error
+            currentInfo' <- getScopeForRef err
             wsInfo' <- getWorkspaceInfo
             case (currentInfo', wsInfo') of
                 (Nothing, _) -> continuation (True,descrList)
@@ -210,9 +205,9 @@ addImport error descrList continuation =
                         ([], []) ->  do
                             ideMessage Normal $ "Identifier " <> id' nis <> " not found"
                             continuation (True, descrList)
-                        ([], list) -> do
+                        ([], l) -> do
                             window' <- getMainWindow
-                            mbDescr <-  liftIO $ selectModuleDialog window' list (id' nis) (mbQual' nis)
+                            mbDescr <-  liftIO $ selectModuleDialog window' l (id' nis) (mbQual' nis)
                                             (if null descrList
                                                 then Nothing
                                                 else Just (head descrList))
@@ -220,9 +215,9 @@ addImport error descrList continuation =
                                 Nothing     ->  continuation (False, [])
                                 Just descr  ->  if descr `elem` descrList
                                                     then continuation (True,descrList)
-                                                    else addImport' nis (logRefFullFilePath error)
+                                                    else addImport' nis (logRefFullFilePath err)
                                                             descr descrList continuation
-                        ([descr], _)  ->  addImport' nis (logRefFullFilePath error) descr descrList continuation
+                        ([descr], _)  ->  addImport' nis (logRefFullFilePath err) descr descrList continuation
                         _ ->  do
                             let fullList = list ++ wslist
                             window' <- getMainWindow
@@ -234,16 +229,16 @@ addImport error descrList continuation =
                                 Nothing     ->  continuation (False, [])
                                 Just descr  ->  if descr `elem` descrList
                                                     then continuation (True,descrList)
-                                                    else addImport' nis (logRefFullFilePath error)
+                                                    else addImport' nis (logRefFullFilePath err)
                                                             descr descrList continuation
 
 addPackages :: [LogRef] -> IDEM Bool
 addPackages errors = do
     let packs = nub $ mapMaybe (\case
-                    error@LogRef{logRefLog = LogCabal cabalFile} ->
-                        case parseHiddenModule $ refDescription error of
+                    err@LogRef{logRefLog = LogCabal cabalFile} ->
+                        case parseHiddenModule $ refDescription err of
                             Nothing -> Nothing
-                            Just (HiddenModuleResult _ pack) -> Just (cabalFile, dep pack)
+                            Just (HiddenModuleResult _ pack') -> Just (cabalFile, dep pack')
                     _ -> Nothing) errors
 
     forM_ packs $ \(cabalFile, d) -> do
@@ -301,7 +296,7 @@ getScopeForRef ref =
         Just buf ->
             belongsToPackages' buf >>= \case
                 [] -> return Nothing
-                (_,pack):_ -> getPackageImportInfo pack
+                (_,pack'):_ -> getPackageImportInfo pack'
 
 addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
 addImport' nis filePath descr descrList continuation =  do
@@ -310,25 +305,25 @@ addImport' nis filePath descr descrList continuation =  do
                     Nothing -> Nothing
                     Just pm -> Just (modu pm)
     case (mbBuf,mbMod) of
-        (Just buf,Just mod) ->
-            inActiveBufContext () $ \_ gtkbuf idebuf -> do
+        (Just _buf,Just mod') ->
+            inActiveBufContext () $ \_ gtkbuf _ -> do
                 ideMessage Normal $ "addImport " <> T.pack (show $ dscName descr) <> " from "
-                    <> T.pack (render $ disp mod)
+                    <> T.pack (render $ disp mod')
                 belongsToPackages filePath >>= \case
                     [] -> return ()
                     (project, package):_ ->
                         doServerCommand (ParseHeaderCommand (pjFile project) (ipdCabalFile package) filePath) $ \case
                              ServerHeader (Left imports) ->
-                                case filter (qualifyAsImportStatement mod) imports of
-                                    []     ->   let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
+                                case filter (qualifyAsImportStatement mod') imports of
+                                    []     ->   let newLine  =  prettyPrint (newImpDecl mod') <> "\n"
                                                     lastLine = F.foldr (max . locationELine . importLoc) 0 imports
                                                 in do
                                                     i1 <- getIterAtLine gtkbuf lastLine
                                                     editInsertCode gtkbuf i1 newLine
-                                                    fileSave False
+                                                    _ <- fileSave False
                                                     setModified gtkbuf True
                                                     continuation (True, descr : descrList)
-                                    l@(impDecl:_) ->
+                                    (impDecl:_) ->
                                                     let newDecl     =  addToDecl impDecl
                                                         newLine     =  prettyPrint newDecl <> "\n"
                                                         myLoc       =  importLoc impDecl
@@ -339,20 +334,20 @@ addImport' nis filePath descr descrList continuation =  do
                                                         i2 <- getIterAtLine gtkbuf lineEnd
                                                         delete gtkbuf i1 i2
                                                         editInsertCode gtkbuf i1 newLine
-                                                        fileSave False
+                                                        _ <- fileSave False
                                                         setModified gtkbuf True
                                                         continuation (True, descr : descrList)
                              ServerHeader (Right lastLine) ->
-                                                let newLine  =  prettyPrint (newImpDecl mod) <> "\n"
+                                                let newLine  =  prettyPrint (newImpDecl mod') <> "\n"
                                                 in do
                                                     i1 <- getIterAtLine gtkbuf lastLine
                                                     editInsertCode gtkbuf i1 newLine
-                                                    fileSave False
+                                                    _ <- fileSave False
                                                     setModified gtkbuf True
                                                     continuation (True, descr : descrList)
-                             ServerFailed string -> do
+                             ServerFailed msg -> do
                                 ideMessage Normal ("Can't parse module header " <> T.pack filePath <>
-                                        " failed with: " <> string)
+                                        " failed with: " <> msg)
                                 continuation (False,[])
                              _ ->    do
                                 ideMessage Normal "ImportTool>>addImport: Impossible server answer"
@@ -369,9 +364,9 @@ addImport' nis filePath descr descrList continuation =  do
                         && fromJust (mbQual' nis) == qualString impDecl))
                 && (isNothing (importSpecs impDecl) || not (getHiding (fromJust (importSpecs impDecl))))
         newImpDecl :: D.ModuleName -> ImportDecl
-        newImpDecl mod = ImportDecl {
+        newImpDecl mod' = ImportDecl {
                         importLoc       = noLocation,
-                        importModule    = T.pack $ display mod,
+                        importModule    = T.pack $ display mod',
                         importQualified = isJust (mbQual' nis),
                         importSrc       = False,
                         importPkg       = Nothing,
@@ -381,22 +376,23 @@ addImport' nis filePath descr descrList continuation =  do
         newImportSpec =  getRealId descr (id' nis)
         addToDecl :: ImportDecl -> ImportDecl
         addToDecl impDecl = case importSpecs impDecl of
-                                Just (ImportSpecList True listIE)  -> throwIDE "ImportTool>>addToDecl: ImpList is hiding"
+                                Just (ImportSpecList True _) -> throwIDE "ImportTool>>addToDecl: ImpList is hiding"
                                 Just (ImportSpecList False listIE) ->
                                     impDecl{importSpecs = Just (ImportSpecList False (nub (newImportSpec : listIE)))}
                                 Nothing             ->
                                     impDecl{importSpecs = Just (ImportSpecList False [newImportSpec])}
         noLocation  = Location "" 0 0 0 0
 
-getRealId descr id = case descr of
-    Reexported rdescr -> getRealId (dsrDescr rdescr) id
+getRealId :: Descr -> Text -> ImportSpec
+getRealId descr i = case descr of
+    Reexported rdescr -> getRealId (dsrDescr rdescr) i
     Real edescr -> getReal (dscTypeHint' edescr)
     where
         getReal (FieldDescr d) = IThingAll (dscName d)
         getReal (ConstructorDescr d) = IThingAll (dscName d)
         getReal (MethodDescr d) = IThingAll (dscName d)
-        getReal PatternSynonymDescr = IVar ("pattern " <> id)
-        getReal _ = IVar id
+        getReal PatternSynonymDescr = IVar ("pattern " <> i)
+        getReal _ = IVar i
 
 qualString ::  ImportDecl -> Text
 qualString impDecl = fromMaybe "" (importAs impDecl)
@@ -406,49 +402,54 @@ qualString impDecl = fromMaybe "" (importAs impDecl)
 data NotInScopeParseResult = NotInScopeParseResult {
         mbQual' ::   Maybe Text
     ,   id'     ::   Text
-    ,   isSub'  ::   Bool
-    ,   isOp'   ::   Bool}
+    ,   _isSub'  ::   Bool
+    ,   _isOp'   ::   Bool}
     deriving Eq
 
 -- |* The error line parser
-
+lexer :: GenTokenParser String u Identity
 lexer      = P.makeTokenParser haskellStyle
+whiteSpace :: ParsecT String u Identity ()
 whiteSpace = P.whiteSpace lexer
+lexeme :: ParsecT String u Identity String -> ParsecT String u Identity Text
 lexeme     = (T.pack <$>) . P.lexeme lexer
+symbol :: String -> ParsecT String u Identity String
 symbol     = P.symbol lexer
+identifier :: ParsecT String u Identity Text
 identifier = T.pack <$> P.identifier lexer
+dot :: ParsecT String u Identity String
 dot        = P.dot lexer
+operator :: ParsecT String u Identity Text
 operator   = T.pack <$> P.operator lexer
 
 parseNotInScope :: Text -> Maybe NotInScopeParseResult
 parseNotInScope str =
     case Parsec.parse scopeParser "" $ T.unpack str of
-        Left e   -> Nothing
+        Left _   -> Nothing
         Right r  -> Just r
 
 scopeParser :: CharParser () NotInScopeParseResult
 scopeParser = do whiteSpace
                  isSub <- (do
-                    symbol "Not in scope:"
+                    _ <- symbol "Not in scope:"
                     isJust <$> optionMaybe
                             (try
                                (choice
                                   [symbol "type constructor or class", symbol "data constructor"])))
                     <|>
-                    (do optionMaybe (symbol "•" >> whiteSpace)
+                    (do void (optionMaybe $ symbol "•" >> whiteSpace)
                         (symbol "Variable not in scope:" >> return False)
                             <|> (symbol "Data constructor not in scope:" >> return True))
-                 (do choice [char '\8219', char '\8216']
+                 (do void (choice [char '\8219', char '\8216'])
                      mbQual <- optionMaybe
                                    (try
                                       (lexeme conid))
-                     id <- optionMaybe (try identifier)
-                     result <- case id of
-                                     Just id -> return
-                                                  (NotInScopeParseResult mbQual id isSub False)
-                                     Nothing -> do op <- operator
-                                                   return (NotInScopeParseResult mbQual op isSub True)
-                     char '\8217'
+                     result <- optionMaybe (try identifier) >>= \case
+                         Just id'' -> return
+                                      (NotInScopeParseResult mbQual id'' isSub False)
+                         Nothing -> do op <- operator
+                                       return (NotInScopeParseResult mbQual op isSub True)
+                     _ <- char '\8217'
                      return result)
                     <|>
                     (do whiteSpace
@@ -456,24 +457,25 @@ scopeParser = do whiteSpace
                                    (try
                                       (lexeme conid))
                             result <- optionMaybe (try identifier) >>= \case
-                                         Just id -> return
-                                                      (NotInScopeParseResult mbQual id isSub False)
+                                         Just id'' -> return
+                                                      (NotInScopeParseResult mbQual id'' isSub False)
                                          Nothing -> do op <- operator
                                                        return (NotInScopeParseResult mbQual op isSub True)
-                            many anyChar
+                            _ <- many anyChar
                             return result)
                             <|> (do
-                                char '('
+                                _ <- char '('
                                 op <- operator
-                                char ')'
-                                many anyChar
+                                _ <- char ')'
+                                _ <- many anyChar
                                 return (NotInScopeParseResult Nothing op isSub True)))
     <?> "scopeParser"
 
+conid :: ParsecT String u Identity String
 conid  = do
     c <-  upper
     cs <- many (alphaNum <|> oneOf "_'")
-    dot
+    _ <- dot
     return (c:cs)
         <?> "conid"
 
@@ -492,7 +494,7 @@ moduleFields list ident =
             (staticListEditor list id)
 
 selectModuleDialog :: Window -> [Descr] -> Text -> Maybe Text -> Maybe Descr -> IO (Maybe Descr)
-selectModuleDialog parentWindow list id mbQual mbDescr =
+selectModuleDialog parentWindow list id'' mbQual mbDescr =
     let selectionList       =  (nub . sort) $ map (T.pack . render . disp . modu . fromJust . dsMbModu) list
     in if length selectionList == 1
         then return (Just (head list))
@@ -508,18 +510,17 @@ selectModuleDialog parentWindow list id mbQual mbDescr =
                                                             then str
                                                             else head selectionList
             let qualId             =  case mbQual of
-                                            Nothing -> id
-                                            Just str -> str <> "." <> id
+                                            Nothing -> id''
+                                            Just str -> str <> "." <> id''
             dia               <- new' Dialog [constructDialogUseHeaderBar 1]
             setWindowTransientFor dia parentWindow
-            upper             <- dialogGetContentArea dia >>= unsafeCastTo Box
+            upper'            <- dialogGetContentArea dia >>= unsafeCastTo Box
             okButton <- dialogAddButton' dia (__"Add Import") ResponseTypeOk
-            dialogAddButton' dia (__"Cancel") ResponseTypeCancel
-            (widget,inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
-            boxPackStart' upper widget PackGrow 7
+            _ <- dialogAddButton' dia (__"Cancel") ResponseTypeCancel
+            (widget,_inj,ext,_) <- buildEditor (moduleFields selectionList qualId) realSelectionString
+            boxPackStart' upper' widget PackGrow 7
             dialogSetDefaultResponse' dia ResponseTypeOk --does not work for the tree view
             widgetShowAll dia
-            rw <- getRealWidget widget
             setWidgetCanDefault okButton True
             widgetGrabDefault okButton
             resp <- dialogRun' dia
@@ -542,29 +543,29 @@ data HiddenModuleResult = HiddenModuleResult {
 parseHiddenModule :: Text -> Maybe HiddenModuleResult
 parseHiddenModule str =
     case Parsec.parse hiddenModuleParser "" $ T.unpack str of
-        Left e             -> Nothing
-        Right (mod, pack)  ->
-            case simpleParse $ T.unpack pack of
-                Just p  -> Just $ HiddenModuleResult mod p
+        Left _             -> Nothing
+        Right (mod', pack')  ->
+            case simpleParse $ T.unpack pack' of
+                Just p  -> Just $ HiddenModuleResult mod' p
                 Nothing -> Nothing
 
 hiddenModuleParser :: CharParser () (Text, Text)
 hiddenModuleParser = do
     whiteSpace
-    symbol "Could not find module " <|> symbol "Failed to load interface for "
-    char '`' <|> char '‛' <|> char '‘'
-    mod    <- T.pack <$> many (noneOf "'’")
-    many (noneOf "\n")
-    symbol "\n"
+    _ <- symbol "Could not find module " <|> symbol "Failed to load interface for "
+    _ <- char '`' <|> char '‛' <|> char '‘'
+    mod'    <- T.pack <$> many (noneOf "'’")
+    _ <- many (noneOf "\n")
+    _ <- symbol "\n"
     whiteSpace
-    symbol "It is a member of the hidden package "
-    char '`' <|> char '‛' <|> char '‘'
-    pack   <- T.pack <$> many (noneOf "'’@")
-    many (noneOf "'’")
-    char '\'' <|> char '’'
-    symbol ".\n"
-    many anyChar
-    return (mod, pack)
+    _ <- symbol "It is a member of the hidden package "
+    _ <- char '`' <|> char '‛' <|> char '‘'
+    pack'   <- T.pack <$> many (noneOf "'’@")
+    _ <- many (noneOf "'’")
+    _ <- char '\'' <|> char '’'
+    _ <- symbol ".\n"
+    _ <- many anyChar
+    return (mod', pack')
     <?> "hiddenModuleParser"
 
 -- | Given an error message this returns the list of extensions that were
@@ -595,22 +596,22 @@ parsePerhapsYouIntendedToUse =
       , T.takeWhile (/=' ') <$> T.stripPrefix "You need " line]
 
 addExtension :: LogRef -> (Bool -> IDEAction) -> IDEAction
-addExtension error continuation =
-    case parsePerhapsYouIntendedToUse $ refDescription error of
+addExtension err continuation =
+    case parsePerhapsYouIntendedToUse $ refDescription err of
         []    -> continuation True
-        [ext] -> addExtension' (T.pack $ show ext) (logRefFullFilePath error) continuation
-        list  -> continuation True
+        [ext] -> addExtension' (T.pack $ show ext) (logRefFullFilePath err) continuation
+        _     -> continuation True
 
 addExtension' :: Text -> FilePath -> (Bool -> IDEAction) -> IDEAction
 addExtension' ext filePath continuation =  do
     mbBuf  <- selectSourceBuf filePath
     case mbBuf of
-        Just buf ->
-            inActiveBufContext () $ \_ gtkbuf idebuf -> do
+        Just _buf ->
+            inActiveBufContext () $ \_ gtkbuf _idebuf -> do
                 ideMessage Normal $ "addExtension " <> ext
                 i1 <- getIterAtLine gtkbuf 0
                 editInsertCode gtkbuf i1 $ "{-# LANGUAGE " <> ext <> " #-}\n"
-                fileSave False
+                _ <- fileSave False
                 setModified gtkbuf True
                 continuation True
         _  -> return ()
@@ -623,6 +624,12 @@ resolveMenuItems logRef
     | otherwise = []
     where msg = refDescription logRef
 
+addResolveMenuItems
+  :: (MonadIO m, IsMenuShell a)
+  => IDERef
+  -> a
+  -> LogRef
+  -> m ()
 addResolveMenuItems ideR theMenu logRef = do
     let msg = refDescription logRef
     when (isJust $ parseNotInScope msg) $
@@ -634,6 +641,6 @@ addResolveMenuItems ideR theMenu logRef = do
   where
     addFixMenuItem name fix = do
         item <- menuItemNewWithLabel name
-        onMenuItemActivate item $ reflectIDE (void fix) ideR
+        _ <- onMenuItemActivate item $ reflectIDE (void fix) ideR
         menuShellAppend theMenu item
 

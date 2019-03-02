@@ -1,7 +1,7 @@
 cabal-version: >=1.24
 name: leksah
 version: 0.17.0.0
-license: GPL
+license: GPL-2
 license-file: LICENSE
 copyright: 2007-2016 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 maintainer: maintainer@leksah.org
@@ -210,149 +210,194 @@ flag hare
 
 library
     exposed-modules:
+        IDE.Brittany
+        IDE.BufferMode
+        IDE.Build
+        IDE.Command
+        IDE.Command.Print
+        IDE.Command.VCS
+        IDE.Command.VCS.Common
+        IDE.Command.VCS.Common.GUI
+        IDE.Command.VCS.Common.Helper
+        IDE.Command.VCS.Common.Workspaces
+        IDE.Command.VCS.GIT
+        IDE.Command.VCS.Mercurial
+        IDE.Command.VCS.SVN
+        IDE.Command.VCS.Types
+        IDE.Completion
+        IDE.Core.State
+        IDE.Core.Types
+        IDE.Debug
+        IDE.Find
+        IDE.GUIHistory
+        IDE.Gtk.Package
+        IDE.Gtk.Preferences
+        IDE.Gtk.SourceCandy
+        IDE.Gtk.State
+        IDE.Gtk.Types
+        IDE.Gtk.Workspaces
         IDE.HLint
         IDE.HaRe
-        IDE.Leksah
-        IDE.Completion
-        IDE.TypeTip
         IDE.ImportTool
-        IDE.Find
-        IDE.Session
-        IDE.Command
         IDE.Keymap
-        IDE.Utils.CabalUtils
-        IDE.Utils.DebugUtils
-        IDE.Utils.DirectoryUtils
-        IDE.Utils.GUIUtils
-        IDE.SymbolNavigation
-        IDE.Package
-        IDE.TextEditor.Yi.Config
-        IDE.OSX
-        IDE.GUIHistory
-        IDE.SourceCandy
-        IDE.NotebookFlipper
-        IDE.Core.Types
-        IDE.Core.State
+        IDE.LPaste
+        IDE.Leksah
+        IDE.LogRef
         IDE.Metainfo.Provider
-        IDE.Pane.PackageEditor
+        IDE.NotebookFlipper
+        IDE.OSX
+        IDE.Package
+        IDE.PackageFlags
+        IDE.Pane.Breakpoints
+        IDE.Pane.Errors
+        IDE.Pane.Files
+        IDE.Pane.Grep
         IDE.Pane.HLint
         IDE.Pane.Info
         IDE.Pane.Log
-        IDE.Pane.SourceBuffer
         IDE.Pane.Modules
-        IDE.Pane.Search
+        IDE.Pane.PackageEditor
         IDE.Pane.PackageFlags
-        IDE.LogRef
-        IDE.Debug
-        IDE.Pane.Grep
-        IDE.Pane.Files
-        IDE.Pane.Breakpoints
+        IDE.Pane.Search
+        IDE.Pane.SourceBuffer
         IDE.Pane.Trace
         IDE.Pane.Variables
-        IDE.Pane.Errors
-        IDE.Preferences
-        IDE.TextEditor
-        IDE.Workspaces
-        IDE.Workspaces.Writer
-        IDE.Statusbar
-        IDE.Pane.Workspace
-        IDE.PaneGroups
-        IDE.Utils.ServerConnection
-        IDE.BufferMode
-        IDE.Build
-        IDE.Command.VCS
-        IDE.Command.VCS.Common
-        IDE.Command.VCS.SVN
-        IDE.Command.VCS.GIT
-        IDE.Command.VCS.Mercurial
-        IDE.Command.VCS.Common.Workspaces
-        IDE.Command.VCS.Common.GUI
-        IDE.Command.VCS.Common.Helper
-        IDE.Command.VCS.Types
-        IDE.Command.Print
         IDE.Pane.WebKit.Documentation
         IDE.Pane.WebKit.Inspect
         IDE.Pane.WebKit.Output
+        IDE.Pane.Workspace
+        IDE.PaneGroups
+        IDE.Preferences
+        IDE.Session
+        IDE.SourceCandy
+        IDE.Statusbar
+        IDE.SymbolNavigation
+        IDE.TextEditor
         IDE.TextEditor.Class
         IDE.TextEditor.CodeMirror
-        IDE.TextEditor.Yi
         IDE.TextEditor.GtkSourceView
+        IDE.TextEditor.Yi
+        IDE.TextEditor.Yi.Config
+        IDE.TypeTip
+        IDE.Utils.CabalUtils
+        IDE.Utils.DebugUtils
+        IDE.Utils.DirectoryUtils
         IDE.Utils.ExternalTool
-        IDE.LPaste
-        IDE.Brittany
-    hs-source-dirs: src
+        IDE.Utils.GUIUtils
+        IDE.Utils.ServerConnection
+        IDE.Web.Command
+        IDE.Web.Events
+        IDE.Web.Layout
+        IDE.Web.Main
+        IDE.Web.Widget.ContextMenu
+        IDE.Web.Widget.Editor
+        IDE.Web.Widget.Errors
+        IDE.Web.Widget.Findbar
+        IDE.Web.Widget.FileTree
+        IDE.Web.Widget.Flipper
+        IDE.Web.Widget.Grep
+        IDE.Web.Widget.Keymap
+        IDE.Web.Widget.Log
+        IDE.Web.Widget.Menu
+        IDE.Web.Widget.Menubar
+        IDE.Web.Widget.Statusbar
+        IDE.Web.Widget.Tabs
+        IDE.Web.Widget.Tree
+        IDE.Web.Widget.Toolbar
+        IDE.Web.Widget.Workspace
+        IDE.Workspaces
+        IDE.Workspaces.Writer
+    hs-source-dirs: src src-gtk
     other-modules:
         Paths_leksah
     default-language: Haskell2010
     default-extensions: ViewPatterns
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
-                 -ferror-spans
+                 -ferror-spans -Wall
     build-depends:
+        Cabal >=2 && <2.5,
+        Glob >=0.9.2 && <0.10,
+        HTTP >=4000.3.3,
+        QuickCheck >=2.4.2 && <2.13,
+        aeson >=1.1.2.0 && <1.5,
+        aeson-pretty >=0.8.7 && <0.9,
+        array >=0.2.0.0 && <0.6,
+        attoparsec >=0.10.0.3 && <0.14,
+        base >=4.0.0.0 && <4.13,
         base-compat >=0.9.0 && <0.11,
-        haskell-gi-base >=0.21.2 && <0.22,
-        gi-glib >=2.0.6 && <2.1,
-        gi-gobject >=2.0.6 && <2.1,
-        gi-gio >=2.0.6 && <2.1,
+        binary >=0.5.0.0 && <0.9,
+        binary-shared >=0.8.2 && <0.9,
+        blaze-html -any,
+        brittany >=0.11.0.0 && <0.12,
+        bytestring >=0.9.0.1 && <0.11,
+        clay >=0.13.1 && <0.14,
+        conduit >=1.0.8 && <1.4,
+        containers >=0.2.0.0 && <0.7,
+        cpphs >=1.19 && <1.21,
+        criterion-measurement >=0.1.1.0 && <0.2,
+        data-default >=0.7.1.1 && <0.8,
+        deepseq >=1.1.0.0 && <1.5,
+        dependent-map >=0.2.4 && <0.3,
+        dependent-sum >=0.4 && <0.5,
+        dependent-sum-template >=0.0.0.6 && <0.1,
+        directory >=1.0.0.2 && <1.4,
+        executable-path >=0.0.3 && <0.1,
+        extra >=1.6.12 && <1.7,
+        filepath >=1.1.0.1 && <1.5,
+        fsnotify >=0.3.0.1 && <0.4,
+        generic-deriving >=1.10 && <1.13,
+        ghcjs-codemirror -any,
+        ghcjs-dom >=0.9.4.0 && <0.10,
         gi-cairo >=1.0.6 && <1.1,
         gi-gdk >=3.0.6 && <3.1,
         gi-gdkpixbuf >=2.0.6 && <2.1,
+        gi-gio >=2.0.6 && <2.1,
+        gi-glib >=2.0.6 && <2.1,
+        gi-gobject >=2.0.6 && <2.1,
         gi-gtk >=3.0.25 && <3.1,
-        gi-pango >=1.0.6 && <1.1,
-        gi-gtksource >=3.0.6 && <3.1,
         gi-gtk-hs >=0.3.6.2 && <0.4,
-        ghcjs-codemirror -any,
-        blaze-html -any,
-        pretty-show >=1.6.3 && <1.8,
-        Cabal >=2 && <2.3,
-        base >=4.0.0.0 && <4.12,
-        binary >=0.5.0.0 && <0.9,
-        bytestring >=0.9.0.1 && <0.11,
-        containers >=0.2.0.0 && <0.6,
-        directory >=1.0.0.2 && <1.4,
-        filepath >=1.1.0.1 && <1.5,
+        gi-gtksource >=3.0.6 && <3.1,
+        gi-pango >=1.0.6 && <1.1,
+        git >=0.2.0 && <0.4,
+        haskell-gi-base >=0.21.2 && <0.22,
+        haskell-gi-overloading ==0.0.*,
+        hlint >=1.9.21 && <2.2,
+        hslogger >=1.0.7 && <1.3,
+        http-types >=0.12.2 && <0.13,
+        jsaddle >=0.9.4.0 && <0.10,
+        jsaddle-warp >=0.9.4.0 && <0.10,
+        lens >=4.15.4 && <4.18,
+        ltk >=0.16.2.0 && <0.17,
         mtl >=1.1.0.2 && <2.3,
         old-time >=1.0.0.1 && <1.2,
         parsec >=2.1.0.1 && <3.2,
         pretty >=1.0.1.0 && <1.2,
+        pretty-show >=1.6.3 && <1.10,
+        process >=1.4.3.0 && <1.7,
+        reflex >=0.5 && <0.6,
+        reflex-dom-core >=0.4 && <0.5,
+        reflex-dom-svg >=0.3.1.1 && <0.4,
+        regex-base ==0.93.*,
         regex-tdfa >=1.1 && <1.3,
         regex-tdfa-text -any,
-        regex-base ==0.93.*,
-        utf8-string >=0.3.1.1 && <1.1,
-        array >=0.2.0.0 && <0.6,
-        time >=0.1 && <1.9,
-        ltk >=0.16.2.0 && <0.17,
-        binary-shared >=0.8.2 && <0.9,
-        deepseq >=1.1.0.0 && <1.5,
-        hslogger >=1.0.7 && <1.3,
+        shakespeare >=2.0.0.1 && <2.1,
+        split >=0.2.3.1,
+        stm >=2.4.4 && <2.6,
         strict >=0.3.2 && <0.4,
-        conduit >=1.0.8 && <1.4,
         text >=0.11.1.5 && <1.3,
+        text-replace >=0.0.0.1 && <0.1,
+        time >=0.1 && <1.9,
         transformers >=0.2.2.0 && <0.6,
-        executable-path >=0.0.3 && <0.1,
+        unliftio-core >=0.1 && < 0.2,
+        utf8-string >=0.3.1.1 && <1.1,
+        vado >=0.0.1 && <0.1,
         vcsgui >=0.3.0 && <0.4,
         vcswrapper >=0.2.0 && <0.3,
-        QuickCheck >=2.4.2 && <2.12,
-        hlint >=1.9.21 && <2.2,
-        vado >=0.0.1 && <0.1,
-        shakespeare >=2.0.0.1 && <2.1,
-        cpphs >=1.19 && <1.21,
-        stm >=2.4.4 && <2.6,
-        split >=0.2.3.1,
-        HTTP >=4000.3.3,
-        fsnotify >=0.3.0.1 && <0.4,
-        haskell-gi-overloading ==0.0.*,
-        lens >=4.15.4 && <4.17,
-        process >=1.4.3.0 && <1.7,
-        criterion >=1.1.4.0 && <1.5,
-        git >=0.2.0 && <0.3,
-        attoparsec >=0.10.0.3 && <0.14,
-        aeson >=1.1.2.0 && <1.5,
-        aeson-pretty >=0.8.7 && <0.9,
-        data-default >=0.7.1.1 && <0.8,
-        jsaddle >=0.9.4.0 && <0.10,
-        Glob >=0.9.2 && <0.10,
-        brittany >=0.11.0.0 && <0.12,
-        text-replace >=0.0.0.1 && <0.1
+        wai >=3.2.1.2 && <3.3,
+        wai-app-static >=3.1.6.2 && <3.2,
+        wai-extra >=3.0.24.3 && <3.1,
+        warp >=3.2.25 && <3.3,
+        websockets >=0.12.5.2 && <0.13
 
     if os(windows)
         extra-libraries:
@@ -364,8 +409,10 @@ library
             unix >=2.3.1.0 && <2.8
 
     if os(osx)
+        ghc-options: -dynamic
         build-depends:
-            gi-gtkosxapplication >=2.0.2 && <2.1
+            gi-gtkosxapplication >=2.0.2 && <2.1,
+            jsaddle-wkwebview >=0.9.4.0 && <0.10
 
     if os(linux)
         build-depends:
@@ -395,7 +442,7 @@ library
     if flag(network-uri)
         build-depends:
             network-uri >=2.6 && <2.7,
-            network >=2.6 && <2.7
+            network >=2.6 && <3.1
     else
         build-depends:
             network >=2.2 && <2.6
@@ -410,8 +457,178 @@ library
 
     if !impl(ghcjs -any)
         build-depends:
-            ghc >=6.10.1 && <8.5,
-            haskell-src-exts >=1.13.5 && <1.21,
+            ghc >=6.10.1 && <8.7,
+            haskell-src-exts >=1.13.5 && <1.22,
+            leksah-server >=0.17.0.0 && <0.18
+
+    if flag(hare)
+        build-depends:
+            HaRe >=0.8.4.1 && <0.9,
+            ghc-mod-core >=5.9.0.0 && <5.10,
+            monad-control >=1.0.2.3 && <1.1
+
+library leksah-nogtk
+    exposed-modules:
+        IDE.Build
+        IDE.Core.State
+        IDE.Core.Types
+        IDE.Debug
+        IDE.Gtk.Package
+        IDE.Gtk.State
+        IDE.Gtk.Types
+        IDE.Gtk.Workspaces
+        IDE.LogRef
+        IDE.Metainfo.Provider
+        IDE.Package
+        IDE.PackageFlags
+        IDE.Pane.Log
+        IDE.Pane.SourceBuffer
+        IDE.Pane.WebKit.Documentation
+        IDE.Pane.WebKit.Output
+        IDE.Preferences
+        IDE.SourceCandy
+        IDE.TextEditor.Yi.Config
+        IDE.Utils.CabalUtils
+        IDE.Utils.DebugUtils
+        IDE.Utils.DirectoryUtils
+        IDE.Utils.ExternalTool
+        IDE.Utils.ServerConnection
+        IDE.Web.Command
+        IDE.Web.Events
+        IDE.Web.Layout
+        IDE.Web.Main
+        IDE.Web.Widget.ContextMenu
+        IDE.Web.Widget.Editor
+        IDE.Web.Widget.Errors
+        IDE.Web.Widget.FileTree
+        IDE.Web.Widget.Findbar
+        IDE.Web.Widget.Flipper
+        IDE.Web.Widget.Grep
+        IDE.Web.Widget.Keymap
+        IDE.Web.Widget.Log
+        IDE.Web.Widget.Menu
+        IDE.Web.Widget.Menubar
+        IDE.Web.Widget.Statusbar
+        IDE.Web.Widget.Tabs
+        IDE.Web.Widget.Tree
+        IDE.Web.Widget.Toolbar
+        IDE.Web.Widget.Workspace
+        IDE.Workspaces
+        IDE.Workspaces.Writer
+    hs-source-dirs: src src-nogtk vendor/ltk/src
+    other-modules:
+        Control.Event
+        Paths_leksah
+    default-language: Haskell2010
+    default-extensions: ViewPatterns
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
+                 -ferror-spans -Wall
+    build-depends:
+        Cabal >=2 && <2.5,
+        Glob >=0.9.2 && <0.10,
+        HTTP >=4000.3.3,
+        QuickCheck >=2.4.2 && <2.13,
+        aeson >=1.1.2.0 && <1.5,
+        aeson-pretty >=0.8.7 && <0.9,
+        array >=0.2.0.0 && <0.6,
+        attoparsec >=0.10.0.3 && <0.14,
+        base >=4.0.0.0 && <4.13,
+        base-compat >=0.9.0 && <0.11,
+        binary >=0.5.0.0 && <0.9,
+        binary-shared >=0.8.2 && <0.9,
+        blaze-html -any,
+        brittany >=0.11.0.0 && <0.12,
+        bytestring >=0.9.0.1 && <0.11,
+        clay >=0.13.1 && <0.14,
+        conduit >=1.0.8 && <1.4,
+        containers >=0.2.0.0 && <0.7,
+        cpphs >=1.19 && <1.21,
+        criterion-measurement >=0.1.1.0 && <0.2,
+        data-default >=0.7.1.1 && <0.8,
+        deepseq >=1.1.0.0 && <1.5,
+        dependent-map >=0.2.4 && <0.3,
+        dependent-sum >=0.4 && <0.5,
+        dependent-sum-template >=0.0.0.6 && <0.1,
+        directory >=1.0.0.2 && <1.4,
+        executable-path >=0.0.3 && <0.1,
+        extra >=1.6.12 && <1.7,
+        filepath >=1.1.0.1 && <1.5,
+        fsnotify >=0.3.0.1 && <0.4,
+        generic-deriving >=1.10 && <1.13,
+        ghcjs-codemirror -any,
+        ghcjs-dom >=0.9.4.0 && <0.10,
+        git >=0.2.0 && <0.4,
+        hlint >=1.9.21 && <2.2,
+        hslogger >=1.0.7 && <1.3,
+        http-types >=0.12.2 && <0.13,
+        jsaddle >=0.9.4.0 && <0.10,
+        jsaddle-warp >=0.9.4.0 && <0.10,
+        keycode >=0.2.2 && <0.3,
+        lens >=4.15.4 && <4.18,
+        mtl >=1.1.0.2 && <2.3,
+        old-time >=1.0.0.1 && <1.2,
+        parsec >=2.1.0.1 && <3.2,
+        pretty >=1.0.1.0 && <1.2,
+        pretty-show >=1.6.3 && <1.10,
+        process >=1.4.3.0 && <1.7,
+        reflex >=0.5 && <0.6,
+        reflex-dom-core >=0.4 && <0.5,
+        reflex-dom-svg >=0.3.1.1 && <0.4,
+        regex-base ==0.93.*,
+        regex-tdfa >=1.1 && <1.3,
+        regex-tdfa-text -any,
+        shakespeare >=2.0.0.1 && <2.1,
+        split >=0.2.3.1,
+        stm >=2.4.4 && <2.6,
+        strict >=0.3.2 && <0.4,
+        text >=0.11.1.5 && <1.3,
+        text-replace >=0.0.0.1 && <0.1,
+        time >=0.1 && <1.9,
+        transformers >=0.2.2.0 && <0.6,
+        unliftio-core >=0.1 && < 0.2,
+        utf8-string >=0.3.1.1 && <1.1,
+        vado >=0.0.1 && <0.1,
+        vcswrapper >=0.2.0 && <0.3,
+        wai >=3.2.1.2 && <3.3,
+        wai-app-static >=3.1.6.2 && <3.2,
+        wai-extra >=3.0.24.3 && <3.1,
+        warp >=3.2.25 && <3.3,
+        websockets >=0.12.5.2 && <0.13
+
+    if os(windows)
+        extra-libraries:
+            kernel32
+        build-depends:
+            Win32 >=2.2.0.0 && <2.7
+    else
+        build-depends:
+            unix >=2.3.1.0 && <2.8
+
+    if flag(yi)
+        cpp-options: -DLEKSAH_WITH_YI
+        build-depends:
+            yi >=0.12.4 && <0.13,
+            yi-language >=0.2.0 && <0.3,
+            yi-rope >=0.7.0.1 && <0.8
+
+    if (flag(loc) && os(linux))
+        cpp-options: -DLOCALIZATION
+        build-depends:
+            hgettext -any,
+            setlocale -any
+
+    if flag(network-uri)
+        build-depends:
+            network-uri >=2.6 && <2.7,
+            network >=2.6 && <3.1
+    else
+        build-depends:
+            network >=2.2 && <2.6
+
+    if !impl(ghcjs -any)
+        build-depends:
+            ghc >=6.10.1 && <8.7,
+            haskell-src-exts >=1.13.5 && <1.22,
             leksah-server >=0.17.0.0 && <0.18
 
     if flag(hare)
@@ -428,7 +645,7 @@ executable leksah
                  -fwarn-incomplete-patterns -ferror-spans
     build-depends:
         leksah -any,
-        base >=4.0.0.0 && <4.12,
+        base >=4.0.0.0 && <4.13,
         gi-gtk-hs >=0.3.1.0 && <0.4,
         stm >=2.4.4 && <2.6
 
@@ -454,26 +671,59 @@ executable leksah
             setlocale -any
 
     if os(osx)
-        ghc-options: -optl-headerpad_max_install_names
+        ghc-options: -dynamic -optl-headerpad_max_install_names
 
     if !impl(ghcjs -any)
         build-depends:
             leksah-server -any
 
---executable bewleksah
---    main-is: Main.hs
---    build-depends:
---        leksah,
---        base >=4.0.0.0 && <4.11,
---        jsaddle -any,
---        ghcjs-dom >=0.4.0.0 && <0.5,
---        gi-gtk-hs >=0.3.0.0 && <0.4,
---        gi-gtksource >=3.0.2 && <3.1,
---        gi-webkit2 >=4.0.6 && <4.1,
---        webkitgtk3-javascriptcore -any,
---        stm >=2.4.4 && <2.6
---    default-language: Haskell2010
---    hs-source-dirs: bew
+executable leksah-warp
+    main-is: Warp.hs
+    hs-source-dirs: main
+    default-language: Haskell2010
+    ghc-options: -rtsopts -fwarn-missing-fields
+                 -fwarn-incomplete-patterns -ferror-spans
+    build-depends:
+        leksah-nogtk -any,
+        base >=4.0.0.0 && <4.13
+
+    if os(windows)
+        extra-libraries:
+            kernel32
+        build-depends:
+            Win32 >=2.2.0.0 && <2.7
+
+    if flag(threaded)
+        ghc-options: -threaded
+
+    if (os(linux) && flag(loc))
+        cpp-options: -DLOCALIZATION
+        build-depends:
+            hgettext -any,
+            setlocale -any
+
+    if os(osx)
+        ghc-options: -dynamic -optl-headerpad_max_install_names
+
+    if !impl(ghcjs -any)
+        build-depends:
+            leksah-server -any
+
+executable leksah-wkwebview
+    main-is: WKWebView.hs
+    hs-source-dirs: main
+    default-language: Haskell2010
+    ghc-options: -threaded -rtsopts -Wall -ferror-spans
+                 -dynamic -optl-headerpad_max_install_names
+
+    build-depends:
+        base >=4.0.0.0 && <4.13,
+        data-default >=0.7.1.1 && <0.8,
+        leksah-nogtk -any,
+        jsaddle-wkwebview >=0.9.4.0 && <0.10
+
+    if (!os(osx))
+        buildable: False
 
 --test-suite tests
 --

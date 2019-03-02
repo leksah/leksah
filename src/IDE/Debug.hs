@@ -69,14 +69,15 @@ module IDE.Debug (
 import Prelude ()
 import Prelude.Compat
 import IDE.Core.Types
-       (IDEPackage(..), Project(..), DebugM, runPackage, runProject,
+       (LogTag(..), IDEPackage(..), Project(..), runPackage, runProject,
         IDEEvent(..), MonadIDE(..), Prefs(..))
 import IDE.Core.CTypes (pdModules, mdModuleId, modu)
 import IDE.Core.State
        (debugState, breakpointRefs, packageDebugState, MessageLevel(..),
-        ideMessage, postSyncIDE, readIDE, modifyIDE_, runDebug, catchIDE,
-        triggerEventIDE, LogRef, currentHist, autoURI, autoCommand,
+        ideMessage, readIDE, modifyIDE_, runDebug, catchIDE,
+        triggerEventIDE_, LogRef, currentHist, autoURI, autoCommand,
         PackageAction, prefs, IDEAction, DebugAction, IDEM, DebugState(..))
+import IDE.Gtk.State (postSyncIDE)
 import IDE.LogRef
 import Control.Exception (SomeException(..))
 import IDE.Pane.SourceBuffer
@@ -86,39 +87,37 @@ import IDE.Pane.SourceBuffer
 import IDE.Metainfo.Provider (getActivePackageDescr)
 import Distribution.Text (display)
 import IDE.Pane.Log
-import Data.List (intersperse, stripPrefix, isSuffixOf)
-import IDE.Utils.GUIUtils (getDebugToggled)
-import IDE.Package (debugStart, executeDebugCommand, tryDebug, printBindResultFlag,
+import Data.List (intersperse)
+import IDE.Package (executeDebugCommand, printBindResultFlag,
         breakOnErrorFlag, breakOnExceptionFlag, printEvldWithShowFlag)
+import IDE.Gtk.Package (tryDebug)
 import IDE.Utils.Tool (ToolOutput(..), toolProcess, interruptProcessGroupOf)
-import IDE.Workspaces (workspaceTry, packageTry)
+import IDE.Gtk.Workspaces (workspaceTry, packageTry)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative (Alternative(..), (<$>), (<*>))
+import Control.Lens ((%~), (.~))
 import Data.IORef (newIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
-       (concat, intersperse, pack, lines, stripPrefix, unlines,
-        isSuffixOf, unpack)
-import System.Exit (ExitCode(..))
+       (concat, pack, lines, stripPrefix, isSuffixOf, unpack)
 import IDE.Pane.WebKit.Output (loadOutputUri)
 import qualified Data.Sequence as Seq (filter, empty)
-import qualified Data.Map as M (elems, lookup)
-import Control.Monad (unless, when)
+import Control.Monad (void, unless)
 import Data.Conduit (ConduitT)
 import Data.Void (Void)
 
 -- | Get the last item
+sinkLast :: Monad m => ConduitT a o m (Maybe a)
 sinkLast = CL.fold (\_ a -> Just a) Nothing
 
 debugCommand :: Text -> ConduitT ToolOutput Void IDEM () -> DebugAction
 debugCommand command handler = do
     debugCommand' command handler
-    lift $ triggerEventIDE VariablesChanged
-    return ()
+    lift $ triggerEventIDE_ VariablesChanged
 
 debugCommand' :: Text -> ConduitT ToolOutput Void IDEM () -> DebugAction
 debugCommand' command handler = do
@@ -126,10 +125,9 @@ debugCommand' command handler = do
     lift $ catchIDE (runDebug (executeDebugCommand command handler) ghci)
         (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
 
-debugToggled :: IDEAction
-debugToggled = do
-    toggled <- getDebugToggled
-    modifyIDE_ (\ide -> ide{prefs = (prefs ide){debug = toggled}})
+debugToggled :: Bool -> IDEAction
+debugToggled toggled = do
+    modifyIDE_ $ prefs %~ (\p -> p{debug = toggled})
     unless toggled $
         readIDE debugState >>= mapM_ (runDebug (debugCommand ":quit" logOutputDefault))
 
@@ -189,7 +187,7 @@ debugExecuteSelection = do
                 [] -> return (("", ""), packageTry $ tryDebug command)
                 (project, package):_ -> return ((pjFile project, ipdCabalFile package),
                     workspaceTry . (`runProject` project) . (`runPackage` package) $ tryDebug command)
-            modifyIDE_ $ \ide -> ide {autoCommand = autoCmd, autoURI = Nothing}
+            modifyIDE_ $ (autoCommand .~ autoCmd) . (autoURI .~ Nothing)
             snd autoCmd
 
 debugBuffer :: IDEBuffer -> DebugAction -> IDEAction
@@ -247,14 +245,14 @@ debugAbandon =
 
 debugBack :: IDEAction
 debugBack = do
-    modifyIDE_ (\ide -> ide{currentHist = min (currentHist ide - 1) 0})
+    modifyIDE_ $ currentHist %~ (max 0 . subtract 1)
     debugSelection' $ \_ -> do
         basePath <- dsBasePath <$> ask
         debugCommand ":back" (logOutputForHistoricContextDefault basePath)
 
 debugForward :: IDEAction
 debugForward = do
-    modifyIDE_ (\ide -> ide{currentHist = currentHist ide + 1})
+    modifyIDE_ $ currentHist %~ (+1)
     debugSelection' $ \_ -> do
         basePath <- dsBasePath <$> ask
         debugCommand ":forward" (logOutputForHistoricContextDefault basePath)
@@ -280,8 +278,6 @@ debugDeleteBreakpoint indexString lr = do
     debugSelection' $ \_ -> debugCommand (":delete " <> indexString) logOutputDefault
     bl <- readIDE breakpointRefs
     setBreakpointList $ Seq.filter (/= lr) bl
-    ideR <- ask
-    return ()
 
 debugForce :: IDEAction
 debugForce = debugSelection "Please select an expression in the editor" $ \text ->
@@ -326,11 +322,10 @@ debugStepModule = debugSelection' $ \_ -> do
     basePath <- dsBasePath <$> ask
     debugCommand ":stepmodule" (logOutputForHistoricContextDefault basePath)
 
-
+logTraceOutput :: FilePath -> ConduitT ToolOutput Void IDEM ()
 logTraceOutput debugPackage = do
     logOutputForLiveContextDefault debugPackage
-    lift $ triggerEventIDE TraceChanged
-    return ()
+    lift $ triggerEventIDE_ TraceChanged
 
 debugTrace :: IDEAction
 debugTrace = debugSelection' $ \_ -> do
@@ -365,16 +360,15 @@ debugShowContext = debugSelection' $ \_ -> do
 
 debugShowModules :: IDEAction
 debugShowModules = debugSelection' $ \_ -> debugCommand ":show modules" $
-    logOutputLinesDefault_ $ \log logLaunch output -> liftIO $ do
+    logOutputLinesDefault_ $ \log' logLaunch output -> void $
         case output of
-            ToolInput  line -> appendLog log logLaunch (line <> "\n") InputTag
+            ToolInput  line -> appendLog log' logLaunch (line <> "\n") InputTag
             ToolOutput line | ", interpreted )" `T.isSuffixOf` line
-                            -> appendLog log logLaunch (line <> "\n") LogTag
-            ToolOutput line -> appendLog log logLaunch (line <> "\n") InfoTag
-            ToolError  line -> appendLog log logLaunch (line <> "\n") ErrorTag
-            ToolPrompt _    -> defaultLineLogger' log logLaunch output
-            ToolExit _      -> appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
-        return ()
+                            -> appendLog log' logLaunch (line <> "\n") LogTag
+            ToolOutput line -> appendLog log' logLaunch (line <> "\n") InfoTag
+            ToolError  line -> appendLog log' logLaunch (line <> "\n") ErrorTag
+            ToolPrompt _    -> defaultLineLogger log' logLaunch output
+            ToolExit _      -> appendLog log' logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
 
 debugShowPackages :: IDEAction
 debugShowPackages = debugSelection' $ \_ -> debugCommand ":show packages" logOutputDefault
@@ -417,7 +411,6 @@ debugSetBreakpoint = do
                             debugCommand (":break " <> moduleName <> " " <> T.pack (show $ line + 1) <> " " <> T.pack (show lineOffset))
                                          (logOutputForSetBreakpointDefault basePath)
                         Nothing -> ideMessage Normal "Unknown error setting breakpoint"
-            ref <- ask
             return ()
         Nothing   -> ideMessage Normal "Please select module file in the editor"
 

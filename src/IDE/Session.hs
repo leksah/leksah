@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Session
@@ -35,35 +36,52 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
 import qualified Data.Set as Set
+import Control.Lens ((^.), (.~))
 
 import IDE.Core.State
-import IDE.Utils.GUIUtils
-import IDE.Utils.FileUtils
-import qualified Text.PrettyPrint.HughesPJ as PP
-import Graphics.UI.Editor.Parameters
-import IDE.TextEditor
-import IDE.Pane.Modules
+       (IDEAction,
+       IDEM, standardSessionFilename, readIDE, workspace, wsFile,
+       leksahSessionFileExtension, ideGtk, sysMessage, MessageLevel(..),
+       recentFiles, recentWorkspaces, modifyIDE_, catchIDE, throwIDE)
+import IDE.Gtk.State
+       (RecoverablePane, PanePath, IDEPane(..), PaneLayout(..),
+       recoverState, getActivePane, paneFromName, closePane, PaneDirection(..),
+       PanePathElement(..), getMainWindow,
+       completion, getMRUPanes, toolbar, findbar,
+       getWindows, getPanesSt, getLayout, closeGroup, allGroupNames,
+       viewCollapse', getPaned, getNotebook, posTypeToPaneDirection, getPaneMapSt,
+       saveState, mbPaneFromName, makeActive,
+       viewNest', viewDetach', paneDirectionToPosType, viewSplit',
+       getActiveWindow)
+import IDE.Utils.GUIUtils (chooseSaveFile, getFullScreenState, setFullScreenState, __)
+import IDE.Utils.FileUtils (getConfigDir, getConfigFilePathForSave)
+import Graphics.UI.Editor.Parameters (dialogRun', dialogAddButton')
+import IDE.TextEditor (getBuffer, setModified)
+import IDE.Pane.Modules (ModulesState)
 import IDE.Pane.SourceBuffer
-import IDE.Pane.Info (InfoState(..), setInfoStyle)
+       (fileCloseAll, allBuffers, IDEBuffer(..), sourceView, BufferState)
+import IDE.Pane.Info (InfoState(..))
 import IDE.Pane.Log (LogState(..))
-import IDE.Pane.PackageFlags
-import IDE.Pane.Search
-import IDE.Pane.Grep
-import IDE.Pane.HLint
-import IDE.Pane.WebKit.Documentation
-import IDE.Pane.WebKit.Output
-import IDE.Pane.WebKit.Inspect
-import IDE.Pane.Files
-import IDE.Pane.Breakpoints
-import IDE.Pane.Trace
-import IDE.Pane.Variables
+import IDE.Pane.PackageFlags (FlagsState)
+import IDE.Pane.Search (SearchState)
+import IDE.Pane.Grep (GrepState)
+import IDE.Pane.HLint (HLintState)
+import IDE.Pane.WebKit.Documentation (DocumentationState)
+import IDE.Pane.WebKit.Output (OutputState)
+import IDE.Pane.WebKit.Inspect (InspectState)
+import IDE.Pane.Files (FilesState)
+import IDE.Pane.Breakpoints (BreakpointsState)
+import IDE.Pane.Trace (TraceState)
+import IDE.Pane.Variables (VariablesState)
 import IDE.Find
+       (hideFindbar, showFindbar, hideToolbar, showToolbar, setFindState,
+        getFindState, FindState(..))
 import System.Time (getClockTime)
 import IDE.Package (deactivatePackage)
-import IDE.Pane.Errors (fillErrorList, ErrorsState(..))
+import IDE.Pane.Errors (ErrorsState)
 import Control.Exception (catch, SomeException(..))
 import IDE.Pane.Workspace (WorkspaceState(..))
-import IDE.Workspaces (workspaceOpenThis)
+import IDE.Gtk.Workspaces (workspaceOpenThis)
 import IDE.Completion (setCompletionSize)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad ((>=>), void, when)
@@ -71,7 +89,7 @@ import System.Log.Logger (errorM, debugM)
 import Data.Text (Text)
 import Data.Traversable (forM)
 import Data.Foldable (forM_)
-import IDE.Preferences (applyInterfaceTheme)
+import IDE.Gtk.Preferences (applyInterfaceTheme)
 import GI.Gtk.Objects.Window
        (windowUnfullscreen, windowFullscreen, windowSetDefaultSize,
         Window(..), windowSetTransientFor, setWindowTitle, windowGetSize)
@@ -147,7 +165,7 @@ asPaneState s | isJust (cast s :: Maybe TraceState)       =   TraceSt (fromJust 
 asPaneState s | isJust (cast s :: Maybe VariablesState)   =   VariablesSt (fromJust $ cast s)
 asPaneState s | isJust (cast s :: Maybe ErrorsState)      =   ErrorsSt (fromJust $ cast s)
 asPaneState s | isJust (cast s :: Maybe WorkspaceState)   =   WorkspaceSt (fromJust $ cast s)
-asPaneState s                                               =   error "SaveSession>>asPaneState incomplete cast"
+asPaneState _                                             =   error "SaveSession>>asPaneState incomplete cast"
 
 recover :: PanePath -> PaneState -> IDEAction
 recover pp (BufferSt p)         =   void (recoverState pp p)
@@ -180,8 +198,7 @@ sessionClosePane =
         (Nothing, _)     ->  return ()
         (Just (pn,_), _) ->  do
             (PaneC p) <- paneFromName pn
-            closePane p
-            return ()
+            void $ closePane p
 
 data SessionState = SessionState {
         sessionVersion      ::   Int
@@ -202,6 +219,7 @@ data SessionState = SessionState {
 instance ToJSON SessionState
 instance FromJSON SessionState
 
+defaultSession :: SessionState
 defaultSession = SessionState {
         sessionVersion      =   theSessionVersion
     ,   saveTime            =   ""
@@ -256,16 +274,15 @@ defaultSession = SessionState {
 saveSession :: IDEAction
 saveSession = do
     sessionPath    <- liftIO $ getConfigFilePathForSave standardSessionFilename
-    mbSessionPath2 <- do
-        ws <- readIDE workspace
-        case ws of
+    mbSessionPath2 <-
+        readIDE workspace >>= \case
             Nothing -> return Nothing
-            Just ws -> return $ Just (dropExtension (wsFile ws) ++
+            Just ws -> return $ Just (dropExtension (ws ^. wsFile) ++
                                     leksahSessionFileExtension)
     saveSessionAs sessionPath mbSessionPath2
 
 saveSessionAs :: FilePath -> Maybe FilePath ->  IDEAction
-saveSessionAs sessionPath mbSecondPath = do
+saveSessionAs sessionPath mbSecondPath = readIDE ideGtk >>= mapM_ (\gtk -> do
     sysMessage Normal (__ "Now saving session")
     bufs <- allBuffers
     case filter (\b -> bufferName b == "_Eval.hs") bufs of
@@ -274,38 +291,30 @@ saveSessionAs sessionPath mbSecondPath = do
             setModified ebuf False
         _     -> return ()
     wdw             <-  getMainWindow
-    layout          <-  mkLayout
+    layoutS         <-  mkLayout
     population      <-  getPopulation
     size            <-  windowGetSize wdw
     fullScreen      <-  getFullScreenState
-    (completionSize,_) <- readIDE completion
+    let (completionSize,_) = gtk ^. completion
     mbWs            <-  readIDE workspace
-    mru             <-  getMRUPanes
-    (toolbarVisible,_)  <- readIDE toolbar
+    activePaneN     <-  getMRUPanes
+    let (toolbarVisibleS,_) = gtk ^. toolbar
     findState       <- getFindState
-    (findbarVisible,_)  <- readIDE findbar
+    let (findbarVisible,_) = gtk ^. findbar
     timeNow         <- liftIO getClockTime
-    recentFiles'      <- readIDE recentFiles
-    recentWorkspaces' <- readIDE recentWorkspaces
-    let state = SessionState {
-        sessionVersion      =   theSessionVersion
-    ,   saveTime            =   T.pack $ show timeNow
-    ,   layoutS             =   layout
-    ,   population          =   population
-    ,   windowSize          =   (fromIntegral *** fromIntegral) size
-    ,   fullScreen          =   fullScreen
-    ,   completionSize      =   completionSize
-    ,   workspacePath       =   case mbWs of
+    recentOpenedFiles <- readIDE recentFiles
+    recentOpenedWorksp <- readIDE recentWorkspaces
+    let sessionVersion      =   theSessionVersion
+        saveTime            =   T.pack $ show timeNow
+        windowSize          =   (fromIntegral *** fromIntegral) size
+        workspacePath       =   case mbWs of
                                     Nothing -> Nothing
-                                    Just ws -> Just (wsFile ws)
-    ,   activePaneN         =   mru
-    ,   toolbarVisibleS     =   toolbarVisible
-    ,   findbarState        =   (findbarVisible,findState)
-    ,   recentOpenedFiles   =   recentFiles'
-    ,   recentOpenedWorksp  =   recentWorkspaces'}
+                                    Just ws -> Just (ws ^. wsFile)
+        findbarState        =   (findbarVisible,findState)
+        state = SessionState {..}
     liftIO $ LBS.writeFile sessionPath $ encodePretty state
     forM_ mbSecondPath $ \secondPath ->
-        liftIO $ LBS.writeFile secondPath $ encodePretty state
+        liftIO $ LBS.writeFile secondPath $ encodePretty state)
 
 saveSessionAsPrompt :: IDEAction
 saveSessionAsPrompt = do
@@ -328,9 +337,9 @@ loadSessionPrompt = do
     setWindowTitle dialog (__ "Select session file")
     windowSetTransientFor dialog $ Just window'
     fileChooserSetAction dialog FileChooserActionOpen
-    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
-    dialogAddButton' dialog "Load Session" ResponseTypeAccept
-    fileChooserSetCurrentFolder dialog configFolder
+    _ <- dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    _ <- dialogAddButton' dialog "Load Session" ResponseTypeAccept
+    _ <- fileChooserSetCurrentFolder dialog configFolder
     widgetShow dialog
     res <- dialogRun' dialog
     case res of
@@ -347,14 +356,14 @@ loadSession sessionPath = do
     deactivatePackage
     recentFiles'      <- readIDE recentFiles
     recentWorkspaces' <- readIDE recentWorkspaces
-    fileCloseAll (\_ -> return True)
+    _ <- fileCloseAll (\_ -> return True)
     detachedCloseAll
     paneCloseAll
     groupsCloseAll
     viewCollapseAll
-    recoverSession sessionPath
-    modifyIDE_ (\ ide -> ide{ recentFiles      = recentFiles'
-                            , recentWorkspaces = recentWorkspaces'})
+    _ <- recoverSession sessionPath
+    modifyIDE_ $ (recentFiles .~ recentFiles')
+               . (recentWorkspaces .~ recentWorkspaces')
     return ()
 
 detachedCloseAll :: IDEAction
@@ -397,7 +406,7 @@ mkLayout = do
         pane        <-  getPaned pp
         pos         <-  fromIntegral <$> panedGetPosition pane
         return (VerticalP l2 r2 pos)
-    getLayout' raw@(TerminalP {paneGroups = groups}) pp = do
+    getLayout' raw@TerminalP {paneGroups = groups} pp = do
         groups2     <-  forM (Map.toAscList groups) $ \(group, g) -> do
             l <- getLayout' g (pp ++ [GroupP group])
             return (group, l)
@@ -428,12 +437,12 @@ getPopulation = do
             Just st -> return (Just (asPaneState st), fst v))
                 $ Map.toList paneMap
 
-getActive :: IDEM(Maybe FilePath)
-getActive = do
-    active <- readIDE activePack
-    case active of
-        Nothing -> return Nothing
-        Just p -> return (Just (ipdCabalFile p))
+--getActive :: IDEM(Maybe FilePath)
+--getActive = do
+--    active <- readIDE activePack
+--    case active of
+--        Nothing -> return Nothing
+--        Just p -> return (Just (ipdCabalFile p))
 
 -- ------------------------------------------------------------
 -- * Parsing
@@ -476,8 +485,8 @@ recoverSession sessionPath = catchIDE (do
             then showFindbar
             else hideFindbar
         uncurry setCompletionSize (completionSize sessionSt)
-        modifyIDE_ (\ide -> ide{recentFiles = recentOpenedFiles sessionSt,
-                                        recentWorkspaces = recentOpenedWorksp sessionSt})
+        modifyIDE_ $ (recentFiles .~ recentOpenedFiles sessionSt)
+                   . (recentWorkspaces .~ recentOpenedWorksp sessionSt)
         setFullScreenState (fullScreen sessionSt)
         viewFullScreen
         applyInterfaceTheme
@@ -492,17 +501,17 @@ applyLayout layoutS = do
     old <- getLayout
     case old of
         TerminalP {} ->   applyLayout' layoutS []
-        otherwise    ->   throwIDE (__ "apply Layout can only be allied to empty Layout")
+        _            ->   throwIDE (__ "apply Layout can only be allied to empty Layout")
     where
     applyLayout' (TerminalP groups mbTabPos _ mbDetachedId mbDetachedSize) pp = do
         forM_ (Map.keys groups) $ \group -> viewNest' pp group
         nb          <-  getNotebook pp
         case (mbDetachedId, mbDetachedSize) of
-            (Just id, Just (width, height)) -> do
-                mbPair <- viewDetach' pp id
+            (Just id', Just (width, height)) -> do
+                mbPair <- viewDetach' pp id'
                 case mbPair of
                     Nothing     -> return ()
-                    Just (win,wid) -> do
+                    Just (win,_wid) -> do
                         widgetShowAll win
                         windowSetDefaultSize win (fromIntegral width) (fromIntegral height)
             _ -> return ()

@@ -7,21 +7,25 @@ module IDE.Keymap (
     Keymap(..)
 ) where
 
+import Control.Monad (void, foldM)
 import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language(emptyDef)
 import Data.List (foldl',sort)
-import Data.Char(toLower)
 
 import IDE.Core.State
-import Control.Monad (foldM)
+       (ActionDescr, IDERef, KeymapI(..), accelerator, tooltip,
+        ActionString, KeyString, throwIDE, name)
+import IDE.Gtk.State (SpecialKeyTable)
 import System.Log.Logger (infoM)
 import Data.Text (Text)
 import qualified Data.Text as T (toLower, unpack, pack)
 import Control.Applicative ((<$>))
-import IDE.Core.Types (KeyVal)
+import IDE.Gtk.Types (KeyVal)
 import GI.Gdk (keyvalFromName, ModifierType(..))
+import Data.Functor.Identity (Identity(..))
+import Text.Parsec (ParsecT)
 
 class Keymap alpha where
     parseKeymap         ::   FilePath -> IO alpha
@@ -80,7 +84,7 @@ buildSpecialKeys' (KM keymap) actions = do
                                 =   do  a1p <- accParse a1
                                         a2p <- accParse a2
                                         return ((a1p,[(a2p,act)]): list)
-    build' act list _           =   return list
+    build' _   list _           =   return list
 
 
 -- ---------------------------------------------------------------------
@@ -95,11 +99,16 @@ keymapStyle= emptyDef
                 , P.identStart     = alphaNum <|> oneOf "<>_"
                 , P.identLetter    = alphaNum <|> oneOf "<>_"
                 }
+
+lexer :: P.GenTokenParser String u Identity
 lexer = P.makeTokenParser keymapStyle
-lexeme = P.lexeme lexer
+identifier :: ParsecT String u Identity Text
 identifier = T.pack <$> P.identifier lexer
+symbol :: String -> ParsecT String u Identity String
 symbol =  P.symbol lexer
+whiteSpace :: ParsecT String u Identity ()
 whiteSpace = P.whiteSpace lexer
+stringLiteral :: ParsecT String u Identity Text
 stringLiteral = T.pack <$> P.stringLiteral lexer
 
 keymapParser :: CharParser () KeymapI
@@ -115,15 +124,13 @@ lineparser = do
     mb1 <- option Nothing (do
         keyDescr <- identifier
         mb2 <- option Nothing (do
-            symbol "/"
-            key <- identifier
-            return (Just key))
+            _ <- symbol "/"
+            Just <$> identifier)
         return (Just (keyDescr, mb2)))
-    symbol "->"
+    _ <- symbol "->"
     action <- identifier
-    mbs <- option Nothing (do
-        str <- stringLiteral
-        return (Just str))
+    mbs <- option Nothing (
+        Just <$> stringLiteral)
     return (case mb1 of
         Nothing -> (action,[(Nothing,mbs)])
         Just (keyDescr,mb2) ->
@@ -145,10 +152,13 @@ accParse str = case parse accparser "accelerator" (T.unpack str) of
 accStyle :: P.LanguageDef st
 accStyle= emptyDef{P.caseSensitive = False}
 
+lexer2 :: P.GenTokenParser String u Identity
 lexer2 = P.makeTokenParser accStyle
-lexeme2 = P.lexeme lexer2
+symbol2 :: String -> ParsecT String u Identity String
 symbol2 =  P.symbol lexer2
+identifier2 :: ParsecT String u Identity Text
 identifier2 = T.pack <$> P.identifier lexer2
+whiteSpace2 :: ParsecT String u Identity ()
 whiteSpace2 = P.whiteSpace lexer2
 
 accparser :: GenParser Char () (Text,[ModifierType])
@@ -160,25 +170,25 @@ accparser = do
 
 modparser :: GenParser Char () ModifierType
 modparser = do
-    try $symbol2 "<shift>"
+    try $ void (symbol2 "<shift>")
     return ModifierTypeShiftMask
     <|> do
-    try $symbol2 "<control>"
+    try $ void (symbol2 "<control>")
     return ModifierTypeControlMask
     <|> do
-    try $symbol2 "<ctrl>"
+    try $ void (symbol2 "<ctrl>")
     return ModifierTypeControlMask
     <|> do
-    try $symbol2 "<alt>"
+    try $ void (symbol2 "<alt>")
     return ModifierTypeMod1Mask
     <|> do
-    try $symbol2 "<super>"
+    try $ void (symbol2 "<super>")
     return ModifierTypeSuperMask
     <|> do
-    try $symbol2 "<meta>"
+    try $ void (symbol2 "<meta>")
     return ModifierTypeMetaMask
     <|> do
-    try $symbol2 "<compose>"
+    try $ void (symbol2 "<compose>")
     return ModifierTypeHyperMask
     <?>"modparser"
 

@@ -23,7 +23,7 @@ module IDE.Command.VCS.Types (
 import Prelude ()
 import Prelude.Compat
 import Control.Monad.Reader
-import Control.Applicative
+import Control.Lens (Getting)
 import IDE.Core.Types
 import IDE.Core.State
 
@@ -36,7 +36,7 @@ askIDERef = VCSAction $ lift ask
 --liftIDE :: ReaderT (VCSConf,FilePath) IDEM a
 --liftIDE = VCSAction $ lift
 
-readIDE' :: (IDE -> a) -> VCSAction a
+readIDE' :: Getting a IDE a -> VCSAction a
 readIDE' f = VCSAction $ lift $ readIDE f
 
 reflectIDE' :: IDEM a -> IDERef -> IO a

@@ -22,12 +22,14 @@ module IDE.Leksah (
 import Prelude ()
 import Prelude.Compat
 import Control.Concurrent
-import Data.IORef
-import Data.Maybe
-import qualified Data.Map as Map
+       (tryTakeMVar, tryPutMVar, takeMVar, forkIO, yield,
+        setNumCapabilities, rtsSupportsBoundThreads, newMVar, newEmptyMVar)
+import Data.IORef (readIORef, newIORef, IORef)
+import Data.Maybe (mapMaybe)
 import System.Console.GetOpt
-import System.Environment
-import Data.Version
+       (usageInfo, ArgOrder(..), getOpt, ArgDescr(..), OptDescr(..))
+import Data.Version (showVersion)
+import Control.Lens ((.~))
 
 import qualified IDE.OSX as OSX
 import qualified IDE.TextEditor.Yi.Config as Yi
@@ -39,9 +41,25 @@ import Control.Applicative ((<$>))
 import qualified Config.Dyre as Dyre
 #endif
 
-import IDE.Session
+import IDE.Session (recoverSession)
+import IDE.Core.Types
+       (SensitivityMask(..), IDEEvent(..), IDEState(..))
 import IDE.Core.State
-import Control.Event
+       (endWithLastConn, serverPort, prefs, readIDE,
+        currentState, modifyIDE_, triggerEventIDE_, defaultSize, makeMode,
+        runBenchmarks, runUnitTests, makeDocs, debug, javaScript, native,
+        backgroundBuild, reflectIDE, keymapName, sourceCandy, version,
+        MessageLevel(..), sysMessage, Prefs, IDE(..), KeymapI,
+        sourceDirectories, unpackDirectory, retrieveURL, retrieveStrategy,
+        getDataDir, standardPreferencesFilename,
+        leksahSessionFileExtension, leksahWorkspaceFileExtension,
+        standardSessionFilename, strippedPreferencesFilename, leksahKeymapFileExtension,
+        leksahCandyFileExtension, emptySessionFilename)
+import IDE.Gtk.State
+       (windows, FrameState(..), IDEGtk(..), postSyncIDE',
+        getWindows, handleNotebookSwitch, newNotebook,
+        PaneLayout(..))
+import Control.Event (EventSource(..), triggerEvent)
 import IDE.SourceCandy
 import IDE.Utils.FileUtils
 import Graphics.UI.Editor.MakeEditor
@@ -57,83 +75,70 @@ import Graphics.UI.Editor.Simple
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Workspaces
        (projectTryQuiet, projectAddPackage', workspaceTryQuiet,
-        workspaceNewHere, workspaceOpenThis, backgroundMake, projectOpenThis)
+        backgroundMake, projectOpenThis)
+import IDE.Gtk.Workspaces (workspaceNewHere, workspaceOpenThis)
 import IDE.Utils.GUIUtils
 import Network (withSocketsDo)
 import Control.Exception
 import System.Exit (ExitCode(..), exitWith, exitFailure)
 import qualified IDE.StrippedPrefs as SP
-import IDE.Utils.Tool (runTool, toolline, waitForProcess)
 import System.Log
 import System.Log.Logger
-       (errorM, getLevel, getRootLogger, debugM, updateGlobalLogger,
+       (debugM, updateGlobalLogger,
         rootLoggerName, setLevel)
-import Data.List (stripPrefix)
 import System.Directory
-       (doesDirectoryExist, createDirectoryIfMissing,
-        getHomeDirectory, doesFileExist)
+       (doesDirectoryExist,
+        createDirectoryIfMissing, getHomeDirectory, doesFileExist)
 import System.FilePath (dropExtension, splitExtension, (</>))
-import qualified Data.Conduit as C
-import qualified Data.Conduit.List as CL
-import Data.Conduit (($$))
-import Control.Monad (forever, forM_, void, when, unless, liftM)
+import Control.Monad (forever, forM_, void, when, unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Applicative ((<$>))
-import qualified Data.Text as T (pack, unpack, stripPrefix, unlines)
+import qualified Data.Text as T (pack, unpack)
 import qualified Data.Text.IO as T (readFile, writeFile)
 import Data.Text (Text)
-import qualified Data.Map as M (empty)
-import qualified Data.Sequence as Seq (empty)
-import qualified GI.Gtk.Functions as Gtk (main, init)
-import GI.GLib.Functions (idleAdd, timeoutAdd, timeoutAddSeconds)
+import GI.GLib.Functions (timeoutAdd)
 import GI.GLib.Constants
-       (pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, pattern PRIORITY_LOW)
+       (pattern PRIORITY_LOW)
 import GI.Gdk.Objects.Screen
        (screenGetDefault, screenSetResolution)
 import GI.Gtk.Objects.CssProvider
-       (CssProvider(..), cssProviderLoadFromData, cssProviderNew)
+       (cssProviderLoadFromData, cssProviderNew)
 import GI.Gtk.Objects.StyleContext
        (styleContextAddProviderForScreen)
 import qualified Data.ByteString.Char8 as B (unlines)
 import GI.GLib.Structs.Source (sourceRemove)
-import GI.Gtk.Functions
-       (mainIterationDo, eventsPending, mainIteration)
+import GI.Gtk.Functions (eventsPending)
 import GI.Gtk.Objects.Window
-       (setWindowDeletable, windowSetIconFromFile, IsWindow, toWindow,
-        setWindowWindowPosition, setWindowTitle, windowSetDefaultSize, windowNew)
+       (windowSetIconFromFile, IsWindow, toWindow,
+        setWindowWindowPosition, setWindowTitle, windowSetDefaultSize)
 import GI.Gtk.Objects.Widget
        (widgetDestroy, widgetHide, widgetShowAll, widgetGetWindow,
-        onWidgetRealize, onWidgetDeleteEvent, widgetSetName)
+        onWidgetRealize, widgetSetName)
 import GI.Gtk.Objects.UIManager (uIManagerNew)
 import GI.Gtk.Objects.Notebook (afterNotebookSwitchPage)
 import GI.Gtk.Enums
-       (Orientation(..), WindowType(..), PolicyType(..), ResponseType(..),
+       (Orientation(..), PolicyType(..), ResponseType(..),
         WindowPosition(..), FileChooserAction(..))
 import GI.Gtk.Objects.Dialog
-       (dialogRun, dialogResponse, dialogGetContentArea, dialogNew)
-import Data.GI.Base (unsafeCastTo, set)
+       (dialogGetContentArea, dialogNew)
+import Data.GI.Base (unsafeCastTo)
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Box (Box(..))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowNew)
 import GI.Gtk.Objects.Adjustment (noAdjustment)
-import Control.Monad.Reader (MonadReader(..))
-import GI.Gtk.Objects.ProgressBar
-       (progressBarSetFraction, progressBarSetText, progressBarNew)
 import GI.Gtk
        (containerAdd, applicationNew, Application, applicationWindowNew)
 import GI.Gio (applicationRun, onApplicationActivate)
-import GI.GLib.Structs.MainContext
-       (mainContextIteration, mainContextDefault)
-import System.FSNotify
-       (watchTree, watchDir, withManager, WatchManager)
+import System.FSNotify (withManager, WatchManager)
 import Criterion.Measurement (initializeTime)
+-- import qualified IDE.Web.Main as Web (startJSaddle)
 
 -- --------------------------------------------------------------------
 -- Command line options
 --
 
-data Flag =  VersionF | SessionN Text | EmptySession | DefaultSession | Help | Verbosity Text | DevelopLeksah
+data Flag =  VersionF | SessionN Text | EmptySession | DefaultSession | Help | Verbosity Text | DevelopLeksah | WebOnly
        deriving (Show,Eq)
 
 options :: [OptDescr Flag]
@@ -147,6 +152,9 @@ options =   [Option "e" ["emptySession"] (NoArg EmptySession)
          ,   Option "" ["develop-leksah"] (NoArg DevelopLeksah)
                 "Exit Leksah when the 'leksah' package is rebuilt."
 
+         ,   Option "w" ["web"] (NoArg WebOnly)
+                "Only show the Web UI."
+
          ,   Option "h" ["help"] (NoArg Help)
                 "Display command line options"
          ,   Option "v" ["version"] (NoArg VersionF)
@@ -156,6 +164,7 @@ options =   [Option "e" ["emptySession"] (NoArg EmptySession)
              "One of DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"]
 
 
+header :: String
 header = "Usage: leksah [OPTION...] [file(.lkshs|.lkshw|.hs|.lhs)]"
 
 ideOpts :: [Text] -> IO ([Flag], [Text])
@@ -169,13 +178,13 @@ ideOpts argv =
 --
 
 #ifdef LEKSAH_WITH_YI_DYRE
-leksahDriver = Dyre.wrapMain Dyre.defaultParams
+leksahDriver args = Dyre.wrapMain Dyre.defaultParams
     { Dyre.projectName  = "yi"
     , Dyre.realMain     = \(config, mbError) -> do
         case mbError of
             Just error -> putStrLn $ "Error in yi configuration file : " ++ error
             Nothing    -> return ()
-        realMain config
+        realMain config args
     , Dyre.showError    = \(config, _) error -> (config, Just error)
     , Dyre.configDir    = Just . getAppUserDataDirectory $ "yi"
     , Dyre.cacheDir     = Just $ ((</> "leksah") <$> (getAppUserDataDirectory "cache"))
@@ -183,17 +192,18 @@ leksahDriver = Dyre.wrapMain Dyre.defaultParams
     , Dyre.ghcOpts = ["-DLEKSAH"]
     }
 
-leksah yiConfig = leksahDriver (yiConfig, Nothing)
+leksah yiConfig args = leksahDriver args (yiConfig, Nothing)
 #else
+leksah :: Yi.Config -> [String] -> IO b
 leksah = realMain
 #endif
 
-realMain yiConfig = do
+realMain :: Yi.Config -> [String] -> IO b
+realMain yiConfig args = do
   initializeTime
   exitCode <- newIORef ExitSuccess
   withSocketsDo $ handleExceptions $ do
     dataDir         <- getDataDir
-    args            <-  getArgs
 
     (flags,files)       <-  ideOpts $ map T.pack args
     isFirstStart    <-  not <$> hasSavedConfigFile standardPreferencesFilename
@@ -201,7 +211,7 @@ realMain yiConfig = do
                                         SessionN s -> Just s
                                         _          -> Nothing) flags
 
-    let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) $ map T.unpack files
+--    let sessionFPs    =   filter (\f -> snd (splitExtension f) == leksahSessionFileExtension) $ map T.unpack files
     let workspaceFPs  =   filter (\f -> snd (splitExtension f) == leksahWorkspaceFileExtension) $ map T.unpack files
     let sourceFPs     =   filter (\f -> let (_,s) = splitExtension f
                                         in s == ".hs" ||  s == ".lhs" || s == ".chs") $ map T.unpack files
@@ -236,10 +246,11 @@ realMain yiConfig = do
     let verbosity'      =  mapMaybe (\case
                                         Verbosity s -> Just s
                                         _           -> Nothing) flags
-    let verbosity       =  case verbosity' of
+        verbosity       =  case verbosity' of
                                [] -> INFO
                                h:_ -> read $ T.unpack h
-    let developLeksah = DevelopLeksah `elem` flags
+        developLeksah = DevelopLeksah `elem` flags
+        webOnly = WebOnly `elem` flags
     updateGlobalLogger rootLoggerName (setLevel verbosity)
     when (VersionF `elem` flags)
         (sysMessage Normal $ "Leksah the Haskell IDE, version " <> T.pack (showVersion version))
@@ -247,11 +258,64 @@ realMain yiConfig = do
         (sysMessage Normal $ "Leksah the Haskell IDE " <> T.pack (usageInfo header options))
 
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-    prefs           <- readPrefs prefsPath
-    when (notElem VersionF flags && notElem Help flags)
-        (startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs  prefs isFirstStart)
+    prefs'          <- readPrefs prefsPath
+    when (notElem VersionF flags && notElem Help flags) $
+        if webOnly
+            then withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
+                candyPath   <-  getConfigFilePathForLoad
+                                    (case sourceCandy prefs' of
+                                        (_,name)   ->   T.unpack name <> leksahCandyFileExtension) Nothing dataDir
+                candySt     <-  parseCandy candyPath
+
+                triggerBuild <- newEmptyMVar
+                nixCache <- loadNixCache
+                externalModified <- newMVar mempty
+                watchers <- newMVar (mempty, mempty)
+                let ide = IDE
+                      {   _ideGtk            =   Nothing
+                      ,   _exitCode          =   exitCode
+                      ,   _candy             =   candySt
+                      ,   _prefs             =   prefs'
+                      ,   _workspace         =   Nothing
+                      ,   _bufferProjCache   =   mempty
+                      ,   _allLogRefs        =   mempty
+                      ,   _currentHist       =   0
+                      ,   _currentEBC        =   (Nothing, Nothing, Nothing)
+                      ,   _systemInfo        =   Nothing
+                      ,   _packageInfo       =   Nothing
+                      ,   _workspaceInfo     =   Nothing
+                      ,   _workspInfoCache   =   mempty
+                      ,   _handlers          =   mempty
+                      ,   _currentState      =   IsStartingUp
+                      ,   _recentFiles       =   []
+                      ,   _recentWorkspaces  =   []
+                      ,   _runningTool       =   Nothing
+                      ,   _debugState        =   []
+                      ,   _yiControl         =   yiControl
+                      ,   _serverQueue       =   Nothing
+                      ,   _server            =   Nothing
+                      ,   _hlintQueue        =   Nothing
+                      ,   _logLaunches       =   mempty
+                      ,   _autoCommand       =   (("", ""), return ())
+                      ,   _autoURI           =   Nothing
+                      ,   _triggerBuild      =   triggerBuild
+                      ,   _fsnotify          =   fsnotify
+                      ,   _watchers          =   watchers
+                      ,   _developLeksah     =   developLeksah
+                      ,   _nixCache          =   nixCache
+                      ,   _externalModified  =   externalModified
+                      ,   _jsContexts        =   []
+                      ,   _logLineMap        =   mempty
+                }
+                ideR <- liftIO $ newMVar (const (return ()), ide)
+                liftIO $ (`reflectIDE` ideR) $
+                    forM_ mbWorkspaceFP' (workspaceOpenThis False)
+--                Web.startJSaddle 3367 ideR
+            else
+                startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs prefs' isFirstStart
   readIORef exitCode >>= exitWith
 
+handleExceptions :: IO a -> IO a
 handleExceptions inner =
   catch inner (\(exception :: SomeException) -> do
     sysMessage Normal ("leksah: internal IDE error: " <> T.pack (show exception))
@@ -265,7 +329,7 @@ startGUI :: IORef ExitCode -> Bool -> Yi.Config -> FilePath -> Maybe FilePath ->
 startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs iprefs isFirstStart =
   withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
     Just app <- applicationNew (Just "org.leksah.leksah") []
-    onApplicationActivate app $ do
+    _ <- onApplicationActivate app $ do
         debugM "leksah" "Application Activate"
         timeout  <- if rtsSupportsBoundThreads
                         then do
@@ -303,8 +367,8 @@ startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs ipref
                                             then return Nothing
                                             else do
                                                 prefsPath  <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-                                                prefs <- readPrefs prefsPath
-                                                return $ Just prefs
+                                                prefs' <- readPrefs prefsPath
+                                                return $ Just prefs'
         maybe (return ()) (void . sourceRemove) timeout
         case mbStartupPrefs of
             Nothing           -> return ()
@@ -312,20 +376,20 @@ startGUI exitCode developLeksah yiConfig sessionFP mbWorkspaceFP sourceFPs ipref
                 startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs
                                 startupPrefs isFirstStart
     debugM "leksah" "starting applicationRun"
-    applicationRun app Nothing
+    _ <- applicationRun app Nothing
     debugM "leksah" "finished applicationRun"
 
 startMainWindow :: IORef ExitCode -> Bool -> Application -> Yi.Control -> WatchManager -> FilePath -> Maybe FilePath -> [FilePath] ->
                         Prefs -> Bool -> IO ()
-startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startupPrefs isFirstStart = do
+startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorkspaceFP sourceFPs startupPrefs _isFirstStart = do
     timeout  <- if rtsSupportsBoundThreads
                     then return Nothing
                     else Just <$> timeoutAdd PRIORITY_LOW 10 (yield >> return True)
     debugM "leksah" "startMainWindow"
     osxApp <- OSX.applicationNew
-    uiManager   <-  uIManagerNew
+    uiManager'  <-  uIManagerNew
     newIcons
-    dataDir       <- getDataDir
+    dataDir     <- getDataDir
     candyPath   <-  getConfigFilePathForLoad
                         (case sourceCandy startupPrefs of
                             (_,name)   ->   T.unpack name <> leksahCandyFileExtension) Nothing dataDir
@@ -340,12 +404,12 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
     widgetSetName win "Leksah Main Window"
     let fs = FrameState
             {   windows       =   [win]
-            ,   uiManager     =   uiManager
-            ,   panes         =   Map.empty
+            ,   uiManager     =   uiManager'
+            ,   panes         =   mempty
             ,   activePane    =   (Nothing, [])
-            ,   paneMap       =   Map.empty
-            ,   layout        =   TerminalP Map.empty Nothing (-1) Nothing Nothing
-            ,   panePathFromNB =  Map.empty
+            ,   paneMap       =   mempty
+            ,   layout        =   TerminalP mempty Nothing (-1) Nothing Nothing
+            ,   panePathFromNB =  mempty
             }
 
     triggerBuild <- newEmptyMVar
@@ -353,55 +417,59 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
     externalModified <- newMVar mempty
     watchers <- newMVar (mempty, mempty)
     let ide = IDE
-          {   application       =   app
-          ,   exitCode          =   exitCode
-          ,   frameState        =   fs
-          ,   specialKeys       =   specialKeys
-          ,   specialKey        =   Nothing
-          ,   candy             =   candySt
-          ,   prefs             =   startupPrefs
-          ,   workspace         =   Nothing
-          ,   bufferProjCache   =   Map.empty
-          ,   allLogRefs        =   Seq.empty
-          ,   currentHist       =   0
-          ,   currentEBC        =   (Nothing, Nothing, Nothing)
-          ,   systemInfo        =   Nothing
-          ,   packageInfo       =   Nothing
-          ,   workspaceInfo     =   Nothing
-          ,   workspInfoCache   =   Map.empty
-          ,   handlers          =   Map.empty
-          ,   currentState      =   IsStartingUp
-          ,   flipper           =   Nothing
-          ,   typeTip           =   Nothing
-          ,   guiHistory        =   (False,[],-1)
-          ,   findbar           =   (False,Nothing)
-          ,   toolbar           =   (True,Nothing)
-          ,   recentFiles       =   []
-          ,   recentWorkspaces  =   []
-          ,   runningTool       =   Nothing
-          ,   debugState        =   []
-          ,   completion        =   ((750,400),Nothing)
-          ,   yiControl         =   yiControl
-          ,   serverQueue       =   Nothing
-          ,   server            =   Nothing
-          ,   hlintQueue        =   Nothing
-          ,   vcsData           =   (Map.empty, Nothing)
-          ,   logLaunches       =   Map.empty
-          ,   autoCommand       =   (("", ""), return ())
-          ,   autoURI           =   Nothing
-          ,   triggerBuild      =   triggerBuild
-          ,   fsnotify          =   fsnotify
-          ,   watchers          =   watchers
-          ,   developLeksah     =   developLeksah
-          ,   nixCache          =   nixCache
-          ,   externalModified  =   externalModified
+          {   _ideGtk = Just IDEGtk
+            {   _application       =   app
+            ,   _frameState        =   fs
+            ,   _flipper           =   Nothing
+            ,   _typeTip           =   Nothing
+            ,   _guiHistory        =   (False,[],-1)
+            ,   _findbar           =   (False,Nothing)
+            ,   _toolbar           =   (True,Nothing)
+            ,   _specialKeys       =   specialKeys
+            ,   _specialKey        =   Nothing
+            ,   _completion        =   ((750,400),Nothing)
+            ,   _vcsData           =   (mempty, Nothing)
+            }
+          ,   _exitCode          =   exitCode
+          ,   _candy             =   candySt
+          ,   _prefs             =   startupPrefs
+          ,   _workspace         =   Nothing
+          ,   _bufferProjCache   =   mempty
+          ,   _allLogRefs        =   mempty
+          ,   _currentHist       =   0
+          ,   _currentEBC        =   (Nothing, Nothing, Nothing)
+          ,   _systemInfo        =   Nothing
+          ,   _packageInfo       =   Nothing
+          ,   _workspaceInfo     =   Nothing
+          ,   _workspInfoCache   =   mempty
+          ,   _handlers          =   mempty
+          ,   _currentState      =   IsStartingUp
+          ,   _recentFiles       =   []
+          ,   _recentWorkspaces  =   []
+          ,   _runningTool       =   Nothing
+          ,   _debugState        =   []
+          ,   _yiControl         =   yiControl
+          ,   _serverQueue       =   Nothing
+          ,   _server            =   Nothing
+          ,   _hlintQueue        =   Nothing
+          ,   _logLaunches       =   mempty
+          ,   _autoCommand       =   (("", ""), return ())
+          ,   _autoURI           =   Nothing
+          ,   _triggerBuild      =   triggerBuild
+          ,   _fsnotify          =   fsnotify
+          ,   _watchers          =   watchers
+          ,   _developLeksah     =   developLeksah
+          ,   _nixCache          =   nixCache
+          ,   _externalModified  =   externalModified
+          ,   _jsContexts        =   []
+          ,   _logLineMap        =   mempty
     }
-    ideR             <-  newMVar ide
-    (`reflectIDE` ideR) $ do
+    ideR <- liftIO $ newMVar (const (return ()), ide)
+    liftIO $ (`reflectIDE` ideR) $ do
         menuDescription' <- liftIO menuDescription
-        makeMenu uiManager accelActions menuDescription'
+        makeMenu uiManager' accelActions menuDescription'
         nb               <-  newNotebook []
-        afterNotebookSwitchPage nb (\_ i -> reflectIDE (handleNotebookSwitch nb (fromIntegral i)) ideR)
+        _ <- afterNotebookSwitchPage nb (\_ i -> reflectIDE (handleNotebookSwitch nb (fromIntegral i)) ideR)
         widgetSetName nb "root"
         instrumentWindow win startupPrefs nb
         setBackgroundBuildToggled (backgroundBuild startupPrefs)
@@ -421,20 +489,20 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
         wins <- getWindows
         mapM_ instrumentSecWindow (tail wins)
 
-        onWidgetRealize win $
+        _ <- onWidgetRealize win $
             widgetGetWindow win >>= mapM_ OSX.allowFullscreen
 
         liftIO $ debugM "leksah" "Show main window"
         widgetShowAll win
 
-        triggerEventIDE UpdateRecent
+        triggerEventIDE_ UpdateRecent
         if tbv
             then showToolbar
             else hideToolbar
         if fbv
             then showFindbar
             else hideFindbar
-        OSX.updateMenu osxApp uiManager
+        OSX.updateMenu osxApp uiManager'
 
         OSX.applicationReady osxApp
 
@@ -464,24 +532,26 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
             workspaceTryQuiet $ projectOpenThis welcomeProject
             projectTryQuiet $ void (projectAddPackage' welcomeCabal)
             fileOpenThis welcomeMain
-        initInfo (modifyIDE_ (\ide -> ide{currentState = IsRunning}))
+        initInfo (modifyIDE_ $ currentState .~ IsRunning)
         mapM_ sourceRemove timeout
-        liftIO . forkIO . forever $ do
+        _ <- liftIO . forkIO . forever $ do
             takeMVar triggerBuild
             reflectIDE (postSyncIDE' PRIORITY_LOW $
                 eventsPending >>= \case
                     True ->
                         liftIO . void $ tryPutMVar triggerBuild ()
                     False -> do
-                        liftIO $ tryTakeMVar triggerBuild
+                        _ <- liftIO $ tryTakeMVar triggerBuild
                         currentPrefs <- readIDE prefs
                         when (backgroundBuild currentPrefs) backgroundMake) ideR
 
-        triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])
+        _ <- triggerEvent ideR (Sensitivity [(SensitivityInterpreting, False)])
         return ()
+--    _ <- liftIO $ Web.startJSaddle ideR 3366
+    return ()
 
 fDescription :: FilePath -> FieldDescription Prefs
-fDescription configPath = VFD emptyParams [
+fDescription _configPath = VFD emptyParams [
         mkField
             (paraName <<<- ParaName "Paths under which haskell sources for packages may be found"
                 $ paraOrientation  <<<- ParaOrientation OrientationVertical
@@ -510,14 +580,14 @@ fDescription configPath = VFD emptyParams [
 -- | Called when leksah is first called (the .leksah-xx directory does not exist)
 --
 firstStart' :: Prefs -> IO (Maybe Prefs)
-firstStart' prefs = do
+firstStart' prefs' = do
     configDir   <- getConfigDir
     dialog      <- dialogNew
     setLeksahIcon dialog
     setWindowTitle dialog "Welcome to Leksah, the Haskell IDE"
     setWindowWindowPosition dialog WindowPositionCenter
-    dialogAddButton' dialog "gtk-ok" ResponseTypeOk
-    dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
+    _ <- dialogAddButton' dialog "gtk-ok" ResponseTypeOk
+    _ <- dialogAddButton' dialog "gtk-cancel" ResponseTypeCancel
     vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
     label       <- labelNew (Just (
         "Before Leksah can provide features like autocompletion and jump to source definition " <>
@@ -525,7 +595,7 @@ firstStart' prefs = do
         "You can add folders under which you have sources for Haskell packages not available from Hackage.\n" <>
         "You do not need to change anything in this dialog if you are happy for Leksah to use its" <>
         "default metadata collection settings"))
-    (widget, setInj, getExt,notifier) <- buildEditor (fDescription configDir) prefs
+    (widget, _setInj, getExt, _notifier) <- buildEditor (fDescription configDir) prefs'
     boxPackStart' vb label PackNatural 7
     sw <- scrolledWindowNew noAdjustment noAdjustment
     containerAdd sw widget
@@ -537,7 +607,7 @@ firstStart' prefs = do
     widgetHide dialog
     case response of
         ResponseTypeOk -> do
-            mbNewPrefs <- liftIO $ extract prefs [getExt]
+            mbNewPrefs <- liftIO $ extract prefs' [getExt]
             widgetDestroy dialog
             return mbNewPrefs
         _ -> do
@@ -551,14 +621,14 @@ firstStart :: IO Bool
 firstStart = do
     dataDir     <- getDataDir
     prefsPath   <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-    prefs       <- readPrefs prefsPath
-    configDir   <- getConfigDir
+    prefs'      <- readPrefs prefsPath
+    -- configDir   <- getConfigDir
     dialog      <- dialogNew
     setLeksahIcon dialog
     setWindowTitle dialog "Welcome to Leksah, the Haskell IDE"
     setWindowWindowPosition dialog WindowPositionCenter
-    dialogAddButton' dialog (__ "_Customize metadata collection") (AnotherResponseType 1)
-    dialogAddButton' dialog (__ "Use _defaults") (AnotherResponseType 2)
+    _ <- dialogAddButton' dialog (__ "_Customize metadata collection") (AnotherResponseType 1)
+    _ <- dialogAddButton' dialog (__ "Use _defaults") (AnotherResponseType 2)
     vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
     label       <- labelNew . Just $
         "Before Leksah can provide features like autocompletion \n" <>
@@ -571,8 +641,8 @@ firstStart = do
     widgetHide dialog
     widgetDestroy dialog
     mbNewPrefs <- case response of
-        AnotherResponseType 1 -> firstStart' prefs
-        AnotherResponseType 2 -> return $ Just prefs
+        AnotherResponseType 1 -> firstStart' prefs'
+        AnotherResponseType 2 -> return $ Just prefs'
         _ -> return Nothing
     case mbNewPrefs of
         Nothing -> return False
@@ -587,7 +657,7 @@ firstStart = do
                                SP.retrieveStrategy  = retrieveStrategy newPrefs,
                                SP.serverPort        = serverPort newPrefs,
                                SP.endWithLastConn   = endWithLastConn newPrefs}
---            firstBuild newPrefs
+--            firstBuild
             return True
 
 setLeksahIcon :: (IsWindow self) => self -> IO ()
@@ -598,51 +668,51 @@ setLeksahIcon window = do
     when iconExists $
         windowSetIconFromFile window iconPath
 
-firstBuild :: Prefs -> IO ()
-firstBuild newPrefs = do
-    dialog      <- dialogNew
-    liftIO $ setLeksahIcon dialog
-    setWindowTitle dialog "Leksah: Updating Metadata"
-    setWindowWindowPosition dialog WindowPositionCenter
-    setWindowDeletable dialog False
-    dialogAddButton' dialog (__ "Continue in background") (AnotherResponseType 1)
-    vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
-    label       <- labelNew . Just $
-        "Collecting metadata about the Haskell \n" <>
-        "packages that are being used."
-    boxPackStart' vb label PackGrow 7
-    progressBar <- progressBarNew
-    progressBarSetText progressBar $ Just "Collecting information about Haskell packages"
-    progressBarSetFraction progressBar 0.0
-    boxPackStart' vb progressBar PackGrow 7
-    done <- newEmptyMVar
-    forkIO $ do
-        logger <- getRootLogger
-        let verbosity = case getLevel logger of
-                            Just level -> ["--verbosity=" <> T.pack (show level)]
-                            Nothing    -> []
-        (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing Nothing
-        output $$ CL.mapM_ (update progressBar)
-        waitForProcess pid
-        tryTakeMVar done >>= \case
-            Nothing ->
-                void . idleAdd PRIORITY_DEFAULT $ do
-                    dialogResponse' dialog ResponseTypeOk
-                    return False
-            _ -> return ()
-    widgetShowAll dialog
-    dialogRun dialog
-    putMVar done ()
-    widgetHide dialog
-    return ()
-    where
-        update pb to = do
-            let str = toolline to
-            case T.stripPrefix "update_toolbar " str of
-                Just rest -> void . idleAdd PRIORITY_DEFAULT $ do
-                    progressBarSetFraction pb (read $ T.unpack rest)
-                    return False
-                Nothing   -> debugM "leksah" $ T.unpack str
+--firstBuild :: IO ()
+--firstBuild = do
+--    dialog      <- dialogNew
+--    liftIO $ setLeksahIcon dialog
+--    setWindowTitle dialog "Leksah: Updating Metadata"
+--    setWindowWindowPosition dialog WindowPositionCenter
+--    setWindowDeletable dialog False
+--    _ <- dialogAddButton' dialog (__ "Continue in background") (AnotherResponseType 1)
+--    vb          <- dialogGetContentArea dialog >>= liftIO . unsafeCastTo Box
+--    label       <- labelNew . Just $
+--        "Collecting metadata about the Haskell \n" <>
+--        "packages that are being used."
+--    boxPackStart' vb label PackGrow 7
+--    progressBar <- progressBarNew
+--    progressBarSetText progressBar $ Just "Collecting information about Haskell packages"
+--    progressBarSetFraction progressBar 0.0
+--    boxPackStart' vb progressBar PackGrow 7
+--    done <- newEmptyMVar
+--    _ <- forkIO $ do
+--        logger <- getRootLogger
+--        let verbosity = case getLevel logger of
+--                            Just level -> ["--verbosity=" <> T.pack (show level)]
+--                            Nothing    -> []
+--        (output, pid) <- runTool "leksah-server" (["-sbo", "+RTS", "-N2", "-RTS"] ++ verbosity) Nothing Nothing
+--        output $$ CL.mapM_ (update progressBar)
+--        _ <- waitForProcess pid
+--        tryTakeMVar done >>= \case
+--            Nothing ->
+--                void . idleAdd PRIORITY_DEFAULT $ do
+--                    dialogResponse' dialog ResponseTypeOk
+--                    return False
+--            _ -> return ()
+--    widgetShowAll dialog
+--    _ <- dialogRun dialog
+--    putMVar done ()
+--    widgetHide dialog
+--    return ()
+--    where
+--        update pb to = do
+--            let str = toolline to
+--            case T.stripPrefix "update_toolbar " str of
+--                Just rest -> void . idleAdd PRIORITY_DEFAULT $ do
+--                    progressBarSetFraction pb (read $ T.unpack rest)
+--                    return False
+--                Nothing   -> debugM "leksah" $ T.unpack str
 
 
 

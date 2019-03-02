@@ -16,6 +16,7 @@
 
 module Main (main) where
 
+import System.Environment (getArgs)
 import IDE.Leksah (leksah)
 import IDE.TextEditor.Yi.Config (defaultYiConfig)
 
@@ -41,5 +42,5 @@ main :: IO ()
 main = do
     putStrLn "Using default Yi configuration"
     initLocale
-    leksah defaultYiConfig
+    getArgs >>= leksah defaultYiConfig
 

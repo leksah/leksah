@@ -29,6 +29,7 @@ import Prelude ()
 import Prelude.Compat hiding(getLine)
 import Data.Foldable (forM_)
 import IDE.Core.State
+import IDE.Gtk.State
 import Data.List (isSuffixOf)
 import IDE.TextEditor
        (startsLine, getIterAtMark, EditorView(..),
@@ -38,7 +39,7 @@ import IDE.TextEditor
         EditorIter(..))
 import Data.IORef (IORef)
 import Data.Typeable (cast, Typeable)
-import IDE.SourceCandy
+import IDE.Gtk.SourceCandy
        (keystrokeCandy, transformFromCandy, transformToCandy)
 import Control.Monad (void, when)
 import Data.Maybe (fromMaybe, catMaybes)

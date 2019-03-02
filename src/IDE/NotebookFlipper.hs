@@ -21,54 +21,64 @@ module IDE.NotebookFlipper (
 
 import Prelude ()
 import Prelude.Compat
-import IDE.Core.State hiding (window, name)
+
+import Control.Lens (pre, _Just, (.~), (%~), (?~))
 import Control.Monad (when)
-import IDE.Pane.SourceBuffer(recentSourceBuffers)
 import Control.Monad.IO.Class (MonadIO(..))
-import qualified Control.Monad.Reader as Gtk (liftIO)
+
+import Data.GI.Gtk.ModelView.CellLayout
+       (cellLayoutSetDataFunction)
+import Data.GI.Gtk.ModelView.SeqStore
+       (seqStoreGetValue, seqStoreNew)
+import Data.GI.Gtk.ModelView.Types
+       (treeSelectionGetSelectedRows', treePathGetIndices',
+        treePathNewFromIndices')
+import GI.GObject.Functions (signalHandlerDisconnect)
+import GI.Gdk.Enums (WindowTypeHint(..))
+import GI.Gdk.Functions (keyvalName)
+import GI.Gdk.Structs.EventKey
+       (getEventKeyKeyval, EventKey(..))
+import GI.Gtk.Enums (WindowPosition(..), WindowType(..))
+import GI.Gtk.Interfaces.TreeModel (treeModelIterNChildren)
+import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.CellRendererText
+       (setCellRendererTextText, cellRendererTextNew)
+import GI.Gtk.Objects.Container (containerAdd)
+import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
+import GI.Gtk.Objects.TreeSelection
+       (onTreeSelectionChanged)
 import GI.Gtk.Objects.TreeView
        (treeViewRowActivated, treeViewGetColumn, onTreeViewRowActivated,
         treeViewGetSelection, setTreeViewHeadersVisible, treeViewAppendColumn,
         treeViewSetModel, treeViewNew, treeViewSetCursor,
-        treeViewGetCursor, treeViewGetModel, IsTreeView)
-import GI.Gtk.Interfaces.TreeModel (treeModelIterNChildren)
+        treeViewGetCursor, treeViewGetModel, IsTreeView, TreeView)
+import GI.Gtk.Objects.TreeViewColumn
+       (noTreeViewColumn, treeViewColumnPackStart, treeViewColumnNew)
 import GI.Gtk.Objects.Window
        (setWindowWindowPosition, setWindowTransientFor, setWindowDefaultHeight,
         setWindowDefaultWidth, setWindowResizable, setWindowDecorated,
         setWindowTypeHint, windowNew, windowGetSize)
-import GI.Gtk.Enums (WindowPosition(..), WindowType(..))
-import Data.GI.Base (on, set)
-import GI.Gdk.Enums (WindowTypeHint(..))
-import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
-import GI.Gtk.Objects.Container (containerAdd)
-import Data.GI.Gtk.ModelView.SeqStore
-       (seqStoreGetValue, seqStoreNew, SeqStore(..))
-import GI.Gtk.Objects.TreeViewColumn
-       (noTreeViewColumn, treeViewColumnPackStart, treeViewColumnNew)
-import GI.Gtk.Objects.CellRendererText
-       (setCellRendererTextText, cellRendererTextNew)
-import Data.GI.Gtk.ModelView.CellLayout
-       (cellLayoutSetDataFunction)
-import GI.Gtk.Objects.TreeSelection
-       (onTreeSelectionChanged)
 import GI.Gtk.Objects.Widget
        (widgetShowAll, widgetDestroy, widgetHide, onWidgetKeyReleaseEvent)
-import GI.GObject.Functions (signalHandlerDisconnect)
-import GI.Gdk.Structs.EventKey
-       (getEventKeyKeyval, EventKey(..))
-import GI.Gdk.Functions (keyvalName)
-import Data.GI.Gtk.ModelView.Types
-       (treeSelectionGetSelectedRows', treePathGetIndices',
-        treePathNewFromIndices')
+
+import IDE.Gtk.State
+       (IDEPane(..), FrameState(..), flipper, getMainWindow,
+        mbPaneFromName, makeActive, frameState)
+import IDE.Pane.SourceBuffer(recentSourceBuffers)
+import IDE.Core.State
+       (modifyIDE_, reflectIDE, reifyIDE, readIDE, IDERef, IDEAction,
+        ideGtk)
+
+withFlipper :: (Maybe TreeView -> IDEAction) -> IDEAction
+withFlipper f = readIDE (pre $ ideGtk . _Just . flipper) >>= mapM_ f
 
 flipDown :: IDEAction
 flipDown =
-    readIDE flipper >>= maybe (initFlipper True) moveFlipperDown
+    withFlipper (maybe (initFlipper True) moveFlipperDown)
 
 flipUp :: IDEAction
 flipUp =
-    readIDE flipper >>= maybe (initFlipper False) moveFlipperUp
+    withFlipper (maybe (initFlipper False) moveFlipperUp)
 
 -- | Moves down in the Flipper state
 moveFlipperDown :: IsTreeView alpha => alpha -> IDEAction
@@ -151,7 +161,7 @@ initFlipper direction = do
                     Nothing   -> return ()) ideR
             widgetHide window
             widgetDestroy window
-            reflectIDE (modifyIDE_ (\ide -> ide{flipper = Nothing})) ideR)
+            reflectIDE (modifyIDE_ $ ideGtk . _Just . flipper .~ Nothing) ideR)
 
         treeSelection <- treeViewGetSelection tree
         _ <- onTreeSelectionChanged treeSelection $ do
@@ -162,19 +172,19 @@ initFlipper direction = do
                     reflectIDE (do
                         mbPane <- mbPaneFromName string
                         case mbPane of
-                            Just (PaneC pane) -> do
+                            Just (PaneC pane) ->
                                 -- Activate the pane but do not update the activePane order yet
-                                save <- readIDE (activePane . frameState)
-                                modifyIDE_ $ \ide -> ide { frameState = (frameState ide) { activePane = (Nothing, snd save) } }
-                                makeActive pane
-                                modifyIDE_ $ \ide -> ide { frameState = (frameState ide) { activePane = save } }
+                                readIDE (pre $ ideGtk . _Just . frameState) >>= mapM_ (\FrameState {activePane = save} -> do
+                                    modifyIDE_ $ ideGtk . _Just . frameState %~ (\s -> s{ activePane = (Nothing, snd save) })
+                                    makeActive pane
+                                    modifyIDE_ $ ideGtk . _Just . frameState %~ (\s -> s{ activePane = save }))
                             Nothing   -> return ()) ideR
                 _ -> return ()
 
         setWindowWindowPosition window WindowPositionCenterOnParent
         widgetShowAll window
         return (tree, store)
-    modifyIDE_ (\ide -> ide{flipper = Just tree'})
+    modifyIDE_ $ ideGtk . _Just . flipper ?~ tree'
     -- This is done after flipper is set so we know not to update the
     -- previous panes list
     n <- treeModelIterNChildren store' Nothing
@@ -186,7 +196,7 @@ handleKeyRelease tree ideR e = do
     name <- getEventKeyKeyval e >>= keyvalName
     case name of
         Just ctrl | (ctrl == "Control_L") || (ctrl == "Control_R") ->
-            reflectIDE (readIDE flipper) ideR >>= \case
+            reflectIDE (readIDE (pre $ ideGtk . _Just . flipper)) ideR >>= maybe (return False) (\case
                 Just _tv ->
                     treeViewGetCursor tree >>= \case
                         (Just treePath, _) -> do
@@ -194,7 +204,7 @@ handleKeyRelease tree ideR e = do
                             treeViewRowActivated tree treePath column
                             return False
                         _ -> return False
-                _ -> return False
+                _ -> return False)
         _ -> return False
 
 

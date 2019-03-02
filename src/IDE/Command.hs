@@ -37,36 +37,39 @@ module IDE.Command (
 ) where
 
 import Prelude ()
-import Prelude.Compat hiding (log)
+import Prelude.Compat
 import System.FilePath
 import Data.Version
 import Control.Exception
 import Data.Maybe
+import Control.Lens ((^.), (?~), (.~), pre, _Just)
 
 import IDE.Core.State
-       (runPackage, runProject, postAsyncIDE, ipdPackageDir, pjTool,
-        specialKeys, candyState, useCtrlTabFlipping, makeMode,
+       (runPackage, runProject, ipdPackageDir, pjTool,
+        candyState, useCtrlTabFlipping, makeMode,
         runBenchmarks, runUnitTests, makeDocs, debug, javaScript, native,
-        backgroundBuild, throwIDE, version, application,
-        saveSessionOnClose, modifyIDE_, triggerEventIDE, reflectIDE,
+        backgroundBuild, throwIDE, version,
+        saveSessionOnClose, modifyIDE_, triggerEventIDE_, reflectIDE,
         reifyIDE, recentWorkspaces, recentFiles, getDataDir,
         MessageLevel(..), ideMessage, activePack, readIDE, bufferProjCache,
-        location, SymbolEvent(..), specialKey, toolbar, Prefs, prefs,
+        location, SymbolEvent(..), Prefs, prefs,
         darkUserInterface, SensitivityMask, currentState, IDEM, IDEAction,
         IDERef, ActionDescr, SearchHint(..), SensitivityMask(..),
         ActionDescr(..), IDEEvent(..), ProjectTool(..), PackScope(..),
         GenScope(..), Descr, Descr(..), SrcSpan(..), IDEState(..),
-        StatusbarCompartment(..), PackModule(..), dscMbModu', displayPane,
-        viewMove, PaneDirection(..), viewSplitHorizontal, viewSplitVertical,
+        StatusbarCompartment(..), PackModule(..), dscMbModu', Location(..),
+        isReexported, dscMbModu, dscMbLocation, hlintOnSave, exitCode, ideGtk)
+import IDE.Gtk.State
+       (postAsyncIDE, specialKeys, application, specialKey, toolbar,
+        displayPane, viewMove, PaneDirection(..), viewSplitHorizontal, viewSplitVertical,
         viewCollapse, viewNewGroup, viewTabsPos, viewSwitchTabs, getUiManager,
-        viewDetach, Location(..), postSyncIDE, isReexported, dscMbModu,
-        dscMbLocation, hlintOnSave, exitCode)
+        viewDetach, postSyncIDE, IDEGtkEvent(..))
 import IDE.Pane.SourceBuffer
 import IDE.Pane.PackageFlags
 import IDE.Pane.PackageEditor
 import IDE.Pane.Errors
-import IDE.Package
-import IDE.Preferences (runPreferencesDialog, applyInterfaceTheme)
+import IDE.Gtk.Package
+import IDE.Gtk.Preferences (runPreferencesDialog, applyInterfaceTheme)
 import IDE.HLint
 import IDE.Pane.Log
 import IDE.Pane.Modules
@@ -89,6 +92,12 @@ import Control.Event (registerEvent)
 import IDE.Pane.Breakpoints
        (showBreakpoints, fillBreakpointList, selectBreak)
 import IDE.Workspaces
+       (workspaceMake, workspaceClean)
+import IDE.Gtk.Workspaces
+       (makePackage, projectTry, packageTry, workspaceNew, workspaceTry,
+        projectNew, workspaceOpenThis, fileOpen',
+        projectPackageClone, workspaceClose, fileOpen, projectAddPackage,
+        projectOpen, workspaceOpen, workspacePackageNew)
 import IDE.Statusbar
 import IDE.Pane.Workspace
 import IDE.Pane.Variables (showVariables, fillVariablesListQuiet)
@@ -559,7 +568,7 @@ mkActions =
     ,AD "JavaScriptToggled" "_Enable GHCJS" (Just (__ "Use GHCJS to compile")) (Just "ide_target_js")
         javaScriptToggled [] True
     ,AD "DebugToggled" "_Enable GHCi" (Just (__ "Use GHCi debugger to build and run")) (Just "ide_debug")
-        debugToggled [] True
+        (getDebugToggled >>= debugToggled) [] True
     ,AD "OpenDocu" (__ "_OpenDocu") (Just (__ "Opens a browser for a search of the selected data")) Nothing
         openDocu [] True
         ]
@@ -648,7 +657,7 @@ makeMenu uiMgr actions description = reifyIDE $ \ideR -> do
     doAction ideAction ideR accStr =
         reflectIDE (do
             void ideAction
-            void $ triggerEventIDE (StatusbarChanged [CompartmentCommand accStr])) ideR
+            triggerEventIDE_ (StatusbarChanged [CompartmentCommand accStr])) ideR
 
 getMenuAndToolbars :: MonadIO m => UIManager -> m (AccelGroup, MenuBar, Toolbar)
 getMenuAndToolbars uiMgr = do
@@ -728,19 +737,19 @@ textPopupMenu ideR menu = do
 
 canQuit :: IDEM Bool
 canQuit = do
-    modifyIDE_ (\ide -> ide{currentState = IsShuttingDown})
+    modifyIDE_ $ currentState .~ IsShuttingDown
     p <- readIDE prefs
     when (saveSessionOnClose p) saveSession
     can <- fileCloseAll (\_ -> return True)
-    unless can $ modifyIDE_ (\ide -> ide{currentState = IsRunning})
+    unless can $ modifyIDE_ $ currentState .~ IsRunning
     return can
 
 -- | Quit ide
 quit :: IDEAction
 quit = do
     can <- canQuit
-    app <- readIDE application
-    when can $ applicationQuit app
+    readIDE (pre $ ideGtk . _Just . application) >>= mapM_
+        (when can . applicationQuit)
 
 --
 -- | Show the about dialog
@@ -849,15 +858,15 @@ viewDetachInstrumented = do
 viewUseDarkInterface :: IDEAction
 viewUseDarkInterface = do
     useDark <- getDarkState
-    prefs <- readIDE prefs
-    when (useDark /= darkUserInterface prefs) $ do
-        let prefs' = prefs {darkUserInterface = useDark}
-        modifyIDE_ (\ide -> ide {prefs = prefs'})
+    prefs' <- readIDE prefs
+    when (useDark /= darkUserInterface prefs') $ do
+        let prefs'' = prefs' {darkUserInterface = useDark}
+        modifyIDE_ $ prefs .~ prefs''
         applyInterfaceTheme
 
 
 instrumentWindow :: IsWidget topWidget => Window -> Prefs -> topWidget -> IDEAction
-instrumentWindow win prefs topWidget = do
+instrumentWindow win prefs' topWidget = do
     -- sets the icon
     ideR <- ask
     uiMgr <- getUiManager
@@ -868,11 +877,11 @@ instrumentWindow win prefs topWidget = do
         windowSetIconFromFile win iconPath
     vb <- boxNew OrientationVertical 1  -- Top-level vbox
     widgetSetName vb "topBox"
-    (acc,menu,toolbar) <- getMenuAndToolbars uiMgr
+    (acc,menu,toolbar') <- getMenuAndToolbars uiMgr
     boxPackStart' vb menu PackNatural 0
-    boxPackStart' vb toolbar PackNatural 0
+    boxPackStart' vb toolbar' PackNatural 0
     boxPackStart' vb topWidget PackGrow 0
-    modifyIDE_ (\ide -> ide{toolbar = (True,Just toolbar)})
+    modifyIDE_ $ ideGtk . _Just . toolbar .~ (True,Just toolbar')
     findbar <- constructFindReplace
     boxPackStart' vb findbar PackNatural 0
     statusBar <- buildStatusbar
@@ -880,14 +889,14 @@ instrumentWindow win prefs topWidget = do
     void . onWidgetKeyPressEvent win $ handleSpecialKeystrokes ideR
     windowAddAccelGroup win acc
     containerAdd win vb
-    setBackgroundBuildToggled (backgroundBuild prefs)
-    setNativeToggled          (native          prefs)
-    setJavaScriptToggled      (javaScript      prefs)
-    setDebugToggled           (debug           prefs)
-    setMakeDocs               (makeDocs        prefs)
-    setRunUnitTests           (runUnitTests    prefs)
-    setRunBenchmarks          (runBenchmarks   prefs)
-    setMakeModeToggled        (makeMode        prefs)
+    setBackgroundBuildToggled (backgroundBuild prefs')
+    setNativeToggled          (native          prefs')
+    setJavaScriptToggled      (javaScript      prefs')
+    setDebugToggled           (debug           prefs')
+    setMakeDocs               (makeDocs        prefs')
+    setRunUnitTests           (runUnitTests    prefs')
+    setRunBenchmarks          (runBenchmarks   prefs')
+    setMakeModeToggled        (makeMode        prefs')
 
 instrumentSecWindow :: Window -> IDEAction
 instrumentSecWindow win = do
@@ -927,30 +936,33 @@ handleSpecialKeystrokes ideR e = do
             return True
         _                                                     -> do
                 when (candyState prefs') (editKeystrokeCandy char)
-                sk  <- readIDE specialKey
-                sks <- readIDE specialKeys
-                case sk of
-                    Nothing ->
-                        case Map.lookup (keyVal,sort mods) sks of
-                            Nothing -> do
-                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand ""])
-                                return False
-                            Just m -> do
-                                let sym = printMods mods <> name
-                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand sym])
-                                modifyIDE_ (\ide -> ide{specialKey = Just (m,sym)})
-                                return True
-                    Just (m,sym) -> do
-                        case Map.lookup (keyVal,sort mods) m of
-                            Nothing ->
-                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand
-                                    (sym <> printMods mods <> name <> "?")])
-                            Just (AD actname _ _ _ ideAction _ _) -> do
-                                void $ triggerEventIDE (StatusbarChanged [CompartmentCommand
-                                    (sym <> " " <> printMods mods <> name <> "=" <> actname)])
-                                ideAction
-                        modifyIDE_ (\ide -> ide{specialKey = Nothing})
-                        return True
+                readIDE (pre $ ideGtk . _Just) >>= \case
+                  Nothing -> do
+                      triggerEventIDE_ (StatusbarChanged [CompartmentCommand ""])
+                      return False
+                  Just gtk ->
+                    case gtk ^. specialKey of
+                        Nothing ->
+                            case Map.lookup (keyVal,sort mods) (gtk ^. specialKeys) of
+                                Nothing -> do
+                                    triggerEventIDE_ (StatusbarChanged [CompartmentCommand ""])
+                                    return False
+                                Just m -> do
+                                    let sym = printMods mods <> name
+                                    triggerEventIDE_ (StatusbarChanged [CompartmentCommand sym])
+                                    modifyIDE_ $ ideGtk . _Just . specialKey ?~ (m,sym)
+                                    return True
+                        Just (m,sym) -> do
+                            case Map.lookup (keyVal,sort mods) m of
+                                Nothing ->
+                                    triggerEventIDE_ (StatusbarChanged [CompartmentCommand
+                                        (sym <> printMods mods <> name <> "?")])
+                                Just (AD actname _ _ _ ideAction _ _) -> do
+                                    triggerEventIDE_ (StatusbarChanged [CompartmentCommand
+                                        (sym <> " " <> printMods mods <> name <> "=" <> actname)])
+                                    ideAction
+                            modifyIDE_ $ ideGtk . _Just . specialKey .~ Nothing
+                            return True
     where
     printMods :: [ModifierType] -> Text
     printMods = mconcat . map (T.pack . show)
@@ -974,8 +986,8 @@ setSymbolThread mvar = do
     setSymbol :: SymbolEvent -> IDEM IDEAction
     setSymbol s@(SymbolEvent symbol (Just (file, (sLine, sCol), (eLine, eCol))) activatePanes openDefinition typeTipLocation) = do
         let fallback = void $ setSymbol s{location = Nothing}
-        prefs <- readIDE prefs
-        if debug prefs
+        prefs' <- readIDE prefs
+        if debug prefs'
             then
                 belongsToPackages file >>= \case
                     [] -> fallback >> return (return ())
@@ -991,22 +1003,22 @@ setSymbolThread mvar = do
                             debugCommand (":type-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
                                             <> " " <> symbol) $ do
-                                lines' <- foldOutputLines defaultLogLaunch (\log logLaunch t output ->
+                                lines' <- foldOutputLines defaultLogLaunch (\log' logLaunch t output ->
                                     case output of
                                         ToolInput  line -> do
-                                            liftIO . void $ appendLog log logLaunch (line <> "\n") InputTag
+                                            void $ appendLog log' logLaunch (line <> "\n") InputTag
                                             return t
                                         ToolOutput line -> do
-                                            liftIO . void $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            void $ appendLog log' logLaunch (line <> "\n") InfoTag
                                             return $ t <> [line]
                                         ToolError  line -> do
-                                            liftIO . void $ appendLog log logLaunch (line <> "\n") ErrorTag
+                                            void $ appendLog log' logLaunch (line <> "\n") ErrorTag
                                             return t
                                         ToolPrompt _    -> do
-                                            liftIO . void $ defaultLineLogger' log logLaunch output
+                                            void $ defaultLineLogger log' logLaunch output
                                             return t
                                         ToolExit _      -> do
-                                            liftIO . void $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                                            void $ appendLog log' logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
                                             return t) []
                                 liftIO . void . tryPutMVar setTTMVar $
                                     if null lines'
@@ -1015,20 +1027,20 @@ setSymbolThread mvar = do
                             debugCommand (":loc-at "
                                             <> T.pack (f <> " " <> show (succ sLine) <> " " <> show (succ sCol) <> " " <> show (succ eLine) <> " " <> show (succ eCol))
                                             <> " " <> symbol) $ do
-                                worked <- foldOutputLines defaultLogLaunch (\log logLaunch worked output ->
+                                worked <- foldOutputLines defaultLogLaunch (\log' logLaunch worked output ->
                                     case output of
                                         ToolInput  line -> do
-                                            void . liftIO $ appendLog log logLaunch (line <> "\n") InputTag
+                                            void $ appendLog log' logLaunch (line <> "\n") InputTag
                                             return worked
                                         ToolOutput line -> do
-                                            void . liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            void $ appendLog log' logLaunch (line <> "\n") InfoTag
                                             case parseOnly srcSpanParser line of
                                                 Right (SrcSpan f' sl sc el ec) -> do
                                                     void . liftIO . tryPutMVar lookupMVar . Just . when openDefinition . postAsyncIDE . void $ goToSourceDefinition (ipdPackageDir package) (Location f' sl (succ sc) el ec)
                                                     return True
                                                 Left _err -> return worked
                                         ToolError  line -> do
-                                            void . liftIO $ appendLog log logLaunch (line <> "\n") InfoTag
+                                            void $ appendLog log' logLaunch (line <> "\n") InfoTag
                                             case T.splitOn ":" line of
                                                 [p, _, m] ->
                                                     case (simpleParse . T.unpack $ T.takeWhile (/='@') p, simpleParse $ T.unpack m) of
@@ -1044,10 +1056,10 @@ setSymbolThread mvar = do
                                                         _ -> return worked
                                                 _ -> return worked
                                         ToolPrompt _    -> do
-                                            void . liftIO $ defaultLineLogger' log logLaunch output
+                                            void $ defaultLineLogger log' logLaunch output
                                             return worked
                                         ToolExit _      -> do
-                                            void . liftIO $ appendLog log logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
+                                            void $ appendLog log' logLaunch "X--X--X ghci process exited unexpectedly X--X--X" FrameTag
                                             return worked) False
                                 liftIO $ putMVar result worked
                         void . liftIO . forkIO $ do
@@ -1106,9 +1118,9 @@ registerLeksahEvents =    do
     void . registerEvent stRef "LogMessage" $
         \e@(LogMessage s t) -> do
             postAsyncIDE $ do
-                log <- getLog
+                log' <- getLog
                 defaultLogLaunch <- getDefaultLogLaunch
-                void . liftIO $ appendLog log defaultLogLaunch s t
+                void $ appendLog log' defaultLogLaunch s t
             return e
     setSymbolMVar <- liftIO newEmptyMVar
     setSymbolThread setSymbolMVar
@@ -1127,10 +1139,10 @@ registerLeksahEvents =    do
                                          when showPane
                                             showWorkspacePane
                                          when updateFileCache $
-                                            modifyIDE_ (\ide -> ide{bufferProjCache = Map.empty})
+                                            modifyIDE_ $ bufferProjCache .~ Map.empty
                                      return e
     void . registerEvent stRef "RecordHistory" $
-        \rh@(RecordHistory h)   -> recordHistory h >> return rh
+        \rh@(GtkEvent (RecordHistory h))   -> recordHistory h >> return rh
     void . registerEvent stRef "Sensitivity" $
         \s@(Sensitivity h)      -> setSensitivity h >> return s
     void . registerEvent stRef "SearchMeta" $
@@ -1164,15 +1176,15 @@ registerLeksahEvents =    do
     void . registerEvent stRef "GotoDefinition" $
         \e@(GotoDefinition descr) -> goToDefinition descr >> return e
     void . registerEvent stRef "GetTextPopup" $
-        \(GetTextPopup _)     -> return (GetTextPopup (Just textPopupMenu))
+        \(GtkEvent (GetTextPopup _))     -> return (GtkEvent $ GetTextPopup (Just textPopupMenu))
     void . registerEvent stRef "StatusbarChanged" $
         \e@(StatusbarChanged args) -> changeStatusbar args >> return e
     void . registerEvent stRef "SelectSrcSpan" $
         \e@(SelectSrcSpan mbSpan) -> selectMatchingErrors mbSpan >> return e
     void . registerEvent stRef "SavedFile" $
         \e@(SavedFile file) -> do
-              prefs <- readIDE prefs
-              when (hlintOnSave prefs && takeExtension file `elem` [".hs", ".lhs"]) $
+              prefs' <- readIDE prefs
+              when (hlintOnSave prefs' && takeExtension file `elem` [".hs", ".lhs"]) $
                   scheduleHLint (Right file)
               return e
     void . registerEvent stRef "DebugStart" $
@@ -1182,10 +1194,10 @@ registerLeksahEvents =    do
     void . registerEvent stRef "QuitToRestart" $
         \e@QuitToRestart -> do
             can <- canQuit
-            app <- readIDE application
+            app <- readIDE (pre $ ideGtk . _Just . application)
             when can $ do
                 readIDE exitCode >>= liftIO . (`writeIORef` ExitFailure 2) -- Exit code to trigger leksah.sh to restart
-                applicationQuit app
+                mapM_ applicationQuit app
             return e
 
 

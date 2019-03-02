@@ -46,20 +46,19 @@ import Prelude.Compat hiding(readFile)
 import System.IO (hClose, openBinaryFile, IOMode(..))
 import System.IO.Strict (readFile)
 import qualified Data.Map as Map
-import Control.Monad (void, filterM, foldM, liftM, when)
+import Control.Monad (void, filterM, foldM, when)
+import Control.Lens ((^.), (?~), (.~))
 import System.FilePath
 import System.Directory
 import Data.List (nub, (\\), find, partition, maximumBy, foldl')
 import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe, fromMaybe)
-import Distribution.Package hiding (depends,packageId)
+import Distribution.Package
 import qualified Data.Set as Set
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 import Distribution.Version
-import Distribution.ModuleName
 
 import Control.DeepSeq
-import IDE.Utils.VersionUtils (supportedGhcVersions)
 import IDE.Utils.FileUtils
 import IDE.Core.Types (IDEEvent(..), IDEState(..), SearchMode(..))
 import IDE.Core.CTypes
@@ -75,14 +74,15 @@ import IDE.Core.CTypes
         dscMbModu', dscMbTypeStr', dscName', RealDescr(..),
         SimpleDescr(..), PackageDBs)
 import IDE.Core.State
-       (postSyncIDE, sysMessage, throwIDE, ipdCabalFile, ipdDepends,
+       (sysMessage, throwIDE, ipdCabalFile, ipdDepends,
         ipdMain, ipdModules, ipdPackageId, activePack, modifyIDE_,
-        wsAllPackages, ipdPackageDir, workspace, currentState,
-        triggerEventIDE, postAsyncIDE, forkIDE, MessageLevel(..),
-        ideMessage, collectAtStart, prefs, readIDE, SearchMode,
+        wsAllPackages, workspace, currentState,
+        triggerEventIDE, forkIDE, MessageLevel(..),
+        ideMessage, collectAtStart, prefs, readIDE,
         ModuleDescrCache, workspInfoCache, IDEPackage, packageInfo,
         workspaceInfo, systemInfo, IDEM, IDEAction, wsProjectFiles,
-        Project, pjFile, wsProjectAndPackages)
+        Project, pjFile, wsProjectAndPackages, systemInfo)
+import IDE.Gtk.State (postAsyncIDE)
 import IDE.Utils.Utils
        (leksahMetadataPathFileExtension,
         leksahMetadataSystemFileExtension,
@@ -96,7 +96,7 @@ import Data.Binary.Shared (decodeSer)
 import Language.Haskell.Extension (KnownExtension)
 import Distribution.Text (display)
 import IDE.Core.Serializable ()
-import Data.Map (Map(..))
+import Data.Map (Map)
 import Control.Exception (SomeException(..), catch)
 import IDE.Utils.ServerConnection(doServerCommand)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -107,23 +107,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (null, isPrefixOf, unpack, pack)
 import qualified Control.Arrow as A (Arrow(..))
 import Data.Function (on)
-#if MIN_VERSION_Cabal(2,0,0)
-import Distribution.Package (PackageName, unPackageName, mkPackageName, PackageIdentifier(..))
-import Distribution.Version (Version, versionNumbers, mkVersion)
-#else
-import Distribution.Package (PackageName(..), unPackageName, PackageIdentifier(..))
-import Distribution.Version (Version(..))
-#endif
 import IDE.Utils.CabalPlan (unitIdToPackageId)
-
-#if !MIN_VERSION_Cabal(2,0,0)
-versionNumbers :: Version -> [Int]
-versionNumbers = versionBranch
-mkPackageName :: String -> PackageName
-mkPackageName = PackageName
-mkVersion :: [Int] -> Version
-mkVersion = (`Version` [])
-#endif
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -134,8 +118,8 @@ mkVersion = (`Version` [])
 --
 initInfo :: IDEAction -> IDEAction
 initInfo continuation = do
-    prefs  <- readIDE prefs
-    if collectAtStart prefs
+    prefs'  <- readIDE prefs
+    if collectAtStart prefs'
         then do
             ideMessage Normal "Now updating system metadata ..."
             callCollector False True True $ \ _ -> do
@@ -190,7 +174,7 @@ getAllPackages :: IDEM [(UnitId, Maybe FilePath)]
 getAllPackages = do
     mbWorkspace <- readIDE workspace
     liftIO $ getInstalledPackages VERSION_ghc
-            $ maybe [] wsProjectFiles mbWorkspace
+            $ maybe [] (^. wsProjectFiles) mbWorkspace
 
 getAllPackageIds :: IDEM [PackageIdentifier]
 getAllPackageIds =
@@ -200,7 +184,7 @@ getAllPackageIds =
 getAllPackageDBs :: IDEM [PackageDBs]
 getAllPackageDBs = do
     mbWorkspace <- readIDE workspace
-    liftIO . getPackageDBs $ maybe [] wsProjectFiles mbWorkspace
+    liftIO . getPackageDBs $ maybe [] (^. wsProjectFiles) mbWorkspace
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -215,7 +199,7 @@ loadSystemInfo = do
     let scope       =   foldr buildScope (PackScope Map.empty getEmptyDefaultScope)
                             $ catMaybes packageList
 --    liftIO performGC
-    modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+    modifyIDE_ $ systemInfo ?~ GenScopeC (addOtherToScope scope False)
 
     return ()
 
@@ -228,7 +212,7 @@ updateSystemInfo' rebuild continuation = do
     wi              <-  getSystemInfo
     case wi of
         Nothing -> loadSystemInfo
-        Just (GenScopeC (PackScope psmap psst)) -> forkIDE $ do
+        Just (GenScopeC (PackScope psmap _psst)) -> forkIDE $ do
             liftIO $ debugM "leksah" "A"
             packageIds      <-  getAllPackageIds
             liftIO . debugM "leksah" $ "packageIds = " <> show packageIds
@@ -250,7 +234,7 @@ updateSystemInfo' rebuild continuation = do
                                         =   foldr buildScope (PackScope Map.empty symEmpty)
                                                 (Map.elems psmap3)
                         postAsyncIDE $ do
-                            modifyIDE_ (\ide -> ide{systemInfo = Just (GenScopeC (addOtherToScope scope False))})
+                            modifyIDE_ $ systemInfo ?~ GenScopeC (addOtherToScope scope False)
                             finished
   where
     finished = do
@@ -259,19 +243,19 @@ updateSystemInfo' rebuild continuation = do
 
 getEmptyDefaultScope :: Map Text [Descr]
 getEmptyDefaultScope = symEmpty
+
 --
 -- | Rebuilds system info
 --
-rebuildSystemInfo' :: (Bool -> IDEAction) -> IDEAction
-rebuildSystemInfo' continuation =
-    callCollector True True True $ \ _ -> do
-        loadSystemInfo
-        continuation True
+--rebuildSystemInfo' :: (Bool -> IDEAction) -> IDEAction
+--rebuildSystemInfo' continuation =
+--    callCollector True True True $ \ _ -> do
+--        loadSystemInfo
+--        continuation True
 
 -- ---------------------------------------------------------------------
 -- Metadata for the workspace and active package
 --
-
 
 updateWorkspaceInfo' :: Bool -> (Bool -> IDEAction) -> IDEAction
 updateWorkspaceInfo' rebuild continuation = do
@@ -281,10 +265,11 @@ updateWorkspaceInfo' rebuild continuation = do
     case mbWorkspace of
         Nothing ->  do
             liftIO $ infoM "leksah" "updateWorkspaceInfo' no workspace"
-            modifyIDE_ (\ide -> ide{workspaceInfo = Nothing, packageInfo = Nothing})
+            modifyIDE_ $ (workspaceInfo .~ Nothing)
+                       . (packageInfo   .~ Nothing)
             continuation False
         Just ws ->
-            updatePackageInfos rebuild (wsProjectAndPackages ws) $ \ _ packDescrs -> do
+            updatePackageInfos rebuild (ws ^. wsProjectAndPackages) $ \ _ packDescrs -> do
                 let dependPackIds = nub (concatMap pdBuildDepends packDescrs) \\ map pdPackage packDescrs
                 let packDescrsI =   case systemInfo' of
                                         Nothing -> []
@@ -294,12 +279,11 @@ updateWorkspaceInfo' rebuild continuation = do
                                 =   foldr buildScope (PackScope Map.empty symEmpty) packDescrs
                 let scope2 :: PackScope (Map Text [Descr])
                                 =   foldr buildScope (PackScope Map.empty symEmpty) packDescrsI
-                modifyIDE_ (\ide -> ide{workspaceInfo = Just
-                    (GenScopeC (addOtherToScope scope1 True), GenScopeC(addOtherToScope scope2 False))})
+                modifyIDE_ $ workspaceInfo ?~
+                    (GenScopeC (addOtherToScope scope1 True), GenScopeC(addOtherToScope scope2 False))
                 -- Now care about active package
-                activePack      <-  readIDE activePack
-                case activePack of
-                    Nothing -> modifyIDE_ (\ ide -> ide{packageInfo = Nothing})
+                readIDE activePack >>= \case
+                    Nothing -> modifyIDE_ $ packageInfo .~ Nothing
                     Just pack ->
                         case filter (\pd -> pdPackage pd == ipdPackageId pack) packDescrs of
                             [pd] -> let impPackDescrs =
@@ -308,22 +292,22 @@ updateWorkspaceInfo' rebuild continuation = do
                                                 Just (GenScopeC (PackScope pdmap _)) ->
                                                      mapMaybe (`Map.lookup` pdmap) (pdBuildDepends pd)
                                         -- The imported from the workspace should be treated different
-                                        workspacePackageIds = map ipdPackageId (wsAllPackages ws)
-                                        impPackDescrs' = filter (\pd -> pdPackage pd `notElem` workspacePackageIds) impPackDescrs
+                                        workspacePackageIds = map ipdPackageId (ws ^. wsAllPackages)
+                                        impPackDescrs' = filter (\ipd -> pdPackage ipd `notElem` workspacePackageIds) impPackDescrs
                                         impPackDescrs'' = mapMaybe
-                                                             (\ pd -> if pdPackage pd `elem` workspacePackageIds
-                                                                        then find (\ pd' -> pdPackage pd == pdPackage pd') packDescrs
+                                                             (\ ipd -> if pdPackage ipd `elem` workspacePackageIds
+                                                                        then find (\ pd' -> pdPackage ipd == pdPackage pd') packDescrs
                                                                         else Nothing)
                                                              impPackDescrs
-                                        scope1 :: PackScope (Map Text [Descr])
+                                        scope1' :: PackScope (Map Text [Descr])
                                                 =   buildScope pd (PackScope Map.empty symEmpty)
-                                        scope2 :: PackScope (Map Text [Descr])
+                                        scope2' :: PackScope (Map Text [Descr])
                                                 =   foldr buildScope (PackScope Map.empty symEmpty)
                                                         (impPackDescrs' ++ impPackDescrs'')
-                                        in modifyIDE_ (\ide -> ide{packageInfo = Just
-                                                            (GenScopeC (addOtherToScope scope1 False),
-                                                            GenScopeC(addOtherToScope scope2 False))})
-                            _    -> modifyIDE_ (\ide -> ide{packageInfo = Nothing})
+                                        in modifyIDE_ $ packageInfo ?~
+                                                            (GenScopeC (addOtherToScope scope1' False),
+                                                            GenScopeC(addOtherToScope scope2' False))
+                            _    -> modifyIDE_ $ packageInfo .~ Nothing
                 postAsyncIDE $ ideMessage Normal "Finished updating workspace metadata"
                 continuation True
 
@@ -334,21 +318,19 @@ updatePackageInfos rebuild pkgs continuation =
         -- calculate list of known packages once
         knownPackages   <- getAllPackageIds
         postAsyncIDE $
-            updatePackageInfos' [] knownPackages rebuild pkgs continuation
+            updatePackageInfos' [] knownPackages pkgs
   where
-    updatePackageInfos' collector _ _ [] continuation =  continuation True collector
-    updatePackageInfos' collector knownPackages rebuild ((project, package):tail) continuation =
+    updatePackageInfos' collector _ [] =  continuation True collector
+    updatePackageInfos' collector knownPackages ((project, package):rest) =
         updatePackageInfo knownPackages rebuild project package $ \ _ packDescr ->
-            updatePackageInfos' (packDescr : collector) knownPackages rebuild tail continuation
+            updatePackageInfos' (packDescr : collector) knownPackages rest
 
 -- | Update the metadata on one package
 updatePackageInfo :: [PackageIdentifier] -> Bool -> Project -> IDEPackage -> (Bool -> PackageDescr -> IDEAction) -> IDEAction
 updatePackageInfo knownPackages rebuild project idePack continuation = do
     liftIO $ infoM "leksah" ("updatePackageInfo " ++ show rebuild ++ " " ++ show (ipdPackageId idePack))
     workspInfoCache'     <- readIDE workspInfoCache
-    let (packageMap, ic) =  case pi  `Map.lookup` workspInfoCache' of
-                                Nothing -> (Map.empty,True)
-                                Just m  -> (m,False)
+    let packageMap = fromMaybe mempty $ pid `Map.lookup` workspInfoCache'
     modPairsMb <- liftIO $ mapM (\(modName, bi) -> do
             sf <- case  LibModule modName `Map.lookup` packageMap of
                         Nothing            -> findSourceFile (srcDirs' bi) haskellSrcExts modName
@@ -356,13 +338,13 @@ updatePackageInfo knownPackages rebuild project idePack continuation = do
                         Just (_,Just fp,_) -> return (Just fp)
             return (LibModule modName, sf))
                 $ Map.toList $ ipdModules idePack
-    mainModules <- liftIO $ mapM (\(fn, bi, isTest) -> do
+    mainModules <- liftIO $ mapM (\(fn, bi, _isTest) -> do
                                     mbFn <- findSourceFile' (srcDirs' bi) fn
                                     return (MainModule (fromMaybe fn mbFn), mbFn))
                             (ipdMain idePack)
     -- we want all Main modules since they may be several with different files
     let modPairsMb' = mainModules ++ modPairsMb
-    let (modWith,modWithout) = partition (\(x,y) -> isJust y) modPairsMb'
+    let (modWith,modWithout) = partition (\(_x,y) -> isJust y) modPairsMb'
     let modWithSources       = map (A.second fromJust) modWith
     let modWithoutSources    = map fst modWithout
     -- Now see which modules have to be truely updated
@@ -375,27 +357,27 @@ updatePackageInfo knownPackages rebuild project idePack continuation = do
         project
         idePack
         (map (\(x,y) -> (T.pack $ display (moduleKeyToName x),y)) modToUpdate)
-        (\ b -> do
+        (\_ -> do
             let buildDepends         = findFittingPackages knownPackages (ipdDepends idePack)
             liftIO . putStrLn $ "buildDepends = " <> show buildDepends
             collectorPath        <- liftIO getCollectorPath
-            let packageCollectorPath = collectorPath </> T.unpack (packageIdentifierToString pi)
-            (moduleDescrs,packageMap, changed, modWithout)
+            let packageCollectorPath = collectorPath </> T.unpack (packageIdentifierToString pid)
+            (moduleDescrs,packageMap', changed, _modWithout)
                                  <- liftIO $ foldM
                                         (getModuleDescr packageCollectorPath)
                                         ([],packageMap,False,modWithoutSources)
                                         modPairsMb'
-            when changed $ modifyIDE_ (\ide -> ide{workspInfoCache =
-                                            Map.insert pi packageMap workspInfoCache'})
+            when changed $ modifyIDE_ $ workspInfoCache .~
+                                            Map.insert pid packageMap' workspInfoCache'
             continuation True PackageDescr {
-                pdPackage        = pi,
+                pdPackage        = pid,
                 pdMbSourcePath   = Just $ ipdCabalFile idePack,
                 pdModules        = moduleDescrs,
                 pdBuildDepends   = buildDepends})
     where
         basePath =  normalise $ takeDirectory (ipdCabalFile idePack)
         srcDirs' bi =  map (basePath </>) ("dist/build":hsSourceDirs bi)
-        pi = ipdPackageId idePack
+        pid = ipdPackageId idePack
 
 figureOutRealSources :: IDEPackage -> [(ModuleKey,FilePath)] -> IO [(ModuleKey,FilePath)]
 figureOutRealSources idePack modWithSources = do
@@ -421,7 +403,7 @@ getModuleDescr :: FilePath
     -> IO ([ModuleDescr],ModuleDescrCache,Bool,[ModuleKey])
 getModuleDescr packageCollectorPath (modDescrs,packageMap,changed,problemMods) (modName,mbFilePath) =
     case modName `Map.lookup` packageMap of
-        Just (eTime,mbFp,mdescr) -> do
+        Just (eTime,_mbFp,mdescr) -> do
             existMetadataFile <- doesFileExist moduleCollectorPath
             if existMetadataFile
                 then do
@@ -471,20 +453,20 @@ loadInfosForPackage dirPath pid = do
             file            <-  openBinaryFile filePath ReadMode
             liftIO . infoM "leksah" . T.unpack $ "now loading metadata for package " <> packageIdentifierToString pid
             bs              <-  BSL.hGetContents file
-            let (metadataVersion'::Integer, packageInfo::PackageDescr) = decodeSer bs
+            let (metadataVersion'::Integer, packageInfo'::PackageDescr) = decodeSer bs
             if metadataVersion /= metadataVersion'
                 then do
                     hClose file
                     throwIDE ("Metadata has a wrong version."
                             <>  " Consider rebuilding metadata with: leksah-server -osb +RTS -N2 -RTS")
                 else do
-                    packageInfo `deepseq` hClose file
+                    packageInfo' `deepseq` hClose file
                     exists'  <-  doesFileExist filePath2
                     sourcePath <- if exists'
-                                    then liftM Just (readFile filePath2)
+                                    then Just <$> readFile filePath2
                                     else return Nothing
-                    let packageInfo' = injectSourceInPack sourcePath packageInfo
-                    return (Just packageInfo'))
+                    let packageInfo'' = injectSourceInPack sourcePath packageInfo'
+                    return (Just packageInfo''))
             (\ (e :: SomeException) -> do
                 sysMessage Normal
                     ("loadInfosForPackage: " <> packageIdentifierToString pid <> " Exception: " <> T.pack (show e))
@@ -552,7 +534,8 @@ findFittingPackages knownPackages =
 
 -- Some packages rexport modules and we don't handle that correctly yet.
 -- For now we should just consider these packages as "fitting".
-addReexportDeps d@(Dependency dname versionRange)
+addReexportDeps :: Dependency -> [Dependency]
+addReexportDeps d@(Dependency dname _versionRange)
     | dname == mkPackageName "ghcjs-dom"  = [d, Dependency (mkPackageName "jsaddle-dom")     anyVersion]
     | dname == mkPackageName "reflex-dom" = [d, Dependency (mkPackageName "reflex-dom-core") anyVersion]
 addReexportDeps d = [d]
@@ -570,8 +553,8 @@ getActivePackageDescr = do
             packageInfo' <- getPackageInfo
             case packageInfo' of
                 Nothing -> return Nothing
-                Just (GenScopeC (PackScope map _), GenScopeC (PackScope _ _)) ->
-                    return (ipdPackageId pack `Map.lookup` map)
+                Just (GenScopeC (PackScope map' _), GenScopeC (PackScope _ _)) ->
+                    return (ipdPackageId pack `Map.lookup` map')
 
 --
 -- | Lookup of an identifier description
@@ -629,9 +612,8 @@ getPackageImportInfo idePack = do
     mbActivePack  <- readIDE activePack
     systemInfo'   <- getSystemInfo
     if isJust mbActivePack && ipdPackageId (fromJust mbActivePack) == ipdPackageId idePack
-        then do
-            packageInfo' <- getPackageInfo
-            case packageInfo' of
+        then
+            getPackageInfo >>= \case
                 Nothing -> do
                     liftIO $ infoM "leksah" "getPackageImportInfo: no package info"
                     return Nothing
@@ -641,9 +623,8 @@ getPackageImportInfo idePack = do
                             liftIO $ infoM "leksah" "getPackageImportInfo: package not found in package"
                             return Nothing
                         Just pd -> buildIt pd systemInfo'
-        else do
-            workspaceInfo <- getWorkspaceInfo
-            case workspaceInfo of
+        else
+            getWorkspaceInfo >>= \case
                 Nothing -> do
                     liftIO $ infoM "leksah" "getPackageImportInfo: no workspace info"
                     return Nothing
@@ -666,7 +647,7 @@ getPackageImportInfo idePack = do
                         let impPackDescrs = mapMaybe (`Map.lookup` pdmap') (pdBuildDepends pd)
                             pd' = pd{pdModules = map filterPrivate (pdModules pd)}
                             scope1 :: PackScope (Map Text [Descr])
-                                            =   buildScope pd (PackScope Map.empty symEmpty)
+                                            =   buildScope pd' (PackScope Map.empty symEmpty)
                             scope2 :: PackScope (Map Text [Descr])
                                 =   foldr buildScope (PackScope Map.empty symEmpty) impPackDescrs
                         in return (Just (GenScopeC scope1, GenScopeC scope2))
@@ -735,7 +716,7 @@ searchInScopePrefix searchString symbolTable =
             Just e  -> symInsert searchString e mbL
 
 searchInScopeCaseIns :: SymbolTable alpha => Text -> alpha -> Text -> alpha
-searchInScopeCaseIns a symbolTable b  = searchInScopeCaseIns' (T.unpack a) symbolTable (T.unpack b)
+searchInScopeCaseIns a' symbolTable b  = searchInScopeCaseIns' (T.unpack a') symbolTable (T.unpack b)
   where
   searchInScopeCaseIns' [] st _                    =  st
   searchInScopeCaseIns' (a:l)  st pre | isLower a  =
@@ -761,7 +742,7 @@ searchRegex searchString st caseSense =
         Right regex ->
             filter (\e ->
                 case execute regex (dscName e) of
-                    Left e        -> False
+                    Left _e       -> False
                     Right Nothing -> False
                     _             -> True)
                         (concat (symElems st))
@@ -796,37 +777,37 @@ buildSymbolTable pDescr symbolTable =
         allDescriptions =  concatMap mdIdDescriptions (pdModules pDescr)
         buildScope' st idDescr =
             let allDescrs = allDescrsFrom idDescr
-            in  foldl' (\ map descr -> symInsert (dscName descr) [descr] map)
+            in  foldl' (\ map' descr -> symInsert (dscName descr) [descr] map')
                         st allDescrs
         allDescrsFrom descr | isReexported descr = [descr]
                             | otherwise =
             case dscTypeHint descr of
                 DataDescr constructors fields ->
-                    descr : map (\(SimpleDescr fn ty loc comm exp) ->
+                    descr : map (\(SimpleDescr fn ty loc comm exp') ->
                         Real RealDescr{dscName' = fn, dscMbTypeStr' = ty,
                             dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
-                            dscMbComment' = comm, dscTypeHint' = FieldDescr descr, dscExported' = exp})
+                            dscMbComment' = comm, dscTypeHint' = FieldDescr descr, dscExported' = exp'})
                             fields
-                            ++  map (\(SimpleDescr fn ty loc comm exp) ->
+                            ++  map (\(SimpleDescr fn ty loc comm exp') ->
                         Real RealDescr{dscName' = fn, dscMbTypeStr' = ty,
                             dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
-                            dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp})
+                            dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp'})
                                 constructors
                 ClassDescr _ methods ->
-                    descr : map (\(SimpleDescr fn ty loc comm exp) ->
+                    descr : map (\(SimpleDescr fn ty loc comm exp') ->
                         Real RealDescr{dscName' = fn, dscMbTypeStr' = ty,
                             dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
-                            dscMbComment' = comm, dscTypeHint' = MethodDescr descr, dscExported' = exp})
+                            dscMbComment' = comm, dscTypeHint' = MethodDescr descr, dscExported' = exp'})
                             methods
-                NewtypeDescr (SimpleDescr fn ty loc comm exp) mbField ->
+                NewtypeDescr (SimpleDescr fn ty loc comm exp') mbField ->
                     descr : Real RealDescr{dscName' = fn, dscMbTypeStr' = ty,
                             dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
-                            dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp}
+                            dscMbComment' = comm, dscTypeHint' = ConstructorDescr descr, dscExported' = exp'}
                              : case mbField of
-                                    Just (SimpleDescr fn ty loc comm exp) ->
-                                        [Real RealDescr{dscName' = fn, dscMbTypeStr' = ty,
-                                        dscMbModu' = dscMbModu descr, dscMbLocation' = loc,
-                                        dscMbComment' = comm, dscTypeHint' = FieldDescr descr, dscExported' = exp}]
+                                    Just (SimpleDescr fn' ty' loc' comm' exp'') ->
+                                        [Real RealDescr{dscName' = fn', dscMbTypeStr' = ty',
+                                        dscMbModu' = dscMbModu descr, dscMbLocation' = loc',
+                                        dscMbComment' = comm', dscTypeHint' = FieldDescr descr, dscExported' = exp''}]
                                     Nothing -> []
                 InstanceDescr _ -> []
                 _ -> [descr]
@@ -962,7 +943,7 @@ moduleNameDescrs pd = map (\md -> Real $ RealDescr
 
 addOtherToScope ::  SymbolTable alpha  =>  PackScope alpha -> Bool -> PackScope alpha
 addOtherToScope (PackScope packageMap symbolTable) addAll = PackScope packageMap newSymbolTable
-    where newSymbolTable = foldl' (\ map descr -> symInsert (dscName descr) [descr] map)
+    where newSymbolTable = foldl' (\ map' descr -> symInsert (dscName descr) [descr] map')
                         symbolTable (if addAll
                                         then keywordDescrs ++ extensionDescrs ++ modNameDescrs ++ miscDescrs
                                         else modNameDescrs)

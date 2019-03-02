@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Command.VCS.SVN
@@ -23,20 +24,17 @@ module IDE.Command.VCS.SVN (
 import Prelude ()
 import Prelude.Compat
 
-import IDE.Core.Types
-import IDE.Core.State
+import IDE.Core.State (ideGtk, modifyIDE_, reflectIDE)
+import IDE.Gtk.State (vcsData)
 
 import qualified IDE.Command.VCS.Common.Helper as Helper
 import qualified IDE.Command.VCS.Types as Types
 
-import qualified VCSGui.Common as VCSGUI
 import qualified VCSGui.Svn as GUISvn
-import qualified VCSWrapper.Svn as Wrapper.Svn
 import qualified VCSWrapper.Common as Wrapper
 
-import Control.Monad.Reader(liftIO,ask,lift)
-import Data.IORef(atomicModifyIORef, IORef)
-import Data.Either
+import Control.Monad.Reader(liftIO,ask)
+import Control.Lens (pre, (.~), _Just)
 import Data.Text (Text)
 
 commitAction :: Types.VCSAction ()
@@ -67,16 +65,15 @@ createSVNActionFromContext :: (Either GUISvn.Handler (Maybe Text)
                                 -> Wrapper.Ctx())
                            -> Types.VCSAction ()
 createSVNActionFromContext action = do
-    (mergeInfo, mbPw) <- Types.readIDE' vcsData
     ide <-  Types.askIDERef
-    case mbPw of
-            Nothing -> Helper.createActionFromContext $ action $ Left $ passwordHandler ide mergeInfo
-            Just mb -> Helper.createActionFromContext $ action $ Right mb
+    Types.readIDE' (pre $ ideGtk . _Just . vcsData) >>= mapM_ (\case
+        (mergeInfo, Nothing) -> Helper.createActionFromContext $ action $ Left $ passwordHandler ide mergeInfo
+        (_, Just mb) -> Helper.createActionFromContext $ action $ Right mb)
     where
 --        passwordHandler :: IORef IDE-> Maybe MergeId -> ((Maybe (Bool, Maybe Text)) -> Wrapper.Ctx ())
         passwordHandler ide mbMergeInfo result = liftIO $
             case result of
-                Just (True, pw) -> reflectIDE (modifyIDE_ (\ide -> ide {vcsData = (mbMergeInfo, Just pw) })) ide
+                Just (True, pw) -> reflectIDE (modifyIDE_ $ ideGtk . _Just . vcsData .~ (mbMergeInfo, Just pw)) ide
                 _               -> return ()
 
 

@@ -23,8 +23,6 @@ module IDE.Command.VCS.GIT (
 
 import Prelude ()
 import Prelude.Compat
-import IDE.Core.Types
-import IDE.Core.State
 
 import qualified IDE.Command.VCS.Common.Helper as Helper
 import qualified IDE.Command.VCS.Types as Types

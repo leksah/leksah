@@ -1,5 +1,4 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -8,6 +7,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.State
@@ -25,8 +25,7 @@
 -------------------------------------------------------------------------------
 
 module IDE.Core.State (
-    window
-,   errorRefs
+    errorRefs
 ,   breakpointRefs
 ,   contextRefs
 ,   currentError
@@ -38,12 +37,8 @@ module IDE.Core.State (
 ,   lookupDebugState
 ,   isInterpreting
 
-,   isStartingOrClosing
-
 ,   triggerEventIDE
 ,   triggerEventIDE_
-
-,   deactivatePane
 
 -- * Convenience methods for accesing the IDE State
 ,   readIDE
@@ -60,24 +55,15 @@ module IDE.Core.State (
 ,   reflectIDE
 ,   reflectIDEI
 ,   catchIDE
-,   postSyncIDE'
-,   postAsyncIDE'
-,   postSyncIDE
-,   postAsyncIDE
-,   postSyncIDEIdle
-,   postAsyncIDEIdle
-,   onIDE
 ,   forkIDE
+,   ideJSM
+,   ideJSM_
 
 ,   sysMessage
 ,   MessageLevel(..)
 ,   ideMessage
 ,   logMessage
 
-,   withoutRecordingDo
---,   deactivatePane
---,   deactivatePaneIfActive
---,   closePane
 ,   changePackage
 ,   changeProject
 
@@ -89,162 +75,69 @@ module IDE.Core.State (
 ,   getDataDir
 ,   P.version
 
+,   canResolve
+,   addLogRef'
+,   removeLogRefs'
+,   removeFileLogRefs'
+,   removeFileExtLogRefs'
+,   removePackageLogRefs'
+,   removeBuildLogRefs'
+,   removeTestLogRefs'
+,   removeLintLogRefs'
+
+,   belongsToPackages
+,   belongsToPackage
+,   belongsToWorkspace
+
 ,   module Reexported
 
 ) where
 
 import Prelude ()
 import Prelude.Compat
-import Data.IORef
-import Control.Exception
+--import Data.IORef
+import Control.Exception (Exception, throw, catch, SomeException)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import IDE.Core.Types as Reexported
-import Graphics.UI.Frame.Panes as Reexported
-import Graphics.UI.Frame.ViewFrame as Reexported --hiding (notebookInsertOrdered)
 import Control.Event
 import System.IO
 import Data.Maybe (listToMaybe, isJust)
 import System.FilePath
-       (dropFileName, takeDirectory, (</>), takeFileName)
+       (takeExtension, takeDirectory, (</>), takeFileName)
 import IDE.Core.CTypes as Reexported
 import Control.Concurrent
-       (modifyMVar, modifyMVar_, readMVar, forkIO)
+       (modifyMVar, readMVar, forkIO)
 import IDE.Utils.Utils as Reexported
-import qualified Data.Map as Map (empty, lookup)
+import Data.List (sortOn, nub)
+import Data.Map (Map)
+import qualified Data.Map as M (insert, fromListWith, lookup)
 import Data.Typeable(Typeable)
 import qualified IDE.TextEditor.Yi.Config as Yi
-import Data.Conduit (ConduitT, ($$))
+import Data.Conduit (ConduitT)
 import qualified Data.Conduit as C
-       (transPipe, Sink, awaitForever, yield, leftover, ($$))
-import qualified Data.Conduit.List as CL
-       (sourceList)
-import Control.Monad (join, void, liftM, when)
+       (transPipe)
+import Control.Monad (unless, join, void)
 import Control.Monad.Trans.Reader (ask, ReaderT(..))
-import qualified Paths_leksah as P
+import qualified Paths_leksah as P (getDataDir, version)
 import System.Environment.Executable (getExecutablePath)
 import System.Directory (doesDirectoryExist)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack)
-import Control.Concurrent.MVar (takeMVar, putMVar, newEmptyMVar)
-import qualified Data.Sequence as Seq (filter)
-import Data.Sequence (Seq)
-import GI.Gtk.Objects.Widget
-       (noWidget, Widget(..), widgetDestroy, widgetShowAll, widgetSetName,
-        widgetGrabFocus)
-import GI.Gtk.Objects.Notebook
-       (Notebook(..), notebookRemovePage, notebookPageNum)
-import Data.Int (Int32)
-import GI.GLib (pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, idleAdd)
-import GI.Gtk.Objects.Label (noLabel)
-import Data.Foldable (forM_)
-import qualified Data.Map as M (lookup, member)
-import IDE.Utils.Tool (ToolState(..))
+import qualified Data.Sequence as Seq
+       (partition, length, spanl, filter, null)
+import Data.Sequence ((|>), Seq)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Distribution.Compat.Exception (catchIO)
 import System.Environment (getEnv)
-import IDE.Utils.DebugUtils (traceTimeTaken)
-import GHC.Stack (HasCallStack)
 import Data.Void (Void)
-import Data.Functor.Compat ((<&>))
-
-instance PaneMonad IDEM where
-    getFrameState   =   readIDE frameState
-    setFrameState v =   modifyIDE_ (\ide -> ide{frameState = v})
-    runInIO f       =   reifyIDE (\ideRef -> return (\v -> reflectIDE (f v) ideRef))
-    panePathForGroup id =   do
-        prefs  <- readIDE prefs
-        case id `lookup` categoryForPane prefs of
-            Just group -> case group `lookup` pathForCategory prefs of
-                            Nothing -> return (defaultPath prefs)
-                            Just p  -> return p
-            Nothing    -> return (defaultPath prefs)
-    getThisPane = getPanePrim
-    -- getThisPane     ::  forall alpha beta . RecoverablePane alpha beta delta => Maybe PanePath -> delta alpha
-    getOrBuildThisPane ePpoPid = do
-        mbPane <- getPanePrim
-        case mbPane of
-            Nothing -> do
-                pp          <-  case ePpoPid of
-                                    Right pId  -> getBestPathForId pId
-                                    Left ppp -> do
-                                        layout      <- getLayout
-                                        return (getBestPanePath ppp layout)
-                nb          <-  getNotebook pp
-                buildPane pp nb builder
-            Just pane ->   return (Just pane)
-
-    -- displayThisPane ::  Bool -> delta alpha
-    displayThisPane pane shallGrabFocus = do
-        bringPaneToFront pane
-        when shallGrabFocus $ widgetGrabFocus =<< getTopWidget pane
-    -- buildThisPane   ::  forall alpha beta . RecoverablePane alpha beta delta => PanePath ->
-    --                    Notebook ->
-    --                    (PanePath -> Notebook -> Window -> delta (alpha,Connections)) ->
-    --                    delta alpha
-    buildThisPane panePath notebook builder = do
-        windows       <-  getWindows
-
-        (mbBuf,cids)  <-  builder panePath notebook (head windows)
-        case mbBuf of
-            Nothing -> return Nothing
-            Just buf -> do
-                panes'          <-  getPanesSt
-                paneMap'        <-  getPaneMapSt
-                let b1 = case Map.lookup (paneName buf) paneMap' of
-                            Nothing -> True
-                            Just it -> False
-                let b2 = case Map.lookup (paneName buf) panes' of
-                            Nothing -> True
-                            Just it -> False
-                if b1 && b2
-                    then do
-                        topWidget <- getTopWidget buf
-                        notebookInsertOrdered notebook topWidget (paneName buf) noLabel (paneTooltipText buf) False
-                        addPaneAdmin buf cids panePath
-                        widgetSetName topWidget (paneName buf)
-                        widgetShowAll topWidget
-                        widgetGrabFocus topWidget
-                        bringPaneToFront buf
-                        return (Just buf)
-                    else return Nothing
-    --activateThisPane :: forall alpha beta . RecoverablePane alpha beta delta => alpha -> Connections -> delta ()
-    activateThisPane pane conn =
-        getActivePane >>= \case
-            (Just (pn,_), _) | pn == paneName pane -> return ()
-            (mbActive, panes) -> do
-                deactivatePaneWithout
-                triggerEventIDE (StatusbarChanged [CompartmentPane (Just (PaneC pane))])
-                bringPaneToFront pane
-                let mru = filter (/=paneName pane) panes
-                    mru' = maybe mru ((:mru) . fst) mbActive
-                setActivePane (Just (paneName pane, conn), mru')
-                trigger (Just (paneName pane)) (fst <$> mbActive)
-                return ()
-        where
-            trigger :: Maybe Text -> Maybe Text -> IDEAction
-            trigger s1 s2 = do
-                triggerEventIDE (RecordHistory (PaneSelected s1, PaneSelected s2))
-                triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
-                return ()
-    --closeThisPane   ::  forall alpha beta . RecoverablePane alpha beta delta => alpha -> delta Bool
-    closeThisPane pane = do
-        (panePath,_)    <-  guiPropertiesFromName (paneName pane)
-        nb              <-  getNotebook panePath
-        i               <-  notebookPageNum nb =<< getTopWidget pane
-        if i < 0
-            then liftIO $ do
-                error ("notebook page not found: unexpected " ++ T.unpack (paneName pane) ++ " " ++ show panePath)
-                return False
-            else do
-                deactivatePaneIfActive pane
-                notebookRemovePage nb i
-                widgetDestroy =<< getTopWidget pane
-                removePaneAdmin pane
-                modifyIDE_ $ \ide -> ide{
-                    frameState = (frameState ide){
-                        activePane = ( fst (activePane (frameState ide))
-                                     , filter (/= paneName pane) (snd (activePane (frameState ide))))}}
-                return True
+import Language.Javascript.JSaddle (runJSM, JSM)
+import Control.Lens
+       ((^.), view, over, traverse, (.~), _Just, Getter, to, _1, _2, _3,
+        Getting, Lens')
+import qualified Data.Foldable as F (Foldable(..))
+import Language.Haskell.HLint3 (Idea(..))
+import System.Log.Logger (debugM)
+import Data.Ord (Down(..))
+import IDE.Utils.FileUtils (isSubPath)
 
 data MessageLevel = Silent | Normal | High
     deriving (Eq,Ord,Show)
@@ -252,27 +145,25 @@ data MessageLevel = Silent | Normal | High
 
 -- Shall be replaced
 sysMessage :: MonadIO m =>  MessageLevel -> Text -> m ()
-sysMessage ml str = liftIO $ do
+sysMessage _ml str = liftIO $ do
     putStrLn $ T.unpack str
     hFlush stdout
 
 ideMessage :: MonadIDE m => MessageLevel -> Text -> m ()
 ideMessage level str = do
     liftIO $ sysMessage level str
-    triggerEventIDE (LogMessage (str <> "\n") LogTag)
-    return ()
+    triggerEventIDE_ (LogMessage (str <> "\n") LogTag)
 
 logMessage :: MonadIDE m => Text -> LogTag -> m ()
-logMessage str tag = do
-    triggerEventIDE (LogMessage (str <> "\n") tag)
-    return ()
+logMessage str tag =
+    triggerEventIDE_ (LogMessage (str <> "\n") tag)
 -- with hslogger
 
 ---- ---------------------------------------------------------------------
 ---- Exception handling
 ----
 
-data IDEException = IDEException Text
+newtype IDEException = IDEException Text
     deriving Typeable
 
 instance Show IDEException where
@@ -280,38 +171,32 @@ instance Show IDEException where
 
 instance Exception IDEException
 
+throwIDE :: Text -> a
 throwIDE str = throw (IDEException str)
 
 
--- Main window is always the first one in the list
-window = head . windows
+errorRefs :: Getter IDE (Seq LogRef)
+errorRefs = allLogRefs . to (Seq.filter ((`elem` [ErrorRef, WarningRef, LintRef, TestFailureRef]) . logRefType))
 
-errorRefs :: IDE -> Seq LogRef
-errorRefs = Seq.filter ((`elem` [ErrorRef, WarningRef, LintRef, TestFailureRef]) . logRefType) .
-               allLogRefs
+breakpointRefs :: Getter IDE (Seq LogRef)
+breakpointRefs = allLogRefs . to (Seq.filter ((== BreakpointRef) . logRefType))
 
-breakpointRefs :: IDE -> Seq LogRef
-breakpointRefs = Seq.filter ((== BreakpointRef) . logRefType) . allLogRefs
+contextRefs :: Getter IDE (Seq LogRef)
+contextRefs = allLogRefs . to (Seq.filter ((== ContextRef) . logRefType))
 
-contextRefs :: IDE -> Seq LogRef
-contextRefs = Seq.filter ((== ContextRef) . logRefType) . allLogRefs
+currentError, currentBreak, currentContext :: Lens' IDE (Maybe LogRef)
+currentError     = currentEBC . _1
+currentBreak     = currentEBC . _2
+currentContext   = currentEBC . _3
 
-currentError     = (\(e,_,_)-> e) . currentEBC
-currentBreak     = (\(_,b,_)-> b) . currentEBC
-currentContext   = (\(_,_,c)-> c) . currentEBC
-
+setCurrentError, setCurrentBreak, setCurrentContext :: MonadIDE m => Maybe LogRef -> m ()
 setCurrentError e = do
-    modifyIDE_ (\ide -> ide{currentEBC = (e, currentBreak ide, currentContext ide)})
+    modifyIDE_ $ currentError .~ e
     triggerEventIDE_ (CurrentErrorChanged e)
 setCurrentBreak b = do
-    modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, b, currentContext ide)})
+    modifyIDE_ $ currentBreak .~ b
     triggerEventIDE_ (CurrentBreakChanged b)
-setCurrentContext c = modifyIDE_ (\ide -> ide{currentEBC = (currentError ide, currentBreak ide, c)})
-
-isStartingOrClosing ::  IDEState -> Bool
-isStartingOrClosing IsStartingUp    = True
-isStartingOrClosing IsShuttingDown  = True
-isStartingOrClosing _               = False
+setCurrentContext c = modifyIDE_ $ currentContext .~ c
 
 lookupDebugState :: MonadIDE m => (FilePath, FilePath) -> m (Maybe DebugState)
 lookupDebugState (project, package) =
@@ -353,41 +238,23 @@ catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) (\e ->
 forkIDE :: MonadIDE m => IDEAction  -> m ()
 forkIDE block = reifyIDE (void . forkIO . reflectIDE block)
 
-postSyncIDE' :: (MonadIDE m, HasCallStack) => Int32 -> IDEM a -> m a
-postSyncIDE' priority f = reifyIDE $ \ideR -> do
-    resultVar <- newEmptyMVar
-    idleAdd priority $ reflectIDE (traceTimeTaken "postSyncIDE'" f) ideR >>= putMVar resultVar >> return False
-    takeMVar resultVar
+ideJSM :: MonadIDE m => JSM a -> m [a]
+ideJSM f =
+    readIDE jsContexts >>= mapM (liftIO . runJSM f)
 
-postSyncIDE :: (MonadIDE m, HasCallStack) => IDEM a -> m a
-postSyncIDE = postSyncIDE' PRIORITY_DEFAULT
-
-postSyncIDEIdle :: (MonadIDE m, HasCallStack) => IDEM a -> m a
-postSyncIDEIdle = postSyncIDE' PRIORITY_DEFAULT_IDLE
-
-postAsyncIDE' :: (MonadIDE m, HasCallStack) => Int32 -> IDEM () -> m ()
-postAsyncIDE' priority f = reifyIDE $ \ideR ->
-    void . idleAdd priority $ reflectIDE (traceTimeTaken "postAsyncIDE'" f) ideR >> return False
-
-postAsyncIDE :: (MonadIDE m, HasCallStack) => IDEM () -> m ()
-postAsyncIDE = postAsyncIDE' PRIORITY_DEFAULT
-
-postAsyncIDEIdle :: (MonadIDE m, HasCallStack) => IDEM () -> m ()
-postAsyncIDEIdle = postAsyncIDE' PRIORITY_DEFAULT_IDLE
-
-onIDE onSignal obj callback = do
-    ideRef <- ask
-    liftIO (ConnectC obj <$> onSignal obj (runReaderT (runReaderT callback ideRef)))
+ideJSM_ :: MonadIDE m => JSM a -> m ()
+ideJSM_ f =
+    readIDE jsContexts >>= mapM_ (liftIO . runJSM f)
 
 -- ---------------------------------------------------------------------
 -- Convenience methods for accesing the IDE State
 --
 
 -- | Read an attribute of the contents
-readIDE :: MonadIDE m => (IDE -> beta) -> m beta
+readIDE :: MonadIDE m => Getting beta IDE beta -> m beta
 readIDE f = do
     e <- liftIDE ask
-    liftIO $ f <$> readMVar e
+    liftIO $ view f . snd <$> readMVar e
 
 -- | Modify the contents, without returning a value
 modifyIDE_ :: MonadIDE m => (IDE -> IDE) -> m ()
@@ -402,32 +269,29 @@ modifyIDE f = modifyIDEM (return . f)
 modifyIDEM_ :: MonadIDE m => (IDE -> IO IDE) -> m ()
 modifyIDEM_ f = do
     e <- liftIDE ask
-    liftIO $ modifyMVar_ e f
+    liftIO $ join $ modifyMVar e (\(a, ide) -> do
+        newIde <- f ide
+        return ((a, newIde), a newIde))
 
 -- | Variation on modifyIDE_ that lets you return a value
 --   Do not use function that may block on IDE MVar
 modifyIDEM :: MonadIDE m => (IDE -> IO (IDE,beta)) -> m beta
 modifyIDEM f = do
     e <- liftIDE ask
-    liftIO $ modifyMVar e f
+    liftIO $ do
+        (t, b) <- modifyMVar e (\(a, ide) -> do
+            (newIde, b) <- f ide
+            return ((a, newIde), (a newIde, b)))
+        t
+        return b
 
 withIDE :: MonadIDE m => (IDE -> IO alpha) -> m alpha
 withIDE f = do
     e <- liftIDE ask
-    liftIO $ f =<< readMVar e
+    liftIO $ f . snd =<< readMVar e
 
 getIDE :: MonadIDE m => m IDE
-getIDE = liftIDE ask >>= (liftIO . readMVar)
-
-withoutRecordingDo :: IDEAction -> IDEAction
-withoutRecordingDo act = do
-    (b,l,n) <- readIDE guiHistory
-    if not b then do
-        modifyIDE_ (\ide -> ide{guiHistory = (True,l,n)})
-        act
-        (b,l,n) <- readIDE guiHistory
-        modifyIDE_ (\ide -> ide{guiHistory = (False,l,n)})
-        else act
+getIDE = liftIDE ask >>= (fmap snd . liftIO . readMVar)
 
 packageDebugState :: PackageM (Maybe DebugState)
 packageDebugState = do
@@ -435,68 +299,30 @@ packageDebugState = do
     package <- ask
     lookupDebugState (pjFile project, ipdCabalFile package)
 
--- ---------------------------------------------------------------------
--- Activating and deactivating Panes.
--- This is here and not in Views because it needs some dependencies
--- (e.g. Events for history)
---
-
-deactivatePane :: IDEAction
-deactivatePane =
-    getActivePane >>= \case
-        (Nothing,_)      -> return ()
-        (Just (pn, _),_) -> do
-            deactivatePaneWithout
-            triggerEventIDE (RecordHistory (PaneSelected Nothing,
-                PaneSelected (Just pn)))
-            triggerEventIDE (Sensitivity [(SensitivityEditor, False)])
-            return ()
-
-deactivatePaneWithout :: IDEAction
-deactivatePaneWithout = do
-    triggerEventIDE (StatusbarChanged [CompartmentPane Nothing])
-    getActivePane >>= \case
-        (Just (n,signals), mru) -> do
-            signalDisconnectAll signals
-            setActivePane (Nothing, n:mru)
-        (Nothing, _) -> return ()
-
-deactivatePaneIfActive :: RecoverablePane alpha beta IDEM => alpha -> IDEAction
-deactivatePaneIfActive pane =
-    getActivePane >>= \case
-        (Nothing, _) -> return ()
-        (Just (n,_), _) -> when (n == paneName pane) deactivatePane
 
 -- | Replaces an 'IDEPackage' in the workspace by the given 'IDEPackage' and
 -- replaces the current package if it matches.
 --  Comparison is done based on the package's build directory.
 changePackage :: IDEPackage -> IDEAction
-changePackage ideP = do
-    oldWorkspace <- readIDE workspace
-    case oldWorkspace of
-        Nothing -> return ()
-        Just ws ->
-            modifyIDE_ $ \ide -> ide{workspace = Just ws {
-                wsProjects = map (\p -> p {
-                    pjPackageMap = mkPackageMap $ map exchange (pjPackages p)}) (wsProjects ws)},
-                bufferProjCache = Map.empty}
-    where
-        key = ipdPackageDir
-        idePKey = key ideP
-        exchange p | key p == idePKey = ideP
-                   | otherwise        = p
+changePackage ideP =
+    modifyIDE_ $
+          over (workspace . _Just . wsProjects . traverse) (\p -> p {
+                  pjPackageMap = mkPackageMap $ map exchange (pjPackages p)})
+        . ( bufferProjCache .~ mempty )
+  where
+    key = ipdPackageDir
+    idePKey = key ideP
+    exchange p | key p == idePKey = ideP
+               | otherwise        = p
 
 -- | Replaces an 'Project' in the workspace by the given 'Project' and
 -- replaces the current package if it matches.
 --  Comparison is done based on the package's build directory.
 changeProject :: Project -> IDEAction
 changeProject project =
-    readIDE workspace >>= \case
-        Nothing -> return ()
-        Just ws -> do
-            let ps = map exchange (wsProjects ws)
-            modifyIDE_ (\ide -> ide{workspace = Just ws {wsProjects = ps},
-                                    bufferProjCache = Map.empty})
+    modifyIDE_ $
+          over (workspace . _Just . wsProjects . traverse) exchange
+        . ( bufferProjCache .~ mempty )
     where
         exchange p | pjFile p == pjFile project = project
                    | otherwise        = p
@@ -522,7 +348,7 @@ leksahOrPackageDir :: FilePath    -- ^ Sub directory to look for
                    -> IO FilePath -- ^ Used to get the package dir if we can't find the leksah one
                    -> IO FilePath
 leksahOrPackageDir subDir getPackageDir =
-    catchIO (not . null <$> getEnv (subDir <> "_datadir")) (\_ -> return False) >>= \case
+    catch (not . null <$> getEnv (subDir <> "_datadir")) (\(_ :: SomeException) -> return False) >>= \case
         True -> getPackageDir
         False ->
             leksahSubDir subDir >>= \case
@@ -531,4 +357,119 @@ leksahOrPackageDir subDir getPackageDir =
 
 getDataDir :: MonadIO m => m FilePath
 getDataDir = liftIO $ leksahOrPackageDir "leksah" P.getDataDir
+
+canResolve :: LogRef -> Bool
+canResolve LogRef { logRefIdea = Just (_, Idea{..}) }
+    = ideaHint /= "Reduce duplication" && isJust ideaTo
+canResolve _ = False
+
+addLogRef' :: Bool -> Bool -> LogRef -> IDEAction -> IDEAction
+addLogRef' hlintFileScope backgroundBuild ref markInBuffers = unless (srcSpanFilename (logRefSrcSpan ref) == "<interactive>") $ do
+    liftIO . debugM "leksah" $ "addLogRef " <> show hlintFileScope <> " " <> show (logRefType ref) <> " " <> logRefFullFilePath ref
+    -- Put most important errors first.
+    -- If the importance of two errors is the same then
+    -- then the older one might be stale (unless it is in the same file)
+    allLogRefs'   <- readIDE allLogRefs
+    currentError' <- readIDE currentError
+    let (moreImportant, rest) =
+           Seq.spanl (\old ->
+                let samePackage = logRefRootPath old     == logRefRootPath ref
+                    sameFile    = logRefFullFilePath old == logRefFullFilePath ref in
+                -- Work out when the old ref is more important than the new
+                case (logRefType ref, logRefType old) of
+                    (ErrorRef      , ErrorRef      ) -> sameFile
+                    (ErrorRef      , _             ) -> False
+                    (WarningRef    , ErrorRef      ) -> samePackage
+                    (WarningRef    , WarningRef    ) -> samePackage
+                    (WarningRef    , _             ) -> False
+                    (TestFailureRef, ErrorRef      ) -> samePackage  -- Probably should never be True
+                    (TestFailureRef, TestFailureRef) -> samePackage
+                    (TestFailureRef, _             ) -> False
+                    (LintRef       , LintRef       ) -> (if hlintFileScope then sameFile else samePackage)
+                                                            && (canResolve old
+                                                               || not (canResolve ref))
+                    (LintRef       , _             ) -> samePackage
+                    (ContextRef    , _             ) -> False
+                    (BreakpointRef , _             ) -> False) allLogRefs'
+        currErr = if currentError' `elem` map Just (F.toList moreImportant)
+                        then currentError'
+                        else Nothing
+    modifyIDE_ $
+          (allLogRefs .~ (moreImportant |> ref) <> rest)
+        . (currentError .~ currErr)
+
+    markInBuffers
+
+    triggerEventIDE_ $ ErrorAdded
+        (not backgroundBuild && Seq.null moreImportant) (Seq.length moreImportant) ref
+    return ()
+
+removeLogRefs' :: (Log -> FilePath -> Bool) -> [LogRefType] -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
+removeLogRefs' toRemove' types removeFromBuffers = do
+    (remove, keep) <- Seq.partition toRemove <$> readIDE allLogRefs
+    let removeDetails = M.fromListWith (<>) . nub $ map (\ref ->
+                            (logRefRootPath ref </> logRefFilePath ref,
+                            [logRefType ref])) $ F.toList remove
+    modifyIDE_ $ allLogRefs .~ keep
+
+    removeFromBuffers removeDetails
+--    buffers <- allBuffers
+--    let matchingBufs = filter (maybe False (`M.member` removeDetails) . fileName) buffers
+--    F.forM_ matchingBufs $ \ IDEBuffer {..} -> do
+--        buf <- getBuffer sourceView
+--        F.forM_ (maybe [] (fromMaybe [] . (`M.lookup` removeDetails)) fileName) $
+--            removeTagByName buf . T.pack . show
+
+    triggerEventIDE_ (ErrorsRemoved False toRemove)
+  where
+    toRemove ref = toRemove' (logRefLog ref) (logRefFilePath ref)
+                && logRefType ref `elem` types
+
+removeFileLogRefs' :: FilePath -> [LogRefType] -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
+removeFileLogRefs' file types removeFromBuffers = do
+    liftIO . debugM "leksah" $ "removeFileLogRefs " <> file <> " " <> show types
+    removeLogRefs' (\l f -> logRootPath l </> f == file) types removeFromBuffers
+
+removeFileExtLogRefs' :: Log -> String -> [LogRefType] -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
+removeFileExtLogRefs' log' fileExt types removeFromBuffers = do
+    liftIO . debugM "leksah" $ "removeFileTypeLogRefs " <> show log' <> " " <> fileExt <> " " <> show types
+    removeLogRefs' (\l f -> l == log' && takeExtension f == fileExt) types removeFromBuffers
+
+removePackageLogRefs' :: Log -> [LogRefType] -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
+removePackageLogRefs' log' types removeFromBuffers = do
+    liftIO . debugM "leksah" $ "removePackageLogRefs " <> show log' <> " " <> show types
+    removeLogRefs' (\l _ -> l == log') types removeFromBuffers
+
+removeBuildLogRefs' :: FilePath -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
+removeBuildLogRefs' file = removeFileLogRefs' file [ErrorRef, WarningRef]
+
+removeTestLogRefs' :: Log -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
+removeTestLogRefs' log' = removePackageLogRefs' log' [TestFailureRef]
+
+removeLintLogRefs' :: FilePath -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
+removeLintLogRefs' file = removeFileLogRefs' file [LintRef]
+
+-- | Returns the packages to which this file belongs
+--   uses the 'bufferProjCache' and might extend it
+belongsToPackages :: MonadIDE m => FilePath -> m [(Project, IDEPackage)]
+belongsToPackages fp = do
+    bufferToProject' <-  readIDE bufferProjCache
+    case M.lookup fp bufferToProject' of
+        Just p  -> return p
+        Nothing -> readIDE workspace >>= \case
+                        Nothing   -> return []
+                        Just ws -> do
+                            let res = sortOn (Down . length . ipdPackageDir . snd) .
+                                         filter (belongsToPackage fp . snd) $ ws ^. wsProjectAndPackages
+                            modifyIDE_ $ bufferProjCache .~ M.insert fp res bufferToProject'
+                            return res
+
+-- | Checks whether a file belongs to a package (includes files in
+-- sandbox source dirs)
+belongsToPackage :: FilePath -> IDEPackage -> Bool
+belongsToPackage f = (`isSubPath` f) . ipdPackageDir
+
+-- | Checks whether a file belongs to the workspace
+belongsToWorkspace :: MonadIDE m => FilePath -> m Bool
+belongsToWorkspace fp = not . null <$> belongsToPackages fp
 

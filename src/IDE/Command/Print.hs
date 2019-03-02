@@ -21,8 +21,6 @@ module IDE.Command.Print (
 import Prelude ()
 import Prelude.Compat hiding (print)
 import System.Exit (ExitCode(..))
-import IDE.Core.Types
-import IDE.Core.State
 import IDE.Utils.Tool (readProcessWithExitCode)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
@@ -34,6 +32,7 @@ data PrintError = PrintError {
     } deriving (Read,Show)
 
 
+printCommand :: String
 #if defined (windows_HOST_OS)
 printCommand = "print"
 #else
