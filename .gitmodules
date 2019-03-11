@@ -39,7 +39,7 @@
 	url = https://github.com/haskell-gi/gi-gtk-hs.git
 [submodule "vendor/hs-git"]
 	path = vendor/hs-git
-	url = https://github.com/hamishmack/hs-git.git
+	url = https://github.com/vincenthz/hs-git.git
 [submodule "vendor/cabal-helper"]
 	path = vendor/cabal-helper
 	url = https://github.com/alanz/cabal-helper.git
