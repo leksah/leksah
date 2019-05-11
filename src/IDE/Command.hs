@@ -45,17 +45,17 @@ import Data.Maybe
 import Control.Lens ((^.), (?~), (.~), pre, _Just)
 
 import IDE.Core.State
-       (runPackage, runProject, ipdPackageDir, pjTool,
+       (runPackage, runProject, ipdPackageDir,
         candyState, useCtrlTabFlipping, makeMode,
         runBenchmarks, runUnitTests, makeDocs, debug, javaScript, native,
-        backgroundBuild, throwIDE, version,
+        backgroundBuild, throwIDE, version, Project(..),
         saveSessionOnClose, modifyIDE_, triggerEventIDE_, reflectIDE,
         reifyIDE, recentWorkspaces, recentFiles, getDataDir,
         MessageLevel(..), ideMessage, activePack, readIDE, bufferProjCache,
         location, SymbolEvent(..), Prefs, prefs,
         darkUserInterface, SensitivityMask, currentState, IDEM, IDEAction,
         IDERef, ActionDescr, SearchHint(..), SensitivityMask(..),
-        ActionDescr(..), IDEEvent(..), ProjectTool(..), PackScope(..),
+        ActionDescr(..), IDEEvent(..), ProjectKey(..), PackScope(..),
         GenScope(..), Descr, Descr(..), SrcSpan(..), IDEState(..),
         StatusbarCompartment(..), PackModule(..), dscMbModu', Location(..),
         isReexported, dscMbModu, dscMbLocation, hlintOnSave, exitCode, ideGtk)
@@ -368,7 +368,7 @@ mkActions =
 
     ,AD "Debug" (__ "_Debug") Nothing Nothing (return ()) [] False
     ,AD "StartDebugger" (__ "_Start Debugger") (Just (__ "Starts using the GHCi debugger for build and run")) Nothing
-        (packageTry debugStart) [] False
+        (packageTry (debugStart $ return ())) [] False
     ,AD "QuitDebugger" (__ "_Quit Debugger") (Just (__ "Quit the GHCi debugger if it is running")) Nothing
         (packageTry debugQuit) [] False
     ,AD "ExecuteSelection" (__ "_Execute Selection") (Just (__ "Sends the selected text to the debugger")) Nothing
@@ -995,9 +995,9 @@ setSymbolThread mvar = do
                         setTTMVar :: MVar IDEAction <- liftIO newEmptyMVar
                         lookupMVar :: MVar (Maybe IDEAction) <- liftIO newEmptyMVar
                         result :: MVar Bool <- liftIO newEmptyMVar
-                        let f = case pjTool project of
-                                    CabalTool -> makeRelative (ipdPackageDir package) file
-                                    StackTool -> file
+                        let f = case pjKey project of
+                                    CabalTool {} -> makeRelative (ipdPackageDir package) file
+                                    _ -> file
                         postAsyncIDE . workspaceTry . (`runProject` project) . (`runPackage` package) . tryDebug $ do
                             defaultLogLaunch <- lift getDefaultLogLaunch
                             debugCommand (":type-at "

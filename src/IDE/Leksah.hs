@@ -51,7 +51,7 @@ import IDE.Core.State
         backgroundBuild, reflectIDE, keymapName, sourceCandy, version,
         MessageLevel(..), sysMessage, Prefs, IDE(..), KeymapI,
         sourceDirectories, unpackDirectory, retrieveURL, retrieveStrategy,
-        getDataDir, standardPreferencesFilename,
+        getDataDir, standardPreferencesFilename, ProjectKey(..), CabalProject(..),
         leksahSessionFileExtension, leksahWorkspaceFileExtension,
         standardSessionFilename, strippedPreferencesFilename, leksahKeymapFileExtension,
         leksahCandyFileExtension, emptySessionFilename)
@@ -296,7 +296,7 @@ realMain yiConfig args = do
                       ,   _server            =   Nothing
                       ,   _hlintQueue        =   Nothing
                       ,   _logLaunches       =   mempty
-                      ,   _autoCommand       =   (("", ""), return ())
+                      ,   _autoCommand       =   Nothing
                       ,   _autoURI           =   Nothing
                       ,   _triggerBuild      =   triggerBuild
                       ,   _fsnotify          =   fsnotify
@@ -453,7 +453,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
           ,   _server            =   Nothing
           ,   _hlintQueue        =   Nothing
           ,   _logLaunches       =   mempty
-          ,   _autoCommand       =   (("", ""), return ())
+          ,   _autoCommand       =   Nothing
           ,   _autoURI           =   Nothing
           ,   _triggerBuild      =   triggerBuild
           ,   _fsnotify          =   fsnotify
@@ -529,7 +529,7 @@ startMainWindow exitCode developLeksah app yiControl fsnotify sessionFP mbWorksp
             if defaultExists
                 then workspaceOpenThis False defaultWorkspace
                 else workspaceNewHere defaultWorkspace
-            workspaceTryQuiet $ projectOpenThis welcomeProject
+            workspaceTryQuiet $ projectOpenThis $ CabalTool $ CabalProject welcomeProject
             projectTryQuiet $ void (projectAddPackage' welcomeCabal)
             fileOpenThis welcomeMain
         initInfo (modifyIDE_ $ currentState .~ IsRunning)

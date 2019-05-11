@@ -6,7 +6,7 @@ import Data.Bool (bool)
 import Data.Maybe (catMaybes)
 import qualified Data.Set as S (fromList)
 
-import Reflex (Reflex(..), MonadHold(..), ffilter, attach, leftmost, FunctorMaybe(..))
+import Reflex (Reflex(..), MonadHold(..), ffilter, attach, leftmost, FunctorMaybe(..), fmapMaybe)
 import Reflex.Dom.Core
        (DomBuilderSpace, EventResult, Element, MonadWidget, Key(..), keyCodeLookup,
         HasDomEvent(..), EventName(..))

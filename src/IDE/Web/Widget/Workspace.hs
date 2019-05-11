@@ -34,7 +34,7 @@ import qualified Clay (display, (#))
 import Clay.Stylesheet (key)
 
 import Reflex
-       (leftmost, listViewWithKey, switchHold,
+       (leftmost, listViewWithKey, switchHold, constDyn,
         holdUniqDyn, Dynamic, Event, never, fmapMaybe)
 import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
@@ -45,7 +45,8 @@ import IDE.Core.State
        (DebugState(..), nixEnv, activeComponent, ipdPackageDir,
         ipdLib, pjDir, IDEPackage(..), runPackage, runProject,
         pjPackages, Project(..), wsFile, workspace, wsProjects, IDE,
-        activeProject, activePack, debugState)
+        activeProject, activePack, debugState, pjFile, pjFileOrDir,
+        ProjectKey(..), pjCabalFile)
 import IDE.Gtk.Package (packageRun)
 import IDE.Gtk.Workspaces (makePackage)
 import IDE.Package
@@ -149,7 +150,7 @@ workspaceWidget
   -> m (Event t ProjectEvents)
 workspaceWidget ide = do
   debugPackagesD <- holdUniqDyn $ S.fromList .
-      (>>= (\DebugState{..} -> map ((dsProjectFile,) . ipdCabalFile) dsPackages)) . view debugState <$> ide
+      (>>= (\DebugState{..} -> map ((dsProjectKey,) . ipdCabalFile) dsPackages)) . view debugState <$> ide
   divClass "workspace" $
     divClass "workspace-body" $ do
       workspaceIsOpenD <- holdUniqDyn $ view (workspace . to isJust) <$> ide
@@ -158,29 +159,34 @@ workspaceWidget ide = do
       wsFileD <- holdUniqDyn $ view (workspace . _Just . wsFile) <$> ide
       let wsDirD = dropFileName <$> wsFileD
       elClass "ul" "projects" $ do
-        let addFileToKey = map (\(n, p) -> ((n, pjFile p), p))
+        let addFileToKey = map (\(n, p) -> ((n, pjKey p), p))
             projectsD = M.fromList . addFileToKey . zip [0..] . fromMaybe mempty . preview (workspace . _Just . wsProjects) <$> ide
-        activeProjectFileD <- holdUniqDyn $ fmap pjFile . view activeProject <$> ide
+        activeProjectKeyD <- holdUniqDyn $ fmap pjKey . view activeProject <$> ide
         activePackageFileD <- holdUniqDyn $ fmap ipdCabalFile . view activePack <$> ide
         activeComponentD <- holdUniqDyn $ view activeComponent <$> ide
-        listViewWithKey projectsD $ \(_, file) projectD -> do
-          let isActiveProjectD = (== Just file) <$> activeProjectFileD
+        listViewWithKey projectsD $ \(_, pKey) projectD -> do
+          let isActiveProjectD = (== Just pKey) <$> activeProjectKeyD
           treeItemDynAttr (("class" =:) . ("project" <>) <$> (bool "" " active" <$> isActiveProjectD)) True
-            (treeSelect "workspace" (menu
+            (treeSelect "workspace" (menu $
                 [ ("Activate",) . ProjectCommand . CommandWorkspaceAction "Set as Active Project" "" <$>
                     (workspaceActivatePackage <$> projectD <*> pure Nothing <*> pure Nothing)
-                , ("Open Project File",) . ProjectFileEvents . (("" =:) . OpenFile False . pjFile) <$> projectD
-                , ("Open Project Configuration File",) . ProjectFileEvents . (("" =:) . OpenFile True . (<.> "local") . pjFile) <$> projectD
-                , ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
+                ] <> case pjFile pKey of
+                        Just file -> [ constDyn ("Open Project File", ProjectFileEvents . ("" =:) $ OpenFile False file) ]
+                        _ -> []
+                  <> case pKey of
+                        CabalTool p ->
+                          [ constDyn ("Open Project Configuration File", ProjectFileEvents . ("" =:) . OpenFile True $ pjCabalFile p <.> "local") ]
+                        _ -> []
+                <> [ ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
                     (runProject projectRefreshNix <$> projectD)
-                , ("Remove From Workspace",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
-                    (workspaceRemoveProject . pjFile <$> projectD)
+                , constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (workspaceRemoveProject pKey)))
                 ]) $ do
-              isNixD <- holdUniqDyn $ isJust . nixEnv file "ghc" <$> ide
+              isNixD <- holdUniqDyn $ isJust . nixEnv pKey "ghc" <$> ide
               elDynAttr "img" (("src" =:) . (\f -> "/pics/ide_" <> f <> ".png") . bool "source_dependency" "nix" <$> isNixD) $ return ()
               dynText $ do
                 wsDir <- wsDirD
-                return . T.pack $ " " <> fromMaybe file (stripPrefix wsDir file)
+                let fileOrDir = pjFileOrDir pKey
+                return . T.pack $ " " <> fromMaybe fileOrDir (stripPrefix wsDir fileOrDir)
               return never) $
             el "ul" $ do
               let packagesD = M.fromList . map (\p -> (ipdPackageId p, p)) . pjPackages <$> projectD
@@ -200,7 +206,7 @@ workspaceWidget ide = do
                       , pkgCmd "Clean" packageClean
                       , ("Open Package File",) . PackageFileEvents . (("" =:) . OpenFile False . ipdCabalFile) <$> packageD
                       ]) $ do
-                    let isDebugD = S.member . (file,) <$> cabalFileD <*> debugPackagesD
+                    let isDebugD = S.member . (pKey,) <$> cabalFileD <*> debugPackagesD
                     elDynAttr "img" (("src" =:) . (\f -> "/pics/ide_" <> f <> ".png") . bool "package" "debug" <$> isDebugD) $ return ()
                     text " "
                     divClass "package-id" $ do
@@ -215,9 +221,8 @@ workspaceWidget ide = do
                           else ""
                     text " "
                     divClass "package-file" $ dynText =<< holdUniqDyn (do
-                        projectDir <- pjDir <$> projectD
                         cabalFile <- cabalFileD
-                        return . T.pack $ fromMaybe cabalFile $ stripPrefix projectDir cabalFile)
+                        return . T.pack $ fromMaybe cabalFile $ stripPrefix (pjDir pKey) cabalFile)
                     return never) $
                   el "ul" $ do
                     componentsE <- treeItem "components" False
@@ -251,11 +256,10 @@ workspaceWidget ide = do
                           (switchHold never =<<) . dyn $ fileTree "workspace" <$> sourceDirsD <*> dirD
                     return $ leftmost [componentsE, PackageFileEvents <$> filesE]
               pjSourceDirsD <- holdUniqDyn $ mconcat . (fmap absolutSourceDirs . pjPackages) <$> projectD
-              dirD <- holdUniqDyn $ pjDir <$> projectD
               projectFilesE <- treeItem "project-files" False (treeSelect "workspace" (return never) $ do
                   elAttr "img" ("src" =: "/pics/ide_folder.png") $ return ()
                   text " Files"
                   return never) $
                     el "ul" $
-                      (switchHold never =<<) . dyn $ fileTree "workspace" <$> pjSourceDirsD <*> dirD
+                      (switchHold never =<<) . dyn $ (\d -> fileTree "workspace" d (pjDir pKey)) <$> pjSourceDirsD
               return $ leftmost [ProjectPackageEvents <$> packagesE, ProjectFileEvents <$> projectFilesE]

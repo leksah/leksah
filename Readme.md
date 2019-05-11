@@ -39,16 +39,16 @@ Then download, build and run Leksah with:
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
-./leksah-nix.sh ghc843
+./leksah-nix.sh ghc865
 ```
 
 On macOS the Leksah window start below other active application windows you can use
 Command+Shift+Tab to bring it to the top
 ([issue 461](https://github.com/leksah/leksah/issues/461)).
 
-The `ghc843` argument indicates Leksah should be built using GHC 8.4.3.  Leksah works best if
+The `ghc865` argument indicates Leksah should be built using GHC 8.6.5.  Leksah works best if
 it is built with the same version of GHC that your projects use.  To work on a project that
-uses GHC 8.2.2, just exit leksah and run `./leksah-nix.sh ghc822`.
+uses GHC 8.4.4, just exit leksah and run `./leksah-nix.sh ghc844`.
 
 ### Chocolatey and MSYS2 (Recommended for Windows users)
 

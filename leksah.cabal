@@ -374,8 +374,8 @@ library
         pretty >=1.0.1.0 && <1.2,
         pretty-show >=1.6.3 && <1.10,
         process >=1.4.3.0 && <1.7,
-        reflex >=0.5 && <0.6,
-        reflex-dom-core >=0.4 && <0.5,
+        reflex >=0.5 && <0.7,
+        reflex-dom-core >=0.4 && <0.7,
         reflex-dom-svg >=0.3.1.1 && <0.4,
         regex-base ==0.93.*,
         regex-tdfa >=1.1 && <1.3,
@@ -398,6 +398,8 @@ library
         wai-extra >=3.0.24.3 && <3.1,
         warp >=3.2.25 && <3.3,
         websockets >=0.12.5.2 && <0.13
+
+    build-tool-depends: alex:alex -any, happy:happy >=1.17.1
 
     if os(windows)
         extra-libraries:
@@ -571,8 +573,8 @@ library leksah-nogtk
         pretty >=1.0.1.0 && <1.2,
         pretty-show >=1.6.3 && <1.10,
         process >=1.4.3.0 && <1.7,
-        reflex >=0.5 && <0.6,
-        reflex-dom-core >=0.4 && <0.5,
+        reflex >=0.5 && <0.7,
+        reflex-dom-core >=0.4 && <0.6,
         reflex-dom-svg >=0.3.1.1 && <0.4,
         regex-base ==0.93.*,
         regex-tdfa >=1.1 && <1.3,

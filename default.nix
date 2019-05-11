@@ -3,25 +3,25 @@
     if (import <nixpkgs> {}).stdenv.isDarwin
       then
         import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
-          owner = "hamishmack"; repo = "nixpkgs";
-          rev = "6a3d5a996aa77c0c9703ecb2d06f8c661a6169dc"; # branch leksah-nixpkgs-11
-          sha256 = "199ss7xignbxwi2gr0fiv4l8qgf2604n69qp0rx5q31m16ax7c2s";
+          owner = "NixOS"; repo = "nixpkgs";
+          rev = "9d3d5e98bc415935265d48f59f538cdda52fc3bb";
+          sha256 = "0540azdscxaair78i8a7ci7amg49hz2iy605y3gdxgb6lkj0sfp4";
         })
       else
         import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
-          owner = "hamishmack"; repo = "nixpkgs";
-          rev = "1a4b5101de556738c8b8d9941f15c4b2d852f6c0"; # branch gnome-3.30
-          sha256 = "0fac2jjkjn1ad5zgnmmcwmgkh40h0dj0s5vcfl2qml9lqzb6ja1b";
+          owner = "NixOS"; repo = "nixpkgs";
+          rev = "7defc47944fe6d1da4c3a08c60c8332ca660a680";
+          sha256 = "100mh7ir6cca2yjv89nr4wkns3567v9kz6dnc6ysyvd579fw03a7";
         })
-, compiler ? "ghc863"
+, compiler ? "ghc865"
 }:
 
 let
   reflex-platform = import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
     owner = "reflex-frp";
     repo = "reflex-platform";
-    rev = "ca2dc8a7768abbcdf3edd3ede9c359144c84dd3f";
-    sha256 = "0zqg9fq7bnl1zr673ij73cd0z95w38qp9i1r7gjc1f5zi8gmpwhx";
+    rev = "a15d3a2411e7ca7d4ee4853b57c72fe83faee272";
+    sha256 = "1dsvw0lah7761vndip1hqal4fjpjv84ravinnfhy83jgfav5ivna";
   }) { inherit nixpkgsFunc; };
   nixpkgs = reflex-platform.nixpkgs;
 in
@@ -31,10 +31,11 @@ with nixpkgs.pkgs.haskell.lib;
 let
   cleanSrc =
     builtins.filterSource (path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
-      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ./vendor ./result ]
+      nixpkgs.lib.all (i: toString i != path) [ ./.DS_Store ./osx/Leksah ./osx/keymap.lkshk ./osx/prefs.lkshp ./win32/SourceDir ./default.nix ./result ]
         && nixpkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
         && nixpkgs.lib.all (i: !(nixpkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" ]
         && nixpkgs.lib.all (i: !(nixpkgs.lib.hasPrefix i (baseNameOf path))) [ "result-" ".ghc.environment." ]
+        && (!(nixpkgs.lib.hasPrefix (toString ./vendor + "/") path) || nixpkgs.lib.hasPrefix path (toString ./vendor/ltk/src/Control/Event.hs))
         # TODO: what else?
       ) ./.;
 
@@ -71,8 +72,8 @@ let
   reflex-dom-github = nixpkgs.fetchFromGitHub {
     owner = "reflex-frp";
     repo = "reflex-dom";
-    rev = "a8518844e423b7a10fa496d6c4443500256a1ac6";
-    sha256 = "1hiyilyn93afy2f8gk4gxq1wnv0rngp13xklc6z2dpx0mqq0p785";
+    rev = "2734d2d70fd0b63849a7e0b5355d80ee66eda127";
+    sha256 = "0qv51vn07lg6fnaxlcrns5pwg8y5h4cjv18dr56kbnh11a52wba7";
   };
 
 #  haddock-ghc86 = nixpkgs.fetchFromGitHub {
@@ -127,18 +128,20 @@ let
 #         rev = "6ba167147476adebe7783e1521591aa3fd13da28";
 #         sha256 = "0nj2g2lmcx880v6bgy3y7aalhfrpsx7kz8kswjbkyscxws6vkfli";
 #      };
-      reflex = nixpkgs.fetchFromGitHub {
-         owner = "reflex-frp";
-         repo = "reflex";
-         rev = "2e20b188761cdf13909b7edfc6788241682c0ee4";
-         sha256 = "08kid1qv00lg7fbk3w1878200c0zn97y61g1gqw1qj835xf4893z";
-      };
+      reflex = ../aspen/focus/reflex-platform/reflex;
+#      reflex = nixpkgs.fetchFromGitHub {
+#         owner = "reflex-frp";
+#         repo = "reflex";
+#         rev = "eefb7761f6b5dfe30b4e97310cb15463d889506a";
+#         sha256 = "1q17fbidxbjkab0f8xm9wy4dp8by0b7v9nqlyq2fbazklm6g4m8b";
+#      };
+      chrome-test-utils = "${reflex-dom-github}/chrome-test-utils";
       reflex-dom-core = "${reflex-dom-github}/reflex-dom-core";
       reflex-dom-svg = nixpkgs.fetchFromGitHub {
         owner = "qfpl";
         repo = "reflex-dom-svg";
-        rev = "8c985fa9c210a061fc70893823b58c765bfdb7c3";
-        sha256 = "0cqdc3nz9lk8q0vh651wsc8siaz7aam03vvqwxgfpj6dnl9biq6r";
+        rev = "eaac93ed307d969d6643cbda142645fbc2de933b";
+        sha256 = "121mq5cn7zim70vv29nylm8whkbhbnmryd2ly5jj5z4d0hicxbgz";
       };
 #      monoidal-containers = "0.4.0.0";
 
@@ -182,30 +185,45 @@ let
 #        rev = "feee6256e19ed178dc75b071dc54983bc6320f26";
 #        sha256 = "1vv1js5asaxbahvryxlxch14x3jq15a09xixhz330m3d77zfyiw9";
 #      };
+      constraints-extras = nixpkgs.fetchFromGitHub {
+        owner = "obsidiansystems";
+        repo = "constraints-extras";
+        rev = "a793691c02b46af883a27de326ce655e3e2483be";
+        sha256 = "1d6ffwpw38jsqyzs1g0id0yvh3zj7i2rq2sa1hg11gqbds1gxc5g";
+      };
+      butcher = nixpkgs.fetchFromGitHub {
+        owner = "beauvankirk";
+        repo = "butcher";
+        rev = "278a0b97cbb7ef5f441184741bbe4d4d7258d52a";
+        sha256 = "1whmzwq8xhyxsxzrvbvl3jv2pv0xylkab55cvz7g9jy0fy825i0r";
+      };
     })).extend( self: super:
       let jsaddlePkgs = import jsaddle-github self;
           ghcjsDom = import ghcjs-dom-github self;
+          markNotBroken = drv: overrideCabal drv (drv: { broken = false; });
       in {
         haddock-library = if compiler == "ghc822"
                             then dontCheck (dontHaddock (self.callHackage "haddock-library" "1.4.4" {}))
                             else if compiler == "ghc842" || compiler == "ghc843" || compiler == "ghc844"
                               then dontCheck (dontHaddock (self.callHackage "haddock-library" "1.6.0" {}))
                               else super.haddock-library;
-        haddock-api = if compiler == "ghc822"
+        haddock-api = markNotBroken (if compiler == "ghc822"
                             then dontCheck (self.callHackage "haddock-api" "2.18.1" {})
                             else if compiler == "ghc842" || compiler == "ghc843" || compiler == "ghc844"
                               then dontCheck (self.callHackage "haddock-api" "2.20.0" {})
-                              else dontCheck (dontHaddock super.haddock-api);
+                              else dontCheck (dontHaddock super.haddock-api));
         jsaddle = doJailbreak (jsaddlePkgs.jsaddle);
         jsaddle-warp = dontCheck jsaddlePkgs.jsaddle-warp;
         jsaddle-wkwebview = dontCheck jsaddlePkgs.jsaddle-wkwebview;
+        jsaddle-dom = markNotBroken super.jsaddle-dom;
 
-        vado = doJailbreak super.vado;
+        vado = markNotBroken (doJailbreak super.vado);
         brittany = doJailbreak super.brittany;
 #        criterion = doJailbreak super.criterion;
         ghcjs-dom-jsaddle = dontHaddock ghcjsDom.ghcjs-dom-jsaddle;
         ghcjs-dom = ghcjsDom.ghcjs-dom;
         reflex-dom-core = dontHaddock (doJailbreak (dontCheck super.reflex-dom-core));
+        reflex-dom-svg = doJailbreak super.reflex-dom-svg;
 #        haskell-gi = super.haskell-gi.overrideAttrs (drv: {
 #          src = "${haskell-gi-github}";
 #        });
@@ -215,8 +233,14 @@ let
 #        gi-gdk = super.gi-gdk.overrideAttrs(drv: {strictDeps = true;});
 #        gi-gtk = super.gi-gtk.overrideAttrs(drv: {strictDeps = true;});
 #        gi-gtksource = super.gi-gtksource.overrideAttrs(drv: {strictDeps = true;});
-        gi-gtkosxapplication = (super.gi-gtkosxapplication.override {
+        gi-gtkosxapplication = markNotBroken ((super.gi-gtkosxapplication.override {
           gtk-mac-integration-gtk3 = nixpkgs.gtk-mac-integration-gtk3;
+        }).overrideAttrs(drv: {strictDeps = true;}));
+        gi-webkit2 = (super.gi-webkit2.override {
+          webkitgtk = (nixpkgsFunc {}).webkitgtk;
+        }).overrideAttrs(drv: {strictDeps = true;});
+        gi-javascriptcore = (super.gi-javascriptcore.override {
+          webkitgtk = (nixpkgsFunc {}).webkitgtk;
         }).overrideAttrs(drv: {strictDeps = true;});
 
         cabal-helper        = dontCheck super.cabal-helper;
@@ -232,9 +256,9 @@ let
         system-fileio       = dontCheck super.system-fileio;
 #        ref-tf              = doJailbreak super.ref-tf;
 #        concurrent-output   = doJailbreak super.concurrent-output;
-        reflex              = dontCheck super.reflex;
-        clay                = dontCheck super.clay;
-        multistate          = dontCheck super.multistate;
+        reflex              = doJailbreak (dontCheck super.reflex);
+        clay                = markNotBroken (dontCheck super.clay);
+        multistate          = markNotBroken (doJailbreak (dontCheck super.multistate));
         Diff                = dontCheck super.Diff;
 
 #        Stuff that GHC 8.6.1 might need
@@ -360,13 +384,59 @@ let
   leksah-ghc844 = ghc844.wrapped-leksah "-ghc844";
 
 in leksah // {
-  inherit ghc ghc802 ghc822 ghc843 ghc844;
+  inherit ghc ghc802 ghc822 ghc843 ghc844 cleanSrc;
   inherit leksah-ghc802 leksah-ghc822 leksah-ghc843 leksah-ghc844;
   inherit (ghc) launch-leksah;
 
   shells = {
     ghc = ghc.shellFor {
-      packages = p: [ p.leksah p.leksah-server p.ltk p.vcswrapper p.vcsgui p.HaRe p.cabal-helper p.ghc-exactprint p.ghc-mod p.ghc-mod-core p.reflex p.reflex-dom-core p.reflex-dom-svg ];
+      packages = p: [
+        p.leksah
+        p.leksah-server
+        p.ltk
+        p.vcswrapper
+        p.vcsgui
+        p.HaRe
+        p.cabal-helper
+        p.ghc-exactprint
+        p.ghc-mod
+        p.ghc-mod-core
+        p.reflex
+        p.reflex-dom-core
+        p.reflex-dom-svg
+        p.jsaddle-wkwebview
+      ];
+    };
+    gi = ghc.shellFor {
+      packages = p: [
+        p.leksah
+        p.leksah-server
+        p.ltk
+        p.vcswrapper
+        p.vcsgui
+        p.HaRe
+        p.cabal-helper
+        p.ghc-exactprint
+        p.ghc-mod
+        p.ghc-mod-core
+        p.reflex
+        p.reflex-dom-core
+        p.reflex-dom-svg
+        p.jsaddle-wkwebview
+
+        p.haskell-gi-base
+        p.gi-cairo
+        p.gi-gdk
+        p.gi-gdkpixbuf
+        p.gi-gio
+        p.gi-glib
+        p.gi-gobject
+        p.gi-gtk
+        p.gi-gtk-hs
+        p.gi-gtksource
+        p.gi-pango
+        p.gi-gtkosxapplication
+      ];
     };
   };
 }

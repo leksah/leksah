@@ -27,7 +27,7 @@ import qualified Clay (display)
 import Reflex
        (foldDyn, selectViewListWithKey, leftmost, holdUniqDyn,
         tag, Dynamic, Event, MonadHold(..), Reflex(..),
-        select)
+        select, fmapMaybe)
 import Reflex.Dom.Core
        (el, elDynAttr', (=:), elDynAttr, divClass,
         MonadWidget, HasDomEvent(..), EventName(..), FunctorMaybe(..))

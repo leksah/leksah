@@ -183,12 +183,14 @@ debugExecuteSelection = do
                         case mbURI of
                             Just uri -> lift . postSyncIDE . loadOutputUri $ T.unpack uri
                             Nothing -> return ()
-            autoCmd <- belongsToPackages' buf >>= \case
-                [] -> return (("", ""), packageTry $ tryDebug command)
-                (project, package):_ -> return ((pjFile project, ipdCabalFile package),
+            mbAutoCmd <- belongsToPackages' buf >>= \case
+                [] -> return Nothing -- (("", ""), packageTry $ tryDebug command)
+                (project, package):_ -> return $ Just ((pjKey project, ipdCabalFile package),
                     workspaceTry . (`runProject` project) . (`runPackage` package) $ tryDebug command)
-            modifyIDE_ $ (autoCommand .~ autoCmd) . (autoURI .~ Nothing)
-            snd autoCmd
+            modifyIDE_ $ (autoCommand .~ mbAutoCmd) . (autoURI .~ Nothing)
+            case mbAutoCmd of
+              Just autoCmd -> snd autoCmd
+              Nothing -> packageTry $ tryDebug command
 
 debugBuffer :: IDEBuffer -> DebugAction -> IDEAction
 debugBuffer buf f =

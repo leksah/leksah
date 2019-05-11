@@ -198,11 +198,11 @@ setCurrentBreak b = do
     triggerEventIDE_ (CurrentBreakChanged b)
 setCurrentContext c = modifyIDE_ $ currentContext .~ c
 
-lookupDebugState :: MonadIDE m => (FilePath, FilePath) -> m (Maybe DebugState)
+lookupDebugState :: MonadIDE m => (ProjectKey, FilePath) -> m (Maybe DebugState)
 lookupDebugState (project, package) =
-    listToMaybe . filter (\DebugState{..} -> dsProjectFile == project && any ((== package) . ipdCabalFile) dsPackages) <$> readIDE debugState
+    listToMaybe . filter (\DebugState{..} -> dsProjectKey == project && any ((== package) . ipdCabalFile) dsPackages) <$> readIDE debugState
 
-isInterpreting :: MonadIDE m => (FilePath, FilePath) -> m Bool
+isInterpreting :: MonadIDE m => (ProjectKey, FilePath) -> m Bool
 isInterpreting = fmap isJust . lookupDebugState
 
 triggerEventIDE :: MonadIDE m => IDEEvent -> m IDEEvent
@@ -297,7 +297,7 @@ packageDebugState :: PackageM (Maybe DebugState)
 packageDebugState = do
     project <- lift ask
     package <- ask
-    lookupDebugState (pjFile project, ipdCabalFile package)
+    lookupDebugState (pjKey project, ipdCabalFile package)
 
 
 -- | Replaces an 'IDEPackage' in the workspace by the given 'IDEPackage' and
@@ -324,7 +324,7 @@ changeProject project =
           over (workspace . _Just . wsProjects . traverse) exchange
         . ( bufferProjCache .~ mempty )
     where
-        exchange p | pjFile p == pjFile project = project
+        exchange p | pjKey p == pjKey project = project
                    | otherwise        = p
 
 -- | Find a directory relative to the leksah install directory

@@ -19,13 +19,16 @@ module IDE.Gtk.Types (
   , LogLaunch(..)
 ) where
 
-import Data.Void (Void)
-import Data.Text (Text)
-import Data.Aeson (FromJSON, ToJSON)
-import Data.Word (Word16)
-import GHC.Generics (Generic)
-import System.Process (ProcessHandle)
 import Control.Monad.Trans.Reader (ReaderT(..))
+
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Text (Text)
+import Data.Void (Void)
+import Data.Word (Word16)
+
+import GHC.Generics (Generic)
+
+import System.Process (ProcessHandle)
 
 data IDEState =
         -- | Leksah is in startup mode
@@ -35,7 +38,8 @@ data IDEState =
         -- | Leksah is running
     |   IsRunning
 
-type IDEGtk (idem :: * -> *) ideref = ()
+data IDEGtk (idem :: * -> *) ideref = IDEGtk {
+ }
 
 type IDEGtkEvent ideref = Void
 

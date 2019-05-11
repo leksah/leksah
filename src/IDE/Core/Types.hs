@@ -67,14 +67,22 @@ module IDE.Core.Types (
 ,   ipdPackageDir
 ,   ipdLib
 ,   ipdPackageName
-,   ProjectTool(..)
+,   ProjectKey(..)
 ,   Project(..)
+,   CabalProject(..)
+,   StackProject(..)
+,   CustomProject(..)
 ,   pjPackages
 ,   pjLookupPackage
 ,   pjDir
-,   pjToolCommand'
+,   pjFile
+,   pjFileOrDir
+,   pjIsCabal
+,   pjIsStack
+,   filePathToProjectKey
+--,   pjToolCommand'
 ,   Workspace(..)
-,   wsProjectFiles
+,   wsProjectKeys
 ,   wsLookupProject
 ,   wsActiveProject
 ,   wsActivePackage
@@ -162,7 +170,7 @@ module IDE.Core.Types (
 ,   wsName
 ,   wsFile
 ,   wsProjects
-,   wsActiveProjectFile
+,   wsActiveProjectKey
 ,   wsActivePackFile
 ,   wsActiveComponent
 ,   packageVcsConf
@@ -233,6 +241,10 @@ import System.IO.Unsafe (unsafePerformIO)
 
 #endif
 
+import IDE.Utils.Project
+       (ProjectKey(..), pjCabalFile, pjStackFile, pjCustomDir, pjDir,
+        CabalProject(..), StackProject(..), CustomProject(..), pjIsCabal,
+        pjIsStack, pjFileOrDir, pjFile, filePathToProjectKey)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -267,11 +279,11 @@ data IDE            =  IDE {
 ,   _server              :: Maybe Handle
 ,   _hlintQueue          :: Maybe (TVar [Either FilePath FilePath])
 ,   _logLaunches         :: Map.Map Text LogLaunchData
-,   _autoCommand         :: ((FilePath, FilePath), IDEAction)
+,   _autoCommand         :: Maybe ((ProjectKey, FilePath), IDEAction)
 ,   _autoURI             :: Maybe Text
 ,   _triggerBuild        :: MVar ()
 ,   _fsnotify            :: WatchManager
-,   _watchers            :: MVar (Map FilePath StopListening, Map FilePath StopListening)
+,   _watchers            :: MVar (Map ProjectKey StopListening, Map FilePath StopListening)
 ,   _developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
 ,   _nixCache            :: Map (FilePath, Text) (Map String String)
 ,   _externalModified    :: MVar (Set FilePath)
@@ -280,7 +292,7 @@ data IDE            =  IDE {
 } -- deriving Show
 
 data DebugState = DebugState
-    { dsProjectFile :: FilePath
+    { dsProjectKey  :: ProjectKey
     , dsPackages    :: [IDEPackage]
     , dsBasePath    :: FilePath
     , dsToolState   :: ToolState
@@ -400,8 +412,8 @@ data IDEEvent  =
     |   WorkspaceChanged Bool Bool -- ^ showPane updateFileCache
     |   SelectSrcSpan (Maybe SrcSpan)
     |   SavedFile FilePath
-    |   DebugStart (FilePath, FilePath)
-    |   DebugStop (FilePath, FilePath)
+    |   DebugStart (ProjectKey, FilePath)
+    |   DebugStop (ProjectKey, FilePath)
     |   QuitToRestart
     |   GtkEvent (IDEGtkEvent IDERef)
 
@@ -489,13 +501,30 @@ instance EventSource IDERef IDEEvent IDEM Text where
 -- ---------------------------------------------------------------------
 -- Project
 --
-data ProjectTool = CabalTool | StackTool deriving (Show, Eq)
+--newtype CabalProject = CabalProject
+--  { pjCabalFile :: FilePath
+--  } deriving (Show, Eq)
+--newtype StackProject = StackProject
+--  { pjStackFile :: FilePath
+--  } deriving (Show, Eq)
+--data CustomProject = CustomProject
+--  { pjCustomDir        :: FilePath
+--  , pjCustomNixShell   :: [Text]
+--  , pjCustomGhcBuild   :: [Text]
+--  , pjCustomGhcjsBuild :: [Text]
+--  , pjCustomRepl       :: [Text]
+--  } deriving (Show, Eq)
+--
+--data ProjectKey =
+--    CabalTool CabalProject
+--  | StackTool StackProject
+--  | CustomTool CustomProject
+--  deriving (Show, Eq)
 
-data Project = Project {
-    pjTool       :: ProjectTool
-,   pjFile       :: FilePath
-,   pjPackageMap :: Map FilePath IDEPackage
-} deriving (Show)
+data Project = Project
+  { pjKey        :: ProjectKey
+  , pjPackageMap :: Map FilePath IDEPackage
+  } deriving (Show)
 
 pjPackages :: Project -> [IDEPackage]
 pjPackages = M.elems . pjPackageMap
@@ -503,13 +532,10 @@ pjPackages = M.elems . pjPackageMap
 pjLookupPackage :: FilePath -> Project -> Maybe IDEPackage
 pjLookupPackage f = M.lookup f . pjPackageMap
 
-pjToolCommand' :: Project -> FilePath
-pjToolCommand' project = case pjTool project of
-                            StackTool   -> "stack"
-                            CabalTool   -> "cabal"
-
-pjDir :: Project -> FilePath
-pjDir = dropFileName . pjFile
+--pjToolCommand' :: Project -> FilePath
+--pjToolCommand' project = case pjTool project of
+--                            StackTool   -> "stack"
+--                            CabalTool   -> "cabal"
 
 -- ---------------------------------------------------------------------
 -- IDEPackages
@@ -568,7 +594,7 @@ data Workspace = Workspace {
 ,   _wsName              ::   Text
 ,   _wsFile              ::   FilePath
 ,   _wsProjects          ::   [Project]
-,   _wsActiveProjectFile ::   Maybe FilePath
+,   _wsActiveProjectKey  ::   Maybe ProjectKey
 ,   _wsActivePackFile    ::   Maybe FilePath
 ,   _wsActiveComponent   ::   Maybe Text
 ,   _packageVcsConf      ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
@@ -882,14 +908,14 @@ type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)
 makeLenses ''IDE
 makeLenses ''Workspace
 
-wsProjectFiles :: Getter Workspace [FilePath]
-wsProjectFiles = wsProjects . to (map pjFile)
+wsProjectKeys :: Getter Workspace [ProjectKey]
+wsProjectKeys = wsProjects . to (map pjKey)
 
-wsLookupProject :: FilePath -> Workspace -> Maybe Project
-wsLookupProject f = find ((==f) . pjFile) . _wsProjects
+wsLookupProject :: ProjectKey -> Workspace -> Maybe Project
+wsLookupProject f = find ((==f) . pjKey) . _wsProjects
 
 _wsActiveProject :: Workspace -> Maybe Project
-_wsActiveProject w = (w ^. wsActiveProjectFile) >>= (`wsLookupProject` w)
+_wsActiveProject w = (w ^. wsActiveProjectKey) >>= (`wsLookupProject` w)
 
 wsActiveProject :: Getter Workspace (Maybe Project)
 wsActiveProject = to _wsActiveProject
@@ -927,8 +953,8 @@ activePack = workspace . to (>>= view wsActivePackage)
 activeComponent :: Getter IDE (Maybe Text)
 activeComponent = workspace . to (>>= view wsActiveComponent)
 
-nixEnv :: FilePath -> Text -> IDE -> Maybe (Map String String)
-nixEnv project compiler ide = M.lookup (project, compiler) $ ide ^. nixCache
+nixEnv :: ProjectKey -> Text -> IDE -> Maybe (Map String String)
+nixEnv project compiler ide = M.lookup (pjDir project, compiler) $ ide ^. nixCache
 
 #ifdef LOCALIZATION
 

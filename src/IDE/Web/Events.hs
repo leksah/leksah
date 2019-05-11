@@ -14,6 +14,7 @@ import Data.Map (Map)
 import Distribution.Types.PackageId (PackageIdentifier(..))
 
 import IDE.Core.Types (LogRef(..))
+import IDE.Utils.Project (ProjectKey)
 import IDE.Web.Command (Command(..))
 
 data FileEvent
@@ -41,7 +42,7 @@ data ProjectEvent
 
 makePrisms ''ProjectEvent
 
-type ProjectEvents = Map (Int, FilePath) ProjectEvent
+type ProjectEvents = Map (Int, ProjectKey) ProjectEvent
 
 newtype KeymapEvents =
   KeymapCommand Command

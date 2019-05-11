@@ -12,10 +12,11 @@ module IDE.Web.Main
   ) where
 
 import Control.Concurrent
-       (readMVar, threadDelay, modifyMVar, newMVar, newEmptyMVar, forkIO)
+       (tryPutMVar, takeMVar, readMVar, threadDelay, modifyMVar, newMVar,
+        newEmptyMVar, forkIO)
 import Control.Exception (SomeException)
-import Control.Lens ((^..), (?~), (.~), (%~), _Just)
-import Control.Monad (when, void)
+import Control.Lens (to, (^..), (?~), (.~), (%~), _Just)
+import Control.Monad (forever, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.ByteString (ByteString)
@@ -24,13 +25,15 @@ import qualified Data.ByteString.Char8 as BS (unlines)
 import qualified Data.ByteString.Lazy as BS (toStrict)
 import qualified Data.Dependent.Map as DM (singleton, fromList)
 import Data.Dependent.Sum (DSum(..))
-import Data.Foldable (forM_)
+import Data.Foldable (Foldable(..), forM_)
 import Data.Function ((&))
 import Data.Functor (($>))
 import Data.Functor.Identity (Identity(..))
 import Data.Functor.Misc (Const2(..))
 import Data.IORef (newIORef)
 import Data.Map (mapKeys)
+import qualified Data.Map as M (keys)
+import qualified Data.Set as S (fromList)
 import qualified Data.Text as T (pack, unpack)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
@@ -68,17 +71,16 @@ import GHCJS.DOM.Types (askJSM)
 import GHCJS.DOM.Debug (addDebugMenu)
 
 import Reflex
-       (constDyn, ffor, Dynamic, Event,
-        holdDyn, merge, newTriggerEvent, leftmost, performEvent_,
-        getPostBuild, performEvent, select, fan,
-        fanMap)
+       (switchDyn, mergeList, foldDyn, traceEventWith, constDyn, ffor,
+        Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost,
+        performEvent_, getPostBuild, performEvent, select, fan, fanMap)
 import Reflex.Dom.Core
        (dynText, elAttr', (=:), MonadWidget, mainWidgetWithCss)
 
 import IDE.Core.State
-       (IDEAction, wsFile, jsContexts, workspace,
-        IDEState(..), Prefs(..), IDE(..), IDERef,
-        __, reflectIDE, getDataDir, catchIDE, modifyIDE_)
+       (triggerBuild, readIDE, IDEAction, wsFile, jsContexts, workspace,
+        IDEState(..), Prefs(..), IDE(..), IDERef, __, reflectIDE,
+        getDataDir, catchIDE, modifyIDE_, prefs)
 import qualified IDE.TextEditor.Yi.Config as Yi (start)
 import IDE.Preferences (readPrefs)
 import IDE.SourceCandy (parseCandy)
@@ -108,6 +110,7 @@ import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import qualified IDE.Workspaces.Writer as Writer
        (setWorkspace, readWorkspace)
+import IDE.Workspaces (backgroundMake)
 
 -- > :fork 1 IDE.Web.Main.develMain
 
@@ -120,10 +123,10 @@ newIDE runJs = do
     dataDir         <- getDataDir
 
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-    prefs           <- readPrefs prefsPath
+    initPrefs       <- readPrefs prefsPath
     withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
       candyPath   <-  getConfigFilePathForLoad
-                          (case sourceCandy prefs of
+                          (case sourceCandy initPrefs of
                               (_,name)   ->   T.unpack name <> leksahCandyFileExtension) Nothing dataDir
       candySt     <-  parseCandy candyPath
 
@@ -135,7 +138,7 @@ newIDE runJs = do
             {   _ideGtk            =   Nothing
             ,   _exitCode          =   exitCode
             ,   _candy             =   candySt
-            ,   _prefs             =   prefs
+            ,   _prefs             =   initPrefs
             ,   _workspace         =   Nothing
             ,   _bufferProjCache   =   mempty
             ,   _allLogRefs        =   mempty
@@ -156,7 +159,7 @@ newIDE runJs = do
             ,   _server            =   Nothing
             ,   _hlintQueue        =   Nothing
             ,   _logLaunches       =   mempty
-            ,   _autoCommand       =   (("", ""), return ())
+            ,   _autoCommand       =   Nothing
             ,   _autoURI           =   Nothing
             ,   _triggerBuild      =   triggerBuild
             ,   _fsnotify          =   fsnotify
@@ -179,6 +182,17 @@ newIDE runJs = do
                       )
              (\ (e :: SomeException) ->
                   liftIO $ putStrLn $ printf (T.unpack $ __ "Can't load workspace file %s\n%s") filePath (show e))
+      _ <- liftIO . forkIO . forever $ do
+            takeMVar triggerBuild
+            reflectIDE (do
+--              postSyncIDE' PRIORITY_LOW $
+--                eventsPending >>= \case
+--                    True ->
+--                        liftIO . void $ tryPutMVar triggerBuild ()
+--                    False -> do
+--                        _ <- liftIO $ tryTakeMVar triggerBuild
+                        currentPrefs <- readIDE prefs
+                        when (backgroundBuild currentPrefs) backgroundMake) ideR
       runJs $ jsMain ideR
 
 develMain :: IO ()
@@ -317,14 +331,8 @@ main ide = mdo
             <> GrepKey      =: ("wide1", Just ())
         initialVisibleTabs =
                "tall" =: WorkspaceKey
-            <> "wide1" =: LogKey -- ErrorsKey
+            <> "wide1" =: LogKey
 
-  --  workspaceE <- tabsWidget (constDyn ("workspace" =: ("tall", ()))) (constDyn ("tall" =: "workspace"))
-  --    (\file _ -> text file) (\file _ ->
-  --      (WorkspaceWidget :=>) <$> workspaceWidget ide)
-  ----  workspaceE <- (WorkspaceWidget :=>) <$> workspaceWidget ide
-
-  --  tabE <- editorWidget ide allE
     let label k = dynText $ ffor k $ \case
             WorkspaceKey   -> "Workspace"
             ErrorsKey      -> "Errors"
@@ -332,17 +340,17 @@ main ide = mdo
             GrepKey        -> "Grep"
             EditorKey file -> T.pack $ takeFileName file
 
-    (openFileE, d) <- editorWidget ide allE
+    (openFileE, makeEditor) <- editorWidget ide allE
     flipE <- flipperWidget
       recentTabs
       allE
       label
-  --  tabsD <- foldDyn (<>) initialTabs $
-  --  visibleTabsD <- foldDyn (<>) initialVisibleTabs
+    let openFileE' = mapKeys EditorKey <$> openFileE
+    openFileKeysD <- foldDyn (<>) mempty $ S.fromList . M.keys <$> openFileE'
     (recentTabs, tabE) <- tabsWidget
       initialTabs
       initialVisibleTabs
-      (mapKeys EditorKey <$> openFileE)
+      openFileE'
       flipE
       (\k _ -> label $ constDyn k)
       (\k v -> do
@@ -352,7 +360,7 @@ main ide = mdo
           ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ide allE
           LogKey         -> toDM LogTab <$> logWidget ide
           GrepKey        -> toDM GrepTab <$> grepWidget
-          EditorKey file -> toDM EditorTab <$> d file v)
+          EditorKey file -> toDM EditorTab <$> makeEditor file v)
     findbarE   <- findbarWidget
     statusbarE <- statusbarWidget
 
@@ -365,10 +373,15 @@ main ide = mdo
             , KeymapWidget    :=> keymapE
             ])
         workspaceE = select (fan (select (fanMap tabE) (Const2 WorkspaceKey))) WorkspaceTab
+        editorE' = switchDyn $ leftmost . map (select (fanMap tabE) . Const2) . toList <$> openFileKeysD
+        editorE = select (fan editorE') EditorTab
 
     return $ sequence_ <$>
          ((^.. _ToolbarCommand . commandAction . _Just) <$> toolbarE)
       <> ((^.. _KeymapCommand . commandAction . _Just) <$> keymapE)
       <> ((^.. traverse . _ProjectCommand . commandAction . _Just) <$> workspaceE)
       <> ((^.. traverse . _ProjectPackageEvents . traverse . _PackageCommand . commandAction . _Just) <$> workspaceE)
+      <> ((^.. (to $ \() -> do
+        tb <- readIDE triggerBuild
+        void . liftIO $ tryPutMVar tb ())) <$> editorE)
   return topEvents

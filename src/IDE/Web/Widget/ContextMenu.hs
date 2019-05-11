@@ -29,7 +29,7 @@ import Clay
 
 import Reflex
        (leftmost, ffor, Event, never, holdDyn, switchHold,
-        FunctorMaybe(..))
+        FunctorMaybe(..), fmapMaybe)
 import Reflex.Dom.Core
        (wrapDomEventMaybe, elAttr', wrapDomEvent, EventResult,
         Element, MonadWidget, DomBuilderSpace, dyn, (=:), _element_raw)

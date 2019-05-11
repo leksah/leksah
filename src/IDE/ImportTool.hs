@@ -106,7 +106,7 @@ import IDE.Core.State
         TypeDescr(..), IDERef, readIDE, prefs, modifyIDE_, errorRefs,
         ideMessage, MessageLevel(..), currentError,
         logRefFullFilePath, catchIDE, dsMbModu, dscName, ServerCommand(..),
-        pjFile, ipdCabalFile, prettyPrint, locationELine, locationSLine,
+        pjKey, ipdCabalFile, prettyPrint, locationELine, locationSLine,
         throwIDE, Location(..), dsrDescr, dscTypeHint', __, reflectIDE)
 import IDE.BufferMode (editInsertCode)
 import IDE.Gtk.State (getMainWindow)
@@ -312,7 +312,7 @@ addImport' nis filePath descr descrList continuation =  do
                 belongsToPackages filePath >>= \case
                     [] -> return ()
                     (project, package):_ ->
-                        doServerCommand (ParseHeaderCommand (pjFile project) (ipdCabalFile package) filePath) $ \case
+                        doServerCommand (ParseHeaderCommand (pjKey project) (ipdCabalFile package) filePath) $ \case
                              ServerHeader (Left imports) ->
                                 case filter (qualifyAsImportStatement mod') imports of
                                     []     ->   let newLine  =  prettyPrint (newImpDecl mod') <> "\n"

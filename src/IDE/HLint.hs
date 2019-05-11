@@ -69,7 +69,7 @@ import IDE.Core.CTypes
        (SrcSpan(..), mdMbSourcePath, pdModules, mdModuleId, modu,
         PackScope(..), GenScope(..), GenScope, packageIdentifierToString)
 import IDE.Core.Types
-       (pjDir, ProjectTool(..), Project(..), MonadIDE(..),
+       (pjDir, ProjectKey(..), Project(..), MonadIDE(..),
         logRefFullFilePath, Prefs(..), Log(..), LogRef(..), LogRefType(..),
         wsProjectAndPackages, ipdPackageDir, IDEM, IDEAction,
         IDEPackage(..), PackageAction, hlintQueue, workspace, allLogRefs, prefs, candy)
@@ -177,13 +177,14 @@ getSourcePaths packId names = do
 hlintSettings :: Project -> IDEPackage -> IDEM (ParseFlags, [Classify], Hint)
 hlintSettings project package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
-    cabalMacros <- case pjTool project of
-        CabalTool -> do
-            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir project) "dist-newstyle"
+    cabalMacros <- case pjKey project of
+        CabalTool {} -> do
+            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) "dist-newstyle"
             return $ buildDir </> T.unpack (packageIdentifierToString $ ipdPackageId package)
                               </> "build/autogen/cabal_macros.h"
-        StackTool -> return $ ipdPackageDir package </> ".stack-work/dist/x86_64-osx/Cabal-1.24.2.0/build/autogen/cabal_macros.h"
+        StackTool {} -> return $ ipdPackageDir package </> ".stack-work/dist/x86_64-osx/Cabal-1.24.2.0/build/autogen/cabal_macros.h"
                         -- TODO run stack path --dist-dir
+        _ -> return $ ipdPackageDir package </> ".hadrian_ghci/stage0/compiler/build/autogen/cabal_macros.h"
     cabalMacrosExist <- liftIO $ doesFileExist cabalMacros
     defines <- liftIO $ if cabalMacrosExist
                             then do

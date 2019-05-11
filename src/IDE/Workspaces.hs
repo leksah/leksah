@@ -59,8 +59,7 @@ import Distribution.PackageDescription (hsSourceDirs)
 import System.Directory
        (createDirectoryIfMissing, doesFileExist)
 import System.FilePath
-       (takeFileName, (</>), dropFileName, makeRelative,
-        takeBaseName, takeExtension, (<.>))
+       ((</>), dropFileName, makeRelative, takeExtension, (<.>))
 import System.Log.Logger (debugM)
 
 import IDE.Build
@@ -68,18 +67,19 @@ import IDE.Build
         MakeSettings(..))
 import IDE.Core.State
        (IDEPackage, IDEAction, readIDE, prefs, liftIDE, WorkspaceAction,
-        ProjectAction, PackageAction, ProjectM, ProjectTool(..),
+        ProjectAction, PackageAction, ProjectM, Project(..), ProjectKey(..),
         pjPackageMap, Project, ideMessage, MessageLevel(..), workspace,
         runWorkspace, activeProject, runProject, catchIDE, IDEEvent(..),
-        wsProjects, wsActiveProjectFile, wsActivePackFile, ipdCabalFile,
-        pjPackages, wsActiveComponent, triggerEventIDE_, pjFile, ipdMain,
-        ipdPackageDir, pjTool, activePack, runPackage, saveAllBeforeBuild,
+        wsProjects, wsActiveProjectKey, wsActivePackFile, ipdCabalFile,
+        pjPackages, wsActiveComponent, triggerEventIDE_, pjKey, ipdMain,
+        ipdPackageDir, activePack, runPackage, saveAllBeforeBuild,
         __, externalModified, forkIDE, sysMessage, ipdPackageName, native,
-        developLeksah, belongsToPackage)
+        developLeksah, belongsToPackage, pjStackFile, pjCabalFile, wsFile,
+        CabalProject(..), StackProject(..))
 import IDE.Package
        (getModuleTemplate, idePackageFromPath',
         getPackageDescriptionAndPath, activatePackage,
-        ideProjectFromPath)
+        ideProjectFromKey)
 import IDE.Pane.Log (showDefaultLogLaunch')
 import IDE.Pane.SourceBuffer
        (IDEBuffer(..), fileOpenThis, fileCheckAll)
@@ -87,20 +87,16 @@ import qualified IDE.Workspaces.Writer as Writer
 import IDE.Utils.FileUtils (myCanonicalizePath)
 
 projectNewHere :: FilePath -> WorkspaceAction
-projectNewHere filePath =
-    let realPath
-          | takeExtension filePath == ".project" || takeExtension filePath == ".yaml"
-            = filePath
-          | takeBaseName filePath == "cabal" = filePath <.> "project"
-          | otherwise = filePath <.> "yaml"
-    in do
-        dir <- liftIO $ myCanonicalizePath $ dropFileName realPath
-        let cPath = dir </> takeFileName realPath
-        liftIO (doesFileExist cPath) >>= \case
-            True -> ideMessage Normal $ __ "Project already exists : " <> T.pack cPath
-            False -> do
-                liftIO $ T.writeFile cPath "packages:\n"
-                projectOpenThis cPath
+projectNewHere filePath = do
+    let (filePath', projectKey) = case takeExtension filePath of
+          ".project" -> (filePath, CabalTool (CabalProject filePath))
+          ".yaml" -> (filePath, StackTool (StackProject filePath))
+          _ -> (filePath <.> "project", CabalTool (CabalProject $ filePath <.> "project"))
+    liftIO (doesFileExist filePath') >>= \case
+        True -> ideMessage Normal $ __ "Project already exists : " <> T.pack filePath'
+        False -> do
+            liftIO $ T.writeFile filePath' "packages:\n"
+            projectOpenThis projectKey
 
 workspaceTryQuiet :: WorkspaceAction -> IDEAction
 workspaceTryQuiet f =
@@ -114,21 +110,22 @@ projectTryQuiet f = workspaceTryQuiet $
         Just project -> runProject f project
         Nothing      -> ideMessage Normal (__ "No project active")
 
-projectOpenThis :: FilePath -> WorkspaceAction
-projectOpenThis filePath = do
-    liftIO . debugM "leksah" $ "projectOpenThis " ++ filePath
-    dir <- liftIO $ myCanonicalizePath $ dropFileName filePath
-    let cPath = dir </> takeFileName filePath
-    liftIO (doesFileExist cPath) >>= \case
-        False -> ideMessage Normal $ __ "Project does not exists : " <> T.pack cPath
-        True -> do
-            ws <- ask
-            liftIDE (ideProjectFromPath filePath) >>= \case
-                Nothing -> ideMessage Normal $ __ "Unable to load project : " <> T.pack cPath
+projectOpenThis :: ProjectKey -> WorkspaceAction
+projectOpenThis projectKey = do
+    liftIO . debugM "leksah" $ "projectOpenThis " ++ show projectKey
+--    dir <- liftIO $ myCanonicalizePath $ dropFileName filePath
+--    let cPath = dir </> takeFileName filePath
+    ws <- ask
+    projectKey' <- Writer.makeProjectKeyAbsolute (ws ^. wsFile) projectKey
+--    liftIO (doesFileExist cPath) >>= \case
+--        False -> ideMessage Normal $ __ "Project does not exists : " <> T.pack cPath
+--        True -> do
+    liftIDE (ideProjectFromKey projectKey') >>= \case
+                Nothing -> ideMessage Normal $ __ "Unable to load project : " <> T.pack (show projectKey')
                 Just project ->
                     lift $ Writer.writeWorkspace $ ws
                       & wsProjects %~ (project :)
-                      & wsActiveProjectFile ?~ cPath
+                      & wsActiveProjectKey ?~ projectKey'
                       & wsActivePackFile .~ (ipdCabalFile <$> listToMaybe (pjPackages project))
                       & wsActiveComponent .~ Nothing
 
@@ -155,13 +152,18 @@ projectAddPackage' :: FilePath -> ProjectM (Maybe IDEPackage)
 projectAddPackage' fp = do
     project <- ask
     ws <- lift ask
-    let projectFile = pjFile project
+    let projectKey = pjKey project
     cfp <- liftIO $ myCanonicalizePath fp
     liftIDE (idePackageFromPath' cfp) >>= \case
-        Just pack' -> do
-            let indent = case pjTool project of
-                                    StackTool -> "- "
-                                    CabalTool -> " "
+      Just pack' ->
+        case (case pjKey project of
+                StackTool p -> Just (pjStackFile p, "- ")
+                CabalTool p -> Just (pjCabalFile p, " ")
+                _ -> Nothing) of
+          Nothing -> do
+            ideMessage Normal (__ "Cannot add packages to custom project")
+            return Nothing
+          Just (projectFile, indent) -> do
             projectText <- liftIO $ T.readFile projectFile
             let projectLines = T.lines projectText
                 relativePath = makeRelative (dropFileName projectFile) (dropFileName cfp)
@@ -173,13 +175,13 @@ projectAddPackage' fp = do
                 _ -> return ()
             unless (cfp `elem` map ipdCabalFile (pjPackages project)) $ liftIDE $
                 Writer.writeWorkspace $ ws
-                  & wsProjects %~ map (\p -> if pjFile p == projectFile
+                  & wsProjects %~ map (\p -> if pjKey p == projectKey
                                                 then p { pjPackageMap = M.insert (ipdCabalFile pack') pack' $ pjPackageMap p }
                                                 else p)
                   & wsActivePackFile ?~ ipdCabalFile pack'
                   & wsActiveComponent .~ Nothing
             return (Just pack')
-        Nothing -> return Nothing
+      Nothing -> return Nothing
 
 packageTryQuiet :: PackageAction -> IDEAction
 packageTryQuiet f = do
@@ -189,11 +191,11 @@ packageTryQuiet f = do
         Nothing -> ideMessage Normal (__ "No active package")
 
 
-workspaceRemoveProject :: FilePath -> WorkspaceAction
-workspaceRemoveProject projectFile = do
+workspaceRemoveProject :: ProjectKey -> WorkspaceAction
+workspaceRemoveProject projectKey = do
     ws <- ask
-    when (any ((/= projectFile) . pjFile) $ ws ^. wsProjects) . lift $
-        Writer.writeWorkspace $ ws & wsProjects %~ filter ((/= projectFile) . pjFile)
+    when (any ((/= projectKey) . pjKey) $ ws ^. wsProjects) . lift $
+        Writer.writeWorkspace $ ws & wsProjects %~ filter ((/= projectKey) . pjKey)
 
 projectRemovePackage :: IDEPackage -> ProjectAction
 projectRemovePackage _pack =
@@ -213,8 +215,8 @@ workspaceActivatePackage project mbPack exe = do
             return (Nothing, Nothing)
     ws <- ask
     liftIDE $ Writer.writeWorkspace $ ws
-             & wsProjects %~ ((project :) . filter ((/= pjFile project) . pjFile))
-             & wsActiveProjectFile ?~ pjFile project
+             & wsProjects %~ ((project :) . filter ((/= pjKey project) . pjKey))
+             & wsActiveProjectKey ?~ pjKey project
              & wsActivePackFile .~ mbPackFile
              & wsActiveComponent .~ mbExe
 

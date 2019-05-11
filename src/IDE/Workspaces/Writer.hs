@@ -20,6 +20,7 @@
 module IDE.Workspaces.Writer (
     writeWorkspace
     ,readWorkspace
+    ,makeProjectKeyAbsolute
     ,makePathsAbsolute
     ,WorkspaceFile(..)
     ,emptyWorkspaceFile
@@ -33,13 +34,14 @@ import IDE.Core.Types
 import IDE.Core.State
 import IDE.Gtk.State
 import IDE.Package
-       (activatePackage, deactivatePackage, ideProjectFromPath)
+       (activatePackage, deactivatePackage, ideProjectFromKey)
 import IDE.Utils.FileUtils(myCanonicalizePath)
 
 import Data.Maybe
 import Data.Function ((&))
+import Control.Applicative ((<|>))
 import Control.Monad (unless, void, when)
-import Control.Monad.Trans (liftIO)
+import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Lens ((^.), (.~))
 import System.Time (getClockTime)
 import System.FilePath
@@ -75,7 +77,9 @@ data WorkspaceFile = WorkspaceFile {
 ,   wsfSaveTime          ::   Text
 ,   wsfName              ::   Text
 ,   wsfProjectFiles      ::   [FilePath]
+,   wsfProjectKeys       ::   Maybe [ProjectKey]
 ,   wsfActiveProjectFile ::   Maybe FilePath
+,   wsfActiveProjectKey  ::   Maybe ProjectKey
 ,   wsfActivePackFile    ::   Maybe FilePath
 ,   wsfActiveComponent   ::   Maybe Text
 ,   wsfPackageVcsConf    ::   Map FilePath VCSConf
@@ -113,38 +117,46 @@ readWorkspace fp = do
             --TODO set package vcs here
             return $ Right ws'
 
+makeAbsolute :: MonadIO m => FilePath -> FilePath -> m FilePath
+makeAbsolute basePath relativePath = liftIO $
+    myCanonicalizePath
+       (if isAbsolute relativePath
+            then relativePath
+            else basePath </> relativePath)
+
+makeProjectKeyAbsolute :: MonadIO m => FilePath -> ProjectKey -> m ProjectKey
+makeProjectKeyAbsolute wsFile' (StackTool (StackProject f)) =
+    StackTool . StackProject <$> makeAbsolute (dropFileName wsFile') f
+makeProjectKeyAbsolute wsFile' (CabalTool (CabalProject f)) =
+    CabalTool . CabalProject <$> makeAbsolute (dropFileName wsFile') f
+makeProjectKeyAbsolute wsFile' (CustomTool p) =
+    CustomTool . (\dir -> p { pjCustomDir = dir })
+        <$> makeAbsolute (dropFileName wsFile') (pjCustomDir p)
+
 makePathsAbsolute :: WorkspaceFile -> FilePath -> IDEM Workspace
 makePathsAbsolute ws bp = do
     wsFile'           <-  liftIO $ myCanonicalizePath bp
-    wsActiveProjectFile' <-  case wsfActiveProjectFile ws of
-                                Nothing -> return Nothing
-                                Just fp -> do
-                                    fp' <- liftIO $ makeAbsolute (dropFileName wsFile') fp
-                                    return (Just fp')
+    wsActiveProjectKey' <- mapM (makeProjectKeyAbsolute wsFile') $
+        wsfActiveProjectKey ws <|> (wsfActiveProjectFile ws >>= filePathToProjectKey)
     wsActivePackFile' <-  case wsfActivePackFile ws of
                                 Nothing -> return Nothing
                                 Just fp -> do
                                     fp' <- liftIO $ makeAbsolute (dropFileName wsFile') fp
                                     return (Just fp')
-    projectFiles      <- liftIO $ mapM (makeAbsolute (dropFileName wsFile')) (wsfProjectFiles ws)
-    projects          <- catMaybes <$> mapM ideProjectFromPath projectFiles
+    let keys = fromMaybe (mapMaybe filePathToProjectKey (wsfProjectFiles ws)) $ wsfProjectKeys ws
+    projectKeys      <- mapM (makeProjectKeyAbsolute wsFile') keys
+    projects          <- catMaybes <$> mapM ideProjectFromKey projectKeys
     return Workspace
-                { _wsFile              = wsFile'
-                , _wsVersion           = wsfVersion ws
-                , _wsSaveTime          = wsfSaveTime ws
-                , _wsName              = wsfName ws
-                , _wsProjects          = projects
-                , _wsActiveProjectFile = wsActiveProjectFile'
-                , _wsActivePackFile    = wsActivePackFile'
-                , _wsActiveComponent   = wsfActiveComponent ws
-                , _packageVcsConf      = wsfPackageVcsConf ws
+                { _wsFile             = wsFile'
+                , _wsVersion          = wsfVersion ws
+                , _wsSaveTime         = wsfSaveTime ws
+                , _wsName             = wsfName ws
+                , _wsProjects         = projects
+                , _wsActiveProjectKey = wsActiveProjectKey'
+                , _wsActivePackFile   = wsActivePackFile'
+                , _wsActiveComponent  = wsfActiveComponent ws
+                , _packageVcsConf     = wsfPackageVcsConf ws
                 }
-    where
-        makeAbsolute basePath relativePath  =
-            myCanonicalizePath
-               (if isAbsolute relativePath
-                    then relativePath
-                    else basePath </> relativePath)
 
 --emptyWorkspace :: Workspace
 --emptyWorkspace =  Workspace {
@@ -164,16 +176,18 @@ emptyWorkspaceFile =  WorkspaceFile {
     wsfVersion           =   workspaceVersion
 ,   wsfSaveTime          =   ""
 ,   wsfName              =   ""
+,   wsfProjectKeys       =   Nothing
 ,   wsfProjectFiles      =   []
+,   wsfActiveProjectKey  =   Nothing
 ,   wsfActiveProjectFile =   Nothing
 ,   wsfActivePackFile    =   Nothing
 ,   wsfActiveComponent   =   Nothing
 ,   wsfPackageVcsConf    =   Map.empty
 }
 
-getProject :: FilePath -> [Project] -> Maybe Project
-getProject fp projects =
-    case filter (\ p -> pjFile p == fp) projects of
+getProject :: ProjectKey -> [Project] -> Maybe Project
+getProject pk projects =
+    case filter (\ p -> pjKey p == pk) projects of
         [p] -> Just p
         _   -> Nothing
 
@@ -197,7 +211,7 @@ setWorkspace mbWs = do
     modifyIDE_ $ workspace .~ mbWs
     let packFileAndExe =  case mbWs of
                             Nothing -> Nothing
-                            Just ws -> Just (ws ^. wsActiveProjectFile, ws ^. wsActivePackFile, ws ^. wsActiveComponent)
+                            Just ws -> Just (ws ^. wsActiveProjectKey, ws ^. wsActivePackFile, ws ^. wsActiveComponent)
 --    let oldPackFileAndExe = case mbOldWs of
 --                            Nothing -> Nothing
 --                            Just ws -> Just (ws ^. wsActiveProjectFile, ws ^. wsActivePackFile , ws ^. wsActiveComponent)
@@ -231,18 +245,18 @@ setWorkspace mbWs = do
             let rebuild = void . liftIO $ tryPutMVar tb ()
             unless (isPollingManager fsn) . liftIO $ do
                 oldWatchers <- takeMVar watchersMVar
-                let projectFiles = S.fromList $ map pjFile $ ws ^. wsProjects
+                let projectFiles = S.fromList $ map pjKey $ ws ^. wsProjects
                     packageFiles = S.fromList $ map ipdCabalFile $ pjPackages =<< ws ^. wsProjects
-                    newProjects = filter (not . (`M.member` fst oldWatchers) . pjFile) $ ws ^. wsProjects
+                    newProjects = filter (not . (`M.member` fst oldWatchers) . pjKey) $ ws ^. wsProjects
                     newPackages = filter (not . (`M.member` snd oldWatchers) . ipdCabalFile) $ pjPackages =<< ws ^. wsProjects
                 newProjectWatchers <- forM newProjects $ \project -> do
-                    debugM "leksah" $ "Watching project " <> show (pjFile project)
-                    fmap (pjFile project,) <$> watchDir fsn (pjDir project) (\case
+                    debugM "leksah" $ "Watching project " <> show (pjKey project)
+                    fmap (pjKey project,) <$> watchDir fsn (pjDir $ pjKey project) (\case
                         Modified {} -> True
                         _ -> False) $ \event -> do
                             let f = eventPath event
                             void . (`reflectIDE` ideR) $ setModifiedOnDisk f
-                            when (takeFileName f == takeFileName (pjFile project)) $
+                            when (Just (takeFileName f) == (takeFileName <$> pjFile (pjKey project))) $
                                 (`reflectIDE` ideR) $ postAsyncIDE $
                                     readWorkspace (ws ^. wsFile) >>= \case
                                         Left _ -> return ()
@@ -279,26 +293,32 @@ setWorkspace mbWs = do
             Just rest -> not $ any (`isPrefixOf` rest) ["dist/", "dist-", "."]
             _ -> False
 
+makeProjectKeyRelative :: FilePath -> ProjectKey -> IO ProjectKey
+makeProjectKeyRelative wsFile' (StackTool (StackProject f)) =
+    StackTool . StackProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
+makeProjectKeyRelative wsFile' (CabalTool (CabalProject f)) =
+    CabalTool . CabalProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
+makeProjectKeyRelative wsFile' (CustomTool p) =
+    CustomTool . (\dir -> p { pjCustomDir = dir }) . makeRelative (dropFileName wsFile')
+        <$> myCanonicalizePath (pjCustomDir p)
+
 makePathsRelative :: Workspace -> FilePath -> IO WorkspaceFile
 makePathsRelative ws wsFile' = do
-    wsActiveProjectFile' <- case ws ^. wsActiveProjectFile of
-                            Nothing -> return Nothing
-                            Just fp -> do
-                                nfp <- liftIO $ myCanonicalizePath fp
-                                return (Just (makeRelative (dropFileName wsFile') nfp))
+    wsActiveProjectKey' <- mapM (makeProjectKeyRelative wsFile') $ ws ^. wsActiveProjectKey
     wsActivePackFile' <- case ws ^. wsActivePackFile of
                             Nothing -> return Nothing
                             Just fp -> do
                                 nfp <- liftIO $ myCanonicalizePath fp
                                 return (Just (makeRelative (dropFileName wsFile') nfp))
-    wsProjectFiles' <- mapM myCanonicalizePath (ws ^. wsProjectFiles)
-    let relativePaths = map (makeRelative (dropFileName wsFile')) wsProjectFiles'
+    wsProjectKeys' <- mapM (makeProjectKeyRelative wsFile') $ ws ^. wsProjectKeys
     return WorkspaceFile
                 { wsfVersion           = ws ^. wsVersion
                 , wsfSaveTime          = ws ^. wsSaveTime
                 , wsfName              = ws ^. wsName
-                , wsfProjectFiles      = relativePaths
-                , wsfActiveProjectFile = wsActiveProjectFile'
+                , wsfProjectKeys       = Just wsProjectKeys'
+                , wsfProjectFiles      = mapMaybe pjFile wsProjectKeys'
+                , wsfActiveProjectKey  = wsActiveProjectKey'
+                , wsfActiveProjectFile = wsActiveProjectKey' >>= pjFile
                 , wsfActivePackFile    = wsActivePackFile'
                 , wsfActiveComponent   = ws ^. wsActiveComponent
                 , wsfPackageVcsConf    = ws ^. packageVcsConf

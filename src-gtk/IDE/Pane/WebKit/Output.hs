@@ -216,7 +216,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         cid4 <- ConnectC uriEntry <$> onEntryActivate uriEntry (do
             uri <- entryGetText uriEntry
             webViewLoadUri webView uri
-            (`reflectIDE` _ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri}))
+            (`reflectIDE` _ideR) $ modifyIDE_ (\ide -> ide {_autoURI = Just uri}))
 
 #ifndef MIN_VERSION_gi_webkit2
         cid5 <- ConnectC webView <$> onWebViewLoadCommitted webView (\ frame -> do
@@ -225,9 +225,9 @@ instance RecoverablePane IDEOutput OutputState IDEM where
             if uri /= valueUri
                 then do
                     entrySetText uriEntry uri
-                    (`reflectIDE` _ideR) $ modifyIDE_ (\ide -> ide {autoURI = Just uri})
+                    (`reflectIDE` _ideR) $ modifyIDE_ (\ide -> ide {_autoURI = Just uri})
                 else
-                    (`reflectIDE` _ideR) $ modifyIDE_ (\ide -> ide {autoURI = Nothing}))
+                    (`reflectIDE` _ideR) $ modifyIDE_ (\ide -> ide {_autoURI = Nothing}))
 #endif
 
         cid6 <- ConnectC uriEntry <$> afterWidgetFocusInEvent uriEntry (\e -> do
@@ -305,7 +305,7 @@ setOutput command str = do
     webViewLoadString view html "text/html" "UTF-8" uri
 #endif
 #endif
-        return ()
+    return ()
 
 loadOutputUri :: FilePath -> IDEAction
 loadOutputUri _uri =

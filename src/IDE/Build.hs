@@ -111,7 +111,7 @@ moNoOp = MoComposed []
 makePackages ::  MakeSettings -> [(Project, [IDEPackage])] -> MakeOp -> MakeOp -> MakeOp -> IDEAction
 makePackages ms targets firstOp restOp  finishOp = do
     liftIO $ debugM "leksah" $ "makePackages : "
-            <> "targets = " <> show (map (pjFile *** map ipdPackageName) targets)
+            <> "targets = " <> show (map (pjKey *** map ipdPackageName) targets)
             <> ", fistOp = " <> show firstOp
             <> ", restOp = " <> show restOp
     let plan = constrMakeChain ms targets firstOp restOp finishOp

@@ -33,13 +33,13 @@ import Clay
         fontFamily, px, fontSize, width, pct, height, (?), Css)
 
 import Language.Javascript.JSaddle
-       (MonadJSM, JSM, call, eval, js1, js0, js2, jsg, jss, obj, liftJSM,
-        JSVal)
+       (fun, MonadJSM, JSM, call, eval, js1, js0, js2, jsg, jss, obj,
+        liftJSM, JSVal)
 
 import Reflex
        (ffilter, leftmost, attach, holdUniqDyn, foldDyn, fanMap, select,
         fmapMaybe, delay, getPostBuild, performEvent, performEvent_, ffor,
-        Dynamic, Event, never, fan, current, updated, holdDyn)
+        Dynamic, Event, never, fan, current, updated, holdDyn, newTriggerEvent)
 import Reflex.Dom.Core
        ((=:), textAreaConfig_initialValue, textArea, MonadWidget,
         _textArea_element)
@@ -151,6 +151,7 @@ editorWidget ide allEvents = do
     ( (=:("wide0", Just())) <$> fileE
     , \file _ -> do
 --      locationD <- holdUniqDyn $ M.lookup file <$> locationsD
+      (changeE, triggerChangeE) <- newTriggerEvent
       logRefsD <- holdUniqDyn $ fromMaybe [] . M.lookup file <$> logRefsByFileD
       exists <- liftIO (doesFileExist file)
       liftIO (if exists then decodeUtf8' <$> BS.readFile file else return (Right "")) >>= \case
@@ -165,6 +166,7 @@ editorWidget ide allEvents = do
               _ <- editor ^. js2 ("setOption" :: Text) ("theme" :: Text) ("abcdef" :: Text)
               _ <- editor ^. js2 ("setOption" :: Text) ("lineNumbers" :: Text) ("true" :: Text)
               _ <- editor ^. js2 ("setSize" :: Text) ("100%" :: Text) ("100%" :: Text)
+              _ <- editor ^. js2 ("on" :: Text) ("change" :: Text) (fun $ \ _ _ _ -> liftIO $ triggerChangeE ())
               return editor) <$ postBuild)
           performEvent_ $ ffor (attach (current $ (,) <$> locationsD <*> logRefsD) editorE) $ \((locations, logRefs), editor) -> liftJSM $ do
               case M.lookup file locations of
@@ -180,4 +182,4 @@ editorWidget ide allEvents = do
               (Just editor, logRef) -> gotoSrcSpan editor (logRefSrcSpan logRef)
               _ -> return ()
           return ()
-      return never)
+      return changeE)

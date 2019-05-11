@@ -96,7 +96,9 @@ import IDE.Core.State
         runWorkspace, workspace, readIDE, IDEAction,
         PackageAction, ProjectAction, IDEM, WorkspaceAction,
         IDEEvent(..), Project(..), wsProjects, SensitivityMask(..),
-        MonadIDE(..), leksahSessionFileExtension, leksahWorkspaceFileExtension)
+        MonadIDE(..), leksahSessionFileExtension, leksahWorkspaceFileExtension,
+        ProjectKey(..), CabalProject(..), StackProject(..), pjDir,
+        filePathToProjectKey)
 import IDE.Gtk.State
        (isStartingOrClosing, postAsyncIDE, bringPaneToFront, getMainWindow)
 import IDE.Command.VCS.Common.Workspaces as VCSWS
@@ -155,7 +157,7 @@ workspaceOpen = do
 projectOpen :: WorkspaceAction
 projectOpen = do
     win <- liftIDE getMainWindow
-    liftIO (chooseProjectFile win) >>= mapM_ projectOpenThis
+    liftIO ((>>= filePathToProjectKey) <$> chooseProjectFile win) >>= mapM_ projectOpenThis
 
 workspaceTry' :: IDEM Int -> WorkspaceAction -> IDEAction
 workspaceTry' promptUser f =
@@ -221,7 +223,7 @@ projectTry' promptUser f =
                     defaultCabal <- (</> "cabal.project") . takeDirectory <$> asks (^. wsFile)
                     defaultExists <- liftIO $ doesFileExist defaultCabal
                     if defaultExists
-                        then projectOpenThis defaultCabal
+                        then projectOpenThis . CabalTool $ CabalProject defaultCabal
                         else projectNewHere defaultCabal
                     postAsyncIDE $ projectTryQuiet f
                 _  -> return ()
@@ -325,16 +327,16 @@ workspacePackageNew = do
     ws <- ask
     let path = dropFileName (ws ^. wsFile)
     liftIDE . packageNew' path (ws ^. wsProjects) logOutputDefault $ \isNew mbProject fp -> do
-        liftIO $ debugM "leksah" $ "workspacePackageNew " <> show (isNew, pjFile <$> mbProject, fp)
+        liftIO $ debugM "leksah" $ "workspacePackageNew " <> show (isNew, pjKey <$> mbProject, fp)
         case mbProject of
             Just project -> workspaceTryQuiet . (`runProject` project) . void $ projectAddPackage' fp
             Nothing -> postAsyncIDE . workspaceTryQuiet $ do
                 let packageDir = dropFileName fp
                 liftIO (doesFileExist $ packageDir </> "cabal.project") >>= \case
-                    True -> projectOpenThis (packageDir </> "cabal.project")
+                    True -> projectOpenThis (CabalTool . CabalProject $ packageDir </> "cabal.project")
                     False ->
                         liftIO (doesFileExist $ packageDir </> "stack.yaml") >>= \case
-                            True -> projectOpenThis (packageDir </> "stack.yaml")
+                            True -> projectOpenThis . StackTool . StackProject $ packageDir </> "stack.yaml"
                             False -> do
                                 liftIO $ debugM "leksah" "workspacePackageNew show project creation dialog"
                                 win <- liftIDE getMainWindow
@@ -353,10 +355,10 @@ workspacePackageNew = do
                                 case resp of
                                     AnotherResponseType 1 -> do
                                         liftIO $ T.writeFile (packageDir </> "cabal.project") "packages:\n ./\n"
-                                        projectOpenThis (packageDir </> "cabal.project")
+                                        projectOpenThis . CabalTool . CabalProject $ packageDir </> "cabal.project"
                                     AnotherResponseType 2 -> do
                                         liftIO $ T.writeFile (packageDir </> "stack.yaml") "packages:\n- '.'\n"
-                                        projectOpenThis (packageDir </> "stack.yaml")
+                                        projectOpenThis . StackTool . StackProject $ packageDir </> "stack.yaml"
                                     _  -> return ()
         when isNew $ do
             mbPack <- liftIDE $ idePackageFromPath' fp
@@ -366,7 +368,7 @@ workspacePackageNew = do
 projectPackageClone :: ProjectAction
 projectPackageClone = do
     project <- ask
-    let path = dropFileName (pjFile project)
+    let path = pjDir $ pjKey project
     liftIDE . packageClone path logOutputDefault $ \fp ->
         projectTry $ do
             _ <- projectAddPackage' fp
@@ -375,7 +377,7 @@ projectPackageClone = do
 projectAddPackage :: ProjectAction
 projectAddPackage = do
     project <- ask
-    let path = dropFileName (pjFile project)
+    let path = pjDir $ pjKey project
     win <-  liftIDE getMainWindow
     liftIO (choosePackageFile win (Just path)) >>= \case
         Nothing -> return ()

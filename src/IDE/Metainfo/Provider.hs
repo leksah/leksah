@@ -80,8 +80,8 @@ import IDE.Core.State
         triggerEventIDE, forkIDE, MessageLevel(..),
         ideMessage, collectAtStart, prefs, readIDE,
         ModuleDescrCache, workspInfoCache, IDEPackage, packageInfo,
-        workspaceInfo, systemInfo, IDEM, IDEAction, wsProjectFiles,
-        Project, pjFile, wsProjectAndPackages, systemInfo)
+        workspaceInfo, systemInfo, IDEM, IDEAction, wsProjectKeys,
+        Project, pjKey, wsProjectAndPackages, systemInfo)
 import IDE.Gtk.State (postAsyncIDE)
 import IDE.Utils.Utils
        (leksahMetadataPathFileExtension,
@@ -108,6 +108,7 @@ import qualified Data.Text as T (null, isPrefixOf, unpack, pack)
 import qualified Control.Arrow as A (Arrow(..))
 import Data.Function (on)
 import IDE.Utils.CabalPlan (unitIdToPackageId)
+import IDE.Utils.Project (ProjectKey)
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -170,11 +171,11 @@ rebuildWorkspaceInfo = do
     updateWorkspaceInfo' True $ \ _ ->
         void (triggerEventIDE (InfoChanged False))
 
-getAllPackages :: IDEM [(UnitId, Maybe FilePath)]
+getAllPackages :: IDEM [(UnitId, Maybe ProjectKey)]
 getAllPackages = do
     mbWorkspace <- readIDE workspace
     liftIO $ getInstalledPackages VERSION_ghc
-            $ maybe [] (^. wsProjectFiles) mbWorkspace
+            $ maybe [] (^. wsProjectKeys) mbWorkspace
 
 getAllPackageIds :: IDEM [PackageIdentifier]
 getAllPackageIds =
@@ -184,7 +185,7 @@ getAllPackageIds =
 getAllPackageDBs :: IDEM [PackageDBs]
 getAllPackageDBs = do
     mbWorkspace <- readIDE workspace
-    liftIO . getPackageDBs $ maybe [] (^. wsProjectFiles) mbWorkspace
+    liftIO . getPackageDBs $ maybe [] (^. wsProjectKeys) mbWorkspace
 
 --
 -- | Load all infos for all installed and exposed packages
@@ -854,7 +855,7 @@ callCollectorWorkspace rebuild project package modList cont = do
     where command = WorkspaceCommand {
             wcRebuild     = rebuild,
             wcPackage     = ipdPackageId package,
-            wcProject     = pjFile project,
+            wcProject     = pjKey project,
             wcPackageFile = ipdCabalFile package,
             wcModList     = modList}
 
