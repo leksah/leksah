@@ -17,12 +17,25 @@
 }:
 
 let
+  fixMacOsGioIntrospection = self: super: {
+    gobject-introspection = if (import <nixpkgs> {}).stdenv.isDarwin
+      then super.gobject-introspection.overrideAttrs (oldAttrs: {
+        postInstall = (oldAttrs.postInstall or "") + ''
+          sed -i '/<function name="content_type_[gs]et_mime_dirs"/,/<\/function>/d' $dev/share/gir-1.0/Gio-2.0.gir
+          ./tools/g-ir-compiler --includedir $dev/share/gir-1.0 $dev/share/gir-1.0/Gio-2.0.gir > $out/lib/girepository-1.0/Gio-2.0.typelib
+        '';
+      })
+      else super.gobject-introspection;
+  };
   reflex-platform = import ((import <nixpkgs> {}).pkgs.fetchFromGitHub {
     owner = "reflex-frp";
     repo = "reflex-platform";
     rev = "a15d3a2411e7ca7d4ee4853b57c72fe83faee272";
     sha256 = "1dsvw0lah7761vndip1hqal4fjpjv84ravinnfhy83jgfav5ivna";
-  }) { inherit nixpkgsFunc; };
+  }) {
+  	inherit nixpkgsFunc;
+  	nixpkgsOverlays = [ fixMacOsGioIntrospection ];
+  };
   nixpkgs = reflex-platform.nixpkgs;
 in
 
