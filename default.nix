@@ -401,10 +401,6 @@ in leksah // {
         p.ghc-exactprint
         p.ghc-mod
         p.ghc-mod-core
-        p.reflex
-        p.reflex-dom-core
-        p.reflex-dom-svg
-        p.jsaddle-wkwebview
       ];
     };
     gi = ghc.shellFor {
