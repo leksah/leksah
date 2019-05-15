@@ -33,8 +33,8 @@ let
     rev = "a15d3a2411e7ca7d4ee4853b57c72fe83faee272";
     sha256 = "1dsvw0lah7761vndip1hqal4fjpjv84ravinnfhy83jgfav5ivna";
   }) {
-  	inherit nixpkgsFunc;
-  	nixpkgsOverlays = [ fixMacOsGioIntrospection ];
+    inherit nixpkgsFunc;
+    nixpkgsOverlays = [ fixMacOsGioIntrospection ];
   };
   nixpkgs = reflex-platform.nixpkgs;
 in
