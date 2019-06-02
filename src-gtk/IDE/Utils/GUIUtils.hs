@@ -115,29 +115,28 @@ import GI.Gdk.Flags (ModifierType(..))
 import GI.Gtk.Structs.TreePath
        (TreePath(..))
 import GI.Gtk.Objects.Widget
-       (noWidget, onWidgetButtonPressEvent, onWidgetPopupMenu,
-        widgetShowAll, widgetHide, widgetDestroy, widgetShow, widgetActivate)
-import GI.Gdk
-       (pattern BUTTON_SECONDARY, getEventButtonType, getEventButtonY,
-        getEventButtonX, getEventButtonTime, getEventButtonButton)
-import GI.Gdk.Enums (EventType(..))
+       (widgetShowAll, widgetHide, widgetDestroy, widgetShow, widgetActivate)
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSelectPath, treeSelectionUnselectAll, treeSelectionCountSelectedRows)
 import Data.GI.Gtk.ModelView.ForestStore
        (forestStoreGetValue, ForestStore(..))
 import GI.Gtk.Objects.Menu
-       (Menu(..), menuPopup, menuAttachToWidget, menuNew)
+       (Menu(..), menuAttachToWidget, menuNew)
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import GI.Pango.Structs.FontDescription
        (fontDescriptionSetFamily, fontDescriptionNew, FontDescription(..))
 import GI.Pango (fontDescriptionFromString)
 import Data.GI.Base.BasicTypes (UnexpectedNullPointerReturn(..))
-import GI.Gtk.Functions (getCurrentEventTime)
-import Data.Word (Word32)
 import Data.GI.Gtk.ModelView.Types
        (treeSelectionGetSelectedRows')
 import GHC.Stack (HasCallStack)
+import GI.Gdk
+       (getEventButtonY, getEventButtonX, getEventButton, Event)
+import GI.Gdk.Constants (pattern BUTTON_SECONDARY)
+import GI.Gtk
+       (menuPopupAtPointer, gestureGetLastEvent, onGestureBegin,
+        gestureSingleSetButton, gestureMultiPressNew)
 
 chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
@@ -472,32 +471,27 @@ treeViewContextMenu' :: TreeView                 -- ^ The view
                                                                                      -- The lists are seperated by a seperator
                      -> IDEM [Connection]
 treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
-    cid1 <- onWidgetPopupMenu view $ do
-        t <- getCurrentEventTime
-        showMenu 0 t ideRef
-    cid2 <- onWidgetButtonPressEvent view $ \e -> do
-        button    <- getEventButtonButton e
-        click     <- getEventButtonType e
-        timestamp <- getEventButtonTime e
-        x         <- getEventButtonX e
-        y         <- getEventButtonY e
-        case (fromIntegral button, click) of
-            (BUTTON_SECONDARY, EventTypeButtonPress) -> do
-                sel <- treeViewGetSelection view
-                selCount <- treeSelectionCountSelectedRows sel
-                when (selCount <= 1) $ do
-                    pathInfo <- treeViewGetPathAtPos view (floor x) (floor y)
-                    case pathInfo of
-                        (True, Just path, _, _, _) -> do
-                            treeSelectionUnselectAll sel
-                            treeSelectionSelectPath sel path
-                        _ -> return ()
-                showMenu button timestamp ideRef
-            _ -> return False
-    return $ map (ConnectC view) [cid1, cid2]
+    g <- gestureMultiPressNew view
+    gestureSingleSetButton g (fromIntegral BUTTON_SECONDARY)
+    cid2 <- onGestureBegin g $ \s ->
+      gestureGetLastEvent g (Just s) >>= mapM_ (\event -> do
+        eventButton <- getEventButton event
+        x         <- getEventButtonX eventButton
+        y         <- getEventButtonY eventButton
+        sel <- treeViewGetSelection view
+        selCount <- treeSelectionCountSelectedRows sel
+        when (selCount <= 1) $ do
+            pathInfo <- treeViewGetPathAtPos view (floor x) (floor y)
+            case pathInfo of
+                (True, Just path, _, _, _) -> do
+                    treeSelectionUnselectAll sel
+                    treeSelectionSelectPath sel path
+                _ -> return ()
+        showMenu event ideRef)
+    return $ map (ConnectC view) [cid2]
   where
-    showMenu :: Word32 -> Word32 -> IDERef -> IO Bool
-    showMenu button timestamp ideRef = do
+    showMenu :: Event -> IDERef -> IO ()
+    showMenu event ideRef = do
 
         selPaths     <- treeViewGetSelection view >>= treeSelectionGetSelectedRows'
         selValues    <- mapM (forestStoreGetValue store) selPaths
@@ -517,44 +511,39 @@ treeViewContextMenu' view store itemsFor = reifyIDE $ \ideRef -> do
                     intercalate [separatorMenuItemNew >>= toMenuItem]
                                 (map (map return) menuItemsPerSection)
                 mapM_ (menuShellAppend theMenu) itemsAndSeparators
-                menuPopup theMenu noWidget noWidget Nothing button timestamp
                 widgetShowAll theMenu
-        return True
+                menuPopupAtPointer theMenu (Just event)
 
 treeViewContextMenu :: MonadIO m
                     => TreeView
                     -> (Menu -> IO ())
                     -> m [Connection]
 treeViewContextMenu treeView populateMenu = do
-    cid1 <- onWidgetPopupMenu treeView $ showMenu 0 =<< getCurrentEventTime
-    cid2 <- onWidgetButtonPressEvent treeView $ \e -> do
-        button    <- getEventButtonButton e
-        click     <- getEventButtonType e
-        timestamp <- getEventButtonTime e
-        x         <- getEventButtonX e
-        y         <- getEventButtonY e
-        case (fromIntegral button, click) of
-            (BUTTON_SECONDARY, EventTypeButtonPress) -> do
-                sel <- treeViewGetSelection treeView
-                selCount <- treeSelectionCountSelectedRows sel
-                when (selCount <= 1) $ do
-                    pathInfo <- treeViewGetPathAtPos treeView (floor x) (floor y)
-                    case pathInfo of
-                        (True, Just path, _, _, _) -> do
-                            treeSelectionUnselectAll sel
-                            treeSelectionSelectPath sel path
-                        _ -> return ()
-                showMenu button timestamp
-            _ -> return False
-    return $ map (ConnectC treeView) [cid1, cid2]
+    theMenu <- menuNew
+    menuAttachToWidget theMenu treeView Nothing
+    liftIO $ populateMenu theMenu
+    g <- gestureMultiPressNew treeView
+    gestureSingleSetButton g (fromIntegral BUTTON_SECONDARY)
+    cid2 <- onGestureBegin g $ \s ->
+      gestureGetLastEvent g (Just s) >>= mapM_ (\event -> do
+        eventButton <- getEventButton event
+        x         <- getEventButtonX eventButton
+        y         <- getEventButtonY eventButton
+        sel <- treeViewGetSelection treeView
+        selCount <- treeSelectionCountSelectedRows sel
+        when (selCount <= 1) $ do
+            pathInfo <- treeViewGetPathAtPos treeView (floor x) (floor y)
+            case pathInfo of
+                (True, Just path, _, _, _) -> do
+                    treeSelectionUnselectAll sel
+                    treeSelectionSelectPath sel path
+                _ -> return ()
+        showMenu event theMenu)
+    return $ map (ConnectC treeView) [cid2]
   where
-    showMenu button timestamp = do
-        theMenu <- menuNew
-        menuAttachToWidget theMenu treeView Nothing
-        populateMenu theMenu
-        menuPopup theMenu noWidget noWidget Nothing button timestamp
+    showMenu event theMenu = do
         widgetShowAll theMenu
-        return True
+        menuPopupAtPointer theMenu (Just event)
 
 fontDescription :: Maybe Text -> IDEM FontDescription
 fontDescription mbFontString =
