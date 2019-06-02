@@ -14,12 +14,23 @@ fi
 GHCARG=$1
 shift
 
+if [ "$GHCARG" != "ghc864" ]
+  then
+    echo "Please use ./leksah-nix.sh ghc864 for now (support for othe ghc versions needs more work)"
+    exit 1
+fi
+
 LEKSAH_SERVER_VERSION=`grep '^version: ' vendor/leksah-server/leksah-server.cabal | sed 's|version: *||' | tr -d '\r'`
 # CABAL_HELPER_VERSION=`grep '^version: ' vendor/HaRe/submodules/cabal-helper/cabal-helper.cabal | sed 's|version: *||' | tr -d '\r'`
 LEKSAH_VERSION=`grep '^version: ' leksah.cabal | sed 's|version: ||' | tr -d '\r'`
-GHCNIX=`nix-build --argstr compiler "$GHCARG" -A ghc.ghc`/bin/ghc
+GHCNIX=`nix-shell --argstr haskellCompiler "$GHCARG" --run 'which ghc'`
+if [ "$GHCNIX" == "" ]
+  then
+    echo "$GHCARG not found"
+    exit 1
+fi
 GHCVER=`$GHCNIX --numeric-version`
-LAUNCH_LEKSAH=`nix-build --argstr compiler "$GHCARG" -A launch-leksah`/bin/launch-leksah
+LAUNCH_LEKSAH=`nix-build --argstr haskelCompiler "$GHCARG" -A nix-tools._raw.launch-leksah`/bin/launch-leksah
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
@@ -45,7 +56,7 @@ export leksah_server_datadir="$DIR/vendor/leksah-server"
 export vcsgui_datadir="$DIR/vendor/haskellVCSGUI/vcsgui"
 
 rm -f .ghc.environment.* cabal.project.local
-$LAUNCH_LEKSAH nix-shell --show-trace -j 4 --cores 5 --argstr compiler "$GHCARG" -A shells.ghc --run \
+$LAUNCH_LEKSAH nix-shell --show-trace -j 4 --cores 5 --argstr haskellCompiler "$GHCARG" --run \
   'cabal new-build exe:leksah-server exe:leksah exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass' \
     || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
 rm -f .ghc.environment.* cabal.project.local

@@ -24,21 +24,16 @@ allow-newer:
  reflex-dom-svg:lens
  brittany:base
 
--- source-repository-package
---   type: git
---   location: https://github.com/reflex-frp/reflex
---   tag: e1ab8684705e880a2413ee3fce02df0354c2dc6a
+source-repository-package
+  type: git
+  location: https://github.com/reflex-frp/reflex
+  tag: eefb7761f6b5dfe30b4e97310cb15463d889506a
 
--- source-repository-package
---   type: git
---   location: https://github.com/reflex-frp/reflex-dom
---   tag: 3319f1b0349bb126827c2747b8493e575c401a6d
---   subdir: reflex-dom-core
-
--- source-repository-package
---   type: git
---   location: https://github.com/hamishmack/reflex-dom-svg
---   tag: acdb21a0866a271878d9aa9266225117da751c0c
+source-repository-package
+  type: git
+  location: https://github.com/reflex-frp/reflex-dom
+  tag: 2734d2d70fd0b63849a7e0b5355d80ee66eda127
+  subdir: reflex-dom-core
 
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk
