@@ -104,7 +104,7 @@ logWidget ide =
             (_e, _) <- elDynAttr' "div" (("class" =:) . ("log-item "<>)
                   . maybe "" ((" "<>) . T.pack . show . snd) <$> v) $
               dynText $ maybe "" fst <$> v
-            return ()) -- $ tag (current $ logRefSrcSpan <$> v) (domEvent Dblclick e))
+            return ()) ---- $ tag (current $ logRefSrcSpan <$> v) (domEvent Dblclick e))
         return never -- . fmapMaybe (fmap ErrorsGoto . listToMaybe . M.elems) $ switchDyn (mergeMap <$> eventsD)
       return result
     return result
