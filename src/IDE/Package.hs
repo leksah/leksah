@@ -1290,18 +1290,31 @@ extractStackPackageList = (\x -> if null x then ["."] else x) .
                           mapMaybe (T.stripPrefix (indent <> "- ")) $
                           takeWhile (\l -> (indent <> "- ") `T.isPrefixOf` l || (indent <> " ") `T.isPrefixOf` l) (x:xs)
 
-
+-- This started out really small...
+-- TODO replace with code from cabal-install (currently not exposed)
 extractCabalPackageList :: Text -> [String]
-extractCabalPackageList = extractList "packages:" <> extractList "optional-packages:"
+extractCabalPackageList =
+    extractList "packages:" <> extractList "optional-packages:"
   where
     extractList :: Text -> Text -> [String]
-    extractList listName = map (dirOnly .T.unpack . T.dropWhile (==' ')) .
-                          takeWhile (" " `T.isPrefixOf`) .
-                          drop 1 .
-                          dropWhile (/= listName) .
-                          filter (not . T.null) .
-                          map (T.pack . stripCabalComments . T.unpack) .
-                          T.lines
+    extractList listName =
+        map dirOnly .
+        filter (not . null) .
+        (>>= words) .
+        map (T.unpack . T.dropWhile (==' ')) .
+        takeWhile (" " `T.isPrefixOf`) .
+        dropListName .
+        dropWhile (not . (listName `T.isPrefixOf`)) .
+        filter (not . T.null) .
+        map (T.pack . stripCabalComments . T.unpack) .
+        T.lines
+      where
+        -- This function makes `packages: x` on one line work like
+        -- packages:
+        --   x
+        -- Using fromJust here to get a better error if somehow listName is not a prefix (should never happen).
+        dropListName [] = []
+        dropListName (x:xs) = " " <> fromJust (T.stripPrefix listName x) : xs
 
     stripCabalComments :: String -> String
     stripCabalComments "" = ""
