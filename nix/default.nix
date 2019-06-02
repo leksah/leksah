@@ -11,7 +11,7 @@ let
       filter = path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
         pkgs.lib.all (i: toString i != path) [ ../.DS_Store ../osx/Leksah ../osx/keymap.lkshk ../osx/prefs.lkshp ../win32/SourceDir ../default.nix ../result ../nix ../lib.nix ../nix-tools.nix ../default.nix ../shell.nix ]
           && pkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
-          && pkgs.lib.all (i: !(pkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" ]
+          && pkgs.lib.all (i: !(pkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" "~" ]
           && pkgs.lib.all (i: !(pkgs.lib.hasPrefix i (baseNameOf path))) [ "result-" ".ghc.environment." ];
     };
   # our packages
