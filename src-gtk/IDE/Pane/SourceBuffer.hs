@@ -155,9 +155,9 @@ import GI.Gdk.Structs.EventButton (getEventButtonType)
 import GI.Gdk.Structs.EventKey
        (getEventKeyState, getEventKeyKeyval)
 import GI.Gtk
-       (onDialogResponse, widgetShowAll, boxPackStart, boxNew,
-        Container(..), containerAdd, infoBarGetContentArea, labelNew,
-        infoBarNew)
+       (bindingsActivateEvent, onDialogResponse, widgetShowAll,
+        boxPackStart, boxNew, Container(..), containerAdd,
+        infoBarGetContentArea, labelNew, infoBarNew)
 import GI.Gtk.Enums
        (FileChooserAction(..), WindowPosition(..), ResponseType(..),
         ButtonsType(..), MessageType(..), ShadowType(..), PolicyType(..),
@@ -771,9 +771,14 @@ builder' useCandy mbfn ind bn _rbn _ct prefs' fileContents modTime _pp _nb _wind
                         readIDE currentState >>= \case
                             IsCompleting _ -> return False
                             _              -> smartIndent sv >> return True
-                    _ ->
-                        -- liftIO $ print ("sourcebuffer key:",name,modifier,keyval)
-                        return False
+                    -- Avoid passing these directly to bindinsActivateEvent because that seems
+                    -- to hide them from the auto complete code (well up and down anyway)
+                    (Just key, _, _) | key `elem`
+                        ["Tab", "Return", "Down", "Up", "BackSpace"
+                        ,"Shift_L", "Shift_R", "Super_L", "Super_R"] -> return False
+                    _ -> do
+                        w <- getEditorWidget sv
+                        bindingsActivateEvent w e
         ids7 <-
             createHyperLinkSupport sv sw
                 (\ctrl _shift iter -> do
