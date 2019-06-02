@@ -167,11 +167,11 @@ projectAddPackage' fp = do
             projectText <- liftIO $ T.readFile projectFile
             let projectLines = T.lines projectText
                 relativePath = makeRelative (dropFileName projectFile) (dropFileName cfp)
-            case span (/= "packages:") projectLines of
-                (before, _:rest) ->
+            case span (not . ("packages:" `T.isPrefixOf`)) projectLines of
+                (before, packagesLine:rest) ->
                     case span (indent `T.isPrefixOf`) rest of
                         (packs, rest') -> liftIO $ T.writeFile projectFile . T.unlines $
-                            before <> ("packages:":packs) <> [indent <> T.pack relativePath] <> rest'
+                            before <> (packagesLine:packs) <> [indent <> T.pack relativePath] <> rest'
                 _ -> return ()
             unless (cfp `elem` map ipdCabalFile (pjPackages project)) $ liftIDE $
                 Writer.writeWorkspace $ ws
