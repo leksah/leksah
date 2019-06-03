@@ -28,4 +28,4 @@ in
 # We will instantiate the default-nix template with the
 # nix/pkgs.nix file...
   localLib.nix-tools.default-nix ./nix/default.nix
-  	((import <nixpkgs> {}).lib.filterAttrs (n: v: n != "haskellCompiler") args)
+  	(localLib.pkgs.lib.filterAttrs (n: v: n != "haskellCompiler") args)
