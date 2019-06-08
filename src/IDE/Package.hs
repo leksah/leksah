@@ -1321,7 +1321,9 @@ extractCabalPackageList =
     stripCabalComments ('-':'-':_) = ""
     stripCabalComments (x:xs) = x:stripCabalComments xs
     dirOnly :: FilePath -> FilePath
-    dirOnly f = if takeExtension f == "cabal" then dropFileName f else f
+    dirOnly f = if takeExtension f == ".cabal"
+      then (if null (dropFileName f) then "./" else dropFileName f)
+      else f
 
 ideProjectFromKey :: ProjectKey -> IDEM (Maybe Project)
 ideProjectFromKey key = do
