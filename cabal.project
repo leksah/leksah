@@ -1,3 +1,5 @@
+index-state: 2019-06-08T00:00:00Z
+
 packages:
  ./
  vendor/leksah-server/
@@ -12,6 +14,20 @@ packages:
 -- vendor/HaRe/submodules/ghc-mod
 -- vendor/HaRe/submodules/ghc-mod/core
 
+constraints:
+    haskell-gi-base <0.22
+  , gi-cairo <1.0.19
+  , gi-glib <2.0.19
+  , gi-gobject <2.0.18
+  , gi-gio <2.0.21
+  , gi-gio <2.0.20
+  , gi-atk <2.0.17
+  , gi-pango <1.0.18
+  , gi-gdkpixbuf <2.0.19
+  , gi-gdk <3.0.18
+  , gi-gtk <3.0.28
+  , gi-gtksource <3.0.18
+
 allow-newer:
  reflex:haskell-src-exts
  reflex-dom-core:base
@@ -22,27 +38,33 @@ allow-newer:
  reflex-dom-svg:containers
  reflex-dom-svg:lens
  brittany:base
+ gi-gtkosxapplication:haskell-gi
+ gi-gtkosxapplication:haskell-gi-base
 
 source-repository-package
   type: git
   location: https://github.com/lspitzner/brittany.git
   tag: c4b696c4f654cc313d0abbb0647594b7deb3bd77
+  --sha256: 0405yppiv3s3fb6p0la4l55p6ay0ll5w4q3ds156vsjx4iqmxhfr
 
 source-repository-package
   type: git
   location: https://github.com/vincenthz/hs-git.git
   tag: 310d84f424936a86e4d74897fb3d40fc95088520
+  --sha256: 0i27y5w6r3nbqghm9g9brma8d1yrnfaq7m3j61han9mzypn543s3
 
 source-repository-package
   type: git
   location: https://github.com/reflex-frp/reflex
   tag: eefb7761f6b5dfe30b4e97310cb15463d889506a
+  --sha256: 1q17fbidxbjkab0f8xm9wy4dp8by0b7v9nqlyq2fbazklm6g4m8b
 
 source-repository-package
   type: git
   location: https://github.com/reflex-frp/reflex-dom
   tag: 2734d2d70fd0b63849a7e0b5355d80ee66eda127
   subdir: reflex-dom-core
+  --sha256: 0qv51vn07lg6fnaxlcrns5pwg8y5h4cjv18dr56kbnh11a52wba7
 
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk

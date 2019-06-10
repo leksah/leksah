@@ -10,17 +10,17 @@ let
       src = ./..;
       filter = path: type: # FIXME: How to re-use .gitignore? https://git.io/vSo80
         pkgs.lib.all (i: toString i != path) [
-        	../.DS_Store ../osx/Leksah ../osx/keymap.lkshk ../osx/prefs.lkshp ../win32/SourceDir ../default.nix ../result
-        	../nix ../lib.nix ../nix-tools.nix ../default.nix ../shell.nix
+          ../.DS_Store ../osx/Leksah ../osx/keymap.lkshk ../osx/prefs.lkshp ../win32/SourceDir ../default.nix ../result
+          ../nix ../lib.nix ../nix-tools.nix ../default.nix ../shell.nix
             # Old submodules not used any more
-        	../vendor/HaRe
-        	../vendor/brittany
-        	../vendor/cabal-helper
-        	../vendor/gi-gtk-hs
-        	../vendor/haskell-filesystem
-        	../vendor/hs-git
-        	../vendor/reflex-platform
-        	../vendor/yi
+          ../vendor/HaRe
+          ../vendor/brittany
+          ../vendor/cabal-helper
+          ../vendor/gi-gtk-hs
+          ../vendor/haskell-filesystem
+          ../vendor/hs-git
+          ../vendor/reflex-platform
+          ../vendor/yi
           ]
           && pkgs.lib.all (i: i != baseNameOf path) [ ".git" "dist-newstyle" "cabal.project.local" "dist" ".stack-work" ".vagrant" ".DS_Store" ]
           && pkgs.lib.all (i: !(pkgs.lib.hasSuffix i path)) [ ".dmg" ".msi" ".exe" ".lkshf" ".wixobj" ".wixpdb" ".wxs" "~" ]
@@ -29,8 +29,8 @@ let
   # our packages
   plan-nix = haskell.callCabalProjectToNix {
     src = cleanSrc;
-    index-state = "2019-05-23T00:00:00Z";
     inherit (pkgs) ghc;
+    index-sha256 = "1dkyzldbymi18mw4kfsjl3xykgvqgc3dwcb80ai77x7blq698663";
   };
   plan-pkgs = import "${plan-nix}";
 
@@ -82,6 +82,7 @@ let
         packages.reflex-dom-core.components.library.doExactConfig = true;
         packages.reflex-dom-svg.components.library.doExactConfig = true;
         packages.haddock-api.components.library.doHaddock = false;
+        packages.gi-gtkosxapplication.components.library.doExactConfig = true;
       })
     ];
   };
