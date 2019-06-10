@@ -31,6 +31,8 @@ let
     src = cleanSrc;
     inherit (pkgs) ghc;
     index-sha256 = "1dkyzldbymi18mw4kfsjl3xykgvqgc3dwcb80ai77x7blq698663";
+    # Hydra currently has issues reading from files in the store
+    cabalProject = builtins.readFile ../cabal.project;
   };
   plan-pkgs = import "${plan-nix}";
 
