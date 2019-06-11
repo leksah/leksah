@@ -28,6 +28,8 @@ constraints:
   , gi-gtk <3.0.28
   , gi-gtksource <3.0.18
   , gi-soup <2.4.18
+  , gi-javascriptcore <4.0.17
+  , gi-webkit2 <4.0.21
 
 allow-newer:
  reflex:haskell-src-exts
