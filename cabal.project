@@ -27,6 +27,7 @@ constraints:
   , gi-gdk <3.0.18
   , gi-gtk <3.0.28
   , gi-gtksource <3.0.18
+  , gi-soup <2.4.18
 
 allow-newer:
  reflex:haskell-src-exts
