@@ -14,10 +14,10 @@
 # We will need to import the local lib, which will
 # give us the iohk-nix tooling, which also includes
 # the nix-tools tooling.
-{ haskellCompiler ? "ghc864"
+{ haskellCompiler ? "ghc865"
 , ... }@args:
 let
-  localLib = import ./lib.nix { inherit haskellCompiler; };
+  localLib = import ./nix/lib.nix { inherit haskellCompiler; };
 in
 # This file needs to export a function that takes
 # the arguments it is passed and forwards them to
@@ -28,4 +28,4 @@ in
 # We will instantiate the default-nix template with the
 # nix/pkgs.nix file...
   localLib.nix-tools.default-nix ./nix/default.nix
-  	(localLib.pkgs.lib.filterAttrs (n: v: n != "haskellCompiler") args)
+    (localLib.pkgs.lib.filterAttrs (n: v: n != "haskellCompiler") args)
