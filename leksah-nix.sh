@@ -14,11 +14,11 @@ fi
 GHCARG=$1
 shift
 
-if [ "$GHCARG" != "ghc864" ]
-  then
-    echo "Please use ./leksah-nix.sh ghc864 for now (support for othe ghc versions needs more work)"
-    exit 1
-fi
+#if [ "$GHCARG" != "ghc864" ]
+#  then
+#    echo "Please use ./leksah-nix.sh ghc864 for now (support for othe ghc versions needs more work)"
+#    exit 1
+#fi
 
 LEKSAH_SERVER_VERSION=`grep '^version: ' vendor/leksah-server/leksah-server.cabal | sed 's|version: *||' | tr -d '\r'`
 # CABAL_HELPER_VERSION=`grep '^version: ' vendor/HaRe/submodules/cabal-helper/cabal-helper.cabal | sed 's|version: *||' | tr -d '\r'`
