@@ -134,6 +134,8 @@
        <menuitem name="_Log" action="ShowLog" />
        <menuitem name="_Search" action="ShowSearch" />
        <menuitem name="_Workspace" action="ShowWorkspace" />
+       <separator/>
+       <menuitem name="Leksah State" action="ShowLeksahState" />
      </menu>
     <menu name="_View" action="View">
        <menuitem name="Split Top/Bottom" action="ViewSplitHorizontal" />

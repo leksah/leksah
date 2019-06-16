@@ -250,6 +250,8 @@ library
         IDE.Pane.Trace
         IDE.Pane.Variables
         IDE.Pane.Errors
+        IDE.Pane.LeksahState
+        IDE.Pane.LeksahState.Inspectable
         IDE.Preferences
         IDE.TextEditor
         IDE.Workspaces

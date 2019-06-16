@@ -96,6 +96,7 @@ import IDE.Pane.Trace (showTrace, fillTraceList)
 import IDE.PaneGroups
 import IDE.Pane.Search (getSearch, IDESearch(..))
 import IDE.Pane.Grep (getGrep)
+import IDE.Pane.LeksahState (displayStatePane)
 import IDE.Pane.WebKit.Documentation (getDocumentation)
 import IDE.Pane.WebKit.Output (getOutputPane)
 import IDE.Pane.WebKit.Inspect (getInspectPane)
@@ -475,6 +476,8 @@ mkActions =
         showLog [] False
     ,AD "ShowWorkspace" (__ "Workspace") Nothing Nothing
         showWorkspacePane [] False
+    ,AD "ShowLeksahState" (__ "Leksah State") Nothing Nothing
+        displayStatePane [] False
 
     ,AD "View" (__ "_View") Nothing Nothing (return ()) [] False
     ,AD "ViewMoveLeft" (__ "Move _Left") Nothing Nothing

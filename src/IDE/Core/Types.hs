@@ -6,6 +6,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Core.Data
@@ -143,6 +145,7 @@ import Distribution.ModuleName (ModuleName(..))
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
 import IDE.Utils.Tool (ToolState(..), ProcessHandle)
+import IDE.Pane.LeksahState.Inspectable
 import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)
 import Control.Event
@@ -249,7 +252,9 @@ data IDE            =  IDE {
 ,   developLeksah       :: Bool -- If True leksah will exit when the `leksah` package is rebuilt
 ,   nixCache            :: Map (FilePath, Text) (Map String String)
 ,   externalModified    :: MVar (Set FilePath)
-} --deriving Show
+}
+    deriving stock (Generic)
+    deriving anyclass (Inspectable)
 
 data DebugState = DebugState
     { dsProjectFile :: FilePath

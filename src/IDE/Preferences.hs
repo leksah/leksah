@@ -864,7 +864,9 @@ defaultPrefs = Prefs {
                                 ,   ("*Search","ToolCategory")
                                 ,   ("*Trace","LogCategory")
                                 ,   ("*Variables","LogCategory")
-                                ,   ("*Workspace","ExplorerCategory")]
+                                ,   ("*Workspace","ExplorerCategory")
+                                ,   ("*LeksahState", "LogCategory")
+                                ]
     ,   collectAtStart      =   True
     ,   unpackDirectory     =   Just ("~" </> configDirName </> "packageSources")
     ,   retrieveURL         =   "http://leksah.github.io"
