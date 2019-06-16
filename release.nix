@@ -17,11 +17,11 @@ localLib.pkgs.lib.mapAttrsRecursiveCond
   required-name = "leksah-required-checks";
   required-targets = jobs: [
 
-    jobs.nix-tools.libs.leksah.x86_64-darwin
+    # jobs.nix-tools.libs.leksah.x86_64-darwin
     jobs.nix-tools.libs.leksah.x86_64-linux
 
     # windows cross compilation targets
-    jobs.nix-tools.libs.x86_64-pc-mingw32-leksah.x86_64-linux
+    # jobs.nix-tools.libs.x86_64-pc-mingw32-leksah.x86_64-linux
   ];
 
 } (builtins.removeAttrs args ["leksah"]))
