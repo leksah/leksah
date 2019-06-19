@@ -34,6 +34,16 @@ This works even if you are not planning on using reflex in your project.
 
 Install [Nix](https://nixos.org/nix/).
 
+Leksah uses the cached builds provided by [IOHK](https://iohk.io). Setting these
+up will allow you to use their prebuilt GHC binaries and packages. This is
+*highly recommended*.
+
+If you're using [NixOS](https://nixos.org/) then follow the instructions located
+at: https://github.com/input-output-hk/plutus#iohk-binary-cache.
+
+Otherwise you can use the following instructions for adding the caches to your
+local Nix install: https://github.com/input-output-hk/cardano-sl/blob/master/docs/nix.md#binary-cache
+
 Then download, build and run Leksah with:
 
 ```
