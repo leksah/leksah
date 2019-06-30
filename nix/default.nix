@@ -2,6 +2,8 @@
 , iohk-extras ? {}
 , iohk-module ? {}
 , haskell
+, planOnly ? false
+, shellOnly ? false
 , ...
 }:
 let
@@ -34,7 +36,20 @@ let
     # Hydra currently has issues reading from files in the store
     cabalProject = builtins.readFile ../cabal.project;
   };
-  plan-pkgs = import "${plan-nix}";
+  plan-pkgs = if planOnly then {
+      # Hydra does not deal with IFD well.  The work arounds is to build
+      # add a job for just the plan-nix and run it on its own to build
+      # and cache all the dependencies needed for the IFD to work.
+      # This empty plan is used instead of the real one when we just
+      # want the plan-nix and do not want to tirgger an IFD.
+      extras = hackage: { packages = {}; };
+      pkgs = hackage: {
+        compiler = {
+          nix-name = "ghc864";
+        };
+        packages = {}; };
+    }
+    else import "${plan-nix}";
 
   cabalPatch = pkgs.fetchpatch {
     url = "https://patch-diff.githubusercontent.com/raw/haskell/cabal/pull/6055.diff";
@@ -58,18 +73,8 @@ let
     # packages we are interested in. By using the stack-pkgs.extras
     # we restrict our package set to the ones provided in stack.yaml.
     pkg-def-extras = [
+      (hackage: { libiserv = {}; })
       iohk-extras.${compiler.nix-name}
-      # this one is missing from the plan.json; we can't yet force
-      # os/arch with cabal to produce plans that are valid for multiple
-      # os/archs. Luckily mac/linux are close enough to have mostly the
-      # same build plan for windows however we need some hand holding for
-      # now.
-      (hackage: { mintty = hackage.mintty."0.1.2".revisions.default; })
-      # (hackage: { reflex = hackage.reflex."0.6.1".revisions.default // { doExactConfig = true; }; })
-      # (hackage: {
-      #  reflex.revision = hackage.reflex."0.6.1".revisions.default;
-      #  reflex.components.library.doExactConfig = true;
-      #  reflex.flags.debug-trace-events = false; })
     ];
     modules = [
       # the iohk-module will supply us with the necessary
@@ -97,7 +102,8 @@ let
 in
   pkgSet.config.hsPkgs // {
     _config = pkgSet.config;
-    inherit plan-nix cleanSrc;
+    inherit (pkgSet.config) hsPkgs;
+    inherit plan-nix cleanSrc pkgs;
     launch-leksah = nixpkgs.stdenv.mkDerivation {
           name = "launch-leksah";
           nativeBuildInputs = with nixpkgs; [ wrapGAppsHook makeWrapper ];

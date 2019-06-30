@@ -1,4 +1,8 @@
-{ haskellCompiler }:
+{ haskellCompiler
+, config ? {}
+, system ? builtins.currentSystem
+, crossSystem ? null
+}:
 let
   fixMacOsGioIntrospection = self: super: {
     gobject-introspection = if super.pkgs.stdenv.isDarwin
@@ -38,6 +42,7 @@ let
         url = "${spec.url}/archive/${spec.rev}.tar.gz";
         inherit (spec) sha256;
       }) {
+      inherit config system crossSystem;
       nixpkgsJsonOverride = ../pins/nixpkgs-src.json;
       haskellNixJsonOverride = ../pins/haskell-nix-src.json;
       nixpkgsOverlays = [ fixMacOsGioIntrospection dontDisableGtkDebug selectGhc ];
