@@ -566,7 +566,7 @@ packageDoc' backgroundBuild jumpToWarnings (project, packages) continuation =
         let dir = pjDir $ pjKey project
             mbCmdAndArgs = case pjKey project of
                 StackTool {} -> Just ("stack", ["haddock", "--no-haddock-deps"] <> map ipdPackageName packages <> concatMap ipdHaddockFlags packages)
-                CabalTool {} -> Just ("cabal", ["new-haddock"])
+                CabalTool {} -> Just ("cabal", ["new-haddock"] <> map ipdPackageName packages)
                 _ -> Nothing
         withToolCommand project GHC mbCmdAndArgs $ \(cmd, args, nixEnv') ->
             runExternalTool' (__ "Documenting") cmd
