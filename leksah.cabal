@@ -718,7 +718,8 @@ executable leksah-wkwebview
     ghc-options: -threaded -rtsopts -Wall -ferror-spans
                  -dynamic -optl-headerpad_max_install_names
 
-    build-depends:
+    if os(osx)
+      build-depends:
         base >=4.0.0.0 && <4.13,
         data-default >=0.7.1.1 && <0.8,
         leksah-nogtk -any,
