@@ -201,7 +201,7 @@ printf = S.printf . T.unpack
 mkActions :: [ActionDescr IDERef]
 mkActions =
     [
-    AD "vcs" (__ "Version Con_trol") Nothing Nothing (return ()) [] False
+     AD "vcs" (__ "Version _Control") Nothing Nothing (return ()) [] False
     ,AD "FilePrint" (__ "_Print File") Nothing Nothing filePrint [] False
     ,AD "File" (__ "_File") Nothing Nothing (return ()) [] False
     ,AD "FileNew" (__ "_New") Nothing Nothing (return ()) [] False

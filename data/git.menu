@@ -1,6 +1,6 @@
   <ui>
     <menubar>
-      <menu name="Version Con_trol" action="vcs">
+      <menu name="Version _Control" action="vcs">
         <menuitem name="_Commit" action="GitCommit" />
         <menuitem name="_View Log" action="GitViewLog" />
         <menuitem name="_Push" action="GitPush" />

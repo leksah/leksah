@@ -432,7 +432,7 @@ getRecentFiles    = getMenuItem "ui/menubar/_File/Recent Files"
 
 
 getRecentWorkspaces = getMenuItem "ui/menubar/_File/Recent Workspaces"
-getVCS = getMenuItem "ui/menubar/Version Con_trol" --this could fail, try returning Menu if it does
+getVCS = getMenuItem "ui/menubar/Version _Control" --this could fail, try returning Menu if it does
 -- (toolbar)
 
 stockIdFromType :: DescrType -> Text
