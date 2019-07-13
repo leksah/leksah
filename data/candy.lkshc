@@ -47,7 +47,7 @@
 "intersect" 0x2229                  -- INTERSECTION
 
 -- Data.Monoid.Unicode
-"mempty"    0x2205                  -- EMPTY SET
+--"mempty"    0x2205                  -- EMPTY SET; used by "empty"
 "mappend"   0x2295                  -- CIRCLED PLUS
 
 -- Data.Ord.Unicode
