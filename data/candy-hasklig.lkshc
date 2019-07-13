@@ -60,7 +60,8 @@
 "*"         0x22C5                  -- DOT OPERATOR
 "undefined" 0x22A5                  -- UP TACK
 "Integer"   0x2124                  -- DOUBLE-STRUCK CAPITAL Z
-"Ratio Integer" 0x2124              -- DOUBLE-STRUCK CAPITAL Q
+"Ratio Integer" 0x211A              -- DOUBLE-STRUCK CAPITAL Q
+
 
 -- Leksah specific?
 --hasklig "->"        0x2192                  --RIGHTWARDS ARROW          
