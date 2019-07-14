@@ -2,7 +2,7 @@ language: nix
 sudo: true
 
 script:
- - timeout 25m nix-build -j2
+ - timeout 90m nix-build -j2
 
 cache:
   timeout: 1000
