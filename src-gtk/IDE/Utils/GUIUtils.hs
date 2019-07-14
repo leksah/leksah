@@ -241,18 +241,13 @@ openBrowser url = do
 
 -- | Show a text dialog with an Ok button and a specific messagetype
 showDialog :: MonadIO m => Maybe Window -> Text -> MessageType -> m ()
-showDialog parent msg msgType = do
-    dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 0,
-        constructMessageDialogMessageType msgType,
-        constructMessageDialogButtons ButtonsTypeOk,
-        constructMessageDialogText msg]
-    windowSetTransientFor dialog parent
-    setWindowWindowPosition dialog WindowPositionCenterOnParent
-    _ <- dialogRun' dialog
-    widgetDestroy dialog
-    return ()
-
+showDialog parent msg msgType =
+    void $ showDialogAndGetResult parent msg msgType ResponseTypeOk [
+            constructDialogUseHeaderBar 0,
+            constructMessageDialogMessageType msgType,
+            constructMessageDialogButtons ButtonsTypeOk,
+            constructMessageDialogText msg
+        ] [] []
 
 -- | Show a Yes/No dialog
 showYesNoDialog :: MonadIO m
@@ -298,24 +293,17 @@ showDialogOptions :: MonadIO m
                   -> [(Text, m ())]   -- ^ button text and corresponding actions
                   -> Maybe Int        -- ^ index of button that has default focus (0-based)
                   -> m ()
-showDialogOptions parent msg msgType buttons mbIndex = do
-    dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 0,
-        constructMessageDialogMessageType msgType,
-        constructMessageDialogButtons ButtonsTypeNone,
-        constructMessageDialogText msg]
-
-    windowSetTransientFor dialog parent
-    forM_ (zip [0..] buttons) $ \(n,(text, _)) ->
-        dialogAddButton' dialog text (AnotherResponseType n)
-
-    dialogSetDefaultResponse' dialog (AnotherResponseType $ fromMaybe 0 mbIndex)
-    setWindowWindowPosition dialog WindowPositionCenterOnParent
-    res <- dialogRun' dialog
-    widgetDestroy dialog
-    case res of
-        AnotherResponseType n | n >= 0 && n < length buttons -> map snd buttons !! n
-        _ -> return ()
+showDialogOptions parent msg msgType buttons mbIndex =
+    void $ showDialogAndGetResult parent msg msgType (AnotherResponseType $ fromMaybe 0 mbIndex) [
+                constructDialogUseHeaderBar 0,
+                constructMessageDialogMessageType msgType,
+                constructMessageDialogButtons ButtonsTypeNone,
+                constructMessageDialogText msg
+            ]
+            (zip (map fst buttons) responseTypes)
+            (zip responseTypes (map (const . snd) buttons))
+  where
+    responseTypes = (map AnotherResponseType [0..])
 
 -- | Show a dialog with custom buttons, and get back the user response
 showDialogAndGetResponse
