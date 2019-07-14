@@ -1215,12 +1215,10 @@ fileClose' _ ebuf currentBuffer = do
                     ResponseTypeCancel -> return False
                     _                  -> return False
             else return True
-    if not shouldContinue
-        then return False
-        else do
-            _ <- closeThisPane currentBuffer
-            F.forM_ (fileName currentBuffer) addRecentlyUsedFile
-            return True
+    when shouldContinue $ do
+        _ <- closeThisPane currentBuffer
+        F.forM_ (fileName currentBuffer) addRecentlyUsedFile
+    return shouldContinue
 
 fileCloseAll :: (IDEBuffer -> IDEM Bool)  -> IDEM Bool
 fileCloseAll filterFunc = do
