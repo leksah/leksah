@@ -1190,7 +1190,7 @@ fileClose' :: TextEditor editor => EditorView editor -> EditorBuffer editor -> I
 fileClose' _ ebuf currentBuffer = do
     window  <- getMainWindow
     modified <- getModified ebuf
-    cancelled <- reifyIDE $ \ideR   ->
+    shouldContinue <- reifyIDE $ \ideR   ->
         if modified
             then do
                 md <- new' MessageDialog [
@@ -1210,12 +1210,12 @@ fileClose' _ ebuf currentBuffer = do
                 case resp of
                     ResponseTypeYes -> do
                         _ <- reflectIDE (fileSave False) ideR
-                        return False
-                    ResponseTypeNo     -> return False
-                    ResponseTypeCancel -> return True
-                    _                  -> return True
-            else return False
-    if cancelled
+                        return True
+                    ResponseTypeNo     -> return True
+                    ResponseTypeCancel -> return False
+                    _                  -> return False
+            else return True
+    if not shouldContinue
         then return False
         else do
             _ <- closeThisPane currentBuffer
@@ -1325,7 +1325,7 @@ filePrint' _nb _ ebuf currentBuffer _ = do
     when yesPrint $ do
         --real code
         modified <- getModified ebuf
-        cancelled <- reifyIDE $ \ideR ->
+        shouldContinue <- reifyIDE $ \ideR ->
             if modified
                 then do
                     md <- new' MessageDialog [
@@ -1346,13 +1346,13 @@ filePrint' _nb _ ebuf currentBuffer _ = do
                     case resp of
                         ResponseTypeYes ->   do
                             _ <- reflectIDE (fileSave False) ideR
-                            return False
-                        ResponseTypeNo      ->   return False
-                        ResponseTypeCancel  ->   return True
-                        _               ->   return True
+                            return True
+                        ResponseTypeNo      ->   return True
+                        ResponseTypeCancel  ->   return False
+                        _               ->   return False
                 else
-                    return False
-        unless cancelled $
+                    return True
+        when shouldContinue $
             case fileName currentBuffer of
                 Just name -> do
                               status <- liftIO $ Print.print name
