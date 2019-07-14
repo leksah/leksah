@@ -328,6 +328,30 @@ showDialogAndGetResponse
         -> [(Text, ResponseType)]     -- ^ List of buttons and their associated ResponseTypes
         -> m ResponseType -- ^ The response type selected by the user
 showDialogAndGetResponse parent msg msgType defaultResponse newOptions buttons = do
+    either id id <$>
+        showDialogAndGetResult parent msg msgType
+            defaultResponse newOptions buttons (actions buttons)
+  where
+    actions = map $ \(_, response) -> (response, const $ return response)
+
+-- | Show a dialog with custom buttons, and perform an action based on the
+-- user's response.
+--
+-- Note that, although the MessageDialog is passed to the actions, it will
+-- not survive past the end of the call to `showDialogAndGetResult`, so
+-- you should not try to store it somewhere for later use
+showDialogAndGetResult
+        :: MonadIO m
+        => Maybe Window             -- ^ Parent window to use with `windowSetTransientFor`
+        -> Text                     -- ^ The message
+        -> MessageType              -- ^ The message dialog type
+        -> ResponseType             -- ^ The response which is selected by default
+        -> [IO (GValueConstruct MessageDialog)]   -- ^ Options to `new'` the window with
+        -> [(Text, ResponseType)]   -- ^ List of buttons and their associated responseTypes
+        -> [(ResponseType, MessageDialog -> m a)] -- ^ List of response types and their associated actions
+        -> m (Either ResponseType a) -- ^ `Right` the result of the action selected by the user,
+                                     -- or `Left ResponseType` if the user's response did not match the provided ones
+showDialogAndGetResult parent msg msgType defaultResponse newOptions buttons responseActions = do
     dialog <- new' MessageDialog newOptions
     setMessageDialogMessageType dialog msgType
     setMessageDialogText dialog msg
@@ -337,8 +361,16 @@ showDialogAndGetResponse parent msg msgType defaultResponse newOptions buttons =
     setWindowWindowPosition dialog WindowPositionCenterOnParent
 
     response <- dialogRun' dialog
+    -- Keep the dialog alive until the caller's action has finished messing with it
+    widgetHide dialog
+
+    let action = lookup response responseActions
+    result <- case action of
+                 Nothing -> return $ Left response
+                 Just f -> Right <$> f dialog
+
     widgetDestroy dialog
-    return response
+    return result
   where
     addActionButton :: MonadIO m => MessageDialog -> (Text, ResponseType) -> m ()
     addActionButton dialog (text, responseType) =
