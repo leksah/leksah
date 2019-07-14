@@ -168,7 +168,7 @@ import GI.Gtk.Interfaces.FileChooser
         fileChooserSetAction)
 import GI.Gtk.Objects.Clipboard (clipboardGet)
 import GI.Gtk.Objects.Dialog
-       (dialogRun, constructDialogUseHeaderBar)
+       (constructDialogUseHeaderBar)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Objects.MessageDialog
        (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
@@ -215,7 +215,7 @@ import IDE.Gtk.State
         markLabel, guiPropertiesFromName, closeThisPane,
         isStartingOrClosing, RecoverablePane(..))
 import qualified IDE.Command.Print as Print
-import IDE.Utils.GUIUtils (showDialog, showErrorDialog)
+import IDE.Utils.GUIUtils (showDialog, showDialogAndGetResponse, showErrorDialog)
 import IDE.Utils.FileUtils (isSubPath, myCanonicalizePath)
 import IDE.Utils.DirectoryUtils (setModificationTimeOnOSX)
 import IDE.Gtk.SourceCandy
@@ -1061,18 +1061,14 @@ fileSaveBuffer query nb _ ebuf ideBuf@IDEBuffer{sourceView = sv} _i = liftIDE $ 
             Just fn -> do
                 dfe <- doesFileExist fn
                 resp <- if dfe
-                    then do md <- new' MessageDialog [
-                                constructDialogUseHeaderBar 0,
-                                constructMessageDialogButtons ButtonsTypeCancel]
-                            setMessageDialogMessageType md MessageTypeQuestion
-                            setMessageDialogText md $ __ "File already exist."
-                            windowSetTransientFor md (Just window)
-                            _ <- dialogAddButton' md (__ "_Overwrite") ResponseTypeYes
-                            dialogSetDefaultResponse' md ResponseTypeCancel
-                            setWindowWindowPosition md WindowPositionCenterOnParent
-                            resp <- toEnum . fromIntegral <$> dialogRun md
-                            widgetDestroy md
-                            return resp
+                    then showDialogAndGetResponse
+                            (Just window)
+                            (__ "File already exist.")
+                            MessageTypeQuestion
+                            ResponseTypeCancel
+                            [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeCancel ]
+                            [(__ "_Overwrite", ResponseTypeYes)]
+
                     else return ResponseTypeYes
                 case resp of
                     ResponseTypeYes -> do
@@ -1193,20 +1189,17 @@ fileClose' _ ebuf currentBuffer = do
     shouldContinue <- reifyIDE $ \ideR   ->
         if modified
             then do
-                md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeCancel]
-                setMessageDialogMessageType md MessageTypeQuestion
-                setMessageDialogText md $ __ "Save changes to document: "
-                                                <> paneName currentBuffer
-                                                <> "?"
-                windowSetTransientFor md (Just window)
-                _ <- dialogAddButton' md (__ "_Save") ResponseTypeYes
-                _ <- dialogAddButton' md (__ "_Don't Save") ResponseTypeNo
-                dialogSetDefaultResponse' md ResponseTypeYes
-                setWindowWindowPosition md WindowPositionCenterOnParent
-                resp <- dialogRun' md
-                widgetDestroy md
+                resp <- showDialogAndGetResponse
+                    (Just window)
+                    (__ "Save changes to document: "
+                            <> paneName currentBuffer
+                            <> "?")
+                    MessageTypeQuestion
+                    ResponseTypeYes
+                    [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeCancel ]
+                    [ (__ "_Save", ResponseTypeYes)
+                    , (__ "_Don't Save", ResponseTypeNo) ]
+
                 case resp of
                     ResponseTypeYes -> do
                         _ <- reflectIDE (fileSave False) ideR
@@ -1272,18 +1265,14 @@ fileOpenThis fp =  do
     findSourceBuf fp >>= \case
         hdb:_ -> do
             window <- getMainWindow
-            md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
-                    constructMessageDialogButtons ButtonsTypeNone]
-            setMessageDialogMessageType md MessageTypeQuestion
-            setMessageDialogText md $ __ "Buffer already open."
-            windowSetTransientFor md (Just window)
-            _ <- dialogAddButton' md (__ "Make _Active") (AnotherResponseType 1)
-            _ <- dialogAddButton' md (__ "_Open Second") (AnotherResponseType 2)
-            dialogSetDefaultResponse' md (AnotherResponseType 1)
-            setWindowWindowPosition md WindowPositionCenterOnParent
-            resp <- dialogRun' md
-            widgetDestroy md
+            resp <- showDialogAndGetResponse
+                        (Just window)
+                        (__ "Buffer already open.")
+                        MessageTypeQuestion
+                        (AnotherResponseType 1)
+                        [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeNone ]
+                        [ (__ "Make _Active", AnotherResponseType 1)
+                        , (__ "_Open Second", AnotherResponseType 2) ]
             case resp of
                 AnotherResponseType 2 -> reallyOpen fpc
                 _                     -> makeActive hdb
@@ -1301,20 +1290,17 @@ filePrint' _nb _ ebuf currentBuffer _ = do
     let pName = paneName currentBuffer
     window  <- getMainWindow
     yesPrint <- liftIO $ do
-        md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeNone]
-        setMessageDialogMessageType md MessageTypeQuestion
-        setMessageDialogText md $ __"Print document: "
-                                                <> pName
-                                                <> "?"
-        windowSetTransientFor md (Just window)
-        _ <- dialogAddButton' md (__"_Print") ResponseTypeYes
-        dialogSetDefaultResponse' md ResponseTypeYes
-        _ <- dialogAddButton' md (__"_Don't Print") ResponseTypeNo
-        setWindowWindowPosition md WindowPositionCenterOnParent
-        resp <- dialogRun' md
-        widgetDestroy md
+        resp <- showDialogAndGetResponse
+                    (Just window)
+                    (__"Print document: "
+                           <> pName
+                           <> "?")
+                    MessageTypeQuestion
+                    ResponseTypeYes
+                    [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeNone ]
+                    [ (__"_Print", ResponseTypeYes)
+                    , (__"_Don't Print", ResponseTypeNo) ]
+
         case resp of
             ResponseTypeYes     ->   return True
             ResponseTypeNo      ->   return False
@@ -1326,21 +1312,17 @@ filePrint' _nb _ ebuf currentBuffer _ = do
         shouldContinue <- reifyIDE $ \ideR ->
             if modified
                 then do
-                    md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeNone]
-                    setMessageDialogMessageType md MessageTypeQuestion
-                    setMessageDialogText md $ __"Save changes to document: "
-                                                    <> pName
-                                                    <> "?"
-                    windowSetTransientFor md (Just window)
-                    _ <- dialogAddButton' md (__"_Save") ResponseTypeYes
-                    dialogSetDefaultResponse' md ResponseTypeYes
-                    _ <- dialogAddButton' md (__"_Don't Save") ResponseTypeNo
-                    _ <- dialogAddButton' md (__"_Cancel Printing") ResponseTypeCancel
-                    setWindowWindowPosition md WindowPositionCenterOnParent
-                    resp <- dialogRun' md
-                    widgetDestroy md
+                    resp <- showDialogAndGetResponse
+                                (Just window)
+                                (__"Save changes to document: "
+                                       <> pName
+                                       <> "?")
+                                MessageTypeQuestion
+                                ResponseTypeYes
+                                [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeNone ]
+                                [ (__"_Save", ResponseTypeYes)
+                                , (__"_Don't Save", ResponseTypeNo)
+                                , (__"_Cancel Printing", ResponseTypeCancel) ]
                     case resp of
                         ResponseTypeYes ->   do
                             _ <- reflectIDE (fileSave False) ideR

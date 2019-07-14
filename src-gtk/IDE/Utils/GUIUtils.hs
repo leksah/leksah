@@ -21,6 +21,7 @@ module IDE.Utils.GUIUtils (
 ,   showDialog
 ,   showErrorDialog
 ,   showDialogOptions
+,   showDialogAndGetResponse
 ,   showInputDialog
 
 ,   getFullScreenState
@@ -86,6 +87,8 @@ import GI.Gtk.Enums
        (WindowPosition(..), MessageType(..), ButtonsType(..), MessageType,
         ResponseType(..), FileChooserAction(..))
 import Data.GI.Base (new')
+import Data.GI.Base.GValue (GValueConstruct)
+import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserAddFilter, fileChooserGetFilename,
@@ -95,9 +98,8 @@ import GI.Gtk.Objects.Dialog
 import GI.Gtk.Objects.FileFilter
        (fileFilterAddPattern, fileFilterSetName, fileFilterNew)
 import GI.Gtk.Objects.MessageDialog
-       (constructMessageDialogText, constructMessageDialogButtons,
-        constructMessageDialogMessageType, MessageDialog(..))
-import Data.GI.Base.ManagedPtr (unsafeCastTo)
+       (constructMessageDialogText, constructMessageDialogButtons, constructMessageDialogMessageType,
+        setMessageDialogMessageType, setMessageDialogText, MessageDialog(..))
 import GI.Gtk.Objects.Box (Box(..))
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Entry (getEntryText, setEntryText, entryNew, onEntryActivate)
@@ -260,7 +262,7 @@ showDialogOptions :: MonadIO m
                   => Maybe Window     -- ^ Parent window to use with `windowSetTransientFor`
                   -> Text             -- ^ the message
                   -> MessageType      -- ^ type of dialog
-                  -> [(Text, m ())]  -- ^ button text and corresponding actions
+                  -> [(Text, m ())]   -- ^ button text and corresponding actions
                   -> Maybe Int        -- ^ index of button that has default focus (0-based)
                   -> m ()
 showDialogOptions parent msg msgType buttons mbIndex = do
@@ -282,8 +284,32 @@ showDialogOptions parent msg msgType buttons mbIndex = do
         AnotherResponseType n | n >= 0 && n < length buttons -> map snd buttons !! n
         _ -> return ()
 
+-- | Show a dialog with custom buttons, and get back the user response
+showDialogAndGetResponse
+        :: MonadIO m
+        => Maybe Window   -- ^ Parent window to use with `windowSetTransientFor`
+        -> Text           -- ^ The message
+        -> MessageType    -- ^ The message dialog type
+        -> ResponseType   -- ^ The response which is selected by default
+        -> [IO (GValueConstruct MessageDialog)]   -- ^ Options to `new'` the window with
+        -> [(Text, ResponseType)]     -- ^ List of buttons and their associated ResponseTypes
+        -> m ResponseType -- ^ The response type selected by the user
+showDialogAndGetResponse parent msg msgType defaultResponse newOptions buttons = do
+    dialog <- new' MessageDialog newOptions
+    setMessageDialogMessageType dialog msgType
+    setMessageDialogText dialog msg
+    windowSetTransientFor dialog parent
+    mapM_ (addActionButton dialog) buttons
+    dialogSetDefaultResponse' dialog defaultResponse
+    setWindowWindowPosition dialog WindowPositionCenterOnParent
 
-
+    response <- dialogRun' dialog
+    widgetDestroy dialog
+    return response
+  where
+    addActionButton :: MonadIO m => MessageDialog -> (Text, ResponseType) -> m ()
+    addActionButton dialog (text, responseType) =
+            dialogAddButton' dialog text responseType >> return ()
 
 -- | Show a simple dialog that asks the user for some text
 showInputDialog :: Maybe Window -- ^ Parent window to use with `windowSetTransientFor`
