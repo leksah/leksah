@@ -1211,9 +1211,9 @@ fileClose' _ ebuf currentBuffer = do
                     ResponseTypeYes -> do
                         _ <- reflectIDE (fileSave False) ideR
                         return False
-                    ResponseTypeCancel -> return True
                     ResponseTypeNo     -> return False
-                    _                  -> return False
+                    ResponseTypeCancel -> return True
+                    _                  -> return True
             else return False
     if cancelled
         then return False
@@ -1319,8 +1319,8 @@ filePrint' _nb _ ebuf currentBuffer _ = do
         widgetDestroy md
         case resp of
             ResponseTypeYes     ->   return True
-            ResponseTypeCancel  ->   return False
             ResponseTypeNo      ->   return False
+            ResponseTypeCancel  ->   return False
             _                   ->   return False
     when yesPrint $ do
         --real code
@@ -1347,9 +1347,9 @@ filePrint' _nb _ ebuf currentBuffer _ = do
                         ResponseTypeYes ->   do
                             _ <- reflectIDE (fileSave False) ideR
                             return False
-                        ResponseTypeCancel  ->   return True
                         ResponseTypeNo      ->   return False
-                        _               ->   return False
+                        ResponseTypeCancel  ->   return True
+                        _               ->   return True
                 else
                     return False
         unless cancelled $
