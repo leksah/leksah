@@ -66,8 +66,8 @@ import Graphics.UI.Frame.ViewFrame (getMainWindow, getNotebook)
 import Graphics.UI.Editor.Basics (Connection(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils
-       (showErrorDialog, showInputDialog, treeViewContextMenu', __,
-        showDialogOptions, treeViewToggleRow)
+       (showErrorDialog, showInputDialog, treeViewContextMenu',
+        __, printf, showConfirmDialog, treeViewToggleRow)
 import Control.Exception (SomeException(..), catch)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
@@ -765,17 +765,16 @@ contextMenuItems view record path store = do
 
     case record of
         (FileRecord fp) -> do
-            let onDeleteFile = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef ->
-                    showDialogOptions
-                        (Just mainWindow)
+            let onDeleteFile = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef -> do
+                    isConfirmed <- showConfirmDialog (Just mainWindow) True (__ "Delete File") $
+                        T.pack $ printf "Are you sure you want to delete %s?" (takeFileName fp)
                         ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
-                        MessageTypeQuestion
-                        [ ("Delete File", removeFile fp >> reflectIDE (refreshTree parentPath) ideRef)
-                        , ("Cancel", return ())
-                        ]
-                        (Just 0)
-            return [[("Open File...", void $ goToSourceDefinition' fp (Location "" 1 0 1 0))]
-                   ,[("Delete File...", onDeleteFile)]]
+                    when isConfirmed $ do
+                        removeFile fp
+                        reflectIDE (refreshTree parentPath) ideRef
+
+            return [[(__ "Open File...", void $ goToSourceDefinition' fp (Location "" 1 0 1 0))]
+                   ,[(__ "Delete File...", onDeleteFile)]]
 
         DirRecord fp _ -> do
 
@@ -816,15 +815,12 @@ contextMenuItems view record path store = do
                                     void $ reflectIDE (refreshTree path) ideRef
                         Nothing -> return ()
 
-            let onDeleteDir = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef ->
-                    showDialogOptions
-                        (Just mainWindow)
-                        ("Are you sure you want to delete " <> T.pack (takeFileName fp) <> "?")
-                        MessageTypeQuestion
-                        [ ("Delete directory", removeDirectoryRecursive fp >> reflectIDE (refreshTree parentPath) ideRef)
-                        , ("Cancel", return ())
-                        ]
-                        (Just 0)
+            let onDeleteDir = flip catchIDE (\(e :: SomeException) -> ideMessage High . T.pack $ show e) $ reifyIDE $ \ideRef -> do
+                    isConfirmed <- showConfirmDialog (Just mainWindow) True (__ "Delete directory") $
+                        T.pack $ printf "Are you sure you want to delete %?" (takeFileName fp)
+                    when isConfirmed $ do
+                        removeDirectoryRecursive fp
+                        reflectIDE (refreshTree parentPath) ideRef
 
             return [ [ ("New Module...", onNewModule)
                      , ("New Text File...", onNewTextFile)

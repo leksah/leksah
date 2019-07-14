@@ -71,9 +71,6 @@ import GI.Gtk.Enums
        (WindowPosition(..), ResponseType(..), ButtonsType(..),
         MessageType(..))
 import GI.Gtk.Objects.Dialog (constructDialogUseHeaderBar)
-import GI.Gtk.Objects.MessageDialog
-       (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
-        MessageDialog(..))
 import GI.Gtk.Objects.Widget (widgetDestroy)
 import GI.Gtk.Objects.Window
        (setWindowWindowPosition, windowSetTransientFor)
@@ -91,7 +88,7 @@ import IDE.Utils.GUIUtils
        (__, setJavaScriptToggled, setDebugToggled, chooseDir,
         getBackgroundBuildToggled, getMakeDocs, getRunUnitTests,
         getRunBenchmarks, getNativeToggled, getJavaScriptToggled,
-        getMakeModeToggled)
+        getMakeModeToggled, showConfirmDialog)
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.LogRef (logOutput)
 import qualified Data.Text as T (pack)
@@ -102,50 +99,23 @@ import IDE.Pane.Log (getDefaultLogLaunch, showDefaultLogLaunch')
 packageRun :: PackageAction
 packageRun = interruptSaveAndRun $ packageRun' $ Just $ do
     window <- liftIDE getMainWindow
-    md <- new' MessageDialog [
-            constructDialogUseHeaderBar 0,
-            constructMessageDialogButtons ButtonsTypeCancel]
-    setMessageDialogMessageType md MessageTypeQuestion
-    setMessageDialogText md $ __ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?"
-    windowSetTransientFor md (Just window)
-    _ <- dialogAddButton' md (__ "Use _GHC") (AnotherResponseType 1)
-    dialogSetDefaultResponse' md (AnotherResponseType 1)
-    setWindowWindowPosition md WindowPositionCenterOnParent
-    resp <- dialogRun' md
-    widgetDestroy md
-    return $ resp == AnotherResponseType 1
+    isConfirmed <- showConfirmDialog (Just window) True (__ "Use _GHC") $
+        __ "Package is configured to use GHCJS.  Would you like to remove --ghcjs from the configure flags and rebuild?"
+    return isConfirmed
 
 packageRunJavaScript :: PackageAction
 packageRunJavaScript = interruptSaveAndRun $ packageRunJavaScript' $ Just $ do
     window <- liftIDE getMainWindow
-    md <- new' MessageDialog [
-            constructDialogUseHeaderBar 0,
-            constructMessageDialogButtons ButtonsTypeCancel]
-    setMessageDialogMessageType md MessageTypeQuestion
-    setMessageDialogText md $ __ "Would you like to enable the GHCJS as a build target and rebuild?"
-    windowSetTransientFor md (Just window)
-    _ <- dialogAddButton' md (__ "Enable _GHCJS") (AnotherResponseType 1)
-    dialogSetDefaultResponse' md (AnotherResponseType 1)
-    setWindowWindowPosition md WindowPositionCenterOnParent
-    enableJS <- (== AnotherResponseType 1) <$> dialogRun' md
-    widgetDestroy md
+    enableJS <- showConfirmDialog (Just window) True (__ "Enable _GHCJS")  $
+        __ "Would you like to enable the GHCJS as a build target and rebuild?"
     when enableJS $ liftIDE $ setJavaScriptToggled True
     return enableJS
 
 tryDebug :: DebugAction -> PackageAction
 tryDebug = tryDebug' $ do
     window <- liftIDE getMainWindow
-    md <- new' MessageDialog [
-            constructDialogUseHeaderBar 0,
-            constructMessageDialogButtons ButtonsTypeCancel]
-    setMessageDialogMessageType md MessageTypeQuestion
-    setMessageDialogText md $ __ "GHCi debugger is not running."
-    windowSetTransientFor md (Just window)
-    _ <- dialogAddButton' md (__ "_Start GHCi") (AnotherResponseType 1)
-    dialogSetDefaultResponse' md (AnotherResponseType 1)
-    setWindowWindowPosition md WindowPositionCenterOnParent
-    enableDebug <- (== AnotherResponseType 1) <$> dialogRun' md
-    widgetDestroy md
+    enableDebug <- showConfirmDialog (Just window) True (__ "_Start GHCi") $
+        __ "GHCi debugger is not running."
     when enableDebug $ liftIDE $ setDebugToggled True
     return enableDebug
 

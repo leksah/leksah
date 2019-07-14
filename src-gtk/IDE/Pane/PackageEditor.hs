@@ -108,9 +108,6 @@ import GI.Gtk.Objects.CellRendererText (setCellRendererTextText)
 import GI.Gtk.Objects.Dialog
        (Dialog(..), constructDialogUseHeaderBar, dialogGetContentArea)
 import GI.Gtk.Objects.Label (labelSetMarkup, labelNew)
-import GI.Gtk.Objects.MessageDialog
-       (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
-        MessageDialog(..))
 import GI.Gtk.Objects.Notebook (Notebook(..))
 import GI.Gtk.Objects.Window
        (windowSetTransientFor, setWindowWindowPosition, setWindowTitle,
@@ -156,7 +153,7 @@ import IDE.Utils.ExternalTool (runExternalTool')
 import IDE.Utils.FileUtils
        (isEmptyDirectory, cabalFileName, allModules)
 import IDE.Utils.GUIUtils
-        (__, printf, chooseDir, chooseFile, showErrorDialog)
+        (__, printf, chooseDir, chooseFile, showYesNoDialog, showConfirmDialog, showErrorDialog)
 import IDE.Utils.Tool (ToolOutput(..))
 
 #if !MIN_VERSION_Cabal(2,4,0)
@@ -396,22 +393,15 @@ packageNew' workspaceDir projects log' activateAction = do
                 mbProject = listToMaybe $ filter ((== newPackageProject) . Just . pjKey) projects
             mbCabalFile <-  liftIO $ cabalFileName dirName
             window <- getMainWindow
+
+            let showConfirm = showConfirmDialog (Just window) True
             case mbCabalFile of
                 Just cfn -> do
-                    md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeCancel]
-                    setMessageDialogMessageType md MessageTypeQuestion
-                    setMessageDialogText md $ T.pack (printf (__
-                          "There is already file %s in this directory. Would you like to add this package to the project?")
-                          (takeFileName cfn))
-                    windowSetTransientFor md (Just window)
-                    _ <- dialogAddButton' md (__ "_Add Package") (AnotherResponseType 1)
-                    dialogSetDefaultResponse' md (AnotherResponseType 1)
-                    setWindowWindowPosition md WindowPositionCenterOnParent
-                    rid <- dialogRun' md
-                    widgetDestroy md
-                    when (rid == AnotherResponseType 1) $
+                    isConfirmed <- showConfirm (__ "_Add Package") (T.pack $ printf (__
+                        "There is already file %s in this directory. Would you like to add this package to the project?")
+                        (takeFileName cfn))
+
+                    when isConfirmed $
                         activateAction False mbProject cfn
                 Nothing -> do
                     liftIO $ createDirectoryIfMissing True dirName
@@ -419,20 +409,11 @@ packageNew' workspaceDir projects log' activateAction = do
                     make <- if isEmptyDir
                         then return True
                         else do
-                            md <- new' MessageDialog [
-                                    constructDialogUseHeaderBar 0,
-                                    constructMessageDialogButtons ButtonsTypeCancel]
-                            setMessageDialogMessageType md MessageTypeQuestion
-                            setMessageDialogText md . T.pack $ printf (__
-                                      "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
-                                      dirName
-                            windowSetTransientFor md (Just window)
-                            _ <- dialogAddButton' md (__ "_Make Package Here") (AnotherResponseType 1)
-                            dialogSetDefaultResponse' md (AnotherResponseType 1)
-                            setWindowWindowPosition md WindowPositionCenterOnParent
-                            rid <- dialogRun' md
-                            widgetDestroy md
-                            return $ rid == AnotherResponseType 1
+                            isConfirmed <- showConfirm (__ "_Make Package Here") (T.pack $ printf (__
+                                "The path you have choosen %s is not an empty directory. Are you sure you want to make a new package here?")
+                                dirName)
+
+                            return isConfirmed
                     when make $ do
                         modules <- liftIO $ allModules dirName
                         let Just initialVersion = simpleParse "0.0.1"
@@ -804,18 +785,9 @@ builder' packageDir packageD packageDescr afterSaveAction modules packageInfos _
         if not hasChanged
             then reflectIDE (void (closePane packagePane)) ideR
             else do
-                md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeYesNo]
-                setMessageDialogMessageType md MessageTypeQuestion
-                setMessageDialogText md $ __ "Unsaved changes. Close anyway?"
-                windowSetTransientFor md (Just window)
-                setWindowWindowPosition md WindowPositionCenterOnParent
-                resp <- dialogRun' md
-                widgetDestroy md
-                case resp of
-                    ResponseTypeYes ->   reflectIDE (void (closePane packagePane)) ideR
-                    _  ->   return ()
+                isYes <- showYesNoDialog (Just window) False "Unsaved changes. Close anyway?"
+                when isYes $ reflectIDE (void (closePane packagePane)) ideR
+
     _ <- onButtonClicked save $ do
         mbNewPackage' <- extract packageD [getExt]
         case mbNewPackage' of

@@ -215,7 +215,7 @@ import IDE.Gtk.State
         markLabel, guiPropertiesFromName, closeThisPane,
         isStartingOrClosing, RecoverablePane(..))
 import qualified IDE.Command.Print as Print
-import IDE.Utils.GUIUtils (showDialog, showDialogAndGetResponse, showErrorDialog)
+import IDE.Utils.GUIUtils (showDialog, showConfirmDialog, showDialogAndGetResponse, showErrorDialog)
 import IDE.Utils.FileUtils (isSubPath, myCanonicalizePath)
 import IDE.Utils.DirectoryUtils (setModificationTimeOnOSX)
 import IDE.Gtk.SourceCandy
@@ -1059,19 +1059,13 @@ fileSaveBuffer query nb _ ebuf ideBuf@IDEBuffer{sourceView = sv} _i = liftIDE $ 
         case mbFileName of
             Nothing -> return False
             Just fn -> do
-                dfe <- doesFileExist fn
-                resp <- if dfe
-                    then showDialogAndGetResponse
-                            (Just window)
-                            (__ "File already exist.")
-                            MessageTypeQuestion
-                            ResponseTypeCancel
-                            [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeCancel ]
-                            [(__ "_Overwrite", ResponseTypeYes)]
+                fileExists <- doesFileExist fn
+                shouldOverwrite <-
+                    if not fileExists
+                        then return True
+                        else showConfirmDialog (Just window) False (__ "_Overwrite") (__ "File already exist.")
 
-                    else return ResponseTypeYes
-                case resp of
-                    ResponseTypeYes -> do
+                when shouldOverwrite $ do
                         reflectIDE (do
                             fileSave' (forceLineEnds prefs') (removeTBlanks prefs')
                                 useCandy candy' fn
@@ -1079,8 +1073,7 @@ fileSaveBuffer query nb _ ebuf ideBuf@IDEBuffer{sourceView = sv} _i = liftIDE $ 
                             cfn <- liftIO $ myCanonicalizePath fn
                             void $ newTextBuffer panePath (T.pack $ takeFileName cfn) (Just cfn)
                             ) ideR
-                        return True
-                    _          -> return False
+                return shouldOverwrite
     where
         fileSave' :: Bool -> Bool -> Bool -> CandyTable -> FilePath -> IDEAction
         fileSave' _forceLineEnds removeTBlanks _useCandy candyTable fn = do

@@ -19,6 +19,8 @@ module IDE.Utils.GUIUtils (
 ,   chooseSaveFile
 ,   openBrowser
 ,   showDialog
+,   showYesNoDialog
+,   showConfirmDialog
 ,   showErrorDialog
 ,   showDialogOptions
 ,   showDialogAndGetResponse
@@ -251,6 +253,37 @@ showDialog parent msg msgType = do
     widgetDestroy dialog
     return ()
 
+
+-- | Show a Yes/No dialog
+showYesNoDialog :: MonadIO m
+                => Maybe Window -- ^ Parent of transient
+                -> Bool         -- ^ Should Yes be selected by default?
+                -> Text         -- ^ Message
+                -> m Bool       -- ^ Was "Yes" chosen as user response?
+showYesNoDialog parent defaultYes message =
+    isYes <$> showDialogAndGetResponse parent message MessageTypeQuestion defaultResponse
+            [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeYesNo ]
+            []
+  where
+    defaultResponse = if defaultYes then ResponseTypeYes else ResponseTypeNo
+    isYes = (== ResponseTypeYes)
+
+
+-- | Show a confirmation dialog with a cancel button and a custom action
+-- button
+showConfirmDialog :: MonadIO m
+                   => Maybe Window  -- ^ Parent of transient
+                   -> Bool          -- ^ Should the custom action be selected by default?
+                   -> Text          -- ^ Label for custom action button
+                   -> Text          -- ^ Message
+                   -> m Bool        -- ^ Was the custom action chosen as user response?
+showConfirmDialog parent defaultConfirm action message =
+    isConfirm <$> showDialogAndGetResponse parent message MessageTypeQuestion defaultResponse
+            [ constructDialogUseHeaderBar 0 , constructMessageDialogButtons ButtonsTypeCancel ]
+            [ (action, AnotherResponseType 1) ]
+  where
+    defaultResponse = if defaultConfirm then AnotherResponseType 1 else ResponseTypeCancel
+    isConfirm = (== AnotherResponseType 1)
 
 -- | Show an error dialog with an Ok button
 showErrorDialog :: MonadIO m => Maybe Window -> Text -> m ()
