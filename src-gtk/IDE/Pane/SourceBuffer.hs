@@ -179,7 +179,7 @@ import qualified GI.Gtk.Objects.Notebook as Gtk (Notebook(..))
 import GI.Gtk.Objects.ScrolledWindow
        (setScrolledWindowShadowType, scrolledWindowSetPolicy)
 import GI.Gtk.Objects.Widget
-       (widgetHide, widgetShow, widgetDestroy)
+       (widgetShow, widgetDestroy)
 import GI.Gtk.Objects.Window
        (setWindowTitle, setWindowWindowPosition, windowSetTransientFor)
 import qualified GI.Gtk.Objects.Window as Gtk (Window(..))
@@ -1071,7 +1071,7 @@ fileSaveBuffer query nb _ ebuf ideBuf@IDEBuffer{sourceView = sv} _i = liftIDE $ 
                             dialogSetDefaultResponse' md ResponseTypeCancel
                             setWindowWindowPosition md WindowPositionCenterOnParent
                             resp <- toEnum . fromIntegral <$> dialogRun md
-                            widgetHide md
+                            widgetDestroy md
                             return resp
                     else return ResponseTypeYes
                 case resp of

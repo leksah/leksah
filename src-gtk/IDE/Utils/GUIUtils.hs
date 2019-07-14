@@ -277,7 +277,7 @@ showDialogOptions parent msg msgType buttons mbIndex = do
     dialogSetDefaultResponse' dialog (AnotherResponseType $ fromMaybe 0 mbIndex)
     setWindowWindowPosition dialog WindowPositionCenterOnParent
     res <- dialogRun' dialog
-    widgetHide dialog
+    widgetDestroy dialog
     case res of
         AnotherResponseType n | n >= 0 && n < length buttons -> map snd buttons !! n
         _ -> return ()
