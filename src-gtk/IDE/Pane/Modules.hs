@@ -89,7 +89,7 @@ import Graphics.UI.Editor.Simple
        (textEditor, boolEditor, staticListEditor)
 import Graphics.UI.Editor.Composite (maybeEditor)
 import IDE.Utils.GUIUtils
-       (stockIdFromType, __, treeViewContextMenu, treeViewToggleRow)
+       (stockIdFromType, __, printf, treeViewContextMenu, treeViewToggleRow)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (debugM)
@@ -100,8 +100,6 @@ import Control.Monad (when, void)
 import Control.Monad.Trans.Reader (ask)
 import Data.Text (Text, toCaseFold)
 import qualified Data.Text as T (unpack, isInfixOf, toLower, pack)
-import qualified Text.Printf as S (printf)
-import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (writeFile)
 import GI.Gtk.Objects.Paned
        (panedAdd2, panedAdd1, panedSetPosition, panedGetPosition,
@@ -194,9 +192,6 @@ import Data.Aeson (FromJSON(..), ToJSON(..))
 import GHC.Generics (Generic)
 import Distribution.Types.UnqualComponentName
        (unUnqualComponentName)
-
-printf :: PrintfType r => Text -> r
-printf = S.printf . T.unpack
 
 -- | A modules pane description
 --

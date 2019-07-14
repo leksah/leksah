@@ -47,11 +47,9 @@ import qualified Data.Conduit.List as CL (consume)
 import Control.Applicative (optional, (<$>), (<|>), many)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (treeViewContextMenu, __)
+import IDE.Utils.GUIUtils (treeViewContextMenu, __, printf)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
-import qualified Text.Printf as S (printf)
-import Text.Printf (PrintfType)
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
@@ -96,9 +94,6 @@ import qualified Data.Attoparsec.Text as AP
        (decimal, string, skipSpace)
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
-
-printf :: PrintfType r => Text -> r
-printf = S.printf . T.unpack
 
 -- | A debugger pane description
 --

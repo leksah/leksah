@@ -56,6 +56,7 @@ module IDE.Utils.GUIUtils (
 ,   treeViewContextMenu'
 
 ,   __
+,   printf
 
 ,   fontDescription
 ) where
@@ -76,6 +77,8 @@ import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
 import Data.List (intercalate)
 import Data.Foldable (forM_)
+import qualified Text.Printf as S (printf)
+import Text.Printf (PrintfType)
 import GI.Gtk.Objects.Window
        (setWindowWindowPosition, windowSetTransientFor, setWindowTitle,
         Window(..))
@@ -137,6 +140,9 @@ import GI.Gdk.Constants (pattern BUTTON_SECONDARY)
 import GI.Gtk
        (menuPopupAtPointer, gestureGetLastEvent, onGestureBegin,
         gestureSingleSetButton, gestureMultiPressNew)
+
+printf :: PrintfType r => Text -> r
+printf = S.printf . T.unpack
 
 chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do

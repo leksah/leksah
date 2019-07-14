@@ -96,9 +96,6 @@ import System.Directory
         createDirectory, removeDirectoryRecursive, doesDirectoryExist,
         createDirectoryIfMissing)
 
-import qualified Text.Printf as S (printf)
-import Text.Printf (PrintfType)
-
 import Data.GI.Base (unsafeCastTo, new')
 import GI.Gtk.Enums
        (Align(..), ShadowType(..), WindowPosition(..), ButtonsType(..),
@@ -159,15 +156,13 @@ import IDE.Utils.ExternalTool (runExternalTool')
 import IDE.Utils.FileUtils
        (isEmptyDirectory, cabalFileName, allModules)
 import IDE.Utils.GUIUtils
+        (__, printf, chooseDir, chooseFile, showErrorDialog)
 import IDE.Utils.Tool (ToolOutput(..))
 
 #if !MIN_VERSION_Cabal(2,4,0)
 allBuildDepends :: PackageDescription -> [Dependency]
 allBuildDepends = buildDepends
 #endif
-
-printf :: PrintfType r => Text -> r
-printf = S.printf . T.unpack
 
 -- | Get the last item
 sinkLast :: ConduitT a o IDEM (Maybe a)
