@@ -90,7 +90,7 @@ sudo dnf install gobject-introspection-devel webkitgtk4-devel gtksourceview3-dev
 
 ##### Ubuntu/Debian
 ```shell
-sudo apt-get install libgirepository1.0-dev libwebkit2gtk-4.0-dev libgtksourceview-3.0-dev
+sudo apt-get install libgirepository1.0-dev libwebkit2gtk-4.0-dev libgtksourceview-3.0-dev libtinfo-dev
 ```
 
 ##### Arch Linux
