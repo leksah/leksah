@@ -1255,7 +1255,7 @@ msgid "Workspace >> workspaceSelect: invalid path"
 msgstr ""
 
 #: src/IDE/Command.hs:0
-msgid "Version Con_trol"
+msgid "Version _Control"
 msgstr ""
 
 #: src/IDE/Command.hs:0

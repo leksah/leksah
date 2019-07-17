@@ -1266,7 +1266,7 @@ msgid "Workspace >> workspaceSelect: invalid path"
 msgstr "Workspace >> workspaceSelect: caminho invaálido"
 
 #: src/IDE/Command.hs:0
-msgid "Version Con_trol"
+msgid "Version _Control"
 msgstr "Con_trole de Versão"
 
 #: src/IDE/Command.hs:0

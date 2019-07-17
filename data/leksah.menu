@@ -177,7 +177,7 @@
        <menuitem name="_Preferences" action="PrefsEdit" />
        <separator/>
     </menu>
-    <menu name="Version Con_trol" action="vcs">
+    <menu name="Version _Control" action="vcs">
     </menu>
     <menu name="_Help" action="Help">
        <menuitem name="_Homepage" action="HelpHomepage" />
