@@ -168,7 +168,7 @@ import GI.Gtk.Interfaces.FileChooser
         fileChooserSetAction)
 import GI.Gtk.Objects.Clipboard (clipboardGet)
 import GI.Gtk.Objects.Dialog
-       (dialogRun, constructDialogUseHeaderBar)
+       (constructDialogUseHeaderBar)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Objects.MessageDialog
        (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
@@ -179,7 +179,7 @@ import qualified GI.Gtk.Objects.Notebook as Gtk (Notebook(..))
 import GI.Gtk.Objects.ScrolledWindow
        (setScrolledWindowShadowType, scrolledWindowSetPolicy)
 import GI.Gtk.Objects.Widget
-       (widgetHide, widgetShow, widgetDestroy)
+       (widgetShow, widgetDestroy)
 import GI.Gtk.Objects.Window
        (setWindowTitle, setWindowWindowPosition, windowSetTransientFor)
 import qualified GI.Gtk.Objects.Window as Gtk (Window(..))
@@ -215,7 +215,7 @@ import IDE.Gtk.State
         markLabel, guiPropertiesFromName, closeThisPane,
         isStartingOrClosing, RecoverablePane(..))
 import qualified IDE.Command.Print as Print
-import IDE.Utils.GUIUtils (showDialog, showErrorDialog)
+import IDE.Utils.GUIUtils (showDialog, showConfirmDialog, showDialogAndGetResponse, showErrorDialog)
 import IDE.Utils.FileUtils (isSubPath, myCanonicalizePath)
 import IDE.Utils.DirectoryUtils (setModificationTimeOnOSX)
 import IDE.Gtk.SourceCandy
@@ -1059,23 +1059,13 @@ fileSaveBuffer query nb _ ebuf ideBuf@IDEBuffer{sourceView = sv} _i = liftIDE $ 
         case mbFileName of
             Nothing -> return False
             Just fn -> do
-                dfe <- doesFileExist fn
-                resp <- if dfe
-                    then do md <- new' MessageDialog [
-                                constructDialogUseHeaderBar 0,
-                                constructMessageDialogButtons ButtonsTypeCancel]
-                            setMessageDialogMessageType md MessageTypeQuestion
-                            setMessageDialogText md $ __ "File already exist."
-                            windowSetTransientFor md (Just window)
-                            _ <- dialogAddButton' md (__ "_Overwrite") ResponseTypeYes
-                            dialogSetDefaultResponse' md ResponseTypeCancel
-                            setWindowWindowPosition md WindowPositionCenterOnParent
-                            resp <- toEnum . fromIntegral <$> dialogRun md
-                            widgetHide md
-                            return resp
-                    else return ResponseTypeYes
-                case resp of
-                    ResponseTypeYes -> do
+                fileExists <- doesFileExist fn
+                shouldOverwrite <-
+                    if not fileExists
+                        then return True
+                        else showConfirmDialog (Just window) False (__ "_Overwrite") (__ "File already exist.")
+
+                when shouldOverwrite $ do
                         reflectIDE (do
                             fileSave' (forceLineEnds prefs') (removeTBlanks prefs')
                                 useCandy candy' fn
@@ -1083,8 +1073,7 @@ fileSaveBuffer query nb _ ebuf ideBuf@IDEBuffer{sourceView = sv} _i = liftIDE $ 
                             cfn <- liftIO $ myCanonicalizePath fn
                             void $ newTextBuffer panePath (T.pack $ takeFileName cfn) (Just cfn)
                             ) ideR
-                        return True
-                    _          -> return False
+                return shouldOverwrite
     where
         fileSave' :: Bool -> Bool -> Bool -> CandyTable -> FilePath -> IDEAction
         fileSave' _forceLineEnds removeTBlanks _useCandy candyTable fn = do
@@ -1190,37 +1179,32 @@ fileClose' :: TextEditor editor => EditorView editor -> EditorBuffer editor -> I
 fileClose' _ ebuf currentBuffer = do
     window  <- getMainWindow
     modified <- getModified ebuf
-    cancelled <- reifyIDE $ \ideR   ->
+    shouldContinue <- reifyIDE $ \ideR   ->
         if modified
             then do
-                md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeCancel]
-                setMessageDialogMessageType md MessageTypeQuestion
-                setMessageDialogText md $ __ "Save changes to document: "
-                                                <> paneName currentBuffer
-                                                <> "?"
-                windowSetTransientFor md (Just window)
-                _ <- dialogAddButton' md (__ "_Save") ResponseTypeYes
-                _ <- dialogAddButton' md (__ "_Don't Save") ResponseTypeNo
-                dialogSetDefaultResponse' md ResponseTypeYes
-                setWindowWindowPosition md WindowPositionCenterOnParent
-                resp <- dialogRun' md
-                widgetDestroy md
+                resp <- showDialogAndGetResponse
+                    (Just window)
+                    (__ "Save changes to document: "
+                            <> paneName currentBuffer
+                            <> "?")
+                    MessageTypeQuestion
+                    ResponseTypeYes
+                    [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeCancel ]
+                    [ (__ "_Save", ResponseTypeYes)
+                    , (__ "_Don't Save", ResponseTypeNo) ]
+
                 case resp of
                     ResponseTypeYes -> do
                         _ <- reflectIDE (fileSave False) ideR
-                        return False
-                    ResponseTypeCancel -> return True
-                    ResponseTypeNo     -> return False
+                        return True
+                    ResponseTypeNo     -> return True
+                    ResponseTypeCancel -> return False
                     _                  -> return False
-            else return False
-    if cancelled
-        then return False
-        else do
-            _ <- closeThisPane currentBuffer
-            F.forM_ (fileName currentBuffer) addRecentlyUsedFile
-            return True
+            else return True
+    when shouldContinue $ do
+        _ <- closeThisPane currentBuffer
+        F.forM_ (fileName currentBuffer) addRecentlyUsedFile
+    return shouldContinue
 
 fileCloseAll :: (IDEBuffer -> IDEM Bool)  -> IDEM Bool
 fileCloseAll filterFunc = do
@@ -1274,18 +1258,14 @@ fileOpenThis fp =  do
     findSourceBuf fp >>= \case
         hdb:_ -> do
             window <- getMainWindow
-            md <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
-                    constructMessageDialogButtons ButtonsTypeNone]
-            setMessageDialogMessageType md MessageTypeQuestion
-            setMessageDialogText md $ __ "Buffer already open."
-            windowSetTransientFor md (Just window)
-            _ <- dialogAddButton' md (__ "Make _Active") (AnotherResponseType 1)
-            _ <- dialogAddButton' md (__ "_Open Second") (AnotherResponseType 2)
-            dialogSetDefaultResponse' md (AnotherResponseType 1)
-            setWindowWindowPosition md WindowPositionCenterOnParent
-            resp <- dialogRun' md
-            widgetDestroy md
+            resp <- showDialogAndGetResponse
+                        (Just window)
+                        (__ "Buffer already open.")
+                        MessageTypeQuestion
+                        (AnotherResponseType 1)
+                        [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeNone ]
+                        [ (__ "Make _Active", AnotherResponseType 1)
+                        , (__ "_Open Second", AnotherResponseType 2) ]
             case resp of
                 AnotherResponseType 2 -> reallyOpen fpc
                 _                     -> makeActive hdb
@@ -1303,56 +1283,49 @@ filePrint' _nb _ ebuf currentBuffer _ = do
     let pName = paneName currentBuffer
     window  <- getMainWindow
     yesPrint <- liftIO $ do
-        md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeNone]
-        setMessageDialogMessageType md MessageTypeQuestion
-        setMessageDialogText md $ __"Print document: "
-                                                <> pName
-                                                <> "?"
-        windowSetTransientFor md (Just window)
-        _ <- dialogAddButton' md (__"_Print") ResponseTypeYes
-        dialogSetDefaultResponse' md ResponseTypeYes
-        _ <- dialogAddButton' md (__"_Don't Print") ResponseTypeNo
-        setWindowWindowPosition md WindowPositionCenterOnParent
-        resp <- dialogRun' md
-        widgetDestroy md
+        resp <- showDialogAndGetResponse
+                    (Just window)
+                    (__"Print document: "
+                           <> pName
+                           <> "?")
+                    MessageTypeQuestion
+                    ResponseTypeYes
+                    [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeNone ]
+                    [ (__"_Print", ResponseTypeYes)
+                    , (__"_Don't Print", ResponseTypeNo) ]
+
         case resp of
             ResponseTypeYes     ->   return True
-            ResponseTypeCancel  ->   return False
             ResponseTypeNo      ->   return False
+            ResponseTypeCancel  ->   return False
             _                   ->   return False
     when yesPrint $ do
         --real code
         modified <- getModified ebuf
-        cancelled <- reifyIDE $ \ideR ->
+        shouldContinue <- reifyIDE $ \ideR ->
             if modified
                 then do
-                    md <- new' MessageDialog [
-                        constructDialogUseHeaderBar 0,
-                        constructMessageDialogButtons ButtonsTypeNone]
-                    setMessageDialogMessageType md MessageTypeQuestion
-                    setMessageDialogText md $ __"Save changes to document: "
-                                                    <> pName
-                                                    <> "?"
-                    windowSetTransientFor md (Just window)
-                    _ <- dialogAddButton' md (__"_Save") ResponseTypeYes
-                    dialogSetDefaultResponse' md ResponseTypeYes
-                    _ <- dialogAddButton' md (__"_Don't Save") ResponseTypeNo
-                    _ <- dialogAddButton' md (__"_Cancel Printing") ResponseTypeCancel
-                    setWindowWindowPosition md WindowPositionCenterOnParent
-                    resp <- dialogRun' md
-                    widgetDestroy md
+                    resp <- showDialogAndGetResponse
+                                (Just window)
+                                (__"Save changes to document: "
+                                       <> pName
+                                       <> "?")
+                                MessageTypeQuestion
+                                ResponseTypeYes
+                                [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeNone ]
+                                [ (__"_Save", ResponseTypeYes)
+                                , (__"_Don't Save", ResponseTypeNo)
+                                , (__"_Cancel Printing", ResponseTypeCancel) ]
                     case resp of
                         ResponseTypeYes ->   do
                             _ <- reflectIDE (fileSave False) ideR
-                            return False
-                        ResponseTypeCancel  ->   return True
-                        ResponseTypeNo      ->   return False
+                            return True
+                        ResponseTypeNo      ->   return True
+                        ResponseTypeCancel  ->   return False
                         _               ->   return False
                 else
-                    return False
-        unless cancelled $
+                    return True
+        when shouldContinue $
             case fileName currentBuffer of
                 Just name -> do
                               status <- liftIO $ Print.print name

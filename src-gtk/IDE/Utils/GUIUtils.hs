@@ -19,8 +19,11 @@ module IDE.Utils.GUIUtils (
 ,   chooseSaveFile
 ,   openBrowser
 ,   showDialog
+,   showYesNoDialog
+,   showConfirmDialog
 ,   showErrorDialog
 ,   showDialogOptions
+,   showDialogAndGetResponse
 ,   showInputDialog
 
 ,   getFullScreenState
@@ -56,6 +59,7 @@ module IDE.Utils.GUIUtils (
 ,   treeViewContextMenu'
 
 ,   __
+,   printf
 
 ,   fontDescription
 ) where
@@ -76,6 +80,8 @@ import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
 import Data.List (intercalate)
 import Data.Foldable (forM_)
+import qualified Text.Printf as S (printf)
+import Text.Printf (PrintfType)
 import GI.Gtk.Objects.Window
        (setWindowWindowPosition, windowSetTransientFor, setWindowTitle,
         Window(..))
@@ -83,6 +89,8 @@ import GI.Gtk.Enums
        (WindowPosition(..), MessageType(..), ButtonsType(..), MessageType,
         ResponseType(..), FileChooserAction(..))
 import Data.GI.Base (new')
+import Data.GI.Base.GValue (GValueConstruct)
+import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))
 import GI.Gtk.Interfaces.FileChooser
        (fileChooserAddFilter, fileChooserGetFilename,
@@ -92,9 +100,8 @@ import GI.Gtk.Objects.Dialog
 import GI.Gtk.Objects.FileFilter
        (fileFilterAddPattern, fileFilterSetName, fileFilterNew)
 import GI.Gtk.Objects.MessageDialog
-       (constructMessageDialogText, constructMessageDialogButtons,
-        constructMessageDialogMessageType, MessageDialog(..))
-import Data.GI.Base.ManagedPtr (unsafeCastTo)
+       (constructMessageDialogText, constructMessageDialogButtons, constructMessageDialogMessageType,
+        setMessageDialogMessageType, setMessageDialogText, MessageDialog(..))
 import GI.Gtk.Objects.Box (Box(..))
 import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Entry (getEntryText, setEntryText, entryNew, onEntryActivate)
@@ -137,6 +144,9 @@ import GI.Gdk.Constants (pattern BUTTON_SECONDARY)
 import GI.Gtk
        (menuPopupAtPointer, gestureGetLastEvent, onGestureBegin,
         gestureSingleSetButton, gestureMultiPressNew)
+
+printf :: PrintfType r => Text -> r
+printf = S.printf . T.unpack
 
 chooseDir :: Window -> Text -> Maybe FilePath -> IO (Maybe FilePath)
 chooseDir window prompt mbFolder = do
@@ -231,18 +241,44 @@ openBrowser url = do
 
 -- | Show a text dialog with an Ok button and a specific messagetype
 showDialog :: MonadIO m => Maybe Window -> Text -> MessageType -> m ()
-showDialog parent msg msgType = do
-    dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 0,
-        constructMessageDialogMessageType msgType,
-        constructMessageDialogButtons ButtonsTypeOk,
-        constructMessageDialogText msg]
-    windowSetTransientFor dialog parent
-    setWindowWindowPosition dialog WindowPositionCenterOnParent
-    _ <- dialogRun' dialog
-    widgetDestroy dialog
-    return ()
+showDialog parent msg msgType =
+    void $ showDialogAndGetResult parent msg msgType ResponseTypeOk [
+            constructDialogUseHeaderBar 0,
+            constructMessageDialogMessageType msgType,
+            constructMessageDialogButtons ButtonsTypeOk,
+            constructMessageDialogText msg
+        ] [] []
 
+-- | Show a Yes/No dialog
+showYesNoDialog :: MonadIO m
+                => Maybe Window -- ^ Parent of transient
+                -> Bool         -- ^ Should Yes be selected by default?
+                -> Text         -- ^ Message
+                -> m Bool       -- ^ Was "Yes" chosen as user response?
+showYesNoDialog parent defaultYes message =
+    isYes <$> showDialogAndGetResponse parent message MessageTypeQuestion defaultResponse
+            [ constructDialogUseHeaderBar 0, constructMessageDialogButtons ButtonsTypeYesNo ]
+            []
+  where
+    defaultResponse = if defaultYes then ResponseTypeYes else ResponseTypeNo
+    isYes = (== ResponseTypeYes)
+
+
+-- | Show a confirmation dialog with a cancel button and a custom action
+-- button
+showConfirmDialog :: MonadIO m
+                   => Maybe Window  -- ^ Parent of transient
+                   -> Bool          -- ^ Should the custom action be selected by default?
+                   -> Text          -- ^ Label for custom action button
+                   -> Text          -- ^ Message
+                   -> m Bool        -- ^ Was the custom action chosen as user response?
+showConfirmDialog parent defaultConfirm action message =
+    isConfirm <$> showDialogAndGetResponse parent message MessageTypeQuestion defaultResponse
+            [ constructDialogUseHeaderBar 0 , constructMessageDialogButtons ButtonsTypeCancel ]
+            [ (action, AnotherResponseType 1) ]
+  where
+    defaultResponse = if defaultConfirm then AnotherResponseType 1 else ResponseTypeCancel
+    isConfirm = (== AnotherResponseType 1)
 
 -- | Show an error dialog with an Ok button
 showErrorDialog :: MonadIO m => Maybe Window -> Text -> m ()
@@ -254,30 +290,79 @@ showDialogOptions :: MonadIO m
                   => Maybe Window     -- ^ Parent window to use with `windowSetTransientFor`
                   -> Text             -- ^ the message
                   -> MessageType      -- ^ type of dialog
-                  -> [(Text, m ())]  -- ^ button text and corresponding actions
+                  -> [(Text, m ())]   -- ^ button text and corresponding actions
                   -> Maybe Int        -- ^ index of button that has default focus (0-based)
                   -> m ()
-showDialogOptions parent msg msgType buttons mbIndex = do
-    dialog <- new' MessageDialog [
-        constructDialogUseHeaderBar 0,
-        constructMessageDialogMessageType msgType,
-        constructMessageDialogButtons ButtonsTypeNone,
-        constructMessageDialogText msg]
+showDialogOptions parent msg msgType buttons mbIndex =
+    void $ showDialogAndGetResult parent msg msgType (AnotherResponseType $ fromMaybe 0 mbIndex) [
+                constructDialogUseHeaderBar 0,
+                constructMessageDialogMessageType msgType,
+                constructMessageDialogButtons ButtonsTypeNone,
+                constructMessageDialogText msg
+            ]
+            (zip (map fst buttons) responseTypes)
+            (zip responseTypes (map (const . snd) buttons))
+  where
+    responseTypes = (map AnotherResponseType [0..])
 
+-- | Show a dialog with custom buttons, and get back the user response
+showDialogAndGetResponse
+        :: MonadIO m
+        => Maybe Window   -- ^ Parent window to use with `windowSetTransientFor`
+        -> Text           -- ^ The message
+        -> MessageType    -- ^ The message dialog type
+        -> ResponseType   -- ^ The response which is selected by default
+        -> [IO (GValueConstruct MessageDialog)]   -- ^ Options to `new'` the window with
+        -> [(Text, ResponseType)]     -- ^ List of buttons and their associated ResponseTypes
+        -> m ResponseType -- ^ The response type selected by the user
+showDialogAndGetResponse parent msg msgType defaultResponse newOptions buttons = do
+    either id id <$>
+        showDialogAndGetResult parent msg msgType
+            defaultResponse newOptions buttons (actions buttons)
+  where
+    actions = map $ \(_, response) -> (response, const $ return response)
+
+-- | Show a dialog with custom buttons, and perform an action based on the
+-- user's response.
+--
+-- Note that, although the MessageDialog is passed to the actions, it will
+-- not survive past the end of the call to `showDialogAndGetResult`, so
+-- you should not try to store it somewhere for later use
+showDialogAndGetResult
+        :: MonadIO m
+        => Maybe Window             -- ^ Parent window to use with `windowSetTransientFor`
+        -> Text                     -- ^ The message
+        -> MessageType              -- ^ The message dialog type
+        -> ResponseType             -- ^ The response which is selected by default
+        -> [IO (GValueConstruct MessageDialog)]   -- ^ Options to `new'` the window with
+        -> [(Text, ResponseType)]   -- ^ List of buttons and their associated responseTypes
+        -> [(ResponseType, MessageDialog -> m a)] -- ^ List of response types and their associated actions
+        -> m (Either ResponseType a) -- ^ `Right` the result of the action selected by the user,
+                                     -- or `Left ResponseType` if the user's response did not match the provided ones
+showDialogAndGetResult parent msg msgType defaultResponse newOptions buttons responseActions = do
+    dialog <- new' MessageDialog newOptions
+    setMessageDialogMessageType dialog msgType
+    setMessageDialogText dialog msg
     windowSetTransientFor dialog parent
-    forM_ (zip [0..] buttons) $ \(n,(text, _)) ->
-        dialogAddButton' dialog text (AnotherResponseType n)
-
-    dialogSetDefaultResponse' dialog (AnotherResponseType $ fromMaybe 0 mbIndex)
+    mapM_ (addActionButton dialog) buttons
+    dialogSetDefaultResponse' dialog defaultResponse
     setWindowWindowPosition dialog WindowPositionCenterOnParent
-    res <- dialogRun' dialog
+
+    response <- dialogRun' dialog
+    -- Keep the dialog alive until the caller's action has finished messing with it
     widgetHide dialog
-    case res of
-        AnotherResponseType n | n >= 0 && n < length buttons -> map snd buttons !! n
-        _ -> return ()
 
+    let action = lookup response responseActions
+    result <- case action of
+                 Nothing -> return $ Left response
+                 Just f -> Right <$> f dialog
 
-
+    widgetDestroy dialog
+    return result
+  where
+    addActionButton :: MonadIO m => MessageDialog -> (Text, ResponseType) -> m ()
+    addActionButton dialog (text, responseType) =
+            dialogAddButton' dialog text responseType >> return ()
 
 -- | Show a simple dialog that asks the user for some text
 showInputDialog :: Maybe Window -- ^ Parent window to use with `windowSetTransientFor`

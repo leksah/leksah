@@ -89,7 +89,7 @@ import Graphics.UI.Editor.Simple
        (textEditor, boolEditor, staticListEditor)
 import Graphics.UI.Editor.Composite (maybeEditor)
 import IDE.Utils.GUIUtils
-       (stockIdFromType, __, treeViewContextMenu, treeViewToggleRow)
+       (stockIdFromType, __, printf, treeViewContextMenu, treeViewToggleRow, showConfirmDialog)
 import IDE.Metainfo.Provider
        (getSystemInfo, getWorkspaceInfo, getPackageInfo)
 import System.Log.Logger (debugM)
@@ -100,8 +100,6 @@ import Control.Monad (when, void)
 import Control.Monad.Trans.Reader (ask)
 import Data.Text (Text, toCaseFold)
 import qualified Data.Text as T (unpack, isInfixOf, toLower, pack)
-import qualified Text.Printf as S (printf)
-import Text.Printf (PrintfType)
 import qualified Data.Text.IO as T (writeFile)
 import GI.Gtk.Objects.Paned
        (panedAdd2, panedAdd1, panedSetPosition, panedGetPosition,
@@ -178,9 +176,6 @@ import GI.Gtk.Objects.MenuItem
        (toMenuItem, onMenuItemActivate, menuItemNewWithLabel)
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
 import GI.Gtk.Objects.MenuShell (menuShellAppend)
-import GI.Gtk.Objects.MessageDialog
-       (setMessageDialogText, constructMessageDialogButtons, setMessageDialogMessageType,
-        MessageDialog(..))
 import GI.Gtk.Objects.Dialog
        (Dialog(..), dialogGetContentArea, constructDialogUseHeaderBar)
 import GI.Gtk.Objects.Window
@@ -194,9 +189,6 @@ import Data.Aeson (FromJSON(..), ToJSON(..))
 import GHC.Generics (Generic)
 import Distribution.Types.UnqualComponentName
        (unUnqualComponentName)
-
-printf :: PrintfType r => Text -> r
-printf = S.printf . T.unpack
 
 -- | A modules pane description
 --
@@ -1276,18 +1268,8 @@ respDelModDialog :: IDEM Bool
 respDelModDialog = do
     liftIO $ debugM "leksah" "respDelModDialog"
     window <- getMainWindow
-    dia <- new' MessageDialog [
-                    constructDialogUseHeaderBar 0,
-                    constructMessageDialogButtons ButtonsTypeCancel]
-    setMessageDialogMessageType dia MessageTypeQuestion
-    setMessageDialogText dia $ __ "Are you sure?"
-    windowSetTransientFor dia (Just window)
-    _ <- dialogAddButton' dia (__ "_Delete Module") (AnotherResponseType 1)
-    dialogSetDefaultResponse' dia ResponseTypeCancel
-    setWindowWindowPosition dia WindowPositionCenterOnParent
-    resp <- dialogRun' dia
-    widgetDestroy dia
-    return $ resp == AnotherResponseType 1
+    isConfirmed <- showConfirmDialog (Just window) False (__ "_Delete Module") $ __ "Are you sure?"
+    return isConfirmed
 
 addModule' :: TreeView -> ForestStore ModuleRecord -> PackageAction
 addModule' treeView store = do

@@ -124,8 +124,6 @@ import Data.Time.Calendar (toGregorian)
 import Data.Text (Text)
 import qualified Data.Text.IO as T (readFile)
 import Data.Monoid (Monoid(..))
-import qualified Text.Printf as S (printf)
-import Text.Printf (PrintfType)
 import GI.Gtk.Enums
        (IconSize(..), ToolbarStyle(..), PositionType(..), Orientation(..))
 import GI.Gtk.Objects.Menu (Menu(..), menuNew)
@@ -191,9 +189,6 @@ import Data.Attoparsec.Text (parseOnly)
 import IDE.HaRe
        (deleteDef, rmOneParameter, addOneParameter, rename, liftOneLevel,
         liftToTopLevel, duplicateDef, ifToCase, demote)
-
-printf :: PrintfType r => Text -> r
-printf = S.printf . T.unpack
 
 --
 -- | The Actions known to the system (they can be activated by keystrokes or menus)

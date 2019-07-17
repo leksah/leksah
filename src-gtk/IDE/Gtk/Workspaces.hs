@@ -55,9 +55,6 @@ import qualified Data.Text as T
        (unpack, pack)
 import qualified Data.Text.IO as T (writeFile)
 
-import qualified Text.Printf as S (printf)
-import Text.Printf (PrintfType)
-
 import System.Directory
        (doesDirectoryExist, getDirectoryContents, getHomeDirectory,
         doesFileExist)
@@ -110,16 +107,13 @@ import IDE.Pane.SourceBuffer
        (belongsToWorkspace, IDEBuffer(..), maybeActiveBuf, fileOpenThis)
 import IDE.Pane.PackageEditor (packageNew', packageClone, choosePackageFile)
 import IDE.Utils.GUIUtils
-       (showDialog, showDialogOptions, chooseFile, chooseSaveFile, __)
+       (showDialog, showDialogOptions, chooseFile, chooseSaveFile, __, printf)
 import IDE.Utils.FileUtils (myCanonicalizePath)
 import IDE.Workspaces.Writer (WorkspaceFile(..))
 import qualified IDE.Workspaces.Writer as Writer
 import IDE.Workspaces
        (projectNewHere, projectOpenThis, workspaceTryQuiet, projectTryQuiet,
         projectAddPackage', constructAndOpenMainModules, makePackage', packageTryQuiet)
-
-printf :: PrintfType r => Text -> r
-printf = S.printf . T.unpack
 
 -- | Constructs a new workspace and makes it the current workspace
 workspaceNew :: IDEAction
