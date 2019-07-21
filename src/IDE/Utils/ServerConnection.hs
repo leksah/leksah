@@ -28,11 +28,13 @@ import IDE.Core.State
         prefs, serverIP, serverPort, throwIDE, triggerEventIDE_,
         IDEEvent(..), StatusbarCompartment(..))
 import IDE.Gtk.State (postAsyncIDE)
-import Network (connectTo,PortID(..))
+import Network.Socket
+       (close, Socket, socket, connect, AddrInfo(..), defaultHints,
+        AddrInfoFlag(..), SocketType(..), getAddrInfo, socketToHandle)
 import IDE.Utils.Tool (runProcess)
 import GHC.Conc(threadDelay)
-import System.IO (hGetLine, hFlush, hPrint, hIsOpen, Handle)
-import Control.Exception (SomeException(..), catch)
+import System.IO (hGetLine, hFlush, hPrint, hIsOpen, Handle, IOMode(..))
+import Control.Exception (bracketOnError, SomeException(..), catch)
 import Control.Concurrent(forkIO, newEmptyMVar, putMVar, takeMVar, tryTakeMVar)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (ask)
@@ -59,6 +61,22 @@ doServerCommand command cont = do
         debugM "leksah" $ "Queue new command " ++ show command
         putMVar q (command, cont)
 
+connectTo :: Prefs -> IO Handle
+connectTo prefs' = do
+  let hints = defaultHints
+        { addrFlags = [AI_ADDRCONFIG]
+        , addrSocketType = Stream }
+  getAddrInfo (Just hints) (Just . T.unpack $ serverIP prefs') (Just . show $ serverPort prefs') >>= \case
+    [] -> throwIDE "Can't connect to leksah-server (getAddrInfo failed)"
+    addr:_ ->
+      bracketOnError
+        (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
+        close
+        (\sock -> do
+          connect sock (addrAddress addr)
+          socketToHandle sock ReadWriteMode
+        )
+
 doServerCommand' :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEAction
 doServerCommand' command cont =
     readIDE server >>= \case
@@ -72,7 +90,7 @@ doServerCommand' command cont =
         Nothing -> do
             prefs' <- readIDE prefs
             handle <- liftIO $
-                catch (connectTo (T.unpack $ serverIP prefs') (PortNumber (fromIntegral $ serverPort prefs')))
+                catch (connectTo prefs')
                     (\(_ :: SomeException) -> do
                         catch (startServer (serverPort prefs'))
                             (\(exc :: SomeException) -> throwIDE ("Can't start leksah-server" <> T.pack (show exc)))
@@ -113,7 +131,7 @@ waitForServer _ 0 = return Nothing
 waitForServer prefs' s = do
     threadDelay 100000 -- 0.1 second
     catch (do
-        handle <- liftIO $ connectTo (T.unpack $ serverIP prefs') (PortNumber (fromIntegral $ serverPort prefs'))
+        handle <- liftIO $ connectTo prefs'
         return (Just handle))
         (\(_ :: SomeException) -> waitForServer prefs' (s-1))
 

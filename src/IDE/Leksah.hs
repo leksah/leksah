@@ -78,7 +78,7 @@ import IDE.Workspaces
         backgroundMake, projectOpenThis)
 import IDE.Gtk.Workspaces (workspaceNewHere, workspaceOpenThis)
 import IDE.Utils.GUIUtils
-import Network (withSocketsDo)
+import Network.Socket (withSocketsDo)
 import Control.Exception
 import System.Exit (ExitCode(..), exitWith, exitFailure)
 import qualified IDE.StrippedPrefs as SP
@@ -102,7 +102,7 @@ import GI.GLib.Constants
 import GI.Gdk.Objects.Screen
        (screenGetDefault, screenSetResolution)
 import GI.Gtk.Objects.CssProvider
-       (cssProviderLoadFromData, cssProviderNew)
+       (CssProvider(..), cssProviderLoadFromData, cssProviderNew)
 import GI.Gtk.Objects.StyleContext
        (styleContextAddProviderForScreen)
 import qualified Data.ByteString.Char8 as B (unlines)

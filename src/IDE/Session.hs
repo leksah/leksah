@@ -106,7 +106,8 @@ import GI.Gtk.Objects.Paned (panedSetPosition, panedGetPosition)
 import GI.Gtk.Objects.Notebook
        (notebookSetCurrentPage, notebookSetTabPos, notebookSetShowTabs,
         notebookGetCurrentPage, notebookGetTabPos, notebookGetShowTabs)
-import Data.GI.Base (unsafeCastTo, new')
+import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base.GObject (new')
 import Control.Arrow (Arrow(..))
 import qualified Data.Text as T (unpack, pack)
 import GI.Gtk (constructDialogUseHeaderBar)

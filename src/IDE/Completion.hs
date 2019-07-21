@@ -115,7 +115,7 @@ import Data.GI.Gtk.ModelView.Types
        (equalManagedPtr, treePathGetIndices', treePathNewFromIndices')
 import Data.Maybe (fromJust)
 import GI.Gtk
-       (widgetGetScreen, getCurrentEventDevice,
+       (widgetGetScreen, getCurrentEventDevice, CssProvider(..),
         pattern STYLE_PROVIDER_PRIORITY_APPLICATION, styleContextAddProvider,
         cssProviderLoadFromData, widgetGetStyleContext, cssProviderNew)
 import Graphics.UI.Utils (fontDescriptionToCssProps)

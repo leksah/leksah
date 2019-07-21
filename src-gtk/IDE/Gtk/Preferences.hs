@@ -55,7 +55,8 @@ import IDE.Metainfo.Provider (getAllPackageIds)
 import GI.Gtk.Objects.Dialog
        (Dialog(..), onDialogResponse, dialogGetHeaderBar,
         dialogGetContentArea)
-import Data.GI.Base (new', unsafeCastTo)
+import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base.GObject (new')
 import GI.Gtk.Objects.Window
        (windowSetDefaultSize, setWindowTitle, setWindowTransientFor)
 import GI.Gtk.Objects.Box (Box(..))

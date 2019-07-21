@@ -1,4 +1,4 @@
-index-state: 2019-06-08T00:00:00Z
+index-state: 2019-07-18T00:00:00Z
 
 packages:
  ./
@@ -14,41 +14,26 @@ packages:
 -- vendor/HaRe/submodules/ghc-mod
 -- vendor/HaRe/submodules/ghc-mod/core
 
-constraints:
-    haskell-gi-base <0.22
-  , gi-cairo <1.0.19
-  , gi-glib <2.0.19
-  , gi-gobject <2.0.18
-  , gi-gio <2.0.21
-  , gi-gio <2.0.20
-  , gi-atk <2.0.17
-  , gi-pango <1.0.18
-  , gi-gdkpixbuf <2.0.19
-  , gi-gdk <3.0.18
-  , gi-gtk <3.0.28
-  , gi-gtksource <3.0.18
-  , gi-soup <2.4.18
-  , gi-javascriptcore <4.0.17
-  , gi-webkit2 <4.0.21
-
 allow-newer:
+ jsaddle:primitive
+ jsaddle-warp:warp
+ dependent-sum-template:dependent-sum
  reflex:haskell-src-exts
+ reflex:dependent-sum
+ reflex:primitive
+-- reflex:these
  reflex-dom-core:base
  reflex-dom-core:containers
  reflex-dom-core:stm
  reflex-dom-core:contravariant
+ reflex-dom-core:primitive
+ reflex-dom-core:these
  reflex-dom-svg:base
  reflex-dom-svg:containers
  reflex-dom-svg:lens
- brittany:base
+ brittany:semigroups
  gi-gtkosxapplication:haskell-gi
  gi-gtkosxapplication:haskell-gi-base
-
-source-repository-package
-  type: git
-  location: https://github.com/lspitzner/brittany.git
-  tag: c4b696c4f654cc313d0abbb0647594b7deb3bd77
-  --sha256: 0405yppiv3s3fb6p0la4l55p6ay0ll5w4q3ds156vsjx4iqmxhfr
 
 source-repository-package
   type: git

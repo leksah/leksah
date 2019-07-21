@@ -144,7 +144,7 @@ import System.FilePath
         equalFilePath, takeFileName)
 import System.Log.Logger (errorM, warningM, debugM)
 
-import Data.GI.Base (new')
+import Data.GI.Base.GObject (new')
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gdk (windowGetOrigin)
 import GI.Gdk.Enums (EventType(..))

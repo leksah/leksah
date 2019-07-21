@@ -77,7 +77,8 @@ import qualified Text.ParserCombinators.Parsec.Token as P
         makeTokenParser)
 import Text.PrettyPrint (render)
 
-import Data.GI.Base (new', unsafeCastTo)
+import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base.GObject (new')
 import GI.Gtk (constructDialogUseHeaderBar)
 import GI.Gtk.Enums (ResponseType(..))
 import GI.Gtk.Objects.Box (Box(..))

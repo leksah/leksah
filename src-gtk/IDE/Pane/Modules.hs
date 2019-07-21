@@ -120,7 +120,8 @@ import GI.Gtk.Objects.Widget
         afterWidgetFocusInEvent, widgetGetAllocation, toWidget)
 import GI.Gtk.Objects.CellRendererPixbuf
        (setCellRendererPixbufStockId, cellRendererPixbufNew)
-import Data.GI.Base (unsafeCastTo, new')
+import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base.GObject (new')
 import GI.Gtk.Objects.CellRendererText
        (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.TreeViewColumn

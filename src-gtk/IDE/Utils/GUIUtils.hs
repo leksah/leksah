@@ -88,7 +88,7 @@ import GI.Gtk.Objects.Window
 import GI.Gtk.Enums
        (WindowPosition(..), MessageType(..), ButtonsType(..), MessageType,
         ResponseType(..), FileChooserAction(..))
-import Data.GI.Base (new')
+import Data.GI.Base.GObject (new')
 import Data.GI.Base.GValue (GValueConstruct)
 import Data.GI.Base.ManagedPtr (unsafeCastTo)
 import GI.Gtk.Objects.FileChooserDialog (FileChooserDialog(..))

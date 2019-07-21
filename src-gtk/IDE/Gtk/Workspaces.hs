@@ -64,7 +64,7 @@ import System.FilePath
         takeDirectory)
 import System.Log.Logger (debugM)
 
-import Data.GI.Base (new')
+import Data.GI.Base.GObject (new')
 import GI.Gtk.Enums
        (FileChooserAction(..), ResponseType(..), ButtonsType(..),
         WindowPosition(..), MessageType(..))

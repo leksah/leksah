@@ -8,14 +8,14 @@ let
 
   filteredArgs = localLib.pkgs.lib.filterAttrs (n: v: n != "haskellCompiler") args;
   default-nix = localLib.nix-tools.default-nix ./nix/default.nix filteredArgs;
-  inherit ((localLib.nix-tools.default-nix ./nix/plan-only.nix filteredArgs).nix-tools._raw) plan-nix;
+  inherit (default-nix) nix-tools;
+  inherit (nix-tools._raw) plan-nix pkgs hsPkgs;
 
-  shell-nix-tools = (localLib.nix-tools.default-nix ./nix/shell-only.nix filteredArgs).nix-tools;
-  inherit (shell-nix-tools._raw) pkgs hsPkgs;
   cabalSystem = builtins.replaceStrings ["-darwin"] ["-osx"] pkgs.stdenv.system;
   shells = {
     ghc = (hsPkgs.shellFor {
       packages = ps: with ps; [
+        leksah-server
         leksah
         ltk ];
     }).overrideAttrs (oldAttrs: {
@@ -25,5 +25,7 @@ let
     });
   };
 in
-  default-nix //
-    { inherit plan-nix shells; }
+  default-nix // {
+    inherit plan-nix shells;
+    inherit (nix-tools._raw) launch-leksah wrapped-leksah;
+  }

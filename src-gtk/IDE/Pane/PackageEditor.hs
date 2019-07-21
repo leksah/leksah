@@ -96,7 +96,8 @@ import System.Directory
         createDirectory, removeDirectoryRecursive, doesDirectoryExist,
         createDirectoryIfMissing)
 
-import Data.GI.Base (unsafeCastTo, new')
+import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base.GObject (new')
 import GI.Gtk.Enums
        (Align(..), ShadowType(..), WindowPosition(..), ButtonsType(..),
         MessageType(..), ResponseType(..), FileChooserAction(..),

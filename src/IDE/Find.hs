@@ -118,7 +118,7 @@ import IDE.Core.Types
        (SensitivityMask(..), IDEEvent(..), MonadIDE(..), SearchHint(..))
 import GI.Gtk.Structs.TreePath (treePathGetIndices)
 import GI.Gtk
-       (CssProvider, pattern STYLE_PROVIDER_PRIORITY_APPLICATION,
+       (CssProvider(..), pattern STYLE_PROVIDER_PRIORITY_APPLICATION,
         styleContextAddProvider, cssProviderLoadFromData,
         widgetGetStyleContext, cssProviderNew,
         noWidget, imageNewFromIconName)

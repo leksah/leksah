@@ -43,7 +43,8 @@ import GI.GtkosxApplication
         onApplicationNSApplicationBlockTermination,
         applicationInsertAppMenuItem, applicationSetMenuBar, Application)
 import GI.Gtk.Objects.Widget (widgetHide)
-import Data.GI.Base (unsafeCastTo, new')
+import Data.GI.Base (unsafeCastTo)
+import Data.GI.Base.GObject (new')
 import GI.Gtk.Objects.MenuShell (MenuShell(..))
 import GI.Gtk.Objects.MenuItem (MenuItem(..))
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)

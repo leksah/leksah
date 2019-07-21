@@ -66,7 +66,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 
-import Data.GI.Base (new')
+import Data.GI.Base.GObject (new')
 import GI.Gtk.Enums
        (WindowPosition(..), ResponseType(..), ButtonsType(..),
         MessageType(..))

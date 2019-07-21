@@ -6,6 +6,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.TextEditor.GtkSourceView
@@ -154,7 +155,7 @@ import Graphics.UI.Editor.Simple (Color(..))
 import GI.Gtk
        (cssProviderLoadFromData, pattern STYLE_PROVIDER_PRIORITY_APPLICATION,
         styleContextAddProvider, widgetGetStyleContext,
-        cssProviderNew, CssProvider,
+        cssProviderNew, CssProvider(..),
         setTextViewBottomMargin, textBufferCreateMark, textBufferMoveMark,
         widgetSetVexpand, widgetSetHexpand, frameNew, gridNew,
         setTextTagUnderlineRgba)
@@ -316,7 +317,7 @@ instance TextEditor GtkSourceView where
         mapFrame <- frameNew Nothing
 -- Source map makes things too slow
 --        sMap <- mapNew
---        signal <- signalLookup "source_mark_updated" =<< liftIO (gobjectType (undefined :: Source.Buffer))
+--        signal <- signalLookup "source_mark_updated" =<< liftIO (gobjectType @Source.Buffer)
 --        liftIO $ withManagedPtr sMap $ \svPtr ->
 --            signalHandlersBlockMatched sb [SignalMatchTypeId, SignalMatchTypeData]
 --                signal 0 Nothing nullPtr (castPtr svPtr)
@@ -341,7 +342,7 @@ instance TextEditor GtkSourceView where
 
         -- Disable source_mark_updated handler in sv because it schedules a full redraw
         -- that turns out to be unnecessary and very costly in Leksah
-        signal <- signalLookup "source_mark_updated" =<< liftIO (gobjectType (undefined :: Source.Buffer))
+        signal <- signalLookup "source_mark_updated" =<< liftIO (gobjectType @Source.Buffer)
         _ <- liftIO $ withManagedPtr sv $ \svPtr ->
             signalHandlersBlockMatched sb [SignalMatchTypeId, SignalMatchTypeData]
                 signal 0 Nothing nullPtr (castPtr svPtr)
