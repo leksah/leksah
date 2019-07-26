@@ -16,7 +16,6 @@ let
   # our packages
   plan = haskell.callCabalProjectToNix {
     src = cleanSrc;
-    inherit (pkgs) ghc;
     index-sha256 = "1gpazw5sadv2allfcji9gbknfxc0zcxxmv4l9k5rn33x6bwz19f3";
   };
 
