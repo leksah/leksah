@@ -5,6 +5,8 @@ before_install:
 - sudo mkdir -p /etc/nix
 - echo "substituters = https://cache.nixos.org https://hydra.iohk.io" | sudo tee -a /etc/nix/nix.conf > /dev/null
 - echo "trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" | sudo tee -a /etc/nix/nix.conf > /dev/null
+- nix-channel --update
+- nix-env -iA nixpkgs.nix
 
 script:
  - timeout 40m nix-build -j2
