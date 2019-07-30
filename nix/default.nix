@@ -16,7 +16,7 @@ let
   # our packages
   plan = haskell.callCabalProjectToNix {
     src = cleanSrc;
-    index-sha256 = "1gpazw5sadv2allfcji9gbknfxc0zcxxmv4l9k5rn33x6bwz19f3";
+    index-sha256 = "1cz5g3anngxw9aafmqj9r9xra1nfl2z0cjxn2ah2f0sf8ydmwppf";
   };
 
   # Build the packageset with module support.
