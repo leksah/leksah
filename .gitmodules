@@ -52,3 +52,6 @@
 [submodule "vendor/haskell-filesystem"]
 	path = vendor/haskell-filesystem
 	url = https://github.com/hamishmack/haskell-filesystem.git
+[submodule "vendor/haskell-ide-engine"]
+	path = vendor/haskell-ide-engine
+	url = https://github.com/mpickering/haskell-ide-engine.git

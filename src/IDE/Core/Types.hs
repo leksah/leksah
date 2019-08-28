@@ -245,6 +245,7 @@ import IDE.Utils.Project
        (ProjectKey(..), pjCabalFile, pjStackFile, pjCustomDir, pjDir,
         CabalProject(..), StackProject(..), CustomProject(..), pjIsCabal,
         pjIsStack, pjFileOrDir, pjFile, filePathToProjectKey)
+import Haskell.Ide.Engine.PluginsIdeMonads (IdeState(..))
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -289,6 +290,7 @@ data IDE            =  IDE {
 ,   _externalModified    :: MVar (Set FilePath)
 ,   _jsContexts          :: [JSContextRef]
 ,   _logLineMap          :: Map Int (Text, LogTag)
+,   _hieState            :: TVar IdeState
 } -- deriving Show
 
 data DebugState = DebugState

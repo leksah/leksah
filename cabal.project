@@ -6,6 +6,10 @@ packages:
  vendor/ltk/
  vendor/haskellVCSWrapper/vcswrapper/
  vendor/haskellVCSGUI/vcsgui
+ vendor/haskell-ide-engine/hie-bios
+ vendor/haskell-ide-engine/hie-plugin-api
+ vendor/haskell-ide-engine/submodules/ghc-mod/ghc-project-types
+ vendor/haskell-ide-engine/submodules/cabal-helper
 -- vendor/hs-git
 -- vendor/brittany
 -- vendor/HaRe

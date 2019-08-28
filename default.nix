@@ -17,7 +17,11 @@ let
       packages = ps: with ps; [
         leksah-server
         leksah
-        ltk ];
+        ltk
+        hie-plugin-api
+        hie-bios
+        cabal-helper
+        ghc-project-types ];
     }).overrideAttrs (oldAttrs: {
       shellHook = (oldAttrs.shellHook or "") + ''
         unset CABAL_CONFIG

@@ -111,6 +111,9 @@ import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import qualified IDE.Workspaces.Writer as Writer
        (setWorkspace, readWorkspace)
 import IDE.Workspaces (backgroundMake)
+import Control.Concurrent.STM (newTVarIO)
+import Haskell.Ide.Engine.PluginApi (IdeState(..))
+import Haskell.Ide.Engine.GhcModuleCache (emptyModuleCache)
 
 -- > :fork 1 IDE.Web.Main.develMain
 
@@ -134,6 +137,7 @@ newIDE runJs = do
       nixCache <- loadNixCache
       externalModified <- newMVar mempty
       watchers <- newMVar (mempty, mempty)
+      hieState <- newTVarIO (IdeState emptyModuleCache mempty mempty Nothing)
       let ide = IDE
             {   _ideGtk            =   Nothing
             ,   _exitCode          =   exitCode
@@ -169,6 +173,7 @@ newIDE runJs = do
             ,   _externalModified  =   externalModified
             ,   _jsContexts        =   []
             ,   _logLineMap        =   mempty
+            ,   _hieState          =   hieState
       }
       ideR <- liftIO $ newMVar (const (return ()), ide)
       let filePath = "/Users/hamish/leksah.lkshw"

@@ -29,6 +29,9 @@ let
   selectGhc = self: super: {
     ghc = super.haskell.compiler.${haskellCompiler};
   };
+  exposeCabalInstall = self: super: {
+    cabal = self.cabal-install;
+  };
   # iohk-nix can be overridden for debugging purposes by setting
   # NIX_PATH=iohk_nix=/path/to/iohk-nix
   iohkNix = import (
@@ -45,7 +48,7 @@ let
       inherit config system crossSystem;
       nixpkgsJsonOverride = ../pins/nixpkgs-src.json;
       haskellNixJsonOverride = ../pins/haskell-nix-src.json;
-      nixpkgsOverlays = [ fixMacOsGioIntrospection dontDisableGtkDebug selectGhc ];
+      nixpkgsOverlays = [ fixMacOsGioIntrospection dontDisableGtkDebug selectGhc exposeCabalInstall ];
     };
 
   pkgs = iohkNix.pkgs;

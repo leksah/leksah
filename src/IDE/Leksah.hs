@@ -133,6 +133,9 @@ import GI.Gio (applicationRun, onApplicationActivate)
 import System.FSNotify (withManager, WatchManager)
 import Criterion.Measurement (initializeTime)
 -- import qualified IDE.Web.Main as Web (startJSaddle)
+import Control.Concurrent.STM (newTVarIO)
+import Haskell.Ide.Engine.PluginApi (IdeState(..))
+import Haskell.Ide.Engine.GhcModuleCache (emptyModuleCache)
 
 -- --------------------------------------------------------------------
 -- Command line options
@@ -271,6 +274,7 @@ realMain yiConfig args = do
                 nixCache <- loadNixCache
                 externalModified <- newMVar mempty
                 watchers <- newMVar (mempty, mempty)
+                hieState <- newTVarIO (IdeState emptyModuleCache mempty mempty Nothing)
                 let ide = IDE
                       {   _ideGtk            =   Nothing
                       ,   _exitCode          =   exitCode
@@ -306,6 +310,7 @@ realMain yiConfig args = do
                       ,   _externalModified  =   externalModified
                       ,   _jsContexts        =   []
                       ,   _logLineMap        =   mempty
+                      ,   _hieState          =   hieState
                 }
                 ideR <- liftIO $ newMVar (const (return ()), ide)
                 liftIO $ (`reflectIDE` ideR) $
