@@ -30,7 +30,7 @@ if [ "$GHCNIX" == "" ]
     exit 1
 fi
 GHCVER=`$GHCNIX --numeric-version`
-LAUNCH_LEKSAH=`nix-build --argstr haskelCompiler "$GHCARG" -A nix-tools._raw.launch-leksah`/bin/launch-leksah
+LAUNCH_LEKSAH=`nix-build --argstr haskelCompiler "$GHCARG" -A launch-leksah`/bin/launch-leksah
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 

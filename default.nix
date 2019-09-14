@@ -1,31 +1,99 @@
-{ haskellCompiler ? "ghc865"
-, config ? {}
-, system ? builtins.currentSystem
-, crossSystem ? null
-, ... }@args:
+{ pkgs ? import nixpkgs ({
+    overlays = (import (builtins.fetchTarball {
+        url = "https://github.com/input-output-hk/haskell.nix/archive/24aa6bc371d74f627eab902f0aa1308b2f844948.tar.gz";
+        sha256 = "1wmy0jz578ig6ys916jl5ybbrhlk65dbjwpns33mw206m1ra5vr3";
+      } + "/overlays")) ++ [ (import ./nix/overlays/gtk-debug.nix) ];
+  })
+, nixpkgs ? builtins.fetchTarball {
+    url = "https://github.com/NixOS/nixpkgs/archive/61f0936d1cd73760312712615233cd80195a9b47.tar.gz";
+    sha256 = "1fkmp99lxd827km8mk3cqqsfmgzpj0rvaz5hgdmgzzyji70fa2f8";
+  }
+, haskellCompiler ? "ghc865"
+}:
 let
-  localLib = import ./nix/lib.nix { inherit haskellCompiler config system crossSystem; };
-
-  filteredArgs = localLib.pkgs.lib.filterAttrs (n: v: n != "haskellCompiler") args;
-  default-nix = localLib.nix-tools.default-nix ./nix/default.nix filteredArgs;
-  inherit (default-nix) nix-tools;
-  inherit (nix-tools._raw) plan-nix pkgs hsPkgs;
-
-  cabalSystem = builtins.replaceStrings ["-darwin"] ["-osx"] pkgs.stdenv.system;
+  cabalPatch = pkgs.fetchpatch {
+    url = "https://patch-diff.githubusercontent.com/raw/haskell/cabal/pull/6055.diff";
+    sha256 = "145g7s3z9q8d18pxgyngvixgsm6gmwh1rgkzkhacy4krqiq0qyvx";
+    stripLen = 1;
+  };
+  project = pkgs.haskell-nix.cabalProject {
+    src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
+    pkg-def-extras = [ pkgs.ghc-boot-packages.${haskellCompiler} ];
+    ghc = pkgs.buildPackages.pkgs.haskell.compiler.${haskellCompiler};
+    modules = [
+      { reinstallableLibGhc = true; }
+      ({ config, ...}: {
+        packages.Cabal.patches = [ cabalPatch ];
+        packages.haddock-api.components.library.doHaddock = false;
+        packages.leksah.components.sublibs.leksah-nogtk.doHaddock = false;
+      })
+    ];
+  };
+  launch-leksah-script = pkgs.writeShellScriptBin "launch-leksah" ''
+    "$@"
+  '';
+  launch-leksah = pkgs.stdenv.mkDerivation {
+      name = "launch-leksah";
+      nativeBuildInputs = with pkgs; [ wrapGAppsHook makeWrapper ];
+      buildInputs = with pkgs; [
+        gnome3.gtk
+        gnome3.dconf
+        gnome3.defaultIconTheme
+        gnome3.gsettings_desktop_schemas
+      ];
+      src = ./linux;
+      buildPhase = ''
+          mkdir -p $out
+        '';
+      installPhase = ''
+        mkdir -p $out/bin
+        ln -s ${launch-leksah-script}/bin/launch-leksah $out/bin
+        cp launch-leksah/Info.plist $out/bin
+        wrapProgram $out/bin/launch-leksah \
+          --prefix 'PATH' ':' "${pkgs.cabal-install}/bin" \
+          --suffix 'PATH' ':' "${project.doctest.components.exes.doctest}/bin" \
+          --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
+          --set 'XDG_DATA_DIRS' ""
+        '';
+  };
+  wrapped-leksah = pkgs.stdenv.mkDerivation {
+      name = "leksah";
+      nativeBuildInputs = with pkgs; [ wrapGAppsHook makeWrapper ];
+      buildInputs = with pkgs; [
+        gnome3.gtk
+        gnome3.dconf
+        gnome3.defaultIconTheme
+        gnome3.gsettings_desktop_schemas
+      ];
+      src = ./linux;
+      buildPhase =
+        if pkgs.stdenv.isLinux then ''
+          mkdir -p $out/share
+          cp -r * $out/share/
+        '' else ''
+          mkdir -p $out
+        '';
+      installPhase = ''
+        mkdir -p $out/bin
+        ln -s ${project.leksah.components.exes.leksah}/bin/leksah $out/bin/leksah
+        wrapProgram $out/bin/leksah \
+          --prefix 'PATH' ':' "${project.leksah-server.components.exes.leksah-server}/bin" \
+          --prefix 'PATH' ':' "${project.vcsgui.components.exes.vcsgui}/bin" \
+          --prefix 'PATH' ':' "${pkgs.cabal-install}/bin" \
+          --suffix 'PATH' ':' "${project.doctest.components.exes.doctest}/bin" \
+          --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
+          --set 'XDG_DATA_DIRS' ""
+      '';
+  };
   shells = {
-    ghc = (hsPkgs.shellFor {
-      packages = ps: with ps; [
-        leksah-server
-        leksah
-        ltk ];
-    }).overrideAttrs (oldAttrs: {
+    ghc = (project.shellFor {}).overrideAttrs (oldAttrs: {
       shellHook = (oldAttrs.shellHook or "") + ''
         unset CABAL_CONFIG
       '';
     });
   };
 in
-  default-nix // {
-    inherit plan-nix shells;
-    inherit (nix-tools._raw) launch-leksah wrapped-leksah;
+  project // {
+    inherit shells launch-leksah wrapped-leksah;
   }
+
