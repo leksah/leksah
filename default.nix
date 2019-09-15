@@ -1,7 +1,7 @@
 { pkgs ? import nixpkgs ({
     overlays = (import (builtins.fetchTarball {
-        url = "https://github.com/input-output-hk/haskell.nix/archive/86c53884fade373147179151c6b401c031d7f662.tar.gz";
-        sha256 = "1ifshwib6hc4qwjr754xg9kz8cwsyric0ab030x237svxhkg7nlq";
+        url = "https://github.com/input-output-hk/haskell.nix/archive/e61ccef60aa3505740a563dff06e8dd48404a205.tar.gz";
+        sha256 = "0fbhqnaqxaf4r57xia1kwpfpq5bbzqqcc476yvhq8z1b2drpqgfp";
       } + "/overlays")
     ) ++ [ (import ./nix/overlays/gtk-debug.nix) ];
     inherit config system crossSystem;
@@ -21,7 +21,7 @@ let
     sha256 = "145g7s3z9q8d18pxgyngvixgsm6gmwh1rgkzkhacy4krqiq0qyvx";
     stripLen = 1;
   };
-  project = pkgs.haskell-nix.cabalProject {
+  project = pkgs.haskell-nix.cabalProject' {
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
     pkg-def-extras = [ pkgs.ghc-boot-packages.${haskellCompiler} ];
     ghc = pkgs.buildPackages.pkgs.haskell.compiler.${haskellCompiler};
@@ -56,7 +56,7 @@ let
         cp launch-leksah/Info.plist $out/bin
         wrapProgram $out/bin/launch-leksah \
           --prefix 'PATH' ':' "${pkgs.cabal-install}/bin" \
-          --suffix 'PATH' ':' "${project.doctest.components.exes.doctest}/bin" \
+          --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
           --set 'XDG_DATA_DIRS' ""
         '';
@@ -80,18 +80,18 @@ let
         '';
       installPhase = ''
         mkdir -p $out/bin
-        ln -s ${project.leksah.components.exes.leksah}/bin/leksah $out/bin/leksah
+        ln -s ${project.hsPkgs.leksah.components.exes.leksah}/bin/leksah $out/bin/leksah
         wrapProgram $out/bin/leksah \
-          --prefix 'PATH' ':' "${project.leksah-server.components.exes.leksah-server}/bin" \
-          --prefix 'PATH' ':' "${project.vcsgui.components.exes.vcsgui}/bin" \
+          --prefix 'PATH' ':' "${project.hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
+          --prefix 'PATH' ':' "${project.hsPkgs.vcsgui.components.exes.vcsgui}/bin" \
           --prefix 'PATH' ':' "${pkgs.cabal-install}/bin" \
-          --suffix 'PATH' ':' "${project.doctest.components.exes.doctest}/bin" \
+          --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
           --set 'XDG_DATA_DIRS' ""
       '';
   };
   shells = {
-    ghc = (project.shellFor {}).overrideAttrs (oldAttrs: {
+    ghc = (project.hsPkgs.shellFor {}).overrideAttrs (oldAttrs: {
       shellHook = (oldAttrs.shellHook or "") + ''
         unset CABAL_CONFIG
       '';
