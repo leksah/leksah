@@ -29,7 +29,7 @@ let
       ({ config, ...}: {
         packages.Cabal.patches = [ cabalPatch ];
         packages.haddock-api.components.library.doHaddock = false;
-        packages.leksah.components.sublibs.leksah-nogtk.doHaddock = false;
+        # packages.leksah.components.sublibs.leksah-nogtk.doHaddock = false;
       })
     ];
   };
