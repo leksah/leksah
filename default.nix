@@ -4,13 +4,14 @@
         sha256 = "0saan4xr614867w59f17625k29inwfy2d00jvirzf800y0dbmfsn";
       } + "/overlays")
     ) ++ [ (import ./nix/overlays/gtk-debug.nix) ];
-    inherit system crossSystem;
+    inherit config system crossSystem;
   })
 , nixpkgs ? builtins.fetchTarball {
     url = "https://github.com/NixOS/nixpkgs/archive/61f0936d1cd73760312712615233cd80195a9b47.tar.gz";
     sha256 = "1fkmp99lxd827km8mk3cqqsfmgzpj0rvaz5hgdmgzzyji70fa2f8";
   }
 , haskellCompiler ? "ghc865"
+, config ? {}
 , system ? builtins.currentSystem
 , crossSystem ? null
 }:
