@@ -1,7 +1,7 @@
 { pkgs ? import nixpkgs ({
     overlays = (import (builtins.fetchTarball {
-        url = "https://github.com/input-output-hk/haskell.nix/archive/033ce181ade5c7414ca7a4c27ece0dd89a861d5d.tar.gz";
-        sha256 = "0saan4xr614867w59f17625k29inwfy2d00jvirzf800y0dbmfsn";
+        url = "https://github.com/input-output-hk/haskell.nix/archive/86c53884fade373147179151c6b401c031d7f662.tar.gz";
+        sha256 = "1ifshwib6hc4qwjr754xg9kz8cwsyric0ab030x237svxhkg7nlq";
       } + "/overlays")
     ) ++ [ (import ./nix/overlays/gtk-debug.nix) ];
     inherit config system crossSystem;
