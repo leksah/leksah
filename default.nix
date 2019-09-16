@@ -91,11 +91,16 @@ let
       '';
   };
   shells = {
-    ghc = (project.hsPkgs.shellFor {}).overrideAttrs (oldAttrs: {
-      shellHook = (oldAttrs.shellHook or "") + ''
-        unset CABAL_CONFIG
-      '';
-    });
+    ghc = (project.hsPkgs.shellFor {
+        packages = ps: with ps; [
+          leksah-server
+          leksah
+          ltk ];
+      }).overrideAttrs (oldAttrs: {
+        shellHook = (oldAttrs.shellHook or "") + ''
+          unset CABAL_CONFIG
+        '';
+      });
   };
 in
   project // {
