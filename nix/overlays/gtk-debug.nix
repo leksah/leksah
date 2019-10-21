@@ -7,6 +7,6 @@ self: super: {
         "--disable-debug"
         "--disable-dependency-tracking"
         "--disable-glibtest"])
-      (super.pkgs.lib.lists.flatten oldAttrs.configureFlags);
+      (super.pkgs.lib.lists.flatten (oldAttrs.configureFlags or []));
   });
 }

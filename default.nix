@@ -1,19 +1,15 @@
-{ pkgs ? import nixpkgs ({
-    overlays = (import (builtins.fetchTarball {
-        url = "https://github.com/input-output-hk/haskell.nix/archive/607be54c62e4133f6f0be62b79dcda7c2bf87d34.tar.gz";
-        sha256 = "1w4gvpm13np8fm4yic5ap9a9a5hvcyrcdhz44g2byd6c0z5waapw";
-      } + "/overlays")
-    ) ++ [ (import ./nix/overlays/gtk-debug.nix) ];
-    inherit config system crossSystem;
+{ pkgs ? import nixpkgs (haskellNixpkgsArgs // {
+    overlays = haskellNixpkgsArgs.overlays ++ [ (import ./nix/overlays/gtk-debug.nix) ];
   })
 , nixpkgs ? builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/61f0936d1cd73760312712615233cd80195a9b47.tar.gz";
-    sha256 = "1fkmp99lxd827km8mk3cqqsfmgzpj0rvaz5hgdmgzzyji70fa2f8";
+    url = "https://github.com/input-output-hk/nixpkgs/archive/d08a74315610096187a4e9da5998ef10e80de370.tar.gz";
+    sha256 = "16i3n5p4h86aswj7y7accmkkgrrkc0xvgy7fl7d3bsv955rc5900";
   }
+, haskellNixpkgsArgs ? import (builtins.fetchTarball {
+    url = "https://github.com/input-output-hk/haskell.nix/archive/e129eb21671671272531baa992c9964ef7a5143e.tar.gz";
+    sha256 = "06mg1hk5zbarsjd16z625fdkhc7165k0jkh7lrkc22qp5b6mf7gq";
+  })
 , haskellCompiler ? "ghc865"
-, config ? {}
-, system ? builtins.currentSystem
-, crossSystem ? null
 }:
 let
   cabalPatch = pkgs.fetchpatch {
@@ -26,7 +22,13 @@ let
     pkg-def-extras = [ pkgs.ghc-boot-packages.${haskellCompiler} ];
     ghc = pkgs.buildPackages.pkgs.haskell.compiler.${haskellCompiler};
     modules = [
-      { reinstallableLibGhc = true; }
+      { reinstallableLibGhc = true;
+        nonReinstallablePkgs =
+          [ "rts" "ghc-heap" "ghc-prim" "integer-gmp" "integer-simple" "base"
+            "deepseq" "array" "ghc-boot-th" "pretty" "template-haskell"
+            # ghcjs custom packages
+            "ghcjs-prim" "ghcjs-th" ];
+      }
       ({ config, ...}: {
         packages.Cabal.patches = [ cabalPatch ];
         packages.haddock-api.components.library.doHaddock = false;

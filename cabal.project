@@ -1,4 +1,4 @@
-index-state: 2019-07-29T00:00:00Z
+index-state: 2019-10-12T00:00:00Z
 
 packages:
  ./
@@ -40,12 +40,6 @@ source-repository-package
   location: https://github.com/vincenthz/hs-git.git
   tag: 310d84f424936a86e4d74897fb3d40fc95088520
   --sha256: 0i27y5w6r3nbqghm9g9brma8d1yrnfaq7m3j61han9mzypn543s3
-
-source-repository-package
-  type: git
-  location: https://github.com/reflex-frp/reflex
-  tag: eefb7761f6b5dfe30b4e97310cb15463d889506a
-  --sha256: 1q17fbidxbjkab0f8xm9wy4dp8by0b7v9nqlyq2fbazklm6g4m8b
 
 source-repository-package
   type: git
