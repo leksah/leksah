@@ -57,3 +57,5 @@ package leksah
 -- extra-framework-dirs: /System/Library/Frameworks
 --package jsaddle-wkwebview
 -- extra-framework-dirs: /System/Library/Frameworks
+
+write-ghc-environment-files: never

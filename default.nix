@@ -1,15 +1,16 @@
 { pkgs ? import nixpkgs (haskellNixpkgsArgs // {
     overlays = haskellNixpkgsArgs.overlays ++ [ (import ./nix/overlays/gtk-debug.nix) ];
-  })
+  } // (if system == null then {} else { inherit system; }))
 , nixpkgs ? builtins.fetchTarball {
     url = "https://github.com/input-output-hk/nixpkgs/archive/d08a74315610096187a4e9da5998ef10e80de370.tar.gz";
     sha256 = "16i3n5p4h86aswj7y7accmkkgrrkc0xvgy7fl7d3bsv955rc5900";
   }
 , haskellNixpkgsArgs ? import (builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/e129eb21671671272531baa992c9964ef7a5143e.tar.gz";
-    sha256 = "06mg1hk5zbarsjd16z625fdkhc7165k0jkh7lrkc22qp5b6mf7gq";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/46fad8195472cf52f1604930003a43bf8f5d3d56.tar.gz";
+    sha256 = "14f8iyc4f051ankv845mafp0rba8ih5l692cmi0khfdfbh1xq1qd";
   })
 , haskellCompiler ? "ghc865"
+, system    ? null
 }:
 let
   cabalPatch = pkgs.fetchpatch {
@@ -18,6 +19,7 @@ let
     stripLen = 1;
   };
   project = pkgs.haskell-nix.cabalProject' {
+    name = "leksah";
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
     pkg-def-extras = [ pkgs.ghc-boot-packages.${haskellCompiler} ];
     ghc = pkgs.buildPackages.pkgs.haskell.compiler.${haskellCompiler};
@@ -106,6 +108,6 @@ let
   };
 in
   project // {
-    inherit shells launch-leksah wrapped-leksah;
+    inherit shells launch-leksah wrapped-leksah pkgs;
   }
 
