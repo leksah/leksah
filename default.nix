@@ -6,8 +6,8 @@
     sha256 = "16i3n5p4h86aswj7y7accmkkgrrkc0xvgy7fl7d3bsv955rc5900";
   }
 , haskellNixpkgsArgs ? import (builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/46fad8195472cf52f1604930003a43bf8f5d3d56.tar.gz";
-    sha256 = "14f8iyc4f051ankv845mafp0rba8ih5l692cmi0khfdfbh1xq1qd";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/2d1f62b4a9514d5431645f7618e020c648e0c97d.tar.gz";
+    sha256 = "19izgc7w7a5l2nkhzm86qlki3r9xwfynd717zc05gbwb518bc912";
   })
 , haskellCompiler ? "ghc865"
 , system    ? null
@@ -35,6 +35,11 @@ let
         packages.Cabal.patches = [ cabalPatch ];
         packages.haddock-api.components.library.doHaddock = false;
         # packages.leksah.components.sublibs.leksah-nogtk.doHaddock = false;
+        packages.gi-gtk.components.setup.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
+        packages.gi-gtkosxapplication.components.setup.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
+        packages.gi-gtksource.components.setup.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
+        packages.gi-gtk-hs.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
+        packages.vcsgui.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
       })
     ];
   };
@@ -101,9 +106,7 @@ let
           leksah
           ltk ];
       }).overrideAttrs (oldAttrs: {
-        shellHook = (oldAttrs.shellHook or "") + ''
-          unset CABAL_CONFIG
-        '';
+        buildInputs = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
       });
   };
 in
