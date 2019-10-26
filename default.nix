@@ -6,8 +6,8 @@
     sha256 = "16i3n5p4h86aswj7y7accmkkgrrkc0xvgy7fl7d3bsv955rc5900";
   }
 , haskellNixpkgsArgs ? import (builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/2d1f62b4a9514d5431645f7618e020c648e0c97d.tar.gz";
-    sha256 = "19izgc7w7a5l2nkhzm86qlki3r9xwfynd717zc05gbwb518bc912";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/4a24da99c1c9783414372bdd0686f79f4e60bfe9.tar.gz";
+    sha256 = "10w8mixdkqd194i68h22y11nl46imnc26f8xgxra33slr040paxb";
   })
 , haskellCompiler ? "ghc865"
 , system    ? null
@@ -40,6 +40,9 @@ let
         packages.gi-gtksource.components.setup.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
         packages.gi-gtk-hs.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
         packages.vcsgui.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
+        packages.vcsgui.components.exes.vcsgui.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
+        packages.ltk.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
+        packages.leksah.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.CoreGraphics;
       })
     ];
   };
