@@ -6,8 +6,8 @@
     sha256 = "16i3n5p4h86aswj7y7accmkkgrrkc0xvgy7fl7d3bsv955rc5900";
   }
 , haskellNixpkgsArgs ? import (builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/01b390e5a64e9123118c13ad476d9c2ff819ce4f.tar.gz";
-    sha256 = "0y4h0cdrkbmrq8sya8rhmxqfb7za5zfsb0zzgx9na8n543hkx8wf";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/023863aeca4db7acbc4cd2e4c5e675ac732a8780.tar.gz";
+    sha256 = "1ip1q50qmmysffcdmnplfq4glifby0djh4vws46wcgc9dz8n8gp5";
   })
 , haskellCompiler ? "ghc865"
 , system    ? null
