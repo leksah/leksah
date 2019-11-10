@@ -6,8 +6,8 @@
     sha256 = "16i3n5p4h86aswj7y7accmkkgrrkc0xvgy7fl7d3bsv955rc5900";
   }
 , haskellNixpkgsArgs ? import (builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/023863aeca4db7acbc4cd2e4c5e675ac732a8780.tar.gz";
-    sha256 = "1ip1q50qmmysffcdmnplfq4glifby0djh4vws46wcgc9dz8n8gp5";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/7d96b156c53bc86f3ad79d8588575ee0dc774f3c.tar.gz";
+    sha256 = "1nnjz2a0m97sjjq99zixgar7lf4vx1mkjhd80ngx1a7q87f28sa7";
   })
 , haskellCompiler ? "ghc865"
 , system    ? null
@@ -22,7 +22,7 @@ let
     name = "leksah";
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
     pkg-def-extras = [ pkgs.ghc-boot-packages.${haskellCompiler} ];
-    ghc = pkgs.buildPackages.pkgs.haskell.compiler.${haskellCompiler};
+    ghc = pkgs.buildPackages.pkgs.haskell-nix.compiler.${haskellCompiler};
     modules = [
       { reinstallableLibGhc = true;
         nonReinstallablePkgs =
