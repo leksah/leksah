@@ -172,7 +172,7 @@ In the first start dialog you are asked for:
 
 Leksah collects information about all installed packages on your system
 that will take some time (minutes to half an hour) the first time.
-Errors occuring in this metadata collection step indicate only that
+Errors occurring in this metadata collection step indicate only that
 Leksah has not succeeded to extract the source locations and comments
 from a module or package; they are not consequential, except that some
 metainformation may be missing. The metadata is cached and future starts
