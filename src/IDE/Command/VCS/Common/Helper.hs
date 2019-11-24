@@ -38,7 +38,7 @@ import qualified Data.Map as Map
 
 {- |
     Runs given vcs-action using the vcs-conf set in the ReaderT.
-    Provides a basic exception handler for any errors occuring.
+    Provides a basic exception handler for any errors occurring.
 -}
 createActionFromContext :: VCS.Ctx()    -- ^ computation to execute, i.e. showCommit
                         -> Types.VCSAction ()

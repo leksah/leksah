@@ -883,7 +883,7 @@ By default the Leksah server terminates with the last connection.
 \begin_layout Standard
 Leksah collects information about all installed packages on your system
  that will take some time (minutes to half an hour) the first time.
- Errors occuring in this metadata collection step indicate only that Leksah
+ Errors occurring in this metadata collection step indicate only that Leksah
  has not succeeded to extract the source locations and comments from a module
  or package; they are not consequential, except that some metainformation
  may be missing.
@@ -5273,7 +5273,7 @@ The Keymap file
 \begin_layout LyX-Code
 
 \size tiny
---The defined values for the keys can can be found at
+--The defined values for the keys can be found at
 \end_layout
 
 \begin_layout LyX-Code
