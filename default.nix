@@ -16,6 +16,8 @@ let
     sha256 = "145g7s3z9q8d18pxgyngvixgsm6gmwh1rgkzkhacy4krqiq0qyvx";
     stripLen = 1;
   };
+  frameworks = pkgs.lib.optionals pkgs.stdenv.isDarwin (
+    with pkgs.darwin.apple_sdk.frameworks; [ Cocoa Carbon CoreGraphics ]);
   project = pkgs.haskell-nix.cabalProject' {
     name = "leksah";
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
@@ -27,14 +29,14 @@ let
         packages.Cabal.patches = [ cabalPatch ];
         packages.haddock-api.components.library.doHaddock = false;
         # packages.leksah.components.sublibs.leksah-nogtk.doHaddock = false;
-        packages.gi-gtk.components.setup.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
-        packages.gi-gtkosxapplication.components.setup.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
-        packages.gi-gtksource.components.setup.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
-        packages.gi-gtk-hs.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Cocoa;
-        packages.vcsgui.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
-        packages.vcsgui.components.exes.vcsgui.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
-        packages.ltk.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
-        packages.leksah.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.CoreGraphics;
+        packages.gi-gtk.components.setup.frameworks = frameworks;
+        packages.gi-gtkosxapplication.components.setup.frameworks = frameworks;
+        packages.gi-gtksource.components.setup.frameworks = frameworks;
+        packages.gi-gtk-hs.components.library.frameworks = frameworks;
+        packages.vcsgui.components.library.frameworks = frameworks;
+        packages.vcsgui.components.exes.vcsgui.frameworks = frameworks;
+        packages.ltk.components.library.frameworks = frameworks;
+        packages.leksah.components.library.frameworks = frameworks;
         packages.leksah.components.library.libs = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.libobjc;
       })
     ];
