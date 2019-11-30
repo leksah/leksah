@@ -35,6 +35,7 @@ let
         packages.vcsgui.components.exes.vcsgui.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
         packages.ltk.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
         packages.leksah.components.library.frameworks = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.CoreGraphics;
+        packages.leksah.components.library.libs = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.libobjc;
       })
     ];
   };
