@@ -1,16 +1,14 @@
 { pkgs ? import nixpkgs (haskellNixpkgsArgs // {
     overlays = haskellNixpkgsArgs.overlays ++ [ (import ./nix/overlays/gtk-debug.nix) ];
   } // (if system == null then {} else { inherit system; }))
-, nixpkgs ? builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/nixpkgs/archive/31aa5316ca232a53667790a99e8b1e76252e065c.tar.gz";
-    sha256 = "0g0r473rdrh5vsdvr45nmfs6ibp0pqyzbw9f0iv6r0jkg6jjiykr";
+, nixpkgs ? haskellNixSrc + "/nixpkgs"
+, haskellNixpkgsArgs ? import haskellNixSrc
+, haskellNixSrc ? builtins.fetchTarball {
+    url = "https://github.com/input-output-hk/haskell.nix/archive/d23547027242fc0d7da4591b1bdf8e5aed96a770.tar.gz";
+    sha256 = "0ygjzyfg9w4jilhb09607hmy08azq0rvfj49yyzcml0qzy6zgvc6";
   }
-, haskellNixpkgsArgs ? import (builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/c2be4abc81899d7f61b23eeb1db7ffe56989db8f.tar.gz";
-    sha256 = "1dyvqgglsmqw80i8qa0xh375ixhwzd1im476l4s9l690rddg10bv";
-  })
 , haskellCompiler ? "ghc865"
-, system    ? null
+, system ? null
 }:
 let
   cabalPatch = pkgs.fetchpatch {
@@ -24,13 +22,7 @@ let
     pkg-def-extras = [ pkgs.ghc-boot-packages.${haskellCompiler} ];
     ghc = pkgs.buildPackages.pkgs.haskell-nix.compiler.${haskellCompiler};
     modules = [
-      { reinstallableLibGhc = true;
-        nonReinstallablePkgs =
-          [ "rts" "ghc-heap" "ghc-prim" "integer-gmp" "integer-simple" "base"
-            "deepseq" "array" "ghc-boot-th" "pretty" "template-haskell"
-            # ghcjs custom packages
-            "ghcjs-prim" "ghcjs-th" ];
-      }
+      { reinstallableLibGhc = true; }
       ({ config, ...}: {
         packages.Cabal.patches = [ cabalPatch ];
         packages.haddock-api.components.library.doHaddock = false;
