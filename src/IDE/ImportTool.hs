@@ -40,6 +40,7 @@ import Data.Functor.Identity (Identity(..))
 import Data.List (intercalate, sort, nub, nubBy)
 import Data.Maybe
        (mapMaybe, fromMaybe, catMaybes, fromJust, isNothing, isJust)
+import qualified Data.Set as S (singleton)
 import Data.Text (Text)
 import qualified Data.Text as T
        (takeWhile, stripPrefix, lines, dropWhile, empty, pack, unpack)
@@ -57,7 +58,8 @@ import Distribution.PackageDescription.Parsec
 import Distribution.PackageDescription.Parse
        (readGenericPackageDescription)
 #endif
-import Distribution.Text (simpleParse, display, disp)
+import Distribution.Pretty (prettyShow)
+import Distribution.Text (simpleParse, display)
 import Distribution.Verbosity (normal)
 import Distribution.Version
        (anyVersion, orLaterVersion, intersectVersionRanges,
@@ -117,6 +119,7 @@ import IDE.Metainfo.Provider
 import IDE.Pane.SourceBuffer
 import IDE.TextEditor (delete, setModified, getIterAtLine)
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
+import IDE.Utils.GHCUtils (mkDependency, LibraryName(..))
 import IDE.Utils.ServerConnection
 
 readMaybe :: Read a => Text -> Maybe a
@@ -280,10 +283,10 @@ addPackages errors = do
                 condTreeConstraints = deps <> [d],
                 condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
     -- Empty version is probably only going to happen for ghc-prim
-    dep p | null . versionNumbers $ packageVersion p = Dependency (packageName p) anyVersion
-    dep p = Dependency (packageName p) (
+    dep p | null . versionNumbers $ packageVersion p = mkDependency (packageName p) anyVersion (S.singleton LMainLibName)
+    dep p = mkDependency (packageName p) (
         intersectVersionRanges (orLaterVersion (packageVersion p))
-                               (earlierVersion (majorAndMinor (packageVersion p))))
+                               (earlierVersion (majorAndMinor (packageVersion p)))) (S.singleton LMainLibName)
 
     majorAndMinor v = mkVersion . nextMinor $ versionNumbers v
     nextMinor = nextMinor' . (++[0,0])
@@ -309,7 +312,7 @@ addImport' nis filePath descr descrList continuation =  do
         (Just _buf,Just mod') ->
             inActiveBufContext () $ \_ gtkbuf _ -> do
                 ideMessage Normal $ "addImport " <> T.pack (show $ dscName descr) <> " from "
-                    <> T.pack (render $ disp mod')
+                    <> T.pack (prettyShow mod')
                 belongsToPackages filePath >>= \case
                     [] -> return ()
                     (project, package):_ ->
@@ -496,7 +499,7 @@ moduleFields list ident =
 
 selectModuleDialog :: Window -> [Descr] -> Text -> Maybe Text -> Maybe Descr -> IO (Maybe Descr)
 selectModuleDialog parentWindow list id'' mbQual mbDescr =
-    let selectionList       =  (nub . sort) $ map (T.pack . render . disp . modu . fromJust . dsMbModu) list
+    let selectionList       =  (nub . sort) $ map (T.pack . prettyShow . modu . fromJust . dsMbModu) list
     in if length selectionList == 1
         then return (Just (head list))
         else do
@@ -504,7 +507,7 @@ selectModuleDialog parentWindow list id'' mbQual mbDescr =
                                             Nothing -> Nothing
                                             Just descr -> case dsMbModu descr of
                                                             Nothing -> Nothing
-                                                            Just pm -> Just ((T.pack . render . disp . modu) pm)
+                                                            Just pm -> Just ((T.pack . prettyShow . modu) pm)
             let realSelectionString =  case mbSelectedString of
                                             Nothing -> head selectionList
                                             Just str -> if str `elem` selectionList
@@ -533,7 +536,7 @@ selectModuleDialog parentWindow list id'' mbQual mbDescr =
                 (ResponseTypeOk,Just v)    -> return (Just (head
                                             (filter (\e -> case dsMbModu e of
                                                 Nothing -> False
-                                                Just pm -> (T.pack . render . disp . modu) pm == v) list)))
+                                                Just pm -> (T.pack . prettyShow . modu) pm == v) list)))
                 _                      -> return Nothing
 
 data HiddenModuleResult = HiddenModuleResult {

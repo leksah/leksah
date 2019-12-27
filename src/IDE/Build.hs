@@ -1,6 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wall #-}
 -----------------------------------------------------------------------------
 --
@@ -48,11 +49,12 @@ import IDE.Core.Types
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Arrow ((***))
 import Data.Text (Text)
-import Distribution.Text (disp)
 import qualified Data.Text as T (pack, unpack)
 import System.Log.Logger (debugM)
 import qualified Control.Arrow as Arrow (Arrow(..))
 import qualified Data.Function as F (on)
+import Distribution.Pretty (prettyShow)
+import IDE.Utils.GHCUtils (viewDependency)
 
 -- import Debug.Trace (trace)
 trace :: a -> b -> b
@@ -246,7 +248,7 @@ constrDepGraph packages = trace (T.unpack $ "depGraph : " <> showGraph depGraph)
 showGraph :: MakeGraph -> Text
 showGraph mg =
     T.pack $ show
-        $ map (\(k, v) -> (k, map (disp . ipdPackageId) v)) mg
+        $ map (\(k, v) -> (k, map (prettyShow . ipdPackageId) v)) mg
 
 --showTopSorted :: [IDEPackage] -> Text
 --showTopSorted = T.pack . show . map (disp .ipdPackageId)
@@ -257,7 +259,7 @@ showGraph mg =
 depToTarget :: [IDEPackage] -> Dependency -> Maybe IDEPackage
 depToTarget list dep = find (doesMatch dep) list
         where
-        doesMatch (Dependency name versionRange) thePack =
+        doesMatch (viewDependency -> (name, versionRange, _)) thePack =
             name == pkgName (ipdPackageId thePack)
             &&  withinRange (pkgVersion (ipdPackageId thePack)) versionRange
 

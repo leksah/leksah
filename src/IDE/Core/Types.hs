@@ -199,7 +199,6 @@ import System.FilePath
 import IDE.Core.CTypes
 import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
-import Distribution.Text (disp)
 import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
@@ -245,6 +244,7 @@ import IDE.Utils.Project
        (ProjectKey(..), pjCabalFile, pjStackFile, pjCustomDir, pjDir,
         CabalProject(..), StackProject(..), CustomProject(..), pjIsCabal,
         pjIsStack, pjFileOrDir, pjFile, filePathToProjectKey)
+import Distribution.Pretty (prettyShow)
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -568,7 +568,7 @@ data IDEPackage     =   IDEPackage {
     deriving (Eq)
 
 instance Show IDEPackage where
-    show p = "IDEPackage for " ++ (render . disp) (ipdPackageId p)
+    show p = "IDEPackage for " ++ prettyShow (ipdPackageId p)
 
 -- | The directory of the cabal file
 ipdPackageDir :: IDEPackage -> FilePath

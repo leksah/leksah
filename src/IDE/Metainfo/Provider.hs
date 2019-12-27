@@ -3,6 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider
@@ -57,6 +58,7 @@ import qualified Data.Set as Set
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 import Distribution.Version
+import qualified Data.Set as S (singleton)
 
 import Control.DeepSeq
 import IDE.Utils.FileUtils
@@ -109,6 +111,7 @@ import qualified Control.Arrow as A (Arrow(..))
 import Data.Function (on)
 import IDE.Utils.CabalPlan (unitIdToPackageId)
 import IDE.Utils.Project (ProjectKey)
+import IDE.Utils.GHCUtils (viewDependency, mkDependency, LibraryName(..))
 
 -- ---------------------------------------------------------------------
 -- Updating metadata
@@ -523,7 +526,7 @@ findFittingPackages
 findFittingPackages knownPackages =
     concatMap (fittingKnown knownPackages) . concatMap addReexportDeps
     where
-    fittingKnown packages (Dependency dname versionRange) =
+    fittingKnown packages (viewDependency -> (dname, versionRange, _)) =
         -- find matching packages
         let filtered =  filter (\ (PackageIdentifier name version) ->
                                     name == dname && withinRange version versionRange)
@@ -536,9 +539,9 @@ findFittingPackages knownPackages =
 -- Some packages rexport modules and we don't handle that correctly yet.
 -- For now we should just consider these packages as "fitting".
 addReexportDeps :: Dependency -> [Dependency]
-addReexportDeps d@(Dependency dname _versionRange)
-    | dname == mkPackageName "ghcjs-dom"  = [d, Dependency (mkPackageName "jsaddle-dom")     anyVersion]
-    | dname == mkPackageName "reflex-dom" = [d, Dependency (mkPackageName "reflex-dom-core") anyVersion]
+addReexportDeps d@(viewDependency -> (dname, _versionRange, _libs))
+    | dname == mkPackageName "ghcjs-dom"  = [d, mkDependency (mkPackageName "jsaddle-dom")     anyVersion (S.singleton LMainLibName)]
+    | dname == mkPackageName "reflex-dom" = [d, mkDependency (mkPackageName "reflex-dom-core") anyVersion (S.singleton LMainLibName)]
 addReexportDeps d = [d]
 
 -- ---------------------------------------------------------------------

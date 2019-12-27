@@ -4,10 +4,10 @@ if [ $# -eq 0 ]
   then
     echo "Usage: ./leksah-nix.sh GHCVER [LEKSAH_ARGS]"
     echo
-    echo "Examples: ./leksah-nix.sh ghc843"
-    echo "          ./leksah-nix.sh ghc822 --verbosity=DEBUG"
+    echo "Examples: ./leksah-nix.sh ghc865"
+    echo "          ./leksah-nix.sh ghc881 --verbosity=DEBUG"
     echo
-    echo "For details of other LEKSAH_ARGS run: ./leksah-nix ghc822 --help"
+    echo "For details of other LEKSAH_ARGS run: ./leksah-nix ghc865 --help"
     exit 1
 fi
 

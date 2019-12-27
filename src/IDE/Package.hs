@@ -206,6 +206,15 @@ import Distribution.PackageDescription.Parse
 import Distribution.Text (display)
 #endif
 import qualified System.FilePath.Glob as Glob (globDir, compile)
+#if MIN_VERSION_Cabal(3,0,0)
+import Distribution.Types.LibraryName (libraryNameString)
+#endif
+
+#if !MIN_VERSION_Cabal(3,0,0)
+type LibraryName = Maybe UnqualComponentName
+libraryNameString :: LibraryName -> Maybe UnqualComponentName
+libraryNameString = id
+#endif
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -1235,7 +1244,7 @@ idePackageFromPath' ipdCabalFile = do
                 ipdSrcDirs          = case nub $ concatMap hsSourceDirs (allBuildInfo' packageD) of
                                             [] -> [".","src"]
                                             l -> l
-                ipdSubLibraries     = [ T.pack . unUnqualComponentName $ e | Just e <- libName <$> subLibraries packageD ]
+                ipdSubLibraries     = [ T.pack . unUnqualComponentName $ e | Just e <- libraryNameString . libName <$> subLibraries packageD ]
                 ipdExes             = [ T.pack . unUnqualComponentName $ exeName e | e <- executables packageD ]
                 ipdExtensions       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
                 ipdTests            = [ T.pack . unUnqualComponentName $ testName t | t <- testSuites packageD ]

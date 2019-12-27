@@ -190,6 +190,7 @@ import Data.Aeson (FromJSON(..), ToJSON(..))
 import GHC.Generics (Generic)
 import Distribution.Types.UnqualComponentName
        (unUnqualComponentName)
+import IDE.Utils.GHCUtils (viewDependency)
 
 -- | A modules pane description
 --
@@ -774,7 +775,7 @@ filterBlacklist dependencies packageDescr =
     let packageId'  =   pdPackage packageDescr
         name        =   pkgName packageId'
         version     =   pkgVersion packageId'
-    in  isNothing $ find (\ (Dependency str vr) -> str == name && withinRange version vr)
+    in  isNothing $ find (\ (viewDependency -> (str, vr, _)) -> str == name && withinRange version vr)
                     dependencies
 
 

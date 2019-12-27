@@ -56,6 +56,7 @@ import Data.List (isPrefixOf, sort, nub, sortBy)
 import Data.List.Split (splitOn)
 import Data.Maybe
        (isJust, fromMaybe, mapMaybe, fromJust, isNothing, listToMaybe)
+import qualified Data.Set as S (singleton)
 import Data.Text (Text)
 import qualified Data.Text as T
        (replace, span, splitAt, isPrefixOf, length, toLower, lines,
@@ -64,7 +65,11 @@ import qualified Data.Text.IO as T (writeFile, readFile)
 import Data.Typeable (Typeable)
 import Data.Void (Void)
 
-import Distribution.Compiler (CompilerFlavor(..))
+import Distribution.Compiler (CompilerFlavor(..)
+#if MIN_VERSION_Cabal(3,0,0)
+       , PerCompilerFlavor(..)
+#endif
+        )
 import Distribution.License (License(..))
 import Distribution.ModuleName (ModuleName)
 import Distribution.Package
@@ -79,6 +84,9 @@ import Distribution.Simple (Extension(..), VersionRange, anyVersion)
 import Distribution.Text (simpleParse, display)
 import Distribution.Types.ExecutableScope (ExecutableScope(..))
 import Distribution.Types.ForeignLib (ForeignLib(..))
+#if MIN_VERSION_Cabal(3,0,0)
+import Distribution.Types.LibraryVisibility (LibraryVisibility(..))
+#endif
 import Distribution.Types.UnqualComponentName
        (UnqualComponentName, mkUnqualComponentName,
         unUnqualComponentName)
@@ -154,7 +162,9 @@ import IDE.Utils.ExternalTool (runExternalTool')
 import IDE.Utils.FileUtils
        (isEmptyDirectory, cabalFileName, allModules)
 import IDE.Utils.GUIUtils
-        (__, printf, chooseDir, chooseFile, showYesNoDialog, showConfirmDialog, showErrorDialog)
+        (__, printf, chooseDir, chooseFile, showYesNoDialog, showConfirmDialog,
+         showErrorDialog)
+import IDE.Utils.GHCUtils (mkDependency, libraryNameToMaybe, maybeOrLibraryName, LibraryName(..))
 import IDE.Utils.Tool (ToolOutput(..))
 
 #if !MIN_VERSION_Cabal(2,4,0)
@@ -222,8 +232,13 @@ toGenericPackageDescription pd =
             condTreeData = fl { foreignLibBuildInfo = (foreignLibBuildInfo fl) { targetBuildDepends = allBuildDepends pd } },
             condTreeConstraints = [],
             condTreeComponents = []})
+#if MIN_VERSION_Cabal(3,0,0)
+    buildCondTreeSubLibraries Library{libName = LMainLibName} = []
+    buildCondTreeSubLibraries sl@Library{libName = LSubLibName ln} = [
+#else
     buildCondTreeSubLibraries Library{libName = Nothing} = []
     buildCondTreeSubLibraries sl@Library{libName = Just ln} = [
+#endif
         (ln, CondNode {
             condTreeData = sl { libBuildInfo = (libBuildInfo sl) { targetBuildDepends = allBuildDepends pd } },
             condTreeConstraints = [],
@@ -443,8 +458,12 @@ packageNew' workspaceDir projects log' activateAction = do
                               , modulePath = "Main.hs"
                               , buildInfo  = emptyBuildInfo {
                                     hsSourceDirs       = ["src"]
-                                  , targetBuildDepends = [Dependency (mkPackageName "base") anyVersion]
+                                  , targetBuildDepends = [mkDependency (mkPackageName "base") anyVersion (S.singleton LMainLibName)]
+#if MIN_VERSION_Cabal(3,0,0)
+                                  , options            = PerCompilerFlavor ["-ferror-spans"] []
+#else
                                   , options            = [(GHC, ["-ferror-spans"])]
+#endif
                                   , defaultLanguage    = Just Haskell2010}}]
                           , testSuites = [emptyTestSuite {
                                     testName = mkUnqualComponentName $ "test-" ++ T.unpack newPackageName
@@ -452,10 +471,14 @@ packageNew' workspaceDir projects log' activateAction = do
                                   , testBuildInfo = emptyBuildInfo {
                                         hsSourceDirs    = ["test"]
                                       , targetBuildDepends = [
-                                            Dependency (mkPackageName "base") anyVersion
-                                          , Dependency (mkPackageName "QuickCheck") anyVersion
-                                          , Dependency (mkPackageName "doctest") anyVersion]
+                                            mkDependency (mkPackageName "base") anyVersion (S.singleton LMainLibName)
+                                          , mkDependency (mkPackageName "QuickCheck") anyVersion (S.singleton LMainLibName)
+                                          , mkDependency (mkPackageName "doctest") anyVersion (S.singleton LMainLibName)]
+#if MIN_VERSION_Cabal(3,0,0)
+                                      , options            = PerCompilerFlavor ["-ferror-spans"] []
+#else
                                       , options            = [(GHC, ["-ferror-spans"])]
+#endif
                                       , defaultLanguage = Just Haskell2010}}]
                           , benchmarks =  []
                           } dirName modules (activateAction True mbProject)
@@ -615,9 +638,22 @@ fromEditor (PDE pd exes'
                                         else Benchmark (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! bii)) benchmarks'
             mbLib = case mbLib' of
                     Nothing -> Nothing
-                    Just (Library' ln mn rmn s b bii) -> if bii + 1 > length buildInfos
-                                        then Just (Library (mkUnqualComponentName . T.unpack <$> ln) mn rmn s b (buildInfos !! (length buildInfos - 1)))
-                                        else Just (Library (mkUnqualComponentName . T.unpack <$> ln) mn rmn s b (buildInfos !! bii))
+                    Just (Library' ln mn rmn s b
+#if MIN_VERSION_Cabal(3,0,0)
+                      vis
+#endif
+                      bii) -> if bii + 1 > length buildInfos
+
+                                        then Just (Library (maybeOrLibraryName $ mkUnqualComponentName . T.unpack <$> ln) mn rmn s b
+#if MIN_VERSION_Cabal(3,0,0)
+                                            vis
+#endif
+                                            (buildInfos !! (length buildInfos - 1)))
+                                        else Just (Library (maybeOrLibraryName $ mkUnqualComponentName . T.unpack <$> ln) mn rmn s b
+#if MIN_VERSION_Cabal(3,0,0)
+                                            vis
+#endif
+                                            (buildInfos !! bii))
     in pd {
         library = mbLib
       , executables = exes
@@ -636,7 +672,15 @@ toEditor pd =
             bis = exeBis ++ testBis ++ benchmarkBis
             (mbLib,bis2) = case library pd of
                     Nothing                -> (Nothing,bis)
-                    Just (Library ln mn rmn s b bi) -> (Just (Library' (T.pack . unUnqualComponentName <$> ln) (sort mn) rmn s b (length bis)), bis ++ [bi])
+                    Just (Library ln mn rmn s b
+#if MIN_VERSION_Cabal(3,0,0)
+                          vis
+#endif
+                          bi) -> (Just (Library' (T.pack . unUnqualComponentName <$> libraryNameToMaybe ln) (sort mn) rmn s b
+#if MIN_VERSION_Cabal(3,0,0)
+                          vis
+#endif
+                          (length bis)), bis ++ [bi])
             bis3 = if null bis2
                         then [emptyBuildInfo]
                         else bis2
@@ -1081,6 +1125,12 @@ update bis index func =
                         else bi)
         (zip bis [0..length bis - 1])
 
+#if MIN_VERSION_Cabal(3,0,0)
+perGhc, perGhcjs :: PerCompilerFlavor a -> a
+perGhc (PerCompilerFlavor ghc _) = ghc
+perGhcjs (PerCompilerFlavor _ ghcjs) = ghcjs
+#endif
+
 buildInfoD :: Maybe FilePath -> [ModuleName] -> Int -> [(Text,FieldDescription PackageDescriptionEd)]
 buildInfoD fp modules i = [
     (T.pack $ printf (__ "%s Build Info") (show (i + 1)), VFD emptyParams [
@@ -1116,6 +1166,44 @@ buildInfoD fp modules i = [
             (modulesEditor modules)
     ]),
     (T.pack $ printf (__ "%s Compiler ") (show (i + 1)), VFD emptyParams [
+#if MIN_VERSION_Cabal(3,0,0)
+        mkField
+            (paraName <<<- ParaName (__ "Options for GHC")
+           $ emptyParams)
+            (perGhc . options . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = PerCompilerFlavor a (perGhcjs (options bi))})})
+            optsEditor
+     ,  mkField
+            (paraName <<<- ParaName (__ "Additional options for GHC when built with profiling")
+           $ emptyParams)
+            (perGhc . profOptions . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{profOptions = PerCompilerFlavor a (perGhcjs (profOptions bi))})})
+            optsEditor
+     ,  mkField
+            (paraName <<<- ParaName (__ "Additional options for GHC when the package is built as shared library")
+           $ emptyParams)
+            (perGhc . sharedOptions . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{sharedOptions = PerCompilerFlavor a (perGhcjs (sharedOptions bi))})})
+            optsEditor
+     ,  mkField
+            (paraName <<<- ParaName (__ "Options for GHCJS")
+           $ emptyParams)
+            (perGhcjs . options . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = PerCompilerFlavor (perGhc (options bi)) a})})
+            optsEditor
+     ,  mkField
+            (paraName <<<- ParaName (__ "Additional options for GHCJS when built with profiling")
+           $ emptyParams)
+            (perGhcjs . profOptions . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{profOptions = PerCompilerFlavor (perGhc (profOptions bi)) a})})
+            optsEditor
+     ,  mkField
+            (paraName <<<- ParaName (__ "Additional options for GHCJS when the package is built as shared library")
+           $ emptyParams)
+            (perGhcjs . sharedOptions . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{sharedOptions = PerCompilerFlavor (perGhc (sharedOptions bi)) a})})
+            optsEditor
+#else
         mkField
             (paraName  <<<- ParaName (__ "Options for haskell compilers")
             $ paraOrientation <<<- ParaOrientation OrientationVertical
@@ -1145,6 +1233,7 @@ buildInfoD fp modules i = [
             (sharedOptions . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{sharedOptions = a})})
             compilerOptsEditor
+#endif
     ]),
     (T.pack $ printf (__ "%s Extensions ") (show (i + 1)), VFD emptyParams [
         mkField
@@ -1498,6 +1587,9 @@ data Library' = Library'{
 ,   reexportedModules' :: [ModuleReexport]
 ,   signatures'        :: [ModuleName]
 ,   libExposed'        :: Bool
+#if MIN_VERSION_Cabal(3,0,0)
+,   libVisibility'     :: LibraryVisibility
+#endif
 ,   libBuildInfoIdx    :: Int}
     deriving (Show, Eq)
 
@@ -1520,8 +1612,12 @@ data Benchmark' = Benchmark'{
 ,   benchmarkBuildInfoIdx :: Int}
     deriving (Show, Eq)
 
-instance Default Library'
-    where def =  Library' Nothing [] [] [] True def
+instance Default Library' where
+  def = Library' Nothing [] [] [] True
+#if MIN_VERSION_Cabal(3,0,0)
+    LibraryVisibilityPrivate
+#endif
+    def
 
 instance Default Executable'
     where def = Executable' "" def mempty def
@@ -1535,7 +1631,15 @@ instance Default Benchmark'
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor _fp modules numBuildInfos para noti = do
     (wid,inj,ext) <-
+#if MIN_VERSION_Cabal(3,0,0)
+        tupel3Editor
+            (boolEditor,
+                    paraName <<<- ParaName (__ "Public")
+                    $ paraSynopsis <<<- ParaSynopsis (__ "Whether this multilib can be dependent from outside?")
+                    $ emptyParams)
+#else
         pairEditor
+#endif
             (tupel3Editor
                 (boolEditor,
                     paraName <<<- ParaName (__ "Exposed")
@@ -1567,7 +1671,14 @@ libraryEditor _fp modules numBuildInfos para noti = do
             (paraOrientation <<<- ParaOrientation OrientationVertical
             $ emptyParams)
             noti
-    let pinj (Library' ln em rmn s exp' bi) = inj (
+    let pinj (Library' ln em rmn s exp'
+#if MIN_VERSION_Cabal(3,0,0)
+               vis
+#endif
+               bi) = inj (
+#if MIN_VERSION_Cabal(3,0,0)
+              vis == LibraryVisibilityPublic,
+#endif
               (exp', ln, map (T.pack . display) em)
             , (bi, map (T.pack . display) rmn, map (T.pack . display) s)
             )
@@ -1577,11 +1688,19 @@ libraryEditor _fp modules numBuildInfos para noti = do
             mbp <- ext
             case mbp of
                 Nothing -> return Nothing
-                Just ((exp',ln,em), (bi, rmn, s)) -> return (Just $ Library'
+                Just (
+#if MIN_VERSION_Cabal(3,0,0)
+                      vis,
+#endif
+                      (exp',ln,em), (bi, rmn, s)) -> return (Just $ Library'
                     ln
                     (parseModuleNames em)
                     (parseRexportedModules rmn)
-                    (parseModuleNames s) exp' bi)
+                    (parseModuleNames s) exp'
+#if MIN_VERSION_Cabal(3,0,0)
+                        (if vis then LibraryVisibilityPublic else LibraryVisibilityPrivate)
+#endif
+                        bi)
     return (wid,pinj,pext)
 
 modulesEditor :: [ModuleName] -> Editor [Text]
@@ -1743,8 +1862,12 @@ instance Default CompilerFlavor
 instance Default BuildInfo
     where def =  emptyBuildInfo
 
-instance Default Library
-    where def =  Library Nothing [] [] [] True def
+instance Default Library where
+  def = Library (maybeOrLibraryName Nothing) [] [] [] True
+#if MIN_VERSION_Cabal(3,0,0)
+    	  LibraryVisibilityPrivate
+#endif
+    	  def
 
 instance Default ExecutableScope
     where def = mempty

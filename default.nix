@@ -4,20 +4,15 @@
 , nixpkgs ? haskellNixSrc + "/nixpkgs"
 , haskellNixpkgsArgs ? import haskellNixSrc
 , haskellNixSrc ? builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/d23547027242fc0d7da4591b1bdf8e5aed96a770.tar.gz";
-    sha256 = "0ygjzyfg9w4jilhb09607hmy08azq0rvfj49yyzcml0qzy6zgvc6";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/76992e3b0b5df07a5083aee55cf43d0e02a6a715.tar.gz";
+    sha256 = "1q5ii9kcmzpkd7smhad0zkhw7f6q4vkvcvia8k1w9y9cdj9x35qy";
   }
 , haskellCompiler ? "ghc865"
 , system ? null
 }:
 let
-  cabalPatch = pkgs.fetchpatch {
-    url = "https://patch-diff.githubusercontent.com/raw/haskell/cabal/pull/6055.diff";
-    sha256 = "145g7s3z9q8d18pxgyngvixgsm6gmwh1rgkzkhacy4krqiq0qyvx";
-    stripLen = 1;
-  };
   frameworks = pkgs.lib.optionals pkgs.stdenv.isDarwin (
-    with pkgs.darwin.apple_sdk.frameworks; [ Cocoa Carbon CoreGraphics ]);
+    with pkgs.darwin.apple_sdk.frameworks; [ Cocoa Carbon CoreGraphics WebKit ]);
   project = pkgs.haskell-nix.cabalProject' {
     name = "leksah";
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
@@ -26,7 +21,6 @@ let
     modules = [
       { reinstallableLibGhc = true; }
       ({ config, ...}: {
-        packages.Cabal.patches = [ cabalPatch ];
         packages.haddock-api.components.library.doHaddock = false;
         # packages.leksah.components.sublibs.leksah-nogtk.doHaddock = false;
         packages.gi-gtk.components.setup.frameworks = frameworks;
@@ -38,6 +32,7 @@ let
         packages.ltk.components.library.frameworks = frameworks;
         packages.leksah.components.library.frameworks = frameworks;
         packages.leksah.components.library.libs = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.libobjc;
+        packages.vault.components.library.doHaddock = false;
       })
     ];
   };
@@ -97,6 +92,27 @@ let
           --set 'XDG_DATA_DIRS' ""
       '';
   };
+  wrapped-leksah-warp = pkgs.stdenv.mkDerivation {
+      name = "leksah-warp";
+      nativeBuildInputs = with pkgs; [ makeWrapper ];
+      src = ./linux;
+      buildPhase =
+        if pkgs.stdenv.isLinux then ''
+          mkdir -p $out/share
+          cp -r * $out/share/
+        '' else ''
+          mkdir -p $out
+        '';
+      installPhase = ''
+        mkdir -p $out/bin
+        ln -s ${project.hsPkgs.leksah.components.exes.leksah-warp}/bin/leksah-warp $out/bin/leksah
+        wrapProgram $out/bin/leksah \
+          --prefix 'PATH' ':' "${project.hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
+          --prefix 'PATH' ':' "${pkgs.cabal-install}/bin" \
+          --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
+          --set 'XDG_DATA_DIRS' ""
+      '';
+  };
   shells = {
     ghc = (project.hsPkgs.shellFor {
         packages = ps: with ps; [
@@ -104,11 +120,11 @@ let
           leksah
           ltk ];
       }).overrideAttrs (oldAttrs: {
-        buildInputs = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.apple_sdk.frameworks.Carbon;
+        buildInputs = frameworks;
       });
   };
 in
   project // {
-    inherit shells launch-leksah wrapped-leksah pkgs;
+    inherit shells launch-leksah wrapped-leksah wrapped-leksah-warp pkgs;
   }
 
