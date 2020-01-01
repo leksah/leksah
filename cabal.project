@@ -32,8 +32,8 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/reflex-frp/reflex
-  tag: 8a9789c7335d2d8b925daa5b312ec5c10a0439c7
-  --sha256: 0n9la2vj23m7qlzj5ibrkrq9njhb34sfjfzb0f2hlz66akc31r49
+  tag: 7c3253d501a4766e6e4eed675bba6b2fb76a3503
+  --sha256: 1wkz7bg0cafhh3b1sijzj250r7jlbcd0zs05p8vgar37gi98r86b
 
 source-repository-package
   type: git
@@ -51,9 +51,29 @@ source-repository-package
 
 source-repository-package
   type: git
-  location: https://github.com/hamishmack/dependent-sum-template
-  tag: cabf14f6643b15dd14c8ff266cf42a421e9bd65b
-  --sha256: 1w025a8v45i5gxy06bbrhzjid2ldx4b5ayssxkimsl9r1n014z1g
+  location: https://github.com/WebGHC/prim-uniq
+  tag: 34570a948f7d84a1821ed6d8305ed094c4f6eb15
+  --sha256: 15xm0ky6dgndn714m99vgxyd4cr782gn0rf8zyf7v8mnj7mhcrc0
+
+source-repository-package
+  type: git
+  location: https://github.com/joecrayne/dependent-map
+  tag: afc92bfc04f73acba396ec52aa2df3fa07a861c8
+  --sha256: 06fdw4abls4dcdp67haxsq5680n6asvnv3gjp0q2a834fkscwddw
+
+source-repository-package
+  type: git
+  location: https://github.com/WebGHC/dependent-sum
+  tag: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
+  subdir: dependent-sum
+  --sha256: 0k9z63snfdz5rl6lndy2nclk4wpqv60mkbjs8l4jy42ammk8554r
+
+source-repository-package
+  type: git
+  location: https://github.com/WebGHC/dependent-sum
+  tag: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
+  subdir: dependent-sum-template
+  --sha256: 0k9z63snfdz5rl6lndy2nclk4wpqv60mkbjs8l4jy42ammk8554r
 
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk
