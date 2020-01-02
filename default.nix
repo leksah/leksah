@@ -16,8 +16,7 @@ let
   project = pkgs.haskell-nix.cabalProject' {
     name = "leksah";
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
-    pkg-def-extras = [ pkgs.ghc-boot-packages.${haskellCompiler} ];
-    ghc = pkgs.buildPackages.pkgs.haskell-nix.compiler.${haskellCompiler};
+    ghc = pkgs.pkgs.haskell-nix.compiler.${haskellCompiler};
     modules = [
       { reinstallableLibGhc = true; }
       ({ config, ...}: {
