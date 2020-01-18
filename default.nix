@@ -35,8 +35,9 @@ let
       })
     ] ++
       pkgs.lib.optional (haskellCompiler == "ghc882") {
-        packages.haddock-api.src = builtins.fetchTarball {
-          url = "https://github.com/haskell/haddock/archive/be8b02c4e3cffe7d45b3dad0a0f071d35a274d65.tar.gz";
+        packages.haddock-api.src = pkgs.fetchgit {
+          url = "https://github.com/haskell/haddock";
+          rev = "be8b02c4e3cffe7d45b3dad0a0f071d35a274d65";
           sha256 = "0b6c78paq6hh8n9pasnwwmlhfk745ha84fd84500mcpjlrsm5qgf";
         } + "/haddock-api";
       };
