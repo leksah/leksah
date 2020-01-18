@@ -4,8 +4,8 @@
 , nixpkgs ? haskellNixSrc + "/nixpkgs"
 , haskellNixpkgsArgs ? import haskellNixSrc
 , haskellNixSrc ? builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/76992e3b0b5df07a5083aee55cf43d0e02a6a715.tar.gz";
-    sha256 = "1q5ii9kcmzpkd7smhad0zkhw7f6q4vkvcvia8k1w9y9cdj9x35qy";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/76e695e966874ffae17555280129643b309a9f6f.tar.gz";
+    sha256 = "0nd93kkq05pc85n0dhdfm1fidghd1494qmkfc5x50amv0h41wga6";
   }
 , haskellCompiler ? "ghc865"
 , system ? null
@@ -33,7 +33,13 @@ let
         packages.leksah.components.library.libs = pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.darwin.libobjc;
         packages.vault.components.library.doHaddock = false;
       })
-    ];
+    ] ++
+      pkgs.lib.optional (haskellCompiler == "ghc882") {
+        packages.haddock-api.src = builtins.fetchTarball {
+          url = "https://github.com/haskell/haddock/archive/be8b02c4e3cffe7d45b3dad0a0f071d35a274d65.tar.gz";
+          sha256 = "0b6c78paq6hh8n9pasnwwmlhfk745ha84fd84500mcpjlrsm5qgf";
+        } + "/haddock-api";
+      };
   };
   launch-leksah-script = pkgs.writeShellScriptBin "launch-leksah" ''
     "$@"

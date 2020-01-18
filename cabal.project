@@ -1,4 +1,4 @@
-index-state: 2019-12-25T00:00:00Z
+index-state: 2020-01-15T00:00:00Z
 
 packages:
  ./
@@ -14,6 +14,7 @@ packages:
 -- vendor/HaRe/submodules/ghc-mod
 -- vendor/HaRe/submodules/ghc-mod/core
 
+constraints: Cabal <3.0.1.0
 allow-newer:
  which:base
  which:template-haskell
