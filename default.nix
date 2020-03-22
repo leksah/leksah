@@ -133,8 +133,7 @@ let
           pkgs.pkgconfig
           pkgs.gtk3
           pkgs.gtksourceview3
-          pkgs.gtk-mac-integration
-        ];
+        ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.gtk-mac-integration;
       });
   };
 in
