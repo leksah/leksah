@@ -4,10 +4,10 @@
 , nixpkgs ? haskellNixSrc + "/nixpkgs"
 , haskellNixpkgsArgs ? import haskellNixSrc
 , haskellNixSrc ? builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/haskell.nix/archive/76e695e966874ffae17555280129643b309a9f6f.tar.gz";
-    sha256 = "0nd93kkq05pc85n0dhdfm1fidghd1494qmkfc5x50amv0h41wga6";
+    url = "https://github.com/input-output-hk/haskell.nix/archive/1917908ae9fd0ee6d5729301bd3283d7bf6c6383.tar.gz";
+    sha256 = "10qssfww3zwrvqnh9jxpxqqm6fv5qz592ivpx725nk2xfwrskqfk";
   }
-, haskellCompiler ? "ghc865"
+, haskellCompiler ? "ghc883"
 , system ? null
 }:
 let
@@ -15,7 +15,7 @@ let
     with pkgs.darwin.apple_sdk.frameworks; [ Cocoa Carbon CoreGraphics WebKit ]);
   project = pkgs.haskell-nix.cabalProject' {
     name = "leksah";
-    src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; };
+    src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; name = "leksah"; };
     ghc = pkgs.pkgs.haskell-nix.compiler.${haskellCompiler};
     modules = [
       { reinstallableLibGhc = true; }
@@ -34,7 +34,7 @@ let
         packages.vault.components.library.doHaddock = false;
       })
     ] ++
-      pkgs.lib.optional (haskellCompiler == "ghc882") {
+      pkgs.lib.optional (haskellCompiler == "ghc882" || haskellCompiler == "ghc883") {
         packages.haddock-api.src = pkgs.fetchgit {
           url = "https://github.com/haskell/haddock";
           rev = "be8b02c4e3cffe7d45b3dad0a0f071d35a274d65";
@@ -126,7 +126,15 @@ let
           leksah
           ltk ];
       }).overrideAttrs (oldAttrs: {
-        buildInputs = frameworks;
+        buildInputs = frameworks ++ [
+          pkgs.haskell-nix.cabal-install
+          pkgs.stack
+          pkgs.gobject-introspection
+          pkgs.pkgconfig
+          pkgs.gtk3
+          pkgs.gtksourceview3
+          pkgs.gtk-mac-integration
+        ];
       });
   };
 in

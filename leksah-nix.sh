@@ -5,7 +5,7 @@ if [ $# -eq 0 ]
     echo "Usage: ./leksah-nix.sh GHCVER [LEKSAH_ARGS]"
     echo
     echo "Examples: ./leksah-nix.sh ghc865"
-    echo "          ./leksah-nix.sh ghc881 --verbosity=DEBUG"
+    echo "          ./leksah-nix.sh ghc883 --verbosity=DEBUG"
     echo
     echo "For details of other LEKSAH_ARGS run: ./leksah-nix ghc865 --help"
     exit 1

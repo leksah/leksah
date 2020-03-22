@@ -1,4 +1,4 @@
-resolver: lts-11.15
+resolver: lts-15.4
 packages:
 - '.'
 - 'vendor/leksah-server'
@@ -7,60 +7,81 @@ packages:
 #- 'vendor/yi'
 - 'vendor/haskellVCSWrapper/vcswrapper'
 
+allow-newer: true
+
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- binary-shared-0.8.3
-- haddock-api-2.18.1
+  # - binary-shared-0.8.3
+  # - haddock-api-2.18.1
 - haskell-gi-overloading-0.0
-- gi-gtk-hs-0.3.6.1
-- gi-gtksource-3.0.16
-- gi-javascriptcore-4.0.15
-- gi-soup-2.4.16
-- gi-webkit2-4.0.19
-- gi-gdk-3.0.16
-- gi-gdkpixbuf-2.0.16
-- gi-glib-2.0.16
-- gi-gobject-2.0.16
-- gi-gtk-3.0.23
-- gi-cairo-1.0.17
-- gi-gio-2.0.18
-- gi-pango-1.0.16
-- gi-atk-2.0.15
-- gi-gtkosxapplication-2.0.15
+  #- gi-gtk-hs-0.3.6.1
+  #- gi-gtksource-3.0.16
+  #- gi-javascriptcore-4.0.15
+  #- gi-soup-2.4.16
+  #- gi-webkit2-4.0.19
+  #- gi-gdk-3.0.16
+  #- gi-gdkpixbuf-2.0.16
+  #- gi-glib-2.0.16
+  #- gi-gobject-2.0.16
+  #- gi-gtk-3.0.23
+  #- gi-cairo-1.0.17
+  #- gi-gio-2.0.18
+  #- gi-pango-1.0.16
+  #- gi-atk-2.0.15
+  #- gi-gtkosxapplication-2.0.15
+- base-compat-0.10.5@sha256:d49e174ed0daecd059c52d13d4f4de87b5609c81212a22adbb92431f9cd58fff,6941
+- bimap-0.3.3@sha256:232518c0410990665b9c8677eb9318ee355c001d58945ddcbedec3baa30b4160,1475
+- ghcjs-dom-0.9.4.0@sha256:c2b3d25145e24b66a8a5078c0d750305b577aeff05957cf282d74f6e8d2424dd,32082
+- gi-gtkosxapplication-2.0.17@sha256:c15ebceba9dcccf3d921d6fc78a05eee2d74a48abfea224d0bb9eb9fec2bf566,3350
+- gi-gtksource-3.0.22@sha256:167cf14037f5f821ef47b5acd9b045f3f3a22215aa33bd491ff0c1b179c0ba66,7765
+- jsaddle-0.9.7.0@sha256:b848f626aede158a4ac9c1129699a44b7e5fa7d3ed9778b6df3390f2a4706412,4418
+- jsaddle-warp-0.9.7.0@sha256:2499b761254df1935f95e73285b59de1933d39e405baa76190cb14f9ddf2a687,2712
+- jsaddle-wkwebview-0.9.7.0@sha256:83a21ef8fba214a8901f769019f48d33e58e024ba2d3738c38de370eb78ca476,1905
+- monoidal-containers-0.6.0.1@sha256:7d776942659eb4d70d8b8da5d734396374a6eda8b4622df9e61e26b24e9c8e40,2501
+- pretty-show-1.9.5@sha256:92aa3f43d8459a9b543e102fbb0b7a6aae0074e18ca6a9970d9922a867114f53,1963
+- reflex-dom-svg-0.3.2.0@sha256:e186e5fd6ade0ac35631bbaf29b89b511f01e1004a1f653970f3e8fec80dae80,2086
+- some-1.0.0.3@sha256:d4e7f7ef114b1ae01915fcff15a9b46a078d459e30791276a565f5c015128347,2020
+- witherable-0.3.1@sha256:ed3d5bc9eb1c08fa9704d9e143cdf622e1bd80b847cd5ede8c07da7bc7981ab9,1313
+- ghcjs-dom-jsaddle-0.9.4.0@sha256:31ddfc5ebcbb4811b0c956fd5fcf106643012b46bb4e0bc2f15d09db1d116fbb,39525
+- jsaddle-dom-0.9.4.0@sha256:e9557e5a6df02bf089acab3e053ee3d4b523acebfe9ede9b5091d12cee760780,75700
+
+- git: https://github.com/liff/hs-git
+  commit: 72951679408cefc68ebec7935d8bb6084f4507c8
+  # nix-sha256: 1684mbjrz23plvj7a8kn23sridjqxi242rvbkn7gqf4r3lgr934x
+
+- git: https://github.com/reflex-frp/reflex
+  commit: 7c3253d501a4766e6e4eed675bba6b2fb76a3503
+  # nix-sha256: 1wkz7bg0cafhh3b1sijzj250r7jlbcd0zs05p8vgar37gi98r86b
+
+- git: https://github.com/hamishmack/reflex-dom
+  commit: 986ecd1aa38396782547082c9b1d963dbb2773ed
+  subdirs:
+  - reflex-dom-core
+  - chrome-test-utils
+  # nix-sha256: 1x4bl1cp4q18yw4zy49pdbfci28j1yv9jwp3r82y9ly3lk0cak76
+
+- git: https://github.com/WebGHC/prim-uniq
+  commit: 34570a948f7d84a1821ed6d8305ed094c4f6eb15
+  # nix-sha256: 15xm0ky6dgndn714m99vgxyd4cr782gn0rf8zyf7v8mnj7mhcrc0
+
+- git: https://github.com/joecrayne/dependent-map
+  commit: afc92bfc04f73acba396ec52aa2df3fa07a861c8
+  # nix-sha256: 06fdw4abls4dcdp67haxsq5680n6asvnv3gjp0q2a834fkscwddw
+
+- git: https://github.com/WebGHC/dependent-sum
+  commit: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
+  subdir: dependent-sum
+  # nix-sha256: 0k9z63snfdz5rl6lndy2nclk4wpqv60mkbjs8l4jy42ammk8554r
+
+- git: https://github.com/WebGHC/dependent-sum
+  commit: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
+  subdirs:
+  - dependent-sum-template
+  # nix-sha256: 0k9z63snfdz5rl6lndy2nclk4wpqv60mkbjs8l4jy42ammk8554r
 
 # Override default flag values for local packages and extra-deps
 flags:
-  gi-atk:
-    enable-overloading: false
-  gi-cairo:
-    enable-overloading: false
-  gi-gdk:
-    enable-overloading: false
-  gi-gdkpixbuf:
-    enable-overloading: false
-  gi-gio:
-    enable-overloading: false
-  gi-glib:
-    enable-overloading: false
-  gi-gobject:
-    enable-overloading: false
-  gi-gtk:
-    enable-overloading: false
-  gi-gtk-hs:
-    enable-overloading: false
-  gi-gtksource:
-    enable-overloading: false
-  gi-javascriptcore:
-    enable-overloading: false
-  gi-pango:
-    enable-overloading: false
-  gi-soup:
-    enable-overloading: false
-  gi-webkit2:
-    enable-overloading: false
-  gi-gtkosxapplication:
-    enable-overloading: false
 
 # Extra package databases containing global packages
 extra-package-dbs: []
