@@ -13,7 +13,12 @@ let
     name = "leksah";
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; name = "leksah"; };
     projectFileName = "cabal.project";
-    modules = [{ reinstallableLibGhc = true; }];
+    modules = [
+      { reinstallableLibGhc = true; }
+      (pkgs.lib.optionalAttrs (haskellCompiler == "ghc865") {
+        packages.haddock-api.components.library.doHaddock = false;
+      })
+    ];
   };
   launch-leksah-script = pkgs.writeShellScriptBin "launch-leksah" ''
     "$@"
