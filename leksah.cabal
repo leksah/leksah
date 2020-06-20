@@ -413,6 +413,7 @@ library
         build-depends:
             gi-gtkosxapplication >=2.0.2 && <2.1,
             jsaddle-wkwebview >=0.9.4.0 && <0.10
+        frameworks: Carbon
 
     if os(linux)
         build-depends:
