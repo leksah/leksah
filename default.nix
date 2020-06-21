@@ -41,7 +41,7 @@ let
         ln -s ${launch-leksah-script}/bin/launch-leksah $out/bin
         cp launch-leksah/Info.plist $out/bin
         wrapProgram $out/bin/launch-leksah \
-          --prefix 'PATH' ':' "${pkgs.haskell-nix.tool "cabal" "3.2.0.0"}/bin" \
+          --prefix 'PATH' ':' "${pkgs.haskell-nix.cabal-install}/bin" \
           --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
           --set 'XDG_DATA_DIRS' ""
@@ -70,7 +70,7 @@ let
         wrapProgram $out/bin/leksah \
           --prefix 'PATH' ':' "${project.hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
           --prefix 'PATH' ':' "${project.hsPkgs.vcsgui.components.exes.vcsgui}/bin" \
-          --prefix 'PATH' ':' "${pkgs.haskell-nix.tool "cabal" "3.2.0.0"}/bin" \
+          --prefix 'PATH' ':' "${pkgs.haskell-nix.cabal-install}/bin" \
           --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
           --set 'XDG_DATA_DIRS' ""
@@ -92,7 +92,7 @@ let
         ln -s ${project.hsPkgs.leksah.components.exes.leksah-warp}/bin/leksah-warp $out/bin/leksah
         wrapProgram $out/bin/leksah \
           --prefix 'PATH' ':' "${project.hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
-          --prefix 'PATH' ':' "${pkgs.cabal-install}/bin" \
+          --prefix 'PATH' ':' "${pkgs.haskell-nix.cabal-install}/bin" \
           --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --set 'XDG_DATA_DIRS' ""
       '';
@@ -116,8 +116,7 @@ let
         ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.gtk-mac-integration;
       });
   };
-in
-  project // {
-    inherit shells launch-leksah wrapped-leksah wrapped-leksah-warp pkgs;
+in {
+    inherit project shells launch-leksah wrapped-leksah wrapped-leksah-warp pkgs;
   }
 

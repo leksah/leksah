@@ -16,3 +16,4 @@ leksah.lkshw
 *.ghc.environment.*
 /dist-ghcjs/
 /stack.yaml.lock
+/bin/
