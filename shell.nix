@@ -1,4 +1,4 @@
 { sourcesOverride ? {}
 , compiler-nix-name ? "ghc8101"
-, ...}@args:
-(import ./. args).shells.ghc
+}:
+(import ./. { inherit sourcesOverride compiler-nix-name; }).shells.ghc
