@@ -1,21 +1,22 @@
 { sourcesOverride ? {}
 , sources ? import ./nix/sources.nix {} // sourcesOverride
 , nixpkgs ? (import sources."haskell.nix" {}).sources.nixpkgs-default
-, haskellNixpkgsArgs ? (import sources."haskell.nix" { defaultCompilerNixName = haskellCompiler; }).nixpkgsArgs
+, haskellNixpkgsArgs ? (import sources."haskell.nix" {}).nixpkgsArgs
 , pkgs ? import nixpkgs (haskellNixpkgsArgs // {
     overlays = haskellNixpkgsArgs.overlays ++ [ (import ./nix/overlays/gtk-debug.nix) ];
   } // (if system == null then {} else { inherit system; }))
-, haskellCompiler ? "ghc883"
+, compiler-nix-name ? "ghc883"
 , system ? null
 }:
 let
   project = pkgs.haskell-nix.project' {
+    inherit compiler-nix-name;
     name = "leksah";
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; name = "leksah"; };
     projectFileName = "cabal.project";
     modules = [
       { reinstallableLibGhc = true; }
-      (pkgs.lib.optionalAttrs (haskellCompiler == "ghc865") {
+      (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc865") {
         packages.haddock-api.components.library.doHaddock = false;
       })
     ];
@@ -106,7 +107,6 @@ let
         tools = {
           cabal = "3.2.0.0";
         };
-      }).overrideAttrs (oldAttrs: {
         buildInputs = [
           pkgs.stack
           pkgs.gobject-introspection
