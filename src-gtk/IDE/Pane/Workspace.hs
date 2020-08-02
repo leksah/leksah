@@ -129,7 +129,7 @@ import Data.GI.Gtk.ModelView.CellLayout
        (cellLayoutSetDataFunc')
 import GI.Gtk.Objects.CellRendererText
        (setCellRendererTextMarkup, cellRendererTextNew)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import Data.GI.Gtk.ModelView.CustomStore
        (customStoreGetRow)
@@ -432,7 +432,7 @@ instance RecoverablePane WorkspacePane WorkspaceState IDEM where
         sigIds      <- treeViewEvents recordStore treeView
 
         -- Scrolled view
-        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
         scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
         containerAdd scrolledView treeView

@@ -85,7 +85,7 @@ import GI.Gdk.Structs.EventButton
 import GI.Gtk (widgetOverrideFont)
 import GI.Gtk.Enums
        (TextWindowType(..), ShadowType(..), PolicyType(..), Orientation(..))
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Box (boxNew, Box(..))
 import GI.Gtk.Objects.Button (onButtonClicked, buttonNewWithLabel)
 import GI.Gtk.Objects.ComboBox
@@ -111,7 +111,7 @@ import GI.Gtk.Objects.TextBuffer
 import GI.Gtk.Objects.TextTag
        (setTextTagBackground, setTextTagForeground, textTagNew)
 import GI.Gtk.Objects.TextTagTable
-       (noTextTagTable, textTagTableAdd)
+       (TextTagTable, textTagTableAdd)
 import GI.Gtk.Objects.TextView
        (textViewScrollToMark, textViewGetBuffer,
         textViewScrollMarkOnscreen, textViewGetLineAtY,
@@ -328,7 +328,7 @@ instance RecoverablePane IDELog LogState IDEM where
 
 createNewLogLaunch :: IO LogLaunch
 createNewLogLaunch = do
-    buf          <- textBufferNew noTextTagTable
+    buf          <- textBufferNew (Nothing :: Maybe TextTagTable)
     iter         <- textBufferGetEndIter buf
     _ <- textBufferCreateMark buf (Just "end") iter True
     tags         <- textBufferGetTagTable buf
@@ -390,7 +390,7 @@ builder' _pp _nb _windows = do
             fontDescriptionSetFamily f "Monospace"
             return f
     widgetOverrideFont tv (Just fd)
-    sw           <- scrolledWindowNew noAdjustment noAdjustment
+    sw           <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
     containerAdd sw tv
     scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
     scrolledWindowSetShadowType sw ShadowTypeIn

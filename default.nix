@@ -1,21 +1,33 @@
 { sourcesOverride ? {}
 , sources ? import ./nix/sources.nix {} // sourcesOverride
-, nixpkgs ? (import sources."haskell.nix" {}).sources.nixpkgs-default
+, nixpkgs ? (import sources."haskell.nix" {}).sources.nixpkgs
 , haskellNixpkgsArgs ? (import sources."haskell.nix" {}).nixpkgsArgs
 , pkgs ? import nixpkgs (haskellNixpkgsArgs // {
     overlays = haskellNixpkgsArgs.overlays ++ [ (import ./nix/overlays/gtk-debug.nix) ];
   } // (if system == null then {} else { inherit system; }))
-, compiler-nix-name ? "ghc883"
+, compiler-nix-name ? "ghc884"
 , system ? null
 }:
 let
   project = pkgs.haskell-nix.project' {
     inherit compiler-nix-name;
     name = "leksah";
+    #src = pkgs.haskell-nix.haskellLib.cleanSourceWith {
+    #  src = pkgs.haskell-nix.haskellLib.cleanGits {
+    #    src = ../.; name = "leksah"; gitDirs = [ "leksah" "reflex" "reflex-dom" ];
+    #  };
+    #  subDir = "leksah";
+    #  includeSiblings = true;
+    #};
     src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; name = "leksah"; };
     projectFileName = "cabal.project";
-    modules = [
-      { reinstallableLibGhc = true; }
+    modules = [{ 
+        packages.reflex.components.tests.hlint.buildable = pkgs.lib.mkForce false;
+        packages.reflex.components.tests.RequesterT.buildable = pkgs.lib.mkForce false;
+        packages.reflex.components.tests.QueryT.buildable = pkgs.lib.mkForce false;
+        packages.reflex.components.tests.EventWriterT.buildable = pkgs.lib.mkForce false;
+        packages.reflex.components.tests.DebugCycles.buildable = pkgs.lib.mkForce false;
+      }
       (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc865") {
         packages.haddock-api.components.library.doHaddock = false;
       })
@@ -42,7 +54,7 @@ let
         ln -s ${launch-leksah-script}/bin/launch-leksah $out/bin
         cp launch-leksah/Info.plist $out/bin
         wrapProgram $out/bin/launch-leksah \
-          --prefix 'PATH' ':' "${pkgs.haskell-nix.cabal-install}/bin" \
+          --prefix 'PATH' ':' "${project.tool "cabal" "3.2.0.0"}/bin" \
           --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
           --set 'XDG_DATA_DIRS' ""
@@ -71,7 +83,7 @@ let
         wrapProgram $out/bin/leksah \
           --prefix 'PATH' ':' "${project.hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
           --prefix 'PATH' ':' "${project.hsPkgs.vcsgui.components.exes.vcsgui}/bin" \
-          --prefix 'PATH' ':' "${pkgs.haskell-nix.cabal-install}/bin" \
+          --prefix 'PATH' ':' "${project.tool "cabal" "3.2.0.0"}/bin" \
           --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
           --set 'XDG_DATA_DIRS' ""
@@ -93,7 +105,7 @@ let
         ln -s ${project.hsPkgs.leksah.components.exes.leksah-warp}/bin/leksah-warp $out/bin/leksah
         wrapProgram $out/bin/leksah \
           --prefix 'PATH' ':' "${project.hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
-          --prefix 'PATH' ':' "${pkgs.haskell-nix.cabal-install}/bin" \
+          --prefix 'PATH' ':' "${project.tool "cabal" "3.2.0.0"}/bin" \
           --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --set 'XDG_DATA_DIRS' ""
       '';

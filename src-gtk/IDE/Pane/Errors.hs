@@ -76,7 +76,7 @@ import GI.Gtk.Objects.Notebook (Notebook(..))
 import GI.Gtk.Objects.Window (Window(..))
 import Graphics.UI.Editor.Parameters (Packing(..), boxPackStart')
 import GI.Gtk.Objects.TreeViewColumn
-       (noTreeViewColumn, TreeViewColumn(..), treeViewColumnSetSizing,
+       (TreeViewColumn, TreeViewColumn(..), treeViewColumnSetSizing,
         treeViewColumnNew)
 import GI.Gtk.Objects.CellRendererPixbuf
        (setCellRendererPixbufIconName, cellRendererPixbufNew)
@@ -94,7 +94,7 @@ import Data.GI.Gtk.ModelView.CustomStore (customStoreGetRow)
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSelectPath, treeSelectionUnselectAll,
         treeSelectionSetMode)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import Control.Monad.Reader (MonadReader(..))
 import Data.GI.Gtk.ModelView.ForestStore
@@ -237,7 +237,7 @@ builder' _pp _nb _windows = do
 
     selB <- treeViewGetSelection treeView
     treeSelectionSetMode selB SelectionModeMultiple
-    scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+    scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
     scrolledWindowSetShadowType scrolledView ShadowTypeIn
     containerAdd scrolledView treeView
     scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic
@@ -382,7 +382,7 @@ addErrorToList' unfilteredIndex ref pane = traceTimeTaken "addErrorToList'" $ do
                 treeViewExpandToPath view =<< treePathNewFromIndices' [fromIntegral index,0]
         when (index == 0) $ do
             path <- treePathNewFromIndices' [0]
-            treeViewScrollToCell view (Just path) noTreeViewColumn False 0 0
+            treeViewScrollToCell view (Just path) (Nothing :: Maybe TreeViewColumn) False 0 0
 
 -- | Add any LogRef to the Errors pane at a given index
 removeErrorsFromList :: Bool -- ^ Whether to display the pane
@@ -457,13 +457,13 @@ selectError mbLogRef = do
         Nothing -> do
             unless (null forest) $ do
                 childPath <- treePathNewFromIndices' [0]
-                treeViewScrollToCell (treeView errors) (Just childPath) noTreeViewColumn False 0.0 0.0
+                treeViewScrollToCell (treeView errors) (Just childPath) (Nothing :: Maybe TreeViewColumn) False 0.0 0.0
             treeSelectionUnselectAll selection
         Just lr -> do
             let mbPath = forestFind forest (ERLogRef lr)
             forM_ mbPath $ \path' -> do
                 path <- treePathNewFromIndices' path'
-                treeViewScrollToCell (treeView errors) (Just path) noTreeViewColumn False 0.0 0.0
+                treeViewScrollToCell (treeView errors) (Just path) (Nothing :: Maybe TreeViewColumn) False 0.0 0.0
                 treeSelectionSelectPath selection path
 
     where

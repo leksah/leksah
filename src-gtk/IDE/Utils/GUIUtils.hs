@@ -340,7 +340,7 @@ showDialogAndGetResult
         -> m (Either ResponseType a) -- ^ `Right` the result of the action selected by the user,
                                      -- or `Left ResponseType` if the user's response did not match the provided ones
 showDialogAndGetResult parent msg msgType defaultResponse newOptions buttons responseActions = do
-    dialog <- new' MessageDialog newOptions
+    dialog <- liftIO $ new' MessageDialog newOptions
     setMessageDialogMessageType dialog msgType
     setMessageDialogText dialog msg
     windowSetTransientFor dialog parent

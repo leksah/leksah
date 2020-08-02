@@ -40,7 +40,7 @@ import GI.Gdk.Structs.EventKey
        (getEventKeyKeyval, EventKey(..))
 import GI.Gtk.Enums (WindowPosition(..), WindowType(..))
 import GI.Gtk.Interfaces.TreeModel (treeModelIterNChildren)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.CellRendererText
        (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.Container (containerAdd)
@@ -53,7 +53,7 @@ import GI.Gtk.Objects.TreeView
         treeViewSetModel, treeViewNew, treeViewSetCursor,
         treeViewGetCursor, treeViewGetModel, IsTreeView, TreeView)
 import GI.Gtk.Objects.TreeViewColumn
-       (noTreeViewColumn, treeViewColumnPackStart, treeViewColumnNew)
+       (TreeViewColumn, treeViewColumnPackStart, treeViewColumnNew)
 import GI.Gtk.Objects.Window
        (setWindowWindowPosition, setWindowTransientFor, setWindowDefaultHeight,
         setWindowDefaultWidth, setWindowResizable, setWindowDecorated,
@@ -96,7 +96,7 @@ moveFlipperDown tree = do
                     [] -> return [1]
             _ -> return [1]
         p <- treePathNewFromIndices' indices
-        treeViewSetCursor tree p noTreeViewColumn False
+        treeViewSetCursor tree p (Nothing :: Maybe TreeViewColumn) False
 
 -- | Moves up in the Flipper state
 moveFlipperUp :: IsTreeView alpha => alpha  -> IDEAction
@@ -114,7 +114,7 @@ moveFlipperUp tree = liftIO $ do
                     [] -> return [1]
             _ -> return [1]
         p <- treePathNewFromIndices' indices
-        treeViewSetCursor tree p noTreeViewColumn False
+        treeViewSetCursor tree p (Nothing :: Maybe TreeViewColumn) False
 
 -- | Initiate Filpper , If True moves down, if false up
 initFlipper :: Bool -> IDEAction
@@ -131,7 +131,7 @@ initFlipper direction = do
         setWindowDefaultHeight window height
         setWindowTransientFor  window mainWindow
 
-        scrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledWindow <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         containerAdd window scrolledWindow
 
         tree <- treeViewNew
@@ -189,7 +189,7 @@ initFlipper direction = do
     -- previous panes list
     n <- treeModelIterNChildren store' Nothing
     p <- treePathNewFromIndices' [if direction then min 1 (n - 1) else n - 1]
-    treeViewSetCursor tree' p noTreeViewColumn False
+    treeViewSetCursor tree' p (Nothing :: Maybe TreeViewColumn) False
 
 handleKeyRelease :: IsTreeView alpha => alpha -> IDERef -> EventKey -> IO Bool
 handleKeyRelease tree ideR e = do

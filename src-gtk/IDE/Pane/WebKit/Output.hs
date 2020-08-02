@@ -108,7 +108,7 @@ import GI.Gtk.Objects.Widget (toWidget)
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Enums (PolicyType(..), ShadowType(..), Orientation(..))
 import Graphics.UI.Editor.Parameters (Packing(..), boxPackStart')
 import Data.Aeson (FromJSON, ToJSON, FromJSON)
@@ -166,7 +166,7 @@ instance RecoverablePane IDEOutput OutputState IDEM where
         vbox <- boxNew OrientationVertical 0
         uriEntry <- entryNew
         entrySetText uriEntry "http://"
-        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
         boxPackStart' vbox uriEntry PackNatural 0
         boxPackStart' vbox scrolledView PackGrow 0

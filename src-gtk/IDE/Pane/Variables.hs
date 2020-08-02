@@ -90,7 +90,7 @@ import Data.GI.Gtk.ModelView.CellLayout
        (cellLayoutSetDataFunction)
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSetMode)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import Control.Monad.Reader (MonadReader(..))
 import GI.Gtk.Structs.TreePath
@@ -207,7 +207,7 @@ builder' _pp _nb _windows = do
     sel <- treeViewGetSelection treeView
     treeSelectionSetMode sel SelectionModeSingle
 
-    scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+    scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
     scrolledWindowSetShadowType scrolledView ShadowTypeIn
     containerAdd scrolledView treeView
     scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic

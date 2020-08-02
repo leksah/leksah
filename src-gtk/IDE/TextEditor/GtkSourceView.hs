@@ -99,7 +99,7 @@ import GI.Gtk.Objects.TextBuffer
         textBufferApplyTagByName, textBufferGetTagTable)
 import GI.Gtk.Objects.TextTag
 import GI.Gtk.Objects.TextTagTable
-       (noTextTagTable, textTagTableLookup, TextTagTable(..),
+       (TextTagTable, textTagTableLookup, TextTagTable(..),
         textTagTableAdd)
 import GI.Gtk.Objects.TextMark (textMarkGetName, TextMark(..))
 import GI.Gtk.Objects.TextView
@@ -114,14 +114,14 @@ import Data.GI.Base.ManagedPtr
        (withManagedPtr, unsafeCastTo)
 import GI.GObject.Functions
        (signalHandlersBlockMatched, signalLookup)
-import Data.GI.Base.BasicTypes (GObject(..))
+import Data.GI.Base.BasicTypes (glibType, GObject(..))
 import GI.GObject.Flags (SignalMatchType(..))
 import GI.GtkSource.Enums (SmartHomeEndType(..))
 import GI.Gtk.Enums
        (PolicyType(..), TextWindowType(..), WrapMode(..))
 import GI.Gtk.Objects.ScrolledWindow
        (ScrolledWindow(..), scrolledWindowSetPolicy, scrolledWindowNew)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gtk.Objects.Widget
        (onWidgetKeyReleaseEvent, onWidgetLeaveNotifyEvent,
@@ -203,7 +203,7 @@ newGtkBuffer mbFilename contents = do
                     _ -> return mbLang
     buffer <- case mbLang2 of
         Just sLang -> bufferNewWithLanguage sLang
-        Nothing -> bufferNew noTextTagTable
+        Nothing -> bufferNew (Nothing :: Maybe TextTagTable)
     bufferSetMaxUndoLevels buffer (-1)
     bufferBeginNotUndoableAction buffer
     liftIO $ debugM "lekash" "newGtkBuffer setTextBufferText"
@@ -312,12 +312,12 @@ instance TextEditor GtkSourceView where
         (GtkView sv p, _) <- newViewNoScroll (GtkBuffer sb) mbFontString
         setTextViewBottomMargin sv 400
         grid <- gridNew
-        sw <- scrolledWindowNew noAdjustment noAdjustment
+        sw <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         containerAdd sw sv
         mapFrame <- frameNew Nothing
 -- Source map makes things too slow
 --        sMap <- mapNew
---        signal <- signalLookup "source_mark_updated" =<< liftIO (gobjectType @Source.Buffer)
+--        signal <- signalLookup "source_mark_updated" =<< liftIO (glibType @Source.Buffer)
 --        liftIO $ withManagedPtr sMap $ \svPtr ->
 --            signalHandlersBlockMatched sb [SignalMatchTypeId, SignalMatchTypeData]
 --                signal 0 Nothing nullPtr (castPtr svPtr)
@@ -331,7 +331,7 @@ instance TextEditor GtkSourceView where
         return (GtkView sv p, sw, grid)
     newView sb mbFontString = do
         (GtkView sv p, _) <- newViewNoScroll sb mbFontString
-        sw <- scrolledWindowNew noAdjustment noAdjustment
+        sw <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         containerAdd sw sv
         return (GtkView sv p, sw)
     newViewNoScroll (GtkBuffer sb) mbFontString = do
@@ -342,7 +342,7 @@ instance TextEditor GtkSourceView where
 
         -- Disable source_mark_updated handler in sv because it schedules a full redraw
         -- that turns out to be unnecessary and very costly in Leksah
-        signal <- signalLookup "source_mark_updated" =<< liftIO (gobjectType @Source.Buffer)
+        signal <- signalLookup "source_mark_updated" =<< liftIO (glibType @Source.Buffer)
         _ <- liftIO $ withManagedPtr sv $ \svPtr ->
             signalHandlersBlockMatched sb [SignalMatchTypeId, SignalMatchTypeData]
                 signal 0 Nothing nullPtr (castPtr svPtr)

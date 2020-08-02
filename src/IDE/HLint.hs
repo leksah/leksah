@@ -1,7 +1,8 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PackageImports #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.HLint
@@ -50,12 +51,14 @@ import qualified Data.Text.IO as T (readFile)
 import Distribution.Package (PackageIdentifier(..))
 import Distribution.ModuleName (ModuleName)
 
-import qualified Language.Haskell.Exts.SrcLoc as HSE
-       (SrcLoc(..), SrcSpan(..))
-import Language.Haskell.HLint3
+import "ghc-lib-parser" FastString (unpackFS)
+import qualified "ghc-lib-parser" SrcLoc as GHC
+       (SrcLoc(..), SrcSpan(..), srcSpanFile, srcSpanStartLine, srcSpanStartCol,
+        srcSpanEndLine, srcSpanEndCol)
+import Language.Haskell.HLint
        (Note(..), Idea(..), Severity(..), applyHints, ParseError(..),
         parseModuleEx, CppFlags(..), defaultParseFlags,
-        parseFlagsAddFixities, resolveHints, readSettingsFile,
+        parseFlagsAddFixities, readSettingsFile,
         findSettings, Hint(..), Classify(..), ParseFlags(..))
 import Language.Preprocessor.Cpphs
        (defaultCpphsOptions, runCpphsReturningSymTab, CpphsOptions(..))
@@ -63,7 +66,7 @@ import Language.Preprocessor.Cpphs
 import System.FilePath.Windows (makeRelative, equalFilePath, (</>))
 import System.Directory (doesFileExist)
 import qualified System.IO.Strict as S (readFile)
-import System.Log.Logger (debugM)
+import System.Log.Logger (debugM, errorM)
 
 import IDE.Core.CTypes
        (SrcSpan(..), mdMbSourcePath, pdModules, mdModuleId, modu,
@@ -192,49 +195,54 @@ hlintSettings project package = do
                                 map (\(a, b) -> (a, concat (lines b))) . snd <$> runCpphsReturningSymTab defaultCpphsOptions cabalMacros raw
                             else return []
     (fixities, classify, hints) <- liftIO $ findSettings (readSettingsFile mbHlintDir) Nothing
-    let hint = resolveHints hints
-        flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions
+    let flags = parseFlagsAddFixities fixities defaultParseFlags{ cppFlags = Cpphs defaultCpphsOptions
             { defines = defines } }
     liftIO . debugM "leksah" $ "hlintSettings defines = " <> show defines
-    return (flags, classify, hint)
+    return (flags, classify, hints)
 
 logHLintResult :: Bool -> IDEPackage -> [Idea] -> (FilePath -> Text) -> IDEAction
 logHLintResult fileScope package allIdeas getText = do
-    let ideas = filter (\Idea{..} -> ideaSeverity /= Ignore) allIdeas
-    forM_ ideas $ \ idea@Idea{..} -> do
-        let text = getText (HSE.srcSpanFilename ideaSpan)
+    let ideas = filter (\Idea{ideaSeverity} -> ideaSeverity /= Ignore) allIdeas
+    forM_ ideas $ \case
+      idea@Idea{ideaSpan = GHC.RealSrcSpan ideaSpan} -> do
+        let text = getText (unpackFS $ GHC.srcSpanFile ideaSpan)
             -- fixColumn c = max 0 (c - 1)
-            srcSpan = SrcSpan (makeRelative (ipdPackageDir package) $ HSE.srcSpanFilename ideaSpan)
-                              (HSE.srcSpanStartLine ideaSpan)
-                              (HSE.srcSpanStartColumn ideaSpan - 1)
-                              (HSE.srcSpanEndLine ideaSpan)
-                              (HSE.srcSpanEndColumn ideaSpan - 1)
-            fromLines = drop (HSE.srcSpanStartLine ideaSpan - 1)
-                      . take (HSE.srcSpanEndLine ideaSpan) $ T.lines text
+            srcSpan = SrcSpan (makeRelative (ipdPackageDir package) . unpackFS $ GHC.srcSpanFile ideaSpan)
+                              (GHC.srcSpanStartLine ideaSpan)
+                              (GHC.srcSpanStartCol ideaSpan - 1)
+                              (GHC.srcSpanEndLine ideaSpan)
+                              (GHC.srcSpanEndCol ideaSpan - 1)
+            fromLines = drop (GHC.srcSpanStartLine ideaSpan - 1)
+                      . take (GHC.srcSpanEndLine ideaSpan) $ T.lines text
             fixHead [] = []
-            fixHead (x:xs) = T.drop (HSE.srcSpanStartColumn ideaSpan - 1) x : xs
+            fixHead (x:xs) = T.drop (GHC.srcSpanStartCol ideaSpan - 1) x : xs
             fixTail [] = []
-            fixTail (x:xs) = T.take (HSE.srcSpanEndColumn ideaSpan - 1) x : xs
+            fixTail (x:xs) = T.take (GHC.srcSpanEndCol ideaSpan - 1) x : xs
             from = T.reverse . T.drop 1 . T.reverse
                  . T.unlines . fixHead . reverse . fixTail $ reverse fromLines
             ref = LogRef srcSpan (LogCabal $ ipdCabalFile package) (T.pack $ showHLint idea)
                     (Just (from, idea)) Nothing LintRef
         postSyncIDE $ addLogRef fileScope fileScope ref
+      Idea{ideaSpan = GHC.UnhelpfulSpan s} ->
+        liftIO . errorM "leksah" $ "hlint parse error without location " <> unpackFS s
 
 logHLintError :: Bool -> IDEPackage -> ParseError -> IDEAction
 logHLintError fileScope package err = do
-    let loc = parseErrorLocation err
-        srcSpan = SrcSpan (makeRelative (ipdPackageDir package) $ HSE.srcFilename loc)
-                          (HSE.srcLine loc)
-                          (HSE.srcColumn loc - 1)
-                          (HSE.srcLine loc)
-                          (HSE.srcColumn loc - 1)
-        ref = LogRef srcSpan (LogCabal $ ipdCabalFile package) ("Hlint Parse Error: " <> T.pack (parseErrorMessage err)) Nothing Nothing LintRef
-    postSyncIDE $ addLogRef fileScope fileScope ref
+    case parseErrorLocation err of
+      GHC.RealSrcSpan loc -> do
+        let srcSpan = SrcSpan (makeRelative (ipdPackageDir package) . unpackFS $ GHC.srcSpanFile loc)
+                              (GHC.srcSpanStartLine loc)
+                              (GHC.srcSpanStartCol loc - 1)
+                              (GHC.srcSpanEndLine loc)
+                              (GHC.srcSpanEndCol loc - 1)
+            ref = LogRef srcSpan (LogCabal $ ipdCabalFile package) ("Hlint Parse Error: " <> T.pack (parseErrorMessage err)) Nothing Nothing LintRef
+        postSyncIDE $ addLogRef fileScope fileScope ref
+      GHC.UnhelpfulSpan s ->
+        liftIO . errorM "leksah" $ "hlint parse error without location " <> unpackFS s
 
 -- Cut down version of showEx from HLint
 showHLint :: Idea -> String
-showHLint Idea{..} = intercalate "\n" $
+showHLint Idea{ideaHint, ideaSeverity, ideaFrom, ideaTo, ideaNote} = intercalate "\n" $
     [if ideaHint == "" then "" else show ideaSeverity ++ ": " ++ ideaHint] ++
     f "Found" (if ideaHint == "Reduce duplication" then Just ideaFrom else Nothing) ++
     f "Why not" ideaTo ++
@@ -258,7 +266,7 @@ resolveActiveHLint = inActiveBufContext False  $ \_ ebuf ideBuf -> do
     lEnd <- getLine iEnd
     cEnd <- getLineOffset iEnd
     let fn = fileName ideBuf
-    let selectedRefs = [ref | ref@LogRef{..} <- F.toList allLogRefs',
+    let selectedRefs = [ref | ref@LogRef{logRefType, logRefIdea, logRefSrcSpan} <- F.toList allLogRefs',
                             logRefType == LintRef
                          && fn == Just (logRefFullFilePath ref)
                          && maybe "" (ideaHint . snd) logRefIdea /= "Reduce duplication"
@@ -288,11 +296,14 @@ indentHLintText startColumn text =
     indent = T.replicate startColumn " "
 
 replaceHLintSource :: (Bool, Int) -> (Text, Idea) -> IDEM (Bool, Int)
-replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Just ideaTo}) = do
-    let HSE.SrcSpan{..} = ideaSpan
-        to = indentHLintText (srcSpanStartColumn-1) (T.pack ideaTo)
+replaceHLintSource (changed, delta) (from, Idea{ideaSpan = GHC.RealSrcSpan ideaSpan, ideaTo = Just ideaTo}) = do
+    let srcSpanStartLine = GHC.srcSpanStartLine ideaSpan
+        srcSpanStartCol  = GHC.srcSpanStartCol  ideaSpan
+        srcSpanEndLine   = GHC.srcSpanEndLine   ideaSpan
+        srcSpanEndCol    = GHC.srcSpanEndCol    ideaSpan
+        to = indentHLintText (srcSpanStartCol-1) (T.pack ideaTo)
     liftIO . debugM "leksah" $ "replaceHLintSource From: " <> show from <> "\nreplaceHLintSource To:   " <> show to
-    mbBuf <- selectSourceBuf srcSpanFilename
+    mbBuf <- selectSourceBuf . unpackFS $ GHC.srcSpanFile ideaSpan
     case mbBuf of
         Just buf -> inActiveBufContext (changed, delta) $ \_sv ebuf _ -> do
             useCandy   <- useCandyFor buf
@@ -300,10 +311,10 @@ replaceHLintSource (changed, delta) (from, Idea{ideaSpan = ideaSpan, ideaTo = Ju
             realString <- if useCandy then stringToCandy candy' to else return to
             (lineS', columnS', lineE', columnE') <- if useCandy
                     then do
-                        (_,e1) <- positionToCandy candy' ebuf (srcSpanStartLine + delta, srcSpanStartColumn - 1)
-                        (_,e2) <- positionToCandy candy' ebuf (srcSpanEndLine + delta, srcSpanEndColumn - 1)
+                        (_,e1) <- positionToCandy candy' ebuf (srcSpanStartLine + delta, srcSpanStartCol - 1)
+                        (_,e2) <- positionToCandy candy' ebuf (srcSpanEndLine + delta, srcSpanEndCol - 1)
                         return (srcSpanStartLine-1 + delta,e1,srcSpanEndLine-1 + delta,e2)
-                    else return (srcSpanStartLine-1 + delta,srcSpanStartColumn-1,srcSpanEndLine-1 + delta,srcSpanEndColumn-1)
+                    else return (srcSpanStartLine-1 + delta,srcSpanStartCol-1,srcSpanEndLine-1 + delta,srcSpanEndCol-1)
             i1  <- getIterAtLine ebuf lineS'
             i1' <- forwardCharsC i1 columnS'
             i2  <- getIterAtLine ebuf lineE'

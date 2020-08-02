@@ -64,7 +64,7 @@ import GI.Gtk.Enums
        (PolicyType(..), ShadowType(..), ButtonBoxStyle(..),
         Orientation(..))
 import GI.Gtk.Objects.Button (onButtonClicked, buttonNewWithLabel)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy,
         scrolledWindowSetShadowType, scrolledWindowNew)
@@ -140,7 +140,7 @@ builder' idePackage flagsDesc _flatflagsDesc _pp nb _window ideR = do
     boxPackStart' bb saveB PackNatural 0
     (widget,_injb,ext,notifier)
                         <-  buildEditor flagsDesc idePackage
-    sw <- scrolledWindowNew noAdjustment noAdjustment
+    sw <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
     scrolledWindowSetShadowType sw ShadowTypeIn
     containerAdd sw widget
     scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic

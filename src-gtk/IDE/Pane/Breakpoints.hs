@@ -73,7 +73,7 @@ import Data.GI.Gtk.ModelView.CellLayout
 import GI.Gtk.Objects.TreeSelection
        (treeSelectionSelectPath, treeSelectionUnselectAll,
         treeSelectionSetMode)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gtk.Objects.Menu (Menu(..))
 import GI.Gtk.Objects.SeparatorMenuItem (separatorMenuItemNew)
@@ -148,7 +148,7 @@ instance RecoverablePane IDEBreakpoints BreakpointsState IDEM where
         treeViewSetHeadersVisible treeView True
         selB <- treeViewGetSelection treeView
         treeSelectionSetMode selB SelectionModeSingle
-        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic

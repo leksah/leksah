@@ -80,7 +80,7 @@ import GI.Gtk.Enums
        (PolicyType(..), ShadowType(..), SelectionMode(..),
         TreeViewColumnSizing(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.CellRendererText
        (setCellRendererTextText, cellRendererTextNew)
 import GI.Gtk.Objects.Container (containerAdd)
@@ -205,7 +205,7 @@ instance RecoverablePane IDEGrep GrepState IDEM where
         sel <- treeViewGetSelection treeView
         treeSelectionSetMode sel SelectionModeSingle
 
-        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic

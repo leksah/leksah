@@ -126,7 +126,7 @@ import GI.Gtk.Objects.Label (labelNew)
 import GI.Gtk.Objects.Box (Box(..))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowNew)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk
        (containerAdd, applicationNew, Application, applicationWindowNew)
 import GI.Gio (applicationRun, onApplicationActivate)
@@ -597,7 +597,7 @@ firstStart' prefs' = do
         "default metadata collection settings"))
     (widget, _setInj, getExt, _notifier) <- buildEditor (fDescription configDir) prefs'
     boxPackStart' vb label PackNatural 7
-    sw <- scrolledWindowNew noAdjustment noAdjustment
+    sw <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
     containerAdd sw widget
     scrolledWindowSetPolicy sw PolicyTypeNever PolicyTypeAutomatic
     boxPackStart' vb sw PackGrow 7

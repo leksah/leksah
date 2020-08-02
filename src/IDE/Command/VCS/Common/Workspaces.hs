@@ -37,13 +37,13 @@ import Data.Maybe
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (unpack)
 import GI.Gtk.Objects.MenuItem (menuItemSetSubmenu)
-import GI.Gtk.Objects.Menu (noMenu, menuNew)
+import GI.Gtk.Objects.Menu (Menu, menuNew)
 import GI.Gtk.Objects.Widget (widgetShowAll)
 
 onWorkspaceClose :: IDEAction
 onWorkspaceClose = do
     vcsItem <- GUIUtils.getVCS
-    menuItemSetSubmenu vcsItem noMenu
+    menuItemSetSubmenu vcsItem (Nothing :: Maybe Menu)
 
 whenIDEGtk :: MonadIDE m => m () -> m ()
 whenIDEGtk f = readIDE (ideGtk . to isJust) >>= (`when` f)

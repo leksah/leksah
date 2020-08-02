@@ -149,7 +149,7 @@ import Data.GI.Gtk.ModelView.Types
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import Graphics.UI.Frame.Rectangle
        (getRectangleY, getRectangleX)
@@ -403,11 +403,11 @@ instance RecoverablePane IDEModules ModulesState IDEM where
         treeViewSetSearchEqualFunc descrView
             (\_ _ key iter -> descrViewSearch descrView descrStore key iter)
         paned           <-  panedNew OrientationHorizontal
-        sw              <-  scrolledWindowNew noAdjustment noAdjustment
+        sw              <-  scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType sw ShadowTypeIn
         containerAdd sw treeView
         scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
-        sw2             <-  scrolledWindowNew noAdjustment noAdjustment
+        sw2             <-  scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType sw2 ShadowTypeIn
         containerAdd sw2 descrView
         scrolledWindowSetPolicy sw2 PolicyTypeAutomatic PolicyTypeAutomatic

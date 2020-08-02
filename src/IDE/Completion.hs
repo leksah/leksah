@@ -66,7 +66,7 @@ import GI.Gtk.Objects.Paned
        (panedNew, panedSetPosition, panedGetPosition, panedGetChild2, Paned(..),
         panedGetChild1, panedAdd2, panedAdd1)
 import GI.Gtk.Objects.ScrolledWindow (scrolledWindowNew)
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Widget
        (Widget(..), widgetShowAll, widgetGetAllocation, widgetGetParent,
         widgetHide, onWidgetButtonReleaseEvent, onWidgetMotionNotifyEvent,
@@ -84,7 +84,7 @@ import GI.Pango.Structs.FontDescription
        (fontDescriptionSetFamily, fontDescriptionNew,
         fontDescriptionFromString)
 import GI.Gtk.Objects.TreeViewColumn
-       (noTreeViewColumn, treeViewColumnPackStart, setTreeViewColumnMinWidth,
+       (TreeViewColumn, treeViewColumnPackStart, setTreeViewColumnMinWidth,
         setTreeViewColumnSizing, treeViewColumnNew)
 import GI.Gtk.Enums (TreeViewColumnSizing(..), WindowType(..), Orientation(..))
 import GI.Gtk.Objects.CellRendererText
@@ -200,7 +200,7 @@ initCompletion sourceView always = do
                 containerSetBorderWidth window 3
                 paned      <- panedNew OrientationHorizontal
                 containerAdd window paned
-                nameScrolledWindow <- scrolledWindowNew noAdjustment noAdjustment
+                nameScrolledWindow <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
                 widgetSetSizeRequest nameScrolledWindow 250 40
                 tree       <- treeViewNew
                 containerAdd nameScrolledWindow tree
@@ -278,7 +278,7 @@ addEventHandling window sourceView tree store isWordChar always = do
                 when (newRow < count) $ do
                     path <- treePathNewFromIndices' [newRow]
                     treeSelectionSelectPath selection path
-                    treeViewScrollToCell tree (Just path) noTreeViewColumn False 0 0
+                    treeViewScrollToCell tree (Just path) (Nothing :: Maybe TreeViewColumn) False 0 0
                 return True
             up = whenVisible $ do
                 maybeRow <- liftIO $ getRow tree
@@ -286,7 +286,7 @@ addEventHandling window sourceView tree store isWordChar always = do
                 when (newRow >= 0) $ do
                     path <- treePathNewFromIndices' [newRow]
                     treeSelectionSelectPath selection path
-                    treeViewScrollToCell tree (Just path) noTreeViewColumn False 0 0
+                    treeViewScrollToCell tree (Just path) (Nothing :: Maybe TreeViewColumn) False 0 0
                 return True
         case (name, modifier, char) of
             (Just "Tab", _, _) -> whenVisible . liftIDE $ do
@@ -573,7 +573,7 @@ processResults window tree store sourceView wordStart options selectLCP isWordCh
                             panedSetPosition paned (wWindow-pos)
                         unless (null newOptions) $ do
                             path <- treePathNewFromIndices' [0]
-                            treeViewSetCursor tree path noTreeViewColumn False
+                            treeViewSetCursor tree path (Nothing :: Maybe TreeViewColumn) False
                         widgetShowAll window
 
             when (newWordStart /= currentWordStart) $

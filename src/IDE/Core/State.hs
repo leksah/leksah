@@ -134,7 +134,7 @@ import Control.Lens
        ((^.), view, over, traverse, (.~), _Just, Getter, to, _1, _2, _3,
         Getting, Lens')
 import qualified Data.Foldable as F (Foldable(..))
-import Language.Haskell.HLint3 (Idea(..))
+import Language.Haskell.HLint (Idea(..))
 import System.Log.Logger (debugM)
 import Data.Ord (Down(..))
 import IDE.Utils.FileUtils (isSubPath)

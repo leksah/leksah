@@ -72,7 +72,7 @@ import GI.Gtk.Objects.Widget
        (toWidget)
 #endif
 
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Enums (PolicyType(..), ShadowType(..))
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
@@ -125,7 +125,7 @@ instance RecoverablePane IDEDocumentation DocumentationState IDEM where
             return mbPane)
 #endif
     builder _pp _nb _windows = reifyIDE $ \ _ideR -> do
-        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
 
 #if defined(MIN_VERSION_gi_webkit2) || defined(MIN_VERSION_gi_webkit2)

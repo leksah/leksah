@@ -1,4 +1,4 @@
-index-state: 2020-06-15T12:00:00Z
+index-state: 2020-07-31T00:00:00Z
 
 packages:
  ./
@@ -14,67 +14,43 @@ packages:
 -- vendor/HaRe/submodules/ghc-mod
 -- vendor/HaRe/submodules/ghc-mod/core
 
+package reflex
+  tests: False
+
 constraints: Cabal <3.0.1.0
 allow-newer:
  which:base
  which:template-haskell
  text-replace:base
  text-replace:optparse-applicative
+ constraints-extras:base
+ constraints-extras:template-haskell
+ monoidal-containers:base
+ monoidal-containers:aeson
+ monoidal-containers:these
+ reflex:base
+ reflex:template-haskell
+ reflex:these
+ reflex-dom-core:base
+ reflex-dom-core:template-haskell
+ reflex-dom-core:aeson
+ reflex-dom-core:these
  reflex-dom-svg:base
  reflex-dom-svg:containers
  reflex-dom-svg:lens
+ reflex-dom-svg:reflex
+ reflex-dom-svg:reflex-dom-core
+ patch:base
+ patch:these
+ gi-gtkosxapplication:haskell-gi
+ gi-gtkosxapplication:haskell-gi-base
+ brittany:*
 
 source-repository-package
   type: git
   location: https://github.com/liff/hs-git
   tag: 72951679408cefc68ebec7935d8bb6084f4507c8
   --sha256: 1684mbjrz23plvj7a8kn23sridjqxi242rvbkn7gqf4r3lgr934x
-
-source-repository-package
-  type: git
-  location: https://github.com/reflex-frp/reflex
-  tag: 7c3253d501a4766e6e4eed675bba6b2fb76a3503
-  --sha256: 1wkz7bg0cafhh3b1sijzj250r7jlbcd0zs05p8vgar37gi98r86b
-
-source-repository-package
-  type: git
-  location: https://github.com/hamishmack/reflex-dom
-  tag: 986ecd1aa38396782547082c9b1d963dbb2773ed
-  subdir: reflex-dom-core
-  --sha256: 1x4bl1cp4q18yw4zy49pdbfci28j1yv9jwp3r82y9ly3lk0cak76
-
-source-repository-package
-  type: git
-  location: https://github.com/hamishmack/reflex-dom
-  tag: 986ecd1aa38396782547082c9b1d963dbb2773ed
-  subdir: chrome-test-utils
-  --sha256: 1x4bl1cp4q18yw4zy49pdbfci28j1yv9jwp3r82y9ly3lk0cak76
-
-source-repository-package
-  type: git
-  location: https://github.com/WebGHC/prim-uniq
-  tag: 34570a948f7d84a1821ed6d8305ed094c4f6eb15
-  --sha256: 15xm0ky6dgndn714m99vgxyd4cr782gn0rf8zyf7v8mnj7mhcrc0
-
-source-repository-package
-  type: git
-  location: https://github.com/joecrayne/dependent-map
-  tag: afc92bfc04f73acba396ec52aa2df3fa07a861c8
-  --sha256: 06fdw4abls4dcdp67haxsq5680n6asvnv3gjp0q2a834fkscwddw
-
-source-repository-package
-  type: git
-  location: https://github.com/WebGHC/dependent-sum
-  tag: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
-  subdir: dependent-sum
-  --sha256: 0k9z63snfdz5rl6lndy2nclk4wpqv60mkbjs8l4jy42ammk8554r
-
-source-repository-package
-  type: git
-  location: https://github.com/WebGHC/dependent-sum
-  tag: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
-  subdir: dependent-sum-template
-  --sha256: 0k9z63snfdz5rl6lndy2nclk4wpqv60mkbjs8l4jy42ammk8554r
 
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk

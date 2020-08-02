@@ -91,7 +91,7 @@ import GI.Gtk.Objects.TreeSelection
 import GI.Gtk.Enums
        (PolicyType(..), ShadowType(..), SelectionMode(..),
         TreeViewColumnSizing(..), Orientation(..))
-import GI.Gtk.Objects.Adjustment (noAdjustment)
+import GI.Gtk.Objects.Adjustment (Adjustment)
 import GI.Gtk.Objects.Container (containerAdd)
 import GI.Gtk.Objects.Menu (Menu(..))
 import GI.Gtk.Objects.MenuItem
@@ -267,7 +267,7 @@ buildSearchPane =
         sel <- treeViewGetSelection treeView
         treeSelectionSetMode sel SelectionModeSingle
 
-        scrolledView <- scrolledWindowNew noAdjustment noAdjustment
+        scrolledView <- scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
         scrolledWindowSetShadowType scrolledView ShadowTypeIn
         containerAdd scrolledView treeView
         scrolledWindowSetPolicy scrolledView PolicyTypeAutomatic PolicyTypeAutomatic

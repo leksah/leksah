@@ -23,7 +23,7 @@ import GHCJS.DOM.HTMLElement (getOffsetHeight)
 import Reflex
        (attachWithMaybe, attachWith, zipDynWith, updated,
         leftmost, delay, holdUniqDyn, Dynamic, holdDyn, never, current,
-        getPostBuild, performEvent)
+        getPostBuild, performEvent, fmapMaybe)
 import Reflex.Dom.Core
        (elDynAttr', divClass, virtualList, elAttr',
         resizeDetectorWithAttrs, dynText, MonadWidget, (=:), Event,
@@ -65,7 +65,8 @@ logWidget ide =
     (resizeE, result) <- resizeDetectorWithAttrs ("class" =: "log-child") $ mdo
       let p = uncheckedCastTo HTMLElement $ _element_raw parent
       postPostBuild <- delay 0 =<< getPostBuild
-      sizeE <- performEvent (getOffsetHeight p <$ leftmost [postPostBuild, resizeE])
+      initialHeightE <- performEvent (getOffsetHeight p <$ postPostBuild)
+      let sizeE = leftmost [ initialHeightE, fmapMaybe snd resizeE]
       (parent, result) <- elAttr' "div" ("style" =: "height: 100%") $ mdo
         logLines <- -- fmap (M.fromList . zip [0..] . toList) <$>
           holdUniqDyn (view logLineMap <$> ide)

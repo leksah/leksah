@@ -121,7 +121,7 @@ import GI.Gtk
        (CssProvider(..), pattern STYLE_PROVIDER_PRIORITY_APPLICATION,
         styleContextAddProvider, cssProviderLoadFromData,
         widgetGetStyleContext, cssProviderNew,
-        noWidget, imageNewFromIconName)
+        Widget, imageNewFromIconName)
 import Graphics.UI.Frame.Panes (RecoverablePane(..))
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
@@ -258,7 +258,7 @@ constructFindReplace = do
     toolbarInsert toolbar' sep1 0
 
     let performGrep = reflectIDE (workspaceTry $ doGrep toolbar') ideR
-    grepButton <- toolButtonNew noWidget (Just (__"Grep"))
+    grepButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Grep"))
     toolbarInsert toolbar' grepButton 0
     _ <- onToolButtonClicked grepButton performGrep
     setWidgetTooltipText grepButton $ __"Search in multiple files"
@@ -266,7 +266,7 @@ constructFindReplace = do
     sep2 <- separatorToolItemNew
     toolbarInsert toolbar' sep2 0
 
-    replaceAllButton <- toolButtonNew noWidget (Just (__"Replace All"))
+    replaceAllButton <- toolButtonNew (Nothing :: Maybe Widget) (Just (__"Replace All"))
     toolbarInsert toolbar' replaceAllButton 0
 
     replaceButton <- newButtonFromIconName "edit-find-replace"

@@ -68,7 +68,7 @@ import GI.Gtk.Objects.Notebook
 import Data.Int (Int32)
 import GI.GLib
        (timeoutAdd, pattern PRIORITY_DEFAULT_IDLE, pattern PRIORITY_DEFAULT, idleAdd)
-import GI.Gtk.Objects.Label (noLabel)
+import GI.Gtk.Objects.Label (Label)
 import IDE.Utils.DebugUtils (traceTimeTaken)
 import GHC.Stack (HasCallStack)
 import Control.Lens (pre, _Just, (.~), _1, (%~))
@@ -123,7 +123,7 @@ instance PaneMonad IDEM where
                 if b1 && b2
                     then do
                         topWidget <- getTopWidget buf
-                        notebookInsertOrdered notebook topWidget (paneName buf) noLabel (paneTooltipText buf) False
+                        notebookInsertOrdered notebook topWidget (paneName buf) (Nothing :: Maybe Label) (paneTooltipText buf) False
                         _ <- addPaneAdmin buf cids panePath
                         widgetSetName topWidget (paneName buf)
                         widgetShowAll topWidget

@@ -82,7 +82,8 @@ errorsWidget ide allEvents = do
     (resizeE, result) <- resizeDetectorWithAttrs ("class" =: "errors-child") $ mdo
       let p = uncheckedCastTo HTMLElement $ _element_raw parent
       postPostBuild <- delay 0 =<< getPostBuild
-      sizeE <- performEvent (getOffsetHeight p <$ leftmost [postPostBuild, resizeE])
+      initialHeightE <- performEvent (getOffsetHeight p <$ postPostBuild)
+      let sizeE = leftmost [ initialHeightE, fmapMaybe snd resizeE]
       (parent, result) <- elAttr' "div" ("style" =: "height: 100%") $ mdo
         let refs = fmap (M.fromList . zip [0..] . toList) allRefs
         heightD <- holdDyn 80 $ round <$> sizeE

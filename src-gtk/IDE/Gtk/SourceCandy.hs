@@ -28,7 +28,7 @@ import qualified Data.Text as T
 import GI.Gtk.Objects.TextBuffer
        (textBufferGetIterAtMark, textBufferCreateMark, textBufferSetText)
 import GI.GtkSource (bufferNew)
-import GI.Gtk.Objects.TextTagTable (noTextTagTable)
+import GI.Gtk.Objects.TextTagTable (TextTagTable)
 import IDE.SourceCandy (notBeforeId, notBeforeOp, notAfterId, notAfterOp)
 import Control.Monad.IO.Class (MonadIO)
 import GI.Gtk.Objects.TextMark (IsTextMark, TextMark(..))
@@ -129,7 +129,7 @@ transformFromCandy (CT(_,transformTableBack)) ebuf = do
 
 simpleGtkBuffer :: Text -> IDEM (EditorBuffer GtkSourceView)
 simpleGtkBuffer contents = GtkBuffer <$> do
-    buffer <- bufferNew noTextTagTable
+    buffer <- bufferNew (Nothing :: Maybe TextTagTable)
     textBufferSetText buffer contents (-1)
     return buffer
 

@@ -49,16 +49,16 @@ Then download, build and run Leksah with:
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
-./leksah-nix.sh ghc865
+./leksah-nix.sh ghc884
 ```
 
 On macOS the Leksah window start below other active application windows you can use
 Command+Shift+Tab to bring it to the top
 ([issue 461](https://github.com/leksah/leksah/issues/461)).
 
-The `ghc865` argument indicates Leksah should be built using GHC 8.6.5.  Leksah works best if
+The `ghc884` argument indicates Leksah should be built using GHC 8.8.4.  Leksah works best if
 it is built with the same version of GHC that your projects use.  To work on a project that
-uses GHC 8.4.4, just exit leksah and run `./leksah-nix.sh ghc844`.
+uses GHC 8.6.5, just exit leksah and run `./leksah-nix.sh ghc865`.
 
 ### Chocolatey and MSYS2 (Recommended for Windows users)
 
@@ -66,7 +66,7 @@ Install [Chocolatey](https://chocolatey.org/).
 
 Right click on `Command Prompt` and choose `Run as Administrator`.  In the window run:
 ```shell
-choco install ghc --version 8.4.4
+choco install ghc --version 8.8.4
 choco install msys2
 ```
 

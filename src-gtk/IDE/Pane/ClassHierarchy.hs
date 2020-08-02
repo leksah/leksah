@@ -318,12 +318,12 @@ builder currentInfo pp nb windows ideR = do
     treeViewSetSearchEqualFunc facetView (facetViewSearch facetView facetStore)
 --}
     pane'           <-  hPanedNew
-    sw              <-  scrolledWindowNew noAdjustment noAdjustment
+    sw              <-  scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
     scrolledWindowSetShadowType sw ShadowTypeIn
     containerAdd sw treeView
     scrolledWindowSetPolicy sw PolicyTypeAutomatic PolicyTypeAutomatic
 
-{--        sw2             <-  scrolledWindowNew noAdjustment noAdjustment
+{--        sw2             <-  scrolledWindowNew (Nothing :: Maybe Adjustment) (Nothing :: Maybe Adjustment)
     containerAdd sw2 facetView
     scrolledWindowSetPolicy sw2 PolicyTypeAutomatic PolicyTypeAutomatic--}
     panedAdd1 pane' sw

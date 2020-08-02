@@ -55,8 +55,8 @@ import GI.Gtk (MessageDialog, Box)
 import Control.Concurrent (MVar)
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
-import IDE.Brittany (runBrittany)
-import Language.Haskell.Brittany.Internal.Types (BrittanyError(..))
+-- import IDE.Brittany (runBrittany)
+-- import Language.Haskell.Brittany.Internal.Types (BrittanyError(..))
 import Control.Exception (SomeException)
 
 -- * Buffer Basics
@@ -240,20 +240,7 @@ haskellMode = Mode {
           True -> do
             (start, end) <- getSelectionBounds ebuf
             text <- getText ebuf start end True
-            (runBrittany Nothing text >>= \case
-                Left errs -> forM_ errs $ \case
-                    ErrorInput         str -> ideMessage Normal $ T.pack str
-                    ErrorUnusedComment str -> ideMessage Normal $ T.pack str
-                    LayoutWarning      str -> ideMessage Normal $ T.pack str
-                    ErrorUnknownNode str _ -> ideMessage Normal $ T.pack str
-                    ErrorMacroConfig str _ -> ideMessage Normal . T.pack $ "when parsing inline config: " ++ str
-                    ErrorOutputCheck       -> ideMessage Normal "Output is not syntactically valid."
-                Right newText -> do
-                    beginUserAction ebuf
-                    delete ebuf start end
-                    insert ebuf start newText
-                    endUserAction ebuf)
-                `catchIDE` (\(e :: SomeException) -> liftIO . putStrLn $ "Brittany Error : " <> show e)
+            return ()
         return ()
     }
 
