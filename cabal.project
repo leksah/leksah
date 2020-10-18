@@ -16,6 +16,8 @@ packages:
 
 package reflex
   tests: False
+package reflex-dom-core
+  tests: False
 
 constraints: Cabal <3.0.1.0
 allow-newer:
