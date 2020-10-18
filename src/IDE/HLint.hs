@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -51,8 +52,14 @@ import qualified Data.Text.IO as T (readFile)
 import Distribution.Package (PackageIdentifier(..))
 import Distribution.ModuleName (ModuleName)
 
-import "ghc-lib-parser" FastString (unpackFS)
-import qualified "ghc-lib-parser" SrcLoc as GHC
+#if MIN_VERSION_ghc(8,10,2)
+#define GHC_LIB_PARSER "ghc"
+#else
+#define GHC_LIB_PARSER "ghc-lib-parser"
+#endif
+
+import GHC_LIB_PARSER FastString (unpackFS)
+import qualified GHC_LIB_PARSER SrcLoc as GHC
        (SrcLoc(..), SrcSpan(..), srcSpanFile, srcSpanStartLine, srcSpanStartCol,
         srcSpanEndLine, srcSpanEndCol)
 import Language.Haskell.HLint

@@ -1,27 +1,27 @@
 { sourcesOverride ? {}
 , sources ? import ./nix/sources.nix {} // sourcesOverride
-, nixpkgs ? (import sources."haskell.nix" {}).sources.nixpkgs
+, nixpkgs ? (import sources."haskell.nix" {}).sources.nixpkgs-2009
 , haskellNixpkgsArgs ? (import sources."haskell.nix" {}).nixpkgsArgs
 , pkgs ? import nixpkgs (haskellNixpkgsArgs // {
     overlays = haskellNixpkgsArgs.overlays ++ [ (import ./nix/overlays/gtk-debug.nix) ];
   } // (if system == null then {} else { inherit system; }))
-, compiler-nix-name ? "ghc884"
+, compiler-nix-name ? "ghc8102"
 , system ? null
 }:
 let
   project = pkgs.haskell-nix.project' {
     inherit compiler-nix-name;
     name = "leksah";
-    #src = pkgs.haskell-nix.haskellLib.cleanSourceWith {
-    #  src = pkgs.haskell-nix.haskellLib.cleanGits {
-    #    src = ../.; name = "leksah"; gitDirs = [ "leksah" "reflex" "reflex-dom" ];
-    #  };
-    #  subDir = "leksah";
-    #  includeSiblings = true;
-    #};
-    src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; name = "leksah"; };
+    src = pkgs.haskell-nix.haskellLib.cleanSourceWith {
+      src = pkgs.haskell-nix.haskellLib.cleanGits {
+        src = ../.; name = "leksah"; gitDirs = [ "leksah" "reflex" "reflex-dom" ];
+      };
+      subDir = "leksah";
+      includeSiblings = true;
+    };
+    # src = pkgs.haskell-nix.haskellLib.cleanGit { src = ./.; name = "leksah"; };
     projectFileName = "cabal.project";
-    modules = [{ 
+    modules = [{
         packages.reflex.components.tests.hlint.buildable = pkgs.lib.mkForce false;
         packages.reflex.components.tests.RequesterT.buildable = pkgs.lib.mkForce false;
         packages.reflex.components.tests.QueryT.buildable = pkgs.lib.mkForce false;
@@ -30,6 +30,9 @@ let
       }
       (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc865") {
         packages.haddock-api.components.library.doHaddock = false;
+      })
+      (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc8102") {
+        packages.haddock-api.src = sources.haddock-ghc8102 + "/haddock-api";
       })
     ];
   };

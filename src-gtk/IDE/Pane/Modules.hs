@@ -138,7 +138,9 @@ import Data.GI.Gtk.ModelView.CellLayout
        (cellLayoutSetDataFunction)
 import GI.Gtk.Interfaces.TreeModel
        (treeModelIterNext, treeModelIterChildren, treeModelGetIterFirst,
-        treeModelGetPath, treeModelSortNewWithModel)
+        treeModelGetPath)
+import GI.Gtk.Objects.TreeModelSort
+       (treeModelSortNewWithModel)
 import GI.Gtk.Interfaces.TreeSortable
        (treeSortableSetSortColumnId, treeSortableSetSortFunc)
 import Data.GI.Gtk.ModelView.CustomStore

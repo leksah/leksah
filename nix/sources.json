@@ -1,14 +1,26 @@
 {
+    "haddock-ghc8102": {
+        "branch": "ghc-8.10-backports",
+        "description": "Haskell Documentation Tool",
+        "homepage": "www.haskell.org/haddock/",
+        "owner": "haskell",
+        "repo": "haddock",
+        "rev": "b78efc7feda9e1786cd9191cfbf2008d9dee375b",
+        "sha256": "1as826cwvfq43idjwd9f8j6h5mdg71s918lvsa7ma9mfhrxrrjym",
+        "type": "tarball",
+        "url": "https://github.com/haskell/haddock/archive/b78efc7feda9e1786cd9191cfbf2008d9dee375b.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "haskell.nix": {
         "branch": "master",
         "description": "Alternative Haskell Infrastructure for Nixpkgs",
         "homepage": "https://input-output-hk.github.io/haskell.nix",
         "owner": "input-output-hk",
         "repo": "haskell.nix",
-        "rev": "6b37cca8bd2da7dd19cb1353dd43454388047462",
-        "sha256": "0isvf35d5nhlzwdyc9nyf5c3wi20cdzfx99v4sbljvd22l7pz0xa",
+        "rev": "7cff00d149d9587f37b70e5ea5c6f63817ae6b66",
+        "sha256": "1fgb5d43hmivwd3k46yp393ya6gmy5pzqv4avghiq0mclq1cikhd",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/haskell.nix/archive/6b37cca8bd2da7dd19cb1353dd43454388047462.tar.gz",
+        "url": "https://github.com/input-output-hk/haskell.nix/archive/7cff00d149d9587f37b70e5ea5c6f63817ae6b66.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "niv": {

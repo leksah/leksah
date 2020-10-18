@@ -1,4 +1,4 @@
-index-state: 2020-07-31T00:00:00Z
+index-state: 2020-10-17T00:00:00Z
 
 packages:
  ./
@@ -45,12 +45,32 @@ allow-newer:
  gi-gtkosxapplication:haskell-gi
  gi-gtkosxapplication:haskell-gi-base
  brittany:*
+ data-tree-print:base
+
+source-repository-package
+  type: git
+  location: https://github.com/bubba/brittany.git
+  tag: c59655f10d5ad295c2481537fc8abf0a297d9d1c
+  --sha256: 1rkk09f8750qykrmkqfqbh44dbx1p8aq1caznxxlw8zqfvx39cxl
 
 source-repository-package
   type: git
   location: https://github.com/liff/hs-git
   tag: 72951679408cefc68ebec7935d8bb6084f4507c8
   --sha256: 1684mbjrz23plvj7a8kn23sridjqxi242rvbkn7gqf4r3lgr934x
+
+source-repository-package
+  type: git
+  location: https://github.com/reflex-frp/reflex.git
+  tag: d230632427fc1b7031163567c97f20050610c122
+  --sha256: 1j1bznyrh20d3a72hqhsaazshvms3fwldzk5qxp6cf7m2fv3va2k
+
+source-repository-package
+  type: git
+  location: https://github.com/hamishmack/reflex-dom.git
+  tag: 9e85f4a6391d330048286bf90c8a41e6478984d8
+  --sha256: 1fd9iv1v5pbd8x3jg26kajc157hi5i03n7q5dj959knf30m4d9y2
+  subdir: reflex-dom-core
 
 -- Issues with command line length limits on macOS prevent the gtk version checks working
 package ltk

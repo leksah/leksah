@@ -14,8 +14,8 @@ fi
 GHCARG=$1
 shift
 
-if [[ "$GHCARG" != "ghc865" && "$GHCARG" != "ghc883" && "$GHCARG" != "ghc884" && "$GHCARG" != "ghc8101" ]]; then
-    echo "Please use ./leksah-nix.sh ghc865 or ghc884 or ghc8101"
+if [[ "$GHCARG" != "ghc865" && "$GHCARG" != "ghc883" && "$GHCARG" != "ghc884" && "$GHCARG" != "ghc8101" && "$GHCARG" != "ghc8102" ]]; then
+    echo "Please use ./leksah-nix.sh ghc865 or ghc884 or ghc8102"
     exit 1
 fi
 
