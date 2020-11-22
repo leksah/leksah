@@ -32,7 +32,14 @@ let
       (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc8102") {
         packages.haddock-api.src = sources.haddock-ghc8102 + "/haddock-api";
       })
-      { reinstallableLibGhc = true; }
+      { # Allow Cabal to reinstall
+        nonReinstallablePkgs =
+          [ "rts" "ghc-heap" "ghc-prim" "integer-gmp" "integer-simple" "base"
+            "deepseq" "array" "ghc-boot-th" "pretty" "template-haskell"
+            # ghcjs custom packages
+            "ghcjs-prim" "ghcjs-th"
+          ] ++ pkgs.lib.optional (compiler-nix-name == "ghc8102") "ghc";
+      }
     ];
   };
   launch-leksah-script = pkgs.writeShellScriptBin "launch-leksah" ''
