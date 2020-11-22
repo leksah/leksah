@@ -95,6 +95,7 @@ import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
 import Distribution.Verbosity
+import Distribution.Utils.ShortText (toShortText, fromShortText)
 
 import System.FilePath
 import System.Directory
@@ -983,10 +984,10 @@ getModuleTemplate templateName pd modName exports body = catch (do
                                           display
 #endif
                                                   . license) pd)
-        ,   ("@Maintainer@"   , T.pack $ maintainer pd)
-        ,   ("@Stability@"    , T.pack $ stability pd)
+        ,   ("@Maintainer@"   , T.pack . fromShortText $ maintainer pd)
+        ,   ("@Stability@"    , T.pack . fromShortText $ stability pd)
         ,   ("@Portability@"  , "")
-        ,   ("@Copyright@"    , T.pack $ copyright pd)
+        ,   ("@Copyright@"    , T.pack . fromShortText $ copyright pd)
         ,   ("@ModuleName@"   , modName)
         ,   ("@ModuleExports@", exports)
         ,   ("@ModuleBody@"   , body)]))

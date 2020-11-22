@@ -90,6 +90,7 @@ import Distribution.Types.LibraryVisibility (LibraryVisibility(..))
 import Distribution.Types.UnqualComponentName
        (UnqualComponentName, mkUnqualComponentName,
         unUnqualComponentName)
+import Distribution.Utils.ShortText (toShortText, fromShortText)
 import Distribution.Verbosity
 import Distribution.Version
        (versionNumbers, mkVersion, orLaterVersion)
@@ -877,8 +878,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (paraName <<<- ParaName (__ "Synopsis")
            $ paraSynopsis <<<- ParaSynopsis (__ "A one-line summary of this package")
            $ emptyParams)
-            (synopsis . pd)
-            (\ a b -> b{pd = (pd b){synopsis = a}})
+            (fromShortText . synopsis . pd)
+            (\ a b -> b{pd = (pd b){synopsis = toShortText a}})
             (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Package Identifier") $ emptyParams)
@@ -891,30 +892,30 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraShadow <<<- ParaShadow ShadowTypeOut
                         $ paraMinSize <<<- ParaMinSize (-1,210)
                             $ emptyParams)
-            (T.pack . description . pd)
-            (\ a b -> b{pd = (pd b){description = T.unpack $ if T.null a then " " else a}})
+            (T.pack . fromShortText . description . pd)
+            (\ a b -> b{pd = (pd b){description = toShortText . T.unpack $ if T.null a then " " else a}})
             multilineStringEditor
     ,   mkField
             (paraName <<<- ParaName (__ "Homepage") $ emptyParams)
-            (homepage . pd)
-            (\ a b -> b{pd = (pd b){homepage = a}})
+            (fromShortText . homepage . pd)
+            (\ a b -> b{pd = (pd b){homepage = toShortText a}})
             (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Package URL") $ emptyParams)
-            (pkgUrl . pd)
-            (\ a b -> b{pd = (pd b){pkgUrl = a}})
+            (fromShortText . pkgUrl . pd)
+            (\ a b -> b{pd = (pd b){pkgUrl = toShortText a}})
             (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Category") $ emptyParams)
-            (category . pd)
-            (\ a b -> b{pd = (pd b){category = a}})
+            (fromShortText . category . pd)
+            (\ a b -> b{pd = (pd b){category = toShortText a}})
             (stringEditor (const True) True)
     ]),
     (__ "Description", VFD emptyParams [
         mkField
             (paraName <<<- ParaName (__ "Stability") $ emptyParams)
-            (stability . pd)
-            (\ a b -> b{pd = (pd b){stability = a}})
+            (fromShortText . stability . pd)
+            (\ a b -> b{pd = (pd b){stability = toShortText a}})
             (stringEditor (const True) True)
             -- TODO Fix this up to work with current Cabal
 --    ,   mkField
@@ -934,23 +935,23 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
             (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ,   mkField
             (paraName <<<- ParaName (__ "Copyright") $ emptyParams)
-            (copyright . pd)
-            (\ a b -> b{pd = (pd b){copyright = a}})
+            (fromShortText . copyright . pd)
+            (\ a b -> b{pd = (pd b){copyright = toShortText a}})
             (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Author") $ emptyParams)
-            (author . pd)
-            (\ a b -> b{pd = (pd b){author = a}})
+            (fromShortText . author . pd)
+            (\ a b -> b{pd = (pd b){author = toShortText a}})
             (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Maintainer") $ emptyParams)
-            (maintainer . pd)
-            (\ a b -> b{pd = (pd b){maintainer = a}})
+            (fromShortText . maintainer . pd)
+            (\ a b -> b{pd = (pd b){maintainer = toShortText a}})
             (stringEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Bug Reports") $ emptyParams)
-            (bugReports . pd)
-            (\ a b -> b{pd = (pd b){bugReports = a}})
+            (fromShortText . bugReports . pd)
+            (\ a b -> b{pd = (pd b){bugReports = toShortText a}})
             (stringEditor (const True) True)
     ]),
 --    ("Repositories", VFD emptyParams [
