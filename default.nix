@@ -38,7 +38,15 @@ let
             "deepseq" "array" "ghc-boot-th" "pretty" "template-haskell"
             # ghcjs custom packages
             "ghcjs-prim" "ghcjs-th"
-          ] ++ pkgs.lib.optional (compiler-nix-name == "ghc8102") "ghc";
+            "ghc-boot"
+            "ghc" "Win32" "array" "binary" "bytestring" "containers"
+            "directory" "filepath" "ghc-boot" "ghc-compact" "ghc-prim"
+            # "ghci" "haskeline"
+            "hpc"
+            "mtl" "parsec" "process" "text" "time" "transformers"
+            "unix" "xhtml" "terminfo"
+            # "stm"
+          ];
       }
     ];
   };
