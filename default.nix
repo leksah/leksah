@@ -29,7 +29,7 @@ let
       (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc865") {
         packages.haddock-api.components.library.doHaddock = false;
       })
-      (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc8102") {
+      (pkgs.lib.optionalAttrs (compiler-nix-name == "ghc8102" || compiler-nix-name == "ghc8103") {
         packages.haddock-api.src = sources.haddock-ghc8102 + "/haddock-api";
       })
       { # Allow Cabal to reinstall
@@ -128,7 +128,7 @@ let
       '';
   };
   shells = {
-    ghc = (project.hsPkgs.shellFor {
+    ghc = (project.shellFor {
         packages = ps: with ps; [
           leksah-server
           leksah
