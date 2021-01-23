@@ -12,15 +12,15 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "haskellNix": {
-        "branch": "hkm/clean-data-files-fix",
+        "branch": "master",
         "description": "Alternative Haskell Infrastructure for Nixpkgs",
         "homepage": "https://input-output-hk.github.io/haskell.nix",
         "owner": "input-output-hk",
         "repo": "haskell.nix",
-        "rev": "6f3401235e7ee4747d2b8b60bd992c3b98d98715",
-        "sha256": "0ahkh2qmx2xcw6238b885bvip4g52b19vv04vbby2yiyz88gv3av",
+        "rev": "3439d7519ed6154f4695d4508c44ef7ceab4285c",
+        "sha256": "0dzz0zrg62vl22rx9j2z6l15ynff4r2njz0m81b36dblhgk9l2ig",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/haskell.nix/archive/6f3401235e7ee4747d2b8b60bd992c3b98d98715.tar.gz",
+        "url": "https://github.com/input-output-hk/haskell.nix/archive/3439d7519ed6154f4695d4508c44ef7ceab4285c.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "niv": {
