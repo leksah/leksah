@@ -193,16 +193,6 @@ flag network-uri
     description:
         Get Network.URI from the network-uri package
 
-flag gtk-320
-    description:
-        GTK+ is 3.20 or later
-
-flag check-gtk-version
-    description:
-        This flag can be used to disable the pkgconfig-depends
-        as they can cause problems on macOS when using nix.
-    manual: True
-
 flag hare
     description:
         Enable HaRe based features.
@@ -346,7 +336,6 @@ library
         filepath >=1.1.0.1 && <1.5,
         fsnotify >=0.3.0.1 && <0.4,
         generic-deriving >=1.10 && <1.15,
-        ghc-lib-parser -any,
         ghcjs-codemirror -any,
         ghcjs-dom >=0.9.4.0 && <0.10,
         gi-cairo >=1.0.6 && <1.1,
@@ -448,14 +437,6 @@ library
     else
         build-depends:
             network >=2.2 && <2.6
-
-    if flag(check-gtk-version)
-
-        if flag(gtk-320)
-            cpp-options: -DMIN_VERSION_GTK_3_20
-            pkgconfig-depends: gtk+-3.0 >=3.20
-    else
-        cpp-options: -DMIN_VERSION_GTK_3_20
 
     pkgconfig-depends: gobject-2.0 >=2
 
@@ -559,7 +540,6 @@ library leksah-nogtk
         filepath >=1.1.0.1 && <1.5,
         fsnotify >=0.3.0.1 && <0.4,
         generic-deriving >=1.10 && <1.15,
-        ghc-lib-parser -any,
         ghcjs-codemirror -any,
         ghcjs-dom >=0.9.4.0 && <0.10,
         git >=0.2.0 && <0.4,
@@ -679,7 +659,6 @@ executable leksah
             leksah-server -any
 
 executable leksah-warp
-    buildable: False
     main-is: Warp.hs
     hs-source-dirs: main
     default-language: Haskell2010

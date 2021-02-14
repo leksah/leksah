@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -24,57 +23,88 @@ module IDE.SymbolNavigation (
 
 import Prelude ()
 import Prelude.Compat
-import IDE.TextEditor (TextEditor(..), EditorView(..), EditorIter(..))
-import IDE.Core.Types (IDEM)
-import Control.Monad.IO.Class (MonadIO(..))
-import IDE.Utils.GUIUtils (mapControlCommand)
-import Data.IORef (writeIORef, readIORef, newIORef)
-import Control.Monad (void, when)
-import Data.Maybe (fromJust, isJust)
+
+import Control.Monad (void)
+import Control.Monad.IO.Class ()
 import Control.Monad.Reader.Class (MonadReader(..))
-import IDE.Core.State (reflectIDE)
-import Control.Applicative ((<$>))
+
+import Data.Foldable (forM_)
+import Data.GI.Base.ShortPrelude
+import Data.IORef (writeIORef, readIORef, newIORef)
+import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as T (length)
-import GI.Gtk.Objects.ScrolledWindow
-       (getScrolledWindowVadjustment, getScrolledWindowHadjustment,
-        ScrolledWindow(..))
-import Graphics.UI.Editor.Basics (Connection(..), Connection)
-import GI.Pango.Enums (Underline(..))
-import GI.Gdk.Enums (GrabOwnership(..), CursorType(..))
-import GI.Gtk.Objects.Widget
-       (onWidgetButtonPressEvent, onWidgetMotionNotifyEvent,
-        widgetGetWindow, widgetGetAllocation)
-import GI.Gtk.Objects.Adjustment (adjustmentGetValue)
-import Graphics.UI.Frame.Rectangle
-       (getRectangleHeight, getRectangleWidth)
-import GI.Gdk.Structs.EventMotion
-       (getEventMotionXRoot, getEventMotionY, getEventMotionX,
-        getEventMotionState, getEventMotionTime, getEventMotionIsHint)
-import GI.Gdk.Structs.EventButton
-       (getEventButtonXRoot, getEventButtonY, getEventButtonX,
-        getEventButtonState, getEventButtonTime)
+
+import GI.Gdk.Enums (CursorType(..))
+import GI.Gdk.Flags
+       (SeatCapabilities(..), ModifierType(..))
 import GI.Gdk.Objects.Window (windowGetOrigin)
 import GI.Gdk
        (getEventButtonDevice, getEventMotionDevice,
         deviceGetDisplay, cursorNewForDisplay)
-import Data.Foldable (forM_)
--- TODO fix seat code
-#undef MIN_VERSION_GTK_3_20
-#ifdef MIN_VERSION_GTK_3_20
-import GI.Gdk.Flags
-       (SeatCapabilities(..), EventMask(..), ModifierType(..))
 import GI.Gdk.Objects.Device (deviceGetSeat)
 import GI.Gdk.Objects.Seat (seatGrab, seatUngrab)
-#else
-import GI.Gdk.Flags
-       (EventMask(..), ModifierType(..))
-import GI.Gdk.Objects.Device (deviceGrab, deviceUngrab)
-import IDE.TypeTip (setTypeTip)
+import GI.Gdk.Unions.Event (getEventMotion)
+import GI.Gdk.Structs.EventButton
+       (getEventButtonXRoot, getEventButtonY, getEventButtonX,
+        getEventButtonState, getEventButtonTime)
+import GI.Gdk.Structs.EventMotion
+       (getEventMotionXRoot, getEventMotionY, getEventMotionX,
+        getEventMotionState, getEventMotionTime, getEventMotionIsHint)
+import GI.Gdk.Callbacks (noSeatGrabPrepareFunc)
+import qualified GI.Gdk.Unions.Event as Gdk.Event
+import GI.Gtk.Objects.Widget
+       (onWidgetButtonPressEvent,
+        widgetGetWindow, widgetGetAllocation, IsWidget)
+import GI.Gtk.Objects.Adjustment (adjustmentGetValue)
+import GI.Gtk.Objects.ScrolledWindow
+       (getScrolledWindowVadjustment, getScrolledWindowHadjustment,
+        ScrolledWindow(..))
+import GI.Pango.Enums (Underline(..))
+
+import Graphics.UI.Editor.Basics (Connection(..), Connection)
+import Graphics.UI.Frame.Rectangle
+       (getRectangleHeight, getRectangleWidth)
+
+import IDE.Core.State (reflectIDE)
+import IDE.Core.Types (IDEM)
+import IDE.TextEditor (TextEditor(..), EditorView(..), EditorIter(..))
 import qualified IDE.TextEditor.Class as E (TextEditor(..))
-#endif
+import IDE.TypeTip (setTypeTip)
+import IDE.Utils.GUIUtils (mapControlCommand)
 
 data Locality = LocalityPackage  | LocalityWorkspace | LocalitySystem  -- in which category symbol is located
     deriving (Ord,Eq,Show)
+
+type WidgetMotionNotifyEventCallback =
+    Gdk.Event.Event
+    -> IO Bool
+
+-- | Type for the callback on the (unwrapped) C side.
+type C_WidgetMotionNotifyEventCallback =
+    Ptr () ->                               -- object
+    Ptr Gdk.Event.Event ->
+    Ptr () ->                               -- user_data
+    IO CInt
+
+-- | Generate a function pointer callable from C code, from a `C_WidgetMotionNotifyEventCallback`.
+foreign import ccall "wrapper"
+    mk_WidgetMotionNotifyEventCallback :: C_WidgetMotionNotifyEventCallback -> IO (FunPtr C_WidgetMotionNotifyEventCallback)
+
+-- | Wrap a `WidgetMotionNotifyEventCallback` into a `C_WidgetMotionNotifyEventCallback`.
+wrap_WidgetMotionNotifyEventCallback ::
+    WidgetMotionNotifyEventCallback ->
+    C_WidgetMotionNotifyEventCallback
+wrap_WidgetMotionNotifyEventCallback _cb _ event _ = do
+    event' <- newBoxed Gdk.Event.Event event
+    result <- _cb  event'
+    let result' = (fromIntegral . fromEnum) result
+    return result'
+
+onWidgetMotionNotifyEvent :: (IsWidget a, MonadIO m) => a -> WidgetMotionNotifyEventCallback -> m SignalHandlerId
+onWidgetMotionNotifyEvent obj cb = liftIO $ do
+    let cb' = wrap_WidgetMotionNotifyEventCallback cb
+    cb'' <- mk_WidgetMotionNotifyEventCallback cb'
+    connectSignalFunPtr obj "motion-notify-event" cb'' SignalConnectBefore Nothing
 
 -- |
 createHyperLinkSupport
@@ -96,13 +126,9 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
 --        getEventCrossingTime e >>= pointerUngrab
 --        return True)
 
-    let moveOrClick mbDevice eventX eventY mods eventTime mbMotion = do
-#ifdef MIN_VERSION_GTK_3_20
+    let moveOrClick mbDevice eventX eventY mods _eventTime mbMotion = do
             mbSeat <- mapM deviceGetSeat mbDevice
             let ungrab = mapM_ seatUngrab mbSeat
-#else
-            let ungrab = mapM_ (`deviceUngrab` eventTime) mbDevice
-#endif
             mbHand <- mapM deviceGetDisplay mbDevice
                 >>= mapM (`cursorNewForDisplay` CursorTypeHand2)
             sx <- getScrolledWindowHadjustment sw >>= adjustmentGetValue
@@ -131,23 +157,12 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
                             clickHandler ctrlPressed shiftPressed (beg, en)
                             setTypeTip (0, 0) ""
                             return Nothing
-#ifdef MIN_VERSION_GTK_3_20
-                        Just motion -> do
-#else
-                        Just _ -> do
-#endif
+                        Just event -> do
                             widgetGetWindow tv >>= \case
                                 Nothing -> return ()
                                 Just dw ->
-#ifdef MIN_VERSION_GTK_3_20
                                     forM_ mbSeat $ \seat ->
-                                        seatGrab seat dw [SeatCapabilitiesPointer] False mbHand (_convertToEvent <$> motion) Nothing
-#else
-                                    forM_ mbDevice $ \device ->
-                                        deviceGrab device dw GrabOwnershipNone False
-                                            [EventMaskPointerMotionMask,EventMaskButtonPressMask,EventMaskLeaveNotifyMask]
-                                            mbHand eventTime
-#endif
+                                        seatGrab seat dw [SeatCapabilitiesPointer] False (fromJust mbHand) (Just event) noSeatGrabPrepareFunc
                             return $ Just (beg, en)
                   else setTypeTip (0, 0) "" >> ungrab >> return Nothing
             oldLoc <- liftIO $ readIORef linkLocIORef
@@ -184,13 +199,14 @@ createHyperLinkSupport sv sw identifierMapper clickHandler = do
             return (nx, eventY)
     ideR <- ask
     id2 <- ConnectC sw <$> onWidgetMotionNotifyEvent sw (\e -> do
-        isHint <- (/=0) <$> getEventMotionIsHint e
-        eventTime <- getEventMotionTime e
-        mods <- getEventMotionState e
-        oldX <- getEventMotionX e
-        oldY <- getEventMotionY e
-        rootX <- getEventMotionXRoot e
-        device <- getEventMotionDevice e
+        motion <- getEventMotion e
+        isHint <- (/=0) <$> getEventMotionIsHint motion
+        eventTime <- getEventMotionTime motion
+        mods <- getEventMotionState motion
+        oldX <- getEventMotionX motion
+        oldY <- getEventMotionY motion
+        rootX <- getEventMotionXRoot motion
+        device <- getEventMotionDevice motion
         (eventX, eventY) <- liftIO $ fixBugWithX mods isHint (oldX, oldY) rootX
         -- print ("move adjustment: isHint, old, new root", isHint, eventX, oldX, rootX)
         void . (`reflectIDE` ideR) $ moveOrClick device eventX eventY mods eventTime (Just e)

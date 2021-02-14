@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -457,11 +456,8 @@ instance TextEditor GtkSourceView where
         spaceDrawerSetEnableMatrix sd True
     getBuffer (GtkView sv _) = GtkBuffer <$> (getTextViewBuffer sv >>= (liftIO . unsafeCastTo Source.Buffer))
     getWindow (GtkView sv _) = widgetGetWindow sv
-    getIterAtLocation (GtkView sv _) x y = GtkIter
-#ifdef MIN_VERSION_GTK_3_20
-        . snd
-#endif
-        <$> textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
+    getIterAtLocation (GtkView sv _) x y = GtkIter . snd <$>
+        textViewGetIterAtLocation sv (fromIntegral x) (fromIntegral y)
     getIterLocation (GtkView sv _) (GtkIter i) = textViewGetIterLocation sv i
     getOverwrite (GtkView sv _) = textViewGetOverwrite sv
     getScrolledWindow (GtkView sv _) = widgetGetParent sv >>= \case
