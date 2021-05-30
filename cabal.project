@@ -1,4 +1,4 @@
-index-state: 2021-02-12T00:00:00Z
+index-state: 2021-05-28T00:00:00Z
 
 packages:
  ./
@@ -6,6 +6,8 @@ packages:
  vendor/ltk/
  vendor/haskellVCSWrapper/vcswrapper/
  vendor/haskellVCSGUI/vcsgui
+ vendor/gi-gobject/
+ vendor/gi-gtkosxapplication/
 -- vendor/hs-git
 -- vendor/brittany
 -- vendor/HaRe

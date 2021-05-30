@@ -1,4 +1,4 @@
-cabal-version: >=1.24
+cabal-version: 1.24
 name: leksah
 version: 0.17.0.0
 license: GPL-2
@@ -349,7 +349,7 @@ library
         gi-gtksource >=3.0.6 && <3.1,
         gi-pango >=1.0.6 && <1.1,
         git >=0.2.0 && <0.4,
-        haskell-gi-base >=0.24 && <0.25,
+        haskell-gi-base >=0.25 && <0.26,
         haskell-gi-overloading ==0.0.*,
         hlint >=3.2 && <3.3,
         hslogger >=1.0.7 && <1.4,
