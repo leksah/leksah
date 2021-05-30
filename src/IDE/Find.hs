@@ -111,7 +111,7 @@ import GI.Gdk.Structs.EventKey
        (getEventKeyState, getEventKeyKeyval)
 import GI.Gdk.Functions (keyvalName)
 import GI.Gdk.Flags (ModifierType(..))
-import Data.GI.Base.GValue (IsGValue(..))
+import Data.GI.Base.GValue (IsGValue(..), toGValue)
 import GI.Gtk.Structs.TreeIter (TreeIter(..))
 import GI.Gtk.Objects.Bin (Bin(..), binGetChild)
 import IDE.Core.Types
