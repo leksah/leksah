@@ -311,7 +311,7 @@ updateNixCache project compilers continuation = do
                 liftIO $ createDirectoryIfMissing True gcRootsDir
                 let exp' = "let x = (let fn = import " <> T.pack nixFile
                               <> "; in if builtins.isFunction fn then fn {} else fn);"
-                              <> "in ({ shells = { ghc = ({ env = x; } // x).env; }; } // x).shells." <> compiler
+                              <> "in ({ shells = { " <> compiler <> " = ({ env = x; } // x).env; }; } // x).shells." <> compiler
                     logOut = C.getZipSink $ const
                               <$> C.ZipSink CL.consume
                               <*> C.ZipSink (logOutputForBuild project (LogNix nixFile ("shells." <> compiler)) False False)
@@ -426,7 +426,7 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
               <> pjFileArgs
               <> activeComponent'
               <> flagsForTestsAndBenchmarks)
-            CabalTool {} -> Just ("cabal", ["new-build"]
+            CabalTool {} -> Just (if compiler == GHCJS then "js-unknown-ghcjs-cabal" else "cabal", ["new-build"]
               <> pjFileArgs
               <> (if compiler == GHCJS then ["--ghcjs", "--builddir=dist-ghcjs"] else [])
               <> ["--with-ld=false" | pjIsCabal (pjKey project) && backgroundBuild && withoutLinking]
