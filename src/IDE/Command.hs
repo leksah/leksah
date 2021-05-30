@@ -788,10 +788,13 @@ newIcons = catch (do
     (\(e :: SomeException) -> getDataDir >>= \dataDir -> throwIDE (T.pack $ printf (__ "Can't load icons from %s %s") dataDir (show e)))
     where
     loadIcon dataDir iconFactory name = do
-        pb      <-  pixbufNewFromFile $ dataDir </> "pics" </> (name <> ".png")
-        icon    <-  iconSetNewFromPixbuf pb
-        iconFactoryAdd iconFactory (T.pack name) icon
-        iconThemeAddBuiltinIcon (T.pack name) 16 pb
+        let path = dataDir </> "pics" </> (name <> ".png")
+        pixbufNewFromFile path >>= \case
+            Just pb -> do
+                icon    <-  iconSetNewFromPixbuf pb
+                iconFactoryAdd iconFactory (T.pack name) icon
+                iconThemeAddBuiltinIcon (T.pack name) 16 pb
+            Nothing -> throwIDE (__ "Unable to open " <> T.pack path)
 
 --newIcons :: IO ()
 --newIcons = catch (do
