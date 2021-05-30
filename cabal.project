@@ -20,37 +20,37 @@ package reflex-dom-core
   tests: False
 
 allow-newer:
- which:base
- which:template-haskell
- text-replace:base
- text-replace:optparse-applicative
- constraints-extras:base
- constraints-extras:template-haskell
- monoidal-containers:base
- monoidal-containers:aeson
- monoidal-containers:these
- reflex:base
- reflex:template-haskell
- reflex:these
- reflex:profunctors
- reflex-dom-core:base
- reflex-dom-core:template-haskell
- reflex-dom-core:aeson
- reflex-dom-core:these
- reflex-dom-svg:base
- reflex-dom-svg:containers
- reflex-dom-svg:lens
- reflex-dom-svg:reflex
- reflex-dom-svg:reflex-dom-core
- patch:base
- patch:these
- gi-gtkosxapplication:haskell-gi
- gi-gtkosxapplication:haskell-gi-base
- brittany:base
- brittany:strict
- brittany:aeson
- data-tree-print:base
- network-bsd:network
+    which:base
+  , which:template-haskell
+  , text-replace:base
+  , text-replace:optparse-applicative
+  , constraints-extras:base
+  , constraints-extras:template-haskell
+  , monoidal-containers:base
+  , monoidal-containers:aeson
+  , monoidal-containers:these
+  , reflex:base
+  , reflex:template-haskell
+  , reflex:these
+  , reflex:profunctors
+  , reflex-dom-core:base
+  , reflex-dom-core:template-haskell
+  , reflex-dom-core:aeson
+  , reflex-dom-core:these
+  , reflex-dom-svg:base
+  , reflex-dom-svg:containers
+  , reflex-dom-svg:lens
+  , reflex-dom-svg:reflex
+  , reflex-dom-svg:reflex-dom-core
+  , patch:base
+  , patch:these
+  , gi-gtkosxapplication:haskell-gi
+  , gi-gtkosxapplication:haskell-gi-base
+  , brittany:base
+  , brittany:strict
+  , brittany:aeson
+  , data-tree-print:base
+  , network-bsd:network
 
 source-repository-package
   type: git
