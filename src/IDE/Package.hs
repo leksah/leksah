@@ -344,7 +344,21 @@ updateNixCache project compilers continuation = do
                                 _out <- logOut
                                 runNixShell
                         else runNixShell
-            _ -> loop rest
+            _ -> do
+                let logOut = C.getZipSink $ const
+                              <$> C.ZipSink CL.consume
+                              <*> C.ZipSink (logOutputForBuild project (LogProject (pjDir $ pjKey project)) False False)
+                runExternalTool' (__ "Hix")
+                                 "hix-shell"
+                                 ["--run", "( set -o posix ; set )"]
+                                 dir Nothing $ do
+                    out <- logOut
+                    when (take 1 (reverse out) == [ToolExit ExitSuccess]) $ do
+                        _ <- saveNixCache (pjKey project) compiler out
+                        newCache <- loadNixCache
+                        lift $ do
+                            modifyIDE_ $ nixCache .~ newCache
+                            loop rest
 
 projectFileArguments :: MonadIO m => Project -> FilePath -> m [Text]
 projectFileArguments project dir =
@@ -378,7 +392,7 @@ withToolCommand project compiler (Just (cmd, args)) continuation = do
     -- Nix cache will not work over vado
     enableNixCache <- if useVado prefs' then liftIO $ isRight <$> getMountPoint (pjDir $ pjKey project) else return True
     nixShellFile (pjKey project) >>= \case
-        Just _ | enableNixCache -> do
+        _ | enableNixCache -> do
             let nixCompilerName = if compiler == GHCJS then "ghcjs" else "ghc"
                 nixContinuation env = continuation ("bash", ["-c", T.pack . showCommandForUser cmd $ map T.unpack args], Just env)
             readIDE (to $ nixEnv (pjKey project) nixCompilerName) >>= \case
