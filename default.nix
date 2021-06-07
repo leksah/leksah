@@ -30,6 +30,7 @@ let
           --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${compiler-nix-name}}/bin" \
           --suffix 'PATH' ':' "${project.hsPkgs.doctest.components.exes.doctest}/bin" \
           --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
+          --suffix 'FONTCONFIG_PATH' ':' "${pkgs.fontconfig.out}/etc/fonts" \
           --set 'XDG_DATA_DIRS' ""
         '';
   };
@@ -39,7 +40,9 @@ let
         packages = ps: with ps; [
           leksah-server
           leksah
-          ltk ];
+          ltk
+          gi-gobject
+          gi-gtkosxapplication ];
         tools = {
           cabal = "latest";
         };

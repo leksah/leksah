@@ -348,6 +348,7 @@ library
         gi-gtk-hs >=0.3.6.2 && <0.4,
         gi-gtksource >=3.0.6 && <3.1,
         gi-pango >=1.0.6 && <1.1,
+        gi-webkit2 >=4.0.6 && <4.1,
         git >=0.2.0 && <0.4,
         haskell-gi-base >=0.25 && <0.26,
         haskell-gi-overloading ==0.0.*,
@@ -404,10 +405,6 @@ library
             gi-gtkosxapplication >=2.0.17 && <2.1,
             jsaddle-wkwebview >=0.9.4.0 && <0.10
         frameworks: Carbon
-
-    if os(linux)
-        build-depends:
-            gi-webkit2 >=4.0.6 && <4.1
 
     if flag(yi)
         cpp-options: -DLEKSAH_WITH_YI
@@ -659,6 +656,7 @@ executable leksah
             leksah-server -any
 
 executable leksah-warp
+    buildable: False
     main-is: Warp.hs
     hs-source-dirs: main
     default-language: Haskell2010
