@@ -4,7 +4,7 @@ if [ $# -eq 0 ]
   then
     echo "Usage: ./leksah-nix.sh GHCVER [LEKSAH_ARGS]"
     echo
-    echo "Examples: ./leksah-nix.sh ghc865"
+    echo "Examples: ./leksah-nix.sh ghc8105"
     echo "          ./leksah-nix.sh ghc884 --verbosity=DEBUG"
     echo
     echo "For details of other LEKSAH_ARGS run: ./leksah-nix ghc865 --help"
@@ -14,8 +14,8 @@ fi
 GHCARG=$1
 shift
 
-if [[ "$GHCARG" != "ghc865" && "$GHCARG" != "ghc883" && "$GHCARG" != "ghc884" && "$GHCARG" != "ghc8101" && "$GHCARG" != "ghc8102" && "$GHCARG" != "ghc8104" ]]; then
-    echo "Please use ./leksah-nix.sh ghc865 or ghc884 or ghc8104"
+if [[ "$GHCARG" != "ghc865" && "$GHCARG" != "ghc884" && "$GHCARG" != "ghc8104" && "$GHCARG" != "ghc8105" ]]; then
+    echo "Please use ./leksah-nix.sh ghc865 or ghc884 or ghc8105"
     exit 1
 fi
 
