@@ -34,28 +34,8 @@ let
           --set 'XDG_DATA_DIRS' ""
         '';
   };
-  shells = {
-    ghc = (project.shellFor {
-        withHoogle = false;
-        packages = ps: with ps; [
-          leksah-server
-          leksah
-          ltk
-          gi-gobject
-          gi-gtkosxapplication ];
-        tools = {
-          cabal = "latest";
-        };
-        buildInputs = [
-          pkgs.stack
-          pkgs.gobject-introspection
-          pkgs.pkgconfig
-          pkgs.gtk3
-          pkgs.gtksourceview3
-        ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.gtk-mac-integration;
-      });
-  };
 in project.hsPkgs.leksah.components.exes.leksah // {
-    inherit shells launch-leksah pkgs;
+    inherit launch-leksah pkgs;
+    inherit (project) shell;
   }
 
