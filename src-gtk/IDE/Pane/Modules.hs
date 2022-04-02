@@ -45,7 +45,7 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Tree (flatten, Forest, Tree(..))
-import Data.List (find, elemIndex, foldl', nub, partition, sort)
+import Data.List (find, elemIndex, foldl', nub, partition, sortOn)
 import Distribution.Package (Dependency(..), pkgName, pkgVersion)
 import Distribution.Version (withinRange)
 import Data.IORef
@@ -960,11 +960,8 @@ makeNodes [(str,mbPair)]    =   Node (str,mbPair) []
 makeNodes ((str,mbPair):tl) =   Node (str,mbPair) [makeNodes tl]
 makeNodes _                 =   throwIDE (__ "Impossible in makeNodes")
 
-instance Ord a => Ord (Tree a) where
-    compare (Node l1 _) (Node l2 _) =  compare l1 l2
-
 sortTree :: Ord a => Tree a -> Tree a
-sortTree (Node l forest)    =   Node l (sort (map sortTree forest))
+sortTree (Node l forest)    =   Node l (sortOn rootLabel (map sortTree forest))
 
 getSelectedModuleFile :: Maybe ModuleRecord -> Maybe FilePath
 getSelectedModuleFile sel =
