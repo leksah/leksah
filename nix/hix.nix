@@ -38,7 +38,7 @@ rec {
         packages.leksah.components.exes.leksah.postInstall = ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
-            cp -r ${./linux} $out/share/
+            cp -r ${../linux} $out/share/
           ''}
           wrapProgram $out/bin/leksah \
             --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
@@ -55,7 +55,7 @@ rec {
         packages.leksah.components.exes.leksah-warp.postInstall = ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
-            cp -r ${./linux} $out/share/
+            cp -r ${../linux} $out/share/
           ''}
           wrapProgram $out/bin/leksah-warp \
             --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
@@ -89,7 +89,7 @@ rec {
         leksah-server
         leksah
         ltk
-        gi-gtkosxapplication ];
+      ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin gi-gtkosxapplication;
       tools = {
         cabal = "latest";
       };

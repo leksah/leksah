@@ -22,6 +22,9 @@ custom-setup
                      gi-gobject == 2.0.*
 
 library
+      if !os(osx)
+              buildable: False
+
       default-language: Haskell2010
       default-extensions: NoImplicitPrelude, ScopedTypeVariables, CPP, OverloadedStrings, NegativeLiterals, ConstraintKinds, TypeFamilies, MultiParamTypeClasses, KindSignatures, FlexibleInstances, UndecidableInstances, DataKinds, FlexibleContexts, UndecidableSuperClasses
       other-extensions: PatternSynonyms, ViewPatterns, TypeApplications
