@@ -27,7 +27,7 @@ library
       other-extensions: PatternSynonyms, ViewPatterns, TypeApplications
       ghc-options: -fno-warn-unused-imports -fno-warn-warnings-deprecations
 
-      pkgconfig-depends: gtk-mac-integration-gtk3 >= 2.0 && < 3
+      pkgconfig-depends: gtk-mac-integration-gtk3 >= 2.0 && < 3.1
       build-depends: base >= 4.7 && <5,
                      haskell-gi-base >= 0.25 && < 0.26,
                      haskell-gi >= 0.25 && < 0.26,
