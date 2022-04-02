@@ -9,7 +9,7 @@ rec {
     haskellNix = import sources."haskellNix" {};
     overlays = [ (import ./overlays/gtk-debug.nix) ];
     projectFileName = "cabal.project";
-    compiler-nix-name = pkgs.lib.mkDefault "ghc8104";
+    compiler-nix-name = pkgs.lib.mkDefault "ghc8107";
     name = "leksah";
     modules = [({pkgs, config, ...}: let inherit (config) hsPkgs; in {
         packages.reflex.components.tests.hlint.buildable = pkgs.lib.mkForce false;
@@ -30,10 +30,10 @@ rec {
           pkgs.makeWrapper
         ];
         packages.leksah.components.exes.leksah.libs = [
-          pkgs.gnome3.gtk
-          pkgs.gnome3.dconf
-          pkgs.gnome3.defaultIconTheme
-          pkgs.gnome3.gsettings_desktop_schemas
+          pkgs.gtk3
+          pkgs.dconf
+          pkgs.gnome3.adwaita-icon-theme
+          pkgs.gsettings-desktop-schemas
         ];
         packages.leksah.components.exes.leksah.postInstall = ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
@@ -89,13 +89,12 @@ rec {
         leksah-server
         leksah
         ltk
-        gi-gobject
         gi-gtkosxapplication ];
       tools = {
         cabal = "latest";
       };
       buildInputs = [
-        pkgs.stack
+        # pkgs.stack
         pkgs.gobject-introspection
         pkgs.pkgconfig
         pkgs.gtk3

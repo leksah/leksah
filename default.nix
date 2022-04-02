@@ -1,9 +1,13 @@
-{ compiler-nix-name ? "ghc8105"
+{ compiler-nix-name ? "ghc8107"
 }:
 let
   sources = import ./nix/sources.nix {};
   haskellNix = import sources."haskellNix" {};
-  project = haskellNix.hix.project { src = ./.; inherit compiler-nix-name; };
+  project = haskellNix.hix.project {
+    src = ./.;
+    inherit compiler-nix-name;
+    nixpkgs = (import sources.nixpkgs {}).lib.mkForce sources.nixpkgs;
+  };
   inherit (project) pkgs;
   launch-leksah-script = pkgs.writeShellScriptBin "launch-leksah" ''
     "$@"
@@ -12,10 +16,10 @@ let
       name = "launch-leksah";
       nativeBuildInputs = with pkgs; [ wrapGAppsHook makeWrapper ];
       buildInputs = with pkgs; [
-        gnome3.gtk
-        gnome3.dconf
-        gnome3.defaultIconTheme
-        gnome3.gsettings_desktop_schemas
+        gtk3
+        dconf
+        gnome3.adwaita-icon-theme
+        gsettings-desktop-schemas
       ];
       src = ./linux;
       buildPhase = ''

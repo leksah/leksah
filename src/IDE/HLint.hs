@@ -52,14 +52,16 @@ import qualified Data.Text.IO as T (readFile)
 import Distribution.Package (PackageIdentifier(..))
 import Distribution.ModuleName (ModuleName)
 
-#if MIN_VERSION_ghc(8,10,2)
+#if MIN_VERSION_ghc(9,2,0)
+#define GHC_LIB_PARSER "ghc-lib-parser"
+#elif MIN_VERSION_ghc(9,0,0)
 #define GHC_LIB_PARSER "ghc"
 #else
 #define GHC_LIB_PARSER "ghc-lib-parser"
 #endif
 
-import GHC_LIB_PARSER FastString (unpackFS)
-import qualified GHC_LIB_PARSER SrcLoc as GHC
+import GHC_LIB_PARSER GHC.Data.FastString (unpackFS)
+import qualified GHC_LIB_PARSER GHC.Types.SrcLoc as GHC
        (SrcLoc(..), SrcSpan(..), srcSpanFile, srcSpanStartLine, srcSpanStartCol,
         srcSpanEndLine, srcSpanEndCol)
 import Language.Haskell.HLint
@@ -211,7 +213,7 @@ logHLintResult :: Bool -> IDEPackage -> [Idea] -> (FilePath -> Text) -> IDEActio
 logHLintResult fileScope package allIdeas getText = do
     let ideas = filter (\Idea{ideaSeverity} -> ideaSeverity /= Ignore) allIdeas
     forM_ ideas $ \case
-      idea@Idea{ideaSpan = GHC.RealSrcSpan ideaSpan} -> do
+      idea@Idea{ideaSpan = GHC.RealSrcSpan ideaSpan _} -> do
         let text = getText (unpackFS $ GHC.srcSpanFile ideaSpan)
             -- fixColumn c = max 0 (c - 1)
             srcSpan = SrcSpan (makeRelative (ipdPackageDir package) . unpackFS $ GHC.srcSpanFile ideaSpan)
@@ -231,12 +233,12 @@ logHLintResult fileScope package allIdeas getText = do
                     (Just (from, idea)) Nothing LintRef
         postSyncIDE $ addLogRef fileScope fileScope ref
       Idea{ideaSpan = GHC.UnhelpfulSpan s} ->
-        liftIO . errorM "leksah" $ "hlint parse error without location " <> unpackFS s
+        liftIO . errorM "leksah" $ "hlint parse error without location " <> show s
 
 logHLintError :: Bool -> IDEPackage -> ParseError -> IDEAction
 logHLintError fileScope package err = do
     case parseErrorLocation err of
-      GHC.RealSrcSpan loc -> do
+      GHC.RealSrcSpan loc _ -> do
         let srcSpan = SrcSpan (makeRelative (ipdPackageDir package) . unpackFS $ GHC.srcSpanFile loc)
                               (GHC.srcSpanStartLine loc)
                               (GHC.srcSpanStartCol loc - 1)
@@ -245,7 +247,7 @@ logHLintError fileScope package err = do
             ref = LogRef srcSpan (LogCabal $ ipdCabalFile package) ("Hlint Parse Error: " <> T.pack (parseErrorMessage err)) Nothing Nothing LintRef
         postSyncIDE $ addLogRef fileScope fileScope ref
       GHC.UnhelpfulSpan s ->
-        liftIO . errorM "leksah" $ "hlint parse error without location " <> unpackFS s
+        liftIO . errorM "leksah" $ "hlint parse error without location " <> show s
 
 -- Cut down version of showEx from HLint
 showHLint :: Idea -> String
@@ -303,7 +305,7 @@ indentHLintText startColumn text =
     indent = T.replicate startColumn " "
 
 replaceHLintSource :: (Bool, Int) -> (Text, Idea) -> IDEM (Bool, Int)
-replaceHLintSource (changed, delta) (from, Idea{ideaSpan = GHC.RealSrcSpan ideaSpan, ideaTo = Just ideaTo}) = do
+replaceHLintSource (changed, delta) (from, Idea{ideaSpan = GHC.RealSrcSpan ideaSpan _, ideaTo = Just ideaTo}) = do
     let srcSpanStartLine = GHC.srcSpanStartLine ideaSpan
         srcSpanStartCol  = GHC.srcSpanStartCol  ideaSpan
         srcSpanEndLine   = GHC.srcSpanEndLine   ideaSpan

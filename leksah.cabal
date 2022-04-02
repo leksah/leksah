@@ -198,6 +198,11 @@ flag hare
         Enable HaRe based features.
     default: False
 
+flag webkitgtk
+    description:
+        Enable webkit gtk.
+    default: False
+
 library
     exposed-modules:
         IDE.Brittany
@@ -305,21 +310,21 @@ library
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
                  -ferror-spans -Wall
     build-depends:
-        Cabal >=3.2.1.0 && <3.3,
+        Cabal >=3.2.1.0 && <3.7,
         Glob >=0.9.2 && <0.11,
         HTTP >=4000.3.3,
         QuickCheck >=2.4.2 && <2.15,
         aeson >=1.1.2.0 && <1.6,
         aeson-pretty >=0.8.7 && <0.9,
         array >=0.2.0.0 && <0.6,
-        attoparsec >=0.10.0.3 && <0.14,
+        attoparsec >=0.10.0.3 && <0.15,
         base >=4.0.0.0 && <4.15,
         base-compat >=0.9.0 && <0.12,
         binary >=0.5.0.0 && <0.9,
         binary-shared >=0.8.2 && <0.9,
         blaze-html -any,
         brittany >=0.11.0.0 && <0.14,
-        bytestring >=0.9.0.1 && <0.11,
+        bytestring >=0.9.0.1 && <0.12,
         clay >=0.13.1 && <0.14,
         conduit >=1.0.8 && <1.4,
         containers >=0.2.0.0 && <0.7,
@@ -348,11 +353,10 @@ library
         gi-gtk-hs >=0.3.6.2 && <0.4,
         gi-gtksource >=3.0.6 && <3.1,
         gi-pango >=1.0.6 && <1.1,
-        gi-webkit2 >=4.0.6 && <4.1,
         git >=0.2.0 && <0.4,
         haskell-gi-base >=0.25 && <0.26,
         haskell-gi-overloading ==0.0.*,
-        hlint >=3.2 && <3.3,
+        hlint >=3.2 && <3.4,
         hslogger >=1.0.7 && <1.4,
         http-types >=0.12.2 && <0.13,
         jsaddle >=0.9.4.0 && <0.10,
@@ -439,15 +443,22 @@ library
 
     if !impl(ghcjs -any)
         build-depends:
-            ghc >=6.10.1 && <8.11,
+            ghc >=6.10.1 && <9.3,
             haskell-src-exts >=1.13.5 && <1.24,
             leksah-server >=0.17.0.0 && <0.18
+        if impl(ghc <9.0)
+            build-depends:
+                ghc-lib-parser == 9.0.*
 
     if flag(hare)
         build-depends:
             HaRe >=0.8.4.1 && <0.9,
             ghc-mod-core >=5.9.0.0 && <5.10,
             monad-control >=1.0.2.3 && <1.1
+
+    if flag(webkitgtk)
+        build-depends:
+            gi-webkit2 >=4.0.6 && <4.1
 
 library leksah-nogtk
     exposed-modules:
@@ -506,7 +517,7 @@ library leksah-nogtk
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
                  -ferror-spans -Wall
     build-depends:
-        Cabal >=3.2.1.0 && <3.3,
+        Cabal >=3.2.1.0 && <3.7,
         Glob >=0.9.2 && <0.11,
         HTTP >=4000.3.3,
         QuickCheck >=2.4.2 && <2.15,
@@ -520,7 +531,7 @@ library leksah-nogtk
         binary-shared >=0.8.2 && <0.9,
         blaze-html -any,
         brittany >=0.11.0.0 && <0.14,
-        bytestring >=0.9.0.1 && <0.11,
+        bytestring >=0.9.0.1 && <0.12,
         clay >=0.13.1 && <0.14,
         conduit >=1.0.8 && <1.4,
         containers >=0.2.0.0 && <0.7,
@@ -540,7 +551,7 @@ library leksah-nogtk
         ghcjs-codemirror -any,
         ghcjs-dom >=0.9.4.0 && <0.10,
         git >=0.2.0 && <0.4,
-        hlint >=1.9.21 && <3.3,
+        hlint >=1.9.21 && <3.4,
         hslogger >=1.0.7 && <1.4,
         http-types >=0.12.2 && <0.13,
         jsaddle >=0.9.4.0 && <0.10,
@@ -608,9 +619,12 @@ library leksah-nogtk
 
     if !impl(ghcjs -any)
         build-depends:
-            ghc >=6.10.1 && <8.11,
+            ghc >=6.10.1 && <9.3,
             haskell-src-exts >=1.13.5 && <1.24,
             leksah-server >=0.17.0.0 && <0.18
+        if impl(ghc <9.0)
+            build-depends:
+                ghc-lib-parser == 9.0.*
 
     if flag(hare)
         build-depends:
@@ -623,7 +637,7 @@ executable leksah
     hs-source-dirs: main
     default-language: Haskell2010
     ghc-options: -rtsopts -fwarn-missing-fields
-                 -fwarn-incomplete-patterns -ferror-spans
+                 -fwarn-incomplete-patterns -ferror-spans -optl -v
     build-depends:
         leksah -any,
         base >=4.0.0.0 && <4.15,
@@ -701,6 +715,22 @@ executable leksah-wkwebview
 
     if (!os(osx))
         buildable: False
+
+executable leksah-webkitgtk
+    if !flag(webkitgtk)
+      buildable: False
+
+    main-is: WebKitGtk.hs
+    hs-source-dirs: main
+    default-language: Haskell2010
+    ghc-options: -threaded -rtsopts -Wall -ferror-spans
+
+    if os(osx)
+      build-depends:
+        base >=4.0.0.0 && <4.15,
+        data-default >=0.7.1.1 && <0.8,
+        leksah-nogtk -any,
+        jsaddle-webkit2gtk >=0.9.4.0 && <0.10
 
 --test-suite tests
 --
