@@ -58,6 +58,7 @@ import Control.DeepSeq (NFData(..))
 import Control.Exception (evaluate)
 import Control.Lens ((.~), (%~), Getting, to)
 import Control.Monad.Reader
+import Control.Monad (void, unless, when, forM_, filterM)
 
 import Data.Attoparsec.Text
        (many', parseOnly, endOfInput, option, anyChar, manyTill,

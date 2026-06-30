@@ -9,11 +9,14 @@ module IDE.Web.Widget.Tree
   , treeSelect
   , treeSelect'
   , treeItemDynAttr
+  , treeItemDynAttr'
   , treeItem
+  , treeItem'
+  , scrollIntoViewNearest
   ) where
 
 import Control.Lens
-       ((#), (.~), _Wrapped)
+       ((#), (.~), (^.), _Wrapped)
 import Control.Monad (void)
 
 import Data.Bool (bool)
@@ -23,15 +26,19 @@ import qualified Data.List.NonEmpty as NonEmpty (fromList)
 import Data.Map (Map)
 import Data.Text (Text)
 
+import Language.Javascript.JSaddle
+       (liftJSM, toJSVal, obj, jss, js1, fun, jsg)
+
 import Reflex
-       (constDyn, switchHold, leftmost, tag,
-        holdUniqDyn, Dynamic, Event, never,
+       (constDyn, switchHold, leftmost, tag, ffor, performEvent_,
+        holdUniqDyn, Dynamic, Event, never, ffilter, updated, getPostBuild,
         holdDyn, current)
 import Reflex.Dom.Core
        (inputElementConfig_setChecked, EventResult, Element, elClass',
         MonadWidget, DomBuilderSpace, dyn, (=:), elDynAttr, divClass, el,
         inputElement, inputElementConfig_elementConfig,
-        elementConfig_initialAttributes, domEvent, EventName(..))
+        elementConfig_initialAttributes, domEvent, EventName(..),
+        _element_raw)
 
 import Reflex.Dom.Widget.SVG (BasicSVG(..), svgBasicDyn_, svg_)
 import Reflex.Dom.Widget.SVG.Types
@@ -97,8 +104,27 @@ treeItemDynAttr
   -> m (Event t event)
   -> m (Event t event)
   -> m (Event t event)
-treeItemDynAttr itemClass startExpanded item children = mdo
-  expanded <- holdUniqDyn =<< holdDyn startExpanded (not <$> tag (current expanded) toggleExpanded)
+treeItemDynAttr = treeItemDynAttr' (constDyn False)
+
+-- | Like 'treeItemDynAttr' but with a reveal 'Dynamic' that forces the node open
+-- while it is 'True' (e.g. to reveal a node).  Manual clicks still toggle it.
+-- We open on the reveal becoming True *and* at our own postBuild if it is already
+-- True, so a node rendered after its parent expands (lazy children) still opens
+-- for an active reveal.  We never force-close.
+treeItemDynAttr'
+  :: MonadWidget t m
+  => Dynamic t Bool
+  -> Dynamic t (Map Text Text)
+  -> Bool
+  -> m (Event t event)
+  -> m (Event t event)
+  -> m (Event t event)
+treeItemDynAttr' revealD itemClass startExpanded item children = mdo
+  pb <- getPostBuild
+  let setOpenE = ffilter id $ leftmost [updated revealD, tag (current revealD) pb]
+  expanded <- holdUniqDyn =<< holdDyn startExpanded (leftmost
+      [ not <$> tag (current expanded) toggleExpanded
+      , setOpenE ])
 
   (toggleExpanded, events) <- elDynAttr "li" itemClass $ do
     (expander, _) <- elClass' "div" "tree-expand" $
@@ -116,3 +142,31 @@ treeItem
   -> m (Event t event)
   -> m (Event t event)
 treeItem itemClass = treeItemDynAttr (constDyn ("class" =: itemClass))
+
+-- | 'treeItem' with a reveal 'Dynamic' (see 'treeItemDynAttr'').
+treeItem'
+  :: MonadWidget t m
+  => Dynamic t Bool
+  -> Text
+  -> Bool
+  -> m (Event t event)
+  -> m (Event t event)
+  -> m (Event t event)
+treeItem' revealD itemClass = treeItemDynAttr' revealD (constDyn ("class" =: itemClass))
+
+-- | Scroll @el@ into view (just enough — @block: nearest@) whenever the trigger
+-- event fires, deferred to a 'requestAnimationFrame' so it runs after the
+-- revealing tree expansion has been laid out.
+scrollIntoViewNearest
+  :: MonadWidget t m
+  => Event t a
+  -> Element EventResult (DomBuilderSpace m) t
+  -> m ()
+scrollIntoViewNearest e el =
+  performEvent_ $ ffor e $ \_ -> liftJSM $ do
+    rawV <- toJSVal (_element_raw el)
+    o <- obj
+    _ <- o ^. jss ("block" :: Text) ("nearest" :: Text)
+    void $ jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
+        (fun $ \_ _ _ -> void $ rawV ^. js1 ("scrollIntoView" :: Text) o)
+

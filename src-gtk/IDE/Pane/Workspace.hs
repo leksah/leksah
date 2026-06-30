@@ -142,8 +142,6 @@ import GI.Gtk.Objects.LinkButton
        (onLinkButtonActivateLink, linkButtonNewWithLabel, LinkButton(..))
 import GI.Gtk (widgetQueueDraw, treeViewExpandRow)
 import Criterion.Measurement (getTime, secs)
-import Data.Git (isRepo)
-import Data.Git.Monad (headGet, withRepo, refNameRaw)
 import Data.String (IsString(..))
 import Data.Word (Word16)
 import qualified GI.Gdk as Gdk (Color(..))
@@ -230,11 +228,9 @@ toMarkup record (mbProject, mbPackage) =
                     Just dir -> liftIO $
                         (findRepoMaybe dir >>= \case
                             Nothing -> return "No Git repository"
-                            Just repoPath -> either T.pack id <$>
-                                withRepo (fromString repoPath) (
-                                    headGet >>= \case
-                                        Left sha -> return . T.pack $ show sha
-                                        Right name -> return . T.pack $ refNameRaw name))
+                            Just repoPath ->
+                                -- TODO look in .git/HEAD or run `git branch --show-current`
+                                return "TODO git support")
                          `catch` (\(_ :: SomeException) -> return "No Git branch")
             where
                 bold str = "<b>" <> str <> "</b>"
@@ -248,7 +244,7 @@ findRepoMaybe absoluteDir = do
                   = return Nothing
         probe dir = do
             let gitDir = dir </> ".git"
-            isRepo (fromString gitDir) >>= \case
+            doesDirectoryExist gitDir >>= \case
                 True -> return $ Just gitDir
                 False -> probe $ takeDirectory dir
     probe absoluteDir

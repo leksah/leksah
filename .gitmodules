@@ -1,54 +1,15 @@
-[submodule "vendor/CodeMirror"]
-	path = vendor/CodeMirror
-	url = https://github.com/ghcjs/CodeMirror.git
 [submodule "vendor/haskellVCSGUI"]
 	path = vendor/haskellVCSGUI
 	url = https://github.com/leksah/haskellVCSGUI.git
 [submodule "vendor/haskellVCSWrapper"]
 	path = vendor/haskellVCSWrapper
 	url = https://github.com/leksah/haskellVCSWrapper.git
-[submodule "vendor/jsc"]
-	path = vendor/jsc
-	url = https://github.com/ghcjs/jsc.git
 [submodule "vendor/leksah-server"]
 	path = vendor/leksah-server
 	url = https://github.com/leksah/leksah-server.git
 [submodule "vendor/ltk"]
 	path = vendor/ltk
 	url = https://github.com/leksah/ltk.git
-[submodule "vendor/pretty-show"]
-	path = vendor/pretty-show
-	url = https://github.com/leksah/pretty-show.git
-[submodule "vendor/vado"]
-	path = vendor/vado
-	url = https://github.com/hamishmack/vado.git
-[submodule "vendor/webkit-javascriptcore"]
-	path = vendor/webkit-javascriptcore
-	url = https://github.com/gtk2hs/webkit-javascriptcore.git
-[submodule "vendor/yi"]
-	path = vendor/yi
-	url = https://github.com/leksah/yi.git
-[submodule "vendor/gtksourceview"]
-	path = vendor/gtksourceview
-	url = https://github.com/gtk2hs/gtksourceview.git
-[submodule "vendor/webkit"]
-	path = vendor/webkit
-	url = https://github.com/gtk2hs/webkit.git
-[submodule "vendor/gi-gtk-hs"]
-	path = vendor/gi-gtk-hs
-	url = https://github.com/haskell-gi/gi-gtk-hs.git
-[submodule "vendor/hs-git"]
-	path = vendor/hs-git
-	url = https://github.com/vincenthz/hs-git.git
-[submodule "vendor/cabal-helper"]
-	path = vendor/cabal-helper
-	url = https://github.com/alanz/cabal-helper.git
-[submodule "vendor/HaRe"]
-	path = vendor/HaRe
-	url = https://github.com/alanz/HaRe.git
-[submodule "vendor/brittany"]
-	path = vendor/brittany
-	url = https://github.com/lspitzner/brittany.git
-[submodule "vendor/haskell-filesystem"]
-	path = vendor/haskell-filesystem
-	url = https://github.com/hamishmack/haskell-filesystem.git
+[submodule "vendor/reflex-dom"]
+	path = vendor/reflex-dom
+	url = git@github.com:reflex-frp/reflex-dom.git

@@ -10,9 +10,13 @@ import Data.Dependent.Map (DMap)
 import Data.Functor.Identity (Identity(..))
 import Data.GADT.Compare.TH (DeriveGEQ(..), DeriveGCompare(..))
 import Data.Map (Map)
+import Data.Text (Text)
+
+import GHC.Generics (Generic)
 
 import Distribution.Types.PackageId (PackageIdentifier(..))
 
+import IDE.Core.CTypes (SrcSpan)
 import IDE.Core.Types (LogRef(..))
 import IDE.Utils.Project (ProjectKey)
 import IDE.Web.Command (Command(..))
@@ -55,11 +59,56 @@ newtype ErrorsEvents =
 
 makePrisms ''ErrorsEvents
 
-type FindbarEvents = ()
-type GrepEvents = ()
+-- | Find-bar commands for list/tree panes (the editor drives CodeMirror
+-- directly).  'FindUpdate' carries the query text and the flag bitmask
+-- (1=case, 2=word, 4=regexp); 'FindStep' moves to the next/previous match;
+-- 'FindGrep' (the Grep button) carries the query+flags to grep the workspace.
+data FindbarEvents
+  = FindUpdate Text Int
+  | FindStep Bool
+  | FindGrep Text Int
+-- | The Grep pane: clicking a result navigates to that file + line.
+newtype GrepEvents = GrepGoto SrcSpan
 type LogEvents = ()
-type MenubarEvents = ()
+
+makePrisms ''GrepEvents
+
+-- | A single terminal reports its (OSC-set) window title so the Terminals list
+-- can label it, and (on a Ctrl+click of a project-file path in its output) asks
+-- to open that file at a location.
+data TerminalEvents = TerminalTitle Text | TerminalGoto SrcSpan
+
+makePrisms ''TerminalEvents
+
+-- | The Terminals tree pane: create a new terminal; select an existing session
+-- (by id) to bring it up in the editor area; close one (kill its tmux session);
+-- or, drilling into the tmux hierarchy, select a window (session id, window
+-- index) or a pane (session id, window index, pane index) — which switches tmux
+-- to it and brings the owning session's terminal up.
+data TerminalsEvents
+  = NewTerminal
+  | SelectTerminal Int
+  | CloseTerminal Int
+  | SelectTerminalWindow Int Int
+  | SelectTerminalPane Int Int Int
+
+makePrisms ''TerminalsEvents
+
+-- | Navigate to a source location (file + span) chosen in the metadata tree.
+newtype MetadataEvents = MetadataGoto SrcSpan
+
+makePrisms ''MetadataEvents
+
+-- | Open a changed file picked in the Changes pane.
+newtype ChangesEvents = ChangesOpen FilePath
+
+makePrisms ''ChangesEvents
 type StatusbarEvents = ()
+newtype MenubarEvents =
+  MenubarCommand Command
+
+makePrisms ''MenubarEvents
+
 newtype ToolbarEvents =
   ToolbarCommand Command
 
@@ -70,14 +119,22 @@ data TabKey
   | ErrorsKey
   | LogKey
   | GrepKey
+  | TerminalsKey
+  | TerminalKey Int
+  | MetadataKey
+  | ChangesKey
   | EditorKey FilePath
-    deriving (Ord, Eq, Show)
+    deriving (Ord, Eq, Show, Generic)
 
 data TabEvents e where
   EditorTab    :: TabEvents EditorEvents
   ErrorsTab    :: TabEvents ErrorsEvents
   LogTab       :: TabEvents LogEvents
   GrepTab      :: TabEvents GrepEvents
+  TerminalTab  :: TabEvents TerminalEvents
+  TerminalsTab :: TabEvents TerminalsEvents
+  MetadataTab  :: TabEvents MetadataEvents
+  ChangesTab   :: TabEvents ChangesEvents
   WorkspaceTab :: TabEvents ProjectEvents
 
 deriveGEq      ''TabEvents

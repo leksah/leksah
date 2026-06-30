@@ -48,7 +48,7 @@ import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative)
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (unpack, pack)
-import System.FSNotify (watchDir, Event(..), watchTree, eventPath, isPollingManager)
+import System.FSNotify (watchDir, Event(..), watchTree, eventPath)
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
 import qualified Data.Map as Map (empty)
@@ -132,6 +132,8 @@ makeProjectKeyAbsolute wsFile' (CabalTool (CabalProject f)) =
 makeProjectKeyAbsolute wsFile' (CustomTool p) =
     CustomTool . (\dir -> p { pjCustomDir = dir })
         <$> makeAbsolute (dropFileName wsFile') (pjCustomDir p)
+makeProjectKeyAbsolute wsFile' (NixTool (NixProject f)) =
+    NixTool . NixProject <$> makeAbsolute (dropFileName wsFile') f
 
 makePathsAbsolute :: WorkspaceFile -> FilePath -> IDEM Workspace
 makePathsAbsolute ws bp = do
@@ -243,7 +245,7 @@ setWorkspace mbWs = do
             watchersMVar <- readIDE watchers
             extModsMVar <- readIDE externalModified
             let rebuild = void . liftIO $ tryPutMVar tb ()
-            unless (isPollingManager fsn) . liftIO $ do
+            liftIO $ do
                 oldWatchers <- takeMVar watchersMVar
                 let projectFiles = S.fromList $ map pjKey $ ws ^. wsProjects
                     packageFiles = S.fromList $ map ipdCabalFile $ pjPackages =<< ws ^. wsProjects
@@ -301,6 +303,8 @@ makeProjectKeyRelative wsFile' (CabalTool (CabalProject f)) =
 makeProjectKeyRelative wsFile' (CustomTool p) =
     CustomTool . (\dir -> p { pjCustomDir = dir }) . makeRelative (dropFileName wsFile')
         <$> myCanonicalizePath (pjCustomDir p)
+makeProjectKeyRelative wsFile' (NixTool (NixProject f)) =
+    NixTool . NixProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
 
 makePathsRelative :: Workspace -> FilePath -> IO WorkspaceFile
 makePathsRelative ws wsFile' = do

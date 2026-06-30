@@ -256,7 +256,7 @@ chooseWorkspaceFile :: Window -> IO (Maybe FilePath)
 chooseWorkspaceFile win = chooseFile win (__ "Select leksah workspace file (.lkshw)") Nothing [("Leksah Workspace Files", ["*.lkshw"])]
 
 chooseProjectFile :: Window -> IO (Maybe FilePath)
-chooseProjectFile win = chooseFile win (__ "Select cabal.project or stack.yaml file") Nothing [("Haskell Project", ["*.project", "*.yaml"])]
+chooseProjectFile win = chooseFile win (__ "Select flake.nix, cabal.project or stack.yaml file") Nothing [("Haskell Project", ["flake.nix", "*.project", "*.yaml"])]
 
 workspaceOpenThis :: Bool -> FilePath -> IDEAction
 workspaceOpenThis askForSession filePath = do

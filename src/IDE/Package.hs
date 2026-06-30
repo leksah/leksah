@@ -147,7 +147,7 @@ import IDE.Pane.SourceBuffer
        (removeTestLogRefs, fileSaveAll, belongsToWorkspace')
 import IDE.PackageFlags (writeFlags, readFlags)
 import IDE.Utils.FileUtils
-       (getPackageDBs', cabalProjectBuildDir, loadNixCache, saveNixCache,
+       (getPackageDBs', cabalProjectBuildDir, cabalBuildDir, loadNixCache, saveNixCache,
         getConfigDir, nixShellFile, getConfigFilePathForLoad)
 import IDE.LogRef
        (logIdleOutput, logOutputForBuild, logOutputDefault, logOutput)
@@ -197,25 +197,20 @@ import Distribution.Types.ForeignLib (foreignLibName)
 import Distribution.Types.UnqualComponentName
        (UnqualComponentName, mkUnqualComponentName,
         unUnqualComponentName)
-#if MIN_VERSION_Cabal(2,2,0)
+#if MIN_VERSION_Cabal(3,8,0)
+import Distribution.Simple.PackageDescription
+       (readGenericPackageDescription)
+import Distribution.Utils.Path (getSymbolicPath)
+#else
 import Distribution.PackageDescription.Parsec
        (readGenericPackageDescription)
+#endif
+#if MIN_VERSION_Cabal(3,14,0)
+import Distribution.Utils.Path (makeSymbolicPath)
+#endif
 import Distribution.Pretty (prettyShow)
-#else
-import Distribution.PackageDescription.Parse
-       (readGenericPackageDescription)
-import Distribution.Text (display)
-#endif
 import qualified System.FilePath.Glob as Glob (globDir, compile)
-#if MIN_VERSION_Cabal(3,0,0)
 import Distribution.Types.LibraryName (libraryNameString)
-#endif
-
-#if !MIN_VERSION_Cabal(3,0,0)
-type LibraryName = Maybe UnqualComponentName
-libraryNameString :: LibraryName -> Maybe UnqualComponentName
-libraryNameString = id
-#endif
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -349,8 +344,8 @@ updateNixCache project compilers continuation = do
                               <$> C.ZipSink CL.consume
                               <*> C.ZipSink (logOutputForBuild project (LogProject (pjDir $ pjKey project)) False False)
                 runExternalTool' (__ "Hix")
-                                 "hix-shell"
-                                 ["--run", "( set -o posix ; set )"]
+                                 "hix"
+                                 ["develop", "--command", "bash", "-c", "( set -o posix ; set )"]
                                  dir Nothing $ do
                     out <- logOut
                     when (take 1 (reverse out) == [ToolExit ExitSuccess]) $ do
@@ -407,10 +402,21 @@ withToolCommand project compiler (Just (cmd, args)) continuation = do
                     , "--run", T.pack . showCommandForUser cmd $ map T.unpack args], Nothing)
         Nothing -> liftIDE $ continuation (cmd, args, Nothing)
 
+-- Cabal 3.14 moved the cabal-file argument to a SymbolicPath and added a
+-- working-directory argument; older Cabal takes a plain FilePath.
+#if MIN_VERSION_Cabal(3,14,0)
+readGPD v f = readGenericPackageDescription v Nothing (makeSymbolicPath f)
+-- main-module / exe paths became SymbolicPaths in Cabal 3.14.
+mainPath p = getSymbolicPath p
+#else
+readGPD v f = readGenericPackageDescription v f
+mainPath p = p
+#endif
+
 readAndFlattenPackageDescription :: MonadIDE m => IDEPackage -> m PackageDescription
 readAndFlattenPackageDescription package =
     liftIO $ flattenPackageDescription <$>
-         readGenericPackageDescription normal (ipdCabalFile package)
+         readGPD normal (ipdCabalFile package)
 
 runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, [IDEPackage]) -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, packages) continuation = do
@@ -442,11 +448,13 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
               <> flagsForTestsAndBenchmarks)
             CabalTool {} -> Just (if compiler == GHCJS then "js-unknown-ghcjs-cabal" else "cabal", ["new-build"]
               <> pjFileArgs
-              <> (if compiler == GHCJS then ["--ghcjs", "--builddir=dist-ghcjs"] else [])
+              <> (if compiler == GHCJS then ["--ghcjs"] else [])
+              <> ["--builddir=" <> T.pack (cabalBuildDir (if compiler == GHCJS then Just "js-unknown-ghcjs" else Nothing))]
               <> ["--with-ld=false" | pjIsCabal (pjKey project) && backgroundBuild && withoutLinking]
               <> activeComponent'
               <> flagsForTestsAndBenchmarks)
             CustomTool p -> (if compiler == GHCJS then pjCustomGhcjsBuild else pjCustomGhcBuild) p
+            NixTool _ -> Nothing
         mbCmdAndArgs' = second (++ concatMap ipdBuildFlags packages) <$> mbCmdAndArgs
 
     withToolCommand project compiler mbCmdAndArgs' $ \(cmd, args', nixEnv') -> do
@@ -615,8 +623,8 @@ packageClean' (project, packages) continuation = do
     let dir = pjDir $ pjKey project
     case pjKey project of
         CabalTool _ -> do
-            cleanCabal "dist-newstyle"
-            cleanCabal "dist-ghcjs"
+            cleanCabal (cabalBuildDir Nothing)
+            cleanCabal (cabalBuildDir (Just "js-unknown-ghcjs"))
             continuation True
         StackTool _ ->
             runExternalTool' (__ "Cleaning")
@@ -700,7 +708,7 @@ packageRun' removeGhcjsFlagIfPresent = do
                                                    Nothing
                                                    (logOutput logLaunch)
                         CabalTool {} -> do
-                            (buildDir, cDir, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) "dist-newstyle"
+                            (buildDir, cDir, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) (cabalBuildDir Nothing)
                             env <- packagesEnv (pjPackages project) =<< liftIO getEnvironment
                             case exe ++ executables pd of
                                 [] -> return ()
@@ -726,7 +734,7 @@ packageRun' removeGhcjsFlagIfPresent = do
                     runDebug (do
                         case exe of
                             [Executable {exeName = _name, modulePath = mainFilePath}] ->
-                                executeDebugCommand (":module *" <> T.pack (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') mainFilePath)))
+                                executeDebugCommand (":module *" <> T.pack (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') (mainPath mainFilePath))))
                                                     (logOutput logLaunch)
                             _ -> return ()
                         executeDebugCommand (":main " <> T.unwords (ipdExeFlags package)) (logOutput logLaunch))
@@ -769,7 +777,7 @@ packageRunJavaScript' addFlagIfMissing = do
 --                            projectRoot = pjDir project
                         case exe ++ executables pd of
                             (Executable {exeName = name} : _) -> liftIDE $ do
-                                (buildDir, cDir, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) "dist-ghcjs"
+                                (buildDir, cDir, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) (cabalBuildDir (Just "js-unknown-ghcjs"))
                                 let path' c = buildDir
                                             </> T.unpack (packageIdentifierToString $ ipdPackageId package)
                                             </> c </> unUnqualComponentName name </> unUnqualComponentName name <.> "jsexe" </> "index.html"
@@ -826,7 +834,7 @@ packageRunDocTests backgroundBuild jumpToWarnings (project, package) continuatio
                 ghcVersion <- liftIO getDefaultGhcVersion
                 packageDBs <- liftIO $ getPackageDBs' ghcVersion (Just $ pjKey project)
                 let pkgId = packageIdentifierToString $ ipdPackageId package
-                (buildDir, _, _cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) "dist-newstyle"
+                (buildDir, _, _cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) (cabalBuildDir Nothing)
                 let args = [ "act-as-setup"
                            , "--"
                            , "doctest"
@@ -867,6 +875,7 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
                         StackTool {} -> Just ("stack", [command] <> pjFileArgs <> [pkgName <> ":" <> T.pack (unUnqualComponentName name)])
                         CabalTool {} -> Just ("cabal", ["new-" <> command] <> pjFileArgs <> [pkgName <> ":" <> T.pack (unUnqualComponentName name)])
                         CustomTool {} -> Nothing
+                        NixTool {} -> Nothing
             mbCmdAndArgs' = second (<> ipdTestFlags package) <$> mbCmdAndArgs
         withToolCommand project GHC mbCmdAndArgs' $ \(cmd, args', nixEnv') ->
             runExternalTool' (__ "Run " <> T.pack (unUnqualComponentName name))
@@ -934,7 +943,7 @@ packageOpenDoc = do
                 liftIO . putMVar mvar $ head $ mapMaybe getDistOutput output
             liftIO $ Just <$> takeMVar mvar
         CabalTool {} -> do
-            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) "dist-newstyle"
+            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) (cabalBuildDir Nothing)
             return . Just $ buildDir </> T.unpack pkgId
         _ -> return Nothing
     case mbDistDir of
@@ -976,7 +985,7 @@ getPackageDescriptionAndPath = do
             ideMessage Normal (__ "No active package")
             return Nothing
         Just p  -> catchIDE (do
-                pd <- liftIO $ readGenericPackageDescription normal (ipdCabalFile p)
+                pd <- liftIO $ readGPD normal (ipdCabalFile p)
                 return (Just (flattenPackageDescription pd,ipdCabalFile p)))
                     (\(e :: SomeException) -> do
                         ideMessage Normal (__ "Can't load package " <> T.pack (show e))
@@ -1015,7 +1024,7 @@ addModuleToPackageDescr :: ModuleName -> [ModuleLocation] -> PackageAction
 addModuleToPackageDescr moduleName locations = do
     p    <- ask
     liftIDE $ catchIDE (liftIO $ do
-        gpd <- readGenericPackageDescription normal (ipdCabalFile p)
+        gpd <- readGPD normal (ipdCabalFile p)
         let npd = trace (show gpd) foldr addModule gpd locations
         writeGenericPackageDescription' (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
@@ -1065,7 +1074,7 @@ delModuleFromPackageDescr :: ModuleName -> PackageAction
 delModuleFromPackageDescr moduleName = do
     p    <- ask
     liftIDE $ catchIDE (liftIO $ do
-        gpd <- readGenericPackageDescription normal (ipdCabalFile p)
+        gpd <- readGPD normal (ipdCabalFile p)
         let isExposedAndJust = isExposedModule moduleName (condLibrary gpd)
         let npd = if isExposedAndJust
                 then gpd{
@@ -1242,7 +1251,7 @@ allBuildInfo' pkg_descr = [ libBuildInfo lib       | Just lib <- [library pkg_de
 idePackageFromPath' :: FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath' ipdCabalFile = do
     mbPackageD <- catchIDE (liftIO $
-        Just . flattenPackageDescription <$> readGenericPackageDescription normal ipdCabalFile)
+        Just . flattenPackageDescription <$> readGPD normal ipdCabalFile)
             (\ (e :: SomeException) -> do
                 ideMessage Normal (__ "Can't activate package " <> T.pack (show e))
                 return Nothing)
@@ -1252,24 +1261,20 @@ idePackageFromPath' ipdCabalFile = do
 
             let ipdModules          = M.fromList $ myLibModules packageD ++ myExeModules packageD
                                         ++ myTestModules packageD ++ myBenchmarkModules packageD
-                ipdMain             = [ (modulePath exe, buildInfo exe, False) | exe <- executables packageD ]
-                                        ++ [ (f, bi, True) | TestSuite {testInterface = TestSuiteExeV10 _ f, testBuildInfo = bi} <- testSuites packageD ]
-                                        ++ [ (f, bi, True) | Benchmark {benchmarkInterface = BenchmarkExeV10 _ f, benchmarkBuildInfo = bi} <- benchmarks packageD ]
-                ipdExtraSrcs        = S.fromList $ extraSrcFiles packageD
+                ipdMain             = [ (mainPath (modulePath exe), buildInfo exe, False) | exe <- executables packageD ]
+                                        ++ [ (mainPath f, bi, True) | TestSuite {testInterface = TestSuiteExeV10 _ f, testBuildInfo = bi} <- testSuites packageD ]
+                                        ++ [ (mainPath f, bi, True) | Benchmark {benchmarkInterface = BenchmarkExeV10 _ f, benchmarkBuildInfo = bi} <- benchmarks packageD ]
+                ipdExtraSrcs        = S.fromList $ map mainPath $ extraSrcFiles packageD
                 ipdSrcDirs          = case nub $ concatMap hsSourceDirs (allBuildInfo' packageD) of
                                             [] -> [".","src"]
-                                            l -> l
+                                            l -> map getSymbolicPath l
                 ipdSubLibraries     = [ T.pack . unUnqualComponentName $ e | Just e <- libraryNameString . libName <$> subLibraries packageD ]
                 ipdExes             = [ T.pack . unUnqualComponentName $ exeName e | e <- executables packageD ]
                 ipdExtensions       = nub $ concatMap oldExtensions (allBuildInfo' packageD)
                 ipdTests            = [ T.pack . unUnqualComponentName $ testName t | t <- testSuites packageD ]
                 ipdBenchmarks       = [ T.pack . unUnqualComponentName $ benchmarkName b | b <- benchmarks packageD ]
                 ipdPackageId        = package packageD
-#if MIN_VERSION_Cabal(2,4,0)
                 ipdDepends          = allBuildDepends packageD
-#else
-                ipdDepends          = buildDepends packageD
-#endif
                 ipdHasLib           = hasLibs packageD
                 ipdConfigFlags      = ["--enable-tests"]
                 ipdBuildFlags       = []
@@ -1361,6 +1366,9 @@ ideProjectFromKey key = do
                     CabalTool (CabalProject filePath) -> extractCabalPackageList <$> T.readFile filePath
                     StackTool (StackProject filePath) -> extractStackPackageList <$> T.readFile filePath
                     CustomTool p -> return []
+                    -- A flake project has no cabal packages; its tree shows the
+                    -- flake outputs + files instead (see IDE.Web.Widget.Flake).
+                    NixTool _ -> return []
             let dir = pjDir key
             cabalFiles <- liftIO $ mapM canonicalizePath =<< map (dir </>) . concat <$>
                               Glob.globDir patterns dir

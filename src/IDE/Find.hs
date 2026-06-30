@@ -610,7 +610,7 @@ regexStringAndMatchIndex entireWord regex string =
 findMatch :: TextEditor editor => Regex -> Int -> EditorBuffer editor -> Text -> (Int -> Bool) -> Bool -> IDEM (Maybe (EditorIter editor, EditorIter editor, MatchArray))
 findMatch regexp matchIndex gtkbuf text offsetPred findLast = do
     let m = (if findLast then reverse else id) (matchAll regexp text)
-    case find (offsetPred . fst . (!matchIndex)) m of
+    case find (offsetPred . fst . (! matchIndex)) m of
         Just matches -> do
             iterStart <- getStartIter gtkbuf
             iter1     <- forwardCharsC iterStart (fst (matches!matchIndex))

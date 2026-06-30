@@ -42,7 +42,9 @@ import Reflex.Dom.Core
 import IDE.Core.State
        (logRefFilePath, IDE, allLogRefs, LogRef(..), LogRefType(..))
 import IDE.Web.Command (_CommandNextError, _CommandPreviousError)
-import IDE.Web.Events (IDEWidget(..), ErrorsEvents(..), _KeymapCommand)
+import IDE.Web.Events
+       (IDEWidget(..), ErrorsEvents(..), FindbarEvents, _KeymapCommand)
+import IDE.Web.Widget.Findbar (findSelection)
 
 errorsCss :: Css
 errorsCss = do
@@ -63,18 +65,21 @@ errorsWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE
   -> Event t (DMap IDEWidget Identity)
+  -> Event t FindbarEvents
   -> m (Event t ErrorsEvents)
-errorsWidget ide allEvents = do
+errorsWidget ide allEvents findE = do
   let keyEvents = select (fan allEvents) KeymapWidget
       commandE x = fmapMaybe (^? _KeymapCommand . x) keyEvents
       nextError = commandE _CommandNextError
       prevError = commandE _CommandPreviousError
   allRefs <- holdUniqDyn (view allLogRefs <$> ide)
   numberOfRefsD <- holdUniqDyn $ length <$> allRefs
+  -- Find selects an error: matching index drives the selection (and scroll).
+  findSelD <- findSelection findE (zip [0..] . map errorLine . toList <$> allRefs)
   selectionIndexD <- holdUniqDyn =<< foldDyn ($) (-1::Int) (leftmost
     [ (\n x -> let x' = succ x in if x' >= n then 0     else x') <$> tag (current numberOfRefsD) nextError
     , (\n x -> let x' = pred x in if x' < 0  then n - 1 else x') <$> tag (current numberOfRefsD) prevError
---    , const -1 <$ reset
+    , const <$> fmapMaybe id (updated findSelD)
     ])
   let selE = attachWithMaybe (!?) (current allRefs) $ updated selectionIndexD
   goE <- delay 0 $ ErrorsGoto <$> selE
@@ -97,7 +102,7 @@ errorsWidget ide allEvents = do
           20
           (M.size <$> refs)
           0
-          never -- scrollTo
+          (fmapMaybe (\i -> if i >= 0 then Just i else Nothing) (updated selectionIndexD))
           id
           mempty
           itemsUpdate
@@ -109,18 +114,22 @@ errorsWidget ide allEvents = do
                     Just WarningRef -> "/pics/ide_warning.png"
                     Just TestFailureRef -> "/pics/tango/status/software-update-urgent.svg"
                     _ -> "/pics/ide_error.png"
-                  singleLine l = T.pack (logRefFilePath l) <> ": " <> refDescription l
-                                  & removeIndentation
-                                  & T.lines
-                                  & map removeTrailingWhiteSpace
-                                  & T.intercalate " "
               elDynAttr "img" (("src" =:) . imgSrc <$> v) $ return ()
               text " "
-              dynText $ maybe "" singleLine <$> v
+              dynText $ maybe "" errorLine <$> v
             return $ fmapMaybe id $ tag (current v) (domEvent Dblclick e))
         return . fmapMaybe (fmap ErrorsGoto . listToMaybe . M.elems) $ switchDyn (mergeMap <$> eventsD)
       return result
     return $ leftmost [ result, goE ]
+
+-- | One-line description of an error/warning (file + message), used for both
+-- the row label and find matching.
+errorLine :: LogRef -> Text
+errorLine l = T.pack (logRefFilePath l) <> ": " <> refDescription l
+            & removeIndentation
+            & T.lines
+            & map removeTrailingWhiteSpace
+            & T.intercalate " "
 
 -- | Removes the unnecessary indentation
 removeIndentation :: Text -> Text

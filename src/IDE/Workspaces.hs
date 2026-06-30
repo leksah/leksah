@@ -85,6 +85,7 @@ import IDE.Pane.SourceBuffer
        (IDEBuffer(..), fileOpenThis, fileCheckAll)
 import qualified IDE.Workspaces.Writer as Writer
 import IDE.Utils.FileUtils (myCanonicalizePath)
+import Distribution.Utils.Path (getSymbolicPath)
 
 projectNewHere :: FilePath -> WorkspaceAction
 projectNewHere filePath = do
@@ -138,7 +139,7 @@ constructAndOpenMainModules (Just idePackage) =
             Just (pd,_) ->
                 case hsSourceDirs bi of
                     path':_ -> do
-                        let path = ipdPackageDir idePackage </> path'
+                        let path = ipdPackageDir idePackage </> getSymbolicPath path'
                         liftIO $ createDirectoryIfMissing True path
                         alreadyExists <- liftIO $ doesFileExist (path </> target)
                         unless alreadyExists $ do

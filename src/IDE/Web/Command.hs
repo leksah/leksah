@@ -4,13 +4,19 @@
 module IDE.Web.Command where
 
 import Control.Lens
-       (Getter, to, makePrisms, view)
+       (Getter, to, makePrisms, view, (%~))
+import Control.Monad.IO.Class (liftIO)
 
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS (cons)
 import Data.Text (Text)
 
+import IDE.Web.CloseRequest (requestCloseActivePane)
+import IDE.Web.TerminalInput (sendToActiveTerminal)
+
 import IDE.Core.State
-       (readIDE, Prefs(..), prefs, PackageAction, ProjectAction,
-        WorkspaceAction, IDEAction, __, IDE)
+       (readIDE, modifyIDE_, Prefs(..), prefs, PackageAction, ProjectAction,
+        WorkspaceAction, IDEAction, __, IDE, TallVisibility(..))
 import IDE.Debug
        (debugContinue, debugStepModule, debugStepLocal, debugStep,
         debugToggled)
@@ -31,10 +37,9 @@ data Command =
   | CommandPackageAction Text Text PackageAction
   | CommandDebugAction Text Text IDEAction
   | CommandFileOpen
+  | CommandProjectOpen
   | CommandFileSave
   | CommandFind
-  | CommandUndo
-  | CommandRedo
   | CommandNextError
   | CommandPreviousError
   | CommandFlipDown
@@ -62,9 +67,7 @@ commandImageAndTip (CommandPackageAction img tip _) = (img, tip)
 commandImageAndTip (CommandDebugAction img tip _) = (img, tip)
 commandImageAndTip CommandFileOpen = ("/pics/tango/actions/document-open.svg", __ "Opens an existing file")
 commandImageAndTip CommandFileSave = ("/pics/tango/actions/document-save.svg", __ "Saves the current buffer")
-commandImageAndTip CommandFind = ("/pics/tango/actions/edit-find.svg", __ "Opens an existing file")
-commandImageAndTip CommandUndo = ("/pics/tango/actions/edit-undo.svg", __ "Opens an existing file")
-commandImageAndTip CommandRedo = ("/pics/tango/actions/edit-redo.svg", __ "Opens an existing file")
+commandImageAndTip CommandFind = ("/pics/tango/actions/edit-find.svg", __ "Show or hide the find bar")
 commandImageAndTip CommandNextError = ("/pics/ide_error_next.png", __ "Go to the next error")
 commandImageAndTip CommandPreviousError = ("/pics/ide_error_prev.png", __ "Go to the previous error")
 commandImageAndTip _ = ("", "")
@@ -78,8 +81,10 @@ commandAddModule, commandRefreshNix, commandPackageClean
   , commandToggleBackgroundBuild, commandToggleNative, commandToggleJavaScript
   , commandToggleDebug, commandToggleMakeDocs, commandToggleTest
   , commandToggleRunBenchmarks, commandToggleMakeDependents
+  , commandToggleShowIgnored, commandToggleShowHidden, commandToggleTallPane
+  , commandToggleWide1Pane
   , commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal
-  , commandDebugStepModule, commandDebugContinue :: Command
+  , commandDebugStepModule, commandDebugContinue, commandFileClose :: Command
 commandAddModule = CommandPackageAction
   "/pics/tango/actions/document-new.svg"
   (__ "Creates a new Haskell module")
@@ -158,10 +163,50 @@ commandToggleMakeDependents = CommandIDEToggleAction
   makeModeToggled
   (view $ prefs . to makeMode)
 
+commandToggleShowIgnored = CommandIDEToggleAction
+  "/pics/ide_source_folder.png"
+  (__ "Show files ignored by git in the workspace file trees")
+  (modifyIDE_ (prefs %~ \p -> p { showIgnoredFiles = not (showIgnoredFiles p) }))
+  (view $ prefs . to showIgnoredFiles)
+
+commandToggleShowHidden = CommandIDEToggleAction
+  "/pics/ide_folder.png"
+  (__ "Show hidden (dot-) files in the workspace file trees")
+  (modifyIDE_ (prefs %~ \p -> p { showHiddenFiles = not (showHiddenFiles p) }))
+  (view $ prefs . to showHiddenFiles)
+
+-- | Cycle the side ("tall") pane: show -> auto-hide -> hide -> show.  Rendered
+-- by a dedicated toolbar button that shows the current state (see Toolbar).
+commandToggleTallPane = CommandIDEAction
+  "/pics/ide_source_folder.png"
+  (__ "Side pane: show / auto-hide / hide")
+  (modifyIDE_ (prefs %~ \p -> p { tallVisibility = cycleTall (tallVisibility p) }))
+
+-- | Cycle the bottom pane (the errors/log/grep/changes area, grid area wide1):
+-- show -> auto-hide -> hide -> show.  Like 'commandToggleTallPane' but for the
+-- bottom row instead of the side column.
+commandToggleWide1Pane = CommandIDEAction
+  "/pics/ide_source_folder.png"
+  (__ "Bottom pane: show / auto-hide / hide")
+  (modifyIDE_ (prefs %~ \p -> p { wide1Visibility = cycleTall (wide1Visibility p) }))
+
+-- | Next side-pane visibility in the cycle.
+cycleTall :: TallVisibility -> TallVisibility
+cycleTall v = if v == maxBound then minBound else succ v
+
 commandUpdateWorkspaceInfo = CommandIDEAction
   "/pics/ide_rebuild_meta.png"
   (__ "Updates data for the current workspace")
   updateWorkspaceInfo
+
+-- | Close the active editor or terminal tab.  The actual close happens in the
+-- reflex network (it's tab state), so this just signals a request that
+-- 'IDE.Web.Main' picks up; closing a terminal this way detaches from tmux
+-- rather than killing the session.
+commandFileClose = CommandIDEAction
+  "/pics/tango/actions/window-close.svg"
+  (__ "Close the active source file or terminal")
+  (liftIO requestCloseActivePane)
 
 commandDebugStep = CommandIDEAction
   "/pics/ide_step.png"
@@ -182,3 +227,14 @@ commandDebugContinue = CommandIDEAction
   "/pics/ide_continue.png"
   (__ "Resume after a breakpoint")
   debugContinue
+
+-- | A menu command that sends the tmux prefix (@C-b@, byte 0x02) followed by
+-- @keys@ to the active terminal — exactly as if the shortcut had been typed
+-- there.  @keys@ are the raw bytes that follow the prefix: a printable key like
+-- @\"c\"@, or an escape sequence such as @\"\\ESC[A\"@ (Up) / @\"\\ESC1\"@
+-- (M-1).  A no-op when no terminal is on screen (see 'IDE.Web.TerminalInput').
+tmuxKey :: ByteString -> Command
+tmuxKey keys = CommandIDEAction
+  ""  -- menu-only: no toolbar icon
+  (__ "Send this tmux C-b shortcut to the active terminal")
+  (liftIO (sendToActiveTerminal (BS.cons 2 keys)))

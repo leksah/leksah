@@ -30,7 +30,8 @@ import IDE.Core.State
        VCSConf, readIDE, ideGtk, wsAllPackages, ipdCabalFile)
 import qualified IDE.Command.VCS.Common as Common
 
-import Control.Monad.Reader(liftIO, when)
+import Control.Monad.Reader(liftIO)
+import Control.Monad (when)
 
 import Control.Lens (to, (^.))
 import Data.Maybe

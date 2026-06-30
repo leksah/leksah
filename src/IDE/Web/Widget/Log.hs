@@ -9,7 +9,7 @@ module IDE.Web.Widget.Log
   ) where
 
 import Control.Lens (view)
-import qualified Data.Map as M (lookup, size, fromList)
+import qualified Data.Map as M (lookup, size, fromList, toList)
 
 import Clay
        (lightblue, grey, green, red, color, fontFamily, overflowX,
@@ -31,7 +31,8 @@ import Reflex.Dom.Core
 
 import IDE.Core.State
        (IDE, logLineMap)
-import IDE.Web.Events (LogEvents)
+import IDE.Web.Events (LogEvents, FindbarEvents)
+import IDE.Web.Widget.Findbar (findSelection)
 import qualified Data.Text as T (pack)
 
 logCss :: Css
@@ -47,6 +48,8 @@ logCss = do
     ".log .log-item" ? do
         whiteSpace pre
         cursor cursorDefault
+    ".log .log-item.selected" ?
+        backgroundImage (vGradient (Rgba 30 88 209 1.0) (Rgba 30 88 209 1.0))
     ".log .ErrorTag" ? do
         color red
     ".log .FrameTag" ? do
@@ -59,8 +62,9 @@ logCss = do
 logWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE
+  -> Event t FindbarEvents
   -> m (Event t LogEvents)
-logWidget ide =
+logWidget ide findE =
   divClass "log" $ mdo
     (resizeE, result) <- resizeDetectorWithAttrs ("class" =: "log-child") $ mdo
       let p = uncheckedCastTo HTMLElement $ _element_raw parent
@@ -70,6 +74,8 @@ logWidget ide =
       (parent, result) <- elAttr' "div" ("style" =: "height: 100%") $ mdo
         logLines <- -- fmap (M.fromList . zip [0..] . toList) <$>
           holdUniqDyn (view logLineMap <$> ide)
+        -- Find selects a log line: matching index highlights it and scrolls to it.
+        findSelD <- findSelection findE (map (\(i, (t, _)) -> (i, t)) . M.toList <$> logLines)
         heightD <- holdDyn 80 $ round <$> sizeE
         let expandWindow (idx, num) = (max 0 (idx - 20), num + 40)
             itemsInWindow = zipDynWith (\(idx,num) is ->
@@ -96,14 +102,17 @@ logWidget ide =
           20
           logSize
           0
-          scrollToE
+          (leftmost [scrollToE, fmapMaybe id (updated findSelD)])
           id
           mempty
           itemsUpdate
-          (\_k iv u -> do
+          (\k iv u -> do
             v <- holdDyn iv u
-            (_e, _) <- elDynAttr' "div" (("class" =:) . ("log-item "<>)
-                  . maybe "" ((" "<>) . T.pack . show . snd) <$> v) $
+            (_e, _) <- elDynAttr' "div"
+                  ((\msel v' -> "class" =: ("log-item"
+                        <> (if msel == Just k then " selected" else "")
+                        <> maybe "" ((" "<>) . T.pack . show . snd) v'))
+                     <$> findSelD <*> v) $
               dynText $ maybe "" fst <$> v
             return ()) ---- $ tag (current $ logRefSrcSpan <$> v) (domEvent Dblclick e))
         return never -- . fmapMaybe (fmap ErrorsGoto . listToMaybe . M.elems) $ switchDyn (mergeMap <$> eventsD)

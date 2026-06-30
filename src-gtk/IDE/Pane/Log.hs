@@ -48,7 +48,8 @@ import Prelude.Compat
 import Control.Lens ((.~))
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (ask, unless)
+import Control.Monad.Reader (ask)
+import Control.Monad (unless)
 import Control.Monad.Trans (liftIO)
 import Control.Monad.Trans.Class (MonadTrans(..))
 

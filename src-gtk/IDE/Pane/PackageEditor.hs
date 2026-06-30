@@ -56,7 +56,7 @@ import Data.List (isPrefixOf, sort, nub, sortBy)
 import Data.List.Split (splitOn)
 import Data.Maybe
        (isJust, fromMaybe, mapMaybe, fromJust, isNothing, listToMaybe)
-import qualified Data.Set as S (singleton)
+import qualified Distribution.Compat.NonEmptySet as S (singleton)
 import Data.Text (Text)
 import qualified Data.Text as T
        (replace, span, splitAt, isPrefixOf, length, toLower, lines,
@@ -75,11 +75,16 @@ import Distribution.ModuleName (ModuleName)
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
-#if MIN_VERSION_Cabal(2,2,0)
-import Distribution.PackageDescription.Parsec (readGenericPackageDescription)
-#else
-import Distribution.PackageDescription.Parse (readGenericPackageDescription)
+import Distribution.Utils.Path (getSymbolicPath, unsafeMakeSymbolicPath)
+#if MIN_VERSION_Cabal(3,14,0)
+import Distribution.Utils.Path (makeSymbolicPath, makeRelativePathEx)
 #endif
+#if MIN_VERSION_Cabal(3,8,0)
+import Distribution.Simple.PackageDescription (readGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parsec (readGenericPackageDescription)
+#endif
+import Distribution.CabalSpecVersion (showCabalSpecVersion)
 import Distribution.Simple (Extension(..), VersionRange, anyVersion)
 import Distribution.Text (simpleParse, display)
 import Distribution.Types.ExecutableScope (ExecutableScope(..))
@@ -130,7 +135,7 @@ import Graphics.UI.Editor.Basics
        (Notifier, Editor, GUIEventSelector(..), GUIEvent(..))
 import Graphics.UI.Editor.Composite
        (versionEditor, versionRangeEditor,
-        dependenciesEditor, textsEditor, filesEditor, tupel3Editor,
+        dependenciesEditor, textsEditor, filesEditor, tupel3Editor, tupel4Editor,
         eitherOrEditor, maybeEditor, pairEditor, ColumnDescr(..),
         multisetEditor)
 import Graphics.UI.Editor.MakeEditor
@@ -145,7 +150,7 @@ import Graphics.UI.Editor.Parameters
 import Graphics.UI.Editor.Simple
        (stringEditor, comboEntryEditor, staticListMultiEditor,
         intEditor, boolEditor, fileEditor, comboSelectionEditor,
-        multilineStringEditor, textEditor)
+        multilineStringEditor, textEditor, enumEditor)
 
 import IDE.Core.State
        (IDEM, PackageAction, ProjectAction, Project, IDEAction, liftIDE,
@@ -263,7 +268,7 @@ packageEdit = do
     liftIDE $ do
         let dirName = ipdPackageDir idePackage
         modules <- liftIO $ allModules dirName
-        package <- liftIO $ readGenericPackageDescription normal (ipdCabalFile idePackage)
+        package <- liftIO $ readGPD normal (ipdCabalFile idePackage)
         if hasConfigs package
             then do
                 liftIDE $ ideMessage High
@@ -442,7 +447,7 @@ packageNew' workspaceDir projects log' activateAction = do
 #else
                           , buildType = Just Simple
 #endif
-                          , specVersionRaw = Right (orLaterVersion (mkVersion [1,12]))
+                          , specVersion = maxBound
 #if MIN_VERSION_Cabal(2,2,0)
                           , licenseRaw = Right AllRightsReserved
 #else
@@ -456,9 +461,9 @@ packageNew' workspaceDir projects log' activateAction = do
 #endif
                           , executables = [emptyExecutable {
                                 exeName    = mkUnqualComponentName $ T.unpack newPackageName
-                              , modulePath = "Main.hs"
+                              , modulePath = toRelPath "Main.hs"
                               , buildInfo  = emptyBuildInfo {
-                                    hsSourceDirs       = ["src"]
+                                    hsSourceDirs       = [unsafeMakeSymbolicPath "src"]
                                   , targetBuildDepends = [mkDependency (mkPackageName "base") anyVersion (S.singleton LMainLibName)]
 #if MIN_VERSION_Cabal(3,0,0)
                                   , options            = PerCompilerFlavor ["-ferror-spans"] []
@@ -468,9 +473,9 @@ packageNew' workspaceDir projects log' activateAction = do
                                   , defaultLanguage    = Just Haskell2010}}]
                           , testSuites = [emptyTestSuite {
                                     testName = mkUnqualComponentName $ "test-" ++ T.unpack newPackageName
-                                  , testInterface = TestSuiteExeV10 (mkVersion [1,0]) "Main.hs"
+                                  , testInterface = TestSuiteExeV10 (mkVersion [1,0]) (toRelPath "Main.hs")
                                   , testBuildInfo = emptyBuildInfo {
-                                        hsSourceDirs    = ["test"]
+                                        hsSourceDirs    = [unsafeMakeSymbolicPath "test"]
                                       , targetBuildDepends = [
                                             mkDependency (mkPackageName "base") anyVersion (S.singleton LMainLibName)
                                           , mkDependency (mkPackageName "QuickCheck") anyVersion (S.singleton LMainLibName)
@@ -623,17 +628,33 @@ data PackageDescriptionEd = PDE {
     bis          :: [BuildInfo]}
         deriving Eq
 
+-- Cabal 3.14 made exe main-is / data-files RelativePaths and added a
+-- working-directory argument to readGenericPackageDescription.
+#if MIN_VERSION_Cabal(3,14,0)
+readGPD v f = readGenericPackageDescription v Nothing (makeSymbolicPath f)
+toRelPath x = makeRelativePathEx x
+fromRelPath x = getSymbolicPath x
+toSymPath x = makeSymbolicPath x
+fromSymPath x = getSymbolicPath x
+#else
+readGPD v f = readGenericPackageDescription v f
+toRelPath x = x
+fromRelPath x = x
+toSymPath x = x
+fromSymPath x = x
+#endif
+
 fromEditor :: PackageDescriptionEd -> PackageDescription
 fromEditor (PDE pd exes'
         tests'
         benchmarks'
         mbLib' buildInfos) =
     let     exes = map (\ (Executable' s fb scope bii) -> if bii + 1 > length buildInfos
-                                        then Executable (mkUnqualComponentName $ T.unpack s) fb scope (buildInfos !! (length buildInfos - 1))
-                                        else Executable (mkUnqualComponentName $ T.unpack s) fb scope (buildInfos !! bii)) exes'
-            tests = map (\ (Test' s fb bii) -> if bii + 1 > length buildInfos
-                                        then TestSuite (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! (length buildInfos - 1))
-                                        else TestSuite (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! bii)) tests'
+                                        then Executable (mkUnqualComponentName $ T.unpack s) (toRelPath fb) scope (buildInfos !! (length buildInfos - 1))
+                                        else Executable (mkUnqualComponentName $ T.unpack s) (toRelPath fb) scope (buildInfos !! bii)) exes'
+            tests = map (\ (Test' s fb bii cg) -> if bii + 1 > length buildInfos
+                                        then TestSuite (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! (length buildInfos - 1)) cg
+                                        else TestSuite (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! bii) cg) tests'
             bms = map (\ (Benchmark' s fb bii) -> if bii + 1 > length buildInfos
                                         then Benchmark (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! (length buildInfos - 1))
                                         else Benchmark (mkUnqualComponentName $ T.unpack s) fb (buildInfos !! bii)) benchmarks'
@@ -664,9 +685,9 @@ fromEditor (PDE pd exes'
 
 toEditor :: PackageDescription -> PackageDescriptionEd
 toEditor pd =
-    let     (exes,exeBis) = unzip $ map (\(Executable s fb scope bi, i) -> (Executable' (T.pack $ unUnqualComponentName s) fb scope i, bi))
+    let     (exes,exeBis) = unzip $ map (\(Executable s fb scope bi, i) -> (Executable' (T.pack $ unUnqualComponentName s) (fromRelPath fb) scope i, bi))
                             (zip (executables pd) [0..])
-            (tests,testBis) = unzip $ map (\(TestSuite s fb bi, i) -> (Test' (T.pack $ unUnqualComponentName s) fb i, bi))
+            (tests,testBis) = unzip $ map (\(TestSuite s fb bi cg, i) -> (Test' (T.pack $ unUnqualComponentName s) fb i cg, bi))
                             (zip (testSuites pd) [length exeBis..])
             (bms,benchmarkBis) = unzip $ map (\(Benchmark s fb bi, i) -> (Benchmark' (T.pack $ unUnqualComponentName s) fb i, bi))
                             (zip (benchmarks pd) [length testBis..])
@@ -930,8 +951,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
-            (licenseFiles . pd)
-            (\ a b -> b{pd = (pd b){licenseFiles = a}})
+            (map getSymbolicPath . licenseFiles . pd)
+            (\ a b -> b{pd = (pd b){licenseFiles = map unsafeMakeSymbolicPath a}})
             (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ,   mkField
             (paraName <<<- ParaName (__ "Copyright") $ emptyParams)
@@ -983,8 +1004,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     (__ "Does this package depends on a specific version of Cabal?")
                     $ paraShadow <<<- ParaShadow ShadowTypeIn $ emptyParams)
             (specVersion . pd)
-            (\ a b -> b{pd = (pd b){specVersionRaw = Left a}})
-            versionEditor
+            (\ a b -> b{pd = (pd b){specVersion = a}})
+            (enumEditor (map (T.pack . showCabalSpecVersion) [minBound .. maxBound]))
     ,   mkField
             (paraName <<<- ParaName (__ "Tested with compiler")
                 $ paraShadow <<<- ParaShadow ShadowTypeIn
@@ -1005,13 +1026,13 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,250)
                             $ emptyParams)
-            (dataFiles . pd)
-            (\ a b -> b{pd = (pd b){dataFiles = a}})
+            (map fromRelPath . dataFiles . pd)
+            (\ a b -> b{pd = (pd b){dataFiles = map toRelPath a}})
             (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ,   mkField
             (paraName <<<- ParaName (__ "Data directory") $ emptyParams)
-            (dataDir . pd)
-            (\ a b -> b{pd = (pd b){dataDir = a}})
+            (fromSymPath . dataDir . pd)
+            (\ a b -> b{pd = (pd b){dataDir = toSymPath a}})
             (fileEditor (Just fp) FileChooserActionSelectFolder (__ "Select file"))
     ]),
     (__ "Extra Files", VFD emptyParams [
@@ -1022,8 +1043,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,120)
                             $ emptyParams)
-            (extraSrcFiles . pd)
-            (\ a b -> b{pd = (pd b){extraSrcFiles = a}})
+            (map fromRelPath . extraSrcFiles . pd)
+            (\ a b -> b{pd = (pd b){extraSrcFiles = map toRelPath a}})
             (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ,   mkField
             (paraName <<<-  ParaName (__ "Extra Tmp Files")
@@ -1032,8 +1053,8 @@ packageDD packages fp modules numBuildInfos extras = NFD ([
                     $ paraOrientation <<<- ParaOrientation OrientationVertical
                         $ paraMinSize <<<- ParaMinSize (-1,120)
                             $ emptyParams)
-            (extraTmpFiles . pd)
-            (\ a b -> b{pd = (pd b){extraTmpFiles = a}})
+            (map fromRelPath . extraTmpFiles . pd)
+            (\ a b -> b{pd = (pd b){extraTmpFiles = map toRelPath a}})
             (filesEditor (Just fp) FileChooserActionOpen (__ "Select File"))
     ]),
     (__ "Other",VFD emptyParams  [
@@ -1149,8 +1170,8 @@ buildInfoD fp modules i = [
                         $ paraOrientation  <<<- ParaOrientation OrientationVertical
                             $ paraMinSize <<<- ParaMinSize (-1,150)
                                 $ emptyParams)
-            (hsSourceDirs . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{hsSourceDirs = a})})
+            (map getSymbolicPath . hsSourceDirs . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{hsSourceDirs = map unsafeMakeSymbolicPath a})})
             (filesEditor fp FileChooserActionSelectFolder (__ "Select folder"))
     ,   mkField
             (paraName <<<- ParaName (__ "Non-exposed or non-main modules")
@@ -1286,15 +1307,15 @@ buildInfoD fp modules i = [
     ,    mkField
             (paraName <<<- ParaName (__ "A list of header files to use when compiling")
                 $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
-            (map T.pack . includes . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{includes = map T.unpack a})})
+            (map (T.pack . fromSymPath) . includes . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{includes = map (toSymPath . T.unpack) a})})
             (textsEditor (const True) True)
      ,   mkField
             (paraName <<<- ParaName (__ "A list of header files to install")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
-            (installIncludes . (!! i) . bis)
-             (\ a b -> b{bis = update (bis b) i (\bi -> bi{installIncludes = a})})
+            (map fromRelPath . installIncludes . (!! i) . bis)
+             (\ a b -> b{bis = update (bis b) i (\bi -> bi{installIncludes = map toRelPath a})})
            (filesEditor fp FileChooserActionOpen (__ "Select File"))
     ]),
     (T.pack $ printf (__ "%s Opts C -2-") (show (i + 1)), VFD emptyParams [
@@ -1302,16 +1323,16 @@ buildInfoD fp modules i = [
             (paraName <<<- ParaName (__ "A list of directories to search for header files")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
-            (includeDirs . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{includeDirs = a})})
+            (map fromSymPath . includeDirs . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{includeDirs = map toSymPath a})})
             (filesEditor fp FileChooserActionSelectFolder (__ "Select Folder"))
      ,   mkField
             (paraName <<<- ParaName
                 (__ "A list of C source files to be compiled,linked with the Haskell files.")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
-            (cSources . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{cSources = a})})
+            (map fromSymPath . cSources . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{cSources = map toSymPath a})})
             (filesEditor fp FileChooserActionOpen (__ "Select file"))
     ]),
     (T.pack $ printf (__ "%s Opts Libs ") (show (i + 1)), VFD emptyParams [
@@ -1326,8 +1347,8 @@ buildInfoD fp modules i = [
             (paraName <<<- ParaName (__ "A list of directories to search for libraries.")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
-            (extraLibDirs . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibDirs = a})})
+            (map fromSymPath . extraLibDirs . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{extraLibDirs = map toSymPath a})})
             (filesEditor fp FileChooserActionSelectFolder (__ "Select Folder"))
    ]),
     (T.pack $ printf (__ "%s Other") (show (i + 1)), VFD emptyParams [
@@ -1342,8 +1363,8 @@ buildInfoD fp modules i = [
             (paraName <<<- ParaName (__ "Support frameworks for Mac OS X")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
-            (map T.pack . frameworks . (!! i) . bis)
-            (\ a b -> b{bis = update (bis b) i (\bi -> bi{frameworks = map T.unpack a})})
+            (map (T.pack . fromRelPath) . frameworks . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{frameworks = map (toRelPath . T.unpack) a})})
             (textsEditor (const True) True)
     ,   mkField
             (paraName <<<- ParaName (__ "Custom fields build info")
@@ -1604,7 +1625,8 @@ data Executable' = Executable'{
 data Test' = Test'{
     testName'        :: Text
 ,   testInterface'   :: TestSuiteInterface
-,   testBuildInfoIdx :: Int}
+,   testBuildInfoIdx :: Int
+,   testCodeGenerators' :: [String] }
     deriving (Show, Eq)
 
 data Benchmark' = Benchmark'{
@@ -1624,10 +1646,10 @@ instance Default Executable'
     where def = Executable' "" def mempty def
 
 instance Default Test'
-    where def = Test' "" (TestSuiteExeV10 (mkVersion [1,0]) def) def
+    where def = Test' "" (TestSuiteExeV10 (mkVersion [1,0]) (toRelPath def)) def def
 
 instance Default Benchmark'
-    where def = Benchmark' "" (BenchmarkExeV10 (mkVersion [1,0]) def) def
+    where def = Benchmark' "" (BenchmarkExeV10 (mkVersion [1,0]) (toRelPath def)) def
 
 libraryEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Library'
 libraryEditor _fp modules numBuildInfos para noti = do
@@ -1761,21 +1783,23 @@ executableEditor _fp _modules countBuildInfo para noti = do
 testsEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Test']
 testsEditor fp modules countBuildInfo p =
     multisetEditor def
-        (ColumnDescr True [(__ "Test Name",\cell (Test' testName _ _) -> setCellRendererTextText cell testName)
-                           ,(__ "Interface",\cell (Test'  _ i _) -> setCellRendererTextText cell . T.pack $ interfaceName i)
-                           ,(__ "Build info index",\cell (Test'  _ _ bii) -> setCellRendererTextText cell . T.pack $ show (bii + 1))])
+        (ColumnDescr True [(__ "Test Name",\cell (Test' testName _ _ _) -> setCellRendererTextText cell testName)
+                           ,(__ "Interface",\cell (Test'  _ i _ _) -> setCellRendererTextText cell . T.pack $ interfaceName i)
+                           ,(__ "Build info index",\cell (Test'  _ _ bii _) -> setCellRendererTextText cell . T.pack $ show (bii + 1))
+                           ,(__ "Code Generators",\cell (Test'  _ _ _ cg) -> setCellRendererTextText cell . T.pack $ show cg)
+                           ])
         (testEditor fp modules countBuildInfo,emptyParams)
         Nothing
         Nothing
         (paraShadow  <<<- ParaShadow ShadowTypeIn
             $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
   where
-    interfaceName (TestSuiteExeV10 _ f) = f
+    interfaceName (TestSuiteExeV10 _ f) = fromRelPath f
     interfaceName i = show i
 
 testEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Test'
 testEditor _fp _modules countBuildInfo para noti = do
-    (wid,inj,ext) <- tupel3Editor
+    (wid,inj,ext) <- tupel4Editor
         (textEditor (not . T.null) True,
             paraName <<<- ParaName (__ "Test Name")
             $ emptyParams)
@@ -1788,15 +1812,19 @@ testEditor _fp _modules countBuildInfo para noti = do
                 $ paraVAlign <<<- ParaVAlign AlignStart
                     $ paraMargin <<<- ParaMargin (0, 0, 0, 0)
                         $ emptyParams)
+        (textsEditor (const True) True,
+            paraOrientation <<<- ParaOrientation OrientationVertical
+            $ paraName <<<- ParaName (__ "Code Generators")
+            $ emptyParams)
         (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
         noti
-    let pinj (Test' s (TestSuiteExeV10 v f) bi) | versionNumbers v == [1,0] = inj (s,f,bi)
+    let pinj (Test' s (TestSuiteExeV10 v f) bi cg) | versionNumbers v == [1,0] = inj (s,fromRelPath f,bi,map T.pack cg)
         pinj _ = error "Unexpected Test Interface"
     let pext = do
             mbp <- ext
             case mbp of
                 Nothing -> return Nothing
-                Just (s,f,bi) -> return (Just $Test' s (TestSuiteExeV10 (mkVersion [1,0]) f) bi)
+                Just (s,f,bi,cg) -> return (Just $Test' s (TestSuiteExeV10 (mkVersion [1,0]) (toRelPath f)) bi (map T.unpack cg))
     return (wid,pinj,pext)
 
 benchmarksEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor [Benchmark']
@@ -1811,7 +1839,7 @@ benchmarksEditor fp modules countBuildInfo p =
         (paraShadow  <<<- ParaShadow ShadowTypeIn
             $ paraMinSize <<<- ParaMinSize (-1,200) $ p)
   where
-    interfaceName (BenchmarkExeV10 _ f) = f
+    interfaceName (BenchmarkExeV10 _ f) = fromRelPath f
     interfaceName i = show i
 
 benchmarkEditor :: Maybe FilePath -> [ModuleName] -> Int -> Editor Benchmark'
@@ -1831,13 +1859,13 @@ benchmarkEditor _fp _modules countBuildInfo para noti = do
                         $ emptyParams)
         (paraOrientation  <<<- ParaOrientation OrientationVertical $ para)
         noti
-    let pinj (Benchmark' s (BenchmarkExeV10 v f) bi) | versionNumbers v == [1,0] = inj (s,f,bi)
+    let pinj (Benchmark' s (BenchmarkExeV10 v f) bi) | versionNumbers v == [1,0] = inj (s,fromRelPath f,bi)
         pinj _ = error "Unexpected Benchmark Interface"
     let pext = do
             mbp <- ext
             case mbp of
                 Nothing -> return Nothing
-                Just (s,f,bi) -> return (Just $Benchmark' s (BenchmarkExeV10 (mkVersion [1,0]) f) bi)
+                Just (s,f,bi) -> return (Just $Benchmark' s (BenchmarkExeV10 (mkVersion [1,0]) (toRelPath f)) bi)
     return (wid,pinj,pext)
 
 buildInfoEditorP :: Int -> Editor Int
@@ -1865,9 +1893,7 @@ instance Default BuildInfo
 
 instance Default Library where
   def = Library (maybeOrLibraryName Nothing) [] [] [] True
-#if MIN_VERSION_Cabal(3,0,0)
     	  LibraryVisibilityPrivate
-#endif
     	  def
 
 instance Default ExecutableScope
@@ -1877,10 +1903,10 @@ instance Default UnqualComponentName
     where def = mkUnqualComponentName ""
 
 instance Default Executable
-    where def = Executable def def def def
+    where def = Executable def (toRelPath def) def def
 
 instance Default RepoType
-    where def = Darcs
+    where def = KnownRepoType Git
 
 instance Default RepoKind
     where def = RepoThis

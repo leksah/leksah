@@ -15,8 +15,7 @@ import Prelude ()
 import Prelude.Compat hiding(getChar, getLine)
 
 import qualified Data.Set as Set
-import Text.Replace (listToTrie, replaceWithTrie,
-        string'fromString)
+import Text.Replace (listToTrie, replaceWithTrie, text'fromString)
 import qualified Text.Replace as TR (Replace(..))
 
 import IDE.Core.State
@@ -25,6 +24,8 @@ import Control.Monad (when, unless)
 import Data.Text (Text)
 import qualified Data.Text as T
        (takeWhile, pack, unpack, isSuffixOf, length, index)
+import qualified Data.Text.Lazy as LT
+       (toStrict, fromStrict)
 import GI.Gtk.Objects.TextBuffer
        (textBufferGetIterAtMark, textBufferCreateMark, textBufferSetText)
 import GI.GtkSource (bufferNew)
@@ -142,9 +143,9 @@ getCandylessText ct ebuf = do
 getCandylessPart :: TextEditor editor => CandyTable -> EditorBuffer editor -> EditorIter editor -> EditorIter editor -> IDEM Text
 getCandylessPart (CT(_,transformTableBack)) ebuf i1 i2 = do
     text1 <- getText ebuf i1 i2 True
-    let replacements = listToTrie [TR.Replace (string'fromString $ T.unpack from <> replicate n ' ') (T.unpack to)
+    let replacements = listToTrie [TR.Replace (text'fromString $ T.unpack from <> replicate n ' ') to
                                     | (to, from, spaces) <- transformTableBack, n <- [0..spaces]]
-    return . T.pack . replaceWithTrie replacements $ T.unpack text1
+    return . LT.toStrict . replaceWithTrie replacements $ LT.fromStrict text1
 
 stringToCandy :: CandyTable -> Text -> IDEM Text
 stringToCandy  candyTable text = do

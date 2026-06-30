@@ -72,13 +72,16 @@ module IDE.Core.Types (
 ,   CabalProject(..)
 ,   StackProject(..)
 ,   CustomProject(..)
+,   NixProject(..)
 ,   pjPackages
 ,   pjLookupPackage
 ,   pjDir
 ,   pjFile
 ,   pjFileOrDir
+,   pjFlakeFile
 ,   pjIsCabal
 ,   pjIsStack
+,   pjIsNix
 ,   filePathToProjectKey
 --,   pjToolCommand'
 ,   Workspace(..)
@@ -96,6 +99,7 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
+,   TallVisibility(..)
 ,   PrefsFile(..)
 ,   candyState
 ,   EditorStyle(..)
@@ -241,9 +245,9 @@ import System.IO.Unsafe (unsafePerformIO)
 #endif
 
 import IDE.Utils.Project
-       (ProjectKey(..), pjCabalFile, pjStackFile, pjCustomDir, pjDir,
-        CabalProject(..), StackProject(..), CustomProject(..), pjIsCabal,
-        pjIsStack, pjFileOrDir, pjFile, filePathToProjectKey)
+       (ProjectKey(..), pjCabalFile, pjStackFile, pjCustomDir, pjDir, pjFlakeFile,
+        CabalProject(..), StackProject(..), CustomProject(..), NixProject(..),
+        pjIsCabal, pjIsStack, pjIsNix, pjFileOrDir, pjFile, filePathToProjectKey)
 import Distribution.Pretty (prettyShow)
 
 -- ---------------------------------------------------------------------
@@ -524,7 +528,7 @@ instance EventSource IDERef IDEEvent IDEM Text where
 data Project = Project
   { pjKey        :: ProjectKey
   , pjPackageMap :: Map FilePath IDEPackage
-  } deriving (Show)
+  } deriving (Show, Eq)
 
 pjPackages :: Project -> [IDEPackage]
 pjPackages = M.elems . pjPackageMap
@@ -600,6 +604,10 @@ data Workspace = Workspace {
 ,   _packageVcsConf      ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
 
+-- | Visibility of the side ("tall") pane, cycled by the toolbar button.
+data TallVisibility = TallShow | TallAutoHide | TallHide
+    deriving (Eq, Show, Read, Enum, Bounded, Generic)
+
 --
 -- | Preferences is a data structure to hold configuration data
 --
@@ -661,6 +669,9 @@ data Prefs = Prefs {
     ,   printBindResult     ::   Bool
     ,   serverIP            ::   Text
     ,   showHiddenFiles     ::   Bool
+    ,   showIgnoredFiles    ::   Bool
+    ,   tallVisibility      ::   TallVisibility
+    ,   wide1Visibility     ::   TallVisibility
     ,   showWorkspaceIcons  ::   Bool
     ,   hlintOnSave         ::   Bool
     ,   collapseErrors      ::   Bool
@@ -731,6 +742,7 @@ data PrefsFile = PrefsFile {
   , printBindResult_     :: Maybe Bool
   , serverIP_            :: Maybe Text
   , showHiddenFiles_     :: Maybe Bool
+  , showIgnoredFiles_    :: Maybe Bool
   , showWorkspaceIcons_  :: Maybe Bool
   , hlintOnSave_         :: Maybe Bool
   , collapseErrors_      :: Maybe Bool

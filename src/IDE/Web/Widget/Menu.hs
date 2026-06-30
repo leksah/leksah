@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 module IDE.Web.Widget.Menu where
 
 import Data.Text (Text)
@@ -7,13 +8,21 @@ import Data.Traversable (forM)
 
 import Clay
        (cursorDefault, padding, px, fontSize, hover, (#), (?), Css,
-        Background(..), Color(..), margin, nil, borderRadius, Cursor(..))
+        Background(..), Color(..), margin, nil, borderRadius, Cursor(..),
+        position, absolute, relative, top, left, pct, nowrap, whiteSpace,
+        zIndex, block, backgroundImage, vGradient, boxShadow, bsColor,
+        shadowWithSpread, black, (|>), color, float, floatRight, marginLeft,
+        em, minWidth)
+import qualified Clay (display, none)
 
 import Reflex (leftmost, Event, Dynamic, tag, current)
 
 import Reflex.Dom.Core
-       (dynText, el', el, divClass, MonadWidget, HasDomEvent(..),
-        EventName(..))
+       (dynText, el', el, elClass, divClass, text, MonadWidget,
+        HasDomEvent(..), EventName(..))
+
+import IDE.Web.Command (Command)
+import IDE.Web.MenuModel (MenuItem(..))
 
 menuCss :: Css
 menuCss = do
@@ -24,9 +33,35 @@ menuCss = do
   ".menu ul li" ? do
     fontSize (px 13)
     padding (px 4) (px 8) (px 4) (px 8)
+    whiteSpace nowrap
   ".menu ul li" # hover ? do
     background (Rgba 30 88 209 1.0)
     borderRadius (px  5) (px 5) (px 5) (px 5)
+  -- The shortcut hint sits to the right of the label, greyed — like a native
+  -- menu's key-equivalent column.  The min-width gives the rows a common width
+  -- so the floated shortcuts line up rather than hugging each label.
+  ".menu ul" ? minWidth (em 13)
+  ".menu .menu-shortcut" ? do
+    float floatRight
+    marginLeft (em 2)
+    color (Rgba 153 153 153 1.0)
+  -- A submenu item anchors its flyout, which is a nested `.menu` shown to the
+  -- right on hover.  These selectors are more specific than `.menubar .menu`
+  -- (which anchors the top-level dropdown under the bar), so they win and
+  -- re-anchor nested flyouts to the side.
+  ".menu li.has-submenu" ? position relative
+  ".menu li.has-submenu > .menu" ? do
+    position absolute
+    left (pct 100)
+    top nil
+    Clay.display Clay.none
+    backgroundImage (vGradient (Rgba 64 64 64 0.95) (Rgba 32 32 32 0.95))
+    borderRadius (px 5) (px 5) (px 5) (px 5)
+    boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+    zIndex 1001
+  -- Only the directly-hovered item's flyout opens (child combinator), so
+  -- hovering an outer item doesn't reveal its grandchildren.
+  (".menu li.has-submenu" # hover) |> ".menu" ? Clay.display block
 
 menu
   :: MonadWidget t m
@@ -38,3 +73,31 @@ menu items =
       fmap leftmost . forM items $ \d -> do
         (li, _) <- el' "li" . dynText $ fst <$> d
         return $ tag (snd <$> current d) $ domEvent Click li
+
+-- | Render a (possibly nested) list of 'MenuItem's as a dropdown, returning the
+-- 'Command' chosen anywhere in the tree.  Leaf items fire on click; submenu
+-- items open a flyout on hover (pure CSS, see 'menuCss') whose own items bubble
+-- up here.  Used by the web menubar; the native macOS menu builds the same model
+-- with NSMenu submenus.
+menuItems
+  :: MonadWidget t m
+  => [MenuItem]
+  -> m (Event t Command)
+menuItems items =
+  divClass "menu" $
+    el "ul" $
+      fmap leftmost . forM items $ \case
+        MenuItem label cmd -> do
+          (li, _) <- el' "li" $ text label
+          return $ cmd <$ domEvent Click li
+        MenuShortcut label shortcut cmd -> do
+          (li, _) <- el' "li" $ do
+            text label
+            elClass "span" "menu-shortcut" $ text shortcut
+          return $ cmd <$ domEvent Click li
+        Submenu label subs ->
+          -- The flyout (a nested `.menu`) lives inside this <li>; its chosen
+          -- command is the <li>'s result and bubbles up via leftmost.
+          elClass "li" "has-submenu" $ do
+            text (label <> " ▸")
+            menuItems subs

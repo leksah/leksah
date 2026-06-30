@@ -40,7 +40,7 @@ import Data.Functor.Identity (Identity(..))
 import Data.List (intercalate, sort, nub, nubBy)
 import Data.Maybe
        (mapMaybe, fromMaybe, catMaybes, fromJust, isNothing, isJust)
-import qualified Data.Set as S (singleton)
+import qualified Distribution.Compat.NonEmptySet as S (singleton)
 import Data.Text (Text)
 import qualified Data.Text as T
        (takeWhile, stripPrefix, lines, dropWhile, empty, pack, unpack)
@@ -51,12 +51,15 @@ import Distribution.PackageDescription
        (GenericPackageDescription(..), Benchmark(..), TestSuite(..),
         Executable(..), BuildInfo(..), Library(..), CondTree(..),
         condExecutables, condLibrary)
-#if MIN_VERSION_Cabal(2,2,0)
-import Distribution.PackageDescription.Parsec
+#if MIN_VERSION_Cabal(3,8,0)
+import Distribution.Simple.PackageDescription
        (readGenericPackageDescription)
 #else
-import Distribution.PackageDescription.Parse
+import Distribution.PackageDescription.Parsec
        (readGenericPackageDescription)
+#endif
+#if MIN_VERSION_Cabal(3,14,0)
+import Distribution.Utils.Path (makeSymbolicPath)
 #endif
 import Distribution.Pretty (prettyShow)
 import Distribution.Text (simpleParse, display)
@@ -121,6 +124,13 @@ import IDE.TextEditor (delete, setModified, getIterAtLine)
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.Utils.GHCUtils (mkDependency, LibraryName(..))
 import IDE.Utils.ServerConnection
+
+-- Cabal 3.14 added a working-directory argument and takes a SymbolicPath.
+#if MIN_VERSION_Cabal(3,14,0)
+readGPD v f = readGenericPackageDescription v Nothing (makeSymbolicPath f)
+#else
+readGPD v f = readGenericPackageDescription v f
+#endif
 
 readMaybe :: Read a => Text -> Maybe a
 readMaybe s = case reads $ T.unpack s of
@@ -246,7 +256,7 @@ addPackages errors = do
                     _ -> Nothing) errors
 
     forM_ packs $ \(cabalFile, d) -> do
-        gpd <- liftIO $ readGenericPackageDescription normal cabalFile
+        gpd <- liftIO $ readGPD normal cabalFile
         ideMessage Normal $ "Adding build-depends " <> T.pack (display d <> " to " <> cabalFile)
         liftIO $ writeGenericPackageDescription' cabalFile
             gpd { condLibrary     = addDepToLib d (condLibrary gpd),

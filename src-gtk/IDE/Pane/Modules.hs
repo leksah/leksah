@@ -48,6 +48,7 @@ import Data.Tree (flatten, Forest, Tree(..))
 import Data.List (find, elemIndex, foldl', nub, partition, sortOn)
 import Distribution.Package (Dependency(..), pkgName, pkgVersion)
 import Distribution.Version (withinRange)
+import Distribution.Utils.Path (getSymbolicPath)
 import Data.IORef
        (modifyIORef, newIORef, writeIORef, readIORef, IORef)
 import IDE.Core.State
@@ -1300,7 +1301,7 @@ addModule modulePrefix = do
     mbPD <- liftIDE getPackageDescriptionAndPath
     case mbPD of
         Nothing             -> liftIDE $ ideMessage Normal (__ "No package description")
-        Just (pd,_cabalPath) -> let srcPaths = nub $ concatMap hsSourceDirs $ allBuildInfo' pd
+        Just (pd,_cabalPath) -> let srcPaths = map getSymbolicPath . nub $ concatMap hsSourceDirs $ allBuildInfo' pd
 --                                    rootPath = dropFileName cabalPath
                                     modPath' = foldr (\a b -> a <> "." <> b) ""
                                                     modulePrefix

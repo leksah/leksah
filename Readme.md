@@ -1,10 +1,19 @@
 # Leksah, an Integrated Development Environment for Haskell
 
-[![Build Status](https://secure.travis-ci.org/leksah/leksah.png)](http://travis-ci.org/leksah/leksah)
-
 [Leksah](http://leksah.org/) aims to integrate various Haskell development
 tools to provide a practical and pleasant development environment.
-The user interface is a mix of GTK+ and WebKit based components.
+
+Leksah has several interchangeable front ends that share most of their code.
+The original one is built with GTK+; the newer ones render the UI with
+[reflex-dom](https://reflex-frp.org/):
+
+* **`leksah`** — the GTK+ UI.
+* **`leksah-warp`** — serves the UI over HTTP; open it in a browser at
+  <http://127.0.0.1:3367/> (GHC 9.14).
+* **`leksah-wkwebview`** — a native macOS window using WKWebView (GHC 9.14).
+* **`leksah-webkitgtk`** — a native window using WebKitGTK (GHC 9.14).
+
+Leksah supports GHC 9.6.7 through 9.14.
 
 Documentation can be found on [leksah.org](http://leksah.org/).
 
@@ -49,18 +58,45 @@ Then download, build and run Leksah with:
 ```
 git clone --recursive https://github.com/leksah/leksah.git
 cd leksah
-./leksah-nix.sh ghc884
+./leksah-nix.sh ghc98
 ```
 
-On macOS the Leksah window start below other active application windows you can use
+`leksah-nix.sh` takes the GHC version and, optionally, which front end to run:
+
+```
+./leksah-nix.sh GHCVER [UI] [LEKSAH_ARGS]
+
+  GHCVER : ghc96, ghc98, ghc910, ghc912 or ghc914
+           (GHC 9.6.7 - 9.14; ghc914 is the default)
+  UI     : gtk (default), warp, wkwebview or webkitgtk
+           (the web UIs require ghc914)
+```
+
+For example, the native macOS WebKit UI:
+
+```
+./leksah-nix.sh ghc914 wkwebview
+```
+
+or the browser UI (then open <http://127.0.0.1:3367/>):
+
+```
+./leksah-nix.sh ghc914 warp
+```
+
+On macOS the Leksah window starts below other active application windows; use
 Command+Shift+Tab to bring it to the top
 ([issue 461](https://github.com/leksah/leksah/issues/461)).
 
-The `ghc884` argument indicates Leksah should be built using GHC 8.8.4.  Leksah works best if
-it is built with the same version of GHC that your projects use.  To work on a project that
-uses GHC 8.6.5, just exit leksah and run `./leksah-nix.sh ghc865`.
+Leksah works best when it is built with the same version of GHC that your
+projects use.  To switch, exit Leksah and re-run `leksah-nix.sh` with a
+different GHC version (e.g. `./leksah-nix.sh ghc96`).
 
 ### Chocolatey and MSYS2 (Recommended for Windows users)
+
+> **⚠️ TODO: this section is out of date.** It still installs GHC 8.8.4 and
+> predates the move to the Nix flake (GHC 9.6.7–9.14) and the web front ends.
+> It needs updating (or removing) — until then, prefer the Nix instructions above.
 
 Install [Chocolatey](https://chocolatey.org/).
 
@@ -78,6 +114,12 @@ leksah.bat
 ```
 
 ### Alternative Installation Method
+
+> **⚠️ TODO: this section is out of date.** It targets GHC ≥8.2.2 with the old
+> `leksah.sh` / `stack` builds (and references like GHC 8.4.3, `llvm-3.5`,
+> WebKit/GtkSourceView 3) from before the move to the Nix flake (GHC 9.6.7–9.14)
+> and the web front ends. The Nix instructions above are the supported build
+> path; the steps below need revising and may not work as written.
 
 Leksah requires `ghc --version` >=8.2.2 and `cabal --version` >=2.0. To get them go to **[haskell.og/download](https://www.haskell.org/downloads)** and choose the **Minimal GHC** or **Haskell Platform**.
 

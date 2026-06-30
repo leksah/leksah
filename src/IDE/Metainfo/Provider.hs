@@ -53,12 +53,13 @@ import System.FilePath
 import System.Directory
 import Data.List (nub, (\\), find, partition, maximumBy, foldl')
 import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe, fromMaybe)
-import Distribution.Package
+import Distribution.Package hiding (mkDependency)
 import qualified Data.Set as Set
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 import Distribution.Version
-import qualified Data.Set as S (singleton)
+import qualified Distribution.Compat.NonEmptySet as S (singleton)
+import Distribution.Utils.Path (getSymbolicPath)
 
 import Control.DeepSeq
 import IDE.Utils.FileUtils
@@ -380,7 +381,7 @@ updatePackageInfo knownPackages rebuild project idePack continuation = do
                 pdBuildDepends   = buildDepends})
     where
         basePath =  normalise $ takeDirectory (ipdCabalFile idePack)
-        srcDirs' bi =  map (basePath </>) ("dist/build":hsSourceDirs bi)
+        srcDirs' bi =  map (basePath </>) ("dist/build":map getSymbolicPath (hsSourceDirs bi))
         pid = ipdPackageId idePack
 
 figureOutRealSources :: IDEPackage -> [(ModuleKey,FilePath)] -> IO [(ModuleKey,FilePath)]

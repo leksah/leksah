@@ -97,7 +97,7 @@ import IDE.Pane.SourceBuffer
        (belongsToPackages, useCandyFor, selectSourceBuf, fileSave,
         inActiveBufContext, addLogRef, removeLintLogRefs)
 import IDE.TextEditor (TextEditor(getSelectionBounds, getLine, getLineOffset, setModified, getIterAtLine, forwardCharsC, beginUserAction, delete, endUserAction))
-import IDE.Utils.FileUtils (cabalProjectBuildDir)
+import IDE.Utils.FileUtils (cabalProjectBuildDir, cabalBuildDir)
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (liftIDE . scheduleHLint . Left)
@@ -191,7 +191,7 @@ hlintSettings project package = do
     mbHlintDir <- liftIO $ leksahSubDir "hlint"
     cabalMacros <- case pjKey project of
         CabalTool {} -> do
-            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) "dist-newstyle"
+            (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) (cabalBuildDir Nothing)
             return $ buildDir </> T.unpack (packageIdentifierToString $ ipdPackageId package)
                               </> "build/autogen/cabal_macros.h"
         StackTool {} -> return $ ipdPackageDir package </> ".stack-work/dist/x86_64-osx/Cabal-1.24.2.0/build/autogen/cabal_macros.h"

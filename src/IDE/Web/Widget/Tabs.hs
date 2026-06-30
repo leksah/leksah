@@ -10,24 +10,31 @@ import Control.Arrow (Arrow(..))
 import Control.Lens ((^..))
 
 import Data.Bool (bool)
+import Data.Foldable (foldr')
+import Data.List (elemIndex)
 import Data.Map (Map)
 import qualified Data.Map as M
-       (toList, fromList, elems, filter)
+       (toList, fromList, elems, filter, delete, lookup)
+import Data.Maybe (fromMaybe)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
+import qualified Data.Text as T (pack)
 import Data.Tuple (swap)
 
 import Clay
        (nowrap, whiteSpace, marginTop, scroll, overflow, white,
         color, fontSize, borderStyle, textDecoration, middle, vGradient,
         backgroundImage, borderRadius, padding, hover, (#), background,
-        margin, px, height, (?), Css, Color(..), VerticalAlign(..),
-        Auto(..), Hidden(..), None(..))
+        margin, px, height, cursor, cursorDefault, (?), (-:), Css,
+        Color(..), VerticalAlign(..), Auto(..), Hidden(..), None(..), Cursor(..))
 
-import Reflex (foldDyn, holdUniqDyn, listViewWithKey, Dynamic)
+import Reflex
+       (foldDyn, holdDyn, holdUniqDyn, listViewWithKey, listWithKey, switchDyn,
+        mergeMap, leftmost, attachWith, current, ffilter, fmapMaybe, never,
+        constDyn, Dynamic)
 import Reflex.Dom.Core
-       (elDynAttr', elDynAttr, MonadWidget, (=:), divClass,
-        Event, domEvent, EventName(..))
+       (elDynAttr', elDynAttr, elAttr', elAttr, blank, text, MonadWidget, (=:),
+        divClass, Event, domEvent, EventName(..))
 
 tabsCss :: Css
 tabsCss = do
@@ -35,59 +42,164 @@ tabsCss = do
         backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
         height (px 40)
         overflow scroll
-        whiteSpace nowrap
-    ".tab-buttons button" ? do
+        -- A flex row so tabs can be ordered (via the CSS `order` property) by
+        -- flipper/MRU position — the active tab is order 0, i.e. leftmost.
+        -- align-items:flex-start keeps the buttons at the top (as the previous
+        -- inline layout did); the default (stretch/center) sat them too low.
+        "display" -: "flex"
+        "align-items" -: "flex-start"
+    -- A blank item the width of the side pane, kept last, so when the auto-hide
+    -- side pane slides over the content the part that's covered is this spacer
+    -- rather than a real tab.
+    ".tab-buttons .tab-spacer" ? do
+        "order" -: "99999"
+        "flex" -: "0 0 300px"
+    -- The wrapper is the visual tab (close × on the left + the label button); it
+    -- carries the hover and selected highlight so the × is inside the blue.
+    ".tab-buttons .tab-wrap" ? do
         verticalAlign middle
         borderRadius (px 3) (px 3) (px 3) (px 3)
-        padding (px 2) (px 10) (px 2) (px 10)
+        -- A little bottom padding extends the highlight box back down to where it
+        -- was before the close button moved the highlight onto this wrapper.
+        padding (px 0) (px 0) (px 2) (px 0)
+        whiteSpace nowrap
+        cursor cursorDefault
+    ".tab-buttons .tab-wrap" # hover ?
+        background (Rgba 61 96 150 1.0)
+    ".tab-buttons .tab-wrap.selected" ?
+        background (Rgba 30 88 209 1.0)
+    ".tab-buttons button" ? do
+        verticalAlign middle
+        padding (px 0) (px 10) (px 0) (px 2)
         margin (px 0) (px 0) (px 0) (px 0)
         textDecoration none
         borderStyle none
         fontSize (px 13)
         background (Rgba 0 0 0 0.0)
         color white
-    ".tab-buttons button" # hover ?
-        background (Rgba 61 96 150 1.0)
-    ".tab-buttons button.selected" ?
-        background (Rgba 30 88 209 1.0)
+        cursor cursorDefault
+    ".tab-buttons .tab-close" ? do
+        verticalAlign middle
+        color white
+        padding (px 0) (px 4) (px 0) (px 8)
+        fontSize (px 13)
+        cursor cursorDefault
     ".tab" ? do
         marginTop (px 20)
         height auto
         overflow hidden
 
 tabsWidget
-  :: (MonadWidget t m, Ord k, Show k)
+  :: (MonadWidget t m, Ord k, Show k, Eq v)
   => Map k (Text, v)
   -> Map Text k
   -> Event t (Map k (Text, v))
+  -> Event t [k]                  -- ^ tabs to close (removed from the bar)
   -> Event t (Map Text k)
+  -> Event t [k]                  -- ^ restore the recent (MRU/flipper) order
+  -> (k -> Maybe Text)          -- ^ tab-button tooltip (e.g. the full file path)
+  -> (k -> Maybe Text)          -- ^ close (×) button tooltip, or Nothing for no button
   -> (k -> Dynamic t v -> m ())
-  -> (k -> Dynamic t v -> m (Event t e))
-  -> m (Dynamic t [(Text, k)], Event t (Map k e))
-tabsWidget initialTabs initialVisibleTabs openTabE selectTabE mkLabel mkTab = mdo
-  let selectOrOpenTab = selectTabE' <> selectTabE <> (M.fromList . map (swap . second fst) . M.toList <$> openTabE)
+  -> (k -> Event t () -> Dynamic t v -> m (Event t e))  -- ^ tab body (2nd arg fires when selected)
+  -> m ( Dynamic t [(Text, k)], Event t (Map k e), Dynamic t (Map Text k)
+       , Dynamic t (Maybe k)    -- ^ the most-recently focused pane (active pane)
+       , Event t [k])           -- ^ close (×) button clicks
+tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecentE tabTitle tabCloseTip mkLabel mkTab = mdo
+  let selectOrOpenTab = selectTabE' <> selectTabE <> reselectE
+                          <> (M.fromList . map (swap . second fst) . M.toList <$> openTabE)
+      -- When a *visible* tab is closed, point its area at a sibling tab (if any)
+      -- so the area doesn't go blank.  Closing a background tab changes nothing.
+      reselectE = attachWith
+        (\(vis, tabs) ks -> M.fromList
+            [ (gridArea, sib)
+            | (gridArea, k) <- M.toList vis
+            , k `elem` ks
+            , sib <- take 1 [ k' | (k', (a, _)) <- M.toList tabs, a == gridArea, k' `notElem` ks ] ])
+        (current ((,) <$> visibleTabs <*> tabsD)) closeTabE
   visibleTabs <- foldDyn (<>) initialVisibleTabs selectOrOpenTab
-  tabsD <- foldDyn (<>) initialTabs openTabE
+  tabsD <- foldDyn ($) initialTabs $ leftmost
+    [ (<>) <$> openTabE
+    , (\ks m -> foldr' M.delete m ks) <$> closeTabE ]
   allVisibleTabs <- holdUniqDyn $ S.fromList . M.elems <$> visibleTabs
-  recentTabs <- foldDyn (\new old -> new <> filter ((`notElem` map snd new) . snd) old)
-    (map swap . M.toList $ fst <$> initialTabs) $ M.toList <$> selectOrOpenTab
-  selectTabE' <- fmap (fmap (mconcat . (^.. traverse . traverse))) $
+  -- Recent (MRU) tabs for the flipper.  This must add *every* opened tab, not
+  -- the area-keyed `selectOrOpenTab` map: restoring a session opens many tabs in
+  -- one area (wide0) at once, and keying by area would collapse them to one.
+  -- (Visibility still dedups by area — only one tab is visible per area.)
+  let openedPairsE = leftmost
+        [ map (\(k, (a, _)) -> (a, k)) . M.toList <$> openTabE
+        , M.toList <$> (selectTabE' <> selectTabE <> reselectE) ]
+      -- Restore a saved MRU order: order the currently-open tabs by the saved
+      -- key list, appending any tabs not mentioned (e.g. always-present panes).
+      reorderE = attachWith
+        (\tabs order ->
+            [ (a, k) | k <- order, Just (a, _) <- [M.lookup k tabs] ]
+            ++ [ (a, k) | (k, (a, _)) <- M.toList tabs, k `notElem` order ])
+        (current tabsD) setRecentE
+  recentTabs <- foldDyn ($) (map swap . M.toList $ fst <$> initialTabs) $ leftmost
+    [ const <$> reorderE
+    , (\new old -> new <> filter ((`notElem` map snd new) . snd) old) <$> openedPairsE
+    , (\ks old -> filter ((`notElem` ks) . snd) old) <$> closeTabE ]
+  tabBtnE <- fmap (fmap (mconcat . (^.. traverse . traverse))) $
         listViewWithKey visibleTabs $ \gridArea visibleTab -> do
     let tabs = M.filter ((gridArea ==) . fst) <$> tabsD
-    divClass ("tab-buttons area-" <> gridArea) $
-      listViewWithKey tabs $ \k v -> do
-        let attrD = ("class" =:) . bool "" "selected" . (==k) <$> visibleTab
-        (el, _) <- elDynAttr' "button" attrD $
-          mkLabel k (snd <$> v)
-        return $ (gridArea =: k) <$ domEvent Click el
-  tabEvents <- listViewWithKey tabsD $ \k v -> do
+        -- The editor/terminal row (where opening a file or terminal puts it) is
+        -- the only one that reorders by flipper/MRU order and gets the end spacer.
+        isEditorArea = gridArea == "wide0"
+    divClass ("tab-buttons area-" <> gridArea) $ do
+      r <- listViewWithKey tabs $ \k v -> do
+        let titleAttr = maybe mempty ("title" =:) (tabTitle k)
+            -- Only the wide0 (editor/terminal) row reorders by flipper/MRU order
+            -- via the CSS `order` property (DOM order stays keyed by k): the
+            -- active tab is most-recent, so it gets order 0 and sits leftmost.
+            -- Other rows keep their source order (no `order` style).
+            orderStyleD
+              | isEditorArea =
+                  (\rt -> "style" =: ("order:" <> T.pack (show (fromMaybe 9998 (elemIndex k (map snd rt))))))
+                    <$> recentTabs
+              | otherwise = constDyn mempty
+            -- The wrapper carries the selected/hover highlight so it covers the
+            -- close × (on the left) as well as the label.  The × is a sibling of
+            -- the label button, so a click on it never bubbles to select the tab.
+            -- Each item reports a (selection, [closed]) pair, combined over tabs.
+            wrapAttrD = (\sel ostyle ->
+                  "class" =: ("tab-wrap" <> bool "" " selected" sel) <> ostyle)
+                <$> ((== k) <$> visibleTab) <*> orderStyleD
+        elDynAttr "span" wrapAttrD $ do
+          closeE <- case tabCloseTip k of
+            Just tip -> do
+              (xe, _) <- elAttr' "span" ("class" =: "tab-close" <> "title" =: tip) $ text "×"
+              return $ [k] <$ domEvent Click xe
+            Nothing -> return never
+          (el, _) <- elAttr' "button" titleAttr $ mkLabel k (snd <$> v)
+          return $ leftmost
+            [ (\_ -> (gridArea =: k, [])) <$> domEvent Click el
+            , (,) mempty <$> closeE ]
+      -- A blank spacer the width of the side pane, kept last, only on the wide0
+      -- row (so the auto-hide side pane covers blank space, not a real tab).
+      if isEditorArea
+        then elAttr "div" ("class" =: "tab-spacer") blank
+        else blank
+      return r
+  let selectTabE'  = fst <$> tabBtnE
+      closeBtnE    = fmapMaybe (\(_, ks) -> if null ks then Nothing else Just ks) tabBtnE
+  -- Render the tab bodies, capturing each one's mouse-down so we know which pane
+  -- is active (the find bar routes to it; this replaces a JS focus callback).
+  tabResultsD <- listWithKey tabsD $ \k v -> do
     gridAreaD <- holdUniqDyn $ fst <$> v
+    visibleD <- holdUniqDyn $ S.member k <$> allVisibleTabs
+    -- Fires whenever this tab is explicitly selected/opened (tab button, list,
+    -- flipper, or re-select of the already-visible tab) — used to (re)focus.
+    let selectedE = () <$ ffilter (k `elem`) (M.elems <$> selectOrOpenTab)
     let attrD = do
-            visTabs <- allVisibleTabs
+            visible <- visibleD
             gridArea <- gridAreaD
             return $
                  ("class" =: ("tab area-" <> gridArea))
-              <> bool ("style" =: "visibility:hidden;") mempty (S.member k visTabs)
-    elDynAttr "div" attrD $
-      mkTab k (snd <$> v)
-  return (recentTabs, tabEvents)
+              <> bool ("style" =: "visibility:hidden;") mempty visible
+    (el, ev) <- elDynAttr' "div" attrD $
+      mkTab k selectedE (snd <$> v)
+    return (ev, k <$ domEvent Mousedown el)
+  let tabEvents = switchDyn $ mergeMap . fmap fst <$> tabResultsD
+      activeE   = switchDyn $ leftmost . map snd . M.elems <$> tabResultsD
+  activePane <- holdDyn Nothing $ Just <$> activeE
+  return (recentTabs, tabEvents, visibleTabs, activePane, closeBtnE)

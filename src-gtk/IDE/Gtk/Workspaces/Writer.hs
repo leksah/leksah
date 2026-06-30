@@ -30,7 +30,7 @@ import Graphics.UI.Editor.Parameters
 import qualified Text.PrettyPrint as  PP (text)
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (unpack, pack)
-import System.FSNotify (watchDir, Event(..), watchTree, eventPath, isPollingManager)
+import System.FSNotify (watchDir, Event(..), watchTree, eventPath)
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
 import qualified Data.Map as Map (empty)

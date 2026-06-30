@@ -1,21 +1,42 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE LambdaCase #-}
 module IDE.Web.Widget.Menubar
   ( menubarCss
   , menubarWidget
   ) where
 
+import Control.Lens ((^.))
+
+import Data.Bool (bool)
+import Data.Text (Text)
+import Data.Traversable (forM)
+
 import Clay
-       (vGradient, backgroundImage, cursorDefault, nowrap,
+       (vGradient, backgroundImage, cursorDefault, nowrap, relative,
         whiteSpace, padding, hover, (#), fontSize, nil, inlineBlock,
-        margin, px, (?), Css, background, Color(..), Cursor(..))
+        margin, px, pct, position, absolute, top, left, zIndex, block,
+        borderRadius, boxShadow, bsColor, shadowWithSpread, black,
+        (?), Css, background, Color(..), Cursor(..))
 import qualified Clay (display)
 
-import Reflex (never)
-import Reflex.Dom.Core
-       (text, el, MonadWidget, divClass, Event)
+import Language.Javascript.JSaddle (liftJSM, js1)
+import GHCJS.Marshal (fromJSValUnchecked)
+import GHCJS.DOM (currentDocumentUnchecked)
+import qualified GHCJS.DOM.Event as Event (getTargetUnchecked)
+import GHCJS.DOM.EventM (event, onSync)
+import GHCJS.DOM.GlobalEventHandlers (mouseDown)
 
-import IDE.Web.Events (MenubarEvents)
+import Reflex
+       (ffor, foldDyn, leftmost, never, switchHold, Event)
+import Reflex.Dom.Core
+       (text, el, el', elAttr', dyn, wrapDomEventMaybe, _element_raw,
+        MonadWidget, (=:), domEvent, EventName(..))
+
+import IDE.Web.Events (MenubarEvents(..))
+import IDE.Web.MenuModel (menus)
+import IDE.Web.Widget.Menu (menuItems)
 
 menubarCss :: Css
 menubarCss = do
@@ -23,11 +44,24 @@ menubarCss = do
         whiteSpace nowrap
         cursor cursorDefault
         backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
+        -- The dropdown for a menu is rendered inside its <li>; anchor it there.
+        ".menu" ? do
+            position absolute
+            top (pct 100)
+            left nil
+            zIndex 1000
+            backgroundImage (vGradient (Rgba 64 64 64 0.95) (Rgba 32 32 32 0.95))
+            borderRadius (px 5) (px 5) (px 5) (px 5)
+            boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+        -- The menubar's own li are laid out horizontally; dropdown items must
+        -- stack vertically (more specific so it wins over `.menubar ul li`).
+        ".menu ul li" ? Clay.display block
     ".menubar ul" ? do
         Clay.display inlineBlock
         margin nil nil nil nil
     ".menubar ul li" ? do
         Clay.display inlineBlock
+        position relative
         fontSize (px 13)
         padding (px 2) (px 8) (px 2) (px 8)
     ".menubar ul li" # hover ?
@@ -36,25 +70,39 @@ menubarCss = do
 menubarWidget
   :: MonadWidget t m
   => m (Event t MenubarEvents)
-menubarWidget = do
-  divClass "menubar" $
-    el "ul" $ do
-      el "li" $
-        text "File"
-      el "li" $
-        text "Edit"
-      el "li" $
-        text "Workspace"
-      el "li" $
-        text "Package"
-      el "li" $
-        text "Debug"
-      el "li" $
-        text "View"
-      el "li" $
-        text "Tools"
-      el "li" $
-        text "Version Control"
-      el "li" $
-        text "Help"
-  return never
+menubarWidget = mdo
+  (bar, (clicksE, hoversE, cmdE)) <-
+    elAttr' "div" ("class" =: "menubar") $
+      el "ul" $ do
+        results <- forM (zip [0 :: Int ..] menus) $ \(idx, (label, items)) -> do
+          (li, mcmd) <- el' "li" $ do
+            text label
+            -- Show this menu's dropdown only while it is the open one.
+            let isOpenD = (== Just idx) <$> openIndexD
+            switchHold never =<< dyn (ffor isOpenD $ \case
+              False -> return never
+              True  -> menuItems items)
+          return (idx <$ domEvent Click li, idx <$ domEvent Mouseenter li, mcmd)
+        return ( leftmost (map (\(c, _, _) -> c) results)
+               , leftmost (map (\(_, h, _) -> h) results)
+               , leftmost (map (\(_, _, m) -> m) results) )
+
+  -- A mousedown anywhere outside the menubar closes the open menu.
+  doc <- currentDocumentUnchecked
+  outsideE <- wrapDomEventMaybe doc (`onSync` mouseDown) $ do
+    t <- event >>= Event.getTargetUnchecked
+    fmap (bool (Just ()) Nothing) . liftJSM $
+      _element_raw bar ^. js1 ("contains" :: Text) t >>= fromJSValUnchecked
+
+  -- One menu open at a time:
+  --  * click a label  -> toggle it (closing any other)
+  --  * hover a label   -> switch to it, but only if a menu is already open
+  --  * choose an item / click outside -> close
+  openIndexD <- foldDyn ($) Nothing $ leftmost
+    [ (\i mo -> if mo == Just i then Nothing else Just i) <$> clicksE
+    , (\i mo -> maybe Nothing (const (Just i)) mo)        <$> hoversE
+    , const Nothing <$ cmdE
+    , const Nothing <$ outsideE
+    ]
+
+  return $ MenubarCommand <$> cmdE

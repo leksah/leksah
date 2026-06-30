@@ -10,7 +10,9 @@ leksah.lkshw
 /.cabal-sandbox/
 *.sandbox.config
 /.stack-work/
-/dist-newstyle/
+/dist-newstyle*/
+/dist-ghc-*/
+/dist-*-ghc-*/
 /*.local
 /result
 *.ghc.environment.*

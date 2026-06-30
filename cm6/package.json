@@ -1,0 +1,22 @@
+{
+  "name": "leksah-cm6",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Bundled CodeMirror 6 for Leksah's web editor (exposed as window.LeksahCM).",
+  "scripts": {
+    "build": "esbuild src/leksah-cm6.mjs --bundle --format=iife --legal-comments=none --outfile=leksah-cm6.js"
+  },
+  "dependencies": {
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.0",
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/language": "^6.10.8",
+    "@codemirror/legacy-modes": "^6.4.2",
+    "@codemirror/search": "^6.5.8",
+    "@codemirror/merge": "^6.10.0",
+    "@codemirror/theme-one-dark": "^6.1.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

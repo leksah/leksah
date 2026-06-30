@@ -191,7 +191,7 @@ newGtkBuffer mbFilename contents = do
     languageManagerSetSearchPath lm (Just $ T.pack (dataDir </> "language-specs") : oldPath)
     mbLang  <- case mbFilename of
         Just filename -> do
-            guess <- contentTypeGuess (Just $ T.pack filename) (Just $ encodeUtf8 contents)
+            guess <- contentTypeGuess (Just filename) (Just $ encodeUtf8 contents)
             languageManagerGuessLanguage lm (Just $ T.pack filename) $
                 case guess of
                     (_, True)  -> Just "text/x-haskell"

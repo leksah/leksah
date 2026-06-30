@@ -30,7 +30,7 @@ module IDE.Preferences (
 import Prelude ()
 import Prelude.Compat
 import IDE.Core.State
-       (Prefs(..), PrefsFile(..), sysMessage, MessageLevel(..))
+       (Prefs(..), TallVisibility(..), PrefsFile(..), sysMessage, MessageLevel(..))
 import IDE.Gtk.State
        (Color(..), PanePathElement(..), PaneDirection(..))
 import System.Time (getClockTime)
@@ -141,6 +141,9 @@ defaultPrefs = Prefs {
     ,   serverIP            =   "127.0.0.1"
     ,   endWithLastConn     =   True
     ,   showHiddenFiles     =   False
+    ,   showIgnoredFiles    =   False
+    ,   tallVisibility      =   TallShow
+    ,   wide1Visibility     =   TallShow
     ,   showWorkspaceIcons  =   True
     ,   hlintOnSave = True
     ,   collapseErrors = True
@@ -211,6 +214,9 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , serverIP = fromMaybe serverIP serverIP_
   , endWithLastConn = fromMaybe endWithLastConn endWithLastConn_
   , showHiddenFiles = fromMaybe showHiddenFiles showHiddenFiles_
+  , showIgnoredFiles = fromMaybe showIgnoredFiles showIgnoredFiles_
+  , tallVisibility = tallVisibility  -- session-only (not persisted)
+  , wide1Visibility = wide1Visibility  -- session-only (not persisted)
   , showWorkspaceIcons = fromMaybe showWorkspaceIcons showWorkspaceIcons_
   , hlintOnSave = fromMaybe hlintOnSave hlintOnSave_
   , collapseErrors = fromMaybe collapseErrors collapseErrors_
@@ -281,6 +287,7 @@ toPrefsFile Prefs{..} = PrefsFile
   , serverIP_ = Just serverIP
   , endWithLastConn_ = Just endWithLastConn
   , showHiddenFiles_ = Just showHiddenFiles
+  , showIgnoredFiles_ = Just showIgnoredFiles
   , showWorkspaceIcons_ = Just showWorkspaceIcons
   , hlintOnSave_ = Just hlintOnSave
   , collapseErrors_ = Just collapseErrors
