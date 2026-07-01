@@ -248,7 +248,7 @@ workspaceWidget ide activeFileD revealFileD = do
       (>>= (\DebugState{..} -> map ((dsProjectKey,) . ipdCabalFile) dsPackages)) . view debugState <$> ide
   showHiddenD  <- holdUniqDyn $ view (prefs . to showHiddenFiles)  <$> ide
   showIgnoredD <- holdUniqDyn $ view (prefs . to showIgnoredFiles) <$> ide
-  divClass "workspace" $
+  divClass "workspace leksah-nav" $
     divClass "workspace-body" $ do
       workspaceIsOpenD <- holdUniqDyn $ view (workspace . to isJust) <$> ide
       _ <- elDynAttr "div" (bool mempty ("style" =: "display: none") <$> workspaceIsOpenD) $

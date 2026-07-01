@@ -15,7 +15,7 @@ import Data.List (elemIndex)
 import Data.Map (Map)
 import qualified Data.Map as M
        (toList, fromList, elems, filter, delete, lookup)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
@@ -30,10 +30,10 @@ import Clay
 
 import Reflex
        (foldDyn, holdDyn, holdUniqDyn, listViewWithKey, listWithKey, switchDyn,
-        mergeMap, leftmost, attachWith, current, ffilter, fmapMaybe, never,
+        mergeMap, leftmost, attachWith, current, ffilter, fmapMaybe,
         constDyn, Dynamic)
 import Reflex.Dom.Core
-       (elDynAttr', elDynAttr, elAttr', elAttr, blank, text, MonadWidget, (=:),
+       (elDynAttr', elDynAttr, elAttr, blank, MonadWidget, (=:),
         divClass, Event, domEvent, EventName(..))
 
 tabsCss :: Css
@@ -97,14 +97,21 @@ tabsWidget
   -> Event t [k]                  -- ^ tabs to close (removed from the bar)
   -> Event t (Map Text k)
   -> Event t [k]                  -- ^ restore the recent (MRU/flipper) order
-  -> (k -> Maybe Text)          -- ^ tab-button tooltip (e.g. the full file path)
-  -> (k -> Maybe Text)          -- ^ close (×) button tooltip, or Nothing for no button
-  -> (k -> Dynamic t v -> m ())
+  -> Event t Text                 -- ^ @show@-key of a tab that just received focus (moved to MRU front)
+  -- | Render the button(s) for one tab key in the bar, given: its grid area, the
+  -- key, its value, whether it is the visible tab in its area, and its (wide0) MRU
+  -- slot index (@Nothing@ off the wide0 row, where no CSS @order@ is applied).
+  -- Returns the combined @(area := key selections, keys to close)@ over however
+  -- many buttons it draws.  Most keys draw a single button, but a terminal draws
+  -- one per tmux window (all selecting the one session body) — so buttons and
+  -- bodies need not be 1:1, and the callback can sub-order within a slot.
+  -> (Text -> k -> Dynamic t v -> Dynamic t Bool -> Dynamic t (Maybe Int)
+        -> m (Event t (Map Text k, [k])))
   -> (k -> Event t () -> Dynamic t v -> m (Event t e))  -- ^ tab body (2nd arg fires when selected)
   -> m ( Dynamic t [(Text, k)], Event t (Map k e), Dynamic t (Map Text k)
        , Dynamic t (Maybe k)    -- ^ the most-recently focused pane (active pane)
        , Event t [k])           -- ^ close (×) button clicks
-tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecentE tabTitle tabCloseTip mkLabel mkTab = mdo
+tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecentE focusedTabE mkButtons mkTab = mdo
   let selectOrOpenTab = selectTabE' <> selectTabE <> reselectE
                           <> (M.fromList . map (swap . second fst) . M.toList <$> openTabE)
       -- When a *visible* tab is closed, point its area at a sibling tab (if any)
@@ -138,7 +145,12 @@ tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecen
   recentTabs <- foldDyn ($) (map swap . M.toList $ fst <$> initialTabs) $ leftmost
     [ const <$> reorderE
     , (\new old -> new <> filter ((`notElem` map snd new) . snd) old) <$> openedPairsE
-    , (\ks old -> filter ((`notElem` ks) . snd) old) <$> closeTabE ]
+    , (\ks old -> filter ((`notElem` ks) . snd) old) <$> closeTabE
+    -- Focusing a pane/editor/terminal (by any means — click, the keyboard, or the
+    -- initial focus at start-up) moves it to the front of the MRU/flipper order.
+    , (\str old -> case [ ak | ak@(_, k') <- old, T.pack (show k') == str ] of
+                     (ak@(_, k):_) -> ak : filter ((/= k) . snd) old
+                     []            -> old) <$> focusedTabE ]
   tabBtnE <- fmap (fmap (mconcat . (^.. traverse . traverse))) $
         listViewWithKey visibleTabs $ \gridArea visibleTab -> do
     let tabs = M.filter ((gridArea ==) . fst) <$> tabsD
@@ -147,33 +159,15 @@ tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecen
         isEditorArea = gridArea == "wide0"
     divClass ("tab-buttons area-" <> gridArea) $ do
       r <- listViewWithKey tabs $ \k v -> do
-        let titleAttr = maybe mempty ("title" =:) (tabTitle k)
+        let isVisibleD = (== k) <$> visibleTab
             -- Only the wide0 (editor/terminal) row reorders by flipper/MRU order
             -- via the CSS `order` property (DOM order stays keyed by k): the
-            -- active tab is most-recent, so it gets order 0 and sits leftmost.
-            -- Other rows keep their source order (no `order` style).
-            orderStyleD
-              | isEditorArea =
-                  (\rt -> "style" =: ("order:" <> T.pack (show (fromMaybe 9998 (elemIndex k (map snd rt))))))
-                    <$> recentTabs
-              | otherwise = constDyn mempty
-            -- The wrapper carries the selected/hover highlight so it covers the
-            -- close × (on the left) as well as the label.  The × is a sibling of
-            -- the label button, so a click on it never bubbles to select the tab.
-            -- Each item reports a (selection, [closed]) pair, combined over tabs.
-            wrapAttrD = (\sel ostyle ->
-                  "class" =: ("tab-wrap" <> bool "" " selected" sel) <> ostyle)
-                <$> ((== k) <$> visibleTab) <*> orderStyleD
-        elDynAttr "span" wrapAttrD $ do
-          closeE <- case tabCloseTip k of
-            Just tip -> do
-              (xe, _) <- elAttr' "span" ("class" =: "tab-close" <> "title" =: tip) $ text "×"
-              return $ [k] <$ domEvent Click xe
-            Nothing -> return never
-          (el, _) <- elAttr' "button" titleAttr $ mkLabel k (snd <$> v)
-          return $ leftmost
-            [ (\_ -> (gridArea =: k, [])) <$> domEvent Click el
-            , (,) mempty <$> closeE ]
+            -- active tab is most-recent, so it gets slot 0 and sits leftmost.
+            -- Other rows keep their source order (Nothing → no `order` style).
+            baseOrderD
+              | isEditorArea = (\rt -> Just (fromMaybe 9998 (elemIndex k (map snd rt)))) <$> recentTabs
+              | otherwise    = constDyn Nothing
+        mkButtons gridArea k (snd <$> v) isVisibleD baseOrderD
       -- A blank spacer the width of the side pane, kept last, only on the wide0
       -- row (so the auto-hide side pane covers blank space, not a real tab).
       if isEditorArea
@@ -195,11 +189,17 @@ tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecen
             gridArea <- gridAreaD
             return $
                  ("class" =: ("tab area-" <> gridArea))
+              <> ("data-tabkey" =: T.pack (show k))   -- focusin → MRU reorder (see focusTabJs)
               <> bool ("style" =: "visibility:hidden;") mempty visible
     (el, ev) <- elDynAttr' "div" attrD $
       mkTab k selectedE (snd <$> v)
     return (ev, k <$ domEvent Mousedown el)
   let tabEvents = switchDyn $ mergeMap . fmap fst <$> tabResultsD
       activeE   = switchDyn $ leftmost . map snd . M.elems <$> tabResultsD
-  activePane <- holdDyn Nothing $ Just <$> activeE
+  -- The active pane changes both when a tab *body* is pressed (activeE) and when
+  -- a tab *button* in the bar is clicked (selectTabE') — the latter so clicking a
+  -- side/bottom-bar tab (Terminals, Metadata, …) also focuses it and promotes it
+  -- in the flipper MRU, not just clicking inside its body.
+  activePane <- holdDyn Nothing $ Just <$>
+    leftmost [ activeE, fmapMaybe (listToMaybe . M.elems) selectTabE' ]
   return (recentTabs, tabEvents, visibleTabs, activePane, closeBtnE)

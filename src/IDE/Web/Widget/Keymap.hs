@@ -19,7 +19,8 @@ import GHCJS.DOM.KeyboardEvent
        (getKeyCode, getCtrlKey, getShiftKey, getAltKey, getMetaKey)
 
 import IDE.Web.Events (KeymapEvents(..))
-import IDE.Web.Command (commandPackageBuild, Command(..))
+import IDE.Web.Command
+       (commandPackageBuild, snapWindowCmd, toggleTransparencyCmd, Command(..))
 
 keymapWidget
   :: forall t m . MonadWidget t m
@@ -33,9 +34,20 @@ keymapWidget _top = do
         map (\(mods, key, command) -> ((S.fromList mods, key), command))
         [ ([Control]        , Backquote, CommandFlipDown)
         , ([Control, Shift] , Backquote, CommandFlipUp)
-        , ([Control]        , KeyB,      commandPackageBuild)
+        -- Build: Ctrl+Shift+B (Cmd+Shift+B on macOS), matching VS Code.  Plain
+        -- Ctrl+B is avoided — it's the tmux prefix.
+        , ([Control, Shift] , KeyB,      commandPackageBuild)
+        , ([Command, Shift] , KeyB,      commandPackageBuild)
         , ([Control]        , KeyJ,      CommandNextError)
         , ([Control, Shift] , KeyJ,      CommandPreviousError)
+        , ([Command]        , KeyF,      CommandFind)
+        , ([Command]        , Comma,     CommandShowPreferences)
+        -- Underlay (macOS): ⌘⌥U snap/unsnap a window on the active pane, ⌘⌥Y
+        -- toggle the active pane's transparency.  Reuse the menu commands.
+        , ([Command, Alt]   , KeyU,      snapWindowCmd)
+        , ([Command, Alt]   , KeyY,      toggleTransparencyCmd)
+        -- Jump to the next terminal window wanting attention (bell, then activity).
+        , ([Control, Alt]   , KeyA,      CommandFocusAlert)
         ]
   -- Read the modifier state straight off each keydown event (rather than
   -- tracking key up/down separately, which could desync and miss a shortcut).

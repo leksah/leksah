@@ -117,7 +117,7 @@ import Control.Monad (unless, void, when)
 import Data.Traversable (forM)
 import Data.Foldable (forM_)
 import Debug.Trace (trace)
-import Control.Exception (SomeException(..), catch)
+import Control.Exception (SomeException(..), IOException, catch)
 
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.State
@@ -579,6 +579,12 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
 #ifdef MIN_VERSION_unix
 killProcess :: ProcessHandle -> IO ()
 killProcess ph =
+  -- The process (and hence its group) may have already exited between our
+  -- decision to kill it and this call — getProcessGroupIDOf/signalProcessGroup
+  -- then throw "does not exist (No such process)".  That's benign (it's already
+  -- gone), but as an uncaught IOException it would tear down whatever thread ran
+  -- us, so swallow it.
+  (`catch` \(_ :: IOException) -> return ()) $
   withProcessHandle ph $ \case
       OpenHandle pid -> signalProcessGroup sigKILL =<< getProcessGroupIDOf pid
       _ -> return ()

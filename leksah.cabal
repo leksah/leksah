@@ -293,9 +293,12 @@ library
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
         IDE.Web.TerminalInput
+        IDE.Web.TransparencyRequest
+        IDE.Web.SnapRequest
         IDE.Web.Session
         IDE.Web.Widget.Changes
         IDE.Web.Widget.ContextMenu
+        IDE.Web.Widget.Preferences
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
         IDE.Web.Widget.Findbar
@@ -515,9 +518,12 @@ library leksah-nogtk
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
         IDE.Web.TerminalInput
+        IDE.Web.TransparencyRequest
+        IDE.Web.SnapRequest
         IDE.Web.Session
         IDE.Web.Widget.Changes
         IDE.Web.Widget.ContextMenu
+        IDE.Web.Widget.Preferences
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
         IDE.Web.Widget.FileTree
@@ -743,6 +749,7 @@ executable leksah-wkwebview
         main/leksah-mac-menu.m
       frameworks:
         Cocoa
+        ApplicationServices
       build-depends:
         base >=4.0.0.0 && <4.23,
         data-default >=0.7.1.1 && <0.9,

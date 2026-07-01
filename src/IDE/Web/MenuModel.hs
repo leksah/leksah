@@ -18,7 +18,8 @@ import IDE.Web.Command
         commandToggleDebug, commandToggleMakeDocs, commandToggleTest,
         commandToggleRunBenchmarks, commandToggleMakeDependents,
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
-        commandDebugStepModule, commandDebugContinue, commandFileClose, tmuxKey)
+        commandDebugStepModule, commandDebugContinue, commandFileClose, tmuxKey,
+        toggleTransparencyCmd, snapWindowCmd)
 
 -- | One entry in a menu: a clickable command (optionally with a shortcut hint
 -- shown the macOS way — right-aligned and greyed), or a nested submenu.
@@ -47,6 +48,7 @@ menus =
       ])
   , ("Edit",
       [ item "Find" CommandFind
+      , item "Preferences…" CommandShowPreferences
       ])
   , ("Workspace",
       [ item "Refresh Nix Environment" commandRefreshNix
@@ -89,13 +91,21 @@ menus =
 -- sequences (@\\ESC[A@ = Up, @\\ESC1@ = M-1).
 tmuxMenu :: [MenuItem]
 tmuxMenu =
-  [ Submenu "Sessions"
+  [ Submenu "Underlay"
+      -- ⌘⌥Y / ⌘⌥U are shown as hints; the leksah keymap actually handles them.
+      [ key "Toggle Pane Transparency" "⌘⌥Y" toggleTransparencyCmd
+      , key "Snap Window to Pane"      "⌘⌥U" snapWindowCmd
+      -- Populated natively from the currently-snapped windows (see leksah-mac-menu.m).
+      , Submenu "Unsnap" []
+      ]
+  , Submenu "Sessions"
       [ key "Detach client"    "⌃B d" (tmuxKey "d")
       , key "Choose session"   "⌃B s" (tmuxKey "s")
       , key "Rename session"   "⌃B $" (tmuxKey "$")
       , key "Previous session" "⌃B (" (tmuxKey "(")
       , key "Next session"     "⌃B )" (tmuxKey ")")
-      , key "Last session"     "⌃B L" (tmuxKey "L")
+      -- ⌃B L is rebound to resize-pane-right (vim HJKL), so last-session moves to ⇧Tab.
+      , key "Last session"     "⌃B ⇧Tab" (tmuxKey "\ESC[Z")
       ]
   , Submenu "Windows"
       [ key "New window"       "⌃B c" (tmuxKey "c")
@@ -103,7 +113,8 @@ tmuxMenu =
       , key "Kill window"      "⌃B &" (tmuxKey "&")
       , key "Next window"      "⌃B n" (tmuxKey "n")
       , key "Previous window"  "⌃B p" (tmuxKey "p")
-      , key "Last window"      "⌃B l" (tmuxKey "l")
+      -- ⌃B l is rebound to select-pane-right (vim hjkl), so last-window moves to Tab.
+      , key "Last window"      "⌃B Tab" (tmuxKey "\t")
       , key "Choose window"    "⌃B w" (tmuxKey "w")
       , key "Find window"      "⌃B f" (tmuxKey "f")
       , key "Select by index"  "⌃B '" (tmuxKey "'")
@@ -136,10 +147,20 @@ tmuxMenu =
       , key "Mark pane"            "⌃B m"  (tmuxKey "m")
       , key "Clear marked pane"    "⌃B M"  (tmuxKey "M")
       , Submenu "Select pane"
-          [ key "Above" "⌃B ↑" (tmuxKey "\ESC[A")
-          , key "Below" "⌃B ↓" (tmuxKey "\ESC[B")
-          , key "Right" "⌃B →" (tmuxKey "\ESC[C")
-          , key "Left"  "⌃B ←" (tmuxKey "\ESC[D")
+          [ key "Above" "⌃B ↑ / k" (tmuxKey "\ESC[A")
+          , key "Below" "⌃B ↓ / j" (tmuxKey "\ESC[B")
+          , key "Right" "⌃B → / l" (tmuxKey "\ESC[C")
+          , key "Left"  "⌃B ← / h" (tmuxKey "\ESC[D")
+          ]
+      , Submenu "Resize pane"
+          [ key "Up (5)"    "⌃B K"  (tmuxKey "K")
+          , key "Down (5)"  "⌃B J"  (tmuxKey "J")
+          , key "Right (5)" "⌃B L"  (tmuxKey "L")
+          , key "Left (5)"  "⌃B H"  (tmuxKey "H")
+          , key "Up (1)"    "⌃B ⌃k" (tmuxKey "\v")
+          , key "Down (1)"  "⌃B ⌃j" (tmuxKey "\n")
+          , key "Right (1)" "⌃B ⌃l" (tmuxKey "\f")
+          , key "Left (1)"  "⌃B ⌃h" (tmuxKey "\b")
           ]
       ]
   , Submenu "Layout"

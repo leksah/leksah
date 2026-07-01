@@ -17,7 +17,7 @@ import GHC.Generics (Generic)
 import Distribution.Types.PackageId (PackageIdentifier(..))
 
 import IDE.Core.CTypes (SrcSpan)
-import IDE.Core.Types (LogRef(..))
+import IDE.Core.Types (LogRef(..), Prefs(..))
 import IDE.Utils.Project (ProjectKey)
 import IDE.Web.Command (Command(..))
 
@@ -81,16 +81,17 @@ data TerminalEvents = TerminalTitle Text | TerminalGoto SrcSpan
 makePrisms ''TerminalEvents
 
 -- | The Terminals tree pane: create a new terminal; select an existing session
--- (by id) to bring it up in the editor area; close one (kill its tmux session);
--- or, drilling into the tmux hierarchy, select a window (session id, window
--- index) or a pane (session id, window index, pane index) — which switches tmux
--- to it and brings the owning session's terminal up.
+-- (by tmux session id, e.g. @$3@) to bring it up in the editor area; close one
+-- (kill its tmux session); or, drilling into the tmux hierarchy, select a window
+-- (session id, window index) or a pane (session id, window index, pane index) —
+-- which switches tmux to it and brings the owning session's terminal up.  The
+-- session id is tmux's stable @#{session_id}@, which survives renames.
 data TerminalsEvents
   = NewTerminal
-  | SelectTerminal Int
-  | CloseTerminal Int
-  | SelectTerminalWindow Int Int
-  | SelectTerminalPane Int Int Int
+  | SelectTerminal Text
+  | CloseTerminal Text
+  | SelectTerminalWindow Text Int
+  | SelectTerminalPane Text Int Int
 
 makePrisms ''TerminalsEvents
 
@@ -103,6 +104,13 @@ makePrisms ''MetadataEvents
 newtype ChangesEvents = ChangesOpen FilePath
 
 makePrisms ''ChangesEvents
+
+-- | The Preferences pane edits the IDE 'Prefs'; each change is the update to
+-- apply (the reflex layer runs it via @modifyIDE_ (prefs %~ f)@, which the
+-- existing debounced writer then persists).
+newtype PreferencesEvents = PrefsUpdate (Prefs -> Prefs)
+
+makePrisms ''PreferencesEvents
 type StatusbarEvents = ()
 newtype MenubarEvents =
   MenubarCommand Command
@@ -120,11 +128,18 @@ data TabKey
   | LogKey
   | GrepKey
   | TerminalsKey
-  | TerminalKey Int
+  | TerminalKey Text
   | MetadataKey
   | ChangesKey
+  | PreferencesKey
   | EditorKey FilePath
     deriving (Ord, Eq, Show, Generic)
+
+-- | A flipper (Ctrl-Tab) target: an ordinary tab, or an individual tmux pane
+-- @(session id, window, pane)@ — so the flipper cycles panes, not whole
+-- terminals.  The session id is tmux's stable @#{session_id}@.
+data FlipItem = FlipTab TabKey | FlipPane Text Int Int
+  deriving (Eq, Ord, Show)
 
 data TabEvents e where
   EditorTab    :: TabEvents EditorEvents
@@ -135,6 +150,7 @@ data TabEvents e where
   TerminalsTab :: TabEvents TerminalsEvents
   MetadataTab  :: TabEvents MetadataEvents
   ChangesTab   :: TabEvents ChangesEvents
+  PreferencesTab :: TabEvents PreferencesEvents
   WorkspaceTab :: TabEvents ProjectEvents
 
 deriveGEq      ''TabEvents

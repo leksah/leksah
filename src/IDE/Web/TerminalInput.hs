@@ -20,28 +20,30 @@ import Control.Exception (SomeException, catch)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef, writeIORef)
 import qualified Data.Map as M
+import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Pty (Pty, writePty)
 
 {-# NOINLINE ptyRegistry #-}
-ptyRegistry :: IORef (M.Map Int Pty)
+ptyRegistry :: IORef (M.Map Text Pty)
 ptyRegistry = unsafePerformIO (newIORef M.empty)
 
 {-# NOINLINE activeRef #-}
-activeRef :: IORef (Maybe Int)
+activeRef :: IORef (Maybe Text)
 activeRef = unsafePerformIO (newIORef Nothing)
 
--- | Record the PTY backing terminal @n@ (called as the terminal is created).
-registerTerminalPty :: Int -> Pty -> IO ()
+-- | Record the PTY backing terminal @n@ (its tmux session id; called as the
+-- terminal is created).
+registerTerminalPty :: Text -> Pty -> IO ()
 registerTerminalPty n pty = atomicModifyIORef' ptyRegistry $ \m -> (M.insert n pty m, ())
 
 -- | Forget terminal @n@'s PTY (e.g. when its session is killed).
-unregisterTerminalPty :: Int -> IO ()
+unregisterTerminalPty :: Text -> IO ()
 unregisterTerminalPty n = atomicModifyIORef' ptyRegistry $ \m -> (M.delete n m, ())
 
 -- | Publish which terminal is currently on screen (the editor-area @wide0@ tab),
 -- or 'Nothing' when the visible pane isn't a terminal.
-setActiveTerminal :: Maybe Int -> IO ()
+setActiveTerminal :: Maybe Text -> IO ()
 setActiveTerminal = writeIORef activeRef
 
 -- | Write @bytes@ to the active terminal's PTY, as if typed.  A no-op (rather

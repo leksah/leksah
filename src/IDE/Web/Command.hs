@@ -13,6 +13,8 @@ import Data.Text (Text)
 
 import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.TerminalInput (sendToActiveTerminal)
+import IDE.Web.TransparencyRequest (requestToggleTransparency)
+import IDE.Web.SnapRequest (requestSnapWindow)
 
 import IDE.Core.State
        (readIDE, modifyIDE_, Prefs(..), prefs, PackageAction, ProjectAction,
@@ -40,11 +42,15 @@ data Command =
   | CommandProjectOpen
   | CommandFileSave
   | CommandFind
+  | CommandShowPreferences
   | CommandNextError
   | CommandPreviousError
   | CommandFlipDown
   | CommandFlipUp
   | CommandFlipDone
+  -- Jump to the next terminal window flagged for attention (bell first, then
+  -- activity) — e.g. a teammate that rang the bell wanting input.
+  | CommandFocusAlert
 
 makePrisms ''Command
 
@@ -238,3 +244,23 @@ tmuxKey keys = CommandIDEAction
   ""  -- menu-only: no toolbar icon
   (__ "Send this tmux C-b shortcut to the active terminal")
   (liftIO (sendToActiveTerminal (BS.cons 2 keys)))
+
+-- | A menu command that toggles whether the active terminal's active tmux pane
+-- is shown as a see-through, click-through hole in the window (macOS).  The work
+-- happens in the reflex layer; this just signals it (see
+-- 'IDE.Web.TransparencyRequest').
+toggleTransparencyCmd :: Command
+toggleTransparencyCmd = CommandIDEAction
+  ""  -- menu-only: no toolbar icon
+  (__ "Make the active tmux pane transparent (a click-through hole)")
+  (liftIO requestToggleTransparency)
+
+-- | A menu command that snaps another app's window over the active tmux pane
+-- (which is made transparent so the window shows through), tracking the pane;
+-- toggling it again unsnaps.  Needs macOS Accessibility permission (it asks).
+-- See 'IDE.Web.SnapRequest' and the native side in @main/leksah-mac-menu.m@.
+snapWindowCmd :: Command
+snapWindowCmd = CommandIDEAction
+  ""  -- menu-only: no toolbar icon
+  (__ "Snap another app's window over the active tmux pane (macOS)")
+  (liftIO requestSnapWindow)

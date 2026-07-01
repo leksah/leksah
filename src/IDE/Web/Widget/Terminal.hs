@@ -24,16 +24,25 @@ module IDE.Web.Widget.Terminal
   , TmuxWindow(..)
   , TmuxPane(..)
   , listTerminalTree
+  , createTerminalSession
   , selectTmuxWindow
   , selectTmuxPane
   , killTmuxWindow
   , killTmuxPane
+  , newTmuxWindow
+  , zoomTmuxPane
+  , breakTmuxPane
+  , renameTmuxSession
+  , renameTmuxWindow
+  , activePaneId
+  , paneGeometry
+  , sessionOfPane
   ) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (try, catch, SomeException)
 import Control.Lens ((^.))
-import Control.Monad (void)
+import Control.Monad (void, forM_)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
@@ -43,7 +52,8 @@ import Data.Map (Map)
 import qualified Data.Map as M (empty, singleton, fromListWith, unionWith, toAscList, map)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T (unpack, pack, splitOn, stripPrefix, intercalate)
+import qualified Data.Text as T
+       (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines, null)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Text.Read (readMaybe)
 
@@ -72,6 +82,7 @@ import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
 import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 import System.Process (readProcessWithExitCode)
+import System.Info (os)
 
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
@@ -100,37 +111,63 @@ terminalCss = do
 terminalWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE          -- ^ for Ctrl/Cmd-click identifier lookup in metadata
-  -> Int -> Event t () -> m (Event t TerminalEvents)
+  -> Text -> Event t () -> m (Event t TerminalEvents)
 terminalWidget ide termId selectedE = do
   -- A real PTY running the user's shell.  Created up front so the xterm
   -- `onData` callback (wired below) can write keystrokes to it.
   pty <- liftIO $ do
-      -- Prefer the login shell from the password database (what terminal
-      -- emulators use).  $SHELL is unreliable here: launched from a `nix
-      -- develop` shell it points at the scripting bash, which is built without
-      -- readline, so it has no line editor and arrow keys echo as `^[[A`.
-      loginShell <- (userShell <$> (getRealUserID >>= getUserEntryForID))
-                      `catch` \(_ :: SomeException) -> return ""
-      envShell <- fromMaybe "" <$> lookupEnv "SHELL"
-      let shell = fromMaybe "/bin/bash" . listToMaybe $ filter (not . null) [loginShell, envShell]
+      shell <- getLoginShell
       -- Inherit the environment but force a sensible TERM (without it the shell
       -- can't bind the arrow-key sequences).
       baseEnv <- getEnvironment
       let env = ("TERM", "xterm-256color") : filter ((/= "TERM") . fst) baseEnv
-      -- Prefer tmux: attach-or-create a named session on a private socket, so
-      -- the shell (and anything running in it) persists across leksah restarts.
-      -- The reader thread sees tmux's redraw on (re)attach.  Without tmux on
+      -- Attach to the tmux session by its stable id (@termId@, e.g. "$3"); the
+      -- session was created up front (see 'createTerminalSession') or already
+      -- existed.  Attaching by id (not name) means a rename doesn't break the
+      -- attach.  The reader thread sees tmux's redraw on attach.  Without tmux on
       -- PATH, run the shell directly (`-i` for the line editor) — no persistence.
       mbTmux <- findExecutable "tmux"
       (cmd, args) <- case mbTmux of
-          Just tmux -> do
-              conf <- writeTmuxConf shell
-              return (tmux, ["-L", tmuxSocket, "-f", conf, "new-session", "-A", "-s", sessionName termId])
+          Just tmux -> return (tmux, ["-L", tmuxSocket, "attach-session", "-t", T.unpack termId])
           Nothing -> return (shell, ["-i"])
       (pty, _ph) <- spawnWithPty (Just env) True cmd args (80, 24)
       -- Expose this PTY so the Tmux menu can inject `C-b X` prefix sequences into
       -- it when this terminal is the active one (see IDE.Web.TerminalInput).
       registerTerminalPty termId pty
+      -- The vim-style pane bindings live in the tmux config, but `-f` only takes
+      -- effect when the server first starts; a server left running by a previous
+      -- leksah session keeps the old bindings.  Re-assert them here (idempotent)
+      -- so they work without having to kill every terminal first.
+      forM_ mbTmux $ \_ -> do
+          mapM_ (\(k, d) -> tmuxCmd ["bind-key", k, "select-pane", d])
+              [("h", "-L"), ("j", "-D"), ("k", "-U"), ("l", "-R")]
+          mapM_ (\(k, d) -> tmuxCmd ["bind-key", "-r", k, "resize-pane", d, "5"])
+              [("H", "-L"), ("J", "-D"), ("K", "-U"), ("L", "-R")]
+          mapM_ (\(k, d) -> tmuxCmd ["bind-key", "-r", k, "resize-pane", d, "1"])
+              [("C-h", "-L"), ("C-j", "-D"), ("C-k", "-U"), ("C-l", "-R")]
+          tmuxCmd ["bind-key", "Tab", "last-window"]
+          tmuxCmd ["bind-key", "BTab", "switch-client", "-l"]
+          clipboardCopyCmd >>= mapM_ (\c -> tmuxCmd ["set", "-s", "copy-command", c])
+          -- Re-assert focus reporting on the running server too (the -f config
+          -- above only takes effect when the server first starts, so a server
+          -- left over from before this setting existed wouldn't have it).
+          tmuxCmd ["set", "-g", "focus-events", "on"]
+          tmuxCmd ["set", "-g", "allow-passthrough", "on"]
+          tmuxCmd ["set", "-g", "monitor-activity", "on"]
+          tmuxCmd ["set", "-g", "monitor-silence", "15"]
+          tmuxCmd ["set", "-g", "visual-activity", "off"]
+          tmuxCmd ["set", "-g", "visual-silence", "off"]
+          tmuxCmd ["set", "-g", "visual-bell", "off"]
+          -- terminal-features is read when a client attaches; setting it here
+          -- takes effect on the next attach (relaunch), not this one.
+          tmuxCmd ["set", "-sa", "terminal-features", ",xterm-256color:RGB:hyperlinks"]
+          -- Post a macOS notification when any window rings the bell (Claude Code
+          -- does this when a teammate wants input / finishes).  The hook passes
+          -- the belling window's ids to the helper script (run in the background
+          -- so it never blocks tmux).
+          notifyPath <- writeNotifyScript
+          tmuxCmd [ "set-hook", "-g", "alert-bell"
+                  , "run-shell -b \"sh " <> notifyPath <> " '#{session_id}' '#{window_index}'\"" ]
       return pty
 
   -- Output from the shell arrives on this trigger event from the reader
@@ -312,8 +349,32 @@ terminalWidget ide termId selectedE = do
 tmuxSocket :: String
 tmuxSocket = "leksah"
 
-sessionName :: Int -> String
-sessionName n = "leksah-" <> show n
+-- | The login shell to run in terminals.  Prefer the password-database login
+-- shell (what terminal emulators use).  $SHELL is unreliable here: launched from
+-- a `nix develop` shell it points at the scripting bash, built without readline,
+-- so it has no line editor and arrow keys echo as `^[[A`.
+getLoginShell :: IO String
+getLoginShell = do
+    loginShell <- (userShell <$> (getRealUserID >>= getUserEntryForID))
+                    `catch` \(_ :: SomeException) -> return ""
+    envShell <- fromMaybe "" <$> lookupEnv "SHELL"
+    return $ fromMaybe "/bin/bash" . listToMaybe $ filter (not . null) [loginShell, envShell]
+
+-- | Create a fresh leksah tmux session (detached) named @name@, applying the
+-- leksah tmux config, and return its stable tmux session id (e.g. "$3").  The
+-- terminal widget then attaches to that id.  'Nothing' if tmux is absent or the
+-- command fails.
+createTerminalSession :: Text -> IO (Maybe Text)
+createTerminalSession name = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            shell <- getLoginShell
+            conf <- writeTmuxConf shell
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "-f", conf, "new-session", "-d"
+                , "-s", T.unpack name, "-P", "-F", "#{session_id}" ] ""
+            return . listToMaybe . filter (not . T.null) . map T.strip . T.lines $ T.pack out
 
 -- | Write (idempotently) the minimal tmux config used for leksah's terminals:
 -- no status bar, pass window titles through to xterm, and use the login shell.
@@ -322,40 +383,135 @@ writeTmuxConf :: FilePath -> IO FilePath
 writeTmuxConf loginShell = do
     dir <- getTemporaryDirectory
     let path = dir </> "leksah.tmux.conf"
-    writeFile path $ unlines
+    cb <- clipboardCopyCmd
+    writeFile path $ unlines $
         [ "set -g status off"
         , "set -g set-titles on"
         , "set -g set-titles-string \"#T\""
         , "set -g default-shell \"" <> loginShell <> "\""
+        -- Report focus in/out: tmux requests focus events from the outer terminal
+        -- (xterm.js, which sends CSI I / CSI O on focus/blur) and forwards them to
+        -- the program in the active pane.  This is what lets a Claude Code running
+        -- in a pane know when its pane gains/loses focus (needed for teammate-mode
+        -- tmux) — both on pane/tab switches and when the whole app is deactivated.
+        , "set -g focus-events on"
+        -- True colour (24-bit) and OSC 8 hyperlinks out to xterm.js (which
+        -- supports both): the outer terminal reports TERM=xterm-256color, and
+        -- tmux only forwards these when the feature is advertised for it.  Without
+        -- RGB, Claude Code / TUIs are stuck at 256 colours and look washed out.
+        , "set -sa terminal-features \",xterm-256color:RGB:hyperlinks\""
+        -- Let programs in a pane emit DCS passthrough sequences through tmux (OSC
+        -- 52 clipboard, progress, image/hyperlink protocols); off by default.
+        , "set -g allow-passthrough on"
+        -- Flag windows with new output (activity) or that have gone quiet
+        -- (silence) — surfaced as badges in the Terminals tree so you can see at a
+        -- glance which teammate is working vs idle.  (Bell is already flagged by
+        -- default via bell-action; Claude Code rings it for permission prompts.)
+        , "set -g monitor-activity on"
+        , "set -g monitor-silence 15"
+        -- Don't also print tmux's own \"activity in window N\" status message /
+        -- visual bell — the tree badges are the surface we want.
+        , "set -g visual-activity off"
+        , "set -g visual-silence off"
+        , "set -g visual-bell off"
         -- Mouse on so the wheel scrolls tmux's scrollback in the xterm.js pane;
         -- a generous history so there's plenty to scroll back through.
         , "set -g mouse on"
         , "set -g history-limit 50000"
+        -- vim-style pane navigation (lower-case) and resizing (upper-case), as an
+        -- alternative to the prefix+arrow keys.  These rebind prefix `l` (default
+        -- last-window) and `L` (default last-session), so move those to Tab and
+        -- Shift-Tab — the common convention when hjkl/HJKL take l/L.
+        , "bind h select-pane -L"
+        , "bind j select-pane -D"
+        , "bind k select-pane -U"
+        , "bind l select-pane -R"
+        , "bind -r H resize-pane -L 5"
+        , "bind -r J resize-pane -D 5"
+        , "bind -r K resize-pane -U 5"
+        , "bind -r L resize-pane -R 5"
+        -- Fine (1-cell) resize on Ctrl+hjkl, the common home-row companion to the
+        -- coarse (5-cell) HJKL above; both repeatable (-r).
+        , "bind -r C-h resize-pane -L 1"
+        , "bind -r C-j resize-pane -D 1"
+        , "bind -r C-k resize-pane -U 1"
+        , "bind -r C-l resize-pane -R 1"
+        , "bind Tab last-window"
+        , "bind BTab switch-client -l"
+        ]
+        -- Pipe copy-mode selections to the system clipboard so copying in a
+        -- terminal (mouse drag / yank) is shared with ⌘C/⌘V instead of living only
+        -- in tmux's own paste buffer.  The default copy bindings use copy-pipe
+        -- without a command, so they pick this up.
+        <> maybe [] (\c -> ["set -s copy-command " <> show c]) cb
+    return path
+
+-- | Write (idempotently) a tiny helper that posts a macOS Notification Center
+-- notification for a tmux bell alert, and return its path.  Driven by the
+-- @alert-bell@ hook (set in 'terminalWidget'): the hook passes the belling
+-- window's session id + window index; the script looks their names up and shows
+-- the notification via @osascript@ — which works from any process (leksah runs
+-- as a bare binary, not a .app bundle, so the native UNUserNotification API
+-- isn't available).  Bell is Claude Code's "needs input / done" signal, so this
+-- tells you a teammate wants you without watching the window.
+writeNotifyScript :: IO FilePath
+writeNotifyScript = do
+    dir <- getTemporaryDirectory
+    let path = dir </> "leksah-notify.sh"
+    writeFile path $ unlines
+        [ "#!/bin/sh"
+        , "# $1 = tmux session id (e.g. $3), $2 = window index.  Written by leksah."
+        , "label=$(tmux -L " <> tmuxSocket <> " display-message -p -t \"$1:$2\" '#{session_name}: #{window_name}' 2>/dev/null)"
+        , "[ -z \"$label\" ] && label=\"$1:$2\""
+        -- Pass the label as an argv item (not string-interpolated) so names with
+        -- quotes can't break the AppleScript.
+        , "osascript - \"$label\" >/dev/null 2>&1 <<'OSA' || true"
+        , "on run argv"
+        , "  display notification (item 1 of argv) with title \"leksah terminal\""
+        , "end run"
+        , "OSA"
         ]
     return path
 
--- | Ids of leksah's currently-live tmux sessions (named @leksah-N@), so the
--- Terminals list can be repopulated after a restart.  Empty if tmux is absent
--- or no leksah tmux server is running.
-listTerminalSessions :: IO [Int]
+-- | Shell command tmux should pipe a copy-mode selection to so it lands on the
+-- *system* clipboard (shared with the terminal's ⌘C/⌘V), not just tmux's own
+-- paste buffer.  macOS uses @pbcopy@; elsewhere the first available Wayland/X
+-- clipboard tool.  'Nothing' (leave @copy-command@ unset) if none is found.
+clipboardCopyCmd :: IO (Maybe String)
+clipboardCopyCmd
+  | os == "darwin" = return (Just "pbcopy")
+  | otherwise = firstAvailable
+      [ ("wl-copy", "wl-copy")
+      , ("xclip",   "xclip -selection clipboard -in")
+      , ("xsel",    "xsel -ib") ]
+  where
+    firstAvailable [] = return Nothing
+    firstAvailable ((exe, cmd):rest) =
+        findExecutable exe >>= maybe (firstAvailable rest) (const (return (Just cmd)))
+
+-- | All currently-live tmux sessions on leksah's socket as @(session id, session
+-- name)@ pairs — every session, not just leksah's own, so the Terminals list can
+-- show them all.  Empty if tmux is absent or no server is running.
+listTerminalSessions :: IO [(Text, Text)]
 listTerminalSessions = (`catch` \(_ :: SomeException) -> return []) $
     findExecutable "tmux" >>= \case
         Nothing -> return []
         Just tmux -> do
             (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-sessions", "-F", "#{session_name}"] ""
-            return [ n | line <- lines out
-                       , Just rest <- [stripPrefix "leksah-" line]
-                       , [(n, "")] <- [reads rest] ]
+                ["-L", tmuxSocket, "list-sessions", "-F", "#{session_id}\t#{session_name}"] ""
+            return [ (sid, T.intercalate "\t" rest)
+                   | line <- lines out
+                   , (sid:rest) <- [T.splitOn "\t" (T.pack line)]
+                   , not (T.null sid) ]
 
--- | Kill the tmux session backing terminal @n@ (so it no longer persists).
-killTerminalSession :: Int -> IO ()
+-- | Kill the tmux session with id @n@ (so it no longer persists).
+killTerminalSession :: Text -> IO ()
 killTerminalSession n = (`catch` \(_ :: SomeException) -> return ()) $ do
     unregisterTerminalPty n
     findExecutable "tmux" >>= \case
         Nothing -> return ()
         Just tmux -> void $ readProcessWithExitCode tmux
-            ["-L", tmuxSocket, "kill-session", "-t", sessionName n] ""
+            ["-L", tmuxSocket, "kill-session", "-t", T.unpack n] ""
 
 -- | A tmux pane within a window: its index, a display label (its index and the
 -- command running in it), and whether it is the window's active pane.
@@ -366,19 +522,25 @@ data TmuxPane = TmuxPane
   } deriving (Eq, Show)
 
 -- | A tmux window within a session: its index, a display label (its index and
--- name), whether it is the session's active window, and its panes (by index).
+-- name), whether it is the session's active window, its tmux alert flags (bell /
+-- activity / silence — surfaced in the Terminals tree so you can see which
+-- teammate rang the bell, is producing output, or has gone quiet), and its panes.
 data TmuxWindow = TmuxWindow
-  { twIndex  :: Int
-  , twLabel  :: Text
-  , twActive :: Bool
-  , twPanes  :: [TmuxPane]
+  { twIndex    :: Int
+  , twLabel    :: Text
+  , twActive   :: Bool
+  , twBell     :: Bool
+  , twActivity :: Bool
+  , twSilence  :: Bool
+  , twPanes    :: [TmuxPane]
   } deriving (Eq, Show)
 
--- | The tmux window/pane hierarchy of every live @leksah-N@ session, keyed by
--- session id @N@ — the deeper levels of the Terminals tree (the session level
--- itself is tracked by 'listTerminalSessions').  Gathered in one
--- @list-panes -a@ call.  Empty if tmux is absent or no leksah server is running.
-listTerminalTree :: IO (Map Int [TmuxWindow])
+-- | The tmux window/pane hierarchy of every live session, keyed by tmux session
+-- id (e.g. "$3") and carrying that session's current name — the whole Terminals
+-- tree in one @list-panes -a@ call.  Keying by the stable id (not the name) means
+-- a rename just changes the carried name on the next poll, not the key.  Includes
+-- all sessions, not only leksah's own.  Empty if tmux is absent / no server.
+listTerminalTree :: IO (Map Text (Text, [TmuxWindow]))
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
     findExecutable "tmux" >>= \case
         Nothing -> return M.empty
@@ -387,62 +549,143 @@ listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
                 ["-L", tmuxSocket, "list-panes", "-a", "-F", paneFormat] ""
             return (parsePaneTree out)
   where
-    -- Tab-separated so window names / commands (which won't contain tabs) stay
-    -- intact: session, window index/name/active, pane index/active/command.
+    -- Tab-separated so names / commands / titles (which won't contain tabs) stay
+    -- intact: session id/name, window index/name/active, pane
+    -- index/active/command/title.  pane_title is the per-pane title (what ⌃B w
+    -- shows) — used as the pane's display name so panes don't all share the
+    -- terminal's (active-pane) OSC title; command is the fallback when it's empty.
     paneFormat = intercalate "\t"
-        [ "#{session_name}", "#{window_index}", "#{window_name}", "#{window_active}"
-        , "#{pane_index}", "#{pane_active}", "#{pane_current_command}" ]
+        [ "#{session_id}", "#{session_name}", "#{window_index}", "#{window_name}"
+        , "#{window_active}", "#{window_bell_flag}", "#{window_activity_flag}"
+        , "#{window_silence_flag}", "#{pane_index}", "#{pane_active}"
+        , "#{pane_current_command}", "#{pane_title}" ]
 
--- | Parse the @list-panes -a@ output into the per-session window/pane tree,
--- grouping by session then window (ascending by index within each level).
-parsePaneTree :: String -> Map Int [TmuxWindow]
-parsePaneTree out = M.map toWindows grouped
+-- | Parse the @list-panes -a@ output into the per-session (id -> (name, windows))
+-- tree, grouping by session then window (ascending by index within each level).
+parsePaneTree :: String -> Map Text (Text, [TmuxWindow])
+parsePaneTree out = M.map toSession grouped
   where
     rows =
-      [ (sid, wi, wn, wa == "1", pidx, pa == "1", cmd)
+      [ (sid, sname, wi, wn, wa == "1", wb == "1", wac == "1", ws == "1", pidx, pa == "1", paneName)
       | line <- lines out
-      , (sname:wiT:wn:wa:piT:pa:rest) <- [T.splitOn "\t" (T.pack line)]
-      , Just sidT <- [T.stripPrefix "leksah-" sname]
-      , Just sid  <- [readMaybe (T.unpack sidT)]
+      , (sid:sname:wiT:wn:wa:wb:wac:ws:piT:pa:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
+      , not (T.null sid)
       , Just wi   <- [readMaybe (T.unpack wiT)]
       , Just pidx <- [readMaybe (T.unpack piT)]
-      , let cmd = T.intercalate "\t" rest ]
-    -- session -> (window index -> (name, active, pane index -> (command, active)))
-    grouped :: Map Int (Map Int (Text, Bool, Map Int (Text, Bool)))
-    grouped = M.fromListWith (M.unionWith mergeWin)
-      [ (sid, M.singleton wi (wn, wa, M.singleton pidx (cmd, pa)))
-      | (sid, wi, wn, wa, pidx, pa, cmd) <- rows ]
-    mergeWin (wn, wa, ps1) (_, _, ps2) = (wn, wa, ps1 <> ps2)
-    toWindows wm =
-      [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa
-          [ TmuxPane pidx (T.pack (show pidx) <> ": " <> cmd) pa
-          | (pidx, (cmd, pa)) <- M.toAscList ps ]
-      | (wi, (wn, wa, ps)) <- M.toAscList wm ]
+      , let title    = T.intercalate "\t" rest
+            paneName = if T.null title then cmd else title ]
+    -- session id -> (name, window index -> (name, active, bell, activity, silence, pane idx -> (paneName, active)))
+    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Map Int (Text, Bool)))
+    grouped = M.fromListWith mergeSess
+      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, M.singleton pidx (paneName, pa))))
+      | (sid, sname, wi, wn, wa, wb, wac, ws, pidx, pa, paneName) <- rows ]
+    mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
+    mergeWin (wn, wa, wb, wac, ws, ps1) (_, _, _, _, _, ps2) = (wn, wa, wb, wac, ws, ps1 <> ps2)
+    toSession (sname, wm) =
+      ( sname
+      , [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa wb wac ws
+            [ TmuxPane pidx (T.pack (show pidx) <> ": " <> paneName) pa
+            | (pidx, (paneName, pa)) <- M.toAscList ps ]
+        | (wi, (wn, wa, wb, wac, ws, ps)) <- M.toAscList wm ] )
 
--- | Make window @w@ of session @s@ the session's current window.
-selectTmuxWindow :: Int -> Int -> IO ()
+-- | Make window @w@ of session @s@ (a tmux session id) the current window.
+selectTmuxWindow :: Text -> Int -> IO ()
 selectTmuxWindow s w =
-    tmuxCmd ["select-window", "-t", sessionName s <> ":" <> show w]
+    tmuxCmd ["select-window", "-t", T.unpack s <> ":" <> show w]
 
 -- | Make pane @p@ of window @w@ in session @s@ the active pane.  Also switch the
 -- session to that window first: @select-pane@ only moves focus within a window,
 -- so without this a pane in a non-current window wouldn't actually be shown.
-selectTmuxPane :: Int -> Int -> Int -> IO ()
+selectTmuxPane :: Text -> Int -> Int -> IO ()
 selectTmuxPane s w p = do
     selectTmuxWindow s w
-    tmuxCmd ["select-pane", "-t", sessionName s <> ":" <> show w <> "." <> show p]
+    tmuxCmd ["select-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
 
 -- | Kill window @w@ of session @s@ (tmux closes the session if it was its last
 -- window).
-killTmuxWindow :: Int -> Int -> IO ()
+killTmuxWindow :: Text -> Int -> IO ()
 killTmuxWindow s w =
-    tmuxCmd ["kill-window", "-t", sessionName s <> ":" <> show w]
+    tmuxCmd ["kill-window", "-t", T.unpack s <> ":" <> show w]
 
 -- | Kill pane @p@ of window @w@ in session @s@ (tmux closes the window if it was
 -- its last pane).
-killTmuxPane :: Int -> Int -> Int -> IO ()
+killTmuxPane :: Text -> Int -> Int -> IO ()
 killTmuxPane s w p =
-    tmuxCmd ["kill-pane", "-t", sessionName s <> ":" <> show w <> "." <> show p]
+    tmuxCmd ["kill-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Create a new window in session @s@ (becomes that session's current window).
+newTmuxWindow :: Text -> IO ()
+newTmuxWindow s = tmuxCmd ["new-window", "-t", T.unpack s]
+
+-- | Toggle zoom (fullscreen-within-its-window) for pane @p@ of window @w@.
+zoomTmuxPane :: Text -> Int -> Int -> IO ()
+zoomTmuxPane s w p =
+    tmuxCmd ["resize-pane", "-Z", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Break pane @p@ of window @w@ out into its own new window (so it gets its own
+-- activity/bell tracking and more room).
+breakTmuxPane :: Text -> Int -> Int -> IO ()
+breakTmuxPane s w p =
+    tmuxCmd ["break-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Rename session @s@ (a session id) to @name@.
+renameTmuxSession :: Text -> Text -> IO ()
+renameTmuxSession s name = tmuxCmd ["rename-session", "-t", T.unpack s, T.unpack name]
+
+-- | Rename window @w@ of session @s@ to @name@.
+renameTmuxWindow :: Text -> Int -> Text -> IO ()
+renameTmuxWindow s w name =
+    tmuxCmd ["rename-window", "-t", T.unpack s <> ":" <> show w, T.unpack name]
+
+-- | The id (e.g. @%3@) of the active pane of session @n@ (a tmux session id),
+-- used to pick which pane to make transparent (see "IDE.Web.Main").
+activePaneId :: Text -> IO (Maybe Text)
+activePaneId n = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "display-message", "-p", "-t", T.unpack n, "-F", "#{pane_id}"] ""
+            return $ case filter (not . T.null) (map T.strip (T.lines (T.pack out))) of
+                (p:_) -> Just p
+                _     -> Nothing
+
+-- | The cell rectangle @(left, top, width, height)@ of pane @pid@ in session @n@
+-- (a tmux session id) — but only while that pane's window is the session's
+-- current one, so a transparency hole is hidden when its pane isn't on screen.
+paneGeometry :: Text -> Text -> IO (Maybe (Int, Int, Int, Int))
+paneGeometry n pid = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "list-panes", "-t", T.unpack n, "-F",
+                 "#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_height} #{window_active}"] ""
+            return $ listToMaybe
+                [ (l, t, w, h)
+                | line <- T.lines (T.pack out)
+                , (pid':lT:tT:wT:hT:waT:_) <- [T.words line]
+                , pid' == pid, waT == "1"
+                , Just l <- [readMaybe (T.unpack lT)]
+                , Just t <- [readMaybe (T.unpack tT)]
+                , Just w <- [readMaybe (T.unpack wT)]
+                , Just h <- [readMaybe (T.unpack hT)] ]
+
+-- | Which tmux session (by session id) the pane @pid@ (e.g. @%20@) belongs to.
+-- Used by @open-browser@ to map @$TMUX_PANE@ to a terminal so its pane can be
+-- snapped.
+sessionOfPane :: Text -> IO (Maybe Text)
+sessionOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "list-panes", "-a", "-F", "#{session_id} #{pane_id}"] ""
+            return $ listToMaybe
+                [ sid
+                | line <- T.lines (T.pack out)
+                , (sid:pid':_) <- [T.words line]
+                , pid' == pid ]
 
 -- | Run a tmux command on leksah's private socket, ignoring failures.
 tmuxCmd :: [String] -> IO ()

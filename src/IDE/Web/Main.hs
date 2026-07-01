@@ -17,7 +17,7 @@ import Control.Concurrent
 import Control.Event (registerEvent)
 import Control.Exception (SomeException, catch)
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), _Just)
-import Control.Monad (forever, when, void)
+import Control.Monad (forever, forM, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.ByteString (ByteString)
@@ -33,22 +33,26 @@ import Data.Functor.Identity (Identity(..))
 import Data.Functor.Misc (Const2(..))
 import Data.IORef (newIORef)
 import Data.Map (mapKeys)
-import qualified Data.Map as M (keys, toList, fromList, union, findWithDefault, lookup, null)
+import qualified Data.Map as M
+       (Map, keys, elems, toList, fromList, union, findWithDefault, lookup, null,
+        insert, delete, member, filter, singleton, map)
+import Data.Map (Map)
 import qualified Data.Set as S (fromList, delete, singleton)
 import Data.Time.Clock (NominalDiffTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isInfixOf, toLower, null)
+import qualified Data.Text as T (pack, unpack, unlines, isInfixOf, toLower, null, intercalate, breakOn, drop, stripPrefix)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
 import Text.Printf (printf)
+import Text.Read (readMaybe)
 
 import System.Directory
        (doesFileExist, doesDirectoryExist, getDirectoryContents, removeFile,
         getHomeDirectory)
 import System.Process (readProcessWithExitCode)
-import Data.List (nub, sort, isPrefixOf, isInfixOf)
-import Data.Maybe (fromMaybe)
+import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
+import Data.Maybe (fromMaybe, catMaybes, maybeToList, listToMaybe)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeFileName, dropFileName, (</>))
 import System.Environment (getArgs)
@@ -74,7 +78,7 @@ import Clay
         FontFaceSrc(..))
 
 import Language.Javascript.JSaddle
-       (JSM, eval, syncPoint, jsg, js0, js1, js2, valToBool, liftJSM)
+       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, jss, fun, valToText, valToBool, liftJSM)
 import Language.Javascript.JSaddle.Warp
        (jsaddleJs, jsaddleOr, debugWrapper)
 import GHCJS.DOM.Types (askJSM)
@@ -85,9 +89,11 @@ import Reflex
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never,
         performEvent_, getPostBuild, performEvent, select, fan, fanMap,
         fmapMaybe, attachWith, attach, current, updated, holdUniqDyn, tag, gate,
-        tagPromptlyDyn, debounce, delay)
+        listViewWithKey,
+        tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (dynText, elAttr', elDynAttr', (=:), MonadWidget, mainWidgetWithCss)
+       (dynText, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
+        (=:), MonadWidget, mainWidgetWithCss)
 
 import IDE.Core.State
        (triggerBuild, readIDE, IDEAction, wsFile, jsContexts, workspace,
@@ -104,6 +110,8 @@ import IDE.Web.SaveRequest (nextSaveRequest)
 import IDE.Web.FindRequest (nextFindRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.TerminalInput (setActiveTerminal)
+import IDE.Web.TransparencyRequest (nextToggleTransparency)
+import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
        (WebSession(..), readWebSession, writeWebSession)
 import qualified IDE.TextEditor.Yi.Config as Yi (start)
@@ -117,12 +125,13 @@ import IDE.Utils.Utils
 import IDE.Web.Command (commandAction, Command(..))
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TabKey(..), TerminalEvents(..),
-        FindbarEvents(..),
+        FindbarEvents(..), PreferencesEvents(..), FlipItem(..),
         _ToolbarCommand, _MenubarCommand, _KeymapCommand, _PackageCommand,
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
         _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane)
 import IDE.Web.Layout (layoutCss)
 import IDE.Web.Widget.Changes (changesCss, changesWidget)
+import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
 import IDE.Web.Widget.Flake (flakeCss)
 import IDE.Web.Widget.ContextMenu (contextMenuCss)
 import IDE.Web.Widget.Editor (editorCss, editorWidget)
@@ -139,8 +148,9 @@ import IDE.Web.Widget.Statusbar (statusbarCss, statusbarWidget)
 import IDE.Web.Widget.Tabs (tabsWidget, tabsCss)
 import IDE.Web.Widget.Terminal
        (terminalCss, terminalWidget, listTerminalSessions, killTerminalSession,
-        selectTmuxWindow, selectTmuxPane)
-import IDE.Web.Widget.Terminals (terminalsCss, terminalsWidget)
+        selectTmuxWindow, selectTmuxPane, activePaneId, paneGeometry, sessionOfPane,
+        listTerminalTree, createTerminalSession, TmuxWindow(..), TmuxPane(..))
+import IDE.Web.Widget.Terminals (terminalsCss, terminalsWidget, sessionAlert, windowAlert)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import qualified IDE.Workspaces.Writer as Writer
@@ -294,9 +304,20 @@ jsMain showMenubar macTitlebar ideR = do
   -- pervade terminal output.
   _ <- eval terminalWriteJs
 
+  -- Defines window.leksahSetHoles/leksahClearHoles: clips transparent tmux panes
+  -- out of the page root so the window shows through (macOS click-through holes).
+  _ <- eval transparencyJs
+
   -- Focus the find bar's text input (called when Edit ▸ Find shows it); deferred
   -- to the next frame so the just-revealed input is laid out and focusable.
   _ <- eval focusFindJs
+
+  -- Focus a side/bottom list pane when it's activated, and keyboard list
+  -- navigation (Up/Down/Enter/arrows) for the focused list pane.
+  _ <- eval focusPaneJs
+  _ <- eval listNavJs
+  _ <- eval focusTabJs
+  _ <- eval termActivityJs
 
   -- Helper used to decide whether to reveal a focused file in the workspace
   -- tree: a file can appear there more than once, so if any occurrence is
@@ -452,11 +473,105 @@ css = render $ do
     terminalsCss
     metadataCss
     changesCss
+    preferencesCss
     flakeCss
 
 -- Fallback label for a terminal that hasn't reported a window title yet.
-defaultTermTitle :: Int -> Text
-defaultTermTitle n = "Terminal " <> T.pack (show n)
+-- | A tab's display label (shared by the tab buttons and the flipper).  Terminals
+-- are labelled by their tmux session name (looked up by session id in the names
+-- map), falling back to the id itself if not yet known.
+tabLabelText :: TabKey -> Map Text Text -> Text
+tabLabelText k names = case k of
+  WorkspaceKey   -> "Workspace"
+  ErrorsKey      -> "Errors"
+  LogKey         -> "Log"
+  GrepKey        -> "Grep"
+  TerminalsKey   -> "Terminals"
+  TerminalKey n  -> M.findWithDefault n n names
+  MetadataKey    -> "Metadata"
+  ChangesKey     -> "Changes"
+  PreferencesKey -> "Preferences"
+  EditorKey file -> T.pack (takeFileName file)
+
+-- | The active @(window index, pane index)@ of a tmux session (by id), from the
+-- pane tree; falls back to the first window/pane, or 'Nothing' if it has none.
+activePaneOfSession :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe (Int, Int)
+activePaneOfSession n tree = do
+  (_, wins) <- M.lookup n tree
+  w <- listToMaybe (filter twActive wins ++ wins)
+  p <- listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+  return (twIndex w, tpIndex p)
+
+-- | The flip item for a focused tab (from @activePaneD@ — the last tab
+-- mouse-pressed in any area) given a freshly-read pane tree: a terminal resolves
+-- to its active tmux pane, any other tab to itself.  Used both to bump the MRU
+-- when the user clicks a tab and to refresh the active pane of the terminal
+-- currently at the front of the MRU on open (catching a ⌃B switch).
+activeFlipFor :: Maybe TabKey -> Map Text (Text, [TmuxWindow]) -> Maybe FlipItem
+activeFlipFor mk tree = case mk of
+  Just (TerminalKey n) ->
+    Just $ maybe (FlipTab (TerminalKey n))
+                 (\(w, p) -> FlipPane n w p) (activePaneOfSession n tree)
+  Just k  -> Just (FlipTab k)
+  Nothing -> Nothing
+
+-- | Flipper label for a tmux pane: "session-name · w.pane: pane-title".  Uses the
+-- session's current tmux name (from the tree, so a rename shows up) and the
+-- per-pane title carried in 'tpLabel'.
+flipPaneLabel :: Text -> Int -> Int -> Map Text (Text, [TmuxWindow]) -> Text
+flipPaneLabel n w p tree =
+  maybe n fst (M.lookup n tree) <> " · " <> T.pack (show w) <> "."
+    <> case [ tpLabel pn | wn <- maybe [] snd (M.lookup n tree), twIndex wn == w
+                         , pn <- twPanes wn, tpIndex pn == p ] of
+         (l:_) -> l
+         []    -> T.pack (show p)
+
+-- | A CSS @order@ style attribute for a wide0 tab button (empty off wide0).
+orderStyle :: Maybe Int -> Map Text Text
+orderStyle = maybe mempty (\n -> "style" =: ("order:" <> T.pack (show n)))
+
+-- | The wide0 tab-button order, taken from the flipper's item list: each tmux
+-- window (identified by @Left (session, window)@, collapsed from its panes) and
+-- each non-terminal tab (@Right key@), in the flipper's MRU-first order, one
+-- entry apiece.  Windows of one session are NOT grouped — each is ordered
+-- independently, exactly as the flipper cycles panes.  (The list isn't always
+-- perfectly current, as noted for the flipper MRU, but it's close.)
+buttonOrderOf :: [(Text, FlipItem)] -> [Either (Text, Int) TabKey]
+buttonOrderOf = nub . map (ident . snd)
+  where ident (FlipPane s w _) = Left (s, w)
+        ident (FlipTab k)      = Right k
+
+-- | The flipper's item list: MRU order first, then every current tmux pane and
+-- non-terminal tab (a terminal is represented only by its panes).
+buildFlipItems :: [FlipItem] -> [(Text, TabKey)] -> Map Text (Text, [TmuxWindow]) -> [(Text, FlipItem)]
+buildFlipItems mru rt tree =
+  let panes = [ FlipPane n (twIndex w) (tpIndex p)
+              | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w ]
+      notTerm (TerminalKey _) = False
+      notTerm _               = True
+      tabs    = [ FlipTab k | (_, k) <- rt, notTerm k ]
+      present = panes ++ tabs
+      ordered = filter (`elem` present) mru ++ filter (`notElem` mru) present
+      areaOf (FlipPane {}) = "wide0"
+      areaOf (FlipTab k)   = maybe "wide0" fst (find ((== k) . snd) rt)
+  in [ (areaOf fi, fi) | fi <- ordered ]
+
+-- | The highest @N@ among existing @leksah-N@ session names (0 if none), given
+-- @(session id, name)@ pairs — so a new terminal is named one past it.
+maxLeksahNum :: [(Text, Text)] -> Int
+maxLeksahNum xs = foldr max 0
+  [ n | (_, name) <- xs
+      , Just rest <- [T.stripPrefix "leksah-" name]
+      , Just n <- [readMaybe (T.unpack rest)] ]
+
+-- | The first terminal window flagged for attention — bell (a teammate wants
+-- input) first, then activity (new output) — as @(session id, window index)@.
+-- The jump-to-teammate command targets this; selecting a window clears its flag,
+-- so pressing the key repeatedly walks through every flagged window in turn.
+firstAlertWindow :: Map Text (Text, [TmuxWindow]) -> Maybe (Text, Int)
+firstAlertWindow tree =
+  let flagged pick = [ (sid, twIndex w) | (sid, (_, ws)) <- M.toList tree, w <- ws, pick w ]
+  in listToMaybe (flagged twBell ++ flagged twActivity)
 
 -- | Defines @window.leksahOccurrenceVisible(path, containerSel)@: true when some
 -- node tagged @data-reveal-key=path@ inside @containerSel@ is currently rendered
@@ -495,6 +610,131 @@ focusFindJs = T.unlines
   , "    if (e) { e.focus(); e.select(); }"
   , "  });"
   , "};"
+  ]
+
+-- | Defines @window.leksahFocusPane(selector)@: give a side/bottom list pane
+-- keyboard focus when it is activated.  Deferred to the next animation frame (the
+-- bar may have just been un-hidden).  The container is made programmatically
+-- focusable (@tabindex=-1@) so it can hold focus; for a keyboard-navigable list
+-- (@.leksah-nav@) it also marks a current row if none is set yet, so Up/Down have
+-- a starting point (see @listNavJs@).
+focusPaneJs :: Text
+focusPaneJs = T.unlines
+  [ "window.leksahFocusPane = function(sel){"
+  , "  var tries = 0;"
+  , "  function go(){"
+  , "    var el = document.querySelector(sel);"
+  , "    if (el) {"
+  , "      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');"
+  , "      el.focus();"
+  , "      if (el.classList.contains('leksah-nav') && !el.querySelector('.leksah-nav-item.leksah-nav-current')) {"
+  , "        var first = el.querySelector('.leksah-nav-item');"
+  , "        if (first) first.classList.add('leksah-nav-current');"
+  , "      }"
+  , "    }"
+     -- The bar may still be expanding (pref change -> CSS); retry briefly until
+     -- the element actually takes focus.
+  , "    if ((!el || document.activeElement !== el) && tries++ < 12) setTimeout(go, 30);"
+  , "  }"
+  , "  requestAnimationFrame(go);"
+  , "};"
+  ]
+
+-- | Keyboard list navigation for the focused side/bottom pane.  A document
+-- keydown handler that acts only when focus is inside a list pane:
+--
+--   * @.leksah-nav@ panes (trees, Grep, Changes — all rendered in full): Up/Down
+--     move a @.leksah-nav-current@ highlight through the rendered @.leksah-nav-item@
+--     rows; Enter/Space click the current row (reusing its existing handler);
+--     Left/Right expand/collapse a tree node (clicking its @.tree-expand@).
+--   * @.leksah-vlist[data-pane]@ panes (the virtualized Errors/Log): Up/Down/Enter
+--     call back into reflex via @leksahListMove@/@leksahListActivate@ (registered
+--     in the reflex network), which moves the list's selection index + scrolls.
+--
+-- Modified chords (⌘/⌃/⌥) are left to the keymap; plain arrows elsewhere (editor,
+-- terminal, find input) are untouched because focus isn't in a list pane.
+listNavJs :: Text
+listNavJs = T.unlines
+  [ "(function(){"
+  , "  function items(p){ return Array.prototype.slice.call(p.querySelectorAll('.leksah-nav-item')); }"
+  , "  document.addEventListener('keydown', function(e){"
+  , "    if (e.metaKey || e.ctrlKey || e.altKey) return;"
+  , "    var a = document.activeElement;"
+  -- An editable field inside a nav pane (e.g. the Terminals-tree rename box) owns
+  -- its own keys: arrows must move the caret, Enter/Space type/commit — not drive
+  -- tree navigation.  Bail out so the browser handles them natively.
+  , "    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return;"
+  , "    var nav = a && a.closest && a.closest('.leksah-nav');"
+  , "    if (nav) {"
+  , "      var its = items(nav); if (!its.length) return;"
+  , "      var cur = nav.querySelector('.leksah-nav-item.leksah-nav-current');"
+  , "      var i = cur ? its.indexOf(cur) : -1;"
+  , "      if (e.key === 'ArrowDown') i = Math.min(its.length - 1, i + 1);"
+  , "      else if (e.key === 'ArrowUp') i = (i <= 0 ? 0 : i - 1);"
+  , "      else if (e.key === 'Enter' || e.key === ' ') { if (cur) cur.click(); e.preventDefault(); return; }"
+  , "      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {"
+  , "        if (cur) { var li = cur.closest('li');"
+  , "          var ex = li && li.querySelector(':scope > .tree-expand');"
+  , "          var open = li && li.querySelector(':scope > .tree-children');"
+  , "          if (ex && ((e.key === 'ArrowRight' && !open) || (e.key === 'ArrowLeft' && open))) ex.click(); }"
+  , "        e.preventDefault(); return; }"
+  , "      else return;"
+  , "      if (i < 0) i = 0;"
+  , "      its.forEach(function(it){ it.classList.remove('leksah-nav-current'); });"
+  , "      var sel = its[i]; sel.classList.add('leksah-nav-current'); sel.scrollIntoView({ block: 'nearest' });"
+  , "      e.preventDefault(); return;"
+  , "    }"
+  , "    var vl = a && a.closest && a.closest('.leksah-vlist');"
+  , "    if (vl && window.leksahListMove) {"
+  , "      var pane = vl.getAttribute('data-pane');"
+  , "      if (e.key === 'ArrowDown') { window.leksahListMove(pane, 'down'); e.preventDefault(); }"
+  , "      else if (e.key === 'ArrowUp') { window.leksahListMove(pane, 'up'); e.preventDefault(); }"
+  , "      else if (e.key === 'Enter') { window.leksahListActivate(pane); e.preventDefault(); }"
+  , "    }"
+  , "  }, false);"
+  -- Clicking a row makes it the current row so Up/Down continue from there.
+  , "  document.addEventListener('click', function(e){"
+  , "    var it = e.target.closest && e.target.closest('.leksah-nav-item');"
+  , "    if (!it) return; var p = it.closest('.leksah-nav'); if (!p) return;"
+  , "    items(p).forEach(function(x){ x.classList.remove('leksah-nav-current'); });"
+  , "    it.classList.add('leksah-nav-current');"
+  , "  }, false);"
+  , "})();"
+  ]
+
+-- | A document @focusin@ listener: whenever focus lands anywhere inside a tab
+-- body (which carries its @show@-key as @data-tabkey@; see Tabs.hs), report that
+-- key to reflex via @leksahListMove@'s sibling @leksahFocusTab@, which moves the
+-- tab to the front of the MRU/flipper order.  Using @focusin@ (which bubbles)
+-- catches focus arriving by any route — click, keyboard, or the programmatic
+-- focus a terminal takes at start-up.
+focusTabJs :: Text
+focusTabJs = T.unlines
+  [ "(function(){"
+  , "  document.addEventListener('focusin', function(e){"
+  , "    var t = e.target.closest && e.target.closest('.tab[data-tabkey]');"
+  , "    if (t && window.leksahFocusTab) window.leksahFocusTab(t.getAttribute('data-tabkey'));"
+  , "  }, true);"
+  , "})();"
+  ]
+
+-- | A document listener that pokes reflex (@leksahTermActivity@) when the active
+-- tmux pane may have just changed inside a terminal: a mouse-down in a @.terminal@
+-- (clicking a split), or the tmux prefix ⌃B (a pane command may follow — polled
+-- after a short delay so the chord has completed).  Reflex re-reads the pane tree
+-- so the flipper's pane list / MRU stay current.
+termActivityJs :: Text
+termActivityJs = T.unlines
+  [ "(function(){"
+  , "  function poke(){ if (window.leksahTermActivity) window.leksahTermActivity(); }"
+  , "  document.addEventListener('mousedown', function(e){"
+  , "    if (e.target.closest && e.target.closest('.terminal')) setTimeout(poke, 60);"
+  , "  }, true);"
+  , "  document.addEventListener('keydown', function(e){"
+  , "    if (e.ctrlKey && (e.key === 'b' || e.key === 'B') && e.target.closest"
+  , "        && e.target.closest('.terminal')) setTimeout(poke, 250);"
+  , "  }, true);"
+  , "})();"
   ]
 
 -- | Defines @window.LeksahTermLinks@, which makes file paths in xterm.js
@@ -634,9 +874,124 @@ terminalWriteJs = T.unlines
   , "    for (var i=0;i<n;i++) a[i] = bin.charCodeAt(i);"
   , "    term.write(a);"
   , "  }"
-  , "  return { register: register, unregister: unregister, write: write };"
+  , "  return { register: register, unregister: unregister, write: write, byId: byId };"
   , "})();"
   ]
+
+-- | Defines @window.leksahSetHoles@ / @leksahClearHoles@, which punch
+-- see-through holes into the window where a transparent tmux pane is (macOS; see
+-- the native side in @main/leksah-mac-menu.m@).  Given the holed panes' cell
+-- rectangles (terminal id + tmux pane left/top/width/height in cells), it works
+-- out each one's viewport-pixel rect from the terminal's grid (the
+-- @.xterm-screen@ box divided by cols/rows), clips those rects out of the page
+-- root with @clip-path@ — which clips the element's whole subtree, the WebGL
+-- terminal canvas included, so the region becomes truly transparent — and
+-- publishes the rects as @window.__leksahHoles@ for the native click-through
+-- code to read.
+transparencyJs :: Text
+transparencyJs = T.unlines
+  [ "window.__leksahHoles = [];"
+  -- Snap state: the pick mode for the *next* bind (\"click\" = menu, click a
+  -- window; \"frontmost\" = open-browser) and the pane key that window binds to.
+  , "window.__leksahSnap = { armed: false, key: null };"
+  -- Whether macOS Accessibility is granted (kept up to date by the native side);
+  -- the snap only makes a pane transparent when this is true.
+  , "window.__leksahAxTrusted = false;"
+  , "window.leksahArmSnap = function(mode, key){ window.__leksahSnap.armed = mode || \"click\"; window.__leksahSnap.key = key || null; };"
+  -- Per snapped pane (keyed \"tid:pid\"): its tmux-cell spec, and the rect to hold
+  -- its bound window at while an auto-hide bar is revealed (so it doesn't lurch).
+  , "window.__leksahSnapHoles = {};"
+  , "window.__leksahSnapFrozen = {};"
+  -- Every snapped pane key (even ones whose terminal is currently hidden), so the
+  -- native side keeps those windows bound; leksahSnapRects only returns visible ones.
+  , "window.__leksahSnapKeys = [];"
+  , "window.leksahSetSnapKeys = function(json){ try { window.__leksahSnapKeys = JSON.parse(json); } catch(e) { window.__leksahSnapKeys = []; } };"
+  -- True while an auto-hide side/bottom bar is transiently revealed.  Stays true
+  -- through the collapse *animation* too (keyed off the rendered size, not :hover),
+  -- so a mid-transition rect isn't used; in show/hide mode (no -auto) it's false.
+  , "window.leksahAutoExpanded = function(){"
+  , "  var root = document.querySelector('.leksah'); if (!root) return false;"
+  , "  var a = root.classList.contains('tall-auto') && document.querySelector('.area-tall');"
+  , "  if (a && a.getBoundingClientRect().width > 8) return true;"
+  , "  var b = root.classList.contains('wide1-auto') && document.querySelector('.area-wide1');"
+  , "  if (b && b.getBoundingClientRect().height > 8) return true;"
+  , "  return false;"
+  , "};"
+  -- Viewport-px rect of a tmux pane (cell spec h) from the *live* terminal grid,
+  -- or null if its terminal isn't ready.
+  , "window.leksahComputeHole = function(h){"
+  , "  var reg = window.LeksahTerm && window.LeksahTerm.byId;"
+  , "  var term = reg && reg[h.term];"
+  , "  if (!term || !term.element || !term.cols || !term.rows) return null;"
+  , "  var screen = term.element.querySelector('.xterm-screen');"
+  , "  if (!screen) return null;"
+  , "  var r = screen.getBoundingClientRect();"
+  , "  var cw = r.width / term.cols, ch = r.height / term.rows;"
+  , "  var x = r.left + h.left*cw, y = r.top + h.top*ch;"
+  , "  var x2 = x + h.w*cw, y2 = y + h.h*ch;"
+     -- The grid (.xterm-screen) is exactly cols x rows cells, a little smaller than
+     -- the terminal pane; against a grid edge, extend to the pane element's edge so
+     -- no opaque sliver is left (and so a full-pane snap tracks the live element).
+  , "  var host = term.element.closest('.terminal') || term.element;"
+  , "  var tr = host.getBoundingClientRect();"
+  , "  if (h.left <= 0) x = Math.min(x, tr.left);"
+  , "  if (h.top <= 0) y = Math.min(y, tr.top);"
+  , "  if (h.left + h.w >= term.cols) x2 = Math.max(x2, tr.right);"
+  , "  if (h.top + h.h >= term.rows) y2 = Math.max(y2, tr.bottom);"
+  , "  return { x: x, y: y, w: x2 - x, h: y2 - y };"
+  , "};"
+  -- Fresh viewport rect per snapped pane (key -> rect), recomputed live so bound
+  -- windows track leksah's own move/resize — or the frozen rect while revealing.
+  , "window.leksahSnapRects = function(){"
+  , "  var out = {}, rev = window.leksahAutoExpanded();"
+  , "  for (var k in window.__leksahSnapHoles) {"
+  , "    var rect = (rev && window.__leksahSnapFrozen[k]) ? window.__leksahSnapFrozen[k]"
+  , "                                                     : window.leksahComputeHole(window.__leksahSnapHoles[k]);"
+  , "    if (rect) out[k] = rect;"
+  , "  }"
+  , "  return out;"
+  , "};"
+  , "window.leksahSetHoles = function(json){"
+  , "  var holes = []; try { holes = JSON.parse(json); } catch(e) { holes = []; }"
+  , "  var rects = [];"
+  , "  var revealing = window.leksahAutoExpanded();"
+  , "  window.__leksahSnapHoles = {};"
+  , "  holes.forEach(function(h){"
+  , "    var rect = window.leksahComputeHole(h);"
+  , "    if (!rect) return;"
+     -- The clip-path hole always uses the *live* rect (even for a snapped pane),
+     -- so it tracks the reveal/collapse transition and never clips a bar sliding in
+     -- next to it (a frozen hole would punch the revealing bar transparent).
+  , "    rects.push(rect);"
+  , "    if (h.snap && h.key) {"
+  , "      window.__leksahSnapHoles[h.key] = h;"
+     -- Hold each snapped *window* at its pre-reveal rect for the duration of a
+     -- reveal (leksahSnapRects returns this while revealing); update only when not.
+  , "      if (!revealing) window.__leksahSnapFrozen[h.key] = rect;"
+  , "    }"
+  , "  });"
+  , "  window.__leksahHoles = rects;"
+  , "  var root = document.documentElement;"
+  , "  if (!rects.length) { root.style.clipPath = ''; return; }"
+  , "  var W = window.innerWidth, H = window.innerHeight;"
+  , "  var d = 'M0,0 H'+W+' V'+H+' H0 Z';"
+  , "  rects.forEach(function(r){ d += ' M'+r.x+','+r.y+' h'+r.w+' v'+r.h+' h'+(-r.w)+' Z'; });"
+  , "  root.style.clipPath = \"path(evenodd, '\"+d+\"')\";"
+  , "};"
+  , "window.leksahClearHoles = function(){ window.__leksahHoles = []; document.documentElement.style.clipPath = ''; };"
+  ]
+
+-- | A snapped pane's stable key, @\"tid:pid\"@ (e.g. @\"1:%5\"@), shared between
+-- the reflex set, the JS snap-rect map, and the native window bindings.
+-- | @sessionId:paneId@, e.g. @$3:%7@ (the session id has no colon, so the first
+-- colon splits them).
+paneKey :: (Text, Text) -> Text
+paneKey (n, pid) = n <> ":" <> pid
+
+parsePaneKey :: Text -> Maybe (Text, Text)
+parsePaneKey t = case T.breakOn ":" t of
+    (a, b) | not (T.null b) -> Just (a, T.drop 1 b)
+    _ -> Nothing
 
 main
   :: forall t m . MonadWidget t m
@@ -673,6 +1028,11 @@ main showMenubar macTitlebar ide = mdo
       CommandFileOpen    -> liftIO runOpenFilePanel
       CommandProjectOpen -> liftIO runOpenProjectPanel
       _                  -> return ()
+    -- Edit ▸ Preferences… (menu/toolbar) or ⌘, (keymap) opens the Preferences pane.
+    let showPrefsE = leftmost
+          [ fmapMaybe (\case CommandShowPreferences -> Just (); _ -> Nothing) panelCmdE
+          , fmapMaybe (\e -> case e ^? _KeymapCommand of
+                               Just CommandShowPreferences -> Just (); _ -> Nothing) keymapE ]
     let initialTabs =
                WorkspaceKey =: ("tall", Just ())
             <> ErrorsKey    =: ("wide1", Just ())
@@ -685,16 +1045,79 @@ main showMenubar macTitlebar ide = mdo
                "tall" =: WorkspaceKey
             <> "wide1" =: LogKey
 
-    let label k = dynText $ (\k' titles -> case k' of
-            WorkspaceKey   -> "Workspace"
-            ErrorsKey      -> "Errors"
-            LogKey         -> "Log"
-            GrepKey        -> "Grep"
-            TerminalsKey   -> "Terminals"
-            TerminalKey n  -> M.findWithDefault (defaultTermTitle n) n titles
-            MetadataKey    -> "Metadata"
-            ChangesKey     -> "Changes"
-            EditorKey file -> T.pack $ takeFileName file) <$> k <*> terminalTitlesD
+    -- Render the bar button(s) for one tab.  Non-terminal tabs get a single
+    -- button (label + optional × close).  A terminal gets one button per tmux
+    -- window — all selecting the one session body, each with its own detach × —
+    -- so a session with two windows shows two tabs (ordered independently, not
+    -- grouped), and clicking a window tab also switches the shared terminal to
+    -- that window (select-window).
+    let
+      -- The flipper's item list mapped to wide0 button order (per-window, not
+      -- grouped by session); every window/tab button looks up its slot here.
+      winOrderListD = buttonOrderOf <$> flipLiveD
+      -- The common tab-button shape: a .tab-wrap carrying the selected/hover
+      -- highlight (and wide0 MRU order), an optional × close on the left, and a
+      -- label button; clicking the label selects `k` in `area` and runs `onSel`.
+      tabButton :: Text -> TabKey -> Dynamic t Bool -> Dynamic t (Map Text Text)
+                -> Maybe Text -> Maybe Text -> m () -> IO ()
+                -> m (Event t (Map Text TabKey, [TabKey]))
+      tabButton area k selectedD orderStyleD mbTitle mbCloseTip labelW onSel =
+        elDynAttr "span"
+            ((\sel ost -> "class" =: ("tab-wrap" <> if sel then " selected" else "") <> ost)
+               <$> selectedD <*> orderStyleD) $ do
+          closeE <- case mbCloseTip of
+            Just tip -> do
+              (xe, _) <- elAttr' "span" ("class" =: "tab-close" <> "title" =: tip) $ text "×"
+              pure ([k] <$ domEvent Click xe)
+            Nothing  -> pure never
+          (be, _) <- elAttr' "button" (maybe mempty ("title" =:) mbTitle) labelW
+          let clickE = domEvent Click be
+          performEvent_ (liftIO onSel <$ clickE)
+          pure $ leftmost [ (\_ -> (area =: k, [])) <$> clickE, (,) mempty <$> closeE ]
+      -- CSS order for one wide0 button, by its identity's place in the flipper's
+      -- item list; Nothing off the wide0 row.  (`ident <$ baseOrderD` keeps the
+      -- Just/Nothing of baseOrderD as the "is this wide0?" flag.)
+      buttonOrderStyleD ident baseOrderD =
+        (\mb order -> orderStyle (fromMaybe 99999 (elemIndex ident order) <$ mb))
+          <$> baseOrderD <*> winOrderListD
+      mkTabButtons :: Text -> TabKey -> Dynamic t (Maybe ()) -> Dynamic t Bool
+                   -> Dynamic t (Maybe Int) -> m (Event t (Map Text TabKey, [TabKey]))
+      mkTabButtons area k _v isVisibleD baseOrderD = case k of
+        TerminalKey s -> do
+          -- One button per tmux window (fall back to a lone session button until
+          -- the first pane-tree poll arrives, keyed -1 so it's distinct).  Each
+          -- window tab is ordered independently (see buttonOrderOf) and carries
+          -- its own detach × (detaches the whole session — it survives; reopen
+          -- from the Terminals list).
+          let winsD   = maybe [] snd . M.lookup s <$> paneTreeD
+              winMapD = ffor winsD $ \ws ->
+                          if null ws then M.singleton (-1) Nothing
+                          else M.fromList [ (twIndex w, Just w) | w <- ws ]
+              nWinsD  = length <$> winsD
+          winButtonsE <- listViewWithKey winMapD $ \widx mwD -> do
+            let curD      = maybe True twActive <$> mwD          -- fallback: current
+                selectedD = (&&) <$> isVisibleD <*> curD          -- visible session + current window
+                labelD    = (\names mw n ->
+                              let nm = M.findWithDefault s s names
+                              in case mw of
+                                   Nothing -> nm
+                                   Just w | n <= 1    -> nm <> windowAlert w
+                                          | otherwise -> nm <> " · " <> twLabel w <> windowAlert w)
+                            <$> terminalNamesD <*> mwD <*> nWinsD
+                orderStyleD = buttonOrderStyleD (Left (s, widx)) baseOrderD
+                -- Switch the shared terminal to this window, then poke a pane-tree
+                -- refresh so the "current window" highlight updates at once (not on
+                -- the next 2 s poll).
+                onSel     = if widx < 0 then pure ()
+                            else selectTmuxWindow s widx >> fireTermActivity ()
+            tabButton area k selectedD orderStyleD Nothing (Just "Detach") (dynText labelD) onSel
+          pure (mconcat . M.elems <$> winButtonsE)
+        _ ->
+          let mbTitle    = case k of EditorKey f -> Just (T.pack f); _ -> Nothing
+              mbCloseTip = case k of EditorKey _ -> Just "Close"; _ -> Nothing
+              orderStyleD = buttonOrderStyleD (Right k) baseOrderD
+          in tabButton area k isVisibleD orderStyleD mbTitle mbCloseTip
+               (dynText (tabLabelText k <$> terminalTabLabelsD)) (pure ())
 
     -- File ▸ Save / the Save toolbar button: a background thread turns native-
     -- menu save requests into a reflex event; the in-page toolbar/menubar Save
@@ -712,10 +1135,128 @@ main showMenubar macTitlebar ide = mdo
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextOpenedFile >>= fireOpenedFile
     let nativeOpenE = (\fp -> EditorKey fp =: ("wide0", Just ())) <$> nativeOpenedFileE
-    flipE <- flipperWidget
-      recentTabs
-      allE
-      label
+    -- The tmux pane tree, re-read whenever the active pane might have changed, so
+    -- the flipper's per-pane list + MRU stay current (tmux-internal switches like
+    -- ⌃B o / clicking a split aren't otherwise visible to leksah).
+    treePb <- getPostBuild
+    -- Flip commands from the keymap: a step (True = forward/⌃`, False = back/⌃⇧`)
+    -- and the commit (Control released).
+    let rawFlipStepE = fmapMaybe (\e -> case e ^? _KeymapCommand of
+                                      Just CommandFlipDown -> Just True
+                                      Just CommandFlipUp   -> Just False
+                                      _                    -> Nothing) keymapE
+        rawFlipDoneE = fmapMaybe (\e -> case e ^? _KeymapCommand of
+                                      Just CommandFlipDone -> Just ()
+                                      _                    -> Nothing) keymapE
+    -- Opening the flipper must reflect the *current* active tmux pane, which can
+    -- have changed invisibly (⌃B o, clicking a split).  So the first press (while
+    -- the flipper is hidden) polls the pane tree, and only once that result is in
+    -- — the list reordered while still hidden — do we actually open, one frame
+    -- later (changing the list on the same frame the flipper opens crashes its
+    -- selectViewListWithKey).  Presses while it's already up just advance.
+    let taggedStepE  = attach (current flipperVisibleD) rawFlipStepE
+        advanceStepE = fmapMaybe (\(vis, dir) -> if vis     then Just dir else Nothing) taggedStepE
+        openStepE    = fmapMaybe (\(vis, dir) -> if vis     then Nothing else Just dir) taggedStepE
+    -- On the *first* press (flipper hidden) poll the tree, and if the current MRU
+    -- front is a terminal pane refresh it to that terminal's active pane — this is
+    -- what floats a ⌃B / click pane switch to the top.  We deliberately only touch
+    -- the front terminal, never some other (wide0) pane, so an item you flipped or
+    -- clicked to in the side/bottom bar stays on top instead of being shoved down.
+    openPollE <- performEvent $ ffor (attach (current flipMruD) openStepE) $ \(mru, dir) -> do
+        tree <- liftIO listTerminalTree
+        let refreshed = case mru of
+              (FlipPane n _ _ : _) -> activeFlipFor (Just (TerminalKey n)) tree
+              _                    -> Nothing
+        pure (dir, tree, refreshed)
+    -- Only open once the poll is in and the list has reordered (one frame later —
+    -- opening on the same frame the list changes crashes selectViewListWithKey).
+    openStepDelayedE <- performEvent $ ffor openPollE $ \(dir, _, _) -> pure dir
+    let flipStepE = leftmost [ advanceStepE, openStepDelayedE ]
+    -- Other reasons to re-read the tree (labels, MRU while hidden): post-build,
+    -- terminal activity (click / ⌃B poll), open/close/select, session save.
+    let treeRefreshE = leftmost
+          [ () <$ treePb, termActivityE
+          , () <$ closeTermE, () <$ selectAnyTermE, () <$ saveSessE ]
+    otherPollE <- performEvent (liftIO listTerminalTree <$ treeRefreshE)
+    -- A freshly-created terminal, polled once it exists: carries the new tree and
+    -- the new session's active-pane flip item, so the pane both appears in the
+    -- list and is floated to the MRU front (creating a terminal makes it current,
+    -- but no mouse-down set activePaneD to it).  Fired from newTermIdE below; a
+    -- trigger event (defined here, fired later) avoids a forward performEvent ref.
+    (newTermPolledE, fireNewTermPolled) <- newTriggerEvent
+    paneTreeD <- holdUniqDyn =<< holdDyn mempty
+      (leftmost [ otherPollE, (\(_, t, _) -> t) <$> openPollE, fst <$> newTermPolledE ])
+    -- The item the user is currently focused on: the last tab pressed
+    -- (activePaneD, in any area — side bar, bottom bar, editor) resolved to its
+    -- active tmux pane if it's a terminal.  Its changes drive the MRU so a click
+    -- promotes that pane/tab; the terminal-pane part also catches ⌃B while focused.
+    activeFlipD <- holdUniqDyn (activeFlipFor <$> activePaneD <*> paneTreeD)
+    -- Focusing a tab by any route moves it to the flipper MRU front.  activeFlipD
+    -- (above) catches mouse-down / tab-button clicks, but not the *programmatic*
+    -- focus an editor takes when it's opened by a workspace double-click or a
+    -- terminal link — that arrives as a focusin (focusTabE).  Map the focused
+    -- key back to a FlipItem (a terminal → its active pane) so those navigations
+    -- float to the top too.
+    let focusFlipE = fmapMaybe id $ attachWith
+          (\(rt, tree) str ->
+             case [ k | (_, k) <- rt, T.pack (show k) == str ] of
+               (k:_) -> activeFlipFor (Just k) tree
+               []    -> Nothing)
+          ((,) <$> current recentTabs <*> current paneTreeD) focusTabE
+        -- Opening a file to navigate to it (workspace double-click, terminal link)
+        -- floats that editor to the MRU front directly, whether or not focus moves.
+        openEditorFlipE = fmapMaybe (fmap FlipTab . listToMaybe . M.keys) openFileE'
+    -- The MRU: move an item to the front when it is focused/clicked (activeFlipD /
+    -- focusFlipE), opened to navigate to (openEditorFlipE), when the flipper commits
+    -- a selection (flipSelE), and when opening refreshes the front terminal's
+    -- active pane after a ⌃B switch.
+    flipMruD <- holdUniqDyn =<< foldDyn (\fi mru -> fi : filter (/= fi) mru) []
+                        (leftmost [ fmapMaybe (\(_, _, a) -> a) openPollE
+                                  , snd <$> flipSelE
+                                  , snd <$> newTermPolledE
+                                  , focusFlipE
+                                  , openEditorFlipE
+                                  , fmapMaybe id (updated activeFlipD) ])
+    -- The flip list, kept populated and updated ONLY while the flipper is hidden
+    -- (frozen during a flip) and only on genuine changes (holdUniqDyn).  This
+    -- mirrors the old tab MRU, which never changed the list under the flipper —
+    -- changing it on the open event, or churning it every tmux poll, crashes the
+    -- flipper's selectViewListWithKey ("Same key fired multiple times for Merge").
+    flipLiveD <- holdUniqDyn (buildFlipItems <$> flipMruD <*> recentTabs <*> paneTreeD)
+    -- The list the flipper shows.  It updates freely while hidden (labels, tabs),
+    -- but the authoritative refresh is a *snapshot taken on open* (openListE):
+    -- built from the current MRU with the freshly-polled active pane floated to
+    -- the front, using the fresh tree.  Relying on @updated flipLiveD@ alone left
+    -- it stale — after a flip, holdUniqDyn suppresses the (already-front) re-bump,
+    -- so the flipper reopened with the pre-flip order and flipped to the wrong
+    -- pane.  The snapshot fires one frame before the flipper actually opens.
+    let openListE = attachWith
+          (\(mru, rt) (_, tree, active) ->
+             let mru' = maybe mru (\a -> a : filter (/= a) mru) active
+             in buildFlipItems mru' rt tree)
+          ((,) <$> current flipMruD <*> current recentTabs) openPollE
+    flipItemsD <- holdDyn [] (leftmost
+          [ openListE
+          , gate (current (not <$> flipperVisibleD)) (updated flipLiveD) ])
+    let flipLabel fiD = dynText $
+          (\fi names tree -> case fi of
+             FlipTab k      -> tabLabelText k names
+             FlipPane n w p -> flipPaneLabel n w p tree)
+            <$> fiD <*> terminalNamesD <*> paneTreeD
+    (flipperVisibleD, flipRawE) <- flipperWidget flipItemsD flipStepE rawFlipDoneE flipLabel
+    -- Split the flipper selection: a tab selects as before; a pane brings its
+    -- terminal up in wide0 (below) and makes that tmux pane active.
+    let flipSelE  = fmapMaybe (listToMaybe . M.toList) flipRawE
+        flipTabE  = fmapMaybe (\(a, fi) -> case fi of FlipTab k -> Just (M.singleton a k); _ -> Nothing) flipSelE
+        flipPaneE = fmapMaybe (\(_, fi) -> case fi of FlipPane s w p -> Just (s, w, p); _ -> Nothing) flipSelE
+    performEvent_ $ ffor flipPaneE $ \(s, w, p) -> liftIO (selectTmuxPane s w p)
+    -- Jump-to-teammate (⌃⌥A): pick the next attention-flagged window from the
+    -- current pane tree, switch tmux to it (clears the flag), and bring its
+    -- session's terminal up in wide0 (via openTabsE / selectTabE below).
+    let focusAlertE = fmapMaybe (\e -> case e ^? _KeymapCommand of
+                                        Just CommandFocusAlert -> Just (); _ -> Nothing) keymapE
+        alertTargetE = fmapMaybe firstAlertWindow (tag (current paneTreeD) focusAlertE)
+    performEvent_ $ ffor alertTargetE $ \(s, w) -> liftIO (selectTmuxWindow s w)
     let openFileE' = mapKeys EditorKey <$> openFileE
     openFileKeysD <- foldDyn ($) mempty $ leftmost
       [ (\new s -> s <> new) . S.fromList . M.keys <$> openFileE'
@@ -737,12 +1278,6 @@ main showMenubar macTitlebar ide = mdo
     -- reports its window title up through `tabE`; we fold those into the
     -- id->title map the list pane and tab buttons label themselves from.
     let terminalsListE = select (fan (select (fanMap tabE) (Const2 TerminalsKey))) TerminalsTab
-        terminalTitleE = fmapMaybe
-          (\m -> case [ (n, t) | (TerminalKey n, dm) <- M.toList m
-                               , Just (Identity (TerminalTitle t)) <- [DM.lookup TerminalTab dm] ] of
-                   [] -> Nothing
-                   ps -> Just (M.fromList ps))
-          tabE
         newTermClickE = fmapMaybe (^? _NewTerminal) terminalsListE
         selectTermE   = fmapMaybe (^? _SelectTerminal) terminalsListE
         -- The Terminals pane confirms before this fires, so just act on it:
@@ -776,7 +1311,7 @@ main showMenubar macTitlebar ide = mdo
              Nothing -> Nothing
              Just s ->
                let files = [ (EditorKey f, ("wide0", Just ())) | EditorKey f <- wsTabs s ]
-                   terms = [ (TerminalKey n, ("wide0", Just ())) | TerminalKey n <- wsTabs s, n `elem` ids ]
+                   terms = [ (TerminalKey n, ("wide0", Just ())) | TerminalKey n <- wsTabs s, n `elem` map fst ids ]
                    m = M.fromList (files ++ terms)
                in if M.null m then Nothing else Just m)
           restoreE
@@ -811,21 +1346,30 @@ main showMenubar macTitlebar ide = mdo
     -- Apply the saved MRU order just after the restored tabs have opened (so the
     -- reorder sees them all), giving the flipper the same order as last run.
     setRecentE <- delay 0.05 restoreRecentE
-    -- Last-used id: max of the restored sessions, then +1 per "New Terminal".
-    idCounterD <- foldDyn ($) (0 :: Int) $ leftmost
-      [ const . foldr max 0 <$> existingIdsE
-      , (\() n -> n + 1) <$> newTermClickE ]
-    let newTermIdE = attachWith (\n () -> n + 1) (current idCounterD) newTermClickE
-    -- Open terminals: seed with the restored sessions, append new ones, drop
-    -- closed ones.
-    openTermIdsD <- foldDyn ($) [] $ leftmost
-      [ const <$> existingIdsE
-      , (\n xs -> xs <> [n]) <$> newTermIdE
-      , (\n xs -> filter (/= n) xs) <$> closeTermE ]
-    terminalTitlesD <- foldDyn M.union mempty terminalTitleE
-    terminalListD <- holdUniqDyn $
-      (\ids titles -> [ (n, M.findWithDefault (defaultTermTitle n) n titles) | n <- ids ])
-        <$> openTermIdsD <*> terminalTitlesD
+    -- "New Terminal": name the session @leksah-<k>@ (k past the highest existing
+    -- leksah-N), create it up front, and key the new tab by the session id tmux
+    -- assigns.  Falls back to the name as the key if tmux is unavailable.
+    nameCounterD <- foldDyn ($) (0 :: Int) $ leftmost
+      [ const . maxLeksahNum <$> existingIdsE
+      , (\() k -> k + 1) <$> newTermClickE ]
+    let newNameE = attachWith (\k () -> "leksah-" <> T.pack (show (k + 1))) (current nameCounterD) newTermClickE
+    newTermIdE <- performEvent $ ffor newNameE $ \nm ->
+      liftIO $ fromMaybe nm <$> createTerminalSession nm
+    -- Once the new session exists, poll the tree and float its active pane to the
+    -- MRU front (see newTermPolledE above) so Ctrl-` lists it on top.
+    performEvent_ $ ffor newTermIdE $ \sid -> liftIO $ do
+      tree <- listTerminalTree
+      fireNewTermPolled
+        (tree, maybe (FlipTab (TerminalKey sid))
+                     (\(w, p) -> FlipPane sid w p) (activePaneOfSession sid tree))
+    -- Session id -> current name, from the flipper's pane-tree poll; labels
+    -- terminal tabs (a rename shows up on the next poll).
+    let terminalNamesD = fmap fst <$> paneTreeD
+        -- Same, but with the session's alert badge appended (🔔/●/○), so the
+        -- editor-area tab heading surfaces attention just like the Terminals-tree
+        -- row does.  Only the tab labels use this; the raw names feed everything
+        -- else (flipper pane labels, MRU).
+        terminalTabLabelsD = M.map (\(nm, ws) -> nm <> sessionAlert ws) <$> paneTreeD
     -- The terminal currently shown in the editor area (for highlighting in the
     -- Terminals list).
     activeTermD <- holdUniqDyn $ (\vis -> case M.lookup "wide0" vis of
@@ -833,6 +1377,89 @@ main showMenubar macTitlebar ide = mdo
                                             _                    -> Nothing) <$> visibleTabsD
     -- Publish the active terminal so the Tmux menu can send C-b sequences to it.
     performEvent_ $ liftIO . setActiveTerminal <$> updated activeTermD
+    -- Tmux pane transparency (macOS): the menu drops a toggle token; drain it to
+    -- a reflex event, then toggle the active terminal's active tmux pane in/out
+    -- of the holed set.  A timer re-queries each holed pane's tmux cell geometry
+    -- and hands it to window.leksahSetHoles, which clips it out of the window as a
+    -- see-through, click-through hole (see transparencyJs + leksah-mac-menu.m).
+    (toggleTransE, fireToggleTrans) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextToggleTransparency >> fireToggleTrans ()
+    -- Snapping another app's window onto a pane (macOS): the pane is also made
+    -- transparent (so the window shows through); the native side captures the
+    -- window and tracks it to the pane (see leksah-mac-menu.m).  Two sources: the
+    -- menu (toggle the active pane, click-to-pick) and `leksah-cmd open-browser`
+    -- (snap a specific pane by pane_id, bind the frontmost window).
+    (snapReqE, fireSnapReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextSnapRequest >>= fireSnapReq
+    let snapActiveE  = fmapMaybe (\case SnapActive -> Just (); _ -> Nothing) snapReqE
+        snapPaneCmdE = fmapMaybe (\case SnapPane p -> Just p;  _ -> Nothing) snapReqE
+        unsnapKeyE   = fmapMaybe (\case SnapUnsnap k -> parsePaneKey k; _ -> Nothing) snapReqE
+        -- Accessibility-granted flag (published by the native side): the snap only
+        -- makes a pane transparent when granted.
+        readTrusted = liftJSM $ valToBool =<< jsg ("window" :: Text) ^. js ("__leksahAxTrusted" :: Text)
+    let activePaneOf e = performEvent $ ffor (tag (current activeTermD) e) $ \case
+            Just tid -> liftIO $ fmap (\pid -> (tid, pid)) <$> activePaneId tid
+            Nothing  -> return Nothing
+    toggleHoleE <- activePaneOf toggleTransE
+    -- Menu snap → active terminal's active pane, with the trusted flag.
+    menuSnapE <- fmap (fmapMaybe id) . performEvent $ ffor (tag (current activeTermD) snapActiveE) $ \case
+        Just tid -> do
+            trusted <- readTrusted
+            mpid <- liftIO $ activePaneId tid
+            return $ fmap (\pid -> (trusted, (tid, pid))) mpid
+        Nothing  -> return Nothing
+    -- Command snap → resolve which terminal the pane_id belongs to, with trusted.
+    cmdSnapE <- fmap (fmapMaybe id) . performEvent $ ffor snapPaneCmdE $ \paneId -> do
+        trusted <- readTrusted
+        msession <- liftIO $ sessionOfPane paneId
+        return $ fmap (\n -> (trusted, (n, paneId))) msession
+    holedTermsD <- foldDyn (\k m -> if M.member k m then M.delete k m else M.insert k () m)
+        (mempty :: M.Map (Text, Text) ()) (fmapMaybe id toggleHoleE)
+    -- The set of snapped panes (one bound window each).  Menu snap toggles a pane;
+    -- command snap adds one; the native Unsnap menu removes one.  Adds only take
+    -- effect (make the pane transparent) when Accessibility is granted.
+    snappedPanesD <- foldDyn ($) (mempty :: M.Map (Text, Text) ()) $ leftmost
+        [ ffor menuSnapE  $ \(trusted, k) m -> if M.member k m then M.delete k m
+                                               else if trusted then M.insert k () m else m
+        , ffor cmdSnapE   $ \(trusted, k) m -> if trusted then M.insert k () m else m
+        , ffor unsnapKeyE $ \k m -> M.delete k m ]
+    -- Arm the native window-pick: menu → click-to-pick (only when newly snapping),
+    -- command → frontmost.  Each carries the pane key the bound window belongs to.
+    -- We arm even when not trusted, which just triggers the Accessibility prompt.
+    performEvent_ $ ffor (fmapMaybe id (attachWith (\m (_, k) -> if M.member k m then Nothing else Just (paneKey k)) (current snappedPanesD) menuSnapE)) $ \key ->
+        liftJSM . void $ jsg ("window" :: Text) ^. js2 ("leksahArmSnap" :: Text) ("click" :: Text) key
+    performEvent_ $ ffor cmdSnapE $ \(_, k) ->
+        liftJSM . void $ jsg ("window" :: Text) ^. js2 ("leksahArmSnap" :: Text) ("frontmost" :: Text) (paneKey k)
+    -- Publish the full snapped set (regardless of visibility) so the native side
+    -- keeps a window bound while its terminal is hidden, unbinding only on unsnap.
+    performEvent_ $ ffor (updated snappedPanesD) $ \m ->
+        liftJSM . void $ jsg ("window" :: Text) ^. js1 ("leksahSetSnapKeys" :: Text)
+            ("[" <> T.intercalate "," [ "\"" <> paneKey k <> "\"" | k <- M.keys m ] <> "]")
+    holeTick <- tickLossyFromPostBuildTime 0.5
+    -- Refresh the holes on the tick, when the holed/snapped sets change, and when
+    -- the flipper overlay shows/hides (so transparency clears while it's up).
+    let refreshHolesE = leftmost [() <$ holeTick, () <$ updated holedTermsD
+                                 , () <$ updated snappedPanesD, () <$ updated flipperVisibleD
+                                 , () <$ updated activeTermD]
+    holeGeomE <- performEvent $ ffor (tag ((,,) <$> current holedTermsD <*> current snappedPanesD <*> current activeTermD) refreshHolesE) $ \(holed, snapped, mVis) ->
+        -- Only cut holes for panes of the *visible* terminal; a hidden terminal's
+        -- panes are still laid out (over the visible tab) and would otherwise punch
+        -- through it.  Snapped windows of hidden terminals keep their binding (see
+        -- leksahSetSnapKeys below) but stay hidden until their terminal is visible.
+        liftIO . fmap catMaybes . forM (filter (\(tid, _) -> Just tid == mVis) (nub (M.keys holed ++ M.keys snapped))) $ \(tid, pid) ->
+            fmap (\(l, t, w, h) -> (tid, pid, l, t, w, h, M.member (tid, pid) snapped)) <$> paneGeometry tid pid
+    -- While the flipper overlay is visible, clear the transparent holes so the
+    -- overlay isn't punched see-through where a pane is transparent.
+    performEvent_ $ ffor (attach (current flipperVisibleD) holeGeomE) $ \(flipVis, holes) ->
+      if flipVis
+        then liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahClearHoles" :: Text)
+        else let holeJson = "[" <> T.intercalate ","
+                   [ "{\"term\":" <> T.pack (show tid)
+                     <> ",\"left\":" <> T.pack (show l) <> ",\"top\":" <> T.pack (show t)
+                     <> ",\"w\":" <> T.pack (show w) <> ",\"h\":" <> T.pack (show h)
+                     <> (if isSnap then ",\"snap\":true,\"key\":\"" <> paneKey (tid, pid) <> "\"" else "") <> "}"
+                   | (tid, pid, l, t, w, h, isSnap) <- holes ] <> "]"
+             in liftJSM . void $ jsg ("window" :: Text) ^. js1 ("leksahSetHoles" :: Text) holeJson
     -- The source file currently shown in the editor area, highlighted in the
     -- workspace and metadata trees (the "reveal the focused file" cue).
     activeFileD <- holdUniqDyn $ (\vis -> case M.lookup "wide0" vis of
@@ -932,10 +1559,18 @@ main showMenubar macTitlebar ide = mdo
           , nativeOpenE
           , restoreOpenE
           , openInWide0 <$> newTermIdE
-          , openInWide0 <$> selectAnyTermE ]
+          , openInWide0 <$> selectAnyTermE
+          , (\(s, _, _) -> openInWide0 s) <$> flipPaneE
+          , (\(s, _)    -> openInWide0 s) <$> alertTargetE
+          , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE ]
         closeTabsE = leftmost [ (\n -> [TerminalKey n]) <$> closeTermE, detachCloseE ]
-        -- Running a grep brings the Grep pane to the front of its area.
-        selectTabE = leftmost [flipE, restoreVisibleE, ("wide1" =: GrepKey) <$ grepReqE]
+        -- Running a grep brings the Grep pane to the front of its area; Preferences…
+        -- opens and shows the Preferences pane in the editor area.  The flipper
+        -- selects a tab directly, or brings up a pane's terminal in wide0.
+        selectTabE = leftmost [flipTabE, restoreVisibleE, ("wide1" =: GrepKey) <$ grepReqE
+                              , (\(s, _, _) -> "wide0" =: TerminalKey s) <$> flipPaneE
+                              , (\(s, _)    -> "wide0" =: TerminalKey s) <$> alertTargetE
+                              , ("wide0" =: PreferencesKey) <$ showPrefsE]
     (recentTabs, tabE, visibleTabsD, activePaneD, tabCloseBtnE) <- tabsWidget
       initialTabs
       initialVisibleTabs
@@ -943,34 +1578,99 @@ main showMenubar macTitlebar ide = mdo
       closeTabsE
       selectTabE
       setRecentE
-      (\case EditorKey f -> Just (T.pack f); _ -> Nothing)  -- tab tooltip: full path
-      (\case EditorKey _ -> Just "Close"; TerminalKey _ -> Just "Detach"; _ -> Nothing)  -- close × tooltip
-      (\k _ -> label $ constDyn k)
+      focusTabE
+      mkTabButtons
       (\k selectedE v -> do
         let toDM x = fmap (DM.singleton x . Identity)
         case k of
           WorkspaceKey   -> toDM WorkspaceTab <$> workspaceWidget ide treeHighlightD treeRevealD
-          ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ide allE (paneFind ErrorsKey)
-          LogKey         -> toDM LogTab <$> logWidget ide (paneFind LogKey)
+          ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ide allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
+          LogKey         -> toDM LogTab <$> logWidget ide (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
-          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD terminalListD
+          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD
           TerminalKey n  -> toDM TerminalTab <$> terminalWidget ide n selectedE
           MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
+          PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
           EditorKey file -> toDM EditorTab <$> makeEditor file selectedE v)
     -- Edit ▸ Find (toolbar button / menu item) toggles the find bar; showing it
     -- focuses its text input.  It starts hidden.  The native macOS menu routes
     -- here via a background thread draining the find-toggle bridge.
     (findBridgeE, fireFindReq) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextFindRequest >> fireFindReq ()
-    let findCmdE = leftmost
+    -- Toolbar/menu Find toggles the bar; Cmd+F (keymap) always shows + focuses it.
+    let findToggleE = leftmost
           [ fmapMaybe (\case CommandFind -> Just (); _ -> Nothing) panelCmdE
           , findBridgeE ]
-    findbarVisibleD <- foldDyn (const not) False findCmdE
-    performEvent_ $ ffor (fmapMaybe (\v -> if v then Just () else Nothing) (updated findbarVisibleD)) $ \_ ->
+        findShowE = fmapMaybe (\e -> case e ^? _KeymapCommand of
+                                       Just CommandFind -> Just (); _ -> Nothing) keymapE
+    findbarVisibleD <- foldDyn ($) False $ leftmost [ not <$ findToggleE, const True <$ findShowE ]
+    -- Focus the find input whenever the bar newly shows, and on every Cmd+F.
+    performEvent_ $ ffor (leftmost
+        [ () <$ findShowE
+        , fmapMaybe (\v -> if v then Just () else Nothing) (updated findbarVisibleD) ]) $ \_ ->
       liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahFocusFind" :: Text)
     findbarE   <- findbarWidget activePaneD findbarVisibleD
     statusbarE <- statusbarWidget ide
+
+    -- The virtualized list panes (Errors/Log) can't be driven by DOM roving (off-
+    -- screen rows aren't in the DOM), so the keyboard handler (listNavJs) calls
+    -- back into reflex through these registered window callbacks, which move the
+    -- pane's selection index / activate the selected row.
+    (listMoveE, fireListMove)         <- newTriggerEvent
+    (listActivateE, fireListActivate) <- newTriggerEvent
+    -- focusin on any tab body reports its show-key here (see focusTabJs), moving
+    -- that tab to the front of the MRU/flipper order.
+    (focusTabE, fireFocusTab)         <- newTriggerEvent
+    -- A mouse-down or ⌃B inside a terminal may have changed the active tmux pane
+    -- (see leksahTermActivityJs); this asks the pane tree to be re-read.
+    (termActivityE, fireTermActivity) <- newTriggerEvent
+    listNavPb <- getPostBuild
+    performEvent_ $ ffor listNavPb $ \_ -> liftJSM $ do
+        w <- jsg ("window" :: Text)
+        _ <- w ^. jss ("leksahListMove" :: Text) (fun $ \_ _ args -> case args of
+                (paneV:dirV:_) -> do
+                    pane <- valToText paneV
+                    dir  <- valToText dirV
+                    liftIO $ fireListMove (pane, dir == ("down" :: Text))
+                _ -> return ())
+        _ <- w ^. jss ("leksahListActivate" :: Text) (fun $ \_ _ args -> case args of
+                (paneV:_) -> valToText paneV >>= liftIO . fireListActivate
+                _ -> return ())
+        _ <- w ^. jss ("leksahFocusTab" :: Text) (fun $ \_ _ args -> case args of
+                (kV:_) -> valToText kV >>= liftIO . fireFocusTab
+                _ -> return ())
+        _ <- w ^. jss ("leksahTermActivity" :: Text) (fun $ \_ _ _ -> liftIO (fireTermActivity ()))
+        return ()
+    let paneMoveE p   = fmapMaybe (\(pane, dir) -> if pane == p then Just dir else Nothing) listMoveE
+        paneActivateE p = fmapMaybe (\pane -> if pane == p then Just () else Nothing) listActivateE
+
+    -- Activating a side ("tall") or bottom ("wide1") pane gives its list keyboard
+    -- focus.  We don't change the bar's visibility pref: an auto-hidden bar is
+    -- kept open purely by focus (the autohide CSS reveals on :focus-within, just
+    -- like :hover — see Layout.hs), so it collapses again on its own once focus
+    -- leaves.  Keyed off activePaneD (mouse-down) and the flipper (flipE) — the
+    -- flipper is the only way to reach an auto-hidden pane (its tab buttons are
+    -- collapsed out of view), so it must be a focus trigger here too.
+    let sideBottomOf = \case
+            WorkspaceKey -> Just ("tall"  :: Text, ".workspace" :: Text)
+            MetadataKey  -> Just ("tall",  ".metadata")
+            TerminalsKey -> Just ("tall",  ".terminals")
+            ErrorsKey    -> Just ("wide1", ".errors")
+            LogKey       -> Just ("wide1", ".log")
+            GrepKey      -> Just ("wide1", ".grep")
+            ChangesKey   -> Just ("wide1", ".changes")
+            _            -> Nothing
+        -- A side/bottom pane becomes active either by mouse-down in its body
+        -- (activePaneD) or by the flipper selecting its tab (flipE).  The flipper
+        -- is the *only* way to reach a hidden pane (its tab buttons are display:none
+        -- while the bar is collapsed), so it must be a trigger here too — keying
+        -- off activePaneD alone (mouse-down only) left flipped-to panes hidden.
+        activatedPaneE = fmapMaybe sideBottomOf $ leftmost
+            [ fmapMaybe id (updated activePaneD)
+            , fmapMaybe (listToMaybe . M.elems) flipTabE ]
+    performEvent_ $ ffor activatedPaneE $ \(_, sel) ->
+        liftJSM . void $ jsg ("window" :: Text) ^. js1 ("leksahFocusPane" :: Text) sel
 
     -- Persist the session (open files, open terminals, visible tabs) whenever it
     -- changes, but only once the saved session has been restored, so the initial
@@ -979,9 +1679,12 @@ main showMenubar macTitlebar ide = mdo
     restoredFlagD <- holdDyn False (True <$ restoreE)
     tallD <- holdUniqDyn $ view (prefs . to tallVisibility) <$> ide
     wide1D <- holdUniqDyn $ view (prefs . to wide1Visibility) <$> ide
+    -- The Preferences pane is transient — never save/restore it as an open tab.
+    let notPrefs = (/= PreferencesKey)
     sessionD <- holdUniqDyn $
       (\rt vis tall recF wide1 ->
-          WebSession 2 (map snd rt) (M.toList vis) (Just tall) (Just recF) (Just wide1))
+          WebSession 2 (map snd (filter (notPrefs . snd) rt))
+                       (M.toList (M.filter notPrefs vis)) (Just tall) (Just recF) (Just wide1))
         <$> recentTabs <*> visibleTabsD <*> tallD <*> recentFilesD <*> wide1D
     saveSessE <- debounce (1 :: NominalDiffTime) (gate (current restoredFlagD) (updated sessionD))
     performEvent_ $ ffor saveSessE $ liftIO . writeWebSession
@@ -1004,6 +1707,7 @@ main showMenubar macTitlebar ide = mdo
             , KeymapWidget    :=> keymapE
             ])
         workspaceE = select (fan (select (fanMap tabE) (Const2 WorkspaceKey))) WorkspaceTab
+        prefsPaneE = select (fan (select (fanMap tabE) (Const2 PreferencesKey))) PreferencesTab
         editorE' = switchDyn $ leftmost . map (select (fanMap tabE) . Const2) . toList <$> openFileKeysD
         editorE = select (fan editorE') EditorTab
 
@@ -1018,4 +1722,5 @@ main showMenubar macTitlebar ide = mdo
         void . liftIO $ tryPutMVar tb ())) <$> editorE)
       <> ((\v -> [modifyIDE_ (prefs %~ \p -> p { tallVisibility = v })]) <$> restoreTallE)
       <> ((\v -> [modifyIDE_ (prefs %~ \p -> p { wide1Visibility = v })]) <$> restoreWide1E)
+      <> ((\(PrefsUpdate f) -> [modifyIDE_ (prefs %~ f)]) <$> prefsPaneE)
   return topEvents

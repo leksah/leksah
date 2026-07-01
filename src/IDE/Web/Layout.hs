@@ -57,7 +57,10 @@ layoutCss = do
     ".leksah.tall-auto" ? do
         "grid-template-columns" -: "3px calc(100vw - 3px)"
         "transition" -: "grid-template-columns 0.15s ease"
-    ".leksah.tall-auto:has(.area-tall:hover)" ?
+    -- Stay open while hovered *or* while a pane in the area has keyboard focus
+    -- (:focus-within): activating/flipping to a side pane focuses its list, which
+    -- holds the bar open; it collapses again on its own once focus leaves.
+    ".leksah.tall-auto:has(.area-tall:hover, .area-tall:focus-within)" ?
         ("grid-template-columns" -: "300px calc(100vw - 3px)")
     -- Keep the side pane's body laid out at its full width while collapsed, so
     -- its contents (e.g. the "New Terminal" button) don't reflow as the column
@@ -104,7 +107,7 @@ layoutCss = do
         Clay.display none
     ".leksah.wide1-auto" ?
         ("--wide1-row" -: "0")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover)" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within)" ?
         ("--wide1-row" -: "150px")
     ".statusbar" ? do
         "grid-area" -: "statusbar"
@@ -114,4 +117,11 @@ layoutCss = do
         "grid-area" -: "wide0"
     ".area-wide1" ? do
         "grid-area" -: "wide1"
+    -- Keyboard list navigation: the row the arrows have moved to (a
+    -- .leksah-nav-item in a focused .leksah-nav pane), highlighted like a
+    -- selected/active row.  And don't draw a focus ring around a whole focused
+    -- list pane.
+    ".leksah-nav-item.leksah-nav-current" ? ("background" -: "rgb(30,88,209)")
+    ".leksah-nav:focus" ? ("outline" -: "none")
+    ".leksah-vlist:focus" ? ("outline" -: "none")
 

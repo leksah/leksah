@@ -85,7 +85,7 @@ treeSelect' treeName m f = mdo
         .~ ("class" =: "tree-select"
          <> "type"  =: "radio"
          <> "name"  =: treeName)
-    elClass' "div" "tree-item" f
+    elClass' "div" "tree-item leksah-nav-item" f
   (showContextMenuE, contextMenuE) <- contextMenu e m
   return (e, leftmost [contextMenuE, a])
 

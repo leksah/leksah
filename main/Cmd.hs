@@ -7,7 +7,7 @@
 --
 -- Usage:
 --   leksah-cmd restart                 exit(2) so the wrapper rebuilds + relaunches
---   leksah-cmd rebuild-self            rebuild in place; restart only if it succeeds
+--   leksah-cmd rebuild-self [--no-restart]  rebuild in place; restart on success (unless --no-restart)
 --   leksah-cmd cm open FILE...         open files in the editor (CodeMirror)
 --   leksah-cmd project open FILE...    add project files to the workspace
 --   leksah-cmd js eval CODE            evaluate JS in the running leksah
@@ -29,7 +29,7 @@ import qualified Data.Text.IO as T
 import Data.Text.Encoding (encodeUtf8)
 
 import System.Directory (getCurrentDirectory, getHomeDirectory, doesFileExist)
-import System.Environment (getArgs)
+import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr, stdout)
@@ -49,9 +49,10 @@ usage = T.unlines
   , ""
   , "Usage:"
   , "  leksah-cmd restart                 exit(2) so the wrapper rebuilds + relaunches"
-  , "  leksah-cmd rebuild-self            rebuild in place; restart only if it succeeds"
+  , "  leksah-cmd rebuild-self [--no-restart]  rebuild in place; restart on success unless --no-restart"
   , "  leksah-cmd cm open FILE...         open files in the editor (CodeMirror)"
   , "  leksah-cmd project open FILE...    add project files to the workspace"
+  , "  leksah-cmd open-browser URL        open the default browser snapped to this pane"
   , "  leksah-cmd js eval CODE            evaluate JS in the running leksah"
   , "  leksah-cmd help                    show this help"
   ]
@@ -62,6 +63,11 @@ main = getArgs >>= \case
   ("help":_)    -> T.putStr usage
   ("--help":_)  -> T.putStr usage
   ("-h":_)      -> T.putStr usage
+  -- open-browser also needs the tmux pane it was run in ($TMUX_PANE); pass it
+  -- along so leksah can snap the browser to that pane.
+  ("open-browser":rest) -> do
+    pane <- maybe "" id <$> lookupEnv "TMUX_PANE"
+    send ("open-browser" : pane : rest)
   args          -> send args
 
 send :: [String] -> IO ()

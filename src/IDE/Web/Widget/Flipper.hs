@@ -5,11 +5,9 @@ module IDE.Web.Widget.Flipper
   , flipperWidget
   ) where
 
-import Control.Lens ((^?), (^..))
+import Control.Lens ((^..))
 
 import Data.Bool (bool)
-import Data.Dependent.Map (DMap)
-import Data.Functor.Identity (Identity(..))
 import Data.Map (Map)
 import qualified Data.Map as M (singleton, fromList)
 import Data.Maybe (listToMaybe)
@@ -26,14 +24,11 @@ import qualified Clay (display)
 
 import Reflex
        (foldDyn, selectViewListWithKey, leftmost, holdUniqDyn,
-        tag, Dynamic, Event, MonadHold(..), Reflex(..),
-        select, fmapMaybe, fan)
+        tag, gate, Dynamic, Event, MonadHold(..), Reflex(..),
+        ffilter, fmapMaybe)
 import Reflex.Dom.Core
        (el, elDynAttr', (=:), elDynAttr, divClass,
         MonadWidget, HasDomEvent(..), EventName(..), FunctorMaybe(..))
-
-import IDE.Web.Command (_CommandFlipDown, _CommandFlipUp, _CommandFlipDone)
-import IDE.Web.Events (IDEWidget(..), _KeymapCommand)
 
 flipperCss :: Css
 flipperCss = do
@@ -73,15 +68,13 @@ flipperCss = do
 flipperWidget
   :: (MonadWidget t m, Ord k, Show k)
   => Dynamic t [(Text, k)]
-  -> Event t (DMap IDEWidget Identity)
+  -> Event t Bool   -- ^ flip step: True = forward (⌃`), False = back (⌃⇧`); opens if hidden
+  -> Event t ()     -- ^ commit (Control released)
   -> (Dynamic t k -> m ())
-  -> m (Event t (Map Text k))
-flipperWidget recentTabs allEvents label = do
-  let keyEvents = select (fan allEvents) KeymapWidget
-      commandE x = fmapMaybe (^? _KeymapCommand . x) keyEvents
-      flipdown = commandE _CommandFlipDown
-      flipup   = commandE _CommandFlipUp
-      flipdone = commandE _CommandFlipDone
+  -> m (Dynamic t Bool, Event t (Map Text k))   -- ^ (overlay visible?, tab selection)
+flipperWidget recentTabs flipStep flipdone label = do
+  let flipdown = () <$ ffilter id  flipStep
+      flipup   = () <$ ffilter not flipStep
 
   numberOfTabsD <- holdUniqDyn $ length <$> recentTabs
   visibleD <- holdUniqDyn =<< holdDyn False (leftmost [ True <$ flipdown, True <$ flipup, False <$ flipdone ])
@@ -98,4 +91,9 @@ flipperWidget recentTabs allEvents label = do
           selectViewListWithKey selectionIndexD (M.fromList . zip [0..] <$> recentTabs) $ \_ x s -> do
             (e, _) <- el "div" $ elDynAttr' "button" (bool mempty ("class" =: "selected") <$> s) $ label (snd <$> x)
             return $ (uncurry M.singleton) <$> tag (current x) (domEvent Click e)
-  return $ leftmost [ clickE, uncurry M.singleton <$> fmapMaybe id (tag (current selectionD) flipdone) ]
+  -- flipdone fires on *every* Control release, even a bare Ctrl tap with no flip.
+  -- Only commit a selection when the flipper was actually up (visibleD, set by
+  -- flipdown/flipup) — otherwise a lone Ctrl would re-select the most-recent tab,
+  -- which now focuses that pane and pops its auto-hide bar open.
+  return ( visibleD
+         , leftmost [ clickE, uncurry M.singleton <$> fmapMaybe id (tag (current selectionD) (gate (current visibleD) flipdone)) ] )

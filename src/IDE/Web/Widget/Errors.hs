@@ -33,9 +33,9 @@ import Reflex
        (attachWithMaybe, select,
         attachWith, mergeMap, switchDyn, zipDynWith, updated, leftmost,
         delay, holdUniqDyn, Dynamic, holdDyn, never, fmapMaybe, tag,
-        current, getPostBuild, performEvent, fan, foldDyn)
+        current, getPostBuild, performEvent, fan, foldDyn, ffilter)
 import Reflex.Dom.Core
-       (elDynClass', divClass, virtualList, elAttr',
+       (elDynClass', virtualList, elAttr, elAttr',
         resizeDetectorWithAttrs, dynText, elDynAttr, text, MonadWidget,
         (=:), Event, domEvent, EventName(..), _element_raw)
 
@@ -66,12 +66,15 @@ errorsWidget
   => Dynamic t IDE
   -> Event t (DMap IDEWidget Identity)
   -> Event t FindbarEvents
+  -> Event t Bool          -- ^ keyboard list move: 'True' = down, 'False' = up
+  -> Event t ()            -- ^ keyboard activate (Enter) of the selected row
   -> m (Event t ErrorsEvents)
-errorsWidget ide allEvents findE = do
+errorsWidget ide allEvents findE moveE activateE = do
   let keyEvents = select (fan allEvents) KeymapWidget
       commandE x = fmapMaybe (^? _KeymapCommand . x) keyEvents
-      nextError = commandE _CommandNextError
-      prevError = commandE _CommandPreviousError
+      -- Next-error command and arrow-down move the selection the same way.
+      nextError = leftmost [() <$ commandE _CommandNextError, () <$ ffilter id moveE]
+      prevError = leftmost [() <$ commandE _CommandPreviousError, () <$ ffilter not moveE]
   allRefs <- holdUniqDyn (view allLogRefs <$> ide)
   numberOfRefsD <- holdUniqDyn $ length <$> allRefs
   -- Find selects an error: matching index drives the selection (and scroll).
@@ -81,9 +84,11 @@ errorsWidget ide allEvents findE = do
     , (\n x -> let x' = pred x in if x' < 0  then n - 1 else x') <$> tag (current numberOfRefsD) prevError
     , const <$> fmapMaybe id (updated findSelD)
     ])
-  let selE = attachWithMaybe (!?) (current allRefs) $ updated selectionIndexD
-  goE <- delay 0 $ ErrorsGoto <$> selE
-  divClass "errors" $ mdo
+  -- Selection change navigates; Enter re-navigates to the current selection.
+  let selChangeE = attachWithMaybe (!?) (current allRefs) $ updated selectionIndexD
+      activateSelE = attachWithMaybe (!?) (current allRefs) (tag (current selectionIndexD) activateE)
+  goE <- delay 0 $ ErrorsGoto <$> leftmost [selChangeE, activateSelE]
+  elAttr "div" ("class" =: "errors leksah-vlist" <> "data-pane" =: "errors" <> "tabindex" =: "-1") $ mdo
     (resizeE, result) <- resizeDetectorWithAttrs ("class" =: "errors-child") $ mdo
       let p = uncheckedCastTo HTMLElement $ _element_raw parent
       postPostBuild <- delay 0 =<< getPostBuild

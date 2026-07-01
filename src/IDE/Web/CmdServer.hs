@@ -12,10 +12,12 @@
 --   * @restart@ — exit with code 2, exactly like rebuilding the leksah package
 --     in the IDE does, so @leksah-nix.sh@'s loop rebuilds and relaunches.  This
 --     replaces the older @dev-relaunch.sh@ request-file mechanism.
---   * @rebuild-self@ — rebuild leksah in place (the app stays up so the build
---     doesn't run while the window is gone), streaming the build output back to
---     the client; only on success exit(2) for a quick relaunch into the new
---     binary.  Long-running, which the one-shot streamed reply handles fine: the
+--   * @rebuild-self [--no-restart]@ — rebuild leksah in place (the app stays up
+--     so the build doesn't run while the window is gone), streaming the build
+--     output back to the client; on success exit(2) for a quick relaunch into the
+--     new binary, unless @--no-restart@ is given (then the build just lands on
+--     disk and the app keeps running — restart later with @leksah-cmd restart@).
+--     Long-running, which the one-shot streamed reply handles fine: the
 --     client half-closes after sending, then prints whatever the server streams
 --     until it closes.
 --   * @cm open FILE…@ — open each file in the editor (CodeMirror) area, reusing
@@ -52,7 +54,7 @@ import System.IO (hSetBinaryMode)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (exitImmediately)
 import System.Process
-       (createProcess, shell, waitForProcess, CreateProcess(std_out, std_in),
+       (createProcess, proc, shell, waitForProcess, CreateProcess(std_out, std_in),
         StdStream(CreatePipe, NoStream))
 
 import Network.Socket
@@ -65,6 +67,7 @@ import Language.Javascript.JSaddle (eval, valToText)
 import IDE.Core.State (IDERef, reflectIDE, ideJSM)
 import IDE.Core.Types (filePathToProjectKey)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
+import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Workspaces (projectOpenThis, workspaceTryQuiet)
 
 -- | @~/.leksah/cmd.sock@ — the control socket both sides agree on.
@@ -128,7 +131,19 @@ handleConn ideR conn = do
         let code = T.intercalate " " codeParts
         evalJs code >>= reply
 
-      ("rebuild-self" : _) -> rebuildSelf
+      -- open-browser <pane_id> <url>: launch the default browser and (if run in a
+      -- leksah tmux pane) snap its window over that pane.  The pane id comes from
+      -- $TMUX_PANE, captured by leksah-cmd.
+      ("open-browser" : pane : url : _) | not (T.null url) -> do
+        _ <- (try (void $ createProcess (proc "open" [T.unpack url]))
+                :: IO (Either SomeException ()))
+        if T.null pane
+          then reply $ "Opened " <> url <> " (not run in a leksah pane; not snapped).\n"
+          else do
+            requestSnapPane pane
+            reply $ "Opened " <> url <> ", snapping the browser to pane " <> pane <> ".\n"
+
+      ("rebuild-self" : args) -> rebuildSelf ("--no-restart" `elem` args)
 
       ("help" : _) -> reply usage
       []            -> reply usage
@@ -150,9 +165,13 @@ handleConn ideR conn = do
 
     -- Rebuild leksah in place (the app keeps running, so the slow build doesn't
     -- happen while the window is gone), streaming the build output back to the
-    -- client.  Only on success do we exit(2) so the wrapper relaunches the
-    -- freshly-built binary — a quick restart, since the build is already done.
-    rebuildSelf = do
+    -- client.  On success, exit(2) so the wrapper relaunches the freshly-built
+    -- binary (a quick restart, since the build is already done) — unless
+    -- @--no-restart@ was passed, in which case the build lands on disk and the app
+    -- keeps running, so you can rebuild repeatedly and only @leksah-cmd restart@
+    -- when ready.  (Restarting on every rebuild is how duplicate instances pile
+    -- up if a stray relaunch loop is around.)
+    rebuildSelf noRestart = do
       home <- getHomeDirectory
       let script = home </> ".leksah" </> "rebuild.sh"
       configured <- doesFileExist script
@@ -166,10 +185,15 @@ handleConn ideR conn = do
                   \build succeeds)…\n\n"
             outcome <- try (streamBuild conn script) :: IO (Either SomeException Bool)
             case outcome of
-              Right True -> do
-                reply "\nBuild succeeded — restarting into the new build.\n"
-                threadDelay 150000  -- let the reply flush before we exit
-                exitImmediately (ExitFailure 2)
+              Right True
+                | noRestart -> do
+                    putMVar buildLock ()
+                    reply "\nBuild succeeded — app left running (--no-restart). \
+                          \Run `leksah-cmd restart` to relaunch into it.\n"
+                | otherwise -> do
+                    reply "\nBuild succeeded — restarting into the new build.\n"
+                    threadDelay 150000  -- let the reply flush before we exit
+                    exitImmediately (ExitFailure 2)
               Right False -> do
                 putMVar buildLock ()
                 reply "\nBuild FAILED — leksah left running. Fix the errors and \
@@ -182,9 +206,10 @@ usage :: Text
 usage = T.unlines
   [ "leksah-cmd commands:"
   , "  restart                 exit (code 2) so the wrapper rebuilds + relaunches"
-  , "  rebuild-self            rebuild in place; restart only if the build succeeds"
+  , "  rebuild-self [--no-restart]  rebuild in place; restart on success unless --no-restart"
   , "  cm open FILE...         open files in the editor"
   , "  project open FILE...    add project files to the workspace"
+  , "  open-browser URL        open the default browser snapped to this pane"
   , "  js eval CODE            evaluate JS in the running leksah"
   ]
 
@@ -203,10 +228,22 @@ streamBuild conn script = do
     createProcess (shell ("sh '" <> script <> "' 2>&1"))
       { std_out = CreatePipe, std_in = NoStream }
   hSetBinaryMode hout True
-  let pump = do
+  -- Read the build's output to EOF no matter what, so the build never blocks on a
+  -- full/closed pipe and is always reaped — even if the client (leksah-cmd)
+  -- disconnects mid-build (piped to `head`, Ctrl-C'd, …).  Once a send fails we
+  -- stop sending but keep draining.  Abandoning the read here used to orphan the
+  -- build: it kept running (holding cabal's builddir lock) while rebuildSelf
+  -- released the build-lock MVar, so a later rebuild-self ran a *second*
+  -- concurrent build on the same builddir.
+  let drain sending = do
         chunk <- BS.hGetSome hout 4096
-        if BS.null chunk then return () else sendAll conn chunk >> pump
-  pump
+        if BS.null chunk
+          then return ()
+          else if not sending
+            then drain False
+            else (sendAll conn chunk >> drain True)
+                   `catch` \(_ :: SomeException) -> drain False
+  drain True
   (== ExitSuccess) <$> waitForProcess ph
 
 -- | Read until the peer closes its write side (EOF).

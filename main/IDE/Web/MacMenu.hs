@@ -17,7 +17,7 @@ import Control.Monad (void)
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
 import Data.List (intercalate)
-import qualified Data.Text as T (unpack)
+import qualified Data.Text as T (unpack, pack)
 
 import Foreign.C.String (CString, withCString, peekCString)
 import Foreign.C.Types (CInt(..))
@@ -33,6 +33,7 @@ import IDE.Web.MenuModel (menus, MenuItem(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
+import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 
@@ -69,6 +70,13 @@ leksah_open_project cstr = do
     Just pk -> getGlobalIDERef >>= \case
       Just ideR -> void $ reflectIDE (workspaceTry (projectOpenThis pk)) ideR
       Nothing   -> return ()
+
+-- | Called from Objective-C when an Underlay ▸ Unsnap item is chosen; signals the
+-- reflex layer (via the snap bridge) to drop that pane's window binding.
+foreign export ccall "leksah_unsnap" leksah_unsnap :: CString -> IO ()
+
+leksah_unsnap :: CString -> IO ()
+leksah_unsnap cstr = peekCString cstr >>= requestUnsnapPane . T.pack
 
 -- Commands flattened in menu order; a menu item's tag indexes into this.
 {-# NOINLINE commandsRef #-}

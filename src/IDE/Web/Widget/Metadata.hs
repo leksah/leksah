@@ -37,7 +37,7 @@ import Reflex
         fmapMaybe, ffilter, updated, leftmost, getPostBuild, tag, current,
         Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, el, elDynAttr', dynText, text,
+       (MonadWidget, divClass, el, elClass, elDynAttr', dynText, text,
         dyn, domEvent, EventName(..), (=:))
 
 import IDE.Core.CTypes
@@ -136,7 +136,7 @@ metadataWidget
                                   --   Nothing when its module is already shown
   -> Event t FindbarEvents
   -> m (Event t MetadataEvents)
-metadataWidget ide activeFileD revealMetaD findE = divClass "metadata" $ do
+metadataWidget ide activeFileD revealMetaD findE = divClass "metadata leksah-nav" $ do
   -- Each module's unique key is (group, package id, module name); find selects
   -- by that, so it highlights exactly one module even when several share a
   -- source file.  Reveal still uses the source path (to expand/scroll), and is
@@ -176,7 +176,7 @@ metadataWidget ide activeFileD revealMetaD findE = divClass "metadata" $ do
       let underD = (\pd mf -> maybe False (\f -> any ((== Just f) . mdMbSourcePath) (pdModules pd)) mf)
                      <$> pkgD <*> revealMetaD'
       treeItem' underD "metadata-package" False
-        (do dynText (packageIdentifierToString . pdPackage <$> pkgD); return never) $
+        (do elClass "span" "leksah-nav-item" $ dynText (packageIdentifierToString . pdPackage <$> pkgD); return never) $
         el "ul" $ do
           modulesD <- holdUniqDyn $ M.fromList . zip [0 :: Int ..] . sortOn moduleLabel . pdModules <$> pkgD
           fmapMaybe (listToMaybe . M.elems) <$>
@@ -190,9 +190,9 @@ metadataWidget ide activeFileD revealMetaD findE = divClass "metadata" $ do
             -- or the unique find selection.  data-reveal-key lets the "already
             -- visible?" check find this module by its source path.
             let attrsD = (\md mf fk ->
-                           "class" =: (if maybe False ((== mf) . Just) (mdMbSourcePath md)
+                           "class" =: ("leksah-nav-item" <> if maybe False ((== mf) . Just) (mdMbSourcePath md)
                                           || Just (grp, pid, moduleLabel md) == fk
-                                         then "metadata-active" else "")
+                                         then " metadata-active" else "")
                            <> maybe mempty (("data-reveal-key" =:) . T.pack) (mdMbSourcePath md))
                          <$> modD <*> activeFileD <*> findSelKeyD
                 revealMeD = (\md mf -> maybe False ((== mf) . Just) (mdMbSourcePath md))
@@ -208,7 +208,7 @@ metadataWidget ide activeFileD revealMetaD findE = divClass "metadata" $ do
 
     descrNode :: Dynamic t Descr -> m (Event t MetadataEvents)
     descrNode dD = do
-      let attrsD = ffor dD $ \d -> "class" =: "metadata-descr"
+      let attrsD = ffor dD $ \d -> "class" =: "metadata-descr leksah-nav-item"
             <> maybe mempty (("title" =:) . decodeUtf8With lenientDecode) (dscMbTypeStr d)
       (e, _) <- elDynAttr' "li" attrsD $ dynText (descrLabel <$> dD)
       return $ fmapMaybe id $ tag (current (descrGoto <$> dD)) (domEvent Click e)

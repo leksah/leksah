@@ -9,6 +9,7 @@
 // Menu objects live for the lifetime of the app (no explicit release).
 
 #import <Cocoa/Cocoa.h>
+#import <ApplicationServices/ApplicationServices.h>   // accessibility (AXUIElement) for window snapping
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <signal.h>
@@ -19,6 +20,7 @@
 extern void leksah_menu_action(int tag);
 extern void leksah_open_file(const char *path);
 extern void leksah_open_project(const char *path);
+extern void leksah_unsnap(const char *key);   // Tmux ▸ Underlay ▸ Unsnap <window>
 
 // The title bar is transparent and the WKWebView fills the whole window, so the
 // web toolbar sits in the title-bar strip.  The WKWebView swallows mouse events,
@@ -38,6 +40,7 @@ static NSWindow *gLeksahWindow = nil;
 @end
 
 static void leksah_measure_toolbar(void);
+static void leksah_read_holes(void);
 
 @implementation LeksahMenuTarget
 - (void)leksahAction:(id)sender {
@@ -46,11 +49,17 @@ static void leksah_measure_toolbar(void);
 - (void)leksahRemeasure:(NSTimer *)timer {
     (void)timer;
     leksah_measure_toolbar();
+    leksah_read_holes();
 }
 @end
 
 static LeksahMenuTarget *gTarget = nil;
 static NSMenu *gMainMenu = nil;
+// The Underlay ▸ Unsnap submenu (cached during menu build, populated dynamically
+// from the snapped windows).  Declared here so leksah_menu_push_submenu can set
+// and seed it; defined/used by the snap code further down.
+static NSMenu *gUnsnapMenu = nil;
+static void leksah_rebuild_unsnap_menu(void);
 // A stack of open menus: gMenuStack[gMenuDepth-1] is the menu items are added to.
 // add_menu resets it to a single top-level menu; push/pop_submenu nest within it.
 #define LEKSAH_MENU_MAX_DEPTH 16
@@ -101,6 +110,25 @@ void leksah_menu_add_menu(const char *title) {
     // Start a fresh top-level menu as the (only) open menu.
     gMenuStack[0] = sub;
     gMenuDepth = 1;
+    // The Edit menu gets the standard AppKit editing items.  Their actions
+    // (cut:/copy:/paste:/selectAll:) have no target, so the key equivalents
+    // (⌘X/⌘C/⌘V/⌘A) travel the responder chain to the focused WKWebView — which
+    // is what lets ⌘V paste into the xterm.js terminals (and text fields).
+    // Without an item bound to paste:, AppKit never delivers ⌘V at all.  These
+    // use system selectors rather than leksah commands, so they don't consume a
+    // menu tag; the model's own Edit items (Find) are appended after.
+    if ([t isEqualToString:@"Edit"]) {
+        [sub addItemWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"];
+        NSMenuItem *redo = [sub addItemWithTitle:@"Redo" action:@selector(redo:)
+                                   keyEquivalent:@"z"];
+        [redo setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagShift];
+        [sub addItem:[NSMenuItem separatorItem]];
+        [sub addItemWithTitle:@"Cut"        action:@selector(cut:)       keyEquivalent:@"x"];
+        [sub addItemWithTitle:@"Copy"       action:@selector(copy:)      keyEquivalent:@"c"];
+        [sub addItemWithTitle:@"Paste"      action:@selector(paste:)     keyEquivalent:@"v"];
+        [sub addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+        [sub addItem:[NSMenuItem separatorItem]];
+    }
 }
 
 void leksah_menu_add_item(const char *title, int tag) {
@@ -154,6 +182,9 @@ void leksah_menu_push_submenu(const char *title) {
     [item setSubmenu:sub];
     [gMenuStack[gMenuDepth - 1] addItem:item];
     gMenuStack[gMenuDepth++] = sub;
+    // The Underlay ▸ Unsnap submenu is populated dynamically from the snapped
+    // windows; cache it and seed it with the current (empty) list.
+    if ([t isEqualToString:@"Unsnap"]) { gUnsnapMenu = sub; leksah_rebuild_unsnap_menu(); }
 }
 
 // Finish the current submenu and return to its parent.
@@ -297,6 +328,429 @@ static void leksah_install_titlebar_drag(void) {
         }];
 }
 
+// ---------------------------------------------------------------------------
+// Transparent tmux panes: punch see-through, click-through holes in the window.
+//
+// The web side (window.leksahSetHoles) clips the page where a transparent tmux
+// pane is and publishes the hole rectangles (viewport top-left CSS px) as
+// window.__leksahHoles.  Here we (1) make the window/web view non-opaque while
+// any hole exists, so the clipped-away region shows whatever is behind, and
+// (2) toggle the window's ignoresMouseEvents based on whether the cursor is over
+// a hole, so clicks/scrolls reach the app behind it.  ignoresMouseEvents is
+// window-wide, so a click-through window stops getting its own events -- hence a
+// global event monitor (which fires for events headed to other apps) in addition
+// to the local one.
+// ---------------------------------------------------------------------------
+
+// Hole rects (x, y(top), w, h in CSS px), owned as a malloc'd C array so their
+// lifetime doesn't depend on ObjC memory management (this file is manual-retain,
+// not ARC — an autoreleased NSArray here would dangle and crash the monitor).
+static NSRect *gHoles = NULL;
+static NSUInteger gHoleCount = 0;
+static BOOL gTransparentEnabled = NO;
+
+static void leksah_apply_transparency(BOOL on) {
+    if (gLeksahWindow == nil || on == gTransparentEnabled) return;
+    gTransparentEnabled = on;
+    id web = leksah_find_webview([gLeksahWindow contentView]);
+    // Guard the WKWebView KVC: not every WKWebView exposes a settable
+    // "drawsBackground" key, and an NSUnknownKeyException here would crash the
+    // app.  Catch it so transparency degrades gracefully instead.
+    @try {
+        if (on) {
+            [gLeksahWindow setOpaque:NO];
+            [gLeksahWindow setBackgroundColor:[NSColor clearColor]];
+            [gLeksahWindow setAcceptsMouseMovedEvents:YES];
+            if (web != nil) [web setValue:@NO forKey:@"drawsBackground"];
+        } else {
+            [gLeksahWindow setOpaque:YES];
+            [gLeksahWindow setBackgroundColor:[NSColor windowBackgroundColor]];
+            [gLeksahWindow setIgnoresMouseEvents:NO];
+            if (web != nil) [web setValue:@YES forKey:@"drawsBackground"];
+        }
+    } @catch (NSException *ex) {
+        (void)ex;
+    }
+}
+
+// Pass clicks through (or not) depending on whether the cursor is over a hole.
+static void leksah_update_clickthrough(void) {
+    if (gLeksahWindow == nil || gHoleCount == 0 || gHoles == NULL) return;
+    NSView *content = [gLeksahWindow contentView];
+    if (content == nil) return;
+    NSPoint scr = [NSEvent mouseLocation];                                  // screen, bottom-left
+    NSPoint pWin = [gLeksahWindow convertRectFromScreen:NSMakeRect(scr.x, scr.y, 0, 0)].origin;
+    CGFloat yFromTop = NSHeight([content bounds]) - pWin.y;                  // -> top-left, like the page
+    BOOL inHole = NO;
+    for (NSUInteger i = 0; i < gHoleCount; i++) {
+        NSRect r = gHoles[i];
+        if (pWin.x >= r.origin.x && pWin.x <= r.origin.x + r.size.width &&
+            yFromTop >= r.origin.y && yFromTop <= r.origin.y + r.size.height) { inHole = YES; break; }
+    }
+    [gLeksahWindow setIgnoresMouseEvents:inHole];
+}
+
+static void leksah_install_clickthrough_monitors(void) {
+    static BOOL installed = NO;
+    if (installed) return;
+    installed = YES;
+    NSEventMask mask = NSEventMaskMouseMoved | NSEventMaskLeftMouseDragged;
+    [NSEvent addLocalMonitorForEventsMatchingMask:mask
+        handler:^NSEvent *(NSEvent *e) { leksah_update_clickthrough(); return e; }];
+    [NSEvent addGlobalMonitorForEventsMatchingMask:mask
+        handler:^(NSEvent *e) { (void)e; leksah_update_clickthrough(); }];
+}
+
+// ---------------------------------------------------------------------------
+// Snap another app's window over a (transparent) pane, via the accessibility
+// (AXUIElement) API.  Needs the Accessibility permission; we prompt for it and
+// otherwise no-op gracefully.  The web side publishes window.__leksahSnap =
+// { rect: <pane viewport rect | null>, armed: <capture next window click> }.
+// ---------------------------------------------------------------------------
+
+// Multiple snapped windows, one per pane.  Each entry binds a foreign window
+// (owned, +1) to a pane key ("tid:pid").
+#define LEKSAH_MAX_SNAP 32
+static struct { NSString *key; AXUIElementRef win; } gSnaps[LEKSAH_MAX_SNAP];
+static int gSnapCount = 0;
+static NSString *gPendingSnapKey = nil;      // pane the next picked/frontmost window binds to
+static BOOL gSnapPicking = NO;
+static id gSnapClickMonitor = nil;
+static int gFrontmostTries = 0;              // ticks spent waiting for the browser
+
+// Target for the dynamic Unsnap menu items: each carries its pane key.
+@interface LeksahUnsnapTarget : NSObject
+- (void)unsnap:(id)sender;
+@end
+@implementation LeksahUnsnapTarget
+- (void)unsnap:(id)sender {
+    NSString *key = [(NSMenuItem *)sender representedObject];
+    if (key != nil) leksah_unsnap([key UTF8String]);
+}
+@end
+static LeksahUnsnapTarget *gUnsnapTarget = nil;
+
+static int leksah_snap_index(NSString *key) {
+    for (int i = 0; i < gSnapCount; i++)
+        if ([gSnaps[i].key isEqualToString:key]) return i;
+    return -1;
+}
+
+// Bind (own) window `win` to pane `key`, replacing any window already bound there.
+static void leksah_snap_set(NSString *key, AXUIElementRef win) {
+    if (key == nil) { if (win) CFRelease(win); return; }
+    int i = leksah_snap_index(key);
+    if (i >= 0) { if (gSnaps[i].win) CFRelease(gSnaps[i].win); gSnaps[i].win = win; }
+    else if (gSnapCount < LEKSAH_MAX_SNAP) {
+        gSnaps[gSnapCount].key = [key retain]; gSnaps[gSnapCount].win = win; gSnapCount++;
+    } else if (win) { CFRelease(win); }
+    leksah_rebuild_unsnap_menu();
+}
+
+static void leksah_snap_remove_at(int i) {
+    if (i < 0 || i >= gSnapCount) return;
+    [gSnaps[i].key release];
+    if (gSnaps[i].win) CFRelease(gSnaps[i].win);
+    for (int j = i + 1; j < gSnapCount; j++) gSnaps[j-1] = gSnaps[j];
+    gSnapCount--;
+}
+
+// Fire-and-forget JS eval (no completion handler).
+static void leksah_eval_js(id web, NSString *js) {
+    if (web == nil) return;
+    SEL sel = @selector(evaluateJavaScript:completionHandler:);
+    ((void (*)(id, SEL, id, id))objc_msgSend)(web, sel, js, (id)nil);
+}
+
+// A viewport rect (content-view-relative, top-left, CSS px) -> global AX screen
+// coords (primary-screen top-left origin, y down).
+static CGRect leksah_viewport_to_ax(NSRect vp) {
+    NSView *content = [gLeksahWindow contentView];
+    CGFloat ch = NSHeight([content bounds]);
+    NSRect winRect = NSMakeRect(vp.origin.x, ch - (vp.origin.y + vp.size.height),
+                                vp.size.width, vp.size.height);   // window, bottom-left
+    NSRect scr = [gLeksahWindow convertRectToScreen:winRect];     // Cocoa screen, bottom-left
+    CGFloat primaryH = NSHeight([[[NSScreen screens] firstObject] frame]);
+    return CGRectMake(scr.origin.x, primaryH - (scr.origin.y + scr.size.height),
+                      scr.size.width, scr.size.height);
+}
+
+// Move/resize a bound window to an AX rect.
+static void leksah_snap_window_to(AXUIElementRef win, CGRect r) {
+    if (win == NULL) return;
+    CGPoint pos = r.origin; CGSize size = r.size;
+    AXValueRef posV  = AXValueCreate(kAXValueCGPointType, &pos);
+    AXValueRef sizeV = AXValueCreate(kAXValueCGSizeType,  &size);
+    if (posV)  { AXUIElementSetAttributeValue(win, kAXPositionAttribute, posV);  CFRelease(posV); }
+    if (sizeV) { AXUIElementSetAttributeValue(win, kAXSizeAttribute,     sizeV); CFRelease(sizeV); }
+}
+
+// Repopulate the Unsnap submenu from the currently-bound windows (by title).
+static void leksah_rebuild_unsnap_menu(void) {
+    if (gUnsnapMenu == nil) return;
+    if (gUnsnapTarget == nil) gUnsnapTarget = [[LeksahUnsnapTarget alloc] init];
+    [gUnsnapMenu removeAllItems];
+    for (int i = 0; i < gSnapCount; i++) {
+        CFStringRef title = NULL;
+        AXUIElementCopyAttributeValue(gSnaps[i].win, kAXTitleAttribute, (CFTypeRef *)&title);
+        NSString *label = (title != NULL && [(NSString *)title length] > 0)
+                            ? (NSString *)title : gSnaps[i].key;
+        NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:label
+                                                    action:@selector(unsnap:) keyEquivalent:@""];
+        [it setTarget:gUnsnapTarget];
+        [it setRepresentedObject:gSnaps[i].key];
+        [gUnsnapMenu addItem:it];
+        if (title != NULL) CFRelease(title);
+    }
+    if (gSnapCount == 0) {
+        NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:@"(none snapped)"
+                                                    action:NULL keyEquivalent:@""];
+        [it setEnabled:NO];
+        [gUnsnapMenu addItem:it];
+    }
+}
+
+// Prompt for Accessibility if needed, else arm a one-shot global monitor that
+// binds the window under the next click in another app.
+static void leksah_begin_snap_pick(void) {
+    if (gSnapPicking) return;
+    if (!AXIsProcessTrusted()) {
+        NSDictionary *opts = @{ (id)kAXTrustedCheckOptionPrompt : @YES };
+        AXIsProcessTrustedWithOptions((CFDictionaryRef)opts);   // shows the system prompt
+        return;   // not granted yet — bail gracefully; the user grants and re-invokes
+    }
+    gSnapPicking = YES;
+    id mon = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown
+        handler:^(NSEvent *e) {
+            (void)e;
+            NSPoint m = [NSEvent mouseLocation];
+            CGFloat primaryH = NSHeight([[[NSScreen screens] firstObject] frame]);
+            AXUIElementRef sys = AXUIElementCreateSystemWide();
+            AXUIElementRef elem = NULL;
+            if (sys != NULL &&
+                AXUIElementCopyElementAtPosition(sys, (float)m.x, (float)(primaryH - m.y), &elem) == kAXErrorSuccess
+                && elem != NULL) {
+                pid_t epid = 0;
+                AXUIElementGetPid(elem, &epid);
+                if (epid != getpid()) {                 // ignore clicks on leksah itself
+                    AXUIElementRef win = NULL;
+                    if (AXUIElementCopyAttributeValue(elem, kAXWindowAttribute, (CFTypeRef *)&win) == kAXErrorSuccess && win != NULL) {
+                        leksah_snap_set(gPendingSnapKey, win);   // Copy returns +1, we own it
+                    }
+                    if (gSnapClickMonitor != nil) { [NSEvent removeMonitor:gSnapClickMonitor]; [gSnapClickMonitor release]; gSnapClickMonitor = nil; }
+                    gSnapPicking = NO;
+                }
+            }
+            if (elem != NULL) CFRelease(elem);
+            if (sys != NULL) CFRelease(sys);
+        }];
+    gSnapClickMonitor = [mon retain];
+}
+
+// Private AX SPI: the CoreGraphics window id behind an AX window element.  Lets
+// us tell which browser window is new (absent from the pre-`open` snapshot).
+extern AXError _AXUIElementGetWindow(AXUIElementRef element, CGWindowID *idOut);
+
+// Snapshot of on-screen window ids, taken when an open-browser snap is armed, so
+// the bind can prefer a window that appeared *after* `open <url>` ran — i.e. the
+// just-opened one — instead of guessing among pre-existing windows.
+static CGWindowID *gSnapWins = NULL;
+static int gSnapWinCount = 0;
+static int gSnapPhase = 0;   // 0 = no snapshot yet, 1 = snapshot taken, waiting
+
+static void leksah_free_window_snapshot(void) {
+    free(gSnapWins);
+    gSnapWins = NULL;
+    gSnapWinCount = 0;
+    gSnapPhase = 0;
+}
+
+static void leksah_take_window_snapshot(void) {
+    free(gSnapWins);
+    gSnapWins = NULL;
+    gSnapWinCount = 0;
+    CFArrayRef info = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID);
+    if (info == NULL) return;
+    CFIndex cnt = CFArrayGetCount(info);
+    gSnapWins = (CGWindowID *)malloc(sizeof(CGWindowID) * (cnt > 0 ? (size_t)cnt : 1));
+    if (gSnapWins != NULL) {
+        for (CFIndex i = 0; i < cnt; i++) {
+            CFDictionaryRef d = (CFDictionaryRef)CFArrayGetValueAtIndex(info, i);
+            CFNumberRef num = (CFNumberRef)CFDictionaryGetValue(d, kCGWindowNumber);
+            int wnum = 0;
+            if (num != NULL && CFNumberGetValue(num, kCFNumberIntType, &wnum) && wnum != 0)
+                gSnapWins[gSnapWinCount++] = (CGWindowID)wnum;
+        }
+    }
+    CFRelease(info);
+}
+
+static BOOL leksah_window_in_snapshot(CGWindowID wid) {
+    for (int i = 0; i < gSnapWinCount; i++)
+        if (gSnapWins[i] == wid) return YES;
+    return NO;
+}
+
+// Pick the window of app `pid` to snap onto the pane: prefer one that appeared
+// after the snapshot (the just-opened window); else the app's focused window;
+// else its main window.  The returned ref is owned (+1) by the caller.
+static AXUIElementRef leksah_pick_snap_window(pid_t pid) {
+    AXUIElementRef axApp = AXUIElementCreateApplication(pid);
+    if (axApp == NULL) return NULL;
+    AXUIElementRef chosen = NULL;
+    CFArrayRef wins = NULL;
+    if (AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute, (CFTypeRef *)&wins) == kAXErrorSuccess
+        && wins != NULL) {
+        CFIndex cnt = CFArrayGetCount(wins);
+        for (CFIndex i = 0; i < cnt && chosen == NULL; i++) {
+            AXUIElementRef w = (AXUIElementRef)CFArrayGetValueAtIndex(wins, i);
+            CGWindowID wid = 0;
+            if (_AXUIElementGetWindow(w, &wid) == kAXErrorSuccess && wid != 0
+                && !leksah_window_in_snapshot(wid))
+                chosen = (AXUIElementRef)CFRetain(w);   // a window that wasn't there before
+        }
+        CFRelease(wins);
+    }
+    // Fallbacks when nothing is new (e.g. the URL opened as a tab in an existing
+    // window): the focused (key) window, then the main window.
+    if (chosen == NULL) {
+        AXUIElementRef f = NULL;
+        if (AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute, (CFTypeRef *)&f) == kAXErrorSuccess)
+            chosen = f;
+    }
+    if (chosen == NULL) {
+        AXUIElementRef m = NULL;
+        if (AXUIElementCopyAttributeValue(axApp, kAXMainWindowAttribute, (CFTypeRef *)&m) == kAXErrorSuccess)
+            chosen = m;
+    }
+    CFRelease(axApp);
+    return chosen;
+}
+
+// Read window.__leksahHoles and refresh the cached rects + window transparency.
+// Called on the same timer that remeasures the toolbar.
+static void leksah_read_holes(void) {
+    if (gLeksahWindow == nil) return;
+    id web = leksah_find_webview([gLeksahWindow contentView]);
+    if (web == nil) return;
+    // The snap rect is recomputed *live* (leksahSnapRect) so the bound window
+    // tracks leksah's own move/resize, not just the 0.5s hole refresh.
+    NSString *js = @"JSON.stringify({holes: window.__leksahHoles||[], snap: {rects: (window.leksahSnapRects?window.leksahSnapRects():{}), keys: (window.__leksahSnapKeys||[]), armed: (window.__leksahSnap?window.__leksahSnap.armed:false), key: (window.__leksahSnap?window.__leksahSnap.key:null)}})";
+    void (^handler)(id, id) = ^(id result, id error) {
+        (void)error;
+        NSRect *rects = NULL;
+        NSUInteger n = 0;
+        id snap = nil;
+        if ([result isKindOfClass:[NSString class]]) {
+            NSData *d = [(NSString *)result dataUsingEncoding:NSUTF8StringEncoding];
+            id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
+            id arr = [obj isKindOfClass:[NSDictionary class]] ? [obj objectForKey:@"holes"] : nil;
+            snap   = [obj isKindOfClass:[NSDictionary class]] ? [obj objectForKey:@"snap"]  : nil;
+            if ([arr isKindOfClass:[NSArray class]]) {
+                NSUInteger cap = [(NSArray *)arr count];
+                if (cap > 0) rects = (NSRect *)malloc(cap * sizeof(NSRect));
+                for (id o in (NSArray *)arr) {
+                    if (rects == NULL || ![o isKindOfClass:[NSDictionary class]]) continue;
+                    rects[n++] = NSMakeRect([[o objectForKey:@"x"] doubleValue],
+                                            [[o objectForKey:@"y"] doubleValue],
+                                            [[o objectForKey:@"w"] doubleValue],
+                                            [[o objectForKey:@"h"] doubleValue]);
+                }
+            }
+        }
+        free(gHoles);
+        gHoles = rects;
+        gHoleCount = n;
+        leksah_apply_transparency(n > 0);
+        if (n == 0 && gLeksahWindow != nil)
+            [gLeksahWindow setIgnoresMouseEvents:NO];
+        else
+            leksah_update_clickthrough();
+
+        // Window snapping.  armed is the pick mode: "click" (menu) or "frontmost"
+        // (open-browser), or absent.
+        if ([snap isKindOfClass:[NSDictionary class]]) {
+            id rectsV = [snap objectForKey:@"rects"];
+            NSDictionary *rects = [rectsV isKindOfClass:[NSDictionary class]] ? (NSDictionary *)rectsV : nil;
+            id keyV = [snap objectForKey:@"key"];
+            NSString *pkey = [keyV isKindOfClass:[NSString class]] ? (NSString *)keyV : nil;
+            // Geometry for the pane being armed for is ready once its key appears
+            // in the published rects (a tick or two after arming).
+            BOOL haveRect = (pkey != nil && rects != nil
+                             && [[rects objectForKey:pkey] isKindOfClass:[NSDictionary class]]);
+            id armedV = [snap objectForKey:@"armed"];
+            NSString *armed = [armedV isKindOfClass:[NSString class]] ? (NSString *)armedV : nil;
+            if ([armed isEqualToString:@"click"]) {
+                [gPendingSnapKey release]; gPendingSnapKey = [pkey copy];   // pane this pick binds to
+                leksah_begin_snap_pick();   // checks permission / prompts; arms a click monitor
+                leksah_eval_js(web, @"if(window.__leksahSnap)window.__leksahSnap.armed=false;");  // one-shot
+            } else if ([armed isEqualToString:@"frontmost"]) {
+                if (!AXIsProcessTrusted()) {
+                    NSDictionary *opts = @{ (id)kAXTrustedCheckOptionPrompt : @YES };
+                    AXIsProcessTrustedWithOptions((CFDictionaryRef)opts);
+                    leksah_eval_js(web, @"if(window.__leksahSnap)window.__leksahSnap.armed=false;");
+                    gFrontmostTries = 0;
+                    leksah_free_window_snapshot();
+                } else {
+                    [gPendingSnapKey release]; gPendingSnapKey = [pkey copy];
+                    // First tick after arming: snapshot the on-screen windows, so
+                    // once the browser is up we can bind the window `open <url>`
+                    // added rather than guessing among its pre-existing windows.
+                    if (gSnapPhase == 0) { leksah_take_window_snapshot(); gSnapPhase = 1; gFrontmostTries = 0; }
+                    NSRunningApplication *fa = [[NSWorkspace sharedWorkspace] frontmostApplication];
+                    // Only bind once the pane's snap rect is published — binding
+                    // earlier would be undone instantly by the apply loop below.
+                    if (fa != nil && [fa processIdentifier] != getpid() && haveRect) {   // browser up + geometry ready
+                        AXUIElementRef w = leksah_pick_snap_window([fa processIdentifier]);
+                        if (w != NULL) {
+                            leksah_snap_set(gPendingSnapKey, w);
+                            leksah_eval_js(web, @"if(window.__leksahSnap)window.__leksahSnap.armed=false;");
+                            gFrontmostTries = 0;
+                            leksah_free_window_snapshot();
+                        } else if (++gFrontmostTries > 12) {
+                            leksah_eval_js(web, @"if(window.__leksahSnap)window.__leksahSnap.armed=false;");
+                            gFrontmostTries = 0;
+                            leksah_free_window_snapshot();
+                        }
+                    } else if (++gFrontmostTries > 12) {   // ~6s; browser never came up
+                        leksah_eval_js(web, @"if(window.__leksahSnap)window.__leksahSnap.armed=false;");
+                        gFrontmostTries = 0;
+                        leksah_free_window_snapshot();
+                    }
+                    // else: leksah still frontmost (browser not up yet) — retry next tick
+                }
+            }
+            // For each bound window: unbind it if its pane was unsnapped (its key
+            // left the full snapped set); else move it to its live rect if visible
+            // (in rects) — a snapped-but-hidden pane keeps its binding but isn't
+            // moved (it stays hidden behind the opaque window until re-shown).
+            id keysV = [snap objectForKey:@"keys"];
+            NSArray *keys = [keysV isKindOfClass:[NSArray class]] ? (NSArray *)keysV : nil;
+            BOOL changed = NO;
+            for (int i = gSnapCount - 1; i >= 0; i--) {
+                if (keys != nil && ![keys containsObject:gSnaps[i].key]) {
+                    leksah_snap_remove_at(i);
+                    changed = YES;
+                    continue;
+                }
+                id rr = rects ? [rects objectForKey:gSnaps[i].key] : nil;
+                if ([rr isKindOfClass:[NSDictionary class]])
+                    leksah_snap_window_to(gSnaps[i].win, leksah_viewport_to_ax(NSMakeRect(
+                        [[rr objectForKey:@"x"] doubleValue], [[rr objectForKey:@"y"] doubleValue],
+                        [[rr objectForKey:@"w"] doubleValue], [[rr objectForKey:@"h"] doubleValue])));
+            }
+            if (changed) leksah_rebuild_unsnap_menu();
+        }
+        // Keep the web side's view of the Accessibility grant fresh; the snap
+        // only makes a pane transparent when this is true.
+        leksah_eval_js(web, AXIsProcessTrusted() ? @"window.__leksahAxTrusted=true;" : @"window.__leksahAxTrusted=false;");
+    };
+    SEL sel = @selector(evaluateJavaScript:completionHandler:);
+    ((void (*)(id, SEL, id, id))objc_msgSend)(web, sel, js, handler);
+}
+
 static void leksah_configure_titlebar(void) {
     NSWindow *win = [[NSApp windows] firstObject];
     if (win == nil || [win contentView] == nil) {
@@ -319,6 +773,16 @@ static void leksah_configure_titlebar(void) {
     leksah_install_relaunch_signal();
     leksah_install_titlebar_drag();
     leksah_install_beep_suppression();
+    leksah_install_clickthrough_monitors();
+    // Re-apply the snap immediately when leksah itself moves or resizes (these
+    // fire continuously during a drag), so the bound window tracks it smoothly
+    // instead of only catching up on the 0.5s hole-refresh timer.
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidMoveNotification
+        object:win queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){ (void)note; leksah_read_holes(); }];
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidResizeNotification
+        object:win queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){ (void)note; leksah_read_holes(); }];
 }
 
 void leksah_titlebar_setup(void) {

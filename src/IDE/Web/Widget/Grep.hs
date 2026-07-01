@@ -67,7 +67,7 @@ grepWidget
   => Dynamic t [GrepResult]      -- ^ the current grep results
   -> Event t FindbarEvents       -- ^ find within the results (highlights matches)
   -> m (Event t GrepEvents)
-grepWidget resultsD findE = divClass "grep" $ do
+grepWidget resultsD findE = divClass "grep leksah-nav" $ do
   -- Find-within selects a result by index (reuse the shared list-find helper),
   -- highlighting the matching row.
   findSelD <- findSelection findE (zip [0 :: Int ..] . map grepLabel <$> resultsD)
@@ -75,7 +75,7 @@ grepWidget resultsD findE = divClass "grep" $ do
   clicksD <- simpleList withIdx $ \itemD -> do
     let resD = snd <$> itemD
         idxD = fst <$> itemD
-        clsD = (\i sel -> "class" =: ("grep-item" <> if Just i == sel then " selected" else ""))
+        clsD = (\i sel -> "class" =: ("grep-item leksah-nav-item" <> if Just i == sel then " selected" else ""))
                  <$> idxD <*> findSelD
     (e, _) <- elDynAttr' "div" clsD $ do
       elClass "span" "grep-loc" $

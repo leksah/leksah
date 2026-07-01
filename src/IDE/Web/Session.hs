@@ -37,8 +37,9 @@ import IDE.Web.Events (TabKey(..))
 
 -- | The current on-disk format version.  Bump when the shape changes so an old
 -- file is ignored rather than mis-read.
+-- v3: terminal tabs are keyed by tmux session id (Text) instead of an Int.
 webSessionVersion :: Int
-webSessionVersion = 2
+webSessionVersion = 3
 
 data WebSession = WebSession
   { wsVersion :: Int                -- ^ format version

@@ -91,7 +91,7 @@ changesWidget
   => Dynamic t IDE
   -> Event t FindbarEvents
   -> m (Event t ChangesEvents)
-changesWidget ide findE = divClass "changes" $ do
+changesWidget ide findE = divClass "changes leksah-nav" $ do
   -- The distinct project directories of the open workspace.
   dirsD <- holdUniqDyn $ nub . (^.. workspace . _Just . wsProjects . traverse . to (pjDir . pjKey)) <$> ide
   -- The workspace file's directory; paths are shown relative to it.
@@ -133,7 +133,7 @@ changeRow wsDirD findSelD path cD = do
   let st = changeStatus <$> cD
       isSelD = (== Just path) <$> findSelD
       -- Absolute path on the row as a tooltip, since the label is relative.
-      attrsD = (\c sel -> "class" =: ("change-item" <> if sel then " selected" else "")
+      attrsD = (\c sel -> "class" =: ("change-item leksah-nav-item" <> if sel then " selected" else "")
                         <> "title" =: T.pack (changePath c)) <$> cD <*> isSelD
   (e, _) <- elDynAttr' "li" attrsD $ do
     -- Badge and path both take the status colour (reusing the global .git-*

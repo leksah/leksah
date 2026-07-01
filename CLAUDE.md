@@ -2,20 +2,39 @@
 
 ## Build & run (primary dev loop)
 - Primary front end: **`leksah-wkwebview`** (native macOS WKWebView), GHC **9.14.1**.
-- Build:
+- **If leksah is already running, build with `leksah-cmd rebuild-self --no-restart`
+  — do NOT run a separate `nix develop … cabal build`.** rebuild-self builds in
+  leksah's own dev-shell env; a separate `nix develop` build uses a *different*
+  PATH, and alternating the two makes cabal treat it as "configuration changed"
+  and rebuild the world (see the incremental-build invariant below). Use
+  `--no-restart` to iterate without relaunching, then `leksah-cmd restart` when
+  ready. Only fall back to the direct build when **no** instance is running:
   `nix develop ".?submodules=1#ghc914" --command cabal build --builddir dist-ghc-9.14.1 exe:leksah-wkwebview`
-- Relaunch a running instance (preferred): **`leksah-cmd rebuild-self`** —
-  rebuilds **incrementally, in place, while the app stays up** (streaming build
-  output to the terminal), and only on success `exit(2)`s so `leksah-nix.sh`
-  relaunches the already-built binary (a quick restart, no waiting for a rebuild
-  with the window gone). On a build failure leksah is left running. The build
-  command is `~/.leksah/rebuild.sh`, written by `leksah-nix.sh` to match the
-  launch options (same `--builddir`/target); it calls `cabal build` directly in
-  leksah's own dev-shell env (no nested `nix develop`), so a no-op build is
-  ~instant (`Up to date`).
+- **`leksah-cmd rebuild-self [--no-restart]`** — rebuilds **incrementally, in
+  place, while the app stays up** (streaming build output to the terminal). On
+  success it `exit(2)`s so `leksah-nix.sh` relaunches the already-built binary (a
+  quick restart) — **unless `--no-restart`**, which leaves the running app up and
+  just lands the build on disk (relaunch later with `leksah-cmd restart`). Prefer
+  `--no-restart` while iterating: restarting on every build is how duplicate
+  instances pile up (see the single-instance rule below). On a build failure
+  leksah is left running. The build command is `~/.leksah/rebuild.sh`, written by
+  `leksah-nix.sh` to match the launch options (same `--builddir`/target); a no-op
+  build is ~instant (`Up to date`). Don't disconnect the client mid-build in a way
+  that closes the socket early (e.g. `… | head`); pipe to `tail` or redirect to a
+  file — an early close aborts the reply, though `streamBuild` now still drains +
+  reaps the build so it can't be orphaned.
 - `leksah-cmd restart` — the blunt version: `exit(2)` immediately, then
   `leksah-nix.sh` rebuilds + relaunches (window is gone during the rebuild). Both
   replace the older `./dev-relaunch.sh`.
+- **Run exactly ONE `leksah-nix.sh` loop / one instance.** Each loop relaunches
+  its own instance on `exit(2)`, and every instance's `startCmdServer` unlinks and
+  rebinds `~/.leksah/cmd.sock` — so with several instances the newest wins the
+  socket and the rest are orphaned (uncontrollable), and `leksah-cmd js eval` /
+  `rebuild-self` hit whichever one currently owns it. If things get confused, kill
+  all `leksah-wkwebview` + `leksah-nix.sh`, then start one. When counting with
+  `pgrep -f <pattern>`, **exclude the self-match** — your own `pgrep`/shell command
+  line contains the pattern and counts itself (match the running binary's exact
+  argv, or `grep -v` your shell).
 - Full driver: `./leksah-nix.sh GHCVER [gtk|warp|wkwebview|webkitgtk]`
   (GHCVER ∈ ghc96/ghc98/ghc910/ghc912/ghc914; oldest supported GHC is 9.6.7).
 - Build dir convention is `dist-ghc-<numeric-version>` — matches what leksah’s own
@@ -35,8 +54,9 @@
 - A running web-UI leksah listens on a Unix socket at `~/.leksah/cmd.sock`
   (server: `src/IDE/Web/CmdServer.hs`, started from `newIDE`). The `leksah-cmd`
   CLI (`main/Cmd.hs`, a tiny standalone exe — no leksah deps) drives it:
-  - `leksah-cmd rebuild-self` — incremental rebuild in place, then restart on
-    success (preferred dev relaunch; see above).
+  - `leksah-cmd rebuild-self [--no-restart]` — incremental rebuild in place; with
+    `--no-restart` the app stays up (build lands on disk), else it restarts on
+    success. Preferred way to build while an instance is running; see above.
   - `leksah-cmd restart` — blunt relaunch (exits 2 immediately; see above).
   - `leksah-cmd cm open FILE…` — open files in the editor (CodeMirror).
   - `leksah-cmd project open FILE…` — add project files to the workspace.
