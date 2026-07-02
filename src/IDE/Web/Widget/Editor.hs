@@ -24,7 +24,7 @@ import qualified Data.Map as M
        (lookup, fromListWith, toList)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T (pack, null)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import Data.Traversable (forM)
 
@@ -41,7 +41,7 @@ import Reflex
        (ffilter, leftmost, attach, holdUniqDyn, foldDyn, fanMap, select,
         fmapMaybe, getPostBuild, performEvent, performEvent_, ffor, constDyn,
         switchHold, never, Dynamic, Event, fan, current, updated, holdDyn,
-        newTriggerEvent, delay)
+        newTriggerEvent, delay, gate)
 import Reflex.Dom.Core
        ((=:), MonadWidget, elAttr, elAttr', dyn, _element_raw, blank)
 
@@ -49,7 +49,8 @@ import IDE.Core.CTypes
        (SrcSpan(..), srcSpanEndColumn, srcSpanEndLine, srcSpanStartColumn,
         srcSpanStartLine)
 import IDE.Core.State
-       (LogRef, logRefType, logRefSrcSpan, allLogRefs, logRefFullFilePath, IDE)
+       (LogRef, logRefType, logRefSrcSpan, allLogRefs, logRefFullFilePath, IDE,
+        prefs, externalEditor)
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TerminalEvents(..), _OpenFile, TabKey(..),
         _ErrorsGoto, _MetadataGoto, _GrepGoto, _ChangesOpen, _ProjectFileEvents,
@@ -148,7 +149,8 @@ editorWidget
   -> Event t (DMap IDEWidget Identity)
   -> Event t FilePath        -- ^ save the editor for this file (write to disk)
   -> m
-    ( Event t (Map FilePath (Text, Maybe ()))
+    ( Event t (Map FilePath (Text, Maybe ()))  -- ^ built-in (CodeMirror) opens
+    , Event t (FilePath, Int)                   -- ^ external-editor opens (file, line)
     , FilePath -> Event t () -> Dynamic t (Maybe ()) -> m (Event t ()))
 editorWidget ide allEvents saveFileE = do
   let tabEvents = select (fan allEvents) TabWidget
@@ -190,10 +192,20 @@ editorWidget ide allEvents saveFileE = do
         , grepGotoE
         , terminalGotoE ]
       fileE = leftmost [ openFileE, srcSpanFilename <$> gotoSpanE ]
+      -- Every open with its line (1 for a plain file open, the span's start line
+      -- for a grep/error/metadata/terminal-link goto).  Used only for external
+      -- opens (vim +line); the CM path reveals the line itself via locationsD.
+      fileWithLineE = leftmost
+        [ (, 1) <$> openFileE
+        , (\sp -> (srcSpanFilename sp, srcSpanStartLine sp)) <$> gotoSpanE ]
+      -- When an external editor is configured, files open there instead of in the
+      -- built-in editor.  Gate the two open streams on the (live) preference.
+      extActiveB = current ((not . T.null . externalEditor . view prefs) <$> ide)
   logRefsByFileD <- fmap (M.fromListWith (<>) . map (\lr -> (logRefFullFilePath lr, [lr])) . toList) <$> holdUniqDyn (view allLogRefs <$> ide)
   locationsD <- foldDyn (<>) mempty $ (\sp -> srcSpanFilename sp =: sp) <$> gotoSpanE
   return
-    ( (=:("wide0", Just())) <$> fileE
+    ( gate (not <$> extActiveB) ((=:("wide0", Just())) <$> fileE)
+    , gate extActiveB fileWithLineE
     , \file selectedE _ -> do
       (changeE, triggerChangeE) <- newTriggerEvent
       logRefsD <- holdUniqDyn $ fromMaybe [] . M.lookup file <$> logRefsByFileD

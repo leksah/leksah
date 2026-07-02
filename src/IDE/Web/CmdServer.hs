@@ -32,12 +32,17 @@
 module IDE.Web.CmdServer
   ( startCmdServer
   , cmdSocketPath
+  , suppressNextRestart
   ) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, tryTakeMVar, putMVar)
 import Control.Exception (SomeException, catch, finally, try)
+import Control.Lens ((^.))
 import Control.Monad (forever, void, when)
+
+import Data.IORef (IORef, newIORef, writeIORef)
+import Data.Maybe (listToMaybe)
 
 import qualified Data.ByteString as BS
 import Data.Text (Text)
@@ -64,11 +69,15 @@ import Network.Socket.ByteString (recv, sendAll)
 
 import Language.Javascript.JSaddle (eval, valToText)
 
-import IDE.Core.State (IDERef, reflectIDE, ideJSM)
+import IDE.Core.State
+       (IDERef, reflectIDE, ideJSM, readIDE, workspace, runWorkspace,
+        runProject, pjPackages, ipdPackageName, wsProjects)
+import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.Types (filePathToProjectKey)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
+import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.SnapRequest (requestSnapPane)
-import IDE.Workspaces (projectOpenThis, workspaceTryQuiet)
+import IDE.Workspaces (projectOpenThis, workspaceTryQuiet, makePackage')
 
 -- | @~/.leksah/cmd.sock@ — the control socket both sides agree on.
 cmdSocketPath :: IO FilePath
@@ -113,11 +122,18 @@ handleConn ideR conn = do
     resolve cwd p = let s = T.unpack p in if isRelative s then cwd </> s else s
 
     dispatch cwd = \case
-      ["restart"] -> do
-        reply "Restarting leksah (exit 2 → leksah-nix.sh rebuilds and relaunches).\n"
+      ("restart" : args) -> do
+        -- @--no-rebuild@ exits 3 instead of 2; leksah-nix.sh's loop treats 3 as
+        -- "relaunch but skip the cabal build" (safe after rebuild-self already
+        -- built), avoiding the redundant build + its `nix develop`.  A loop that
+        -- predates this only continues on 2, so plain restart stays 2.
+        let noRebuild = "--no-rebuild" `elem` args
+        reply $ if noRebuild
+          then "Restarting leksah (exit 3 → leksah-nix.sh relaunches without rebuilding).\n"
+          else "Restarting leksah (exit 2 → leksah-nix.sh rebuilds and relaunches).\n"
         -- Give the reply a moment to flush over the socket before we exit.
         threadDelay 100000
-        exitImmediately (ExitFailure 2)
+        exitImmediately (ExitFailure (if noRebuild then 3 else 2))
 
       ("cm" : "open" : files) | not (null files) -> do
         mapM_ (deliverOpenedFile . resolve cwd) files
@@ -143,12 +159,79 @@ handleConn ideR conn = do
             requestSnapPane pane
             reply $ "Opened " <> url <> ", snapping the browser to pane " <> pane <> ".\n"
 
-      ("rebuild-self" : args) -> rebuildSelf ("--no-restart" `elem` args)
+      -- rebuild-self: build leksah through the IDE's own build system, so
+      -- errors and warnings land in the UI (Errors/Log panes) — and, with ghci
+      -- mode on, go through ffcabal's cached repls.  On a successful build of
+      -- the leksah package makePackage' triggers QuitToRestart (exit 2 →
+      -- relaunch); --no-restart arms 'suppressNextRestart' so the handler
+      -- swallows that one restart.  --use-cabal is the FAILSAFE: it bypasses
+      -- leksah's build code entirely (in case we broke it) and runs
+      -- ~/.leksah/rebuild.sh directly, streaming output back here — also the
+      -- automatic fallback when no leksah package is open in the workspace.
+      ("rebuild-self" : args) -> do
+        let noRestart = "--no-restart" `elem` args
+            useCabal  = "--use-cabal" `elem` args
+        mbTarget <- if useCabal then return Nothing else findLeksahPackage
+        case mbTarget of
+          Nothing
+            | useCabal  -> rebuildSelf noRestart
+            | otherwise -> do
+                reply "rebuild-self: no leksah package in the workspace — using the \
+                      \direct cabal build instead.\n"
+                rebuildSelf noRestart
+          Just (project, package) -> do
+            when noRestart $ writeIORef suppressNextRestart True
+            reply $ "Rebuilding leksah via the IDE build system — output appears in "
+                 <> "the IDE (Errors/Log panes)"
+                 <> (if noRestart
+                       then "; the app stays up (--no-restart).\n"
+                       else "; on success it restarts.\n")
+                 <> "(Failsafe if the IDE build is broken: rebuild-self --use-cabal)\n"
+            void . forkIO . void $ reflectIDE
+                (readIDE workspace >>=
+                   mapM_ (runWorkspace $ runProject (State.runPackage makePackage' package) project))
+                ideR
+
+      -- Fired by tmux's after-select-window / after-select-pane hooks: poke the
+      -- reflex network (reusing the JS trigger the ⌃B/mousedown listener uses) so
+      -- the pane tree is re-read and the focused terminal's new active pane floats
+      -- to the flipper/tab MRU front, without waiting for the 2 s poll.
+      ("term-activity" : _) -> do
+        let poke = "window.leksahTermActivity && window.leksahTermActivity()" :: Text
+        _ <- (try (reflectIDE (ideJSM (void (eval poke))) ideR)
+                :: IO (Either SomeException [()]))
+        -- No reply: this is fired by a tmux run-shell hook, which would surface
+        -- any stdout as an "ok" view on every window/pane select.
+        return ()
+
+      -- cc-connect HOST[#TARGET]: open a terminal tab attached to HOST's tmux
+      -- over ssh in control mode (native pane rendering; TerminalCC).  With
+      -- #TARGET, attach that session (name or $id); without, attach-or-create
+      -- the session named 'leksah'.  ssh runs without a PTY and with
+      -- BatchMode, so key-based auth must be set up.
+      ("cc-connect" : host : _) | not (T.null host) -> do
+        requestRemoteTerm host
+        reply $ "Opening a control-mode terminal for " <> host
+                <> (if "#" `T.isInfixOf` host
+                      then "\n"
+                      else " (tmux session 'leksah' on the remote; created if"
+                           <> " missing).\nUse HOST#TARGET for a specific"
+                           <> " session, e.g. cc-connect '" <> host <> "#0'.\n")
 
       ("help" : _) -> reply usage
       []            -> reply usage
       other         -> reply $ "leksah-cmd: unknown command: "
                                   <> T.unwords other <> "\n\n" <> usage
+
+    -- The workspace's leksah package (project, package), if it's open.
+    findLeksahPackage = (`reflectIDE` ideR) $
+        readIDE workspace >>= \case
+            Nothing -> return Nothing
+            Just ws -> return $ listToMaybe
+                [ (project, p)
+                | project <- ws ^. wsProjects
+                , p <- pjPackages project
+                , ipdPackageName p == "leksah" ]
 
     openProject fp = case filePathToProjectKey fp of
       Nothing -> return $ "Not a project file: " <> T.pack fp
@@ -205,10 +288,14 @@ handleConn ideR conn = do
 usage :: Text
 usage = T.unlines
   [ "leksah-cmd commands:"
-  , "  restart                 exit (code 2) so the wrapper rebuilds + relaunches"
-  , "  rebuild-self [--no-restart]  rebuild in place; restart on success unless --no-restart"
+  , "  restart [--no-rebuild]  exit so the wrapper relaunches (--no-rebuild skips the build)"
+  , "  rebuild-self [--no-restart] [--use-cabal]"
+  , "                          rebuild leksah via the IDE build system (errors in the UI);"
+  , "                          restart on success unless --no-restart; --use-cabal is the"
+  , "                          failsafe: bypass the IDE build, run cabal directly (streamed)"
   , "  cm open FILE...         open files in the editor"
   , "  project open FILE...    add project files to the workspace"
+  , "  cc-connect HOST         terminal tab on HOST's tmux (ssh, control mode)"
   , "  open-browser URL        open the default browser snapped to this pane"
   , "  js eval CODE            evaluate JS in the running leksah"
   ]
@@ -217,6 +304,14 @@ usage = T.unlines
 {-# NOINLINE buildLock #-}
 buildLock :: MVar ()
 buildLock = unsafePerformIO (newMVar ())
+
+-- | Armed by @rebuild-self --no-restart@ (IDE-build path): the web front end's
+-- @QuitToRestart@ handler (see 'IDE.Web.Main') checks-and-clears this and, when
+-- set, swallows that one restart — the build lands on disk and the app stays
+-- up, exactly like the old script path's @--no-restart@.
+{-# NOINLINE suppressNextRestart #-}
+suppressNextRestart :: IORef Bool
+suppressNextRestart = unsafePerformIO (newIORef False)
 
 -- | Run @~/.leksah/rebuild.sh@ (written by leksah-nix.sh with the same build
 -- options leksah was launched with), streaming its combined stdout/stderr to the

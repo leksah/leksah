@@ -7,9 +7,11 @@
 module IDE.Web.MenuModel
   ( MenuItem(..)
   , menus
+  , prettyKeySpec
   ) where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 
 import IDE.Web.Command
        (Command(..), commandAddModule, commandRefreshNix, commandPackageClean,
@@ -19,13 +21,20 @@ import IDE.Web.Command
         commandToggleRunBenchmarks, commandToggleMakeDependents,
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
         commandDebugStepModule, commandDebugContinue, commandFileClose, tmuxKey,
-        toggleTransparencyCmd, snapWindowCmd)
+        paneCmd, toggleTransparencyCmd, snapWindowCmd)
 
 -- | One entry in a menu: a clickable command (optionally with a shortcut hint
 -- shown the macOS way — right-aligned and greyed), or a nested submenu.
 data MenuItem
   = MenuItem Text Command            -- ^ label, command
   | MenuShortcut Text Text Command   -- ^ label, shortcut hint, command
+  | MenuKey Text Text Command        -- ^ label, REAL key equivalent (a spec
+                                     --   like @\"cmd+shift+d\"@ or
+                                     --   @\"cmd+alt+Up\"@ — parsed natively
+                                     --   into an NSMenuItem key equivalent,
+                                     --   enabled only while a terminal is
+                                     --   active), command
+  | MenuSep                          -- ^ a separator line
   | Submenu  Text [MenuItem]         -- ^ a labelled nested menu
 
 -- | Convenience: a plain @(label, command)@ leaf.
@@ -37,6 +46,32 @@ item = MenuItem
 -- key equivalents, so they can't be real 'NSMenuItem' key equivalents.
 key :: Text -> Text -> Command -> MenuItem
 key = MenuShortcut
+
+-- | Render a 'MenuKey' spec (@\"cmd+shift+d\"@) the way macOS displays
+-- shortcuts (@⇧⌘D@) — for the web menubar, which shows the hint as text.
+prettyKeySpec :: Text -> Text
+prettyKeySpec spec =
+    let parts = T.splitOn "+" spec
+        -- "cmd+ctrl+=": a trailing empty part means the key itself is '+';
+        -- treat empties as literal "+" if last, drop otherwise.
+        (mods, keys) = span (`elem` ["cmd", "super", "shift", "alt", "opt", "ctrl"]) parts
+        modSym m = case m of
+            "ctrl"  -> "⌃"
+            "alt"   -> "⌥"
+            "opt"   -> "⌥"
+            "shift" -> "⇧"
+            _       -> "⌘"   -- cmd/super
+        -- macOS convention orders modifiers ⌃⌥⇧⌘.
+        order = ["ctrl", "alt", "opt", "shift", "cmd", "super"]
+        sortedMods = [ modSym o | o <- order, o `elem` mods ]
+        keySym k = case k of
+            "Up"    -> "↑"
+            "Down"  -> "↓"
+            "Left"  -> "←"
+            "Right" -> "→"
+            "Enter" -> "⏎"
+            _       -> T.toUpper k
+    in T.concat (sortedMods <> map keySym (filter (not . T.null) keys))
 
 menus :: [(Text, [MenuItem])]
 menus =
@@ -81,24 +116,66 @@ menus =
       [ item "Next Error"     CommandNextError
       , item "Previous Error" CommandPreviousError
       ])
-  , ("Tmux", tmuxMenu)
+  , ("Terminal", terminalMenu)
   ]
 
--- | Every default @tmux@ prefix (@C-b@) key binding, grouped into submenus, as
--- items that send the shortcut to the active terminal (see 'tmuxKey').  Each
--- shows its chord in the native shortcut column (@⌃B@ = the C-b prefix).  The
--- bytes following the prefix are printable keys as-is, arrows/meta as escape
--- sequences (@\\ESC[A@ = Up, @\\ESC1@ = M-1).
-tmuxMenu :: [MenuItem]
-tmuxMenu =
-  [ Submenu "Underlay"
+-- | The Terminal menu: iTerm2's \"Shell\" grouping (everything terminal-ish in
+-- one menu) with Ghostty's item names and default shortcuts.  The split/pane
+-- items are 'paneCmd's, so they work on BOTH kinds of terminal tab — real
+-- commands over the control channel for CC (⊞) tabs, the @C-b@ chord typed
+-- into the PTY for classic (▭) tabs.  Their ⌘ key equivalents are real but
+-- native-menu-gated: enabled only while a terminal tab is on screen, so ⌘D,
+-- ⌘[/⌘], ⌘⌥arrows etc. still reach the editor otherwise.
+terminalMenu :: [MenuItem]
+terminalMenu =
+  [ MenuKey "New Window"      "cmd+shift+t" (paneCmd "new-window" "c")
+  , MenuKey "Previous Window" "cmd+shift+[" (paneCmd "previous-window" "p")
+  , MenuKey "Next Window"     "cmd+shift+]" (paneCmd "next-window" "n")
+  , MenuSep
+  , MenuKey "Split Right" "cmd+d"       (paneCmd "split-window -h" "%")
+  , MenuKey "Split Down"  "cmd+shift+d" (paneCmd "split-window -v" "\"")
+  , MenuSep
+  , Submenu "Select Split"
+      [ MenuKey "Select Split Above" "cmd+alt+Up"    (paneCmd "select-pane -U" "\ESC[A")
+      , MenuKey "Select Split Below" "cmd+alt+Down"  (paneCmd "select-pane -D" "\ESC[B")
+      , MenuKey "Select Split Left"  "cmd+alt+Left"  (paneCmd "select-pane -L" "\ESC[D")
+      , MenuKey "Select Split Right" "cmd+alt+Right" (paneCmd "select-pane -R" "\ESC[C")
+      , MenuSep
+      , MenuKey "Select Previous Split" "cmd+[" (paneCmd "select-pane -t :.-" ";")
+      , MenuKey "Select Next Split"     "cmd+]" (paneCmd "select-pane -t :.+" "o")
+      ]
+  , Submenu "Resize Split"
+      [ MenuKey "Equalize Splits"    "cmd+ctrl+="     (paneCmd "select-layout -E" "E")
+      , MenuSep
+      , MenuKey "Move Divider Up"    "cmd+ctrl+Up"    (paneCmd "resize-pane -U 5" "K")
+      , MenuKey "Move Divider Down"  "cmd+ctrl+Down"  (paneCmd "resize-pane -D 5" "J")
+      , MenuKey "Move Divider Left"  "cmd+ctrl+Left"  (paneCmd "resize-pane -L 5" "H")
+      , MenuKey "Move Divider Right" "cmd+ctrl+Right" (paneCmd "resize-pane -R 5" "L")
+      ]
+  , MenuKey "Zoom Split" "cmd+shift+Enter" (paneCmd "resize-pane -Z" "z")
+  , item "Close Split" (paneCmd "kill-pane" "x")
+  , MenuSep
+  , Submenu "Underlay"
       -- ⌘⌥Y / ⌘⌥U are shown as hints; the leksah keymap actually handles them.
       [ key "Toggle Pane Transparency" "⌘⌥Y" toggleTransparencyCmd
       , key "Snap Window to Pane"      "⌘⌥U" snapWindowCmd
       -- Populated natively from the currently-snapped windows (see leksah-mac-menu.m).
       , Submenu "Unsnap" []
       ]
-  , Submenu "Sessions"
+  , MenuSep
+  , Submenu "Tmux" tmuxMenu
+  ]
+
+-- | Every default @tmux@ prefix (@C-b@) key binding, grouped into submenus, as
+-- items that send the shortcut to the active terminal (see 'tmuxKey').  Each
+-- shows its chord in the native shortcut column (@⌃B@ = the C-b prefix).  The
+-- bytes following the prefix are printable keys as-is, arrows/meta as escape
+-- sequences (@\\ESC[A@ = Up, @\\ESC1@ = M-1).  Chords only work on classic
+-- (▭, attached-client) tabs; the Terminal menu's 'paneCmd' items above cover
+-- the common pane operations on CC tabs too.
+tmuxMenu :: [MenuItem]
+tmuxMenu =
+  [ Submenu "Sessions"
       [ key "Detach client"    "⌃B d" (tmuxKey "d")
       , key "Choose session"   "⌃B s" (tmuxKey "s")
       , key "Rename session"   "⌃B $" (tmuxKey "$")

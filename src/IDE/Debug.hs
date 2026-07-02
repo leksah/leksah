@@ -79,7 +79,7 @@ import IDE.Core.State
         PackageAction, prefs, IDEAction, DebugAction, IDEM, DebugState(..))
 import IDE.Gtk.State (postSyncIDE)
 import IDE.LogRef
-import Control.Exception (SomeException(..))
+import Control.Exception (SomeException(..), catch)
 import IDE.Pane.SourceBuffer
        (IDEBuffer, belongsToPackages', selectedLocation, selectedText,
         selectedModuleName, insertTextAfterSelection,
@@ -262,7 +262,11 @@ debugForward = do
 debugStop :: PackageAction
 debugStop =
     packageDebugState >>= \case
-        Just DebugState{..} -> liftIO $ toolProcess dsToolState >>= interruptProcessGroupOf
+        -- The GHCi may have already exited; interruptProcessGroupOf then throws
+        -- "does not exist" — benign, swallow it (uncaught it kills this thread).
+        Just DebugState{..} -> liftIO $
+            (toolProcess dsToolState >>= interruptProcessGroupOf)
+                `catch` \(SomeException _) -> return ()
         Nothing -> return ()
 
 debugContinue :: IDEAction

@@ -101,7 +101,7 @@ import System.FilePath
 import System.Directory
        (createDirectoryIfMissing, removeDirectoryRecursive,
         canonicalizePath, setCurrentDirectory, doesFileExist,
-        doesDirectoryExist)
+        doesDirectoryExist, findExecutable)
 import qualified Data.Set as S (fromList)
 import Data.Either (isRight)
 import Data.Map (Map)
@@ -440,19 +440,43 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                     CabalTool {} -> map (\t -> pkgName <> ":benchmark:" <> T.pack (unUnqualComponentName $ benchmarkName t)) $ benchmarks pd
                     _ -> []
                 else [])
+    -- Native GHC builds of cabal projects go through ffcabal (vendor/ffcabal)
+    -- WHEN GHCI MODE IS ON: it type-checks each local component in a cached
+    -- tmux repl first — the first error surfaces in seconds — then builds in
+    -- parallel.  Background builds use its --repl-only (checks only),
+    -- replacing the old --with-ld=false no-link trick.  With ghci mode off
+    -- the user has opted out of repls, so ALL builds use regular cabal.
+    -- Cross compilation (GHCJS) and stack always use plain cabal/stack, and
+    -- we fall back to cabal when ffcabal isn't on PATH.
+    ghciMode <- debug <$> readIDE prefs
+    mbFFCabal <- if ghciMode then liftIO (findExecutable "ffcabal") else return Nothing
+    let nativeCabalCmd = case mbFFCabal of
+            Just _ -> ("ffcabal", ["build"]
+              <> pjFileArgs
+              <> ["--builddir=" <> T.pack (cabalBuildDir Nothing)]
+              <> ["--repl-only" | backgroundBuild && withoutLinking]
+              <> activeComponent'
+              <> flagsForTestsAndBenchmarks)
+            Nothing -> ("cabal", ["new-build"]
+              <> pjFileArgs
+              <> ["--builddir=" <> T.pack (cabalBuildDir Nothing)]
+              <> ["--with-ld=false" | backgroundBuild && withoutLinking]
+              <> activeComponent'
+              <> flagsForTestsAndBenchmarks)
     let mbCmdAndArgs = case pjKey project of
             StackTool {} -> Just ("stack",
                  ["build"]
               <> pjFileArgs
               <> activeComponent'
               <> flagsForTestsAndBenchmarks)
-            CabalTool {} -> Just (if compiler == GHCJS then "js-unknown-ghcjs-cabal" else "cabal", ["new-build"]
-              <> pjFileArgs
-              <> (if compiler == GHCJS then ["--ghcjs"] else [])
-              <> ["--builddir=" <> T.pack (cabalBuildDir (if compiler == GHCJS then Just "js-unknown-ghcjs" else Nothing))]
-              <> ["--with-ld=false" | pjIsCabal (pjKey project) && backgroundBuild && withoutLinking]
-              <> activeComponent'
-              <> flagsForTestsAndBenchmarks)
+            CabalTool {}
+              | compiler == GHCJS -> Just ("js-unknown-ghcjs-cabal", ["new-build"]
+                  <> pjFileArgs
+                  <> ["--ghcjs"]
+                  <> ["--builddir=" <> T.pack (cabalBuildDir (Just "js-unknown-ghcjs"))]
+                  <> activeComponent'
+                  <> flagsForTestsAndBenchmarks)
+              | otherwise -> Just nativeCabalCmd
             CustomTool p -> (if compiler == GHCJS then pjCustomGhcjsBuild else pjCustomGhcBuild) p
             NixTool _ -> Nothing
         mbCmdAndArgs' = second (++ concatMap ipdBuildFlags packages) <$> mbCmdAndArgs
@@ -515,7 +539,6 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
         compile'
     reloadDebug restart (package:rest) = do
         ideR  <- liftIDE ask
-        prefs' <- readIDE prefs
         lookupDebugState (pjKey project, ipdCabalFile package) >>= \case
             Just debug@DebugState{..} | restart ->
                 (`runDebug` debug) . executeDebugCommand ":quit" $ do
@@ -561,9 +584,11 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
                             readIDE autoCommand >>= mapM_ (\(autoPack, cmd) ->
                                 when (autoPack == (pjKey project, ipdCabalFile package)) cmd)
                             reloadDebug True $ filter (\p -> ipdCabalFile p `notElem` map ipdCabalFile dsPackages) rest
-            Nothing | debug prefs' ->
-                    readIDE workspace >>= mapM_ (runWorkspace $ runProject (State.runPackage (debugStart
-                        (liftIDE $ reloadDebug False (package:rest))) package) project)
+            -- No debug session for this package: don't auto-start leksah's
+            -- internal ghci for builds any more.  With ghci mode on, the
+            -- compile step (ffcabal) does the cached-repl checking — in tmux,
+            -- where the user can reach the sessions.  Explicitly started
+            -- debug sessions (above) still :reload for the debugger.
             Nothing -> reloadDebug True rest
     compile :: [CompilerFlavor] -> IDEAction
     compile [] = continuation True

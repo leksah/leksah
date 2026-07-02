@@ -42,9 +42,25 @@ static NSWindow *gLeksahWindow = nil;
 static void leksah_measure_toolbar(void);
 static void leksah_read_holes(void);
 
+// Whether a terminal tab is on screen (set from Haskell via
+// leksah_set_terminal_active).  Items marked terminal-only (the Terminal
+// menu's real key equivalents) are disabled otherwise — and a DISABLED item's
+// key equivalent is not consumed, so ⌘D / ⌘[ / ⌘⌥arrows still reach the
+// editor through the responder chain when no terminal is showing.
+static volatile int gTerminalActive = 0;
+
+void leksah_set_terminal_active(int on) {
+    gTerminalActive = on;
+}
+
 @implementation LeksahMenuTarget
 - (void)leksahAction:(id)sender {
     leksah_menu_action((int)[(NSMenuItem *)sender tag]);
+}
+- (BOOL)validateMenuItem:(NSMenuItem *)item {
+    if ([@"terminal" isEqual:[item representedObject]])
+        return gTerminalActive != 0;
+    return YES;
 }
 - (void)leksahRemeasure:(NSTimer *)timer {
     (void)timer;
@@ -170,6 +186,55 @@ void leksah_menu_add_item_kv(const char *desc, const char *shortcut, int tag) {
         [item setAttributedTitle:at];
     }
     [gMenuStack[gMenuDepth - 1] addItem:item];
+}
+
+// Like add_item, but with a REAL key equivalent parsed from a spec like
+// "cmd+shift+d", "cmd+alt+Up", "cmd+ctrl+=" or "cmd+shift+Enter" (modifiers:
+// cmd/super, shift, alt/opt, ctrl; key: a single character or Up/Down/Left/
+// Right/Enter).  The item is marked terminal-only: it is enabled (and its key
+// equivalent consumed) only while a terminal tab is on screen — see
+// validateMenuItem above.
+void leksah_menu_add_item_key(const char *title, const char *spec, int tag) {
+    if (gMenuDepth <= 0) return;
+    NSString *t = [NSString stringWithUTF8String:title];
+    NSString *s = [NSString stringWithUTF8String:spec];
+    NSUInteger mask = 0;
+    NSString *keyPart = @"";
+    for (NSString *tok in [s componentsSeparatedByString:@"+"]) {
+        if ([tok isEqualToString:@"cmd"] || [tok isEqualToString:@"super"])
+            mask |= NSEventModifierFlagCommand;
+        else if ([tok isEqualToString:@"shift"])
+            mask |= NSEventModifierFlagShift;
+        else if ([tok isEqualToString:@"alt"] || [tok isEqualToString:@"opt"])
+            mask |= NSEventModifierFlagOption;
+        else if ([tok isEqualToString:@"ctrl"])
+            mask |= NSEventModifierFlagControl;
+        else if ([tok length] > 0)
+            keyPart = tok;
+        // an empty token ("cmd++") would mean a literal '+': not used today
+    }
+    unichar kc = 0;
+    if ([keyPart isEqualToString:@"Up"])         kc = NSUpArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Down"])  kc = NSDownArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Left"])  kc = NSLeftArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Right"]) kc = NSRightArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Enter"]) kc = '\r';
+    else if ([keyPart length] >= 1)              kc = [keyPart characterAtIndex:0];
+    NSString *ke = (kc != 0) ? [NSString stringWithCharacters:&kc length:1] : @"";
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:t
+                                                  action:@selector(leksahAction:)
+                                           keyEquivalent:ke];
+    [item setKeyEquivalentModifierMask:mask];
+    [item setTarget:gTarget];
+    [item setTag:tag];
+    [item setRepresentedObject:@"terminal"];   // gate on a terminal being active
+    [gMenuStack[gMenuDepth - 1] addItem:item];
+}
+
+// A separator line in the current menu.
+void leksah_menu_add_separator(void) {
+    if (gMenuDepth <= 0) return;
+    [gMenuStack[gMenuDepth - 1] addItem:[NSMenuItem separatorItem]];
 }
 
 // Add a submenu item to the current menu and descend into it, so subsequent
@@ -730,6 +795,17 @@ static void leksah_read_holes(void) {
             NSArray *keys = [keysV isKindOfClass:[NSArray class]] ? (NSArray *)keysV : nil;
             BOOL changed = NO;
             for (int i = gSnapCount - 1; i >= 0; i--) {
+                // Auto-unsnap a window the user closed: its AX element goes invalid,
+                // so drop it the same way the Unsnap menu does — leksah_unsnap also
+                // clears the pane's transparency (via the web round-trip), which a
+                // local remove wouldn't.
+                CFTypeRef role = NULL;
+                AXError axerr = AXUIElementCopyAttributeValue(gSnaps[i].win, kAXRoleAttribute, &role);
+                if (role != NULL) CFRelease(role);
+                if (axerr == kAXErrorInvalidUIElement) {
+                    leksah_unsnap([gSnaps[i].key UTF8String]);
+                    continue;
+                }
                 if (keys != nil && ![keys containsObject:gSnaps[i].key]) {
                     leksah_snap_remove_at(i);
                     changed = YES;

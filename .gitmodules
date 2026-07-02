@@ -13,3 +13,6 @@
 [submodule "vendor/reflex-dom"]
 	path = vendor/reflex-dom
 	url = git@github.com:reflex-frp/reflex-dom.git
+[submodule "vendor/ffcabal"]
+	path = vendor/ffcabal
+	url = https://github.com/hamishmack/ffcabal.git

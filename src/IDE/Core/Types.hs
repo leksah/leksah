@@ -675,6 +675,18 @@ data Prefs = Prefs {
     ,   showWorkspaceIcons  ::   Bool
     ,   hlintOnSave         ::   Bool
     ,   collapseErrors      ::   Bool
+    ,   terminalFileLinks   ::   Bool -- ^ recognise file paths / identifiers in
+                                      --   terminal output (the custom xterm link
+                                      --   provider); off lets OSC 8 links through
+                                      --   unobstructed
+    ,   externalEditor      ::   Text -- ^ command to open files with (e.g. @vim@);
+                                      --   blank = the built-in CodeMirror editor
+    ,   terminalControlMode ::   Bool -- ^ render terminals via tmux control mode
+                                      --   (-CC): one xterm per pane, native splits;
+                                      --   off = classic whole-session PTY attach
+    ,   remoteHosts         ::   [Text] -- ^ ssh hosts shown as top-level nodes in
+                                        --   the Terminals tree (sessions open as
+                                        --   control-mode tabs)
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
@@ -746,6 +758,10 @@ data PrefsFile = PrefsFile {
   , showWorkspaceIcons_  :: Maybe Bool
   , hlintOnSave_         :: Maybe Bool
   , collapseErrors_      :: Maybe Bool
+  , terminalFileLinks_   :: Maybe Bool
+  , externalEditor_      :: Maybe Text
+  , terminalControlMode_ :: Maybe Bool
+  , remoteHosts_         :: Maybe [Text]
   , serverPort_          :: Maybe Int
   , sourceDirectories_   :: Maybe [FilePath]
   , unpackDirectory_     :: Maybe (Maybe FilePath)

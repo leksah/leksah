@@ -6,8 +6,8 @@
 -- 'IDE.Web.CmdServer').
 --
 -- Usage:
---   leksah-cmd restart                 exit(2) so the wrapper rebuilds + relaunches
---   leksah-cmd rebuild-self [--no-restart]  rebuild in place; restart on success (unless --no-restart)
+--   leksah-cmd restart [--no-rebuild]  relaunch via the wrapper (--no-rebuild skips the build)
+--   leksah-cmd rebuild-self [--no-restart] [--use-cabal]  rebuild via the IDE build (errors in the UI); --use-cabal = failsafe direct cabal (streamed)
 --   leksah-cmd cm open FILE...         open files in the editor (CodeMirror)
 --   leksah-cmd project open FILE...    add project files to the workspace
 --   leksah-cmd js eval CODE            evaluate JS in the running leksah
@@ -48,10 +48,13 @@ usage = T.unlines
   [ "leksah-cmd — control a running leksah web UI"
   , ""
   , "Usage:"
-  , "  leksah-cmd restart                 exit(2) so the wrapper rebuilds + relaunches"
-  , "  leksah-cmd rebuild-self [--no-restart]  rebuild in place; restart on success unless --no-restart"
+  , "  leksah-cmd restart [--no-rebuild]  relaunch via the wrapper (--no-rebuild skips the build)"
+  , "  leksah-cmd rebuild-self [--no-restart] [--use-cabal]"
+  , "                                     rebuild via the IDE build system (errors in the UI);"
+  , "                                     --use-cabal = failsafe: direct cabal, output streamed"
   , "  leksah-cmd cm open FILE...         open files in the editor (CodeMirror)"
   , "  leksah-cmd project open FILE...    add project files to the workspace"
+  , "  leksah-cmd cc-connect HOST         terminal tab on HOST's tmux (ssh, control mode)"
   , "  leksah-cmd open-browser URL        open the default browser snapped to this pane"
   , "  leksah-cmd js eval CODE            evaluate JS in the running leksah"
   , "  leksah-cmd help                    show this help"

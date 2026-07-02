@@ -94,21 +94,67 @@ layoutCss = do
     -- space; `:has` lets the find bar's own class drive the grid container.
     ".findbar.hidden" ?
         Clay.display none
+    -- 0px, not 0: the value is also used inside calc() (--wide0-slide-h),
+    -- where a unitless zero makes the whole expression invalid.
     ".leksah:has(.findbar.hidden)" ?
-        ("--bar-row" -: "0")
+        ("--bar-row" -: "0px")
     -- Bottom ("wide1") pane visibility (the toolbar button cycles these classes
-    -- on .leksah): hide collapses its grid row; auto-hide also collapses it
-    -- completely (it sits hidden behind the status bar) but reveals it at full
-    -- height while the status bar -- or the pane itself once it's up -- is
-    -- hovered.  Mirrors the side ("tall") pane button, but for the bottom row.
+    -- on .leksah): hide collapses its grid row; auto-hide keeps the row
+    -- collapsed permanently and reveals the bar as a transform-only overlay --
+    -- see the note below.
     ".leksah.wide1-hide" ?
-        ("--wide1-row" -: "0")
+        ("--wide1-row" -: "0px")
     ".leksah.wide1-hide .area-wide1" ?
         Clay.display none
+    -- Bottom-bar auto-reveal must never change any element's SIZE: a size
+    -- change reflows xterm (and, for CC panes, resizes the real tmux window).
+    -- An earlier calc()-based version resized every wide0 terminal by ~10
+    -- rows on each hover because calc(100% + 150px) tracks the *animating*
+    -- grid row.  So in auto mode the wide1 grid track stays 0 forever and the
+    -- reveal is pure transform (compositor-only; invisible to layout and
+    -- ResizeObserver):
+    --   * the bar (tab buttons + tab body) is absolutely positioned in its
+    --     zero-height grid area with the same geometry it has in show mode
+    --     (40px buttons on top, 130px body below), parked just below the
+    --     window at translateY(170px) = its 150px height + the 20px statusbar
+    --     row -- parked fully off-screen, so no residual strip of it peeks
+    --     over the statusbar while hidden -- and slides to translateY(0);
+    --   * each wide0 tab's content slides up by the same 150px, its top
+    --     clipped by the tab's overflow:hidden, and the vacated bottom strip
+    --     is covered by the revealed bar;
+    --   * the statusbar stacks above the sliding bar, so the bar emerges
+    --     from behind it.
     ".leksah.wide1-auto" ?
-        ("--wide1-row" -: "0")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within)" ?
-        ("--wide1-row" -: "150px")
+        ("--wide1-row" -: "0px")
+    ".leksah.wide1-auto .tab-buttons.area-wide1" ? do
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "top" -: "-150px"
+        "height" -: "40px"
+        "z-index" -: "1"
+        "transform" -: "translateY(170px)"
+        "transition" -: "transform 0.15s ease"
+    ".leksah.wide1-auto .tab.area-wide1" ? do
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "bottom" -: "0"
+        "height" -: "130px"
+        "z-index" -: "1"
+        "transform" -: "translateY(170px)"
+        "transition" -: "transform 0.15s ease"
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab-buttons.area-wide1" ?
+        ("transform" -: "translateY(0)")
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide1" ?
+        ("transform" -: "translateY(0)")
+    ".leksah.wide1-auto .statusbar" ? do
+        "position" -: "relative"
+        "z-index" -: "2"
+    ".leksah.wide1-auto .tab.area-wide0 > *" ?
+        ("transition" -: "transform 0.15s ease")
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide0 > *" ?
+        ("transform" -: "translateY(-150px)")
     ".statusbar" ? do
         "grid-area" -: "statusbar"
     ".area-tall" ? do

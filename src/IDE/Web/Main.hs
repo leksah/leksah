@@ -16,6 +16,9 @@ import Control.Concurrent
         newEmptyMVar, forkIO)
 import Control.Event (registerEvent)
 import Control.Exception (SomeException, catch)
+import GHC.Stats
+       (getRTSStats, getRTSStatsEnabled, RTSStats(..), GCDetails(..))
+import qualified System.IO as IO (hPutStrLn, stderr)
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), _Just)
 import Control.Monad (forever, forM, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -31,16 +34,17 @@ import Data.Function ((&))
 import Data.Functor (($>))
 import Data.Functor.Identity (Identity(..))
 import Data.Functor.Misc (Const2(..))
-import Data.IORef (newIORef)
+import Data.IORef (newIORef, atomicModifyIORef')
 import Data.Map (mapKeys)
 import qualified Data.Map as M
        (Map, keys, elems, toList, fromList, union, findWithDefault, lookup, null,
-        insert, delete, member, filter, singleton, map)
+        insert, delete, member, filter, singleton, map, mapWithKey, empty)
 import Data.Map (Map)
-import qualified Data.Set as S (fromList, delete, singleton)
+import qualified Data.Set as S
+       (fromList, delete, singleton, empty, insert, member, intersection)
 import Data.Time.Clock (NominalDiffTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isInfixOf, toLower, null, intercalate, breakOn, drop, stripPrefix)
+import qualified Data.Text as T (pack, unpack, unlines, isInfixOf, isPrefixOf, toLower, null, intercalate, breakOn, drop, stripPrefix, takeWhile)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
@@ -88,8 +92,8 @@ import Reflex
        (switchDyn, mergeList, foldDyn, traceEventWith, constDyn, ffor,
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never,
         performEvent_, getPostBuild, performEvent, select, fan, fanMap,
-        fmapMaybe, attachWith, attach, current, updated, holdUniqDyn, tag, gate,
-        listViewWithKey,
+        fmapMaybe, ffilter, attachWith, attach, current, updated, holdUniqDyn, tag, gate,
+        listViewWithKey, sample,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dynText, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
@@ -102,12 +106,13 @@ import IDE.Core.State
         wsProjects, pjPackages, ipdCabalFile, ipdPackageDir, wsActivePackFile)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
-import IDE.Web.CmdServer (startCmdServer)
+import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.CloseRequest (nextCloseRequest)
 import IDE.Web.OpenFileRequest (nextOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel)
 import IDE.Web.SaveRequest (nextSaveRequest)
 import IDE.Web.FindRequest (nextFindRequest)
+import IDE.Web.RemoteTermRequest (nextRemoteTerm)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.TerminalInput (setActiveTerminal)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
@@ -128,7 +133,9 @@ import IDE.Web.Events
         FindbarEvents(..), PreferencesEvents(..), FlipItem(..),
         _ToolbarCommand, _MenubarCommand, _KeymapCommand, _PackageCommand,
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
-        _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane)
+        _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane,
+        _NewRemoteTerminal, _SelectRemoteTerminal, _SelectRemoteTerminalWindow,
+        _SelectRemoteTerminalPane)
 import IDE.Web.Layout (layoutCss)
 import IDE.Web.Widget.Changes (changesCss, changesWidget)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
@@ -149,8 +156,12 @@ import IDE.Web.Widget.Tabs (tabsWidget, tabsCss)
 import IDE.Web.Widget.Terminal
        (terminalCss, terminalWidget, listTerminalSessions, killTerminalSession,
         selectTmuxWindow, selectTmuxPane, activePaneId, paneGeometry, sessionOfPane,
-        listTerminalTree, createTerminalSession, TmuxWindow(..), TmuxPane(..))
+        listTerminalTree, createTerminalSession, openFileInEditor, notifyTerminalBell,
+        createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
+        remoteTabTree, remoteTabHostTarget,
+        reapControlClients, TmuxWindow(..), TmuxPane(..))
 import IDE.Web.Widget.Terminals (terminalsCss, terminalsWidget, sessionAlert, windowAlert)
+import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import qualified IDE.Workspaces.Writer as Writer
@@ -222,6 +233,29 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       ideR <- liftIO $ newMVar (const (return ()), ide)
       liftIO $ setGlobalIDERef ideR  -- so the native macOS menu can run commands
       liftIO $ startCmdServer ideR   -- control socket for the leksah-cmd CLI
+      -- Detach control-mode clients left over from previous runs BEFORE any
+      -- terminal attaches: they wedge on leksah exit, stay counted as attached,
+      -- and their stale 80x24 sizes clamp every window they're attached to.
+      liftIO reapControlClients
+      -- GC monitor (needs +RTS -T, set via -with-rtsopts): log every major
+      -- collection with its pause to stderr, so UI hitches can be correlated
+      -- with GC (or ruled out) by watching the leksah-nix.sh window.
+      _ <- liftIO . forkIO $ do
+          enabled <- getRTSStatsEnabled
+          when enabled $ do
+              let loop prevMajor = do
+                      s <- getRTSStats
+                      let mg = major_gcs s
+                          d  = gc s
+                          ms :: Integral n => n -> Double
+                          ms n = fromIntegral n / 1e6
+                      when (mg /= prevMajor) . IO.hPutStrLn IO.stderr $
+                          "RTS: major GC #" <> show mg
+                          <> " pause=" <> show (round (ms (gcdetails_elapsed_ns d)) :: Int) <> "ms"
+                          <> " live=" <> show (gcdetails_live_bytes d `div` (1024 * 1024)) <> "MB"
+                      threadDelay 250000
+                      loop mg
+              loop 0
       -- Develop mode: rebuilding the leksah package in the IDE triggers
       -- QuitToRestart.  The Gtk front end handles that via its application; the
       -- web front ends have no such hook, so exit with code 2 and let the
@@ -229,7 +263,13 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       when developLeksah $ do
           liftIO . (`reflectIDE` ideR) . void $
               registerEvent ideR "QuitToRestart" $ \e -> do
-                  liftIO $ exitImmediately (ExitFailure 2)
+                  -- `leksah-cmd rebuild-self --no-restart` (IDE-build path) arms
+                  -- this so a successful self-build lands on disk without the
+                  -- restart; the next QuitToRestart behaves normally.
+                  suppress <- liftIO $ atomicModifyIORef' suppressNextRestart (\s -> (False, s))
+                  if suppress
+                    then liftIO $ putStrLn "leksah: QuitToRestart suppressed (rebuild-self --no-restart)"
+                    else liftIO $ exitImmediately (ExitFailure 2)
                   return e
           -- External relaunch trigger (dev-relaunch.sh): poll for a request
           -- file and exit(2) so leksah-nix.sh's loop rebuilds and relaunches.
@@ -290,10 +330,18 @@ jsMain showMenubar macTitlebar ideR = do
   _ <- liftIO (readFile $ dataDir </> "xterm/xterm.js") >>= eval
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-fit.js") >>= eval
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-webgl.js") >>= eval
+  -- Unicode 11 width tables: xterm.js defaults to Unicode 6, where emoji
+  -- measure width 1 — modern apps and tmux assume 2, so glyphs like ✅
+  -- squeeze into one cell and misalign everything after them.
+  _ <- liftIO (readFile $ dataDir </> "xterm/addon-unicode11.js") >>= eval
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-search.js") >>= eval
 
   -- Makes project-file paths in terminal output Ctrl-clickable (window.LeksahTermLinks).
   _ <- eval terminalLinksJs
+
+  -- Builds xterm linkHandlers for OSC 8 hyperlinks (window.LeksahOscLinks): a hover
+  -- tooltip with the URL, and click-to-open for http(s) links.
+  _ <- eval terminalOscLinksJs
 
   -- Defines window.LeksahTerm: a registry of live xterm.js terminals plus a
   -- write(id, base64) that decodes straight into a Uint8Array and hands the raw
@@ -303,6 +351,11 @@ jsMain showMenubar macTitlebar ideR = do
   -- printable ASCII, so jsaddle doesn't have to escape the control bytes that
   -- pervade terminal output.
   _ <- eval terminalWriteJs
+
+  -- Defines window.LeksahDividerDrag: drag-to-resize for the CC pane dividers
+  -- (the drag itself runs in JS — jsaddle dispatches events asynchronously,
+  -- far too laggy for mousemove; Haskell is called back once, on drop).
+  _ <- eval dividerDragJs
 
   -- Defines window.leksahSetHoles/leksahClearHoles: clips transparent tmux panes
   -- out of the page root so the window shows through (macOS click-through holes).
@@ -753,6 +806,10 @@ terminalLinksJs = T.unlines
   [ "window.LeksahTermLinks = (function(){"
   , "  var byBase = new Map();"
   , "  var ctrlHeld = false;"
+  -- When off (a preference), the provider claims no links, so OSC 8 hyperlinks in
+  -- the output aren't shadowed by our file/identifier matching.
+  , "  var enabled = true;"
+  , "  function setEnabled(v){ enabled = !!v; }"
   , "  window.addEventListener('keydown', function(e){ if (e.key==='Control'||e.key==='Meta') ctrlHeld=true; }, true);"
   , "  window.addEventListener('keyup',   function(e){ if (e.key==='Control'||e.key==='Meta') ctrlHeld=false; }, true);"
   , "  window.addEventListener('blur',    function(){ ctrlHeld=false; }, true);"
@@ -802,6 +859,7 @@ terminalLinksJs = T.unlines
   , "    }"
   , "    term.registerLinkProvider({ provideLinks: function(y, cb){"
   , "      try {"
+  , "        if (!enabled){ cb(undefined); return; }"
   , "        var buf = term.buffer && term.buffer.active;"
   , "        var line = buf && buf.getLine(y-1);"
   , "        if (!line){ cb(undefined); return; }"
@@ -847,7 +905,60 @@ terminalLinksJs = T.unlines
   , "      } catch(e){ cb(undefined); }"
   , "    }});"
   , "  }"
-  , "  return { setProjectFiles: setProjectFiles, attach: attach };"
+  , "  return { setProjectFiles: setProjectFiles, attach: attach, setEnabled: setEnabled };"
+  , "})();"
+  ]
+
+-- | Defines @window.LeksahOscLinks@: builds an xterm @linkHandler@ for OSC 8
+-- hyperlinks (which tmux forwards when the @hyperlinks@ terminal feature is on).
+-- Hovering shows a floating tooltip with the destination URL; clicking an
+-- http(s) link calls back @onOpen(url, cmdHeld)@ — leksah opens it in the browser
+-- and snaps the window over the pane only when Command was held.  Unlike the text
+-- link provider (LeksahTermLinks) these links come from the escape stream itself,
+-- so no regex/decoration is involved.
+terminalOscLinksJs :: Text
+terminalOscLinksJs = T.unlines
+  [ "window.LeksahOscLinks = (function(){"
+  , "  var tip = null;"
+  , "  function ensureTip(){"
+  , "    if (!tip){"
+  , "      tip = document.createElement('div');"
+  , "      tip.className = 'leksah-osc-tip';"
+  , "      tip.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;'"
+  , "        + 'background:rgb(40,40,40);color:#dcdcdc;border:1px solid rgb(80,80,80);'"
+  , "        + 'border-radius:3px;padding:2px 6px;font-size:12px;max-width:60ch;'"
+  , "        + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:none';"
+  , "      document.body.appendChild(tip);"
+  , "    }"
+  , "    return tip;"
+  , "  }"
+  , "  function makeHandler(onOpen, onOpenFile){"
+  , "    return {"
+  , "      allowNonHttpProtocols: true,"
+  , "      hover: function(ev, text){"
+  , "        var t = ensureTip();"
+  , "        t.textContent = text;"
+  , "        t.style.left = (((ev && ev.clientX) || 0) + 12) + 'px';"
+  , "        t.style.top  = (((ev && ev.clientY) || 0) + 16) + 'px';"
+  , "        t.style.display = 'block';"
+  , "      },"
+  , "      leave: function(){ if (tip) tip.style.display = 'none'; },"
+  , "      activate: function(ev, text){"
+  , "        if (tip) tip.style.display = 'none';"
+  , "        if (/^https?:\\/\\//i.test(text)) { onOpen(text, !!(ev && ev.metaKey)); return; }"
+  -- file:// opens in a CodeMirror editor, not the browser.  Parse with the URL
+  -- API (decodes %20 etc.); an optional #Lnn / #nn fragment gives a line.
+  , "        if (/^file:\\/\\//i.test(text)) {"
+  , "          try {"
+  , "            var u = new URL(text);"
+  , "            var m = /(\\d+)/.exec(u.hash || '');"
+  , "            onOpenFile(decodeURIComponent(u.pathname), m ? parseInt(m[1], 10) : 0, 0);"
+  , "          } catch(e){}"
+  , "        }"
+  , "      }"
+  , "    };"
+  , "  }"
+  , "  return { makeHandler: makeHandler };"
   , "})();"
   ]
 
@@ -874,8 +985,68 @@ terminalWriteJs = T.unlines
   , "    for (var i=0;i<n;i++) a[i] = bin.charCodeAt(i);"
   , "    term.write(a);"
   , "  }"
-  , "  return { register: register, unregister: unregister, write: write, byId: byId };"
+  -- The terminal cell size (CSS px) for leksah's font settings — measured
+  -- ONCE from a throwaway offscreen xterm (the browser equivalent of reading
+  -- font metrics; it also captures xterm's own rounding, which is the real
+  -- authority).  Cached; warmed at startup so callers see it synchronously.
+  -- Everything downstream is feed-forward from this (grid = floor(box/cell)),
+  -- the way iTerm2/Ghostty size their grids — never render-then-correct.
+  , "  var cellCache = null;"
+  , "  function cellMetrics(){"
+  , "    if (cellCache) return cellCache;"
+  , "    try {"
+  , "      var host = document.createElement('div');"
+  , "      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:700px;';"
+  , "      document.body.appendChild(host);"
+  , "      var t = new Terminal({cols: 80, rows: 24});"
+  , "      t.options.fontFamily = 'Menlo, Monaco, \"Courier New\", monospace';"
+  , "      t.options.fontSize = 13;"
+  , "      t.open(host);"
+  , "      var s = host.querySelector('.xterm-screen');"
+  , "      var r = s ? s.getBoundingClientRect() : null;"
+  , "      if (r && r.width && r.height) cellCache = { w: r.width / 80, h: r.height / 24 };"
+  , "      t.dispose();"
+  , "      document.body.removeChild(host);"
+  , "    } catch (e) {}"
+  , "    return cellCache;"
+  , "  }"
+  , "  if (window.requestAnimationFrame) requestAnimationFrame(function(){ cellMetrics(); });"
+  , "  return { register: register, unregister: unregister, write: write, cellMetrics: cellMetrics, byId: byId };"
   , "})();"
+  ]
+
+-- | Defines @window.LeksahDividerDrag.arm(el, vert, cellPx)@: drag-to-resize
+-- for a CC pane divider.  On mousedown the inner 1px line ghosts along with
+-- the pointer (pure JS — smooth); on mouseup the travelled distance is
+-- rounded to whole cells and passed to the divider's @__leksahResize@
+-- callback (set from Haskell), which runs @resize-pane@ over the control
+-- channel.  The layout-change notification then re-renders the panes at
+-- their new rectangles, snapping the ghost to the grid.
+dividerDragJs :: Text
+dividerDragJs = T.unlines
+  [ "window.LeksahDividerDrag = { arm: function(el, vert, cellPx){"
+  , "  el.addEventListener('mousedown', function(e){"
+  , "    if (e.button !== 0) return;"
+  , "    e.preventDefault(); e.stopPropagation();"
+  , "    var start = vert ? e.clientX : e.clientY;"
+  , "    var line = el.firstChild;"
+  , "    el.classList.add('dragging');"
+  , "    function mv(e2){"
+  , "      var d = (vert ? e2.clientX : e2.clientY) - start;"
+  , "      if (line) line.style.transform = vert ? ('translateX('+d+'px)') : ('translateY('+d+'px)');"
+  , "    }"
+  , "    function up(e2){"
+  , "      document.removeEventListener('mousemove', mv);"
+  , "      document.removeEventListener('mouseup', up);"
+  , "      el.classList.remove('dragging');"
+  , "      if (line) line.style.transform = '';"
+  , "      var cells = Math.round(((vert ? e2.clientX : e2.clientY) - start) / cellPx);"
+  , "      if (cells !== 0 && el.__leksahResize) el.__leksahResize(cells);"
+  , "    }"
+  , "    document.addEventListener('mousemove', mv);"
+  , "    document.addEventListener('mouseup', up);"
+  , "  });"
+  , "} };"
   ]
 
 -- | Defines @window.leksahSetHoles@ / @leksahClearHoles@, which punch
@@ -913,8 +1084,10 @@ transparencyJs = T.unlines
   , "  var root = document.querySelector('.leksah'); if (!root) return false;"
   , "  var a = root.classList.contains('tall-auto') && document.querySelector('.area-tall');"
   , "  if (a && a.getBoundingClientRect().width > 8) return true;"
-  , "  var b = root.classList.contains('wide1-auto') && document.querySelector('.area-wide1');"
-  , "  if (b && b.getBoundingClientRect().height > 8) return true;"
+  -- The wide1 bar reveals by transform (its size never changes), so
+  -- "expanded" is positional: any part of it above the statusbar line.
+  , "  var b = root.classList.contains('wide1-auto') && document.querySelector('.tab-buttons.area-wide1');"
+  , "  if (b && b.getBoundingClientRect().top < window.innerHeight - 22) return true;"
   , "  return false;"
   , "};"
   -- Viewport-px rect of a tmux pane (cell spec h) from the *live* terminal grid,
@@ -1086,31 +1259,37 @@ main showMenubar macTitlebar ide = mdo
         TerminalKey s -> do
           -- One button per tmux window (fall back to a lone session button until
           -- the first pane-tree poll arrives, keyed -1 so it's distinct).  Each
-          -- window tab is ordered independently (see buttonOrderOf) and carries
-          -- its own detach × (detaches the whole session — it survives; reopen
-          -- from the Terminals list).
-          let winsD   = maybe [] snd . M.lookup s <$> paneTreeD
+          -- window tab is ordered independently (see buttonOrderOf).  No close ×:
+          -- there's no non-destructive per-window close, so detach the whole
+          -- session via File ▸ Close / the Terminals tree instead.
+          let winsD   = maybe [] snd . M.lookup s <$> allTreeD
               winMapD = ffor winsD $ \ws ->
                           if null ws then M.singleton (-1) Nothing
                           else M.fromList [ (twIndex w, Just w) | w <- ws ]
-              nWinsD  = length <$> winsD
           winButtonsE <- listViewWithKey winMapD $ \widx mwD -> do
             let curD      = maybe True twActive <$> mwD          -- fallback: current
                 selectedD = (&&) <$> isVisibleD <*> curD          -- visible session + current window
-                labelD    = (\names mw n ->
-                              let nm = M.findWithDefault s s names
+                -- Label by the window alone (the session name is redundant — the
+                -- Terminals tree groups by session); fall back to the session name
+                -- only before the first poll, when no window is known yet.
+                labelD    = (\names mw att ->
+                              let bell | s `S.member` att && maybe True twActive mw = " \128276"
+                                       | otherwise = ""
                               in case mw of
-                                   Nothing -> nm
-                                   Just w | n <= 1    -> nm <> windowAlert w
-                                          | otherwise -> nm <> " · " <> twLabel w <> windowAlert w)
-                            <$> terminalNamesD <*> mwD <*> nWinsD
+                                   Nothing -> M.findWithDefault s s names <> bell
+                                   Just w  -> twLabel w <> windowAlert w <> bell)
+                            <$> terminalNamesD <*> mwD <*> attentionD
                 orderStyleD = buttonOrderStyleD (Left (s, widx)) baseOrderD
                 -- Switch the shared terminal to this window, then poke a pane-tree
                 -- refresh so the "current window" highlight updates at once (not on
                 -- the next 2 s poll).
-                onSel     = if widx < 0 then pure ()
-                            else selectTmuxWindow s widx >> fireTermActivity ()
-            tabButton area k selectedD orderStyleD Nothing (Just "Detach") (dynText labelD) onSel
+                onSel | widx < 0  = pure ()
+                      | otherwise = case remoteTabHostTarget s of
+                          Just (host, target) -> void . forkIO $ do
+                              selectRemoteTmuxWindow host target widx
+                              fireRemotePoke ()
+                          Nothing -> selectTmuxWindow s widx >> fireTermActivity ()
+            tabButton area k selectedD orderStyleD Nothing Nothing (dynText labelD) onSel
           pure (mconcat . M.elems <$> winButtonsE)
         _ ->
           let mbTitle    = case k of EditorKey f -> Just (T.pack f); _ -> Nothing
@@ -1129,12 +1308,32 @@ main showMenubar macTitlebar ide = mdo
         saveReqE    = leftmost [saveBridgeE, inPageSaveE]
         saveFileE   = fmapMaybe (\case Just (EditorKey f) -> Just f; _ -> Nothing)
                         (tag (current activePaneD) saveReqE)
-    (openFileE, makeEditor) <- editorWidget ide allE saveFileE
+    (openFileE, openExternalE, makeEditor) <- editorWidget ide allE saveFileE
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextOpenedFile >>= fireOpenedFile
-    let nativeOpenE = (\fp -> EditorKey fp =: ("wide0", Just ())) <$> nativeOpenedFileE
+    -- `leksah-cmd cc-connect HOST` → a remote control-mode terminal tab
+    -- (TerminalCC over ssh), keyed "ssh://HOST".
+    (remoteTermHostE, fireRemoteTerm) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextRemoteTerm >>= fireRemoteTerm
+    let remoteTermE = ("ssh://" <>) <$> remoteTermHostE
+    -- Hosts shown as top-level Terminals-tree nodes: the preference list plus
+    -- any host that has an open ssh:// tab.
+    remoteHostsD <- holdUniqDyn $ (\p rt -> nub $ remoteHosts p ++
+          [ T.takeWhile (/= '#') rest
+          | (_, TerminalKey n) <- rt, Just rest <- [T.stripPrefix "ssh://" n] ])
+        <$> prefsD <*> recentTabs
+    -- Which widget each open terminal tab got (session id -> control mode?),
+    -- so the Terminals tree can show the terminal type.
+    (ccTypeE, fireCCType) <- newTriggerEvent
+    ccTypesD <- foldDyn (uncurry M.insert) M.empty ccTypeE
+    -- Native File▸Open / `leksah-cmd cm open` honour the external-editor pref too:
+    -- when set, they open in the external editor (line 1) rather than CodeMirror.
+    let extActiveMainB = current ((not . T.null . externalEditor) <$> prefsD)
+        nativeOpenE = (\fp -> EditorKey fp =: ("wide0", Just ()))
+                        <$> gate (not <$> extActiveMainB) nativeOpenedFileE
+        nativeOpenExtE = (\fp -> (fp, 1)) <$> gate extActiveMainB nativeOpenedFileE
     -- The tmux pane tree, re-read whenever the active pane might have changed, so
     -- the flipper's per-pane list + MRU stay current (tmux-internal switches like
     -- ⌃B o / clicking a split aren't otherwise visible to leksah).
@@ -1177,7 +1376,11 @@ main showMenubar macTitlebar ide = mdo
     let treeRefreshE = leftmost
           [ () <$ treePb, termActivityE
           , () <$ closeTermE, () <$ selectAnyTermE, () <$ saveSessE ]
-    otherPollE <- performEvent (liftIO listTerminalTree <$ treeRefreshE)
+    -- OFF the reflex thread: a tmux subprocess per poke (term-activity fires
+    -- on every window/pane select) would hitch the UI run synchronously.
+    (otherPollE, fireOtherPoll) <- newTriggerEvent
+    performEvent_ $ ffor treeRefreshE $ \_ ->
+        liftIO . void . forkIO $ listTerminalTree >>= fireOtherPoll
     -- A freshly-created terminal, polled once it exists: carries the new tree and
     -- the new session's active-pane flip item, so the pane both appears in the
     -- list and is floated to the MRU front (creating a terminal makes it current,
@@ -1186,11 +1389,31 @@ main showMenubar macTitlebar ide = mdo
     (newTermPolledE, fireNewTermPolled) <- newTriggerEvent
     paneTreeD <- holdUniqDyn =<< holdDyn mempty
       (leftmost [ otherPollE, (\(_, t, _) -> t) <$> openPollE, fst <$> newTermPolledE ])
+    -- Remote (ssh://) tabs' window/pane trees, keyed by the TAB key and merged
+    -- into the same tree the flipper and tab ordering consume ('allTreeD'), so
+    -- remote windows flip and order exactly like local ones.  Polled over ssh
+    -- (10s, off the reflex thread) for whichever remote tabs are open.
+    remoteTabsD <- holdUniqDyn $
+        (\rt -> nub [ n | (_, TerminalKey n) <- rt, "ssh://" `T.isPrefixOf` n ])
+          <$> recentTabs
+    remoteFlipTick <- tickLossyFromPostBuildTime 10
+    (remoteTreesE, fireRemoteTrees) <- newTriggerEvent
+    -- Poked right after a remote window/pane select, so the active-window
+    -- highlight moves at once instead of on the next 10s poll.
+    (remotePokeE, fireRemotePoke) <- newTriggerEvent
+    performEvent_ $ ffor (leftmost [ tag (current remoteTabsD) remoteFlipTick
+                                   , tag (current remoteTabsD) remotePokeE
+                                   , updated remoteTabsD ]) $ \tabs ->
+        liftIO . void . forkIO $ do
+            entries <- forM tabs $ \n -> fmap (\t -> (n, t)) <$> remoteTabTree n
+            fireRemoteTrees (M.fromList (catMaybes entries))
+    remoteFlipD <- holdDyn M.empty remoteTreesE
+    let allTreeD = M.union <$> paneTreeD <*> remoteFlipD
     -- The item the user is currently focused on: the last tab pressed
     -- (activePaneD, in any area — side bar, bottom bar, editor) resolved to its
     -- active tmux pane if it's a terminal.  Its changes drive the MRU so a click
     -- promotes that pane/tab; the terminal-pane part also catches ⌃B while focused.
-    activeFlipD <- holdUniqDyn (activeFlipFor <$> activePaneD <*> paneTreeD)
+    activeFlipD <- holdUniqDyn (activeFlipFor <$> activePaneD <*> allTreeD)
     -- Focusing a tab by any route moves it to the flipper MRU front.  activeFlipD
     -- (above) catches mouse-down / tab-button clicks, but not the *programmatic*
     -- focus an editor takes when it's opened by a workspace double-click or a
@@ -1202,27 +1425,31 @@ main showMenubar macTitlebar ide = mdo
              case [ k | (_, k) <- rt, T.pack (show k) == str ] of
                (k:_) -> activeFlipFor (Just k) tree
                []    -> Nothing)
-          ((,) <$> current recentTabs <*> current paneTreeD) focusTabE
+          ((,) <$> current recentTabs <*> current allTreeD) focusTabE
         -- Opening a file to navigate to it (workspace double-click, terminal link)
         -- floats that editor to the MRU front directly, whether or not focus moves.
         openEditorFlipE = fmapMaybe (fmap FlipTab . listToMaybe . M.keys) openFileE'
+        -- Opening Preferences (⌘, / menu) floats it to the MRU front too — it
+        -- doesn't take focus the way an editor does, so it needs an explicit bump.
+        openPrefsFlipE = FlipTab PreferencesKey <$ showPrefsE
     -- The MRU: move an item to the front when it is focused/clicked (activeFlipD /
-    -- focusFlipE), opened to navigate to (openEditorFlipE), when the flipper commits
-    -- a selection (flipSelE), and when opening refreshes the front terminal's
-    -- active pane after a ⌃B switch.
+    -- focusFlipE), opened to navigate to (openEditorFlipE / openPrefsFlipE), when the
+    -- flipper commits a selection (flipSelE), and when opening refreshes the front
+    -- terminal's active pane after a ⌃B switch.
     flipMruD <- holdUniqDyn =<< foldDyn (\fi mru -> fi : filter (/= fi) mru) []
                         (leftmost [ fmapMaybe (\(_, _, a) -> a) openPollE
                                   , snd <$> flipSelE
                                   , snd <$> newTermPolledE
                                   , focusFlipE
                                   , openEditorFlipE
+                                  , openPrefsFlipE
                                   , fmapMaybe id (updated activeFlipD) ])
     -- The flip list, kept populated and updated ONLY while the flipper is hidden
     -- (frozen during a flip) and only on genuine changes (holdUniqDyn).  This
     -- mirrors the old tab MRU, which never changed the list under the flipper —
     -- changing it on the open event, or churning it every tmux poll, crashes the
     -- flipper's selectViewListWithKey ("Same key fired multiple times for Merge").
-    flipLiveD <- holdUniqDyn (buildFlipItems <$> flipMruD <*> recentTabs <*> paneTreeD)
+    flipLiveD <- holdUniqDyn (buildFlipItems <$> flipMruD <*> recentTabs <*> allTreeD)
     -- The list the flipper shows.  It updates freely while hidden (labels, tabs),
     -- but the authoritative refresh is a *snapshot taken on open* (openListE):
     -- built from the current MRU with the freshly-polled active pane floated to
@@ -1231,10 +1458,11 @@ main showMenubar macTitlebar ide = mdo
     -- so the flipper reopened with the pre-flip order and flipped to the wrong
     -- pane.  The snapshot fires one frame before the flipper actually opens.
     let openListE = attachWith
-          (\(mru, rt) (_, tree, active) ->
+          (\(mru, rt, rtree) (_, tree, active) ->
              let mru' = maybe mru (\a -> a : filter (/= a) mru) active
-             in buildFlipItems mru' rt tree)
-          ((,) <$> current flipMruD <*> current recentTabs) openPollE
+             in buildFlipItems mru' rt (M.union tree rtree))
+          ((,,) <$> current flipMruD <*> current recentTabs <*> current remoteFlipD)
+          openPollE
     flipItemsD <- holdDyn [] (leftmost
           [ openListE
           , gate (current (not <$> flipperVisibleD)) (updated flipLiveD) ])
@@ -1242,14 +1470,21 @@ main showMenubar macTitlebar ide = mdo
           (\fi names tree -> case fi of
              FlipTab k      -> tabLabelText k names
              FlipPane n w p -> flipPaneLabel n w p tree)
-            <$> fiD <*> terminalNamesD <*> paneTreeD
+            <$> fiD <*> terminalNamesD <*> allTreeD
     (flipperVisibleD, flipRawE) <- flipperWidget flipItemsD flipStepE rawFlipDoneE flipLabel
     -- Split the flipper selection: a tab selects as before; a pane brings its
     -- terminal up in wide0 (below) and makes that tmux pane active.
     let flipSelE  = fmapMaybe (listToMaybe . M.toList) flipRawE
         flipTabE  = fmapMaybe (\(a, fi) -> case fi of FlipTab k -> Just (M.singleton a k); _ -> Nothing) flipSelE
         flipPaneE = fmapMaybe (\(_, fi) -> case fi of FlipPane s w p -> Just (s, w, p); _ -> Nothing) flipSelE
-    performEvent_ $ ffor flipPaneE $ \(s, w, p) -> liftIO (selectTmuxPane s w p)
+    performEvent_ $ ffor flipPaneE $ \(s, w, p) -> liftIO $
+        case remoteTabHostTarget s of
+          -- remote pane: select over ssh (off the reflex thread); the tab's
+          -- control client hears %session-window-changed and re-renders
+          Just (host, target) -> void . forkIO $ do
+              selectRemoteTmuxPane host target w p
+              fireRemotePoke ()
+          Nothing -> selectTmuxPane s w p
     -- Jump-to-teammate (⌃⌥A): pick the next attention-flagged window from the
     -- current pane tree, switch tmux to it (clears the flag), and bring its
     -- session's terminal up in wide0 (via openTabsE / selectTabE below).
@@ -1292,9 +1527,26 @@ main showMenubar macTitlebar ide = mdo
           [ selectTermE
           , (\(s, _)    -> s) <$> selectWinE
           , (\(s, _, _) -> s) <$> selectPaneE ]
+        -- Remote host nodes: sessions/windows/panes on another machine's tmux,
+        -- rendered in control-mode tabs keyed "ssh://host#session".
+        newRemoteE     = fmapMaybe (^? _NewRemoteTerminal) terminalsListE
+        selRemoteE     = fmapMaybe (^? _SelectRemoteTerminal) terminalsListE
+        selRemoteWinE  = fmapMaybe (^? _SelectRemoteTerminalWindow) terminalsListE
+        selRemotePaneE = fmapMaybe (^? _SelectRemoteTerminalPane) terminalsListE
+        remoteKey h sid = "ssh://" <> h <> "#" <> sid
     performEvent_ $ ffor closeTermE $ liftIO . killTerminalSession
     performEvent_ $ ffor selectWinE  $ \(s, w)    -> liftIO (selectTmuxWindow s w)
     performEvent_ $ ffor selectPaneE $ \(s, w, p) -> liftIO (selectTmuxPane s w p)
+    performEvent_ $ ffor selRemoteWinE  $ \(h, s, w)    -> liftIO (selectRemoteTmuxWindow h s w)
+    performEvent_ $ ffor selRemotePaneE $ \(h, s, w, p) -> liftIO (selectRemoteTmuxPane h s w p)
+    -- "+" on a remote host: create a session there, then open its tab.
+    remoteNewSidE <- performEvent $ ffor newRemoteE $ \h ->
+        liftIO $ fmap (remoteKey h) <$> createRemoteSession h
+    let remoteOpenKeyE = leftmost
+          [ fmapMaybe id remoteNewSidE
+          , (\(h, sid)       -> remoteKey h sid) <$> selRemoteE
+          , (\(h, sid, _)    -> remoteKey h sid) <$> selRemoteWinE
+          , (\(h, sid, _, _) -> remoteKey h sid) <$> selRemotePaneE ]
     -- Restore the saved web session (open files, open terminals, visible tabs)
     -- together with the tmux sessions left over from a previous run, in one read
     -- so the two can't race.
@@ -1355,21 +1607,63 @@ main showMenubar macTitlebar ide = mdo
     let newNameE = attachWith (\k () -> "leksah-" <> T.pack (show (k + 1))) (current nameCounterD) newTermClickE
     newTermIdE <- performEvent $ ffor newNameE $ \nm ->
       liftIO $ fromMaybe nm <$> createTerminalSession nm
-    -- Once the new session exists, poll the tree and float its active pane to the
-    -- MRU front (see newTermPolledE above) so Ctrl-` lists it on top.
-    performEvent_ $ ffor newTermIdE $ \sid -> liftIO $ do
+    -- External-editor opens (when the "External editor command" pref is set):
+    -- run e.g. `vim +<line> <file>` as a window in the shared @leksah-editor@
+    -- session (file per window-tab); returns that session's id.  Routed exactly
+    -- like a new terminal below.
+    editTermSidE <- fmapMaybe id <$> performEvent
+      (ffor (attach (current prefsD) (leftmost [openExternalE, nativeOpenExtE])) $ \(p, (file, line)) ->
+         liftIO $ openFileInEditor (takeFileName file)
+           (words (T.unpack (externalEditor p)) ++ ["+" <> show line, file]))
+    let newOrEditTermE = leftmost [newTermIdE, editTermSidE]
+    -- Once the new session/window exists, poll the tree and float its active pane
+    -- to the MRU front (see newTermPolledE above) so Ctrl-` lists it on top.
+    performEvent_ $ ffor newOrEditTermE $ \sid -> liftIO $ do
       tree <- listTerminalTree
       fireNewTermPolled
         (tree, maybe (FlipTab (TerminalKey sid))
                      (\(w, p) -> FlipPane sid w p) (activePaneOfSession sid tree))
+    -- Bells rung in a terminal's *viewed* (current) window: tmux's alert-bell
+    -- hook skips those, so terminalWidget catches them (xterm onBell) and bubbles
+    -- TerminalBell up through tabE.  Collect the session id(s) that just belled.
+    let bellSessE = ffilter (not . null) $ ffor tabE $ \m ->
+          [ n | (TerminalKey n, dm) <- M.toList m
+              , Just (Identity TerminalBell) <- [DM.lookup TerminalTab dm] ]
+        -- A terminal whose attached tmux client exited (the session ended, e.g.
+        -- `exit` in its last window): close its tab so it doesn't linger showing
+        -- "[exited]".  Event-driven off tabE — the same safe feedback path as
+        -- closeTermE (NOT derived from recentTabs/paneTreeD, which cycles).
+        exitedTermE = ffilter (not . null) $ ffor tabE $ \m ->
+          [ TerminalKey n | (TerminalKey n, dm) <- M.toList m
+                          , Just (Identity TerminalExited) <- [DM.lookup TerminalTab dm] ]
+        -- Only raise attention for a bell you weren't already looking at (i.e. the
+        -- belling session isn't the active pane) — otherwise you've seen it.
+        bellAwayE = fmapMaybe
+          (\(active, ns) -> case filter (\n -> active /= Just (TerminalKey n)) ns of
+                              [] -> Nothing; xs -> Just xs)
+          (attach (current activePaneD) bellSessE)
+    -- Which sessions want attention (a viewed-window bell): set on bellAwayE,
+    -- cleared when the session becomes the active pane (you focused its tab), and
+    -- pruned to still-live sessions.  Drives the 🔔 badge on the tab + tree.
+    attentionD <- foldDyn ($) S.empty $ leftmost
+      [ (\ns s -> foldr S.insert s ns) <$> bellAwayE
+      , (\mk s -> case mk of Just (TerminalKey n) -> S.delete n s; _ -> s) <$> updated activePaneD
+      , (\tree s -> S.intersection s (S.fromList (M.keys tree))) <$> updated paneTreeD ]
+    -- Desktop notification for those bells (tmux's hook won't fire for a viewed
+    -- window), via the same osascript notify script.
+    performEvent_ $ ffor bellAwayE $ \ns -> liftIO (mapM_ notifyTerminalBell ns)
     -- Session id -> current name, from the flipper's pane-tree poll; labels
     -- terminal tabs (a rename shows up on the next poll).
     let terminalNamesD = fmap fst <$> paneTreeD
         -- Same, but with the session's alert badge appended (🔔/●/○), so the
         -- editor-area tab heading surfaces attention just like the Terminals-tree
-        -- row does.  Only the tab labels use this; the raw names feed everything
-        -- else (flipper pane labels, MRU).
-        terminalTabLabelsD = M.map (\(nm, ws) -> nm <> sessionAlert ws) <$> paneTreeD
+        -- row does.  A leksah-tracked attention (viewed-window bell) forces 🔔;
+        -- otherwise the badge comes from tmux's window flags (background windows).
+        -- Only the tab labels use this; the raw names feed everything else.
+        terminalTabLabelsD = (\tree att ->
+             M.mapWithKey (\sid (nm, ws) ->
+                 nm <> (if sid `S.member` att then " \128276" else sessionAlert ws)) tree)
+             <$> paneTreeD <*> attentionD
     -- The terminal currently shown in the editor area (for highlighting in the
     -- Terminals list).
     activeTermD <- holdUniqDyn $ (\vis -> case M.lookup "wide0" vis of
@@ -1496,6 +1790,13 @@ main showMenubar macTitlebar ide = mdo
     -- output only turns real project files into Ctrl-clickable links.
     performEvent_ $ ffor (updated workspaceFilesD) $ \files ->
         liftJSM . void $ jsg ("LeksahTermLinks" :: Text) ^. js1 ("setProjectFiles" :: Text) files
+    -- Drive the provider on/off from the "Clickable file paths…" preference: when
+    -- off it claims no links, leaving OSC 8 hyperlinks in the output unobstructed.
+    termLinksEnabledD <- holdUniqDyn (terminalFileLinks . view prefs <$> ide)
+    termLinksEnabledPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [ updated termLinksEnabledD
+                                   , tag (current termLinksEnabledD) termLinksEnabledPb ]) $ \en ->
+        liftJSM . void $ jsg ("LeksahTermLinks" :: Text) ^. js1 ("setEnabled" :: Text) en
     -- Consume find commands only while the workspace tree is the active pane, so
     -- returning focus to it doesn't re-trigger an old search.
     let wsFindE = gate (current ((Just WorkspaceKey ==) <$> activePaneD)) findbarE
@@ -1558,12 +1859,14 @@ main showMenubar macTitlebar ide = mdo
           [ openFileE'
           , nativeOpenE
           , restoreOpenE
-          , openInWide0 <$> newTermIdE
+          , openInWide0 <$> newOrEditTermE
+          , openInWide0 <$> remoteTermE
+          , openInWide0 <$> remoteOpenKeyE
           , openInWide0 <$> selectAnyTermE
           , (\(s, _, _) -> openInWide0 s) <$> flipPaneE
           , (\(s, _)    -> openInWide0 s) <$> alertTargetE
           , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE ]
-        closeTabsE = leftmost [ (\n -> [TerminalKey n]) <$> closeTermE, detachCloseE ]
+        closeTabsE = leftmost [ (\n -> [TerminalKey n]) <$> closeTermE, detachCloseE, exitedTermE ]
         -- Running a grep brings the Grep pane to the front of its area; Preferences…
         -- opens and shows the Preferences pane in the editor area.  The flipper
         -- selects a tab directly, or brings up a pane's terminal in wide0.
@@ -1587,8 +1890,18 @@ main showMenubar macTitlebar ide = mdo
           ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ide allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
           LogKey         -> toDM LogTab <$> logWidget ide (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
-          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD
-          TerminalKey n  -> toDM TerminalTab <$> terminalWidget ide n selectedE
+          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD ccTypesD
+          TerminalKey n  -> toDM TerminalTab <$> do
+              -- Control mode (-CC) vs classic PTY attach, decided when the
+              -- tab is created (toggling the pref affects new terminals).
+              -- Remote terminals ("ssh://host", from leksah-cmd cc-connect)
+              -- are control-mode by construction.
+              cm <- terminalControlMode . view prefs <$> sample (current ide)
+              let useCC = cm || "ssh://" `T.isPrefixOf` n
+              liftIO $ fireCCType (n, useCC)
+              if useCC
+                then terminalCCWidget ide n selectedE
+                else terminalWidget ide n selectedE
           MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide

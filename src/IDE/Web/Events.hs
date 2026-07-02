@@ -76,7 +76,13 @@ makePrisms ''GrepEvents
 -- | A single terminal reports its (OSC-set) window title so the Terminals list
 -- can label it, and (on a Ctrl+click of a project-file path in its output) asks
 -- to open that file at a location.
-data TerminalEvents = TerminalTitle Text | TerminalGoto SrcSpan
+-- | A terminal's window title changed, a link was clicked (go to source), the
+-- shell rang the bell (Claude Code's "needs input / done" signal — caught here
+-- for the *viewed* window, which tmux's alert-bell hook skips), or the attached
+-- tmux client exited (the session ended, e.g. the last window's shell exited) —
+-- the tab should close rather than linger showing "[exited]".
+data TerminalEvents
+  = TerminalTitle Text | TerminalGoto SrcSpan | TerminalBell | TerminalExited
 
 makePrisms ''TerminalEvents
 
@@ -92,6 +98,12 @@ data TerminalsEvents
   | CloseTerminal Text
   | SelectTerminalWindow Text Int
   | SelectTerminalPane Text Int Int
+    -- remote hosts (Terminals-tree host nodes; sessions render in CC tabs
+    -- keyed @ssh://host#session@)
+  | NewRemoteTerminal Text                      -- ^ host
+  | SelectRemoteTerminal Text Text              -- ^ host, session id
+  | SelectRemoteTerminalWindow Text Text Int    -- ^ host, session, window
+  | SelectRemoteTerminalPane Text Text Int Int  -- ^ host, session, window, pane
 
 makePrisms ''TerminalsEvents
 

@@ -16,9 +16,13 @@ module IDE.Web.Widget.Changes
   , changesWidget
   ) where
 
-import Control.Exception (catch, SomeException)
+import Control.Concurrent (forkIO)
+import Control.Exception (catch, finally, SomeException)
 import Control.Lens (to, (^..), preview, _Just)
+import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
+
+import Data.IORef (atomicModifyIORef', newIORef, writeIORef)
 
 import Data.Char (isSpace)
 import Data.List (nub, dropWhileEnd, sortOn, isPrefixOf, tails)
@@ -40,7 +44,8 @@ import System.Process (readProcessWithExitCode)
 
 import Reflex
        (holdDyn, holdUniqDyn, listViewWithKey, never, ffor, switchHold,
-        fmapMaybe, ffilter, leftmost, tag, current, updated, performEvent,
+        fmapMaybe, ffilter, leftmost, tag, current, updated,
+        newTriggerEvent, performEvent_,
         constDyn, getPostBuild, tickLossyFromPostBuildTime, Dynamic, Event)
 import Reflex.Dom.Core
        (MonadWidget, divClass, el, elClass, elDynAttr', elDynClass, dynText,
@@ -101,8 +106,18 @@ changesWidget ide findE = divClass "changes leksah-nav" $ do
   let refreshE = leftmost [ tag (current dirsD) postBuild
                           , tag (current dirsD) tick
                           , updated dirsD ]
-  scanE <- performEvent $ ffor refreshE $ \dirs ->
-      liftIO $ mconcat <$> mapM gitChanges dirs
+  -- The git scan runs OFF the reflex thread: it's several subprocesses per
+  -- project dir (hundreds of ms in a big workspace), and running it in a
+  -- synchronous performEvent blocked the whole UI — keystrokes included —
+  -- on every tick, felt as a rhythmic ~0.6s freeze every 3s.  A busy guard
+  -- skips a tick rather than letting scans pile up.
+  (scanE, fireScan) <- newTriggerEvent
+  scanBusy <- liftIO $ newIORef False
+  performEvent_ $ ffor refreshE $ \dirs -> liftIO $ do
+      busy <- atomicModifyIORef' scanBusy (\b -> (True, b))
+      unless busy . void . forkIO $
+          ((mconcat <$> mapM gitChanges dirs) >>= fireScan)
+              `finally` writeIORef scanBusy False
   changesD <- holdUniqDyn =<< holdDyn mempty scanE
   -- Find selects a changed file: match its workspace-relative path; the row is
   -- highlighted and scrolled into view (see changeRow).

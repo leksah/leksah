@@ -71,7 +71,7 @@ cat > "$HOME/.leksah/rebuild.sh" <<EOF
 # environment — calling cabal directly here matches the loop's build config and
 # stays incremental (no slow nested 'nix develop', no full rebuild).
 cd "$(pwd)" || exit 1
-exec cabal build --builddir "$BUILDDIR" $REBUILD_TARGET
+exec cabal build --builddir "$BUILDDIR" $REBUILD_TARGET exe:ffcabal
 EOF
 
 if [ "$IN_TMUX" = "1" ] && [ "$UI" = "gtk" ]; then
@@ -100,17 +100,26 @@ EOF
 fi
 
 LEKSAH_EXIT_CODE=2
-while [ $LEKSAH_EXIT_CODE -eq 2 ]; do
+# Exit 2 => relaunch after rebuilding (in-IDE / rebuild-self); exit 3 =>
+# `leksah-cmd restart --no-rebuild`: relaunch but skip the cabal build (and its
+# `nix develop`), since rebuild-self already produced the binary.
+while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
+  SKIP_REBUILD=0
+  [ "$LEKSAH_EXIT_CODE" -eq 3 ] && SKIP_REBUILD=1
   rm -f .ghc.environment.* cabal.project.local
   mkdir -p bin
 
   if [ "$UI" = "gtk" ]; then
     # Gtk: install the binaries, then launch through the `launch-leksah` wrapper
     # (which sets up the Gtk runtime environment).
-    nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command \
-      cabal install --builddir "$BUILDDIR" --installdir bin/$GHCARG --overwrite-policy=always \
-        exe:leksah-server exe:leksah exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass \
-        || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
+    if [ "$SKIP_REBUILD" != 1 ]; then
+      nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command \
+        cabal install --builddir "$BUILDDIR" --installdir bin/$GHCARG --overwrite-policy=always \
+          exe:leksah-server exe:leksah exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass \
+          || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
+    else
+      echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
+    fi
     rm -f .ghc.environment.* cabal.project.local
 
     LEKSAH_EXIT_CODE=0
@@ -134,16 +143,21 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ]; do
     #     and rebuild everything.  Launching the binary directly keeps the app's
     #     environment identical to the build environment, so rebuild-self stays
     #     incremental.
-    PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command \
-      bash -c '
-        set -e
-        bd="$1"; gd="$2"; ui="$3"
-        cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd "exe:leksah-$ui"
-        mkdir -p "bin/$gd"
-        ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server)" "bin/$gd/leksah-server"
-        ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd)"    "bin/$gd/leksah-cmd"
-      ' _ "$BUILDDIR" "$GHCARG" "$UI" \
-        || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
+    if [ "$SKIP_REBUILD" != 1 ]; then
+      PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command \
+        bash -c '
+          set -e
+          bd="$1"; gd="$2"; ui="$3"
+          cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "exe:leksah-$ui"
+          mkdir -p "bin/$gd"
+          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server)" "bin/$gd/leksah-server"
+          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd)"    "bin/$gd/leksah-cmd"
+          ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal)"       "bin/$gd/ffcabal"
+        ' _ "$BUILDDIR" "$GHCARG" "$UI" \
+          || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
+    else
+      echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
+    fi
     rm -f .ghc.environment.* cabal.project.local
 
     # Launch the freshly-built binary directly, inside the dev shell, with the

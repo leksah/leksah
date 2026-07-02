@@ -66,6 +66,7 @@ preferencesWidget ide = do
         , b "Use standard line ends even on Windows" forceLineEnds (\v p -> p { forceLineEnds = v })
         , b "Remove trailing blanks when saving" removeTBlanks (\v p -> p { removeTBlanks = v })
         , b "Automatically load files modified outside Leksah" autoLoad (\v p -> p { autoLoad = v })
+        , txt "External editor command (blank = built-in editor)" externalEditor (\v p -> p { externalEditor = v })
         ]
     , section "User Interface"
         [ b "Show hidden files in the workspace" showHiddenFiles (\v p -> p { showHiddenFiles = v })
@@ -77,6 +78,14 @@ preferencesWidget ide = do
         , b "Save the session before closing a workspace" saveSessionOnClose (\v p -> p { saveSessionOnClose = v })
         , enumField p0 "Side bar visibility" tallVisOptions tallVisibility (\v p -> p { tallVisibility = v })
         , enumField p0 "Bottom bar visibility" tallVisOptions wide1Visibility (\v p -> p { wide1Visibility = v })
+        ]
+    , section "Terminal"
+        [ b "Clickable file paths and identifiers in terminal output"
+            terminalFileLinks (\v p -> p { terminalFileLinks = v })
+        , b "Use tmux control mode (-CC): native pane splits (new terminals)"
+            terminalControlMode (\v p -> p { terminalControlMode = v })
+        , linesField p0 "Remote hosts in the Terminals tree (ssh, one per line)"
+            (map T.unpack . remoteHosts) (\v p -> p { remoteHosts = map T.pack v })
         ]
     , section "Build"
         [ b "Save all files before building" saveAllBeforeBuild (\v p -> p { saveAllBeforeBuild = v })
@@ -160,6 +169,10 @@ wiredLabels =
   , "Update metadata at startup", "leksah-server IP address", "leksah-server port"
   , "Stop leksah-server when leksah disconnects"
   , "Packages excluded from the modules pane (one per line, e.g. base or base >=4)"
+  , "Clickable file paths and identifiers in terminal output"
+  , "External editor command (blank = built-in editor)"
+  , "Use tmux control mode (-CC): native pane splits (new terminals)"
+  , "Remote hosts in the Terminals tree (ssh, one per line)"
   ]
 
 -- | A checkbox driven by the live prefs (stays in sync with toolbar toggles).

@@ -2,30 +2,43 @@
 
 ## Build & run (primary dev loop)
 - Primary front end: **`leksah-wkwebview`** (native macOS WKWebView), GHC **9.14.1**.
-- **If leksah is already running, build with `leksah-cmd rebuild-self --no-restart`
-  — do NOT run a separate `nix develop … cabal build`.** rebuild-self builds in
-  leksah's own dev-shell env; a separate `nix develop` build uses a *different*
-  PATH, and alternating the two makes cabal treat it as "configuration changed"
-  and rebuild the world (see the incremental-build invariant below). Use
-  `--no-restart` to iterate without relaunching, then `leksah-cmd restart` when
-  ready. Only fall back to the direct build when **no** instance is running:
-  `nix develop ".?submodules=1#ghc914" --command cabal build --builddir dist-ghc-9.14.1 exe:leksah-wkwebview`
-- **`leksah-cmd rebuild-self [--no-restart]`** — rebuilds **incrementally, in
-  place, while the app stays up** (streaming build output to the terminal). On
-  success it `exit(2)`s so `leksah-nix.sh` relaunches the already-built binary (a
-  quick restart) — **unless `--no-restart`**, which leaves the running app up and
-  just lands the build on disk (relaunch later with `leksah-cmd restart`). Prefer
-  `--no-restart` while iterating: restarting on every build is how duplicate
-  instances pile up (see the single-instance rule below). On a build failure
-  leksah is left running. The build command is `~/.leksah/rebuild.sh`, written by
-  `leksah-nix.sh` to match the launch options (same `--builddir`/target); a no-op
-  build is ~instant (`Up to date`). Don't disconnect the client mid-build in a way
-  that closes the socket early (e.g. `… | head`); pipe to `tail` or redirect to a
-  file — an early close aborts the reply, though `streamBuild` now still drains +
-  reaps the build so it can't be orphaned.
-- `leksah-cmd restart` — the blunt version: `exit(2)` immediately, then
-  `leksah-nix.sh` rebuilds + relaunches (window is gone during the rebuild). Both
-  replace the older `./dev-relaunch.sh`.
+- **If leksah is already running, build with `leksah-cmd rebuild-self
+  --use-cabal --no-restart` (agents/scripts) — do NOT run a separate
+  `nix develop … cabal build`.** rebuild-self builds in leksah's own dev-shell
+  env; a `nix develop` build from another shell has a *different* PATH, and
+  alternating the two makes cabal treat it as "configuration changed" and
+  rebuild the world (see the incremental-build invariant below). Use
+  `--no-restart` to iterate without relaunching, then `leksah-cmd restart
+  --no-rebuild` when ready.
+- **`leksah-cmd rebuild-self [--no-restart] [--use-cabal]`** — rebuilds
+  **incrementally, in place, while the app stays up**. Default: through
+  **leksah's own build system** (errors/warnings land in the IDE's Errors/Log
+  panes; with ghci mode on it goes via ffcabal's cached repls) — the reply is a
+  fire-and-forget ack, NOT streamed output. **`--use-cabal` is the failsafe**
+  (and what agents should use for scripted builds): it bypasses leksah's build
+  code entirely — in case it's broken — running `~/.leksah/rebuild.sh` (written
+  by leksah-nix.sh) directly and streaming output back; also the automatic
+  fallback when no leksah package is open in the workspace. On success both
+  paths `exit(2)` → relaunch — unless `--no-restart` (build lands on disk;
+  relaunch later). Prefer `--no-restart` while iterating: restarting per build
+  is how duplicate instances pile up (single-instance rule below). On failure
+  leksah stays up. Don't close the socket mid-build (`… | head`); redirect to a
+  file or `tail`.
+- `leksah-cmd restart [--no-rebuild]` — exit immediately so `leksah-nix.sh`
+  relaunches; plain restart exits 2 (loop rebuilds first), `--no-rebuild` exits
+  3 (loop skips the build — use after rebuild-self already built). Both replace
+  the older `./dev-relaunch.sh`.
+- **When NO instance is running**, build with the captured env (config-identical
+  PATH): `sh -c '. ~/.leksah/env.sh; cd <repo>; cabal build --builddir
+  dist-ghc-9.14.1 <targets>'` (`~/.leksah/env.sh` is a snapshot of the running
+  leksah's environment). A bare `nix develop` build only as a last resort.
+- **ffcabal** (`vendor/ffcabal`, a submodule): fail-fast cabal wrapper — checks
+  each local component in cached tmux repls (session `ffcabal`, default server)
+  in dep order, then builds in parallel. Leksah's native builds use it when
+  **ghci mode (the `debug` pref) is on**; ghci mode off = plain cabal.
+  Tests: `FFCABAL_BIN=$(cabal list-bin --builddir dist-ghc-9.14.1 ffcabal)
+  cabal test --builddir dist-ghc-9.14.1 ffcabal-test --test-show-details=direct`.
+  `FFCABAL_TMUX_ARGS="-L sock"` redirects its repls to a scratch tmux server.
 - **Run exactly ONE `leksah-nix.sh` loop / one instance.** Each loop relaunches
   its own instance on `exit(2)`, and every instance's `startCmdServer` unlinks and
   rebinds `~/.leksah/cmd.sock` — so with several instances the newest wins the

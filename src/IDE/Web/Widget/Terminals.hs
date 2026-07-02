@@ -22,14 +22,18 @@ module IDE.Web.Widget.Terminals
   , windowAlert
   ) where
 
+import Control.Concurrent (forkIO)
 import Control.Lens ((.~), (^.))
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Default (def)
 import Data.Function ((&))
-import qualified Data.Map as M (fromList, elems)
-import Data.Maybe (listToMaybe)
+import Data.Map (Map)
+import qualified Data.Map as M (fromList, elems, lookup, empty)
+import Data.Set (Set)
+import qualified Data.Set as S (member)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T (breakOn, drop, null)
 import Data.Time.Clock (NominalDiffTime)
@@ -42,8 +46,8 @@ import Clay
 import Clay.Stylesheet (key)
 
 import Reflex
-       (holdUniqDyn, listViewWithKey, leftmost, fmapMaybe, ffor, ffilter, holdDyn,
-        switchHold, switchDyn, never, constDyn, tagPromptlyDyn, performEvent,
+       (foldDyn, holdUniqDyn, listViewWithKey, leftmost, fmapMaybe, ffor, ffilter, holdDyn,
+        switchHold, switchDyn, never, constDyn, tagPromptlyDyn, newTriggerEvent,
         performEvent_, getPostBuild, tickLossyFromPostBuildTime, updated,
         Dynamic, Event)
 import Reflex.Dom.Core
@@ -55,7 +59,7 @@ import Language.Javascript.JSaddle (liftJSM, jsg, js1, fun, eval)
 
 import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
-       (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
+       (TmuxWindow(..), TmuxPane(..), listTerminalTree, listRemoteTerminalTree, killTmuxWindow,
         killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane,
         renameTmuxSession, renameTmuxWindow)
 import IDE.Web.Widget.Tree (treeItem)
@@ -131,9 +135,11 @@ terminalsCss = do
         borderRadius (px 3) (px 3) (px 3) (px 3)
         fontSize (px 13)
         padding (px 1) (px 4) (px 1) (px 4)
-    ".terminals .terminals-new" ? do
-        width (pct 100)
-        padding (px 4) (px 4) (px 4) (px 4)
+    -- Top-level host rows ("Local", remote hosts): bold, like section heads.
+    ".terminals .terminals-host-label" ? do
+        fontWeight bold
+        "flex" -: "1"
+        "min-width" -: "0"
     ".terminals li" ? do
         -- No horizontal padding: the deeper levels are indented by the nested
         -- <ul> margins, and any right padding would compound per level and step
@@ -202,40 +208,130 @@ type NodeEvent = Either (IO ()) TerminalsEvents
 terminalsWidget
   :: forall t m . MonadWidget t m
   => Dynamic t (Maybe Text)    -- ^ the focused session's id (highlighted)
+  -> Dynamic t (Set Text)      -- ^ sessions wanting attention (viewed-window bell → 🔔)
+  -> Dynamic t [Text]          -- ^ remote ssh hosts (prefs ∪ open ssh:// tabs)
+  -> Dynamic t (Map Text Bool) -- ^ open terminals' widget type (True = control mode)
   -> m (Event t TerminalsEvents)
-terminalsWidget activeD = divClass "terminals leksah-nav" $ do
-  newE <- (NewTerminal <$) . domEvent Click . fst <$> elClass' "button" "terminals-new" (text "+ New Session")
+terminalsWidget activeD attnD remoteHostsD ccTypesD = divClass "terminals leksah-nav" $ do
   -- Poll tmux for the whole session/window/pane tree (keyed by session id, each
-  -- carrying its current name): on first build, on a timer, and just after "New
-  -- Terminal".  Polling every tick is what refreshes a renamed session's label
-  -- (the id key is unchanged, so only the displayed name updates).
+  -- carrying its current name): on first build, on a timer, and just after a
+  -- "new session" click.  Polling every tick is what refreshes a renamed
+  -- session's label (the id key is unchanged, so only the display updates).
   postBuild <- getPostBuild
   tick <- tickLossyFromPostBuildTime terminalsPollInterval
   rec
-    polledE <- performEvent $ ffor (leftmost [() <$ postBuild, () <$ tick, () <$ newE]) $ \_ ->
-        liftIO listTerminalTree
+    -- Polls run OFF the reflex thread (tmux subprocesses — a synchronous
+    -- performEvent here hitches the whole UI, keystrokes included, on
+    -- every tick).
+    (polledE, firePolled) <- newTriggerEvent
+    performEvent_ $ ffor (leftmost [() <$ postBuild, () <$ tick, () <$ newE]) $ \_ ->
+        liftIO . void . forkIO $ listTerminalTree >>= firePolled
     -- A window/pane kill: run it, then immediately re-read the tree (in the same
     -- action, so the order is fixed) so the row goes away at once rather than on
     -- the next poll tick.
-    killedE <- performEvent $ ffor killActE $ \act -> liftIO (act >> listTerminalTree)
+    (killedE, fireKilled) <- newTriggerEvent
+    performEvent_ $ ffor killActE $ \act ->
+        liftIO . void . forkIO $ (act >> listTerminalTree) >>= fireKilled
     -- Every live session (id -> (name, windows)); this is the tree directly.
     itemsD <- holdUniqDyn =<< holdDyn mempty (leftmost [polledE, killedE])
-    rowsE <- el "ul" $ listViewWithKey itemsD $ \n vD ->
-      sessionNode ((== Just n) <$> activeD) n vD
-    let nodeE    = fmapMaybe (listToMaybe . M.elems) rowsE
-        killActE = fmapMaybe (either Just (const Nothing)) nodeE
-        bubbleE  = fmapMaybe (either (const Nothing) Just) nodeE
-  return $ leftmost [newE, bubbleE]
+    -- "Local": the host node for leksah's own tmux server, expanded by default;
+    -- its "+" glyph replaces the old full-width "New Session" button.
+    localE <- el "ul" $ treeItem "terminals-host" True
+        (hostRow "Local" NewTerminal "New local session")
+        (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\n vD ->
+            sessionNode ((== Just n) <$> activeD) (S.member n <$> attnD)
+                        (M.lookup n <$> ccTypesD) n vD))
+    let killActE = fmapMaybe (either Just (const Nothing)) localE
+        newE     = fmapMaybe (\e -> case e of NewTerminal -> Just (); _ -> Nothing) bubbleLocalE
+        bubbleLocalE = fmapMaybe (either (const Nothing) Just) localE
+  -- One node per remote host, sessions/windows/panes over ssh (select-only).
+  remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
+      (\host _ -> remoteHostNode host)
+  return $ leftmost [ bubbleLocalE
+                    , fmapMaybe (\m -> listToMaybe (M.elems m)
+                                        >>= either (const Nothing) Just) remoteE ]
+
+-- | A top-level host row: bold label plus the "+" new-session glyph.
+hostRow :: MonadWidget t m => Text -> TerminalsEvents -> Text -> m (Event t NodeEvent)
+hostRow label newEv tip = do
+    elClass "span" "terminals-label terminals-host-label" $ text label
+    newE <- actionBtn "+" tip
+    pure $ Right newEv <$ newE
+
+-- | How often remote hosts' trees are refreshed (over ssh, so much less often
+-- than the local poll).
+remotePollInterval :: NominalDiffTime
+remotePollInterval = 10
+
+-- | A remote host: its tmux tree fetched over ssh; unreachable hosts keep the
+-- last-known tree and mark the label.  Rows are select-only (no manage glyphs
+-- yet) — selections open/steer the host's control-mode tabs.
+remoteHostNode :: MonadWidget t m => Text -> m (Event t NodeEvent)
+remoteHostNode host = do
+    pb <- getPostBuild
+    tick <- tickLossyFromPostBuildTime remotePollInterval
+    -- OFF the reflex thread: this is a whole ssh connection per tick — a
+    -- synchronous performEvent froze the UI for the entire handshake (up
+    -- to the 5s ConnectTimeout when the host is unreachable).
+    (polledE, firePolled) <- newTriggerEvent
+    performEvent_ $ ffor (leftmost [() <$ pb, () <$ tick]) $ \_ ->
+        liftIO . void . forkIO $ listRemoteTerminalTree host >>= firePolled
+    reachD <- holdUniqDyn =<< holdDyn True (isJust <$> polledE)
+    itemsD <- holdUniqDyn =<< foldDyn (\mNew old -> fromMaybe old mNew) M.empty polledE
+    treeItem "terminals-host" True
+        (do let lblD = ffor reachD $ \r -> host <> (if r then "" else "  (unreachable)")
+            elClass "span" "terminals-label terminals-host-label" $ dynText lblD
+            newE <- actionBtn "+" ("New session on " <> host)
+            pure $ Right (NewRemoteTerminal host) <$ newE)
+        (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\sid vD ->
+            remoteSessionNode host sid vD))
+
+remoteSessionNode
+  :: MonadWidget t m
+  => Text -> Text -> Dynamic t (Text, [TmuxWindow]) -> m (Event t NodeEvent)
+remoteSessionNode host sid vD =
+  treeItem "terminals-session" True
+    (do (lbl, _) <- elDynAttr' "span" (constDyn ("class" =: "terminals-label leksah-nav-item")) $
+            dynText ((\(nm, ws) -> nm <> sessionAlert ws) <$> vD)
+        pure $ Right (SelectRemoteTerminal host sid) <$ domEvent Click lbl)
+    (el "ul" $ remoteWindowsTree host sid (snd <$> vD))
+
+remoteWindowsTree
+  :: MonadWidget t m
+  => Text -> Text -> Dynamic t [TmuxWindow] -> m (Event t NodeEvent)
+remoteWindowsTree host sid windowsD =
+  fmapMaybe (listToMaybe . M.elems) <$>
+    listViewWithKey (M.fromList . map (\w -> (twIndex w, w)) <$> windowsD)
+      (\widx wD ->
+        treeItem "terminals-window" False
+          (do let attrs = ffor wD $ \w ->
+                    "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
+              (e, _) <- elDynAttr' "span" attrs $ dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
+              pure $ Right (SelectRemoteTerminalWindow host sid widx) <$ domEvent Click e)
+          (el "ul" $ remotePanesTree host sid widx (twPanes <$> wD)))
+
+remotePanesTree
+  :: MonadWidget t m
+  => Text -> Text -> Int -> Dynamic t [TmuxPane] -> m (Event t NodeEvent)
+remotePanesTree host sid widx panesD =
+  fmapMaybe (listToMaybe . M.elems) <$>
+    listViewWithKey (M.fromList . map (\p -> (tpIndex p, p)) <$> panesD)
+      (\pidx pD -> el "li" $ do
+        let attrs = ffor pD $ \p ->
+              "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
+        (e, _) <- elDynAttr' "span" attrs $ dynText (tpLabel <$> pD)
+        pure $ Right (SelectRemoteTerminalPane host sid widx pidx) <$ domEvent Click e)
 
 -- | A session node: the name (click to select) with a ✕ that asks to confirm
 -- before killing, and the session's tmux windows as children.
 sessionNode
   :: MonadWidget t m
-  => Dynamic t Bool -> Text -> Dynamic t (Text, [TmuxWindow])
+  => Dynamic t Bool -> Dynamic t Bool -> Dynamic t (Maybe Bool) -> Text
+  -> Dynamic t (Text, [TmuxWindow])
   -> m (Event t NodeEvent)
-sessionNode activeD n vD =
+sessionNode activeD attnD ccD n vD =
   treeItem "terminals-session" True
-    (sessionRow activeD n vD)
+    (sessionRow activeD attnD ccD n vD)
     (el "ul" $ windowsTree n (snd <$> vD))
 
 -- | A one-glyph badge for a window's tmux alert state, highest priority first:
@@ -259,13 +355,22 @@ sessionAlert ws
 -- | The session row: its (highlightable) title and the inline close confirm.
 sessionRow
   :: MonadWidget t m
-  => Dynamic t Bool -> Text -> Dynamic t (Text, [TmuxWindow]) -> m (Event t NodeEvent)
-sessionRow activeD n vD = do
+  => Dynamic t Bool -> Dynamic t Bool -> Dynamic t (Maybe Bool) -> Text
+  -> Dynamic t (Text, [TmuxWindow])
+  -> m (Event t NodeEvent)
+sessionRow activeD attnD ccD n vD = do
   let labelAttrs = ffor activeD $ \a ->
         "class" =: ("terminals-label leksah-nav-item" <> if a then " terminals-active" else "")
       -- Displayed name has the session's highest-priority alert badge appended,
       -- so an alert in a window shows on the (possibly collapsed) session row too.
-      displayNameD = (\(nm, ws) -> nm <> sessionAlert ws) <$> vD
+      -- A leksah-tracked attention (viewed-window bell, which tmux flags miss)
+      -- forces 🔔; otherwise the badge comes from the windows' tmux flags.
+      -- Terminal type of the open tab: ⊞ = control mode (native pane splits),
+      -- ▭ = classic PTY attach; nothing when the session has no open tab.
+      typeGlyph = maybe "" (\cc -> if cc then " \8862" else " \9645")
+      displayNameD = (\(nm, ws) att mcc -> nm <> typeGlyph mcc
+                        <> if att then " \128276" else sessionAlert ws)
+                       <$> vD <*> attnD <*> ccD
       -- The rename box is prefilled with the *raw* name only — the badge is a
       -- status glyph, not part of the editable name.
       rawNameD     = fst <$> vD

@@ -292,7 +292,10 @@ library
         IDE.Web.OpenFileRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
+        IDE.Web.RemoteTermRequest
         IDE.Web.TerminalInput
+        IDE.Web.TmuxCC
+        IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
         IDE.Web.Session
@@ -517,7 +520,10 @@ library leksah-nogtk
         IDE.Web.OpenFileRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
+        IDE.Web.RemoteTermRequest
         IDE.Web.TerminalInput
+        IDE.Web.TmuxCC
+        IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
         IDE.Web.Session
@@ -740,7 +746,9 @@ executable leksah-wkwebview
     main-is: WKWebView.hs
     hs-source-dirs: main
     default-language: Haskell2010
-    ghc-options: -threaded -rtsopts -Wall -ferror-spans
+    -- -T: collect RTS stats so the GC monitor (IDE.Web.Main) can log
+    -- major-GC pauses to stderr; negligible overhead.
+    ghc-options: -threaded -rtsopts "-with-rtsopts=-T" -Wall -ferror-spans
 
     if os(osx)
       other-modules:

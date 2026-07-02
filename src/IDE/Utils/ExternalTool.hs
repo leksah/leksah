@@ -105,7 +105,12 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
                                     _ -> return (executable, args)
         -- Run the tool
         (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
-        modifyIDE_ $ runningTool ?~ (pid, interruptProcessGroupOf pid)
+        -- The stored interrupt action can race the tool exiting on its own:
+        -- interruptProcessGroupOf (getProcessGroupIDOf inside it) then throws
+        -- "does not exist" — benign (it's already gone), but uncaught it kills
+        -- the calling thread (logged as "Uncaught exception").  Swallow it.
+        modifyIDE_ $ runningTool ?~
+          (pid, interruptProcessGroupOf pid `catch` \(SomeException _) -> return ())
         reifyIDE $ \ideR -> void . forkIO $
             reflectIDE (do
                 pidHandler pid

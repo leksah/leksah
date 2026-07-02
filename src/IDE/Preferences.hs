@@ -147,6 +147,10 @@ defaultPrefs = Prefs {
     ,   showWorkspaceIcons  =   True
     ,   hlintOnSave = True
     ,   collapseErrors = True
+    ,   terminalFileLinks = True
+    ,   externalEditor = ""
+    ,   terminalControlMode = False
+    ,   remoteHosts = []
     }
 
 mergePrefsFile :: Prefs -> PrefsFile -> Prefs
@@ -220,6 +224,10 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , showWorkspaceIcons = fromMaybe showWorkspaceIcons showWorkspaceIcons_
   , hlintOnSave = fromMaybe hlintOnSave hlintOnSave_
   , collapseErrors = fromMaybe collapseErrors collapseErrors_
+  , terminalFileLinks = fromMaybe terminalFileLinks terminalFileLinks_
+  , externalEditor = fromMaybe externalEditor externalEditor_
+  , terminalControlMode = fromMaybe terminalControlMode terminalControlMode_
+  , remoteHosts = fromMaybe remoteHosts remoteHosts_
   }
 
 toPrefsFile :: Prefs -> PrefsFile
@@ -291,6 +299,10 @@ toPrefsFile Prefs{..} = PrefsFile
   , showWorkspaceIcons_ = Just showWorkspaceIcons
   , hlintOnSave_ = Just hlintOnSave
   , collapseErrors_ = Just collapseErrors
+  , terminalFileLinks_ = Just terminalFileLinks
+  , externalEditor_ = Just externalEditor
+  , terminalControlMode_ = Just terminalControlMode
+  , remoteHosts_ = Just remoteHosts
   }
 
 -- ------------------------------------------------------------

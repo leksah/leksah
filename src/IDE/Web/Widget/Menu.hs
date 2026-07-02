@@ -7,7 +7,7 @@ import Data.Text (Text)
 import Data.Traversable (forM)
 
 import Clay
-       (cursorDefault, padding, px, fontSize, hover, (#), (?), Css,
+       (cursorDefault, padding, px, fontSize, hover, (#), (?), (-:), Css,
         Background(..), Color(..), margin, nil, borderRadius, Cursor(..),
         position, absolute, relative, top, left, pct, nowrap, whiteSpace,
         zIndex, block, backgroundImage, vGradient, boxShadow, bsColor,
@@ -15,14 +15,14 @@ import Clay
         em, minWidth)
 import qualified Clay (display, none)
 
-import Reflex (leftmost, Event, Dynamic, tag, current)
+import Reflex (leftmost, never, Event, Dynamic, tag, current)
 
 import Reflex.Dom.Core
        (dynText, el', el, elClass, divClass, text, MonadWidget,
         HasDomEvent(..), EventName(..))
 
 import IDE.Web.Command (Command)
-import IDE.Web.MenuModel (MenuItem(..))
+import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec)
 
 menuCss :: Css
 menuCss = do
@@ -45,6 +45,12 @@ menuCss = do
     float floatRight
     marginLeft (em 2)
     color (Rgba 153 153 153 1.0)
+  -- Separator rows: a thin line, not hoverable/clickable.
+  ".menu li.menu-sep" ? do
+    padding (px 0) (px 0) (px 0) (px 0)
+    margin (px 4) (px 8) (px 4) (px 8)
+    "border-top" -: "1px solid rgba(153,153,153,0.4)"
+    "pointer-events" -: "none"
   -- A submenu item anchors its flyout, which is a nested `.menu` shown to the
   -- right on hover.  These selectors are more specific than `.menubar .menu`
   -- (which anchors the top-level dropdown under the bar), so they win and
@@ -95,6 +101,16 @@ menuItems items =
             text label
             elClass "span" "menu-shortcut" $ text shortcut
           return $ cmd <$ domEvent Click li
+        -- The web menubar can't intercept real key equivalents, so a MenuKey
+        -- renders like a shortcut hint (the native macOS menu makes it real).
+        MenuKey label spec cmd -> do
+          (li, _) <- el' "li" $ do
+            text label
+            elClass "span" "menu-shortcut" $ text (prettyKeySpec spec)
+          return $ cmd <$ domEvent Click li
+        MenuSep -> do
+          _ <- elClass "li" "menu-sep" $ text ""
+          return never
         Submenu label subs ->
           -- The flyout (a nested `.menu`) lives inside this <li>; its chosen
           -- command is the <li>'s result and bubbles up via leftmost.

@@ -5,6 +5,7 @@ module IDE.Web.Command where
 
 import Control.Lens
        (Getter, to, makePrisms, view, (%~))
+import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
@@ -12,7 +13,8 @@ import qualified Data.ByteString as BS (cons)
 import Data.Text (Text)
 
 import IDE.Web.CloseRequest (requestCloseActivePane)
-import IDE.Web.TerminalInput (sendToActiveTerminal)
+import IDE.Web.TerminalInput
+       (sendToActiveTerminal, tmuxCommandActiveTerminal)
 import IDE.Web.TransparencyRequest (requestToggleTransparency)
 import IDE.Web.SnapRequest (requestSnapWindow)
 
@@ -244,6 +246,20 @@ tmuxKey keys = CommandIDEAction
   ""  -- menu-only: no toolbar icon
   (__ "Send this tmux C-b shortcut to the active terminal")
   (liftIO (sendToActiveTerminal (BS.cons 2 keys)))
+
+-- | A pane command for the Terminal menu that works with EITHER kind of
+-- terminal tab: on a control-mode (CC) tab it runs @ccCmd@ verbatim over the
+-- control channel (a chord can't work there — keystrokes are @send-keys@'d
+-- straight into the pane, bypassing tmux's prefix handling); on a classic PTY
+-- tab it falls back to typing the @C-b chord@ (which works even for remote
+-- @ssh -t@ sessions, where we can't run commands directly).
+paneCmd :: Text -> ByteString -> Command
+paneCmd ccCmd chord = CommandIDEAction
+  ""  -- menu-only: no toolbar icon
+  (__ "Terminal split/pane command (control channel or C-b chord)")
+  (liftIO $ do
+      done <- tmuxCommandActiveTerminal ccCmd
+      unless done $ sendToActiveTerminal (BS.cons 2 chord))
 
 -- | A menu command that toggles whether the active terminal's active tmux pane
 -- is shown as a see-through, click-through hole in the window (macOS).  The work

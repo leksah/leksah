@@ -36,14 +36,22 @@ import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
+import IDE.Web.TerminalInput (setActiveTerminalNotifier)
 
 foreign import ccall "leksah_menu_begin"    c_menuBegin   :: IO ()
 foreign import ccall "leksah_menu_add_menu" c_menuAddMenu :: CString -> IO ()
 foreign import ccall "leksah_menu_add_item" c_menuAddItem :: CString -> CInt -> IO ()
 foreign import ccall "leksah_menu_add_item_kv" c_menuAddItemKV :: CString -> CString -> CInt -> IO ()
+-- An item with a REAL key equivalent (spec like "cmd+shift+d"), enabled only
+-- while a terminal tab is active (see leksah_set_terminal_active).
+foreign import ccall "leksah_menu_add_item_key" c_menuAddItemKey :: CString -> CString -> CInt -> IO ()
+foreign import ccall "leksah_menu_add_separator" c_menuAddSeparator :: IO ()
 foreign import ccall "leksah_menu_push_submenu" c_menuPushSubmenu :: CString -> IO ()
 foreign import ccall "leksah_menu_pop_submenu"  c_menuPopSubmenu  :: IO ()
 foreign import ccall "leksah_menu_install"  c_menuInstall :: IO ()
+-- Whether a terminal tab is on screen: gates the Terminal menu's key
+-- equivalents so ⌘D etc. pass through to the editor otherwise.
+foreign import ccall "leksah_set_terminal_active" c_setTerminalActive :: CInt -> IO ()
 foreign import ccall "leksah_titlebar_setup" c_titlebarSetup :: IO ()
 -- Show the native "Open File" panel (NSOpenPanel); it calls back leksah_open_file.
 foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
@@ -89,6 +97,8 @@ flattenCmds :: [MenuItem] -> [Command]
 flattenCmds = concatMap $ \case
   MenuItem _ cmd       -> [cmd]
   MenuShortcut _ _ cmd -> [cmd]
+  MenuKey _ _ cmd      -> [cmd]
+  MenuSep              -> []
   Submenu _ subs       -> flattenCmds subs
 
 -- | Called from Objective-C when a menu item is chosen.
@@ -118,6 +128,9 @@ installMacMenu :: IO ()
 installMacMenu = do
   -- Recent files are shown in the native "Open Recent" submenu.
   setRecentFilesHandler $ \fps -> withCString (intercalate "\n" fps) c_setRecentFiles
+  -- Keep the native menu told whether a terminal tab is on screen, so the
+  -- Terminal menu's key equivalents only fire then.
+  setActiveTerminalNotifier $ \on -> c_setTerminalActive (if on then 1 else 0)
   -- The toolbar/menubar Open commands show the native open panels.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
@@ -139,6 +152,13 @@ installMacMenu = do
         withCString (T.unpack label) $ \l ->
           withCString (T.unpack sc) $ \s -> c_menuAddItemKV l s (fromIntegral tag)
         addItems (tag + 1) rs
+      addItems tag (MenuKey label spec _ : rs) = do
+        withCString (T.unpack label) $ \l ->
+          withCString (T.unpack spec) $ \s -> c_menuAddItemKey l s (fromIntegral tag)
+        addItems (tag + 1) rs
+      addItems tag (MenuSep : rs) = do
+        c_menuAddSeparator
+        addItems tag rs
       addItems tag (Submenu label subs : rs) = do
         withCString (T.unpack label) c_menuPushSubmenu
         tag' <- addItems tag subs

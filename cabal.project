@@ -6,6 +6,7 @@ packages:
  vendor/haskellVCSGUI/vcsgui
 -- vendor/gi-gobject/
  vendor/gi-gtkosxapplication/
+ vendor/ffcabal/
 
 package reflex
   tests: False
