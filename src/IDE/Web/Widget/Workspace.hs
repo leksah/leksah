@@ -30,7 +30,7 @@ import System.Directory (getModificationTime, doesFileExist)
 import System.FilePath ((<.>), (</>), dropFileName, dropTrailingPathSeparator)
 
 import Clay
-       (pct, hover, width, bold, fontWeight, black, paddingBottom,
+       (pct, hover, width, bold, fontWeight, paddingBottom,
         borderRadius, paddingRight, marginBottom, marginTop, checked,
         userSelect, (|+), absolute, position, left, nil, paddingLeft, px,
         marginLeft, listStyleType, listStyleImage, middle, grey, color, rgb,
@@ -102,10 +102,6 @@ workspaceCss = do
     "div.package-id" ? do
         Clay.display inlineBlock
         whiteSpace nowrap
-    "div.package-file" ? do
-        Clay.display inlineBlock
-        whiteSpace nowrap
-        color grey
     "img" ? do
         Clay.display inlineBlock
         verticalAlign middle
@@ -142,14 +138,13 @@ workspaceCss = do
         userSelect none
     ("input" Clay.# checked) |+ "div" ?
         background (Rgba 30 88 209 1.0)
-    ("input" Clay.# checked) |+ "div div.package-file" ?
-        color black
-    -- The run (▶) buttons at the right of component / flake / shell rows:
+    -- The run (>) buttons at the right of component / flake / shell rows:
     -- subtle until hovered, like the Terminals pane's action glyphs.
     ".workspace .ws-run" ? do
         key "background" ("transparent" :: Text)
         key "border" ("none" :: Text)
-        key "font-size" ("9px" :: Text)
+        key "font-size" ("12px" :: Text)
+        key "font-weight" ("bold" :: Text)
         key "opacity" ("0.55" :: Text)
         key "margin-left" ("8px" :: Text)
         key "padding" ("0 3px" :: Text)
@@ -261,7 +256,7 @@ flakeOutputsNode dir = do
 
 -- | The \"Shells\" node: the project flake's @devShells.${currentSystem}@.
 -- Evaluated in the background as soon as the project renders — NOT lazily on
--- expand, because the collapsed row itself shows a run (▶) button when a
+-- expand, because the collapsed row itself shows a run (>) button when a
 -- @default@ shell exists.  The eval refuses import-from-derivation, so a
 -- flake whose shell list can only be computed by building fails fast (error
 -- shown when expanded) instead of kicking off builds nobody asked for.
@@ -388,7 +383,12 @@ workspaceWidget ide activeFileD revealFileD = do
                     let isDebugD = S.member . (pKey,) <$> cabalFileD <*> debugPackagesD
                     elDynAttr "img" (("src" =:) . (\f -> "/pics/ide_" <> f <> ".png") . bool "package" "debug" <$> isDebugD) $ return ()
                     text " "
-                    divClass "package-id" $ do
+                    -- The package's cabal-file path (relative to the project)
+                    -- is a tooltip, not an inline label — it was crowding the
+                    -- row.
+                    relPathD <- holdUniqDyn $
+                        (\cf -> T.pack $ fromMaybe cf $ stripPrefix (pjDir pKey) cf) <$> cabalFileD
+                    elDynAttr "div" ((\p -> "class" =: "package-id" <> "title" =: p) <$> relPathD) $ do
                       text $ packageIdentifierToString packageId
                       dynText $ do
                         isActive <- isActivePackageD
@@ -398,10 +398,6 @@ workspaceWidget ide activeFileD revealFileD = do
                           then maybe (if isJust mbLib then " (library)" else "")
                                    (\comp -> " (" <> comp <> ")") activeComp
                           else ""
-                    text " "
-                    divClass "package-file" $ dynText =<< holdUniqDyn (do
-                        cabalFile <- cabalFileD
-                        return . T.pack $ fromMaybe cabalFile $ stripPrefix (pjDir pKey) cabalFile)
                     return never) $
                   el "ul" $ do
                     componentsE <- treeItem "components" False
@@ -419,7 +415,7 @@ workspaceWidget ide activeFileD revealFileD = do
                               ]) $ do
                               elAttr "img" ("src" =: "/pics/ide_component.png") $ return ()
                               dynText $ (" " <>) <$> componentD
-                              -- The repl (▶) button: bring up the component's
+                              -- The repl (>) button: bring up the component's
                               -- ffcabal repl window as a terminal tab.
                               case pKey of
                                 CabalTool {} -> do

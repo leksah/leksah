@@ -495,8 +495,9 @@ openFileInEditor winName argv = (`catch` \(_ :: SomeException) -> return Nothing
 -- the window previously created for the same @key@ (recorded in the
 -- @\@leksah_run@ window option) rather than piling up duplicates.  The window
 -- is selected either way; returns the session id (the terminal tab key).
--- When @cmd@ exits the window drops to the login shell, so a failing
--- @nix develop@ leaves its error readable instead of closing the window.
+-- Exiting the repl closes the window; only a FAILING @cmd@ drops to the
+-- login shell, so its error stays readable instead of vanishing with the
+-- window.
 ensureCommandWindow :: Text -> FilePath -> Text -> Text -> IO (Maybe Text)
 ensureCommandWindow key dir name cmd = (`catch` \(_ :: SomeException) -> return Nothing) $
     findExecutable "tmux" >>= \case
@@ -523,7 +524,7 @@ ensureCommandWindow key dir name cmd = (`catch` \(_ :: SomeException) -> return 
                 (_, out, _) <- run $ mk ++
                     [ "-c", dir, "-n", T.unpack name, "-P", "-F"
                     , "#{session_id}\t#{window_id}"
-                    , T.unpack cmd <> " ; exec " <> shell ]
+                    , T.unpack cmd <> " || exec " <> shell ]
                 case T.splitOn "\t" (T.strip (T.pack out)) of
                   (sid : wid : _) | not (T.null wid) -> do
                     _ <- run ["set-option", "-w", "-t", T.unpack wid, "@leksah_run", T.unpack key]

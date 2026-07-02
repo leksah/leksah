@@ -14,7 +14,7 @@
 -- levels load lazily, one @nix eval@ per expanded node ('flakeChildren'),
 -- stopping at derivations (forcing into a derivation's attributes would
 -- trigger builds / import-from-derivation).  Every node also carries a run
--- (▶) button that opens @nix develop .#<attribute path>@ in a repl-session
+-- (>) button that opens @nix develop .#<attribute path>@ in a repl-session
 -- terminal window; the tree root's button runs @nix repl .#@.
 module IDE.Web.Widget.Flake
   ( FlakeNode(..)
@@ -227,10 +227,10 @@ flakeCss = do
         whiteSpace nowrap
         padding (px 2) (px 8) (px 2) (px 8)
 
--- | A small run (▶) glyph for a tree row.
+-- | A small run (>) glyph — the traditional prompt character — for a tree row.
 runButton :: MonadWidget t m => Text -> m (Event t ())
 runButton tip = do
-  (e, _) <- elAttr' "button" ("class" =: "ws-run" <> "title" =: tip) $ text "▶"
+  (e, _) <- elAttr' "button" ("class" =: "ws-run" <> "title" =: tip) $ text ">"
   return (domEvent Click e)
 
 -- | Open (or bring back up) a repl-session terminal window running @cmd@ in

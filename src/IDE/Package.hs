@@ -513,7 +513,7 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
 addFFCabalTmuxEnv :: [(String, String)] -> [(String, String)]
 addFFCabalTmuxEnv env = ffcabalTmuxEnv : filter ((/= fst ffcabalTmuxEnv) . fst) env
 
--- | The workspace tree's component repl (▶) button: bring the component's
+-- | The workspace tree's component repl (>) button: bring the component's
 -- ffcabal repl window up as a terminal tab.  Fast path: the window already
 -- exists in the shared repl session — select it and ask for its tab.
 -- Otherwise run @ffcabal repl <target>@ (which creates the window, loads the
