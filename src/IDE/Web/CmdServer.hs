@@ -68,6 +68,7 @@ import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 
 import Language.Javascript.JSaddle (eval, valToText)
+import Text.Printf (printf)
 
 import IDE.Core.State
        (IDERef, reflectIDE, ideJSM, readIDE, workspace, runWorkspace,
@@ -239,12 +240,35 @@ handleConn ideR conn = do
         void $ reflectIDE (workspaceTryQuiet (projectOpenThis pk)) ideR
         return $ "Added project to workspace: " <> T.pack fp
 
+    -- The user's CODE is evaluated inside a JS-side try/catch: a throwing
+    -- expression must never raise into jsaddle itself.  An uncaught JS
+    -- exception doesn't just fail this eval — it can poison jsaddle's
+    -- async command stream and corrupt OTHER threads' in-flight DOM work
+    -- (observed: a probe thrown against a still-building page aborted the
+    -- whole initial render, leaving an empty window).
     evalJs code = do
-      r <- try $ reflectIDE (ideJSM (eval code >>= valToText)) ideR
+      let wrapped = "(function () { try { return String(eval(" <> jsStringLit code
+                    <> ")); } catch (e) { return 'JS error: ' + e; } })()"
+      r <- try $ reflectIDE (ideJSM (eval wrapped >>= valToText)) ideR
       return $ case r of
         Left (e :: SomeException) -> "JS error: " <> T.pack (show e) <> "\n"
         Right []                  -> "(no live JS context — is the page loaded?)\n"
         Right results             -> T.unlines results
+
+    -- A JS string literal for arbitrary code (escapes quotes, backslashes,
+    -- control characters and the U+2028/U+2029 line separators JS strings
+    -- can't contain raw).
+    jsStringLit t = "\"" <> T.concatMap esc t <> "\""
+      where
+        esc '"'      = "\\\""
+        esc '\\'     = "\\\\"
+        esc '\n'     = "\\n"
+        esc '\r'     = "\\r"
+        esc '\t'     = "\\t"
+        esc '\x2028' = "\\u2028"
+        esc '\x2029' = "\\u2029"
+        esc c | c < ' '   = T.pack (printf "\\u%04x" (fromEnum c))
+              | otherwise = T.singleton c
 
     -- Rebuild leksah in place (the app keeps running, so the slow build doesn't
     -- happen while the window is gone), streaming the build output back to the

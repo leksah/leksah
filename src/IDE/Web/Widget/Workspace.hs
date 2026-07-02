@@ -31,7 +31,8 @@ import System.FilePath ((<.>), (</>), dropFileName, dropTrailingPathSeparator)
 
 import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
-        borderRadius, paddingRight, marginBottom, marginTop, checked,
+        borderRadius, borderStyle, backgroundImage, vGradient,
+        paddingRight, marginBottom, marginTop, checked,
         userSelect, (|+), absolute, position, left, nil, paddingLeft, px,
         marginLeft, listStyleType, listStyleImage, middle, grey, color, rgb,
         nowrap, whiteSpace, inlineBlock, scroll, overflow, height, (?),
@@ -64,8 +65,8 @@ import IDE.Package
 import IDE.Web.Command (Command(..))
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
 import IDE.Web.Widget.Flake
-       (FlakeResult, flakeOutputs, flakeShells, flakeTreeWidget, runButton,
-        openNixWindow)
+       (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
+        flakeTreeWidget, runButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.FileTree (fileTree)
 import IDE.Web.Widget.Tree (treeItemDynAttr, treeItemDynAttr', treeSelect, treeItem, treeItem')
@@ -139,21 +140,23 @@ workspaceCss = do
     ("input" Clay.# checked) |+ "div" ?
         background (Rgba 30 88 209 1.0)
     -- The run (>) buttons at the right of component / flake / shell rows:
-    -- subtle until hovered, like the Terminals pane's action glyphs.
+    -- the same dark look as the Terminals pane's buttons, kept subtle until
+    -- hovered.
     ".workspace .ws-run" ? do
-        key "background" ("transparent" :: Text)
-        key "border" ("none" :: Text)
-        key "font-size" ("12px" :: Text)
+        color white
+        borderStyle none
+        borderRadius (px 3) (px 3) (px 3) (px 3)
+        backgroundImage (vGradient (Rgba 64 64 64 1.0) (Rgba 40 40 40 1.0))
+        key "font-size" ("11px" :: Text)
         key "font-weight" ("bold" :: Text)
-        key "opacity" ("0.55" :: Text)
+        key "padding" ("0 4px" :: Text)
         key "margin-left" ("8px" :: Text)
-        key "padding" ("0 3px" :: Text)
+        key "opacity" ("0.55" :: Text)
         key "vertical-align" ("middle" :: Text)
-        color grey
         cursor cursorDefault
     (".workspace .ws-run" Clay.# hover) ? do
         key "opacity" ("1" :: Text)
-        color white
+        backgroundImage (vGradient (Rgba 84 84 84 1.0) (Rgba 60 60 60 1.0))
     -- Git status decorations on the file tree (VS Code-style colours).
     ".git-modified"  ? color (rgb 0xe2 0xc0 0x8d)
     ".git-added"     ? color (rgb 0x73 0xc9 0x91)
@@ -215,90 +218,97 @@ safeMtime :: FilePath -> IO (Maybe UTCTime)
 safeMtime f =
   either (const Nothing) Just <$> (try (getModificationTime f) :: IO (Either SomeException UTCTime))
 
--- | A collapsed \"Flake Outputs\" tree node for the project directory @dir@,
--- shown only when @dir/flake.nix@ exists.  It looks a bit like @nix flake show@
--- (output categories, then systems/names) but the data comes from evaluating
--- @builtins.getFlake@ over a @git+file@ reference (see "IDE.Web.Widget.Flake").
---
--- The evaluation is fully lazy: nothing runs until the node is expanded (its
--- children — and so the @nix eval@ — are only built then), so a flake.nix on a
--- cabal/stack project costs nothing until someone opens this node.  While open
--- it re-evaluates when flake.nix/flake.lock change; re-expanding refreshes it.
-flakeOutputsNode :: MonadWidget t m => FilePath -> m ()
-flakeOutputsNode dir = do
+-- | The collapsed \"Flake\" tree node for the project directory @dir@, shown
+-- only when @dir/flake.nix@ exists.  Its children — built, and so evaluated,
+-- only when it is expanded — are one node per top-level output category that
+-- has a @${builtins.currentSystem}@ attribute under it (devShells, packages,
+-- …), each listing that category's current-system names, and finally an
+-- \"All Outputs\" node with the full lazily-drillable output tree (see
+-- "IDE.Web.Widget.Flake").  The row's run (>) button opens @nix repl .#@.
+flakeNode :: MonadWidget t m => FilePath -> m ()
+flakeNode dir = do
   pb <- getPostBuild
   hasFlakeE <- performEvent $ ffor pb $ \_ -> liftIO (doesFileExist (dir </> "flake.nix"))
   hasFlakeD <- holdUniqDyn =<< holdDyn False hasFlakeE
-  void . dyn $ ffor hasFlakeD $ \hasFlake -> when hasFlake $ do
-    void $ treeItem' (constDyn False) "flake-outputs" False
+  void . dyn $ ffor hasFlakeD $ \hasFlake -> when hasFlake . void $
+    treeItem "flake" False
       (treeSelect "workspace" (return never) $ do
           elAttr "img" ("src" =: "/pics/ide_nix.png") (return ())
-          text " Flake Outputs"
+          text " Flake"
           runE <- runButton "nix repl .#"
           performEvent_ $ ffor runE $ \_ -> liftIO $
               openNixWindow dir "nix repl" "nix repl .# --show-trace"
           return never)
-      -- Built (and thus evaluated) only while expanded.
-      (el "ul" $ do
-          ipb <- getPostBuild
-          ptick <- tickLossyFromPostBuildTime 2
-          mtimeE <- performEvent $ ffor (leftmost [ipb, () <$ ptick]) $ \_ -> liftIO $
-              (,) <$> safeMtime (dir </> "flake.nix") <*> safeMtime (dir </> "flake.lock")
-          mtimeD <- holdUniqDyn =<< holdDyn (Nothing, Nothing) mtimeE
-          (resultE, fireResult) <- newTriggerEvent
-          -- The first mtime read (≈ on expand) and any later change re-evaluate.
-          performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
-              liftIO . void . forkIO $ flakeOutputs dir >>= fireResult
-          resultD <- holdDyn (Right [] :: FlakeResult) resultE
-          flakeTreeWidget dir resultD
+      (do
+          -- Which categories are per-system: found when expanded (re-found
+          -- on each re-expand — that's the refresh).
+          (catsE, fireCats) <- newTriggerEvent
+          cpb <- getPostBuild
+          performEvent_ $ ffor cpb $ \_ ->
+              liftIO . void . forkIO $ flakeSystemCategories dir >>= fireCats
+          catsD <- holdDyn Nothing (Just <$> catsE)
+          el "ul" $ do
+              _ <- dyn $ ffor catsD $ \case
+                  Nothing         -> divClass "flake-hint"  $ text "evaluating…"
+                  Just (Left err) -> divClass "flake-error" $ text err
+                  Just (Right (_, cats)) -> mapM_ (systemCatNode dir) cats
+              allOutputsNode dir
           return never)
-    shellsNode dir
 
--- | The \"Shells\" node: the project flake's @devShells.${currentSystem}@.
--- Evaluated in the background as soon as the project renders — NOT lazily on
--- expand, because the collapsed row itself shows a run (>) button when a
--- @default@ shell exists.  The eval refuses import-from-derivation, so a
--- flake whose shell list can only be computed by building fails fast (error
--- shown when expanded) instead of kicking off builds nobody asked for.
--- Re-evaluated when flake.nix/flake.lock change.
-shellsNode :: MonadWidget t m => FilePath -> m ()
-shellsNode dir = do
-  ipb <- getPostBuild
-  ptick <- tickLossyFromPostBuildTime 2
-  mtimeE <- performEvent $ ffor (leftmost [ipb, () <$ ptick]) $ \_ -> liftIO $
-      (,) <$> safeMtime (dir </> "flake.nix") <*> safeMtime (dir </> "flake.lock")
-  mtimeD <- holdUniqDyn =<< holdDyn (Nothing, Nothing) mtimeE
-  (resultE, fireResult) <- newTriggerEvent
-  performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
-      liftIO . void . forkIO $ flakeShells dir >>= fireResult
-  resultD <- holdDyn (Right ("", [])) resultE
+-- | One per-system output category (devShells, packages, …): its children
+-- are the names under @<category>.${currentSystem}@, each with a run (>)
+-- button opening @nix develop@ for it; when a @default@ name exists the
+-- collapsed row itself gets the button.
+systemCatNode :: MonadWidget t m => FilePath -> Text -> m ()
+systemCatNode dir cat = do
+  (namesE, fireNames) <- newTriggerEvent
+  pb <- getPostBuild
+  performEvent_ $ ffor pb $ \_ ->
+      liftIO . void . forkIO $ flakeSystemNames dir cat >>= fireNames
+  resultD <- holdDyn (Right ("", [])) namesE
   hasDefaultD <- holdUniqDyn $ either (const False) (elem "default" . snd) <$> resultD
-  void $ treeItem "flake-shells" False
-    (treeSelect "workspace" (return never) $ do
-        elAttr "img" ("src" =: "/pics/ide_nix.png") (return ())
-        text " Shells"
-        -- Open the default shell without having to expand the node.
+  void $ treeItem "flake-node" False
+    (do elClass "span" "flake-label" (text (" " <> cat))
+        -- Open the default entry without having to expand the node.
         void . dyn $ ffor hasDefaultD $ \hasDef -> when hasDef $ do
-            runE <- runButton "nix develop (default shell)"
+            runE <- runButton ("nix develop .#" <> cat <> ".default")
             performEvent_ $ ffor (tagPromptlyDyn resultD runE) $ \case
                 Right (sys, names) | "default" `elem` names ->
-                    liftIO $ developShell sys "default"
+                    liftIO $ developAttr dir (cat <> "." <> sys <> ".default")
                 _ -> return ()
         return never)
     (do
         _ <- el "ul" . dyn $ ffor resultD $ \case
             Left err      -> divClass "flake-error" $ text err
-            Right (_, []) -> divClass "flake-hint"  $ text "No dev shells."
-            Right (sys, names) -> mapM_ (shellRow sys) names
+            Right (_, []) -> divClass "flake-hint"  $ text "(none)"
+            Right (sys, names) -> mapM_ (nameRow sys) names
         return never)
   where
-    developShell sys nm =
-        let attr = "devShells." <> sys <> "." <> nm
-        in openNixWindow dir attr ("nix develop '.#" <> attr <> "' --show-trace")
-    shellRow sys nm = elClass "li" "flake-leaf" $ do
+    nameRow sys nm = elClass "li" "flake-leaf" $ do
         text (" " <> nm)
-        runE <- runButton ("nix develop .#devShells." <> sys <> "." <> nm)
-        performEvent_ $ ffor runE $ \_ -> liftIO $ developShell sys nm
+        runE <- runButton ("nix develop .#" <> cat <> "." <> sys <> "." <> nm)
+        performEvent_ $ ffor runE $ \_ -> liftIO $
+            developAttr dir (cat <> "." <> sys <> "." <> nm)
+
+-- | \"All Outputs\": the full flake-outputs tree.  Evaluated only while
+-- expanded (re-evaluating when flake.nix/flake.lock change); deeper levels
+-- drill lazily (see 'flakeTreeWidget').
+allOutputsNode :: MonadWidget t m => FilePath -> m ()
+allOutputsNode dir = void $ treeItem "flake-node" False
+    (do elClass "span" "flake-label" (text " All Outputs"); return never)
+    (el "ul" $ do
+        ipb <- getPostBuild
+        ptick <- tickLossyFromPostBuildTime 2
+        mtimeE <- performEvent $ ffor (leftmost [ipb, () <$ ptick]) $ \_ -> liftIO $
+            (,) <$> safeMtime (dir </> "flake.nix") <*> safeMtime (dir </> "flake.lock")
+        mtimeD <- holdUniqDyn =<< holdDyn (Nothing, Nothing) mtimeE
+        (resultE, fireResult) <- newTriggerEvent
+        -- The first mtime read (≈ on expand) and any later change re-evaluate.
+        performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
+            liftIO . void . forkIO $ flakeOutputs dir >>= fireResult
+        resultD <- holdDyn (Right [] :: FlakeResult) resultE
+        flakeTreeWidget dir resultD
+        return never)
 
 workspaceWidget
   :: MonadWidget t m
@@ -470,8 +480,8 @@ workspaceWidget ide activeFileD revealFileD = do
                           (switchHold never =<<) . dyn $
                             (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD (pjDir pKey))
                               <$> pjSourceDirsD <*> pkgDirsD)
-              -- Any project with a flake.nix gets a (collapsed) Flake Outputs
-              -- node; it self-hides when there's no flake and only evaluates once
+              -- Any project with a flake.nix gets a (collapsed) Flake node;
+              -- it self-hides when there's no flake and only evaluates once
               -- expanded, so there's no overhead otherwise.
-              flakeOutputsNode (pjDir pKey)
+              flakeNode (pjDir pKey)
               return $ leftmost [ProjectPackageEvents <$> packagesE, ProjectFileEvents <$> projectFilesE]

@@ -23,11 +23,13 @@ module IDE.Web.Widget.Flake
   , FlakeResult
   , flakeOutputs
   , flakeChildren
-  , flakeShells
+  , flakeSystemCategories
+  , flakeSystemNames
   , flakeCss
   , flakeTreeWidget
   , runButton
   , openNixWindow
+  , developAttr
   ) where
 
 import Control.Concurrent (forkIO)
@@ -127,6 +129,16 @@ nixString t = "\"" <> T.concatMap esc t <> "\""
     esc '$'  = "\\$"
     esc c    = T.singleton c
 
+-- | The flake attributes 'builtins.getFlake' mixes in that aren't outputs,
+-- as a nix list literal.
+flakeMetaNix :: String
+flakeMetaNix = intercalate "\n"
+  [ "[ \"_type\" \"outPath\" \"outputs\" \"sourceInfo\" \"inputs\" \"narHash\""
+  , "  \"lastModified\" \"lastModifiedDate\" \"rev\" \"revCount\" \"shortRev\""
+  , "  \"dirtyRev\" \"dirtyShortRev\" \"submodules\" \"original\" \"originalUrl\""
+  , "  \"resolved\" \"resolvedUrl\" \"description\" ]"
+  ]
+
 -- | The nix expression evaluated for @dir@.  The @git+file@ reference makes
 -- nix follow the git tree (including the dirty working tree).
 --
@@ -144,10 +156,7 @@ flakeExpr dir = T.replace "__DIR__" (T.pack dir) . T.pack $ intercalate "\n"
   , "  flake = builtins.getFlake \"git+file://__DIR__\";"
   , "  try = f: let r = builtins.tryEval f; in if r.success then r.value else [];"
   , "  names = s: try (if builtins.isAttrs s then builtins.attrNames s else []);"
-  , "  meta = [ \"_type\" \"outPath\" \"outputs\" \"sourceInfo\" \"inputs\" \"narHash\""
-  , "           \"lastModified\" \"lastModifiedDate\" \"rev\" \"revCount\" \"shortRev\""
-  , "           \"dirtyRev\" \"dirtyShortRev\" \"submodules\" \"original\" \"originalUrl\""
-  , "           \"resolved\" \"resolvedUrl\" \"description\" ];"
+  , "  meta = " <> flakeMetaNix <> ";"
   , "  outputs = builtins.removeAttrs flake meta;"
   , "  mk = n: c: { name = n; children = c; };"
   , "  leaf = n: mk n [];"
@@ -171,7 +180,6 @@ flakeChildren dir path =
       Right cs -> return (Right cs)
       Left err -> either (const (Left err)) Right <$> childrenEval False
   where
-    noIFD = ["--option", "allow-import-from-derivation", "false"]
     childrenEval withKinds = nixEvalJson noIFD
         . T.replace "__DIR__" (T.pack dir) . T.pack $ intercalate "\n"
       [ "let"
@@ -190,28 +198,51 @@ flakeChildren dir path =
       , "     (builtins.attrNames v)"
       ]
 
--- | The names under @devShells.${builtins.currentSystem}@ (and the system
--- itself).  Import-from-derivation is refused (fails fast with an error)
--- rather than building the world when listing the shells would need it —
--- this eval runs automatically behind the Shells node's row, where nobody
--- asked for a build.
-flakeShells :: FilePath -> IO (Either Text (Text, [Text]))
-flakeShells dir = fmap (fmap unShells) . nixEvalJson
-    ["--option", "allow-import-from-derivation", "false"]
+-- | The top-level output categories that have a
+-- @${builtins.currentSystem}@ attribute under them (devShells, packages, …),
+-- plus the system itself.  Each category's force is @tryEval@-guarded;
+-- import-from-derivation is refused (this runs automatically when the Flake
+-- node expands, where nobody asked for a build).  @legacyPackages@ is
+-- skipped (it mirrors all of nixpkgs).
+flakeSystemCategories :: FilePath -> IO (Either Text (Text, [Text]))
+flakeSystemCategories dir = fmap (fmap unSysNames) . nixEvalJson noIFD
     . T.replace "__DIR__" (T.pack dir) . T.pack $ intercalate "\n"
   [ "let"
   , "  flake = builtins.getFlake \"git+file://__DIR__\";"
   , "  sys = builtins.currentSystem;"
+  , "  meta = " <> flakeMetaNix <> ";"
+  , "  outputs = builtins.removeAttrs flake meta;"
+  , "  hasSys = c:"
+  , "    let r = builtins.tryEval (builtins.isAttrs outputs.${c} && outputs.${c} ? ${sys});"
+  , "    in c != \"legacyPackages\" && r.success && r.value;"
   , "in { system = sys;"
-  , "     names = if flake ? devShells && flake.devShells ? ${sys}"
-  , "             then builtins.attrNames flake.devShells.${sys} else []; }"
+  , "     names = builtins.filter hasSys (builtins.attrNames outputs); }"
   ]
 
-newtype Shells = Shells { unShells :: (Text, [Text]) }
+-- | The names under @<category>.${builtins.currentSystem}@ (and the system
+-- itself).  Import-from-derivation is refused (fails fast with an error) —
+-- listing e.g. haskell.nix packages would otherwise kick off builds nobody
+-- asked for.
+flakeSystemNames :: FilePath -> Text -> IO (Either Text (Text, [Text]))
+flakeSystemNames dir cat = fmap (fmap unSysNames) . nixEvalJson noIFD
+    . T.replace "__DIR__" (T.pack dir) . T.pack $ intercalate "\n"
+  [ "let"
+  , "  flake = builtins.getFlake \"git+file://__DIR__\";"
+  , "  sys = builtins.currentSystem;"
+  , "  cat = " <> T.unpack (nixString cat) <> ";"
+  , "in { system = sys;"
+  , "     names = if flake ? ${cat} && builtins.isAttrs flake.${cat} && flake.${cat} ? ${sys}"
+  , "             then builtins.attrNames flake.${cat}.${sys} else []; }"
+  ]
 
-instance FromJSON Shells where
-  parseJSON = withObject "Shells" $ \o ->
-      fmap Shells $ (,) <$> o .: "system" <*> o .: "names"
+noIFD :: [String]
+noIFD = ["--option", "allow-import-from-derivation", "false"]
+
+newtype SysNames = SysNames { unSysNames :: (Text, [Text]) }
+
+instance FromJSON SysNames where
+  parseJSON = withObject "SysNames" $ \o ->
+      fmap SysNames $ (,) <$> o .: "system" <*> o .: "names"
 
 flakeCss :: Css
 flakeCss = do
@@ -240,6 +271,11 @@ openNixWindow :: FilePath -> Text -> Text -> IO ()
 openNixWindow dir name cmd = void . forkIO $
     ensureCommandWindow (T.pack dir <> "#" <> name) dir name cmd
         >>= mapM_ requestLocalTerm
+
+-- | Open @nix develop .#\<attr path\>@ in a repl-session terminal window.
+developAttr :: FilePath -> Text -> IO ()
+developAttr dir attr =
+    openNixWindow dir attr ("nix develop '.#" <> attr <> "' --show-trace")
 
 -- | Render the flake-outputs tree.  The top level (categories and their
 -- immediate names) comes from the initial eval; deeper levels load lazily per
@@ -292,6 +328,4 @@ flakeChildNode dir path kind = case kind of
         developButton
     developButton = do
         runE <- runButton ("nix develop .#" <> attr)
-        performEvent_ $ ffor runE $ \_ -> liftIO $
-            openNixWindow dir attr
-                ("nix develop '.#" <> attr <> "' --show-trace")
+        performEvent_ $ ffor runE $ \_ -> liftIO $ developAttr dir attr
