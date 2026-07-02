@@ -33,6 +33,11 @@ module IDE.Web.Widget.Terminal
   , reapControlClients
   , createTerminalSession
   , openFileInEditor
+  , replSessionName
+  , ffcabalTmuxEnv
+  , findReplWindow
+  , selectTmuxWindowById
+  , ensureCommandWindow
   , selectTmuxWindow
   , selectTmuxPane
   , killTmuxWindow
@@ -101,6 +106,9 @@ import System.Exit (ExitCode(ExitSuccess))
 import System.Info (os)
 
 import IDE.Web.Events (TerminalEvents(..))
+import IDE.Web.ReplTmux
+       (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
+        selectTmuxWindowById)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.SnapRequest (requestSnapPane)
 
@@ -432,11 +440,6 @@ terminalWidget ide termId selectedE = do
 ignorePtyError :: IO () -> IO ()
 ignorePtyError act = act `catch` \(_ :: SomeException) -> return ()
 
--- | The private tmux socket leksah's terminals live on (so they don't mix with
--- the user's own tmux sessions, and so its options don't touch their config).
-tmuxSocket :: String
-tmuxSocket = "leksah"
-
 -- | The login shell to run in terminals.  Prefer the password-database login
 -- shell (what terminal emulators use).  $SHELL is unreliable here: launched from
 -- a `nix develop` shell it points at the scripting bash, built without readline,
@@ -487,6 +490,46 @@ openFileInEditor winName argv = (`catch` \(_ :: SomeException) -> return Nothing
             (_rc, out, _) <- readProcessWithExitCode tmux
                 (base ++ mk ++ ["-n", winName, "-P", "-F", "#{session_id}"] ++ argv) ""
             return . listToMaybe . filter (not . T.null) . map T.strip . T.lines $ T.pack out
+
+-- | Ensure a window running @cmd@ exists in the shared repl session, reusing
+-- the window previously created for the same @key@ (recorded in the
+-- @\@leksah_run@ window option) rather than piling up duplicates.  The window
+-- is selected either way; returns the session id (the terminal tab key).
+-- When @cmd@ exits the window drops to the login shell, so a failing
+-- @nix develop@ leaves its error readable instead of closing the window.
+ensureCommandWindow :: Text -> FilePath -> Text -> Text -> IO (Maybe Text)
+ensureCommandWindow key dir name cmd = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            shell <- getLoginShell
+            conf  <- writeTmuxConf shell
+            let base = ["-L", tmuxSocket, "-f", conf]
+                run as = readProcessWithExitCode tmux (base ++ as) ""
+            (_, existing, _) <- run
+                [ "list-windows", "-a", "-F"
+                , "#{session_id}\t#{window_id}\t#{@leksah_run}" ]
+            case [ (sid, wid) | l <- T.lines (T.pack existing)
+                 , (sid : wid : k) <- [T.splitOn "\t" l]
+                 , T.intercalate "\t" k == key ] of
+              ((sid, wid) : _) -> do
+                _ <- run ["select-window", "-t", T.unpack wid]
+                return (Just sid)
+              [] -> do
+                (hasRc, _, _) <- run ["has-session", "-t", "=" <> T.unpack replSessionName]
+                let mk = if hasRc == ExitSuccess
+                           then ["new-window", "-t", "=" <> T.unpack replSessionName]
+                           else ["new-session", "-d", "-s", T.unpack replSessionName]
+                (_, out, _) <- run $ mk ++
+                    [ "-c", dir, "-n", T.unpack name, "-P", "-F"
+                    , "#{session_id}\t#{window_id}"
+                    , T.unpack cmd <> " ; exec " <> shell ]
+                case T.splitOn "\t" (T.strip (T.pack out)) of
+                  (sid : wid : _) | not (T.null wid) -> do
+                    _ <- run ["set-option", "-w", "-t", T.unpack wid, "@leksah_run", T.unpack key]
+                    _ <- run ["select-window", "-t", T.unpack wid]
+                    return (Just sid)
+                  _ -> return Nothing
 
 -- | Write (idempotently) the minimal tmux config used for leksah's terminals:
 -- no status bar, pass window titles through to xterm, and use the login shell.
@@ -920,9 +963,3 @@ sessionOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $
                 , (sid:pid':_) <- [T.words line]
                 , pid' == pid ]
 
--- | Run a tmux command on leksah's private socket, ignoring failures.
-tmuxCmd :: [String] -> IO ()
-tmuxCmd args = (`catch` \(_ :: SomeException) -> return ()) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return ()
-        Just tmux -> void $ readProcessWithExitCode tmux (["-L", tmuxSocket] <> args) ""

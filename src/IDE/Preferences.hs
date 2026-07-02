@@ -149,7 +149,7 @@ defaultPrefs = Prefs {
     ,   collapseErrors = True
     ,   terminalFileLinks = True
     ,   externalEditor = ""
-    ,   terminalControlMode = False
+    ,   terminalControlMode = True
     ,   remoteHosts = []
     }
 

@@ -65,6 +65,7 @@ module IDE.Package (
 ,   writeGenericPackageDescription'
 
 ,   runPackage
+,   packageOpenRepl
 ,   getActiveComponent
 ,   projectFileArguments
 ,   exeToRun
@@ -119,6 +120,9 @@ import Data.Foldable (forM_)
 import Debug.Trace (trace)
 import Control.Exception (SomeException(..), IOException, catch)
 
+import IDE.Web.RemoteTermRequest (requestLocalTerm)
+import IDE.Web.ReplTmux
+       (ffcabalTmuxEnv, findReplWindow, selectTmuxWindowById)
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.State
        (packageDebugState, debugState, pjPackages, changePackage,
@@ -490,13 +494,61 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
                         emptyFile <- liftIO $ getConfigFilePathForLoad "empty-file" Nothing dataDir
                         return . Just $ ("GHC_ENVIRONMENT", emptyFile) : env
                     else return $ M.toList <$> nixEnv'
-        runExternalTool' (__ "Building") cmd args' dir mbEnv $ do
+        -- ffcabal drives tmux repls: pin them to leksah's own tmux server so
+        -- the workspace repl buttons / terminal tabs can reach the windows
+        -- (see 'ffcabalTmuxEnv').  Materialize the environment when we'd
+        -- otherwise inherit it.
+        mbEnv' <- if isJust mbFFCabal
+            then Just . addFFCabalTmuxEnv <$> maybe (liftIO getEnvironment) return mbEnv
+            else return mbEnv
+        runExternalTool' (__ "Building") cmd args' dir mbEnv' $ do
             (mbLastOutput, _) <- C.getZipSink $ (,)
                 <$> C.ZipSink sinkLast
                 <*> (C.ZipSink $ logOutputForBuild project (LogProject dir) backgroundBuild jumpToWarnings)
             lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
   `catchIDE`
       (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
+
+-- | Prepend 'ffcabalTmuxEnv', replacing any existing entry.
+addFFCabalTmuxEnv :: [(String, String)] -> [(String, String)]
+addFFCabalTmuxEnv env = ffcabalTmuxEnv : filter ((/= fst ffcabalTmuxEnv) . fst) env
+
+-- | The workspace tree's component repl (▶) button: bring the component's
+-- ffcabal repl window up as a terminal tab.  Fast path: the window already
+-- exists in the shared repl session — select it and ask for its tab.
+-- Otherwise run @ffcabal repl <target>@ (which creates the window, loads the
+-- component and leaves the repl for the user) and open the tab when it's
+-- ready.  The run goes through 'withToolCommand' so it sees the same
+-- environment as leksah's builds — a different PATH would make cabal treat
+-- the project as reconfigured and rebuild the world.
+packageOpenRepl :: Text -> PackageAction
+packageOpenRepl component = do
+    project <- lift ask
+    package <- ask
+    let target = ipdPackageName package <> ":" <> component
+    liftIDE $ liftIO (findReplWindow target) >>= \case
+        Just (sid, wid) -> liftIO $ do
+            selectTmuxWindowById wid
+            requestLocalTerm sid
+        Nothing -> do
+            let dir = pjDir $ pjKey project
+            pjFileArgs <- projectFileArguments project dir
+            liftIO (findExecutable "ffcabal") >>= \case
+              Nothing -> ideMessage High $ __ "ffcabal was not found on $PATH (component repls need it)"
+              Just _ -> withToolCommand project GHC
+                  (Just ("ffcabal", ["repl", target]
+                      <> pjFileArgs
+                      <> ["--builddir=" <> T.pack (cabalBuildDir Nothing)])) $ \(cmd, args', nixEnv') -> do
+                env <- addFFCabalTmuxEnv <$>
+                    maybe (liftIO getEnvironment) return (M.toList <$> nixEnv')
+                runExternalTool' (__ "Opening repl") cmd args' dir (Just env) $ do
+                    (mbLastOutput, _) <- C.getZipSink $ (,)
+                        <$> C.ZipSink sinkLast
+                        <*> C.ZipSink (logOutputForBuild project (LogProject dir) False False)
+                    lift . when (mbLastOutput == Just (ToolExit ExitSuccess)) . liftIO $
+                        findReplWindow target >>= mapM_ (\(sid, wid) -> do
+                            selectTmuxWindowById wid
+                            requestLocalTerm sid)
 
 --isConfigError :: Monad m => C.Sink ToolOutput m Bool
 --isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False

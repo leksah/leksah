@@ -29,8 +29,7 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.Default (def)
 import Data.Function ((&))
-import Data.Map (Map)
-import qualified Data.Map as M (fromList, elems, lookup, empty)
+import qualified Data.Map as M (fromList, elems, empty)
 import Data.Set (Set)
 import qualified Data.Set as S (member)
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
@@ -210,9 +209,8 @@ terminalsWidget
   => Dynamic t (Maybe Text)    -- ^ the focused session's id (highlighted)
   -> Dynamic t (Set Text)      -- ^ sessions wanting attention (viewed-window bell → 🔔)
   -> Dynamic t [Text]          -- ^ remote ssh hosts (prefs ∪ open ssh:// tabs)
-  -> Dynamic t (Map Text Bool) -- ^ open terminals' widget type (True = control mode)
   -> m (Event t TerminalsEvents)
-terminalsWidget activeD attnD remoteHostsD ccTypesD = divClass "terminals leksah-nav" $ do
+terminalsWidget activeD attnD remoteHostsD = divClass "terminals leksah-nav" $ do
   -- Poll tmux for the whole session/window/pane tree (keyed by session id, each
   -- carrying its current name): on first build, on a timer, and just after a
   -- "new session" click.  Polling every tick is what refreshes a renamed
@@ -239,8 +237,7 @@ terminalsWidget activeD attnD remoteHostsD ccTypesD = divClass "terminals leksah
     localE <- el "ul" $ treeItem "terminals-host" True
         (hostRow "Local" NewTerminal "New local session")
         (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\n vD ->
-            sessionNode ((== Just n) <$> activeD) (S.member n <$> attnD)
-                        (M.lookup n <$> ccTypesD) n vD))
+            sessionNode ((== Just n) <$> activeD) (S.member n <$> attnD) n vD))
     let killActE = fmapMaybe (either Just (const Nothing)) localE
         newE     = fmapMaybe (\e -> case e of NewTerminal -> Just (); _ -> Nothing) bubbleLocalE
         bubbleLocalE = fmapMaybe (either (const Nothing) Just) localE
@@ -331,12 +328,12 @@ remotePanesTree host sid nameD widx panesD =
 -- before killing, and the session's tmux windows as children.
 sessionNode
   :: MonadWidget t m
-  => Dynamic t Bool -> Dynamic t Bool -> Dynamic t (Maybe Bool) -> Text
+  => Dynamic t Bool -> Dynamic t Bool -> Text
   -> Dynamic t (Text, [TmuxWindow])
   -> m (Event t NodeEvent)
-sessionNode activeD attnD ccD n vD =
+sessionNode activeD attnD n vD =
   treeItem "terminals-session" True
-    (sessionRow activeD attnD ccD n vD)
+    (sessionRow activeD attnD n vD)
     (el "ul" $ windowsTree n (snd <$> vD))
 
 -- | A one-glyph badge for a window's tmux alert state, highest priority first:
@@ -360,22 +357,19 @@ sessionAlert ws
 -- | The session row: its (highlightable) title and the inline close confirm.
 sessionRow
   :: MonadWidget t m
-  => Dynamic t Bool -> Dynamic t Bool -> Dynamic t (Maybe Bool) -> Text
+  => Dynamic t Bool -> Dynamic t Bool -> Text
   -> Dynamic t (Text, [TmuxWindow])
   -> m (Event t NodeEvent)
-sessionRow activeD attnD ccD n vD = do
+sessionRow activeD attnD n vD = do
   let labelAttrs = ffor activeD $ \a ->
         "class" =: ("terminals-label leksah-nav-item" <> if a then " terminals-active" else "")
       -- Displayed name has the session's highest-priority alert badge appended,
       -- so an alert in a window shows on the (possibly collapsed) session row too.
       -- A leksah-tracked attention (viewed-window bell, which tmux flags miss)
       -- forces 🔔; otherwise the badge comes from the windows' tmux flags.
-      -- Terminal type of the open tab: ⊞ = control mode (native pane splits),
-      -- ▭ = classic PTY attach; nothing when the session has no open tab.
-      typeGlyph = maybe "" (\cc -> if cc then " \8862" else " \9645")
-      displayNameD = (\(nm, ws) att mcc -> nm <> typeGlyph mcc
+      displayNameD = (\(nm, ws) att -> nm
                         <> if att then " \128276" else sessionAlert ws)
-                       <$> vD <*> attnD <*> ccD
+                       <$> vD <*> attnD
       -- The rename box is prefilled with the *raw* name only — the badge is a
       -- status glyph, not part of the editable name.
       rawNameD     = fst <$> vD

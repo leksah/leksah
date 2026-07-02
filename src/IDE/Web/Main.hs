@@ -112,7 +112,7 @@ import IDE.Web.OpenFileRequest (nextOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel)
 import IDE.Web.SaveRequest (nextSaveRequest)
 import IDE.Web.FindRequest (nextFindRequest)
-import IDE.Web.RemoteTermRequest (nextRemoteTerm)
+import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.TerminalInput (setActiveTerminal)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
@@ -1313,21 +1313,18 @@ main showMenubar macTitlebar ide = mdo
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextOpenedFile >>= fireOpenedFile
-    -- `leksah-cmd cc-connect HOST` → a remote control-mode terminal tab
-    -- (TerminalCC over ssh), keyed "ssh://HOST".
-    (remoteTermHostE, fireRemoteTerm) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextRemoteTerm >>= fireRemoteTerm
-    let remoteTermE = ("ssh://" <>) <$> remoteTermHostE
+    -- Terminal tabs requested from outside the reflex network: `leksah-cmd
+    -- cc-connect HOST` (a remote control-mode tab keyed "ssh://HOST") and the
+    -- workspace-tree repl buttons (a local session id from
+    -- 'IDE.Web.RemoteTermRequest.requestLocalTerm').
+    (termRequestE, fireTermRequest) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextTermRequest >>= fireTermRequest
     -- Hosts shown as top-level Terminals-tree nodes: the preference list plus
     -- any host that has an open ssh:// tab.
     remoteHostsD <- holdUniqDyn $ (\p rt -> nub $ remoteHosts p ++
           [ T.takeWhile (/= '#') rest
           | (_, TerminalKey n) <- rt, Just rest <- [T.stripPrefix "ssh://" n] ])
         <$> prefsD <*> recentTabs
-    -- Which widget each open terminal tab got (session id -> control mode?),
-    -- so the Terminals tree can show the terminal type.
-    (ccTypeE, fireCCType) <- newTriggerEvent
-    ccTypesD <- foldDyn (uncurry M.insert) M.empty ccTypeE
     -- Native File▸Open / `leksah-cmd cm open` honour the external-editor pref too:
     -- when set, they open in the external editor (line 1) rather than CodeMirror.
     let extActiveMainB = current ((not . T.null . externalEditor) <$> prefsD)
@@ -1375,7 +1372,10 @@ main showMenubar macTitlebar ide = mdo
     -- terminal activity (click / ⌃B poll), open/close/select, session save.
     let treeRefreshE = leftmost
           [ () <$ treePb, termActivityE
-          , () <$ closeTermE, () <$ selectAnyTermE, () <$ saveSessE ]
+          , () <$ closeTermE, () <$ selectAnyTermE, () <$ saveSessE
+          -- A requested tab may be a freshly-created session/window (e.g. a
+          -- workspace repl button): re-read the tree so it shows at once.
+          , () <$ termRequestE ]
     -- OFF the reflex thread: a tmux subprocess per poke (term-activity fires
     -- on every window/pane select) would hitch the UI run synchronously.
     (otherPollE, fireOtherPoll) <- newTriggerEvent
@@ -1876,7 +1876,7 @@ main showMenubar macTitlebar ide = mdo
           , nativeOpenE
           , restoreOpenE
           , openInWide0 <$> newOrEditTermE
-          , openInWide0 <$> remoteTermE
+          , openInWide0 <$> termRequestE
           , openInWide0 <$> remoteOpenKeyE
           , openInWide0 <$> selectAnyTermE
           , (\(s, _, _) -> openInWide0 s) <$> flipPaneE
@@ -1906,7 +1906,7 @@ main showMenubar macTitlebar ide = mdo
           ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ide allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
           LogKey         -> toDM LogTab <$> logWidget ide (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
-          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD ccTypesD
+          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD
           TerminalKey n  -> toDM TerminalTab <$> do
               -- Control mode (-CC) vs classic PTY attach, decided when the
               -- tab is created (toggling the pref affects new terminals).
@@ -1914,7 +1914,6 @@ main showMenubar macTitlebar ide = mdo
               -- are control-mode by construction.
               cm <- terminalControlMode . view prefs <$> sample (current ide)
               let useCC = cm || "ssh://" `T.isPrefixOf` n
-              liftIO $ fireCCType (n, useCC)
               if useCC
                 then terminalCCWidget ide n selectedE
                 else terminalWidget ide n selectedE

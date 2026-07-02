@@ -1,29 +1,35 @@
 {-# LANGUAGE OverloadedStrings #-}
--- | A process-global queue of remote control-mode terminal requests.
+-- | A process-global queue of terminal-tab open requests.
 --
--- @leksah-cmd cc-connect HOST@ (see 'IDE.Web.CmdServer') asks for a terminal
--- tab attached to HOST's tmux over ssh in control mode (rendered natively by
--- 'IDE.Web.Widget.TerminalCC').  The socket handler runs outside the reflex
--- network, so the host is dropped here and 'IDE.Web.Main' drains the queue
--- from a background thread into a reflex 'Event' that opens the tab (keyed
--- @TerminalKey (\"ssh:\/\/\" <> host)@).
+-- Code outside the reflex network (the @leksah-cmd cc-connect@ socket handler,
+-- IDEActions run from workspace-tree buttons) asks for a terminal tab here;
+-- 'IDE.Web.Main' drains the queue from a background thread into a reflex
+-- 'Event' that opens (or brings up) the tab.  A request carries the final tab
+-- key: @ssh:\/\/HOST[#TARGET]@ for a remote control-mode terminal, or a local
+-- tmux session id (e.g. @$7@) for a session on leksah's own server.
 module IDE.Web.RemoteTermRequest
   ( requestRemoteTerm
-  , nextRemoteTerm
+  , requestLocalTerm
+  , nextTermRequest
   ) where
 
 import Control.Concurrent.Chan (Chan, newChan, writeChan, readChan)
 import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
 
-{-# NOINLINE remoteTermChan #-}
-remoteTermChan :: Chan Text
-remoteTermChan = unsafePerformIO newChan
+{-# NOINLINE termRequestChan #-}
+termRequestChan :: Chan Text
+termRequestChan = unsafePerformIO newChan
 
--- | Ask for a remote control-mode terminal for this ssh host.
+-- | Ask for a remote control-mode terminal for this ssh @HOST[#TARGET]@.
 requestRemoteTerm :: Text -> IO ()
-requestRemoteTerm = writeChan remoteTermChan
+requestRemoteTerm host = writeChan termRequestChan ("ssh://" <> host)
 
--- | Block until the next requested host (drained by the reflex bridge).
-nextRemoteTerm :: IO Text
-nextRemoteTerm = readChan remoteTermChan
+-- | Ask for (or bring up) the terminal tab of a local tmux session, by its
+-- stable session id.
+requestLocalTerm :: Text -> IO ()
+requestLocalTerm = writeChan termRequestChan
+
+-- | Block until the next requested tab key (drained by the reflex bridge).
+nextTermRequest :: IO Text
+nextTermRequest = readChan termRequestChan

@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 module IDE.Web.Widget.Workspace (
     workspaceCss
   , workspaceWidget
@@ -43,7 +44,7 @@ import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffilter, ffor, updated,
         tag, current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
         performEvent_, newTriggerEvent, tickLossyFromPostBuildTime, Dynamic,
-        Event, never, fmapMaybe)
+        Event, never, fmapMaybe, tagPromptlyDyn)
 import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
         divClass, text, el, elClass, dynText)
@@ -58,10 +59,13 @@ import IDE.Core.State
 import IDE.Gtk.Package (packageRun)
 import IDE.Gtk.Workspaces (makePackage)
 import IDE.Package
-       (packageClean, packageBench, packageTest, projectRefreshNix)
+       (packageClean, packageBench, packageTest, projectRefreshNix,
+        packageOpenRepl)
 import IDE.Web.Command (Command(..))
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
-import IDE.Web.Widget.Flake (FlakeResult, flakeOutputs, flakeTreeWidget)
+import IDE.Web.Widget.Flake
+       (FlakeResult, flakeOutputs, flakeShells, flakeTreeWidget, runButton,
+        openNixWindow)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.FileTree (fileTree)
 import IDE.Web.Widget.Tree (treeItemDynAttr, treeItemDynAttr', treeSelect, treeItem, treeItem')
@@ -140,6 +144,21 @@ workspaceCss = do
         background (Rgba 30 88 209 1.0)
     ("input" Clay.# checked) |+ "div div.package-file" ?
         color black
+    -- The run (▶) buttons at the right of component / flake / shell rows:
+    -- subtle until hovered, like the Terminals pane's action glyphs.
+    ".workspace .ws-run" ? do
+        key "background" ("transparent" :: Text)
+        key "border" ("none" :: Text)
+        key "font-size" ("9px" :: Text)
+        key "opacity" ("0.55" :: Text)
+        key "margin-left" ("8px" :: Text)
+        key "padding" ("0 3px" :: Text)
+        key "vertical-align" ("middle" :: Text)
+        color grey
+        cursor cursorDefault
+    (".workspace .ws-run" Clay.# hover) ? do
+        key "opacity" ("1" :: Text)
+        color white
     -- Git status decorations on the file tree (VS Code-style colours).
     ".git-modified"  ? color (rgb 0xe2 0xc0 0x8d)
     ".git-added"     ? color (rgb 0x73 0xc9 0x91)
@@ -215,11 +234,14 @@ flakeOutputsNode dir = do
   pb <- getPostBuild
   hasFlakeE <- performEvent $ ffor pb $ \_ -> liftIO (doesFileExist (dir </> "flake.nix"))
   hasFlakeD <- holdUniqDyn =<< holdDyn False hasFlakeE
-  void . dyn $ ffor hasFlakeD $ \hasFlake -> when hasFlake . void $
-    treeItem' (constDyn False) "flake-outputs" False
+  void . dyn $ ffor hasFlakeD $ \hasFlake -> when hasFlake $ do
+    void $ treeItem' (constDyn False) "flake-outputs" False
       (treeSelect "workspace" (return never) $ do
           elAttr "img" ("src" =: "/pics/ide_nix.png") (return ())
           text " Flake Outputs"
+          runE <- runButton "nix repl .#"
+          performEvent_ $ ffor runE $ \_ -> liftIO $
+              openNixWindow dir "nix repl" "nix repl .# --show-trace"
           return never)
       -- Built (and thus evaluated) only while expanded.
       (el "ul" $ do
@@ -233,8 +255,55 @@ flakeOutputsNode dir = do
           performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
               liftIO . void . forkIO $ flakeOutputs dir >>= fireResult
           resultD <- holdDyn (Right [] :: FlakeResult) resultE
-          flakeTreeWidget resultD
+          flakeTreeWidget dir resultD
           return never)
+    shellsNode dir
+
+-- | The \"Shells\" node: the project flake's @devShells.${currentSystem}@.
+-- Evaluated in the background as soon as the project renders — NOT lazily on
+-- expand, because the collapsed row itself shows a run (▶) button when a
+-- @default@ shell exists.  The eval refuses import-from-derivation, so a
+-- flake whose shell list can only be computed by building fails fast (error
+-- shown when expanded) instead of kicking off builds nobody asked for.
+-- Re-evaluated when flake.nix/flake.lock change.
+shellsNode :: MonadWidget t m => FilePath -> m ()
+shellsNode dir = do
+  ipb <- getPostBuild
+  ptick <- tickLossyFromPostBuildTime 2
+  mtimeE <- performEvent $ ffor (leftmost [ipb, () <$ ptick]) $ \_ -> liftIO $
+      (,) <$> safeMtime (dir </> "flake.nix") <*> safeMtime (dir </> "flake.lock")
+  mtimeD <- holdUniqDyn =<< holdDyn (Nothing, Nothing) mtimeE
+  (resultE, fireResult) <- newTriggerEvent
+  performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
+      liftIO . void . forkIO $ flakeShells dir >>= fireResult
+  resultD <- holdDyn (Right ("", [])) resultE
+  hasDefaultD <- holdUniqDyn $ either (const False) (elem "default" . snd) <$> resultD
+  void $ treeItem "flake-shells" False
+    (treeSelect "workspace" (return never) $ do
+        elAttr "img" ("src" =: "/pics/ide_nix.png") (return ())
+        text " Shells"
+        -- Open the default shell without having to expand the node.
+        void . dyn $ ffor hasDefaultD $ \hasDef -> when hasDef $ do
+            runE <- runButton "nix develop (default shell)"
+            performEvent_ $ ffor (tagPromptlyDyn resultD runE) $ \case
+                Right (sys, names) | "default" `elem` names ->
+                    liftIO $ developShell sys "default"
+                _ -> return ()
+        return never)
+    (do
+        _ <- el "ul" . dyn $ ffor resultD $ \case
+            Left err      -> divClass "flake-error" $ text err
+            Right (_, []) -> divClass "flake-hint"  $ text "No dev shells."
+            Right (sys, names) -> mapM_ (shellRow sys) names
+        return never)
+  where
+    developShell sys nm =
+        let attr = "devShells." <> sys <> "." <> nm
+        in openNixWindow dir attr ("nix develop '.#" <> attr <> "' --show-trace")
+    shellRow sys nm = elClass "li" "flake-leaf" $ do
+        text (" " <> nm)
+        runE <- runButton ("nix develop .#devShells." <> sys <> "." <> nm)
+        performEvent_ $ ffor runE $ \_ -> liftIO $ developShell sys nm
 
 workspaceWidget
   :: MonadWidget t m
@@ -350,7 +419,17 @@ workspaceWidget ide activeFileD revealFileD = do
                               ]) $ do
                               elAttr "img" ("src" =: "/pics/ide_component.png") $ return ()
                               dynText $ (" " <>) <$> componentD
-                              return never
+                              -- The repl (▶) button: bring up the component's
+                              -- ffcabal repl window as a terminal tab.
+                              case pKey of
+                                CabalTool {} -> do
+                                  runE <- runButton "Open component repl (ffcabal)"
+                                  let runActD = (\proj pkg comp ->
+                                          PackageCommand . CommandWorkspaceAction "" "" $
+                                            runProject (runPackage (packageOpenRepl comp) pkg) proj)
+                                        <$> projectD <*> packageD <*> componentD
+                                  return $ tagPromptlyDyn runActD runE
+                                _ -> return never
                     _ <- elClass "li" "branch" $
                       treeSelect "workspace" (return never) $ do
                         elAttr "img" ("src" =: "/pics/ide_git.png") $ return ()
@@ -385,7 +464,11 @@ workspaceWidget ide activeFileD revealFileD = do
                   projRevealE <- revealUnderExcept (constDyn (pjDir pKey)) pkgDirsD revealFileD
                   treeItem' projRevealE "project-files" False (treeSelect "workspace" (return never) $ do
                       elAttr "img" ("src" =: "/pics/ide_folder.png") $ return ()
-                      text " Other Files"
+                      -- A nix project's tree has no package "Files" nodes to
+                      -- distinguish from, so plain "Files" reads better.
+                      text $ case pKey of
+                        NixTool {} -> " Files"
+                        _          -> " Other Files"
                       return never) $
                         el "ul" $
                           (switchHold never =<<) . dyn $
