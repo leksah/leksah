@@ -19,10 +19,14 @@
 -- space is the sub-cell remainder at the container edge.  Nothing is
 -- rendered-then-corrected.
 --
--- Phase-2 scope (see docs/tmux-control-mode.md §4): a layout change
--- re-renders the window's panes (visible content is replayed via
--- @capture-pane@; scrollback isn't) — keyed per-pane widgets are phase 3;
--- no underlay holes, find-bar search, or link providers in CC panes yet.
+-- Panes are KEYED WIDGETS (phase 3): every pane of every window in the
+-- session gets one long-lived xterm, keyed by pane id — a layout change just
+-- moves/resizes the existing xterms (scrollback, selection and parser state
+-- survive), a window switch toggles per-window containers (display:none), so
+-- it is instant and stateful, and only a genuinely NEW pane replays (with up
+-- to 1000 lines of history seeded into its scrollback).  Hidden windows'
+-- xterms keep consuming their %output, so they are always current.
+-- Still to come: underlay holes, find-bar search, link providers.
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   ) where
@@ -37,18 +41,19 @@ import Data.IORef
        (IORef, atomicModifyIORef', modifyIORef', newIORef, readIORef,
         writeIORef)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Text.Read (readMaybe)
 
 import Reflex
-       (Dynamic, Event, ffor, fmapMaybe, foldDyn, getPostBuild, holdDyn,
-        holdUniqDyn, leftmost, newTriggerEvent, performEvent, performEvent_,
-        updated)
+       (Dynamic, Event, current, ffor, fmapMaybe, foldDyn, getPostBuild,
+        holdDyn, holdUniqDyn, leftmost, newTriggerEvent, performEvent,
+        performEvent_, tag, updated)
 import Reflex.Dom.Core
-       (MonadWidget, blank, divClass, dyn_, elAttr, elAttr', text,
-        widgetHold, _element_raw, (=:))
+       (MonadWidget, blank, divClass, dyn_, elAttr, elAttr', elDynAttr,
+        elDynAttr', listWithKey, text, widgetHold, _element_raw, (=:))
 import Language.Javascript.JSaddle
        (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, jsg, jss,
         liftJSM, new, valIsNull, valIsUndefined, valToBool, valToNumber,
@@ -138,8 +143,6 @@ terminalCCWidget _ide sessionId selectedE = do
                 , ffor (fmapMaybe currentWin evE) $ \w s ->
                       s { csCurrent = Just w }
                 ]
-            layoutD <- holdUniqDyn $ ffor stD $ \s ->
-                csCurrent s >>= (`M.lookup` csLayouts s)
             -- The cell size is a page-wide constant (font metrics, measured
             -- once and cached); fetch it before rendering so pane rectangles
             -- come from real metrics, never estimates.
@@ -189,12 +192,8 @@ terminalCCWidget _ide sessionId selectedE = do
             -- divider lines on its perimeter green.  Tracked via
             -- %window-pane-changed (also triggered by our own focus →
             -- select-pane), applied to the .terminal-cc-hl segments that
-            -- renderLayout lays (hidden) along every pane's gutter edges.
+            -- 'renderHlSegments' lays (hidden) along every pane's gutter edges.
             activePaneRef <- liftIO $ newIORef (Nothing :: Maybe PaneId)
-            -- Whether the container held keyboard focus just before a layout
-            -- re-render (which disposes the focused xterm and drops focus on
-            -- the floor) — if it did, focus is restored to the active pane.
-            hadFocusRef <- liftIO $ newIORef False
             let applyActive :: JSM ()
                 applyActive = do
                     mbC <- liftIO $ readIORef containerRef
@@ -222,18 +221,38 @@ terminalCCWidget _ide sessionId selectedE = do
                 followActive :: JSM ()
                 followActive = do
                     applyActive
-                    had <- (||) <$> containerHasFocus
-                                <*> liftIO (readIORef hadFocusRef)
-                    liftIO $ writeIORef hadFocusRef False
+                    had <- containerHasFocus
                     when had focusActivePane
+            -- A window switch hides the focused pane's container
+            -- (display:none), which silently drops keyboard focus onto
+            -- <body>.  The switch handler below asks tmux for the NEW
+            -- window's active pane and this restores highlight + focus —
+            -- focussing only when the keyboard was ours (still inside the
+            -- container, or orphaned on <body> by the hide).
+            (winFocusE, fireWinFocus) <- newTriggerEvent
+            performEvent_ $ ffor winFocusE $ \p -> do
+                liftIO $ writeIORef activePaneRef (Just p)
+                liftJSM $ do
+                    applyActive
+                    had <- containerHasFocus
+                    ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
+                    tagName <- valToText =<< ae ^. js ("tagName" :: Text)
+                    when (had || tagName == "BODY") focusActivePane
             performEvent_ $ ffor evE $ \case
                 EvWindowPaneChanged _ p -> do
                     liftIO $ writeIORef activePaneRef (Just p)
                     liftJSM followActive
+                EvSessionWindowChanged _ w -> liftIO . void . forkIO $ do
+                    r <- ccCommand cc ("display-message -p -t " <> w
+                                       <> " -F '#{pane_id}'")
+                    case r of
+                      Right (ln : _) | p <- T.strip ln, not (T.null p) ->
+                          fireWinFocus p
+                      _ -> return ()
                 -- Flow control: tmux paused a pane we fell behind on.  If we
-                -- display it, jump ahead to its current screen; if not, leave
-                -- it paused — no point receiving output nobody renders (its
-                -- xterm gets a requestReplay — which resumes — on creation).
+                -- render it (all panes of the session, now), jump ahead to
+                -- its current screen; otherwise leave it paused (its xterm
+                -- gets a requestReplay — which resumes — on creation).
                 EvPause p -> liftIO $ do
                     terms <- readIORef termsRef
                     when (M.member p terms) $ requestReplay cc pausedRef p
@@ -241,18 +260,57 @@ terminalCCWidget _ide sessionId selectedE = do
             -- Selecting this tab focuses its active pane (the classic
             -- widget's behaviour), so typing works without an extra click.
             performEvent_ $ ffor selectedE $ \_ -> liftJSM focusActivePane
+            -- Panes that left the session (kill-pane, window closed): their
+            -- keyed widgets are torn down by listWithKey below, but the
+            -- xterms are JS objects we own — dispose and unregister them.
+            allPanesD <- holdUniqDyn $ ffor stD $ \s -> S.fromList
+                [ p | l <- M.elems (csLayouts s), (p, _, _, _, _) <- layoutPanes l ]
+            performEvent_ $ ffor (updated allPanesD) $ \alive -> do
+                gone <- liftIO $ atomicModifyIORef' termsRef $ \m ->
+                    let (keep, dead) = M.partitionWithKey (\k _ -> k `S.member` alive) m
+                    in (keep, dead)
+                liftIO $ modifyIORef' pausedRef
+                    (M.filterWithKey (\k _ -> k `S.member` alive))
+                liftJSM . forM_ (M.toList gone) $ \(p, term) -> do
+                    void $ term ^. js0 ("dispose" :: Text)
+                    void $ jsg ("LeksahTerm" :: Text)
+                        ^. js1 ("unregister" :: Text) (paneKey sessionId p)
             (containerEl, _) <- elAttr' "div"
                 ("class" =: "terminal terminal-cc"
                  <> "style" =: "position:relative;width:100%;height:100%;overflow:hidden") $
-                dyn_ $ ffor ((,) <$> layoutD <*> metricsD) $ \case
-                    (Just l, Just cell) -> do
-                        -- Note focus BEFORE disposing: the teardown destroys
-                        -- the focused textarea, after which nobody remembers.
-                        had <- liftJSM containerHasFocus
-                        when had . liftIO $ writeIORef hadFocusRef True
-                        disposeAll termsRef
-                        renderLayout cc sessionId termsRef pausedRef cell followActive l
-                    _ -> divClass "terminal-cc-empty" $ text "(connecting…)"
+                -- The cell size is a page constant; everything below builds
+                -- once it is known.  One container per WINDOW, all built and
+                -- kept (hidden ones display:none, their xterms staying
+                -- current from %output), each holding a KEYED widget per
+                -- pane: layout changes only move/resize the existing xterms.
+                dyn_ $ ffor metricsD $ \case
+                    Nothing -> divClass "terminal-cc-empty" $ text "(connecting…)"
+                    Just cell -> do
+                        let windowsD = csLayouts <$> stD
+                            currentD = csCurrent <$> stD
+                        _ <- listWithKey windowsD $ \wid layD -> do
+                            let visD = (== Just wid) <$> currentD
+                            elDynAttr "div"
+                                ((\v -> "class" =: "terminal-cc-window"
+                                     <> "style" =: ("position:absolute;left:0;top:0;right:0;bottom:0;display:"
+                                                    <> (if v then "block" else "none")))
+                                  <$> visD) $ do
+                                layUniqD <- holdUniqDyn layD
+                                let panesD = ffor layUniqD $ \l -> M.fromList
+                                        [ (p, (x, y, w, h))
+                                        | (p, x, y, w, h) <- layoutPanes l ]
+                                _ <- listWithKey panesD $ \pane rectD ->
+                                    paneWidget cc sessionId termsRef pausedRef
+                                               cell pane rectD
+                                -- Dividers and highlight segments are plain
+                                -- divs — cheap to rebuild per layout change.
+                                dyn_ $ ffor layUniqD $ \l -> do
+                                    renderDividers cc cell l
+                                    renderHlSegments cell l
+                                    pbHl <- getPostBuild
+                                    performEvent_ $ ffor pbHl $ \_ ->
+                                        liftJSM applyActive
+                        return ()
             liftIO $ writeIORef containerRef (Just (_element_raw containerEl))
             pb2 <- getPostBuild
             performEvent_ $ ffor pb2 $ \_ -> liftJSM $ do
@@ -333,30 +391,94 @@ data CCState = CCState
 paneKey :: Text -> PaneId -> Text
 paneKey sess pane = sess <> "/" <> pane
 
--- | Dispose (and drop) every xterm this widget created.
-disposeAll :: MonadWidget t m => IORef (M.Map PaneId JSVal) -> m ()
-disposeAll termsRef = do
-    old <- liftIO $ atomicModifyIORef' termsRef (\m -> (M.empty, m))
-    forM_ (M.toList old) $ \(_p, term) -> liftJSM $
-        void (term ^. js0 ("dispose" :: Text))
+pxAt :: Int -> Double -> Text
+pxAt n cell = T.pack (show (round (fromIntegral n * cell) :: Int)) <> "px"
 
--- | Render the window's panes at their EXACT tmux layout rectangles:
--- absolute position @(x,y) × cell@, size @(w,h) × cell@ — each pane's DOM
--- box is precisely its grid, and the separator cells between panes become
--- the visible gutters.  Every (re)created xterm starts empty, so its visible
--- content is replayed (@capture-pane -e@) through the normal 'EvOutput'
--- route.
-renderLayout
+-- | Exact pixel span of @n@ cells starting at cell @o@ (avoids the drift
+-- of rounding the width independently of the position).
+pxSpan :: Int -> Int -> Double -> Text
+pxSpan o n cell =
+    T.pack (show ((round (fromIntegral (o + n) * cell)
+                   - round (fromIntegral o * cell)) :: Int)) <> "px"
+
+-- | The pixel at the middle of separator cell @n@ (where the 1px divider
+-- line is drawn; highlight segments sit exactly over it).
+pxMid :: Int -> Double -> Text
+pxMid n cell =
+    T.pack (show (round ((fromIntegral n + 0.5) * cell - 0.5) :: Int)) <> "px"
+
+-- | ONE pane, as a keyed widget that LIVES ACROSS LAYOUT CHANGES: the div's
+-- geometry is a dynamic style (moves are pure attribute updates), a rect
+-- change resizes the existing xterm's grid in place, and only the widget's
+-- CREATION replays content — so splits/resizes/window switches no longer
+-- flash, and scrollback/selection/parser state survive them.
+paneWidget
   :: MonadWidget t m
   => CC -> Text -> IORef (M.Map PaneId JSVal) -> IORef (M.Map PaneId PauseState)
-  -> (Double, Double) -> JSM () -> Layout -> m ()
-renderLayout cc sessionId termsRef pausedRef (cw, ch) applyHl l = do
-    forM_ (layoutPanes l) $ \(pane, x, y, w, h) -> paneDiv pane x y w h
-    -- Active-pane highlight segments: for every pane, a (hidden) 1px line
-    -- along each of its sides that faces a gutter, centered in that gutter
-    -- exactly over the grey divider line.  'applyPaneHighlight' shows the
-    -- segments of the active pane (green perimeter) and hides the rest —
-    -- toggling needs no re-render, so xterms aren't disturbed by focus moves.
+  -> (Double, Double) -> PaneId -> Dynamic t (Int, Int, Int, Int) -> m ()
+paneWidget cc sessionId termsRef pausedRef (cw, ch) pane rectD0 = do
+    rectD <- holdUniqDyn rectD0
+    let styleOf (x, y, w, h) =
+            "position:absolute;overflow:hidden"
+            <> ";left:" <> pxAt x cw <> ";top:" <> pxAt y ch
+            <> ";width:" <> pxSpan x w cw <> ";height:" <> pxSpan y h ch
+    (paneEl, _) <- elDynAttr' "div"
+        ((\r -> "class" =: "terminal-cc-pane" <> "style" =: styleOf r) <$> rectD)
+        blank
+    pb <- getPostBuild
+    performEvent_ $ ffor (tag (current rectD) pb) $ \(_, _, w, h) -> liftJSM $ do
+        term <- new (jsg ("Terminal" :: Text)) ()
+        opts <- term ^. js ("options" :: Text)
+        _ <- opts ^. jss ("fontFamily" :: Text)
+                ("Menlo, Monaco, \"Courier New\", monospace" :: Text)
+        _ <- opts ^. jss ("fontSize" :: Text) (13 :: Int)
+        _ <- opts ^. jss ("allowProposedApi" :: Text) True
+        -- Unicode 11 widths, as in the classic widget — emoji are
+        -- width 2 to tmux and the apps, so xterm must agree.
+        uni <- new (jsg ("Unicode11Addon" :: Text) ^. js ("Unicode11Addon" :: Text)) ()
+        _ <- term ^. js1 ("loadAddon" :: Text) uni
+        unicodeApi <- term ^. js ("unicode" :: Text)
+        _ <- unicodeApi ^. jss ("activeVersion" :: Text) ("11" :: Text)
+        _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("register" :: Text)
+                 (paneKey sessionId pane) term
+        _ <- term ^. js1 ("open" :: Text) (_element_raw paneEl)
+        -- the grid IS the tmux pane's cells; the box already matches
+        _ <- term ^. js2 ("resize" :: Text) w h
+        -- Keystrokes → tmux.  ccSendBytes is fire-and-forget, so no forkIO:
+        -- sending inline keeps keystroke ORDER (concurrent forks could race
+        -- for the submit lock and swap two fast keypresses).
+        _ <- term ^. js1 ("onData" :: Text) (fun $ \_ _ args -> case args of
+                (d : _) -> do
+                    s <- valToText d
+                    liftIO $ ccSendBytes cc pane (encodeUtf8 s)
+                _ -> return ())
+        -- Keep tmux's active pane in step with keyboard focus, so the
+        -- Terminal menu's pane commands (split/resize/…, which act on
+        -- the current pane) target the pane the user is typing in.
+        ta <- term ^. js ("textarea" :: Text)
+        _ <- ta ^. js2 ("addEventListener" :: Text) ("focus" :: Text)
+                (fun $ \_ _ _ -> liftIO $
+                    ccSend cc ("select-pane -t " <> pane))
+        liftIO . atomicModifyIORef' termsRef $ \m ->
+            (M.insert pane term m, ())
+        -- fill the fresh xterm from the pane's current screen + recent
+        -- history (also resumes the pane if flow control paused it)
+        liftIO $ requestReplay cc pausedRef pane
+    -- Layout moved/resized this pane: match the xterm grid to the new
+    -- cell rect (the app redraws itself on the SIGWINCH tmux sends it;
+    -- xterm reflows its own buffer) — no replay, no re-creation.
+    performEvent_ $ ffor (updated rectD) $ \(_, _, w, h) -> liftJSM $ do
+        terms <- liftIO $ readIORef termsRef
+        forM_ (M.lookup pane terms) $ \term ->
+            void $ term ^. js2 ("resize" :: Text) w h
+
+-- | The active-pane highlight segments of one window's layout: for every
+-- pane, a (hidden) 1px line along each of its sides that faces a gutter,
+-- centered exactly over the grey divider line.  'applyPaneHighlight' shows
+-- the active pane's segments (green perimeter) and hides the rest — pure
+-- style toggles, no re-render.
+renderHlSegments :: MonadWidget t m => (Double, Double) -> Layout -> m ()
+renderHlSegments (cw, ch) l =
     forM_ (layoutPanes l) $ \(pane, x, y, w, h) -> do
         let seg geo = elAttr "div"
                 ("class" =: "terminal-cc-hl"
@@ -376,15 +498,15 @@ renderLayout cc sessionId termsRef pausedRef (cw, ch) applyHl l = do
         when (y + h < lH l) . seg $
             "height:1px;top:" <> pxMid (y + h) ch
             <> ";left:" <> pxAt x cw <> ";width:" <> pxSpan x w cw
-    pbHl <- getPostBuild
-    performEvent_ $ ffor pbHl $ \_ -> liftJSM applyHl
-    -- tmux's separator cells between panes are blank gutters here (a full
-    -- cell: ~8px wide / 15px tall).  Each becomes a grab strip with a crisp
-    -- 1px line centered in it (the way iTerm2 fills its tmux dividers), and
-    -- dragging it resizes the split: the line ghosts with the pointer (in
-    -- JS — see 'dividerDragJs'), and on drop the whole-cell delta runs
-    -- @resize-pane@ on the divider's target pane; the resulting
-    -- %layout-change re-renders everything at the new rectangles.
+
+-- | One window's pane dividers: tmux's separator cells are blank gutters
+-- here (a full cell wide/tall); each becomes a grab strip with a crisp 1px
+-- line centered in it (the way iTerm2 fills its tmux dividers), and dragging
+-- it resizes the split — the line ghosts with the pointer (in JS, see
+-- 'dividerDragJs'), and on drop the whole-cell delta runs @resize-pane@ on
+-- the divider's target pane; the resulting %layout-change moves the panes.
+renderDividers :: MonadWidget t m => CC -> (Double, Double) -> Layout -> m ()
+renderDividers cc (cw, ch) l =
     forM_ (layoutDividers l) $ \(vert, x, y, w, h, target) -> do
         (dEl, _) <- elAttr' "div"
             ("class" =: ("terminal-cc-divider " <> (if vert then "vert" else "horiz"))
@@ -415,73 +537,8 @@ renderLayout cc sessionId termsRef pausedRef (cw, ch) applyHl l = do
                     _ -> return ())
             void $ jsg ("LeksahDividerDrag" :: Text) ^. js3 ("arm" :: Text)
                        raw vert (if vert then cw else ch)
-  where
-    pxAt :: Int -> Double -> Text
-    pxAt n cell = T.pack (show (round (fromIntegral n * cell) :: Int)) <> "px"
 
-    -- Exact pixel span of @n@ cells starting at cell @o@ (avoids the drift
-    -- of rounding the width independently of the position).
-    pxSpan :: Int -> Int -> Double -> Text
-    pxSpan o n cell =
-        T.pack (show ((round (fromIntegral (o + n) * cell)
-                       - round (fromIntegral o * cell)) :: Int)) <> "px"
-
-    -- The pixel at the middle of separator cell @n@ (where the 1px divider
-    -- line is drawn; highlight segments sit exactly over it).
-    pxMid :: Int -> Double -> Text
-    pxMid n cell =
-        T.pack (show (round ((fromIntegral n + 0.5) * cell - 0.5) :: Int)) <> "px"
-
-    paneDiv pane x y w h = do
-        (paneEl, _) <- elAttr' "div"
-            ("class" =: "terminal-cc-pane"
-             <> "style" =: ("position:absolute;overflow:hidden"
-                            <> ";left:" <> pxAt x cw <> ";top:" <> pxAt y ch
-                            <> ";width:" <> pxAt w cw <> ";height:" <> pxAt h ch))
-            blank
-        pb <- getPostBuild
-        performEvent_ $ ffor pb $ \_ -> liftJSM $ do
-            term <- new (jsg ("Terminal" :: Text)) ()
-            opts <- term ^. js ("options" :: Text)
-            _ <- opts ^. jss ("fontFamily" :: Text)
-                    ("Menlo, Monaco, \"Courier New\", monospace" :: Text)
-            _ <- opts ^. jss ("fontSize" :: Text) (13 :: Int)
-            _ <- opts ^. jss ("allowProposedApi" :: Text) True
-            -- Unicode 11 widths, as in the classic widget — emoji are
-            -- width 2 to tmux and the apps, so xterm must agree.
-            uni <- new (jsg ("Unicode11Addon" :: Text) ^. js ("Unicode11Addon" :: Text)) ()
-            _ <- term ^. js1 ("loadAddon" :: Text) uni
-            unicodeApi <- term ^. js ("unicode" :: Text)
-            _ <- unicodeApi ^. jss ("activeVersion" :: Text) ("11" :: Text)
-            _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("register" :: Text)
-                     (paneKey sessionId pane) term
-            _ <- term ^. js1 ("open" :: Text) (_element_raw paneEl)
-            -- the grid IS the tmux pane's cells; the box already matches
-            _ <- term ^. js2 ("resize" :: Text) w h
-            -- keystrokes → tmux (send-keys -H).  ccCommand blocks on the
-            -- reply, so hop off the jsaddle callback thread.
-            -- Keystrokes → tmux.  ccSendBytes is fire-and-forget now, so no
-            -- forkIO: sending inline keeps keystroke ORDER (concurrent forks
-            -- could race for the submit lock and swap two fast keypresses).
-            _ <- term ^. js1 ("onData" :: Text) (fun $ \_ _ args -> case args of
-                    (d : _) -> do
-                        s <- valToText d
-                        liftIO $ ccSendBytes cc pane (encodeUtf8 s)
-                    _ -> return ())
-            -- Keep tmux's active pane in step with keyboard focus, so the
-            -- Terminal menu's pane commands (split/resize/…, which act on
-            -- the current pane) target the pane the user is typing in.
-            ta <- term ^. js ("textarea" :: Text)
-            _ <- ta ^. js2 ("addEventListener" :: Text) ("focus" :: Text)
-                    (fun $ \_ _ _ -> liftIO $
-                        ccSend cc ("select-pane -t " <> pane))
-            liftIO . atomicModifyIORef' termsRef $ \m ->
-                (M.insert pane term m, ())
-            -- fill the fresh xterm from the pane's current screen (also
-            -- resumes the pane if flow control had paused it while hidden)
-            liftIO $ requestReplay cc pausedRef pane
-
--- | Show the highlight segments (see 'renderLayout') belonging to pane
+-- | Show the highlight segments (see 'renderHlSegments') belonging to pane
 -- @mbP@ and hide all others — the active pane's perimeter turns green.
 applyPaneHighlight :: MakeObject e => e -> Maybe PaneId -> JSM ()
 applyPaneHighlight c mbP = do
@@ -495,7 +552,7 @@ applyPaneHighlight c mbP = do
             (if Just pn == mbP then "block" else "none" :: Text)
 
 -- | Initial state sync (an attach replays nothing): current window + layouts.
--- Pane content is replayed per-pane by 'replayPane' when its xterm is created.
+-- Pane content is replayed per-pane by 'requestReplay' when its xterm is created.
 initialSync :: CC -> (TmuxEvent -> IO ()) -> IO ()
 initialSync cc fire = do
     -- Flow control: rather than queueing unbounded output for a pane we
@@ -544,7 +601,12 @@ requestReplay :: CC -> IORef (M.Map PaneId PauseState) -> PaneId -> IO ()
 requestReplay cc pausedRef p = do
     modifyIORef' pausedRef (M.insert p PauseDropping)
     ccSend cc ("refresh-client -A \"" <> p <> ":continue\"")
-    ccCommandTagged cc ("cap:" <> p) ("capture-pane -t " <> p <> " -p -e -J")
+    -- -S -1000: seed up to 1000 lines of history too — written before the
+    -- visible screen they land in the fresh xterm's scrollback.  A pane on
+    -- the ALTERNATE screen has no history to capture (tmux clamps to the
+    -- screen), so TUIs are unaffected.
+    ccCommandTagged cc ("cap:" <> p)
+        ("capture-pane -t " <> p <> " -p -e -J -S -1000")
     ccCommandTagged cc ("cur:" <> p)
         ("display-message -p -t " <> p <> " -F '"
          <> T.intercalate "\t"
