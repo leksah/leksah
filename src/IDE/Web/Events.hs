@@ -101,9 +101,12 @@ data TerminalsEvents
     -- remote hosts (Terminals-tree host nodes; sessions render in CC tabs
     -- keyed @ssh://host#session@)
   | NewRemoteTerminal Text                      -- ^ host
-  | SelectRemoteTerminal Text Text              -- ^ host, session id
-  | SelectRemoteTerminalWindow Text Text Int    -- ^ host, session, window
-  | SelectRemoteTerminalPane Text Text Int Int  -- ^ host, session, window, pane
+    -- Remote selections carry the session id AND its current name: an open
+    -- tab may be keyed by either (cc-connect HOST#NAME vs the tree's ids),
+    -- so the handler matches both before opening a new tab.
+  | SelectRemoteTerminal Text Text Text              -- ^ host, session id, name
+  | SelectRemoteTerminalWindow Text Text Text Int    -- ^ host, id, name, window
+  | SelectRemoteTerminalPane Text Text Text Int Int  -- ^ host, id, name, window, pane
 
 makePrisms ''TerminalsEvents
 

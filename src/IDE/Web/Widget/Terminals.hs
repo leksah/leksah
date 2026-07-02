@@ -293,13 +293,16 @@ remoteSessionNode host sid vD =
   treeItem "terminals-session" True
     (do (lbl, _) <- elDynAttr' "span" (constDyn ("class" =: "terminals-label leksah-nav-item")) $
             dynText ((\(nm, ws) -> nm <> sessionAlert ws) <$> vD)
-        pure $ Right (SelectRemoteTerminal host sid) <$ domEvent Click lbl)
-    (el "ul" $ remoteWindowsTree host sid (snd <$> vD))
+        -- The event carries the session's CURRENT name too, so the handler
+        -- can match a tab keyed by name (cc-connect HOST#NAME).
+        pure $ (\(nm, _) -> Right (SelectRemoteTerminal host sid nm))
+                 <$> tagPromptlyDyn vD (domEvent Click lbl))
+    (el "ul" $ remoteWindowsTree host sid (fst <$> vD) (snd <$> vD))
 
 remoteWindowsTree
   :: MonadWidget t m
-  => Text -> Text -> Dynamic t [TmuxWindow] -> m (Event t NodeEvent)
-remoteWindowsTree host sid windowsD =
+  => Text -> Text -> Dynamic t Text -> Dynamic t [TmuxWindow] -> m (Event t NodeEvent)
+remoteWindowsTree host sid nameD windowsD =
   fmapMaybe (listToMaybe . M.elems) <$>
     listViewWithKey (M.fromList . map (\w -> (twIndex w, w)) <$> windowsD)
       (\widx wD ->
@@ -307,20 +310,22 @@ remoteWindowsTree host sid windowsD =
           (do let attrs = ffor wD $ \w ->
                     "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
               (e, _) <- elDynAttr' "span" attrs $ dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
-              pure $ Right (SelectRemoteTerminalWindow host sid widx) <$ domEvent Click e)
-          (el "ul" $ remotePanesTree host sid widx (twPanes <$> wD)))
+              pure $ (\nm -> Right (SelectRemoteTerminalWindow host sid nm widx))
+                       <$> tagPromptlyDyn nameD (domEvent Click e))
+          (el "ul" $ remotePanesTree host sid nameD widx (twPanes <$> wD)))
 
 remotePanesTree
   :: MonadWidget t m
-  => Text -> Text -> Int -> Dynamic t [TmuxPane] -> m (Event t NodeEvent)
-remotePanesTree host sid widx panesD =
+  => Text -> Text -> Dynamic t Text -> Int -> Dynamic t [TmuxPane] -> m (Event t NodeEvent)
+remotePanesTree host sid nameD widx panesD =
   fmapMaybe (listToMaybe . M.elems) <$>
     listViewWithKey (M.fromList . map (\p -> (tpIndex p, p)) <$> panesD)
       (\pidx pD -> el "li" $ do
         let attrs = ffor pD $ \p ->
               "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
         (e, _) <- elDynAttr' "span" attrs $ dynText (tpLabel <$> pD)
-        pure $ Right (SelectRemoteTerminalPane host sid widx pidx) <$ domEvent Click e)
+        pure $ (\nm -> Right (SelectRemoteTerminalPane host sid nm widx pidx))
+                 <$> tagPromptlyDyn nameD (domEvent Click e))
 
 -- | A session node: the name (click to select) with a ✕ that asks to confirm
 -- before killing, and the session's tmux windows as children.

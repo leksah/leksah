@@ -1537,16 +1537,32 @@ main showMenubar macTitlebar ide = mdo
     performEvent_ $ ffor closeTermE $ liftIO . killTerminalSession
     performEvent_ $ ffor selectWinE  $ \(s, w)    -> liftIO (selectTmuxWindow s w)
     performEvent_ $ ffor selectPaneE $ \(s, w, p) -> liftIO (selectTmuxPane s w p)
-    performEvent_ $ ffor selRemoteWinE  $ \(h, s, w)    -> liftIO (selectRemoteTmuxWindow h s w)
-    performEvent_ $ ffor selRemotePaneE $ \(h, s, w, p) -> liftIO (selectRemoteTmuxPane h s w p)
+    performEvent_ $ ffor selRemoteWinE  $ \(h, s, _, w) ->
+        liftIO . void . forkIO $ selectRemoteTmuxWindow h s w
+    performEvent_ $ ffor selRemotePaneE $ \(h, s, _, w, p) ->
+        liftIO . void . forkIO $ selectRemoteTmuxPane h s w p
     -- "+" on a remote host: create a session there, then open its tab.
     remoteNewSidE <- performEvent $ ffor newRemoteE $ \h ->
         liftIO $ fmap (remoteKey h) <$> createRemoteSession h
-    let remoteOpenKeyE = leftmost
+    -- The tab to bring up for a tree selection: an already-open tab for the
+    -- same session under EITHER identity — its id ($3) or its current name
+    -- (a cc-connect HOST#NAME tab) — else a fresh id-keyed tab.  Without
+    -- the match, clicking the tree opened a second tab for a session that
+    -- was already open under its name.
+    let resolveRemoteKey rt h sid nm =
+          case [ n | (_, TerminalKey n) <- rt
+                   , Just (h', t) <- [remoteTabHostTarget n]
+                   , h' == h, t == sid || t == nm ] of
+            (n : _) -> n
+            []      -> remoteKey h sid
+        remoteOpenKeyE = leftmost
           [ fmapMaybe id remoteNewSidE
-          , (\(h, sid)       -> remoteKey h sid) <$> selRemoteE
-          , (\(h, sid, _)    -> remoteKey h sid) <$> selRemoteWinE
-          , (\(h, sid, _, _) -> remoteKey h sid) <$> selRemotePaneE ]
+          , attachWith (\rt (h, sid, nm) -> resolveRemoteKey rt h sid nm)
+                       (current recentTabs) selRemoteE
+          , attachWith (\rt (h, sid, nm, _) -> resolveRemoteKey rt h sid nm)
+                       (current recentTabs) selRemoteWinE
+          , attachWith (\rt (h, sid, nm, _, _) -> resolveRemoteKey rt h sid nm)
+                       (current recentTabs) selRemotePaneE ]
     -- Restore the saved web session (open files, open terminals, visible tabs)
     -- together with the tmux sessions left over from a previous run, in one read
     -- so the two can't race.
