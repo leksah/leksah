@@ -687,6 +687,10 @@ data Prefs = Prefs {
     ,   remoteHosts         ::   [Text] -- ^ ssh hosts shown as top-level nodes in
                                         --   the Terminals tree (sessions open as
                                         --   control-mode tabs)
+    ,   uiSelectionColor    ::   Text -- ^ selection/active highlight colour
+                                      --   (#rrggbb; bound to --leksah-selection)
+    ,   uiHoverColor        ::   Text -- ^ run-button hover row colour
+                                      --   (#rrggbb; bound to --leksah-hover)
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
@@ -762,6 +766,8 @@ data PrefsFile = PrefsFile {
   , externalEditor_      :: Maybe Text
   , terminalControlMode_ :: Maybe Bool
   , remoteHosts_         :: Maybe [Text]
+  , uiSelectionColor_    :: Maybe Text
+  , uiHoverColor_        :: Maybe Text
   , serverPort_          :: Maybe Int
   , sourceDirectories_   :: Maybe [FilePath]
   , unpackDirectory_     :: Maybe (Maybe FilePath)

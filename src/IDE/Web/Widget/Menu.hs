@@ -21,6 +21,7 @@ import Reflex.Dom.Core
        (dynText, el', el, elClass, divClass, text, MonadWidget,
         HasDomEvent(..), EventName(..))
 
+import IDE.Web.Theme (selectionColor)
 import IDE.Web.Command (Command)
 import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec)
 
@@ -35,7 +36,7 @@ menuCss = do
     padding (px 4) (px 8) (px 4) (px 8)
     whiteSpace nowrap
   ".menu ul li" # hover ? do
-    background (Rgba 30 88 209 1.0)
+    background selectionColor
     borderRadius (px  5) (px 5) (px 5) (px 5)
   -- The shortcut hint sits to the right of the label, greyed — like a native
   -- menu's key-equivalent column.  The min-width gives the rows a common width

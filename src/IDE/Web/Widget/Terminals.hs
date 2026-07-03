@@ -56,6 +56,7 @@ import Reflex.Dom.Core
         _textInput_keydown, _textInput_hasFocus)
 import Language.Javascript.JSaddle (liftJSM, jsg, js1, fun, eval)
 
+import IDE.Web.Theme (selectionColor, hoverColor)
 import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
        (TmuxWindow(..), TmuxPane(..), listTerminalTree, listRemoteTerminalTree, killTmuxWindow,
@@ -110,6 +111,16 @@ terminalsCss = do
         fontSize (px 11)
         "opacity" -: "0.55"
     ".terminals .terminals-action" # hover ? ("opacity" -: "1")
+    -- Hovering any of a row's buttons highlights the whole row line — label
+    -- through the area behind the button — with the (configurable) hover
+    -- colour; the button itself keeps its normal look.  Clipped to the first
+    -- line so it doesn't bleed over an expanded subtree, and scoped to the
+    -- row's OWN buttons (child rows live under .tree-children / nested uls,
+    -- which the direct-child paths don't reach).
+    ".terminals li:has(> button:hover), .terminals li:has(> .terminals-rename-slot button:hover), .terminals li:has(> .terminals-close-slot button:hover)" ? do
+        backgroundImage (vGradient hoverColor hoverColor)
+        "background-size" -: "100% 20px"
+        "background-repeat" -: "no-repeat"
     -- The inline rename box: dark to match, and *absolutely positioned* so it
     -- overlays the row (over the old name) rather than sitting in the flex flow —
     -- that way it doesn't grow the row height (shifting siblings) and it spans the
@@ -187,7 +198,7 @@ terminalsCss = do
         background (Rgba 32 32 32 1.0)
     -- The focused session (shown in the editor area) is highlighted.
     ".terminals .terminals-active" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     -- tmux's current window / active pane shown in bold.
     ".terminals .terminals-current" ? fontWeight bold
     -- Compact close (✕) / kill / cancel buttons.

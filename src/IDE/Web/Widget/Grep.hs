@@ -31,6 +31,7 @@ import Reflex.Dom.Core
        (MonadWidget, divClass, elClass, elDynAttr', simpleList, dynText,
         domEvent, EventName(..), (=:))
 
+import IDE.Web.Theme (selectionColor)
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Web.Events (GrepEvents(..), FindbarEvents)
 import IDE.Web.Widget.Findbar (findSelection)
@@ -53,7 +54,7 @@ grepCss = do
         whiteSpace nowrap
         cursor cursorDefault
     ".grep .grep-item.selected" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".grep .grep-loc" ? do
         color grey
         fontWeight bold

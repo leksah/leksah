@@ -39,6 +39,7 @@ import Reflex.Dom.Core
         resizeDetectorWithAttrs, dynText, elDynAttr, text, MonadWidget,
         (=:), Event, domEvent, EventName(..), _element_raw)
 
+import IDE.Web.Theme (selectionColor)
 import IDE.Core.State
        (logRefFilePath, IDE, allLogRefs, LogRef(..), LogRefType(..))
 import IDE.Web.Command (_CommandNextError, _CommandPreviousError)
@@ -59,7 +60,7 @@ errorsCss = do
     whiteSpace nowrap
     cursor cursorDefault
   ".errors .error-item.selected" ?
-    background (Rgba 30 88 209 1.0)
+    background selectionColor
 
 errorsWidget
   :: forall t m . MonadWidget t m

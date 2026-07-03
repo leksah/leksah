@@ -34,6 +34,7 @@ import Reflex.Dom.Core
        (text, el, el', elAttr', dyn, wrapDomEventMaybe, _element_raw,
         MonadWidget, (=:), domEvent, EventName(..))
 
+import IDE.Web.Theme (selectionColor)
 import IDE.Web.Events (MenubarEvents(..))
 import IDE.Web.MenuModel (menus)
 import IDE.Web.Widget.Menu (menuItems)
@@ -65,7 +66,7 @@ menubarCss = do
         fontSize (px 13)
         padding (px 2) (px 8) (px 2) (px 8)
     ".menubar ul li" # hover ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
 
 menubarWidget
   :: MonadWidget t m

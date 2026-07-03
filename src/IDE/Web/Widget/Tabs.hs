@@ -36,6 +36,8 @@ import Reflex.Dom.Core
        (elDynAttr', elDynAttr, elAttr, blank, MonadWidget, (=:),
         divClass, Event, domEvent, EventName(..))
 
+import IDE.Web.Theme (selectionColor)
+
 tabsCss :: Css
 tabsCss = do
     ".tab-buttons" ? do
@@ -67,7 +69,7 @@ tabsCss = do
     ".tab-buttons .tab-wrap" # hover ?
         background (Rgba 61 96 150 1.0)
     ".tab-buttons .tab-wrap.selected" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".tab-buttons button" ? do
         verticalAlign middle
         padding (px 0) (px 10) (px 0) (px 2)

@@ -29,6 +29,7 @@ import Reflex.Dom.Core
         resizeDetectorWithAttrs, dynText, MonadWidget, (=:), Event,
         _element_raw)
 
+import IDE.Web.Theme (selectionColor)
 import IDE.Core.State
        (IDE, logLineMap)
 import IDE.Web.Events (LogEvents, FindbarEvents)
@@ -49,7 +50,7 @@ logCss = do
         whiteSpace pre
         cursor cursorDefault
     ".log .log-item.selected" ?
-        backgroundImage (vGradient (Rgba 30 88 209 1.0) (Rgba 30 88 209 1.0))
+        backgroundImage (vGradient selectionColor selectionColor)
     ".log .ErrorTag" ? do
         color red
     ".log .FrameTag" ? do

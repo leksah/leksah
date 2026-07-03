@@ -40,6 +40,7 @@ import Reflex.Dom.Core
        (MonadWidget, divClass, el, elClass, elDynAttr', dynText, text,
         dyn, domEvent, EventName(..), (=:))
 
+import IDE.Web.Theme (selectionColor)
 import IDE.Core.CTypes
        (PackageDescr, pdPackage, pdModules, ModuleDescr, mdModuleId,
         mdMbSourcePath, mdIdDescriptions, Descr(..), RealDescr(..),
@@ -66,7 +67,7 @@ metadataCss = do
         cursor cursorDefault
     -- The module whose source file is the focused editor tab is highlighted.
     ".metadata .metadata-active" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".metadata .metadata-hint" ? do
         color grey
         padding (px 8) (px 8) (px 8) (px 8)

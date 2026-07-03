@@ -78,6 +78,8 @@ preferencesWidget ide = do
         , b "Save the session before closing a workspace" saveSessionOnClose (\v p -> p { saveSessionOnClose = v })
         , enumField p0 "Side bar visibility" tallVisOptions tallVisibility (\v p -> p { tallVisibility = v })
         , enumField p0 "Bottom bar visibility" tallVisOptions wide1Visibility (\v p -> p { wide1Visibility = v })
+        , colorField p0 "Selection highlight colour" uiSelectionColor (\v p -> p { uiSelectionColor = v })
+        , colorField p0 "Run-button hover row colour" uiHoverColor (\v p -> p { uiHoverColor = v })
         ]
     , section "Terminal"
         [ b "Clickable file paths and identifiers in terminal output"
@@ -173,6 +175,8 @@ wiredLabels =
   , "External editor command (blank = built-in editor)"
   , "Use tmux control mode (-CC): native pane splits (new terminals)"
   , "Remote hosts in the Terminals tree (ssh, one per line)"
+  , "Selection highlight colour"
+  , "Run-button hover row colour"
   ]
 
 -- | A checkbox driven by the live prefs (stays in sync with toolbar toggles).
@@ -215,6 +219,17 @@ textField
   -> m (Event t (Prefs -> Prefs))
 textField p0 lbl get set = prefRow lbl $ do
   inp <- textInputAttrs (get p0) ("type" =: "text" <> "class" =: "pref-input")
+  return $ set <$> updated (_inputElement_value inp)
+
+-- | A colour picker (the native @\<input type="color"\>@); the value is a
+-- @#rrggbb@ string.  Changes apply live — the colour prefs feed the CSS
+-- variables 'IDE.Web.Main' binds in a dynamic style element.
+colorField
+  :: MonadWidget t m
+  => Prefs -> Text -> (Prefs -> Text) -> (Text -> Prefs -> Prefs)
+  -> m (Event t (Prefs -> Prefs))
+colorField p0 lbl get set = prefRow lbl $ do
+  inp <- textInputAttrs (get p0) ("type" =: "color" <> "class" =: "pref-color")
   return $ set <$> updated (_inputElement_value inp)
 
 -- | An optional path (blank = 'Nothing').

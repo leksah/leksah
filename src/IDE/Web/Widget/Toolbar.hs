@@ -22,6 +22,7 @@ import Reflex.Dom.Core
        (elDynAttr', elDynAttr, text, dynText, MonadWidget, (=:), elAttr, divClass,
         Event, domEvent, EventName(..))
 
+import IDE.Web.Theme (selectionColor, selectionColorFaint)
 import IDE.Core.State (IDE, prefs, tallVisibility, wide1Visibility, TallVisibility(..))
 import IDE.Web.Events (ToolbarEvents(..))
 import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
@@ -65,19 +66,19 @@ toolbarCss = do
         transitionDelay (sec 1)
         transitionDuration (sec 0.2)
     ".toggled .toolbar-button" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".toggled .toolbar-button" # hover ?
         background (Rgba 61 96 150 1.0)
     -- The 3-state side-pane button: shown = solid, auto-hide = dim, hidden = none.
     ".tall-state-show .toolbar-button" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".tall-state-auto .toolbar-button" ?
-        background (Rgba 30 88 209 0.45)
+        background selectionColorFaint
     -- The 3-state bottom-pane button: shown = solid, auto-hide = dim, hidden = none.
     ".wide1-state-show .toolbar-button" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".wide1-state-auto .toolbar-button" ?
-        background (Rgba 30 88 209 0.45)
+        background selectionColorFaint
 
 toolbarButton
   :: MonadWidget t m

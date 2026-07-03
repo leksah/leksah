@@ -30,6 +30,8 @@ import Reflex.Dom.Core
        (el, elDynAttr', (=:), elDynAttr, divClass,
         MonadWidget, HasDomEvent(..), EventName(..), FunctorMaybe(..))
 
+import IDE.Web.Theme (selectionColor)
+
 flipperCss :: Css
 flipperCss = do
   ".flipper" ? do
@@ -63,7 +65,7 @@ flipperCss = do
     background (Rgba 0 0 0 0.0)
     color white
   ".flipper-content button.selected" ?
-    background (Rgba 30 88 209 1.0)
+    background selectionColor
 
 flipperWidget
   :: (MonadWidget t m, Ord k, Show k)

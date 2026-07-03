@@ -40,6 +40,7 @@ import Reflex.Dom.Core
         Event, attributes, domEvent, EventName(..), blank,
         _textInput_value, _textInput_keypress)
 
+import IDE.Web.Theme (selectionColor)
 import IDE.Web.Events (FindbarEvents(..), TabKey(..))
 
 findbarCss :: Css
@@ -60,7 +61,7 @@ findbarCss = do
     ".findbar button" # hover ?
         background (Rgba 61 96 150 1.0)
     ".findbar button.selected" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".findbar input" ? do
         verticalAlign middle
         backgroundImage (vGradient (Rgba 40 40 40 1.0) (Rgba 24 24 24 1.0))
@@ -86,7 +87,7 @@ findbarCss = do
     ".findbar-button" # hover ?
         background (Rgba 61 96 150 1.0)
     ".findbar-button.selected" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
 
 -- | An image button; returns its click event.
 findbarButton

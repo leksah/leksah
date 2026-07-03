@@ -96,7 +96,7 @@ import Reflex
         listViewWithKey, sample,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (dynText, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
+       (dynText, el, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
         (=:), MonadWidget, mainWidgetWithCss)
 
 import IDE.Core.State
@@ -111,6 +111,7 @@ import IDE.Web.CloseRequest (nextCloseRequest)
 import IDE.Web.OpenFileRequest (nextOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel)
 import IDE.Web.SaveRequest (nextSaveRequest)
+import IDE.Web.Theme (themeVarsCss)
 import IDE.Web.FindRequest (nextFindRequest)
 import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
@@ -2025,6 +2026,12 @@ main showMenubar macTitlebar ide = mdo
     prefsSaveE <- debounce (1 :: NominalDiffTime) (updated prefsD)
     performEvent_ $ ffor prefsSaveE $ \p -> liftIO $
       getConfigFilePathForSave standardPreferencesFilename >>= \path -> writePrefs path p
+    -- The colour prefs bind the CSS variables the stylesheets reference
+    -- (--leksah-selection / --leksah-hover; see "IDE.Web.Theme") in a live
+    -- style element, so the Preferences colour pickers apply immediately.
+    themeCssD <- holdUniqDyn $
+        (\p -> themeVarsCss (uiSelectionColor p) (uiHoverColor p)) <$> prefsD
+    el "style" $ dynText themeCssD
 
     let allE = merge (DM.fromList
             [ MenubarWidget   :=> menubarE

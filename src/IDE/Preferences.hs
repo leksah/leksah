@@ -151,6 +151,8 @@ defaultPrefs = Prefs {
     ,   externalEditor = ""
     ,   terminalControlMode = True
     ,   remoteHosts = []
+    ,   uiSelectionColor = "#1e58d1"
+    ,   uiHoverColor = "#0c1e46"
     }
 
 mergePrefsFile :: Prefs -> PrefsFile -> Prefs
@@ -227,6 +229,8 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , terminalFileLinks = fromMaybe terminalFileLinks terminalFileLinks_
   , externalEditor = fromMaybe externalEditor externalEditor_
   , terminalControlMode = fromMaybe terminalControlMode terminalControlMode_
+  , uiSelectionColor = fromMaybe uiSelectionColor uiSelectionColor_
+  , uiHoverColor = fromMaybe uiHoverColor uiHoverColor_
   , remoteHosts = fromMaybe remoteHosts remoteHosts_
   }
 
@@ -302,6 +306,8 @@ toPrefsFile Prefs{..} = PrefsFile
   , terminalFileLinks_ = Just terminalFileLinks
   , externalEditor_ = Just externalEditor
   , terminalControlMode_ = Just terminalControlMode
+  , uiSelectionColor_ = Just uiSelectionColor
+  , uiHoverColor_ = Just uiHoverColor
   , remoteHosts_ = Just remoteHosts
   }
 

@@ -50,6 +50,7 @@ import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
         divClass, text, el, elClass, dynText)
 
+import IDE.Web.Theme (selectionColor, hoverColor)
 import IDE.Core.CTypes (packageIdentifierToString)
 import IDE.Core.State
        (DebugState(..), activeComponent, ipdPackageDir,
@@ -79,10 +80,15 @@ workspaceCss = do
         height (pct 100)
         key "fill" grey
         overflow scroll
+        -- A uniform right inset so the run buttons line up clear of the
+        -- scrollbar.  On the PANE, not the rows — row padding would compound
+        -- per nesting level and step deeper buttons leftward.
+        key "padding-right" ("8px" :: Text)
+        key "box-sizing" ("border-box" :: Text)
     ".workspace li.active > .tree-expand" ?
         key "fill" white
     ".workspace li > .tree-expand" Clay.# hover ?
-        key "fill" (Rgba 30 88 209 1.0)
+        key "fill" selectionColor
     ".workspace li.active > label" ?
         fontWeight bold
     ".tree-item" ? do
@@ -138,10 +144,12 @@ workspaceCss = do
     "input" |+ "div" ?
         userSelect none
     ("input" Clay.# checked) |+ "div" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     -- The run (>) buttons at the right of component / flake / shell rows:
     -- the same dark look as the Terminals pane's buttons, kept subtle until
-    -- hovered.
+    -- hovered.  margin-left auto pushes them to the row's right edge (the
+    -- rows are flex, below); the extra bottom padding rides the glyph 2px
+    -- high, which optically centres it.
     ".workspace .ws-run" ? do
         color white
         borderStyle none
@@ -149,14 +157,43 @@ workspaceCss = do
         backgroundImage (vGradient (Rgba 64 64 64 1.0) (Rgba 40 40 40 1.0))
         key "font-size" ("11px" :: Text)
         key "font-weight" ("bold" :: Text)
-        key "padding" ("0 4px" :: Text)
-        key "margin-left" ("8px" :: Text)
+        key "padding" ("0 4px 2px 4px" :: Text)
+        key "margin-left" ("auto" :: Text)
         key "opacity" ("0.55" :: Text)
-        key "vertical-align" ("middle" :: Text)
         cursor cursorDefault
     (".workspace .ws-run" Clay.# hover) ? do
         key "opacity" ("1" :: Text)
         backgroundImage (vGradient (Rgba 84 84 84 1.0) (Rgba 60 60 60 1.0))
+    -- Rows that carry a run button lay out like the Terminals pane's rows:
+    -- flexbox, label taking the free space, the button at the right edge,
+    -- expanded children wrapping onto their own full-width line.
+    ".workspace li.component, .workspace li.flake, .workspace li.flake-node, .workspace li.flake-leaf" ? do
+        key "display" ("flex" :: Text)
+        key "flex-wrap" ("wrap" :: Text)
+        key "align-items" ("center" :: Text)
+    ".workspace li.component > label, .workspace li.flake > label" ? do
+        key "flex" ("1" :: Text)
+        key "min-width" ("0" :: Text)
+    ".workspace li.component > label > .tree-item, .workspace li.flake > label > .tree-item" ? do
+        key "display" ("flex" :: Text)
+        key "align-items" ("center" :: Text)
+        width (pct 100)
+        key "box-sizing" ("border-box" :: Text)
+        -- the tree-item's own 2px right padding would put these buttons 2px
+        -- left of the ones that sit directly in their li
+        paddingRight nil
+    ".workspace li.flake-node > .flake-label" ? do
+        key "flex" ("1" :: Text)
+        key "min-width" ("0" :: Text)
+    ".workspace .tree-children" ? key "flex-basis" ("100%" :: Text)
+    -- Hovering a run button highlights its whole row line — label through
+    -- the area behind the button — with the (configurable) hover colour; the
+    -- button itself keeps its normal look.  The background is clipped to the
+    -- row's first line so it doesn't bleed over expanded children.
+    ".workspace li.component:has(> label .ws-run:hover), .workspace li.flake:has(> label .ws-run:hover), .workspace li.flake-node:has(> .ws-run:hover), .workspace li.flake-leaf:has(> .ws-run:hover)" ? do
+        backgroundImage (vGradient hoverColor hoverColor)
+        key "background-size" ("100% 20px" :: Text)
+        key "background-repeat" ("no-repeat" :: Text)
     -- Git status decorations on the file tree (VS Code-style colours).
     ".git-modified"  ? color (rgb 0xe2 0xc0 0x8d)
     ".git-added"     ? color (rgb 0x73 0xc9 0x91)
@@ -170,9 +207,9 @@ workspaceCss = do
     -- The focused source file (the editor tab being shown) is highlighted; a
     -- find match can also be a directory.
     ".workspace li.file.active" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
     ".workspace li.dir.active > label" ?
-        background (Rgba 30 88 209 1.0)
+        background selectionColor
 
 components :: IDEPackage -> [Text]
 components package =
