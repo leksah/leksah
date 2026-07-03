@@ -1204,8 +1204,16 @@ badgesJs = T.unlines
   , "    document.body.classList.toggle('leksah-show-badges',"
   , "        !!(on && window.__leksahShortcutBadges));"
   , "  }"
-  , "  window.addEventListener('keydown', function(e){ if (e.key === 'Meta') set(true); }, true);"
-  , "  window.addEventListener('keyup',   function(e){ if (e.key === 'Meta') set(false); }, true);"
+  -- ⌘-Tab swallows the Meta keyup (the app switcher takes the keyboard even
+  -- when you come straight back), so besides keyup/blur, clear whenever any
+  -- later event reports the key is no longer held.
+  , "  function sync(e){"
+  , "    if (!e.metaKey && document.body.classList.contains('leksah-show-badges')) set(false);"
+  , "  }"
+  , "  window.addEventListener('keydown', function(e){ if (e.key === 'Meta') set(true); else sync(e); }, true);"
+  , "  window.addEventListener('keyup',   function(e){ if (e.key === 'Meta') set(false); else sync(e); }, true);"
+  , "  window.addEventListener('mousemove', sync, true);"
+  , "  window.addEventListener('mousedown', sync, true);"
   , "  window.addEventListener('blur',    function(){ set(false); }, true);"
   , "})();"
   ]

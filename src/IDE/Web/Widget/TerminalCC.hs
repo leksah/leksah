@@ -55,8 +55,9 @@ import Text.Read (readMaybe)
 
 import Reflex
        (Dynamic, Event, attachWith, current, ffor, fmapMaybe, foldDyn,
-        getPostBuild, holdDyn, holdUniqDyn, leftmost, never, newTriggerEvent,
-        performEvent, performEvent_, switchHold, tag, updated)
+        delay, getPostBuild, holdDyn, holdUniqDyn, leftmost, never,
+        newTriggerEvent, performEvent, performEvent_, switchHold, tag,
+        updated)
 import Reflex.Dom.Core
        (MonadWidget, blank, divClass, dyn, dyn_, elAttr, elAttr', elDynAttr,
         elDynAttr', listWithKey, text, widgetHold, _element_raw, (=:))
@@ -287,6 +288,11 @@ terminalCCWidget ide sessionId selectedE = do
                           applyActive
                           focusActivePane
                   _ -> return ()
+            -- Layout changes (splits, divider drags) rebuild the highlight
+            -- boxes hidden; the rebuild's own postBuild reapplies, but belt
+            -- and braces: reapply again shortly after the dust settles.
+            layoutSettledE <- delay 0.15 (fmapMaybe layoutOf evE)
+            performEvent_ $ ffor layoutSettledE $ \_ -> liftJSM applyActive
             performEvent_ $ ffor evE $ \case
                 EvWindowPaneChanged _ p -> do
                     liftIO $ writeIORef activePaneRef (Just p)
@@ -622,16 +628,23 @@ renderHlSegments (cw, ch) l =
     forM_ (layoutPanes l) $ \(pane, x, y, w, h) ->
         -- Half a cell bigger than the pane in every direction, so the box's
         -- edges sit exactly on the divider lines (which run through the
-        -- middle of the gutter cells); clipped at the container edges.
+        -- middle of the gutter cells); clipped at the container's top/left.
+        -- A pane at the layout's right/bottom edge anchors to the CONTAINER
+        -- edge instead, covering the sub-cell remainder the cell grid leaves
+        -- there.
         let px v = T.pack (show (round v :: Int)) <> "px"
         in elAttr "div"
             ("class" =: "terminal-cc-hl"
              <> "data-pane" =: pane
              <> "style" =: ("position:absolute;display:none;pointer-events:none"
-                            <> ";left:"   <> px (fromIntegral x * cw - cw / 2)
-                            <> ";top:"    <> px (fromIntegral y * ch - ch / 2)
-                            <> ";width:"  <> px (fromIntegral w * cw + cw)
-                            <> ";height:" <> px (fromIntegral h * ch + ch)))
+                            <> ";left:" <> px (fromIntegral x * cw - cw / 2)
+                            <> ";top:"  <> px (fromIntegral y * ch - ch / 2)
+                            <> (if x + w >= lW l
+                                  then ";right:0"
+                                  else ";width:"  <> px (fromIntegral w * cw + cw))
+                            <> (if y + h >= lH l
+                                  then ";bottom:0"
+                                  else ";height:" <> px (fromIntegral h * ch + ch))))
             blank
 
 -- | The ⌘-held navigation badges of one window's layout: pane N (layout /
@@ -657,13 +670,20 @@ renderShortcutBadges (cw, ch) l =
 renderDividers :: MonadWidget t m => CC -> (Double, Double) -> Layout -> m ()
 renderDividers cc (cw, ch) l =
     forM_ (layoutDividers l) $ \(vert, x, y, w, h, target) -> do
+        -- A gutter reaching the layout's right/bottom edge anchors to the
+        -- CONTAINER edge, so the line (and the grab strip) runs through the
+        -- sub-cell remainder the cell grid leaves there.
         (dEl, _) <- elAttr' "div"
             ("class" =: ("terminal-cc-divider " <> (if vert then "vert" else "horiz"))
              <> "style" =: ("position:absolute"
-                            <> ";left:"   <> pxAt x cw
-                            <> ";top:"    <> pxAt y ch
-                            <> ";width:"  <> pxSpan x w cw
-                            <> ";height:" <> pxSpan y h ch)) $
+                            <> ";left:" <> pxAt x cw
+                            <> ";top:"  <> pxAt y ch
+                            <> (if x + w >= lW l
+                                  then ";right:0"
+                                  else ";width:"  <> pxSpan x w cw)
+                            <> (if y + h >= lH l
+                                  then ";bottom:0"
+                                  else ";height:" <> pxSpan y h ch))) $
             -- The line extends half a cell beyond the gutter at each end, so
             -- crossing/tee-ing dividers meet at the junction centres instead
             -- of leaving a gap (the container clips the overhang at edges).
