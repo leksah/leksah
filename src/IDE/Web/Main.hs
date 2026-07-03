@@ -1096,6 +1096,19 @@ transparencyJs = T.unlines
   -- or null if its terminal isn't ready.
   , "window.leksahComputeHole = function(h){"
   , "  var reg = window.LeksahTerm && window.LeksahTerm.byId;"
+  , "  if (!reg) return null;"
+  -- Control-mode tabs register one xterm PER PANE (key \"tid/pid\" — see
+  -- paneKey in IDE.Web.Widget.TerminalCC); its element IS the pane, so the
+  -- hole is simply that element's box (zero-sized while its window is hidden
+  -- -> no hole).  Classic tabs register the whole session under tid and need
+  -- the cell arithmetic below.
+  , "  if (!reg[h.term] && h.pane) {"
+  , "    var pt = reg[h.term + '/' + h.pane];"
+  , "    if (!pt || !pt.element) return null;"
+  , "    var fr = pt.element.getBoundingClientRect();"
+  , "    return (fr.width > 0 && fr.height > 0)"
+  , "      ? { x: fr.left, y: fr.top, w: fr.width, h: fr.height } : null;"
+  , "  }"
   , "  var term = reg && reg[h.term];"
   , "  if (!term || !term.element || !term.cols || !term.rows) return null;"
   , "  var screen = term.element.querySelector('.xterm-screen');"
@@ -1777,6 +1790,7 @@ main showMenubar macTitlebar ide = mdo
         then liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahClearHoles" :: Text)
         else let holeJson = "[" <> T.intercalate ","
                    [ "{\"term\":" <> T.pack (show tid)
+                     <> ",\"pane\":" <> T.pack (show pid)
                      <> ",\"left\":" <> T.pack (show l) <> ",\"top\":" <> T.pack (show t)
                      <> ",\"w\":" <> T.pack (show w) <> ",\"h\":" <> T.pack (show h)
                      <> (if isSnap then ",\"snap\":true,\"key\":\"" <> paneKey (tid, pid) <> "\"" else "") <> "}"
