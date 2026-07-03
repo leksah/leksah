@@ -162,7 +162,9 @@ workspaceCss = do
         key "font-size" ("11px" :: Text)
         key "font-weight" ("bold" :: Text)
         key "padding" ("0 4px 2px 4px" :: Text)
-        key "margin-left" ("8px" :: Text)
+        -- gap between adjacent buttons matches the Terminals tree's action
+        -- glyphs (2px); the row's FIRST button is pushed right (below)
+        key "margin-left" ("2px" :: Text)
         key "opacity" ("0.55" :: Text)
         cursor cursorDefault
     -- the FIRST button of a row is pushed to the right edge; any later
@@ -517,7 +519,6 @@ workspaceWidget ide activeFileD revealFileD = do
                               case pKey of
                                 CabalTool {} -> do
                                   btnsE <- dyn $ ffor componentD $ \comp -> do
-                                      replE <- runButton "Open component repl (ffcabal)"
                                       mbRunE <- if runnable comp
                                           then Just <$> execButton ("cabal "
                                                   <> (case T.takeWhile (/= ':') comp of
@@ -526,6 +527,7 @@ workspaceWidget ide activeFileD revealFileD = do
                                                         _       -> "run")
                                                   <> " (in a terminal window)")
                                           else return Nothing
+                                      replE <- runButton "Open component repl (ffcabal)"
                                       return (replE, fromMaybe never mbRunE)
                                   replE <- switchHold never (fst <$> btnsE)
                                   execE <- switchHold never (snd <$> btnsE)
