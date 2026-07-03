@@ -73,6 +73,7 @@ module IDE.Core.Types (
 ,   StackProject(..)
 ,   CustomProject(..)
 ,   NixProject(..)
+,   MakeProject(..)
 ,   pjPackages
 ,   pjLookupPackage
 ,   pjDir
@@ -247,6 +248,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import IDE.Utils.Project
        (ProjectKey(..), pjCabalFile, pjStackFile, pjCustomDir, pjDir, pjFlakeFile,
         CabalProject(..), StackProject(..), CustomProject(..), NixProject(..),
+        MakeProject(..),
         pjIsCabal, pjIsStack, pjIsNix, pjFileOrDir, pjFile, filePathToProjectKey)
 import Distribution.Pretty (prettyShow)
 

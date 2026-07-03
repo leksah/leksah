@@ -23,11 +23,13 @@ import Data.Maybe (listToMaybe, maybeToList, fromMaybe, isJust)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
 import Data.Text (Text)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T (pack, strip, null, takeWhile)
 import Data.Time.Clock (UTCTime)
 
 import System.Directory (getModificationTime, doesFileExist)
+import System.Exit (ExitCode(..))
 import System.FilePath ((<.>), (</>), dropFileName, dropTrailingPathSeparator)
+import System.Process (readProcessWithExitCode)
 
 import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
@@ -45,10 +47,10 @@ import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffilter, ffor, updated,
         tag, current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
         performEvent_, newTriggerEvent, tickLossyFromPostBuildTime, Dynamic,
-        Event, never, fmapMaybe, tagPromptlyDyn)
+        Event, never, fmapMaybe, tagPromptlyDyn, sample)
 import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
-        divClass, text, el, elClass, dynText)
+        divClass, text, el, elClass, dynText, domEvent, EventName(..))
 
 import IDE.Web.Theme (selectionColor, hoverColor)
 import IDE.Core.CTypes (packageIdentifierToString)
@@ -62,15 +64,17 @@ import IDE.Gtk.Package (packageRun)
 import IDE.Gtk.Workspaces (makePackage)
 import IDE.Package
        (packageClean, packageBench, packageTest, projectRefreshNix,
-        packageOpenRepl)
+        packageOpenRepl, packageRunComponentTerm)
 import IDE.Web.Command (Command(..))
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
 import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
-        flakeTreeWidget, runButton, openNixWindow, developAttr)
+        flakeTreeWidget, runButton, execButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.FileTree (fileTree)
-import IDE.Web.Widget.Tree (treeItemDynAttr, treeItemDynAttr', treeSelect, treeItem, treeItem')
+import IDE.Web.Widget.Tree
+       (treeItemDynAttr, treeItemDynAttr', treeSelect, treeSelect', treeItem,
+        treeItem')
 import IDE.Workspaces
        (workspaceRemoveProject, workspaceActivatePackage)
 
@@ -158,9 +162,13 @@ workspaceCss = do
         key "font-size" ("11px" :: Text)
         key "font-weight" ("bold" :: Text)
         key "padding" ("0 4px 2px 4px" :: Text)
-        key "margin-left" ("auto" :: Text)
+        key "margin-left" ("8px" :: Text)
         key "opacity" ("0.55" :: Text)
         cursor cursorDefault
+    -- the FIRST button of a row is pushed to the right edge; any later
+    -- buttons (exe/test/bench rows have repl + run) trail it
+    ".workspace .ws-run:first-of-type" ?
+        key "margin-left" ("auto" :: Text)
     (".workspace .ws-run" Clay.# hover) ? do
         key "opacity" ("1" :: Text)
         backgroundImage (vGradient (Rgba 84 84 84 1.0) (Rgba 60 60 60 1.0))
@@ -171,10 +179,10 @@ workspaceCss = do
         key "display" ("flex" :: Text)
         key "flex-wrap" ("wrap" :: Text)
         key "align-items" ("center" :: Text)
-    ".workspace li.component > label, .workspace li.flake > label" ? do
+    ".workspace li.component > label, .workspace li.flake > label, .workspace li.flake-node > label, .workspace li.flake-leaf > label" ? do
         key "flex" ("1" :: Text)
         key "min-width" ("0" :: Text)
-    ".workspace li.component > label > .tree-item, .workspace li.flake > label > .tree-item" ? do
+    ".workspace li.component > label > .tree-item, .workspace li.flake > label > .tree-item, .workspace li.flake-node > label > .tree-item, .workspace li.flake-leaf > label > .tree-item" ? do
         key "display" ("flex" :: Text)
         key "align-items" ("center" :: Text)
         width (pct 100)
@@ -182,15 +190,12 @@ workspaceCss = do
         -- the tree-item's own 2px right padding would put these buttons 2px
         -- left of the ones that sit directly in their li
         paddingRight nil
-    ".workspace li.flake-node > .flake-label" ? do
-        key "flex" ("1" :: Text)
-        key "min-width" ("0" :: Text)
     ".workspace .tree-children" ? key "flex-basis" ("100%" :: Text)
     -- Hovering a run button highlights its whole row line — label through
     -- the area behind the button — with the (configurable) hover colour; the
     -- button itself keeps its normal look.  The background is clipped to the
     -- row's first line so it doesn't bleed over expanded children.
-    ".workspace li.component:has(> label .ws-run:hover), .workspace li.flake:has(> label .ws-run:hover), .workspace li.flake-node:has(> .ws-run:hover), .workspace li.flake-leaf:has(> .ws-run:hover)" ? do
+    ".workspace li.component:has(> label .ws-run:hover), .workspace li.flake:has(> label .ws-run:hover), .workspace li.flake-node:has(> label .ws-run:hover), .workspace li.flake-leaf:has(> label .ws-run:hover)" ? do
         backgroundImage (vGradient hoverColor hoverColor)
         key "background-size" ("100% 20px" :: Text)
         key "background-repeat" ("no-repeat" :: Text)
@@ -255,6 +260,28 @@ safeMtime :: FilePath -> IO (Maybe UTCTime)
 safeMtime f =
   either (const Nothing) Just <$> (try (getModificationTime f) :: IO (Either SomeException UTCTime))
 
+-- | A git branch node: the checkout's current branch, read in the
+-- background; hidden entirely when @dir@ isn't inside a git checkout.
+gitBranchNode :: forall t m . MonadWidget t m => FilePath -> m ()
+gitBranchNode dir = do
+  pb <- getPostBuild
+  (brE, fireBr) <- newTriggerEvent
+  performEvent_ $ ffor pb $ \_ -> liftIO . void . forkIO $ do
+      r <- try (readProcessWithExitCode "git"
+                    ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"] "")
+      fireBr $ case r :: Either SomeException (ExitCode, String, String) of
+          Right (ExitSuccess, out, _)
+            | b <- T.strip (T.pack out), not (T.null b) -> Just b
+          _ -> Nothing
+  brD <- holdDyn Nothing brE
+  void . dyn $ ffor brD $ \case
+      Nothing -> return ()
+      Just b  -> void . elClass "li" "branch" $
+          treeSelect "workspace" (return never) $ do
+              elAttr "img" ("src" =: "/pics/ide_git.png") $ return ()
+              text (" " <> b)
+              return (never :: Event t ())
+
 -- | The collapsed \"Flake\" tree node for the project directory @dir@, shown
 -- only when @dir/flake.nix@ exists.  Its children — built, and so evaluated,
 -- only when it is expanded — are one node per top-level output category that
@@ -269,11 +296,15 @@ flakeNode dir = do
   hasFlakeD <- holdUniqDyn =<< holdDyn False hasFlakeE
   void . dyn $ ffor hasFlakeD $ \hasFlake -> when hasFlake . void $
     treeItem "flake" False
-      (treeSelect "workspace" (return never) $ do
-          elAttr "img" ("src" =: "/pics/ide_nix.png") (return ())
-          text " Flake"
-          runE <- runButton "nix repl .#"
-          performEvent_ $ ffor runE $ \_ -> liftIO $
+      (do (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+              elAttr "img" ("src" =: "/pics/ide_nix.png") (return ())
+              text " Flake"
+              runE <- runButton "nix repl .#"
+              performEvent_ $ ffor runE $ \_ -> liftIO $
+                  openNixWindow dir "nix repl" "nix repl .# --show-trace"
+              return never
+          -- double-click = the row's only button
+          performEvent_ $ ffor (domEvent Dblclick rowEl) $ \_ -> liftIO $
               openNixWindow dir "nix repl" "nix repl .# --show-trace"
           return never)
       (do
@@ -296,7 +327,7 @@ flakeNode dir = do
 -- are the names under @<category>.${currentSystem}@, each with a run (>)
 -- button opening @nix develop@ for it; when a @default@ name exists the
 -- collapsed row itself gets the button.
-systemCatNode :: MonadWidget t m => FilePath -> Text -> m ()
+systemCatNode :: forall t m . MonadWidget t m => FilePath -> Text -> m ()
 systemCatNode dir cat = do
   (namesE, fireNames) <- newTriggerEvent
   pb <- getPostBuild
@@ -305,14 +336,19 @@ systemCatNode dir cat = do
   resultD <- holdDyn (Right ("", [])) namesE
   hasDefaultD <- holdUniqDyn $ either (const False) (elem "default" . snd) <$> resultD
   void $ treeItem "flake-node" False
-    (do elClass "span" "flake-label" (text (" " <> cat))
-        -- Open the default entry without having to expand the node.
-        void . dyn $ ffor hasDefaultD $ \hasDef -> when hasDef $ do
-            runE <- runButton ("nix develop .#" <> cat <> ".default")
-            performEvent_ $ ffor (tagPromptlyDyn resultD runE) $ \case
+    (do let runDefault = \case
                 Right (sys, names) | "default" `elem` names ->
                     liftIO $ developAttr dir (cat <> "." <> sys <> ".default")
                 _ -> return ()
+        (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+            elClass "span" "flake-label" (text (" " <> cat))
+            -- Open the default entry without having to expand the node.
+            void . dyn $ ffor hasDefaultD $ \hasDef -> when hasDef $ do
+                runE <- runButton ("nix develop .#" <> cat <> ".default")
+                performEvent_ $ ffor (tagPromptlyDyn resultD runE) runDefault
+            return never
+        -- double-click = the row's (only) button, when it exists
+        performEvent_ $ ffor (tagPromptlyDyn resultD (domEvent Dblclick rowEl)) runDefault
         return never)
     (do
         _ <- el "ul" . dyn $ ffor resultD $ \case
@@ -322,9 +358,13 @@ systemCatNode dir cat = do
         return never)
   where
     nameRow sys nm = elClass "li" "flake-leaf" $ do
-        text (" " <> nm)
-        runE <- runButton ("nix develop .#" <> cat <> "." <> sys <> "." <> nm)
-        performEvent_ $ ffor runE $ \_ -> liftIO $
+        (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+            text (" " <> nm)
+            runE <- runButton ("nix develop .#" <> cat <> "." <> sys <> "." <> nm)
+            performEvent_ $ ffor runE $ \_ -> liftIO $
+                developAttr dir (cat <> "." <> sys <> "." <> nm)
+            return (never :: Event t ())
+        performEvent_ $ ffor (domEvent Dblclick rowEl) $ \_ -> liftIO $
             developAttr dir (cat <> "." <> sys <> "." <> nm)
 
 -- | \"All Outputs\": the full flake-outputs tree.  Evaluated only while
@@ -332,7 +372,9 @@ systemCatNode dir cat = do
 -- drill lazily (see 'flakeTreeWidget').
 allOutputsNode :: MonadWidget t m => FilePath -> m ()
 allOutputsNode dir = void $ treeItem "flake-node" False
-    (do elClass "span" "flake-label" (text " All Outputs"); return never)
+    (treeSelect "workspace" (return never) $ do
+        elClass "span" "flake-label" (text " All Outputs")
+        return never)
     (el "ul" $ do
         ipb <- getPostBuild
         ptick <- tickLossyFromPostBuildTime 2
@@ -455,29 +497,54 @@ workspaceWidget ide activeFileD revealFileD = do
                       el "ul" $
                         fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey (M.fromList . zip [0::Int ..] . components <$> packageD) $ \_ componentD -> do
                           let isActiveComponentD = (&&) <$> isActivePackageD <*> ((==) <$> activeComponentD <*> (Just <$> componentD))
-                          elDynClass "li" (("component" <>) <$> (bool "" " active" <$> isActiveComponentD)) $
-                            treeSelect "workspace" (menu
+                          elDynClass "li" (("component" <>) <$> (bool "" " active" <$> isActiveComponentD)) $ do
+                            let mkActD f = (\proj pkg comp ->
+                                    PackageCommand . CommandWorkspaceAction "" "" $
+                                      runProject (runPackage (f comp) pkg) proj)
+                                  <$> projectD <*> packageD <*> componentD
+                                runnable comp =
+                                  T.takeWhile (/= ':') comp `elem` ["exe", "test", "bench"]
+                            (rowEl, rowE) <- treeSelect' "workspace" (menu
                               [ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Component" "" <$>
                                   (workspaceActivatePackage <$> projectD <*> (Just <$> packageD) <*> (Just <$> componentD))
                               ]) $ do
                               elAttr "img" ("src" =: "/pics/ide_component.png") $ return ()
                               dynText $ (" " <>) <$> componentD
-                              -- The repl (>) button: bring up the component's
-                              -- ffcabal repl window as a terminal tab.
+                              -- The repl (>) button brings the component's
+                              -- ffcabal repl window up as a terminal tab; exe/
+                              -- test/bench components also get a run (▶)
+                              -- button (cabal run/test/bench in a window).
                               case pKey of
                                 CabalTool {} -> do
-                                  runE <- runButton "Open component repl (ffcabal)"
-                                  let runActD = (\proj pkg comp ->
-                                          PackageCommand . CommandWorkspaceAction "" "" $
-                                            runProject (runPackage (packageOpenRepl comp) pkg) proj)
-                                        <$> projectD <*> packageD <*> componentD
-                                  return $ tagPromptlyDyn runActD runE
+                                  btnsE <- dyn $ ffor componentD $ \comp -> do
+                                      replE <- runButton "Open component repl (ffcabal)"
+                                      mbRunE <- if runnable comp
+                                          then Just <$> execButton ("cabal "
+                                                  <> (case T.takeWhile (/= ':') comp of
+                                                        "test"  -> "test"
+                                                        "bench" -> "bench"
+                                                        _       -> "run")
+                                                  <> " (in a terminal window)")
+                                          else return Nothing
+                                      return (replE, fromMaybe never mbRunE)
+                                  replE <- switchHold never (fst <$> btnsE)
+                                  execE <- switchHold never (snd <$> btnsE)
+                                  return $ leftmost
+                                    [ tagPromptlyDyn (mkActD packageOpenRepl) replE
+                                    , tagPromptlyDyn (mkActD packageRunComponentTerm) execE ]
                                 _ -> return never
-                    _ <- elClass "li" "branch" $
-                      treeSelect "workspace" (return never) $ do
-                        elAttr "img" ("src" =: "/pics/ide_git.png") $ return ()
-                        text " master"
-                        return never
+                            -- Double-click = the row's only button: lib
+                            -- components have just the repl.
+                            let dblActD = (\act comp ->
+                                    if runnable comp then Nothing else Just act)
+                                  <$> mkActD packageOpenRepl <*> componentD
+                                dblE = case pKey of
+                                  CabalTool {} -> fmapMaybe id
+                                      (tagPromptlyDyn dblActD (domEvent Dblclick rowEl))
+                                  _ -> never
+                            return $ leftmost [rowE, dblE]
+                    pkgDir <- sample (current pkgDirD)
+                    gitBranchNode pkgDir
                     filesE <- treeItem' pkgRevealE "package-files" False (treeSelect "workspace" (return never) $ do
                       elAttr "img" ("src" =: "/pics/ide_folder.png") $ return ()
                       text " Files"
@@ -510,13 +577,20 @@ workspaceWidget ide activeFileD revealFileD = do
                       -- A nix project's tree has no package "Files" nodes to
                       -- distinguish from, so plain "Files" reads better.
                       text $ case pKey of
-                        NixTool {} -> " Files"
-                        _          -> " Other Files"
+                        NixTool {}  -> " Files"
+                        MakeTool {} -> " Files"
+                        _           -> " Other Files"
                       return never) $
                         el "ul" $
                           (switchHold never =<<) . dyn $
                             (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD (pjDir pKey))
                               <$> pjSourceDirsD <*> pkgDirsD)
+              -- Nix/Makefile projects have no package rows to carry a git
+              -- branch node, so it lives at the project level.
+              case pKey of
+                NixTool {}  -> gitBranchNode (pjDir pKey)
+                MakeTool {} -> gitBranchNode (pjDir pKey)
+                _           -> return ()
               -- Any project with a flake.nix gets a (collapsed) Flake node;
               -- it self-hides when there's no flake and only evaluates once
               -- expanded, so there's no overhead otherwise.

@@ -134,6 +134,8 @@ makeProjectKeyAbsolute wsFile' (CustomTool p) =
         <$> makeAbsolute (dropFileName wsFile') (pjCustomDir p)
 makeProjectKeyAbsolute wsFile' (NixTool (NixProject f)) =
     NixTool . NixProject <$> makeAbsolute (dropFileName wsFile') f
+makeProjectKeyAbsolute wsFile' (MakeTool (MakeProject f)) =
+    MakeTool . MakeProject <$> makeAbsolute (dropFileName wsFile') f
 
 makePathsAbsolute :: WorkspaceFile -> FilePath -> IDEM Workspace
 makePathsAbsolute ws bp = do
@@ -305,6 +307,8 @@ makeProjectKeyRelative wsFile' (CustomTool p) =
         <$> myCanonicalizePath (pjCustomDir p)
 makeProjectKeyRelative wsFile' (NixTool (NixProject f)) =
     NixTool . NixProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
+makeProjectKeyRelative wsFile' (MakeTool (MakeProject f)) =
+    MakeTool . MakeProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
 
 makePathsRelative :: Workspace -> FilePath -> IO WorkspaceFile
 makePathsRelative ws wsFile' = do

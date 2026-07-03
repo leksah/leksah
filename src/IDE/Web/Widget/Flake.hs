@@ -28,6 +28,7 @@ module IDE.Web.Widget.Flake
   , flakeCss
   , flakeTreeWidget
   , runButton
+  , execButton
   , openNixWindow
   , developAttr
   ) where
@@ -61,8 +62,8 @@ import System.Exit (ExitCode(..))
 import System.Process (readProcessWithExitCode)
 
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
-import IDE.Web.Widget.Terminal (ensureCommandWindow)
-import IDE.Web.Widget.Tree (treeItem)
+import IDE.Web.ReplTmux (ensureCommandWindow)
+import IDE.Web.Widget.Tree (treeItem, treeSelect, treeSelect')
 
 -- | One node of the top-level flake-outputs listing: a category and its
 -- immediate attribute names.  The shape parses straight from the JSON.
@@ -264,12 +265,18 @@ runButton tip = do
   (e, _) <- elAttr' "button" ("class" =: "ws-run" <> "title" =: tip) $ text ">"
   return (domEvent Click e)
 
+-- | A small execute (▶) glyph — 'runButton' opens repls; this RUNS things.
+execButton :: MonadWidget t m => Text -> m (Event t ())
+execButton tip = do
+  (e, _) <- elAttr' "button" ("class" =: "ws-run" <> "title" =: tip) $ text "▶"
+  return (domEvent Click e)
+
 -- | Open (or bring back up) a repl-session terminal window running @cmd@ in
 -- @dir@: ensure the tmux window exists (keyed so a second click reuses it)
 -- and ask 'IDE.Web.Main' for its terminal tab.
 openNixWindow :: FilePath -> Text -> Text -> IO ()
 openNixWindow dir name cmd = void . forkIO $
-    ensureCommandWindow (T.pack dir <> "#" <> name) dir name cmd
+    ensureCommandWindow False (T.pack dir <> "#" <> name) dir name cmd
         >>= mapM_ requestLocalTerm
 
 -- | Open @nix develop .#\<attr path\>@ in a repl-session terminal window.
@@ -280,7 +287,7 @@ developAttr dir attr =
 -- | Render the flake-outputs tree.  The top level (categories and their
 -- immediate names) comes from the initial eval; deeper levels load lazily per
 -- node.  Rebuilt whenever the result changes (a refresh / re-evaluation).
-flakeTreeWidget :: MonadWidget t m => FilePath -> Dynamic t FlakeResult -> m ()
+flakeTreeWidget :: forall t m . MonadWidget t m => FilePath -> Dynamic t FlakeResult -> m ()
 flakeTreeWidget dir resultD = void . dyn $ ffor resultD $ \case
     Left err -> divClass "flake-error" $ dynText (pure err)
     Right [] -> divClass "flake-hint"  $ text "No flake outputs."
@@ -288,9 +295,12 @@ flakeTreeWidget dir resultD = void . dyn $ ffor resultD $ \case
   where
     -- A category (packages, devShells, overlays, …): expanded, its children
     -- (the systems / names) already known from the top-level eval but of
-    -- unknown kind — they drill lazily.
+    -- unknown kind — they drill lazily.  The row is a tree selection like
+    -- every other workspace row (click/keyboard).
     categoryNode (FlakeNode name children) = void $ treeItem "flake-node" True
-      (do elClass "span" "flake-label" (text (" " <> name)); return never)
+      (treeSelect "workspace" (return never) $ do
+          elClass "span" "flake-label" (text (" " <> name))
+          return (never :: Event t ()))
       (el "ul" $ do
           mapM_ (\(FlakeNode n _) -> flakeChildNode dir [name, n] Nothing) children
           return never)
@@ -298,15 +308,15 @@ flakeTreeWidget dir resultD = void . dyn $ ffor resultD $ \case
 -- | A node at @path@ under the flake root.  @kind@ 'Nothing' = unknown (not
 -- yet evaluated — offer an expander and find out on demand); derivations and
 -- plain values are leaves.  Every node gets a run button for
--- @nix develop .#<path>@.
-flakeChildNode :: MonadWidget t m => FilePath -> [Text] -> Maybe FlakeKind -> m ()
+-- @nix develop .#<path>@ — its only button, so double-clicking the row does
+-- the same; rows are tree selections (click/keyboard) like the rest of the
+-- workspace tree.
+flakeChildNode :: forall t m . MonadWidget t m => FilePath -> [Text] -> Maybe FlakeKind -> m ()
 flakeChildNode dir path kind = case kind of
     Just KindDerivation -> leafRow
     Just KindValue      -> leafRow
     _                   -> void $ treeItem "flake-node" False
-      (do elClass "span" "flake-label" (text (" " <> name))
-          developButton
-          return never)
+      (developRow (elClass "span" "flake-label" (text (" " <> name))))
       -- Children are (re-)evaluated on each expansion, off the reflex thread.
       (do pb <- getPostBuild
           (resE, fireRes) <- newTriggerEvent
@@ -323,9 +333,16 @@ flakeChildNode dir path kind = case kind of
   where
     name = last path
     attr = T.intercalate "." path
-    leafRow = void . elClass "li" "flake-leaf" $ do
-        text (" " <> name)
-        developButton
-    developButton = do
-        runE <- runButton ("nix develop .#" <> attr)
-        performEvent_ $ ffor runE $ \_ -> liftIO $ developAttr dir attr
+    leafRow = void . elClass "li" "flake-leaf" $
+        developRow (text (" " <> name))
+    -- A selectable row whose develop button is also its double-click action.
+    developRow :: m () -> m (Event t ())
+    developRow label = do
+        (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+            label
+            runE <- runButton ("nix develop .#" <> attr)
+            performEvent_ $ ffor runE $ \_ -> liftIO $ developAttr dir attr
+            return (never :: Event t ())
+        performEvent_ $ ffor (domEvent Dblclick rowEl) $ \_ ->
+            liftIO $ developAttr dir attr
+        return never

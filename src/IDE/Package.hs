@@ -66,6 +66,7 @@ module IDE.Package (
 
 ,   runPackage
 ,   packageOpenRepl
+,   packageRunComponentTerm
 ,   getActiveComponent
 ,   projectFileArguments
 ,   exeToRun
@@ -122,7 +123,8 @@ import Control.Exception (SomeException(..), IOException, catch)
 
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
-       (ffcabalTmuxEnv, findReplWindow, selectTmuxWindowById)
+       (ffcabalTmuxEnv, findReplWindow, selectTmuxWindowById,
+        ensureCommandWindow)
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.State
        (packageDebugState, debugState, pjPackages, changePackage,
@@ -483,6 +485,10 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
               | otherwise -> Just nativeCabalCmd
             CustomTool p -> (if compiler == GHCJS then pjCustomGhcjsBuild else pjCustomGhcBuild) p
             NixTool _ -> Nothing
+            -- A Makefile project builds with make (through the nix env when
+            -- the project has one, like the other tools).
+            MakeTool {} | compiler == GHCJS -> Nothing
+                        | otherwise         -> Just ("make", [])
         mbCmdAndArgs' = second (++ concatMap ipdBuildFlags packages) <$> mbCmdAndArgs
 
     withToolCommand project compiler mbCmdAndArgs' $ \(cmd, args', nixEnv') -> do
@@ -549,6 +555,33 @@ packageOpenRepl component = do
                         findReplWindow target >>= mapM_ (\(sid, wid) -> do
                             selectTmuxWindowById wid
                             requestLocalTerm sid)
+
+-- | The workspace tree's run (\x25b6) button on exe/test/bench components:
+-- run the component in a repl-session terminal window (@cabal run@ \/ @test@
+-- \/ @bench@), reusing the window on later clicks.  The window keeps a shell
+-- when the command ends so its output stays readable.  It sources ffcabal's
+-- captured environment when present, so cabal sees the same configuration
+-- (PATH!) as leksah's builds instead of reconfiguring the world.
+packageRunComponentTerm :: Text -> PackageAction
+packageRunComponentTerm component = do
+    project <- lift ask
+    package <- ask
+    let dir = pjDir $ pjKey project
+        target = ipdPackageName package <> ":" <> component
+        sub = case T.takeWhile (/= ':') component of
+                "test"  -> "test"
+                "bench" -> "bench"
+                _       -> "run"
+        envFile = dir </> cabalBuildDir Nothing </> "ffcabal" </> "env.sh"
+        shq t = "'" <> T.replace "'" "'\\''" t <> "'"
+        envQ = shq (T.pack envFile)
+        cmd = "[ -f " <> envQ <> " ] && . " <> envQ <> " ; cabal " <> sub
+              <> " --builddir=" <> shq (T.pack (cabalBuildDir Nothing))
+              <> " " <> shq target
+    liftIO . void . forkIO $
+        ensureCommandWindow True (T.pack dir <> "#" <> sub <> " " <> target)
+                            dir (sub <> " " <> target) cmd
+            >>= mapM_ requestLocalTerm
 
 --isConfigError :: Monad m => C.Sink ToolOutput m Bool
 --isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
@@ -959,6 +992,7 @@ packageRunComponent component backgroundBuild jumpToWarnings (project, package) 
                         CabalTool {} -> Just ("cabal", ["new-" <> command] <> pjFileArgs <> [pkgName <> ":" <> T.pack (unUnqualComponentName name)])
                         CustomTool {} -> Nothing
                         NixTool {} -> Nothing
+                        MakeTool {} -> Nothing
             mbCmdAndArgs' = second (<> ipdTestFlags package) <$> mbCmdAndArgs
         withToolCommand project GHC mbCmdAndArgs' $ \(cmd, args', nixEnv') ->
             runExternalTool' (__ "Run " <> T.pack (unUnqualComponentName name))
@@ -1452,6 +1486,8 @@ ideProjectFromKey key = do
                     -- A flake project has no cabal packages; its tree shows the
                     -- flake outputs + files instead (see IDE.Web.Widget.Flake).
                     NixTool _ -> return []
+                    -- A Makefile project builds with make, not cabal.
+                    MakeTool _ -> return []
             let dir = pjDir key
             cabalFiles <- liftIO $ mapM canonicalizePath =<< map (dir </>) . concat <$>
                               Glob.globDir patterns dir

@@ -37,7 +37,6 @@ module IDE.Web.Widget.Terminal
   , ffcabalTmuxEnv
   , findReplWindow
   , selectTmuxWindowById
-  , ensureCommandWindow
   , selectTmuxWindow
   , selectTmuxPane
   , killTmuxWindow
@@ -93,22 +92,20 @@ import Reflex.Dom.Core
         _element_raw)
 
 import System.Directory
-       (findExecutable, getTemporaryDirectory, getHomeDirectory,
+       (findExecutable, getHomeDirectory,
         createDirectoryIfMissing, doesFileExist)
 import System.Environment (lookupEnv, getEnvironment)
 import System.FilePath ((</>), takeDirectory)
 import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
 import System.Posix.Signals (signalProcess, sigKILL)
-import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 import System.Process (readProcessWithExitCode, createProcess, proc)
 import System.Exit (ExitCode(ExitSuccess))
-import System.Info (os)
 
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
-        selectTmuxWindowById)
+        selectTmuxWindowById, getLoginShell, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.SnapRequest (requestSnapPane)
 
@@ -440,17 +437,6 @@ terminalWidget ide termId selectedE = do
 ignorePtyError :: IO () -> IO ()
 ignorePtyError act = act `catch` \(_ :: SomeException) -> return ()
 
--- | The login shell to run in terminals.  Prefer the password-database login
--- shell (what terminal emulators use).  $SHELL is unreliable here: launched from
--- a `nix develop` shell it points at the scripting bash, built without readline,
--- so it has no line editor and arrow keys echo as `^[[A`.
-getLoginShell :: IO String
-getLoginShell = do
-    loginShell <- (userShell <$> (getRealUserID >>= getUserEntryForID))
-                    `catch` \(_ :: SomeException) -> return ""
-    envShell <- fromMaybe "" <$> lookupEnv "SHELL"
-    return $ fromMaybe "/bin/bash" . listToMaybe $ filter (not . null) [loginShell, envShell]
-
 -- | Create a fresh leksah tmux session (detached) named @name@, applying the
 -- leksah tmux config, and return its stable tmux session id (e.g. "$3").  The
 -- terminal widget then attaches to that id.  'Nothing' if tmux is absent or the
@@ -490,117 +476,6 @@ openFileInEditor winName argv = (`catch` \(_ :: SomeException) -> return Nothing
             (_rc, out, _) <- readProcessWithExitCode tmux
                 (base ++ mk ++ ["-n", winName, "-P", "-F", "#{session_id}"] ++ argv) ""
             return . listToMaybe . filter (not . T.null) . map T.strip . T.lines $ T.pack out
-
--- | Ensure a window running @cmd@ exists in the shared repl session, reusing
--- the window previously created for the same @key@ (recorded in the
--- @\@leksah_run@ window option) rather than piling up duplicates.  The window
--- is selected either way; returns the session id (the terminal tab key).
--- Exiting the repl closes the window; only a FAILING @cmd@ drops to the
--- login shell, so its error stays readable instead of vanishing with the
--- window.
-ensureCommandWindow :: Text -> FilePath -> Text -> Text -> IO (Maybe Text)
-ensureCommandWindow key dir name cmd = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            shell <- getLoginShell
-            conf  <- writeTmuxConf shell
-            let base = ["-L", tmuxSocket, "-f", conf]
-                run as = readProcessWithExitCode tmux (base ++ as) ""
-            (_, existing, _) <- run
-                [ "list-windows", "-a", "-F"
-                , "#{session_id}\t#{window_id}\t#{@leksah_run}" ]
-            case [ (sid, wid) | l <- T.lines (T.pack existing)
-                 , (sid : wid : k) <- [T.splitOn "\t" l]
-                 , T.intercalate "\t" k == key ] of
-              ((sid, wid) : _) -> do
-                _ <- run ["select-window", "-t", T.unpack wid]
-                return (Just sid)
-              [] -> do
-                (hasRc, _, _) <- run ["has-session", "-t", "=" <> T.unpack replSessionName]
-                let mk = if hasRc == ExitSuccess
-                           then ["new-window", "-t", "=" <> T.unpack replSessionName]
-                           else ["new-session", "-d", "-s", T.unpack replSessionName]
-                (_, out, _) <- run $ mk ++
-                    [ "-c", dir, "-n", T.unpack name, "-P", "-F"
-                    , "#{session_id}\t#{window_id}"
-                    , T.unpack cmd <> " || exec " <> shell ]
-                case T.splitOn "\t" (T.strip (T.pack out)) of
-                  (sid : wid : _) | not (T.null wid) -> do
-                    _ <- run ["set-option", "-w", "-t", T.unpack wid, "@leksah_run", T.unpack key]
-                    _ <- run ["select-window", "-t", T.unpack wid]
-                    return (Just sid)
-                  _ -> return Nothing
-
--- | Write (idempotently) the minimal tmux config used for leksah's terminals:
--- no status bar, pass window titles through to xterm, and use the login shell.
--- Only applies when the tmux server first starts (i.e. for the first terminal).
-writeTmuxConf :: FilePath -> IO FilePath
-writeTmuxConf loginShell = do
-    dir <- getTemporaryDirectory
-    let path = dir </> "leksah.tmux.conf"
-    cb <- clipboardCopyCmd
-    writeFile path $ unlines $
-        [ "set -g status off"
-        , "set -g set-titles on"
-        , "set -g set-titles-string \"#T\""
-        , "set -g default-shell \"" <> loginShell <> "\""
-        -- Report focus in/out: tmux requests focus events from the outer terminal
-        -- (xterm.js, which sends CSI I / CSI O on focus/blur) and forwards them to
-        -- the program in the active pane.  This is what lets a Claude Code running
-        -- in a pane know when its pane gains/loses focus (needed for teammate-mode
-        -- tmux) — both on pane/tab switches and when the whole app is deactivated.
-        , "set -g focus-events on"
-        -- True colour (24-bit) and OSC 8 hyperlinks out to xterm.js (which
-        -- supports both): the outer terminal reports TERM=xterm-256color, and
-        -- tmux only forwards these when the feature is advertised for it.  Without
-        -- RGB, Claude Code / TUIs are stuck at 256 colours and look washed out.
-        , "set -sa terminal-features \",xterm-256color:RGB:hyperlinks\""
-        -- Let programs in a pane emit DCS passthrough sequences through tmux (OSC
-        -- 52 clipboard, progress, image/hyperlink protocols); off by default.
-        , "set -g allow-passthrough on"
-        -- Flag windows with new output (activity) or that have gone quiet
-        -- (silence) — surfaced as badges in the Terminals tree so you can see at a
-        -- glance which teammate is working vs idle.  (Bell is already flagged by
-        -- default via bell-action; Claude Code rings it for permission prompts.)
-        , "set -g monitor-activity on"
-        , "set -g monitor-silence 15"
-        -- Don't also print tmux's own \"activity in window N\" status message /
-        -- visual bell — the tree badges are the surface we want.
-        , "set -g visual-activity off"
-        , "set -g visual-silence off"
-        , "set -g visual-bell off"
-        -- Mouse on so the wheel scrolls tmux's scrollback in the xterm.js pane;
-        -- a generous history so there's plenty to scroll back through.
-        , "set -g mouse on"
-        , "set -g history-limit 50000"
-        -- vim-style pane navigation (lower-case) and resizing (upper-case), as an
-        -- alternative to the prefix+arrow keys.  These rebind prefix `l` (default
-        -- last-window) and `L` (default last-session), so move those to Tab and
-        -- Shift-Tab — the common convention when hjkl/HJKL take l/L.
-        , "bind h select-pane -L"
-        , "bind j select-pane -D"
-        , "bind k select-pane -U"
-        , "bind l select-pane -R"
-        , "bind -r H resize-pane -L 5"
-        , "bind -r J resize-pane -D 5"
-        , "bind -r K resize-pane -U 5"
-        , "bind -r L resize-pane -R 5"
-        -- Fine (1-cell) resize on Ctrl+hjkl, the common home-row companion to the
-        -- coarse (5-cell) HJKL above; both repeatable (-r).
-        , "bind -r C-h resize-pane -L 1"
-        , "bind -r C-j resize-pane -D 1"
-        , "bind -r C-k resize-pane -U 1"
-        , "bind -r C-l resize-pane -R 1"
-        , "bind Tab last-window"
-        , "bind BTab switch-client -l"
-        ]
-        -- Pipe copy-mode selections to the system clipboard so copying in a
-        -- terminal (mouse drag / yank) is shared with ⌘C/⌘V instead of living only
-        -- in tmux's own paste buffer.  The default copy bindings use copy-pipe
-        -- without a command, so they pick this up.
-        <> maybe [] (\c -> ["set -s copy-command " <> show c]) cb
-    return path
 
 -- | Write (idempotently) a tiny helper that posts a macOS Notification Center
 -- notification for a tmux bell alert, and return its path.  Driven by the
@@ -650,21 +525,6 @@ notifyTerminalBell sid = (`catch` \(_ :: SomeException) -> return ()) $ do
     ensured <- if exists then return path else writeNotifyScript
     void $ readProcessWithExitCode "sh" [ensured, T.unpack sid, ""] ""
 
--- | Shell command tmux should pipe a copy-mode selection to so it lands on the
--- *system* clipboard (shared with the terminal's ⌘C/⌘V), not just tmux's own
--- paste buffer.  macOS uses @pbcopy@; elsewhere the first available Wayland/X
--- clipboard tool.  'Nothing' (leave @copy-command@ unset) if none is found.
-clipboardCopyCmd :: IO (Maybe String)
-clipboardCopyCmd
-  | os == "darwin" = return (Just "pbcopy")
-  | otherwise = firstAvailable
-      [ ("wl-copy", "wl-copy")
-      , ("xclip",   "xclip -selection clipboard -in")
-      , ("xsel",    "xsel -ib") ]
-  where
-    firstAvailable [] = return Nothing
-    firstAvailable ((exe, cmd):rest) =
-        findExecutable exe >>= maybe (firstAvailable rest) (const (return (Just cmd)))
 
 -- | All currently-live tmux sessions on leksah's socket as @(session id, session
 -- name)@ pairs — every session, not just leksah's own, so the Terminals list can
