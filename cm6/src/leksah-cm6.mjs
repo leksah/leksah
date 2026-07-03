@@ -294,7 +294,12 @@ function onFocusPane(target) {
   if (!tab) return
   activePaneEl = tab
   activeIsCM = !!tab.querySelector(".cm-editor")
-  const termDiv = tab.querySelector(".terminal")
+  // Prefer the terminal the focus is IN (a control-mode tab has one xterm per
+  // tmux pane, each with the search addon on its own root element); fall back
+  // to the tab's first .terminal (classic tabs register it there).
+  const focusTerm = target.closest(".terminal")
+  const termDiv = (focusTerm && focusTerm._leksahTermSearch) ? focusTerm
+                                                             : tab.querySelector(".terminal")
   activeTermSearch = (!activeIsCM && termDiv && termDiv._leksahTermSearch) || null
   if (window.LeksahCM && window.LeksahCM.onActivePane) window.LeksahCM.onActivePane(activeIsCM)
 }

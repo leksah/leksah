@@ -22198,7 +22198,8 @@
     if (!tab) return;
     activePaneEl = tab;
     activeIsCM = !!tab.querySelector(".cm-editor");
-    const termDiv = tab.querySelector(".terminal");
+    const focusTerm = target.closest(".terminal");
+    const termDiv = focusTerm && focusTerm._leksahTermSearch ? focusTerm : tab.querySelector(".terminal");
     activeTermSearch = !activeIsCM && termDiv && termDiv._leksahTermSearch || null;
     if (window.LeksahCM && window.LeksahCM.onActivePane) window.LeksahCM.onActivePane(activeIsCM);
   }

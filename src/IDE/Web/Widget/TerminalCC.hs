@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 -- | A tmux control-mode terminal widget (iTerm2-style \"-CC\" support,
@@ -26,12 +27,16 @@
 -- it is instant and stateful, and only a genuinely NEW pane replays (with up
 -- to 1000 lines of history seeded into its scrollback).  Hidden windows'
 -- xterms keep consuming their %output, so they are always current.
--- Still to come: underlay holes, find-bar search, link providers.
+--
+-- Each pane also carries the classic widget's affordances: clickable
+-- file-path/identifier links, OSC 8 hyperlinks, find-bar search and the
+-- bell.  Still to come: underlay holes.
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   ) where
 
 import Control.Concurrent (forkIO)
+import Control.Exception (try, SomeException)
 import Control.Lens ((^.))
 import Control.Monad (forM_, forever, when, void)
 import Control.Monad.IO.Class (liftIO)
@@ -45,24 +50,29 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import System.Process (createProcess, proc)
 import Text.Read (readMaybe)
 
 import Reflex
-       (Dynamic, Event, current, ffor, fmapMaybe, foldDyn, getPostBuild,
-        holdDyn, holdUniqDyn, leftmost, newTriggerEvent, performEvent,
-        performEvent_, tag, updated)
+       (Dynamic, Event, attachWith, current, ffor, fmapMaybe, foldDyn,
+        getPostBuild, holdDyn, holdUniqDyn, leftmost, never, newTriggerEvent,
+        performEvent, performEvent_, switchHold, tag, updated)
 import Reflex.Dom.Core
-       (MonadWidget, blank, divClass, dyn_, elAttr, elAttr', elDynAttr,
+       (MonadWidget, blank, divClass, dyn, dyn_, elAttr, elAttr', elDynAttr,
         elDynAttr', listWithKey, text, widgetHold, _element_raw, (=:))
 import Language.Javascript.JSaddle
        (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, jsg, jss,
         liftJSM, new, valIsNull, valIsUndefined, valToBool, valToNumber,
         valToText)
 
+import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE)
 import IDE.Web.Events (TerminalEvents(..))
+import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput (registerTerminalCC, unregisterTerminalCC)
 import IDE.Web.TmuxCC
+import IDE.Web.Widget.Menu (menu)
+import IDE.Web.Widget.Metadata (lookupIdentLocations)
 
 -- | Session-level widget: one control client; the current window's panes at
 -- their exact tmux layout rectangles.  Same shape as 'terminalWidget' so
@@ -73,10 +83,22 @@ terminalCCWidget
   -> Text                -- ^ tmux session id (\"$3\") or \"ssh://host[#target]\"
   -> Event t ()          -- ^ fires when this tab is selected
   -> m (Event t TerminalEvents)
-terminalCCWidget _ide sessionId selectedE = do
+terminalCCWidget ide sessionId selectedE = do
     pb <- getPostBuild
     (evE, fireEv) <- newTriggerEvent
     (ccStartedE, fireCCStarted) <- newTriggerEvent
+    -- Pane-level affordances (same contract as the classic widget): a clicked
+    -- project-file path asks to open it; a Ctrl/Cmd-clicked identifier asks
+    -- for a metadata lookup; the bell raises attention.  The panes are keyed
+    -- widgets deep inside listWithKey, so they report through these fires.
+    (linkE, triggerLink) <- newTriggerEvent
+    (lookupE, triggerLookup) <- newTriggerEvent
+    (bellE, triggerBell) <- newTriggerEvent
+    let paneCbs = PaneCallbacks
+          { pcLink   = triggerLink
+          , pcLookup = triggerLookup
+          , pcBell   = triggerBell ()
+          }
 
     -- Start the control client once the widget exists; drain its events into
     -- reflex from a background thread.  "ssh://host" attaches-or-creates the
@@ -300,8 +322,8 @@ terminalCCWidget _ide sessionId selectedE = do
                                         [ (p, (x, y, w, h))
                                         | (p, x, y, w, h) <- layoutPanes l ]
                                 _ <- listWithKey panesD $ \pane rectD ->
-                                    paneWidget cc sessionId termsRef pausedRef
-                                               cell pane rectD
+                                    paneWidget cc sessionId paneCbs termsRef
+                                               pausedRef cell pane rectD
                                 -- Dividers and highlight segments are plain
                                 -- divs — cheap to rebuild per layout change.
                                 dyn_ $ ffor layUniqD $ \l -> do
@@ -349,13 +371,35 @@ terminalCCWidget _ide sessionId selectedE = do
         EvExit _ -> liftIO $ unregisterTerminalCC sessionId
         _        -> return ()
 
+    -- Navigation from a clicked file path.
+    let fileGotoE = (\(f, l, c) -> SrcSpan f l c l c) <$> linkE
+    -- Navigation from a Ctrl/Cmd-clicked identifier: look it up in the
+    -- metadata.  No match -> nothing; one match -> jump straight there;
+    -- several -> pop up a chooser of module names at the click position and
+    -- jump to the picked one.  (Same flow as the classic widget.)
+    let optsE = attachWith (\i (tok, x, y) -> (lookupIdentLocations tok i, x, y))
+                  (current ide) lookupE
+        singleGotoE = fmapMaybe (\(opts, _, _) -> case opts of [(_, sp)] -> Just sp; _ -> Nothing) optsE
+        multiE      = fmapMaybe (\(opts, x, y) -> if length opts > 1 then Just (x, y, opts) else Nothing) optsE
+    rec chooserD <- holdDyn Nothing $ leftmost [ Just <$> multiE, Nothing <$ chosenE ]
+        chosenE <- switchHold never =<< dyn (ffor chooserD $ \case
+          Nothing           -> return never
+          Just (x, y, opts) ->
+            elAttr "div" ("class" =: "context-menu"
+                <> "style" =: T.pack ("position:fixed;left:" <> show x <> "px;top:" <> show y <> "px")) $
+              menu [ pure (lbl, sp) | (lbl, sp) <- opts ])
+    let gotoE = TerminalGoto <$> leftmost [ fileGotoE, singleGotoE, chosenE ]
+
     -- Events for the rest of the IDE: window renames update the tab title;
     -- the client exiting (session ended) closes the tab — the same contract
     -- as the PTY widget's reader-EOF path.
-    return $ fmapMaybe (\case
-        EvWindowRenamed _ nm -> Just (TerminalTitle nm)
-        EvExit _             -> Just TerminalExited
-        _                    -> Nothing) evE
+    return $ leftmost
+      [ gotoE
+      , TerminalBell <$ bellE
+      , fmapMaybe (\case
+          EvWindowRenamed _ nm -> Just (TerminalTitle nm)
+          EvExit _             -> Just TerminalExited
+          _                    -> Nothing) evE ]
 
 -- | The page-wide terminal cell size in CSS px ('LeksahTerm.cellMetrics',
 -- measured once from the font); a conservative fallback if measurement is
@@ -407,6 +451,15 @@ pxMid :: Int -> Double -> Text
 pxMid n cell =
     T.pack (show (round ((fromIntegral n + 0.5) * cell - 0.5) :: Int)) <> "px"
 
+-- | What a pane's xterm reports up to the session widget (which owns the
+-- reflex events): clicked file link (path, line, column), Ctrl/Cmd
+-- identifier lookup (token, click x, y), bell.
+data PaneCallbacks = PaneCallbacks
+  { pcLink   :: (FilePath, Int, Int) -> IO ()
+  , pcLookup :: (Text, Int, Int) -> IO ()
+  , pcBell   :: IO ()
+  }
+
 -- | ONE pane, as a keyed widget that LIVES ACROSS LAYOUT CHANGES: the div's
 -- geometry is a dynamic style (moves are pure attribute updates), a rect
 -- change resizes the existing xterm's grid in place, and only the widget's
@@ -414,9 +467,10 @@ pxMid n cell =
 -- flash, and scrollback/selection/parser state survive them.
 paneWidget
   :: MonadWidget t m
-  => CC -> Text -> IORef (M.Map PaneId JSVal) -> IORef (M.Map PaneId PauseState)
+  => CC -> Text -> PaneCallbacks
+  -> IORef (M.Map PaneId JSVal) -> IORef (M.Map PaneId PauseState)
   -> (Double, Double) -> PaneId -> Dynamic t (Int, Int, Int, Int) -> m ()
-paneWidget cc sessionId termsRef pausedRef (cw, ch) pane rectD0 = do
+paneWidget cc sessionId cbs termsRef pausedRef (cw, ch) pane rectD0 = do
     rectD <- holdUniqDyn rectD0
     let styleOf (x, y, w, h) =
             "position:absolute;overflow:hidden"
@@ -439,9 +493,55 @@ paneWidget cc sessionId termsRef pausedRef (cw, ch) pane rectD0 = do
         _ <- term ^. js1 ("loadAddon" :: Text) uni
         unicodeApi <- term ^. js ("unicode" :: Text)
         _ <- unicodeApi ^. jss ("activeVersion" :: Text) ("11" :: Text)
+        -- OSC 8 hyperlinks (tmux forwards them): hover shows the URL,
+        -- clicking an http(s) link opens the browser (snapping it over
+        -- this pane only when Command was held), file:// opens an editor —
+        -- exactly the classic widget's handler.
+        oscHandler <- jsg ("LeksahOscLinks" :: Text) ^. js2 ("makeHandler" :: Text)
+            (fun $ \_ _ as -> case as of
+                (u : snapV : _) -> do
+                    url  <- valToText u
+                    snap <- valToBool snapV
+                    liftIO $ do
+                        _ <- (try (void $ createProcess (proc "open" [T.unpack url]))
+                                :: IO (Either SomeException ()))
+                        when snap $ requestSnapPane pane
+                _ -> return ())
+            (fun $ \_ _ as -> case as of
+                (pV : lV : cV : _) -> do
+                    path <- valToText pV
+                    ln   <- valToNumber lV
+                    col  <- valToNumber cV
+                    liftIO $ pcLink cbs (T.unpack path, max 1 (round ln), max 1 (round col))
+                _ -> return ())
+        _ <- opts ^. jss ("linkHandler" :: Text) oscHandler
         _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("register" :: Text)
                  (paneKey sessionId pane) term
         _ <- term ^. js1 ("open" :: Text) (_element_raw paneEl)
+        -- Make file paths / identifiers in the output clickable (see
+        -- 'terminalLinksJs'); same callbacks as the classic widget.
+        _ <- jsg ("LeksahTermLinks" :: Text) ^. js3 ("attach" :: Text) term
+                (fun $ \_ _ as -> case as of
+                    (p : l : c : _) -> do
+                        path <- valToText p
+                        ln   <- valToNumber l
+                        col  <- valToNumber c
+                        liftIO $ pcLink cbs (T.unpack path, round ln :: Int, round col :: Int)
+                    _ -> return ())
+                (fun $ \_ _ as -> case as of
+                    (t : x : y : _) -> do
+                        tok <- valToText t
+                        cx  <- valToNumber x
+                        cy  <- valToNumber y
+                        liftIO $ pcLookup cbs (tok, round cx :: Int, round cy :: Int)
+                    _ -> return ())
+        -- The find bar searches the FOCUSED pane: register the SearchAddon
+        -- on xterm's own root element (the innermost .terminal the focus
+        -- sits in — see onFocusPane in the cm6 bundle).
+        termRoot <- term ^. js ("element" :: Text)
+        _ <- jsg ("LeksahCM" :: Text) ^. js2 ("loadTerminalSearch" :: Text) term termRoot
+        -- Bell (Claude Code's needs-input signal) → leksah attention.
+        _ <- term ^. js1 ("onBell" :: Text) (fun $ \_ _ _ -> liftIO (pcBell cbs))
         -- the grid IS the tmux pane's cells; the box already matches
         _ <- term ^. js2 ("resize" :: Text) w h
         -- Keystrokes → tmux.  ccSendBytes is fire-and-forget, so no forkIO:
