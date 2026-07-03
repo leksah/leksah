@@ -620,13 +620,18 @@ paneWidget cc sessionId cbs termsRef pausedRef (cw, ch) pane rectD0 = do
 renderHlSegments :: MonadWidget t m => (Double, Double) -> Layout -> m ()
 renderHlSegments (cw, ch) l =
     forM_ (layoutPanes l) $ \(pane, x, y, w, h) ->
-        elAttr "div"
+        -- Half a cell bigger than the pane in every direction, so the box's
+        -- edges sit exactly on the divider lines (which run through the
+        -- middle of the gutter cells); clipped at the container edges.
+        let px v = T.pack (show (round v :: Int)) <> "px"
+        in elAttr "div"
             ("class" =: "terminal-cc-hl"
              <> "data-pane" =: pane
              <> "style" =: ("position:absolute;display:none;pointer-events:none"
-                            <> ";left:" <> pxAt x cw <> ";top:" <> pxAt y ch
-                            <> ";width:" <> pxSpan x w cw
-                            <> ";height:" <> pxSpan y h ch))
+                            <> ";left:"   <> px (fromIntegral x * cw - cw / 2)
+                            <> ";top:"    <> px (fromIntegral y * ch - ch / 2)
+                            <> ";width:"  <> px (fromIntegral w * cw + cw)
+                            <> ";height:" <> px (fromIntegral h * ch + ch)))
             blank
 
 -- | The ⌘-held navigation badges of one window's layout: pane N (layout /
