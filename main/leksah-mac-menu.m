@@ -941,3 +941,54 @@ void leksah_show_open_project_panel(void) {
             [panel beginWithCompletionHandler:done];
     });
 }
+
+// ---- Colour picker (NSColorPanel) -----------------------------------------
+// The web <input type="color"> popover mis-anchors inside our transparent-
+// titlebar window (WebKit positions it against the wrong rect), so the
+// Preferences colour swatches use the native panel instead: leksah_pick_color
+// opens the shared NSColorPanel seeded with the current value, and every
+// change while it is open is reported back through leksah_color_picked (a
+// Haskell foreign export) as "#rrggbb".
+extern void leksah_color_picked(const char *hex);
+
+@interface LeksahColorTarget : NSObject
+- (void)colorChanged:(id)sender;
+@end
+
+@implementation LeksahColorTarget
+- (void)colorChanged:(id)sender {
+    NSColorPanel *panel = (NSColorPanel *)sender;
+    NSColor *c = [panel.color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    if (c == nil) return;
+    char hex[8];
+    snprintf(hex, sizeof hex, "#%02x%02x%02x",
+             (int)lround(c.redComponent   * 255.0),
+             (int)lround(c.greenComponent * 255.0),
+             (int)lround(c.blueComponent  * 255.0));
+    leksah_color_picked(hex);
+}
+@end
+
+static LeksahColorTarget *gColorTarget = nil;
+
+void leksah_pick_color(const char *hexUtf8) {
+    NSString *hex = [NSString stringWithUTF8String:hexUtf8 ?: ""];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gColorTarget == nil) gColorTarget = [[LeksahColorTarget alloc] init];
+        NSColorPanel *panel = [NSColorPanel sharedColorPanel];
+        [panel setShowsAlpha:NO];
+        [panel setContinuous:YES];
+        unsigned int rgb = 0;
+        if ([hex hasPrefix:@"#"] && hex.length == 7) {
+            NSScanner *sc = [NSScanner scannerWithString:[hex substringFromIndex:1]];
+            if ([sc scanHexInt:&rgb])
+                [panel setColor:[NSColor colorWithSRGBRed:((rgb >> 16) & 0xff) / 255.0
+                                                    green:((rgb >>  8) & 0xff) / 255.0
+                                                     blue:( rgb        & 0xff) / 255.0
+                                                    alpha:1.0]];
+        }
+        [panel setTarget:gColorTarget];
+        [panel setAction:@selector(colorChanged:)];
+        [panel makeKeyAndOrderFront:nil];
+    });
+}

@@ -295,6 +295,7 @@ library
         IDE.Web.RemoteTermRequest
         IDE.Web.ReplTmux
         IDE.Web.Theme
+        IDE.Web.ColorPick
         IDE.Web.TerminalInput
         IDE.Web.TmuxCC
         IDE.Web.Widget.TerminalCC
@@ -525,6 +526,7 @@ library leksah-nogtk
         IDE.Web.RemoteTermRequest
         IDE.Web.ReplTmux
         IDE.Web.Theme
+        IDE.Web.ColorPick
         IDE.Web.TerminalInput
         IDE.Web.TmuxCC
         IDE.Web.Widget.TerminalCC

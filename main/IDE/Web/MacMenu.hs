@@ -35,6 +35,7 @@ import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
+import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput (setActiveTerminalNotifier)
 
@@ -104,6 +105,13 @@ flattenCmds = concatMap $ \case
 -- | Called from Objective-C when a menu item is chosen.
 foreign export ccall "leksah_menu_action" leksah_menu_action :: CInt -> IO ()
 
+foreign import ccall "leksah_pick_color" c_pickColor :: CString -> IO ()
+
+-- | NSColorPanel reports each colour change here (as "#rrggbb").
+leksah_color_picked :: CString -> IO ()
+leksah_color_picked cs = peekCString cs >>= colorPicked . T.pack
+foreign export ccall "leksah_color_picked" leksah_color_picked :: CString -> IO ()
+
 leksah_menu_action :: CInt -> IO ()
 leksah_menu_action tag = do
   cmds <- readIORef commandsRef
@@ -134,6 +142,9 @@ installMacMenu = do
   -- The toolbar/menubar Open commands show the native open panels.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
+  -- The Preferences colour swatches open the native NSColorPanel (the web
+  -- colour input's popover mis-anchors in our transparent-titlebar window).
+  setColorPickImpl $ \hex -> withCString (T.unpack hex) c_pickColor
   -- Tags index this list; it must be the leaf commands in the same depth-first
   -- order that 'addItems' emits them (so a chosen item's tag finds its command).
   writeIORef commandsRef (concatMap (flattenCmds . snd) menus)

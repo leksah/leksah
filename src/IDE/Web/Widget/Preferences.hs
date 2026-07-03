@@ -29,9 +29,12 @@ import Distribution.Types.Dependency (Dependency)
 
 import Clay ((?), (-:), Css)
 
+import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
+
 import Reflex
        (Dynamic, Event, constDyn, current, updated, tag, leftmost, ffor,
-        fmapMaybe, sample)
+        fmapMaybe, sample, newTriggerEvent, performEvent_)
 import Reflex.Dom.Core
        (MonadWidget, DomBuilderSpace, EventResult, InputElement,
         TextAreaElement, AttributeName, elClass, elDynAttr', text, (=:), domEvent,
@@ -43,6 +46,7 @@ import Reflex.Dom.Core
 
 import IDE.Core.State (IDE, Prefs(..), prefs, TallVisibility(..))
 import IDE.Core.CTypes (RetrieveStrategy(..))
+import IDE.Web.ColorPick (hasColorPickImpl, requestColorPick)
 import IDE.Web.Events (PreferencesEvents(..))
 
 preferencesWidget
@@ -78,8 +82,8 @@ preferencesWidget ide = do
         , b "Save the session before closing a workspace" saveSessionOnClose (\v p -> p { saveSessionOnClose = v })
         , enumField p0 "Side bar visibility" tallVisOptions tallVisibility (\v p -> p { tallVisibility = v })
         , enumField p0 "Bottom bar visibility" tallVisOptions wide1Visibility (\v p -> p { wide1Visibility = v })
-        , colorField p0 "Selection highlight colour" uiSelectionColor (\v p -> p { uiSelectionColor = v })
-        , colorField p0 "Run-button hover row colour" uiHoverColor (\v p -> p { uiHoverColor = v })
+        , colorField prefsD p0 "Selection highlight colour" uiSelectionColor (\v p -> p { uiSelectionColor = v })
+        , colorField prefsD p0 "Run-button hover row colour" uiHoverColor (\v p -> p { uiHoverColor = v })
         ]
     , section "Terminal"
         [ b "Clickable file paths and identifiers in terminal output"
@@ -221,16 +225,33 @@ textField p0 lbl get set = prefRow lbl $ do
   inp <- textInputAttrs (get p0) ("type" =: "text" <> "class" =: "pref-input")
   return $ set <$> updated (_inputElement_value inp)
 
--- | A colour picker (the native @\<input type="color"\>@); the value is a
--- @#rrggbb@ string.  Changes apply live — the colour prefs feed the CSS
--- variables 'IDE.Web.Main' binds in a dynamic style element.
+-- | A colour picker; the value is a @#rrggbb@ string.  Changes apply live —
+-- the colour prefs feed the CSS variables 'IDE.Web.Main' binds in a dynamic
+-- style element.  Where a native picker is registered (wkwebview:
+-- NSColorPanel) the control is a swatch that opens it — the web colour
+-- input's popover mis-anchors in the transparent-titlebar window — and the
+-- panel streams changes back while it's open; other front ends fall back to
+-- @\<input type="color"\>@.
 colorField
   :: MonadWidget t m
-  => Prefs -> Text -> (Prefs -> Text) -> (Text -> Prefs -> Prefs)
+  => Dynamic t Prefs -> Prefs -> Text -> (Prefs -> Text) -> (Text -> Prefs -> Prefs)
   -> m (Event t (Prefs -> Prefs))
-colorField p0 lbl get set = prefRow lbl $ do
-  inp <- textInputAttrs (get p0) ("type" =: "color" <> "class" =: "pref-color")
-  return $ set <$> updated (_inputElement_value inp)
+colorField prefsD p0 lbl get set = prefRow lbl $ do
+  useNative <- liftIO hasColorPickImpl
+  if useNative
+    then do
+      (pickedE, firePicked) <- newTriggerEvent
+      let curD = get <$> prefsD
+      (e, _) <- elDynAttr' "button"
+          (ffor curD $ \c -> "type" =: "button" <> "class" =: "pref-swatch"
+                          <> "style" =: ("background-color: " <> c)
+                          <> "title" =: c) blank
+      performEvent_ $ ffor (tag (current curD) (domEvent Click e)) $ \c ->
+          liftIO . void $ requestColorPick c firePicked
+      return $ set <$> pickedE
+    else do
+      inp <- textInputAttrs (get p0) ("type" =: "color" <> "class" =: "pref-color")
+      return $ set <$> updated (_inputElement_value inp)
 
 -- | An optional path (blank = 'Nothing').
 maybeTextField
@@ -342,8 +363,18 @@ preferencesCss = do
     "background" -: "rgb(40,40,40)"
     "cursor" -: "pointer"
   ".preferences .pref-check.on" ? do
-    "background" -: "rgb(30,88,209)"
-    "border-color" -: "rgb(30,88,209)"
+    "background" -: "var(--leksah-selection)"
+    "border-color" -: "var(--leksah-selection)"
+  -- The colour-pref swatch: shows the current value; click opens the native
+  -- colour panel.
+  ".preferences .pref-swatch" ? do
+    "display" -: "inline-block"
+    "width" -: "44px"
+    "height" -: "18px"
+    "border" -: "1px solid rgb(90,90,90)"
+    "border-radius" -: "3px"
+    "padding" -: "0"
+    "cursor" -: "pointer"
   ".preferences .pref-input" ? do
     "background" -: "rgb(40,40,40)"
     "color" -: "#eee"
