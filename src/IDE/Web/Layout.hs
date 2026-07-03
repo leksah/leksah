@@ -9,6 +9,29 @@ import qualified Clay (display)
 
 layoutCss :: Css
 layoutCss = do
+    -- Navigation shortcut badges: pre-rendered hidden; badgesJs (IDE.Web.Main)
+    -- adds .leksah-show-badges to <body> while ⌘ is held (when the preference
+    -- enables the feature).  CC panes position theirs absolutely at the
+    -- pane's top-left; tab buttons carry theirs inline (.tab-wrap anchors).
+    ".leksah-shortcut-badge" ? do
+        Clay.display none
+        "background" -: "rgba(15,15,15,0.88)"
+        "color" -: "#ffd866"
+        "font-size" -: "11px"
+        "font-weight" -: "bold"
+        "padding" -: "1px 5px"
+        "border-radius" -: "0 0 4px 0"
+        "pointer-events" -: "none"
+        "white-space" -: "nowrap"
+    "body.leksah-show-badges .leksah-shortcut-badge" ?
+        ("display" -: "block")
+    ".tab-wrap" ? do
+        position relative
+    ".tab-wrap .leksah-shortcut-badge" ? do
+        "position" -: "absolute"
+        "left" -: "0"
+        "top" -: "0"
+        "z-index" -: "6"
     -- The app fills the window and never scrolls as a whole; only individual
     -- panes scroll.  Without this, scrolling past the end of a pane (e.g. a long
     -- workspace tree) chains to the document and drags the entire UI.

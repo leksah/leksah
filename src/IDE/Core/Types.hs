@@ -691,6 +691,8 @@ data Prefs = Prefs {
                                       --   (#rrggbb; bound to --leksah-selection)
     ,   uiHoverColor        ::   Text -- ^ run-button hover row colour
                                       --   (#rrggbb; bound to --leksah-hover)
+    ,   showShortcutBadges  ::   Bool -- ^ holding Cmd overlays each pane's
+                                      --   navigation shortcut as a badge
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
@@ -768,6 +770,7 @@ data PrefsFile = PrefsFile {
   , remoteHosts_         :: Maybe [Text]
   , uiSelectionColor_    :: Maybe Text
   , uiHoverColor_        :: Maybe Text
+  , showShortcutBadges_  :: Maybe Bool
   , serverPort_          :: Maybe Int
   , sourceDirectories_   :: Maybe [FilePath]
   , unpackDirectory_     :: Maybe (Maybe FilePath)

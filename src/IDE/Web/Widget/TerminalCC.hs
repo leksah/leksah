@@ -69,7 +69,9 @@ import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.SnapRequest (requestSnapPane)
-import IDE.Web.TerminalInput (registerTerminalCC, unregisterTerminalCC)
+import IDE.Web.TerminalInput
+       (registerTerminalCC, unregisterTerminalCC, registerTerminalSplits,
+        unregisterTerminalSplits)
 import IDE.Web.TmuxCC
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.Metadata (lookupIdentLocations)
@@ -260,6 +262,31 @@ terminalCCWidget ide sessionId selectedE = do
                     ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                     tagName <- valToText =<< ae ^. js ("tagName" :: Text)
                     when (had || tagName == "BODY") focusActivePane
+            -- ⌘N (numbered split navigation): the displayed window's panes in
+            -- layout (reading) order — the numbering the ⌘-held badges show.
+            -- Kept in an IORef so the selector (invoked from outside reflex,
+            -- via the TerminalInput registry) can read it; the selection runs
+            -- back through a trigger event so it can focus the pane too
+            -- (navigating TO a pane hands it the keyboard, unlike a
+            -- background %window-pane-changed).
+            curPanesRef <- liftIO $ newIORef ([] :: [PaneId])
+            curPanesD <- holdUniqDyn $ ffor stD $ \s ->
+                case csCurrent s >>= (`M.lookup` csLayouts s) of
+                    Just l  -> [ p | (p, _, _, _, _) <- layoutPanes l ]
+                    Nothing -> []
+            performEvent_ $ ffor (updated curPanesD) $ liftIO . writeIORef curPanesRef
+            (selSplitE, fireSelSplit) <- newTriggerEvent
+            liftIO $ registerTerminalSplits sessionId fireSelSplit
+            performEvent_ $ ffor selSplitE $ \n -> do
+                panes <- liftIO $ readIORef curPanesRef
+                case drop (n - 1) panes of
+                  (p : _) | n >= 1 -> do
+                      liftIO $ ccSend cc ("select-pane -t " <> p)
+                      liftIO $ writeIORef activePaneRef (Just p)
+                      liftJSM $ do
+                          applyActive
+                          focusActivePane
+                  _ -> return ()
             performEvent_ $ ffor evE $ \case
                 EvWindowPaneChanged _ p -> do
                     liftIO $ writeIORef activePaneRef (Just p)
@@ -324,11 +351,13 @@ terminalCCWidget ide sessionId selectedE = do
                                 _ <- listWithKey panesD $ \pane rectD ->
                                     paneWidget cc sessionId paneCbs termsRef
                                                pausedRef cell pane rectD
-                                -- Dividers and highlight segments are plain
-                                -- divs — cheap to rebuild per layout change.
+                                -- Dividers, highlight segments and shortcut
+                                -- badges are plain divs — cheap to rebuild
+                                -- per layout change.
                                 dyn_ $ ffor layUniqD $ \l -> do
                                     renderDividers cc cell l
                                     renderHlSegments cell l
+                                    renderShortcutBadges cell l
                                     pbHl <- getPostBuild
                                     performEvent_ $ ffor pbHl $ \_ ->
                                         liftJSM applyActive
@@ -368,7 +397,9 @@ terminalCCWidget ide sessionId selectedE = do
 
     -- The client is gone: stop offering its control channel to the menu.
     performEvent_ $ ffor evE $ \case
-        EvExit _ -> liftIO $ unregisterTerminalCC sessionId
+        EvExit _ -> liftIO $ do
+            unregisterTerminalCC sessionId
+            unregisterTerminalSplits sessionId
         _        -> return ()
 
     -- Navigation from a clicked file path.
@@ -602,6 +633,20 @@ renderHlSegments (cw, ch) l =
         when (y + h < lH l) . seg $
             "height:1px;top:" <> pxMid (y + h) ch
             <> ";left:" <> pxAt x cw <> ";width:" <> pxSpan x w cw
+
+-- | The ⌘-held navigation badges of one window's layout: pane N (layout /
+-- reading order, the numbering 'registerTerminalSplits' selects by) gets a
+-- \"⌘N\" badge at its top-left corner.  Hidden by default; shown by
+-- @body.leksah-show-badges@ while ⌘ is held (see badgesJs in
+-- "IDE.Web.Main") — and only when the preference enabled the feature.
+renderShortcutBadges :: MonadWidget t m => (Double, Double) -> Layout -> m ()
+renderShortcutBadges (cw, ch) l =
+    forM_ (zip [1 :: Int ..] (layoutPanes l)) $ \(n, (_, x, y, _, _)) ->
+        when (n <= 9) . elAttr "div"
+            ("class" =: "leksah-shortcut-badge"
+             <> "style" =: ("position:absolute;left:" <> pxAt x cw
+                            <> ";top:" <> pxAt y ch <> ";z-index:6")) $
+            text ("\8984" <> T.pack (show n))
 
 -- | One window's pane dividers: tmux's separator cells are blank gutters
 -- here (a full cell wide/tall); each becomes a grab strip with a crisp 1px

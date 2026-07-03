@@ -23,6 +23,9 @@ module IDE.Web.TerminalInput
   , unregisterTerminalPty
   , registerTerminalCC
   , unregisterTerminalCC
+  , registerTerminalSplits
+  , unregisterTerminalSplits
+  , selectSplitActiveTerminal
   , setActiveTerminal
   , setActiveTerminalNotifier
   , sendToActiveTerminal
@@ -46,6 +49,13 @@ ptyRegistry = unsafePerformIO (newIORef M.empty)
 {-# NOINLINE ccRegistry #-}
 ccRegistry :: IORef (M.Map Text (Text -> IO ()))
 ccRegistry = unsafePerformIO (newIORef M.empty)
+
+-- Numbered split selectors of the control-mode terminals, by terminal (tab)
+-- id: given N (1-based), select the displayed window's Nth pane in layout
+-- (reading) order — the numbering the ⌘-held badges show.
+{-# NOINLINE splitRegistry #-}
+splitRegistry :: IORef (M.Map Text (Int -> IO ()))
+splitRegistry = unsafePerformIO (newIORef M.empty)
 
 {-# NOINLINE activeRef #-}
 activeRef :: IORef (Maybe Text)
@@ -76,6 +86,27 @@ registerTerminalCC n run = atomicModifyIORef' ccRegistry $ \m -> (M.insert n run
 -- | Forget CC terminal @n@'s runner (its client exited or the tab closed).
 unregisterTerminalCC :: Text -> IO ()
 unregisterTerminalCC n = atomicModifyIORef' ccRegistry $ \m -> (M.delete n m, ())
+
+-- | Record CC terminal @n@'s numbered split selector (see 'splitRegistry').
+registerTerminalSplits :: Text -> (Int -> IO ()) -> IO ()
+registerTerminalSplits n sel = atomicModifyIORef' splitRegistry $ \m -> (M.insert n sel m, ())
+
+unregisterTerminalSplits :: Text -> IO ()
+unregisterTerminalSplits n = atomicModifyIORef' splitRegistry $ \m -> (M.delete n m, ())
+
+-- | Select the active terminal's Nth split (1-based, layout order) through
+-- its registered selector.  'False' = the active terminal has none (classic
+-- PTY tab, or no terminal active) and the caller should fall back to tmux's
+-- own pane indexes.
+selectSplitActiveTerminal :: Int -> IO Bool
+selectSplitActiveTerminal n = do
+  mActive <- readIORef activeRef
+  reg <- readIORef splitRegistry
+  case (`M.lookup` reg) =<< mActive of
+    Just sel -> do
+      sel n `catch` \(_ :: SomeException) -> return ()
+      return True
+    Nothing -> return False
 
 -- | Publish which terminal is currently on screen (the editor-area @wide0@ tab),
 -- or 'Nothing' when the visible pane isn't a terminal.

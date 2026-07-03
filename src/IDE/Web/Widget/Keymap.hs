@@ -31,7 +31,7 @@ keymapWidget _top = do
   -- root element to satisfy IsGlobalEventHandlers.
   doc <- currentDocumentUnchecked
   let keyToCommandMap = M.fromList $
-        map (\(mods, key, command) -> ((S.fromList mods, key), command))
+        map (\(mods, key, command) -> ((S.fromList mods, key), command)) $
         [ ([Control]        , Backquote, CommandFlipDown)
         , ([Control, Shift] , Backquote, CommandFlipUp)
         -- Build: Ctrl+Shift+B (Cmd+Shift+B on macOS), matching VS Code.  Plain
@@ -49,6 +49,17 @@ keymapWidget _top = do
         -- Jump to the next terminal window wanting attention (bell, then activity).
         , ([Control, Alt]   , KeyA,      CommandFocusAlert)
         ]
+        -- Numbered navigation (terminal-app style): ⌘1…9 the active
+        -- terminal's Nth split (layout order), ⌥⌘1…9 the Nth side-bar pane,
+        -- ⌃⌘1…9 the Nth bottom-bar pane.  Hold ⌘ to see the numbers as
+        -- badges (a preference).
+        ++ concat
+        [ [ ([Command]          , d, CommandSelectSplit n)
+          , ([Command, Alt]     , d, CommandSelectSidePane n)
+          , ([Command, Control] , d, CommandSelectBottomPane n) ]
+        | (n, d) <- zip [1 ..]
+            [ Digit1, Digit2, Digit3, Digit4, Digit5
+            , Digit6, Digit7, Digit8, Digit9 ] ]
   -- Read the modifier state straight off each keydown event (rather than
   -- tracking key up/down separately, which could desync and miss a shortcut).
   -- preventDefault on a recognised shortcut so the browser/host doesn't also act

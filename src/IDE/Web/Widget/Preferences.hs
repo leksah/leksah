@@ -84,6 +84,7 @@ preferencesWidget ide = do
         , enumField p0 "Bottom bar visibility" tallVisOptions wide1Visibility (\v p -> p { wide1Visibility = v })
         , colorField prefsD p0 "Selection highlight colour" uiSelectionColor (\v p -> p { uiSelectionColor = v })
         , colorField prefsD p0 "Run-button hover row colour" uiHoverColor (\v p -> p { uiHoverColor = v })
+        , b "Show navigation shortcut badges while Cmd is held" showShortcutBadges (\v p -> p { showShortcutBadges = v })
         ]
     , section "Terminal"
         [ b "Clickable file paths and identifiers in terminal output"
@@ -181,6 +182,7 @@ wiredLabels =
   , "Remote hosts in the Terminals tree (ssh, one per line)"
   , "Selection highlight colour"
   , "Run-button hover row colour"
+  , "Show navigation shortcut badges while Cmd is held"
   ]
 
 -- | A checkbox driven by the live prefs (stays in sync with toolbar toggles).

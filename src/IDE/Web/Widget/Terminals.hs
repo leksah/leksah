@@ -29,10 +29,11 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.Default (def)
 import Data.Function ((&))
-import qualified Data.Map as M (fromList, elems, empty)
+import Data.Map (Map)
+import qualified Data.Map as M (fromList, elems, empty, lookup)
 import Data.Set (Set)
 import qualified Data.Set as S (member)
-import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T (breakOn, drop, null)
 import Data.Time.Clock (NominalDiffTime)
@@ -59,7 +60,7 @@ import Language.Javascript.JSaddle (liftJSM, jsg, js1, fun, eval)
 import IDE.Web.Theme (selectionColor, hoverColor)
 import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
-       (TmuxWindow(..), TmuxPane(..), listTerminalTree, listRemoteTerminalTree, killTmuxWindow,
+       (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
         killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane,
         renameTmuxSession, renameTmuxWindow)
 import IDE.Web.Widget.Tree (treeItem)
@@ -220,8 +221,12 @@ terminalsWidget
   => Dynamic t (Maybe Text)    -- ^ the focused session's id (highlighted)
   -> Dynamic t (Set Text)      -- ^ sessions wanting attention (viewed-window bell → 🔔)
   -> Dynamic t [Text]          -- ^ remote ssh hosts (prefs ∪ open ssh:// tabs)
+  -> Dynamic t (Map Text (Bool, Map Text (Text, [TmuxWindow])))
+                               -- ^ each host's (reachable, sessions) — the
+                               --   shared ssh poll in 'IDE.Web.Main' (one ssh
+                               --   per host, feeding this tree AND the flipper)
   -> m (Event t TerminalsEvents)
-terminalsWidget activeD attnD remoteHostsD = divClass "terminals leksah-nav" $ do
+terminalsWidget activeD attnD remoteHostsD hostTreesD = divClass "terminals leksah-nav" $ do
   -- Poll tmux for the whole session/window/pane tree (keyed by session id, each
   -- carrying its current name): on first build, on a timer, and just after a
   -- "new session" click.  Polling every tick is what refreshes a renamed
@@ -252,9 +257,11 @@ terminalsWidget activeD attnD remoteHostsD = divClass "terminals leksah-nav" $ d
     let killActE = fmapMaybe (either Just (const Nothing)) localE
         newE     = fmapMaybe (\e -> case e of NewTerminal -> Just (); _ -> Nothing) bubbleLocalE
         bubbleLocalE = fmapMaybe (either (const Nothing) Just) localE
-  -- One node per remote host, sessions/windows/panes over ssh (select-only).
+  -- One node per remote host, sessions/windows/panes over ssh (select-only);
+  -- the data comes from the shared per-host poll in 'IDE.Web.Main'.
   remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
-      (\host _ -> remoteHostNode host)
+      (\host _ -> remoteHostNode host
+          (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
   return $ leftmost [ bubbleLocalE
                     , fmapMaybe (\m -> listToMaybe (M.elems m)
                                         >>= either (const Nothing) Just) remoteE ]
@@ -266,26 +273,17 @@ hostRow label newEv tip = do
     newE <- actionBtn "+" tip
     pure $ Right newEv <$ newE
 
--- | How often remote hosts' trees are refreshed (over ssh, so much less often
--- than the local poll).
-remotePollInterval :: NominalDiffTime
-remotePollInterval = 10
-
--- | A remote host: its tmux tree fetched over ssh; unreachable hosts keep the
--- last-known tree and mark the label.  Rows are select-only (no manage glyphs
--- yet) — selections open/steer the host's control-mode tabs.
-remoteHostNode :: MonadWidget t m => Text -> m (Event t NodeEvent)
-remoteHostNode host = do
-    pb <- getPostBuild
-    tick <- tickLossyFromPostBuildTime remotePollInterval
-    -- OFF the reflex thread: this is a whole ssh connection per tick — a
-    -- synchronous performEvent froze the UI for the entire handshake (up
-    -- to the 5s ConnectTimeout when the host is unreachable).
-    (polledE, firePolled) <- newTriggerEvent
-    performEvent_ $ ffor (leftmost [() <$ pb, () <$ tick]) $ \_ ->
-        liftIO . void . forkIO $ listRemoteTerminalTree host >>= firePolled
-    reachD <- holdUniqDyn =<< holdDyn True (isJust <$> polledE)
-    itemsD <- holdUniqDyn =<< foldDyn (\mNew old -> fromMaybe old mNew) M.empty polledE
+-- | A remote host: its tmux tree from the shared per-host ssh poll (see
+-- 'IDE.Web.Main'); unreachable hosts keep the last-known tree and mark the
+-- label.  Rows are select-only (no manage glyphs yet) — selections
+-- open/steer the host's control-mode tabs.
+remoteHostNode
+  :: MonadWidget t m
+  => Text -> Dynamic t (Bool, Map Text (Text, [TmuxWindow]))
+  -> m (Event t NodeEvent)
+remoteHostNode host treeD = do
+    reachD <- holdUniqDyn (fst <$> treeD)
+    itemsD <- holdUniqDyn (snd <$> treeD)
     treeItem "terminals-host" True
         (do let lblD = ffor reachD $ \r -> host <> (if r then "" else "  (unreachable)")
             elClass "span" "terminals-label terminals-host-label" $ dynText lblD

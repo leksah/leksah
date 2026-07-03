@@ -153,6 +153,7 @@ defaultPrefs = Prefs {
     ,   remoteHosts = []
     ,   uiSelectionColor = "#1e58d1"
     ,   uiHoverColor = "#0c1e46"
+    ,   showShortcutBadges = False
     }
 
 mergePrefsFile :: Prefs -> PrefsFile -> Prefs
@@ -231,6 +232,7 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , terminalControlMode = fromMaybe terminalControlMode terminalControlMode_
   , uiSelectionColor = fromMaybe uiSelectionColor uiSelectionColor_
   , uiHoverColor = fromMaybe uiHoverColor uiHoverColor_
+  , showShortcutBadges = fromMaybe showShortcutBadges showShortcutBadges_
   , remoteHosts = fromMaybe remoteHosts remoteHosts_
   }
 
@@ -308,6 +310,7 @@ toPrefsFile Prefs{..} = PrefsFile
   , terminalControlMode_ = Just terminalControlMode
   , uiSelectionColor_ = Just uiSelectionColor
   , uiHoverColor_ = Just uiHoverColor
+  , showShortcutBadges_ = Just showShortcutBadges
   , remoteHosts_ = Just remoteHosts
   }
 

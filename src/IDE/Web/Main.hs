@@ -20,7 +20,7 @@ import GHC.Stats
        (getRTSStats, getRTSStatsEnabled, RTSStats(..), GCDetails(..))
 import qualified System.IO as IO (hPutStrLn, stderr)
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), _Just)
-import Control.Monad (forever, forM, unless, when, void)
+import Control.Monad (forever, forM, forM_, unless, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.ByteString (ByteString)
@@ -96,7 +96,7 @@ import Reflex
         listViewWithKey, sample,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (dynText, el, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
+       (dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
         (=:), MonadWidget, mainWidgetWithCss)
 
 import IDE.Core.State
@@ -116,7 +116,8 @@ import IDE.Web.FindRequest (nextFindRequest)
 import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.ReplTmux (tmuxCmd)
-import IDE.Web.TerminalInput (setActiveTerminal, tmuxCommandActiveTerminal)
+import IDE.Web.TerminalInput
+       (setActiveTerminal, tmuxCommandActiveTerminal, selectSplitActiveTerminal)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
@@ -129,7 +130,9 @@ import IDE.Utils.FileUtils
        (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave)
 import IDE.Utils.Utils
        (leksahCandyFileExtension, standardPreferencesFilename)
-import IDE.Web.Command (commandAction, Command(..))
+import IDE.Web.Command
+       (commandAction, Command(..), _CommandSelectSplit,
+        _CommandSelectSidePane, _CommandSelectBottomPane)
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TabKey(..), TerminalEvents(..),
         FindbarEvents(..), PreferencesEvents(..), FlipItem(..),
@@ -160,7 +163,7 @@ import IDE.Web.Widget.Terminal
         selectTmuxWindow, selectTmuxPane, activePaneId, paneGeometry, sessionOfPane,
         listTerminalTree, createTerminalSession, openFileInEditor, notifyTerminalBell,
         createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
-        remoteTabTree, remoteTabHostTarget,
+        listRemoteTerminalTree, remoteTabHostTarget,
         reapControlClients, TmuxWindow(..), TmuxPane(..))
 import IDE.Web.Widget.Terminals (terminalsCss, terminalsWidget, sessionAlert, windowAlert)
 import IDE.Web.Widget.TerminalCC (terminalCCWidget)
@@ -340,6 +343,7 @@ jsMain showMenubar macTitlebar ideR = do
 
   -- Makes project-file paths in terminal output Ctrl-clickable (window.LeksahTermLinks).
   _ <- eval terminalLinksJs
+  _ <- eval badgesJs
 
   -- Builds xterm linkHandlers for OSC 8 hyperlinks (window.LeksahOscLinks): a hover
   -- tooltip with the URL, and click-to-open for http(s) links.
@@ -584,6 +588,24 @@ flipPaneLabel n w p tree =
 -- | A CSS @order@ style attribute for a wide0 tab button (empty off wide0).
 orderStyle :: Maybe Int -> Map Text Text
 orderStyle = maybe mempty (\n -> "style" =: ("order:" <> T.pack (show n)))
+
+-- | The side- and bottom-bar panes in their strips' order: the Nth entry is
+-- what ⌥⌘N / ⌃⌘N navigates to, and what its ⌘-held badge shows.
+numberedTallTabs, numberedWide1Tabs :: [TabKey]
+numberedTallTabs  = [WorkspaceKey, TerminalsKey, MetadataKey]
+numberedWide1Tabs = [ErrorsKey, LogKey, GrepKey, ChangesKey]
+
+-- | The ⌘-held navigation badge for a side-/bottom-bar tab button (hidden
+-- until body.leksah-show-badges; see badgesJs).
+tabShortcutBadge :: MonadWidget t m => Text -> TabKey -> m ()
+tabShortcutBadge area k = case area of
+    "tall"  -> mk "\8997\8984" numberedTallTabs
+    "wide1" -> mk "\8963\8984" numberedWide1Tabs
+    _       -> return ()
+  where
+    mk pre ks = forM_ (elemIndex k ks) $ \i ->
+        when (i < 9) . elAttr "span" ("class" =: "leksah-shortcut-badge") $
+            text (pre <> T.pack (show (i + 1)))
 
 -- | The wide0 tab-button order, taken from the flipper's item list: each tmux
 -- window (identified by @Left (session, window)@, collapsed from its panes) and
@@ -1169,6 +1191,25 @@ transparencyJs = T.unlines
   , "window.leksahClearHoles = function(){ window.__leksahHoles = []; document.documentElement.style.clipPath = ''; };"
   ]
 
+-- | Shows the navigation shortcut badges while the Command key is held —
+-- IF the preference turned them on (the flag below, kept current from
+-- prefs).  The badges themselves are pre-rendered, hidden elements
+-- (.leksah-shortcut-badge): CC panes lay theirs at each pane's top-left
+-- corner; side-/bottom-bar tab buttons carry theirs inline.
+badgesJs :: Text
+badgesJs = T.unlines
+  [ "window.__leksahShortcutBadges = false;"
+  , "(function(){"
+  , "  function set(on){"
+  , "    document.body.classList.toggle('leksah-show-badges',"
+  , "        !!(on && window.__leksahShortcutBadges));"
+  , "  }"
+  , "  window.addEventListener('keydown', function(e){ if (e.key === 'Meta') set(true); }, true);"
+  , "  window.addEventListener('keyup',   function(e){ if (e.key === 'Meta') set(false); }, true);"
+  , "  window.addEventListener('blur',    function(){ set(false); }, true);"
+  , "})();"
+  ]
+
 -- | A snapped pane's stable key, @\"tid:pid\"@ (e.g. @\"1:%5\"@), shared between
 -- the reflex set, the JS snap-rect map, and the native window bindings.
 -- | @sessionId:paneId@, e.g. @$3:%7@ (the session id has no colon, so the first
@@ -1259,6 +1300,7 @@ main showMenubar macTitlebar ide = mdo
               pure ([k] <$ domEvent Click xe)
             Nothing  -> pure never
           (be, _) <- elAttr' "button" (maybe mempty ("title" =:) mbTitle) labelW
+          tabShortcutBadge area k
           let clickE = domEvent Click be
           performEvent_ (liftIO onSel <$ clickE)
           pure $ leftmost [ (\_ -> (area =: k, [])) <$> clickE, (,) mempty <$> closeE ]
@@ -1409,25 +1451,49 @@ main showMenubar macTitlebar ide = mdo
     (newTermPolledE, fireNewTermPolled) <- newTriggerEvent
     paneTreeD <- holdUniqDyn =<< holdDyn mempty
       (leftmost [ otherPollE, (\(_, t, _) -> t) <$> openPollE, fst <$> newTermPolledE ])
-    -- Remote (ssh://) tabs' window/pane trees, keyed by the TAB key and merged
-    -- into the same tree the flipper and tab ordering consume ('allTreeD'), so
-    -- remote windows flip and order exactly like local ones.  Polled over ssh
-    -- (10s, off the reflex thread) for whichever remote tabs are open.
+    -- ONE ssh poll per remote host (10s, off the reflex thread, plus pokes),
+    -- feeding BOTH remote surfaces: the Terminals tree's host nodes (all
+    -- sessions of each host, with reachability) and the flipper/tab row's
+    -- per-tab trees (derived below).  Previously each surface ran its own
+    -- ssh — per host AND per open tab.
     remoteTabsD <- holdUniqDyn $
         (\rt -> nub [ n | (_, TerminalKey n) <- rt, "ssh://" `T.isPrefixOf` n ])
           <$> recentTabs
     remoteFlipTick <- tickLossyFromPostBuildTime 10
-    (remoteTreesE, fireRemoteTrees) <- newTriggerEvent
-    -- Poked right after a remote window/pane select, so the active-window
-    -- highlight moves at once instead of on the next 10s poll.
+    (hostTreesE, fireHostTrees) <- newTriggerEvent
+    -- Poked right after a remote window/pane select (and on CC window
+    -- add/close), so the active-window highlight moves at once instead of on
+    -- the next 10s poll.
     (remotePokeE, fireRemotePoke) <- newTriggerEvent
-    performEvent_ $ ffor (leftmost [ tag (current remoteTabsD) remoteFlipTick
-                                   , tag (current remoteTabsD) remotePokeE
-                                   , updated remoteTabsD ]) $ \tabs ->
+    performEvent_ $ ffor (leftmost [ tag (current remoteHostsD) remoteFlipTick
+                                   , tag (current remoteHostsD) remotePokeE
+                                   , updated remoteHostsD ]) $ \hosts ->
         liftIO . void . forkIO $ do
-            entries <- forM tabs $ \n -> fmap (\t -> (n, t)) <$> remoteTabTree n
-            fireRemoteTrees (M.fromList (catMaybes entries))
-    remoteFlipD <- holdDyn M.empty remoteTreesE
+            entries <- forM hosts $ \h -> (,) h <$> listRemoteTerminalTree h
+            fireHostTrees (M.fromList entries)
+    -- host -> (reachable, sessions).  An unreachable host keeps its last-known
+    -- sessions (marked unreachable); hosts no longer listed drop out.
+    hostTreesD <- holdUniqDyn =<< foldDyn
+        (\new old -> M.mapWithKey
+            (\h mb -> case (mb, M.lookup h old) of
+                (Just t,  _)                -> (True, t)
+                (Nothing, Just (_, oldT))   -> (False, oldT)
+                (Nothing, Nothing)          -> (False, M.empty))
+            new)
+        M.empty hostTreesE
+    -- The open remote tabs' trees, keyed by TAB key and merged into the same
+    -- tree the flipper and tab ordering consume ('allTreeD'), so remote
+    -- windows flip and order exactly like local ones.  A tab's target may be
+    -- the session's name or its id.
+    remoteFlipD <- holdUniqDyn $
+        (\hostTrees tabs -> M.fromList
+            [ (n, (host <> " · " <> nm, ws))
+            | n <- tabs
+            , Just (host, target) <- [remoteTabHostTarget n]
+            , Just (_, tree) <- [M.lookup host hostTrees]
+            , Just (_, (nm, ws)) <- [find (\(sid, (nm', _)) -> nm' == target || sid == target)
+                                          (M.toList tree)] ])
+          <$> hostTreesD <*> remoteTabsD
     let allTreeD = M.union <$> paneTreeD <*> remoteFlipD
     -- The item the user is currently focused on: the last tab pressed
     -- (activePaneD, in any area — side bar, bottom bar, editor) resolved to its
@@ -1712,6 +1778,16 @@ main showMenubar macTitlebar ide = mdo
                                             _                    -> Nothing) <$> visibleTabsD
     -- Publish the active terminal so the Tmux menu can send C-b sequences to it.
     performEvent_ $ liftIO . setActiveTerminal <$> updated activeTermD
+    -- ⌘1…9: the active terminal's Nth split.  A control-mode tab selects (and
+    -- focuses) by layout order through its registered selector — the same
+    -- numbering the ⌘-held badges show; a classic PTY tab falls back to
+    -- tmux's own pane indexes (base 0).
+    let numKeyE p = fmapMaybe (\e -> e ^? _KeymapCommand . p) keymapE
+    performEvent_ $ ffor (attach (current activeTermD) (numKeyE _CommandSelectSplit)) $
+        \(mbT, n) -> liftIO $ do
+            ok <- selectSplitActiveTerminal n
+            unless ok $ mapM_ (\tid ->
+                tmuxCmd ["select-pane", "-t", T.unpack tid <> ":." <> show (n - 1)]) mbT
     -- Tmux pane transparency (macOS): the menu drops a toggle token; drain it to
     -- a reflex event, then toggle the active terminal's active tmux pane in/out
     -- of the holed set.  A timer re-queries each holed pane's tmux cell geometry
@@ -1930,10 +2006,19 @@ main showMenubar macTitlebar ide = mdo
         -- Running a grep brings the Grep pane to the front of its area; Preferences…
         -- opens and shows the Preferences pane in the editor area.  The flipper
         -- selects a tab directly, or brings up a pane's terminal in wide0.
+        -- ⌥⌘N / ⌃⌘N: the Nth side- / bottom-bar pane (the strips' order —
+        -- what the ⌘-held badges show).
+        pickNth ks n = if n >= 1 && n <= length ks then Just (ks !! (n - 1)) else Nothing
+        numSelTabE = leftmost
+          [ fmapMaybe (fmap ("tall" =:)  . pickNth numberedTallTabs)
+                      (numKeyE _CommandSelectSidePane)
+          , fmapMaybe (fmap ("wide1" =:) . pickNth numberedWide1Tabs)
+                      (numKeyE _CommandSelectBottomPane) ]
         selectTabE = leftmost [flipTabE, restoreVisibleE, ("wide1" =: GrepKey) <$ grepReqE
                               , (\(s, _, _) -> "wide0" =: TerminalKey s) <$> flipPaneE
                               , (\(s, _)    -> "wide0" =: TerminalKey s) <$> alertTargetE
-                              , ("wide0" =: PreferencesKey) <$ showPrefsE]
+                              , ("wide0" =: PreferencesKey) <$ showPrefsE
+                              , numSelTabE]
     (recentTabs, tabE, visibleTabsD, activePaneD, tabCloseBtnE) <- tabsWidget
       initialTabs
       initialVisibleTabs
@@ -1950,7 +2035,7 @@ main showMenubar macTitlebar ide = mdo
           ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ide allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
           LogKey         -> toDM LogTab <$> logWidget ide (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
-          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD
+          TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD hostTreesD
           TerminalKey n  -> toDM TerminalTab <$> do
               -- Control mode (-CC) vs classic PTY attach, decided when the
               -- tab is created (toggling the pref affects new terminals).
@@ -2040,7 +2125,9 @@ main showMenubar macTitlebar ide = mdo
         -- off activePaneD alone (mouse-down only) left flipped-to panes hidden.
         activatedPaneE = fmapMaybe sideBottomOf $ leftmost
             [ fmapMaybe id (updated activePaneD)
-            , fmapMaybe (listToMaybe . M.elems) flipTabE ]
+            , fmapMaybe (listToMaybe . M.elems) flipTabE
+            -- ⌥⌘N / ⌃⌘N navigation focuses the pane it shows, like the flipper.
+            , fmapMaybe (listToMaybe . M.elems) numSelTabE ]
     performEvent_ $ ffor activatedPaneE $ \(_, sel) ->
         liftJSM . void $ jsg ("window" :: Text) ^. js1 ("leksahFocusPane" :: Text) sel
 
@@ -2075,6 +2162,12 @@ main showMenubar macTitlebar ide = mdo
     themeCssD <- holdUniqDyn $
         (\p -> themeVarsCss (uiSelectionColor p) (uiHoverColor p)) <$> prefsD
     el "style" $ dynText themeCssD
+    -- Publish the shortcut-badges preference to the ⌘-held handler (badgesJs).
+    badgesPrefD <- holdUniqDyn (showShortcutBadges <$> prefsD)
+    badgesPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [updated badgesPrefD, tag (current badgesPrefD) badgesPb]) $ \v ->
+        liftJSM . void $ jsg ("window" :: Text)
+            ^. jss ("__leksahShortcutBadges" :: Text) v
 
     let allE = merge (DM.fromList
             [ MenubarWidget   :=> menubarE
