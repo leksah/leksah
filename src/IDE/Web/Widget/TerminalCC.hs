@@ -399,6 +399,10 @@ terminalCCWidget ide sessionId selectedE = do
       , fmapMaybe (\case
           EvWindowRenamed _ nm -> Just (TerminalTitle nm)
           EvExit _             -> Just TerminalExited
+          -- windows created/closed: poke the trees (renames go via
+          -- TerminalTitle above and reach the tree on its next poll)
+          EvWindowAdd _        -> Just TerminalTreeChanged
+          EvWindowClose _      -> Just TerminalTreeChanged
           _                    -> Nothing) evE ]
 
 -- | The page-wide terminal cell size in CSS px ('LeksahTerm.cellMetrics',

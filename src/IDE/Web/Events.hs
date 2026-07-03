@@ -83,6 +83,9 @@ makePrisms ''GrepEvents
 -- the tab should close rather than linger showing "[exited]".
 data TerminalEvents
   = TerminalTitle Text | TerminalGoto SrcSpan | TerminalBell | TerminalExited
+  -- | A control-mode tab saw a window created/closed: the Terminals tree and
+  -- tab row should refresh now, not on the next 2s/10s poll.
+  | TerminalTreeChanged
 
 makePrisms ''TerminalEvents
 

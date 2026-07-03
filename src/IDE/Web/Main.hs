@@ -20,7 +20,7 @@ import GHC.Stats
        (getRTSStats, getRTSStatsEnabled, RTSStats(..), GCDetails(..))
 import qualified System.IO as IO (hPutStrLn, stderr)
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), _Just)
-import Control.Monad (forever, forM, when, void)
+import Control.Monad (forever, forM, unless, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.ByteString (ByteString)
@@ -115,7 +115,8 @@ import IDE.Web.Theme (themeVarsCss)
 import IDE.Web.FindRequest (nextFindRequest)
 import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
-import IDE.Web.TerminalInput (setActiveTerminal)
+import IDE.Web.ReplTmux (tmuxCmd)
+import IDE.Web.TerminalInput (setActiveTerminal, tmuxCommandActiveTerminal)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
@@ -1376,7 +1377,12 @@ main showMenubar macTitlebar ide = mdo
           , () <$ closeTermE, () <$ selectAnyTermE, () <$ saveSessE
           -- A requested tab may be a freshly-created session/window (e.g. a
           -- workspace repl button): re-read the tree so it shows at once.
-          , () <$ termRequestE ]
+          , () <$ termRequestE
+          -- A local CC tab saw a window created/closed.
+          , () <$ ffilter (any (not . ("ssh://" `T.isPrefixOf`))) treeChangedTabsE ]
+    -- Same for remote CC tabs: poke the ssh poll.
+    performEvent_ $ ffor (ffilter (any ("ssh://" `T.isPrefixOf`)) treeChangedTabsE) $ \_ ->
+        liftIO $ fireRemotePoke ()
     -- OFF the reflex thread: a tmux subprocess per poke (term-activity fires
     -- on every window/pane select) would hitch the UI run synchronously.
     (otherPollE, fireOtherPoll) <- newTriggerEvent
@@ -1646,6 +1652,11 @@ main showMenubar macTitlebar ide = mdo
     let bellSessE = ffilter (not . null) $ ffor tabE $ \m ->
           [ n | (TerminalKey n, dm) <- M.toList m
               , Just (Identity TerminalBell) <- [DM.lookup TerminalTab dm] ]
+        -- A control-mode tab saw a window created/closed: refresh the trees
+        -- now instead of on the next 2s (local) / 10s (ssh) poll.
+        treeChangedTabsE = ffilter (not . null) $ ffor tabE $ \m ->
+          [ n | (TerminalKey n, dm) <- M.toList m
+              , Just (Identity TerminalTreeChanged) <- [DM.lookup TerminalTab dm] ]
         -- A terminal whose attached tmux client exited (the session ended, e.g.
         -- `exit` in its last window): close its tab so it doesn't linger showing
         -- "[exited]".  Event-driven off tabE — the same safe feedback path as
@@ -1862,15 +1873,33 @@ main showMenubar macTitlebar ide = mdo
     (closeReqE, fireCloseReq) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextCloseRequest >> fireCloseReq ()
     -- Close via the menu acts on the active pane (only editors and terminals
-    -- have something to close).
-    let menuCloseE = fmapMaybe (\case Just k@(EditorKey _)   -> Just [k]
-                                      Just k@(TerminalKey _) -> Just [k]
-                                      _                      -> Nothing)
-                       (tag (current activePaneD) closeReqE)
+    -- have something to close).  A terminal showing a MULTI-pane window
+    -- closes the split (kills the active tmux pane) rather than the tab —
+    -- the tab only goes once a single pane remains.  The pane count comes
+    -- from the same tree the flipper uses, so remote (ssh://) tabs behave
+    -- identically.
+    let closeDecisionE = attachWith
+          (\(mk, tree) () -> case mk of
+              Just k@(EditorKey _) -> Just (Right [k])
+              Just k@(TerminalKey n)
+                | Just (_, ws) <- M.lookup n tree
+                , (w : _) <- filter twActive ws
+                , length (twPanes w) > 1 -> Just (Left n)
+                | otherwise -> Just (Right [k])
+              _ -> Nothing)
+          ((,) <$> current activePaneD <*> current allTreeD) closeReqE
+        killSplitE = fmapMaybe (>>= either Just (const Nothing)) closeDecisionE
+        menuCloseE = fmapMaybe (>>= either (const Nothing) Just) closeDecisionE
         -- A tab × or File ▸ Close just removes the tab.  For a terminal this
         -- detaches: the tmux session (and its Terminals-list entry) survive, so
         -- it can be reopened — unlike the Terminals pane's close, which kills it.
         detachCloseE = leftmost [tabCloseBtnE, menuCloseE]
+    -- Kill the split through the tab's control channel when it has one (CC
+    -- tabs, remote included — the client's current pane is the displayed
+    -- one); a classic local tab falls back to tmux directly.
+    performEvent_ $ ffor killSplitE $ \n -> liftIO $ do
+        ok <- tmuxCommandActiveTerminal "kill-pane"
+        unless ok $ tmuxCmd ["kill-pane", "-t", T.unpack n]
     let openInWide0 n = TerminalKey n =: ("wide0", Just ())
         openTabsE = leftmost
           [ openFileE'
