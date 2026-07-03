@@ -480,6 +480,11 @@ pxSpan o n cell =
     T.pack (show ((round (fromIntegral (o + n) * cell)
                    - round (fromIntegral o * cell)) :: Int)) <> "px"
 
+-- | Half a cell, as a px length (the divider lines overhang the gutter by
+-- this much at each end).
+halfPx :: Double -> Text
+halfPx cell = T.pack (show (cell / 2)) <> "px"
+
 -- | The pixel at the middle of separator cell @n@ (where the 1px divider
 -- line is drawn; highlight segments sit exactly over it).
 pxMid :: Int -> Double -> Text
@@ -607,32 +612,22 @@ paneWidget cc sessionId cbs termsRef pausedRef (cw, ch) pane rectD0 = do
         forM_ (M.lookup pane terms) $ \term ->
             void $ term ^. js2 ("resize" :: Text) w h
 
--- | The active-pane highlight segments of one window's layout: for every
--- pane, a (hidden) 1px line along each of its sides that faces a gutter,
--- centered exactly over the grey divider line.  'applyPaneHighlight' shows
--- the active pane's segments (green perimeter) and hides the rest — pure
--- style toggles, no re-render.
+-- | The active-pane highlight of one window's layout: every pane gets a
+-- (hidden) transparent box exactly over its rectangle whose mid-grey
+-- box-shadow (see terminalCss) marks it as active.  'applyPaneHighlight'
+-- shows the active pane's box and hides the rest — pure style toggles, no
+-- re-render.
 renderHlSegments :: MonadWidget t m => (Double, Double) -> Layout -> m ()
 renderHlSegments (cw, ch) l =
-    forM_ (layoutPanes l) $ \(pane, x, y, w, h) -> do
-        let seg geo = elAttr "div"
-                ("class" =: "terminal-cc-hl"
-                 <> "data-pane" =: pane
-                 <> "style" =: ("position:absolute;display:none"
-                                <> ";pointer-events:none;background:rgb(80,200,120);" <> geo))
-                blank
-        when (x > 0) . seg $
-            "width:1px;left:" <> pxMid (x - 1) cw
-            <> ";top:" <> pxAt y ch <> ";height:" <> pxSpan y h ch
-        when (x + w < lW l) . seg $
-            "width:1px;left:" <> pxMid (x + w) cw
-            <> ";top:" <> pxAt y ch <> ";height:" <> pxSpan y h ch
-        when (y > 0) . seg $
-            "height:1px;top:" <> pxMid (y - 1) ch
-            <> ";left:" <> pxAt x cw <> ";width:" <> pxSpan x w cw
-        when (y + h < lH l) . seg $
-            "height:1px;top:" <> pxMid (y + h) ch
-            <> ";left:" <> pxAt x cw <> ";width:" <> pxSpan x w cw
+    forM_ (layoutPanes l) $ \(pane, x, y, w, h) ->
+        elAttr "div"
+            ("class" =: "terminal-cc-hl"
+             <> "data-pane" =: pane
+             <> "style" =: ("position:absolute;display:none;pointer-events:none"
+                            <> ";left:" <> pxAt x cw <> ";top:" <> pxAt y ch
+                            <> ";width:" <> pxSpan x w cw
+                            <> ";height:" <> pxSpan y h ch))
+            blank
 
 -- | The ⌘-held navigation badges of one window's layout: pane N (layout /
 -- reading order, the numbering 'registerTerminalSplits' selects by) gets a
@@ -664,11 +659,16 @@ renderDividers cc (cw, ch) l =
                             <> ";top:"    <> pxAt y ch
                             <> ";width:"  <> pxSpan x w cw
                             <> ";height:" <> pxSpan y h ch)) $
+            -- The line extends half a cell beyond the gutter at each end, so
+            -- crossing/tee-ing dividers meet at the junction centres instead
+            -- of leaving a gap (the container clips the overhang at edges).
             elAttr "div"
                 ("class" =: "divider-line"
                  <> "style" =: (if vert
-                      then "position:absolute;left:calc(50% - 0.5px);top:0;bottom:0;width:1px"
-                      else "position:absolute;top:calc(50% - 0.5px);left:0;right:0;height:1px"))
+                      then "position:absolute;left:calc(50% - 0.5px);width:1px;top:-"
+                           <> halfPx ch <> ";bottom:-" <> halfPx ch
+                      else "position:absolute;top:calc(50% - 0.5px);height:1px;left:-"
+                           <> halfPx cw <> ";right:-" <> halfPx cw))
                 blank
         pb <- getPostBuild
         performEvent_ $ ffor pb $ \_ -> liftJSM $ do
@@ -687,8 +687,8 @@ renderDividers cc (cw, ch) l =
             void $ jsg ("LeksahDividerDrag" :: Text) ^. js3 ("arm" :: Text)
                        raw vert (if vert then cw else ch)
 
--- | Show the highlight segments (see 'renderHlSegments') belonging to pane
--- @mbP@ and hide all others — the active pane's perimeter turns green.
+-- | Show the highlight box (see 'renderHlSegments') belonging to pane
+-- @mbP@ and hide all others — the active pane gets the shadowed outline.
 applyPaneHighlight :: MakeObject e => e -> Maybe PaneId -> JSM ()
 applyPaneHighlight c mbP = do
     els <- c ^. js1 ("querySelectorAll" :: Text) (".terminal-cc-hl" :: Text)

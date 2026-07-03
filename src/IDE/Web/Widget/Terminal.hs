@@ -130,11 +130,15 @@ terminalCss = do
     ".terminal-cc-divider.vert" ? ("cursor" -: "col-resize")
     ".terminal-cc-divider.horiz" ? ("cursor" -: "row-resize")
     ".terminal-cc-divider .divider-line" ?
-        ("background" -: "rgba(128,128,128,0.55)")
+        ("background" -: "rgb(128,128,128)")
     ".terminal-cc-divider:hover .divider-line" ?
         ("background" -: "rgba(190,190,190,0.9)")
     ".terminal-cc-divider.dragging .divider-line" ?
         ("background" -: "rgba(190,190,190,0.9)")
+    -- The active pane's marker: a transparent box exactly over the pane with
+    -- a mid-grey shadow around it (shown/hidden by applyPaneHighlight).
+    ".terminal-cc-hl" ?
+        ("box-shadow" -: "0 0 8px 2px rgba(128,128,128,0.9)")
 
 -- | A terminal pane.  The 'Int' is the terminal's id; it maps to a tmux
 -- session named @leksah-N@ so the shell survives a leksah restart (see
