@@ -2,6 +2,12 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
+-- reflex-dom deprecates 'textInput' in favour of the lower-level
+-- 'inputElement'.  The find/replace fields deliberately use 'textInput' (its
+-- value/keypress accessors are exactly what we need); migrating the
+-- focus/keypress-sensitive fields carries regression risk for no behavioural
+-- gain, so silence the deprecation here rather than churn the widget.
+{-# OPTIONS_GHC -Wno-deprecations #-}
 module IDE.Web.Widget.Findbar
   ( findbarCss
   , findbarWidget
@@ -32,7 +38,7 @@ import Clay
 import Language.Javascript.JSaddle (jsg, js0, js3, liftJSM)
 
 import Reflex
-       (constDyn, Dynamic, never, toggle, ffor, ffilter, tagPromptlyDyn,
+       (constDyn, Dynamic, toggle, ffor, ffilter, tagPromptlyDyn,
         updated, leftmost, gate, current, performEvent_, holdDyn, foldDyn,
         fmapMaybe)
 import Reflex.Dom.Core

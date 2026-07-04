@@ -21,6 +21,7 @@ extern void leksah_menu_action(int tag);
 extern void leksah_open_file(const char *path);
 extern void leksah_open_project(const char *path);
 extern void leksah_unsnap(const char *key);   // Tmux ▸ Underlay ▸ Unsnap <window>
+extern void leksah_open_settings(void);        // app menu ▸ Settings…
 
 // The title bar is transparent and the WKWebView fills the whole window, so the
 // web toolbar sits in the title-bar strip.  The WKWebView swallows mouse events,
@@ -37,6 +38,7 @@ static NSWindow *gLeksahWindow = nil;
 @interface LeksahMenuTarget : NSObject
 - (void)leksahAction:(id)sender;
 - (void)leksahRemeasure:(NSTimer *)timer;
+- (void)leksahOpenSettings:(id)sender;
 @end
 
 static void leksah_measure_toolbar(void);
@@ -66,6 +68,10 @@ void leksah_set_terminal_active(int on) {
     (void)timer;
     leksah_measure_toolbar();
     leksah_read_holes();
+}
+- (void)leksahOpenSettings:(id)sender {
+    (void)sender;
+    leksah_open_settings();
 }
 @end
 
@@ -105,10 +111,22 @@ void leksah_menu_begin(void) {
     NSMenuItem *appItem = [[NSMenuItem alloc] init];
     [gMainMenu addItem:appItem];
     NSMenu *appMenu = [[NSMenu alloc] init];
-    NSString *appName = [[NSProcessInfo processInfo] processName];
+    // Name the About/Quit items from the bundle's CFBundleName (the single
+    // source of truth — see Leksah.app in leksah-nix.sh); fall back to the
+    // process name for an unbundled run.
+    NSString *appName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    if (appName.length == 0) appName = [[NSProcessInfo processInfo] processName];
     [appMenu addItemWithTitle:[@"About " stringByAppendingString:appName]
                        action:@selector(orderFrontStandardAboutPanel:)
                 keyEquivalent:@""];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    // Settings… (⌘,) in its conventional macOS place — the app menu.  It opens
+    // the Preferences pane via the reflex bridge (leksah_open_settings).
+    if (gTarget == nil) gTarget = [[LeksahMenuTarget alloc] init];
+    NSMenuItem *settings = [appMenu addItemWithTitle:@"Settings…"
+                       action:@selector(leksahOpenSettings:)
+                keyEquivalent:@","];
+    [settings setTarget:gTarget];
     [appMenu addItem:[NSMenuItem separatorItem]];
     [appMenu addItemWithTitle:[@"Quit " stringByAppendingString:appName]
                        action:@selector(terminate:)
@@ -263,6 +281,9 @@ void leksah_menu_install(void) {
     // whether or not the app's run loop has started yet.
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSApplication sharedApplication];
+        // The bold application-menu title comes from the bundle's CFBundleName
+        // ("Leksah"); nothing to set here (we run from Leksah.app — see
+        // leksah-nix.sh).
         [NSApp setMainMenu:menu];
     });
 }
@@ -538,6 +559,40 @@ static CGRect leksah_viewport_to_ax(NSRect vp) {
     CGFloat primaryH = NSHeight([[[NSScreen screens] firstObject] frame]);
     return CGRectMake(scr.origin.x, primaryH - (scr.origin.y + scr.size.height),
                       scr.size.width, scr.size.height);
+}
+
+// Raise every snapped window so it shows through leksah's (transparent) hole
+// again after leksah comes forward.  kAXRaiseAction alone only reorders a window
+// WITHIN its own app, and a background app's windows all sit below the active
+// app's — so a window covered by *another* app stays hidden.  To lift it above
+// those other background windows we activate its owning app (raising that app's
+// windows), then re-assert leksah on top so it keeps focus with the snapped
+// windows layered just beneath it.  The re-activation re-fires DidBecomeMain, so
+// a guard breaks the recursion (cleared a beat later, after the notifications
+// settle).
+static BOOL gRaisingSnaps = NO;
+static void leksah_raise_snaps(void) {
+    if (gRaisingSnaps || gSnapCount == 0) return;
+    gRaisingSnaps = YES;
+    BOOL any = NO;
+    for (int i = 0; i < gSnapCount; i++) {
+        if (gSnaps[i].win == NULL) continue;
+        AXUIElementPerformAction(gSnaps[i].win, kAXRaiseAction);   // frontmost in its app
+        pid_t pid = 0;
+        if (AXUIElementGetPid(gSnaps[i].win, &pid) == kAXErrorSuccess && pid != 0 && pid != getpid()) {
+            NSRunningApplication *app =
+                [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+            if (app != nil) { [app activateWithOptions:0]; any = YES; }
+        }
+    }
+    if (any) {
+        // Foreign activations made leksah resign active; take it back so it stays
+        // frontmost with the just-raised windows directly below it.
+        [NSApp activateIgnoringOtherApps:YES];
+        if (gLeksahWindow != nil) [gLeksahWindow makeKeyAndOrderFront:nil];
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ gRaisingSnaps = NO; });
 }
 
 // Move/resize a bound window to an AX rect.
@@ -859,6 +914,12 @@ static void leksah_configure_titlebar(void) {
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidResizeNotification
         object:win queue:[NSOperationQueue mainQueue]
         usingBlock:^(NSNotification *note){ (void)note; leksah_read_holes(); }];
+    // When leksah comes to the front, raise its snapped windows too — otherwise a
+    // snapped window left behind another app's window stays hidden behind leksah's
+    // (now-transparent) hole.  Reposition as well, in case geometry drifted.
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeMainNotification
+        object:win queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){ (void)note; leksah_raise_snaps(); leksah_read_holes(); }];
 }
 
 void leksah_titlebar_setup(void) {

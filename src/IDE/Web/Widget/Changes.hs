@@ -29,7 +29,6 @@ import Data.List (nub, dropWhileEnd, sortOn, isPrefixOf, tails)
 import Data.Map (Map)
 import qualified Data.Map as M (fromList, lookup, elems, null)
 import Data.Maybe (listToMaybe)
-import Data.Text (Text)
 import qualified Data.Text as T (pack)
 import Data.Time.Clock (NominalDiffTime)
 

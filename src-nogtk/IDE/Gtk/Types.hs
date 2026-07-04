@@ -4,7 +4,7 @@
 {-# LANGUAGE KindSignatures #-}
 module IDE.Gtk.Types (
     IDEState(..)
-  , IDEGtk
+  , IDEGtk(..)
   , IDEGtkEvent
   , getGtkEventSelector
   , Color(..)
@@ -23,6 +23,7 @@ import Control.Monad.Trans.Reader (ReaderT(..))
 
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
+import Data.Kind (Type)
 import Data.Void (Void)
 import Data.Word (Word16)
 
@@ -38,7 +39,7 @@ data IDEState =
         -- | Leksah is running
     |   IsRunning
 
-data IDEGtk (idem :: * -> *) ideref = IDEGtk {
+data IDEGtk (idem :: Type -> Type) ideref = IDEGtk {
  }
 
 type IDEGtkEvent ideref = Void

@@ -27,7 +27,7 @@ import Data.Text.Encoding.Error (lenientDecode)
 
 import Clay
        (overflow, auto, height, pct, whiteSpace, nowrap, grey, color,
-        background, padding, px, (?), Css, Color(..), Cursor(..), cursorDefault)
+        background, padding, px, (?), (-:), Css, Cursor(..), cursorDefault)
 import Clay.Stylesheet (key)
 
 import Distribution.Text (display)
@@ -37,14 +37,15 @@ import Reflex
         fmapMaybe, ffilter, updated, leftmost, getPostBuild, tag, current,
         Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, el, elClass, elDynAttr', dynText, text,
-        dyn, domEvent, EventName(..), (=:))
+       (MonadWidget, divClass, el, elClass, elAttr, elDynAttr', dynText, text,
+        dyn, blank, domEvent, EventName(..), (=:))
 
 import IDE.Web.Theme (selectionColor)
 import IDE.Core.CTypes
        (PackageDescr, pdPackage, pdModules, ModuleDescr, mdModuleId,
         mdMbSourcePath, mdIdDescriptions, Descr(..), RealDescr(..),
-        TypeDescr(..), dscName, dscMbTypeStr, dscMbModu,
+        TypeDescr(..), DescrType(..), descrType, dscTypeHint,
+        dscName, dscMbTypeStr, dscMbModu,
         dscMbLocation, modu, Location(..), SrcSpan(..),
         GenScope(..), PackScope(..), packageIdentifierToString, symLookup)
 import IDE.Core.State (IDE, systemInfo, workspaceInfo)
@@ -54,6 +55,10 @@ import IDE.Web.Widget.Tree (treeItem, treeItem', scrollIntoViewNearest)
 
 metadataCss :: Css
 metadataCss = do
+    -- Top-level tree ul sits flush with the pane's left edge (like the Workspace
+    -- tree's ul.projects); only nested uls get the global 20px indent.
+    ".metadata > ul" ?
+        ("margin-left" -: "0px")
     ".metadata" ? do
         height (pct 100)
         overflow auto
@@ -65,6 +70,10 @@ metadataCss = do
         cursor cursorDefault
     ".metadata .metadata-descr" ?
         cursor cursorDefault
+    -- Match the 2px left inset the Workspace tree's .tree-item rows have, so the
+    -- row icons line up across all three trees.
+    ".metadata .leksah-nav-item" ?
+        ("padding-left" -: "2px")
     -- The module whose source file is the focused editor tab is highlighted.
     ".metadata .metadata-active" ?
         background selectionColor
@@ -104,6 +113,27 @@ descrLabel (Real (RealDescr id' _ _ _ _ (InstanceDescr binds) _)) =
       [] -> id'
       bs -> id' <> " " <> T.intercalate " " bs
 descrLabel d = dscName d
+
+-- | A leading B&W node icon (a @/pics/*.svg@) for a Metadata-tree row.
+metaIcon :: MonadWidget t m => Text -> m ()
+metaIcon name = elAttr "img" ("class" =: "tree-icon" <> "src" =: ("/pics/" <> name)) blank
+
+-- | The declaration-kind icon for a metadata leaf, keyed by its 'DescrType'
+-- (function/data/class/…); rare kinds (keywords, extensions, module names)
+-- share a generic glyph.
+descrIcon :: Descr -> Text
+descrIcon d = "/pics/" <> case descrType (dscTypeHint d) of
+    Variable       -> "decl-function.svg"
+    Method         -> "decl-method.svg"
+    Field          -> "decl-field.svg"
+    Constructor    -> "decl-constructor.svg"
+    Data           -> "decl-data.svg"
+    Type           -> "decl-type.svg"
+    Newtype        -> "decl-newtype.svg"
+    Class          -> "decl-class.svg"
+    Instance       -> "decl-instance.svg"
+    PatternSynonym -> "decl-pattern.svg"
+    _              -> "decl-other.svg"
 
 locationToSrcSpan :: Location -> SrcSpan
 locationToSrcSpan l =
@@ -177,7 +207,10 @@ metadataWidget ide activeFileD revealMetaD findE = divClass "metadata leksah-nav
       let underD = (\pd mf -> maybe False (\f -> any ((== Just f) . mdMbSourcePath) (pdModules pd)) mf)
                      <$> pkgD <*> revealMetaD'
       treeItem' underD "metadata-package" False
-        (do elClass "span" "leksah-nav-item" $ dynText (packageIdentifierToString . pdPackage <$> pkgD); return never) $
+        (do elClass "span" "leksah-nav-item" $ do
+              metaIcon "tree-package.svg"
+              dynText (packageIdentifierToString . pdPackage <$> pkgD)
+            return never) $
         el "ul" $ do
           modulesD <- holdUniqDyn $ M.fromList . zip [0 :: Int ..] . sortOn moduleLabel . pdModules <$> pkgD
           fmapMaybe (listToMaybe . M.elems) <$>
@@ -198,7 +231,9 @@ metadataWidget ide activeFileD revealMetaD findE = divClass "metadata leksah-nav
                          <$> modD <*> activeFileD <*> findSelKeyD
                 revealMeD = (\md mf -> maybe False ((== mf) . Just) (mdMbSourcePath md))
                               <$> modD <*> revealMetaD'
-            (e, _) <- elDynAttr' "span" attrsD $ dynText (moduleLabel <$> modD)
+            (e, _) <- elDynAttr' "span" attrsD $ do
+                metaIcon "tree-module.svg"
+                dynText (moduleLabel <$> modD)
             -- Scroll this module into view when it is the one to reveal.
             pbM <- getPostBuild
             scrollIntoViewNearest (ffilter id $ leftmost [updated revealMeD, tag (current revealMeD) pbM]) e
@@ -211,7 +246,9 @@ metadataWidget ide activeFileD revealMetaD findE = divClass "metadata leksah-nav
     descrNode dD = do
       let attrsD = ffor dD $ \d -> "class" =: "metadata-descr leksah-nav-item"
             <> maybe mempty (("title" =:) . decodeUtf8With lenientDecode) (dscMbTypeStr d)
-      (e, _) <- elDynAttr' "li" attrsD $ dynText (descrLabel <$> dD)
+      (e, _) <- elDynAttr' "li" attrsD $ do
+        _ <- elDynAttr' "img" (("class" =: "tree-icon" <>) . ("src" =:) . descrIcon <$> dD) blank
+        dynText (descrLabel <$> dD)
       return $ fmapMaybe id $ tag (current (descrGoto <$> dD)) (domEvent Click e)
 
     descrGoto :: Descr -> Maybe MetadataEvents

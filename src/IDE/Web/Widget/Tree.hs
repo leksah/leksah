@@ -162,9 +162,9 @@ scrollIntoViewNearest
   => Event t a
   -> Element EventResult (DomBuilderSpace m) t
   -> m ()
-scrollIntoViewNearest e el =
+scrollIntoViewNearest e elm =
   performEvent_ $ ffor e $ \_ -> liftJSM $ do
-    rawV <- toJSVal (_element_raw el)
+    rawV <- toJSVal (_element_raw elm)
     o <- obj
     _ <- o ^. jss ("block" :: Text) ("nearest" :: Text)
     void $ jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)

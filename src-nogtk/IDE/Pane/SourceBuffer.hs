@@ -54,10 +54,10 @@ goToLocation _ _ = do
   return ()
 
 removeBuildLogRefs :: FilePath -> IDEAction
-removeBuildLogRefs file = removeBuildLogRefs' file (const $return ())
+removeBuildLogRefs file = removeBuildLogRefs' file (const $ return ())
 
 removeFileExtLogRefs :: Log -> String -> [LogRefType] -> IDEAction
-removeFileExtLogRefs log' fileExt types = removeFileExtLogRefs' log' fileExt types (const $return ())
+removeFileExtLogRefs log' fileExt types = removeFileExtLogRefs' log' fileExt types (const $ return ())
 
 removeTestLogRefs :: Log -> IDEAction
 removeTestLogRefs log' = removeTestLogRefs' log' (const $ return ())

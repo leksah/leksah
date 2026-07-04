@@ -34,7 +34,7 @@ import System.Process (readProcessWithExitCode)
 import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
         borderRadius, borderStyle, backgroundImage, vGradient,
-        paddingRight, marginBottom, marginTop, checked,
+        paddingRight, marginBottom, marginTop, marginRight, checked,
         userSelect, (|+), absolute, position, left, nil, paddingLeft, px,
         marginLeft, listStyleType, listStyleImage, middle, grey, color, rgb,
         nowrap, whiteSpace, inlineBlock, scroll, overflow, height, (?),
@@ -44,8 +44,8 @@ import qualified Clay (display, (#))
 import Clay.Stylesheet (key)
 
 import Reflex
-       (leftmost, listViewWithKey, switchHold, constDyn, ffilter, ffor, updated,
-        tag, current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
+       (leftmost, listViewWithKey, switchHold, constDyn, ffor, updated,
+        current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
         performEvent_, newTriggerEvent, tickLossyFromPostBuildTime, Dynamic,
         Event, never, fmapMaybe, tagPromptlyDyn, sample)
 import Reflex.Dom.Core
@@ -73,7 +73,7 @@ import IDE.Web.Widget.Flake
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.FileTree (fileTree)
 import IDE.Web.Widget.Tree
-       (treeItemDynAttr, treeItemDynAttr', treeSelect, treeSelect', treeItem,
+       (treeItemDynAttr', treeSelect, treeSelect', treeItem,
         treeItem')
 import IDE.Workspaces
        (workspaceRemoveProject, workspaceActivatePackage)
@@ -106,6 +106,13 @@ workspaceCss = do
     ".tree-item > img" ? do
         width (px 16)
         height (px 16)
+    -- B&W tree-item icons (Workspace/Terminals/Metadata nodes): 16px, centred
+    -- with the label, with a little gap before the text.
+    "img.tree-icon" ? do
+        width (px 16)
+        height (px 16)
+        verticalAlign middle
+        marginRight (px 4)
     ".tree-expand" ? do
         Clay.display inlineBlock
         whiteSpace nowrap
@@ -280,8 +287,8 @@ gitBranchNode dir = do
       Nothing -> return ()
       Just b  -> void . elClass "li" "branch" $
           treeSelect "workspace" (return never) $ do
-              elAttr "img" ("src" =: "/pics/ide_git.png") $ return ()
-              text (" " <> b)
+              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-git.svg") $ return ()
+              text b
               return (never :: Event t ())
 
 -- | The collapsed \"Flake\" tree node for the project directory @dir@, shown
@@ -299,8 +306,8 @@ flakeNode dir = do
   void . dyn $ ffor hasFlakeD $ \hasFlake -> when hasFlake . void $
     treeItem "flake" False
       (do (rowEl, _) <- treeSelect' "workspace" (return never) $ do
-              elAttr "img" ("src" =: "/pics/ide_nix.png") (return ())
-              text " Flake"
+              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/nix.svg") (return ())
+              text "Flake"
               runE <- runButton "nix repl .#"
               performEvent_ $ ffor runE $ \_ -> liftIO $
                   openNixWindow dir "nix repl" "nix repl .# --show-trace"
@@ -435,11 +442,11 @@ workspaceWidget ide activeFileD revealFileD = do
                     (runProject projectRefreshNix <$> projectD)
                 , constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (workspaceRemoveProject pKey)))
                 ]) $ do
-              elAttr "img" ("src" =: "/pics/ide_source_dependency.png") $ return ()
+              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
               dynText $ do
                 wsDir <- wsDirD
                 let fileOrDir = pjFileOrDir pKey
-                return . T.pack $ " " <> fromMaybe fileOrDir (stripPrefix wsDir fileOrDir)
+                return . T.pack $ fromMaybe fileOrDir (stripPrefix wsDir fileOrDir)
               return never) $
             el "ul" $ do
               let packagesD = M.fromList . map (\p -> (ipdPackageId p, p)) . pjPackages <$> projectD
@@ -472,8 +479,7 @@ workspaceWidget ide activeFileD revealFileD = do
                       , ("Open Package File",) . PackageFileEvents . (("" =:) . OpenFile False . ipdCabalFile) <$> packageD
                       ]) $ do
                     let isDebugD = S.member . (pKey,) <$> cabalFileD <*> debugPackagesD
-                    elDynAttr "img" (("src" =:) . (\f -> "/pics/ide_" <> f <> ".png") . bool "package" "debug" <$> isDebugD) $ return ()
-                    text " "
+                    elDynAttr "img" (("class" =: "tree-icon" <>) . ("src" =:) . (\f -> "/pics/tree-" <> f <> ".svg") . bool "package" "debug" <$> isDebugD) $ return ()
                     -- The package's cabal-file path (relative to the project)
                     -- is a tooltip, not an inline label — it was crowding the
                     -- row.
@@ -493,8 +499,8 @@ workspaceWidget ide activeFileD revealFileD = do
                   el "ul" $ do
                     componentsE <- treeItem "components" False
                       (treeSelect "workspace" (return never) $ do
-                          elAttr "img" ("src" =: "/pics/ide_component.png") $ return ()
-                          text " Components"
+                          elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
+                          text "Components"
                           return never) $
                       el "ul" $
                         fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey (M.fromList . zip [0::Int ..] . components <$> packageD) $ \_ componentD -> do
@@ -510,8 +516,8 @@ workspaceWidget ide activeFileD revealFileD = do
                               [ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Component" "" <$>
                                   (workspaceActivatePackage <$> projectD <*> (Just <$> packageD) <*> (Just <$> componentD))
                               ]) $ do
-                              elAttr "img" ("src" =: "/pics/ide_component.png") $ return ()
-                              dynText $ (" " <>) <$> componentD
+                              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
+                              dynText componentD
                               -- The repl (>) button brings the component's
                               -- ffcabal repl window up as a terminal tab; exe/
                               -- test/bench components also get a run (▶)
@@ -548,8 +554,8 @@ workspaceWidget ide activeFileD revealFileD = do
                     pkgDir <- sample (current pkgDirD)
                     gitBranchNode pkgDir
                     filesE <- treeItem' pkgRevealE "package-files" False (treeSelect "workspace" (return never) $ do
-                      elAttr "img" ("src" =: "/pics/ide_folder.png") $ return ()
-                      text " Files"
+                      elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
+                      text "Files"
                       return never) $
                         el "ul" $ do
                           sourceDirsD <- holdUniqDyn $ absolutSourceDirs <$> packageD
@@ -575,13 +581,13 @@ workspaceWidget ide activeFileD revealFileD = do
                 if hasRoot then return never else do
                   projRevealE <- revealUnderExcept (constDyn (pjDir pKey)) pkgDirsD revealFileD
                   treeItem' projRevealE "project-files" False (treeSelect "workspace" (return never) $ do
-                      elAttr "img" ("src" =: "/pics/ide_folder.png") $ return ()
+                      elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
                       -- A nix project's tree has no package "Files" nodes to
                       -- distinguish from, so plain "Files" reads better.
                       text $ case pKey of
-                        NixTool {}  -> " Files"
-                        MakeTool {} -> " Files"
-                        _           -> " Other Files"
+                        NixTool {}  -> "Files"
+                        MakeTool {} -> "Files"
+                        _           -> "Other Files"
                       return never) $
                         el "ul" $
                           (switchHold never =<<) . dyn $

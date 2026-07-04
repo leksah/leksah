@@ -29,7 +29,7 @@ import IDE.Core.State
         IDEEvent(..), StatusbarCompartment(..))
 import IDE.Gtk.State (postAsyncIDE)
 import Network.Socket
-       (close, Socket, socket, connect, AddrInfo(..), defaultHints,
+       (close, socket, connect, AddrInfo(..), defaultHints,
         AddrInfoFlag(..), SocketType(..), getAddrInfo, socketToHandle)
 import IDE.Utils.Tool (runProcess)
 import GHC.Conc(threadDelay)

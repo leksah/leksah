@@ -17,6 +17,7 @@ import Control.Monad (void)
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
 import Data.List (intercalate)
+import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
 
 import Foreign.C.String (CString, withCString, peekCString)
@@ -35,6 +36,7 @@ import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
+import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput (setActiveTerminalNotifier)
@@ -86,6 +88,25 @@ foreign export ccall "leksah_unsnap" leksah_unsnap :: CString -> IO ()
 
 leksah_unsnap :: CString -> IO ()
 leksah_unsnap cstr = peekCString cstr >>= requestUnsnapPane . T.pack
+
+-- | Called from Objective-C when the app menu's "Settings…" item is chosen;
+-- asks the reflex layer to show the Preferences pane (see 'showPrefsE').
+foreign export ccall "leksah_open_settings" leksah_open_settings :: IO ()
+
+leksah_open_settings :: IO ()
+leksah_open_settings = requestShowPreferences
+
+-- | The macOS app menu holds Settings… natively (see leksah-mac-menu.m), so
+-- strip the Preferences command from the shared menu model when building the
+-- Mac menu bar — filtering the same list that feeds both the item build and the
+-- command-index table ('commandsRef') keeps their tags aligned.
+stripPreferences :: [(Text, [MenuItem])] -> [(Text, [MenuItem])]
+stripPreferences = map (\(t, items) -> (t, go items))
+  where
+    go = concatMap keep
+    keep (MenuItem _ CommandShowPreferences) = []
+    keep (Submenu l subs)                    = [Submenu l (go subs)]
+    keep x                                   = [x]
 
 -- Commands flattened in menu order; a menu item's tag indexes into this.
 {-# NOINLINE commandsRef #-}
@@ -145,9 +166,12 @@ installMacMenu = do
   -- The Preferences colour swatches open the native NSColorPanel (the web
   -- colour input's popover mis-anchors in our transparent-titlebar window).
   setColorPickImpl $ \hex -> withCString (T.unpack hex) c_pickColor
+  -- Settings… is added natively to the app menu, so drop it from the shared
+  -- model here (both the tag table and the item build use this filtered list).
+  let macMenus = stripPreferences menus
   -- Tags index this list; it must be the leaf commands in the same depth-first
   -- order that 'addItems' emits them (so a chosen item's tag finds its command).
-  writeIORef commandsRef (concatMap (flattenCmds . snd) menus)
+  writeIORef commandsRef (concatMap (flattenCmds . snd) macMenus)
   c_menuBegin
   let loop _ [] = return ()
       loop tag ((title, items):rest) = do
@@ -175,7 +199,7 @@ installMacMenu = do
         tag' <- addItems tag subs
         c_menuPopSubmenu
         addItems tag' rs
-  loop (0 :: Int) menus
+  loop (0 :: Int) macMenus
   c_menuInstall
 
 -- | Configure the native window so the web toolbar can occupy the title bar

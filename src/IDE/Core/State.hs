@@ -111,7 +111,6 @@ import IDE.Utils.Utils as Reexported
 import Data.List (sortOn, nub)
 import Data.Map (Map)
 import qualified Data.Map as M (insert, fromListWith, lookup)
-import Data.Typeable(Typeable)
 import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Conduit (ConduitT)
 import qualified Data.Conduit as C
@@ -131,7 +130,7 @@ import System.Environment (getEnv)
 import Data.Void (Void)
 import Language.Javascript.JSaddle (runJSM, JSM)
 import Control.Lens
-       ((^.), view, over, traverse, (.~), _Just, Getter, to, _1, _2, _3,
+       ((^.), view, over, (.~), _Just, Getter, to, _1, _2, _3,
         Getting, Lens')
 import qualified Data.Foldable as F (Foldable(..))
 import Language.Haskell.HLint (Idea(..))
@@ -164,7 +163,6 @@ logMessage str tag =
 ----
 
 newtype IDEException = IDEException Text
-    deriving Typeable
 
 instance Show IDEException where
   show (IDEException str) = T.unpack str

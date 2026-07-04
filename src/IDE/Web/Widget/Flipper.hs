@@ -28,7 +28,7 @@ import Reflex
         ffilter, fmapMaybe)
 import Reflex.Dom.Core
        (el, elDynAttr', (=:), elDynAttr, divClass,
-        MonadWidget, HasDomEvent(..), EventName(..), FunctorMaybe(..))
+        MonadWidget, HasDomEvent(..), EventName(..))
 
 import IDE.Web.Theme (selectionColor)
 

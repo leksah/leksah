@@ -29,7 +29,6 @@ module IDE.Pane.Variables (
 
 import Prelude ()
 import Prelude.Compat
-import Data.Typeable (Typeable)
 import IDE.Core.State
        (IDEM, IDEAction, IDERef, liftIDE, sysMessage,
         MessageLevel(..), reflectIDE)
@@ -62,7 +61,6 @@ import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
-import Control.Applicative ((<$>))
 import GI.Gtk.Objects.ScrolledWindow
        (scrolledWindowSetPolicy, scrolledWindowSetShadowType,
         scrolledWindowNew, ScrolledWindow(..))
@@ -113,7 +111,7 @@ data IDEVariables    =   IDEVariables {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   variables       ::   ForestStore VarDescription
-} deriving Typeable
+}
 
 
 -- | The data for a single entry in the pane
@@ -125,7 +123,7 @@ data VarDescription = VarDescription {
 
 -- | The additional state used when recovering the pane
 data VariablesState  =   VariablesState
-    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+    deriving(Eq,Ord,Read,Show,Generic)
 
 instance ToJSON VariablesState
 instance FromJSON VariablesState

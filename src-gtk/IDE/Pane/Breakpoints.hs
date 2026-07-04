@@ -29,7 +29,6 @@ module IDE.Pane.Breakpoints (
 
 import Prelude ()
 import Prelude.Compat
-import Data.Typeable (Typeable)
 import IDE.Core.State
        (LogRef, IDEM, IDEAction, IDERef, LogRefType(..), refDescription,
         liftIDE, readIDE, breakpointRefs, reflectIDE, sysMessage,
@@ -94,12 +93,12 @@ data IDEBreakpoints    =   IDEBreakpoints {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   breakpoints     ::   ForestStore LogRef
-} deriving Typeable
+}
 
 
 -- | The additional state used when recovering the pane
 data BreakpointsState  =   BreakpointsState
-    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+    deriving(Eq,Ord,Read,Show,Generic)
 
 instance ToJSON BreakpointsState
 instance FromJSON BreakpointsState

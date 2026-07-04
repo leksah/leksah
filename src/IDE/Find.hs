@@ -38,7 +38,6 @@ module IDE.Find (
 
 import Prelude ()
 import Prelude.Compat
-import Control.Applicative (Applicative)
 import IDE.Core.State
        (MessageLevel(..), sysMessage, (?>>=), triggerEventIDE,
         reflectIDE, modifyIDE_, readIDE, WorkspaceAction, IDEAction, IDEM,
@@ -111,7 +110,7 @@ import GI.Gdk.Structs.EventKey
        (getEventKeyState, getEventKeyKeyval)
 import GI.Gdk.Functions (keyvalName)
 import GI.Gdk.Flags (ModifierType(..))
-import Data.GI.Base.GValue (IsGValue(..), toGValue)
+import Data.GI.Base.GValue (toGValue)
 import GI.Gtk.Structs.TreeIter (TreeIter(..))
 import GI.Gtk.Objects.Bin (Bin(..), binGetChild)
 import IDE.Core.Types
@@ -121,7 +120,7 @@ import GI.Gtk
        (CssProvider(..), pattern STYLE_PROVIDER_PRIORITY_APPLICATION,
         styleContextAddProvider, cssProviderLoadFromData,
         widgetGetStyleContext, cssProviderNew,
-        Widget, imageNewFromIconName)
+        imageNewFromIconName)
 import Graphics.UI.Frame.Panes (RecoverablePane(..))
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)

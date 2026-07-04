@@ -98,7 +98,7 @@ import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ask)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Applicative (Alternative(..), (<$>), (<*>))
+import Control.Applicative (Alternative(..))
 import Control.Lens ((%~), (.~))
 import Data.IORef (newIORef)
 import Data.Text (Text)

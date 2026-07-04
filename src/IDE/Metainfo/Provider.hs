@@ -51,7 +51,7 @@ import Control.Monad (void, filterM, foldM, when)
 import Control.Lens ((^.), (?~), (.~))
 import System.FilePath
 import System.Directory
-import Data.List (nub, (\\), find, partition, maximumBy, foldl')
+import Data.List (nub, (\\), find, partition, maximumBy)
 import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe, fromMaybe)
 import Distribution.Package hiding (mkDependency)
 import qualified Data.Set as Set
@@ -477,7 +477,7 @@ loadInfosForPackage dirPath pid = do
                     ("loadInfosForPackage: " <> packageIdentifierToString pid <> " Exception: " <> T.pack (show e))
                 return Nothing)
         else do
-            sysMessage Normal $"packageInfo not found for " <> packageIdentifierToString pid
+            sysMessage Normal $ "packageInfo not found for " <> packageIdentifierToString pid
             return Nothing
 
 injectSourceInPack :: Maybe FilePath -> PackageDescr -> PackageDescr

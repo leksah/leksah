@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -123,7 +124,6 @@ import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 import Data.Text (Text)
 import qualified Data.Text.IO as T (readFile)
-import Data.Monoid (Monoid(..))
 import GI.Gtk.Enums
        (IconSize(..), ToolbarStyle(..), PositionType(..), Orientation(..))
 import GI.Gtk.Objects.Menu (Menu(..), menuNew)

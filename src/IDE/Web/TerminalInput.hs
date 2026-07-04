@@ -25,6 +25,9 @@ module IDE.Web.TerminalInput
   , unregisterTerminalCC
   , registerTerminalSplits
   , unregisterTerminalSplits
+  , registerTerminalFocus
+  , unregisterTerminalFocus
+  , focusTerminalPane
   , selectSplitActiveTerminal
   , setActiveTerminal
   , setActiveTerminalNotifier
@@ -56,6 +59,14 @@ ccRegistry = unsafePerformIO (newIORef M.empty)
 {-# NOINLINE splitRegistry #-}
 splitRegistry :: IORef (M.Map Text (Int -> IO ()))
 splitRegistry = unsafePerformIO (newIORef M.empty)
+
+-- Focus callbacks of the control-mode terminals, by terminal (tab) id: bring
+-- the session's current window's active pane's xterm to keyboard focus (and the
+-- active-pane highlight), used when a repl is launched into the session so it
+-- becomes THE active pane even though the launch came from the tree/a button.
+{-# NOINLINE focusRegistry #-}
+focusRegistry :: IORef (M.Map Text (IO ()))
+focusRegistry = unsafePerformIO (newIORef M.empty)
 
 {-# NOINLINE activeRef #-}
 activeRef :: IORef (Maybe Text)
@@ -93,6 +104,22 @@ registerTerminalSplits n sel = atomicModifyIORef' splitRegistry $ \m -> (M.inser
 
 unregisterTerminalSplits :: Text -> IO ()
 unregisterTerminalSplits n = atomicModifyIORef' splitRegistry $ \m -> (M.delete n m, ())
+
+-- | Record CC terminal @n@'s focus callback (see 'focusRegistry').
+registerTerminalFocus :: Text -> IO () -> IO ()
+registerTerminalFocus n act = atomicModifyIORef' focusRegistry $ \m -> (M.insert n act m, ())
+
+unregisterTerminalFocus :: Text -> IO ()
+unregisterTerminalFocus n = atomicModifyIORef' focusRegistry $ \m -> (M.delete n m, ())
+
+-- | Ask CC terminal @n@ to focus its current active pane, if it is registered.
+-- A no-op when the session has no CC terminal (not open, or PTY-backed).
+focusTerminalPane :: Text -> IO ()
+focusTerminalPane n = do
+  reg <- readIORef focusRegistry
+  case M.lookup n reg of
+    Just act -> act `catch` \(_ :: SomeException) -> return ()
+    Nothing  -> return ()
 
 -- | Select the active terminal's Nth split (1-based, layout order) through
 -- its registered selector.  'False' = the active terminal has none (classic

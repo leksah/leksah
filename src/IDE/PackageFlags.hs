@@ -44,7 +44,7 @@ instance ToJSON FlagsFile
 instance FromJSON FlagsFile
 
 setFlags :: IDEPackage -> FlagsFile -> IDEPackage
-setFlags p@IDEPackage{..} FlagsFile{..} = p
+setFlags p FlagsFile{..} = p
   { ipdConfigFlags     = fromMaybe [] configFlags
   , ipdBuildFlags      = fromMaybe [] buildFlags
   , ipdTestFlags       = fromMaybe [] testFlags

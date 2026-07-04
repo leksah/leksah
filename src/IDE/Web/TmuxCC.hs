@@ -46,6 +46,7 @@ module IDE.Web.TmuxCC
   , startCCWith
   , stopCC
   , ccAlive
+  , ccStderrText
     -- * Commands and events
   , ccCommand
   , ccSend
@@ -54,6 +55,7 @@ module IDE.Web.TmuxCC
   , ccEventsBatch
   , coalesceOutputs
   , ccSendBytes
+  , ccSendBytesBig
   , ccResize
   , ccResizeWindow
   , ccClearWindowSize
@@ -71,7 +73,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent.STM
        (TChan, atomically, newTChanIO, readTChan, tryReadTChan, writeTChan)
 import Control.Exception (SomeException, catch, try)
-import Control.Monad (forM_, void, when)
+import Control.Monad (forM_, unless, void, when)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import Data.Char (isDigit)
@@ -87,7 +89,7 @@ import System.IO
         hSetBuffering, hSetBinaryMode)
 import qualified System.IO as IO
 import System.Process
-       (CreateProcess(..), ProcessHandle, StdStream(CreatePipe, Inherit),
+       (CreateProcess(..), ProcessHandle, StdStream(CreatePipe),
         createProcess, getProcessExitCode, proc, terminateProcess,
         waitForProcess)
 import System.Timeout (timeout)
@@ -156,7 +158,14 @@ data CC = CC
   , ccPending :: MVar [Pending]    -- ^ FIFO queue (append on send, pop on reply)
   , ccLock    :: MVar ()           -- ^ held around (enqueue, write command)
   , ccClosed  :: IORef Bool
+  , ccErr     :: IORef Text        -- ^ accumulated child stderr (ssh/tmux errors)
   }
+
+-- | The child's stderr captured so far — the ssh/tmux diagnostics that used to
+-- vanish into leksah's own log.  Read on 'EvExit' to show the user WHY a
+-- (remote) connection dropped instead of the tab silently disappearing.
+ccStderrText :: CC -> IO Text
+ccStderrText = readIORef . ccErr
 
 -- | Swallowed-exception / protocol-anomaly log: this module deliberately
 -- keeps the client alive through errors, but every ignored condition is at
@@ -182,13 +191,32 @@ startCCWith argv = do
     let (cmd, args) = case argv of
             (c : rest) -> (c, rest)
             []         -> ("tmux", ["-C"])   -- unreachable; keeps this total
-    (Just hin, Just hout, _, ph) <- createProcess
+    -- stderr is CAPTURED (not Inherit): ssh/tmux write connection failures
+    -- there ("Permission denied", "Could not resolve hostname", host-key
+    -- mismatches, …), and we surface those to the user on exit rather than
+    -- letting the tab vanish silently.
+    (Just hin, Just hout, Just herr, ph) <- createProcess
         (proc cmd args)
-        { std_in = CreatePipe, std_out = CreatePipe, std_err = Inherit }
+        { std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe }
     hSetBuffering hin LineBuffering
     hSetBinaryMode hout True
     hSetBuffering hout NoBuffering
+    errRef <- newIORef T.empty
     cc <- CC hin ph <$> newTChanIO <*> newMVar [] <*> newMVar () <*> newIORef False
+                    <*> pure errRef
+    -- Drain stderr into the buffer (kept bounded so a chatty child can't grow it
+    -- without limit); lenient decode since it's human text, not the protocol.
+    _ <- forkIO $ (do
+            hSetBinaryMode herr True
+            let pump = do
+                    eof <- IO.hIsEOF herr
+                    unless eof $ do
+                        chunk <- BS.hGetSome herr 4096
+                        unless (BS.null chunk) $ do
+                            modifyIORef' errRef $ \acc ->
+                                T.takeEnd 8192 (acc <> TE.decodeUtf8With TEE.lenientDecode chunk)
+                            pump
+            pump) `catch` \(_ :: SomeException) -> return ()
     _ <- forkIO $ reader cc hout
     return cc
 
@@ -503,10 +531,20 @@ ccSend cc cmd = do
 -- ('ccSend'): typing must neither wait behind output processing nor be
 -- reordered (submission order is the lock order of the calling thread).
 ccSendBytes :: CC -> PaneId -> BS.ByteString -> IO ()
-ccSendBytes cc pane = mapM_ send1 . chunks (128 :: Int)
+ccSendBytes = ccSendBytesChunked 128
+
+-- | 'ccSendBytes' with kilobyte chunks: for machine-to-machine streams (the
+-- jsaddle-terminal tunnel's RESULTS/SYNC frames), where per-command overhead
+-- dominates.  Verified against tmux 3.6a: ~12KB command lines work, ~49KB
+-- kills the client — 1024 bytes (~3KB lines) is comfortably inside.
+ccSendBytesBig :: CC -> PaneId -> BS.ByteString -> IO ()
+ccSendBytesBig = ccSendBytesChunked 1024
+
+ccSendBytesChunked :: Int -> CC -> PaneId -> BS.ByteString -> IO ()
+ccSendBytesChunked n cc pane = mapM_ send1 . chunks
   where
-    chunks n bs | BS.null bs = []
-                | otherwise  = let (a, b) = BS.splitAt n bs in a : chunks n b
+    chunks bs | BS.null bs = []
+              | otherwise  = let (a, b) = BS.splitAt n bs in a : chunks b
     send1 chunk = ccSend cc $
         "send-keys -t " <> pane <> " -H " <>
         T.unwords [ T.pack (pad (showHex w "")) | w <- BS.unpack chunk ]

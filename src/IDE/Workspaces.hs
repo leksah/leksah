@@ -35,7 +35,6 @@ module IDE.Workspaces (
 import Prelude ()
 import Prelude.Compat
 
-import Control.Applicative ((<$>))
 import Control.Concurrent (putMVar, takeMVar)
 import Control.Exception (SomeException)
 import Control.Lens ((^.), (.~), (%~), (?~))

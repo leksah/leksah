@@ -60,11 +60,11 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64 as B64 (encode)
-import Data.List (find, intercalate, stripPrefix)
+import Data.List (find, intercalate)
 import Data.Map (Map)
 import qualified Data.Map as M
        (empty, singleton, fromListWith, unionWith, toAscList, toList, map)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines,
@@ -72,7 +72,8 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Text.Read (readMaybe)
 
-import Clay (height, width, pct, (?), (-:), Css)
+import Clay (height, width, pct, (?), (-:), Css, none, None(..))
+import qualified Clay (display)
 
 import Language.Javascript.JSaddle
        (jsg, js, jss, js0, js1, js2, js3, fun, new, valToText, valToNumber,
@@ -94,7 +95,7 @@ import Reflex.Dom.Core
 import System.Directory
        (findExecutable, getHomeDirectory,
         createDirectoryIfMissing, doesFileExist)
-import System.Environment (lookupEnv, getEnvironment)
+import System.Environment (getEnvironment)
 import System.FilePath ((</>), takeDirectory)
 import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
@@ -127,6 +128,9 @@ terminalCss = do
     -- CC pane dividers: the whole tmux separator gutter is the grab strip for
     -- drag-to-resize; the visible 1px line (.divider-line) sits centered in it
     -- and brightens on hover/drag.  Geometry is inline (per-layout).
+    -- Above a tunnel iframe (z-index 5): the grab strip and its line must sit
+    -- on top of an adjacent pane's iframe, not under it.
+    ".terminal-cc-divider" ? ("z-index" -: "10")
     ".terminal-cc-divider.vert" ? ("cursor" -: "col-resize")
     ".terminal-cc-divider.horiz" ? ("cursor" -: "row-resize")
     ".terminal-cc-divider .divider-line" ?
@@ -135,10 +139,40 @@ terminalCss = do
         ("background" -: "rgba(190,190,190,0.9)")
     ".terminal-cc-divider.dragging .divider-line" ?
         ("background" -: "rgba(190,190,190,0.9)")
-    -- The active pane's marker: a transparent box exactly over the pane with
-    -- a mid-grey shadow around it (shown/hidden by applyPaneHighlight).
-    ".terminal-cc-hl" ?
-        ("box-shadow" -: "0 0 64px rgba(128,128,128,0.9)")
+    -- The active pane's position marker: an invisible box exactly over the pane
+    -- (shown/hidden by applyPaneHighlight).  It carries no shadow itself — it is
+    -- clipped inside the terminal.  Instead 'leksahUpdatePaneHl' copies the
+    -- visible marker's screen rect onto the single top-level '.leksah-pane-hl'
+    -- overlay, which lives at <body> (outside the terminal's overflow) so its
+    -- shadow can spill onto the side/bottom bars, and tracks only the ACTIVE pane
+    -- (so a split shows the shadow on the active half only).
+    -- Clip wrapper: a fixed, overflow:hidden box whose top JS pins to the bottom
+    -- of the tall/wide0 tab-button rows, so the overlay's shadow never rises above
+    -- them (or over the toolbar).  The overlay itself is absolutely positioned
+    -- inside it (viewport coords minus the wrapper's top offset).
+    ".leksah-pane-hl-clip" ? do
+        "position" -: "fixed"
+        "overflow" -: "hidden"
+        "pointer-events" -: "none"
+        "z-index" -: "25"
+    ".leksah-pane-hl" ? do
+        "position" -: "absolute"
+        "pointer-events" -: "none"
+        "box-shadow" -: "0 0 64px rgba(128,128,128,0.9)"
+    -- A pane owned by a jsaddle-terminal app (see TerminalCC's tunnel): the
+    -- iframe overlays the pane and the xterm underneath is hidden (it keeps
+    -- consuming any non-frame output, so it is current again the moment the
+    -- app exits and the tunnel closes).
+    ".terminal-cc-pane-tunnel > .terminal" ? Clay.display none
+    ".terminal-cc-iframe" ? do
+        "position" -: "absolute"
+        "left" -: "0"
+        "top" -: "0"
+        "width" -: "100%"
+        "height" -: "100%"
+        "border" -: "0"
+        "background" -: "rgb(16,16,16)"
+        "z-index" -: "5"
 
 -- | A terminal pane.  The 'Int' is the terminal's id; it maps to a tmux
 -- session named @leksah-N@ so the shell survives a leksah restart (see

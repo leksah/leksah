@@ -2,6 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+-- reflex-dom deprecates 'textInput' in favour of the lower-level
+-- 'inputElement'.  The terminal-rename field deliberately uses 'textInput'
+-- (its value/keydown/hasFocus accessors are exactly what the commit/cancel
+-- logic needs); migrating this focus-sensitive field carries regression risk
+-- for no behavioural gain, so silence the deprecation here.
+{-# OPTIONS_GHC -Wno-deprecations #-}
 -- | The \"Terminals\" tree pane (lives on the side, like the Workspace and
 -- Metadata trees).  It mirrors the tmux hierarchy backing the terminals:
 --
@@ -46,13 +52,13 @@ import Clay
 import Clay.Stylesheet (key)
 
 import Reflex
-       (foldDyn, holdUniqDyn, listViewWithKey, leftmost, fmapMaybe, ffor, ffilter, holdDyn,
+       (holdUniqDyn, listViewWithKey, leftmost, fmapMaybe, ffor, ffilter, holdDyn,
         switchHold, switchDyn, never, constDyn, tagPromptlyDyn, newTriggerEvent,
         performEvent_, getPostBuild, tickLossyFromPostBuildTime, updated,
         Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, el, elClass, elClass', elAttr', elDynAttr', dyn,
-        dynText, text, domEvent, EventName(..), (=:), textInput, attributes,
+       (MonadWidget, divClass, el, elClass, elClass', elAttr, elAttr', elDynAttr', dyn,
+        blank, dynText, text, domEvent, EventName(..), (=:), textInput, attributes,
         widgetHold, textInputConfig_initialValue, _textInput_value,
         _textInput_keydown, _textInput_hasFocus)
 import Language.Javascript.JSaddle (liftJSM, jsg, js1, fun, eval)
@@ -82,6 +88,10 @@ closeOverlay = do
 
 terminalsCss :: Css
 terminalsCss = do
+    -- Top-level tree uls sit flush with the pane's left edge (like the Workspace
+    -- tree's ul.projects); only nested uls get the global 20px indent.
+    ".terminals > ul" ?
+        ("margin-left" -: "0px")
     ".terminals" ? do
         height (pct 100)
         overflow auto
@@ -176,6 +186,9 @@ terminalsCss = do
         "flex" -: "1"
         "min-width" -: "0"
         "overflow-wrap" -: "anywhere"
+        -- Match the 2px left inset the Workspace tree's .tree-item rows have, so
+        -- the row icons line up across all three trees.
+        "padding-left" -: "2px"
     -- The expander and the expanded children don't take part in the wrapping:
     -- the triangle keeps its size; the children occupy their own line.
     ".terminals .tree-expand" ? ("flex" -: "0 0 auto")
@@ -266,10 +279,16 @@ terminalsWidget activeD attnD remoteHostsD hostTreesD = divClass "terminals leks
                     , fmapMaybe (\m -> listToMaybe (M.elems m)
                                         >>= either (const Nothing) Just) remoteE ]
 
+-- | A leading B&W node icon (a @/pics/*.svg@) for a Terminals-tree row.
+termIcon :: MonadWidget t m => Text -> m ()
+termIcon name = elAttr "img" ("class" =: "tree-icon" <> "src" =: ("/pics/" <> name)) blank
+
 -- | A top-level host row: bold label plus the "+" new-session glyph.
 hostRow :: MonadWidget t m => Text -> TerminalsEvents -> Text -> m (Event t NodeEvent)
 hostRow label newEv tip = do
-    elClass "span" "terminals-label terminals-host-label" $ text label
+    elClass "span" "terminals-label terminals-host-label" $ do
+        termIcon "tree-host-local.svg"
+        text label
     newE <- actionBtn "+" tip
     pure $ Right newEv <$ newE
 
@@ -286,9 +305,14 @@ remoteHostNode host treeD = do
     itemsD <- holdUniqDyn (snd <$> treeD)
     treeItem "terminals-host" True
         (do let lblD = ffor reachD $ \r -> host <> (if r then "" else "  (unreachable)")
-            elClass "span" "terminals-label terminals-host-label" $ dynText lblD
+            -- Clicking the server row brings up its one per-server control-mode
+            -- connection (its 'leksah' session, created if missing).
+            (lbl, _) <- elClass' "span" "terminals-label terminals-host-label leksah-nav-item" $ do
+                termIcon "tree-host-remote.svg"
+                dynText lblD
             newE <- actionBtn "+" ("New session on " <> host)
-            pure $ Right (NewRemoteTerminal host) <$ newE)
+            pure $ leftmost [ Right (NewRemoteTerminal host) <$ newE
+                            , Right (SelectRemoteHost host)  <$ domEvent Click lbl ])
         (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\sid vD ->
             remoteSessionNode host sid vD))
 
@@ -297,7 +321,8 @@ remoteSessionNode
   => Text -> Text -> Dynamic t (Text, [TmuxWindow]) -> m (Event t NodeEvent)
 remoteSessionNode host sid vD =
   treeItem "terminals-session" True
-    (do (lbl, _) <- elDynAttr' "span" (constDyn ("class" =: "terminals-label leksah-nav-item")) $
+    (do (lbl, _) <- elDynAttr' "span" (constDyn ("class" =: "terminals-label leksah-nav-item")) $ do
+            termIcon "tree-session.svg"
             dynText ((\(nm, ws) -> nm <> sessionAlert ws) <$> vD)
         -- The event carries the session's CURRENT name too, so the handler
         -- can match a tab keyed by name (cc-connect HOST#NAME).
@@ -315,7 +340,9 @@ remoteWindowsTree host sid nameD windowsD =
         treeItem "terminals-window" False
           (do let attrs = ffor wD $ \w ->
                     "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
-              (e, _) <- elDynAttr' "span" attrs $ dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
+              (e, _) <- elDynAttr' "span" attrs $ do
+                    termIcon "tree-window.svg"
+                    dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
               pure $ (\nm -> Right (SelectRemoteTerminalWindow host sid nm widx))
                        <$> tagPromptlyDyn nameD (domEvent Click e))
           (el "ul" $ remotePanesTree host sid nameD widx (twPanes <$> wD)))
@@ -329,7 +356,9 @@ remotePanesTree host sid nameD widx panesD =
       (\pidx pD -> el "li" $ do
         let attrs = ffor pD $ \p ->
               "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
-        (e, _) <- elDynAttr' "span" attrs $ dynText (tpLabel <$> pD)
+        (e, _) <- elDynAttr' "span" attrs $ do
+              termIcon "tree-pane.svg"
+              dynText (tpLabel <$> pD)
         pure $ (\nm -> Right (SelectRemoteTerminalPane host sid nm widx pidx))
                  <$> tagPromptlyDyn nameD (domEvent Click e))
 
@@ -384,7 +413,9 @@ sessionRow activeD attnD n vD = do
       rawNameD     = fst <$> vD
   -- Label the session by its tmux name (from the poll, so a rename shows up),
   -- while the row is keyed by the stable session id @n@.
-  (labelEl, _) <- elDynAttr' "span" labelAttrs $ dynText displayNameD
+  (labelEl, _) <- elDynAttr' "span" labelAttrs $ do
+      termIcon "tree-session.svg"
+      dynText displayNameD
   renE <- renameControl rawNameD (renameTmuxSession n)
   newWinE <- actionBtn "+" "New window in this session"
   killE <- confirmClose
@@ -404,7 +435,9 @@ windowsTree n windowsD =
         treeItem "terminals-window" False
           (do let attrs = ffor wD $ \w ->
                     "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
-              (e, _) <- elDynAttr' "span" attrs $ dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
+              (e, _) <- elDynAttr' "span" attrs $ do
+                    termIcon "tree-window.svg"
+                    dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
               renE <- renameControl (windowRawName <$> wD) (renameTmuxWindow n widx)
               killE <- confirmClose
               return $ leftmost [ Right (SelectTerminalWindow n widx) <$ domEvent Click e
@@ -422,7 +455,9 @@ panesTree n widx panesD =
       (\pidx pD -> el "li" $ do
         let attrs = ffor pD $ \p ->
               "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
-        (e, _) <- elDynAttr' "span" attrs $ dynText (tpLabel <$> pD)
+        (e, _) <- elDynAttr' "span" attrs $ do
+              termIcon "tree-pane.svg"
+              dynText (tpLabel <$> pD)
         zoomE  <- actionBtn "⤢" "Zoom / unzoom this pane"
         breakE <- actionBtn "↗" "Break this pane out into its own window"
         killE <- confirmClose

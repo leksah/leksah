@@ -97,7 +97,7 @@ import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
 import Distribution.Verbosity
-import Distribution.Utils.ShortText (toShortText, fromShortText)
+import Distribution.Utils.ShortText (fromShortText)
 
 import System.FilePath
 import System.Directory
@@ -108,7 +108,6 @@ import qualified Data.Set as S (fromList)
 import Data.Either (isRight)
 import Data.Map (Map)
 import System.Exit (ExitCode(..))
-import Control.Applicative ((<$>), (<*>))
 import qualified Data.Conduit as C (ZipSink(..), getZipSink)
 import qualified Data.Conduit.List as CL (fold, consume)
 import Data.Conduit (ConduitT)
@@ -157,9 +156,9 @@ import IDE.Utils.FileUtils
         getConfigDir, nixShellFile, getConfigFilePathForLoad)
 import IDE.LogRef
        (logIdleOutput, logOutputForBuild, logOutputDefault, logOutput)
-import Distribution.ModuleName (ModuleName(..))
+import Distribution.ModuleName (ModuleName)
 import Data.List
-       (intercalate, nub, foldl', delete)
+       (intercalate, nub, delete)
 import IDE.Utils.Tool
        (toolProcess, ToolOutput(..), newGhci, ToolState(..),
         ProcessHandle, executeGhciCommand, interruptTool,
@@ -199,10 +198,6 @@ import System.Process.Internals
 #else
 import IDE.Utils.Tool (terminateProcess)
 #endif
-import Distribution.Types.ForeignLib (foreignLibName)
-import Distribution.Types.UnqualComponentName
-       (UnqualComponentName, mkUnqualComponentName,
-        unUnqualComponentName)
 #if MIN_VERSION_Cabal(3,8,0)
 import Distribution.Simple.PackageDescription
        (readGenericPackageDescription)
@@ -212,11 +207,10 @@ import Distribution.PackageDescription.Parsec
        (readGenericPackageDescription)
 #endif
 #if MIN_VERSION_Cabal(3,14,0)
-import Distribution.Utils.Path (makeSymbolicPath)
+import Distribution.Utils.Path (makeSymbolicPath, SymbolicPathX)
 #endif
 import Distribution.Pretty (prettyShow)
 import qualified System.FilePath.Glob as Glob (globDir, compile)
-import Distribution.Types.LibraryName (libraryNameString)
 
 printf :: PrintfType r => Text -> r
 printf = S.printf . T.unpack
@@ -386,7 +380,7 @@ getActiveComponent project package = do
         else return Nothing
 
 withToolCommand :: MonadIDE m => Project -> CompilerFlavor -> Maybe (FilePath, [Text]) -> ((FilePath, [Text], Maybe (Map String String)) -> IDEAction) -> m ()
-withToolCommand project compiler Nothing continuation = ideMessage High $ "withToolCommand failed for " <> T.pack (show $ pjKey project)
+withToolCommand project _compiler Nothing _continuation = ideMessage High $ "withToolCommand failed for " <> T.pack (show $ pjKey project)
 withToolCommand project compiler (Just (cmd, args)) continuation = do
     liftIO $ debugM "leksah" $ "withToolCommand " <> show (project, compiler, cmd, args)
     prefs' <- readIDE prefs
@@ -410,12 +404,15 @@ withToolCommand project compiler (Just (cmd, args)) continuation = do
 
 -- Cabal 3.14 moved the cabal-file argument to a SymbolicPath and added a
 -- working-directory argument; older Cabal takes a plain FilePath.
+readGPD :: Verbosity -> FilePath -> IO GenericPackageDescription
 #if MIN_VERSION_Cabal(3,14,0)
 readGPD v f = readGenericPackageDescription v Nothing (makeSymbolicPath f)
 -- main-module / exe paths became SymbolicPaths in Cabal 3.14.
+mainPath :: SymbolicPathX allowAbsolute from to -> FilePath
 mainPath p = getSymbolicPath p
 #else
 readGPD v f = readGenericPackageDescription v f
+mainPath :: FilePath -> FilePath
 mainPath p = p
 #endif
 
@@ -625,7 +622,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
     reloadDebug restart (package:rest) = do
         ideR  <- liftIDE ask
         lookupDebugState (pjKey project, ipdCabalFile package) >>= \case
-            Just debug@DebugState{..} | restart ->
+            Just debug | restart ->
                 (`runDebug` debug) . executeDebugCommand ":quit" $ do
                     logOutputDefault
                     lift $ reloadDebug restart (package:rest)
@@ -845,6 +842,9 @@ packageRun' removeGhcjsFlagIfPresent = do
                         CustomTool {} -> do
                             ideMessage High "Unable to run package in a custom project"
                             return ()
+                        _ -> do
+                            ideMessage High "Unable to run package in this project type"
+                            return ()
                 Just debug ->
                     -- TODO check debug package matches active package
                     runDebug (do
@@ -973,7 +973,6 @@ packageRunComponent :: Component -> Bool -> Bool -> (Project, IDEPackage) -> (Bo
 packageRunComponent (CLib _) _ _ _ _ = error "packageRunComponent"
 packageRunComponent component backgroundBuild jumpToWarnings (project, package) continuation = do
     let (_cType, name, command) = case component of
-                    CLib _ -> error "packageRunComponent"
                     CExe exe -> ("x" :: String, exeName exe, "run")
                     CTest test -> ("t", testName test, "test")
                     CBench bench -> ("b", benchmarkName bench, "bench")
@@ -1057,8 +1056,8 @@ packageOpenDoc = do
             mvar <- liftIO newEmptyMVar
             runExternalTool' "" "stack" ["path"] dir Nothing $ do
                 output <- CL.consume
-                liftIO . putMVar mvar $ head $ mapMaybe getDistOutput output
-            liftIO $ Just <$> takeMVar mvar
+                liftIO . putMVar mvar $ listToMaybe $ mapMaybe getDistOutput output
+            liftIO $ takeMVar mvar
         CabalTool {} -> do
             (buildDir, _, _) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) (cabalBuildDir Nothing)
             return . Just $ buildDir </> T.unpack pkgId
@@ -1482,7 +1481,7 @@ ideProjectFromKey key = do
                 case key of
                     CabalTool (CabalProject filePath) -> extractCabalPackageList <$> T.readFile filePath
                     StackTool (StackProject filePath) -> extractStackPackageList <$> T.readFile filePath
-                    CustomTool p -> return []
+                    CustomTool _ -> return []
                     -- A flake project has no cabal packages; its tree shows the
                     -- flake outputs + files instead (see IDE.Web.Widget.Flake).
                     NixTool _ -> return []

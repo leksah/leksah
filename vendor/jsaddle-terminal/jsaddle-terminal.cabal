@@ -1,0 +1,62 @@
+cabal-version:      3.4
+name:               jsaddle-terminal
+version:            0.1.0.0
+license:            MIT
+license-file:       LICENSE
+author:             Hamish Mackenzie
+maintainer:         Hamish.K.Mackenzie@gmail.com
+synopsis:           Run jsaddle apps in a tmux pane, tunnelling over stdin/stdout
+description:
+  A jsaddle transport for executables that run inside a tmux pane.  When a
+  watching IDE (leksah) answers the handshake, jsaddle Batch/Results JSON is
+  tunnelled over the process's own stdin/stdout — framed as OSC 5799 escape
+  sequences on stdout (delivered to the IDE via tmux control-mode %output)
+  and RS-prefixed lines on stdin (injected via tmux send-keys -H) — and the
+  UI renders in an iframe hosted by the IDE.  No sockets are opened on the
+  app's machine, so it works over ssh-reached tmux servers too.  When nobody
+  answers, it falls back to jsaddle-warp on a free port and prints a
+  clickable URL.
+build-type:         Simple
+
+library
+  hs-source-dirs:     src
+  exposed-modules:    Language.Javascript.JSaddle.Terminal
+                      Language.Javascript.JSaddle.Terminal.Protocol
+                      Language.Javascript.JSaddle.Terminal.Bootstrap
+  build-depends:      base >=4.16 && <5
+                    , aeson
+                    , base64-bytestring
+                    , bytestring
+                    , jsaddle >=0.9.4 && <0.10
+                    , jsaddle-warp >=0.9.4 && <0.10
+                    , stm
+                    , text
+                    , unix
+                    , warp
+                    , websockets
+  ghc-options:        -Wall
+  default-language:   Haskell2010
+
+executable jsaddle-terminal-demo
+  main-is:            Main.hs
+  hs-source-dirs:     demo
+  build-depends:      base
+                    , containers
+                    , ghcjs-dom
+                    , jsaddle
+                    , jsaddle-terminal
+                    , reflex
+                    , reflex-dom-core
+                    , text
+  ghc-options:        -threaded -Wall
+  default-language:   Haskell2010
+
+test-suite jsaddle-terminal-test
+  type:               exitcode-stdio-1.0
+  main-is:            Test.hs
+  hs-source-dirs:     test
+  build-depends:      base
+                    , bytestring
+                    , jsaddle-terminal
+  ghc-options:        -Wall
+  default-language:   Haskell2010

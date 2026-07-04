@@ -53,7 +53,7 @@ module IDE.LogRef (
 import Prelude ()
 import Prelude.Compat
 
-import Control.Applicative ((<$>), (<|>))
+import Control.Applicative ((<|>))
 import Control.DeepSeq (NFData(..))
 import Control.Exception (evaluate)
 import Control.Lens ((.~), (%~), Getting, to)

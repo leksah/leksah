@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE LambdaCase #-}
+-- 'stateLabel' needs a catch-all for the gtk build's extra IDEState constructor
+-- (IsCompleting), which the nogtk stub lacks — so that same catch-all reads as
+-- redundant in the nogtk build.  Silence the (nogtk-only) overlap here.
+{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module IDE.Web.Widget.Statusbar
   ( statusbarCss
   , statusbarWidget
@@ -50,6 +54,9 @@ stateLabel = \case
   IsStartingUp   -> "Starting up…"
   IsRunning      -> "Ready"
   IsShuttingDown -> "Shutting down…"
+  -- IDEState has an extra constructor in the gtk front end (IsCompleting) but
+  -- not in the nogtk stub, so this fallthrough is required for exhaustiveness
+  -- there while looking redundant here — see the -Wno-overlapping-patterns note.
   _              -> ""
 
 statusbarWidget

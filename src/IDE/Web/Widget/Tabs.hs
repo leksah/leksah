@@ -23,8 +23,8 @@ import Data.Tuple (swap)
 
 import Clay
        (nowrap, whiteSpace, marginTop, scroll, overflow, white,
-        color, fontSize, borderStyle, textDecoration, middle, vGradient,
-        backgroundImage, borderRadius, padding, hover, (#), background,
+        color, fontSize, borderStyle, textDecoration, middle,
+        borderRadius, padding, hover, (#), background,
         margin, px, height, cursor, cursorDefault, (?), (-:), Css,
         Color(..), VerticalAlign(..), Auto(..), Hidden(..), None(..), Cursor(..))
 
@@ -33,7 +33,7 @@ import Reflex
         mergeMap, leftmost, attachWith, current, ffilter, fmapMaybe,
         constDyn, Dynamic)
 import Reflex.Dom.Core
-       (elDynAttr', elDynAttr, elAttr, blank, MonadWidget, (=:),
+       (elDynAttr', elAttr, blank, MonadWidget, (=:),
         divClass, Event, domEvent, EventName(..))
 
 import IDE.Web.Theme (selectionColor)
@@ -41,8 +41,8 @@ import IDE.Web.Theme (selectionColor)
 tabsCss :: Css
 tabsCss = do
     ".tab-buttons" ? do
-        backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
-        height (px 40)
+        background (Rgba 0 0 0 1.0)
+        height (px 20)
         overflow scroll
         -- A flex row so tabs can be ordered (via the CSS `order` property) by
         -- flipper/MRU position — the active tab is order 0, i.e. leftmost.
@@ -50,6 +50,32 @@ tabsCss = do
         -- inline layout did); the default (stretch/center) sat them too low.
         "display" -: "flex"
         "align-items" -: "flex-start"
+        "position" -: "relative"
+    -- A white line along the bottom of the tab-button row, separating the tabs
+    -- from the content below.  The active tab punches a gap in it (see the
+    -- .tab-wrap.selected::after cover) so it reads as connected to its pane.
+    ".tab-buttons::after" ? do
+        "content" -: "''"
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "bottom" -: "0"
+        "height" -: "1px"
+        "background" -: "rgb(128,128,128)"
+        "pointer-events" -: "none"
+    -- The bottom bar's tab row also gets a line on TOP, separating it from the
+    -- editor above.  (Side/editor rows sit under the toolbar and don't need one;
+    -- and the wide1 top divider is hidden in bottom-bar auto-hide, so the tab
+    -- row carries its own top line here.)
+    ".tab-buttons.area-wide1::before" ? do
+        "content" -: "''"
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "top" -: "0"
+        "height" -: "1px"
+        "background" -: "rgb(128,128,128)"
+        "pointer-events" -: "none"
     -- A blank item the width of the side pane, kept last, so when the auto-hide
     -- side pane slides over the content the part that's covered is this spacer
     -- rather than a real tab.
@@ -66,10 +92,24 @@ tabsCss = do
         padding (px 0) (px 0) (px 2) (px 0)
         whiteSpace nowrap
         cursor cursorDefault
+        "position" -: "relative"
     ".tab-buttons .tab-wrap" # hover ?
         background (Rgba 61 96 150 1.0)
     ".tab-buttons .tab-wrap.selected" ?
         background selectionColor
+    -- The active tab's gap in the bottom line: a background-coloured cover at the
+    -- row bottom (the row is a fixed 20px and tabs are top-aligned) spanning the
+    -- tab's width, painted on top of the line (z-index).
+    ".tab-buttons .tab-wrap.selected::after" ? do
+        "content" -: "''"
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "top" -: "18px"
+        "height" -: "3px"
+        "background" -: "rgb(16,16,16)"
+        "z-index" -: "1"
+        "pointer-events" -: "none"
     ".tab-buttons button" ? do
         verticalAlign middle
         padding (px 0) (px 10) (px 0) (px 2)
@@ -80,6 +120,12 @@ tabsCss = do
         background (Rgba 0 0 0 0.0)
         color white
         cursor cursorDefault
+    -- Leading tree icon inside a side-pane tab button (Workspace/Terminals/…):
+    -- white B&W SVG sized to the 20px row, nudged to sit centred with the label.
+    ".tab-buttons button img.tab-icon" ? do
+        height (px 14)
+        verticalAlign middle
+        "margin" -: "0 4px 2px 2px"
     ".tab-buttons .tab-close" ? do
         verticalAlign middle
         color white
@@ -118,13 +164,20 @@ tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecen
                           <> (M.fromList . map (swap . second fst) . M.toList <$> openTabE)
       -- When a *visible* tab is closed, point its area at a sibling tab (if any)
       -- so the area doesn't go blank.  Closing a background tab changes nothing.
+      -- The sibling is chosen in MRU order (recentTabs) — the closed tab is at the
+      -- MRU front, so the first surviving sibling in its area is the *second* entry
+      -- in that area's tab-button list (the ⌘1 button), i.e. the one used most
+      -- recently before it.  (Ordering by the tab Map's keys instead would jump to
+      -- an arbitrary sibling.)
       reselectE = attachWith
-        (\(vis, tabs) ks -> M.fromList
+        (\(vis, tabs, rt) ks -> M.fromList
             [ (gridArea, sib)
             | (gridArea, k) <- M.toList vis
             , k `elem` ks
-            , sib <- take 1 [ k' | (k', (a, _)) <- M.toList tabs, a == gridArea, k' `notElem` ks ] ])
-        (current ((,) <$> visibleTabs <*> tabsD)) closeTabE
+            , sib <- take 1 [ k' | (_, k') <- rt
+                                 , Just (a, _) <- [M.lookup k' tabs]
+                                 , a == gridArea, k' `notElem` ks ] ])
+        (current ((,,) <$> visibleTabs <*> tabsD <*> recentTabs)) closeTabE
   visibleTabs <- foldDyn (<>) initialVisibleTabs selectOrOpenTab
   tabsD <- foldDyn ($) initialTabs $ leftmost
     [ (<>) <$> openTabE

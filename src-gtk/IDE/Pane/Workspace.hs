@@ -39,16 +39,14 @@ import Data.Maybe
        (fromJust, fromMaybe, maybeToList, isJust, isNothing)
 import Control.Monad (forM, void, when)
 import Data.Foldable (forM_, for_)
-import Data.Typeable (Typeable)
 import Control.Lens ((<&>), (^.), to)
 import IDE.Core.State
        (isInterpreting, pjDir, catchIDE,
-        MessageLevel(..), ipdPackageId, workspace, readIDE,
+        MessageLevel(..), workspace, readIDE,
         IDEAction, ideMessage, reflectIDE, reifyIDE, IDEM, IDEPackage,
         wsFile, prefs, wsProjects)
 import IDE.Pane.SourceBuffer
        (selectSourceBuf, goToSourceDefinition')
-import Control.Applicative ((<$>))
 import System.FilePath
        (isDrive, (<.>), (</>), takeFileName, dropFileName,
         addTrailingPathSeparator, takeDirectory, takeExtension,
@@ -120,7 +118,7 @@ import GI.Gtk.Objects.TreeViewColumn
        (treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnNew)
 import GI.Gtk.Enums
-       (PackType(..), Orientation(..), MessageType(..),
+       (PackType(..), Orientation(..),
         PolicyType(..), ShadowType(..), TreeViewColumnSizing(..))
 import GI.Gtk.Objects.CellRendererPixbuf
        (setCellRendererPixbufStockId, cellRendererPixbufNew)
@@ -142,7 +140,6 @@ import GI.Gtk.Objects.LinkButton
        (onLinkButtonActivateLink, linkButtonNewWithLabel, LinkButton(..))
 import GI.Gtk (widgetQueueDraw, treeViewExpandRow)
 import Criterion.Measurement (getTime, secs)
-import Data.String (IsString(..))
 import Data.Word (Word16)
 import qualified GI.Gdk as Gdk (Color(..))
 import GI.Gdk
@@ -228,7 +225,7 @@ toMarkup record (mbProject, mbPackage) =
                     Just dir -> liftIO $
                         (findRepoMaybe dir >>= \case
                             Nothing -> return "No Git repository"
-                            Just repoPath ->
+                            Just _repoPath ->
                                 -- TODO look in .git/HEAD or run `git branch --show-current`
                                 return "TODO git support")
                          `catch` (\(_ :: SomeException) -> return "No Git branch")
@@ -395,13 +392,13 @@ data WorkspacePane        =   WorkspacePane {
 ,   noWsText        ::   LinkButton
 ,   treeView        ::   TreeView
 ,   recordStore     ::   ForestStore WorkspaceRecord
-} deriving Typeable
+}
 
 
 -- | The additional state used when recovering the pane
 --   (none)
 data WorkspaceState = WorkspaceState
-    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+    deriving(Eq,Ord,Read,Show,Generic)
 
 instance ToJSON WorkspaceState
 instance FromJSON WorkspaceState

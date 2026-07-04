@@ -29,7 +29,6 @@ module IDE.Pane.Errors (
 
 import Prelude ()
 import Prelude.Compat
-import Data.Typeable (Typeable)
 import IDE.Core.State
        (LogRef(..), IDEM, LogRefType(..), IDEAction, IDERef,
         SrcSpan(..), reflectIDE, liftIDE, logRefFilePath, readIDE,
@@ -127,7 +126,7 @@ data ErrorsPane      =   ErrorsPane {
 ,   suggestionsButton :: ToggleButton
 ,   testFailsButton   :: ToggleButton
 ,   updateButtons     :: MVar ()
-} deriving Typeable
+}
 
 
 -- | The data for a single row in the Errors pane
@@ -144,7 +143,7 @@ data ErrorsState = ErrorsState
     , showSuggestions :: Bool
     , showTestFails :: Bool
     }
-   deriving (Eq,Ord,Read,Show,Typeable,Generic)
+   deriving (Eq,Ord,Read,Show,Generic)
 
 instance ToJSON ErrorsState
 instance FromJSON ErrorsState

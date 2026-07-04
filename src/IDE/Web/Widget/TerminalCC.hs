@@ -38,10 +38,11 @@ module IDE.Web.Widget.TerminalCC
 import Control.Concurrent (forkIO)
 import Control.Exception (try, SomeException)
 import Control.Lens ((^.))
-import Control.Monad (forM_, forever, when, void)
+import Control.Monad (forM_, forever, unless, when, void)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64 as B64 (encode)
+import Data.Char (isAlphaNum, ord)
 import Data.IORef
        (IORef, atomicModifyIORef', modifyIORef', newIORef, readIORef,
         writeIORef)
@@ -50,17 +51,19 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import Numeric (showHex)
 import System.Process (createProcess, proc)
 import Text.Read (readMaybe)
 
 import Reflex
-       (Dynamic, Event, attachWith, current, ffor, fmapMaybe, foldDyn,
+       (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe, foldDyn,
         delay, getPostBuild, holdDyn, holdUniqDyn, leftmost, never,
         newTriggerEvent, performEvent, performEvent_, switchHold, tag,
         updated)
 import Reflex.Dom.Core
-       (MonadWidget, blank, divClass, dyn, dyn_, elAttr, elAttr', elDynAttr,
-        elDynAttr', listWithKey, text, widgetHold, _element_raw, (=:))
+       (MonadWidget, blank, divClass, domEvent, dyn, dyn_, elAttr, elAttr',
+        elDynAttr, elDynAttr', listWithKey, text, widgetHold, _element_raw,
+        EventName(Click), (=:))
 import Language.Javascript.JSaddle
        (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, jsg, jss,
         liftJSM, new, valIsNull, valIsUndefined, valToBool, valToNumber,
@@ -72,10 +75,13 @@ import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
        (registerTerminalCC, unregisterTerminalCC, registerTerminalSplits,
-        unregisterTerminalSplits)
+        unregisterTerminalSplits, registerTerminalFocus, unregisterTerminalFocus)
+import IDE.Web.JsaddleTunnel
+       (registerTunnelSync, unregisterTunnelSync, tunnelSyncReply)
 import IDE.Web.TmuxCC
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.Metadata (lookupIdentLocations)
+import qualified Language.Javascript.JSaddle.Terminal.Protocol as P
 
 -- | Session-level widget: one control client; the current window's panes at
 -- their exact tmux layout rectangles.  Same shape as 'terminalWidget' so
@@ -97,6 +103,51 @@ terminalCCWidget ide sessionId selectedE = do
     (linkE, triggerLink) <- newTriggerEvent
     (lookupE, triggerLookup) <- newTriggerEvent
     (bellE, triggerBell) <- newTriggerEvent
+    -- A pane split/kill inside the session widget changes the pane set (and so a
+    -- window's pane count); fired from there to poke the IDE's tree poll at once
+    -- (see 'paneSetChangedE' use in the return / TerminalTreeChanged).
+    (paneSetChangedE, firePaneSetChanged) <- newTriggerEvent
+    -- The session's *current* window just closed (fired from inside when a
+    -- %window-close names the window csCurrent still points at); the IDE picks
+    -- the ⌘1 button rather than tmux's default replacement.
+    (activeWinClosedE, fireActiveWinClosed) <- newTriggerEvent
+    -- A (remote) connection dropped: carries the human-readable reason (ssh/tmux
+    -- stderr + the %exit reason) to show in place of the pane, so the tab doesn't
+    -- just vanish; 'retryE' re-runs the connection when the user clicks Retry.
+    (connErrE, fireConnErr) <- newTriggerEvent
+    (retryE, fireRetry) <- newTriggerEvent
+    (closeErrE, fireCloseErr) <- newTriggerEvent
+    let isRemote = "ssh://" `T.isPrefixOf` sessionId
+        -- The error view shown in place of the panes when a (remote) connection
+        -- drops: the reason, plus Retry (re-run the connection) and Close (drop
+        -- the tab).  Fills the tab; no absolute positioning needed since it
+        -- REPLACES the session UI via the widgetHold below.
+        connErrorView msg =
+            elAttr "div" ("class" =: "terminal-cc-error"
+                      <> "style" =: ("height:100%;box-sizing:border-box;overflow:auto"
+                                     <> ";padding:14px;background:#111;color:#ddd"
+                                     <> ";font:13px/1.5 Menlo,Monaco,monospace")) $ do
+                elAttr "div" ("style" =: "color:#ff7b72;font-weight:bold;margin-bottom:8px") $
+                    text ("Connection to " <> sessionId <> " failed")
+                elAttr "pre" ("style" =: "white-space:pre-wrap;margin:0 0 14px 0") $ text msg
+                (rb, _) <- elAttr' "button"
+                    ("style" =: "padding:4px 12px;margin-right:8px;cursor:pointer") $ text "Retry"
+                (cb, _) <- elAttr' "button"
+                    ("style" =: "padding:4px 12px;cursor:pointer") $ text "Close"
+                performEvent_ $ liftIO (fireRetry ())    <$ domEvent Click rb
+                performEvent_ $ liftIO (fireCloseErr ()) <$ domEvent Click cb
+    -- jsaddle-terminal tunnels (vendor/jsaddle-terminal): a pane app can
+    -- handshake over its own stdout/stdin (OSC-5799 frames in %output,
+    -- RS frames injected via send-keys -H) and render as an iframe over its
+    -- pane.  tunnelEvE = per-pane iframe generation (Just gen = (re)build,
+    -- Nothing = tunnel closed); batchEvE = BATCH JSON bound for the iframe.
+    -- The scanner runs in the drain thread (pure IO — the sync path must
+    -- never wait on the browser), so these refs are its shared state.
+    (tunnelEvE, fireTunnelEv) <- newTriggerEvent
+    (batchEvE, fireBatchEv) <- newTriggerEvent
+    tunnelsRef <- liftIO $ newIORef (M.empty :: M.Map PaneId TunnelInfo)
+    scansRef <- liftIO $ newIORef (M.empty :: M.Map PaneId P.OscScan)
+    closedRef <- liftIO $ newIORef (S.empty :: S.Set PaneId)
     let paneCbs = PaneCallbacks
           { pcLink   = triggerLink
           , pcLookup = triggerLookup
@@ -108,7 +159,7 @@ terminalCCWidget ide sessionId selectedE = do
     -- remote "leksah" session; "ssh://host#$3" attaches that exact session;
     -- otherwise it's a local session id on leksah's socket.  ssh runs without
     -- a PTY (plain pipes), so the protocol stream is identical either way.
-    performEvent_ $ ffor pb $ \_ -> liftIO . void . forkIO $ do
+    performEvent_ $ ffor (leftmost [pb, retryE]) $ \_ -> liftIO . void . forkIO $ do
         cc <- case T.stripPrefix "ssh://" sessionId of
             Just hostTarget ->
                 let (host, hash) = T.breakOn "#" hostTarget
@@ -123,13 +174,30 @@ terminalCCWidget ide sessionId selectedE = do
         -- Batched drain: everything queued is taken at once and consecutive
         -- same-pane output merged, so a scroll-storm burst is ONE reflex
         -- event + ONE xterm.write instead of thousands (which starved the
-        -- jsaddle bridge and made typing choppy).
-        _ <- forkIO . forever $ ccEventsBatch cc >>= mapM_ fireEv . coalesceOutputs
+        -- jsaddle bridge and made typing choppy).  Every pane's output is
+        -- sieved through the jsaddle-terminal frame scanner here — before
+        -- pausedRef routing, so flow-control pause/replay (which replays
+        -- screen TEXT, never raw escapes) can neither eat nor duplicate a
+        -- frame; residual bytes flow on as ordinary EvOutput.
+        _ <- forkIO . forever $ ccEventsBatch cc >>= mapM_
+                 (routeTunnelEv cc sessionId tunnelsRef scansRef closedRef
+                                fireEv fireTunnelEv fireBatchEv)
+                 . coalesceOutputs
         -- NB initialSync runs from the session widget below, NOT here: its
         -- layout events would race the widgetHold swap — the foldDyn that
         -- consumes them doesn't exist yet, and events fired before it builds
         -- are dropped (seen as permanently blank panes under startup load).
         fireCCStarted cc
+
+    -- The current tunnel generation of each pane (drives the per-pane iframe
+    -- widgets), and BATCH forwarding into the iframes (all-async JSM; order
+    -- is preserved by jsaddle's command channel).
+    tunnelGenD <- foldDyn
+        (\(p, mg) m -> maybe (M.delete p m) (\g -> M.insert p g m) mg)
+        M.empty tunnelEvE
+    performEvent_ $ ffor batchEvE $ \(pane, json) -> liftJSM . void $
+        jsg ("LeksahJsaddlePane" :: Text) ^. js2 ("runBatch" :: Text)
+            (tunnelUrlKey sessionId pane) json
 
     -- Live xterm instances of this widget, keyed by pane id — disposed and
     -- re-created when the layout re-renders (dyn_ gives no destructors, so
@@ -149,25 +217,62 @@ terminalCCWidget ide sessionId selectedE = do
 
     -- The session widget proper appears once the client is up.
     _ <- widgetHold (divClass "terminal-cc-empty" $ text "(connecting…)") $
-        ffor ccStartedE $ \cc -> do
+      ffor (leftmost [Right <$> ccStartedE, Left <$> connErrE]) $ \case
+       Left errMsg -> connErrorView errMsg
+       Right cc -> do
             -- Register this tab's control channel for the Terminal menu's
             -- pane commands (split/select/resize/…): they run verbatim —
             -- the control client's current window/pane IS the displayed one.
             liftIO . registerTerminalCC sessionId $ ccSend cc
+            -- A tunnel closed (the app sent BYE or died): the xterm — which
+            -- kept consuming non-frame output all along — comes back into
+            -- view; refresh it from the pane's current screen.
+            performEvent_ $ ffor (fmapMaybe
+                    (\(p, mg) -> case mg of Nothing -> Just p; _ -> Nothing)
+                    tunnelEvE) $ \p ->
+                liftIO $ requestReplay cc pausedRef p
             -- Initial sync now that this widget (and its foldDyn below) exists
             -- and is subscribed — see the race note above.
             pbSync <- getPostBuild
             performEvent_ $ ffor pbSync $ \_ ->
                 liftIO . void . forkIO $ initialSync cc fireEv
+            -- A remote connection dropping (ssh/tmux exited) shows WHY in place
+            -- of the panes, rather than the tab silently vanishing: gather the
+            -- captured stderr and the %exit reason and swap in the error view.
+            when isRemote $
+                performEvent_ $ ffor (fmapMaybe (\case EvExit r -> Just r; _ -> Nothing) evE) $
+                    \reason -> liftIO $ do
+                        errTxt <- ccStderrText cc
+                        fireConnErr (formatConnErr reason errTxt)
             -- Window/layout state folded from notifications.
-            stD <- foldDyn ($) (CCState M.empty Nothing) $ leftmost
+            stD <- foldDyn ($) (CCState M.empty Nothing Nothing) $ leftmost
                 [ ffor (fmapMaybe layoutOf evE) $ \(w, l) s ->
                       s { csLayouts = M.insert w l (csLayouts s) }
                 , ffor (fmapMaybe closedWin evE) $ \w s ->
                       s { csLayouts = M.delete w (csLayouts s) }
-                , ffor (fmapMaybe currentWin evE) $ \w s ->
+                , ffor (fmapMaybe (currentWin sessionId) evE) $ \w s ->
                       s { csCurrent = Just w }
+                -- Attaching to a different session (switch-client): adopt it,
+                -- and — only when it genuinely changed from a prior session —
+                -- drop the old session's windows so the re-sync below repaints
+                -- just the new one's.  The first attach merely records it (the
+                -- postBuild initialSync already loaded that session's windows).
+                , ffor (fmapMaybe (\case EvSessionChanged s _ -> Just s; _ -> Nothing) evE) $ \s c ->
+                      case csSession c of
+                          Just old | old /= s -> c { csSession = Just s
+                                                   , csLayouts = M.empty
+                                                   , csCurrent = Nothing }
+                          _                   -> c { csSession = Just s }
                 ]
+            -- On a genuine session switch, re-query the now-current session's
+            -- windows/panes (tmux pushes none on switch-client).  Driven off
+            -- csSession changing to a NON-first value — the initial attach is
+            -- handled by the postBuild initialSync.
+            sessSwitchE <- do
+                sessD <- holdUniqDyn (csSession <$> stD)
+                pure $ fmapMaybe id (tag (current sessD) (updated sessD))
+            performEvent_ $ ffor sessSwitchE $ \_ ->
+                liftIO . void . forkIO $ initialSync cc fireEv
             -- The cell size is a page-wide constant (font metrics, measured
             -- once and cached); fetch it before rendering so pane rectangles
             -- come from real metrics, never estimates.
@@ -203,6 +308,19 @@ terminalCCWidget ide sessionId selectedE = do
                             changed <- liftIO $ atomicModifyIORef' lastSizeRef $ \old ->
                                 ((cols, rows), old /= (cols, rows))
                             when changed . liftIO . void . forkIO $ applySize cols rows
+                -- Repaint a pane's xterm on the next animation frame.  xterm.js
+                -- cannot render into a zero-size element, so a pane first built
+                -- while its window/tab was hidden (display:none) has its content
+                -- buffered but never painted — it shows blank until forced to
+                -- redraw (a resize, e.g. a manual split, was the only trigger).
+                -- Deferred to rAF so display:block has been applied first.
+                repaintTerm :: JSVal -> JSM ()
+                repaintTerm term = void $
+                    jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
+                        (fun $ \_ _ _ -> do
+                            rows <- valToNumber =<< term ^. js ("rows" :: Text)
+                            void $ term ^. js2 ("refresh" :: Text)
+                                (0 :: Int) (max 0 (round rows - 1) :: Int))
             -- Keep the per-window clamp on whichever window is displayed:
             -- move it when the session's current window changes.
             curWinD <- holdUniqDyn $ csCurrent <$> stD
@@ -219,11 +337,21 @@ terminalCCWidget ide sessionId selectedE = do
             -- select-pane), applied to the .terminal-cc-hl segments that
             -- 'renderHlSegments' lays (hidden) along every pane's gutter edges.
             activePaneRef <- liftIO $ newIORef (Nothing :: Maybe PaneId)
+            -- Set by an explicit focus request (a repl launched into this session
+            -- via the workspace tree): the window/pane it selects arrives
+            -- asynchronously, and the keyboard is still on whatever launched it, so
+            -- the usual "only follow focus if it was already ours" gate would skip
+            -- it.  While set, the deferred window/pane update focuses regardless;
+            -- see 'registerTerminalFocus' below.
+            pendingFocusRef <- liftIO $ newIORef False
             let applyActive :: JSM ()
                 applyActive = do
                     mbC <- liftIO $ readIORef containerRef
                     mbP <- liftIO $ readIORef activePaneRef
                     forM_ mbC $ \c -> applyPaneHighlight c mbP
+                    -- Reposition the single top-level shadow overlay over the
+                    -- (now-updated) visible active-pane marker.
+                    void $ jsg ("window" :: Text) ^. js0 ("leksahUpdatePaneHl" :: Text)
                 containerHasFocus :: JSM Bool
                 containerHasFocus = do
                     mbC <- liftIO $ readIORef containerRef
@@ -236,18 +364,61 @@ terminalCCWidget ide sessionId selectedE = do
                 focusActivePane = do
                     mbP <- liftIO $ readIORef activePaneRef
                     terms <- liftIO $ readIORef termsRef
-                    forM_ (mbP >>= (`M.lookup` terms)) $ \term ->
-                        void $ term ^. js0 ("focus" :: Text)
+                    forM_ mbP $ \p -> do
+                        -- The xterm (hidden and a no-op focus for a tunnel pane)
+                        forM_ (M.lookup p terms) $ \term ->
+                            void $ term ^. js0 ("focus" :: Text)
+                        -- …and the tunnel iframe, if this pane has one (the JS
+                        -- side no-ops when the pane isn't a tunnel or already
+                        -- holds focus — see leksahJsaddlePaneJs).
+                        void $ jsg ("LeksahJsaddlePane" :: Text)
+                            ^. js1 ("focus" :: Text) (tunnelUrlKey sessionId p)
+                    -- Safety net: if the keyboard still isn't in this terminal (no
+                    -- active pane recorded yet, or its xterm wasn't focusable),
+                    -- focus the visible container's textarea directly — so
+                    -- activation never dead-ends on <body> waiting for a pane id.
+                    inFocus <- containerHasFocus
+                    unless inFocus $ do
+                        mbC <- liftIO $ readIORef containerRef
+                        forM_ mbC $ \c -> do
+                            ta <- c ^. js1 ("querySelector" :: Text)
+                                    (".xterm-helper-textarea" :: Text)
+                            nul <- valIsNull ta
+                            unless nul $ void $ ta ^. js0 ("focus" :: Text)
+                -- Focusing an element is a no-op until it is actually visible, and
+                -- selecting a tab flips it visibility:hidden→visible via a DOM
+                -- write that jsaddle-wkwebview dispatches asynchronously — so a
+                -- fixed number of rAFs races the flip (the focus lands on <body>,
+                -- hence the "click twice" symptom).  Instead retry each animation
+                -- frame until the focus actually sticks (the container holds it),
+                -- for up to ~0.5s.  The loop stops the instant it succeeds, so once
+                -- the pane has the keyboard it can't be yanked back later.
+                focusActivePaneSoon :: JSM ()
+                focusActivePaneSoon =
+                    let go n = do
+                            focusActivePane
+                            ok <- containerHasFocus
+                            unless ok . when (n > (0 :: Int)) $
+                                void $ jsg ("window" :: Text)
+                                    ^. js1 ("requestAnimationFrame" :: Text)
+                                        (fun $ \_ _ _ -> go (n - 1))
+                    in go (30 :: Int)
                 -- Highlight the new active pane and, IF this terminal already
                 -- owned the keyboard, hand the keyboard to it too: activating
                 -- a pane (menu select-split, a fresh ⌘D split) should mean
                 -- typing goes there — but a background session's pane change
-                -- must not steal focus from the editor.
+                -- must not steal focus from the editor.  Focus orphaned on
+                -- <body> counts as ours: killing the focused pane (`exit`,
+                -- kill-pane) disposes its xterm and drops the keyboard there
+                -- (focus() inside a hidden background tab is a no-op, so this
+                -- can't steal from a visible editor).
                 followActive :: JSM ()
                 followActive = do
                     applyActive
                     had <- containerHasFocus
-                    when had focusActivePane
+                    ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
+                    tagName <- valToText =<< ae ^. js ("tagName" :: Text)
+                    when (had || tagName == "BODY") focusActivePane
             -- A window switch hides the focused pane's container
             -- (display:none), which silently drops keyboard focus onto
             -- <body>.  The switch handler below asks tmux for the NEW
@@ -262,7 +433,26 @@ terminalCCWidget ide sessionId selectedE = do
                     had <- containerHasFocus
                     ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                     tagName <- valToText =<< ae ^. js ("tagName" :: Text)
-                    when (had || tagName == "BODY") focusActivePane
+                    pend <- liftIO $ readIORef pendingFocusRef
+                    when (had || tagName == "BODY" || pend) $ do
+                        focusActivePane
+                        liftIO $ writeIORef pendingFocusRef False
+            -- Explicit focus requests (a workspace repl button launches a repl in
+            -- this session): flag it so the imminent window switch focuses the new
+            -- pane past the gate, and — for the case where the window is already
+            -- current, or the switch already arrived — force a focus a moment later
+            -- (the flag is then still set only if nothing consumed it).
+            (focusReqE, fireFocusReq) <- newTriggerEvent
+            liftIO $ registerTerminalFocus sessionId (fireFocusReq ())
+            performEvent_ $ ffor focusReqE $ \_ ->
+                liftIO $ writeIORef pendingFocusRef True
+            forcedFocusE <- delay 0.15 focusReqE
+            performEvent_ $ ffor forcedFocusE $ \_ -> do
+                pend <- liftIO $ readIORef pendingFocusRef
+                when pend $ liftJSM $ do
+                    applyActive
+                    focusActivePane
+                    liftIO $ writeIORef pendingFocusRef False
             -- ⌘N (numbered split navigation): the displayed window's panes in
             -- layout (reading) order — the numbering the ⌘-held badges show.
             -- Kept in an IORef so the selector (invoked from outside reflex,
@@ -293,17 +483,30 @@ terminalCCWidget ide sessionId selectedE = do
             -- and braces: reapply again shortly after the dust settles.
             layoutSettledE <- delay 0.15 (fmapMaybe layoutOf evE)
             performEvent_ $ ffor layoutSettledE $ \_ -> liftJSM applyActive
-            performEvent_ $ ffor evE $ \case
-                EvWindowPaneChanged _ p -> do
+            -- Scope guards: tmux broadcasts %session-window-changed (and can
+            -- surface other sessions' window events) to every control client,
+            -- so act only on our own session's — a foreign pane id in
+            -- activePaneRef breaks the highlight, and a foreign window id
+            -- would be queried/focused wrongly (see 'currentWin').
+            performEvent_ $ ffor (attachWith (,) (current stD) evE) $ \(st, ev) -> case ev of
+                EvWindowPaneChanged w p | w `M.member` csLayouts st -> do
                     liftIO $ writeIORef activePaneRef (Just p)
                     liftJSM followActive
-                EvSessionWindowChanged _ w -> liftIO . void . forkIO $ do
-                    r <- ccCommand cc ("display-message -p -t " <> w
-                                       <> " -F '#{pane_id}'")
-                    case r of
-                      Right (ln : _) | p <- T.strip ln, not (T.null p) ->
-                          fireWinFocus p
-                      _ -> return ()
+                -- The displayed window itself closed (its last pane exited): tmux
+                -- will pick a replacement by its own rule, but the IDE overrides
+                -- that to the ⌘1 button.  Sampled csCurrent still names it here
+                -- (the %session-window-changed that moves it arrives in a later
+                -- frame), so this fires only for the *active* window's close.
+                _ | Just w <- closedWin ev, csCurrent st == Just w ->
+                    liftIO $ fireActiveWinClosed ()
+                EvSessionWindowChanged s w | s == "" || s == sessionId ->
+                    liftIO . void . forkIO $ do
+                        r <- ccCommand cc ("display-message -p -t " <> w
+                                           <> " -F '#{pane_id}'")
+                        case r of
+                          Right (ln : _) | p <- T.strip ln, not (T.null p) ->
+                              fireWinFocus p
+                          _ -> return ()
                 -- Flow control: tmux paused a pane we fell behind on.  If we
                 -- render it (all panes of the session, now), jump ahead to
                 -- its current screen; otherwise leave it paused (its xterm
@@ -314,22 +517,48 @@ terminalCCWidget ide sessionId selectedE = do
                 _ -> return ()
             -- Selecting this tab focuses its active pane (the classic
             -- widget's behaviour), so typing works without an extra click.
-            performEvent_ $ ffor selectedE $ \_ -> liftJSM focusActivePane
+            -- Also repaint every pane: the tab is revealed by a
+            -- visibility:hidden→visible flip (see Tabs.hs) that no resize
+            -- observer sees, so an xterm whose window container was hidden
+            -- when it was last drawn gets a nudge here.
+            performEvent_ $ ffor selectedE $ \_ -> liftJSM $ do
+                terms <- liftIO $ readIORef termsRef
+                forM_ (M.elems terms) repaintTerm
+                focusActivePaneSoon
             -- Panes that left the session (kill-pane, window closed): their
             -- keyed widgets are torn down by listWithKey below, but the
             -- xterms are JS objects we own — dispose and unregister them.
             allPanesD <- holdUniqDyn $ ffor stD $ \s -> S.fromList
                 [ p | l <- M.elems (csLayouts s), (p, _, _, _, _) <- layoutPanes l ]
+            -- The pane set changed (split/kill): poke the IDE's tree poll so the
+            -- ⌘-number offset and tab badges track the new pane count at once
+            -- (resize leaves the set unchanged, so this stays quiet).
+            performEvent_ $ ffor (updated allPanesD) $ \_ -> liftIO (firePaneSetChanged ())
             performEvent_ $ ffor (updated allPanesD) $ \alive -> do
                 gone <- liftIO $ atomicModifyIORef' termsRef $ \m ->
                     let (keep, dead) = M.partitionWithKey (\k _ -> k `S.member` alive) m
                     in (keep, dead)
                 liftIO $ modifyIORef' pausedRef
                     (M.filterWithKey (\k _ -> k `S.member` alive))
-                liftJSM . forM_ (M.toList gone) $ \(p, term) -> do
-                    void $ term ^. js0 ("dispose" :: Text)
-                    void $ jsg ("LeksahTerm" :: Text)
-                        ^. js1 ("unregister" :: Text) (paneKey sessionId p)
+                -- Tunnels of departed panes: drop the state and sync route
+                -- (the iframe widget is torn down with its keyed paneWidget).
+                goneTunnels <- liftIO $ atomicModifyIORef' tunnelsRef $ \m ->
+                    let (keep, dead) = M.partitionWithKey (\k _ -> k `S.member` alive) m
+                    in (keep, M.keys dead)
+                liftIO $ forM_ goneTunnels $ \p -> do
+                    unregisterTunnelSync (tunnelUrlKey sessionId p)
+                    fireTunnelEv (p, Nothing)
+                liftJSM $ do
+                    forM_ (M.toList gone) $ \(p, term) -> do
+                        void $ term ^. js0 ("dispose" :: Text)
+                        void $ jsg ("LeksahTerm" :: Text)
+                            ^. js1 ("unregister" :: Text) (paneKey sessionId p)
+                    -- Disposing the focused pane's xterm orphans the keyboard
+                    -- on <body>; hand it to the (new) active pane.
+                    when (not (M.null gone)) $ do
+                        ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
+                        tagName <- valToText =<< ae ^. js ("tagName" :: Text)
+                        when (tagName == "BODY") focusActivePane
             (containerEl, _) <- elAttr' "div"
                 ("class" =: "terminal terminal-cc"
                  <> "style" =: "position:relative;width:100%;height:100%;overflow:hidden") $
@@ -354,9 +583,26 @@ terminalCCWidget ide sessionId selectedE = do
                                 let panesD = ffor layUniqD $ \l -> M.fromList
                                         [ (p, (x, y, w, h))
                                         | (p, x, y, w, h) <- layoutPanes l ]
+                                    -- Layout size in cells: a pane at the
+                                    -- layout's right/bottom edge fills to the
+                                    -- container edge (see paneWidget).
+                                    dimsD = (\l -> (lW l, lH l)) <$> layUniqD
                                 _ <- listWithKey panesD $ \pane rectD ->
                                     paneWidget cc sessionId paneCbs termsRef
-                                               pausedRef cell pane rectD
+                                               pausedRef tunnelsRef cell pane rectD
+                                               dimsD (M.lookup pane <$> tunnelGenD)
+                                -- Repaint this window's panes when it becomes
+                                -- visible: their xterms may have been built
+                                -- hidden (display:none) and so never painted
+                                -- (see 'repaintTerm').  A window switch within
+                                -- the session doesn't resize the container, so
+                                -- the ResizeObserver below won't cover this.
+                                performEvent_ $
+                                    ffor (tag (current layUniqD) (ffilter id (updated visD))) $ \l ->
+                                        liftJSM $ do
+                                            terms <- liftIO $ readIORef termsRef
+                                            forM_ (layoutPanes l) $ \(p, _, _, _, _) ->
+                                                forM_ (M.lookup p terms) repaintTerm
                                 -- Dividers, highlight segments and shortcut
                                 -- badges are plain divs — cheap to rebuild
                                 -- per layout change.
@@ -372,7 +618,16 @@ terminalCCWidget ide sessionId selectedE = do
             pb2 <- getPostBuild
             performEvent_ $ ffor pb2 $ \_ -> liftJSM $ do
                 refit
-                ro <- new (jsg ("ResizeObserver" :: Text)) (fun $ \_ _ _ -> refit)
+                -- The container going display:none→block (its wide0 tab being
+                -- selected) fires the observer with a 0→N size change; repaint
+                -- every pane then, since 'refit' alone dedupes by size and would
+                -- skip a re-show at the same dimensions, leaving panes blank.
+                ro <- new (jsg ("ResizeObserver" :: Text)) (fun $ \_ _ _ -> do
+                        refit
+                        terms <- liftIO $ readIORef termsRef
+                        forM_ (M.elems terms) repaintTerm
+                        -- The active pane moved/resized — re-place the shadow overlay.
+                        void $ jsg ("window" :: Text) ^. js0 ("leksahUpdatePaneHl" :: Text))
                 void $ ro ^. js1 ("observe" :: Text) (_element_raw containerEl)
 
     -- Route %output to the pane's xterm (via the pause states above), and
@@ -385,11 +640,11 @@ terminalCCWidget ide sessionId selectedE = do
               Just PauseDropping -> return ()   -- stale: the capture will include it
               Just (PauseGotCap cap buf) -> liftIO $
                   writeIORef pausedRef (M.insert pane (PauseGotCap cap (dat : buf)) st)
-        EvReply tag res
-          | Just p <- T.stripPrefix "cap:" tag -> liftIO $ case res of
+        EvReply rtag res
+          | Just p <- T.stripPrefix "cap:" rtag -> liftIO $ case res of
               Right ls -> modifyIORef' pausedRef (M.insert p (PauseGotCap ls []))
               Left _   -> modifyIORef' pausedRef (M.delete p)   -- give up: resume raw
-          | Just p <- T.stripPrefix "cur:" tag -> do
+          | Just p <- T.stripPrefix "cur:" rtag -> do
               st <- liftIO $ readIORef pausedRef
               case (M.lookup p st, res) of
                 (Just (PauseGotCap cap buf), Right (stLine : _)) -> do
@@ -401,11 +656,17 @@ terminalCCWidget ide sessionId selectedE = do
           | otherwise -> return ()
         _ -> return ()
 
-    -- The client is gone: stop offering its control channel to the menu.
+    -- The client is gone: stop offering its control channel to the menu,
+    -- and drop any tunnels (their sync routes must not outlive the client).
     performEvent_ $ ffor evE $ \case
         EvExit _ -> liftIO $ do
             unregisterTerminalCC sessionId
             unregisterTerminalSplits sessionId
+            unregisterTerminalFocus sessionId
+            tunnels <- atomicModifyIORef' tunnelsRef $ \m -> (M.empty, M.keys m)
+            forM_ tunnels $ \p -> do
+                unregisterTunnelSync (tunnelUrlKey sessionId p)
+                fireTunnelEv (p, Nothing)
         _        -> return ()
 
     -- Navigation from a clicked file path.
@@ -435,12 +696,35 @@ terminalCCWidget ide sessionId selectedE = do
       , TerminalBell <$ bellE
       , fmapMaybe (\case
           EvWindowRenamed _ nm -> Just (TerminalTitle nm)
-          EvExit _             -> Just TerminalExited
+          -- A LOCAL client exiting (session ended) closes the tab.  A REMOTE
+          -- one does NOT auto-close: it swaps in the error view instead (see
+          -- 'connErrorView'/fireConnErr), so a dropped connection stays visible;
+          -- its Close button closes the tab via 'closeErrE' below.
+          EvExit _ | not isRemote -> Just TerminalExited
           -- windows created/closed: poke the trees (renames go via
           -- TerminalTitle above and reach the tree on its next poll)
           EvWindowAdd _        -> Just TerminalTreeChanged
           EvWindowClose _      -> Just TerminalTreeChanged
-          _                    -> Nothing) evE ]
+          _                    -> Nothing) evE
+      -- Close button in the remote error view: drop the tab.
+      , TerminalExited <$ closeErrE
+      -- A pane split/kill (⌘D etc.) changes a window's pane count but only
+      -- emits %layout-change, not %window-add — so poke the tree poll off the
+      -- pane set itself (fired from inside the session widget), else the
+      -- ⌘-number offset (and tab badges) lag until the next unrelated poll.
+      , TerminalTreeChanged <$ paneSetChangedE
+      -- The active window closed: the IDE activates the ⌘1 button (below).
+      , TerminalActiveWinClosed <$ activeWinClosedE ]
+
+-- | The message shown when a remote connection drops: the tmux @%exit@ reason
+-- (if any) plus whatever the child wrote to stderr (ssh's "Permission denied",
+-- "Could not resolve hostname", host-key failures, …).  Empty stderr is common
+-- for a clean detach, so it's only appended when present.
+formatConnErr :: Maybe Text -> Text -> Text
+formatConnErr reason err =
+    let hdr = maybe "Connection closed." (\r -> "Connection closed: " <> r) reason
+        e   = T.strip err
+    in if T.null e then hdr else hdr <> "\n\n" <> e
 
 -- | The page-wide terminal cell size in CSS px ('LeksahTerm.cellMetrics',
 -- measured once from the font); a conservative fallback if measurement is
@@ -464,17 +748,145 @@ closedWin (EvWindowClose w) = Just w
 closedWin (EvUnlinkedWindowClose w) = Just w
 closedWin _ = Nothing
 
-currentWin :: TmuxEvent -> Maybe WindowId
-currentWin (EvSessionWindowChanged _ w) = Just w
-currentWin _ = Nothing
+-- | The attached session's current window changed.  tmux broadcasts
+-- %session-window-changed for EVERY session to every control client, so the
+-- event MUST be filtered to this widget's own session — a foreign session's
+-- window id set as csCurrent matches nothing in csLayouts, hiding every
+-- window container (the tab shows blank).  The empty session id is
+-- 'initialSync''s wildcard for its own seed event.
+currentWin :: Text -> TmuxEvent -> Maybe WindowId
+currentWin sess (EvSessionWindowChanged s w)
+  | s == "" || s == sess = Just w
+currentWin _ _ = Nothing
 
 data CCState = CCState
   { csLayouts :: M.Map WindowId Layout
   , csCurrent :: Maybe WindowId
+  -- | The tmux session this control client is currently attached to.  One
+  -- connection per server can be pointed at any of the server's sessions with
+  -- @switch-client@; on such a switch tmux only emits @%session-changed@ (no
+  -- window layouts), so the widget clears its windows and re-syncs (see the
+  -- 'EvSessionChanged' handling).  'Nothing' until the first attach.
+  , csSession :: Maybe SessionId
   }
 
 paneKey :: Text -> PaneId -> Text
 paneKey sess pane = sess <> "/" <> pane
+
+-- | Per-pane jsaddle-terminal tunnel bookkeeping (IO layer, shared between
+-- the drain thread's scanner and the iframe widgets): the iframe generation
+-- (bumped when a NEW app run HELLOs so the iframe is rebuilt fresh), whether
+-- the iframe reported ready (only then do BATCH frames flow to it), and the
+-- run's HELLO payload — retries of the same run are byte-identical, which is
+-- how a late retry (its ACK still in flight) is told apart from a restart.
+data TunnelInfo = TunnelInfo
+  { tiGen    :: Int
+  , tiActive :: Bool
+  , tiRun    :: BS.ByteString
+  }
+
+-- | URL/JS-safe pane key for the tunnel frame/sync routes: bytes outside
+-- [A-Za-z0-9.] (including @_@ itself, keeping the mapping injective) become
+-- @_XX@ (or @_uXXXX@ beyond Latin-1).
+tunnelUrlKey :: Text -> PaneId -> Text
+tunnelUrlKey sess pane = T.concatMap esc (paneKey sess pane)
+  where
+    esc c | isAlphaNum c && ord c < 128 = T.singleton c
+          | c == '.' = T.singleton c
+          | ord c < 0x100 = "_" <> T.pack (pad 2 (showHex (ord c) ""))
+          | otherwise = "_u" <> T.pack (pad 4 (showHex (ord c) ""))
+    pad n s = replicate (n - length s) '0' <> s
+
+-- | Route one control-mode event through the jsaddle-terminal frame scanner
+-- (runs on the drain thread, pure IO — the SYNC round trip depends on this
+-- never waiting on the browser): frames are dispatched to the tunnel
+-- machinery, everything else — including a tunnelled pane's non-frame bytes —
+-- flows on to the normal 'EvOutput' path.
+routeTunnelEv
+  :: CC -> Text                           -- ^ client + session (SYNC plumbing)
+  -> IORef (M.Map PaneId TunnelInfo)      -- ^ tunnel states
+  -> IORef (M.Map PaneId P.OscScan)       -- ^ per-pane scanner buffers
+  -> IORef (S.Set PaneId)                 -- ^ zombies already told to CLOSE
+  -> (TmuxEvent -> IO ())                 -- ^ the normal event fire
+  -> ((PaneId, Maybe Int) -> IO ())       -- ^ iframe generation up/down
+  -> ((PaneId, Text) -> IO ())            -- ^ BATCH JSON for the pane's iframe
+  -> TmuxEvent -> IO ()
+routeTunnelEv cc sessionId tunnelsRef scansRef closedRef fireEv fireTunnelEv fireBatchEv = \case
+    EvOutput pane dat -> do
+        scans <- readIORef scansRef
+        let st0 = M.findWithDefault P.emptyOscScan pane scans
+            (passthrough, frames, st') = P.scanOsc st0 dat
+        writeIORef scansRef (M.insert pane st' scans)
+        mapM_ (frameEv pane) frames
+        unless (BS.null passthrough) $ fireEv (EvOutput pane passthrough)
+    ev -> fireEv ev
+  where
+    frameEv pane f = case P.frameType f of
+        P.Hello -> do
+            let runId = P.framePayload f
+            act <- atomicModifyIORef' tunnelsRef $ \m -> case M.lookup pane m of
+                Just ti | tiRun ti == runId ->
+                    -- The same run again: a retry whose ACK is still in
+                    -- flight (ignore), or one that crossed our ACK on the
+                    -- wire (re-ACK — the exe ignores a duplicate).
+                    (m, if tiActive ti then ReAck else Ignore)
+                Just ti ->
+                    -- A different run: the app restarted — rebuild fresh.
+                    let g = tiGen ti + 1
+                    in (M.insert pane (TunnelInfo g False runId) m, Build g)
+                Nothing -> (M.insert pane (TunnelInfo 0 False runId) m, Build 0)
+            case act of
+                Ignore  -> return ()
+                ReAck   -> sendAck pane
+                Build g -> do
+                    -- a fresh app run: it may be CLOSEd again if it zombies
+                    atomicModifyIORef' closedRef $ \s -> (S.delete pane s, ())
+                    -- (Re)arm the sync route for this pane: SYNC frames go
+                    -- straight to its stdin from the Warp thread.
+                    registerTunnelSync (tunnelUrlKey sessionId pane) $ \bs ->
+                        ccSendBytesBig cc pane (P.encodeRs (P.Frame P.Sync bs))
+                    fireTunnelEv (pane, Just g)
+        P.Batch -> do
+            m <- readIORef tunnelsRef
+            case M.lookup pane m of
+                Just ti | tiActive ti ->
+                    fireBatchEv (pane, decodeUtf8 (P.framePayload f))
+                Just _ -> return ()   -- iframe still building: drop (pre-ACK)
+                -- A tunnel-mode app we know nothing about: it was ACKed by a
+                -- previous leksah run (restart mid-session).  Its jsaddle
+                -- state can't be re-adopted, so tell it to exit cleanly —
+                -- the user gets their shell back and can just rerun it.
+                Nothing -> sendClose pane
+        -- The Batch answering a pending SYNC: complete the blocked XHR.
+        P.SyncReply -> do
+            m <- readIORef tunnelsRef
+            case M.lookup pane m of
+                Just _  -> tunnelSyncReply (tunnelUrlKey sessionId pane)
+                                           (P.framePayload f)
+                Nothing -> sendClose pane   -- zombie (see above)
+        P.Bye -> do
+            atomicModifyIORef' tunnelsRef $ \m -> (M.delete pane m, ())
+            unregisterTunnelSync (tunnelUrlKey sessionId pane)
+            fireTunnelEv (pane, Nothing)
+        -- Show LOG payloads in the (hidden, but current) xterm.
+        P.Log -> fireEv (EvOutput pane (P.framePayload f <> "\r\n"))
+        -- IDE→exe types arriving from the exe: protocol misuse; ignore.
+        _ -> return ()
+    sendAck pane = ccSendBytes cc pane (P.encodeRs (P.Frame P.Ack tunnelAckPayload))
+    -- Once per pane (until a HELLO re-arms it): after the zombie exits, any
+    -- further injected frames would land in its SHELL as junk keystrokes.
+    sendClose pane = do
+        firstTime <- atomicModifyIORef' closedRef $ \s ->
+            (S.insert pane s, not (S.member pane s))
+        when firstTime $
+            ccSendBytes cc pane (P.encodeRs (P.Frame P.Close "{}"))
+
+-- | What the HELLO handler decided (see 'routeTunnelEv').
+data HelloAction = Ignore | ReAck | Build Int
+
+-- | The ACK payload (protocol version + capabilities leksah offers).
+tunnelAckPayload :: BS.ByteString
+tunnelAckPayload = "{\"proto\":1,\"caps\":[\"sync\"]}"
 
 pxAt :: Int -> Double -> Text
 pxAt n cell = T.pack (show (round (fromIntegral n * cell) :: Int)) <> "px"
@@ -490,12 +902,6 @@ pxSpan o n cell =
 -- this much at each end).
 halfPx :: Double -> Text
 halfPx cell = T.pack (show (cell / 2)) <> "px"
-
--- | The pixel at the middle of separator cell @n@ (where the 1px divider
--- line is drawn; highlight segments sit exactly over it).
-pxMid :: Int -> Double -> Text
-pxMid n cell =
-    T.pack (show (round ((fromIntegral n + 0.5) * cell - 0.5) :: Int)) <> "px"
 
 -- | What a pane's xterm reports up to the session widget (which owns the
 -- reflex events): clicked file link (path, line, column), Ctrl/Cmd
@@ -515,16 +921,96 @@ paneWidget
   :: MonadWidget t m
   => CC -> Text -> PaneCallbacks
   -> IORef (M.Map PaneId JSVal) -> IORef (M.Map PaneId PauseState)
-  -> (Double, Double) -> PaneId -> Dynamic t (Int, Int, Int, Int) -> m ()
-paneWidget cc sessionId cbs termsRef pausedRef (cw, ch) pane rectD0 = do
+  -> IORef (M.Map PaneId TunnelInfo)
+  -> (Double, Double) -> PaneId -> Dynamic t (Int, Int, Int, Int)
+  -> Dynamic t (Int, Int)    -- ^ layout size in cells (for edge panes)
+  -> Dynamic t (Maybe Int)   -- ^ jsaddle-terminal tunnel generation (Just = iframe)
+  -> m ()
+paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef (cw, ch) pane rectD0 dimsD0 tunnelD0 = do
     rectD <- holdUniqDyn rectD0
-    let styleOf (x, y, w, h) =
-            "position:absolute;overflow:hidden"
-            <> ";left:" <> pxAt x cw <> ";top:" <> pxAt y ch
-            <> ";width:" <> pxSpan x w cw <> ";height:" <> pxSpan y h ch
+    dimsD <- holdUniqDyn dimsD0
+    tunnelD <- holdUniqDyn tunnelD0
+    -- The pane box uses the SAME extents as the active-pane shadow marker
+    -- ('renderHlSegments'), so the two line up exactly: at the layout's outer
+    -- edges it is flush with the container (covering the sub-cell remainder —
+    -- the client area isn't an exact multiple of the cell size), and on an
+    -- INTERNAL edge it reaches half a cell into the gutter, to the centre where
+    -- the divider line is drawn — so adjacent panes meet at the line with no
+    -- gap.  Outer left/top are clamped to 0 (rather than the marker's clipped
+    -- ‑½‑cell overhang) so the iframe that fills the pane loses no content.
+    -- (The transparency/snap hole reads this element's box via
+    -- 'leksahComputeHole', so it tracks the same extents.)
+    let styleOf (x, y, w, h) (lw, lh) =
+            let p n     = T.pack (show (n :: Int)) <> "px"
+                lI      = round (max 0 (fromIntegral x * cw - cw/2))
+                tI      = round (max 0 (fromIntegral y * ch - ch/2))
+                rI      = round (fromIntegral (x+w) * cw + cw/2)
+                bI      = round (fromIntegral (y+h) * ch + ch/2)
+            in "position:absolute;overflow:hidden"
+               <> ";left:" <> p lI <> ";top:" <> p tI
+               <> (if x + w >= lw then ";right:0"  else ";width:"  <> p (rI - lI))
+               <> (if y + h >= lh then ";bottom:0" else ";height:" <> p (bI - tI))
+        key = tunnelUrlKey sessionId pane
     (paneEl, _) <- elDynAttr' "div"
-        ((\r -> "class" =: "terminal-cc-pane" <> "style" =: styleOf r) <$> rectD)
-        blank
+        ((\r d mt -> "class" =: ("terminal-cc-pane"
+                               <> maybe "" (const " terminal-cc-pane-tunnel") mt)
+                 <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD) $
+        -- jsaddle-terminal overlay: while a tunnel generation is active an
+        -- iframe (keyed by the generation, so an app restart rebuilds it)
+        -- covers the pane; the hidden xterm keeps consuming non-frame output.
+        dyn_ $ ffor tunnelD $ \case
+          Nothing -> do
+            pbN <- getPostBuild
+            performEvent_ $ ffor pbN $ \_ -> liftJSM . void $
+                jsg ("LeksahJsaddlePane" :: Text) ^. js1 ("unregister" :: Text) key
+          Just _gen -> do
+            (ifrEl, _) <- elAttr' "iframe"
+                ("class" =: "terminal-cc-iframe"
+                 <> "src" =: ("/jsaddle-terminal/frame/" <> key)) blank
+            -- Results are re-sequenced before injection: leksah's jsaddle
+            -- runs 'fun' callbacks on forked threads, so two results can
+            -- race here, and the exe's jsaddle silently drops stale batch
+            -- numbers — misordering corrupts, so restore the seq order the
+            -- iframe stamped.  Fresh per iframe (its seq restarts at 0).
+            nextSeqRef <- liftIO $ newIORef (0 :: Int)
+            reorderRef <- liftIO $ newIORef (M.empty :: M.Map Int BS.ByteString)
+            pbI <- getPostBuild
+            performEvent_ $ ffor pbI $ \_ -> liftJSM . void $
+                jsg ("LeksahJsaddlePane" :: Text) ^. js3 ("register" :: Text)
+                    key (_element_raw ifrEl)
+                    (fun $ \_ _ args -> case args of
+                        (tV : sV : dV : _) -> valToText tV >>= \case
+                            -- The runtime is installed: complete the
+                            -- handshake — BATCH frames may flow now.
+                            "ready" -> liftIO $ do
+                                atomicModifyIORef' tunnelsRef $ \m ->
+                                    (M.adjust (\ti -> ti { tiActive = True }) pane m, ())
+                                ccSendBytes cc pane $
+                                    P.encodeRs (P.Frame P.Ack tunnelAckPayload)
+                            "results" -> do
+                                sq <- valToNumber sV
+                                d  <- valToText dV
+                                liftIO $ do
+                                    modifyIORef' reorderRef
+                                        (M.insert (round sq) (encodeUtf8 d))
+                                    let drain = do
+                                          nxt <- readIORef nextSeqRef
+                                          buf <- readIORef reorderRef
+                                          forM_ (M.lookup nxt buf) $ \bs -> do
+                                              writeIORef reorderRef (M.delete nxt buf)
+                                              writeIORef nextSeqRef (nxt + 1)
+                                              ccSendBytesBig cc pane
+                                                  (P.encodeRs (P.Frame P.Results bs))
+                                              drain
+                                    drain
+                            -- The iframe gained keyboard focus (user clicked
+                            -- into the app): make its tmux pane the active one,
+                            -- exactly as an xterm's textarea focus does.  The
+                            -- resulting %window-pane-changed moves the
+                            -- highlight/shadow (see followActive).
+                            "focus" -> liftIO $ ccSend cc ("select-pane -t " <> pane)
+                            _ -> return ()
+                        _ -> return ())
     pb <- getPostBuild
     performEvent_ $ ffor (tag (current rectD) pb) $ \(_, _, w, h) -> liftJSM $ do
         term <- new (jsg ("Terminal" :: Text)) ()
@@ -654,6 +1140,9 @@ renderHlSegments (cw, ch) l =
 -- "IDE.Web.Main") — and only when the preference enabled the feature.
 renderShortcutBadges :: MonadWidget t m => (Double, Double) -> Layout -> m ()
 renderShortcutBadges (cw, ch) l =
+    -- Pane numbers only mean anything on a split (⌘1…⌘P); a lone pane's window
+    -- is navigated to by its wide0 tab badge instead, so show none here.
+    when (length (layoutPanes l) >= 2) $
     forM_ (zip [1 :: Int ..] (layoutPanes l)) $ \(n, (_, x, y, _, _)) ->
         when (n <= 9) . elAttr "div"
             ("class" =: "leksah-shortcut-badge"

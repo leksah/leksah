@@ -74,6 +74,43 @@ cd "$(pwd)" || exit 1
 exec cabal build --builddir "$BUILDDIR" $REBUILD_TARGET exe:ffcabal
 EOF
 
+# macOS: run the wkwebview front end from a real .app bundle so CFBundleName
+# names it "Leksah" in the menu bar, the Dock and the ⌘-Tab switcher (an
+# unbundled binary is named after the executable, "leksah-wkwebview").  The
+# bundle is a thin wrapper: its executable is hard-linked to the freshly built
+# binary on each launch (see launch_leksah below), and data files still come
+# from the repo via leksah_datadir — so this stays a normal incremental dev
+# loop, it just gives the process a proper bundle identity.
+APPBUNDLE="$(pwd)/Leksah.app"
+if [ "$UI" = "wkwebview" ]; then
+    mkdir -p "$APPBUNDLE/Contents/MacOS" "$APPBUNDLE/Contents/Resources"
+    cat > "$APPBUNDLE/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Leksah</string>
+  <key>CFBundleDisplayName</key><string>Leksah</string>
+  <key>CFBundleExecutable</key><string>leksah</string>
+  <key>CFBundleIdentifier</key><string>org.leksah.leksah</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleShortVersionString</key><string>0.17.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>CFBundleIconFile</key><string>leksah</string>
+</dict>
+</plist>
+PLIST
+    # Prefer the macOS app icon (leksah glyph on a dark-grey gradient); fall
+    # back to the plain logo.
+    if [ -f osx/leksah-macapp.icns ]; then
+        cp -f osx/leksah-macapp.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
+    elif [ -f osx/leksah.icns ]; then
+        cp -f osx/leksah.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
+    fi
+fi
+
 if [ "$IN_TMUX" = "1" ] && [ "$UI" = "gtk" ]; then
     echo "Note: --in-tmux only applies to the web UIs; ignoring for gtk."
     IN_TMUX=0
@@ -166,7 +203,17 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
     launch_leksah='
       bd="$1"; ui="$2"; shift 2
       export leksah_datadir="$(pwd)"
-      exec "$(cabal list-bin --builddir "$bd" exe:leksah-$ui)" --develop-leksah "$@"'
+      bin="$(cabal list-bin --builddir "$bd" exe:leksah-$ui)"
+      if [ "$ui" = "wkwebview" ]; then
+        # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name
+        # everywhere).  cabal relinks a new inode each build, so refresh the
+        # bundle executable (hard link; copy across volumes) every launch.  exec
+        # so leksah'\''s exit code still drives the relaunch loop.
+        macos="$(pwd)/Leksah.app/Contents/MacOS"
+        ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
+        exec "$macos/leksah" --develop-leksah "$@"
+      fi
+      exec "$bin" --develop-leksah "$@"'
 
     LEKSAH_EXIT_CODE=0
     if [ "$IN_TMUX" = "1" ]; then

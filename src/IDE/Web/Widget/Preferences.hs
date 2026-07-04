@@ -85,6 +85,7 @@ preferencesWidget ide = do
         , colorField prefsD p0 "Selection highlight colour" uiSelectionColor (\v p -> p { uiSelectionColor = v })
         , colorField prefsD p0 "Run-button hover row colour" uiHoverColor (\v p -> p { uiHoverColor = v })
         , b "Show navigation shortcut badges while Cmd is held" showShortcutBadges (\v p -> p { showShortcutBadges = v })
+        , b "Colourful icons" colorfulIcons (\v p -> p { colorfulIcons = v })
         ]
     , section "Terminal"
         [ b "Clickable file paths and identifiers in terminal output"

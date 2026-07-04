@@ -86,6 +86,10 @@ data TerminalEvents
   -- | A control-mode tab saw a window created/closed: the Terminals tree and
   -- tab row should refresh now, not on the next 2s/10s poll.
   | TerminalTreeChanged
+  -- | The session's *current* window was just closed (its last pane exited), so
+  -- tmux is about to pick a replacement by its own rule — the IDE overrides that
+  -- to activate the second entry in the tab-button list (the ⌘1 button) instead.
+  | TerminalActiveWinClosed
 
 makePrisms ''TerminalEvents
 
@@ -104,6 +108,7 @@ data TerminalsEvents
     -- remote hosts (Terminals-tree host nodes; sessions render in CC tabs
     -- keyed @ssh://host#session@)
   | NewRemoteTerminal Text                      -- ^ host
+  | SelectRemoteHost Text                        -- ^ host: bring up its one per-server connection
     -- Remote selections carry the session id AND its current name: an open
     -- tab may be keyed by either (cc-connect HOST#NAME vs the tree's ids),
     -- so the handler matches both before opening a new tab.

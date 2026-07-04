@@ -14,7 +14,7 @@ import qualified Data.Map as M (lookup, size, fromList, toList)
 import Clay
        (lightblue, grey, green, red, color, fontFamily, overflowX,
         px, width, cursorDefault, whiteSpace, pct, vGradient,
-        backgroundImage, height, (?), Css, Color(..), Cursor(..), Auto(..))
+        backgroundImage, height, (?), Css, Cursor(..), Auto(..))
 import Clay.Text (pre)
 
 import GHCJS.DOM.Types (Element(..), HTMLElement(..), uncheckedCastTo)
@@ -39,7 +39,7 @@ import qualified Data.Text as T (pack)
 logCss :: Css
 logCss = do
     ".log" ? do
-        backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
+        -- Flat black (via the bottom-bar pane's black background), like the Changes pane.
         fontFamily ["Hasklig"] []
         height (pct 100)
         overflowX auto

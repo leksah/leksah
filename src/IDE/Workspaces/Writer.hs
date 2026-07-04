@@ -40,7 +40,7 @@ import IDE.Utils.FileUtils(myCanonicalizePath)
 import Data.Maybe
 import Data.Function ((&))
 import Control.Applicative ((<|>))
-import Control.Monad (unless, void, when)
+import Control.Monad (void, when)
 import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Lens ((^.), (.~))
 import System.Time (getClockTime)

@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, LambdaCase, PatternSynonyms #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, OverloadedStrings, LambdaCase, PatternSynonyms, MonoLocalBinds #-}
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 -----------------------------------------------------------------------------
 --
@@ -92,7 +92,6 @@ import System.Directory
 import System.FilePath (dropExtension, splitExtension, (</>))
 import Control.Monad (forever, forM_, void, when, unless)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Applicative ((<$>))
 import qualified Data.Text as T (pack, unpack)
 import qualified Data.Text.IO as T (readFile, writeFile)
 import Data.Text (Text)
@@ -102,7 +101,7 @@ import GI.GLib.Constants
 import GI.Gdk.Objects.Screen
        (screenGetDefault, screenSetResolution)
 import GI.Gtk.Objects.CssProvider
-       (CssProvider(..), cssProviderLoadFromData, cssProviderNew)
+       (cssProviderLoadFromData, cssProviderNew)
 import GI.Gtk.Objects.StyleContext
        (styleContextAddProviderForScreen)
 import qualified Data.ByteString.Char8 as B (unlines)

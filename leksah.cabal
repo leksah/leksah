@@ -284,6 +284,7 @@ library
         IDE.Web.CloseRequest
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
+        IDE.Web.PreferencesRequest
         IDE.Web.Events
         IDE.Web.Layout
         IDE.Web.Main
@@ -298,6 +299,7 @@ library
         IDE.Web.ColorPick
         IDE.Web.TerminalInput
         IDE.Web.TmuxCC
+        IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
@@ -383,6 +385,7 @@ library
         hslogger >=1.0.7 && <1.4,
         http-types >=0.12.2 && <0.13,
         jsaddle >=0.9.4.0 && <0.10,
+        jsaddle-terminal >=0.1 && <0.2,
         jsaddle-warp >=0.9.4.0 && <0.10,
         lens >=4.15.4 && <5.4,
         ltk >=0.16.2.0 && <0.17,
@@ -515,6 +518,7 @@ library leksah-nogtk
         IDE.Web.CloseRequest
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
+        IDE.Web.PreferencesRequest
         IDE.Web.Events
         IDE.Web.Layout
         IDE.Web.Main
@@ -529,6 +533,7 @@ library leksah-nogtk
         IDE.Web.ColorPick
         IDE.Web.TerminalInput
         IDE.Web.TmuxCC
+        IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
@@ -603,6 +608,7 @@ library leksah-nogtk
         hslogger >=1.0.7 && <1.4,
         http-types >=0.12.2 && <0.13,
         jsaddle >=0.9.4.0 && <0.10,
+        jsaddle-terminal >=0.1 && <0.2,
         jsaddle-warp >=0.9.4.0 && <0.10,
         keycode >=0.2.2 && <0.3,
         lens >=4.15.4 && <5.4,

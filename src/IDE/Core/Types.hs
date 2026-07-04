@@ -79,7 +79,6 @@ module IDE.Core.Types (
 ,   pjDir
 ,   pjFile
 ,   pjFileOrDir
-,   pjFlakeFile
 ,   pjIsCabal
 ,   pjIsStack
 ,   pjIsNix
@@ -194,7 +193,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import Data.List (find, nubBy)
 import Control.Concurrent (modifyMVar_, readMVar, MVar)
-import Distribution.ModuleName (ModuleName(..))
+import Distribution.ModuleName (ModuleName)
 import Distribution.Simple (Extension(..))
 import IDE.Utils.Tool (ToolState(..), ProcessHandle)
 import Data.IORef (IORef)
@@ -202,9 +201,7 @@ import Numeric (showHex)
 import System.FilePath
        (dropFileName, (</>), isAbsolute, makeRelative)
 import IDE.Core.CTypes
-import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
-import Text.PrettyPrint (render)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
@@ -695,6 +692,8 @@ data Prefs = Prefs {
                                       --   (#rrggbb; bound to --leksah-hover)
     ,   showShortcutBadges  ::   Bool -- ^ holding Cmd overlays each pane's
                                       --   navigation shortcut as a badge
+    ,   colorfulIcons       ::   Bool -- ^ use the coloured icon set (pics/color)
+                                      --   instead of the monochrome default
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
@@ -773,6 +772,7 @@ data PrefsFile = PrefsFile {
   , uiSelectionColor_    :: Maybe Text
   , uiHoverColor_        :: Maybe Text
   , showShortcutBadges_  :: Maybe Bool
+  , colorfulIcons_       :: Maybe Bool
   , serverPort_          :: Maybe Int
   , sourceDirectories_   :: Maybe [FilePath]
   , unpackDirectory_     :: Maybe (Maybe FilePath)

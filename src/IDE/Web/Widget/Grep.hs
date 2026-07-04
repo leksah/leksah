@@ -22,8 +22,8 @@ import System.Process (readProcessWithExitCode)
 
 import Clay
        (overflow, auto, height, pct, whiteSpace, nowrap, grey, color, bold,
-        fontWeight, paddingRight, vGradient, backgroundImage, cursorDefault,
-        background, padding, px, (?), Css, Color(..), Cursor(..), cursor)
+        fontWeight, paddingRight, cursorDefault,
+        background, padding, px, (?), Css, Cursor(..), cursor)
 
 import Reflex
        (Dynamic, Event, switchDyn, leftmost, current, tag)
@@ -47,7 +47,7 @@ data GrepResult = GrepResult
 grepCss :: Css
 grepCss = do
     ".grep" ? do
-        backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
+        -- Flat black (via the bottom-bar pane's black background), like the Changes pane.
         height (pct 100)
         overflow auto
     ".grep .grep-item" ? do

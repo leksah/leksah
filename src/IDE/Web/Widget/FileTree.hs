@@ -41,7 +41,7 @@ import Reflex.Dom.Core
 
 import IDE.Web.Events (FileEvents, FileEvent(..))
 import IDE.Web.Widget.Tree
-       (treeItem', treeItemDynAttr', treeSelect, treeSelect', scrollIntoViewNearest)
+       (treeItemDynAttr', treeSelect', scrollIntoViewNearest)
 
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
 filesAndDirs dir = liftIO $
@@ -194,7 +194,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
   subdirE <- listViewWithKey subdirsD $ \subdir _ -> do
     let subPath = dir </> subdir
         isSrcDir = subPath `S.member` srcDirs
-        imgSrc = "/pics/ide_" <> (if isSrcDir then "source_" else "") <> "folder.png"
+        imgSrc = "/pics/tree-folder" <> (if isSrcDir then "-src" else "") <> ".svg"
         aggD = dirStatus subPath <$> statusD
         -- Auto-expand this directory when the reveal target is somewhere inside
         -- it *and* actually reachable here (not behind an omitted dir).  Highlight
@@ -205,7 +205,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
         dirClassD = ("class" =:) . ("dir" <>) . bool "" " active" . (== Just subPath) <$> highlightD
     treeItemDynAttr' underD dirClassD False (do
       (dirEl, _) <- treeSelect' treeName (return never) $ do
-        elAttr "img" ("src" =: imgSrc) $ return ()
+        elAttr "img" ("class" =: "tree-icon" <> "src" =: imgSrc) $ return ()
         elDynClass "span" (gitNameClass <$> aggD) . text $ T.pack subdir
         return never
       pbD <- getPostBuild
@@ -214,10 +214,10 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
       ) $ el "ul" $ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD subPath
   fileE <- listViewWithKey filesD $ \file _ -> do
     let imgSrc = "/pics/" <> case takeExtension file of
-                    ".cabal" -> "ide_cabal_file.png"
-                    ".hs" -> "ide_source.png"
-                    ".lhs" -> "ide_source.png"
-                    _ -> "ide_cabal_file.png"
+                    ".cabal" -> "tree-file-cabal.svg"
+                    ".hs" -> "tree-file-hs.svg"
+                    ".lhs" -> "tree-file-hs.svg"
+                    _ -> "tree-file.svg"
         absPath = dir </> file
         fileStatusD = M.lookup absPath <$> statusD
         -- Highlight this file when it is the focused (active) editor tab.  The
@@ -226,7 +226,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
                         <> "data-reveal-key" =: T.pack absPath) <$> highlightD
     elDynAttr "li" liAttrsD $ do
       (elFile, _) <- treeSelect' treeName (return never) $ do
-        elAttr "img" ("src" =: imgSrc) $ return ()
+        elAttr "img" ("class" =: "tree-icon" <> "src" =: imgSrc) $ return ()
         elDynClass "span" (gitNameClass <$> fileStatusD) . text $ T.pack file
         -- VS Code-style status letter to the right of the name.
         elDynClass "span" (("git-badge" <>) . maybe "" ((" " <>) . gitClass) <$> fileStatusD) $

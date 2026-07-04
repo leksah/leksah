@@ -38,14 +38,13 @@ module IDE.Pane.Modules (
 
 import Prelude ()
 import Prelude.Compat
-import Control.Monad.Fail.Compat (MonadFail)
 import Data.Maybe (isNothing, fromJust, isJust)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Tree (flatten, Forest, Tree(..))
-import Data.List (find, elemIndex, foldl', nub, partition, sortOn)
+import Data.List (find, elemIndex, nub, partition, sortOn)
 import Distribution.Package (Dependency(..), pkgName, pkgVersion)
 import Distribution.Version (withinRange)
 import Distribution.Utils.Path (getSymbolicPath)
@@ -71,7 +70,6 @@ import IDE.Pane.Info
 import IDE.Pane.SourceBuffer
 import Distribution.ModuleName
 import Distribution.Text (simpleParse,display)
-import Data.Typeable (Typeable)
 import Control.Exception (SomeException(..),catch)
 import IDE.Package (addModuleToPackageDescr,delModuleFromPackageDescr,getEmptyModuleTemplate,getPackageDescriptionAndPath, ModuleLocation(..))
 import Distribution.PackageDescription
@@ -130,8 +128,7 @@ import GI.Gtk.Objects.TreeViewColumn
         treeViewColumnSetReorderable, treeViewColumnSetResizable,
         treeViewColumnSetSizing, treeViewColumnSetTitle, treeViewColumnNew)
 import GI.Gtk.Enums
-       (ButtonsType(..), MessageType(..), WindowPosition(..),
-        ResponseType(..), ButtonBoxStyle(..), PolicyType(..),
+       (ResponseType(..), ButtonBoxStyle(..), PolicyType(..),
         ShadowType(..), SortType(..), TreeViewColumnSizing(..),
         Orientation(..))
 import GI.Gtk.Interfaces.CellLayout (cellLayoutPackStart)
@@ -183,8 +180,7 @@ import GI.Gtk.Objects.MenuShell (menuShellAppend)
 import GI.Gtk.Objects.Dialog
        (Dialog(..), dialogGetContentArea, constructDialogUseHeaderBar)
 import GI.Gtk.Objects.Window
-       (windowSetDefaultSize, setWindowTitle, setWindowTransientFor, Window(..),
-        setWindowWindowPosition, windowSetTransientFor)
+       (windowSetDefaultSize, setWindowTitle, setWindowTransientFor, Window(..))
 import GI.Gtk.Objects.Button (Button(..), onButtonClicked)
 import GI.Gtk.Objects.Label
        (labelSetText, labelSetLineWrap, labelNew)
@@ -215,7 +211,7 @@ data IDEModules     =   IDEModules {
 ,   blacklistB       ::   CheckButton
 ,   oldSelection     ::   IORef SelectionState
 ,   expanderState    ::   IORef ExpanderState
-} deriving Typeable
+}
 
 instance ToJSON ModuleName where
     toJSON = toJSON . T.pack . show
@@ -224,7 +220,7 @@ instance FromJSON ModuleName where
 
 data ModulesState           =   ModulesState Int (Scope,Bool)
                                     (Maybe ModuleName, Maybe Text) ExpanderState
-    deriving(Eq,Ord,Read,Show,Typeable,Generic)
+    deriving(Eq,Ord,Read,Show,Generic)
 
 instance ToJSON ModulesState
 instance FromJSON ModulesState

@@ -79,11 +79,11 @@ commandImageAndTip (CommandWorkspaceAction img tip _) = (img, tip)
 commandImageAndTip (CommandProjectAction img tip _) = (img, tip)
 commandImageAndTip (CommandPackageAction img tip _) = (img, tip)
 commandImageAndTip (CommandDebugAction img tip _) = (img, tip)
-commandImageAndTip CommandFileOpen = ("/pics/tango/actions/document-open.svg", __ "Opens an existing file")
-commandImageAndTip CommandFileSave = ("/pics/tango/actions/document-save.svg", __ "Saves the current buffer")
-commandImageAndTip CommandFind = ("/pics/tango/actions/edit-find.svg", __ "Show or hide the find bar")
-commandImageAndTip CommandNextError = ("/pics/ide_error_next.png", __ "Go to the next error")
-commandImageAndTip CommandPreviousError = ("/pics/ide_error_prev.png", __ "Go to the previous error")
+commandImageAndTip CommandFileOpen = ("/pics/file-open.svg", __ "Opens an existing file")
+commandImageAndTip CommandFileSave = ("/pics/file-save.svg", __ "Saves the current buffer")
+commandImageAndTip CommandFind = ("/pics/find.svg", __ "Show or hide the find bar")
+commandImageAndTip CommandNextError = ("/pics/error-next.svg", __ "Go to the next error")
+commandImageAndTip CommandPreviousError = ("/pics/error-prev.svg", __ "Go to the previous error")
 commandImageAndTip _ = ("", "")
 
 commandGetToggleState :: Command -> Maybe (IDE -> Bool)
@@ -100,91 +100,91 @@ commandAddModule, commandRefreshNix, commandPackageClean
   , commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal
   , commandDebugStepModule, commandDebugContinue, commandFileClose :: Command
 commandAddModule = CommandPackageAction
-  "/pics/tango/actions/document-new.svg"
+  "/pics/new-module.svg"
   (__ "Creates a new Haskell module")
   (return ())
 
 commandRefreshNix = CommandProjectAction
-  "/pics/ide_nix.svg"
+  "/pics/nix.svg"
   (__ "Refresh Leksah's cached nix environment variables for the active project")
   projectRefreshNix
 
 commandPackageClean = CommandPackageAction
-  "/pics/ide_clean.png"
+  "/pics/clean.svg"
   (__ "Cleans the package")
   packageClean
 
 commandPackageBuild = CommandPackageAction
-  "/pics/ide_make.png"
+  "/pics/build.svg"
   (__ "Builds the package")
   makePackage
 
 commandPackageRun = CommandPackageAction
-  "/pics/ide_run.png"
+  "/pics/run.svg"
   (__ "Runs the package")
   packageRun
 
 commandPackageRunJavascript = CommandPackageAction
-  "/pics/ide_js.png"
+  "/pics/run-js.svg"
   (__ "Run jsexe created by GHCJS")
   packageRunJavaScript
 
 commandToggleBackgroundBuild = CommandIDEToggleAction
-  "/pics/ide_build.png"
+  "/pics/background-build.svg"
   (__ "Build in the background and report errors")
   backgroundBuildToggled
   (view $ prefs . to backgroundBuild)
 
 commandToggleNative = CommandIDEToggleAction
-  "/pics/ide_target_binary.svg"
+  "/pics/target-native.svg"
   (__ "Use GHC to compile")
   nativeToggled
   (view $ prefs . to native)
 
 commandToggleJavaScript = CommandIDEToggleAction
-  "/pics/ide_target_js.svg"
+  "/pics/target-js.svg"
   (__ "Use GHCJS to compile")
   javaScriptToggled
   (view $ prefs . to javaScript)
 
 commandToggleDebug = CommandIDEToggleAction
-  "/pics/ide_debug.png"
+  "/pics/debug.svg"
   (__ "Use GHCi debugger to build and run")
   (readIDE prefs >>= debugToggled . not . debug)
   (view $ prefs . to debug)
 
 commandToggleMakeDocs = CommandIDEToggleAction
-  "/pics/ide_doc_build.png"
+  "/pics/docs.svg"
   (__ "Make documentation when building")
   makeDocsToggled
   (view $ prefs . to makeDocs)
 
 commandToggleTest = CommandIDEToggleAction
-  "/pics/ide_test_build.png"
+  "/pics/test.svg"
   (__ "Run unit tests when building")
   runUnitTestsToggled
   (view $ prefs . to runUnitTests)
 
 commandToggleRunBenchmarks = CommandIDEToggleAction
-  "/pics/ide_bench_build.png"
+  "/pics/bench.svg"
   (__ "Run benchmarks when building")
   runBenchmarksToggled
   (view $ prefs . to runBenchmarks)
 
 commandToggleMakeDependents = CommandIDEToggleAction
-  "/pics/ide_make.png"
+  "/pics/dependents.svg"
   (__ "Make dependent packages")
   makeModeToggled
   (view $ prefs . to makeMode)
 
 commandToggleShowIgnored = CommandIDEToggleAction
-  "/pics/ide_source_folder.png"
+  "/pics/show-ignored.svg"
   (__ "Show files ignored by git in the workspace file trees")
   (modifyIDE_ (prefs %~ \p -> p { showIgnoredFiles = not (showIgnoredFiles p) }))
   (view $ prefs . to showIgnoredFiles)
 
 commandToggleShowHidden = CommandIDEToggleAction
-  "/pics/ide_folder.png"
+  "/pics/show-hidden.svg"
   (__ "Show hidden (dot-) files in the workspace file trees")
   (modifyIDE_ (prefs %~ \p -> p { showHiddenFiles = not (showHiddenFiles p) }))
   (view $ prefs . to showHiddenFiles)
@@ -192,7 +192,7 @@ commandToggleShowHidden = CommandIDEToggleAction
 -- | Cycle the side ("tall") pane: show -> auto-hide -> hide -> show.  Rendered
 -- by a dedicated toolbar button that shows the current state (see Toolbar).
 commandToggleTallPane = CommandIDEAction
-  "/pics/ide_source_folder.png"
+  "/pics/sidebar.svg"
   (__ "Side pane: show / auto-hide / hide")
   (modifyIDE_ (prefs %~ \p -> p { tallVisibility = cycleTall (tallVisibility p) }))
 
@@ -200,7 +200,7 @@ commandToggleTallPane = CommandIDEAction
 -- show -> auto-hide -> hide -> show.  Like 'commandToggleTallPane' but for the
 -- bottom row instead of the side column.
 commandToggleWide1Pane = CommandIDEAction
-  "/pics/ide_source_folder.png"
+  "/pics/bottombar.svg"
   (__ "Bottom pane: show / auto-hide / hide")
   (modifyIDE_ (prefs %~ \p -> p { wide1Visibility = cycleTall (wide1Visibility p) }))
 
@@ -209,7 +209,7 @@ cycleTall :: TallVisibility -> TallVisibility
 cycleTall v = if v == maxBound then minBound else succ v
 
 commandUpdateWorkspaceInfo = CommandIDEAction
-  "/pics/ide_rebuild_meta.png"
+  "/pics/refresh-meta.svg"
   (__ "Updates data for the current workspace")
   updateWorkspaceInfo
 
@@ -223,22 +223,22 @@ commandFileClose = CommandIDEAction
   (liftIO requestCloseActivePane)
 
 commandDebugStep = CommandIDEAction
-  "/pics/ide_step.png"
+  "/pics/debug-step.svg"
   (__ "Single-step after stopping at a breakpoint")
   debugStep
 
 commandDebugStepLocal = CommandIDEAction
-  "/pics/ide_local.png"
+  "/pics/debug-step-local.svg"
   (__ "Single-step within the current top-level binding")
   debugStepLocal
 
 commandDebugStepModule = CommandIDEAction
-  "/pics/ide_module.png"
+  "/pics/debug-step-module.svg"
   (__ "Single-step restricted to the current module")
   debugStepModule
 
 commandDebugContinue = CommandIDEAction
-  "/pics/ide_continue.png"
+  "/pics/debug-continue.svg"
   (__ "Resume after a breakpoint")
   debugContinue
 

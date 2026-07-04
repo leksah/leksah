@@ -29,7 +29,6 @@ module IDE.Pane.Trace (
 
 import Prelude ()
 import Prelude.Compat
-import Data.Typeable (Typeable)
 import IDE.Core.State
        (SrcSpan, IDEM, IDEAction, IDERef, displaySrcSpan,
         liftIDE, readIDE, currentHist, reflectIDE)
@@ -44,7 +43,7 @@ import IDE.LogRef (srcSpanParser)
 import System.Log.Logger (debugM)
 import IDE.Gtk.Workspaces (packageTry)
 import qualified Data.Conduit.List as CL (consume)
-import Control.Applicative (optional, (<$>), (<|>), many)
+import Control.Applicative (optional, (<|>), many)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import IDE.Utils.GUIUtils (treeViewContextMenu, __, printf)
@@ -101,10 +100,10 @@ data IDETrace    =   IDETrace {
     scrolledView    ::   ScrolledWindow
 ,   treeView        ::   TreeView
 ,   tracepoints     ::   ForestStore TraceHist
-} deriving Typeable
+}
 
 data TraceState  =   TraceState {
-}   deriving(Eq,Ord,Read,Show,Typeable,Generic)
+}   deriving(Eq,Ord,Read,Show,Generic)
 
 instance ToJSON TraceState
 instance FromJSON TraceState

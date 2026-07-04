@@ -59,24 +59,12 @@ module IDE.Gtk.Package (
 import Prelude ()
 import Prelude.Compat
 
-import Control.Applicative ((<$>))
 import Control.Exception (SomeException(..))
 import Control.Lens ((%~))
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ask)
 
-import Data.GI.Base.GObject (new')
-import GI.Gtk.Enums
-       (WindowPosition(..), ResponseType(..), ButtonsType(..),
-        MessageType(..))
-import GI.Gtk.Objects.Dialog (constructDialogUseHeaderBar)
-import GI.Gtk.Objects.Widget (widgetDestroy)
-import GI.Gtk.Objects.Window
-       (setWindowWindowPosition, windowSetTransientFor)
-
-import Graphics.UI.Editor.Parameters
-       (dialogRun', dialogSetDefaultResponse', dialogAddButton')
 
 import IDE.Core.State
        (native, runBenchmarks, runUnitTests, makeDocs, backgroundBuild,
@@ -89,7 +77,6 @@ import IDE.Utils.GUIUtils
         getBackgroundBuildToggled, getMakeDocs, getRunUnitTests,
         getRunBenchmarks, getNativeToggled, getJavaScriptToggled,
         getMakeModeToggled, showConfirmDialog)
-import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.LogRef (logOutput)
 import qualified Data.Text as T (pack)
 import IDE.Utils.ExternalTool (runExternalTool')

@@ -77,14 +77,29 @@ layoutCss = do
     -- full width it pushes the wide panes to the right (their right edge slides
     -- off-screen and is clipped) instead of resizing them -- a terminal in there
     -- keeps its size, so it isn't reflowed/re-fitted while the pane is showing.
+    -- Auto-hide collapses the side column all the way to 0 (nothing of it peeks);
+    -- the editor column stays a constant 100vw with a 3px left padding standing in
+    -- for the old peek strip -- blank editor padding, so there's nothing awkward to
+    -- render there.  An invisible .tall-sensor strip laid over that padding catches
+    -- the mouse and re-opens the pane (see below).  wide0 keeps its constant width
+    -- (100vw, minus the 3px padding via border-box) across the hover so a terminal
+    -- in there is never reflowed.
     ".leksah.tall-auto" ? do
-        "grid-template-columns" -: "3px calc(100vw - 3px)"
+        "grid-template-columns" -: "0px 100vw"
         "transition" -: "grid-template-columns 0.15s ease"
-    -- Stay open while hovered *or* while a pane in the area has keyboard focus
-    -- (:focus-within): activating/flipping to a side pane focuses its list, which
-    -- holds the bar open; it collapses again on its own once focus leaves.
-    ".leksah.tall-auto:has(.area-tall:hover, .area-tall:focus-within)" ?
-        ("grid-template-columns" -: "300px calc(100vw - 3px)")
+    -- Stay open while the sensor or the pane itself is hovered *or* while a pane in
+    -- the area has keyboard focus (:focus-within): activating/flipping to a side
+    -- pane focuses its list, which holds the bar open; it collapses again on its
+    -- own once focus leaves.
+    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)" ?
+        ("grid-template-columns" -: "300px 100vw")
+    -- The 3px left padding on the editor column that replaces the old peek strip.
+    ".leksah.tall-auto .area-wide0" ? do
+        "padding-left" -: "3px"
+        "box-sizing" -: "border-box"
+    ".leksah.tall-auto .area-wide1" ? do
+        "padding-left" -: "3px"
+        "box-sizing" -: "border-box"
     -- Keep the side pane's body laid out at its full width while collapsed, so
     -- its contents (e.g. the "New Terminal" button) don't reflow as the column
     -- narrows -- the narrow column just clips them.
@@ -154,7 +169,9 @@ layoutCss = do
         "left" -: "0"
         "right" -: "0"
         "top" -: "-150px"
-        "height" -: "40px"
+        -- 20px, matching the base tab-button row height (the 130px body below
+        -- makes the 150px bar); the buttons then tile flush onto the body.
+        "height" -: "20px"
         "z-index" -: "1"
         "transform" -: "translateY(170px)"
         "transition" -: "transform 0.15s ease"
@@ -186,6 +203,62 @@ layoutCss = do
         "grid-area" -: "wide0"
     ".area-wide1" ? do
         "grid-area" -: "wide1"
+    -- The bottom-bar panes get a solid black background: in auto-hide the bar is
+    -- an absolutely-positioned overlay that slides up OVER the editor content, so
+    -- a transparent pane would let that content show through behind it.
+    ".tab.area-wide1" ?
+        ("background" -: "rgb(0,0,0)")
+    -- Divider overlays: a transparent box laid OVER the side pane / bottom bar
+    -- (its own grid cell, so it sits on top of that panel's content).  It's
+    -- click-through (pointer-events:none) so it never steals the panel's
+    -- mouse-over (e.g. the 3px auto-hide peek keeps working).  It carries a 1px
+    -- border on the edge next to the editor area, and — when one of that panel's
+    -- panes is active (:focus-within) — a drop shadow cast onto the editor area,
+    -- the same 64px mid-grey as the active terminal pane (.terminal-cc-hl).
+    -- The side divider fills the whole side column, so its border sits at the
+    -- pane's actual right edge (the boundary with the editor's 3px padding).
+    ".tall-divider" ? do
+        "grid-area" -: "tall"
+        "border-right" -: "1px solid rgb(128,128,128)"
+        "pointer-events" -: "none"
+        "z-index" -: "20"
+        position relative
+    ".wide1-divider" ? do
+        "grid-area" -: "wide1"
+        "border-top" -: "1px solid rgb(128,128,128)"
+        "pointer-events" -: "none"
+        "z-index" -: "20"
+        position relative
+    -- Hide each divider when its panel is hidden (else a stray 1px line lingers
+    -- against a zero-width/height cell).
+    ".leksah.tall-hide .tall-divider" ? Clay.display none
+    ".leksah.wide1-hide .wide1-divider" ? Clay.display none
+    -- In bottom-bar auto-hide the wide1 row is 0 (the bar is a transform overlay),
+    -- so the divider would collapse to a stray 1px line above the statusbar.
+    ".leksah.wide1-auto .wide1-divider" ? Clay.display none
+    -- While the side pane is collapsed to its 3px peek, the divider's border would
+    -- sit hard against the window's left edge (x=0); margin can't push it past 0,
+    -- so slide the whole overlay off-screen instead.  It slides back when the pane
+    -- expands (hover/focus).
+    ".leksah.tall-auto:not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)) .tall-divider" ?
+        ("transform" -: "translateX(-8px)")
+    -- The auto-hide activation strip: an invisible 3px-wide, full-height grid item
+    -- pinned to the left of the (0-width, collapsed) side column, overflowing into
+    -- the editor column's 3px left padding.  It exists only in tall-auto; hovering
+    -- it re-opens the pane (see the :has rule above).  z-index keeps it above the
+    -- editor so it catches the mouse in that padding.
+    ".tall-sensor" ? do
+        "grid-area" -: "tall"
+        "justify-self" -: "start"
+        "align-self" -: "stretch"
+        "width" -: "3px"
+        "z-index" -: "30"
+        Clay.display none
+    ".leksah.tall-auto .tall-sensor" ?
+        ("display" -: "block")
+    -- (The active-pane shadow for every area — side pane, editor/terminal, bottom
+    -- bar — is drawn by the single '.leksah-pane-hl' overlay, positioned over the
+    -- focused pane; the dividers now carry only the line.)
     -- Keyboard list navigation: the row the arrows have moved to (a
     -- .leksah-nav-item in a focused .leksah-nav pane), highlighted like a
     -- selected/active row.  And don't draw a focus ring around a whole focused

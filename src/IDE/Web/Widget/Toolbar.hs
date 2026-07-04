@@ -13,13 +13,13 @@ import Data.Text (Text)
 import Clay
        (transitionDuration, sec, transitionDelay,
         opacity, (|+), visibility, absolute, position, inlineBlock,
-        display, nowrap, whiteSpace, vGradient, backgroundImage,
+        display, nowrap, whiteSpace,
         borderRadius, padding, hover, (#), background, margin, px, width,
-        height, (?), Css, hidden, visible, Color(..))
+        height, (?), Css, hidden, visible, zIndex, Color(..))
 
 import Reflex (constDyn, holdUniqDyn, leftmost, ffor, Dynamic)
 import Reflex.Dom.Core
-       (elDynAttr', elDynAttr, text, dynText, MonadWidget, (=:), elAttr, divClass,
+       (elDynAttr', text, dynText, MonadWidget, (=:), elAttr, divClass,
         Event, domEvent, EventName(..))
 
 import IDE.Web.Theme (selectionColor, selectionColorFaint)
@@ -39,12 +39,14 @@ import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
 toolbarCss :: Css
 toolbarCss = do
     ".toolbar" ? do
-        backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
         whiteSpace nowrap
     ".toolbar-item" ?
         display inlineBlock
     ".tooltip" ? do
         position absolute
+        -- Above the tab bar below it: the tooltip drops into the tab row, which
+        -- comes later in the DOM and would otherwise paint over it.
+        zIndex 50
         padding (px 3) (px 3) (px 3) (px 3)
         borderRadius (px 3) (px 3) (px 3) (px 3)
         background (Rgba 64 64 64 1.0)

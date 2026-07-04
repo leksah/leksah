@@ -43,8 +43,8 @@ import Text.Parsec (ParsecT)
 -- * Implementation
 
 notBeforeId, notAfterId, notBeforeOp, notAfterOp :: Set Char
-notBeforeId     =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ "_"
-notAfterId      =   Set.fromList $['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
+notBeforeId     =   Set.fromList $ ['a'..'z'] ++ ['A'..'Z'] ++ "_"
+notAfterId      =   Set.fromList $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_"
 notBeforeOp     =   Set.fromList "!#$%&*+./<=>?@\\^|-~'\""
 notAfterOp      =   notBeforeOp
 
@@ -105,7 +105,7 @@ oneCandyParser :: CharParser () (Text,Char,Bool)
 oneCandyParser = do
     toReplace   <-  toReplaceParser
     replaceWith <-  replaceWithParser
-    nt          <-  option True (try $do
+    nt          <-  option True (try $ do
         _ <- symbol "Trimming"
         return False)
     return (toReplace,replaceWith,nt)
@@ -114,7 +114,7 @@ toReplaceParser :: CharParser () Text
 toReplaceParser   = lexeme (do
     str         <-  between (char '"')
                         (char '"' <?> "end of string")
-                        (P.many $noneOf "\"")
+                        (P.many $ noneOf "\"")
     return $ T.pack str)
     <?> "to replace string"
 

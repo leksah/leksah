@@ -23,8 +23,8 @@ import qualified Data.Text as T
 
 import Clay
        (overflowX, px, width, cursorDefault,
-        nowrap, whiteSpace, pct, vGradient, backgroundImage, height, (?),
-        Css, Color(..), Cursor(..), Auto(..), Background(..))
+        nowrap, whiteSpace, pct, height, (?),
+        Css, Cursor(..), Auto(..), Background(..))
 
 import GHCJS.DOM.Types (Element(..), HTMLElement(..), uncheckedCastTo)
 import GHCJS.DOM.HTMLElement (getOffsetHeight)
@@ -32,7 +32,7 @@ import GHCJS.DOM.HTMLElement (getOffsetHeight)
 import Reflex
        (attachWithMaybe, select,
         attachWith, mergeMap, switchDyn, zipDynWith, updated, leftmost,
-        delay, holdUniqDyn, Dynamic, holdDyn, never, fmapMaybe, tag,
+        delay, holdUniqDyn, Dynamic, holdDyn, fmapMaybe, tag,
         current, getPostBuild, performEvent, fan, foldDyn, ffilter)
 import Reflex.Dom.Core
        (elDynClass', virtualList, elAttr, elAttr',
@@ -50,7 +50,7 @@ import IDE.Web.Widget.Findbar (findSelection)
 errorsCss :: Css
 errorsCss = do
   ".errors" ? do
-    backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
+    -- Flat black (via the bottom-bar pane's black background), like the Changes pane.
     height (pct 100)
     overflowX auto
   ".errors-child" ? do
