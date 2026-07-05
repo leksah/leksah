@@ -51,18 +51,6 @@ tabsCss = do
         "display" -: "flex"
         "align-items" -: "flex-start"
         "position" -: "relative"
-    -- A white line along the bottom of the tab-button row, separating the tabs
-    -- from the content below.  The active tab punches a gap in it (see the
-    -- .tab-wrap.selected::after cover) so it reads as connected to its pane.
-    ".tab-buttons::after" ? do
-        "content" -: "''"
-        "position" -: "absolute"
-        "left" -: "0"
-        "right" -: "0"
-        "bottom" -: "0"
-        "height" -: "1px"
-        "background" -: "rgb(128,128,128)"
-        "pointer-events" -: "none"
     -- The bottom bar's tab row also gets a line on TOP, separating it from the
     -- editor above.  (Side/editor rows sit under the toolbar and don't need one;
     -- and the wide1 top divider is hidden in bottom-bar auto-hide, so the tab
@@ -97,19 +85,6 @@ tabsCss = do
         background (Rgba 61 96 150 1.0)
     ".tab-buttons .tab-wrap.selected" ?
         background selectionColor
-    -- The active tab's gap in the bottom line: a background-coloured cover at the
-    -- row bottom (the row is a fixed 20px and tabs are top-aligned) spanning the
-    -- tab's width, painted on top of the line (z-index).
-    ".tab-buttons .tab-wrap.selected::after" ? do
-        "content" -: "''"
-        "position" -: "absolute"
-        "left" -: "0"
-        "right" -: "0"
-        "top" -: "18px"
-        "height" -: "3px"
-        "background" -: "rgb(16,16,16)"
-        "z-index" -: "1"
-        "pointer-events" -: "none"
     ".tab-buttons button" ? do
         verticalAlign middle
         padding (px 0) (px 10) (px 0) (px 2)
