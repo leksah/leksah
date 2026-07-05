@@ -61,7 +61,7 @@ import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeFileName, dropFileName, (</>))
-import System.Environment (getArgs)
+import System.Environment (getArgs, setEnv)
 import System.Posix.Process (exitImmediately)
 import System.FSNotify (withManager)
 
@@ -195,6 +195,13 @@ import IDE.Workspaces (backgroundMake)
 -- the IDE, so a wrapper (leksah-nix.sh) can rebuild and relaunch.
 newIDE :: Bool -> Bool -> Bool -> (JSM () -> IO ()) -> IO ()
 newIDE showMenubar macTitlebar developLeksah runJs = do
+  -- The Changes / file-tree / workspace panes poll `git status` and `git diff`
+  -- every few seconds; those refresh the index and so take .git/index.lock,
+  -- contending with git commands the user (or an agent) runs in a terminal.
+  -- GIT_OPTIONAL_LOCKS=0 makes git skip that optional index-refresh lock for
+  -- read-only operations (write locks for commit/add etc. are unaffected), so
+  -- the pollers no longer fight foreground git.  Inherited by every child git.
+  setEnv "GIT_OPTIONAL_LOCKS" "0"
   let yiConfig = defaultYiConfig
   initializeTime
   exitCode <- newIORef ExitSuccess
@@ -1562,11 +1569,14 @@ activeEditorSelectionJs = mconcat
   , "return f+'\\t'+a+'\\t'+b;})()" ]
 
 -- bar telling the user whether it's safe to touch leksah while an agent drives
--- it.  Green = safe; orange (+ a beep) = the agent needs it in ~3 s; red = the
--- agent is testing now.  Driven from the shell via
--- @leksah-cmd js eval 'leksahTestStart()'@ (orange→beep→red after 3 s) and
--- @'leksahTestEnd()'@ (back to green); @leksahStatus('green'|'orange'|'red')@
--- sets a state directly.  Default green (normal, un-driven use).
+-- it.  Each state has a distinct shape as well as colour (colour-blind
+-- accessibility): green circle = safe; orange triangle (+ a beep) = the agent
+-- needs it in ~3 s; red octagon = the agent is testing now; blue diamond = the
+-- agent is rebuilding/restarting.  Driven from the shell via
+-- @leksah-cmd js eval 'leksahTestStart()'@ (orange→beep→red after 3 s),
+-- @'leksahTestEnd()'@ (back to green) and @'leksahRestarting()'@ (blue);
+-- @leksahStatus('green'|'orange'|'red'|'blue')@ sets a state directly.
+-- Default green (normal, un-driven use).
 statusLightJs :: Text
 statusLightJs = T.unlines
   [ "(function(){"
@@ -1580,19 +1590,30 @@ statusLightJs = T.unlines
   , "      var css = document.createElement('style');"
   , "      css.id = 'leksah-status-light-css';"
   , "      css.textContent ="
-  , "        '#leksah-status-light{position:fixed;top:6px;right:10px;width:13px;height:13px;'+"
-  , "        'border-radius:50%;z-index:2147483647;pointer-events:none;opacity:.9;'+"
+  , "        '#leksah-status-light{position:fixed;top:5px;right:10px;width:14px;height:14px;'+"
+  , "        'z-index:2147483647;pointer-events:none;opacity:.95;'+"
   -- Own compositor layer so the glow never forces repaints of content beneath.
-  , "        'transform:translateZ(0);'+"
-  , "        'box-shadow:0 0 0 1px rgba(0,0,0,.45);transition:background .15s,box-shadow .15s}'+"
-  , "        '#leksah-status-light.green{background:#2ecc40;box-shadow:0 0 6px #2ecc40,0 0 0 1px rgba(0,0,0,.45)}'+"
-  , "        '#leksah-status-light.orange{background:#ff9500;box-shadow:0 0 9px #ff9500,0 0 0 1px rgba(0,0,0,.45)}'+"
-  , "        '#leksah-status-light.red{background:#ff3b30;box-shadow:0 0 9px #ff3b30,0 0 0 1px rgba(0,0,0,.45)}';"
+  , "        'transform:translateZ(0);transition:background .15s,filter .15s}'+"
+  -- Each state has a distinct SHAPE as well as colour (colour-blind
+  -- accessibility): green=circle safe, orange=triangle needed-soon,
+  -- red=octagon (stop) testing, blue=diamond rebuilding/restarting.  The glow
+  -- uses filter:drop-shadow (not box-shadow) so it follows the clipped shape.
+  , "        '#leksah-status-light.green{background:#2ecc40;border-radius:50%;'+"
+  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 4px #2ecc40)}'+"
+  , "        '#leksah-status-light.orange{background:#ff9500;'+"
+  , "        'clip-path:polygon(50% 2%,98% 96%,2% 96%);'+"
+  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 4px #ff9500)}'+"
+  , "        '#leksah-status-light.red{background:#ff3b30;'+"
+  , "        'clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);'+"
+  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 5px #ff3b30)}'+"
+  , "        '#leksah-status-light.blue{background:#0a84ff;'+"
+  , "        'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);'+"
+  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 5px #0a84ff)}';"
   , "      (document.head || document.documentElement).appendChild(css);"
   , "    }"
   , "    el = document.createElement('div');"
   , "    el.id = 'leksah-status-light';"
-  , "    el.title = 'Green: safe to use leksah \\u2022 Orange: Claude needs it shortly \\u2022 Red: Claude is testing';"
+  , "    el.title = 'Green circle: safe to use \\u2022 Orange triangle: Claude needs it shortly \\u2022 Red octagon: Claude is testing \\u2022 Blue diamond: Claude is rebuilding/restarting';"
   , "    el.className = state;"
   , "    if (document.body) document.body.appendChild(el);"
   , "    return el;"
@@ -1635,6 +1656,9 @@ statusLightJs = T.unlines
   , "    timer = setTimeout(function(){ state = 'red'; ensure().className = 'red'; timer = null; }, 3000);"
   , "  };"
   , "  window.leksahTestEnd = function(){ set('green'); };"
+  -- Blue (diamond): Claude is rebuilding/restarting leksah — informational,
+  -- distinct from red (an active test).  Set before rebuild-self/restart.
+  , "  window.leksahRestarting = function(){ set('blue'); };"
   -- Land the dot in the final <body> (mainWidget replaces an early append) and
   -- keep it there: a cheap 0.5s poll re-appends it if it's ever detached.
   , "  ensure(); setInterval(ensure, 500);"

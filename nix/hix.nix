@@ -107,6 +107,8 @@ rec {
         # Persistent web-UI terminals: each leksah terminal attaches to a tmux
         # session (on a private socket), so shells survive a leksah restart.
         pkgs.tmux
+        # Image tooling for verifying UI changes (crop/convert screenshots).
+        pkgs.buildPackages.imagemagick
       ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.gtk-mac-integration;
     };
 })
