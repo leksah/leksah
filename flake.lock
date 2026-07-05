@@ -589,6 +589,23 @@
         "type": "github"
       }
     },
+    "jsaddle-terminal-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1783233939,
+        "narHash": "sha256-EllM9KEir/P54wbz58gN3UevIK7E/JlpmSsRV9lwFaw=",
+        "owner": "ghcjs",
+        "repo": "jsaddle",
+        "rev": "6264d0ee0fd382d56065827a34de20b561280836",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ghcjs",
+        "repo": "jsaddle",
+        "rev": "6264d0ee0fd382d56065827a34de20b561280836",
+        "type": "github"
+      }
+    },
     "nixpkgs-2305": {
       "locked": {
         "lastModified": 1705033721,
@@ -729,6 +746,7 @@
         "haddock-ghc98": "haddock-ghc98",
         "haskellNix": "haskellNix",
         "hls-github": "hls-github",
+        "jsaddle-terminal-src": "jsaddle-terminal-src",
         "nixpkgs": [
           "haskellNix",
           "nixpkgs-unstable"

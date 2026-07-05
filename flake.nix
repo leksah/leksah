@@ -18,6 +18,11 @@
   inputs.haddock-ghc912.flake = false;
   inputs.haddock-ghc914.url = "github:leksah/haddock/ghc-9.14";
   inputs.haddock-ghc914.flake = false;
+  # jsaddle-terminal lives in the jsaddle monorepo now; wire it so the
+  # haskell.nix planner resolves the source-repository-package in cabal.project
+  # without a network fetch (pure eval).
+  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/6264d0ee0fd382d56065827a34de20b561280836";
+  inputs.jsaddle-terminal-src.flake = false;
   # HLS built from its master branch: its cabal.project uses allow-newer to
   # support GHC 9.14, which no hackage-released HLS does yet (hie-compat caps
   # base < 4.22).  Consumed as a tool `src` in nix/hix.nix.
@@ -51,6 +56,7 @@
                   "https://github.com/leksah/haddock/ghc-9.10" = inputs.haddock-ghc910;
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
+                  "https://github.com/ghcjs/jsaddle/6264d0ee0fd382d56065827a34de20b561280836" = inputs.jsaddle-terminal-src;
                 };
               };
           })
