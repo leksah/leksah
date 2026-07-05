@@ -24,6 +24,7 @@ module IDE.Web.RegionCapture
   , nextRegionFile
   , sendPathToTarget
   , sendTextToTarget
+  , resolveTmuxSessionId
   ) where
 
 import Control.Exception (SomeException, try)
@@ -96,6 +97,21 @@ sendTextToTarget target txt = case regionTmuxTarget target of
                 ["-L", "leksah", "send-keys", "-t", T.unpack tgt, "-l", T.unpack txt] "")
            :: IO (Either SomeException (ExitCode, String, String))
     return $ case r of Right (ExitSuccess, _, _) -> True; _ -> False
+
+-- | Resolve a tmux session @name@ (or id) to its canonical @$N@ session id on
+-- the @leksah@ server — leksah keys its terminal tabs by that id, so this maps
+-- an AI-target session name (e.g. @claude@) to the id 'IDE.Web.Main' can focus.
+-- 'Nothing' if the session doesn't exist there.
+resolveTmuxSessionId :: Text -> IO (Maybe Text)
+resolveTmuxSessionId sess = do
+  r <- try (readProcessWithExitCode "tmux"
+              ["-L", "leksah", "display-message", "-p", "-t", T.unpack sess,
+               "#{session_id}"] "")
+         :: IO (Either SomeException (ExitCode, String, String))
+  return $ case r of
+    Right (ExitSuccess, out, _) ->
+      let s = T.strip (T.pack out) in if T.null s then Nothing else Just s
+    _ -> Nothing
 
 -- | The screencapture-crosshair path (used when permission IS granted):
 -- interactively grab a region and send its PNG path to @target@'s pane.

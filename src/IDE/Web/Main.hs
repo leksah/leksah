@@ -124,7 +124,7 @@ import IDE.Web.RegionGrabRequest (nextRegionGrab)
 import IDE.Web.ScreenshotRequest (requestScreenshotRegion)
 import IDE.Web.RegionCapture
        (screenCaptureAllowed, grabRegionToTarget, sendPathToTarget,
-        sendTextToTarget, nextRegionFile)
+        sendTextToTarget, nextRegionFile, resolveTmuxSessionId)
 import IDE.Web.AIContextRequest (AIAction(..), nextAIAction)
 import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
@@ -1791,8 +1791,13 @@ main showMenubar macTitlebar ide = mdo
                 rel <- makeRelativeToCurrentDirectory (T.unpack absf)
                 void $ sendTextToTarget target ("@" <> T.pack rel <> suffix <> " ")
         case act of
-          FocusAITerminal -> liftIO $
-              forM_ (aiTargetSession target) focusTerminalPane
+          -- The target names a tmux session (e.g. "claude"), but leksah keys
+          -- its terminal tabs by tmux session id ($N).  Resolve name→id, then
+          -- drive the same path a repl-launch uses (fireTermRequest): bring the
+          -- session's tab up in wide0 AND focus its active pane.
+          FocusAITerminal -> liftIO . void . forkIO $
+              forM_ (aiTargetSession target) $ \sess ->
+                  resolveTmuxSessionId sess >>= mapM_ fireTermRequest
           SendError -> liftIO $
               forM_ (ideNow ^. currentError) $ \lr -> do
                   rel <- makeRelativeToCurrentDirectory (logRefFullFilePath lr)
