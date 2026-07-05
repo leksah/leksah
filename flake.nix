@@ -23,6 +23,9 @@
   # without a network fetch (pure eval).
   inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/6264d0ee0fd382d56065827a34de20b561280836";
   inputs.jsaddle-terminal-src.flake = false;
+  # ffcabal lives in its own repo now; same wiring as above.
+  inputs.ffcabal-src.url = "github:leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c";
+  inputs.ffcabal-src.flake = false;
   # HLS built from its master branch: its cabal.project uses allow-newer to
   # support GHC 9.14, which no hackage-released HLS does yet (hie-compat caps
   # base < 4.22).  Consumed as a tool `src` in nix/hix.nix.
@@ -57,6 +60,7 @@
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
                   "https://github.com/ghcjs/jsaddle/6264d0ee0fd382d56065827a34de20b561280836" = inputs.jsaddle-terminal-src;
+                  "https://github.com/leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c" = inputs.ffcabal-src;
                 };
               };
           })

@@ -66,6 +66,23 @@
         "type": "github"
       }
     },
+    "ffcabal-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1783045269,
+        "narHash": "sha256-EzpM9i27Mkvx69c9fYNUL5vbep2Xtem9phwyMgSNeKA=",
+        "owner": "leksah",
+        "repo": "ffcabal",
+        "rev": "03d5d8f99b41db4ea8af74712354ff334112ae5c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "leksah",
+        "repo": "ffcabal",
+        "rev": "03d5d8f99b41db4ea8af74712354ff334112ae5c",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "locked": {
         "lastModified": 1733328505,
@@ -737,6 +754,7 @@
     },
     "root": {
       "inputs": {
+        "ffcabal-src": "ffcabal-src",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "haddock-ghc910": "haddock-ghc910",
