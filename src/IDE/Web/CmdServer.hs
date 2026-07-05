@@ -76,7 +76,9 @@ import IDE.Core.State
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.Types (filePathToProjectKey)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
+import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
+import IDE.Web.ScreenshotRequest (requestScreenshot)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Workspaces (projectOpenThis, workspaceTryQuiet, makePackage')
 
@@ -143,6 +145,39 @@ handleConn ideR conn = do
       ("project" : "open" : files) | not (null files) -> do
         results <- mapM (openProject . resolve cwd) files
         reply $ T.unlines results
+
+      -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
+      -- answered as soon as the control socket is serving, so it marks the point
+      -- the relaunched UI is back.
+      ("ping" : _) -> reply "ok\n"
+
+      -- screenshot FILE: capture the UI to a PNG (native WKWebView snapshot on
+      -- macOS).  Relative paths resolve against the client's cwd.
+      ("screenshot" : file : _) | not (T.null file) -> do
+        let path = resolve cwd file
+            -- Right after a relaunch the window/WKWebView may not be wired up yet
+            -- (a screenshot then finds no view); retry a few times before giving up.
+            tryShot 0 = requestScreenshot (T.pack path)
+            tryShot n = requestScreenshot (T.pack path) >>= \case
+              True  -> return True
+              False -> threadDelay 500000 >> tryShot (n - 1 :: Int)
+        ok <- tryShot 6
+        reply $ if ok
+          then "Wrote screenshot to " <> T.pack path <> "\n"
+          else "screenshot: failed — no capture handler (only the wkwebview \
+               \front end supports it) or the snapshot errored.\n"
+
+      -- grab-region [TARGET]: interactively select a screen rectangle
+      -- (`screencapture -i`) and type the resulting PNG's path into a terminal
+      -- pane, so its program (e.g. a claude session) can pick the image up.
+      -- TARGET is a session/window/pane path (default: the regionCaptureTarget
+      -- preference); no argument uses the preference.
+      ("grab-region" : rest) -> do
+        let mbTarget = case rest of (t : _) | not (T.null t) -> Just t; _ -> Nothing
+        requestRegionGrab mbTarget
+        reply "grab-region: select a rectangle. If Screen Recording permission is \
+              \granted you'll get the system crosshair; otherwise drag inside the \
+              \leksah window. The image path is typed into the target pane.\n"
 
       ("js" : "eval" : codeParts) | not (null codeParts) -> do
         let code = T.intercalate " " codeParts
@@ -322,6 +357,9 @@ usage = T.unlines
   , "  cc-connect HOST         terminal tab on HOST's tmux (ssh, control mode)"
   , "  open-browser URL        open the default browser snapped to this pane"
   , "  js eval CODE            evaluate JS in the running leksah"
+  , "  ping                    reply \"ok\" (liveness check for wait-ready)"
+  , "  screenshot FILE         capture the UI to a PNG (wkwebview)"
+  , "  grab-region [TARGET]    select a screen region → its path into a terminal pane"
   ]
 
 -- | Held while a 'rebuild-self' build runs, so two clients can't build at once.

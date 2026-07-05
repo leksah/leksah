@@ -37,6 +37,8 @@ import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
+import IDE.Web.ScreenshotRequest
+       (registerScreenshotHandler, registerScreenshotRegionHandler)
 import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput (setActiveTerminalNotifier)
@@ -48,6 +50,9 @@ foreign import ccall "leksah_menu_add_item_kv" c_menuAddItemKV :: CString -> CSt
 -- An item with a REAL key equivalent (spec like "cmd+shift+d"), enabled only
 -- while a terminal tab is active (see leksah_set_terminal_active).
 foreign import ccall "leksah_menu_add_item_key" c_menuAddItemKey :: CString -> CString -> CInt -> IO ()
+-- Like add_item_key but NOT gated to a terminal — an always-available real key
+-- equivalent (e.g. the AI menu's Grab Region).
+foreign import ccall "leksah_menu_add_item_key_global" c_menuAddItemKeyGlobal :: CString -> CString -> CInt -> IO ()
 foreign import ccall "leksah_menu_add_separator" c_menuAddSeparator :: IO ()
 foreign import ccall "leksah_menu_push_submenu" c_menuPushSubmenu :: CString -> IO ()
 foreign import ccall "leksah_menu_pop_submenu"  c_menuPopSubmenu  :: IO ()
@@ -62,6 +67,11 @@ foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
 foreign import ccall "leksah_show_open_project_panel" c_showOpenProjectPanel :: IO ()
 -- Populate the native "Open Recent" submenu (newline-separated paths).
 foreign import ccall "leksah_set_recent_files" c_setRecentFiles :: CString -> IO ()
+-- Snapshot the WKWebView content to a PNG at the given path; returns 1 on success.
+foreign import ccall "leksah_screenshot" c_screenshot :: CString -> IO CInt
+-- Snapshot just a rectangle (x,y,w,h in CSS px) of the WKWebView content.
+foreign import ccall "leksah_snapshot_rect" c_snapshotRect
+  :: CString -> CInt -> CInt -> CInt -> CInt -> IO CInt
 
 -- | Called from Objective-C with the path chosen in the native open dialog.
 foreign export ccall "leksah_open_file" leksah_open_file :: CString -> IO ()
@@ -117,11 +127,12 @@ commandsRef = unsafePerformIO (newIORef [])
 -- the native menu is built, so tags line up.
 flattenCmds :: [MenuItem] -> [Command]
 flattenCmds = concatMap $ \case
-  MenuItem _ cmd       -> [cmd]
-  MenuShortcut _ _ cmd -> [cmd]
-  MenuKey _ _ cmd      -> [cmd]
-  MenuSep              -> []
-  Submenu _ subs       -> flattenCmds subs
+  MenuItem _ cmd        -> [cmd]
+  MenuShortcut _ _ cmd  -> [cmd]
+  MenuKey _ _ cmd       -> [cmd]
+  MenuGlobalKey _ _ cmd -> [cmd]
+  MenuSep               -> []
+  Submenu _ subs        -> flattenCmds subs
 
 -- | Called from Objective-C when a menu item is chosen.
 foreign export ccall "leksah_menu_action" leksah_menu_action :: CInt -> IO ()
@@ -166,6 +177,13 @@ installMacMenu = do
   -- The Preferences colour swatches open the native NSColorPanel (the web
   -- colour input's popover mis-anchors in our transparent-titlebar window).
   setColorPickImpl $ \hex -> withCString (T.unpack hex) c_pickColor
+  -- `leksah-cmd screenshot FILE`: snapshot the WKWebView content to a PNG.
+  registerScreenshotHandler $ \path ->
+    (/= 0) <$> withCString (T.unpack path) c_screenshot
+  -- Region grab's permission-free path: snapshot just the selected rectangle.
+  registerScreenshotRegionHandler $ \path (x, y, w, h) ->
+    withCString (T.unpack path) $ \p -> (/= 0) <$>
+      c_snapshotRect p (fromIntegral x) (fromIntegral y) (fromIntegral w) (fromIntegral h)
   -- Settings… is added natively to the app menu, so drop it from the shared
   -- model here (both the tag table and the item build use this filtered list).
   let macMenus = stripPreferences menus
@@ -190,6 +208,10 @@ installMacMenu = do
       addItems tag (MenuKey label spec _ : rs) = do
         withCString (T.unpack label) $ \l ->
           withCString (T.unpack spec) $ \s -> c_menuAddItemKey l s (fromIntegral tag)
+        addItems (tag + 1) rs
+      addItems tag (MenuGlobalKey label spec _ : rs) = do
+        withCString (T.unpack label) $ \l ->
+          withCString (T.unpack spec) $ \s -> c_menuAddItemKeyGlobal l s (fromIntegral tag)
         addItems (tag + 1) rs
       addItems tag (MenuSep : rs) = do
         c_menuAddSeparator

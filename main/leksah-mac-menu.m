@@ -249,6 +249,43 @@ void leksah_menu_add_item_key(const char *title, const char *spec, int tag) {
     [gMenuStack[gMenuDepth - 1] addItem:item];
 }
 
+// Like leksah_menu_add_item_key but WITHOUT the terminal gate — an always-enabled
+// real key equivalent (the AI menu's Grab Region).  Parses the same spec grammar.
+void leksah_menu_add_item_key_global(const char *title, const char *spec, int tag) {
+    if (gMenuDepth <= 0) return;
+    NSString *t = [NSString stringWithUTF8String:title];
+    NSString *s = [NSString stringWithUTF8String:spec];
+    NSUInteger mask = 0;
+    NSString *keyPart = @"";
+    for (NSString *tok in [s componentsSeparatedByString:@"+"]) {
+        if ([tok isEqualToString:@"cmd"] || [tok isEqualToString:@"super"])
+            mask |= NSEventModifierFlagCommand;
+        else if ([tok isEqualToString:@"shift"])
+            mask |= NSEventModifierFlagShift;
+        else if ([tok isEqualToString:@"alt"] || [tok isEqualToString:@"opt"])
+            mask |= NSEventModifierFlagOption;
+        else if ([tok isEqualToString:@"ctrl"])
+            mask |= NSEventModifierFlagControl;
+        else if ([tok length] > 0)
+            keyPart = tok;
+    }
+    unichar kc = 0;
+    if ([keyPart isEqualToString:@"Up"])         kc = NSUpArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Down"])  kc = NSDownArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Left"])  kc = NSLeftArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Right"]) kc = NSRightArrowFunctionKey;
+    else if ([keyPart isEqualToString:@"Enter"]) kc = '\r';
+    else if ([keyPart length] >= 1)              kc = [keyPart characterAtIndex:0];
+    NSString *ke = (kc != 0) ? [NSString stringWithCharacters:&kc length:1] : @"";
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:t
+                                                  action:@selector(leksahAction:)
+                                           keyEquivalent:ke];
+    [item setKeyEquivalentModifierMask:mask];
+    [item setTarget:gTarget];
+    [item setTag:tag];
+    [gMenuStack[gMenuDepth - 1] addItem:item];
+}
+
 // A separator line in the current menu.
 void leksah_menu_add_separator(void) {
     if (gMenuDepth <= 0) return;
@@ -327,6 +364,57 @@ static id leksah_find_webview(NSView *v) {
         if (r != nil) return r;
     }
     return nil;
+}
+
+// Snapshot the WKWebView content (or, when useRect, just the given rect in the
+// view's coordinate system — CSS px) to a PNG at cpath.  Called off the main
+// thread: the snapshot API is async and main-thread-only, so dispatch it to the
+// main queue and block on a semaphore until the completion handler has written
+// the file.  Returns 1 on success.  WebKit isn't imported, so the config class
+// and method are reached dynamically, exactly as evaluateJavaScript is above.
+static int leksah_snapshot_impl(const char *cpath, BOOL useRect, NSRect rect) {
+    if (cpath == NULL || gLeksahWindow == nil) return 0;
+    NSString *path = [NSString stringWithUTF8String:cpath];
+    __block BOOL ok = NO;
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        id web = leksah_find_webview([gLeksahWindow contentView]);
+        if (web == nil) { dispatch_semaphore_signal(sem); return; }
+        Class cfgClass = NSClassFromString(@"WKSnapshotConfiguration");
+        id cfg = (cfgClass != nil) ? [[cfgClass alloc] init] : nil;
+        if (useRect && cfg != nil) {
+            @try { [cfg setValue:[NSValue valueWithRect:rect] forKey:@"rect"]; }
+            @catch (__unused NSException *e) {}
+        }
+        void (^handler)(id, id) = ^(id image, id error) {
+            if (error == nil && [image isKindOfClass:[NSImage class]]) {
+                CGImageRef cg = [(NSImage *)image CGImageForProposedRect:NULL
+                                                                context:nil hints:nil];
+                if (cg != NULL) {
+                    NSBitmapImageRep *rep =
+                        [[NSBitmapImageRep alloc] initWithCGImage:cg];
+                    NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG
+                                                   properties:@{}];
+                    ok = (png != nil) && [png writeToFile:path atomically:YES];
+                }
+            }
+            dispatch_semaphore_signal(sem);
+        };
+        SEL sel = @selector(takeSnapshotWithConfiguration:completionHandler:);
+        ((void (*)(id, SEL, id, id))objc_msgSend)(web, sel, cfg, handler);
+    });
+    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 10LL * NSEC_PER_SEC));
+    return ok ? 1 : 0;
+}
+
+// The whole WKWebView content (for `leksah-cmd screenshot`).
+int leksah_screenshot(const char *cpath) {
+    return leksah_snapshot_impl(cpath, NO, NSZeroRect);
+}
+
+// Just the rectangle (x,y,w,h in CSS px) — the permission-free grab-region path.
+int leksah_snapshot_rect(const char *cpath, int x, int y, int w, int h) {
+    return leksah_snapshot_impl(cpath, YES, NSMakeRect(x, y, w, h));
 }
 
 // Ask the page for the x-range covered by the toolbar buttons, so a click there

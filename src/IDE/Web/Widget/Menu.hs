@@ -109,6 +109,11 @@ menuItems items =
             text label
             elClass "span" "menu-shortcut" $ text (prettyKeySpec spec)
           return $ cmd <$ domEvent Click li
+        MenuGlobalKey label spec cmd -> do
+          (li, _) <- el' "li" $ do
+            text label
+            elClass "span" "menu-shortcut" $ text (prettyKeySpec spec)
+          return $ cmd <$ domEvent Click li
         MenuSep -> do
           _ <- elClass "li" "menu-sep" $ text ""
           return never
