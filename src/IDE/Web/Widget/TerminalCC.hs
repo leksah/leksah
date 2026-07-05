@@ -302,8 +302,13 @@ terminalCCWidget ide sessionId selectedE = do
                         w <- valToNumber =<< c ^. js ("clientWidth" :: Text)
                         h <- valToNumber =<< c ^. js ("clientHeight" :: Text)
                         (cw, ch) <- getCellMetrics
-                        let cols = max 20 (floor (w / cw) :: Int)
-                            rows = max 5 (floor (h / ch) :: Int)
+                        -- Reserve a uniform 'terminalPanePad' inset on every
+                        -- side of every pane by shrinking the whole grid by
+                        -- 2·pad per axis (styleOf shifts it back by pad and pads
+                        -- each pane), so the padding never eats into a cell.
+                        let pad  = terminalPanePad
+                            cols = max 20 (floor ((w - 2*pad) / cw) :: Int)
+                            rows = max 5 (floor ((h - 2*pad) / ch) :: Int)
                         when (w > 0 && h > 0) $ do
                             changed <- liftIO $ atomicModifyIORef' lastSizeRef $ \old ->
                                 ((cols, rows), old /= (cols, rows))
@@ -560,8 +565,17 @@ terminalCCWidget ide sessionId selectedE = do
                         tagName <- valToText =<< ae ^. js ("tagName" :: Text)
                         when (tagName == "BODY") focusActivePane
             (containerEl, _) <- elAttr' "div"
+                -- Pull back over the .area-wide{0,1} 3px left/top padding
+                -- (negative margins + matching size bump) so this container —
+                -- and thus the pane/divider/shadow geometry laid inside it —
+                -- has its origin on the side/top edge line, not 3px in.  The
+                -- text gap the padding gives is re-added per edge-pane in
+                -- 'styleOf' (padding-left/top on the char-0/row-0 panes) so the
+                -- boxes still reach the line while the text stays clear of it.
                 ("class" =: "terminal terminal-cc"
-                 <> "style" =: "position:relative;width:100%;height:100%;overflow:hidden") $
+                 <> "style" =: ("position:relative;overflow:hidden"
+                                <> ";margin-left:-3px;margin-top:-3px"
+                                <> ";width:calc(100% + 3px);height:calc(100% + 3px)")) $
                 -- The cell size is a page constant; everything below builds
                 -- once it is known.  One container per WINDOW, all built and
                 -- kept (hidden ones display:none, their xterms staying
@@ -888,8 +902,15 @@ data HelloAction = Ignore | ReAck | Build Int
 tunnelAckPayload :: BS.ByteString
 tunnelAckPayload = "{\"proto\":1,\"caps\":[\"sync\"]}"
 
+-- | Uniform padding (CSS px) inset around every pane's terminal grid.  The
+-- whole cell grid is shifted right/down by this and shrunk by twice it (see
+-- 'refit'), so the reserved space becomes an even gap on all sides of every
+-- pane rather than being clipped off the last row/column.
+terminalPanePad :: Double
+terminalPanePad = 4
+
 pxAt :: Int -> Double -> Text
-pxAt n cell = T.pack (show (round (fromIntegral n * cell) :: Int)) <> "px"
+pxAt n cell = T.pack (show (round (terminalPanePad + fromIntegral n * cell) :: Int)) <> "px"
 
 -- | Exact pixel span of @n@ cells starting at cell @o@ (avoids the drift
 -- of rounding the width independently of the position).
@@ -942,11 +963,19 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef (cw, ch) pane rectD0 d
     -- 'leksahComputeHole', so it tracks the same extents.)
     let styleOf (x, y, w, h) (lw, lh) =
             let p n     = T.pack (show (n :: Int)) <> "px"
-                lI      = round (max 0 (fromIntegral x * cw - cw/2))
-                tI      = round (max 0 (fromIntegral y * ch - ch/2))
-                rI      = round (fromIntegral (x+w) * cw + cw/2)
-                bI      = round (fromIntegral (y+h) * ch + ch/2)
-            in "position:absolute;overflow:hidden"
+                pad     = terminalPanePad
+                -- The grid is shifted right/down by 'pad' and shrunk by 2·pad
+                -- (see 'refit'); combined with box-sizing:border-box + a uniform
+                -- 'pad' padding on every pane, that reserved space becomes an
+                -- even inset on all four sides of the terminal grid (against the
+                -- window edge lines for outer panes, against the divider lines
+                -- for inner ones) instead of clipping the last row/column.
+                lI      = round (max 0 (pad + fromIntegral x * cw - cw/2))
+                tI      = round (max 0 (pad + fromIntegral y * ch - ch/2))
+                rI      = round (pad + fromIntegral (x+w) * cw + cw/2)
+                bI      = round (pad + fromIntegral (y+h) * ch + ch/2)
+            in "position:absolute;overflow:hidden;box-sizing:border-box"
+               <> ";padding:" <> p (round pad)
                <> ";left:" <> p lI <> ";top:" <> p tI
                <> (if x + w >= lw then ";right:0"  else ";width:"  <> p (rI - lI))
                <> (if y + h >= lh then ";bottom:0" else ";height:" <> p (bI - tI))
@@ -1119,12 +1148,13 @@ renderHlSegments (cw, ch) l =
         -- edge instead, covering the sub-cell remainder the cell grid leaves
         -- there.
         let px v = T.pack (show (round v :: Int)) <> "px"
+            pad  = terminalPanePad
         in elAttr "div"
             ("class" =: "terminal-cc-hl"
              <> "data-pane" =: pane
              <> "style" =: ("position:absolute;display:none;pointer-events:none"
-                            <> ";left:" <> px (fromIntegral x * cw - cw / 2)
-                            <> ";top:"  <> px (fromIntegral y * ch - ch / 2)
+                            <> ";left:" <> px (pad + fromIntegral x * cw - cw / 2)
+                            <> ";top:"  <> px (pad + fromIntegral y * ch - ch / 2)
                             <> (if x + w >= lW l
                                   then ";right:0"
                                   else ";width:"  <> px (fromIntegral w * cw + cw))

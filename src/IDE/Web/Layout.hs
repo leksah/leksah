@@ -93,12 +93,16 @@ layoutCss = do
     -- own once focus leaves.
     ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)" ?
         ("grid-template-columns" -: "300px 100vw")
-    -- The 3px left padding on the editor column that replaces the old peek strip.
-    ".leksah.tall-auto .area-wide0" ? do
+    -- A constant 3px left pad on the editor column, in ALL side-pane states
+    -- (shown, auto-hide, hidden): a small consistent gap from the side divider /
+    -- window edge (in auto-hide it also gives the sensor peek strip its room).
+    ".area-wide0" ? do
         "padding-left" -: "3px"
+        "padding-top" -: "3px"
         "box-sizing" -: "border-box"
-    ".leksah.tall-auto .area-wide1" ? do
+    ".area-wide1" ? do
         "padding-left" -: "3px"
+        "padding-top" -: "3px"
         "box-sizing" -: "border-box"
     -- Keep the side pane's body laid out at its full width while collapsed, so
     -- its contents (e.g. the "New Terminal" button) don't reflow as the column

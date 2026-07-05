@@ -115,6 +115,14 @@ terminalCss = do
     ".terminal" ? do
         height (pct 100)
         width (pct 100)
+    -- The pane box reserves a uniform inset around the grid (see
+    -- 'terminalPanePad'); the whole cell grid, being quantised to whole rows,
+    -- is a little shorter than the pane's content box, so centre it vertically
+    -- to split that slack evenly top/bottom rather than pooling it below.
+    ".terminal-cc-pane .xterm" ? do
+        "display" -: "flex"
+        "flex-direction" -: "column"
+        "justify-content" -: "center"
     -- tmux turns on xterm's mouse mode, which makes xterm switch the cursor to
     -- the default arrow (.xterm.enable-mouse-events).  We want the usual text
     -- (I-beam) cursor over the terminal, so override it back (our stylesheet is
