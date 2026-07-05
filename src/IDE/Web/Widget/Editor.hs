@@ -213,7 +213,10 @@ editorWidget ide allEvents saveFileE = do
       liftIO (if exists then decodeUtf8' <$> BS.readFile file else return (Right "")) >>= \case
         Left _e -> return ()
         Right contents -> mdo
-          (editorEl, _) <- elAttr' "div" ("class" =: "editor") blank
+          -- data-file lets inline JS map LeksahCM.activeView back to its path
+          -- (for the AI ▸ Send… menu commands, which mention @file / @file#Lx-Ly).
+          (editorEl, _) <- elAttr' "div"
+              ("class" =: "editor" <> "data-file" =: T.pack file) blank
           postBuild <- getPostBuild
           (gutterMenuE, triggerGutterMenu) <- newTriggerEvent
           editorE <- performEvent $ ffor postBuild $ \_ -> liftJSM $

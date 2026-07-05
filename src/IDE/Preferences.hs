@@ -155,6 +155,7 @@ defaultPrefs = Prefs {
     ,   uiHoverColor = "#0c1e46"
     ,   showShortcutBadges = False
     ,   colorfulIcons = False
+    ,   regionCaptureTarget = "claude/leksah/0"
     }
 
 mergePrefsFile :: Prefs -> PrefsFile -> Prefs
@@ -235,6 +236,7 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , uiHoverColor = fromMaybe uiHoverColor uiHoverColor_
   , showShortcutBadges = fromMaybe showShortcutBadges showShortcutBadges_
   , colorfulIcons = fromMaybe colorfulIcons colorfulIcons_
+  , regionCaptureTarget = fromMaybe regionCaptureTarget regionCaptureTarget_
   , remoteHosts = fromMaybe remoteHosts remoteHosts_
   }
 
@@ -314,6 +316,7 @@ toPrefsFile Prefs{..} = PrefsFile
   , uiHoverColor_ = Just uiHoverColor
   , showShortcutBadges_ = Just showShortcutBadges
   , colorfulIcons_ = Just colorfulIcons
+  , regionCaptureTarget_ = Just regionCaptureTarget
   , remoteHosts_ = Just remoteHosts
   }
 

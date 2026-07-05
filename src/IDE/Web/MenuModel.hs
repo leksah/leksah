@@ -21,7 +21,9 @@ import IDE.Web.Command
         commandToggleRunBenchmarks, commandToggleMakeDependents,
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
         commandDebugStepModule, commandDebugContinue, commandFileClose, tmuxKey,
-        paneCmd, toggleTransparencyCmd, snapWindowCmd)
+        paneCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
+        commandSendSelection, commandSendFileRef, commandSendError,
+        commandFocusAITerminal)
 
 -- | One entry in a menu: a clickable command (optionally with a shortcut hint
 -- shown the macOS way — right-aligned and greyed), or a nested submenu.
@@ -34,6 +36,9 @@ data MenuItem
                                      --   into an NSMenuItem key equivalent,
                                      --   enabled only while a terminal is
                                      --   active), command
+  | MenuGlobalKey Text Text Command  -- ^ like 'MenuKey' but NOT gated to a
+                                     --   terminal — an always-available real
+                                     --   key equivalent (label, spec, command)
   | MenuSep                          -- ^ a separator line
   | Submenu  Text [MenuItem]         -- ^ a labelled nested menu
 
@@ -117,6 +122,13 @@ menus =
       , item "Previous Error" CommandPreviousError
       ])
   , ("Terminal", terminalMenu)
+  , ("AI",
+      [ MenuGlobalKey "Send Selection"      "cmd+ctrl+s" commandSendSelection
+      , MenuGlobalKey "Send File Reference" "cmd+ctrl+r" commandSendFileRef
+      , MenuGlobalKey "Send Error"          "cmd+ctrl+e" commandSendError
+      , MenuGlobalKey "Focus AI Terminal"   "cmd+ctrl+j" commandFocusAITerminal
+      , MenuGlobalKey "Grab Region"         "cmd+ctrl+g" commandGrabRegion
+      ])
   ]
 
 -- | The Terminal menu: iTerm2's \"Shell\" grouping (everything terminal-ish in

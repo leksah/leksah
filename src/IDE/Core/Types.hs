@@ -694,6 +694,9 @@ data Prefs = Prefs {
                                       --   navigation shortcut as a badge
     ,   colorfulIcons       ::   Bool -- ^ use the coloured icon set (pics/color)
                                       --   instead of the monochrome default
+    ,   regionCaptureTarget ::   Text -- ^ default terminal for `leksah-cmd
+                                      --   grab-region`, as a @session/window/pane@
+                                      --   path (e.g. @claude/leksah/0@)
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
@@ -773,6 +776,7 @@ data PrefsFile = PrefsFile {
   , uiHoverColor_        :: Maybe Text
   , showShortcutBadges_  :: Maybe Bool
   , colorfulIcons_       :: Maybe Bool
+  , regionCaptureTarget_ :: Maybe Text
   , serverPort_          :: Maybe Int
   , sourceDirectories_   :: Maybe [FilePath]
   , unpackDirectory_     :: Maybe (Maybe FilePath)

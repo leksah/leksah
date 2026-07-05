@@ -94,6 +94,8 @@ preferencesWidget ide = do
             terminalControlMode (\v p -> p { terminalControlMode = v })
         , linesField p0 "Remote hosts in the Terminals tree (ssh, one per line)"
             (map T.unpack . remoteHosts) (\v p -> p { remoteHosts = map T.pack v })
+        , txt "Region-capture target pane (session/window/pane)"
+            regionCaptureTarget (\v p -> p { regionCaptureTarget = v })
         ]
     , section "Build"
         [ b "Save all files before building" saveAllBeforeBuild (\v p -> p { saveAllBeforeBuild = v })

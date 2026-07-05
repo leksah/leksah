@@ -36,7 +36,7 @@ import Data.Function ((&))
 import Data.Functor (($>))
 import Data.Functor.Identity (Identity(..))
 import Data.Functor.Misc (Const2(..))
-import Data.IORef (newIORef, atomicModifyIORef')
+import Data.IORef (newIORef, atomicModifyIORef', writeIORef, readIORef)
 import Data.Map (mapKeys)
 import qualified Data.Map as M
        (Map, keys, elems, toList, fromList, union, findWithDefault, lookup, null,
@@ -46,7 +46,7 @@ import qualified Data.Set as S
        (fromList, delete, singleton, empty, insert, member, intersection)
 import Data.Time.Clock (NominalDiffTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all)
+import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
@@ -55,7 +55,7 @@ import Text.Read (readMaybe)
 
 import System.Directory
        (doesFileExist, doesDirectoryExist, getDirectoryContents, removeFile,
-        getHomeDirectory)
+        getHomeDirectory, makeRelativeToCurrentDirectory)
 import System.Process (readProcessWithExitCode)
 import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
@@ -107,7 +107,9 @@ import IDE.Core.State
        (triggerBuild, readIDE, IDEAction, wsFile, jsContexts, workspace,
         IDEState(..), Prefs(..), TallVisibility(..), IDE(..), IDERef, __,
         reflectIDE, getDataDir, catchIDE, modifyIDE_, prefs, currentState,
-        wsProjects, pjPackages, ipdCabalFile, ipdPackageDir, wsActivePackFile)
+        wsProjects, pjPackages, ipdCabalFile, ipdPackageDir, wsActivePackFile,
+        currentError, logRefFullFilePath, refDescription, logRefSrcSpan,
+        srcSpanStartLine)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
@@ -118,6 +120,12 @@ import IDE.Web.SaveRequest (nextSaveRequest)
 import IDE.Web.Theme (themeVarsCss)
 import IDE.Web.FindRequest (nextFindRequest)
 import IDE.Web.PreferencesRequest (nextPreferencesRequest)
+import IDE.Web.RegionGrabRequest (nextRegionGrab)
+import IDE.Web.ScreenshotRequest (requestScreenshotRegion)
+import IDE.Web.RegionCapture
+       (screenCaptureAllowed, grabRegionToTarget, sendPathToTarget,
+        sendTextToTarget, nextRegionFile)
+import IDE.Web.AIContextRequest (AIAction(..), nextAIAction)
 import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.ReplTmux (tmuxCmd)
@@ -401,6 +409,13 @@ jsMain showMenubar macTitlebar ideR = do
   -- window.leksahSetColorIcons: swap every /pics/*.svg between the monochrome
   -- default and the coloured set (/pics/color/*.svg), driven by the pref.
   _ <- eval colorIconsJs
+
+  -- The Claude-coordination traffic light (top-right dot): leksahTestStart /
+  -- leksahTestEnd / leksahStatus, driven over the cmd socket via `js eval`.
+  _ <- eval statusLightJs
+
+  -- window.leksahSelectRegion: the permission-free region picker for grab-region.
+  _ <- eval regionSelectJs
 
   mainWidgetWithCss (BS.unlines [xtermCss, BS.toStrict (LT.encodeUtf8 css)]) $ mdo
       (ideE, t) <- newTriggerEvent
@@ -792,7 +807,14 @@ paneHlJs = T.unlines
   -- (a marker/pane rect can extend above the visible terminal area); clamp it so
   -- the shadow never falls above the terminal.
   , "    var tcc = t.closest && t.closest('.terminal-cc');"
-  , "    if (tcc){ var tccTop = tcc.getBoundingClientRect().top; if (top < tccTop) top = tccTop; }"
+  , "    if (tcc){ var tccR = tcc.getBoundingClientRect();"
+  -- Clamp to the terminal container's top AND left: a pane marker outsets half a
+  -- cell onto its dividers, but the LEFTMOST pane has only the side-pane divider
+  -- to its left — letting the shadow overshoot there paints a dark strip in the
+  -- side pane (looks like the pane doesn't reach the line).  Internal panes have
+  -- left > the container edge, so their divider overhang is untouched.
+  , "      if (top < tccR.top) top = tccR.top;"
+  , "      if (left < tccR.left) left = tccR.left; }"
   -- A bottom-bar pane: extend the rect UP over its own tab row, so the shadow
   -- reaches the terminal above instead of starting below the tab row.
   , "    if (t.closest && t.closest('.area-wide1')){"
@@ -1498,6 +1520,164 @@ badgesJs = T.unlines
   , "})();"
   ]
 
+-- | The Claude-coordination traffic light: a dot in the top-right of the title
+-- | The session token of an AI target path (@session/window/pane@, or a raw
+-- tmux @session:win.pane@) — used to focus leksah's terminal for that session.
+aiTargetSession :: Text -> Maybe Text
+aiTargetSession t = case T.splitOn "/" t of
+    (s:_:_) | not (T.null s) -> Just s               -- session/window/pane
+    _ -> let s = T.takeWhile (/= ':') t              -- raw tmux target
+         in if T.null s then Nothing else Just s
+
+-- | Absolute path of the file in the focused CodeMirror editor (its @.editor@
+-- carries @data-file@; see 'IDE.Web.Widget.Editor'), or 'Nothing' if no editor
+-- is focused.
+activeEditorFile :: JSM (Maybe Text)
+activeEditorFile = nonEmpty <$> (valToText =<< eval activeEditorFileJs)
+  where nonEmpty s = if T.null s then Nothing else Just s
+
+activeEditorFileJs :: Text
+activeEditorFileJs = mconcat
+  [ "(function(){var v=window.LeksahCM&&window.LeksahCM.activeView;if(!v)return '';"
+  , "var ed=v.dom&&v.dom.closest&&v.dom.closest('.editor');"
+  , "return (ed&&ed.getAttribute('data-file'))||'';})()" ]
+
+-- | The focused editor's file plus its selection's 1-based start/end lines.
+activeEditorSelection :: JSM (Maybe (Text, Int, Int))
+activeEditorSelection = do
+    r <- valToText =<< eval activeEditorSelectionJs
+    return $ case T.splitOn "\t" r of
+      [f, a, b] | not (T.null f)
+                , Just an <- readMaybe (T.unpack a)
+                , Just bn <- readMaybe (T.unpack b) -> Just (f, an, bn)
+      _ -> Nothing
+
+activeEditorSelectionJs :: Text
+activeEditorSelectionJs = mconcat
+  [ "(function(){var v=window.LeksahCM&&window.LeksahCM.activeView;if(!v)return '';"
+  , "var ed=v.dom&&v.dom.closest&&v.dom.closest('.editor');"
+  , "var f=ed&&ed.getAttribute('data-file');if(!f)return '';"
+  , "var s=v.state.selection.main;"
+  , "var a=v.state.doc.lineAt(s.from).number,b=v.state.doc.lineAt(s.to).number;"
+  , "return f+'\\t'+a+'\\t'+b;})()" ]
+
+-- bar telling the user whether it's safe to touch leksah while an agent drives
+-- it.  Green = safe; orange (+ a beep) = the agent needs it in ~3 s; red = the
+-- agent is testing now.  Driven from the shell via
+-- @leksah-cmd js eval 'leksahTestStart()'@ (orange→beep→red after 3 s) and
+-- @'leksahTestEnd()'@ (back to green); @leksahStatus('green'|'orange'|'red')@
+-- sets a state directly.  Default green (normal, un-driven use).
+statusLightJs :: Text
+statusLightJs = T.unlines
+  [ "(function(){"
+  , "  var el = null, state = 'green', timer = null;"
+  -- Runs BEFORE mainWidgetWithCss rebuilds <body>, which detaches anything we
+  -- append now — so (re)create the dot on demand and keep it in whatever <body>
+  -- is current, preserving the colour across a rebuild.
+  , "  function ensure(){"
+  , "    if (el && el.isConnected) return el;"
+  , "    if (!document.getElementById('leksah-status-light-css')) {"
+  , "      var css = document.createElement('style');"
+  , "      css.id = 'leksah-status-light-css';"
+  , "      css.textContent ="
+  , "        '#leksah-status-light{position:fixed;top:6px;right:10px;width:13px;height:13px;'+"
+  , "        'border-radius:50%;z-index:2147483647;pointer-events:none;opacity:.9;'+"
+  -- Own compositor layer so the glow never forces repaints of content beneath.
+  , "        'transform:translateZ(0);'+"
+  , "        'box-shadow:0 0 0 1px rgba(0,0,0,.45);transition:background .15s,box-shadow .15s}'+"
+  , "        '#leksah-status-light.green{background:#2ecc40;box-shadow:0 0 6px #2ecc40,0 0 0 1px rgba(0,0,0,.45)}'+"
+  , "        '#leksah-status-light.orange{background:#ff9500;box-shadow:0 0 9px #ff9500,0 0 0 1px rgba(0,0,0,.45)}'+"
+  , "        '#leksah-status-light.red{background:#ff3b30;box-shadow:0 0 9px #ff3b30,0 0 0 1px rgba(0,0,0,.45)}';"
+  , "      (document.head || document.documentElement).appendChild(css);"
+  , "    }"
+  , "    el = document.createElement('div');"
+  , "    el.id = 'leksah-status-light';"
+  , "    el.title = 'Green: safe to use leksah \\u2022 Orange: Claude needs it shortly \\u2022 Red: Claude is testing';"
+  , "    el.className = state;"
+  , "    if (document.body) document.body.appendChild(el);"
+  , "    return el;"
+  , "  }"
+  -- Audio.  A RESUMED-and-left-running AudioContext pegs coreaudiod and drags
+  -- the whole app down, so the context is kept SUSPENDED except for the ~0.16 s
+  -- beep itself.  The first user gesture unlocks it (autoplay policy) then it's
+  -- released again immediately.
+  , "  function actx(){"
+  , "    var C = window.AudioContext || window.webkitAudioContext;"
+  , "    if (!C) return null;"
+  , "    if (!window.__leksahAudio) window.__leksahAudio = new C();"
+  , "    return window.__leksahAudio;"
+  , "  }"
+  , "  function prime(){"
+  , "    window.removeEventListener('pointerdown', prime, true);"
+  , "    window.removeEventListener('keydown', prime, true);"
+  , "    var c = actx();"
+  , "    if (c) c.resume().then(function(){ c.suspend(); }).catch(function(){});"
+  , "  }"
+  , "  window.addEventListener('pointerdown', prime, true);"
+  , "  window.addEventListener('keydown', prime, true);"
+  , "  function beep(){"
+  , "    try {"
+  , "      var c = actx(); if (!c) return;"
+  , "      c.resume().then(function(){"
+  , "        var o = c.createOscillator(), g = c.createGain();"
+  , "        o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.06;"
+  , "        o.connect(g); g.connect(c.destination);"
+  , "        var t = c.currentTime; o.start(t); o.stop(t + 0.16);"
+  , "        setTimeout(function(){ try { c.suspend(); } catch(e){} }, 400);"
+  , "      }).catch(function(){});"
+  , "    } catch(e){}"
+  , "  }"
+  , "  function set(s){ if (timer){ clearTimeout(timer); timer = null; } state = s; ensure().className = s; }"
+  , "  window.leksahStatus = set;"
+  , "  window.leksahTestStart = function(){"
+  , "    if (timer) clearTimeout(timer);"
+  , "    state = 'orange'; ensure().className = 'orange'; beep();"
+  , "    timer = setTimeout(function(){ state = 'red'; ensure().className = 'red'; timer = null; }, 3000);"
+  , "  };"
+  , "  window.leksahTestEnd = function(){ set('green'); };"
+  -- Land the dot in the final <body> (mainWidget replaces an early append) and
+  -- keep it there: a cheap 0.5s poll re-appends it if it's ever detached.
+  , "  ensure(); setInterval(ensure, 500);"
+  , "})();"
+  ]
+
+-- | @window.leksahSelectRegion()@: the permission-free region picker.  Shows a
+-- drag overlay over the leksah window; on mouse-up it removes itself and reports
+-- the selected rectangle (viewport CSS px = the WKWebView snapshot coordinate
+-- system) to @window.__leksahRegionResult@ as @\"x,y,w,h\"@ (empty on cancel /
+-- Esc / a too-small drag).  Reported after two rAFs so the overlay is gone from
+-- the painted frame the snapshot then captures.  The reflex side (see the region
+-- grab bridge) installs __leksahRegionResult and does the native snapshot.
+regionSelectJs :: Text
+regionSelectJs = T.unlines
+  [ "window.leksahSelectRegion = function(){"
+  , "  if (window.__leksahRegionActive) return; window.__leksahRegionActive = true;"
+  , "  var ov = document.createElement('div');"
+  , "  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;cursor:crosshair;background:rgba(0,0,0,0.04)';"
+  , "  var box = document.createElement('div');"
+  , "  box.style.cssText = 'position:fixed;border:1px solid #4a90d9;background:rgba(74,144,217,0.15);pointer-events:none;display:none';"
+  , "  document.body.appendChild(ov); document.body.appendChild(box);"
+  , "  var sx=0, sy=0, dragging=false;"
+  , "  function report(s){"
+  , "    ov.remove(); box.remove();"
+  , "    document.removeEventListener('keydown', onKey, true);"
+  , "    window.__leksahRegionActive = false;"
+  , "    requestAnimationFrame(function(){ requestAnimationFrame(function(){"
+  , "      if (window.__leksahRegionResult) window.__leksahRegionResult(s); }); });"
+  , "  }"
+  , "  function onKey(e){ if (e.key === 'Escape'){ e.preventDefault(); report(''); } }"
+  , "  document.addEventListener('keydown', onKey, true);"
+  , "  function b4(e){ return { x:Math.min(sx,e.clientX), y:Math.min(sy,e.clientY),"
+  , "                           w:Math.abs(e.clientX-sx), h:Math.abs(e.clientY-sy) }; }"
+  , "  ov.addEventListener('mousedown', function(e){ dragging=true; sx=e.clientX; sy=e.clientY; box.style.display='block'; e.preventDefault(); });"
+  , "  ov.addEventListener('mousemove', function(e){ if(!dragging) return; var b=b4(e);"
+  , "    box.style.left=b.x+'px'; box.style.top=b.y+'px'; box.style.width=b.w+'px'; box.style.height=b.h+'px'; });"
+  , "  ov.addEventListener('mouseup', function(e){ if(!dragging){ report(''); return; } dragging=false;"
+  , "    var b=b4(e); if(b.w<3||b.h<3){ report(''); return; }"
+  , "    report(Math.round(b.x)+','+Math.round(b.y)+','+Math.round(b.w)+','+Math.round(b.h)); });"
+  , "};"
+  ]
+
 -- | A snapped pane's stable key, @\"tid:pid\"@ (e.g. @\"1:%5\"@), shared between
 -- the reflex set, the JS snap-rect map, and the native window bindings.
 -- | @sessionId:paneId@, e.g. @$3:%7@ (the session id has no colon, so the first
@@ -1562,6 +1742,77 @@ main showMenubar macTitlebar ide = mdo
           , fmapMaybe (\e -> case e ^? _KeymapCommand of
                                Just CommandShowPreferences -> Just (); _ -> Nothing) keymapE
           , prefsBridgeE ]
+
+    -- AI ▸ Grab Region / `leksah-cmd grab-region`.  Choose the capture path by
+    -- whether Screen Recording permission is granted (probed off-thread):
+    -- granted → the system crosshair (screencapture, real screen — transparent/
+    -- snapped holes captured correctly); missing → an in-leksah drag overlay +
+    -- WKWebView snapshot of the selected rect (permission-free; holes it can't
+    -- see are simply transparent).  Either way the PNG path is typed into the
+    -- target pane (regionCaptureTarget pref, or a leksah-cmd override).
+    (regionGrabE, fireRegionGrab)     <- newTriggerEvent
+    (regionStartOverlayE, fireOverlay) <- newTriggerEvent
+    (regionRectE, fireRegionRect)     <- newTriggerEvent
+    regionTargetRef <- liftIO $ newIORef ("" :: Text)
+    _ <- liftIO . forkIO . forever $ nextRegionGrab >>= fireRegionGrab
+    -- Install the overlay's result callback (\"x,y,w,h\" | \"\").
+    _ <- liftJSM $ jsg ("window" :: Text) ^. jss ("__leksahRegionResult" :: Text)
+           (fun $ \_ _ args -> case args of
+              (v : _) -> do
+                s <- valToText v
+                case map (readMaybe . T.unpack) (T.splitOn "," s) of
+                  [Just x, Just y, Just w, Just h] -> liftIO $ fireRegionRect (x, y, w, h)
+                  _ -> return ()
+              _ -> return ())
+    performEvent_ $ ffor (attach (current ide) regionGrabE) $ \(ideNow, mbT) -> liftIO $ do
+        let target = fromMaybe (regionCaptureTarget (ideNow ^. prefs)) mbT
+        void . forkIO $ do
+            allowed <- screenCaptureAllowed
+            if allowed then void (grabRegionToTarget target) else fireOverlay target
+    performEvent_ $ ffor regionStartOverlayE $ \target -> do
+        liftIO $ writeIORef regionTargetRef target
+        liftJSM . void $ eval ("window.leksahSelectRegion && window.leksahSelectRegion()" :: Text)
+    performEvent_ $ ffor regionRectE $ \rect -> liftIO $ do
+        target <- readIORef regionTargetRef
+        file <- nextRegionFile
+        ok <- requestScreenshotRegion (T.pack file) rect
+        when ok . void $ sendPathToTarget target file
+
+    -- AI menu ▸ Send… / Focus: type an @file / @file#Lx-Ly reference (or the
+    -- current error) into the AI terminal, or focus it.  The active editor's
+    -- file + selection live in CodeMirror (JS, read via LeksahCM.activeView);
+    -- the current error is in IDE state.  Paths are made relative to leksah's
+    -- cwd (usually the project root the AI session also runs in).
+    (aiActionE, fireAIAction) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextAIAction >>= fireAIAction
+    performEvent_ $ ffor (attach (current ide) aiActionE) $ \(ideNow, act) -> do
+        let target = regionCaptureTarget (ideNow ^. prefs)
+            sendRel absf suffix = liftIO $ do
+                rel <- makeRelativeToCurrentDirectory (T.unpack absf)
+                void $ sendTextToTarget target ("@" <> T.pack rel <> suffix <> " ")
+        case act of
+          FocusAITerminal -> liftIO $
+              forM_ (aiTargetSession target) focusTerminalPane
+          SendError -> liftIO $
+              forM_ (ideNow ^. currentError) $ \lr -> do
+                  rel <- makeRelativeToCurrentDirectory (logRefFullFilePath lr)
+                  let ln  = srcSpanStartLine (logRefSrcSpan lr)
+                      msg = T.takeWhile (/= '\n') (refDescription lr)
+                  void $ sendTextToTarget target
+                      ("@" <> T.pack rel <> "#L" <> T.pack (show ln)
+                       <> " " <> msg <> " ")
+          SendFileRef ->
+              liftJSM activeEditorFile >>= \case
+                  Just absf -> sendRel absf ""
+                  Nothing   -> return ()
+          SendSelection ->
+              liftJSM activeEditorSelection >>= \case
+                  Just (absf, a, b) ->
+                      sendRel absf $ if a == b
+                          then "#L" <> T.pack (show a)
+                          else "#L" <> T.pack (show a) <> "-L" <> T.pack (show b)
+                  Nothing -> return ()
+
     let initialTabs =
                WorkspaceKey =: ("tall", Just ())
             <> ErrorsKey    =: ("wide1", Just ())

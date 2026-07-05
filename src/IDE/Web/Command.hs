@@ -12,7 +12,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS (cons)
 import Data.Text (Text)
 
+import IDE.Web.AIContextRequest
+       (AIAction(..), requestAIAction)
 import IDE.Web.CloseRequest (requestCloseActivePane)
+import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.TerminalInput
        (sendToActiveTerminal, tmuxCommandActiveTerminal)
 import IDE.Web.TransparencyRequest (requestToggleTransparency)
@@ -221,6 +224,42 @@ commandFileClose = CommandIDEAction
   "/pics/tango/actions/window-close.svg"
   (__ "Close the active source file or terminal")
   (liftIO requestCloseActivePane)
+
+-- | AI ▸ Grab Region: select a screen rectangle and drop its PNG path into the
+-- terminal named by the 'regionCaptureTarget' preference.  The orchestration
+-- (permission probe → crosshair or in-leksah overlay+snapshot) lives in
+-- 'IDE.Web.Main'; this just drops a request.
+commandGrabRegion :: Command
+commandGrabRegion = CommandIDEAction
+  ""
+  (__ "Grab a screen region and send its image to the terminal")
+  (liftIO (requestRegionGrab Nothing))
+
+-- The AI ▸ Send… commands drop a token; the front end ('IDE.Web.Main') reads the
+-- active editor / current error and types the reference into the AI terminal.
+commandSendSelection :: Command
+commandSendSelection = CommandIDEAction
+  ""
+  (__ "Send the selected lines (@file#Lx-Ly) to the AI terminal")
+  (liftIO (requestAIAction SendSelection))
+
+commandSendFileRef :: Command
+commandSendFileRef = CommandIDEAction
+  ""
+  (__ "Send the current file (@file) to the AI terminal")
+  (liftIO (requestAIAction SendFileRef))
+
+commandSendError :: Command
+commandSendError = CommandIDEAction
+  ""
+  (__ "Send the current error (location + message) to the AI terminal")
+  (liftIO (requestAIAction SendError))
+
+commandFocusAITerminal :: Command
+commandFocusAITerminal = CommandIDEAction
+  ""
+  (__ "Focus the AI terminal pane")
+  (liftIO (requestAIAction FocusAITerminal))
 
 commandDebugStep = CommandIDEAction
   "/pics/debug-step.svg"

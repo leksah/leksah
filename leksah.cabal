@@ -285,6 +285,10 @@ library
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.PreferencesRequest
+        IDE.Web.RegionCapture
+        IDE.Web.RegionGrabRequest
+        IDE.Web.AIContextRequest
+        IDE.Web.ScreenshotRequest
         IDE.Web.Events
         IDE.Web.Layout
         IDE.Web.Main
@@ -519,6 +523,10 @@ library leksah-nogtk
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.PreferencesRequest
+        IDE.Web.RegionCapture
+        IDE.Web.RegionGrabRequest
+        IDE.Web.AIContextRequest
+        IDE.Web.ScreenshotRequest
         IDE.Web.Events
         IDE.Web.Layout
         IDE.Web.Main
