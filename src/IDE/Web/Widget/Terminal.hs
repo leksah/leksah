@@ -99,7 +99,8 @@ import System.Directory
 import System.Environment (getEnvironment)
 import System.FilePath ((</>), takeDirectory)
 #ifdef mingw32_HOST_OS
-import Reflex.Dom.Core (text)
+import IDE.Web.ConPty
+       (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
 #else
 import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
@@ -111,7 +112,8 @@ import System.Exit (ExitCode(ExitSuccess))
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
-        selectTmuxWindowById, getLoginShell, writeTmuxConf, clipboardCopyCmd)
+        selectTmuxWindowById, getLoginShell, interactiveShellArgs,
+        writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.SnapRequest (requestSnapPane)
 
@@ -187,18 +189,6 @@ terminalCss = do
         "background" -: "rgb(16,16,16)"
         "z-index" -: "5"
 
-#ifdef mingw32_HOST_OS
--- | Terminals need posix-pty (and tmux), which have no Windows
--- implementation yet; render a placeholder so the tab degrades gracefully.
-terminalWidget
-  :: forall t m . MonadWidget t m
-  => Dynamic t IDE
-  -> Text -> Event t () -> m (Event t TerminalEvents)
-terminalWidget _ _ _ = do
-  _ <- elAttr "div" ("class" =: "terminal") $
-    text "Terminals are not available on Windows yet."
-  return never
-#else
 -- | A terminal pane.  The 'Int' is the terminal's id; it maps to a tmux
 -- session named @leksah-N@ so the shell survives a leksah restart (see
 -- 'listTerminalSessions').  The 'Event' fires whenever this terminal's tab is
@@ -225,7 +215,7 @@ terminalWidget ide termId selectedE = do
       mbTmux <- findExecutable "tmux"
       (cmd, args) <- case mbTmux of
           Just tmux -> return (tmux, ["-L", tmuxSocket, "attach-session", "-t", T.unpack termId])
-          Nothing -> return (shell, ["-i"])
+          Nothing -> return (shell, interactiveShellArgs)
       (pty, _ph) <- spawnWithPty (Just env) True cmd args (80, 24)
       -- Expose this PTY so the Tmux menu can inject `C-b X` prefix sequences into
       -- it when this terminal is the active one (see IDE.Web.TerminalInput).
@@ -501,7 +491,6 @@ terminalWidget ide termId selectedE = do
         cols <- valToNumber =<< term ^. js ("cols" :: Text)
         rows <- valToNumber =<< term ^. js ("rows" :: Text)
         liftIO $ ignorePtyError (resizePty pty (round cols, round rows))
-#endif
 
 -- | Run a PTY write/resize, swallowing errors.  Once a terminal's shell exits
 -- (e.g. the user typed @exit@) its tmux session/window can be gone and the PTY

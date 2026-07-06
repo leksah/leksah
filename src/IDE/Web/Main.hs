@@ -129,7 +129,7 @@ import IDE.Web.RegionCapture
 import IDE.Web.AIContextRequest (AIAction(..), nextAIAction)
 import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
-import IDE.Web.ReplTmux (tmuxCmd)
+import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported)
 import IDE.Web.TerminalInput
        (setActiveTerminal, tmuxCommandActiveTerminal, selectSplitActiveTerminal,
         focusTerminalPane)
@@ -2736,7 +2736,9 @@ main showMenubar macTitlebar ide = mdo
               -- Remote terminals ("ssh://host", from leksah-cmd cc-connect)
               -- are control-mode by construction.
               cm <- terminalControlMode . view prefs <$> sample (current ide)
-              let useCC = cm || "ssh://" `T.isPrefixOf` n
+              -- Control mode needs tmux, which has no Windows build; there the
+              -- classic ConPTY-backed widget is the only option.
+              let useCC = tmuxSupported && (cm || "ssh://" `T.isPrefixOf` n)
               if useCC
                 then terminalCCWidget ide n selectedE
                 else terminalWidget ide n selectedE

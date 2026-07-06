@@ -16,6 +16,8 @@ module IDE.Web.ReplTmux
   , selectTmuxWindowById
   , ensureCommandWindow
   , getLoginShell
+  , interactiveShellArgs
+  , tmuxSupported
   , writeTmuxConf
   , clipboardCopyCmd
   ) where
@@ -95,6 +97,26 @@ getLoginShell = do
                     `catch` \(_ :: SomeException) -> return ""
     envShell <- fromMaybe "" <$> lookupEnv "SHELL"
     return $ fromMaybe "/bin/bash" . listToMaybe $ filter (not . null) [loginShell, envShell]
+#endif
+
+-- | Arguments for running 'getLoginShell' directly as an interactive terminal
+-- (the no-tmux path).  POSIX shells want @-i@ for the line editor; the Windows
+-- command processors (cmd.exe/PowerShell) take no such flag.
+interactiveShellArgs :: [String]
+#ifdef mingw32_HOST_OS
+interactiveShellArgs = []
+#else
+interactiveShellArgs = ["-i"]
+#endif
+
+-- | Whether tmux (and thus persistent sessions and control mode) is usable on
+-- this platform.  There is no Windows tmux, so terminals there are plain,
+-- non-persistent ConPTY shells and the control-mode path is never taken.
+tmuxSupported :: Bool
+#ifdef mingw32_HOST_OS
+tmuxSupported = False
+#else
+tmuxSupported = True
 #endif
 
 

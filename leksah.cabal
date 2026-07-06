@@ -658,6 +658,12 @@ library leksah-nogtk
     -- into the web front ends, which is fatal for leksah-webkitgtk (GTK 3
     -- and 4 cannot share a process).
     if os(windows)
+        -- Windows terminals use the Win32 Pseudoconsole (ConPTY) instead of
+        -- posix-pty; the C shim does the STARTUPINFOEX/attribute-list dance.
+        other-modules:
+            IDE.Web.ConPty
+        c-sources:
+            src/IDE/Web/conpty.c
         extra-libraries:
             kernel32
         build-depends:
