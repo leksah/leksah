@@ -18,10 +18,11 @@
   inputs.haddock-ghc912.flake = false;
   inputs.haddock-ghc914.url = "github:leksah/haddock/ghc-9.14";
   inputs.haddock-ghc914.flake = false;
-  # jsaddle-terminal lives in the jsaddle monorepo now; wire it so the
-  # haskell.nix planner resolves the source-repository-package in cabal.project
-  # without a network fetch (pure eval).
-  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/6264d0ee0fd382d56065827a34de20b561280836";
+  # jsaddle-terminal, jsaddle-webkitgtk and jsaddle-webview2 live in the
+  # jsaddle monorepo; wire it so the haskell.nix planner resolves the
+  # source-repository-package in cabal.project without a network fetch
+  # (pure eval).
+  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/e6693c5d43da1a044bec1f25a012d0e5d8f10da0";
   inputs.jsaddle-terminal-src.flake = false;
   # ffcabal lives in its own repo now; same wiring as above.
   inputs.ffcabal-src.url = "github:leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c";
@@ -59,7 +60,7 @@
                   "https://github.com/leksah/haddock/ghc-9.10" = inputs.haddock-ghc910;
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
-                  "https://github.com/ghcjs/jsaddle/6264d0ee0fd382d56065827a34de20b561280836" = inputs.jsaddle-terminal-src;
+                  "https://github.com/ghcjs/jsaddle/e6693c5d43da1a044bec1f25a012d0e5d8f10da0" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c" = inputs.ffcabal-src;
                 };
               };
@@ -79,8 +80,18 @@
         launch-leksah-script = pkgs.writeShellScriptBin "launch-leksah" ''
           "$@"
         '';
+        # Headless runtime smoke test for the GTK4/WebKitGTK 6.0 front end.
+        extraChecks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          leksah-webkitgtk-smoke = pkgs.callPackage ./nix/webkitgtk-smoke.nix {
+            leksah-webkitgtk = flake.packages."leksah:exe:leksah-webkitgtk";
+            leksah-cmd = flake.packages."leksah:exe:leksah-cmd";
+            leksah-src = ./.;
+          };
+        };
       in flake // {
         legacyPackages = pkgs;
+        checks = flake.checks // extraChecks;
+        hydraJobs = flake.hydraJobs // { checks = (flake.hydraJobs.checks or {}) // extraChecks; };
         apps = flake.apps // {
           launch-leksah.type = "app";
           launch-leksah.program = (pkgs.stdenv.mkDerivation {

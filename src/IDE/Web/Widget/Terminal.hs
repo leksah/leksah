@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -76,8 +77,8 @@ import Clay (height, width, pct, (?), (-:), Css, none, None(..))
 import qualified Clay (display)
 
 import Language.Javascript.JSaddle
-       (jsg, js, jss, js0, js1, js2, js3, fun, new, valToText, valToNumber,
-        valToBool, liftJSM)
+       (jsg, js, jss, js0, js1, js2, js3, fun, new, obj, valToText,
+        valToNumber, valToBool, liftJSM)
 
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE)
@@ -97,9 +98,13 @@ import System.Directory
         createDirectoryIfMissing, doesFileExist)
 import System.Environment (getEnvironment)
 import System.FilePath ((</>), takeDirectory)
+#ifdef mingw32_HOST_OS
+import Reflex.Dom.Core (text)
+#else
 import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
 import System.Posix.Signals (signalProcess, sigKILL)
+#endif
 import System.Process (readProcessWithExitCode, createProcess, proc)
 import System.Exit (ExitCode(ExitSuccess))
 
@@ -182,6 +187,18 @@ terminalCss = do
         "background" -: "rgb(16,16,16)"
         "z-index" -: "5"
 
+#ifdef mingw32_HOST_OS
+-- | Terminals need posix-pty (and tmux), which have no Windows
+-- implementation yet; render a placeholder so the tab degrades gracefully.
+terminalWidget
+  :: forall t m . MonadWidget t m
+  => Dynamic t IDE
+  -> Text -> Event t () -> m (Event t TerminalEvents)
+terminalWidget _ _ _ = do
+  _ <- elAttr "div" ("class" =: "terminal") $
+    text "Terminals are not available on Windows yet."
+  return never
+#else
 -- | A terminal pane.  The 'Int' is the terminal's id; it maps to a tmux
 -- session named @leksah-N@ so the shell survives a leksah restart (see
 -- 'listTerminalSessions').  The 'Event' fires whenever this terminal's tab is
@@ -345,6 +362,16 @@ terminalWidget ide termId selectedE = do
       -- xterm's SearchAddon, registered on the terminal element so the find bar
       -- can search this pane (terminals render to a canvas, so no DOM find).
       _ <- jsg ("LeksahCM" :: Text) ^. js2 ("loadTerminalSearch" :: Text) term rawEl
+      -- Inline images (SIXEL / iTerm2 OSC 1337).  storageLimit caps the image
+      -- cache per terminal (MB) — the default 128 is a lot across many panes.
+      imgOpts <- obj
+      _ <- imgOpts ^. jss ("storageLimit" :: Text) (32 :: Int)
+      img <- new (jsg ("ImageAddon" :: Text) ^. js ("ImageAddon" :: Text)) [imgOpts]
+      _ <- term ^. js1 ("loadAddon" :: Text) img
+      -- OSC 52 writes land on the system clipboard (vim yank, tmux copy-mode
+      -- over ssh, …).
+      clip <- new (jsg ("ClipboardAddon" :: Text) ^. js ("ClipboardAddon" :: Text)) ()
+      _ <- term ^. js1 ("loadAddon" :: Text) clip
       -- Make tokens in the output clickable.  Without a modifier, project-file
       -- paths (validated against the workspace file set kept in JS via
       -- LeksahTermLinks.setProjectFiles) call back with the resolved absolute
@@ -474,6 +501,7 @@ terminalWidget ide termId selectedE = do
         cols <- valToNumber =<< term ^. js ("cols" :: Text)
         rows <- valToNumber =<< term ^. js ("rows" :: Text)
         liftIO $ ignorePtyError (resizePty pty (round cols, round rows))
+#endif
 
 -- | Run a PTY write/resize, swallowing errors.  Once a terminal's shell exits
 -- (e.g. the user typed @exit@) its tmux session/window can be gone and the PTY
@@ -732,9 +760,11 @@ reapControlClients = (`catch` \(_ :: SomeException) -> return ()) $
                     -- tmux stops reading the pane's pty, periodically
                     -- freezing the program inside (seen as the whole TUI
                     -- pausing every few seconds while it streams).
+#ifndef mingw32_HOST_OS
                     forM_ (readMaybe pid :: Maybe Int) $ \p ->
                         signalProcess sigKILL (fromIntegral p)
                             `catch` \(_ :: SomeException) -> return ()
+#endif
                     void $ readProcessWithExitCode tmux
                         ["-L", tmuxSocket, "detach-client", "-t", name] ""
                 _ -> return ()

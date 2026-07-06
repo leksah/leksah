@@ -16,6 +16,7 @@ import Control.Concurrent
         newEmptyMVar, forkIO)
 import Control.Event (registerEvent)
 import Control.Exception (SomeException, catch)
+import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import GHC.Stats
        (getRTSStats, getRTSStatsEnabled, RTSStats(..), GCDetails(..))
 import qualified System.IO as IO (hPutStrLn, stderr)
@@ -62,7 +63,7 @@ import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeFileName, dropFileName, (</>))
 import System.Environment (getArgs, setEnv)
-import System.Posix.Process (exitImmediately)
+import IDE.Utils.ExitImmediately (exitImmediately)
 import System.FSNotify (withManager)
 
 import Network.Socket (withSocketsDo)
@@ -202,6 +203,9 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
   -- read-only operations (write locks for commit/add etc. are unaffected), so
   -- the pollers no longer fight foreground git.  Inherited by every child git.
   setEnv "GIT_OPTIONAL_LOCKS" "0"
+  -- The bundled JS (cm6, xterm) is UTF-8 and read with locale-dependent
+  -- readFile; force UTF-8 so a C/POSIX locale (headless/CI) can't break it.
+  setLocaleEncoding utf8
   let yiConfig = defaultYiConfig
   initializeTime
   exitCode <- newIORef ExitSuccess
@@ -361,6 +365,13 @@ jsMain showMenubar macTitlebar ideR = do
   -- squeeze into one cell and misalign everything after them.
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-unicode11.js") >>= eval
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-search.js") >>= eval
+  -- Inline images (SIXEL + iTerm2 OSC 1337) rendered into the scrollback —
+  -- img2sixel/chafa/imgcat etc. just work (tmux passes them through via
+  -- allow-passthrough, see ReplTmux.writeTmuxConf).
+  _ <- liftIO (readFile $ dataDir </> "xterm/addon-image.js") >>= eval
+  -- OSC 52: programs in a terminal (vim/tmux copy-mode, incl. over ssh where
+  -- pbcopy can't reach) set the system clipboard.
+  _ <- liftIO (readFile $ dataDir </> "xterm/addon-clipboard.js") >>= eval
 
   -- Makes project-file paths in terminal output Ctrl-clickable (window.LeksahTermLinks).
   _ <- eval terminalLinksJs
@@ -502,6 +513,13 @@ startJSaddle p runJs jsm = do
               (addDebugMenu >> jsm >> syncPoint)
               (\req sendResponse ->
         case (W.requestMethod req, W.pathInfo req) of
+            -- Front ends that NAVIGATE to the server instead of injecting the
+            -- index HTML natively (webview2) land here.
+            ("GET", []) ->
+                 sendResponse
+                    $ W.responseLBS H.status200
+                        [("Content-Type", "text/html; charset=utf-8")]
+                    $ LBS.fromStrict indexHtml
             ("GET", ["jsaddle.js"]) ->
                  sendResponse
                     $ W.responseLBS H.status200

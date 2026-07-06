@@ -57,7 +57,7 @@ import System.Exit (ExitCode(..))
 import System.FilePath (isRelative, (</>))
 import System.IO (hSetBinaryMode)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Process (exitImmediately)
+import IDE.Utils.ExitImmediately (exitImmediately)
 import System.Process
        (createProcess, proc, shell, waitForProcess, CreateProcess(std_out, std_in),
         StdStream(CreatePipe, NoStream))
@@ -91,7 +91,9 @@ cmdSocketPath = do
 -- | Start the control socket listener on a background thread and return.  Any
 -- stale socket file from a previous run is removed first; failures to bind are
 -- swallowed (a missing control socket just means @leksah-cmd@ won't work, which
--- mustn't take the IDE down).
+-- mustn't take the IDE down).  On Windows the AF_UNIX socket call fails at
+-- runtime and lands in the same catch — the control server is simply absent
+-- there (leksah-cmd isn't built on Windows either).
 startCmdServer :: IDERef -> IO ()
 startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> return ()
   where
@@ -164,8 +166,8 @@ handleConn ideR conn = do
         ok <- tryShot 6
         reply $ if ok
           then "Wrote screenshot to " <> T.pack path <> "\n"
-          else "screenshot: failed — no capture handler (only the wkwebview \
-               \front end supports it) or the snapshot errored.\n"
+          else "screenshot: failed — no capture handler (the wkwebview and \
+               \webkitgtk front ends support it) or the snapshot errored.\n"
 
       -- grab-region [TARGET]: interactively select a screen rectangle
       -- (`screencapture -i`) and type the resulting PNG's path into a terminal

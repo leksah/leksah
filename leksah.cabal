@@ -200,7 +200,9 @@ flag hare
 
 flag webkitgtk
     description:
-        Enable webkit gtk.
+        Enable the legacy GTK3 library's gi-webkit2 panes (needs webkit2gtk-4.x).
+        The leksah-webkitgtk executable no longer uses this flag — it builds on
+        Linux unconditionally against jsaddle-webkitgtk (GTK4/WebKitGTK 6.0).
     default: False
 
 library
@@ -276,6 +278,7 @@ library
         IDE.Utils.CabalUtils
         IDE.Utils.DebugUtils
         IDE.Utils.DirectoryUtils
+        IDE.Utils.ExitImmediately
         IDE.Utils.ExternalTool
         IDE.Utils.GUIUtils
         IDE.Utils.ServerConnection
@@ -398,7 +401,6 @@ library
         parsec >=2.1.0.1 && <3.2,
         pretty >=1.0.1.0 && <1.2,
         pretty-show >=1.6.3 && <1.11,
-        posix-pty >=0.2.1 && <0.3,
         process >=1.4.3.0 && <1.7,
         reflex >=0.8.0.0 && <0.10,
         reflex-dom-core >=0.7.0.2 && <0.9,
@@ -426,14 +428,14 @@ library
 
     -- build-tool-depends: alex:alex -any, happy:happy >=1.17.1
 
+    -- The GTK3 library has no Windows story any more (no gtk3 in the mingw
+    -- pkg-config set); the Windows front end uses leksah-nogtk (below).
     if os(windows)
-        extra-libraries:
-            kernel32
-        build-depends:
-            Win32 >=2.2.0.0 && <2.15
+        buildable: False
     else
         build-depends:
-            unix >=2.3.1.0 && <2.9
+            unix >=2.3.1.0 && <2.9,
+            posix-pty >=0.2.1 && <0.3
 
     if os(osx)
         build-depends:
@@ -515,6 +517,7 @@ library leksah-nogtk
         IDE.Utils.CabalUtils
         IDE.Utils.DebugUtils
         IDE.Utils.DirectoryUtils
+        IDE.Utils.ExitImmediately
         IDE.Utils.ExternalTool
         IDE.Utils.ServerConnection
         IDE.Web.Command
@@ -620,13 +623,11 @@ library leksah-nogtk
         jsaddle-warp >=0.9.4.0 && <0.10,
         keycode >=0.2.2 && <0.3,
         lens >=4.15.4 && <5.4,
-        ltk >=0.16.2.0 && <0.17,
         mtl >=1.1.0.2 && <2.4,
         old-time >=1.0.0.1 && <1.2,
         parsec >=2.1.0.1 && <3.2,
         pretty >=1.0.1.0 && <1.2,
         pretty-show >=1.6.3 && <1.11,
-        posix-pty >=0.2.1 && <0.3,
         process >=1.4.3.0 && <1.7,
         reflex >=0.8.0.0 && <0.10,
         reflex-dom-core >=0.7.0.2 && <0.9,
@@ -651,6 +652,11 @@ library leksah-nogtk
         warp >=3.2.25 && <3.5,
         websockets >=0.12.5.2 && <0.14
 
+    -- NOTE: no `ltk` package dep here — the modules leksah-nogtk needs
+    -- (Control.Event) are compiled straight from vendor/ltk/src via
+    -- hs-source-dirs.  The package dep would link ltk's gi-gtk (GTK3) libs
+    -- into the web front ends, which is fatal for leksah-webkitgtk (GTK 3
+    -- and 4 cannot share a process).
     if os(windows)
         extra-libraries:
             kernel32
@@ -658,7 +664,8 @@ library leksah-nogtk
             Win32 >=2.2.0.0 && <2.15
     else
         build-depends:
-            unix >=2.3.1.0 && <2.9
+            unix >=2.3.1.0 && <2.9,
+            posix-pty >=0.2.1 && <0.3
 
     if flag(yi)
         cpp-options: -DLEKSAH_WITH_YI
@@ -708,11 +715,10 @@ executable leksah
         gi-gtk-hs >=0.3.1.0 && <0.4,
         stm >=2.4.4 && <2.6
 
+    -- The GTK3 UI has no Windows story any more (no gtk3 in the mingw
+    -- pkg-config set); the Windows front end is leksah-webview2.
     if os(windows)
-        extra-libraries:
-            kernel32
-        build-depends:
-            Win32 >=2.2.0.0 && <2.7
+        buildable: False
 
     if flag(yi)
         cpp-options: -DLEKSAH_WITH_YI
@@ -747,7 +753,7 @@ executable leksah-warp
         extra-libraries:
             kernel32
         build-depends:
-            Win32 >=2.2.0.0 && <2.14
+            Win32 >=2.2.0.0 && <2.15
 
     if flag(threaded)
         ghc-options: -threaded
@@ -789,22 +795,73 @@ executable leksah-wkwebview
     if (!os(osx))
         buildable: False
 
+-- The Linux web-UI front end: the leksah web UI in a native GTK4 window
+-- hosting a WebKitGTK 6.0 WebView (jsaddle-webkitgtk), with a native GMenu
+-- menubar built from the shared IDE.Web.MenuModel.
 executable leksah-webkitgtk
-    if !flag(webkitgtk)
-      buildable: False
-
     main-is: WebKitGtk.hs
     hs-source-dirs: main
     default-language: Haskell2010
-    ghc-options: -threaded -rtsopts -Wall -ferror-spans
+    -- -T: collect RTS stats so the GC monitor (IDE.Web.Main) can log
+    -- major-GC pauses to stderr; negligible overhead.
+    ghc-options: -threaded -rtsopts "-with-rtsopts=-T" -Wall -ferror-spans
 
-    -- webkit2gtk is the GTK/Linux WebKit binding; deps apply wherever the
-    -- webkitgtk flag enables this exe (the flag is off by default).
-    build-depends:
+    if os(linux)
+      other-modules:
+        IDE.Web.GtkApp
+        IDE.Web.GtkMenu
+      build-depends:
+        base >=4.0.0.0 && <4.23,
+        bytestring >=0.10.6.0 && <0.13,
+        filepath >=1.1.0.1 && <1.6,
+        lens >=4.15.4 && <5.4,
+        text >=0.11.1.5 && <2.2,
+        leksah:leksah-nogtk,
+        jsaddle >=0.9.4.0 && <0.10,
+        jsaddle-webkitgtk >=0.9.9.3 && <0.10,
+        gi-glib >=2.0.14 && <2.1,
+        gi-gio >=2.0.14 && <2.1,
+        gi-gdk4 >=4.0.2 && <4.1,
+        gi-gtk4 >=4.0.8 && <4.1,
+        gi-webkit >=6.0.2 && <6.1,
+        haskell-gi-base >=0.26 && <0.27
+
+    if !os(linux)
+        buildable: False
+
+-- The Windows web-UI front end: the leksah web UI in a native Win32 window
+-- hosting a Microsoft Edge WebView2 control (jsaddle-webview2), with a native
+-- menu bar built from the shared IDE.Web.MenuModel.  Runtime needs the
+-- WebView2 runtime and WebView2Loader.dll next to the exe (see
+-- jsaddle-webview2's README).
+executable leksah-webview2
+    main-is: WebView2.hs
+    hs-source-dirs: main
+    default-language: Haskell2010
+    -- -T: collect RTS stats so the GC monitor (IDE.Web.Main) can log
+    -- major-GC pauses to stderr; negligible overhead.
+    ghc-options: -threaded -rtsopts "-with-rtsopts=-T" -Wall -ferror-spans
+
+    if os(windows)
+      other-modules:
+        IDE.Web.Win32Menu
+      c-sources:
+        main/leksah-win-menu.c
+      extra-libraries:
+        user32
+      -- comdlg32 (GetOpenFileNameW) via -optl: haskell.nix's system-library
+      -- map doesn't know comdlg32, so extra-libraries would fail its plan.
+      ghc-options: -optl-lcomdlg32
+      build-depends:
         base >=4.0.0.0 && <4.23,
         data-default >=0.7.1.1 && <0.9,
+        lens >=4.15.4 && <5.4,
+        text >=0.11.1.5 && <2.2,
         leksah:leksah-nogtk,
-        jsaddle-webkit2gtk >=0.9.4.0 && <0.10
+        jsaddle-webview2 >=0.1 && <0.2
+
+    if (!os(windows))
+        buildable: False
 
 -- A tiny standalone client for the control socket served by IDE.Web.CmdServer.
 -- Deliberately does NOT depend on the leksah libraries, so it builds in a blink

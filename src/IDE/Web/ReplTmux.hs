@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
@@ -29,7 +30,9 @@ import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.Info (os)
+#ifndef mingw32_HOST_OS
 import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
+#endif
 import System.Process (readProcessWithExitCode)
 
 -- | The private tmux socket leksah's terminals live on (so they don't mix with
@@ -83,11 +86,16 @@ selectTmuxWindowById wid = tmuxCmd ["select-window", "-t", T.unpack wid]
 -- a `nix develop` shell it points at the scripting bash, built without readline,
 -- so it has no line editor and arrow keys echo as `^[[A`.
 getLoginShell :: IO String
+#ifdef mingw32_HOST_OS
+-- No password database on Windows; use the command processor.
+getLoginShell = fromMaybe "powershell.exe" <$> lookupEnv "COMSPEC"
+#else
 getLoginShell = do
     loginShell <- (userShell <$> (getRealUserID >>= getUserEntryForID))
                     `catch` \(_ :: SomeException) -> return ""
     envShell <- fromMaybe "" <$> lookupEnv "SHELL"
     return $ fromMaybe "/bin/bash" . listToMaybe $ filter (not . null) [loginShell, envShell]
+#endif
 
 
 -- | Write (idempotently) the minimal tmux config used for leksah's terminals:

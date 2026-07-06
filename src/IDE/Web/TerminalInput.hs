@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 -- | A process-global bridge for injecting input into the active terminal.
@@ -42,7 +43,18 @@ import qualified Data.Map as M
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
+#ifndef mingw32_HOST_OS
 import System.Posix.Pty (Pty, writePty)
+#endif
+
+#ifdef mingw32_HOST_OS
+-- posix-pty has no Windows implementation; terminals are disabled there
+-- (IDE.Web.Widget.Terminal renders a placeholder), so nothing ever registers
+-- a PTY and writes are no-ops.
+data Pty = PtyUnavailable
+writePty :: Pty -> ByteString -> IO ()
+writePty _ _ = return ()
+#endif
 
 {-# NOINLINE ptyRegistry #-}
 ptyRegistry :: IORef (M.Map Text Pty)

@@ -15,15 +15,19 @@ source-repository-package
   location: https://github.com/leksah/ffcabal
   tag: 03d5d8f99b41db4ea8af74712354ff334112ae5c
 
--- jsaddle-terminal lives in the jsaddle monorepo now; pull just that package
--- from there.  It still depends on Hackage jsaddle, so jsaddle itself isn't
--- rebuilt.  For nix the location+tag is resolved to a flake input via inputMap
--- in flake.nix (no network fetch during pure eval).
+-- jsaddle-terminal, jsaddle-webkitgtk (GTK4/WebKitGTK 6.0) and
+-- jsaddle-webview2 (Windows) come from the jsaddle monorepo.  They all depend
+-- on Hackage jsaddle, so jsaddle itself isn't rebuilt.  webkitgtk/webview2
+-- are buildable only on their own platforms (guards in their .cabal files).
+-- For nix the location+tag is resolved to a flake input via inputMap in
+-- flake.nix (no network fetch during pure eval).
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: 6264d0ee0fd382d56065827a34de20b561280836
+  tag: e6693c5d43da1a044bec1f25a012d0e5d8f10da0
   subdir: jsaddle-terminal
+          jsaddle-webkitgtk
+          jsaddle-webview2
 
 package reflex
   tests: False
@@ -186,14 +190,11 @@ package ltk
 package leksah
  flags: -check-gtk-version
 
--- NOTE: leksah-webkitgtk (the webkit2gtk variant) is disabled.  It depends on
--- gi-webkit2 / webkit2gtk-4.0, which has been removed from nixpkgs (only 4.1
--- and 6.0 remain).  Re-enabling it needs the haskell-gi WebKit stack
--- regenerated for webkit2gtk-4.1, or a GTK4 port to use gi-webkit 6.0.  To
--- enable on Linux once that's done:
---   if os(linux)
---     package leksah
---       flags: +webkitgtk
+-- NOTE: leksah-webkitgtk is the GTK4/WebKitGTK 6.0 front end
+-- (jsaddle-webkitgtk + gi-webkit 6.x), Linux-only via os(linux) guards in its
+-- executable stanza.  The `webkitgtk` cabal flag is unrelated to it now: the
+-- flag only gates the legacy GTK3 library's gi-webkit2 panes (webkit2gtk-4.x,
+-- gone from nixpkgs) and stays off.
 --package leksah-server
 -- extra-framework-dirs: /System/Library/Frameworks
 --package jsaddle-wkwebview

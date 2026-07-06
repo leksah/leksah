@@ -70,7 +70,7 @@ usage = T.unlines
   , "  leksah-cmd js eval -f FILE         evaluate JS read from FILE (no shell escaping)"
   , "  leksah-cmd js eval -               evaluate JS read from stdin"
   , "  leksah-cmd ping                    print \"ok\" if the UI is up (silent-ish, exit 0/1)"
-  , "  leksah-cmd screenshot FILE         capture the UI to a PNG (wkwebview only)"
+  , "  leksah-cmd screenshot FILE         capture the UI to a PNG (wkwebview/webkitgtk)"
   , "  leksah-cmd grab-region [TARGET]    select a screen region; type its PNG path into"
   , "                                     a terminal pane (default: regionCaptureTarget pref;"
   , "                                     TARGET is a session/window/pane path)"

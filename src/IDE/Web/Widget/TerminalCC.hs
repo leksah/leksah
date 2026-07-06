@@ -66,7 +66,7 @@ import Reflex.Dom.Core
         EventName(Click), (=:))
 import Language.Javascript.JSaddle
        (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, jsg, jss,
-        liftJSM, new, valIsNull, valIsUndefined, valToBool, valToNumber,
+        liftJSM, new, obj, valIsNull, valIsUndefined, valToBool, valToNumber,
         valToText)
 
 import IDE.Core.CTypes (SrcSpan(..))
@@ -1101,6 +1101,17 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef (cw, ch) pane rectD0 d
         -- sits in — see onFocusPane in the cm6 bundle).
         termRoot <- term ^. js ("element" :: Text)
         _ <- jsg ("LeksahCM" :: Text) ^. js2 ("loadTerminalSearch" :: Text) term termRoot
+        -- Inline images (SIXEL / iTerm2 OSC 1337) — tmux forwards them via
+        -- allow-passthrough.  storageLimit caps the per-terminal image cache
+        -- (MB); CC layouts have many panes, so keep it modest.
+        imgOpts <- obj
+        _ <- imgOpts ^. jss ("storageLimit" :: Text) (32 :: Int)
+        img <- new (jsg ("ImageAddon" :: Text) ^. js ("ImageAddon" :: Text)) [imgOpts]
+        _ <- term ^. js1 ("loadAddon" :: Text) img
+        -- OSC 52 writes land on the system clipboard (vim yank, tmux
+        -- copy-mode over ssh, …).
+        clip <- new (jsg ("ClipboardAddon" :: Text) ^. js ("ClipboardAddon" :: Text)) ()
+        _ <- term ^. js1 ("loadAddon" :: Text) clip
         -- Bell (Claude Code's needs-input signal) → leksah attention.
         _ <- term ^. js1 ("onBell" :: Text) (fun $ \_ _ _ -> liftIO (pcBell cbs))
         -- the grid IS the tmux pane's cells; the box already matches
