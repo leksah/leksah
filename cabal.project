@@ -24,7 +24,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: e6693c5d43da1a044bec1f25a012d0e5d8f10da0
+  tag: 2d8a90b7b22b41029436d8f2524f70f1fa1be897
   subdir: jsaddle-terminal
           jsaddle-webkitgtk
           jsaddle-webview2
