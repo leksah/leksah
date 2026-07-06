@@ -325,17 +325,31 @@ changeProject project =
         exchange p | pjKey p == pjKey project = project
                    | otherwise        = p
 
--- | Find a directory relative to the leksah install directory
+-- | Find a directory relative to the leksah install directory, so binary
+-- packages can carry their data dir next to the executable (see
+-- 'leksahOrPackageDir').  Two relocatable layouts are recognised:
+--
+--   * Windows: @\<installroot>\\bin\\leksah.exe@ → @\<installroot>\\\<subDir>@
+--   * macOS:   @Leksah.app\/Contents\/MacOS\/leksah@ →
+--              @Leksah.app\/Contents\/Resources\/\<subDir>@
 leksahSubDir :: FilePath    -- ^ Sub directory to look for
              -> IO (Maybe FilePath)
 leksahSubDir subDir = do
     exePath <- getExecutablePath
-    if takeFileName exePath == "leksah.exe"
-        then do
-            let dataDir = takeDirectory (takeDirectory exePath) </> subDir
+    let candidate
+          -- Windows install tree.
+          | takeFileName exePath == "leksah.exe" =
+              Just (takeDirectory (takeDirectory exePath) </> subDir)
+          -- macOS .app bundle (exe is Contents/MacOS/leksah).
+          | takeFileName exePath == "leksah"
+            && takeFileName (takeDirectory exePath) == "MacOS" =
+              Just (takeDirectory (takeDirectory exePath) </> "Resources" </> subDir)
+          | otherwise = Nothing
+    case candidate of
+        Nothing      -> return Nothing
+        Just dataDir -> do
             exists <- doesDirectoryExist dataDir
             return (if exists then Just dataDir else Nothing)
-        else return Nothing
 
 -- | Get the leksah data dir based on the executable name or if that fails
 -- use the directroy for the package.  This is allows us to make binary packages

@@ -92,6 +92,41 @@
         legacyPackages = pkgs;
         checks = flake.checks // extraChecks;
         hydraJobs = flake.hydraJobs // { checks = (flake.hydraJobs.checks or {}) // extraChecks; };
+        # A novice-friendly Windows Setup.exe for the leksah-webview2 front end,
+        # built entirely on the x86_64-linux cross builder (makensis runs there;
+        # the webview2 exe is cross-compiled to mingw).  Only meaningful where
+        # crossPlatforms yields ucrt64, i.e. x86_64-linux (see nix/hix.nix).
+        packages = flake.packages
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          leksah-windows-installer = import ./nix/windows-installer.nix {
+            inherit pkgs;
+            leksah-webview2 = flake.packages."x86_64-w64-mingw32:leksah:exe:leksah-webview2";
+            leksah-server = flake.packages."x86_64-w64-mingw32:leksah-server:exe:leksah-server";
+            src = ./.;
+            version = "0.17.0.0";
+          };
+        }
+          # A novice-friendly macOS artifact for the leksah-wkwebview front end:
+          # a relocatable .app (dylib closure bundled + rebased, ad-hoc signed)
+          # and a drag-to-Applications .dmg.  The .dmg step shells out to hdiutil,
+          # so it builds only where nix has `sandbox = false` (see nix/macos-dmg.nix).
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (
+          let
+            leksah-macos-app = import ./nix/macos-app.nix {
+              inherit pkgs;
+              leksah-wkwebview = flake.packages."leksah:exe:leksah-wkwebview";
+              leksah-server = flake.packages."leksah-server:exe:leksah-server";
+              src = ./.;
+              version = "0.17.0.0";
+            };
+          in {
+            inherit leksah-macos-app;
+            leksah-macos-dmg = import ./nix/macos-dmg.nix {
+              inherit pkgs;
+              app = leksah-macos-app;
+              version = "0.17.0.0";
+            };
+          });
         apps = flake.apps // {
           launch-leksah.type = "app";
           launch-leksah.program = (pkgs.stdenv.mkDerivation {
