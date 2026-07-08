@@ -53,17 +53,21 @@ flipperCss = do
     -- --leksah-window-color CSS var, see flipMirrorJs).
     borderStyle solid
     borderWidth (px 6)
-    borderColor (Other "var(--leksah-window-color)")
+    -- Idle: a darkened version of the window colour.  When the highlighted item
+    -- lives in THIS window the border switches to the full-brightness colour
+    -- (below) rather than widening.
+    borderColor (Other "color-mix(in srgb, var(--leksah-window-color) 55%, black)")
     borderRadius (px 12) (px 12) (px 12) (px 12)
     margin (px 20) (px 20) (px 20) (px 20)
     padding (px 10) (px 10) (px 10) (px 10)
     pointerEvents auto
     textAlign start
     boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
-  -- When the highlighted item lives in THIS window, thicken the border (6→12px)
-  -- as a strong "the selected pane is here" cue.
+  -- When the highlighted item lives in THIS window, switch the border to the
+  -- full-brightness window colour (rather than widening it) as a strong "the
+  -- selected pane is here" cue.
   ".flipper-content.self-selected" ?
-    borderWidth (px 12)
+    borderColor (Other "var(--leksah-window-color)")
   ".flipper-content button" ? do
     verticalAlign middle
     borderRadius (px 3) (px 3) (px 3) (px 3)
@@ -90,6 +94,13 @@ flipperCss = do
     verticalAlign middle
   ".flip-win-icon.shared" ?
     borderColor (Other "#888")
+  -- Per-entry type icon: file icon for editors, the tmux-window icon (with its
+  -- alert fill/colour) for terminals and their panes.  Sized to sit centred on
+  -- the label, a small gap before the text.
+  ".flip-type-icon" ? do
+    height (px 14)
+    verticalAlign middle
+    margin (px 0) (px 6) (px 2) (px 0)
 
 flipperWidget
   :: (MonadWidget t m, Ord k, Show k)

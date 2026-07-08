@@ -26,6 +26,8 @@ module IDE.Web.Widget.Terminals
   , terminalsWidget
   , sessionAlert
   , windowAlert
+  , windowAlertSrc
+  , sessionAlertSrc
   ) where
 
 import Control.Concurrent (forkIO)
@@ -48,7 +50,7 @@ import Clay
        (overflow, auto, height, pct, padding, px, (-:), display, flex,
         width, background, color, white, borderStyle, borderRadius,
         backgroundImage, vGradient, fontSize, fontWeight, bold, hover, grey,
-        (#), cursor, cursorDefault, (?), Css, Color(..), None(..), Cursor(..))
+        opacity, (#), cursor, cursorDefault, (?), Css, Color(..), None(..), Cursor(..))
 import Clay.Stylesheet (key)
 
 import Reflex
@@ -63,7 +65,7 @@ import Reflex.Dom.Core
         _textInput_keydown, _textInput_hasFocus)
 import Language.Javascript.JSaddle (liftJSM, jsg, js1, fun, eval)
 
-import IDE.Web.Theme (selectionColor, hoverColor)
+import IDE.Web.Theme (selectionColor, hoverColor, dimColor, dimOpacity)
 import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
        (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
@@ -210,11 +212,33 @@ terminalsCss = do
         display flex
         -- Mask the title underneath the confirm buttons.
         background (Rgba 32 32 32 1.0)
-    -- The focused session (shown in the editor area) is highlighted.
-    ".terminals .terminals-active" ?
+    -- De-emphasis instead of emphasis (matching the Workspace tree): every
+    -- host/session/window/pane label + icon is dimmed to light grey by default —
+    -- "Local", the remote server names, and all sessions read grey.  Only the
+    -- *active-pane chain* is lit white: the focused session (open in the editor),
+    -- its machine (host head), and the current window / active pane WITHIN that
+    -- session.  Everything else — other machines, other sessions, and their own
+    -- current windows — stays grey.  (The white overrides must follow this dim
+    -- rule — they share its specificity and win only by source order.)
+    ".terminals .terminals-label" ? color dimColor
+    ".terminals .terminals-label img.tree-icon" ? opacity dimOpacity
+    -- The focused session (shown in the editor area): highlighted + white.
+    ".terminals .terminals-active" ? do
         background selectionColor
-    -- tmux's current window / active pane shown in bold.
-    ".terminals .terminals-current" ? fontWeight bold
+        color white
+    ".terminals .terminals-active img.tree-icon" ? opacity 1
+    -- The active session's machine: the host row whose subtree holds the focused
+    -- session (`:has(.terminals-active)`) — its own direct host label goes white.
+    ".terminals li:has(.terminals-active) > .terminals-host-label" ? color white
+    ".terminals li:has(.terminals-active) > .terminals-host-label img.tree-icon" ? opacity 1
+    -- The current window / active pane, but ONLY inside the focused session
+    -- (`> .terminals-active` = that session li's own label) — a background
+    -- session's current window/pane stays grey.
+    ".terminals li:has(> .terminals-active) .terminals-current" ? color white
+    ".terminals li:has(> .terminals-active) .terminals-current img.tree-icon" ? opacity 1
+    -- The state-carrying window/session icon encodes its meaning in colour, so it
+    -- is never dimmed (would mute the white/yellow attention states).
+    ".terminals .terminals-label img.term-alert-icon" ? opacity 1
     -- Compact close (✕) / kill / cancel buttons.
     ".terminals .terminal-close" ? do
         padding (px 0) (px 4) (px 0) (px 4)
@@ -273,7 +297,7 @@ terminalsWidget activeD attnD remoteHostsD hostTreesD = divClass "terminals leks
   -- One node per remote host, sessions/windows/panes over ssh (select-only);
   -- the data comes from the shared per-host poll in 'IDE.Web.Main'.
   remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
-      (\host _ -> remoteHostNode host
+      (\host _ -> remoteHostNode activeD host
           (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
   return $ leftmost [ bubbleLocalE
                     , fmapMaybe (\m -> listToMaybe (M.elems m)
@@ -298,9 +322,9 @@ hostRow label newEv tip = do
 -- open/steer the host's control-mode tabs.
 remoteHostNode
   :: MonadWidget t m
-  => Text -> Dynamic t (Bool, Map Text (Text, [TmuxWindow]))
+  => Dynamic t (Maybe Text) -> Text -> Dynamic t (Bool, Map Text (Text, [TmuxWindow]))
   -> m (Event t NodeEvent)
-remoteHostNode host treeD = do
+remoteHostNode activeD host treeD = do
     reachD <- holdUniqDyn (fst <$> treeD)
     itemsD <- holdUniqDyn (snd <$> treeD)
     treeItem "terminals-host" True
@@ -314,20 +338,39 @@ remoteHostNode host treeD = do
             pure $ leftmost [ Right (NewRemoteTerminal host) <$ newE
                             , Right (SelectRemoteHost host)  <$ domEvent Click lbl ])
         (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\sid vD ->
-            remoteSessionNode host sid vD))
+            remoteSessionNode activeD host sid vD))
 
 remoteSessionNode
   :: MonadWidget t m
-  => Text -> Text -> Dynamic t (Text, [TmuxWindow]) -> m (Event t NodeEvent)
-remoteSessionNode host sid vD =
+  => Dynamic t (Maybe Text) -> Text -> Text -> Dynamic t (Text, [TmuxWindow]) -> m (Event t NodeEvent)
+remoteSessionNode activeD host sid vD =
   treeItem "terminals-session" True
-    (do (lbl, _) <- elDynAttr' "span" (constDyn ("class" =: "terminals-label leksah-nav-item")) $ do
-            termIcon "tree-session.svg"
-            dynText ((\(nm, ws) -> nm <> sessionAlert ws) <$> vD)
-        -- The event carries the session's CURRENT name too, so the handler
-        -- can match a tab keyed by name (cc-connect HOST#NAME).
-        pure $ (\(nm, _) -> Right (SelectRemoteTerminal host sid nm))
-                 <$> tagPromptlyDyn vD (domEvent Click lbl))
+    (do -- The focused remote session (its tab is keyed "ssh://host#target",
+        -- where target is either the session id or its current name — see
+        -- resolveRemoteKey in IDE.Web.Main): mark it 'terminals-active' so it,
+        -- its host, and its current window light white like a local one.
+        let labelAttrs = (\a (nm, _) ->
+              "class" =: ("terminals-label leksah-nav-item"
+                <> if a == Just ("ssh://" <> host <> "#" <> sid)
+                      || a == Just ("ssh://" <> host <> "#" <> nm)
+                   then " terminals-active" else ""))
+              <$> activeD <*> vD
+        (lbl, _) <- elDynAttr' "span" labelAttrs $ do
+            termSessIcon (constDyn False) (snd <$> vD)
+            dynText (fst <$> vD)
+        renE    <- renameControl (fst <$> vD) (RenameRemoteTerminalSession host sid)
+        newWinE <- actionBtn "+" "New window in this session"
+        killE   <- confirmClose
+        -- The select event carries the session's CURRENT name too, so the
+        -- handler can match a tab keyed by name (cc-connect HOST#NAME); the
+        -- close event likewise, to drop that tab.
+        pure $ leftmost
+          [ (\(nm, _) -> Right (SelectRemoteTerminal host sid nm))
+              <$> tagPromptlyDyn vD (domEvent Click lbl)
+          , Right <$> renE
+          , Right (NewRemoteTerminalWindow host sid) <$ newWinE
+          , (\(nm, _) -> Right (CloseRemoteTerminal host sid nm))
+              <$> tagPromptlyDyn vD killE ])
     (el "ul" $ remoteWindowsTree host sid (fst <$> vD) (snd <$> vD))
 
 remoteWindowsTree
@@ -341,10 +384,15 @@ remoteWindowsTree host sid nameD windowsD =
           (do let attrs = ffor wD $ \w ->
                     "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
               (e, _) <- elDynAttr' "span" attrs $ do
-                    termIcon "tree-window.svg"
-                    dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
-              pure $ (\nm -> Right (SelectRemoteTerminalWindow host sid nm widx))
-                       <$> tagPromptlyDyn nameD (domEvent Click e))
+                    termWinIcon wD
+                    dynText (twLabel <$> wD)
+              renE  <- renameControl (windowRawName <$> wD) (RenameRemoteTerminalWindow host sid widx)
+              killE <- confirmClose
+              pure $ leftmost
+                [ (\nm -> Right (SelectRemoteTerminalWindow host sid nm widx))
+                    <$> tagPromptlyDyn nameD (domEvent Click e)
+                , Right <$> renE
+                , Right (KillRemoteTerminalWindow host sid widx) <$ killE ])
           (el "ul" $ remotePanesTree host sid nameD widx (twPanes <$> wD)))
 
 remotePanesTree
@@ -359,8 +407,15 @@ remotePanesTree host sid nameD widx panesD =
         (e, _) <- elDynAttr' "span" attrs $ do
               termIcon "tree-pane.svg"
               dynText (tpLabel <$> pD)
-        pure $ (\nm -> Right (SelectRemoteTerminalPane host sid nm widx pidx))
-                 <$> tagPromptlyDyn nameD (domEvent Click e))
+        zoomE  <- actionBtn "⤢" "Zoom / unzoom this pane"
+        breakE <- actionBtn "↗" "Break this pane out into its own window"
+        killE  <- confirmClose
+        pure $ leftmost
+          [ (\nm -> Right (SelectRemoteTerminalPane host sid nm widx pidx))
+              <$> tagPromptlyDyn nameD (domEvent Click e)
+          , Right (ZoomRemoteTerminalPane host sid widx pidx)  <$ zoomE
+          , Right (BreakRemoteTerminalPane host sid widx pidx) <$ breakE
+          , Right (KillRemoteTerminalPane host sid widx pidx)  <$ killE ])
 
 -- | A session node: the name (click to select) with a ✕ that asks to confirm
 -- before killing, and the session's tmux windows as children.
@@ -384,6 +439,30 @@ windowAlert w
   | twSilence w  = " \9675"
   | otherwise    = ""
 
+-- | The leading terminal-window icon whose fill/colour encodes the same alert
+-- state that 'windowAlert' used to append as a text glyph — so the notification
+-- rides the window icon itself instead of a trailing 🔔/●/○.  The window icon
+-- has a fillable bottom half; the mapping (see the user-confirmed legend):
+--   * bell (needs input)       → all yellow (filled)
+--   * activity (new output)    → all white, filled circle
+--   * silence (went quiet/done)→ white frame, dark fill ("empty circle")
+--   * active window, no output → grey, empty (you're on it)
+--   * otherwise (seen output)  → grey, bottom-half fill
+windowAlertSrc :: TmuxWindow -> Text
+windowAlertSrc w
+  | twBell w     = "/pics/tree-window-bell.svg"
+  | twActivity w = "/pics/tree-window-activity.svg"
+  | twSilence w  = "/pics/tree-window-silence.svg"
+  | twActive w   = "/pics/tree-window-calm.svg"
+  | otherwise    = "/pics/tree-window-idle.svg"
+
+-- | Render the state-carrying window icon for a tree row (dynamic in the
+-- window's alert flags).  'term-alert-icon' keeps its own colour — it is
+-- exempt from both the non-selected dimming and the mono/colour icon swap.
+termWinIcon :: MonadWidget t m => Dynamic t TmuxWindow -> m ()
+termWinIcon wD = void $ elDynAttr' "img"
+    (ffor wD $ \w -> "class" =: "tree-icon term-alert-icon" <> "src" =: windowAlertSrc w) blank
+
 -- | The strongest alert among a session's windows (for the session row badge).
 sessionAlert :: [TmuxWindow] -> Text
 sessionAlert ws
@@ -391,6 +470,27 @@ sessionAlert ws
   | any twActivity ws = " \9679"
   | any twSilence ws  = " \9675"
   | otherwise         = ""
+
+-- | The session-glyph counterpart of 'windowAlertSrc': the same fill/colour
+-- state language on the @>_@ session icon, from the strongest alert among the
+-- session's windows.  (No calm/empty variant — a session's resting state is
+-- the grey bottom-fill 'idle'.)
+sessionAlertSrc :: [TmuxWindow] -> Text
+sessionAlertSrc ws
+  | any twBell ws     = "/pics/tree-session-bell.svg"
+  | any twActivity ws = "/pics/tree-session-activity.svg"
+  | any twSilence ws  = "/pics/tree-session-silence.svg"
+  | otherwise         = "/pics/tree-session-idle.svg"
+
+-- | Render the state-carrying session icon (dynamic in the session's windows);
+-- a leksah-tracked bell (first arg — the viewed-window bell tmux's hook skips)
+-- forces the bell icon.  Like 'termWinIcon', 'term-alert-icon' keeps its colour
+-- (exempt from dimming and the mono/colour swap).
+termSessIcon :: MonadWidget t m => Dynamic t Bool -> Dynamic t [TmuxWindow] -> m ()
+termSessIcon attnD wsD = void $ elDynAttr' "img"
+    ((\att ws -> "class" =: "tree-icon term-alert-icon"
+              <> "src" =: if att then "/pics/tree-session-bell.svg" else sessionAlertSrc ws)
+       <$> attnD <*> wsD) blank
 
 -- | The session row: its (highlightable) title and the inline close confirm.
 sessionRow
@@ -401,21 +501,15 @@ sessionRow
 sessionRow activeD attnD n vD = do
   let labelAttrs = ffor activeD $ \a ->
         "class" =: ("terminals-label leksah-nav-item" <> if a then " terminals-active" else "")
-      -- Displayed name has the session's highest-priority alert badge appended,
-      -- so an alert in a window shows on the (possibly collapsed) session row too.
-      -- A leksah-tracked attention (viewed-window bell, which tmux flags miss)
-      -- forces 🔔; otherwise the badge comes from the windows' tmux flags.
-      displayNameD = (\(nm, ws) att -> nm
-                        <> if att then " \128276" else sessionAlert ws)
-                       <$> vD <*> attnD
-      -- The rename box is prefilled with the *raw* name only — the badge is a
-      -- status glyph, not part of the editable name.
+      -- The session's alert now rides its leading icon (see 'termSessIcon'), so
+      -- an alert in a window shows on the (possibly collapsed) session row too —
+      -- the name itself is shown plain.
       rawNameD     = fst <$> vD
   -- Label the session by its tmux name (from the poll, so a rename shows up),
   -- while the row is keyed by the stable session id @n@.
   (labelEl, _) <- elDynAttr' "span" labelAttrs $ do
-      termIcon "tree-session.svg"
-      dynText displayNameD
+      termSessIcon attnD (snd <$> vD)
+      dynText rawNameD
   renE <- renameControl rawNameD (renameTmuxSession n)
   newWinE <- actionBtn "+" "New window in this session"
   killE <- confirmClose
@@ -436,8 +530,8 @@ windowsTree n windowsD =
           (do let attrs = ffor wD $ \w ->
                     "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
               (e, _) <- elDynAttr' "span" attrs $ do
-                    termIcon "tree-window.svg"
-                    dynText ((\w -> twLabel w <> windowAlert w) <$> wD)
+                    termWinIcon wD
+                    dynText (twLabel <$> wD)
               renE <- renameControl (windowRawName <$> wD) (renameTmuxWindow n widx)
               killE <- confirmClose
               return $ leftmost [ Right (SelectTerminalWindow n widx) <$ domEvent Click e
@@ -498,7 +592,10 @@ actionBtn glyph tip = do
 -- current name (captured when the button is clicked, so a background poll can't
 -- clobber what you're typing); Enter commits (runs @rename newName@ as a Left
 -- action, which re-polls the tree), Esc cancels.  Either collapses back to ✎.
-renameControl :: MonadWidget t m => Dynamic t Text -> (Text -> IO ()) -> m (Event t (IO ()))
+-- Polymorphic in what a commit produces: a local rename yields the tmux @IO ()@
+-- to run (bubbled as a @Left@ NodeEvent); a remote one yields a 'TerminalsEvents'
+-- (a @Right@) so 'IDE.Web.Main' can run it over ssh and re-poll the host.
+renameControl :: MonadWidget t m => Dynamic t Text -> (Text -> a) -> m (Event t a)
 renameControl nameD rename = elClass "span" "terminals-rename-slot" $ do
   -- Two states, swapped with widgetHold (which — unlike `dyn` — surfaces the
   -- *initial* widget's events too, so the ✎ click and the commit are actually

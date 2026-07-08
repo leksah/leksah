@@ -38,7 +38,7 @@ module IDE.Web.Widget.TerminalCC
 import Control.Concurrent (forkIO)
 import Control.Exception (try, SomeException)
 import Control.Lens ((^.))
-import Control.Monad (forM_, forever, unless, when, void)
+import Control.Monad (forM, forM_, forever, unless, when, void)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64 as B64 (encode)
@@ -75,7 +75,8 @@ import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
        (registerTerminalCC, unregisterTerminalCC, registerTerminalSplits,
-        unregisterTerminalSplits, registerTerminalFocus, unregisterTerminalFocus)
+        unregisterTerminalSplits, registerTerminalFocus, unregisterTerminalFocus,
+        isActiveTerminal)
 import IDE.Web.JsaddleTunnel
        (registerTunnelSync, unregisterTunnelSync, tunnelSyncReply)
 import IDE.Web.TmuxCC
@@ -171,9 +172,21 @@ terminalCCWidget ide sessionId selectedE = do
                         Just target | not (T.null target) ->
                             ["attach-session", "-t", T.unpack target]
                         _ -> ["new-session", "-A", "-s", "leksah"]
-                in startCCWith $
+                    -- ssh joins the remote command's words with spaces and hands
+                    -- them to the login shell, so a tmux session id like "$0"
+                    -- (what the Terminals tree keys a listed remote session by)
+                    -- would be expanded by the remote shell — to the shell's own
+                    -- name — unless every word is single-quoted for it.  Without
+                    -- this, attaching any listed remote session ("ssh://host#$N")
+                    -- ran `attach-session -t <shellname>`, no such session, and
+                    -- the connection closed at once.  Same escaping as 'sshTmux'.
+                    shellQuote s = "'" <> concatMap esc s <> "'"
+                    esc '\'' = "'\\''"
+                    esc c    = [c]
+                    remoteCmd = unwords (map shellQuote ("tmux" : "-C" : attach))
+                in startCCWith
                     [ "ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"
-                    , T.unpack host, "tmux", "-C" ] ++ attach
+                    , T.unpack host, remoteCmd ]
             Nothing -> startCC ["-L", "leksah"] ["attach-session", "-t", T.unpack sessionId]
         -- Batched drain: everything queued is taken at once and consecutive
         -- same-pane output merged, so a scroll-storm burst is ONE reflex
@@ -504,11 +517,17 @@ terminalCCWidget ide sessionId selectedE = do
                     ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                     tagName <- valToText =<< ae ^. js ("tagName" :: Text)
                     pend <- liftIO $ readIORef pendingFocusRef
+                    -- A pending request only claims the keyboard while this is
+                    -- still the terminal on screen — a slow (remote) connection
+                    -- whose window finally arrives after the user moved on must
+                    -- not steal focus (had/BODY still cover "we already own it").
+                    desired <- liftIO $ isActiveTerminal sessionId
+                    let want = had || tagName == "BODY" || (pend && desired)
                     focusLog $ "[" <> T.unpack sessionId <> "] winFocusE pane=" <> T.unpack p
                         <> " had=" <> show had <> " activeEl=" <> T.unpack tagName
-                        <> " pend=" <> show pend
-                        <> " -> " <> (if had || tagName == "BODY" || pend then "focusActivePane" else "no-focus")
-                    when (had || tagName == "BODY" || pend) $ do
+                        <> " pend=" <> show pend <> " desired=" <> show desired
+                        <> " -> " <> (if want then "focusActivePane" else "no-focus")
+                    when want $ do
                         focusActivePane
                         liftIO $ writeIORef pendingFocusRef False
             -- Explicit focus requests (a workspace repl button launches a repl in
@@ -520,13 +539,29 @@ terminalCCWidget ide sessionId selectedE = do
             liftIO $ registerTerminalFocus sessionId (fireFocusReq ())
             performEvent_ $ ffor focusReqE $ \_ ->
                 liftIO $ writeIORef pendingFocusRef True
-            forcedFocusE <- delay 0.15 focusReqE
+            -- A fresh connection can take a while to bring its window/panes up —
+            -- a remote ssh one especially (handshake + the initial layout query),
+            -- seconds after this first 0.15s attempt.  Until it does there is no
+            -- pane to focus, so retry the forced focus on a widening schedule
+            -- until the active pane's xterm actually takes the keyboard, then
+            -- clear the pending flag.  Each attempt is gated on this STILL being
+            -- leksah's active (shown) terminal ('isActiveTerminal'), so a slow
+            -- connection that only completes after the user has moved on never
+            -- steals focus (a hidden tab's focus() would no-op regardless — but
+            -- the check also stops us pointlessly retrying).
+            forcedFocusE <- fmap leftmost . forM [0.15, 0.5, 1.0, 2.0, 3.5, 5.0] $
+                              \d -> delay d focusReqE
             performEvent_ $ ffor forcedFocusE $ \_ -> do
-                pend <- liftIO $ readIORef pendingFocusRef
-                when pend $ liftJSM $ do
+                pend    <- liftIO $ readIORef pendingFocusRef
+                desired <- liftIO $ isActiveTerminal sessionId
+                when (pend && desired) $ liftJSM $ do
                     applyActive
                     focusActivePane
-                    liftIO $ writeIORef pendingFocusRef False
+                    -- Only give up the pending flag once the keyboard has really
+                    -- landed in the active pane; otherwise a later retry gets it
+                    -- when the (still-connecting) pane finally exists.
+                    ok <- activePaneHasFocus
+                    when ok . liftIO $ writeIORef pendingFocusRef False
             -- ⌘N (numbered split navigation): the displayed window's panes in
             -- layout (reading) order — the numbering the ⌘-held badges show.
             -- Kept in an IORef so the selector (invoked from outside reflex,

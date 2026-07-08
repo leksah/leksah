@@ -31,6 +31,7 @@ module IDE.Web.TerminalInput
   , focusTerminalPane
   , selectSplitActiveTerminal
   , setActiveTerminal
+  , isActiveTerminal
   , setActiveTerminalNotifier
   , sendToActiveTerminal
   , tmuxCommandActiveTerminal
@@ -147,6 +148,13 @@ setActiveTerminal mb = do
   writeIORef activeRef mb
   notify <- readIORef notifierRef
   notify (isJust mb) `catch` \(_ :: SomeException) -> return ()
+
+-- | Is terminal @n@ the one currently on screen (the editor-area @wide0@ tab)?
+-- Used by the CC widget's focus retry to check a slow (remote) connection is
+-- STILL the tab the user is looking at before it grabs the keyboard — a
+-- connection that only completes after they have moved on must not steal focus.
+isActiveTerminal :: Text -> IO Bool
+isActiveTerminal n = (== Just n) <$> readIORef activeRef
 
 -- | Register the callback told whether a terminal is active (native menu
 -- enabling).  Called once at startup by the front end.

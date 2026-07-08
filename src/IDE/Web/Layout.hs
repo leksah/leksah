@@ -129,6 +129,12 @@ layoutCss = do
     -- own once focus leaves.
     ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)" ?
         ("grid-template-columns" -: "300px 100vw")
+    -- Force-collapse override: a selection that activated a file/terminal adds
+    -- '.tall-suppress' (see leksahCollapseAutoHide), snapping the pane shut even
+    -- while the cursor is still hovering it — the extra class outranks the reveal
+    -- rule above, so it wins under :hover.  Cleared on the next mouse-out.
+    ".leksah.tall-auto.tall-suppress:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)" ?
+        ("grid-template-columns" -: "0px 100vw")
     -- A constant 3px left pad on the editor column, in ALL side-pane states
     -- (shown, auto-hide, hidden): a small consistent gap from the side divider /
     -- window edge (in auto-hide it also gives the sensor peek strip its room).
@@ -242,6 +248,16 @@ layoutCss = do
         ("transition" -: "transform 0.15s ease")
     ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide0 > *" ?
         ("transform" -: "translateY(-150px)")
+    -- Force-collapse override (bottom bar): '.wide1-suppress' slides the bar back
+    -- off-screen and un-shifts the editor content even while hovered, so a
+    -- selection that activated a file/terminal snaps the bar shut with the cursor
+    -- still over it.  The extra class outranks the reveal rules, so it wins.
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab-buttons.area-wide1" ?
+        ("transform" -: "translateY(170px)")
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide1" ?
+        ("transform" -: "translateY(170px)")
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide0 > *" ?
+        ("transform" -: "translateY(0)")
     ".statusbar" ? do
         "grid-area" -: "statusbar"
     ".area-tall" ? do
@@ -288,6 +304,10 @@ layoutCss = do
     -- so slide the whole overlay off-screen instead.  It slides back when the pane
     -- expands (hover/focus).
     ".leksah.tall-auto:not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)) .tall-divider" ?
+        ("transform" -: "translateX(-8px)")
+    -- Keep the divider off-screen while the pane is force-collapsed (suppressed)
+    -- even though we're technically still hovering — matching the collapsed pane.
+    ".leksah.tall-auto.tall-suppress .tall-divider" ?
         ("transform" -: "translateX(-8px)")
     -- The auto-hide activation strip: an invisible 3px-wide, full-height grid item
     -- pinned to the left of the (0-width, collapsed) side column, overflowing into

@@ -31,6 +31,14 @@ module IDE.Web.Widget.Terminal
   , createRemoteSession
   , selectRemoteTmuxWindow
   , selectRemoteTmuxPane
+  , killRemoteTmuxSession
+  , killRemoteTmuxWindow
+  , killRemoteTmuxPane
+  , newRemoteTmuxWindow
+  , zoomRemoteTmuxPane
+  , breakRemoteTmuxPane
+  , renameRemoteTmuxSession
+  , renameRemoteTmuxWindow
   , reapControlClients
   , createTerminalSession
   , openFileInEditor
@@ -729,6 +737,51 @@ selectRemoteTmuxPane :: Text -> Text -> Int -> Int -> IO ()
 selectRemoteTmuxPane host s w p = do
     selectRemoteTmuxWindow host s w
     void $ sshTmux host ["select-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- Remote analogues of the local window/pane management commands
+-- ('killTmuxWindow' … 'renameTmuxWindow'), run over ssh on @host@'s
+-- default-socket tmux (see 'sshTmux').  Same @session:window.pane@ targeting;
+-- the session id may be a tmux id like @$0@, which 'sshTmux' single-quotes so
+-- the remote login shell can't expand it (the same hazard fixed for attach).
+
+-- | Kill remote session @s@ (so it no longer persists on @host@).
+killRemoteTmuxSession :: Text -> Text -> IO ()
+killRemoteTmuxSession host s =
+    void $ sshTmux host ["kill-session", "-t", T.unpack s]
+
+-- | Kill window @w@ of remote session @s@ (tmux closes the session if last).
+killRemoteTmuxWindow :: Text -> Text -> Int -> IO ()
+killRemoteTmuxWindow host s w =
+    void $ sshTmux host ["kill-window", "-t", T.unpack s <> ":" <> show w]
+
+-- | Kill pane @p@ of window @w@ in remote session @s@ (closes the window if last).
+killRemoteTmuxPane :: Text -> Text -> Int -> Int -> IO ()
+killRemoteTmuxPane host s w p =
+    void $ sshTmux host ["kill-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Create a new window in remote session @s@ (becomes its current window).
+newRemoteTmuxWindow :: Text -> Text -> IO ()
+newRemoteTmuxWindow host s = void $ sshTmux host ["new-window", "-t", T.unpack s]
+
+-- | Toggle zoom for pane @p@ of window @w@ in remote session @s@.
+zoomRemoteTmuxPane :: Text -> Text -> Int -> Int -> IO ()
+zoomRemoteTmuxPane host s w p =
+    void $ sshTmux host ["resize-pane", "-Z", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Break pane @p@ of window @w@ in remote session @s@ out into its own window.
+breakRemoteTmuxPane :: Text -> Text -> Int -> Int -> IO ()
+breakRemoteTmuxPane host s w p =
+    void $ sshTmux host ["break-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Rename remote session @s@ to @name@.
+renameRemoteTmuxSession :: Text -> Text -> Text -> IO ()
+renameRemoteTmuxSession host s name =
+    void $ sshTmux host ["rename-session", "-t", T.unpack s, T.unpack name]
+
+-- | Rename window @w@ of remote session @s@ to @name@.
+renameRemoteTmuxWindow :: Text -> Text -> Int -> Text -> IO ()
+renameRemoteTmuxWindow host s w name =
+    void $ sshTmux host ["rename-window", "-t", T.unpack s <> ":" <> show w, T.unpack name]
 
 -- | Detach tmux control-mode clients left over from previous leksah runs.
 -- leksah's own @tmux -C@ child processes don't die when leksah exits — they

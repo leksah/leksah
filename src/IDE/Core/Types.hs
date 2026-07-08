@@ -310,7 +310,7 @@ data IDE            =  IDE {
 ,   _webWindows          :: Map WindowId WebWindow -- ^ per-OS-window state (multi-window web UI)
 ,   _activeWindow        :: Maybe WindowId         -- ^ the frontmost OS window (native becomeKey)
 ,   _nextWindowId        :: Int                    -- ^ monotonic 'WindowId' minter
-,   _flipMirror          :: Maybe (Int, [(Text, Int)], Int)
+,   _flipMirror          :: Maybe (Int, [(Text, Int, Text)], Int)
                                                     -- ^ shared flipper-mirror state so every OS window
                                                     --   can draw the open flipper: @(ownerWindowId,
                                                     --   [(label, itemOwnerWinId)], selectedIndex)@;

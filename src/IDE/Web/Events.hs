@@ -119,6 +119,16 @@ data TerminalsEvents
   | SelectRemoteTerminal Text Text Text              -- ^ host, session id, name
   | SelectRemoteTerminalWindow Text Text Text Int    -- ^ host, id, name, window
   | SelectRemoteTerminalPane Text Text Text Int Int  -- ^ host, id, name, window, pane
+    -- Remote management, the analogues of the local session/window/pane
+    -- controls; run over ssh in 'IDE.Web.Main', which then re-polls the host.
+  | CloseRemoteTerminal Text Text Text               -- ^ host, id, name (kill-session + drop tab)
+  | NewRemoteTerminalWindow Text Text                -- ^ host, session id
+  | KillRemoteTerminalWindow Text Text Int           -- ^ host, id, window
+  | RenameRemoteTerminalSession Text Text Text       -- ^ host, id, new name
+  | RenameRemoteTerminalWindow Text Text Int Text    -- ^ host, id, window, new name
+  | ZoomRemoteTerminalPane Text Text Int Int         -- ^ host, id, window, pane
+  | BreakRemoteTerminalPane Text Text Int Int        -- ^ host, id, window, pane
+  | KillRemoteTerminalPane Text Text Int Int         -- ^ host, id, window, pane
 
 makePrisms ''TerminalsEvents
 

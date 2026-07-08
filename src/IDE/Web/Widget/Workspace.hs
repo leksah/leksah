@@ -37,7 +37,7 @@ import Clay
         paddingRight, marginBottom, marginTop, marginRight, checked,
         userSelect, (|+), absolute, position, left, nil, paddingLeft, px,
         marginLeft, listStyleType, listStyleImage, middle, grey, color, rgb,
-        nowrap, whiteSpace, inlineBlock, scroll, overflow, height, (?),
+        opacity, nowrap, whiteSpace, inlineBlock, scroll, overflow, height, (?),
         Css, background, none, white, Color(..), VerticalAlign(..),
         cursorDefault, Cursor(..))
 import qualified Clay (display, (#))
@@ -52,7 +52,7 @@ import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
         divClass, text, el, elClass, dynText, domEvent, EventName(..))
 
-import IDE.Web.Theme (selectionColor, hoverColor)
+import IDE.Web.Theme (selectionColor, hoverColor, dimColor, dimOpacity)
 import IDE.Core.CTypes (packageIdentifierToString)
 import IDE.Core.State
        (DebugState(..), activeComponent, ipdPackageDir,
@@ -93,8 +93,18 @@ workspaceCss = do
         key "fill" white
     ".workspace li > .tree-expand" Clay.# hover ?
         key "fill" selectionColor
+    -- De-emphasis instead of emphasis: rather than bolding the active row, dim
+    -- every *other* row's label + icon to light grey (git-status colours on a
+    -- name still win, staying legible).  The active row keeps full-brightness
+    -- white text and a full-opacity icon.
+    ".workspace label" ?
+        color dimColor
+    ".workspace img.tree-icon" ?
+        opacity dimOpacity
     ".workspace li.active > label" ?
-        fontWeight bold
+        color white
+    ".workspace li.active > label img.tree-icon" ?
+        opacity 1
     ".tree-item" ? do
         Clay.display inlineBlock
         whiteSpace nowrap

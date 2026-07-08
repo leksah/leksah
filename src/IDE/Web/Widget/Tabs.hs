@@ -24,7 +24,7 @@ import Data.Tuple (swap)
 import Clay
        (nowrap, whiteSpace, marginTop, scroll, overflow, white,
         color, fontSize, borderStyle, textDecoration, middle,
-        borderRadius, padding, hover, (#), background,
+        borderRadius, padding, hover, (#), background, opacity,
         margin, px, height, cursor, cursorDefault, (?), (-:), Css,
         Color(..), VerticalAlign(..), Auto(..), Hidden(..), None(..), Cursor(..))
 
@@ -36,7 +36,7 @@ import Reflex.Dom.Core
        (elDynAttr', elAttr, blank, MonadWidget, (=:),
         divClass, Event, domEvent, EventName(..))
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme (selectionColor, dimColor, dimOpacity)
 
 tabsCss :: Css
 tabsCss = do
@@ -97,7 +97,10 @@ tabsCss = do
         borderStyle none
         fontSize (px 13)
         background (Rgba 0 0 0 0.0)
-        color white
+        -- De-emphasis instead of emphasis: non-selected tabs' labels + icons are
+        -- dimmed to light grey; the selected (and hovered / flipper-preview) tab
+        -- is restored to full-brightness white below.
+        color dimColor
         cursor cursorDefault
     -- Leading tree icon inside a side-pane tab button (Workspace/Terminals/…):
     -- white B&W SVG sized to the 20px row, nudged to sit centred with the label.
@@ -105,6 +108,19 @@ tabsCss = do
         height (px 14)
         verticalAlign middle
         "margin" -: "0 4px 2px 2px"
+        opacity dimOpacity
+    -- Full brightness for the selected / hovered / flipper-preview tab.
+    ".tab-buttons .tab-wrap.selected button" ? color white
+    ".tab-buttons .tab-wrap.leksah-flip-sel button" ? color white
+    ".tab-buttons .tab-wrap:hover button" ? color white
+    ".tab-buttons .tab-wrap.selected button img.tab-icon" ? opacity 1
+    ".tab-buttons .tab-wrap.leksah-flip-sel button img.tab-icon" ? opacity 1
+    ".tab-buttons .tab-wrap:hover button img.tab-icon" ? opacity 1
+    -- A bell (needs-input) terminal tab is pulled to full brightness — name AND
+    -- icon — even when it is neither selected nor hovered, so the alert stands
+    -- out (matching the moused-over look).
+    ".tab-buttons .tab-wrap:has(img[src*='tree-window-bell']) button" ? color white
+    ".tab-buttons .tab-wrap:has(img[src*='tree-window-bell']) button img.tab-icon" ? opacity 1
     ".tab-buttons .tab-close" ? do
         verticalAlign middle
         color white

@@ -22,7 +22,7 @@ import Reflex.Dom.Core
        (elDynAttr', text, dynText, MonadWidget, (=:), elAttr, divClass,
         Event, domEvent, EventName(..))
 
-import IDE.Web.Theme (selectionColor, selectionColorFaint)
+import IDE.Web.Theme (selectionColor, selectionColorFaint, dimOpacity)
 import IDE.Core.State (IDE, prefs, tallVisibility, wide1Visibility, TallVisibility(..))
 import IDE.Web.Events (ToolbarEvents(..))
 import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
@@ -60,27 +60,38 @@ toolbarCss = do
         borderRadius (px 3) (px 3) (px 3) (px 3)
         padding (px 3) (px 3) (px 3) (px 3)
         margin (px 0) (px 0) (px 0) (px 0)
-    ".toolbar-button" # hover ?
+        -- De-emphasis instead of emphasis: toolbar icons sit dimmed to light
+        -- grey and brighten to full opacity on hover (below) or when their
+        -- command is toggled / a pane state is active (the background rules
+        -- further down each restore full brightness too).
+        opacity dimOpacity
+    ".toolbar-button" # hover ? do
         background (Rgba 61 96 150 1.0)
+        opacity 1
     ".toolbar-button" # hover |+ ".tooltip" ? do
         visibility visible
         opacity 1
         transitionDelay (sec 1)
         transitionDuration (sec 0.2)
-    ".toggled .toolbar-button" ?
+    ".toggled .toolbar-button" ? do
         background selectionColor
+        opacity 1
     ".toggled .toolbar-button" # hover ?
         background (Rgba 61 96 150 1.0)
     -- The 3-state side-pane button: shown = solid, auto-hide = dim, hidden = none.
-    ".tall-state-show .toolbar-button" ?
+    ".tall-state-show .toolbar-button" ? do
         background selectionColor
-    ".tall-state-auto .toolbar-button" ?
+        opacity 1
+    ".tall-state-auto .toolbar-button" ? do
         background selectionColorFaint
+        opacity 1
     -- The 3-state bottom-pane button: shown = solid, auto-hide = dim, hidden = none.
-    ".wide1-state-show .toolbar-button" ?
+    ".wide1-state-show .toolbar-button" ? do
         background selectionColor
-    ".wide1-state-auto .toolbar-button" ?
+        opacity 1
+    ".wide1-state-auto .toolbar-button" ? do
         background selectionColorFaint
+        opacity 1
 
 toolbarButton
   :: MonadWidget t m

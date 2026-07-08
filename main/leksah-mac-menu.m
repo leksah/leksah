@@ -984,6 +984,70 @@ static void leksah_read_holes(void) {
     ((void (*)(id, SEL, id, id))objc_msgSend)(web, sel, js, handler);
 }
 
+// Plays a macOS system sound when JS posts to the "leksahBeep" script message
+// handler (the status light's beep — orange "Claude needs it shortly").  A
+// system sound (NSSound) MIXES with any audio already playing on the machine
+// and never interrupts it; a Web AudioContext, by contrast, grabbed the audio
+// session and silenced other playback, which is why the in-page beep had to be
+// disabled.  WebKit isn't linked here, so the handler is registered on the
+// webview's userContentController via the runtime and only needs to answer
+// -userContentController:didReceiveScriptMessage: (no formal protocol needed).
+@interface LeksahBeepHandler : NSObject
+@end
+@implementation LeksahBeepHandler
+- (void)userContentController:(id)ucc didReceiveScriptMessage:(id)message {
+    (void)ucc; (void)message;
+    // MRC: this file has no -fobjc-arc, so retain the (autoreleased) named sound
+    // once and reuse it — else it would dangle after the pool drains mid-play.
+    static NSSound *snd = nil;
+    if (snd == nil) snd = [[NSSound soundNamed:@"Ping"] retain];
+    if (snd != nil) { [snd stop]; [snd play]; }   // stop → rewind so repeats re-trigger
+    else NSBeep();                                  // fall back to the alert sound
+}
+@end
+
+// Speaks text posted to the "leksahSpeak" handler via NSSpeechSynthesizer — the
+// terminal-bell announcement ("window <name>, pane <n>").  Like NSSound it plays
+// over other audio and never seizes the session.  stopSpeaking first so a newer
+// bell interrupts an in-progress announcement (newest alert wins) rather than
+// being dropped while the synth is busy.
+@interface LeksahSpeakHandler : NSObject
+@end
+@implementation LeksahSpeakHandler
+- (void)userContentController:(id)ucc didReceiveScriptMessage:(id)message {
+    (void)ucc;
+    static NSSpeechSynthesizer *synth = nil;
+    if (synth == nil) synth = [[NSSpeechSynthesizer alloc] initWithVoice:nil];
+    id body = [message valueForKey:@"body"];          // WKScriptMessage.body (via KVC)
+    NSString *text = [body isKindOfClass:[NSString class]]
+                       ? (NSString *)body : [body description];
+    if (synth != nil && text != nil && [text length] > 0) {
+        [synth stopSpeaking];
+        [synth startSpeakingString:text];
+    }
+}
+@end
+
+// Register the "leksahBeep" / "leksahSpeak" handlers on a webview's content
+// controller (once per webview; each window has its own).  Called from
+// leksah_configure_window so it covers window 0 (created by jsaddle's
+// AppDelegate) and every leksah_new_window alike.  Coexists with jsaddle's own
+// handlers (different names).
+static void leksah_install_beep_handler(id webview) {
+    static LeksahBeepHandler *beepHandler = nil;
+    static LeksahSpeakHandler *speakHandler = nil;
+    if (beepHandler == nil)  beepHandler  = [[LeksahBeepHandler alloc] init];
+    if (speakHandler == nil) speakHandler = [[LeksahSpeakHandler alloc] init];
+    if (webview == nil) return;
+    @try {
+        id cfg = [webview valueForKey:@"configuration"];
+        id ucc = [cfg valueForKey:@"userContentController"];
+        SEL add = @selector(addScriptMessageHandler:name:);
+        ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, beepHandler,  @"leksahBeep");
+        ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, speakHandler, @"leksahSpeak");
+    } @catch (__unused NSException *e) {}
+}
+
 // The per-window title-bar configuration shared by the first window and every
 // window from leksah_new_window: transparent full-size-content title bar (so the
 // web toolbar occupies it), per-window frame autosave, and the become-key /
@@ -1019,6 +1083,8 @@ static void leksah_configure_window(NSWindow *win, int wid) {
             leksah_window_closing(wid);
             [gWindows removeObjectForKey:@(wid)];
         }];
+    // Let this window's JS ring the native beep (see LeksahBeepHandler).
+    leksah_install_beep_handler(leksah_find_webview([win contentView]));
 }
 
 // Create a native window + WKWebView for a freshly-minted WindowId and hand the

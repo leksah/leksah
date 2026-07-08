@@ -67,7 +67,7 @@ import Data.Aeson (encode)
 import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
 import System.Exit (ExitCode(..))
-import System.FilePath (takeFileName, dropFileName, (</>))
+import System.FilePath (takeFileName, takeExtension, dropFileName, (</>))
 import System.Environment (getArgs, setEnv)
 import IDE.Utils.ExitImmediately (exitImmediately)
 import System.FSNotify (withManager)
@@ -162,7 +162,10 @@ import IDE.Web.Events
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
         _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane,
         _NewRemoteTerminal, _SelectRemoteHost, _SelectRemoteTerminal,
-        _SelectRemoteTerminalWindow, _SelectRemoteTerminalPane)
+        _SelectRemoteTerminalWindow, _SelectRemoteTerminalPane,
+        _CloseRemoteTerminal, _NewRemoteTerminalWindow, _KillRemoteTerminalWindow,
+        _RenameRemoteTerminalSession, _RenameRemoteTerminalWindow,
+        _ZoomRemoteTerminalPane, _BreakRemoteTerminalPane, _KillRemoteTerminalPane)
 import IDE.Web.Layout (layoutCss)
 import IDE.Web.Widget.Changes (changesCss, changesWidget)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
@@ -185,9 +188,12 @@ import IDE.Web.Widget.Terminal
         selectTmuxWindow, selectTmuxPane, activePaneId, paneGeometry, sessionOfPane,
         listTerminalTree, createTerminalSession, openFileInEditor, notifyTerminalBell,
         createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
+        killRemoteTmuxSession, killRemoteTmuxWindow, killRemoteTmuxPane,
+        newRemoteTmuxWindow, zoomRemoteTmuxPane, breakRemoteTmuxPane,
+        renameRemoteTmuxSession, renameRemoteTmuxWindow,
         listRemoteTerminalTree, remoteTabHostTarget,
         reapControlClients, TmuxWindow(..), TmuxPane(..))
-import IDE.Web.Widget.Terminals (terminalsCss, terminalsWidget, sessionAlert, windowAlert)
+import IDE.Web.Widget.Terminals (terminalsCss, terminalsWidget, sessionAlert, windowAlertSrc)
 import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
@@ -574,6 +580,11 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- already on-screen we skip expanding/scrolling.
   _ <- eval revealCheckJs
 
+  -- window.leksahCollapseAutoHide: snap an auto-hidden side/bottom pane shut when
+  -- a selection in it activates a file/terminal, even if the cursor is still over
+  -- the pane (the CSS reveal is hover-driven; this overrides it).
+  _ <- eval collapseAutoHideJs
+
   -- window.leksahFlipMirror/Hide: the global flipper mirror overlay (a copy of
   -- another window's open flipper), driven by ideJSM_ broadcasts from main.
   _ <- eval flipMirrorJs
@@ -891,10 +902,20 @@ tabLabelText k names = case k of
 -- 'Nothing' for tabs shown by their label alone (editors, terminals, …).
 tabIconSrc :: TabKey -> Maybe Text
 tabIconSrc k = case k of
-  WorkspaceKey -> Just "/pics/workspace.svg"
-  TerminalsKey -> Just "/pics/terminals.svg"
-  MetadataKey  -> Just "/pics/metadata.svg"
-  _            -> Nothing
+  WorkspaceKey   -> Just "/pics/workspace.svg"
+  TerminalsKey   -> Just "/pics/terminals.svg"
+  MetadataKey    -> Just "/pics/metadata.svg"
+  EditorKey file -> Just (fileIconSrc file)
+  _              -> Nothing
+
+-- | The file-type icon (same set the Workspace file tree uses) for an editor
+-- tab, keyed by extension.
+fileIconSrc :: FilePath -> Text
+fileIconSrc file = "/pics/" <> case takeExtension file of
+  ".cabal" -> "tree-file-cabal.svg"
+  ".hs"    -> "tree-file-hs.svg"
+  ".lhs"   -> "tree-file-hs.svg"
+  _        -> "tree-file.svg"
 
 -- | The active @(window index, pane index)@ of a tmux session (by id), from the
 -- pane tree; falls back to the first window/pane, or 'Nothing' if it has none.
@@ -904,6 +925,24 @@ activePaneOfSession n tree = do
   w <- listToMaybe (filter twActive wins ++ wins)
   p <- listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
   return (twIndex w, tpIndex p)
+
+-- | The spoken location of a session's belled window — the tmux (terminal)
+-- window NAME, then the pane number when the window has more than one pane, e.g.
+-- "leksah, 1" (or just "leksah" for a single-pane window; no "window"/"pane"
+-- words, and NOT the OS window name) — for the terminal-bell announcement.  The
+-- bell fires in the session's viewed (current/active) window; the pane is that
+-- window's active pane.
+bellLocation :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe Text
+bellLocation n tree = do
+  (_, wins) <- M.lookup n tree
+  w <- listToMaybe (filter twActive wins ++ wins)
+  let name = stripIdxPrefix (twIndex w) (twLabel w)
+      pnum = maybe (twIndex w) tpIndex
+                   (listToMaybe (filter tpActive (twPanes w) ++ twPanes w))
+  -- A lone pane needs no number — the window name alone locates it.
+  return $ if length (twPanes w) <= 1
+             then name
+             else name <> ", " <> T.pack (show pnum)
 
 -- | Resolve a tmux @#{pane_id}@ (e.g. @%5@, server-global) to its flipper item
 -- by scanning the pane tree for the pane's @(session, window index, pane index)@.
@@ -933,6 +972,25 @@ flipPaneLabel n w p tree =
     paneName = case [ stripIdx p (tpLabel pn) | pn <- panes, tpIndex pn == p ] of
                  (l:_) -> l
                  []    -> T.pack (show p)
+
+-- | The leading icon (a @/pics/*.svg@ path) for a flipper entry, or 'Nothing'
+-- for entries shown by label alone.  A terminal — whether the item is a whole
+-- terminal tab or one of its panes (which is all a terminal flip item ever is) —
+-- gets its tmux *window* icon, carrying the same fill/colour alert state the
+-- Terminals tree shows (bell/activity/…); a file tab gets its file-type icon;
+-- the side-pane tabs reuse 'tabIconSrc'.  The state-carrying window icon means a
+-- belled terminal is spottable in the flipper at a glance.
+flipIconSrc :: Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Text
+flipIconSrc tree = \case
+    FlipPane n w _          -> Just (winIcon n w)
+    FlipTab (TerminalKey n) -> Just (winIcon n (activeWinIdx n))
+    FlipTab k               -> tabIconSrc k
+  where
+    winIcon n w = case M.lookup n tree >>= find ((== w) . twIndex) . snd of
+        Just win -> windowAlertSrc win
+        Nothing  -> "/pics/tree-window-idle.svg"
+    activeWinIdx sid = maybe 0 twIndex $ M.lookup sid tree
+        >>= (\wins -> listToMaybe (filter twActive wins ++ wins)) . snd
 
 -- | Drop a window/pane label's leading @"idx: "@ prefix — the tab buttons now
 -- show the name alone (the index is conveyed by the ⌘-shortcut badge instead).
@@ -1294,6 +1352,39 @@ revealCheckJs = T.unlines
   , "};"
   ]
 
+-- | Defines @window.leksahCollapseAutoHide()@: collapse any auto-hidden side
+-- ("tall") or bottom ("wide1") pane NOW, even while the mouse is over it.  The
+-- auto-hide reveal is pure CSS (@:has(:hover, :focus-within)@), so a selection
+-- that activates a file/terminal — moving keyboard focus to the editor but
+-- leaving the cursor parked over the tree it was clicked in — would otherwise
+-- keep the pane open.  We add a @…-suppress@ class that overrides the hover
+-- reveal back to the collapsed state, then drop it again once the pointer is no
+-- longer over that pane's reveal triggers (so the very next fresh hover reopens
+-- it as usual); a timeout is a safety net if the mouse never moves.
+collapseAutoHideJs :: Text
+collapseAutoHideJs = T.unlines
+  [ "window.leksahCollapseAutoHide = function(){"
+  , "  var root = document.querySelector('.leksah'); if (!root) return;"
+  , "  var specs = ["
+  , "    { auto:'tall-auto',  sup:'tall-suppress',  sel:'.tall-sensor, .area-tall' },"
+  , "    { auto:'wide1-auto', sup:'wide1-suppress', sel:'.statusbar, .tab.area-wide1, .tab-buttons.area-wide1' }"
+  , "  ];"
+  , "  specs.forEach(function(s){"
+  , "    if (!root.classList.contains(s.auto)) return;"
+  , "    root.classList.add(s.sup);"
+  , "    var timer = null;"
+  , "    function clear(){ root.classList.remove(s.sup);"
+  , "      document.removeEventListener('mousemove', onMove, true);"
+  , "      if (timer) clearTimeout(timer); }"
+  , "    function overTrigger(x, y){ var el = document.elementFromPoint(x, y);"
+  , "      return !!(el && el.closest && el.closest(s.sel)); }"
+  , "    function onMove(e){ if (!overTrigger(e.clientX, e.clientY)) clear(); }"
+  , "    document.addEventListener('mousemove', onMove, true);"
+  , "    timer = setTimeout(clear, 1500);"
+  , "  });"
+  , "};"
+  ]
+
 -- | Defines @window.leksahFlipMirror(owner, labelsJson, index)@ and
 -- @window.leksahFlipMirrorHide(owner)@: a read-only copy of another OS window's
 -- open flipper, so the flipper shows on every window at once.  The active window
@@ -1315,7 +1406,8 @@ flipMirrorJs :: Text
 flipMirrorJs = T.unlines
   [ "window.leksahWindowColor = function(id){ return 'hsl(' + ((id*67)%360) + ',85%,55%)'; };"
   , "document.documentElement.style.setProperty('--leksah-window-color', window.leksahWindowColor(window.leksahWindowId));"
-  -- items: [[label, ownerWinId], ...]  (ownerWinId < 0 = shared / no owner)
+  -- items: [[label, ownerWinId, iconSrc], ...]  (ownerWinId < 0 = shared / no
+  -- owner; iconSrc "" = no type icon)
   , "window.leksahFlipMirror = function(owner, itemsJson, index){"
   , "  if (window.leksahWindowId === owner) return;"   -- our own flipper is the real one
   , "  var el = document.getElementById('leksah-flip-mirror');"
@@ -1335,7 +1427,12 @@ flipMirrorJs = T.unlines
   , "      var ic = document.createElement('span');"
   , "      ic.className = 'flip-win-icon' + (it[1] < 0 ? ' shared' : '');"
   , "      if (it[1] >= 0) ic.style.backgroundColor = window.leksahWindowColor(it[1]);"
-  , "      b.appendChild(ic); b.appendChild(document.createTextNode(it[0]));"
+  , "      b.appendChild(ic);"
+  , "      if (it[2]){ var ti = document.createElement('img');"
+  -- tree-window icons carry a meaningful alert colour → exempt from the swap.
+  , "        ti.className = 'flip-type-icon' + (it[2].indexOf('tree-window') >= 0 ? ' term-alert-icon' : '');"
+  , "        ti.src = it[2]; b.appendChild(ti); }"
+  , "      b.appendChild(document.createTextNode(it[0]));"
   , "      d.appendChild(b); c.appendChild(d);"
   , "    });"
   , "    el.__leksahKey = itemsJson;"
@@ -1968,6 +2065,7 @@ colorIconsJs = T.unlines
   , "  function isSvg(s){ return s && /\\.svg(\\?|$)/.test(s); }"
   , "  function apply(img){"
   , "    var s = img.getAttribute('src'); if (!isSvg(s)) return;"
+  , "    if (img.classList && img.classList.contains('term-alert-icon')) return;"
   , "    if (window.__leksahColorIcons){"
   , "      if (s.indexOf(BASE) === 0 && s.indexOf(COLOR) !== 0)"
   , "        img.setAttribute('src', COLOR + s.slice(BASE.length));"
@@ -2108,10 +2206,20 @@ statusLightJs = T.unlines
   , "    if (document.body) document.body.appendChild(el);"
   , "    return el;"
   , "  }"
-  -- Audio DISABLED: even a suspended AudioContext grabbed the audio session and
-  -- stopped Safari's own audio playback, so the beep is a no-op for now (no
-  -- AudioContext created, no gesture-prime listeners).
-  , "  function beep(){}"
+  -- Beep via a NATIVE macOS system sound (the "leksahBeep" script message
+  -- handler, see LeksahBeepHandler in leksah-mac-menu.m).  A system sound mixes
+  -- with any audio already playing on the machine and never interrupts it —
+  -- unlike a Web AudioContext, which grabbed the audio session and silenced
+  -- other playback (why the in-page beep had to be disabled).  The handler
+  -- exists only on the wkwebview front end; the try/catch no-ops elsewhere.
+  , "  function beep(){ try { window.webkit.messageHandlers.leksahBeep.postMessage(1); } catch(e){} }"
+  -- A terminal bell (Claude Code's "needs input" signal in a window you're not
+  -- viewing): ring the ping, then — once it's had time to sound — SPEAK the
+  -- belling terminal's location via the native "leksahSpeak" handler
+  -- (NSSpeechSynthesizer, which mixes with other audio just like the ping).
+  -- Called from the reflex bell handler with "window <name>, pane <n>".
+  , "  window.leksahSpeak = function(t){ try { window.webkit.messageHandlers.leksahSpeak.postMessage(String(t)); } catch(e){} };"
+  , "  window.leksahTermBell = function(t){ beep(); setTimeout(function(){ window.leksahSpeak(t); }, 700); };"
   , "  function set(s){ if (timer){ clearTimeout(timer); timer = null; } state = s; ensure().className = s; }"
   , "  window.leksahStatus = set;"
   , "  window.leksahTestStart = function(){"
@@ -2396,13 +2504,24 @@ main showMenubar macTitlebar wid ide = mdo
                 -- Label by the window alone (the session name is redundant — the
                 -- Terminals tree groups by session); fall back to the session name
                 -- only before the first poll, when no window is known yet.
-                labelD    = (\names mw att ->
-                              let bell | s `S.member` att && maybe True twActive mw = " \128276"
-                                       | otherwise = ""
-                              in case mw of
-                                   Nothing -> M.findWithDefault s s names <> bell
-                                   Just w  -> stripIdxPrefix (twIndex w) (twLabel w) <> windowAlert w <> bell)
-                            <$> terminalNamesD <*> mwD <*> attentionD
+                labelTextD = (\names mw -> case mw of
+                                Nothing -> M.findWithDefault s s names
+                                Just w  -> stripIdxPrefix (twIndex w) (twLabel w))
+                             <$> terminalNamesD <*> mwD
+                -- The leading state icon carries the notification (bell / activity
+                -- / silence) instead of a trailing 🔔/●/○; a leksah-tracked bell
+                -- (viewed-window bell tmux's hook skips) forces the bell icon too.
+                iconSrcD  = (\mw att -> case mw of
+                              Nothing | s `S.member` att -> "/pics/tree-window-bell.svg"
+                                      | otherwise        -> "/pics/tree-window-idle.svg"
+                              Just w  | s `S.member` att && twActive w -> "/pics/tree-window-bell.svg"
+                                      | otherwise                      -> windowAlertSrc w)
+                            <$> mwD <*> attentionD
+                labelW = do
+                    void $ elDynAttr' "img"
+                        ((\src -> "class" =: "tab-icon term-alert-icon" <> "src" =: src) <$> iconSrcD)
+                        (pure ())
+                    dynText labelTextD
                 orderStyleD = buttonOrderStyleD (Left (s, widx)) baseOrderD
                 -- Switch the shared terminal to this window, then poke a pane-tree
                 -- refresh so the "current window" highlight updates at once (not on
@@ -2419,11 +2538,12 @@ main showMenubar macTitlebar wid ide = mdo
                           -- focus.  fireTermActivity refreshes the tree/highlight.
                           Nothing -> fireTermWinSel (s, widx) >> fireTermActivity ()
                 badgeD = M.lookup (Left (s, widx)) <$> badgeNumsD
-            tabButton area (winFlipKey s widx) k selectedD orderStyleD badgeD Nothing Nothing (dynText labelD) onSel
+            tabButton area (winFlipKey s widx) k selectedD orderStyleD badgeD Nothing Nothing labelW onSel
           pure (mconcat . M.elems <$> winButtonsE)
         _ ->
           let mbTitle    = case k of EditorKey f -> Just (T.pack f); _ -> Nothing
-              mbCloseTip = case k of EditorKey _ -> Just "Close"; _ -> Nothing
+              -- No close × on tab buttons: close via ⌘W / File ▸ Close instead.
+              mbCloseTip = Nothing
               orderStyleD = buttonOrderStyleD (Right k) baseOrderD
               -- Side-pane tree tabs carry a leading B&W icon before their label.
               labelW = do
@@ -2711,8 +2831,24 @@ main showMenubar macTitlebar wid ide = mdo
               Just w  -> "class" =: "flip-win-icon"
                       <> "style" =: ("background-color:" <> windowColorCss w)
               Nothing -> "class" =: "flip-win-icon shared"
+        -- The type icon (file icon for editors, tmux-window icon for terminals /
+        -- their panes) between the owner-window square and the label.  A terminal
+        -- window icon is colour-meaningful (its alert state), so it carries
+        -- 'term-alert-icon' to stay exempt from the mono/colour icon swap; a file
+        -- icon is a plain B&W glyph and swaps like the editor-tab icons.  Hidden
+        -- when the entry has no icon.
+        flipTypeClass :: FlipItem -> Text
+        flipTypeClass fi = case fi of
+          FlipPane {}             -> "flip-type-icon term-alert-icon"
+          FlipTab (TerminalKey _) -> "flip-type-icon term-alert-icon"
+          _                       -> "flip-type-icon"
+        flipTypeIconAttr :: Map Text (Text, [TmuxWindow]) -> FlipItem -> Map Text Text
+        flipTypeIconAttr tree fi = case flipIconSrc tree fi of
+          Just src -> "class" =: flipTypeClass fi <> "src" =: src
+          Nothing  -> "style" =: "display:none"
         flipLabel fiD = do
           elDynAttr "span" (flipIconAttr <$> winCountD <*> webWindowsD <*> fiD) (pure ())
+          elDynAttr "img" (flipTypeIconAttr <$> allTreeD <*> fiD) (pure ())
           dynText $ flipItemLabel <$> terminalNamesD <*> allTreeD <*> fiD
     winCountD <- holdUniqDyn (M.size <$> webWindowsD)
     (flipperVisibleD, flipperSelD, flipSelIndexD, flipRawE) <- flipperWidget flipItemsD flipStepE rawFlipDoneE selfSelectedD flipLabel
@@ -2734,8 +2870,9 @@ main showMenubar macTitlebar wid ide = mdo
     -- can draw the owner-coloured icon and thicken the border on the owning window.
     flipMirrorItemsD <- holdUniqDyn $
       (\items wins names tree ->
-         [ (flipItemLabel names tree fi
-           , maybe (-1) (\(WindowId n) -> n) (flipOwnerWindow wins fi))
+         [ ( flipItemLabel names tree fi
+           , maybe (-1) (\(WindowId n) -> n) (flipOwnerWindow wins fi)
+           , fromMaybe "" (flipIconSrc tree fi) )
          | (_, fi) <- items ])
       <$> flipItemsD <*> webWindowsD <*> terminalNamesD <*> allTreeD
     flipMirrorStateD <- holdUniqDyn $
@@ -2876,10 +3013,46 @@ main showMenubar macTitlebar wid ide = mdo
         wlog wid ("ENTER selectPaneE selectTmuxPane " <> show (s, w, p))
         liftIO (selectTmuxPane s w p)
         wlog wid "EXIT selectPaneE"
+    -- A selection made in an auto-hidden side/bottom pane that brings a file or
+    -- terminal up in the editor area snaps that pane shut again — even with the
+    -- cursor still over it (leksahCollapseAutoHide overrides the hover reveal).
+    -- Fires on file opens (workspace tree, Changes, Errors/Grep/Metadata jumps —
+    -- everything 'openFileE' carries) and on any terminal-activating selection
+    -- (local or remote); management actions
+    -- (rename/kill/zoom) deliberately don't, so you stay in the pane.
+    let collapseAutoHideE = leftmost
+          [ () <$ openFileE
+          , () <$ selectAnyTermE, () <$ newTermClickE
+          , () <$ selRemoteE, () <$ selRemoteWinE, () <$ selRemotePaneE
+          , () <$ selRemoteHostE, () <$ newRemoteE ]
+    performEvent_ $ ffor collapseAutoHideE $ \_ ->
+        liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahCollapseAutoHide" :: Text)
     performEvent_ $ ffor selRemoteWinE  $ \(h, s, _, w) ->
         liftIO . void . forkIO $ selectRemoteTmuxWindow h s w
     performEvent_ $ ffor selRemotePaneE $ \(h, s, _, w, p) ->
         liftIO . void . forkIO $ selectRemoteTmuxPane h s w p
+    -- Remote management actions bubbled from the Terminals tree (the analogues
+    -- of the local session/window/pane controls): run the tmux command over ssh
+    -- off the reflex thread, then poke the shared host poll so the row updates at
+    -- once rather than on the next 10s tick.  Killing a whole session also drops
+    -- its tab (closeTabsE below).
+    let selRemoteNewWinE = fmapMaybe (^? _NewRemoteTerminalWindow)    terminalsListE
+        killRemoteSessE  = fmapMaybe (^? _CloseRemoteTerminal)        terminalsListE
+        killRemoteWinE   = fmapMaybe (^? _KillRemoteTerminalWindow)   terminalsListE
+        killRemotePaneE  = fmapMaybe (^? _KillRemoteTerminalPane)     terminalsListE
+        zoomRemotePaneE  = fmapMaybe (^? _ZoomRemoteTerminalPane)     terminalsListE
+        breakRemotePaneE = fmapMaybe (^? _BreakRemoteTerminalPane)    terminalsListE
+        renRemoteSessE   = fmapMaybe (^? _RenameRemoteTerminalSession) terminalsListE
+        renRemoteWinE    = fmapMaybe (^? _RenameRemoteTerminalWindow) terminalsListE
+        remoteAct io     = liftIO . void . forkIO $ io >> fireRemotePoke ()
+    performEvent_ $ ffor selRemoteNewWinE $ \(h, s)        -> remoteAct (newRemoteTmuxWindow h s)
+    performEvent_ $ ffor killRemoteSessE  $ \(h, s, _)     -> remoteAct (killRemoteTmuxSession h s)
+    performEvent_ $ ffor killRemoteWinE   $ \(h, s, w)     -> remoteAct (killRemoteTmuxWindow h s w)
+    performEvent_ $ ffor killRemotePaneE  $ \(h, s, w, p)  -> remoteAct (killRemoteTmuxPane h s w p)
+    performEvent_ $ ffor zoomRemotePaneE  $ \(h, s, w, p)  -> remoteAct (zoomRemoteTmuxPane h s w p)
+    performEvent_ $ ffor breakRemotePaneE $ \(h, s, w, p)  -> remoteAct (breakRemoteTmuxPane h s w p)
+    performEvent_ $ ffor renRemoteSessE   $ \(h, s, nm)    -> remoteAct (renameRemoteTmuxSession h s nm)
+    performEvent_ $ ffor renRemoteWinE    $ \(h, s, w, nm) -> remoteAct (renameRemoteTmuxWindow h s w nm)
     -- "+" on a remote host: create a session there, then open its tab.
     remoteNewSidE <- performEvent $ ffor newRemoteE $ \h ->
         liftIO $ fmap (remoteKey h) <$> createRemoteSession h
@@ -2986,6 +3159,25 @@ main showMenubar macTitlebar wid ide = mdo
     -- callback (the first repl into a session opens the tab fresh).
     delayedTermFocusE <- delay 0.3 localTermRequestE
     performEvent_ $ ffor delayedTermFocusE $ liftIO . focusTerminalPane
+    -- Clicking a row in the Terminals tree (a session/window/pane, local or
+    -- remote) must hand the keyboard to the terminal too, not just bring its tab
+    -- up.  The tab-selected path focuses only when the *shown* tab actually
+    -- changes, so clicking the already-shown session — or another window/pane
+    -- within it — switches tmux but leaves the keyboard on the tree.  Fire the
+    -- terminal's explicit focus request (past the "did we already own the
+    -- keyboard" gate, exactly like a workspace repl launch), now and again after
+    -- the tab has had time to mount / the tmux select-window/pane to propagate.
+    -- Retry across a few delays: a network (ssh) terminal opened fresh only
+    -- registers its focus callback once its control client is up, which can lag
+    -- the click by a moment — so a single immediate call would find nothing
+    -- registered and no-op.  One call landing after registration is enough; it
+    -- arms the terminal's own focus retry (which then waits for the panes to
+    -- actually show up — see 'forcedFocusE' in TerminalCC).  Re-arming an
+    -- already-focused terminal is harmless (its retry re-checks and clears).
+    let treeSelectKeyE = leftmost [ selectAnyTermE, remoteOpenKeyE ]
+    treeFocusEs <- forM [0.3, 0.8, 1.6] $ \d -> delay d treeSelectKeyE
+    performEvent_ $ ffor (leftmost (treeSelectKeyE : treeFocusEs)) $
+        liftIO . focusTerminalPane
     -- Bells rung in a terminal's *viewed* (current) window: tmux's alert-bell
     -- hook skips those, so terminalWidget catches them (xterm onBell) and bubbles
     -- TerminalBell up through tabE.  Collect the session id(s) that just belled.
@@ -3010,12 +3202,19 @@ main showMenubar macTitlebar wid ide = mdo
         activeWinClosedSessE = ffilter (not . null) $ ffor tabE $ \m ->
           [ n | (TerminalKey n, dm) <- M.toList m
               , Just (Identity TerminalActiveWinClosed) <- [DM.lookup TerminalTab dm] ]
-        -- Only raise attention for a bell you weren't already looking at (i.e. the
-        -- belling session isn't the active pane) — otherwise you've seen it.
-        bellAwayE = fmapMaybe
-          (\(active, ns) -> case filter (\n -> active /= Just (TerminalKey n)) ns of
-                              [] -> Nothing; xs -> Just xs)
-          (attach (current activePaneD) bellSessE)
+    -- Only raise attention for a bell you weren't already looking at.  You ARE
+    -- looking at it only when it's the active tab AND this OS window currently
+    -- has focus — so a bell while leksah is unfocused / in the background (the
+    -- usual Claude Code "needs input" case: you've switched to another app, the
+    -- terminal is still the active tab) DOES ping.  Reads document.hasFocus() per
+    -- bell, hence performEvent rather than a pure gate.
+    bellAwayRawE <- performEvent $ ffor (attach (current activePaneD) bellSessE) $ \(active, ns) -> do
+        foc <- liftJSM $ valToBool =<< eval ("document.hasFocus()" :: Text)
+        let away = filter (\n -> not (foc && active == Just (TerminalKey n))) ns
+        wlog wid ("bell caught=" <> show ns <> " active=" <> show active
+                  <> " focus=" <> show foc <> " ping=" <> show away)
+        return away
+    let bellAwayE = ffilter (not . null) bellAwayRawE
     -- Which sessions want attention (a viewed-window bell): set on bellAwayE,
     -- cleared when the session becomes the active pane (you focused its tab), and
     -- pruned to still-live sessions.  Drives the 🔔 badge on the tab + tree.
@@ -3026,6 +3225,15 @@ main showMenubar macTitlebar wid ide = mdo
     -- Desktop notification for those bells (tmux's hook won't fire for a viewed
     -- window), via the same osascript notify script.
     performEvent_ $ ffor bellAwayE $ \ns -> liftIO (mapM_ notifyTerminalBell ns)
+    -- ...and, after the ping, SPEAK the belling terminal's location so you know
+    -- which window/pane wants you without looking.  Location comes from the same
+    -- pane-tree poll; multiple simultaneous bells are joined into one utterance.
+    let bellAnnounceE = ffilter (not . null) $ attachWith
+          (\tree ns -> [ p | n <- ns, Just p <- [bellLocation n tree] ])
+          (current paneTreeD) bellAwayE
+    performEvent_ $ ffor bellAnnounceE $ \phrases ->
+        liftJSM . void $ jsg ("window" :: Text)
+          ^. js1 ("leksahTermBell" :: Text) (T.intercalate ". " phrases)
     -- Session id -> current name, from the flipper's pane-tree poll; labels
     -- terminal tabs (a rename shows up on the next poll).
     let terminalNamesD = fmap fst <$> paneTreeD
@@ -3307,20 +3515,15 @@ main showMenubar macTitlebar wid ide = mdo
     -- File ▸ Close: a background thread turns close requests (from the menu
     -- command's IDEAction, via the close bridge) into a reflex event.
     (closeReqE, fireCloseReq) <- newTriggerEvent
-    -- Close via the menu acts on the active pane (only editors and terminals
-    -- have something to close).  A terminal showing a MULTI-pane window
-    -- closes the split (kills the active tmux pane) rather than the tab —
-    -- the tab only goes once a single pane remains.  The pane count comes
-    -- from the same tree the flipper uses, so remote (ssh://) tabs behave
-    -- identically.
+    -- Close via the menu (⌘W) acts on the active pane (only editors and
+    -- terminals have something to close).  ⌘W on a terminal DETACHES the whole
+    -- tab — the tmux session (and its splits) survive so it can be reopened; it
+    -- never kills a pane/split.  (The tree is still sampled so the shape is
+    -- available should the decision ever need it again.)
     let closeDecisionE = attachWith
-          (\(mk, tree) () -> case mk of
-              Just k@(EditorKey _) -> Just (Right [k])
-              Just k@(TerminalKey n)
-                | Just (_, ws) <- M.lookup n tree
-                , (w : _) <- filter twActive ws
-                , length (twPanes w) > 1 -> Just (Left n)
-                | otherwise -> Just (Right [k])
+          (\(mk, _tree) () -> case mk of
+              Just k@(EditorKey _)   -> Just (Right [k])
+              Just k@(TerminalKey _) -> Just (Right [k])
               _ -> Nothing)
           ((,) <$> current activePaneD <*> current allTreeD) closeReqE
         killSplitE = fmapMaybe (>>= either Just (const Nothing)) closeDecisionE
@@ -3346,7 +3549,13 @@ main showMenubar macTitlebar wid ide = mdo
           , (\(s, _, _) -> openInWide0 s) <$> flipPaneE
           , (\(s, _)    -> openInWide0 s) <$> alertTargetE
           , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE ]
-        closeTabsE = leftmost [ (\n -> [TerminalKey n]) <$> closeTermE, detachCloseE, exitedTermE ]
+        -- Killing a remote session server-side also drops its tab if open — under
+        -- either identity it may be keyed by (its id, or its name from a
+        -- cc-connect HOST#NAME tab); closeWide0 ignores whichever isn't present.
+        closeRemoteSessTabE = ffor killRemoteSessE $ \(h, s, nm) ->
+            [ TerminalKey (remoteKey h s), TerminalKey (remoteKey h nm) ]
+        closeTabsE = leftmost [ (\n -> [TerminalKey n]) <$> closeTermE, detachCloseE
+                              , exitedTermE, closeRemoteSessTabE ]
         -- Running a grep brings the Grep pane to the front of its area; Preferences…
         -- opens and shows the Preferences pane in the editor area.  The flipper
         -- selects a tab directly, or brings up a pane's terminal in wide0.
