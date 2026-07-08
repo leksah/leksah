@@ -4,7 +4,7 @@
 module IDE.Web.Command where
 
 import Control.Lens
-       (Getter, to, makePrisms, view, (%~))
+       (Getter, to, makePrisms, view, (%~), (^.), (&), ix)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO)
 
@@ -15,6 +15,7 @@ import Data.Text (Text)
 import IDE.Web.AIContextRequest
        (AIAction(..), requestAIAction)
 import IDE.Web.CloseRequest (requestCloseActivePane)
+import IDE.Web.NewWindowRequest (requestNewWindow)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.TerminalInput
        (sendToActiveTerminal, tmuxCommandActiveTerminal)
@@ -23,7 +24,8 @@ import IDE.Web.SnapRequest (requestSnapWindow)
 
 import IDE.Core.State
        (readIDE, modifyIDE_, Prefs(..), prefs, PackageAction, ProjectAction,
-        WorkspaceAction, IDEAction, __, IDE, TallVisibility(..))
+        WorkspaceAction, IDEAction, __, IDE, TallVisibility(..),
+        webWindows, activeWindow, wwTall, wwWide1)
 import IDE.Debug
        (debugContinue, debugStepModule, debugStepLocal, debugStep,
         debugToggled)
@@ -197,7 +199,10 @@ commandToggleShowHidden = CommandIDEToggleAction
 commandToggleTallPane = CommandIDEAction
   "/pics/sidebar.svg"
   (__ "Side pane: show / auto-hide / hide")
-  (modifyIDE_ (prefs %~ \p -> p { tallVisibility = cycleTall (tallVisibility p) }))
+  -- Per-window: cycle the visibility of the frontmost OS window's side pane.
+  (modifyIDE_ $ \i -> case i ^. activeWindow of
+     Just aw -> i & webWindows . ix aw . wwTall %~ cycleTall
+     Nothing -> i)
 
 -- | Cycle the bottom pane (the errors/log/grep/changes area, grid area wide1):
 -- show -> auto-hide -> hide -> show.  Like 'commandToggleTallPane' but for the
@@ -205,7 +210,10 @@ commandToggleTallPane = CommandIDEAction
 commandToggleWide1Pane = CommandIDEAction
   "/pics/bottombar.svg"
   (__ "Bottom pane: show / auto-hide / hide")
-  (modifyIDE_ (prefs %~ \p -> p { wide1Visibility = cycleTall (wide1Visibility p) }))
+  -- Per-window: cycle the visibility of the frontmost OS window's bottom pane.
+  (modifyIDE_ $ \i -> case i ^. activeWindow of
+     Just aw -> i & webWindows . ix aw . wwWide1 %~ cycleTall
+     Nothing -> i)
 
 -- | Next side-pane visibility in the cycle.
 cycleTall :: TallVisibility -> TallVisibility
@@ -224,6 +232,17 @@ commandFileClose = CommandIDEAction
   "/pics/tango/actions/window-close.svg"
   (__ "Close the active source file or terminal")
   (liftIO requestCloseActivePane)
+
+-- | File ▸ New Window (⌘N): open a fresh, empty OS window.  The library can't
+-- create a native window, so the action just drops a request; the wkwebview
+-- front end ('IDE.Web.MacMenu') registers the handler that mints a 'WindowId'
+-- and asks the ObjC glue to create the NSWindow + WKWebView.  A no-op on
+-- warp/webkitgtk (one browser tab is the whole UI).
+commandNewWindow :: Command
+commandNewWindow = CommandIDEAction
+  ""
+  (__ "Open a new window")
+  (liftIO requestNewWindow)
 
 -- | AI ▸ Grab Region: select a screen rectangle and drop its PNG path into the
 -- terminal named by the 'regionCaptureTarget' preference.  The orchestration

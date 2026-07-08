@@ -81,7 +81,7 @@ import Language.Javascript.JSaddle
         valToNumber, valToBool, liftJSM)
 
 import IDE.Core.CTypes (SrcSpan(..))
-import IDE.Core.State (IDE)
+import IDE.Core.State (IDE, focusLog)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.Metadata (lookupIdentLocations)
 
@@ -432,8 +432,10 @@ terminalWidget ide termId selectedE = do
   -- is why selecting an already-open (previously hidden) terminal didn't work.
   focusE <- delay 0 $ leftmost [ () <$ termE, selectedE ]
   performEvent_ $ ffor (attach (current termFitD) focusE) $ \case
-      (Just (term, _), ()) -> liftJSM . void $
-          jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
+      (Just (term, _), ()) -> do
+          focusLog $ "[classic " <> T.unpack termId <> "] focusE -> term.focus()"
+          liftJSM . void $
+            jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
               (fun $ \_ _ _ -> void $ term ^. js0 ("focus" :: Text))
       _ -> return ()
 
@@ -617,6 +619,9 @@ killTerminalSession n = (`catch` \(_ :: SomeException) -> return ()) $ do
 -- command running in it), and whether it is the window's active pane.
 data TmuxPane = TmuxPane
   { tpIndex  :: Int
+  , tpId     :: Text   -- ^ tmux @#{pane_id}@ (e.g. @%5@) — the id the CC widget
+                       --   keys its xterms/highlights by; lets a flip target be
+                       --   located in the editor-area DOM (@.terminal-cc-pane@).
   , tpLabel  :: Text
   , tpActive :: Bool
   } deriving (Eq, Show)
@@ -651,7 +656,7 @@ listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
 
 -- | Tab-separated so names / commands / titles (which won't contain tabs) stay
 -- intact: session id/name, window index/name/active, pane
--- index/active/command/title.  pane_title is the per-pane title (what ⌃B w
+-- index/active/id/command/title.  pane_title is the per-pane title (what ⌃B w
 -- shows) — used as the pane's display name so panes don't all share the
 -- terminal's (active-pane) OSC title; command is the fallback when it's empty.
 paneTreeFormat :: String
@@ -659,7 +664,7 @@ paneTreeFormat = intercalate "\t"
     [ "#{session_id}", "#{session_name}", "#{window_index}", "#{window_name}"
     , "#{window_active}", "#{window_bell_flag}", "#{window_activity_flag}"
     , "#{window_silence_flag}", "#{pane_index}", "#{pane_active}"
-    , "#{pane_current_command}", "#{pane_title}" ]
+    , "#{pane_id}", "#{pane_current_command}", "#{pane_title}" ]
 
 -- | Run tmux on a remote host over ssh (no PTY, BatchMode — key auth only).
 -- 'Nothing' when ssh or the remote tmux fails (host down, no server, …).
@@ -768,26 +773,26 @@ parsePaneTree :: String -> Map Text (Text, [TmuxWindow])
 parsePaneTree out = M.map toSession grouped
   where
     rows =
-      [ (sid, sname, wi, wn, wa == "1", wb == "1", wac == "1", ws == "1", pidx, pa == "1", paneName)
+      [ (sid, sname, wi, wn, wa == "1", wb == "1", wac == "1", ws == "1", pidx, pa == "1", pid, paneName)
       | line <- lines out
-      , (sid:sname:wiT:wn:wa:wb:wac:ws:piT:pa:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
+      , (sid:sname:wiT:wn:wa:wb:wac:ws:piT:pa:pid:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
       , not (T.null sid)
       , Just wi   <- [readMaybe (T.unpack wiT)]
       , Just pidx <- [readMaybe (T.unpack piT)]
       , let title    = T.intercalate "\t" rest
             paneName = if T.null title then cmd else title ]
-    -- session id -> (name, window index -> (name, active, bell, activity, silence, pane idx -> (paneName, active)))
-    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Map Int (Text, Bool)))
+    -- session id -> (name, window index -> (name, active, bell, activity, silence, pane idx -> (paneName, active, pane id)))
+    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Map Int (Text, Bool, Text)))
     grouped = M.fromListWith mergeSess
-      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, M.singleton pidx (paneName, pa))))
-      | (sid, sname, wi, wn, wa, wb, wac, ws, pidx, pa, paneName) <- rows ]
+      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, M.singleton pidx (paneName, pa, pid))))
+      | (sid, sname, wi, wn, wa, wb, wac, ws, pidx, pa, pid, paneName) <- rows ]
     mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
     mergeWin (wn, wa, wb, wac, ws, ps1) (_, _, _, _, _, ps2) = (wn, wa, wb, wac, ws, ps1 <> ps2)
     toSession (sname, wm) =
       ( sname
       , [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa wb wac ws
-            [ TmuxPane pidx (T.pack (show pidx) <> ": " <> paneName) pa
-            | (pidx, (paneName, pa)) <- M.toAscList ps ]
+            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) pa
+            | (pidx, (paneName, pa, pid)) <- M.toAscList ps ]
         | (wi, (wn, wa, wb, wac, ws, ps)) <- M.toAscList wm ] )
 
 -- | Make window @w@ of session @s@ (a tmux session id) the current window.

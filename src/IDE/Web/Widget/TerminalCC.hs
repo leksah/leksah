@@ -70,7 +70,7 @@ import Language.Javascript.JSaddle
         valToText)
 
 import IDE.Core.CTypes (SrcSpan(..))
-import IDE.Core.State (IDE)
+import IDE.Core.State (IDE, focusLog)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
@@ -111,6 +111,10 @@ terminalCCWidget ide sessionId selectedE = do
     -- %window-close names the window csCurrent still points at); the IDE picks
     -- the ⌘1 button rather than tmux's default replacement.
     (activeWinClosedE, fireActiveWinClosed) <- newTriggerEvent
+    -- The leksah user gave a pane focus from within leksah (a ⌘-number split
+    -- select — fired from the session widget below).  Carries the tmux pane id;
+    -- bubbles up as 'TerminalPaneFocused' to float the pane to the flipper MRU.
+    (paneFocusE, firePaneFocus) <- newTriggerEvent
     -- A (remote) connection dropped: carries the human-readable reason (ssh/tmux
     -- stderr + the %exit reason) to show in place of the pane, so the tab doesn't
     -- just vanish; 'retryE' re-runs the connection when the user clicks Retry.
@@ -365,10 +369,40 @@ terminalCCWidget ide sessionId selectedE = do
                       Just c  -> do
                         ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                         valToBool =<< c ^. js1 ("contains" :: Text) ae
+                -- Does the ACTIVE pane specifically hold the keyboard (not just
+                -- some pane in the container)?  A fresh ⌘D split makes the NEW
+                -- pane active before its xterm widget is built, while the OLD
+                -- pane still holds focus — so 'containerHasFocus' is true too
+                -- early and the retry below would stop before the split is
+                -- focusable.  Returns False while the active pane's xterm does
+                -- not yet exist, so the retry waits for it; for a tunnel pane
+                -- (hidden xterm, iframe holds the keyboard) it falls back to
+                -- container focus.
+                activePaneHasFocus :: JSM Bool
+                activePaneHasFocus = do
+                    mbP <- liftIO $ readIORef activePaneRef
+                    case mbP of
+                      Nothing -> containerHasFocus
+                      Just p  -> do
+                        tunnels <- liftIO $ readIORef tunnelsRef
+                        if M.member p tunnels
+                          then containerHasFocus
+                          else do
+                            terms <- liftIO $ readIORef termsRef
+                            case M.lookup p terms of
+                              Nothing   -> return False
+                              Just term -> do
+                                el <- term ^. js ("element" :: Text)
+                                nul <- valIsNull el
+                                if nul then return False else do
+                                  ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
+                                  valToBool =<< el ^. js1 ("contains" :: Text) ae
                 focusActivePane :: JSM ()
                 focusActivePane = do
                     mbP <- liftIO $ readIORef activePaneRef
                     terms <- liftIO $ readIORef termsRef
+                    focusLog $ "[" <> T.unpack sessionId <> "] focusActivePane -> term.focus() pane="
+                        <> show (T.unpack <$> mbP)
                     forM_ mbP $ \p -> do
                         -- The xterm (hidden and a no-op focus for a tunnel pane)
                         forM_ (M.lookup p terms) $ \term ->
@@ -382,8 +416,23 @@ terminalCCWidget ide sessionId selectedE = do
                     -- active pane recorded yet, or its xterm wasn't focusable),
                     -- focus the visible container's textarea directly — so
                     -- activation never dead-ends on <body> waiting for a pane id.
+                    --
+                    -- BUT only when the active pane has NO target of its own to
+                    -- focus (mbP unrecorded, or its xterm/tunnel not built yet).
+                    -- The querySelector grabs the FIRST .xterm-helper-textarea in
+                    -- the container — in a split that is the wrong pane, and
+                    -- focusing it fires that pane's focus→select-pane, flipping
+                    -- tmux's active pane away from the one we're activating.  That
+                    -- one mis-focus desyncs "focused pane" from "tmux active pane"
+                    -- and the two re-assert against each other forever (the focus
+                    -- oscillation).  When mbP DOES have a term/tunnel we already
+                    -- focused it above; focusActivePaneSoon retries on later frames
+                    -- if it wasn't laid out yet, so we must NOT fall back here.
+                    tunnels <- liftIO $ readIORef tunnelsRef
+                    let haveActiveTarget =
+                          maybe False (\p -> M.member p terms || M.member p tunnels) mbP
                     inFocus <- containerHasFocus
-                    unless inFocus $ do
+                    unless (inFocus || haveActiveTarget) $ do
                         mbC <- liftIO $ readIORef containerRef
                         forM_ mbC $ \c -> do
                             ta <- c ^. js1 ("querySelector" :: Text)
@@ -395,19 +444,26 @@ terminalCCWidget ide sessionId selectedE = do
                 -- write that jsaddle-wkwebview dispatches asynchronously — so a
                 -- fixed number of rAFs races the flip (the focus lands on <body>,
                 -- hence the "click twice" symptom).  Instead retry each animation
-                -- frame until the focus actually sticks (the container holds it),
-                -- for up to ~0.5s.  The loop stops the instant it succeeds, so once
-                -- the pane has the keyboard it can't be yanked back later.
+                -- frame until the focus actually sticks (the ACTIVE pane holds
+                -- it), for up to ~0.5s.  Waiting on 'activePaneHasFocus' rather
+                -- than mere container focus also covers a fresh ⌘D split, whose
+                -- new pane's xterm is created a beat after it becomes active
+                -- (see that helper).  The loop stops the instant it succeeds, so
+                -- once the pane has the keyboard it can't be yanked back later.
                 focusActivePaneSoon :: JSM ()
-                focusActivePaneSoon =
+                focusActivePaneSoon = do
+                    focusLog $ "[" <> T.unpack sessionId <> "] focusActivePaneSoon START"
                     let go n = do
                             focusActivePane
-                            ok <- containerHasFocus
-                            unless ok . when (n > (0 :: Int)) $
+                            ok <- activePaneHasFocus
+                            if ok
+                              then focusLog $ "[" <> T.unpack sessionId
+                                     <> "] focusActivePaneSoon DONE (stuck) at n=" <> show n
+                              else when (n > (0 :: Int)) $
                                 void $ jsg ("window" :: Text)
                                     ^. js1 ("requestAnimationFrame" :: Text)
                                         (fun $ \_ _ _ -> go (n - 1))
-                    in go (30 :: Int)
+                     in go (30 :: Int)
                 -- Highlight the new active pane and, IF this terminal already
                 -- owned the keyboard, hand the keyboard to it too: activating
                 -- a pane (menu select-split, a fresh ⌘D split) should mean
@@ -423,7 +479,16 @@ terminalCCWidget ide sessionId selectedE = do
                     had <- containerHasFocus
                     ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                     tagName <- valToText =<< ae ^. js ("tagName" :: Text)
-                    when (had || tagName == "BODY") focusActivePane
+                    mbP <- liftIO $ readIORef activePaneRef
+                    focusLog $ "[" <> T.unpack sessionId <> "] followActive pane="
+                        <> show (T.unpack <$> mbP) <> " had=" <> show had
+                        <> " activeEl=" <> T.unpack tagName
+                        <> " -> " <> (if had || tagName == "BODY" then "focusActivePaneSoon" else "no-focus")
+                    -- focusActivePaneSoon (not focusActivePane): on a ⌘D split
+                    -- the new pane is active before its xterm exists, so retry
+                    -- until it is focusable — an immediate focus would land on
+                    -- the old pane (which still holds the keyboard) and stop.
+                    when (had || tagName == "BODY") focusActivePaneSoon
             -- A window switch hides the focused pane's container
             -- (display:none), which silently drops keyboard focus onto
             -- <body>.  The switch handler below asks tmux for the NEW
@@ -439,6 +504,10 @@ terminalCCWidget ide sessionId selectedE = do
                     ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                     tagName <- valToText =<< ae ^. js ("tagName" :: Text)
                     pend <- liftIO $ readIORef pendingFocusRef
+                    focusLog $ "[" <> T.unpack sessionId <> "] winFocusE pane=" <> T.unpack p
+                        <> " had=" <> show had <> " activeEl=" <> T.unpack tagName
+                        <> " pend=" <> show pend
+                        <> " -> " <> (if had || tagName == "BODY" || pend then "focusActivePane" else "no-focus")
                     when (had || tagName == "BODY" || pend) $ do
                         focusActivePane
                         liftIO $ writeIORef pendingFocusRef False
@@ -477,8 +546,12 @@ terminalCCWidget ide sessionId selectedE = do
                 panes <- liftIO $ readIORef curPanesRef
                 case drop (n - 1) panes of
                   (p : _) | n >= 1 -> do
+                      focusLog $ "[" <> T.unpack sessionId <> "] selSplitE n=" <> show n
+                          <> " pane=" <> T.unpack p <> " -> select-pane + focusActivePane"
                       liftIO $ ccSend cc ("select-pane -t " <> p)
                       liftIO $ writeIORef activePaneRef (Just p)
+                      -- Leksah-issued select: float this pane to the flipper MRU.
+                      liftIO $ firePaneFocus p
                       liftJSM $ do
                           applyActive
                           focusActivePane
@@ -495,6 +568,10 @@ terminalCCWidget ide sessionId selectedE = do
             -- would be queried/focused wrongly (see 'currentWin').
             performEvent_ $ ffor (attachWith (,) (current stD) evE) $ \(st, ev) -> case ev of
                 EvWindowPaneChanged w p | w `M.member` csLayouts st -> do
+                    old <- liftIO $ readIORef activePaneRef
+                    focusLog $ "[" <> T.unpack sessionId <> "] EvWindowPaneChanged win="
+                        <> T.unpack w <> " pane=" <> T.unpack p
+                        <> " (was " <> show (T.unpack <$> old) <> ") -> writeActive+followActive"
                     liftIO $ writeIORef activePaneRef (Just p)
                     liftJSM followActive
                 -- The displayed window itself closed (its last pane exited): tmux
@@ -527,6 +604,7 @@ terminalCCWidget ide sessionId selectedE = do
             -- observer sees, so an xterm whose window container was hidden
             -- when it was last drawn gets a nudge here.
             performEvent_ $ ffor selectedE $ \_ -> liftJSM $ do
+                focusLog $ "[" <> T.unpack sessionId <> "] tab selectedE -> repaint + focusActivePaneSoon"
                 terms <- liftIO $ readIORef termsRef
                 forM_ (M.elems terms) repaintTerm
                 focusActivePaneSoon
@@ -559,11 +637,23 @@ terminalCCWidget ide sessionId selectedE = do
                         void $ jsg ("LeksahTerm" :: Text)
                             ^. js1 ("unregister" :: Text) (paneKey sessionId p)
                     -- Disposing the focused pane's xterm orphans the keyboard
-                    -- on <body>; hand it to the (new) active pane.
+                    -- on <body>; hand it to the (new) active pane — but ONLY if the
+                    -- recorded active pane is still live.  Right after killing the
+                    -- focused pane (e.g. `exit`), its %window-pane-changed may not
+                    -- have arrived yet, so activePaneRef can still name the dead
+                    -- pane; focusActivePane would then fall through to its "focus
+                    -- the first textarea" safety net and select pane 1 — which
+                    -- fights tmux's own new-active-pane select, leaving the active
+                    -- pane oscillating between the two.  Skip here in that case; the
+                    -- imminent %window-pane-changed sets the right pane and its
+                    -- followActive (BODY branch) focuses it.
                     when (not (M.null gone)) $ do
                         ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                         tagName <- valToText =<< ae ^. js ("tagName" :: Text)
-                        when (tagName == "BODY") focusActivePane
+                        mbP <- liftIO $ readIORef activePaneRef
+                        liveTerms <- liftIO $ readIORef termsRef
+                        let liveActive = maybe False (`M.member` liveTerms) mbP
+                        when (tagName == "BODY" && liveActive) focusActivePane
             (containerEl, _) <- elAttr' "div"
                 -- Pull back over the .area-wide{0,1} 3px left/top padding
                 -- (negative margins + matching size bump) so this container —
@@ -603,7 +693,7 @@ terminalCCWidget ide sessionId selectedE = do
                                     dimsD = (\l -> (lW l, lH l)) <$> layUniqD
                                 _ <- listWithKey panesD $ \pane rectD ->
                                     paneWidget cc sessionId paneCbs termsRef
-                                               pausedRef tunnelsRef cell pane rectD
+                                               pausedRef tunnelsRef activePaneRef cell pane rectD
                                                dimsD (M.lookup pane <$> tunnelGenD)
                                 -- Repaint this window's panes when it becomes
                                 -- visible: their xterms may have been built
@@ -728,7 +818,9 @@ terminalCCWidget ide sessionId selectedE = do
       -- ⌘-number offset (and tab badges) lag until the next unrelated poll.
       , TerminalTreeChanged <$ paneSetChangedE
       -- The active window closed: the IDE activates the ⌘1 button (below).
-      , TerminalActiveWinClosed <$ activeWinClosedE ]
+      , TerminalActiveWinClosed <$ activeWinClosedE
+      -- A leksah-issued pane focus (⌘-number split select): float it to the MRU.
+      , TerminalPaneFocused <$> paneFocusE ]
 
 -- | The message shown when a remote connection drops: the tmux @%exit@ reason
 -- (if any) plus whatever the child wrote to stderr (ssh's "Permission denied",
@@ -943,11 +1035,12 @@ paneWidget
   => CC -> Text -> PaneCallbacks
   -> IORef (M.Map PaneId JSVal) -> IORef (M.Map PaneId PauseState)
   -> IORef (M.Map PaneId TunnelInfo)
+  -> IORef (Maybe PaneId)    -- ^ tmux's current active pane (echo-suppression)
   -> (Double, Double) -> PaneId -> Dynamic t (Int, Int, Int, Int)
   -> Dynamic t (Int, Int)    -- ^ layout size in cells (for edge panes)
   -> Dynamic t (Maybe Int)   -- ^ jsaddle-terminal tunnel generation (Just = iframe)
   -> m ()
-paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef (cw, ch) pane rectD0 dimsD0 tunnelD0 = do
+paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch) pane rectD0 dimsD0 tunnelD0 = do
     rectD <- holdUniqDyn rectD0
     dimsD <- holdUniqDyn dimsD0
     tunnelD <- holdUniqDyn tunnelD0
@@ -983,6 +1076,9 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef (cw, ch) pane rectD0 d
     (paneEl, _) <- elDynAttr' "div"
         ((\r d mt -> "class" =: ("terminal-cc-pane"
                                <> maybe "" (const " terminal-cc-pane-tunnel") mt)
+                 -- data-pane = the tmux %id, so a flip target (published by
+                 -- reflex as a %id) can be located in the DOM to hang a ⌘` hint.
+                 <> "data-pane" =: pane
                  <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD) $
         -- jsaddle-terminal overlay: while a tunnel generation is active an
         -- iframe (keyed by the generation, so an app restart rebuilds it)
@@ -1037,7 +1133,20 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef (cw, ch) pane rectD0 d
                             -- exactly as an xterm's textarea focus does.  The
                             -- resulting %window-pane-changed moves the
                             -- highlight/shadow (see followActive).
-                            "focus" -> liftIO $ ccSend cc ("select-pane -t " <> pane)
+                            "focus" -> liftIO $ do
+                                -- Same echo-suppression as the xterm textarea
+                                -- focus handler below: only select-pane on a
+                                -- genuine user pane change, never as an echo of
+                                -- our own follow-focus (see that comment).
+                                active <- readIORef activePaneRef
+                                if active == Just pane
+                                  then focusLog $ "[" <> T.unpack sessionId <> "] tunnel iframe FOCUS pane="
+                                         <> T.unpack pane <> " == active -> skip select-pane (echo)"
+                                  else do
+                                    focusLog $ "[" <> T.unpack sessionId <> "] tunnel iframe FOCUS pane="
+                                        <> T.unpack pane <> " (active " <> show (T.unpack <$> active)
+                                        <> ") -> select-pane"
+                                    ccSend cc ("select-pane -t " <> pane)
                             _ -> return ()
                         _ -> return ())
     pb <- getPostBuild
@@ -1129,8 +1238,27 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef (cw, ch) pane rectD0 d
         -- the current pane) target the pane the user is typing in.
         ta <- term ^. js ("textarea" :: Text)
         _ <- ta ^. js2 ("addEventListener" :: Text) ("focus" :: Text)
-                (fun $ \_ _ _ -> liftIO $
-                    ccSend cc ("select-pane -t " <> pane))
+                (fun $ \_ _ _ -> liftIO $ do
+                    -- Only tell tmux to select this pane when the focus is a
+                    -- GENUINE user pane change — i.e. the pane we just gained
+                    -- focus on is NOT already tmux's active pane.  When
+                    -- 'focusActivePane' focuses the active pane (following a
+                    -- %window-pane-changed), this listener also fires; echoing
+                    -- select-pane there is redundant and, if focus and tmux's
+                    -- active pane are momentarily out of sync (window/app
+                    -- switch into a multi-pane split), sustains an infinite
+                    -- focus↔select-pane oscillation.  Skipping the echo lets it
+                    -- settle: a real click on the OTHER pane still differs from
+                    -- activePaneRef and selects it.
+                    active <- readIORef activePaneRef
+                    if active == Just pane
+                      then focusLog $ "[" <> T.unpack sessionId <> "] xterm textarea FOCUS pane="
+                             <> T.unpack pane <> " == active -> skip select-pane (echo)"
+                      else do
+                        focusLog $ "[" <> T.unpack sessionId <> "] xterm textarea FOCUS pane="
+                            <> T.unpack pane <> " (active " <> show (T.unpack <$> active)
+                            <> ") -> select-pane"
+                        ccSend cc ("select-pane -t " <> pane))
         liftIO . atomicModifyIORef' termsRef $ \m ->
             (M.insert pane term m, ())
         -- fill the fresh xterm from the pane's current screen + recent
@@ -1184,12 +1312,16 @@ renderShortcutBadges (cw, ch) l =
     -- Pane numbers only mean anything on a split (⌘1…⌘P); a lone pane's window
     -- is navigated to by its wide0 tab badge instead, so show none here.
     when (length (layoutPanes l) >= 2) $
-    forM_ (zip [1 :: Int ..] (layoutPanes l)) $ \(n, (_, x, y, _, _)) ->
+    forM_ (zip [1 :: Int ..] (layoutPanes l)) $ \(n, (pane, x, y, _, _)) ->
         when (n <= 9) . elAttr "div"
+            -- data-pane lets hintsJs reveal the ⌘` suffix on the flip target's
+            -- badge, so a ⌘N pane that's ALSO the flip destination reads "⌘N ⌘`".
             ("class" =: "leksah-shortcut-badge"
+             <> "data-pane" =: pane
              <> "style" =: ("position:absolute;left:" <> pxAt x cw
-                            <> ";top:" <> pxAt y ch <> ";z-index:6")) $
+                            <> ";top:" <> pxAt y ch <> ";z-index:6")) $ do
             text ("\8984" <> T.pack (show n))
+            elAttr "span" ("class" =: "leksah-flip-suffix") $ text " \8984`"
 
 -- | One window's pane dividers: tmux's separator cells are blank gutters
 -- here (a full cell wide/tall); each becomes a grab strip with a crisp 1px

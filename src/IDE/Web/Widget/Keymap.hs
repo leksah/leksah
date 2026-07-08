@@ -32,8 +32,8 @@ keymapWidget _top = do
   doc <- currentDocumentUnchecked
   let keyToCommandMap = M.fromList $
         map (\(mods, key, command) -> ((S.fromList mods, key), command)) $
-        [ ([Control]        , Backquote, CommandFlipDown)
-        , ([Control, Shift] , Backquote, CommandFlipUp)
+        [ ([Command]        , Backquote, CommandFlipDown)
+        , ([Command, Shift] , Backquote, CommandFlipUp)
         -- Build: Ctrl+Shift+B (Cmd+Shift+B on macOS), matching VS Code.  Plain
         -- Ctrl+B is avoided — it's the tmux prefix.
         , ([Control, Shift] , KeyB,      commandPackageBuild)
@@ -77,10 +77,10 @@ keymapWidget _top = do
         mbCmd = M.lookup (mods, key) keyToCommandMap
     when (maybe False (const True) mbCmd) preventDefault
     return mbCmd
-  -- The flipper commits when Control is released.
+  -- The flipper commits when Command is released.
   upE <- wrapDomEvent doc (`onSync` keyUp) $ do
     ke   <- event
     code <- getKeyCode ke
     return (keyCodeLookup (fromIntegral code))
-  let flipdone = CommandFlipDone <$ ffilter (== Control) upE
+  let flipdone = CommandFlipDone <$ ffilter (== Command) upE
   return $ KeymapCommand <$> leftmost [cmdE, flipdone]

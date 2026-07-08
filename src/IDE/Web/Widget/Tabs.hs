@@ -14,7 +14,7 @@ import Data.Foldable (foldr')
 import Data.List (elemIndex)
 import Data.Map (Map)
 import qualified Data.Map as M
-       (toList, fromList, elems, filter, delete, lookup)
+       (toList, fromList, elems, filter, delete, lookup, union)
 import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
@@ -85,6 +85,10 @@ tabsCss = do
         background (Rgba 61 96 150 1.0)
     ".tab-buttons .tab-wrap.selected" ?
         background selectionColor
+    -- The flipper's live selection tints its tab button with the hover colour
+    -- (set by leksahSetFlipSel while the flipper is open).
+    ".tab-buttons .tab-wrap.leksah-flip-sel" ?
+        background (Rgba 61 96 150 1.0)
     ".tab-buttons button" ? do
         verticalAlign middle
         padding (px 0) (px 10) (px 0) (px 2)
@@ -116,6 +120,12 @@ tabsWidget
   :: (MonadWidget t m, Ord k, Show k, Eq v)
   => Map k (Text, v)
   -> Map Text k
+  -- | The wide0 (editor/terminal) tabs owned by THIS OS window, in MRU/flip
+  -- order, injected from shared per-window state.  wide0 membership and order
+  -- come entirely from here (not the open/close events, which now carry only the
+  -- fixed side/bottom-bar tabs) so a tab can belong to exactly one window and be
+  -- moved between windows by mutating the shared state.
+  -> Dynamic t [(k, v)]
   -> Event t (Map k (Text, v))
   -> Event t [k]                  -- ^ tabs to close (removed from the bar)
   -> Event t (Map Text k)
@@ -134,7 +144,7 @@ tabsWidget
   -> m ( Dynamic t [(Text, k)], Event t (Map k e), Dynamic t (Map Text k)
        , Dynamic t (Maybe k)    -- ^ the most-recently focused pane (active pane)
        , Event t [k])           -- ^ close (×) button clicks
-tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecentE focusedTabE mkButtons mkTab = mdo
+tabsWidget initialTabs initialVisibleTabs wide0OrderD openTabE closeTabE selectTabE setRecentE focusedTabE mkButtons mkTab = mdo
   let selectOrOpenTab = selectTabE' <> selectTabE <> reselectE
                           <> (M.fromList . map (swap . second fst) . M.toList <$> openTabE)
       -- When a *visible* tab is closed, point its area at a sibling tab (if any)
@@ -153,10 +163,16 @@ tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecen
                                  , Just (a, _) <- [M.lookup k' tabs]
                                  , a == gridArea, k' `notElem` ks ] ])
         (current ((,,) <$> visibleTabs <*> tabsD <*> recentTabs)) closeTabE
+  -- wide0 membership + order come from the injected shared per-window state.
+  let wide0MapD  = M.fromList . map (\(k, v) -> (k, ("wide0", v))) <$> wide0OrderD
+      wide0KeysD = map fst <$> wide0OrderD
   visibleTabs <- foldDyn (<>) initialVisibleTabs selectOrOpenTab
-  tabsD <- foldDyn ($) initialTabs $ leftmost
+  -- The fixed side/bottom-bar tabs (open/close carry only these now); wide0 is
+  -- unioned in from the injected shared state.
+  barTabsD <- foldDyn ($) initialTabs $ leftmost
     [ (<>) <$> openTabE
     , (\ks m -> foldr' M.delete m ks) <$> closeTabE ]
+  let tabsD = M.union <$> wide0MapD <*> barTabsD
   allVisibleTabs <- holdUniqDyn $ S.fromList . M.elems <$> visibleTabs
   -- Recent (MRU) tabs for the flipper.  This must add *every* opened tab, not
   -- the area-keyed `selectOrOpenTab` map: restoring a session opens many tabs in
@@ -172,7 +188,9 @@ tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecen
             [ (a, k) | k <- order, Just (a, _) <- [M.lookup k tabs] ]
             ++ [ (a, k) | (k, (a, _)) <- M.toList tabs, k `notElem` order ])
         (current tabsD) setRecentE
-  recentTabs <- foldDyn ($) (map swap . M.toList $ fst <$> initialTabs) $ leftmost
+  -- MRU of the fixed side/bottom-bar tabs only (wide0's MRU lives in the shared
+  -- per-window order, prepended below).
+  barRecent <- foldDyn ($) (map swap . M.toList $ fst <$> initialTabs) $ leftmost
     [ const <$> reorderE
     , (\new old -> new <> filter ((`notElem` map snd new) . snd) old) <$> openedPairsE
     , (\ks old -> filter ((`notElem` ks) . snd) old) <$> closeTabE
@@ -181,6 +199,12 @@ tabsWidget initialTabs initialVisibleTabs openTabE closeTabE selectTabE setRecen
     , (\str old -> case [ ak | ak@(_, k') <- old, T.pack (show k') == str ] of
                      (ak@(_, k):_) -> ak : filter ((/= k) . snd) old
                      []            -> old) <$> focusedTabE ]
+  -- The full MRU/flipper order: this window's wide0 tabs (already MRU-ordered in
+  -- the shared state) first, then the side/bottom-bar tabs.  The wide0 CSS
+  -- `order` (below) indexes into this, so the active wide0 tab is slot 0.
+  let recentTabs = (\ks rest -> map (\k -> ("wide0", k)) ks
+                                ++ filter ((`notElem` ks) . snd) rest)
+                     <$> wide0KeysD <*> barRecent
   tabBtnE <- fmap (fmap (mconcat . (^.. traverse . traverse))) $
         listViewWithKey visibleTabs $ \gridArea visibleTab -> do
     let tabs = M.filter ((gridArea ==) . fst) <$> tabsD

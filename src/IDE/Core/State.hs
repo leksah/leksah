@@ -46,6 +46,9 @@ module IDE.Core.State (
 ,   modifyIDE_
 ,   modifyIDEM
 ,   modifyIDEM_
+,   focusLog
+,   metaLog
+,   setLoggerLevel
 ,   withIDE
 ,   getIDE
 ,   throwIDE
@@ -106,7 +109,9 @@ import System.FilePath
        (takeExtension, takeDirectory, (</>), takeFileName)
 import IDE.Core.CTypes as Reexported
 import Control.Concurrent
-       (modifyMVar, readMVar, forkIO)
+       (MVar, modifyMVar, modifyMVar_, newMVar, readMVar, forkIO)
+import System.IO.Unsafe (unsafePerformIO)
+import Data.Time.Clock (getCurrentTime)
 import IDE.Utils.Utils as Reexported
 import Data.List (sortOn, nub)
 import Data.Map (Map)
@@ -115,13 +120,13 @@ import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Conduit (ConduitT)
 import qualified Data.Conduit as C
        (transPipe)
-import Control.Monad (unless, join, void)
+import Control.Monad (unless, join, void, when)
 import Control.Monad.Trans.Reader (ask, ReaderT(..))
 import qualified Paths_leksah as P (getDataDir, version)
 import System.Environment.Executable (getExecutablePath)
-import System.Directory (doesDirectoryExist)
+import System.Directory (doesDirectoryExist, getHomeDirectory)
 import Data.Text (Text)
-import qualified Data.Text as T (unpack)
+import qualified Data.Text as T (unpack, pack)
 import qualified Data.Sequence as Seq
        (partition, length, spanl, filter, null)
 import Data.Sequence ((|>), Seq)
@@ -134,7 +139,14 @@ import Control.Lens
         Getting, Lens')
 import qualified Data.Foldable as F (Foldable(..))
 import Language.Haskell.HLint (Idea(..))
-import System.Log.Logger (debugM)
+import System.Log.Logger (debugM, updateGlobalLogger, setLevel)
+import qualified System.Log.Logger as HL (setHandlers)
+import System.Log (Priority(..))
+import System.Log.Handler (setFormatter)
+import System.Log.Handler.Simple (streamHandler)
+import System.Log.Formatter (simpleLogFormatter)
+import Data.Char (toUpper)
+import Text.Read (readMaybe)
 import Data.Ord (Down(..))
 import IDE.Utils.FileUtils (isSubPath)
 
@@ -268,7 +280,8 @@ modifyIDEM_ :: MonadIDE m => (IDE -> IO IDE) -> m ()
 modifyIDEM_ f = do
     e <- liftIDE ask
     liftIO $ join $ modifyMVar e (\(a, ide) -> do
-        newIde <- f ide
+        newIde <- over ideVersion (+1) <$> f ide
+        logMutation (newIde ^. ideVersion)
         return ((a, newIde), a newIde))
 
 -- | Variation on modifyIDE_ that lets you return a value
@@ -278,10 +291,92 @@ modifyIDEM f = do
     e <- liftIDE ask
     liftIO $ do
         (t, b) <- modifyMVar e (\(a, ide) -> do
-            (newIde, b) <- f ide
+            (newIde0, b) <- f ide
+            let newIde = over ideVersion (+1) newIde0
+            logMutation (newIde ^. ideVersion)
             return ((a, newIde), (a newIde, b)))
         t
         return b
+
+-- | Verbose diagnostic: every state mutation bumps 'ideVersion'; log the new
+-- value so a stale web-UI window (whose ideVer lags this) is obvious.  Tagged
+-- @LEK … [MUT]@ to match 'wlog' in IDE.Web.Main.
+logMutation :: Int -> IO ()
+logMutation v = do
+    t <- getCurrentTime
+    hPutStrLn stderr ("LEK " <> (takeWhile (/= ' ') . drop 11 $ show t) <> " [MUT] modifyIDE -> ideVer=" <> show v)
+
+-- | Diagnostic for the metadata-load path (initInfo → loadSystemInfo →
+-- updateWorkspaceInfo → InfoChanged).  Tagged @LEK … [meta]@ so it interleaves
+-- with 'wlog'/'logMutation' on the SAME stderr the leksah-nix.sh loop shows,
+-- letting a startup freeze be pinned to exactly which metadata stage was running
+-- and on which thread.  Low volume (once at startup + on workspace-info updates),
+-- so — unlike the per-keystroke focus log — it writes unconditionally.
+metaLog :: MonadIO m => String -> m ()
+metaLog msg = liftIO $ do
+    t <- getCurrentTime
+    hPutStrLn stderr ("LEK " <> (takeWhile (/= ' ') . drop 11 $ show t) <> " [meta] " <> msg)
+
+-- | Name of the hslogger logger that carries focus/activation-path diagnostics.
+-- Hierarchical under @leksah@, but with its OWN file handler (see
+-- 'ensureFocusHandler') so its output lands in a dedicated, reliably-tailable
+-- file rather than the leksah-nix.sh loop's stderr (which gets clobbered by
+-- build output).  Off by default (inherits the root INFO level, which drops
+-- DEBUG); toggle at runtime with @leksah-cmd log leksah.focus debug|off@ (see
+-- 'setLoggerLevel'), or globally with @--verbosity DEBUG@ at launch.
+focusLoggerName :: String
+focusLoggerName = "leksah.focus"
+
+-- | Ensures the dedicated file handler for 'focusLoggerName' is installed
+-- exactly once.  Opens @~/.leksah/focus-debug.log@ line-buffered (so a @tail
+-- -f@ sees writes immediately) and attaches it as the focus logger's sole
+-- handler.  (Clear the log by truncating — @: > …/focus-debug.log@ — not @rm@:
+-- the handler holds the handle open, and an unlinked file writes to a dead
+-- inode invisible on disk.)
+{-# NOINLINE focusHandlerInstalled #-}
+focusHandlerInstalled :: MVar Bool
+focusHandlerInstalled = unsafePerformIO (newMVar False)
+
+ensureFocusHandler :: IO ()
+ensureFocusHandler = modifyMVar_ focusHandlerInstalled $ \done ->
+    if done then return True else (`catch` \(_ :: SomeException) -> return done) $ do
+        home <- getHomeDirectory
+        h <- openFile (home </> ".leksah" </> "focus-debug.log") AppendMode
+        hSetBuffering h LineBuffering
+        sh <- streamHandler h DEBUG
+        -- The message already carries its own µs timestamp, so emit it verbatim.
+        updateGlobalLogger focusLoggerName
+            (HL.setHandlers [setFormatter sh (simpleLogFormatter "$msg")])
+        return True
+
+-- | Focus/activation-path diagnostic.  A DEBUG record on 'focusLoggerName';
+-- hslogger gates it by the (effective) level, so it costs nothing while the
+-- logger is off (the default).  Building the µs timestamp per call is cheap and
+-- only happens on genuine focus events (the oscillation that once fired this
+-- ~500×/s is fixed).
+focusLog :: MonadIO m => String -> m ()
+focusLog msg = liftIO $ do
+    t <- getCurrentTime
+    let tod = takeWhile (/= ' ') . drop 11 $ show t
+    debugM focusLoggerName ("FOCUS " <> tod <> " " <> msg)
+
+-- | Runtime logger-level control backing @leksah-cmd log <logger> <level>@.
+-- Accepts any hslogger 'Priority' name (case-insensitive) plus @off@/@none@
+-- (which maps to INFO, suppressing our DEBUG records).  When the focus logger
+-- is switched to DEBUG its dedicated file handler is installed on demand.
+setLoggerLevel :: String -> String -> IO Text
+setLoggerLevel name levelStr =
+    case parse (map toUpper levelStr) of
+      Nothing -> return $ "log: unknown level '" <> T.pack levelStr
+          <> "' (use: off, debug, info, notice, warning, error, critical, alert, emergency)\n"
+      Just prio -> do
+          when (name == focusLoggerName && prio == DEBUG) ensureFocusHandler
+          updateGlobalLogger name (setLevel prio)
+          return $ "log: " <> T.pack name <> " level = " <> T.pack (show prio) <> "\n"
+  where
+    parse "OFF"  = Just INFO
+    parse "NONE" = Just INFO
+    parse s      = readMaybe s
 
 withIDE :: MonadIDE m => (IDE -> IO alpha) -> m alpha
 withIDE f = do

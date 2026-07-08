@@ -137,6 +137,24 @@ EOF
 fi
 
 LEKSAH_EXIT_CODE=2
+# Extra per-package flags for CABAL builds only, kept OUT of cabal.project on
+# purpose: cabal.project.local is untracked, so the nix flake (which only sees
+# tracked files) never picks it up — putting these in cabal.project changes
+# every haskell.nix slice hash and rebuilds the world in nix.  -finfo-table-map
+# lets `leksah-cmd stacks` name reflex frames in a wedged window's frame thread
+# (multi-window freeze forensics).
+write_project_local() {
+  cat > cabal.project.local <<'EOF'
+package reflex
+  ghc-options: -finfo-table-map
+package reflex-dom-core
+  ghc-options: -finfo-table-map
+package jsaddle
+  ghc-options: -finfo-table-map
+package jsaddle-wkwebview
+  ghc-options: -finfo-table-map
+EOF
+}
 # Exit 2 => relaunch after rebuilding (in-IDE / rebuild-self); exit 3 =>
 # `leksah-cmd restart --no-rebuild`: relaunch but skip the cabal build (and its
 # `nix develop`), since rebuild-self already produced the binary.
@@ -144,6 +162,7 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   SKIP_REBUILD=0
   [ "$LEKSAH_EXIT_CODE" -eq 3 ] && SKIP_REBUILD=1
   rm -f .ghc.environment.* cabal.project.local
+  write_project_local
   mkdir -p bin
 
   if [ "$UI" = "gtk" ]; then
@@ -158,6 +177,7 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
       echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
     fi
     rm -f .ghc.environment.* cabal.project.local
+    write_project_local
 
     LEKSAH_EXIT_CODE=0
     PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS run .?submodules=1#launch-leksah -- ./bin/$GHCARG/leksah --develop-leksah "$@" \
@@ -196,6 +216,7 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
       echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
     fi
     rm -f .ghc.environment.* cabal.project.local
+    write_project_local
 
     # Launch the freshly-built binary directly, inside the dev shell, with the
     # data dir `cabal run` would have set (the package root).  `exec` so leksah's

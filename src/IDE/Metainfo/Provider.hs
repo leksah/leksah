@@ -81,7 +81,7 @@ import IDE.Core.State
         ipdMain, ipdModules, ipdPackageId, activePack, modifyIDE_,
         wsAllPackages, workspace, currentState,
         triggerEventIDE, forkIDE, MessageLevel(..),
-        ideMessage, collectAtStart, prefs, readIDE,
+        ideMessage, collectAtStart, prefs, readIDE, metaLog,
         ModuleDescrCache, workspInfoCache, IDEPackage, packageInfo,
         workspaceInfo, systemInfo, IDEM, IDEAction, wsProjectKeys,
         Project, pjKey, wsProjectAndPackages, systemInfo)
@@ -124,23 +124,32 @@ import IDE.Utils.GHCUtils (viewDependency, mkDependency, LibraryName(..))
 initInfo :: IDEAction -> IDEAction
 initInfo continuation = do
     prefs'  <- readIDE prefs
+    metaLog $ "initInfo START collectAtStart=" <> show (collectAtStart prefs')
     if collectAtStart prefs'
         then do
             ideMessage Normal "Now updating system metadata ..."
             callCollector False True True $ \ _ -> do
                 ideMessage Normal "Finished updating system metadata"
+                metaLog "initInfo: collector finished -> doLoad"
                 doLoad
         else doLoad
     where
       doLoad = do
             ideMessage Normal "Now loading metadata ..."
+            metaLog "doLoad: forking metadata load thread"
             forkIDE $ do
+                metaLog "load thread START -> loadSystemInfo"
                 loadSystemInfo
+                metaLog "loadSystemInfo DONE -> postAsyncIDE(updateWorkspaceInfo)"
                 postAsyncIDE $ do
                     ideMessage Normal "Finished loading metadata"
+                    metaLog "postAsync: updateWorkspaceInfo' START"
                     updateWorkspaceInfo' False $ \ _ -> do
+                        metaLog "updateWorkspaceInfo' continuation -> triggerEventIDE InfoChanged"
                         void (triggerEventIDE (InfoChanged True))
+                        metaLog "InfoChanged fired -> continuation"
                         continuation
+                        metaLog "initInfo continuation DONE"
 
 updateSystemInfo :: IDEAction
 updateSystemInfo     = do
@@ -267,14 +276,21 @@ updateWorkspaceInfo' rebuild continuation = do
     postAsyncIDE $ ideMessage Normal "Now updating workspace metadata ..."
     mbWorkspace         <- readIDE workspace
     systemInfo'         <- getSystemInfo
+    metaLog $ "updateWorkspaceInfo' START rebuild=" <> show rebuild
+            <> " haveWorkspace=" <> show (isJust mbWorkspace)
     case mbWorkspace of
         Nothing ->  do
             liftIO $ infoM "leksah" "updateWorkspaceInfo' no workspace"
+            metaLog "updateWorkspaceInfo' no workspace -> clear info, continuation False"
             modifyIDE_ $ (workspaceInfo .~ Nothing)
                        . (packageInfo   .~ Nothing)
             continuation False
-        Just ws ->
+        Just ws -> do
+            metaLog $ "updateWorkspaceInfo' -> updatePackageInfos nPkgs="
+                    <> show (length (ws ^. wsProjectAndPackages))
             updatePackageInfos rebuild (ws ^. wsProjectAndPackages) $ \ _ packDescrs -> do
+                metaLog $ "updateWorkspaceInfo' updatePackageInfos DONE nPackDescrs="
+                        <> show (length packDescrs) <> " -> build scopes"
                 let dependPackIds = nub (concatMap pdBuildDepends packDescrs) \\ map pdPackage packDescrs
                 let packDescrsI =   case systemInfo' of
                                         Nothing -> []
@@ -284,8 +300,10 @@ updateWorkspaceInfo' rebuild continuation = do
                                 =   foldr buildScope (PackScope Map.empty symEmpty) packDescrs
                 let scope2 :: PackScope (Map Text [Descr])
                                 =   foldr buildScope (PackScope Map.empty symEmpty) packDescrsI
+                metaLog "updateWorkspaceInfo' -> write workspaceInfo (modifyIDE_)"
                 modifyIDE_ $ workspaceInfo ?~
                     (GenScopeC (addOtherToScope scope1 True), GenScopeC(addOtherToScope scope2 False))
+                metaLog "updateWorkspaceInfo' workspaceInfo written -> active package"
                 -- Now care about active package
                 readIDE activePack >>= \case
                     Nothing -> modifyIDE_ $ packageInfo .~ Nothing
@@ -314,19 +332,27 @@ updateWorkspaceInfo' rebuild continuation = do
                                                             GenScopeC(addOtherToScope scope2' False))
                             _    -> modifyIDE_ $ packageInfo .~ Nothing
                 postAsyncIDE $ ideMessage Normal "Finished updating workspace metadata"
+                metaLog "updateWorkspaceInfo' DONE -> continuation True"
                 continuation True
 
 -- | Update the metadata on several packages
 updatePackageInfos :: Bool -> [(Project, IDEPackage)] -> (Bool -> [PackageDescr] -> IDEAction) -> IDEAction
 updatePackageInfos rebuild pkgs continuation =
     forkIDE $ do
+        metaLog $ "updatePackageInfos load thread START nPkgs=" <> show (length pkgs)
         -- calculate list of known packages once
         knownPackages   <- getAllPackageIds
+        metaLog $ "updatePackageInfos knownPackages=" <> show (length knownPackages)
+                <> " -> loop"
         postAsyncIDE $
             updatePackageInfos' [] knownPackages pkgs
   where
-    updatePackageInfos' collector _ [] =  continuation True collector
-    updatePackageInfos' collector knownPackages ((project, package):rest) =
+    updatePackageInfos' collector _ [] = do
+        metaLog $ "updatePackageInfos loop DONE nCollected=" <> show (length collector)
+        continuation True collector
+    updatePackageInfos' collector knownPackages ((project, package):rest) = do
+        metaLog $ "updatePackageInfos: pkg=" <> show (ipdPackageId package)
+                <> " remaining=" <> show (length rest)
         updatePackageInfo knownPackages rebuild project package $ \ _ packDescr ->
             updatePackageInfos' (packDescr : collector) knownPackages rest
 

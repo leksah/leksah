@@ -102,10 +102,10 @@ toolbarButton ide cmd = do
 -- show -> auto-hide -> hide, with the current state shown by its class/tooltip.
 tallToggleButton
   :: MonadWidget t m
-  => Dynamic t IDE
+  => Dynamic t TallVisibility   -- ^ this window's side-pane visibility
   -> m (Event t ToolbarEvents)
-tallToggleButton ide = do
-  visD <- holdUniqDyn $ view (prefs . to tallVisibility) <$> ide
+tallToggleButton visInD = do
+  visD <- holdUniqDyn visInD
   let (src, _) = commandImageAndTip commandToggleTallPane
       attrD = ffor visD $ \v -> "class" =: ("toolbar-item " <> stateClass v)
   (e, _) <- elDynAttr' "div" attrD $ do
@@ -126,10 +126,10 @@ tallToggleButton ide = do
 -- show -> auto-hide -> hide, mirroring 'tallToggleButton' for the bottom row.
 wide1ToggleButton
   :: MonadWidget t m
-  => Dynamic t IDE
+  => Dynamic t TallVisibility   -- ^ this window's bottom-pane visibility
   -> m (Event t ToolbarEvents)
-wide1ToggleButton ide = do
-  visD <- holdUniqDyn $ view (prefs . to wide1Visibility) <$> ide
+wide1ToggleButton visInD = do
+  visD <- holdUniqDyn visInD
   let (src, _) = commandImageAndTip commandToggleWide1Pane
       attrD = ffor visD $ \v -> "class" =: ("toolbar-item " <> stateClass v)
   (e, _) <- elDynAttr' "div" attrD $ do
@@ -149,11 +149,13 @@ wide1ToggleButton ide = do
 toolbarWidget
   :: MonadWidget t m
   => Dynamic t IDE
+  -> Dynamic t TallVisibility   -- ^ this window's side-pane visibility
+  -> Dynamic t TallVisibility   -- ^ this window's bottom-pane visibility
   -> m (Event t ToolbarEvents)
-toolbarWidget ide =
+toolbarWidget ide tallVisD wide1VisD =
   divClass "toolbar" $ do
-    tallE  <- tallToggleButton ide
-    wide1E <- wide1ToggleButton ide
+    tallE  <- tallToggleButton tallVisD
+    wide1E <- wide1ToggleButton wide1VisD
     rest   <- mapM (toolbarButton ide)
       [ commandAddModule
       , CommandFileOpen

@@ -9,17 +9,21 @@ module IDE.Web.Main
   , main
   , css
   , startJSaddle
+  , jsMain
+  , indexHtml
+  , mintWindowId
   ) where
 
 import Control.Concurrent
-       (tryPutMVar, takeMVar, readMVar, threadDelay, modifyMVar, newMVar,
-        newEmptyMVar, forkIO)
+       (tryPutMVar, takeMVar, putMVar, readMVar, threadDelay, modifyMVar,
+        newMVar, newEmptyMVar, forkIO, myThreadId)
+import GHC.Conc.Sync (labelThread)
 import Control.Event (registerEvent)
 import Control.Exception (SomeException, catch)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import GHC.Stats
        (getRTSStats, getRTSStatsEnabled, RTSStats(..), GCDetails(..))
-import qualified System.IO as IO (hPutStrLn, stderr)
+import qualified System.IO as IO (hPutStrLn, stderr, hSetBuffering, BufferMode(..))
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), _Just)
 import Control.Monad (forever, forM, forM_, unless, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -40,15 +44,16 @@ import Data.Functor.Misc (Const2(..))
 import Data.IORef (newIORef, atomicModifyIORef', writeIORef, readIORef)
 import Data.Map (mapKeys)
 import qualified Data.Map as M
-       (Map, keys, elems, toList, fromList, union, findWithDefault, lookup, null,
-        insert, delete, member, filter, singleton, mapWithKey, empty)
+       (Map, keys, elems, toList, fromList, union, findWithDefault, lookup,
+        insert, insertWith, adjust, delete, member, filterWithKey,
+        singleton, mapWithKey, empty, size)
 import Data.Map (Map)
 import qualified Data.Set as S
        (fromList, delete, singleton, empty, insert, member, intersection)
-import Data.Time.Clock (NominalDiffTime)
+import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn)
-import Data.Text.Encoding (encodeUtf8)
+import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
 import Text.Printf (printf)
@@ -58,6 +63,7 @@ import System.Directory
        (doesFileExist, doesDirectoryExist, getDirectoryContents, removeFile,
         getHomeDirectory, makeRelativeToCurrentDirectory)
 import System.Process (readProcessWithExitCode)
+import Data.Aeson (encode)
 import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
 import System.Exit (ExitCode(..))
@@ -85,7 +91,7 @@ import Clay
         FontFaceSrc(..))
 
 import Language.Javascript.JSaddle
-       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, jss, fun, valToText, valToBool, liftJSM)
+       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, jss, fun, valToText, valToBool, liftJSM)
 import Language.Javascript.JSaddle.Warp
        (jsaddleJs, jsaddleOr, debugWrapper)
 import Language.Javascript.JSaddle.Terminal.Bootstrap (bootstrapHtml)
@@ -97,7 +103,7 @@ import Reflex
        (switchDyn, foldDyn, ffor,
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never,
         performEvent_, getPostBuild, performEvent, select, fan, fanMap,
-        fmapMaybe, ffilter, attachWith, attach, current, updated, holdUniqDyn, tag, gate,
+        fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate,
         listViewWithKey, sample,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
@@ -107,20 +113,20 @@ import Reflex.Dom.Core
 import IDE.Core.State
        (triggerBuild, readIDE, IDEAction, wsFile, jsContexts, workspace,
         IDEState(..), Prefs(..), TallVisibility(..), IDE(..), IDERef, __,
-        reflectIDE, getDataDir, catchIDE, modifyIDE_, prefs, currentState,
+        reflectIDE, getDataDir, catchIDE, modifyIDE_, modifyIDE, prefs, currentState,
         wsProjects, pjPackages, ipdCabalFile, ipdPackageDir, wsActivePackFile,
         currentError, logRefFullFilePath, refDescription, logRefSrcSpan,
-        srcSpanStartLine)
+        srcSpanStartLine,
+        WindowId(..), WebWindow(..), webWindows, activeWindow, nextWindowId,
+        flipMirror, flipMru, ideVersion, focusLog, metaLog)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
-import IDE.Web.CloseRequest (nextCloseRequest)
-import IDE.Web.OpenFileRequest (nextOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel)
-import IDE.Web.SaveRequest (nextSaveRequest)
 import IDE.Web.Theme (themeVarsCss)
-import IDE.Web.FindRequest (nextFindRequest)
-import IDE.Web.PreferencesRequest (nextPreferencesRequest)
+import IDE.Web.WindowBridge
+       (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
+        registerResync, notifyResync)
 import IDE.Web.RegionGrabRequest (nextRegionGrab)
 import IDE.Web.ScreenshotRequest (requestScreenshotRegion)
 import IDE.Web.RegionCapture
@@ -136,7 +142,8 @@ import IDE.Web.TerminalInput
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
-       (WebSession(..), readWebSession, writeWebSession)
+       (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
+import IDE.Web.NewWindowRequest (requestOpenWindow, requestRaiseWindow)
 import qualified IDE.TextEditor.Yi.Config as Yi (start)
 import IDE.Preferences (readPrefs, writePrefs)
 import IDE.SourceCandy (parseCandy)
@@ -206,6 +213,10 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
   -- The bundled JS (cm6, xterm) is UTF-8 and read with locale-dependent
   -- readFile; force UTF-8 so a C/POSIX locale (headless/CI) can't break it.
   setLocaleEncoding utf8
+  -- stderr defaults to NoBuffering, so concurrent diagnostic writes from many
+  -- threads (wlog, [MUT], [meta], focus) interleave char-by-char.  LineBuffering
+  -- makes each hPutStrLn atomic under GHC's handle lock, keeping log lines whole.
+  IO.hSetBuffering IO.stderr IO.LineBuffering
   let yiConfig = defaultYiConfig
   initializeTime
   exitCode <- newIORef ExitSuccess
@@ -259,10 +270,24 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             ,   _externalModified  =   externalModified
             ,   _jsContexts        =   []
             ,   _logLineMap        =   mempty
+            ,   _webWindows        =   mempty
+            ,   _activeWindow      =   Nothing
+            ,   _nextWindowId      =   0
+            ,   _flipMirror        =   Nothing
+            ,   _flipMru           =   []
+            ,   _ideVersion        =   0
       }
-      ideR <- liftIO $ newMVar (const (return ()), ide)
+      -- The trigger slot runs after every 'modifyIDEM', on the mutating thread:
+      -- keep it down to the non-blocking resync signals (see 'notifyResync' —
+      -- each window's own notifier thread then fires that window's coalesced
+      -- resync).  NEVER put reflex trigger fires or JS in this slot.
+      ideR <- liftIO $ newMVar (const notifyResync, ide)
       liftIO $ setGlobalIDERef ideR  -- so the native macOS menu can run commands
       liftIO $ startCmdServer ideR   -- control socket for the leksah-cmd CLI
+      -- Single process-wide drains for the "act on the active window" bridges
+      -- (close/save/find/prefs/open-file); each window's network registers its
+      -- triggers via 'registerWindowBridge' and the drain routes to the frontmost.
+      liftIO $ startWindowBridgeDrains ideR
       -- Detach control-mode clients left over from previous runs BEFORE any
       -- terminal attaches: they wedge on leksah exit, stay counted as attached,
       -- and their stale 80x24 sizes clamp every window they're attached to.
@@ -339,18 +364,146 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 --                        _ <- liftIO $ tryTakeMVar triggerBuild
                         currentPrefs <- readIDE prefs
                         when (backgroundBuild currentPrefs) backgroundMake) ideR
-      runJs $ jsMain showMenubar macTitlebar ideR
+      -- Multi-window restore: read the saved session and SEED every saved
+      -- window's per-window state (wide0 tabs — terminals filtered to still-live
+      -- tmux sessions — plus its side/bottom visibility) into the shared MVar
+      -- BEFORE any reflex network attaches, so each window renders its own wide0
+      -- directly (editors instantiate via 'makeEditor').  Positions persist
+      -- natively (Cocoa per-window frame autosave), so none are stored here.
+      liftIO $ do
+        mbSession <- readWebSession
+        liveTerms <- listTerminalSessions
+        let liveIds  = map fst liveTerms
+            keepTab k = case k of
+              TerminalKey n  -> n `elem` liveIds
+              PreferencesKey -> False   -- transient, never restore
+              _              -> True
+            dfltWin  = WebWindowSession [] Nothing (tallVisibility initPrefs)
+                                        (wide1Visibility initPrefs)
+            wwsList  = case mbSession of
+                         Just s | not (null (wsWindows s)) -> wsWindows s
+                         _                                 -> [dfltWin]
+            seeded   = M.fromList
+              [ (WindowId i
+                , WebWindow (filter keepTab (wwsWide0 w))
+                            (wwsActive w >>= \a -> if keepTab a then Just a else Nothing)
+                            (wwsTall w) (wwsWide1 w) Nothing)
+              | (i, w) <- zip [0 ..] wwsList ]
+            nWins    = length wwsList
+        (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
+          i & webWindows .~ seeded & nextWindowId .~ nWins & activeWindow ?~ WindowId 0
+        -- Ask native to create the windows past the first (the first is created
+        -- by the wkwebview AppDelegate / warp connection and attached below).
+        -- No-op on warp (no handler), which stays single-window.
+        mapM_ requestOpenWindow [1 .. nWins - 1]
+      runJs $ jsMain showMenubar macTitlebar (Just (WindowId 0)) ideR
 
 develMain :: IO ()
 develMain = do
   dev <- elem "--develop-leksah" <$> getArgs
   newIDE True False dev (debugJSaddle 3367)
 
-jsMain :: Bool -> Bool -> IDERef -> JSM ()
-jsMain showMenubar macTitlebar ideR = do
+-- | The default per-window state a freshly-minted (or adopted-but-unseeded)
+-- window inherits: no wide0 tabs, and side/bottom pane visibility taken from the
+-- global prefs (which stay the shared default; see 'IDE.Core.Types.WebWindow').
+defaultWebWindow :: Prefs -> WebWindow
+defaultWebWindow p = WebWindow
+  { _wwWide0 = [], _wwActive = Nothing
+  , _wwTall = tallVisibility p, _wwWide1 = wide1Visibility p, _wwFrame = Nothing }
+
+-- | Allocate a fresh 'WindowId', seed a default 'WebWindow' for it, and make it
+-- the active window if none is yet.  Runs the shared trigger so any already-open
+-- window observes the new (empty) window immediately (e.g. in its flipper).
+mintWindowId :: IDERef -> IO WindowId
+mintWindowId ideR = (`reflectIDE` ideR) $ modifyIDE $ \ide ->
+  let n   = ide ^. nextWindowId
+      wid = WindowId n
+      ide' = ide & nextWindowId .~ (n + 1)
+                 & webWindows %~ M.insert wid (defaultWebWindow (ide ^. prefs))
+                 & activeWindow %~ Just . fromMaybe wid
+  in (ide', wid)
+
+-- | Adopt a 'WindowId' the native side already created, ensuring its 'WebWindow'
+-- exists (idempotent: keeps any entry the native seed already inserted).
+adoptWindowId :: WindowId -> IDERef -> IO ()
+adoptWindowId wid ideR = (`reflectIDE` ideR) $ modifyIDE_ $ \ide ->
+  ide & webWindows %~ M.insertWith (\_ old -> old) wid (defaultWebWindow (ide ^. prefs))
+      & activeWindow %~ Just . fromMaybe wid
+
+-- | The wide0 (editor/terminal) state a window has before it is seeded — used
+-- only as a 'M.findWithDefault' fallback (every live window is seeded first).
+emptyWebWindow :: WebWindow
+emptyWebWindow = WebWindow [] Nothing TallShow TallShow Nothing
+
+-- | Move wide0 tab @k@ into window @w@ as its new MRU-front active tab, removing
+-- it from whichever window currently owns it.  This is how "open from the shared
+-- side panes moves it into the acting window" and cross-window moves both work:
+-- a wide0 tab belongs to exactly one window at a time.
+moveTabTo :: WindowId -> TabKey -> Map WindowId WebWindow -> Map WindowId WebWindow
+moveTabTo w k = M.mapWithKey $ \wid' ww ->
+  if wid' == w
+    then ww { _wwWide0 = k : filter (/= k) (_wwWide0 ww), _wwActive = Just k }
+    else let w0' = filter (/= k) (_wwWide0 ww)
+         in ww { _wwWide0 = w0'
+               , _wwActive = if _wwActive ww == Just k then listToMaybe w0' else _wwActive ww }
+
+-- | Float an already-owned wide0 tab to the MRU-front of window @w@ and make it
+-- active.  No-op if @w@ doesn't own @k@ (so activating a side/bottom tab is safe).
+activateWide0 :: WindowId -> TabKey -> Map WindowId WebWindow -> Map WindowId WebWindow
+activateWide0 w k = M.adjust
+  (\ww -> if k `elem` _wwWide0 ww
+            then ww { _wwWide0 = k : filter (/= k) (_wwWide0 ww), _wwActive = Just k }
+            else ww) w
+
+-- | Remove wide0 tabs @ks@ from window @w@; if the active tab was among them,
+-- fall back to the new MRU-front (the close-reselect rule).
+closeWide0 :: WindowId -> [TabKey] -> Map WindowId WebWindow -> Map WindowId WebWindow
+closeWide0 w ks = M.adjust
+  (\ww -> let w0' = filter (`notElem` ks) (_wwWide0 ww)
+          in ww { _wwWide0 = w0'
+                , _wwActive = if maybe False (`elem` ks) (_wwActive ww)
+                              then listToMaybe w0' else _wwActive ww }) w
+
+-- | Each OS window gets its own vivid, stable hue derived from its id (golden-ish
+-- step for good separation).  Used for the flipper border and the per-entry
+-- window icons — the same formula lives in JS ('flipMirrorJs'), so a window's
+-- colour is identical everywhere it appears.
+windowHue :: WindowId -> Int
+windowHue (WindowId n) = (n * 67) `mod` 360
+
+windowColorCss :: WindowId -> Text
+windowColorCss w = "hsl(" <> T.pack (show (windowHue w)) <> ",85%,55%)"
+
+-- | Verbose multi-window diagnostic logging to stderr (lands in
+-- ~/.leksah/leksah-nix-wkwebview.log).  Every line is tagged @LEK <time> [win N]@
+-- so the two OS windows' event streams can be told apart and correlated; grep
+-- @LEK@ to isolate.  Pure Haskell — no JS involved.
+wlog :: MonadIO m => WindowId -> String -> m ()
+wlog (WindowId n) msg = liftIO $ do
+    t <- getCurrentTime
+    let tod = takeWhile (/= ' ') . drop 11 $ show t   -- HH:MM:SS.sss
+    IO.hPutStrLn IO.stderr ("LEK " <> tod <> " [win " <> show n <> "] " <> msg)
+
+-- | Which OS window a flip item currently lives in (the window whose wide0 owns
+-- its tab key), if any.  Shared side/bottom tabs and panes not open in any
+-- window's wide0 have no owner ('Nothing').
+flipOwnerWindow :: Map WindowId WebWindow -> FlipItem -> Maybe WindowId
+flipOwnerWindow wins fi =
+  let k = case fi of FlipTab t -> t; FlipPane s _ _ -> TerminalKey s
+  in listToMaybe [ w | (w, ww) <- M.toList wins, k `elem` _wwWide0 ww ]
+
+jsMain :: Bool -> Bool -> Maybe WindowId -> IDERef -> JSM ()
+jsMain showMenubar macTitlebar mbWid ideR = do
   -- enableLogging True -- Uncomment this to add verbose JSaddle logging
   dataDir <- liftIO getDataDir
   ctx <- askJSM
+  -- Resolve this connection's window identity: adopt the id the native side
+  -- pre-created (restore / New Window), or mint one (the first wkwebview window
+  -- and every leksah-warp browser connection).
+  wid <- liftIO $ maybe (mintWindowId ideR) (\w -> adoptWindowId w ideR >> return w) mbWid
+  -- Tag this context with its window id, so tooling (leksah-cmd js eval, which
+  -- broadcasts to every context) can tell the windows apart.
+  _ <- eval ("window.leksahWindowId = " <> T.pack (show (case wid of WindowId n -> n)))
   -- CodeMirror 6 (bundled, exposes window.LeksahCM). It injects its own
   -- styles (incl. the editor theme) at runtime, so there is no CSS to load.
   _ <- liftIO (readFile $ dataDir </> "cm6/leksah-cm6.js") >>= eval
@@ -421,8 +574,13 @@ jsMain showMenubar macTitlebar ideR = do
   -- already on-screen we skip expanding/scrolling.
   _ <- eval revealCheckJs
 
+  -- window.leksahFlipMirror/Hide: the global flipper mirror overlay (a copy of
+  -- another window's open flipper), driven by ideJSM_ broadcasts from main.
+  _ <- eval flipMirrorJs
+
   -- The single top-level active-pane shadow overlay (window.leksahUpdatePaneHl).
   _ <- eval paneHlJs
+  _ <- eval hintsJs
 
   -- window.leksahSetColorIcons: swap every /pics/*.svg between the monochrome
   -- default and the coloured set (/pics/color/*.svg), driven by the pref.
@@ -436,22 +594,104 @@ jsMain showMenubar macTitlebar ideR = do
   _ <- eval regionSelectJs
 
   mainWidgetWithCss (BS.unlines [xtermCss, BS.toStrict (LT.encodeUtf8 css)]) $ mdo
-      (ideE, t) <- newTriggerEvent
-      ideActionE <- main showMenubar macTitlebar ideD
-      performEvent_ $ liftIO . (`reflectIDE` ideR) <$> ideActionE
+      ideActionE <- main showMenubar macTitlebar wid ideD
+      performEvent_ $ ffor ideActionE $ \act -> do
+          wlog wid "ENTER ideAction (reflectIDE)"
+          liftIO ((`reflectIDE` ideR) act)
+          wlog wid "EXIT ideAction"
+      -- Register this context, but DO NOT compose a reflex trigger into the ideR
+      -- trigger slot.  The old design had modifyIDE_ run @oldT x >> t x@ — one
+      -- un-coalesced frame per mutation for EVERY window.  All windows share the
+      -- single global Spider lock, and each frame holds it across synchronous
+      -- jsaddle JS, so a mutation burst floods frames that pile up on that lock
+      -- and hard-freezes a background window (observed: its heartbeat stops dead
+      -- mid-idle).  Instead each window learns of shared-state changes through
+      -- its COALESCED resync (below): the trigger slot only sets a per-window
+      -- binary signal, and a per-window notifier thread fires at most one resync
+      -- frame at a time.  Pure reflex, no JS.
       newIde <- liftIO $ modifyMVar ideR $ \(oldT, oldIde) -> do
           let newIde' = oldIde & jsContexts %~ (<> [ctx])
-          return ((\x -> oldT x >> t x, newIde'), newIde')
+          return ((oldT, newIde'), newIde')
+      wlog wid ("network attached; contexts now=" <> show (length (newIde ^. jsContexts))
+                <> " initial ideVer=" <> show (newIde ^. ideVersion))
       pb <- getPostBuild
       -- Leave the start-up state and load metadata, as the GTK front end does
       -- (`initInfo` here forks the heavy load via `postAsyncIDE = forkIDE`, so
       -- this returns promptly).  Without leaving `IsStartingUp`, the metadata
       -- commands (e.g. Update Workspace Info) silently no-op.
-      performEvent_ $ ffor pb $ \_ -> liftIO . (`reflectIDE` ideR) $ do
-          modifyIDE_ (currentState .~ IsRunning)
-          initInfo (return ())
+      performEvent_ $ ffor pb $ \_ -> do
+        wlog wid "ENTER pb-initInfo"
+        (liftIO . (`reflectIDE` ideR) $ do
+          -- Load metadata exactly ONCE across all OS windows.  initInfo is called
+          -- from every window's post-build; running it per window forked N full
+          -- metadata loads into the shared state, blowing the heap (79→687MB) and
+          -- freezing a window under GC thrash / OOM.  Atomically flip currentState
+          -- to IsRunning and let only the FIRST window to do so (old state
+          -- IsStartingUp) run initInfo — the result lives in shared state, so one
+          -- load serves every window.
+          firstToRun <- modifyIDE $ \i ->
+              ( i & currentState .~ IsRunning
+              , case i ^. currentState of IsStartingUp -> True; _ -> False )
+          -- Load-once guard is in place, but metadata still balloons the heap to
+          -- 500MB+ and thrashes even loaded once, so keep it OFF pending a heap
+          -- fix.  Flip @metadataEnabled@ to True to re-enable with the guard.
+          let metadataEnabled = False
+          metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun
+                  <> " metadataEnabled=" <> show metadataEnabled
+          if metadataEnabled && firstToRun
+            then do metaLog $ "post-build " <> show wid <> " -> initInfo"
+                    initInfo (return ())
+                    metaLog $ "post-build " <> show wid <> " initInfo returned (load forked)"
+            else return ())
+        wlog wid "EXIT pb-initInfo"
       pbIde <- performEvent $ pb $> liftIO (snd <$> readMVar ideR)
-      ideD <- holdDyn newIde $ leftmost [ideE, pbIde]
+      -- Cross-window updates, event-driven but COALESCED and SERIALIZED:
+      -- 'modifyIDEM' sets this window's binary resync signal (see the ideR trigger
+      -- slot / 'notifyResync'); the per-window notifier fires resyncE, then blocks
+      -- until the handler below acks — so at most one resync frame is in flight
+      -- per window and a mutation burst collapses into the already-set signal.
+      -- The notifier ALSO holds a process-global lock across fire→ack
+      -- ('resyncGlobalLock'), so no two windows run a resync frame at once: the
+      -- real freeze was two windows' frames doing synchronous jsaddle flushes
+      -- CONCURRENTLY on the shared WKWebView main-thread bridge, wedging one
+      -- frame thread forever (see WindowBridge).  (A 'newTriggerEvent' fire is
+      -- only a writeChan; the frame runs on this window's own host thread
+      -- regardless of who fires.)  The version guard means a no-op signal
+      -- advances nothing, and the 1 s heartbeat below re-feeds the guard so a
+      -- momentarily-starved background window self-heals.
+      (resyncE, fireResync) <- newTriggerEvent
+      resyncAck <- liftIO newEmptyMVar
+      liftIO $ registerResync wid (fireResync ()) resyncAck
+      polledIdeE <- performEvent $ ffor resyncE $ \() -> do
+          wlog wid "ENTER resync (readMVar ideR)"
+          i <- liftIO (snd <$> readMVar ideR)
+          wlog wid "EXIT resync"
+          return i
+      -- Ack (release the global serialize lock) only AFTER this resync frame's DOM
+      -- has been built AND flushed: deferring one frame ('delay 0') pushes the ack
+      -- past the frame-end jsaddle syncPoint, so the synchronous flush that wedges
+      -- falls INSIDE the lock — no two windows ever flush the shared WKWebView
+      -- main-thread bridge at once.  (Releasing at the source event, before the
+      -- syncPoint, still let sustained bursts overlap and wedge a window.)
+      resyncSettledE <- delay 0 (void polledIdeE)
+      performEvent_ $ ffor resyncSettledE $ \_ -> liftIO (putMVar resyncAck ())
+      -- Freeze detector: a coarse (1s) keepalive per window.  If a window stops
+      -- emitting "alive" lines, its reflex network has frozen.  Doubles as the
+      -- fallback poll: it feeds the same version guard, so a lost resync signal
+      -- self-heals within a second.
+      heartbeatTick <- tickLossyFromPostBuildTime 1
+      heartbeatE <- performEvent $ ffor heartbeatTick $ \_ -> liftIO (snd <$> readMVar ideR)
+      let freshPolledE = attachWithMaybe
+            (\cur new -> if new ^. ideVersion > cur ^. ideVersion then Just new else Nothing)
+            (current ideD) (leftmost [polledIdeE, heartbeatE])
+      performEvent_ $ ffor (attach (current ideD) heartbeatE) $ \(cur, new) -> do
+          -- Label this window's frame thread (processAsyncEvents) so a
+          -- `leksah-cmd threads` dump can tell the windows apart.  Idempotent.
+          liftIO (myThreadId >>= (`labelThread` ("reflex-frames-" <> show wid)))
+          wlog wid ("alive ideVer=" <> show (cur ^. ideVersion) <> " mvarVer=" <> show (new ^. ideVersion)
+                    <> if new ^. ideVersion > cur ^. ideVersion then " STALE(+" <> show (new ^. ideVersion - cur ^. ideVersion) <> ")" else "")
+      performEvent_ $ ffor freshPolledE $ \i -> wlog wid ("ideD<-resync ver=" <> show (i ^. ideVersion))
+      ideD <- holdDyn newIde $ leftmost [pbIde, freshPolledE]
       return ()
   liftIO $ threadDelay 1000000000
 
@@ -665,18 +905,15 @@ activePaneOfSession n tree = do
   p <- listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
   return (twIndex w, tpIndex p)
 
--- | The flip item for a focused tab (from @activePaneD@ — the last tab
--- mouse-pressed in any area) given a freshly-read pane tree: a terminal resolves
--- to its active tmux pane, any other tab to itself.  Used both to bump the MRU
--- when the user clicks a tab and to refresh the active pane of the terminal
--- currently at the front of the MRU on open (catching a ⌃B switch).
-activeFlipFor :: Maybe TabKey -> Map Text (Text, [TmuxWindow]) -> Maybe FlipItem
-activeFlipFor mk tree = case mk of
-  Just (TerminalKey n) ->
-    Just $ maybe (FlipTab (TerminalKey n))
-                 (\(w, p) -> FlipPane n w p) (activePaneOfSession n tree)
-  Just k  -> Just (FlipTab k)
-  Nothing -> Nothing
+-- | Resolve a tmux @#{pane_id}@ (e.g. @%5@, server-global) to its flipper item
+-- by scanning the pane tree for the pane's @(session, window index, pane index)@.
+-- This is a pure *translation* of a pane leksah already identified (a click or a
+-- leksah-issued select) into the indices 'FlipPane' carries — NOT a reading of
+-- "which pane tmux thinks is active", so it stays a leksah-owned recency signal.
+flipForPaneId :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe FlipItem
+flipForPaneId pid tree = listToMaybe
+  [ FlipPane n (twIndex w) (tpIndex p)
+  | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w, tpId p == pid ]
 
 -- | Flipper label for a tmux pane: "session-name · window-name", with a
 -- trailing " · pane-name" only when the window has more than one pane (a
@@ -721,8 +958,9 @@ tabShortcutBadge area k = case area of
     _       -> return ()
   where
     mk pre ks = forM_ (elemIndex k ks) $ \i ->
-        when (i < 9) . elAttr "span" ("class" =: "leksah-shortcut-badge") $
+        when (i < 9) . elAttr "span" ("class" =: "leksah-shortcut-badge") $ do
             text (pre <> T.pack (show (i + 1)))
+            elAttr "span" ("class" =: "leksah-flip-suffix") $ text " \8984`"
 
 -- | The wide0 tab-button order, taken from the flipper's item list: each tmux
 -- window (identified by @Left (session, window)@, collapsed from its panes) and
@@ -752,15 +990,84 @@ dedupButtons = go []
       | otherwise     = (i, fi) : go (i : seen) rest
       where i = flipButtonId fi
 
+-- | The @data-flipkey@ string a tab button carries, so a published flip target
+-- (see 'hintTarget'/'hintsJs') can find the button in the DOM.  Mirrors
+-- 'flipButtonId': a tmux window is @win:SESSION:INDEX@, any other tab
+-- @tab:KEY@.  'hintTarget' produces the same strings for the published target.
+winFlipKey :: Text -> Int -> Text
+winFlipKey s w = "win:" <> s <> ":" <> T.pack (show w)
+
+tabFlipKey :: TabKey -> Text
+tabFlipKey k = "tab:" <> case k of
+    WorkspaceKey   -> "workspace"
+    ErrorsKey      -> "errors"
+    LogKey         -> "log"
+    GrepKey        -> "grep"
+    TerminalsKey   -> "terminals"
+    MetadataKey    -> "metadata"
+    ChangesKey     -> "changes"
+    PreferencesKey -> "preferences"
+    TerminalKey s  -> "terminal:" <> s
+    EditorKey f    -> "editor:" <> T.pack f
+
+-- | Where the ⌘` hint chip should sit for the flipper's one-press destination
+-- @fi@: on the on-screen terminal pane it would go to (@Left paneId@, when that
+-- terminal is the front wide0 tab and its shown window holds the pane), else on
+-- the tab button that would be selected (@Right flipKey@).  'front' is the
+-- session id shown in wide0 (Nothing if wide0 isn't a terminal).
+hintTarget :: Maybe Text -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe (Either Text Text)
+hintTarget front tree = \case
+    FlipPane s w p
+      | front == Just s
+      , Just win <- windowOf s w
+      , twActive win
+      , Just pn <- find ((== p) . tpIndex) (twPanes win)
+      -> Just (Left (tpId pn))                       -- on-screen sibling pane
+      | otherwise -> Just (Right (winFlipKey s w))   -- off-screen: its window button
+    FlipTab (TerminalKey n)                          -- a terminal tab = its current window button
+      | Just (_, wins) <- M.lookup n tree
+      , w <- maybe 0 twIndex (listToMaybe (filter twActive wins) `orElse` listToMaybe wins)
+      -> Just (Right (winFlipKey n w))
+      | otherwise -> Nothing
+    FlipTab k -> Just (Right (tabFlipKey k))
+  where
+    windowOf s w = M.lookup s tree >>= find ((== w) . twIndex) . snd
+    orElse a b = maybe b Just a
+
+-- | How to highlight the flipper's live selection @fi@: @(Just paneId, tabKey)@
+-- where @paneId@ is set only when the selection is a pane in the on-screen active
+-- window (→ move the active-pane shadow onto it), and @tabKey@ is the
+-- @data-flipkey@ of the tab button to tint with the hover colour (always).
+flipSelHighlight :: Maybe Text -> Map Text (Text, [TmuxWindow]) -> FlipItem -> (Maybe Text, Text)
+flipSelHighlight front tree = \case
+    FlipPane s w p ->
+        ( case windowOf s w of
+            Just win | front == Just s, twActive win ->
+                tpId <$> find ((== p) . tpIndex) (twPanes win)
+            _ -> Nothing
+        , winFlipKey s w )
+    FlipTab (TerminalKey n) -> (Nothing, winFlipKey n (activeWinIdx n))
+    FlipTab k               -> (Nothing, tabFlipKey k)
+  where
+    windowOf s w = M.lookup s tree >>= find ((== w) . twIndex) . snd
+    activeWinIdx sid = maybe 0 twIndex $ M.lookup sid tree
+        >>= (\wins -> listToMaybe (filter twActive wins ++ wins)) . snd
+
 -- | The flipper's item list: MRU order first, then every current tmux pane and
--- non-terminal tab (a terminal is represented only by its panes).
-buildFlipItems :: [FlipItem] -> [(Text, TabKey)] -> Map Text (Text, [TmuxWindow]) -> [(Text, FlipItem)]
-buildFlipItems mru rt tree =
+-- non-terminal tab (a terminal is represented only by its panes).  The flipper
+-- is global across OS windows: @otherTabs@ are the non-terminal wide0 tabs
+-- (editors) owned by OTHER windows — tmux panes are already global (they come
+-- from @tree@, not per-window), so only editor tabs need adding here.  On
+-- commit, a selection owned by another window raises that window (see the
+-- ownership split in 'main').
+buildFlipItems :: [FlipItem] -> [(Text, TabKey)] -> [TabKey] -> Map Text (Text, [TmuxWindow]) -> [(Text, FlipItem)]
+buildFlipItems mru rt otherTabs tree =
   let panes = [ FlipPane n (twIndex w) (tpIndex p)
               | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w ]
       notTerm (TerminalKey _) = False
       notTerm _               = True
       tabs    = [ FlipTab k | (_, k) <- rt, notTerm k ]
+             ++ [ FlipTab k | k <- otherTabs, notTerm k ]
       present = panes ++ tabs
       ordered = filter (`elem` present) mru ++ filter (`notElem` mru) present
       areaOf (FlipPane {}) = "wide0"
@@ -824,7 +1131,12 @@ paneHlJs = T.unlines
   , "  }"
   , "  function update(){"
   , "    var clip = getClip(), hl = clip.firstChild;"
-  , "    var t = paneOf(document.activeElement);"
+  -- While the flipper is open, the shadow highlights its selected pane instead of
+  -- the focused one: leksahFlipSel.pane is the on-screen pane id (null => the
+  -- selection isn't an on-screen pane, so show no shadow).  Closed => follow focus.
+  , "    var fs = window.leksahFlipSel, t;"
+  , "    if (fs) { t = fs.pane ? document.querySelector('.terminal-cc-pane[data-pane='+JSON.stringify(fs.pane)+']') : null; }"
+  , "    else { t = paneOf(document.activeElement); }"
   , "    if (!t || !shown(t)) { clip.style.display='none'; return; }"
   , "    var r = t.getBoundingClientRect();"
   , "    var top=r.top, bottom=r.bottom, left=r.left, right=r.right;"
@@ -878,6 +1190,90 @@ paneHlJs = T.unlines
   , "})();"
   ]
 
+-- | Command-held navigation hints, shown/hidden by the @body.leksah-show-badges@
+-- class:
+--
+--   * ⌘` — the flipper's one-press destination.  Reflex publishes the target via
+--     'leksahSetFlipTarget' as either a terminal pane (@%id@) or a tab button
+--     (@data-flipkey@); this tags that target's numbered badge (⌘N pane badge,
+--     or a tab button's ⌘N/⌥⌘N/⌃⌘N badge) @.leksah-flip-here@, which reveals the
+--     hidden \" ⌘`\" suffix inside it — so a coincident target reads \"⌘N ⌘`\".
+--   * ⌘D / ⌘⇧D — absolute overlay chips (like 'paneHlJs') on the active terminal
+--     pane (the one a split would act on, found via its shown highlight marker):
+--     ⌘D at the bottom-middle, ⌘⇧D at the right-middle.
+--
+-- Recomputed (rAF-debounced) on focus change, resize, the Meta keydown that
+-- reveals the badges, and whenever the flip target changes.
+hintsJs :: Text
+hintsJs = T.unlines
+  [ "(function(){"
+  , "  window.leksahFlipTarget = null;"
+  , "  function box(){ var c = document.querySelector('.leksah-hints');"
+  , "    if(!c){ c = document.createElement('div'); c.className='leksah-hints';"
+  , "      c.innerHTML = '<div class=\"leksah-hint leksah-hint-splitd\">\\u2318D</div>'"
+  , "        + '<div class=\"leksah-hint leksah-hint-splitr\">\\u2318\\u21e7D</div>';"
+  , "      document.body.appendChild(c); }"
+  , "    return c; }"
+  , "  function shown(el){ if(!el) return false; var cs=getComputedStyle(el);"
+  , "    return cs.display!=='none' && cs.visibility!=='hidden' && el.offsetParent!==null; }"
+  , "  function put(el,x,y){ el.style.left=x+'px'; el.style.top=y+'px'; el.style.display=''; }"
+  -- The on-screen terminal's active-pane box (its shown highlight marker); the
+  -- pane a ⌘D/⌘⇧D split would act on.  data-pane pairs marker and pane.
+  , "  function activePaneEl(){ var ms=document.querySelectorAll('.terminal-cc-hl');"
+  , "    for(var i=0;i<ms.length;i++){ if(shown(ms[i])){"
+  , "      var win=ms[i].closest('.terminal-cc-window'), pid=ms[i].getAttribute('data-pane');"
+  , "      var p = (win&&pid) ? win.querySelector('.terminal-cc-pane[data-pane='+JSON.stringify(pid)+']') : null;"
+  , "      if(shown(p)) return p; } } return null; }"
+  , "  function update(){ var c=box();"
+  , "    var sd=c.querySelector('.leksah-hint-splitd'), sr=c.querySelector('.leksah-hint-splitr');"
+  , "    sd.style.display='none'; sr.style.display='none';"
+  , "    var ap=activePaneEl();"
+  , "    if(ap){ var r=ap.getBoundingClientRect();"
+  , "      put(sd, r.right - 18, r.top + r.height/2);"
+  , "      put(sr, r.left + r.width/2, r.bottom - 12); }"
+  -- Flip destination: reveal the ⌘` suffix on its numbered badge (a pane by
+  -- data-pane, else a tab button's badge by data-flipkey), so it reads "⌘N ⌘`".
+  , "    var prev=document.querySelectorAll('.leksah-shortcut-badge.leksah-flip-here');"
+  , "    for(var i=0;i<prev.length;i++) prev[i].classList.remove('leksah-flip-here');"
+  , "    var ft=window.leksahFlipTarget, badge=null;"
+  , "    if(ft && ft.pane){ badge=document.querySelector('.leksah-shortcut-badge[data-pane='+JSON.stringify(ft.pane)+']'); }"
+  , "    else if(ft && ft.button){ var tw=document.querySelector('[data-flipkey='+JSON.stringify(ft.button)+']');"
+  , "      badge = tw ? tw.querySelector('.leksah-shortcut-badge') : null; }"
+  , "    if(badge) badge.classList.add('leksah-flip-here');"
+  -- Tab-row badges are position:fixed (to clear the strip's overflow clip): set
+  -- each one's coordinates from its tab's live rect, centred just above the row.
+  -- Hide any whose tab is scrolled out of its strip.
+  , "    var tb=document.querySelectorAll('.tab-buttons .leksah-shortcut-badge');"
+  , "    for(var j=0;j<tb.length;j++){ var bg=tb[j];"
+  , "      var tw2=bg.closest('.tab-wrap'), strip=bg.closest('.tab-buttons');"
+  , "      if(!tw2||!strip||!shown(tw2)){ bg.style.visibility='hidden'; continue; }"
+  , "      var tr=tw2.getBoundingClientRect(), srect=strip.getBoundingClientRect();"
+  , "      if(tr.right<=srect.left+1 || tr.left>=srect.right-1){ bg.style.visibility='hidden'; continue; }"
+  , "      bg.style.visibility=''; bg.style.left=(tr.left+tr.width/2)+'px'; bg.style.top=(tr.top-14)+'px'; }"
+  , "  }"
+  , "  var scheduled=false;"
+  , "  window.leksahUpdateHints=function(){ if(scheduled) return; scheduled=true;"
+  , "    requestAnimationFrame(function(){ scheduled=false; update(); }); };"
+  , "  window.leksahSetFlipTarget=function(kind,val){"
+  , "    window.leksahFlipTarget = kind==='pane' ? {pane:val} : (kind==='button' ? {button:val} : null);"
+  , "    window.leksahUpdateHints(); };"
+  -- The flipper's LIVE selection (while it's open): move the active-pane shadow
+  -- onto the selected pane (paneHlJs reads window.leksahFlipSel) and tint its tab
+  -- button with the hover colour.  Empty button => flipper closed (clear both).
+  , "  window.leksahFlipSel = null;"
+  , "  window.leksahSetFlipSel=function(pane,button){"
+  , "    window.leksahFlipSel = button ? {pane: pane||null, button:button} : null;"
+  , "    var prev=document.querySelectorAll('.leksah-flip-sel');"
+  , "    for(var i=0;i<prev.length;i++) prev[i].classList.remove('leksah-flip-sel');"
+  , "    if(button){ var tw=document.querySelector('[data-flipkey='+JSON.stringify(button)+']');"
+  , "      if(tw) tw.classList.add('leksah-flip-sel'); }"
+  , "    if(window.leksahUpdatePaneHl) window.leksahUpdatePaneHl(); };"
+  , "  document.addEventListener('focusin', window.leksahUpdateHints, true);"
+  , "  window.addEventListener('resize', window.leksahUpdateHints);"
+  , "  window.addEventListener('keydown', function(e){ if(e.key==='Meta') window.leksahUpdateHints(); }, true);"
+  , "})();"
+  ]
+
 revealCheckJs :: Text
 revealCheckJs = T.unlines
   [ "window.leksahOccurrenceVisible = function(path, containerSel){"
@@ -895,6 +1291,65 @@ revealCheckJs = T.unlines
   , "    }"
   , "  } catch(e) {}"
   , "  return false;"
+  , "};"
+  ]
+
+-- | Defines @window.leksahFlipMirror(owner, labelsJson, index)@ and
+-- @window.leksahFlipMirrorHide(owner)@: a read-only copy of another OS window's
+-- open flipper, so the flipper shows on every window at once.  The active window
+-- broadcasts these (via 'ideJSM_') on open / step / close; a window ignores the
+-- call for its OWN flipper (@owner@ == its id — it shows the real reflex one).
+-- Deliberately plain DOM over the existing @.flipper@ CSS, NOT reflex shared
+-- state: a per-keystroke burst of cross-window @modifyIDE_@ fan-out drops and
+-- reorders the trigger fires to background webviews (leaving the mirror stuck),
+-- whereas ordered fire-and-forget @evaluateJavaScript@ always lands the final
+-- hide.  The label list is rebuilt only when it changes (@__leksahKey@); a step
+-- just moves the @selected@ class.
+-- | Defines the per-window colour helper, tags this window with its own colour
+-- (the @--leksah-window-color@ CSS var the flipper border reads), and the flipper
+-- mirror.  The mirror shows this window's open flipper on every OTHER OS window;
+-- each entry carries its owner window id so we can draw an owner-coloured window
+-- icon, and thicken the border on the window that owns the highlighted item.  The
+-- hue formula matches 'windowHue' so a window's colour is identical everywhere.
+flipMirrorJs :: Text
+flipMirrorJs = T.unlines
+  [ "window.leksahWindowColor = function(id){ return 'hsl(' + ((id*67)%360) + ',85%,55%)'; };"
+  , "document.documentElement.style.setProperty('--leksah-window-color', window.leksahWindowColor(window.leksahWindowId));"
+  -- items: [[label, ownerWinId], ...]  (ownerWinId < 0 = shared / no owner)
+  , "window.leksahFlipMirror = function(owner, itemsJson, index){"
+  , "  if (window.leksahWindowId === owner) return;"   -- our own flipper is the real one
+  , "  var el = document.getElementById('leksah-flip-mirror');"
+  , "  if (!el){"
+  , "    el = document.createElement('div'); el.id = 'leksah-flip-mirror';"
+  , "    el.className = 'flipper';"
+  , "    el.innerHTML = '<div class=\"flipper-scroll\"><div class=\"flipper-content\"></div></div>';"
+  , "    if (document.body) document.body.appendChild(el);"
+  , "  }"
+  , "  var c = el.querySelector('.flipper-content');"
+  , "  if (el.__leksahKey !== itemsJson){"                 -- rebuild the list only when it changes
+  , "    var items = JSON.parse(itemsJson);"
+  , "    c.innerHTML = '';"
+  , "    el.__leksahOwners = items.map(function(it){ return it[1]; });"
+  , "    items.forEach(function(it){"
+  , "      var d = document.createElement('div'); var b = document.createElement('button');"
+  , "      var ic = document.createElement('span');"
+  , "      ic.className = 'flip-win-icon' + (it[1] < 0 ? ' shared' : '');"
+  , "      if (it[1] >= 0) ic.style.backgroundColor = window.leksahWindowColor(it[1]);"
+  , "      b.appendChild(ic); b.appendChild(document.createTextNode(it[0]));"
+  , "      d.appendChild(b); c.appendChild(d);"
+  , "    });"
+  , "    el.__leksahKey = itemsJson;"
+  , "  }"
+  , "  var btns = c.querySelectorAll('button');"
+  , "  for (var i=0;i<btns.length;i++) btns[i].className = (i===index ? 'selected' : '');"
+  -- thick border when the highlighted item lives in THIS window
+  , "  var owners = el.__leksahOwners || [];"
+  , "  c.classList.toggle('self-selected', owners[index] === window.leksahWindowId);"
+  , "  el.style.display = '';"
+  , "};"
+  , "window.leksahFlipMirrorHide = function(owner){"
+  , "  var el = document.getElementById('leksah-flip-mirror');"
+  , "  if (el) el.style.display = 'none';"
   , "};"
   ]
 
@@ -1031,8 +1486,25 @@ termActivityJs :: Text
 termActivityJs = T.unlines
   [ "(function(){"
   , "  function poke(){ if (window.leksahTermActivity) window.leksahTermActivity(); }"
+  -- The tmux pane id (data-pane) of the terminal pane that currently holds INPUT
+  -- focus (document.activeElement), or "" when focus isn't in a terminal.  Used
+  -- by the became-key handler to promote the focused pane after a window is
+  -- brought forward — read from real DOM focus, so it never follows a background
+  -- control-mode pane switch in another client.
+  , "  window.leksahFocusedTermPane = function(){"
+  , "    var ae = document.activeElement;"
+  , "    var pn = ae && ae.closest && ae.closest('.terminal-cc-pane');"
+  , "    return pn ? (pn.getAttribute('data-pane') || '') : '';"
+  , "  };"
   , "  document.addEventListener('mousedown', function(e){"
-  , "    if (e.target.closest && e.target.closest('.terminal')) setTimeout(poke, 60);"
+  , "    if (!(e.target.closest)) return;"
+  , "    if (e.target.closest('.terminal')) setTimeout(poke, 60);"
+  -- A click inside a specific CC pane is a leksah-owned pane-focus: publish its
+  -- tmux pane id so reflex can float exactly that pane to the flipper MRU (no
+  -- tmux poll, so it can't be moved by another client, and no stale-tree race).
+  , "    var pn = e.target.closest('.terminal-cc-pane');"
+  , "    if (pn && window.leksahPaneFocus){ var pid = pn.getAttribute('data-pane');"
+  , "      if (pid) window.leksahPaneFocus(pid); }"
   , "  }, true);"
   , "  document.addEventListener('keydown', function(e){"
   , "    if (e.ctrlKey && (e.key === 'b' || e.key === 'B') && e.target.closest"
@@ -1636,36 +2108,10 @@ statusLightJs = T.unlines
   , "    if (document.body) document.body.appendChild(el);"
   , "    return el;"
   , "  }"
-  -- Audio.  A RESUMED-and-left-running AudioContext pegs coreaudiod and drags
-  -- the whole app down, so the context is kept SUSPENDED except for the ~0.16 s
-  -- beep itself.  The first user gesture unlocks it (autoplay policy) then it's
-  -- released again immediately.
-  , "  function actx(){"
-  , "    var C = window.AudioContext || window.webkitAudioContext;"
-  , "    if (!C) return null;"
-  , "    if (!window.__leksahAudio) window.__leksahAudio = new C();"
-  , "    return window.__leksahAudio;"
-  , "  }"
-  , "  function prime(){"
-  , "    window.removeEventListener('pointerdown', prime, true);"
-  , "    window.removeEventListener('keydown', prime, true);"
-  , "    var c = actx();"
-  , "    if (c) c.resume().then(function(){ c.suspend(); }).catch(function(){});"
-  , "  }"
-  , "  window.addEventListener('pointerdown', prime, true);"
-  , "  window.addEventListener('keydown', prime, true);"
-  , "  function beep(){"
-  , "    try {"
-  , "      var c = actx(); if (!c) return;"
-  , "      c.resume().then(function(){"
-  , "        var o = c.createOscillator(), g = c.createGain();"
-  , "        o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.06;"
-  , "        o.connect(g); g.connect(c.destination);"
-  , "        var t = c.currentTime; o.start(t); o.stop(t + 0.16);"
-  , "        setTimeout(function(){ try { c.suspend(); } catch(e){} }, 400);"
-  , "      }).catch(function(){});"
-  , "    } catch(e){}"
-  , "  }"
+  -- Audio DISABLED: even a suspended AudioContext grabbed the audio session and
+  -- stopped Safari's own audio playback, so the beep is a no-op for now (no
+  -- AudioContext created, no gesture-prime listeners).
+  , "  function beep(){}"
   , "  function set(s){ if (timer){ clearTimeout(timer); timer = null; } state = s; ensure().className = s; }"
   , "  window.leksahStatus = set;"
   , "  window.leksahTestStart = function(){"
@@ -1736,9 +2182,21 @@ main
   :: forall t m . MonadWidget t m
   => Bool             -- ^ render the web menu bar (hidden when there's a native menu)
   -> Bool             -- ^ native mac title bar (the toolbar occupies the title bar)
+  -> WindowId         -- ^ which OS window this reflex network drives
   -> Dynamic t IDE
   -> m (Event t IDEAction)
-main showMenubar macTitlebar ide = mdo
+main showMenubar macTitlebar wid ide = mdo
+  let widN = case wid of WindowId n -> n   -- this window's id as an Int (for JS)
+  -- This OS window's slice of the shared per-window state (used here for the root
+  -- CSS classes and the toolbar's visibility indicators, and inside the inner
+  -- widget for wide0 ownership).  Defined in main's outer scope so rootAttrD —
+  -- which wraps the inner widget — can read it.
+  myWinD <- holdUniqDyn (M.findWithDefault emptyWebWindow wid . _webWindows <$> ide)
+  -- All windows' state (shared) — the global flipper reads other windows' wide0
+  -- from here, and the session writer serialises every window from it.
+  webWindowsD <- holdUniqDyn (_webWindows <$> ide)
+  tallVisD  <- holdUniqDyn (_wwTall  <$> myWinD)
+  wide1VisD <- holdUniqDyn (_wwWide1 <$> myWinD)
   let menuClass = if showMenubar then "" else " no-menubar"
       titlebarClass = if macTitlebar then " mac-titlebar" else ""
       tallClass TallShow     = ""
@@ -1747,17 +2205,18 @@ main showMenubar macTitlebar ide = mdo
       wide1Class TallShow     = ""
       wide1Class TallAutoHide = " wide1-auto"
       wide1Class TallHide     = " wide1-hide"
-      rootAttrD = ffor ide $ \i ->
+      -- Side/bottom pane visibility is now per-OS-window (from this window's
+      -- WebWindow), not the global prefs.
+      rootAttrD = (\tv wv ->
           "class" =: ("leksah" <> menuClass <> titlebarClass
-                      <> tallClass (tallVisibility (i ^. prefs))
-                      <> wide1Class (wide1Visibility (i ^. prefs)))
-            <> "tabindex" =: "0"
+                      <> tallClass tv <> wide1Class wv)
+            <> "tabindex" =: "0") <$> tallVisD <*> wide1VisD
   (top, topEvents) <- elDynAttr' "div" rootAttrD $ mdo
     keymapE <- keymapWidget top
     -- The web menu bar is suppressed when a native menu is present
     -- (leksah-wkwebview); its command events then simply never fire.
     menubarE   <- if showMenubar then menubarWidget else return never
-    toolbarE   <- toolbarWidget ide
+    toolbarE   <- toolbarWidget ide tallVisD wide1VisD
     -- Transparent, click-through overlays over the side pane / bottom bar that
     -- draw the divider line next to the editor area and (via CSS :has focus) a
     -- drop shadow when one of that panel's panes is active — see layoutCss.
@@ -1778,7 +2237,6 @@ main showMenubar macTitlebar ide = mdo
     -- The web toolbar/menubar's Preferences command, ⌘, (keymap), or the native
     -- macOS app-menu "Settings…" item (via the bridge) opens the Preferences pane.
     (prefsBridgeE, firePrefsReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextPreferencesRequest >> firePrefsReq ()
     let showPrefsE = leftmost
           [ fmapMaybe (\case CommandShowPreferences -> Just (); _ -> Nothing) panelCmdE
           , fmapMaybe (\e -> case e ^? _KeymapCommand of
@@ -1885,13 +2343,15 @@ main showMenubar macTitlebar ide = mdo
       -- The common tab-button shape: a .tab-wrap carrying the selected/hover
       -- highlight (and wide0 MRU order), an optional × close on the left, and a
       -- label button; clicking the label selects `k` in `area` and runs `onSel`.
-      tabButton :: Text -> TabKey -> Dynamic t Bool -> Dynamic t (Map Text Text)
+      tabButton :: Text -> Text -> TabKey -> Dynamic t Bool -> Dynamic t (Map Text Text)
                 -> Dynamic t (Maybe Int)
                 -> Maybe Text -> Maybe Text -> m () -> IO ()
                 -> m (Event t (Map Text TabKey, [TabKey]))
-      tabButton area k selectedD orderStyleD badgeD mbTitle mbCloseTip labelW onSel =
+      tabButton area flipKey k selectedD orderStyleD badgeD mbTitle mbCloseTip labelW onSel =
         elDynAttr "span"
-            ((\sel ost -> "class" =: ("tab-wrap" <> if sel then " selected" else "") <> ost)
+            -- data-flipkey lets the ⌘` flip-target hint (hintsJs) find this button.
+            ((\sel ost -> "class" =: ("tab-wrap" <> if sel then " selected" else "")
+                          <> "data-flipkey" =: flipKey <> ost)
                <$> selectedD <*> orderStyleD) $ do
           closeE <- case mbCloseTip of
             Just tip -> do
@@ -1903,8 +2363,11 @@ main showMenubar macTitlebar ide = mdo
           -- dynamic ⌘-number (their bar position, minus the active one).
           tabShortcutBadge area k
           elDynAttr "span"
-              ((\mb -> "class" =: maybe "" (const "leksah-shortcut-badge") mb) <$> badgeD)
-              (dynText ((\mb -> maybe "" (\n -> "\8984" <> T.pack (show n)) mb) <$> badgeD))
+              ((\mb -> "class" =: maybe "" (const "leksah-shortcut-badge") mb) <$> badgeD) $ do
+              dynText ((\mb -> maybe "" (\n -> "\8984" <> T.pack (show n)) mb) <$> badgeD)
+              -- Hidden ⌘` suffix, revealed by hintsJs when this button is the
+              -- flip target — so a numbered tab reads "⌘N ⌘`" as one hint.
+              elAttr "span" ("class" =: "leksah-flip-suffix") $ text " \8984`"
           let clickE = domEvent Click be
           performEvent_ (liftIO onSel <$ clickE)
           pure $ leftmost [ (\_ -> (area =: k, [])) <$> clickE, (,) mempty <$> closeE ]
@@ -1949,9 +2412,14 @@ main showMenubar macTitlebar ide = mdo
                           Just (host, target) -> void . forkIO $ do
                               selectRemoteTmuxWindow host target widx
                               fireRemotePoke ()
-                          Nothing -> selectTmuxWindow s widx >> fireTermActivity ()
+                          -- Clicking a terminal-window button in the tab bar: we
+                          -- already know leksah's MRU pane for this (session,
+                          -- window), so promote it and switch straight to it (the
+                          -- handler below) — no waiting to see which pane wins
+                          -- focus.  fireTermActivity refreshes the tree/highlight.
+                          Nothing -> fireTermWinSel (s, widx) >> fireTermActivity ()
                 badgeD = M.lookup (Left (s, widx)) <$> badgeNumsD
-            tabButton area k selectedD orderStyleD badgeD Nothing Nothing (dynText labelD) onSel
+            tabButton area (winFlipKey s widx) k selectedD orderStyleD badgeD Nothing Nothing (dynText labelD) onSel
           pure (mconcat . M.elems <$> winButtonsE)
         _ ->
           let mbTitle    = case k of EditorKey f -> Just (T.pack f); _ -> Nothing
@@ -1963,14 +2431,13 @@ main showMenubar macTitlebar ide = mdo
                       (tabIconSrc k)
                 dynText (tabLabelText k <$> terminalTabLabelsD)
               badgeD = M.lookup (Right k) <$> badgeNumsD
-          in tabButton area k isVisibleD orderStyleD badgeD mbTitle mbCloseTip labelW (pure ())
+          in tabButton area (tabFlipKey k) k isVisibleD orderStyleD badgeD mbTitle mbCloseTip labelW (pure ())
 
     -- File ▸ Save / the Save toolbar button: a background thread turns native-
     -- menu save requests into a reflex event; the in-page toolbar/menubar Save
     -- command routes to the same event (without the round-trip).  We save
     -- whichever editor is the active pane (a non-editor active pane saves nothing).
     (saveBridgeE, fireSaveReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextSaveRequest >> fireSaveReq ()
     let inPageSaveE = fmapMaybe (\case CommandFileSave -> Just (); _ -> Nothing) panelCmdE
         saveReqE    = leftmost [saveBridgeE, inPageSaveE]
         saveFileE   = fmapMaybe (\case Just (EditorKey f) -> Just f; _ -> Nothing)
@@ -1979,7 +2446,6 @@ main showMenubar macTitlebar ide = mdo
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextOpenedFile >>= fireOpenedFile
     -- Terminal tabs requested from outside the reflex network: `leksah-cmd
     -- cc-connect HOST` (a remote control-mode tab keyed "ssh://HOST") and the
     -- workspace-tree repl buttons (a local session id from
@@ -2002,8 +2468,8 @@ main showMenubar macTitlebar ide = mdo
     -- the flipper's per-pane list + MRU stay current (tmux-internal switches like
     -- ⌃B o / clicking a split aren't otherwise visible to leksah).
     treePb <- getPostBuild
-    -- Flip commands from the keymap: a step (True = forward/⌃`, False = back/⌃⇧`)
-    -- and the commit (Control released).
+    -- Flip commands from the keymap: a step (True = forward/⌘`, False = back/⌘⇧`)
+    -- and the commit (Command released).
     let rawFlipStepE = fmapMaybe (\e -> case e ^? _KeymapCommand of
                                       Just CommandFlipDown -> Just True
                                       Just CommandFlipUp   -> Just False
@@ -2020,20 +2486,15 @@ main showMenubar macTitlebar ide = mdo
     let taggedStepE  = attach (current flipperVisibleD) rawFlipStepE
         advanceStepE = fmapMaybe (\(vis, dir) -> if vis     then Just dir else Nothing) taggedStepE
         openStepE    = fmapMaybe (\(vis, dir) -> if vis     then Nothing else Just dir) taggedStepE
-    -- On the *first* press (flipper hidden) poll the tree, and if the current MRU
-    -- front is a terminal pane refresh it to that terminal's active pane — this is
-    -- what floats a ⌃B / click pane switch to the top.  We deliberately only touch
-    -- the front terminal, never some other (wide0) pane, so an item you flipped or
-    -- clicked to in the side/bottom bar stays on top instead of being shoved down.
-    openPollE <- performEvent $ ffor (attach (current flipMruD) openStepE) $ \(mru, dir) -> do
+    -- On the *first* press (flipper hidden) poll the tree so the pane list/labels
+    -- are current when the flipper opens (a pane created/renamed elsewhere shows
+    -- up).  Membership only — the MRU order is our own and is left untouched here.
+    openPollE <- performEvent $ ffor openStepE $ \dir -> do
         tree <- liftIO listTerminalTree
-        let refreshed = case mru of
-              (FlipPane n _ _ : _) -> activeFlipFor (Just (TerminalKey n)) tree
-              _                    -> Nothing
-        pure (dir, tree, refreshed)
+        pure (dir, tree)
     -- Only open once the poll is in and the list has reordered (one frame later —
     -- opening on the same frame the list changes crashes selectViewListWithKey).
-    openStepDelayedE <- performEvent $ ffor openPollE $ \(dir, _, _) -> pure dir
+    openStepDelayedE <- performEvent $ ffor openPollE $ \(dir, _) -> pure dir
     let flipStepE = leftmost [ advanceStepE, openStepDelayedE ]
     -- Other reasons to re-read the tree (labels, MRU while hidden): post-build,
     -- terminal activity (click / ⌃B poll), open/close/select, session save.
@@ -2060,7 +2521,7 @@ main showMenubar macTitlebar ide = mdo
     -- trigger event (defined here, fired later) avoids a forward performEvent ref.
     (newTermPolledE, fireNewTermPolled) <- newTriggerEvent
     paneTreeD <- holdUniqDyn =<< holdDyn mempty
-      (leftmost [ otherPollE, (\(_, t, _) -> t) <$> openPollE, fst <$> newTermPolledE ])
+      (leftmost [ otherPollE, snd <$> openPollE, fst <$> newTermPolledE ])
     -- ONE ssh poll per remote host (10s, off the reflex thread, plus pokes),
     -- feeding BOTH remote surfaces: the Terminals tree's host nodes (all
     -- sessions of each host, with reachability) and the flipper/tab row's
@@ -2105,69 +2566,209 @@ main showMenubar macTitlebar ide = mdo
                                           (M.toList tree)] ])
           <$> hostTreesD <*> remoteTabsD
     let allTreeD = M.union <$> paneTreeD <*> remoteFlipD
-    -- The item the user is currently focused on: the last tab pressed
-    -- (activePaneD, in any area — side bar, bottom bar, editor) resolved to its
-    -- active tmux pane if it's a terminal.  Its changes drive the MRU so a click
-    -- promotes that pane/tab; the terminal-pane part also catches ⌃B while focused.
-    activeFlipD <- holdUniqDyn (activeFlipFor <$> activePaneD <*> allTreeD)
-    -- Focusing a tab by any route moves it to the flipper MRU front.  activeFlipD
-    -- (above) catches mouse-down / tab-button clicks, but not the *programmatic*
-    -- focus an editor takes when it's opened by a workspace double-click or a
-    -- terminal link — that arrives as a focusin (focusTabE).  Map the focused
-    -- key back to a FlipItem (a terminal → its active pane) so those navigations
-    -- float to the top too.
-    let focusFlipE = fmapMaybe id $ attachWith
-          (\(rt, tree) str ->
-             case [ k | (_, k) <- rt, T.pack (show k) == str ] of
-               (k:_) -> activeFlipFor (Just k) tree
-               []    -> Nothing)
-          ((,) <$> current recentTabs <*> current allTreeD) focusTabE
-        -- Opening a file to navigate to it (workspace double-click, terminal link)
-        -- floats that editor to the MRU front directly, whether or not focus moves.
+    -- The MRU is built ENTIRELY from leksah-originated interactions — never from
+    -- reading "which pane tmux thinks is active" (that follows any client on the
+    -- session, and races the tree poll).  The tmux tree is used only to LIST
+    -- panes/labels and to TRANSLATE a pane leksah already identified into indices.
+    --
+    -- Terminal recency comes solely from precise pane signals that carry an exact
+    -- pane id: a pane click (jsPaneFocusE, from the global mousedown listener), a
+    -- ⌘-number split select and a flipper pane commit (both via TerminalPaneFocused
+    -- / flipSelE), and terminal creation (newTermPolledE).  A bare tab-activation
+    -- (activePaneD) floats only NON-terminal tabs — a terminal already sits in the
+    -- MRU from whichever pane signal last touched it, so there is no stale-tree
+    -- resolution to double-bump the wrong pane.
+    let notTermKey (TerminalKey _) = False
+        notTermKey _               = True
+        -- A non-terminal tab gaining focus/click (side bar, bottom bar, editor).
+        tabFlipE = fmapMaybe (\mk -> case mk of
+                     Just k | notTermKey k -> Just (FlipTab k)
+                     _                     -> Nothing) (updated activePaneD)
+        -- A leksah-issued pane focus bubbled up from a CC tab (⌘-number split).
+        ccPaneFocusE = fmapMaybe (\m -> listToMaybe
+                     [ p | (TerminalKey _, dm) <- M.toList m
+                         , Just (Identity (TerminalPaneFocused p)) <- [DM.lookup TerminalTab dm] ]) tabE
+        -- Translate a clicked/selected pane id to its FlipPane (pure tree lookup).
+        paneFocusFlipE = fmapMaybe id $ attachWith (\tree pid -> flipForPaneId pid tree)
+                     (current allTreeD) (leftmost [ jsPaneFocusE, ccPaneFocusE ])
+        -- A tab focused programmatically (editor opened by workspace double-click
+        -- or terminal link) arrives as a focusin.  Float NON-terminal tabs only:
+        -- a terminal's programmatic focus also fires on a control-mode follow of
+        -- another client, so it is not a trustworthy pane-recency signal — real
+        -- terminal focus comes through paneFocusFlipE instead.
+        focusFlipE = fmapMaybe id $ attachWith
+          (\rt str -> case [ k | (_, k) <- rt, T.pack (show k) == str ] of
+             (TerminalKey _ : _) -> Nothing
+             (k:_)               -> Just (FlipTab k)
+             []                  -> Nothing)
+          (current recentTabs) focusTabE
+        -- Opening a file to navigate to it floats that editor to the MRU front.
         openEditorFlipE = fmapMaybe (fmap FlipTab . listToMaybe . M.keys) openFileE'
-        -- Opening Preferences (⌘, / menu) floats it to the MRU front too — it
-        -- doesn't take focus the way an editor does, so it needs an explicit bump.
+        -- Opening Preferences (⌘, / menu) needs an explicit bump (it takes no focus).
         openPrefsFlipE = FlipTab PreferencesKey <$ showPrefsE
-    -- The MRU: move an item to the front when it is focused/clicked (activeFlipD /
-    -- focusFlipE), opened to navigate to (openEditorFlipE / openPrefsFlipE), when the
-    -- flipper commits a selection (flipSelE), and when opening refreshes the front
-    -- terminal's active pane after a ⌃B switch.
-    flipMruD <- holdUniqDyn =<< foldDyn (\fi mru -> fi : filter (/= fi) mru) []
-                        (leftmost [ fmapMaybe (\(_, _, a) -> a) openPollE
-                                  , snd <$> flipSelE
+        -- Every leksah-originated promotion from THIS window (all but the
+        -- OS-window-became-key bump, which reads the log held below).
+        localFlipBumpE = leftmost [ snd <$> flipSelE
                                   , snd <$> newTermPolledE
+                                  , paneFocusFlipE
+                                  , termWinFlipE
+                                  , tabFlipE
                                   , focusFlipE
                                   , openEditorFlipE
-                                  , openPrefsFlipE
-                                  , fmapMaybe id (updated activeFlipD) ])
+                                  , openPrefsFlipE ]
+    -- The MRU: THE shared flip order — one '_flipMru' list in the IDE record used
+    -- by every OS window (single source of truth, no per-window copies).  This
+    -- window WRITES its promotions via modifyIDE_ (flipBumpE, in the ideAction
+    -- chain below) and READS the order back through its polled ideD, so all
+    -- windows always show the same list.
+    let becameKeyE = void (ffilter id (updated isActiveD))
+        -- Became key (window brought forward by mouse OR by a cross-window flip
+        -- raise): promote what the user is actually focused on HERE — never a
+        -- stale remembered item, which would shove a just-flipped-to pane down to
+        -- #2 (the raise re-promoting the window's previous active pane).
+        --
+        -- Editors (and other non-terminal wide0 tabs): the shown wide0 tab, at
+        -- once.  Terminals: NOT here — a terminal's focused pane is read from the
+        -- DOM after a 0.5 s settle (becameKeyPaneFlipE below), so a cross-window
+        -- flip's now-focused target wins and an external control-mode switch (no
+        -- input focus here) never promotes.
+        becameKeyEditorE = fmapMaybe (\wa -> case wa of
+                Just (TerminalKey _) -> Nothing
+                Just k               -> Just (FlipTab k)
+                Nothing              -> Nothing)
+              (tag (current wide0ActiveD) becameKeyE)
+    -- Terminal side of became-key: 0.5 s after the window is brought forward,
+    -- read the pane that STILL holds input focus and promote it.  This is what
+    -- floats the active pane of a raised terminal window to the top (mouse
+    -- activation), and re-affirms a cross-window flip's target pane.
+    becameKeyDelayedE <- delay 0.5 becameKeyE
+    becameKeyPaneIdE <- performEvent $ ffor becameKeyDelayedE $ \_ -> do
+        wlog wid "ENTER becameKeyPaneId (liftJSM leksahFocusedTermPane)"
+        r <- liftJSM $
+            valToText =<< jsg ("window" :: Text) ^. js0 ("leksahFocusedTermPane" :: Text)
+        wlog wid "EXIT becameKeyPaneId"
+        return r
+    let becameKeyPaneFlipE = fmapMaybe id $ attachWith
+          (\tree pid -> if T.null pid then Nothing else flipForPaneId pid tree)
+          (current allTreeD) becameKeyPaneIdE
+        flipBumpE = leftmost [ localFlipBumpE, becameKeyEditorE, becameKeyPaneFlipE ]
+    flipMruD <- holdUniqDyn (_flipMru <$> ide)
+    -- Terminal-window button clicked (from 'fireTermWinSel'): look up leksah's
+    -- MRU pane for that (session, window) in the shared flip list, switch tmux
+    -- straight to it, and promote it — all at once, no focus round-trip.  Falls
+    -- back to plain select-window (tmux picks the pane) when we have no recorded
+    -- pane for that window yet.
+    termWinFlipE <- fmap (fmapMaybe id) . performEvent $
+        ffor (attach (current flipMruD) termWinSelE) $ \(mru, (s, widx)) -> do
+            wlog wid ("ENTER termWinFlip " <> show (s, widx))
+            r <- liftIO $
+                case listToMaybe [ p | FlipPane s' w p <- mru, s' == s, w == widx ] of
+                    Just p  -> selectTmuxPane s widx p >> return (Just (FlipPane s widx p))
+                    Nothing -> selectTmuxWindow s widx >> return Nothing
+            wlog wid "EXIT termWinFlip"
+            return r
+    performEvent_ $ ffor flipBumpE $ \fi -> wlog wid ("flipBump " <> show fi)
+    performEvent_ $ ffor (updated flipMruD) $ \mru -> wlog wid ("flipMru<-shared front=" <> show (take 3 mru))
     -- The flip list, kept populated and updated ONLY while the flipper is hidden
     -- (frozen during a flip) and only on genuine changes (holdUniqDyn).  This
     -- mirrors the old tab MRU, which never changed the list under the flipper —
     -- changing it on the open event, or churning it every tmux poll, crashes the
     -- flipper's selectViewListWithKey ("Same key fired multiple times for Merge").
-    flipLiveD <- holdUniqDyn (buildFlipItems <$> flipMruD <*> recentTabs <*> allTreeD)
+    -- Other OS windows' wide0 tabs (editors) — added to the flip list so the
+    -- flipper spans all windows; terminals are excluded (already global via the
+    -- pane tree).  Selecting one raises its owning window (the ownership split
+    -- below), rather than stealing it into this window.
+    otherTabsD <- holdUniqDyn
+      ((\wins -> [ k | (w, ww) <- M.toList wins, w /= wid, k <- _wwWide0 ww ]) <$> webWindowsD)
+    flipLiveD <- holdUniqDyn (buildFlipItems <$> flipMruD <*> recentTabs <*> otherTabsD <*> allTreeD)
     -- The list the flipper shows.  It updates freely while hidden (labels, tabs),
-    -- but the authoritative refresh is a *snapshot taken on open* (openListE):
-    -- built from the current MRU with the freshly-polled active pane floated to
-    -- the front, using the fresh tree.  Relying on @updated flipLiveD@ alone left
-    -- it stale — after a flip, holdUniqDyn suppresses the (already-front) re-bump,
-    -- so the flipper reopened with the pre-flip order and flipped to the wrong
-    -- pane.  The snapshot fires one frame before the flipper actually opens.
+    -- but the authoritative refresh is a *snapshot taken on open* (openListE),
+    -- built from the current shared MRU and the freshly-read tree.  We trust our
+    -- own MRU order as-is: no float of "tmux's active pane" (that recency call is
+    -- the ambiguous read this design removes).  Relying on @updated flipLiveD@
+    -- alone left it stale — after a flip, holdUniqDyn suppresses the (already-
+    -- front) re-bump, so the flipper reopened with the pre-flip order.  The
+    -- snapshot fires one frame before the flipper actually opens.
     let openListE = attachWith
-          (\(mru, rt, rtree) (_, tree, active) ->
-             let mru' = maybe mru (\a -> a : filter (/= a) mru) active
-             in buildFlipItems mru' rt (M.union tree rtree))
-          ((,,) <$> current flipMruD <*> current recentTabs <*> current remoteFlipD)
+          (\(mru, rt, rtree, other) (_, tree) ->
+             buildFlipItems mru rt other (M.union tree rtree))
+          ((,,,) <$> current flipMruD <*> current recentTabs <*> current remoteFlipD
+                 <*> current otherTabsD)
           openPollE
     flipItemsD <- holdDyn [] (leftmost
           [ openListE
           , gate (current (not <$> flipperVisibleD)) (updated flipLiveD) ])
-    let flipLabel fiD = dynText $
-          (\fi names tree -> case fi of
-             FlipTab k      -> tabLabelText k names
-             FlipPane n w p -> flipPaneLabel n w p tree)
-            <$> fiD <*> terminalNamesD <*> allTreeD
-    (flipperVisibleD, flipRawE) <- flipperWidget flipItemsD flipStepE rawFlipDoneE flipLabel
+    let flipItemLabel names tree fi = case fi of
+          FlipTab k      -> tabLabelText k names
+          FlipPane n w p -> flipPaneLabel n w p tree
+        -- A small square before each entry, coloured by the OS window that owns
+        -- the pane — a visual cue of where selecting it will take you.  Only when
+        -- there is more than one window (a single window needs no disambiguation).
+        flipIconAttr :: Int -> Map WindowId WebWindow -> FlipItem -> Map Text Text
+        flipIconAttr cnt wins fi
+          | cnt <= 1 = "style" =: "display:none"
+          | otherwise = case flipOwnerWindow wins fi of
+              Just w  -> "class" =: "flip-win-icon"
+                      <> "style" =: ("background-color:" <> windowColorCss w)
+              Nothing -> "class" =: "flip-win-icon shared"
+        flipLabel fiD = do
+          elDynAttr "span" (flipIconAttr <$> winCountD <*> webWindowsD <*> fiD) (pure ())
+          dynText $ flipItemLabel <$> terminalNamesD <*> allTreeD <*> fiD
+    winCountD <- holdUniqDyn (M.size <$> webWindowsD)
+    (flipperVisibleD, flipperSelD, flipSelIndexD, flipRawE) <- flipperWidget flipItemsD flipStepE rawFlipDoneE selfSelectedD flipLabel
+    -- Thicken THIS window's flipper border when the highlighted item lives here.
+    selfSelectedD <- holdUniqDyn $
+      (\wins msel -> case msel of
+          Just (_, fi) -> flipOwnerWindow wins fi == Just wid
+          Nothing      -> False)
+      <$> webWindowsD <*> flipperSelD
+    -- Global flipper mirror: show this window's open flipper on every OTHER OS
+    -- window too.  We drive it with a DIRECT JS broadcast (ideJSM_ →
+    -- leksahFlipMirror in every context, see flipMirrorJs) on open / step / close,
+    -- NOT shared reflex state: a per-keystroke burst of modifyIDE_ fan-out drops
+    -- and reorders the cross-window trigger fires to background webviews (which
+    -- left the mirror stuck open), whereas ordered evaluateJavaScript always lands
+    -- the final hide.  Only the active window's flipper is ever up, so only it
+    -- broadcasts; leksahFlipMirror skips the owning window by id.
+    -- Each mirror entry carries its owner window id (-1 = shared) so the mirror
+    -- can draw the owner-coloured icon and thicken the border on the owning window.
+    flipMirrorItemsD <- holdUniqDyn $
+      (\items wins names tree ->
+         [ (flipItemLabel names tree fi
+           , maybe (-1) (\(WindowId n) -> n) (flipOwnerWindow wins fi))
+         | (_, fi) <- items ])
+      <$> flipItemsD <*> webWindowsD <*> terminalNamesD <*> allTreeD
+    flipMirrorStateD <- holdUniqDyn $
+      (,,) <$> flipperVisibleD <*> flipMirrorItemsD <*> flipSelIndexD
+    let flipMirrorShowE = fmapMaybe (\(v, is, i) -> if v then Just (is, i) else Nothing)
+                                    (updated flipMirrorStateD)
+        flipMirrorHideE = fmapMaybe (\(v, _, _) -> if v then Nothing else Just ())
+                                    (updated flipMirrorStateD)
+    performEvent_ $ ffor (updated flipperVisibleD) $ \v -> wlog wid ("flipper visible=" <> show v)
+    performEvent_ $ ffor (updated flipSelIndexD) $ \i -> wlog wid ("flipper selIndex=" <> show i)
+    performEvent_ $ ffor flipMirrorShowE $ \(is, i) -> wlog wid ("flipMirror write show idx=" <> show i <> " nItems=" <> show (length is) <> " (shared state)")
+    performEvent_ $ ffor flipMirrorHideE $ \() -> wlog wid "flipMirror write hide (shared state)"
+    -- Draw the flipper mirror in THIS window from the SHARED '_flipMirror' state
+    -- (which fans out to every window via the MVar poll), evaluating ONLY in our
+    -- OWN jsaddle context.  Never broadcast JS across windows: 'ideJSM_' into every
+    -- WKWebView deadlocks jsaddle-wkwebview's synchronous main-thread bridge once a
+    -- second window exists.  'leksahFlipMirror' skips the owning window (owner == our
+    -- id), so the acting window keeps showing its real reflex flipper; the poll
+    -- gives background windows their mirror within one tick (≤0.5s), and because we
+    -- render the LATEST shared state (not replayed steps) the hide always lands — no
+    -- stuck mirror even under a rapid ⌘` burst.
+    flipMirrorSharedD <- holdUniqDyn (_flipMirror <$> ide)
+    performEvent_ $ ffor (updated flipMirrorSharedD) $ \m -> do
+        wlog wid ("ENTER flipMirrorRead " <> maybe "hide" (const "show") m)
+        case m of
+          Just (owner, is, i) ->
+            liftJSM . void $ jsg ("window" :: Text)
+              ^. js3 ("leksahFlipMirror" :: Text)
+                   owner (decodeUtf8 (BS.toStrict (encode is))) i
+          Nothing ->
+            liftJSM . void $ jsg ("window" :: Text)
+              ^. js1 ("leksahFlipMirrorHide" :: Text) widN
+        wlog wid "EXIT flipMirrorRead"
     -- Split the flipper selection: a tab selects as before; a pane brings its
     -- terminal up in wide0 (below) and makes that tmux pane active.
     -- A ⌘-number on a non-active wide0 button feeds a synthetic flip selection
@@ -2175,16 +2776,45 @@ main showMenubar macTitlebar ide = mdo
     (numFlipE, fireNumFlip) <- newTriggerEvent
     let flipSelE  = leftmost [ fmapMaybe (listToMaybe . M.toList) flipRawE
                              , (\fi -> ("wide0", fi)) <$> numFlipE ]
-        flipTabE  = fmapMaybe (\(a, fi) -> case fi of FlipTab k -> Just (M.singleton a k); _ -> Nothing) flipSelE
-        flipPaneE = fmapMaybe (\(_, fi) -> case fi of FlipPane s w p -> Just (s, w, p); _ -> Nothing) flipSelE
-    performEvent_ $ ffor flipPaneE $ \(s, w, p) -> liftIO $
-        case remoteTabHostTarget s of
+        -- The global flipper: classify each selection by the OS window that owns
+        -- the tab (from the shared per-window state).  A wide0 item owned by
+        -- ANOTHER window is a cross-window select — raise that window and make
+        -- the item active THERE (never move it here); everything else (this
+        -- window's tabs, shared side/bottom tabs, panes not yet open anywhere)
+        -- follows the in-place path below.
+        flipKeyOf (FlipTab k)      = Just k
+        flipKeyOf (FlipPane s _ _) = Just (TerminalKey s)
+        classifyFlip wins (a, fi) =
+          case flipKeyOf fi >>= \k ->
+                 listToMaybe [ w | (w, ww) <- M.toList wins, w /= wid, k `elem` _wwWide0 ww ] of
+            Just w  -> Left (w, fi)
+            Nothing -> Right (a, fi)
+        classifiedFlipE = attachWith classifyFlip (current webWindowsD) flipSelE
+        crossFlipE = fmapMaybe (either Just (const Nothing)) classifiedFlipE
+        localFlipE = fmapMaybe (either (const Nothing) Just) classifiedFlipE
+        flipTabE  = fmapMaybe (\(a, fi) -> case fi of FlipTab k -> Just (M.singleton a k); _ -> Nothing) localFlipE
+        flipPaneE = fmapMaybe (\(_, fi) -> case fi of FlipPane s w p -> Just (s, w, p); _ -> Nothing) localFlipE
+    performEvent_ $ ffor flipPaneE $ \(s, w, p) -> do
+        wlog wid ("ENTER flipPaneE selectTmuxPane " <> show (s, w, p))
+        liftIO $ case remoteTabHostTarget s of
           -- remote pane: select over ssh (off the reflex thread); the tab's
           -- control client hears %session-window-changed and re-renders
           Just (host, target) -> void . forkIO $ do
               selectRemoteTmuxPane host target w p
               fireRemotePoke ()
           Nothing -> selectTmuxPane s w p
+        wlog wid "EXIT flipPaneE"
+    -- Cross-window flip: raise the owning OS window and make the selected tab
+    -- active there; for a terminal pane, also switch tmux to that pane.  The tab
+    -- stays where it is (no move) — the flipper only navigates.
+    performEvent_ $ ffor crossFlipE $ \(WindowId n, fi) -> do
+        wlog wid ("crossFlip commit -> raise window " <> show n)
+        liftIO $ requestRaiseWindow n
+        liftIO $ case fi of
+          FlipPane s w p -> case remoteTabHostTarget s of
+            Just (host, target) -> void . forkIO $ selectRemoteTmuxPane host target w p >> fireRemotePoke ()
+            Nothing             -> selectTmuxPane s w p
+          _ -> return ()
     -- Jump-to-teammate (⌃⌥A): pick the next attention-flagged window from the
     -- current pane tree, switch tmux to it (clears the flag), and bring its
     -- session's terminal up in wide0 (via openTabsE / selectTabE below).
@@ -2238,8 +2868,14 @@ main showMenubar macTitlebar ide = mdo
         selRemoteHostE = fmapMaybe (^? _SelectRemoteHost) terminalsListE
         remoteKey h sid = "ssh://" <> h <> "#" <> sid
     performEvent_ $ ffor closeTermE $ liftIO . killTerminalSession
-    performEvent_ $ ffor selectWinE  $ \(s, w)    -> liftIO (selectTmuxWindow s w)
-    performEvent_ $ ffor selectPaneE $ \(s, w, p) -> liftIO (selectTmuxPane s w p)
+    performEvent_ $ ffor selectWinE  $ \(s, w)    -> do
+        wlog wid ("ENTER selectWinE selectTmuxWindow " <> show (s, w))
+        liftIO (selectTmuxWindow s w)
+        wlog wid "EXIT selectWinE"
+    performEvent_ $ ffor selectPaneE $ \(s, w, p) -> do
+        wlog wid ("ENTER selectPaneE selectTmuxPane " <> show (s, w, p))
+        liftIO (selectTmuxPane s w p)
+        wlog wid "EXIT selectPaneE"
     performEvent_ $ ffor selRemoteWinE  $ \(h, s, _, w) ->
         liftIO . void . forkIO $ selectRemoteTmuxWindow h s w
     performEvent_ $ ffor selRemotePaneE $ \(h, s, _, w, p) ->
@@ -2272,53 +2908,43 @@ main showMenubar macTitlebar ide = mdo
     -- together with the tmux sessions left over from a previous run, in one read
     -- so the two can't race.
     restorePb <- getPostBuild
-    restoreE <- performEvent $ ffor restorePb $ \_ -> liftIO $
-      (,) <$> readWebSession <*> listTerminalSessions
+    -- Only the original window (WindowId 0) restores the saved session; a New
+    -- Window (WindowId 1+) starts empty.  Otherwise every new network's
+    -- PostBuild would re-run the restore and 'moveTabTo' every saved editor into
+    -- the just-created window.  (Step 8 generalises this to per-window restore.)
+    -- v4 multi-window restore: this window's wide0 tabs + its side/bottom
+    -- visibility are SEEDED into the shared per-window state ('_webWindows') by
+    -- 'newIDE' before any network attaches, so the tab grid renders them
+    -- directly (editors instantiate via 'makeEditor' on render) — there is no
+    -- reopen event for wide0.  Reading the session here only supplies the bits
+    -- that aren't per-window shared state: openFileKeysD seeding, the shared
+    -- side/bottom visible tab, the recent-files menu, and the tmux id list.
+    restoreE <- performEvent $ ffor restorePb $ \_ -> do
+                  wlog wid "ENTER restore (readWebSession + listTerminalSessions)"
+                  r <- liftIO $ (,) <$> readWebSession <*> listTerminalSessions
+                  wlog wid "EXIT restore"
+                  return r
     let existingIdsE = snd <$> restoreE
-        -- Editor + (still-existing) terminal tabs to reopen, as one map so they
-        -- open together in a single openTabsE firing.
-        -- The open editors/terminals are exactly the Editor/Terminal entries of
-        -- the saved tab list; reopen them (terminals only if still in tmux).
-        restoreOpenE = fmapMaybe
-          (\(ms, ids) -> case ms of
-             Nothing -> Nothing
-             Just s ->
-               let files = [ (EditorKey f, ("wide0", Just ())) | EditorKey f <- wsTabs s ]
-                   terms = [ (TerminalKey n, ("wide0", Just ())) | TerminalKey n <- wsTabs s, n `elem` map fst ids ]
-                   m = M.fromList (files ++ terms)
-               in if M.null m then Nothing else Just m)
-          restoreE
-        -- Editor keys also seed openFileKeysD so the editor event routing knows
-        -- about the restored files (they don't flow through openFileE').
+        -- Editor keys of THIS window's seeded wide0 seed openFileKeysD so the
+        -- editor event routing knows about the restored files (they don't flow
+        -- through openFileE').
         restoreFileKeysE = fmapMaybe
-          (\(ms, _) -> case ms of
-             Just s -> case [ EditorKey f | EditorKey f <- wsTabs s ] of
-                         []  -> Nothing
-                         ks  -> Just (S.fromList ks)
-             _ -> Nothing)
-          restoreE
-        -- Which tab is visible in each layout area.
+          (\ww -> case [ EditorKey f | EditorKey f <- _wwWide0 ww ] of
+                    [] -> Nothing
+                    ks -> Just (S.fromList ks))
+          (tag (current myWinD) restorePb)
+        -- Which shared side/bottom tab is visible (the wide0 shown tab is the
+        -- per-window '_wwActive', seeded separately).
         restoreVisibleE = fmapMaybe
           (\(ms, _) -> case ms of
              Just s | not (null (wsVisible s)) -> Just (M.fromList (wsVisible s))
              _ -> Nothing)
           restoreE
-        -- Side-pane visibility (show / auto-hide / hide); applied as a prefs
-        -- change so the root element's class (and the toggle button) update.
-        restoreTallE = fmapMaybe (\(ms, _) -> ms >>= wsTall) restoreE
-        -- Bottom-pane (wide1) visibility, same idea as the side pane.
-        restoreWide1E = fmapMaybe (\(ms, _) -> ms >>= wsWide1) restoreE
-        -- The saved flipper (MRU) order = the saved tab list itself.
-        restoreRecentE = fmapMaybe
-          (\(ms, _) -> case ms of
-             Just s | not (null (wsTabs s)) -> Just (wsTabs s)
-             _ -> Nothing)
-          restoreE
         -- The saved recent-files list (for the Open Recent menu).
         restoreRecentFilesE = fmapMaybe (\(ms, _) -> ms >>= wsRecentFiles) restoreE
-    -- Apply the saved MRU order just after the restored tabs have opened (so the
-    -- reorder sees them all), giving the flipper the same order as last run.
-    setRecentE <- delay 0.05 restoreRecentE
+        -- The flipper MRU seeds from this window's wide0 order (Step 6 makes the
+        -- flipper global); no separate saved-order event any more.
+        setRecentE = never
     -- "New Terminal": name the session @leksah-<k>@ (k past the highest existing
     -- leksah-N), create it up front, and key the new tab by the session id tmux
     -- assigns.  Falls back to the name as the key if tmux is unavailable.
@@ -2419,6 +3045,32 @@ main showMenubar macTitlebar ide = mdo
                                             _                    -> Nothing) <$> visibleTabsD
     -- Publish the active terminal so the Tmux menu can send C-b sequences to it.
     performEvent_ $ liftIO . setActiveTerminal <$> updated activeTermD
+    -- The ⌘` flipper hint's target: the one-press destination is the second
+    -- entry of the MRU flip list (index 0 is the current pane).  Resolve it to
+    -- an on-screen pane %id or a tab button and publish to hintsJs.
+    hintTargetD <- holdUniqDyn $
+        (\front tree items -> (snd <$> listToMaybe (drop 1 items)) >>= hintTarget front tree)
+          <$> activeTermD <*> allTreeD <*> flipLiveD
+    hintTargetPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [updated hintTargetD, tag (current hintTargetD) hintTargetPb]) $ \mt ->
+        liftJSM . void $ do
+            let (kind, val) = case mt of
+                  Just (Left pid)   -> ("pane" :: Text, pid)
+                  Just (Right bkey) -> ("button", bkey)
+                  Nothing           -> ("", "" :: Text)
+            jsg ("window" :: Text) ^. js2 ("leksahSetFlipTarget" :: Text) kind val
+    -- While the flipper is open, highlight its LIVE selection (updates as ⌘` is
+    -- tapped): the active-pane shadow on the selected pane (if on-screen) and the
+    -- hover colour on its tab button.  An empty tab key means the flipper closed
+    -- (revert the shadow to following focus, drop the tint).
+    flipSelPubD <- holdUniqDyn $
+        (\vis front tree msel -> case (vis, msel) of
+            (True, Just (_, fi)) -> flipSelHighlight front tree fi
+            _                    -> (Nothing, ""))
+          <$> flipperVisibleD <*> activeTermD <*> allTreeD <*> flipperSelD
+    performEvent_ $ ffor (updated flipSelPubD) $ \(mpane, tabKey) ->
+        liftJSM . void $ jsg ("window" :: Text)
+            ^. js2 ("leksahSetFlipSel" :: Text) (fromMaybe "" mpane) tabKey
     -- The wide0 tab buttons in bar order (MRU-first, deduped by identity so a
     -- multi-pane terminal window is one button); the head is the active (shown)
     -- wide0 tab.  ⌘-navigation and the ⌘-held badges both index this.  flipLiveD
@@ -2655,7 +3307,6 @@ main showMenubar macTitlebar ide = mdo
     -- File ▸ Close: a background thread turns close requests (from the menu
     -- command's IDEAction, via the close bridge) into a reflex event.
     (closeReqE, fireCloseReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextCloseRequest >> fireCloseReq ()
     -- Close via the menu acts on the active pane (only editors and terminals
     -- have something to close).  A terminal showing a MULTI-pane window
     -- closes the split (kills the active tmux pane) rather than the tab —
@@ -2688,7 +3339,6 @@ main showMenubar macTitlebar ide = mdo
         openTabsE = leftmost
           [ openFileE'
           , nativeOpenE
-          , restoreOpenE
           , openInWide0 <$> newOrEditTermE
           , openInWide0 <$> termRequestE
           , openInWide0 <$> remoteOpenKeyE
@@ -2712,12 +3362,45 @@ main showMenubar macTitlebar ide = mdo
                               , (\(s, _, _) -> "wide0" =: TerminalKey s) <$> flipPaneE
                               , (\(s, _)    -> "wide0" =: TerminalKey s) <$> alertTargetE
                               , ("wide0" =: PreferencesKey) <$ showPrefsE
-                              , numSelTabE]
+                              , numSelTabE
+                              -- Keep the wide0 visible tab in sync with the shared
+                              -- per-window active tab (restore, or a tab moved to/from
+                              -- this window changing what's active here).
+                              , ("wide0" =:) <$> fmapMaybe id (updated wide0ActiveD)
+                              -- Apply the seeded active tab on first build too:
+                              -- 'updated' skips the initial value, so a restored or
+                              -- background window (never focused → no wide0ActiveD
+                              -- change) would otherwise leave its wide0 tab
+                              -- visibility:hidden until it happened to change.
+                              , ("wide0" =:) <$> fmapMaybe id (tag (current wide0ActiveD) restorePb)]
+    -- wide0 membership/order/active for THIS window come from the shared
+    -- per-window state (myWinD, bound in main's outer scope) — single source of
+    -- truth in the shared MVar, so wide0 tabs can be owned by / moved between
+    -- windows; the side/bottom-bar content is shared and rendered identically.
+    --
+    -- Order, though, is overlaid with a LOCAL activation MRU: the shared _wwWide0
+    -- reorder happens via a modifyIDE_ (activateWide0, below), and relying on that
+    -- write to fan out back to *this* window to re-derive the order is unreliable —
+    -- the trigger fan-out can lag, drop, or deliver a stale snapshot to a busy or
+    -- background window, so an activated pane would fail to float to the flipper /
+    -- tab MRU front (even though the MVar, hence the saved session, is correct).
+    -- So float this window's own activations (wide0ActivateE) to the front locally
+    -- and immediately; a healthy fan-out echo then just agrees.  Membership still
+    -- comes from the shared state, so tabs moved to/from this window are respected.
+    localWide0MruD <- foldDyn (\k ks -> k : filter (/= k) ks) [] wide0ActivateE
+    wide0OrderD  <- holdUniqDyn $
+        (\ww mru ->
+            let base     = _wwWide0 ww
+                promoted = filter (`elem` base) mru
+            in map (\k -> (k, Just ())) (promoted ++ filter (`notElem` promoted) base))
+        <$> myWinD <*> localWide0MruD
+    wide0ActiveD <- holdUniqDyn (_wwActive <$> myWinD)
     (recentTabs, tabE, visibleTabsD, activePaneD, tabCloseBtnE) <- tabsWidget
       initialTabs
       initialVisibleTabs
-      openTabsE
-      closeTabsE
+      wide0OrderD
+      never   -- wide0 opens go through the shared state (moveTabTo), not here
+      never   -- wide0 closes go through the shared state (closeWide0), not here
       selectTabE
       setRecentE
       focusTabE
@@ -2746,11 +3429,35 @@ main showMenubar macTitlebar ide = mdo
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
           EditorKey file -> toDM EditorTab <$> makeEditor file selectedE v)
+    -- The active pane became a wide0 tab THIS window owns: float it to the MRU
+    -- front / mark it active in the shared state (ignored for side/bottom tabs and
+    -- for tabs owned by other windows).
+    let wide0ActivateE = attachWithMaybe
+          (\ord mk -> case mk of
+                        Just k | k `elem` map fst ord -> Just k
+                        _                             -> Nothing)
+          (current wide0OrderD) (updated activePaneD)
+    performEvent_ $ ffor (updated activePaneD) $ \mk -> do
+        wlog wid ("activePane -> " <> show mk)
+        focusLog ("[" <> show wid <> "] activePaneD -> " <> show mk)
+    performEvent_ $ ffor wide0ActivateE $ \k -> do
+        wlog wid ("wide0Activate " <> show k <> " (modifyIDE_ activateWide0)")
+        focusLog ("[" <> show wid <> "] wide0Activate " <> show k)
+    performEvent_ $ ffor (updated wide0OrderD) $ \o -> wlog wid ("wide0Order = " <> show (map fst o))
     -- Edit ▸ Find (toolbar button / menu item) toggles the find bar; showing it
     -- focuses its text input.  It starts hidden.  The native macOS menu routes
     -- here via a background thread draining the find-toggle bridge.
     (findBridgeE, fireFindReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextFindRequest >> fireFindReq ()
+    -- All five window-scoped bridges (close/save/find/prefs/open-file) are now
+    -- defined; register this window's triggers so the process-wide drains
+    -- (started in 'newIDE') can route each token to the frontmost window.
+    liftIO $ registerWindowBridge wid WindowBridge
+      { wbClose = fireCloseReq ()
+      , wbSave  = fireSaveReq ()
+      , wbFind  = fireFindReq ()
+      , wbPrefs = firePrefsReq ()
+      , wbOpenedFile = fireOpenedFile
+      }
     -- Toolbar/menu Find toggles the bar; Cmd+F (keymap) always shows + focuses it.
     let findToggleE = leftmost
           [ fmapMaybe (\case CommandFind -> Just (); _ -> Nothing) panelCmdE
@@ -2778,6 +3485,16 @@ main showMenubar macTitlebar ide = mdo
     -- A mouse-down or ⌃B inside a terminal may have changed the active tmux pane
     -- (see leksahTermActivityJs); this asks the pane tree to be re-read.
     (termActivityE, fireTermActivity) <- newTriggerEvent
+    -- A terminal-window button in the tab bar was clicked: (session id, window
+    -- index).  Handled below by switching to that window's MRU pane and promoting
+    -- it (defined here; consumed in the flip block above via MonadFix).
+    (termWinSelE, fireTermWinSel) <- newTriggerEvent
+    -- A pane click, published by the global mousedown listener (termActivityJs)
+    -- as a tmux pane id.  A leksah-owned pane-recency signal: it fires only for
+    -- a real click in THIS leksah window, never for a control-mode broadcast, so
+    -- it floats exactly the clicked pane to the flipper MRU.  Consumed in the MRU
+    -- block above via MonadFix (defined here next to its sibling term listeners).
+    (jsPaneFocusE, fireJsPaneFocus) <- newTriggerEvent
     listNavPb <- getPostBuild
     performEvent_ $ ffor listNavPb $ \_ -> liftJSM $ do
         w <- jsg ("window" :: Text)
@@ -2788,12 +3505,24 @@ main showMenubar macTitlebar ide = mdo
                     liftIO $ fireListMove (pane, dir == ("down" :: Text))
                 _ -> return ())
         _ <- w ^. jss ("leksahListActivate" :: Text) (fun $ \_ _ args -> case args of
-                (paneV:_) -> valToText paneV >>= liftIO . fireListActivate
+                (paneV:_) -> do
+                    pane <- valToText paneV
+                    focusLog ("[" <> show wid <> "] JS leksahListActivate " <> T.unpack pane)
+                    liftIO (fireListActivate pane)
                 _ -> return ())
         _ <- w ^. jss ("leksahFocusTab" :: Text) (fun $ \_ _ args -> case args of
-                (kV:_) -> valToText kV >>= liftIO . fireFocusTab
+                (kV:_) -> do
+                    k <- valToText kV
+                    focusLog ("[" <> show wid <> "] JS leksahFocusTab (focusin) " <> T.unpack k)
+                    liftIO (fireFocusTab k)
                 _ -> return ())
         _ <- w ^. jss ("leksahTermActivity" :: Text) (fun $ \_ _ _ -> liftIO (fireTermActivity ()))
+        _ <- w ^. jss ("leksahPaneFocus" :: Text) (fun $ \_ _ args -> case args of
+                (pV:_) -> do
+                    pid <- valToText pV
+                    focusLog ("[" <> show wid <> "] JS leksahPaneFocus " <> T.unpack pid)
+                    liftIO (fireJsPaneFocus pid)
+                _ -> return ())
         return ()
     let paneMoveE p   = fmapMaybe (\(pane, dir) -> if pane == p then Just dir else Nothing) listMoveE
         paneActivateE p = fmapMaybe (\pane -> if pane == p then Just () else Nothing) listActivateE
@@ -2824,7 +3553,8 @@ main showMenubar macTitlebar ide = mdo
             , fmapMaybe (listToMaybe . M.elems) flipTabE
             -- ⌥⌘N / ⌃⌘N navigation focuses the pane it shows, like the flipper.
             , fmapMaybe (listToMaybe . M.elems) numSelTabE ]
-    performEvent_ $ ffor activatedPaneE $ \(_, sel) ->
+    performEvent_ $ ffor activatedPaneE $ \(_, sel) -> do
+        focusLog ("[" <> show wid <> "] activatedPaneE -> leksahFocusPane " <> T.unpack sel)
         liftJSM . void $ jsg ("window" :: Text) ^. js1 ("leksahFocusPane" :: Text) sel
 
     -- Persist the session (open files, open terminals, visible tabs) whenever it
@@ -2832,16 +3562,24 @@ main showMenubar macTitlebar ide = mdo
     -- (empty) state can't clobber the file before we've read it.  Debounced so a
     -- burst of restore/open events collapses into a single write.
     restoredFlagD <- holdDyn False (True <$ restoreE)
-    tallD <- holdUniqDyn $ view (prefs . to tallVisibility) <$> ide
-    wide1D <- holdUniqDyn $ view (prefs . to wide1Visibility) <$> ide
+    -- Only the ACTIVE window's network persists the session: its visibleTabsD is
+    -- the one saved as the shared side/bottom selection, and the per-window wide0
+    -- + visibility all come from the shared '_webWindows', so any single window
+    -- writes the full multi-window layout.  Gating to one avoids N racing writers.
+    isActiveD   <- holdUniqDyn ((== Just wid) . _activeWindow <$> ide)
     -- The Preferences pane is transient — never save/restore it as an open tab.
     let notPrefs = (/= PreferencesKey)
     sessionD <- holdUniqDyn $
-      (\rt vis tall recF wide1 ->
-          WebSession 2 (map snd (filter (notPrefs . snd) rt))
-                       (M.toList (M.filter notPrefs vis)) (Just tall) (Just recF) (Just wide1))
-        <$> recentTabs <*> visibleTabsD <*> tallD <*> recentFilesD <*> wide1D
-    saveSessE <- debounce (1 :: NominalDiffTime) (gate (current restoredFlagD) (updated sessionD))
+      (\wins vis recF ->
+          WebSession 4
+            [ WebWindowSession (filter notPrefs (_wwWide0 ww)) (_wwActive ww)
+                               (_wwTall ww) (_wwWide1 ww)
+            | (_, ww) <- M.toList wins ]
+            (M.toList (M.filterWithKey (\a k -> a /= "wide0" && notPrefs k) vis))
+            (Just recF))
+        <$> webWindowsD <*> visibleTabsD <*> recentFilesD
+    let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
+    saveSessE <- debounce (1 :: NominalDiffTime) (gate (current writeGateD) (updated sessionD))
     performEvent_ $ ffor saveSessE $ liftIO . writeWebSession
 
     -- Persist preference toggles (toolbar buttons: show hidden/ignored files,
@@ -2893,7 +3631,32 @@ main showMenubar macTitlebar ide = mdo
       <> ((^.. (to $ \() -> do
         tb <- readIDE triggerBuild
         void . liftIO $ tryPutMVar tb ())) <$> editorE)
-      <> ((\v -> [modifyIDE_ (prefs %~ \p -> p { tallVisibility = v })]) <$> restoreTallE)
-      <> ((\v -> [modifyIDE_ (prefs %~ \p -> p { wide1Visibility = v })]) <$> restoreWide1E)
+      -- (Per-window side/bottom visibility is seeded into '_webWindows' by
+      -- 'newIDE' at restore, so there is no restore-visibility event here.)
       <> ((\(PrefsUpdate f) -> [modifyIDE_ (prefs %~ f)]) <$> prefsPaneE)
+      -- wide0 tab ownership lives in the shared per-window state: opening a tab
+      -- moves it into THIS window (front, active), closing removes it, and
+      -- focusing/clicking one floats it to the MRU front.  Every window's reflex
+      -- network then re-renders its own wide0 row from that shared state.
+      <> ((\m -> [modifyIDE_ (webWindows %~ \wins ->
+                    foldl' (\ws k -> moveTabTo wid k ws) wins (M.keys m))]) <$> openTabsE)
+      <> ((\ks -> [modifyIDE_ (webWindows %~ closeWide0 wid ks)]) <$> closeTabsE)
+      <> ((\k -> [modifyIDE_ (webWindows %~ activateWide0 wid k)]) <$> wide0ActivateE)
+      -- Cross-window flip: make the selected tab active in ITS window (which was
+      -- just raised), without moving it here.
+      <> (fmapMaybe (\(w, fi) -> (\k -> [modifyIDE_ (webWindows %~ activateWide0 w k)])
+                                 <$> flipKeyOf fi) crossFlipE)
+      -- Float an item to the front of the SHARED flip MRU ('_flipMru') — the one
+      -- flipper order every window reads (see flipBumpE above).
+      <> ((\fi -> [modifyIDE_ (flipMru %~ \mru -> fi : filter (/= fi) mru)]) <$> flipBumpE)
+      -- Mirror this window's open flipper onto every other OS window purely through
+      -- SHARED state: write '_flipMirror' and let each window draw it from its own
+      -- reflex network (see flipMirrorSharedD above).  NO cross-window JS broadcast
+      -- — 'ideJSM_' into every WKWebView deadlocks the jsaddle-wkwebview main-thread
+      -- bridge with 2+ windows.  We tag the state with THIS window's id so the mirror
+      -- knows the owner (and skips redrawing it here).
+      <> ((\(items, idx) -> [modifyIDE_ (flipMirror .~ Just (widN, items, idx))])
+            <$> flipMirrorShowE)
+      <> ((\() -> [modifyIDE_ (flipMirror .~ Nothing)])
+            <$> flipMirrorHideE)
   return topEvents

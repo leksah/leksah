@@ -38,6 +38,10 @@ module IDE.Web.CmdServer
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, tryTakeMVar, putMVar)
 import Control.Exception (SomeException, catch, finally, try)
+import GHC.Conc (threadStatus, ThreadStatus(..))
+import GHC.Conc.Sync (listThreads, threadLabel)
+import GHC.Stack.CloneStack (cloneThreadStack, decode, StackEntry(..))
+import Data.List (isPrefixOf, isInfixOf)
 import Control.Lens ((^.))
 import Control.Monad (forever, void, when)
 
@@ -72,13 +76,14 @@ import Text.Printf (printf)
 
 import IDE.Core.State
        (IDERef, reflectIDE, ideJSM, readIDE, workspace, runWorkspace,
-        runProject, pjPackages, ipdPackageName, wsProjects)
+        runProject, pjPackages, ipdPackageName, wsProjects, setLoggerLevel)
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.Types (filePathToProjectKey)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.ScreenshotRequest (requestScreenshot)
+import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Workspaces (projectOpenThis, workspaceTryQuiet, makePackage')
 
@@ -152,6 +157,60 @@ handleConn ideR conn = do
       -- answered as soon as the control socket is serving, so it marks the point
       -- the relaunched UI is back.
       ("ping" : _) -> reply "ok\n"
+
+      -- threads: dump every RTS (green) thread's label + status.  The definitive
+      -- view of a pure-Haskell freeze — which thread is blocked on what — that
+      -- `sample` can't see (it only shows OS threads; blocked green threads are
+      -- invisible).  Long-running threads are labelled at their fork sites
+      -- (resync notifiers, bridge drains, per-window frame threads).
+      ("threads" : _) -> do
+        ts <- listThreads
+        lns <- mapM (\t -> do
+                 lbl <- threadLabel t
+                 st  <- (try (threadStatus t) :: IO (Either SomeException ThreadStatus))
+                 return $ T.pack (show t <> "  " <> maybe "-" id lbl
+                                  <> "  " <> either (const "?") show st)) ts
+        reply (T.unlines (lns <> [T.pack ("total=" <> show (length ts))]))
+
+      -- stacks [SUBSTR]: decoded stack snapshots of the labelled long-running
+      -- threads (or, with SUBSTR, of every labelled thread matching it) — shows
+      -- the exact call chain a wedged thread is blocked in.  Needs the code
+      -- compiled with -finfo-table-map for source locations.
+      ("stacks" : rest) -> do
+        let want = case rest of
+              (s : _) | not (T.null s) -> T.unpack s
+              _ -> ""   -- default: the freeze-forensics threads
+            interesting l
+              | null want = any (`isPrefixOf` l)
+                              ["resync-notifier", "reflex-frames", "bridge-drain"]
+              | otherwise = want `isInfixOf` l
+        ts <- listThreads
+        lns <- fmap concat $ mapM (\t -> do
+                 mlbl <- threadLabel t
+                 case mlbl of
+                   Just l | interesting l -> do
+                     st <- (try (threadStatus t) :: IO (Either SomeException ThreadStatus))
+                     entries <- (try (cloneThreadStack t >>= decode)
+                                   :: IO (Either SomeException [StackEntry]))
+                     return $ T.pack ("== " <> show t <> "  " <> l <> "  "
+                                      <> either (const "?") show st)
+                            : case entries of
+                                Left e   -> [T.pack ("   <stack unavailable: " <> show e <> ">")]
+                                Right es -> [ T.pack ("   " <> functionName e
+                                                      <> "  (" <> moduleName e
+                                                      <> " " <> srcLoc e <> ")")
+                                            | e <- take 60 es ]
+                   _ -> return []) ts
+        reply (T.unlines lns)
+
+      -- resync-state: each window's resync signal/ack MVar occupancy (see
+      -- 'resyncStates') — pinpoints where a frozen window's resync stalled.
+      ("resync-state" : _) -> do
+        sts <- resyncStates
+        reply . T.unlines $
+          [ T.pack (show wid <> " sig=" <> (if s then "FULL" else "empty")
+                             <> " ack=" <> (if a then "FULL" else "empty"))
+          | (wid, s, a) <- sts ]
 
       -- screenshot FILE: capture the UI to a PNG (native WKWebView snapshot on
       -- macOS).  Relative paths resolve against the client's cwd.
@@ -255,6 +314,12 @@ handleConn ideR conn = do
                       else " (tmux session 'leksah' on the remote; created if"
                            <> " missing).\nUse HOST#TARGET for a specific"
                            <> " session, e.g. cc-connect '" <> host <> "#0'.\n")
+
+      -- log LOGGER LEVEL: set an hslogger logger's level at runtime (no restart).
+      -- e.g. `leksah-cmd log leksah.focus debug` turns on focus/activation
+      -- diagnostics (→ ~/.leksah/focus-debug.log); `… off` silences them.
+      ("log" : loggerName : levelT : _) | not (T.null loggerName) ->
+        setLoggerLevel (T.unpack loggerName) (T.unpack levelT) >>= reply
 
       ("help" : _) -> reply usage
       []            -> reply usage
@@ -362,6 +427,8 @@ usage = T.unlines
   , "  ping                    reply \"ok\" (liveness check for wait-ready)"
   , "  screenshot FILE         capture the UI to a PNG (wkwebview)"
   , "  grab-region [TARGET]    select a screen region → its path into a terminal pane"
+  , "  log LOGGER LEVEL        set an hslogger logger's level live, e.g."
+  , "                          `log leksah.focus debug` (→ ~/.leksah/focus-debug.log), `… off`"
   ]
 
 -- | Held while a 'rebuild-self' build runs, so two clients can't build at once.

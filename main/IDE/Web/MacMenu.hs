@@ -1,5 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- | The native macOS menu bar for leksah-wkwebview.
 --
 -- Builds an AppKit @NSMenu@ (via the Objective-C glue in
@@ -12,31 +13,45 @@ module IDE.Web.MacMenu
   , setupMacTitlebar
   ) where
 
-import Control.Lens ((^.))
+import Control.Applicative ((<|>))
+import Control.Lens ((^.), (.~), (?~), (&), (%~))
 import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
 import Data.List (intercalate)
+import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
 
 import Foreign.C.String (CString, withCString, peekCString)
 import Foreign.C.Types (CInt(..))
+import Foreign.Ptr (Ptr, castPtr)
+import System.Exit (ExitCode(..))
 import System.IO.Unsafe (unsafePerformIO)
+import System.Posix.Process (exitImmediately)
 
-import IDE.Core.State (reflectIDE)
-import IDE.Core.Types (filePathToProjectKey)
+import Language.Javascript.JSaddle.WKWebView (WKWebView(..), jsaddleMainHTMLWithBaseURL)
+
+import IDE.Core.State (reflectIDE, readIDE, modifyIDE_)
+import IDE.Core.Types
+       (filePathToProjectKey, WindowId(..), webWindows, activeWindow,
+        wwWide0, wwActive)
 import IDE.Gtk.Workspaces (workspaceTry)
 import IDE.Workspaces (projectOpenThis)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.IDERefStore (getGlobalIDERef)
+import IDE.Web.Main (jsMain, indexHtml, mintWindowId)
 import IDE.Web.MenuModel (menus, MenuItem(..))
+import IDE.Web.NewWindowRequest
+       (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
+import IDE.Web.WindowBridge (unregisterWindowBridge, unregisterResync)
 import IDE.Web.ScreenshotRequest
        (registerScreenshotHandler, registerScreenshotRegionHandler)
 import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
@@ -61,6 +76,12 @@ foreign import ccall "leksah_menu_install"  c_menuInstall :: IO ()
 -- equivalents so ⌘D etc. pass through to the editor otherwise.
 foreign import ccall "leksah_set_terminal_active" c_setTerminalActive :: CInt -> IO ()
 foreign import ccall "leksah_titlebar_setup" c_titlebarSetup :: IO ()
+-- Create a native NSWindow + WKWebView for a freshly-minted 'WindowId'; the ObjC
+-- glue calls back 'leksah_attach_window' once the webview exists so Haskell can
+-- attach a jsaddle context (a second reflex network) to it.
+foreign import ccall "leksah_new_window" c_newWindow :: CInt -> IO ()
+-- Bring a specific window to the front (the global flipper's cross-window raise).
+foreign import ccall "leksah_raise_window" c_raiseWindow :: CInt -> IO ()
 -- Show the native "Open File" panel (NSOpenPanel); it calls back leksah_open_file.
 foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
 -- Show the native "Open Project" panel; it calls back leksah_open_project.
@@ -105,6 +126,64 @@ foreign export ccall "leksah_open_settings" leksah_open_settings :: IO ()
 
 leksah_open_settings :: IO ()
 leksah_open_settings = requestShowPreferences
+
+-- | Called from Objective-C once 'leksah_new_window' (or the restore path) has
+-- created an NSWindow + WKWebView for 'wid': attach a fresh jsaddle context so a
+-- new reflex network ('jsMain') renders leksah's UI into that webview.  The
+-- 'WebWindow' for 'wid' was already seeded by 'mintWindowId'; 'jsMain' adopts it.
+foreign export ccall "leksah_attach_window" leksah_attach_window :: CInt -> Ptr () -> IO ()
+
+leksah_attach_window :: CInt -> Ptr () -> IO ()
+leksah_attach_window widInt pWebView = getGlobalIDERef >>= \case
+  Nothing   -> return ()
+  Just ideR ->
+    -- Flags match the first window's (main/WKWebView.hs: newIDE False True):
+    -- hide the web menubar, use the native title bar.
+    jsaddleMainHTMLWithBaseURL indexHtml baseURL
+      (jsMain False True (Just (WindowId (fromIntegral widInt))) ideR)
+      (WKWebView (castPtr pWebView))
+  where baseURL = "http://127.0.0.1:3367"
+
+-- | Called from Objective-C when a window becomes key (frontmost): record it as
+-- the active window, so the process-wide bridges (close/save/find/…) and the
+-- flipper's in-place actions target it.
+foreign export ccall "leksah_window_activated" leksah_window_activated :: CInt -> IO ()
+
+leksah_window_activated :: CInt -> IO ()
+leksah_window_activated widInt = getGlobalIDERef >>= \case
+  Nothing   -> return ()
+  Just ideR -> reflectIDE (modifyIDE_ (activeWindow ?~ WindowId (fromIntegral widInt))) ideR
+
+-- | Called from Objective-C when a window is closing: its wide0 tabs merge into
+-- the frontmost remaining window (its 'activeWindow', else the lowest-id one);
+-- closing the last window quits the app.  Also drops the window's bridge.
+foreign export ccall "leksah_window_closing" leksah_window_closing :: CInt -> IO ()
+
+leksah_window_closing :: CInt -> IO ()
+leksah_window_closing widInt = getGlobalIDERef >>= \case
+  Nothing   -> return ()
+  Just ideR -> do
+    let wid = WindowId (fromIntegral widInt)
+    unregisterWindowBridge wid
+    unregisterResync wid
+    reflectIDE (do
+      wins <- readIDE webWindows
+      act  <- readIDE activeWindow
+      case M.lookup wid wins of
+        Nothing      -> return ()   -- already merged/gone
+        Just closing -> do
+          let others = M.delete wid wins
+          case M.keys others of
+            [] -> liftIO (exitImmediately ExitSuccess)   -- last window → quit
+            _  -> do
+              let target = case act of
+                             Just a | a /= wid, M.member a others -> a
+                             _ -> fst (M.findMin others)
+                  merge tw = tw & wwWide0  %~ (++ closing ^. wwWide0)
+                                & wwActive %~ (<|> closing ^. wwActive)
+              modifyIDE_ $ \i -> i & webWindows  .~ M.adjust merge target others
+                                   & activeWindow .~ Just target
+      ) ideR
 
 -- | The macOS app menu holds Settings… natively (see leksah-mac-menu.m), so
 -- strip the Preferences command from the shared menu model when building the
@@ -174,6 +253,17 @@ installMacMenu = do
   -- The toolbar/menubar Open commands show the native open panels.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
+  -- File ▸ New Window: mint a WindowId (seeds an empty WebWindow), then ask the
+  -- ObjC glue to create an NSWindow + WKWebView; it calls back leksah_attach_window.
+  setNewWindowHandler $ getGlobalIDERef >>= \case
+    Nothing   -> return ()
+    Just ideR -> do
+      WindowId n <- mintWindowId ideR
+      c_newWindow (fromIntegral n)
+  -- Restore: create a native window for an already-seeded window id (no mint).
+  setOpenWindowHandler (c_newWindow . fromIntegral)
+  -- Global flipper: bring another window to the front on cross-window select.
+  setRaiseWindowHandler (c_raiseWindow . fromIntegral)
   -- The Preferences colour swatches open the native NSColorPanel (the web
   -- colour input's popover mis-anchors in our transparent-titlebar window).
   setColorPickImpl $ \hex -> withCString (T.unpack hex) c_pickColor

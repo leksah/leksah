@@ -17,6 +17,7 @@
 -- persisted natively by the wkwebview front-end.)
 module IDE.Web.Session
   ( WebSession(..)
+  , WebWindowSession(..)
   , emptyWebSession
   , readWebSession
   , writeWebSession
@@ -38,20 +39,32 @@ import IDE.Web.Events (TabKey(..))
 -- | The current on-disk format version.  Bump when the shape changes so an old
 -- file is ignored rather than mis-read.
 -- v3: terminal tabs are keyed by tmux session id (Text) instead of an Int.
+-- v4: multi-window — the wide0 tabs / visibility are per-OS-window ('wsWindows'),
+--     ordered by window (index = restored 'WindowId'); positions persist natively
+--     via Cocoa's per-window frame autosave, so no frame is stored here.
 webSessionVersion :: Int
-webSessionVersion = 3
+webSessionVersion = 4
+
+-- | One OS window's persisted state.  The list position in 'wsWindows' is the
+-- window's restored id (0 = the primary window).
+data WebWindowSession = WebWindowSession
+  { wwsWide0  :: [TabKey]           -- ^ this window's wide0 tabs, MRU order
+                                    --   (open editors/terminals = the Editor/
+                                    --   TerminalKey entries)
+  , wwsActive :: Maybe TabKey       -- ^ the wide0 tab shown in this window
+  , wwsTall   :: TallVisibility     -- ^ side-pane visibility
+  , wwsWide1  :: TallVisibility     -- ^ bottom-pane visibility
+  } deriving (Eq, Show, Generic)
 
 data WebSession = WebSession
   { wsVersion :: Int                -- ^ format version
-  , wsTabs    :: [TabKey]           -- ^ every open tab, in flipper (MRU) order;
-                                    --   the open files and terminals are exactly
-                                    --   the 'EditorKey'/'TerminalKey' entries
-  , wsVisible :: [(Text, TabKey)]   -- ^ layout area -> the tab visible there
-  , wsTall    :: Maybe TallVisibility -- ^ side-pane visibility (show/auto-hide/hide)
+  , wsWindows :: [WebWindowSession] -- ^ per-OS-window state, ordered by window id
+  , wsVisible :: [(Text, TabKey)]   -- ^ shared side/bottom area -> tab visible there
   , wsRecentFiles :: Maybe [FilePath] -- ^ recently opened files, most recent first
-  , wsWide1   :: Maybe TallVisibility -- ^ bottom-pane visibility (show/auto-hide/hide)
   } deriving (Eq, Show, Generic)
 
+instance ToJSON WebWindowSession
+instance FromJSON WebWindowSession
 instance ToJSON WebSession
 instance FromJSON WebSession
 
@@ -64,7 +77,7 @@ instance ToJSON TallVisibility
 instance FromJSON TallVisibility
 
 emptyWebSession :: WebSession
-emptyWebSession = WebSession webSessionVersion [] [] Nothing Nothing Nothing
+emptyWebSession = WebSession webSessionVersion [] [] Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = getConfigFilePathForSave "web-session.json"

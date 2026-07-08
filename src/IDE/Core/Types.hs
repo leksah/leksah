@@ -100,6 +100,14 @@ module IDE.Core.Types (
 
 ,   Prefs(..)
 ,   TallVisibility(..)
+,   TabKey(..)
+,   WindowId(..)
+,   WebWindow(..)
+,   wwWide0
+,   wwActive
+,   wwTall
+,   wwWide1
+,   wwFrame
 ,   PrefsFile(..)
 ,   candyState
 ,   EditorStyle(..)
@@ -167,6 +175,13 @@ module IDE.Core.Types (
 ,   externalModified
 ,   jsContexts
 ,   logLineMap
+,   webWindows
+,   activeWindow
+,   nextWindowId
+,   flipMirror
+,   FlipItem(..)
+,   flipMru
+,   ideVersion
 
 -- Workspace
 ,   wsVersion
@@ -292,6 +307,26 @@ data IDE            =  IDE {
 ,   _externalModified    :: MVar (Set FilePath)
 ,   _jsContexts          :: [JSContextRef]
 ,   _logLineMap          :: Map Int (Text, LogTag)
+,   _webWindows          :: Map WindowId WebWindow -- ^ per-OS-window state (multi-window web UI)
+,   _activeWindow        :: Maybe WindowId         -- ^ the frontmost OS window (native becomeKey)
+,   _nextWindowId        :: Int                    -- ^ monotonic 'WindowId' minter
+,   _flipMirror          :: Maybe (Int, [(Text, Int)], Int)
+                                                    -- ^ shared flipper-mirror state so every OS window
+                                                    --   can draw the open flipper: @(ownerWindowId,
+                                                    --   [(label, itemOwnerWinId)], selectedIndex)@;
+                                                    --   'Nothing' = no flipper open.  Each window renders
+                                                    --   its own mirror from this (via the MVar poll) —
+                                                    --   never a cross-window JS broadcast (that deadlocks
+                                                    --   the jsaddle-wkwebview main-thread bridge).
+,   _flipMru             :: [FlipItem]              -- ^ THE flip MRU, shared by every OS window (single
+                                                    --   source of truth for flipper order).  Bumped via
+                                                    --   'modifyIDE_' on focus/click/open/flip-commit and
+                                                    --   when a window becomes key; each window reads it
+                                                    --   through its polled 'ideD'.
+,   _ideVersion          :: Int                    -- ^ bumped on every 'modifyIDEM'; lets each web-UI
+                                                    --   window poll the shared MVar and refresh its
+                                                    --   'ideD' when the cross-window trigger fan-out
+                                                    --   drops a fire to a background window
 } -- deriving Show
 
 data DebugState = DebugState
@@ -606,6 +641,49 @@ data Workspace = Workspace {
 -- | Visibility of the side ("tall") pane, cycled by the toolbar button.
 data TallVisibility = TallShow | TallAutoHide | TallHide
     deriving (Eq, Show, Read, Enum, Bounded, Generic)
+
+-- | Identifies one open tab/pane in the web UI.  Lives here (rather than in
+-- @IDE.Web.Events@, which re-exports it) because 'WebWindow' below references
+-- it and @IDE.Core@ must not depend on @IDE.Web@.
+data TabKey
+  = WorkspaceKey
+  | ErrorsKey
+  | LogKey
+  | GrepKey
+  | TerminalsKey
+  | TerminalKey Text
+  | MetadataKey
+  | ChangesKey
+  | PreferencesKey
+  | EditorKey FilePath
+    deriving (Ord, Eq, Show, Generic)
+
+-- | Identifies one native OS window in the multi-window web UI.  Minted
+-- monotonically ('nextWindowId'); a freed id is never reused.
+newtype WindowId = WindowId Int deriving (Eq, Ord, Show, Generic)
+
+-- | Per-OS-window state that must be visible across windows (it lives
+-- window-keyed in the shared 'IDE' MVar so a mutation in one window's reflex
+-- network is observed by every other window and by session persistence).  The
+-- shared side pane / bottom bar /content/ is NOT here — only what is genuinely
+-- per-window: the wide0 (editor/terminal) tabs this window owns, its visible
+-- wide0 tab, its side/bottom pane visibility, and its native frame.
+data WebWindow = WebWindow
+  { _wwWide0  :: [TabKey]          -- ^ wide0 tabs owned by this window, MRU/flip order
+  , _wwActive :: Maybe TabKey      -- ^ the visible wide0 tab in this window
+  , _wwTall   :: TallVisibility    -- ^ per-window side-pane visibility
+  , _wwWide1  :: TallVisibility    -- ^ per-window bottom-bar visibility
+  , _wwFrame  :: Maybe Text        -- ^ native window frame "x,y,w,h" (filled by the native side)
+  } deriving (Eq, Show)
+
+-- | A flipper (Ctrl-Tab) target: an ordinary tab, or an individual tmux pane
+-- @(session id, window, pane)@ — so the flipper cycles panes, not whole
+-- terminals.  The session id is tmux's stable @#{session_id}@.  Lives here
+-- (rather than in @IDE.Web.Events@, which re-exports it) because the shared
+-- flip MRU ('flipMru') references it and @IDE.Core@ must not depend on
+-- @IDE.Web@.
+data FlipItem = FlipTab TabKey | FlipPane Text Int Int
+  deriving (Eq, Ord, Show)
 
 --
 -- | Preferences is a data structure to hold configuration data
@@ -950,6 +1028,7 @@ type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)
 
 makeLenses ''IDE
 makeLenses ''Workspace
+makeLenses ''WebWindow
 
 wsProjectKeys :: Getter Workspace [ProjectKey]
 wsProjectKeys = wsProjects . to (map pjKey)

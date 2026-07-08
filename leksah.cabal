@@ -288,6 +288,7 @@ library
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.PreferencesRequest
+        IDE.Web.WindowBridge
         IDE.Web.RegionCapture
         IDE.Web.RegionGrabRequest
         IDE.Web.AIContextRequest
@@ -298,6 +299,7 @@ library
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
         IDE.Web.OpenFileRequest
+        IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
         IDE.Web.RemoteTermRequest
@@ -340,8 +342,10 @@ library
         Paths_leksah
     default-language: Haskell2010
     default-extensions: ViewPatterns
+    -- -finfo-table-map: source locations for `leksah-cmd stacks` (decoded
+    -- stack snapshots of blocked threads — the multi-window freeze forensics).
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
-                 -ferror-spans -Wall
+                 -ferror-spans -Wall -finfo-table-map
     build-depends:
         Cabal >=3.2.1.0 && <3.17,
         Glob >=0.9.2 && <0.11,
@@ -526,6 +530,7 @@ library leksah-nogtk
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.PreferencesRequest
+        IDE.Web.WindowBridge
         IDE.Web.RegionCapture
         IDE.Web.RegionGrabRequest
         IDE.Web.AIContextRequest
@@ -536,6 +541,7 @@ library leksah-nogtk
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
         IDE.Web.OpenFileRequest
+        IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
         IDE.Web.RemoteTermRequest
@@ -579,8 +585,10 @@ library leksah-nogtk
         Paths_leksah
     default-language: Haskell2010
     default-extensions: ViewPatterns
+    -- -finfo-table-map: source locations for `leksah-cmd stacks` (decoded
+    -- stack snapshots of blocked threads — the multi-window freeze forensics).
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
-                 -ferror-spans -Wall
+                 -ferror-spans -Wall -finfo-table-map
     build-depends:
         Cabal >=3.2.1.0 && <3.17,
         Glob >=0.9.2 && <0.11,
@@ -792,9 +800,11 @@ executable leksah-wkwebview
         ApplicationServices
       build-depends:
         base >=4.0.0.0 && <4.23,
+        containers >=0.2.0.0 && <0.9,
         data-default >=0.7.1.1 && <0.9,
         lens >=4.15.4 && <5.4,
         text >=0.11.1.5 && <2.2,
+        unix >=2.3.1.0 && <2.9,
         leksah:leksah-nogtk,
         jsaddle-wkwebview >=0.9.4.0 && <0.10
 

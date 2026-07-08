@@ -22,6 +22,11 @@ extern void leksah_open_file(const char *path);
 extern void leksah_open_project(const char *path);
 extern void leksah_unsnap(const char *key);   // Tmux ▸ Underlay ▸ Unsnap <window>
 extern void leksah_open_settings(void);        // app menu ▸ Settings…
+// Multi-window: attach a jsaddle context to a just-created webview; track the
+// frontmost window; merge a closing window's tabs into another (or quit).
+extern void leksah_attach_window(int wid, void *webview);
+extern void leksah_window_activated(int wid);
+extern void leksah_window_closing(int wid);
 
 // The title bar is transparent and the WKWebView fills the whole window, so the
 // web toolbar sits in the title-bar strip.  The WKWebView swallows mouse events,
@@ -34,6 +39,10 @@ static const CGFloat kLeksahTitlebarHeight = 28.0;
 static double  gToolbarMinX = 1.0e9;   // left edge of the first toolbar button
 static double  gToolbarMaxX = -1.0e9;  // right edge of the last toolbar button
 static NSWindow *gLeksahWindow = nil;
+// Every leksah OS window, keyed by its WindowId (@(wid)) → NSWindow.  wid 0 is
+// the first window (created by jsaddle-wkwebview); further windows come from
+// leksah_new_window.  Used to raise/address a specific window by id.
+static NSMutableDictionary *gWindows = nil;
 
 @interface LeksahMenuTarget : NSObject
 - (void)leksahAction:(id)sender;
@@ -491,7 +500,12 @@ static void leksah_install_titlebar_drag(void) {
         handler:^NSEvent *(NSEvent *e) {
             NSWindow *w = [e window];
             NSView *content = (w != nil) ? [w contentView] : nil;
-            if (w != gLeksahWindow || content == nil) return e;
+            // Drag any leksah OS window from its title-bar strip, not just the
+            // first one — every window is tracked in gWindows.  (The toolbar
+            // x-range is measured from window 0, but the layout is identical in
+            // every window, so it applies to all of them.)
+            if (content == nil || gWindows == nil
+                || ![[gWindows allValues] containsObject:w]) return e;
             NSPoint p = [e locationInWindow];                       // origin bottom-left
             CGFloat yFromTop = NSHeight([content bounds]) - p.y;
             if (yFromTop < 0 || yFromTop > kLeksahTitlebarHeight) return e;  // below the title bar
@@ -970,6 +984,80 @@ static void leksah_read_holes(void) {
     ((void (*)(id, SEL, id, id))objc_msgSend)(web, sel, js, handler);
 }
 
+// The per-window title-bar configuration shared by the first window and every
+// window from leksah_new_window: transparent full-size-content title bar (so the
+// web toolbar occupies it), per-window frame autosave, and the become-key /
+// will-close observers that drive active-window tracking and close-merge.
+static void leksah_configure_window(NSWindow *win, int wid) {
+    if (gWindows == nil) gWindows = [[NSMutableDictionary alloc] init];
+    [gWindows setObject:win forKey:@(wid)];
+    if (wid == 0) gLeksahWindow = win;
+    // Use KVC for the 10.10+ properties so this compiles against the older
+    // Cocoa headers in the build environment (the running OS has them).
+    [win setValue:@YES forKey:@"titlebarAppearsTransparent"];
+    [win setValue:@(1)  forKey:@"titleVisibility"];   // NSWindowTitleHidden
+    win.styleMask |= (1 << 15);                        // FullSizeContentView
+    win.movableByWindowBackground = YES;
+    // Persist each window's position and size across restarts.  Cocoa stores the
+    // frame in NSUserDefaults under this name; setFrameUsingName restores it now
+    // (if previously saved) and setFrameAutosaveName keeps it saved on changes.
+    // wid 0 keeps the historical name so existing saved geometry is preserved.
+    NSString *autosave = (wid == 0) ? @"LeksahMainWindow"
+                                    : [NSString stringWithFormat:@"LeksahWindow%d", wid];
+    [win setFrameUsingName:autosave];
+    [win setFrameAutosaveName:autosave];
+    // Frontmost window → active window (routes the bridges + flipper in-place).
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeKeyNotification
+        object:win queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){ (void)note; leksah_window_activated(wid); }];
+    // Closing: merge this window's tabs elsewhere (or quit if it was the last),
+    // then forget it.
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowWillCloseNotification
+        object:win queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){
+            (void)note;
+            leksah_window_closing(wid);
+            [gWindows removeObjectForKey:@(wid)];
+        }];
+}
+
+// Create a native window + WKWebView for a freshly-minted WindowId and hand the
+// webview to Haskell (leksah_attach_window) so it can attach a jsaddle context.
+// WebKit isn't linked into this file, so the WKWebView classes are reached
+// dynamically (as elsewhere in this file).
+void leksah_new_window(int wid) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSRect contentSize = NSMakeRect(0.0, 500.0, 1000.0, 700.0);
+        NSUInteger mask = NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
+                        | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
+        NSWindow *win = [[NSWindow alloc] initWithContentRect:contentSize
+            styleMask:mask backing:NSBackingStoreBuffered defer:YES];
+        win.backgroundColor = [NSColor whiteColor];
+        // WKWebViewConfiguration with developer extras (matches jsaddle's AppDelegate).
+        Class cfgClass = NSClassFromString(@"WKWebViewConfiguration");
+        id cfg = [[cfgClass alloc] init];
+        @try { [[cfg valueForKey:@"preferences"] setValue:@YES forKey:@"developerExtrasEnabled"]; }
+        @catch (__unused NSException *e) {}
+        Class wkClass = NSClassFromString(@"WKWebView");
+        NSRect frame = [[win contentView] frame];
+        id web = ((id (*)(id, SEL, NSRect, id))objc_msgSend)(
+            [wkClass alloc], @selector(initWithFrame:configuration:), frame, cfg);
+        [win setContentView:web];
+        leksah_configure_window(win, wid);
+        [win center];
+        [win makeKeyAndOrderFront:nil];
+        leksah_attach_window(wid, (void *)web);
+    });
+}
+
+// Bring a specific window to the front (the global flipper's cross-window raise).
+void leksah_raise_window(int wid) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSWindow *win = (gWindows != nil) ? [gWindows objectForKey:@(wid)] : nil;
+        if (win != nil) [win makeKeyAndOrderFront:nil];
+    });
+}
+
 static void leksah_configure_titlebar(void) {
     NSWindow *win = [[NSApp windows] firstObject];
     if (win == nil || [win contentView] == nil) {
@@ -977,18 +1065,8 @@ static void leksah_configure_titlebar(void) {
                        dispatch_get_main_queue(), ^{ leksah_configure_titlebar(); });
         return;
     }
-    gLeksahWindow = win;
-    // Use KVC for the 10.10+ properties so this compiles against the older
-    // Cocoa headers in the build environment (the running OS has them).
-    [win setValue:@YES forKey:@"titlebarAppearsTransparent"];
-    [win setValue:@(1)  forKey:@"titleVisibility"];   // NSWindowTitleHidden
-    win.styleMask |= (1 << 15);                        // FullSizeContentView
-    win.movableByWindowBackground = YES;
-    // Persist the window's position and size across restarts.  Cocoa stores the
-    // frame in NSUserDefaults under this name; setFrameUsingName restores it now
-    // (if previously saved) and setFrameAutosaveName keeps it saved on changes.
-    [win setFrameUsingName:@"LeksahMainWindow"];
-    [win setFrameAutosaveName:@"LeksahMainWindow"];
+    // Per-window title-bar + autosave + become-key/will-close observers (wid 0).
+    leksah_configure_window(win, 0);
     leksah_install_relaunch_signal();
     leksah_install_titlebar_drag();
     leksah_install_beep_suppression();

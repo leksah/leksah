@@ -20,7 +20,8 @@ import IDE.Web.Command
         commandToggleDebug, commandToggleMakeDocs, commandToggleTest,
         commandToggleRunBenchmarks, commandToggleMakeDependents,
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
-        commandDebugStepModule, commandDebugContinue, commandFileClose, tmuxKey,
+        commandDebugStepModule, commandDebugContinue, commandFileClose,
+        commandNewWindow, tmuxKey,
         paneCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
         commandSendSelection, commandSendFileRef, commandSendError,
         commandFocusAITerminal)
@@ -81,7 +82,9 @@ prettyKeySpec spec =
 menus :: [(Text, [MenuItem])]
 menus =
   [ ("File",
-      [ item "Open…"         CommandFileOpen
+      [ MenuGlobalKey "New Window" "cmd+n" commandNewWindow
+      , MenuSep
+      , item "Open…"         CommandFileOpen
       , item "Open Project…" CommandProjectOpen
       , item "Save"          CommandFileSave
       , item "Close"         commandFileClose

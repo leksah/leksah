@@ -18,7 +18,8 @@ import Clay
         fontSize, borderStyle, textDecoration, margin, middle, start,
         padding, px, borderRadius, vGradient, backgroundImage, inlineBlock,
         overflowY, pointerEvents, textAlign, width, height, pct, top,
-        zIndex, absolute, position, (?), Css, Auto(..), None(..),
+        zIndex, absolute, position, borderColor, borderWidth, solid,
+        (?), Css, Auto(..), None(..),
         Center(..), Color(..), Background(..), VerticalAlign(..))
 import qualified Clay (display)
 
@@ -48,12 +49,21 @@ flipperCss = do
     height (pct 100)
   ".flipper-content" ? do
     backgroundImage (vGradient (Rgba 64 64 64 0.9) (Rgba 32 32 32 0.9))
-    borderRadius (px 5) (px 5) (px 5) (px 5)
+    -- Border in the owning OS window's colour (set per window as the
+    -- --leksah-window-color CSS var, see flipMirrorJs).
+    borderStyle solid
+    borderWidth (px 6)
+    borderColor (Other "var(--leksah-window-color)")
+    borderRadius (px 12) (px 12) (px 12) (px 12)
     margin (px 20) (px 20) (px 20) (px 20)
     padding (px 10) (px 10) (px 10) (px 10)
     pointerEvents auto
     textAlign start
     boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+  -- When the highlighted item lives in THIS window, thicken the border (6→12px)
+  -- as a strong "the selected pane is here" cue.
+  ".flipper-content.self-selected" ?
+    borderWidth (px 12)
   ".flipper-content button" ? do
     verticalAlign middle
     borderRadius (px 3) (px 3) (px 3) (px 3)
@@ -66,15 +76,33 @@ flipperCss = do
     color white
   ".flipper-content button.selected" ?
     background selectionColor
+  -- Per-entry window icon: a small square coloured by the owning window (filled
+  -- via inline background-color; a hollow grey box for shared side/bottom panes).
+  ".flip-win-icon" ? do
+    Clay.display inlineBlock
+    width (px 11)
+    height (px 11)
+    borderRadius (px 3) (px 3) (px 3) (px 3)
+    borderStyle solid
+    borderWidth (px 2)
+    borderColor (Rgba 0 0 0 0.0)
+    margin (px 0) (px 8) (px 0) (px 0)
+    verticalAlign middle
+  ".flip-win-icon.shared" ?
+    borderColor (Other "#888")
 
 flipperWidget
   :: (MonadWidget t m, Ord k, Show k)
   => Dynamic t [(Text, k)]
-  -> Event t Bool   -- ^ flip step: True = forward (⌃`), False = back (⌃⇧`); opens if hidden
-  -> Event t ()     -- ^ commit (Control released)
+  -> Event t Bool   -- ^ flip step: True = forward (⌘`), False = back (⌘⇧`); opens if hidden
+  -> Event t ()     -- ^ commit (Command released)
+  -> Dynamic t Bool -- ^ highlighted item is owned by this window (thick border)
   -> (Dynamic t k -> m ())
-  -> m (Dynamic t Bool, Event t (Map Text k))   -- ^ (overlay visible?, tab selection)
-flipperWidget recentTabs flipStep flipdone label = do
+  -> m ( Dynamic t Bool                -- ^ overlay visible?
+       , Dynamic t (Maybe (Text, k))   -- ^ the item currently highlighted in the flipper
+       , Dynamic t Int                 -- ^ the highlighted item's index (for the mirror)
+       , Event t (Map Text k) )        -- ^ committed tab selection
+flipperWidget recentTabs flipStep flipdone selfSelD label = do
   let flipdown = () <$ ffilter id  flipStep
       flipup   = () <$ ffilter not flipStep
 
@@ -89,13 +117,15 @@ flipperWidget recentTabs flipStep flipdone label = do
   clickE <- fmap (fmap (mconcat . (^.. traverse))) $
     elDynAttr "div" ((("class" =: "flipper") <>) . bool ("style" =: "display:none") mempty <$> visibleD) $
       divClass "flipper-scroll" $
-        divClass "flipper-content" $
+        elDynAttr "div" (("class" =:) . ("flipper-content" <>) . bool "" " self-selected" <$> selfSelD) $
           selectViewListWithKey selectionIndexD (M.fromList . zip [0..] <$> recentTabs) $ \_ x s -> do
             (e, _) <- el "div" $ elDynAttr' "button" (bool mempty ("class" =: "selected") <$> s) $ label (snd <$> x)
             return $ (uncurry M.singleton) <$> tag (current x) (domEvent Click e)
-  -- flipdone fires on *every* Control release, even a bare Ctrl tap with no flip.
+  -- flipdone fires on *every* Command release, even a bare ⌘ tap with no flip.
   -- Only commit a selection when the flipper was actually up (visibleD, set by
-  -- flipdown/flipup) — otherwise a lone Ctrl would re-select the most-recent tab,
+  -- flipdown/flipup) — otherwise a lone ⌘ would re-select the most-recent tab,
   -- which now focuses that pane and pops its auto-hide bar open.
   return ( visibleD
+         , selectionD
+         , selectionIndexD
          , leftmost [ clickE, uncurry M.singleton <$> fmapMaybe id (tag (current selectionD) (gate (current visibleD) flipdone)) ] )

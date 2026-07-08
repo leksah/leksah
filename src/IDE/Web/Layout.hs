@@ -27,11 +27,47 @@ layoutCss = do
         ("display" -: "block")
     ".tab-wrap" ? do
         position relative
-    ".tab-wrap .leksah-shortcut-badge" ? do
-        "position" -: "absolute"
+    -- All tab-row badges (wide0/tall/wide1) float ABOVE their tab, centred over
+    -- it.  They must be position:fixed: the tab strip is overflow:scroll, which
+    -- clips any absolutely-positioned child that sits above the strip — that's
+    -- why the above-row badges vanished.  hintsJs sets each badge's coordinates
+    -- from its tab's live rect (fixed escapes the strip's clip).
+    ".tab-buttons .leksah-shortcut-badge" ? do
+        "position" -: "fixed"
+        "transform" -: "translateX(-50%)"
+        "border-radius" -: "4px"
+        "z-index" -: "200"
+    -- The ⌘` flip-destination suffix inside a numbered badge: hidden until
+    -- hintsJs tags the target badge .leksah-flip-here (only while badges show).
+    ".leksah-flip-suffix" ? Clay.display none
+    "body.leksah-show-badges .leksah-shortcut-badge.leksah-flip-here .leksah-flip-suffix" ?
+        ("display" -: "inline")
+    -- Command-held navigation hint chips (⌘`, ⌘D, ⌘⇧D): a fixed overlay whose
+    -- chips are positioned from live rects by leksahUpdateHints, shown only while
+    -- the badges are revealed.  translate(-50%,-50%) centres each chip on its
+    -- anchor point.
+    ".leksah-hints" ? do
+        "position" -: "fixed"
         "left" -: "0"
         "top" -: "0"
-        "z-index" -: "6"
+        "right" -: "0"
+        "bottom" -: "0"
+        "pointer-events" -: "none"
+        "z-index" -: "200"
+    ".leksah-hint" ? do
+        Clay.display none
+        "position" -: "fixed"
+        "transform" -: "translate(-50%,-50%)"
+        "background" -: "rgba(15,15,15,0.88)"
+        "color" -: "#ffd866"
+        "font-size" -: "11px"
+        "font-weight" -: "bold"
+        "padding" -: "1px 6px"
+        "border-radius" -: "4px"
+        "pointer-events" -: "none"
+        "white-space" -: "nowrap"
+    "body.leksah-show-badges .leksah-hint" ?
+        ("display" -: "block")
     -- The app fills the window and never scrolls as a whole; only individual
     -- panes scroll.  Without this, scrolling past the end of a pane (e.g. a long
     -- workspace tree) chains to the document and drags the entire UI.
@@ -104,6 +140,13 @@ layoutCss = do
         "padding-left" -: "3px"
         "padding-top" -: "3px"
         "box-sizing" -: "border-box"
+    -- The 3px top pad above is for the editor/terminal BODY (the terminal pulls
+    -- it back with a -3px margin); on the tab STRIP it just dropped the tab
+    -- buttons 3px below the side-bar (tall) tabs.  Zero it on the strips so the
+    -- wide0/wide1 tab buttons line up with the tall ones.  (padding-left stays,
+    -- keeping the tabs aligned with the body's left edge.)
+    ".tab-buttons.area-wide0" ? ("padding-top" -: "0")
+    ".tab-buttons.area-wide1" ? ("padding-top" -: "0")
     -- Keep the side pane's body laid out at its full width while collapsed, so
     -- its contents (e.g. the "New Terminal" button) don't reflow as the column
     -- narrows -- the narrow column just clips them.

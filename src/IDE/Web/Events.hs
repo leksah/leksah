@@ -1,8 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE GADTs #-}
-module IDE.Web.Events where
+module IDE.Web.Events (module IDE.Web.Events, TabKey(..), FlipItem(..)) where
 
 import Control.Lens (makePrisms)
 
@@ -12,12 +11,10 @@ import Data.GADT.Compare.TH (DeriveGEQ(..), DeriveGCompare(..))
 import Data.Map (Map)
 import Data.Text (Text)
 
-import GHC.Generics (Generic)
-
 import Distribution.Types.PackageId (PackageIdentifier(..))
 
 import IDE.Core.CTypes (SrcSpan)
-import IDE.Core.Types (LogRef(..), Prefs(..))
+import IDE.Core.Types (LogRef(..), Prefs(..), TabKey(..), FlipItem(..))
 import IDE.Utils.Project (ProjectKey)
 import IDE.Web.Command (Command(..))
 
@@ -86,6 +83,13 @@ data TerminalEvents
   -- | A control-mode tab saw a window created/closed: the Terminals tree and
   -- tab row should refresh now, not on the next 2s/10s poll.
   | TerminalTreeChanged
+  -- | The leksah user gave a specific pane (by tmux @#{pane_id}@, e.g. @%5@)
+  -- focus *from within leksah* — a ⌘-number split select, or (via the global
+  -- mousedown listener) a pane click.  This is the leksah-owned pane-recency
+  -- signal that floats the pane to the flipper MRU front; deliberately NOT the
+  -- control-mode @%window-pane-changed@ broadcast, which also follows other
+  -- clients attached to the same tmux session.
+  | TerminalPaneFocused Text
   -- | The session's *current* window was just closed (its last pane exited), so
   -- tmux is about to pick a replacement by its own rule — the IDE overrides that
   -- to activate the second entry in the tab-button list (the ⌘1 button) instead.
@@ -145,24 +149,8 @@ newtype ToolbarEvents =
 
 makePrisms ''ToolbarEvents
 
-data TabKey
-  = WorkspaceKey
-  | ErrorsKey
-  | LogKey
-  | GrepKey
-  | TerminalsKey
-  | TerminalKey Text
-  | MetadataKey
-  | ChangesKey
-  | PreferencesKey
-  | EditorKey FilePath
-    deriving (Ord, Eq, Show, Generic)
-
--- | A flipper (Ctrl-Tab) target: an ordinary tab, or an individual tmux pane
--- @(session id, window, pane)@ — so the flipper cycles panes, not whole
--- terminals.  The session id is tmux's stable @#{session_id}@.
-data FlipItem = FlipTab TabKey | FlipPane Text Int Int
-  deriving (Eq, Ord, Show)
+-- ('FlipItem' — a flipper target — now lives in "IDE.Core.Types", re-exported
+-- above, because the shared flip MRU in the IDE record references it.)
 
 data TabEvents e where
   EditorTab    :: TabEvents EditorEvents

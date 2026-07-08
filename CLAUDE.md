@@ -129,6 +129,12 @@
   (orange triangle → beep → red) while interactively testing, and
   `'leksahTestEnd()'` / `'leksahStatus("green")'` (**green circle**, safe) when
   done. Use **blue for rebuild/restart**, red only for active tests.
+- **Freeze/deadlock debugging.** A wedged window (heartbeat stops in the loop
+  log) is almost always one window's reflex *frame thread* blocked on an `MVar`.
+  Diagnostics: `leksah-cmd threads` / `stacks [SUBSTR]` / `resync-state`, the
+  `[win N] alive ideVer=…` heartbeat lines, and `js eval 'Math.random()'` to
+  test which jsaddle transports are live. Full toolset + step-by-step method:
+  [docs/development/debugging-web-ui-freezes.md](docs/development/debugging-web-ui-freezes.md).
 
 ## Web UI architecture (src/IDE/Web, lib leksah-nogtk)
 - Front ends share code: `leksah-warp` (browser at http://127.0.0.1:3367/),
