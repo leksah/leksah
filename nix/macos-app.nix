@@ -12,7 +12,7 @@
 # "damaged" after the load-command rewrite invalidates the original signature.
 { pkgs
 , lib ? pkgs.lib
-, leksah-wkwebview       # exe derivation (…leksah:exe:leksah-wkwebview)
+, leksah                 # exe derivation (…leksah:exe:leksah)
 , leksah-server ? null   # optional exe (…leksah-server:exe:leksah-server)
 , src
 , version
@@ -35,7 +35,7 @@ pkgs.runCommand "Leksah.app"
     mkdir -p "$MACOS" "$FW" "$RES/leksah"
 
     # --- executables (named 'leksah' so leksahSubDir finds the datadir) ---
-    cp ${leksah-wkwebview}/bin/leksah-wkwebview "$MACOS/leksah"
+    cp ${leksah}/bin/leksah "$MACOS/leksah"
     chmod u+w "$MACOS/leksah"
     ${lib.optionalString (leksah-server != null) ''
       cp ${leksah-server}/bin/leksah-server "$MACOS/leksah-server"

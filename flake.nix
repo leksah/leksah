@@ -83,7 +83,7 @@
         # Headless runtime smoke test for the GTK4/WebKitGTK 6.0 front end.
         extraChecks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           leksah-webkitgtk-smoke = pkgs.callPackage ./nix/webkitgtk-smoke.nix {
-            leksah-webkitgtk = flake.packages."leksah:exe:leksah-webkitgtk";
+            leksah-webkitgtk = flake.packages."leksah:exe:leksah";
             leksah-cmd = flake.packages."leksah:exe:leksah-cmd";
             leksah-src = ./.;
           };
@@ -100,7 +100,7 @@
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
           leksah-windows-installer = import ./nix/windows-installer.nix {
             inherit pkgs;
-            leksah-webview2 = flake.packages."x86_64-w64-mingw32:leksah:exe:leksah-webview2";
+            leksah = flake.packages."x86_64-w64-mingw32:leksah:exe:leksah";
             leksah-server = flake.packages."x86_64-w64-mingw32:leksah-server:exe:leksah-server";
             src = ./.;
             version = "0.17.0.0";
@@ -114,7 +114,7 @@
           let
             leksah-macos-app = import ./nix/macos-app.nix {
               inherit pkgs;
-              leksah-wkwebview = flake.packages."leksah:exe:leksah-wkwebview";
+              leksah = flake.packages."leksah:exe:leksah";
               leksah-server = flake.packages."leksah-server:exe:leksah-server";
               src = ./.;
               version = "0.17.0.0";

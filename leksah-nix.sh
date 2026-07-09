@@ -62,7 +62,16 @@ echo "Using build dir: $BUILDDIR"
 # the already-running leksah's dev-shell environment (cabal/ghc are already on
 # PATH), so it calls cabal directly rather than re-entering `nix develop`.  Uses
 # the same build dir + target leksah was launched with.
-if [ "$UI" = "gtk" ]; then REBUILD_TARGET="exe:leksah"; else REBUILD_TARGET="exe:leksah-$UI"; fi
+# Map the UI selector to its cabal executable target.  The classic GTK front
+# end is exe:leksah-classic; the three native web front ends (wkwebview /
+# webkitgtk / webview2) are now a single exe:leksah selected per-OS in the
+# cabal file; warp is its own exe:leksah-warp.
+case "$UI" in
+    gtk)  EXE_TARGET="exe:leksah-classic" ;;
+    warp) EXE_TARGET="exe:leksah-warp" ;;
+    *)    EXE_TARGET="exe:leksah" ;;
+esac
+REBUILD_TARGET="$EXE_TARGET"
 mkdir -p "$HOME/.leksah"
 cat > "$HOME/.leksah/rebuild.sh" <<EOF
 #!/bin/sh
@@ -137,32 +146,14 @@ EOF
 fi
 
 LEKSAH_EXIT_CODE=2
-# Extra per-package flags for CABAL builds only, kept OUT of cabal.project on
-# purpose: cabal.project.local is untracked, so the nix flake (which only sees
-# tracked files) never picks it up — putting these in cabal.project changes
-# every haskell.nix slice hash and rebuilds the world in nix.  -finfo-table-map
-# lets `leksah-cmd stacks` name reflex frames in a wedged window's frame thread
-# (multi-window freeze forensics).
-write_project_local() {
-  cat > cabal.project.local <<'EOF'
-package reflex
-  ghc-options: -finfo-table-map
-package reflex-dom-core
-  ghc-options: -finfo-table-map
-package jsaddle
-  ghc-options: -finfo-table-map
-package jsaddle-wkwebview
-  ghc-options: -finfo-table-map
-EOF
-}
+
 # Exit 2 => relaunch after rebuilding (in-IDE / rebuild-self); exit 3 =>
 # `leksah-cmd restart --no-rebuild`: relaunch but skip the cabal build (and its
 # `nix develop`), since rebuild-self already produced the binary.
 while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   SKIP_REBUILD=0
   [ "$LEKSAH_EXIT_CODE" -eq 3 ] && SKIP_REBUILD=1
-  rm -f .ghc.environment.* cabal.project.local
-  write_project_local
+  rm -f .ghc.environment.*
   mkdir -p bin
 
   if [ "$UI" = "gtk" ]; then
@@ -171,16 +162,15 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
     if [ "$SKIP_REBUILD" != 1 ]; then
       nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command \
         cabal install --builddir "$BUILDDIR" --installdir bin/$GHCARG --overwrite-policy=always \
-          exe:leksah-server exe:leksah exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass \
+          exe:leksah-server exe:leksah-classic exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass \
           || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
     else
       echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
     fi
-    rm -f .ghc.environment.* cabal.project.local
-    write_project_local
+    rm -f .ghc.environment.*
 
     LEKSAH_EXIT_CODE=0
-    PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS run .?submodules=1#launch-leksah -- ./bin/$GHCARG/leksah --develop-leksah "$@" \
+    PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS run .?submodules=1#launch-leksah -- ./bin/$GHCARG/leksah-classic --develop-leksah "$@" \
       || LEKSAH_EXIT_CODE=$?
   else
     # Web UIs (warp/wkwebview/webkitgtk): leksah-server must be on PATH (for
@@ -204,27 +194,26 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
       PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command \
         bash -c '
           set -e
-          bd="$1"; gd="$2"; ui="$3"
-          cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "exe:leksah-$ui"
+          bd="$1"; gd="$2"; tgt="$3"
+          cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "$tgt"
           mkdir -p "bin/$gd"
           ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server)" "bin/$gd/leksah-server"
           ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd)"    "bin/$gd/leksah-cmd"
           ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal)"       "bin/$gd/ffcabal"
-        ' _ "$BUILDDIR" "$GHCARG" "$UI" \
+        ' _ "$BUILDDIR" "$GHCARG" "$EXE_TARGET" \
           || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
     else
       echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
     fi
-    rm -f .ghc.environment.* cabal.project.local
-    write_project_local
+    rm -f .ghc.environment.*
 
     # Launch the freshly-built binary directly, inside the dev shell, with the
     # data dir `cabal run` would have set (the package root).  `exec` so leksah's
     # exit code propagates (2 => rebuilt => relaunch).
     launch_leksah='
-      bd="$1"; ui="$2"; shift 2
+      bd="$1"; ui="$2"; tgt="$3"; shift 3
       export leksah_datadir="$(pwd)"
-      bin="$(cabal list-bin --builddir "$bd" exe:leksah-$ui)"
+      bin="$(cabal list-bin --builddir "$bd" "$tgt")"
       if [ "$ui" = "wkwebview" ]; then
         # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name
         # everywhere).  cabal relinks a new inode each build, so refresh the
@@ -245,11 +234,11 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
         tmux -L leksah -f "$CONF" new-session -A -d -s leksah-0 tail -n +1 -F "$LOGFILE" || true
       echo "Launching leksah-$UI; its output appears as \"Terminal 0\" inside leksah (log: $LOGFILE)"
       PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --command \
-        bash -c "$launch_leksah" _ "$BUILDDIR" "$UI" "$@" > "$LOGFILE" 2>&1 \
+        bash -c "$launch_leksah" _ "$BUILDDIR" "$UI" "$EXE_TARGET" "$@" > "$LOGFILE" 2>&1 \
         || LEKSAH_EXIT_CODE=$?
     else
       PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command \
-        bash -c "$launch_leksah" _ "$BUILDDIR" "$UI" "$@" \
+        bash -c "$launch_leksah" _ "$BUILDDIR" "$UI" "$EXE_TARGET" "$@" \
         || LEKSAH_EXIT_CODE=$?
     fi
 

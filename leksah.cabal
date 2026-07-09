@@ -720,7 +720,7 @@ library leksah-nogtk
             ghc-mod-core >=5.9.0.0 && <5.10,
             monad-control >=1.0.2.3 && <1.1
 
-executable leksah
+executable leksah-classic
     main-is: Main.hs
     hs-source-dirs: main
     default-language: Haskell2010
@@ -785,15 +785,35 @@ executable leksah-warp
         build-depends:
             leksah-server
 
-executable leksah-wkwebview
-    main-is: WKWebView.hs
-    hs-source-dirs: main
+-- The native web-UI front end.  One executable, three platform back ends
+-- selected by os() below — all hosting the shared leksah web UI
+-- (leksah:leksah-nogtk) in a native OS WebView with a native menu bar built
+-- from the shared IDE.Web.MenuModel:
+--   * darwin  → WKWebView.hs   (jsaddle-wkwebview, Cocoa/WebKit, ObjC menu)
+--   * linux   → WebKitGtk.hs   (jsaddle-webkitgtk, GTK4 + WebKitGTK 6.0, GMenu)
+--   * windows → WebView2.hs    (jsaddle-webview2, Win32 + Edge WebView2, Win32 menu)
+executable leksah
+    -- Single, unconditional main-is: a per-OS main-is reads as an "ambiguous
+    -- modulePath" to haskell.nix's plan-to-nix (which flattens every os()
+    -- branch together).  Each front end is its own src-<ui>/Main.hs, selected
+    -- by the per-OS hs-source-dirs below — listed before main/ so it wins over
+    -- the classic leksah-classic main/Main.hs, while main/ still supplies the
+    -- per-OS menu modules (IDE.Web.MacMenu / GtkApp / GtkMenu / Win32Menu).
+    main-is: Main.hs
     default-language: Haskell2010
     -- -T: collect RTS stats so the GC monitor (IDE.Web.Main) can log
     -- major-GC pauses to stderr; negligible overhead.
     ghc-options: -threaded -rtsopts "-with-rtsopts=-T" -Wall -ferror-spans
+    build-depends:
+        base >=4.0.0.0 && <4.23,
+        lens >=4.15.4 && <5.4,
+        text >=0.11.1.5 && <2.2,
+        leksah:leksah-nogtk
 
+    -- macOS: the leksah web UI in a native WKWebView (jsaddle-wkwebview), with a
+    -- native Cocoa menu bar built from the shared IDE.Web.MenuModel.
     if os(osx)
+      hs-source-dirs: src-wkwebview main
       other-modules:
         IDE.Web.MacMenu
       c-sources:
@@ -802,40 +822,22 @@ executable leksah-wkwebview
         Cocoa
         ApplicationServices
       build-depends:
-        base >=4.0.0.0 && <4.23,
         containers >=0.2.0.0 && <0.9,
         data-default >=0.7.1.1 && <0.9,
-        lens >=4.15.4 && <5.4,
-        text >=0.11.1.5 && <2.2,
         unix >=2.3.1.0 && <2.9,
-        leksah:leksah-nogtk,
         jsaddle-wkwebview >=0.9.4.0 && <0.10
 
-    if (!os(osx))
-        buildable: False
-
--- The Linux web-UI front end: the leksah web UI in a native GTK4 window
--- hosting a WebKitGTK 6.0 WebView (jsaddle-webkitgtk), with a native GMenu
--- menubar built from the shared IDE.Web.MenuModel.
-executable leksah-webkitgtk
-    main-is: WebKitGtk.hs
-    hs-source-dirs: main
-    default-language: Haskell2010
-    -- -T: collect RTS stats so the GC monitor (IDE.Web.Main) can log
-    -- major-GC pauses to stderr; negligible overhead.
-    ghc-options: -threaded -rtsopts "-with-rtsopts=-T" -Wall -ferror-spans
-
-    if os(linux)
+    -- Linux: the leksah web UI in a native GTK4 window hosting a WebKitGTK 6.0
+    -- WebView (jsaddle-webkitgtk), with a native GMenu menubar built from the
+    -- shared IDE.Web.MenuModel.
+    elif os(linux)
+      hs-source-dirs: src-webkitgtk main
       other-modules:
         IDE.Web.GtkApp
         IDE.Web.GtkMenu
       build-depends:
-        base >=4.0.0.0 && <4.23,
         bytestring >=0.10.6.0 && <0.13,
         filepath >=1.1.0.1 && <1.6,
-        lens >=4.15.4 && <5.4,
-        text >=0.11.1.5 && <2.2,
-        leksah:leksah-nogtk,
         jsaddle >=0.9.4.0 && <0.10,
         jsaddle-webkitgtk >=0.9.9.3 && <0.10,
         gi-glib >=2.0.14 && <2.1,
@@ -845,23 +847,12 @@ executable leksah-webkitgtk
         gi-webkit >=6.0.2 && <6.1,
         haskell-gi-base >=0.26 && <0.27
 
-    if !os(linux)
-        buildable: False
-
--- The Windows web-UI front end: the leksah web UI in a native Win32 window
--- hosting a Microsoft Edge WebView2 control (jsaddle-webview2), with a native
--- menu bar built from the shared IDE.Web.MenuModel.  Runtime needs the
--- WebView2 runtime and WebView2Loader.dll next to the exe (see
--- jsaddle-webview2's README).
-executable leksah-webview2
-    main-is: WebView2.hs
-    hs-source-dirs: main
-    default-language: Haskell2010
-    -- -T: collect RTS stats so the GC monitor (IDE.Web.Main) can log
-    -- major-GC pauses to stderr; negligible overhead.
-    ghc-options: -threaded -rtsopts "-with-rtsopts=-T" -Wall -ferror-spans
-
-    if os(windows)
+    -- Windows: the leksah web UI in a native Win32 window hosting a Microsoft
+    -- Edge WebView2 control (jsaddle-webview2), with a native menu bar built
+    -- from the shared IDE.Web.MenuModel.  Runtime needs the WebView2 runtime
+    -- and WebView2Loader.dll next to the exe (see jsaddle-webview2's README).
+    elif os(windows)
+      hs-source-dirs: src-webview2 main
       other-modules:
         IDE.Web.Win32Menu
       c-sources:
@@ -872,15 +863,11 @@ executable leksah-webview2
       -- map doesn't know comdlg32, so extra-libraries would fail its plan.
       ghc-options: -optl-lcomdlg32
       build-depends:
-        base >=4.0.0.0 && <4.23,
         data-default >=0.7.1.1 && <0.9,
-        lens >=4.15.4 && <5.4,
-        text >=0.11.1.5 && <2.2,
-        leksah:leksah-nogtk,
         jsaddle-webview2 >=0.1 && <0.2
 
-    if (!os(windows))
-        buildable: False
+    else
+      buildable: False
 
 -- A tiny standalone client for the control socket served by IDE.Web.CmdServer.
 -- Deliberately does NOT depend on the leksah libraries, so it builds in a blink

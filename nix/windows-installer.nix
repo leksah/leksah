@@ -13,7 +13,7 @@
 # Consumed from flake.nix (x86_64-linux only, where crossPlatforms yields ucrt64).
 { pkgs
 , lib ? pkgs.lib
-, leksah-webview2       # cross exe derivation (…leksah:exe:leksah-webview2)
+, leksah                # cross exe derivation (…leksah:exe:leksah)
 , leksah-server ? null  # optional cross exe (…leksah-server:exe:leksah-server)
 , src                   # leksah source tree (for the datadir)
 , version
@@ -26,8 +26,8 @@ let
     # Executable, renamed to leksah.exe (leksahSubDir keys on this name), plus
     # the runtime DLLs (dereferenced so the tree is self-contained).  The .dll.a
     # import libraries in bin/ are build-time only — the *.dll glob skips them.
-    cp -L ${leksah-webview2}/bin/leksah-webview2.exe $out/bin/leksah.exe
-    for f in ${leksah-webview2}/bin/*.dll; do cp -L "$f" $out/bin/; done
+    cp -L ${leksah}/bin/leksah.exe $out/bin/leksah.exe
+    for f in ${leksah}/bin/*.dll; do cp -L "$f" $out/bin/; done
     ${lib.optionalString (leksah-server != null) ''
       cp -L ${leksah-server}/bin/leksah-server.exe $out/bin/
     ''}
