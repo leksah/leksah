@@ -21,6 +21,7 @@ module IDE.LSP
     , documentChanged
     , documentSaved
     , documentClosed
+    , requestHover
     ) where
 
 import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
@@ -30,6 +31,7 @@ import           Control.Lens ((%~))
 import           Control.Monad (join, void, when)
 import           Data.Aeson
 import           Data.Aeson.Types (Parser, parseMaybe)
+import           Data.Foldable (toList)
 import           Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import           Data.Int (Int32)
 import qualified Data.Map.Strict as Map
@@ -163,6 +165,51 @@ touch file text = when (isHaskellFile file) $ do
                     notify (ssClient ss) SMethod_TextDocumentDidChange $ buildParams $ object
                         [ "textDocument" .= object [ "uri" .= uri, "version" .= v' ]
                         , "contentChanges" .= [ object [ "text" .= text ] ] ]
+
+--------------------------------------------------------------------------------
+-- Hover (textDocument/hover)
+--------------------------------------------------------------------------------
+
+-- | Request hover information at a position (LSP 0-based @line@\/@char@) in an
+-- already-open document.  Non-blocking: @cb@ is invoked with the hover text
+-- (rendered from the server's markup\/marked-string contents) or 'Nothing'.
+-- If no server is running for the file, or it is not a Haskell file, @cb@ is
+-- called with 'Nothing'.
+requestHover :: FilePath -> Int -> Int -> (Maybe Text -> IO ()) -> IO ()
+requestHover file line ch cb
+    | not (isHaskellFile file) = cb Nothing
+    | otherwise = do
+        root <- projectRootOf file
+        m <- modifyMVar registry (\mp -> return (mp, mp))
+        case Map.lookup root m of
+            Just (Just ss) -> onReady ss $
+                void $ request (ssClient ss) SMethod_TextDocumentHover
+                    (buildParams $ object
+                        [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                        , "position" .= object [ "line" .= line, "character" .= ch ] ])
+                    (\case
+                        Right res -> cb (extractHover (toJSON res))
+                        Left _    -> cb Nothing)
+            _ -> cb Nothing
+
+-- | Pull a single plain-text blob out of an LSP @Hover@ result.  @contents@
+-- may be a @MarkupContent {kind,value}@, a @MarkedString@ (a bare string or
+-- @{language,value}@), or an array of marked strings; @null@ hover yields
+-- 'Nothing'.
+extractHover :: Value -> Maybe Text
+extractHover = fmap T.strip . nonEmpty . parseMaybe (withObject "Hover" $ \o -> o .: "contents" >>= parseContents)
+  where
+    nonEmpty (Just t) | not (T.null (T.strip t)) = Just t
+    nonEmpty _ = Nothing
+    parseContents :: Value -> Parser Text
+    parseContents (String s) = pure s
+    parseContents (Object c) = c .: "value"
+    parseContents (Array a)  = T.intercalate "\n\n" <$> mapM parseMarked (toList a)
+    parseContents _          = fail "unrecognized hover contents"
+    parseMarked :: Value -> Parser Text
+    parseMarked (String s) = pure s
+    parseMarked (Object c) = c .: "value"
+    parseMarked _          = pure ""
 
 --------------------------------------------------------------------------------
 -- Server lifecycle

@@ -6,18 +6,60 @@
 import { EditorState, Compartment, StateField, StateEffect, RangeSet } from "@codemirror/state"
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter,
          highlightActiveLine, drawSelection, dropCursor,
-         Decoration, GutterMarker, gutterLineClass } from "@codemirror/view"
+         Decoration, GutterMarker, gutterLineClass, hoverTooltip } from "@codemirror/view"
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands"
-import { syntaxHighlighting, defaultHighlightStyle, indentOnInput,
+import { syntaxHighlighting, HighlightStyle, indentOnInput,
          bracketMatching, foldGutter, foldKeymap, StreamLanguage } from "@codemirror/language"
+import { tags as t } from "@lezer/highlight"
 import { haskell } from "@codemirror/legacy-modes/mode/haskell"
-import { oneDark } from "@codemirror/theme-one-dark"
 import { searchKeymap, highlightSelectionMatches, search,
          SearchCursor, RegExpCursor } from "@codemirror/search"
 import { MergeView, unifiedMergeView } from "@codemirror/merge"
 
 // Per-view state we keep outside CM (original text, active diff view, etc.).
 const viewState = new WeakMap()
+
+// ---- LSP hover (textDocument/hover) ----------------------------------------
+// The hover source asks Haskell (per-view `onHover(id, line, ch)`, set via
+// `setHoverHandler`) and awaits a Promise that Haskell resolves through
+// `resolveHover(id, text)` once the language server replies.  Positions are
+// converted to LSP's 0-based line/character here.
+let hoverSeq = 0
+const hoverResolvers = new Map()
+
+const lspHover = hoverTooltip((view, pos) => {
+  const st = viewState.get(view)
+  if (!st || !st.onHover) return null
+  const line = view.state.doc.lineAt(pos)
+  const id = ++hoverSeq
+  const promise = new Promise(resolve => {
+    hoverResolvers.set(id, resolve)
+    // Don't leave a hover pending forever if the server never answers.
+    setTimeout(() => { if (hoverResolvers.delete(id)) resolve(null) }, 4000)
+  })
+  st.onHover(id, line.number - 1, pos - line.from)
+  return promise.then(text => {
+    if (!text) return null
+    return { pos, above: true, create() {
+      const dom = document.createElement("div")
+      dom.className = "cm-leksah-hover"
+      dom.textContent = text
+      return { dom }
+    } }
+  })
+}, { hoverTime: 300 })
+
+// Called from Haskell once the language server replies (empty text => no tip).
+function resolveHover(id, text) {
+  const r = hoverResolvers.get(id)
+  if (r) { hoverResolvers.delete(id); r(text) }
+}
+
+// Register the per-view hover callback (a Haskell `fun`).
+function setHoverHandler(view, onHover) {
+  const st = viewState.get(view)
+  if (st) st.onHover = onHover
+}
 
 // ---- error/warning/lint marks (replaces CM5 markText) ----------------------
 
@@ -174,6 +216,71 @@ function offsetOf(doc, line, ch) {
   return Math.min(lineObj.from + Math.max(0, ch), lineObj.to)
 }
 
+// ---- GitHub-dark theme (Primer dark palette) -------------------------------
+// A close copy of github.com's dark code view so the editor matches GitHub.
+// `gh.*` are the Primer dark syntax/UI tokens; the editor chrome is `githubDark`
+// and the token highlighting is `githubDarkHighlightStyle`.
+const gh = {
+  bg:        "#0d1117",  // canvas
+  fg:        "#e6edf3",  // default text
+  gutterFg:  "#6e7681",  // line numbers
+  gutterActiveFg: "#e6edf3",
+  activeLine: "rgba(177,186,196,0.06)",
+  selection: "rgba(56,139,253,0.35)",   // accent, translucent so text stays legible
+  matchBracket: "rgba(56,139,253,0.30)",
+  selectionMatch: "rgba(56,139,253,0.20)",
+  // syntax
+  gray:   "#8b949e",  // comment / meta
+  red:    "#ff7b72",  // keyword / storage
+  blue:   "#79c0ff",  // number / constant / builtin
+  lightblue: "#a5d6ff", // string
+  purple: "#d2a8ff",  // entity: type / class / function / definition
+  green:  "#7ee787",  // tag
+  orange: "#ffa657",  // variable (params)
+  coral:  "#ffa198",  // invalid
+}
+
+const githubDark = EditorView.theme({
+  "&": { color: gh.fg, backgroundColor: gh.bg },
+  ".cm-content": { caretColor: gh.fg },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: gh.fg },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+    { backgroundColor: gh.selection },
+  ".cm-activeLine": { backgroundColor: gh.activeLine },
+  ".cm-gutters": { backgroundColor: gh.bg, color: gh.gutterFg, border: "none" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent", color: gh.gutterActiveFg },
+  ".cm-foldPlaceholder": { backgroundColor: "transparent", border: "none", color: gh.gray },
+  ".cm-matchingBracket": { backgroundColor: gh.matchBracket, color: "inherit" },
+  ".cm-nonmatchingBracket": { backgroundColor: "rgba(248,81,73,0.25)" },
+  ".cm-selectionMatch": { backgroundColor: gh.selectionMatch },
+}, { dark: true })
+
+// Token colours.  The Haskell legacy mode (a StreamLanguage) tags with:
+// keyword, comment, meta, number/integer, string, type→typeName,
+// variable→variableName, builtin→variableName.standard, qualifier→modifier.
+const githubDarkHighlightStyle = HighlightStyle.define([
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: gh.gray },
+  { tag: [t.keyword, t.moduleKeyword, t.controlKeyword, t.operatorKeyword,
+          t.definitionKeyword, t.modifier, t.self, t.null], color: gh.red },
+  { tag: [t.string, t.special(t.string), t.character, t.regexp, t.docString], color: gh.lightblue },
+  { tag: [t.number, t.integer, t.float, t.bool, t.atom, t.unit], color: gh.blue },
+  { tag: [t.typeName, t.className, t.namespace, t.macroName,
+          t.function(t.variableName), t.function(t.propertyName),
+          t.definition(t.variableName), t.definition(t.propertyName)], color: gh.purple },
+  { tag: [t.standard(t.variableName), t.propertyName, t.attributeName,
+          t.labelName, t.constant(t.variableName)], color: gh.blue },
+  { tag: [t.tagName, t.angleBracket], color: gh.green },
+  { tag: [t.special(t.variableName)], color: gh.orange },
+  { tag: [t.meta, t.processingInstruction, t.documentMeta], color: gh.gray },
+  { tag: [t.link], color: gh.lightblue, textDecoration: "underline" },
+  { tag: [t.heading, t.strong], color: gh.blue, fontWeight: "bold" },
+  { tag: [t.emphasis], color: gh.blue, fontStyle: "italic" },
+  { tag: [t.strikethrough], textDecoration: "line-through" },
+  { tag: [t.invalid], color: gh.coral },
+  { tag: [t.deleted], color: "#ffdcd7", backgroundColor: "#67060c" },
+  { tag: [t.inserted], color: "#aff5b4", backgroundColor: "#033a16" },
+])
+
 function baseExtensions() {
   return [
     highlightActiveLineGutter(),
@@ -182,7 +289,7 @@ function baseExtensions() {
     drawSelection(),
     dropCursor(),
     indentOnInput(),
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    syntaxHighlighting(githubDarkHighlightStyle),
     bracketMatching(),
     highlightActiveLine(),
     highlightSelectionMatches(),
@@ -198,12 +305,15 @@ function baseExtensions() {
       ...searchKeymap,
     ]),
     StreamLanguage.define(haskell),
-    oneDark,
+    githubDark,
     EditorView.theme({
       "&": { height: "100%" },
       ".cm-scroller": { fontFamily: "Hasklig, Menlo, monospace" },
       ".cm-leksah-find": { backgroundColor: "rgba(255,200,0,.35)" },
       ".cm-leksah-find-active": { backgroundColor: "rgba(255,140,0,.6)" },
+      ".cm-tooltip.cm-tooltip-hover": { border: "1px solid #30363d", backgroundColor: "#161b22" },
+      ".cm-leksah-hover": { padding: "4px 8px", whiteSpace: "pre-wrap", maxWidth: "600px",
+                            color: "#e6edf3", fontFamily: "Hasklig, Menlo, monospace", fontSize: "12px" },
     }),
   ]
 }
@@ -236,11 +346,12 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
       marksField,
       findField,
       dirtyField,
+      lspHover,
       inlineComp.of([]),
       EditorView.updateListener.of(u => { if (u.docChanged && onChange) onChange() }),
     ],
   })
-  viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, onGutterMenu })
+  viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, onGutterMenu, onHover: null })
   // Remember the most recently focused editor so the (shared) find bar knows
   // which pane to act on.  Set on creation too, since a new editor opens focused.
   view.dom.addEventListener("focusin", () => { window.LeksahCM.activeView = view })
@@ -534,4 +645,5 @@ window.LeksahCM = {
   activeView: null, onActivePane: null,
   findSet, findNext, findPrev, replaceNext, replaceAll,
   loadTerminalSearch,
+  setHoverHandler, resolveHover,
 }

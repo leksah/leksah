@@ -209,6 +209,11 @@ editorWidget ide allEvents saveFileE = do
     , gate extActiveB fileWithLineE
     , \file selectedE _ -> do
       (changeE, triggerChangeE) <- newTriggerEvent
+      -- LSP hover: the CM6 hover source calls back with (reqId, line, ch); the
+      -- reply from the language server is delivered here (reqId, maybe text)
+      -- from the LSP client thread via this trigger, then resolved into the
+      -- editor's JS Promise in this window's own context.
+      (hoverRespE, fireHoverResp) <- newTriggerEvent
       logRefsD <- holdUniqDyn $ fromMaybe [] . M.lookup file <$> logRefsByFileD
       exists <- liftIO (doesFileExist file)
       liftIO (if exists then decodeUtf8' <$> BS.readFile file else return (Right "")) >>= \case
@@ -252,6 +257,20 @@ editorWidget ide allEvents saveFileE = do
                   txt <- liftJSM $ valToText =<< jsg ("LeksahCM" :: Text) ^. js1 ("getDoc" :: Text) editorView
                   liftIO $ LSP.documentChanged file txt
               _ -> return ()
+          -- LSP (Stage 2): register the hover callback so the CM6 hover source
+          -- asks the language server; resolve the JS Promise when it replies.
+          performEvent_ $ ffor editorE $ \editorView -> liftJSM . void $
+              jsg ("LeksahCM" :: Text) ^. js2 ("setHoverHandler" :: Text) editorView
+                  (fun $ \_ _ args -> case args of
+                      (idv:lnv:chv:_) -> do
+                          rid <- valToNumber idv
+                          ln  <- valToNumber lnv
+                          ch  <- valToNumber chv
+                          liftIO $ LSP.requestHover file (round ln) (round ch) $ \mtext ->
+                              fireHoverResp (round rid :: Int, mtext)
+                      _ -> return ())
+          performEvent_ $ ffor hoverRespE $ \(rid, mtext) -> liftJSM . void $
+              jsg ("LeksahCM" :: Text) ^. js2 ("resolveHover" :: Text) rid (fromMaybe "" mtext)
           -- Focus the editor when it's created and whenever its tab is selected,
           -- so opening/flipping to a file puts the cursor in it (and the find
           -- bar then targets it).  Via requestAnimationFrame so the tab's

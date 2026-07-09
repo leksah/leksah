@@ -1,0 +1,15 @@
+--- a/ghcide/session-loader/Development/IDE/Session.hs
++++ b/ghcide/session-loader/Development/IDE/Session.hs
+@@ -833,7 +833,11 @@
+       case reverse $ readP_to_S parseVersion version of
+         [] -> error $ "GHC version could not be parsed: " <> version
+         ((runTime, _):_)
+-          | compileTime == runTime -> session recorder sessionShake sessionState knownTargetsVar (hieYaml, ncfp, opts, libDir)
++          -- leksah/ghc914-sh: the stable-haskell shim reports the project GHC as
++          -- "9.14" while HLS is compiled against the same GHC's library, whose
++          -- cProjectVersion is "9.14.0"; compare with trailing zeros stripped so
++          -- [9,14] and [9,14,0] match while real mismatches ([9,14,2]) still fail.
++          | dropWhileEnd (== 0) (versionBranch compileTime) == dropWhileEnd (== 0) (versionBranch runTime) -> session recorder sessionShake sessionState knownTargetsVar (hieYaml, ncfp, opts, libDir)
+           | otherwise -> handleSingleFileProcessingError' sessionState hieYaml cfp (GhcVersionMismatch{..})
+     -- Failure case, either a cradle error or the none cradle
+     Left err -> do
