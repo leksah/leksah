@@ -1,0 +1,41 @@
+diff -ru a/src/Language/Haskell/GHC/ExactPrint/ExactPrint.hs b/src/Language/Haskell/GHC/ExactPrint/ExactPrint.hs
+--- a/src/Language/Haskell/GHC/ExactPrint/ExactPrint.hs	2026-07-09 11:21:25.637739000 +1200
++++ b/src/Language/Haskell/GHC/ExactPrint/ExactPrint.hs	2026-07-09 11:21:26.335192411 +1200
+@@ -2013,25 +2013,28 @@
+ 
+ markActivation :: (Monad m, Monoid w)
+   => ActivationAnn -> Activation -> EP w m ActivationAnn
+-markActivation (ActivationAnn o c t v) act = do
++-- stable-haskell ghc-9.14: the phase SourceText moved from the
++-- Activation constructors (ActiveBefore/ActiveAfter lost their first
++-- field) into ActivationAnn's new aa_phase field.
++markActivation (ActivationAnn o p c t v) act = do
+   case act of
+-    ActiveBefore src phase -> do
++    ActiveBefore phase -> do
+       o' <- markEpToken o --  '['
+       t' <- mapM markEpToken t -- ~
+-      v' <- mapM (\val -> printStringAtAA val (toSourceTextWithSuffix src (show phase) "")) v
++      v' <- mapM (\val -> printStringAtAA val (toSourceTextWithSuffix p (show phase) "")) v
+       c' <- markEpToken c -- ']'
+-      return (ActivationAnn o' c' t' v')
+-    ActiveAfter src phase -> do
++      return (ActivationAnn o' p c' t' v')
++    ActiveAfter phase -> do
+       o' <- markEpToken o --  '['
+-      v' <- mapM (\val -> printStringAtAA val (toSourceTextWithSuffix src (show phase) "")) v
++      v' <- mapM (\val -> printStringAtAA val (toSourceTextWithSuffix p (show phase) "")) v
+       c' <- markEpToken c -- ']'
+-      return (ActivationAnn o' c' t v')
++      return (ActivationAnn o' p c' t v')
+     NeverActive -> do
+       o' <- markEpToken o --  '['
+       t' <- mapM markEpToken t -- ~
+       c' <- markEpToken c -- ']'
+-      return (ActivationAnn o' c' t' v)
+-    _ -> return (ActivationAnn o c t v)
++      return (ActivationAnn o' p c' t' v)
++    _ -> return (ActivationAnn o p c t v)
+ 
+ -- ---------------------------------------------------------------------
+ 

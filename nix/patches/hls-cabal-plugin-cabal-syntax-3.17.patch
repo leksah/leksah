@@ -1,0 +1,87 @@
+--- a/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/Parse.hs
++++ b/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/Parse.hs
+@@ -1,3 +1,4 @@
++{-# LANGUAGE CPP #-}
+ {-# LANGUAGE OverloadedStrings #-}
+ module Ide.Plugin.Cabal.Parse
+ ( parseCabalFileContents
+@@ -8,6 +9,10 @@
+ import           Data.List.NonEmpty                           (NonEmpty (..))
+ import           Distribution.Fields                          (PError (..),
+                                                                PWarning (..))
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++import           Distribution.Parsec.Error                    (PErrorWithSource (perror))
++import           Distribution.Parsec.Warning                  (PWarningWithSource (pwarning))
++#endif
+ import           Distribution.Fields.ParseResult              (runParseResult)
+ import           Distribution.PackageDescription.Parsec       (parseGenericPackageDescription)
+ import           Distribution.Types.GenericPackageDescription (GenericPackageDescription (..))
+@@ -24,7 +29,17 @@
+   :: BS.ByteString -- ^ UTF-8 encoded bytestring
+   -> ([PWarning], Either (Maybe Version, NonEmpty PError) GenericPackageDescription)
+ parseCabalFileContents bs =
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++  -- The stable-haskell Cabal-syntax 3.17 fork wraps warnings/errors with their
++  -- parse source (PWarningWithSource / PErrorWithSource); unwrap so the rest of
++  -- the plugin keeps seeing the plain PWarning / PError it expects.
++  let (warnings, result) = runParseResult (parseGenericPackageDescription bs)
++  in ( map pwarning warnings
++     , either (\(v, errs) -> Left (v, fmap perror errs)) Right result
++     )
++#else
+   runParseResult (parseGenericPackageDescription bs)
++#endif
+ 
+ readCabalFields ::
+   NormalizedFilePath ->
+--- a/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/Completion/Completer/Paths.hs
++++ b/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/Completion/Completer/Paths.hs
+@@ -1,3 +1,4 @@
++{-# LANGUAGE CPP #-}
+ module Ide.Plugin.Cabal.Completion.Completer.Paths where
+ 
+ import qualified Data.List                         as List
+@@ -132,7 +133,11 @@
+ extractRelativeDirsFromStanza ::
+   Maybe StanzaName ->
+   GenericPackageDescription ->
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++  (GenericPackageDescription -> [(UnqualComponentName, CondTree b a)]) ->
++#else
+   (GenericPackageDescription -> [(UnqualComponentName, CondTree b c a)]) ->
++#endif
+   (a -> BuildInfo) ->
+   [FilePath]
+ extractRelativeDirsFromStanza Nothing _ _ _ = []
+--- a/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/CabalAdd/CodeAction.hs
++++ b/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/CabalAdd/CodeAction.hs
+@@ -1,3 +1,4 @@
++{-# LANGUAGE CPP                   #-}
+ {-# LANGUAGE AllowAmbiguousTypes   #-}
+ {-# LANGUAGE DeriveAnyClass        #-}
+ {-# LANGUAGE DerivingStrategies    #-}
+@@ -26,6 +27,10 @@
+ import           Distribution.Utils.Path                       (getSymbolicPath)
+ import           Distribution.Verbosity                        (silent,
+                                                                 verboseNoStderr)
++#if MIN_VERSION_Cabal(3,17,0)
++import           Distribution.Verbosity                        (defaultVerbosityHandles,
++                                                                mkVerbosity)
++#endif
+ import           Ide.Logger
+ import           Ide.Plugin.Cabal.CabalAdd.Types
+ import           Ide.Plugin.Cabal.Completion.Completer.Module  (fpToExposedModulePath)
+@@ -276,7 +281,13 @@
+   getBuildTargets :: GenericPackageDescription -> FilePath -> FilePath -> IO [BuildTarget]
+   getBuildTargets gpd cabalFilePath haskellFilePath = do
+     let haskellFileRelativePath = makeRelative (dropFileName cabalFilePath) haskellFilePath
++#if MIN_VERSION_Cabal(3,17,0)
++    -- The fork's Cabal 3.17 split Verbosity into VerbosityFlags + handles;
++    -- readBuildTargets still wants a full Verbosity, so wrap the flags.
++    readBuildTargets (mkVerbosity defaultVerbosityHandles (verboseNoStderr silent)) (flattenPackageDescription gpd) [haskellFileRelativePath]
++#else
+     readBuildTargets (verboseNoStderr silent) (flattenPackageDescription gpd) [haskellFileRelativePath]
++#endif
+ 
+   mkCodeActionForDependency :: FilePath -> Maybe String -> (T.Text, T.Text) -> J.CodeAction
+   mkCodeActionForDependency cabalFilePath target (suggestedDep, suggestedVersion) =

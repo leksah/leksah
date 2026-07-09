@@ -1,0 +1,31 @@
+diff -ru a/src/Distribution/Client/Add.hs b/src/Distribution/Client/Add.hs
+--- a/src/Distribution/Client/Add.hs	2026-07-09 10:48:00.987268000 +1200
++++ b/src/Distribution/Client/Add.hs	2026-07-09 10:48:20.328326093 +1200
+@@ -1,3 +1,4 @@
++{-# LANGUAGE CPP #-}
+ {-# LANGUAGE ImportQualifiedPost #-}
+ {-# LANGUAGE LambdaCase #-}
+ {-# LANGUAGE OverloadedStrings #-}
+@@ -63,6 +64,9 @@
+   eitherParsec,
+   showPError,
+  )
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++import Distribution.Parsec (PErrorWithSource (perror))
++#endif
+ import Distribution.Simple.BuildTarget (
+   BuildTarget (BuildTargetComponent),
+   readUserBuildTargets,
+@@ -229,7 +233,12 @@
+ 
+   packDescr <- case snd $ runParseResult $ parseGenericPackageDescription contents of
+     Left (_, err) ->
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++      -- Cabal-syntax 3.17: runParseResult yields PErrorWithSource
++      errorWithCtx $ L.unlines $ map (showPError fileName . perror) $ NE.toList err
++#else
+       errorWithCtx $ L.unlines $ map (showPError fileName) $ NE.toList err
++#endif
+     Right GenericPackageDescription {packageDescription = PackageDescription {specVersion = CabalSpecV1_0}} ->
+       errorWithCtx legacyErr
+     Right pd -> pure pd

@@ -4,10 +4,68 @@ let
   sources = import ./sources.nix {};
   optionalAttrs = b: a: if b then a else {};
   system = null;
+  isGhc914sh = config.compiler-nix-name == "ghc914-sh";
+  # GHC 9.14 (stable-haskell fork): C-only "clib" packages have no Haskell
+  # deps, so no rts unit lands in their per-component package DB and GHC's
+  # mkUnitState check panics ("The RTS for rts:nonthreaded-nodebug is
+  # missing").  The fork's -no-rts flag bypasses the check — the same
+  # treatment the compiler's own libffi-clib gets during its bootstrap.
+  # This must live in the cabal.project text (not nix-module ghcOptions):
+  # package ghc-options enter cabal's UnitId hash, so the v2 slice
+  # builder's plan-time and build-time views have to agree on them.
+  clibNoRts = pkgs.lib.optionalString isGhc914sh ''
+    package libyaml-clib
+      ghc-options: -no-rts
+  '';
+  # Hackage packages whose released code doesn't compile against the
+  # stable-haskell fork's Cabal 3.17 / ghc-9.14 API.  The fix is applied
+  # to the hackage source here and the PATCHED source is handed to the
+  # cabal solver as a local `packages:` entry (cabalProjectLocal below),
+  # so the plan and the build see the same code — patching behind the
+  # solver's back would leave plan-nix computed from the unpatched index.
+  patchedHackage = name: version: patch: pkgs.applyPatches {
+    name = "${name}-${version}-patched";
+    src = pkgs.haskell-nix.hackageTarball { inherit name version; };
+    patches = [ patch ];
+  };
+  # cabal-doctest: custom-setup dep of xml-conduit and haskell-gi; the
+  # fork's Cabal 3.17 split Verbosity into VerbosityFlags + handles.
+  # Its tarball .cabal caps Cabal <3.16, hence the allow-newer (the
+  # patched code is CPP-guarded for both APIs).
+  cabalDoctestPatched = pkgs.lib.optionalString isGhc914sh ''
+    packages: ${patchedHackage "cabal-doctest" "1.0.12" ./patches/cabal-doctest-cabal-3.17.patch}
+    allow-newer: cabal-doctest:Cabal
+  '';
+  # cabal-add (hls-cabal-plugin dep): the fork's Cabal-syntax 3.17
+  # runParseResult yields PErrorWithSource, not PError.
+  # ghc-exactprint 1.14 targets mainline ghc-9.14's AST; the fork moved
+  # the INLINE/RULES phase SourceText from the Activation constructors
+  # into ActivationAnn's new aa_phase field.
+  hlsDepsPatched = pkgs.lib.optionalString isGhc914sh ''
+    packages: ${patchedHackage "cabal-add" "0.2" ./patches/cabal-add-cabal-syntax-3.17.patch}
+    packages: ${patchedHackage "ghc-exactprint" "1.14.0.0" ./patches/ghc-exactprint-1.14-stable-ghc-9.14.patch}
+  '';
+  # HLS's own hls-cabal-plugin doesn't compile against the fork's Cabal-syntax
+  # 3.17: CondTree lost its middle type param, and runParseResult now wraps
+  # warnings/errors in *WithSource.  Patch the git source and hand the patched
+  # tree to the tool as its `src`, so the solver plans against the code the
+  # build compiles (same rule as the hackage deps above; the patch is
+  # CPP-guarded on Cabal_syntax >= 3.17, so it's a no-op for other compilers).
+  hlsSrc =
+    if isGhc914sh
+    then pkgs.applyPatches {
+      name = "haskell-language-server-src-patched";
+      src = pkgs.hls-github-src;
+      patches = [ ./patches/hls-cabal-plugin-cabal-syntax-3.17.patch ];
+    }
+    else pkgs.hls-github-src;
 in
 rec {
     projectFileName = "cabal.project";
-    compiler-nix-name = "ghc914";
+    cabalProjectLocal = clibNoRts + cabalDoctestPatched;
+    # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix -hl branch) that can
+    # cross-compile from darwin to Linux (musl) via hyper-linux.
+    compiler-nix-name = "ghc914-sh";
     # v2 slice builds for the native platforms (what leksah's own incremental
     # builds use).  The mingw cross must use the classic builder: v2 compiles
     # custom Setup.hs (entropy, ghc-paths) with the cross GHC, producing a
@@ -20,14 +78,21 @@ rec {
       "ghc98".compiler-nix-name = pkgs.lib.mkForce "ghc98";
       "ghc910".compiler-nix-name = pkgs.lib.mkForce "ghc910";
       "ghc912".compiler-nix-name = pkgs.lib.mkForce "ghc912";
-      "ghc914".compiler-nix-name = pkgs.lib.mkForce "ghc914";
+      "ghc914".compiler-nix-name = pkgs.lib.mkForce "ghc914-sh";
     };
     name = "leksah";
-    # Windows cross (leksah-webview2), built from the x86_64-linux builder
-    # only: TH runs under wine/iserv there; darwin can't host the mingw iserv.
+    # Cross targets exposed as flake packages (NOT pulled into the dev shell —
+    # see `shell.crossPlatforms` below, which forces it empty so the native dev
+    # loop never builds a cross GHC):
+    #   * x86_64-linux host: ucrt64 (Windows leksah-webview2; TH via wine/iserv).
+    #   * aarch64-darwin host: aarch64-linux-musl (verified darwin→linux target
+    #     of the -hl branch; TH/tests run under hyper-linux `hl`) AND ucrt64, so
+    #     the `leksah-linux` / `leksah-windows` apps have something to run.
     crossPlatforms = p:
       pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux")
-        [ p.ucrt64 ];
+        [ p.ucrt64 ]
+      ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin
+        [ p.aarch64-multiplatform-musl p.ucrt64 ];
     modules = [({pkgs, lib, config, ...}: let
         inherit (config) hsPkgs;
         inherit (pkgs.stdenv.hostPlatform) isWindows;
@@ -151,6 +216,11 @@ rec {
     ];
     shell = {
       withHoogle = false;
+      # Keep the interactive dev shell NATIVE: the top-level `crossPlatforms`
+      # feeds the flake's cross packages, but if the shell inherited it too,
+      # `nix develop` (the leksah-nix.sh dev loop) would build a cross GHC just
+      # to enter the shell.  Cross builds go through `nix build`/`nix run`.
+      crossPlatforms = _: [];
       packages = ps: with ps; [
         leksah-server
         leksah
@@ -165,7 +235,15 @@ rec {
         # cabal.project uses allow-newer to support it.  Passing `src` overrides
         # the `mkDefault` hackage source in modules/hackage-project.nix, so the
         # tool is built from this tree's own cabal.project.
-        haskell-language-server.src = pkgs.hls-github-src;
+        haskell-language-server = {
+          src = hlsSrc;
+          # HLS's hls-cabal-plugin pulls cabal-add, which caps Cabal-syntax <3.17
+          # and can't solve against GHC 9.14's boot Cabal-syntax 3.17.  Relax that
+          # bound so the plan resolves (cabal-add still targets the 3.17 API).
+          cabalProjectLocal =
+            "allow-newer: cabal-add:Cabal-syntax, cabal-add:Cabal\n"
+            + clibNoRts + hlsDepsPatched;
+        };
       };
       buildInputs = [
         # (pkgs.vscode-with-extensions.override {
