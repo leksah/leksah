@@ -56,6 +56,7 @@ import IDE.Web.Events
         _ErrorsGoto, _MetadataGoto, _GrepGoto, _ChangesOpen, _ProjectFileEvents,
         _PackageFileEvents, _ProjectPackageEvents)
 import IDE.Web.Widget.Menu (menu)
+import qualified IDE.LSP as LSP
 
 import System.Directory (doesFileExist)
 import System.Exit (ExitCode(..))
@@ -241,6 +242,16 @@ editorWidget ide allEvents saveFileE = do
                 Just sp -> gotoSrcSpan editorView sp
               updateTextMarks editorView logRefs
           editorD <- holdDyn Nothing $ Just <$> editorE
+          -- LSP (Stage 1): mirror this document to the language server — open
+          -- it when the editor is created, and send full-text changes as it is
+          -- edited.  Diagnostics come back asynchronously as LogRefs.
+          performEvent_ $ ffor editorE $ \_ ->
+              liftIO $ LSP.documentOpened file contents
+          performEvent_ $ ffor (attach (current editorD) changeE) $ \case
+              (Just editorView, ()) -> do
+                  txt <- liftJSM $ valToText =<< jsg ("LeksahCM" :: Text) ^. js1 ("getDoc" :: Text) editorView
+                  liftIO $ LSP.documentChanged file txt
+              _ -> return ()
           -- Focus the editor when it's created and whenever its tab is selected,
           -- so opening/flipping to a file puts the cursor in it (and the find
           -- bar then targets it).  Via requestAnimationFrame so the tab's
@@ -266,6 +277,7 @@ editorWidget ide allEvents saveFileE = do
               (Just editorView, _) -> do
                   txt <- liftJSM $ valToText =<< jsg ("LeksahCM" :: Text) ^. js1 ("getDoc" :: Text) editorView
                   liftIO $ BS.writeFile file (encodeUtf8 txt)
+                  liftIO $ LSP.documentSaved file txt
               _ -> return ()
           -- Gutter context menu (rendered in Reflex; the chosen action calls
           -- the CM6 diff toggles in the bundle).

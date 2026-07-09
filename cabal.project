@@ -6,6 +6,7 @@ packages:
  vendor/haskellVCSGUI/vcsgui
 -- vendor/gi-gobject/
  vendor/gi-gtkosxapplication/
+ vendor/lsp-types-client/
 
 -- ffcabal lives in its own repo (hamishmack/ffcabal) now; consume it via a
 -- source-repository-package.  For nix the location+tag is resolved to a flake

@@ -1,0 +1,40 @@
+cabal-version:      2.4
+name:               lsp-types-client
+version:            0.1.0.0
+synopsis:           A small Language Server Protocol client for editors
+description:
+  A minimal, dependency-light client for the Language Server Protocol,
+  built on the protocol data types from @lsp-types@.  It spawns a language
+  server as a child process, speaks JSON-RPC with @Content-Length@ framing
+  over the server's stdio, correlates request IDs with typed responses
+  (via "Data.IxMap"), and dispatches server-to-client notifications and
+  requests to user-supplied handlers.
+  .
+  Unlike the @lsp@ server framework it does not implement a server, and
+  unlike the existing @lsp-client@ on Hackage it tracks the current
+  @lsp-types@ (>= 2.4) and does not depend on the @lsp@ server library.
+license:            MIT
+license-file:       LICENSE
+author:             Hamish Mackenzie
+maintainer:         Hamish Mackenzie <Hamish.Mackenzie@iohk.io>
+copyright:          2026 Hamish Mackenzie
+category:           Development, Language Server Protocol, LSP
+build-type:         Simple
+
+library
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    exposed-modules:
+        Language.LSP.Client
+        Language.LSP.Client.Transport
+        Language.LSP.Client.Session
+    build-depends:
+          base            >=4.11 && <5
+        , aeson           >=2
+        , bytestring
+        , containers
+        , lsp-types       >=2.4  && <2.5
+        , process
+        , stm
+        , text
+    ghc-options:      -Wall -Wno-name-shadowing
