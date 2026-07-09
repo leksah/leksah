@@ -775,6 +775,12 @@ data Prefs = Prefs {
     ,   regionCaptureTarget ::   Text -- ^ default terminal for `leksah-cmd
                                       --   grab-region`, as a @session/window/pane@
                                       --   path (e.g. @claude/leksah/0@)
+    ,   lspEnabled          ::   Bool -- ^ run a Language Server (HLS) per project
+                                      --   for diagnostics/hover/completion/nav
+    ,   lspServerCommand    ::   Text -- ^ override the LSP server command line
+                                      --   (blank = @haskell-language-server --lsp@;
+                                      --   a project's @.leksah-lsp@ file, if present,
+                                      --   overrides even this)
             -- As well used by server
     ,   serverPort          ::   Int
     ,   sourceDirectories   ::   [FilePath]
@@ -855,6 +861,8 @@ data PrefsFile = PrefsFile {
   , showShortcutBadges_  :: Maybe Bool
   , colorfulIcons_       :: Maybe Bool
   , regionCaptureTarget_ :: Maybe Text
+  , lspEnabled_          :: Maybe Bool
+  , lspServerCommand_    :: Maybe Text
   , serverPort_          :: Maybe Int
   , sourceDirectories_   :: Maybe [FilePath]
   , unpackDirectory_     :: Maybe (Maybe FilePath)

@@ -15,6 +15,7 @@ import { haskell } from "@codemirror/legacy-modes/mode/haskell"
 import { searchKeymap, highlightSelectionMatches, search,
          SearchCursor, RegExpCursor } from "@codemirror/search"
 import { MergeView, unifiedMergeView } from "@codemirror/merge"
+import { autocompletion, completionKeymap } from "@codemirror/autocomplete"
 
 // Per-view state we keep outside CM (original text, active diff view, etc.).
 const viewState = new WeakMap()
@@ -60,6 +61,102 @@ function setHoverHandler(view, onHover) {
   const st = viewState.get(view)
   if (st) st.onHover = onHover
 }
+
+// ---- LSP completion (textDocument/completion) ------------------------------
+// Same round-trip shape as hover: the completion source asks Haskell (per-view
+// `onComplete(id, line, ch)`, set via `setCompletionHandler`) and awaits a
+// Promise resolved by `resolveComplete(id, itemsJson)` — a JSON array of
+// `{label, detail, kind, apply}` objects (kind = LSP CompletionItemKind).
+let completeSeq = 0
+const completeResolvers = new Map()
+
+// LSP CompletionItemKind (1-based) -> CM6 completion `type` (drives the icon).
+function completionType(kind) {
+  switch (kind) {
+    case 2: case 24: return "method"
+    case 3: return "function"
+    case 4: case 7: case 22: return "class"
+    case 5: case 10: return "property"
+    case 6: case 12: return "variable"
+    case 8: return "interface"
+    case 9: return "namespace"
+    case 13: case 20: return "enum"
+    case 14: return "keyword"
+    case 21: case 11: return "constant"
+    case 25: return "type"
+    default: return "variable"
+  }
+}
+
+async function lspCompletionSource(context) {
+  const view = context.view
+  const st = view && viewState.get(view)
+  if (!st || !st.onComplete) return null
+  // Haskell identifiers: word chars plus ' and . (qualified names).
+  const word = context.matchBefore(/[\w'.]*/)
+  if (!context.explicit && (!word || word.from === word.to)) return null
+  const line = context.state.doc.lineAt(context.pos)
+  const id = ++completeSeq
+  const items = await new Promise(resolve => {
+    completeResolvers.set(id, resolve)
+    // Don't leave completion pending forever if the server never answers.
+    setTimeout(() => { if (completeResolvers.delete(id)) resolve([]) }, 4000)
+    st.onComplete(id, line.number - 1, context.pos - line.from)
+  })
+  if (!items || !items.length) return null
+  return {
+    from: word ? word.from : context.pos,
+    options: items.map(it => ({
+      label: it.label,
+      detail: it.detail || undefined,
+      type: completionType(it.kind),
+      apply: it.apply || it.label,
+    })),
+    validFor: /^[\w'.]*$/,
+  }
+}
+
+// Called from Haskell with the language server's reply (JSON array string).
+function resolveComplete(id, itemsJson) {
+  const r = completeResolvers.get(id)
+  if (!r) return
+  completeResolvers.delete(id)
+  let items = []
+  try { items = JSON.parse(itemsJson) } catch (_e) { items = [] }
+  r(items)
+}
+
+// Register the per-view completion callback (a Haskell `fun`).
+function setCompletionHandler(view, onComplete) {
+  const st = viewState.get(view)
+  if (st) st.onComplete = onComplete
+}
+
+// ---- LSP navigation (go-to-definition / find-references) -------------------
+// Fire-and-forget (unlike hover/completion there's no JS Promise to resolve —
+// the result drives Haskell-side navigation: definition jumps the editor,
+// references populate the Grep pane).  Bound to F12 / Shift-F12; also callable
+// directly.  Positions are LSP 0-based line/character.
+function navAt(view, which) {
+  const st = viewState.get(view)
+  const cb = st && st[which]
+  if (!cb) return false
+  const pos = view.state.selection.main.head
+  const line = view.state.doc.lineAt(pos)
+  cb(line.number - 1, pos - line.from)
+  return true
+}
+
+// Register the per-view navigation callbacks (Haskell `fun`s).
+function setNavHandlers(view, onDefinition, onReferences) {
+  const st = viewState.get(view)
+  if (st) { st.onDefinition = onDefinition; st.onReferences = onReferences }
+}
+
+const lspNavKeymap = [
+  { key: "F12",       preventDefault: true, run: v => navAt(v, "onDefinition") },
+  { key: "Shift-F12", preventDefault: true, run: v => navAt(v, "onReferences") },
+]
 
 // ---- error/warning/lint marks (replaces CM5 markText) ----------------------
 
@@ -303,6 +400,8 @@ function baseExtensions() {
       ...historyKeymap,
       ...foldKeymap,
       ...searchKeymap,
+      ...completionKeymap,
+      ...lspNavKeymap,
     ]),
     StreamLanguage.define(haskell),
     githubDark,
@@ -347,11 +446,12 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
       findField,
       dirtyField,
       lspHover,
+      autocompletion({ override: [lspCompletionSource] }),
       inlineComp.of([]),
       EditorView.updateListener.of(u => { if (u.docChanged && onChange) onChange() }),
     ],
   })
-  viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, onGutterMenu, onHover: null })
+  viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, onGutterMenu, onHover: null, onComplete: null, onDefinition: null, onReferences: null })
   // Remember the most recently focused editor so the (shared) find bar knows
   // which pane to act on.  Set on creation too, since a new editor opens focused.
   view.dom.addEventListener("focusin", () => { window.LeksahCM.activeView = view })
@@ -646,4 +746,6 @@ window.LeksahCM = {
   findSet, findNext, findPrev, replaceNext, replaceAll,
   loadTerminalSearch,
   setHoverHandler, resolveHover,
+  setCompletionHandler, resolveComplete,
+  setNavHandlers,
 }

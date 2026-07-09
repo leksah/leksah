@@ -72,6 +72,12 @@ preferencesWidget ide = do
         , b "Automatically load files modified outside Leksah" autoLoad (\v p -> p { autoLoad = v })
         , txt "External editor command (blank = built-in editor)" externalEditor (\v p -> p { externalEditor = v })
         ]
+    , section "Language Server (LSP)"
+        [ b "Enable language server (diagnostics, hover, completion, F12 navigation)"
+            lspEnabled (\v p -> p { lspEnabled = v })
+        , txt "Server command (blank = haskell-language-server --lsp)"
+            lspServerCommand (\v p -> p { lspServerCommand = v })
+        ]
     , section "User Interface"
         [ b "Show hidden files in the workspace" showHiddenFiles (\v p -> p { showHiddenFiles = v })
         , b "Show ignored files in the workspace" showIgnoredFiles (\v p -> p { showIgnoredFiles = v })
@@ -186,6 +192,8 @@ wiredLabels =
   , "Selection highlight colour"
   , "Run-button hover row colour"
   , "Show navigation shortcut badges while Cmd is held"
+  , "Enable language server (diagnostics, hover, completion, F12 navigation)"
+  , "Server command (blank = haskell-language-server --lsp)"
   ]
 
 -- | A checkbox driven by the live prefs (stays in sync with toolbar toggles).

@@ -22,23 +22,32 @@ module IDE.LSP
     , documentSaved
     , documentClosed
     , requestHover
+    , requestCompletion
+    , requestDefinition
+    , requestReferences
     ) where
 
+import           Control.Applicative ((<|>))
 import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import           Control.Concurrent.STM
 import           Control.Exception (SomeException, catch, try)
 import           Control.Lens ((%~))
-import           Control.Monad (join, void, when)
+import           Control.Monad (forM, join, void, when)
 import           Data.Aeson
 import           Data.Aeson.Types (Parser, parseMaybe)
 import           Data.Foldable (toList)
 import           Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import           Data.Int (Int32)
+import           Data.List (nub, sort)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
+import           Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
 import           System.Directory (doesFileExist, listDirectory, makeAbsolute)
 import           System.FilePath (takeDirectory, takeExtension, (</>))
 import           System.IO.Unsafe (unsafePerformIO)
@@ -52,19 +61,50 @@ import           Language.LSP.Client (Client, ClientConfig(..), defaultClientCon
 
 import           IDE.Core.CTypes (SrcSpan(..))
 import           IDE.Core.Types (Log(..), LogRef(..), LogRefType(..), allLogRefs)
-import           IDE.Core.State (IDEAction, modifyIDE_, reflectIDE)
+import           IDE.Core.State (IDEAction, modifyIDE_, reflectIDE, readIDE, prefs,
+                                 lspEnabled, lspServerCommand)
 import           IDE.Web.IDERefStore (getGlobalIDERef)
 
 --------------------------------------------------------------------------------
 -- Configuration
 --------------------------------------------------------------------------------
 
--- | How to launch a language server.  Stage 1 uses @haskell-language-server@
--- on the ambient @PATH@ (the wrapper, which picks a GHC per project, is not
--- always present — e.g. leksah's own dev shell ships the bare binary).
--- Making this a per-project preference is a later stage.
-serverCommand :: (FilePath, [String])
-serverCommand = ("haskell-language-server", ["--lsp"])
+-- | The fallback server command: @haskell-language-server@ on the ambient
+-- @PATH@ (the bare binary, not the @-wrapper@ — leksah's own dev shell ships
+-- only that).  Overridden by the 'lspServerCommand' pref, and per-project by a
+-- @.leksah-lsp@ file (see 'serverCommandFor').
+defaultServerCommand :: (FilePath, [String])
+defaultServerCommand = ("haskell-language-server", ["--lsp"])
+
+-- | The current LSP prefs — @(enabled, command-override)@ — read live from the
+-- shared IDE state.  Defaults (enabled, no override) before the IDE exists.
+lspConfig :: IO (Bool, Text)
+lspConfig = getGlobalIDERef >>= \case
+    Just ideR -> do
+        p <- reflectIDE (readIDE prefs) ideR
+        return (lspEnabled p, lspServerCommand p)
+    Nothing   -> return (True, "")
+
+-- | Resolve the server command for a project root: a @.leksah-lsp@ file in the
+-- root (first non-blank, non-@#@-comment line) wins; then the global pref
+-- override; then 'defaultServerCommand'.  The command line is split on
+-- whitespace (no shell quoting).
+serverCommandFor :: FilePath -> Text -> IO (FilePath, [String])
+serverCommandFor root globalCmd = do
+    mFile <- readOverrideFile (root </> ".leksah-lsp")
+    return $ case mFile <|> nonBlank globalCmd of
+        Just cmdline | (c:as) <- T.words cmdline -> (T.unpack c, map T.unpack as)
+        _                                        -> defaultServerCommand
+  where
+    nonBlank t = let s = T.strip t in if T.null s then Nothing else Just s
+
+readOverrideFile :: FilePath -> IO (Maybe Text)
+readOverrideFile f = doesFileExist f >>= \case
+    False -> return Nothing
+    True  -> do
+        ls <- (T.lines <$> TIO.readFile f) `catch` \(_ :: SomeException) -> return []
+        return $ listToMaybe
+            [ l | l <- map T.strip ls, not (T.null l), not ("#" `T.isPrefixOf` l) ]
 
 -- | Extensions we treat as Haskell source worth a language server.
 isHaskellFile :: FilePath -> Bool
@@ -212,6 +252,155 @@ extractHover = fmap T.strip . nonEmpty . parseMaybe (withObject "Hover" $ \o -> 
     parseMarked _          = pure ""
 
 --------------------------------------------------------------------------------
+-- Completion (textDocument/completion)
+--------------------------------------------------------------------------------
+
+-- | Cap on completion items returned to the editor — HLS can emit thousands
+-- (every in-scope identifier); CM6 filters as you type, so a generous prefix
+-- is plenty and keeps the JS payload small.
+maxCompletions :: Int
+maxCompletions = 200
+
+-- | Request completions at a position (LSP 0-based @line@\/@char@) in an
+-- already-open document.  Non-blocking: @cb@ receives a JSON array string of
+-- @{label, detail, kind, apply}@ objects (empty @\"[]\"@ if none / no server /
+-- not a Haskell file), ready to hand to the CM6 @resolveComplete@ bridge.
+requestCompletion :: FilePath -> Int -> Int -> (Text -> IO ()) -> IO ()
+requestCompletion file line ch cb
+    | not (isHaskellFile file) = cb "[]"
+    | otherwise = do
+        root <- projectRootOf file
+        m <- modifyMVar registry (\mp -> return (mp, mp))
+        case Map.lookup root m of
+            Just (Just ss) -> onReady ss $
+                void $ request (ssClient ss) SMethod_TextDocumentCompletion
+                    (buildParams $ object
+                        [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                        , "position" .= object [ "line" .= line, "character" .= ch ] ])
+                    (\case
+                        Right res -> cb (encodeToText (parseCompletions (toJSON res)))
+                        Left _    -> cb "[]")
+            _ -> cb "[]"
+
+-- | Reduce an LSP @CompletionList@ (or bare @CompletionItem[]@, or @null@) to a
+-- capped list of compact @{label, apply, detail?, kind?}@ objects.
+parseCompletions :: Value -> [Value]
+parseCompletions v = take maxCompletions $ case v of
+    Array a  -> mapMaybe compactItem (toList a)
+    Object _ -> case parseMaybe (withObject "CompletionList" (.: "items")) v of
+        Just (Array a) -> mapMaybe compactItem (toList a)
+        _              -> []
+    _        -> []
+
+-- | Pull the display label, the text to insert, and the kind out of one
+-- @CompletionItem@.  Prefer @insertText@, then @textEdit.newText@, else the
+-- label itself.
+compactItem :: Value -> Maybe Value
+compactItem = parseMaybe $ withObject "CompletionItem" $ \o -> do
+    label  <- o .: "label"
+    detail <- o .:? "detail"
+    kind   <- o .:? "kind"
+    insert <- o .:? "insertText"
+    te     <- o .:? "textEdit"
+    let newTxt = te >>= parseMaybe (withObject "TextEdit" (.: "newText"))
+        apply  = fromMaybe (label :: Text) (insert <|> newTxt)
+    pure $ object $
+        [ "label" .= label, "apply" .= apply ]
+        <> maybe [] (\d -> [ "detail" .= (d :: Text) ]) detail
+        <> maybe [] (\k -> [ "kind"   .= (k :: Int)  ]) kind
+
+--------------------------------------------------------------------------------
+-- Go to definition (textDocument/definition)
+--------------------------------------------------------------------------------
+
+-- | Request the definition site at a position (LSP 0-based @line@\/@char@).
+-- Non-blocking: @cb@ receives the target as a leksah 'SrcSpan' (1-based line,
+-- 0-based column; its filename is the file to open) or 'Nothing'.
+requestDefinition :: FilePath -> Int -> Int -> (Maybe SrcSpan -> IO ()) -> IO ()
+requestDefinition file line ch cb
+    | not (isHaskellFile file) = cb Nothing
+    | otherwise = withServerReady file (cb Nothing) $ \ss ->
+        void $ request (ssClient ss) SMethod_TextDocumentDefinition
+            (buildParams (posParams file line ch))
+            (\case
+                Right res -> cb (firstLocation (toJSON res))
+                Left _    -> cb Nothing)
+
+-- | The @textDocument/definition@ result is a @Location@, a @Location[]@, or a
+-- @LocationLink[]@ (or @null@).  Take the first and turn it into a 'SrcSpan'.
+firstLocation :: Value -> Maybe SrcSpan
+firstLocation v = case v of
+    Array a  -> listToMaybe (mapMaybe locToSpan (toList a))
+    Object _ -> locToSpan v
+    _        -> Nothing
+
+locToSpan :: Value -> Maybe SrcSpan
+locToSpan = parseMaybe $ withObject "Location" $ \o -> do
+    uriV <- (o .: "uri") <|> (o .: "targetUri")
+    rng  <- (o .: "range") <|> (o .: "targetSelectionRange") <|> (o .: "targetRange")
+    (sl, sc) <- flip (withObject "Range") rng $ \r -> r .: "start" >>= parsePos
+    (el, ec) <- flip (withObject "Range") rng $ \r -> r .: "end"   >>= parsePos
+    file     <- maybe (fail "bad uri") pure (uriTextToFilePath uriV)
+    pure SrcSpan
+        { srcSpanFilename    = file
+        , srcSpanStartLine   = sl + 1
+        , srcSpanStartColumn = sc
+        , srcSpanEndLine     = el + 1
+        , srcSpanEndColumn   = ec }
+
+--------------------------------------------------------------------------------
+-- Find references (textDocument/references)
+--------------------------------------------------------------------------------
+
+-- | Cap on reference results fed to the Grep pane.
+maxReferences :: Int
+maxReferences = 500
+
+-- | Request all references to the symbol at a position (LSP 0-based
+-- @line@\/@char@), including its declaration.  Non-blocking: @cb@ receives
+-- @(file, 1-based line, trimmed line text)@ rows, ready for the Grep pane.
+requestReferences :: FilePath -> Int -> Int -> ([(FilePath, Int, Text)] -> IO ()) -> IO ()
+requestReferences file line ch cb
+    | not (isHaskellFile file) = cb []
+    | otherwise = withServerReady file (cb []) $ \ss ->
+        void $ request (ssClient ss) SMethod_TextDocumentReferences
+            (buildParams $ object
+                [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                , "position" .= object [ "line" .= line, "character" .= ch ]
+                , "context" .= object [ "includeDeclaration" .= True ] ])
+            (\case
+                Right res -> attachContext (parseLocations (toJSON res)) >>= cb
+                Left _    -> cb [])
+
+-- | Reduce a @Location[]@ (or single @Location@) to @(file, 0-based line)@ pairs.
+parseLocations :: Value -> [(FilePath, Int)]
+parseLocations v = case v of
+    Array a  -> mapMaybe locFileLine (toList a)
+    Object _ -> maybe [] pure (locFileLine v)
+    _        -> []
+
+locFileLine :: Value -> Maybe (FilePath, Int)
+locFileLine = parseMaybe $ withObject "Location" $ \o -> do
+    uriV     <- (o .: "uri") <|> (o .: "targetUri")
+    rng      <- (o .: "range") <|> (o .: "targetSelectionRange") <|> (o .: "targetRange")
+    (sl, _)  <- flip (withObject "Range") rng $ \r -> r .: "start" >>= parsePos
+    file     <- maybe (fail "bad uri") pure (uriTextToFilePath uriV)
+    pure (file, sl)
+
+-- | Read each referenced file once to attach the (trimmed) source line as
+-- context, de-duplicating and sorting lines within a file, then cap the total.
+attachContext :: [(FilePath, Int)] -> IO [(FilePath, Int, Text)]
+attachContext locs = do
+    let byFile = Map.toList $ Map.fromListWith (++) [ (f, [l]) | (f, l) <- locs ]
+    rows <- forM byFile $ \(f, ls) -> do
+        ls' <- (T.lines <$> TIO.readFile f)
+                 `catch` \(_ :: SomeException) -> return []
+        let lineAt i | i >= 0 && i < length ls' = T.strip (ls' !! i)
+                     | otherwise                = ""
+        return [ (f, l + 1, lineAt l) | l <- sort (nub ls) ]
+    return $ take maxReferences (concat rows)
+
+--------------------------------------------------------------------------------
 -- Server lifecycle
 --------------------------------------------------------------------------------
 
@@ -225,25 +414,31 @@ withServer file act = when (isHaskellFile file) $ do
         _              -> return ()
   where readMVarMap = modifyMVar registry (\m -> return (m, m))
 
--- | Get (spawning if necessary) the server for a project root.
+-- | Get (spawning if necessary) the server for a project root.  When LSP is
+-- disabled in prefs, never spawns and returns 'Nothing' without caching, so
+-- re-enabling takes effect on the next edit.
 ensureServer :: FilePath -> IO (Maybe ServerState)
-ensureServer root = modifyMVar registry $ \m ->
-    case Map.lookup root m of
-        Just entry -> return (m, entry)
-        Nothing -> try (spawnAndInit root) >>= \case
-            Right ss -> return (Map.insert root (Just ss) m, Just ss)
-            Left (e :: SomeException) -> do
-                debugM "leksah" ("IDE.LSP: could not start language server in "
-                                 <> root <> ": " <> show e)
-                return (Map.insert root Nothing m, Nothing)
+ensureServer root = do
+    (enabled, cmdPref) <- lspConfig
+    if not enabled
+        then return Nothing
+        else modifyMVar registry $ \m -> case Map.lookup root m of
+            Just entry -> return (m, entry)
+            Nothing -> do
+                cmdArgs <- serverCommandFor root cmdPref
+                try (spawnAndInit root cmdArgs) >>= \case
+                    Right ss -> return (Map.insert root (Just ss) m, Just ss)
+                    Left (e :: SomeException) -> do
+                        debugM "leksah" ("IDE.LSP: could not start language server in "
+                                         <> root <> ": " <> show e)
+                        return (Map.insert root Nothing m, Nothing)
 
-spawnAndInit :: FilePath -> IO ServerState
-spawnAndInit root = do
+spawnAndInit :: FilePath -> (FilePath, [String]) -> IO ServerState
+spawnAndInit root (cmd, args) = do
     ready   <- newTVarIO False
     pending <- newTVarIO []
     vers    <- newTVarIO Map.empty
-    let (cmd, args) = serverCommand
-        cfg = defaultClientConfig
+    let cfg = defaultClientConfig
             { onNotification = handleNotification root
             , onStderr = \l -> debugM "leksah" ("HLS[" <> root <> "]: " <> T.unpack l) }
     client <- start cmd args (Just root) Nothing cfg
@@ -277,7 +472,11 @@ initParams root = buildParams $ object
     , "capabilities" .= object
         [ "textDocument" .= object
             [ "synchronization" .= object [ "didSave" .= True ]
-            , "publishDiagnostics" .= object [ "relatedInformation" .= True ] ]
+            , "publishDiagnostics" .= object [ "relatedInformation" .= True ]
+            -- Ask for plain-text completions (snippetSupport = False) so items
+            -- arrive without @${1:…}@ placeholders — CM6 inserts them verbatim.
+            , "completion" .= object
+                [ "completionItem" .= object [ "snippetSupport" .= False ] ] ]
         , "workspace" .= object [ "configuration" .= True ] ]
     ]
 
@@ -357,13 +556,34 @@ parseDiag = withObject "Diagnostic" $ \o -> do
     sev <- o .:? "severity"
     msg <- o .: "message"
     return (Diag sl sc el ec sev msg)
-  where
-    parsePos = withObject "Position" $ \p ->
-        (,) <$> p .: "line" <*> p .: "character"
 
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
+
+-- | Encode a JSON value to strict 'Text' (for handing to the CM6 JS bridge).
+encodeToText :: ToJSON a => a -> Text
+encodeToText = TL.toStrict . TLE.decodeUtf8 . encode
+
+-- | Run @act@ against the (already-running, ready) server for a file's project,
+-- or @onNone@ if there is none.  Never spawns.
+withServerReady :: FilePath -> IO () -> (ServerState -> IO ()) -> IO ()
+withServerReady file onNone act = do
+    root <- projectRootOf file
+    m <- modifyMVar registry (\mp -> return (mp, mp))
+    case Map.lookup root m of
+        Just (Just ss) -> onReady ss (act ss)
+        _              -> onNone
+
+-- | @TextDocumentPositionParams@ for a file + LSP 0-based position.
+posParams :: FilePath -> Int -> Int -> Value
+posParams file line ch = object
+    [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+    , "position" .= object [ "line" .= line, "character" .= ch ] ]
+
+-- | Parse an LSP @Position@ to a @(line, character)@ pair (both 0-based).
+parsePos :: Value -> Parser (Int, Int)
+parsePos = withObject "Position" $ \p -> (,) <$> p .: "line" <*> p .: "character"
 
 -- | Decode a value we constructed ourselves into a typed protocol param.  A
 -- failure here is a programming error (a wrong JSON shape), not runtime data.

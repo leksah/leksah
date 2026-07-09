@@ -7,13 +7,14 @@
     "build": "esbuild src/leksah-cm6.mjs --bundle --format=iife --legal-comments=none --outfile=leksah-cm6.js"
   },
   "dependencies": {
-    "@codemirror/state": "^6.5.2",
-    "@codemirror/view": "^6.36.0",
+    "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.8.0",
     "@codemirror/language": "^6.10.8",
     "@codemirror/legacy-modes": "^6.4.2",
-    "@codemirror/search": "^6.5.8",
     "@codemirror/merge": "^6.10.0",
+    "@codemirror/search": "^6.5.8",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.0",
     "@lezer/highlight": "^1.2.3"
   },
   "devDependencies": {

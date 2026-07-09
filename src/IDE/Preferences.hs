@@ -156,6 +156,8 @@ defaultPrefs = Prefs {
     ,   showShortcutBadges = False
     ,   colorfulIcons = False
     ,   regionCaptureTarget = "claude/leksah/0"
+    ,   lspEnabled          = True
+    ,   lspServerCommand    = ""
     }
 
 mergePrefsFile :: Prefs -> PrefsFile -> Prefs
@@ -237,6 +239,8 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , showShortcutBadges = fromMaybe showShortcutBadges showShortcutBadges_
   , colorfulIcons = fromMaybe colorfulIcons colorfulIcons_
   , regionCaptureTarget = fromMaybe regionCaptureTarget regionCaptureTarget_
+  , lspEnabled = fromMaybe lspEnabled lspEnabled_
+  , lspServerCommand = fromMaybe lspServerCommand lspServerCommand_
   , remoteHosts = fromMaybe remoteHosts remoteHosts_
   }
 
@@ -317,6 +321,8 @@ toPrefsFile Prefs{..} = PrefsFile
   , showShortcutBadges_ = Just showShortcutBadges
   , colorfulIcons_ = Just colorfulIcons
   , regionCaptureTarget_ = Just regionCaptureTarget
+  , lspEnabled_ = Just lspEnabled
+  , lspServerCommand_ = Just lspServerCommand
   , remoteHosts_ = Just remoteHosts
   }
 

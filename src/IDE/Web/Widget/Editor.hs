@@ -56,6 +56,7 @@ import IDE.Web.Events
         _ErrorsGoto, _MetadataGoto, _GrepGoto, _ChangesOpen, _ProjectFileEvents,
         _PackageFileEvents, _ProjectPackageEvents)
 import IDE.Web.Widget.Menu (menu)
+import IDE.Web.Widget.Grep (GrepResult(..))
 import qualified IDE.LSP as LSP
 
 import System.Directory (doesFileExist)
@@ -152,8 +153,14 @@ editorWidget
   -> m
     ( Event t (Map FilePath (Text, Maybe ()))  -- ^ built-in (CodeMirror) opens
     , Event t (FilePath, Int)                   -- ^ external-editor opens (file, line)
+    , Event t [GrepResult]                      -- ^ LSP find-references results (→ Grep pane)
     , FilePath -> Event t () -> Dynamic t (Maybe ()) -> m (Event t ()))
 editorWidget ide allEvents saveFileE = do
+  -- LSP navigation bridges (fired from an editor's F12/Shift-F12 handler on the
+  -- LSP client thread): go-to-definition feeds the unified 'gotoSpanE' below;
+  -- find-references is returned for the Grep pane.
+  (defGotoE, fireDefGoto) <- newTriggerEvent
+  (refsE, fireRefs)       <- newTriggerEvent
   let tabEvents = select (fan allEvents) TabWidget
       workspaceEvents = select (fan (select (fanMap tabEvents) (Const2 WorkspaceKey))) WorkspaceTab
       -- Files opened from the Changes pane (existence is checked below).
@@ -191,7 +198,8 @@ editorWidget ide allEvents saveFileE = do
         [ ffor gotoLocationE $ \lr -> (logRefSrcSpan lr) { srcSpanFilename = logRefFullFilePath lr }
         , metadataGotoE
         , grepGotoE
-        , terminalGotoE ]
+        , terminalGotoE
+        , defGotoE ]        -- LSP go-to-definition
       fileE = leftmost [ openFileE, srcSpanFilename <$> gotoSpanE ]
       -- Every open with its line (1 for a plain file open, the span's start line
       -- for a grep/error/metadata/terminal-link goto).  Used only for external
@@ -207,6 +215,7 @@ editorWidget ide allEvents saveFileE = do
   return
     ( gate (not <$> extActiveB) ((=:("wide0", Just())) <$> fileE)
     , gate extActiveB fileWithLineE
+    , refsE
     , \file selectedE _ -> do
       (changeE, triggerChangeE) <- newTriggerEvent
       -- LSP hover: the CM6 hover source calls back with (reqId, line, ch); the
@@ -214,6 +223,11 @@ editorWidget ide allEvents saveFileE = do
       -- from the LSP client thread via this trigger, then resolved into the
       -- editor's JS Promise in this window's own context.
       (hoverRespE, fireHoverResp) <- newTriggerEvent
+      -- LSP completion: same round-trip as hover — the CM6 completion source
+      -- calls back with (reqId, line, ch); the server's reply (reqId, JSON
+      -- items) arrives here via this trigger and is resolved into the editor's
+      -- pending Promise in this window's own context.
+      (compRespE, fireCompResp) <- newTriggerEvent
       logRefsD <- holdUniqDyn $ fromMaybe [] . M.lookup file <$> logRefsByFileD
       exists <- liftIO (doesFileExist file)
       liftIO (if exists then decodeUtf8' <$> BS.readFile file else return (Right "")) >>= \case
@@ -271,6 +285,40 @@ editorWidget ide allEvents saveFileE = do
                       _ -> return ())
           performEvent_ $ ffor hoverRespE $ \(rid, mtext) -> liftJSM . void $
               jsg ("LeksahCM" :: Text) ^. js2 ("resolveHover" :: Text) rid (fromMaybe "" mtext)
+          -- LSP (Stage 3): register the completion callback so the CM6
+          -- completion source asks the language server; resolve the JS Promise
+          -- (a JSON items array) when it replies.
+          performEvent_ $ ffor editorE $ \editorView -> liftJSM . void $
+              jsg ("LeksahCM" :: Text) ^. js2 ("setCompletionHandler" :: Text) editorView
+                  (fun $ \_ _ args -> case args of
+                      (idv:lnv:chv:_) -> do
+                          rid <- valToNumber idv
+                          ln  <- valToNumber lnv
+                          ch  <- valToNumber chv
+                          liftIO $ LSP.requestCompletion file (round ln) (round ch) $ \items ->
+                              fireCompResp (round rid :: Int, items)
+                      _ -> return ())
+          performEvent_ $ ffor compRespE $ \(rid, items) -> liftJSM . void $
+              jsg ("LeksahCM" :: Text) ^. js2 ("resolveComplete" :: Text) rid items
+          -- LSP (Stage 4): F12 go-to-definition (jumps via the unified goto,
+          -- opening the target file if needed) and Shift-F12 find-references
+          -- (populates the Grep pane).  Both are fire-and-forget from JS.
+          performEvent_ $ ffor editorE $ \editorView -> liftJSM . void $
+              jsg ("LeksahCM" :: Text) ^. js3 ("setNavHandlers" :: Text) editorView
+                  (fun $ \_ _ args -> case args of
+                      (lnv:chv:_) -> do
+                          ln <- valToNumber lnv
+                          ch <- valToNumber chv
+                          liftIO $ LSP.requestDefinition file (round ln) (round ch) $
+                              maybe (return ()) fireDefGoto
+                      _ -> return ())
+                  (fun $ \_ _ args -> case args of
+                      (lnv:chv:_) -> do
+                          ln <- valToNumber lnv
+                          ch <- valToNumber chv
+                          liftIO $ LSP.requestReferences file (round ln) (round ch) $ \rs ->
+                              fireRefs [ GrepResult f l c | (f, l, c) <- rs ]
+                      _ -> return ())
           -- Focus the editor when it's created and whenever its tab is selected,
           -- so opening/flipping to a file puts the cursor in it (and the find
           -- bar then targets it).  Via requestAnimationFrame so the tab's

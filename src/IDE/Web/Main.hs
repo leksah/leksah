@@ -2562,7 +2562,7 @@ main showMenubar macTitlebar wid ide = mdo
         saveReqE    = leftmost [saveBridgeE, inPageSaveE]
         saveFileE   = fmapMaybe (\case Just (EditorKey f) -> Just f; _ -> Nothing)
                         (tag (current activePaneD) saveReqE)
-    (openFileE, openExternalE, makeEditor) <- editorWidget ide allE saveFileE
+    (openFileE, openExternalE, lspRefsE, makeEditor) <- editorWidget ide allE saveFileE
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
@@ -3507,7 +3507,9 @@ main showMenubar macTitlebar wid ide = mdo
                         Just a  -> a : filter (/= a) allDirs
                         Nothing -> allDirs
         runGrep q fl dirs
-    grepResultsD <- holdDyn [] grepResultsE
+    -- The Grep pane doubles as the LSP find-references list (Shift-F12): both a
+    -- workspace grep and a references result replace its contents.
+    grepResultsD <- holdDyn [] (leftmost [grepResultsE, lspRefsE])
     -- Opening a terminal tab (in the editor area) both creates it if needed and
     -- selects it.  Selecting a restored terminal therefore goes through the open
     -- path too: re-opening an already-open key is a no-op for `listViewWithKey`
@@ -3568,6 +3570,7 @@ main showMenubar macTitlebar wid ide = mdo
           , fmapMaybe (fmap ("wide1" =:) . pickNth numberedWide1Tabs)
                       (numKeyE _CommandSelectBottomPane) ]
         selectTabE = leftmost [flipTabE, restoreVisibleE, ("wide1" =: GrepKey) <$ grepReqE
+                              , ("wide1" =: GrepKey) <$ lspRefsE
                               , (\(s, _, _) -> "wide0" =: TerminalKey s) <$> flipPaneE
                               , (\(s, _)    -> "wide0" =: TerminalKey s) <$> alertTargetE
                               , ("wide0" =: PreferencesKey) <$ showPrefsE
