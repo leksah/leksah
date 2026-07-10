@@ -1744,6 +1744,12 @@ terminalLinksJs = T.unlines
   -- 'onHoverFile' below and IDE.LSP.requestTerminalHover).  shownRid tracks the
   -- in-flight request so a late reply only lands if that link is still hovered.
   , "  var tip = null, hoverSeq = 0, shownRid = -1;"
+    -- Anchor (file\\0hoverLine\\0hoverCol) of the tooltip currently shown, plus a
+    -- debounce timer for hiding.  xterm rebuilds its link objects on every
+    -- redraw/reflow (Claude Code repaints constantly), firing leave->hover for
+    -- the SAME token; without this the tooltip blanks and re-requests LSP each
+    -- repaint (visible flicker).
+  , "  var shownKey = null, hideTimer = null;"
   -- Escape HTML, then apply a markdown-lite pass so an HLS hover blurb (code
   -- fences, `inline code`, **bold**, and a '---'/'***' rule between the type
   -- signature and the docs) renders as a styled card rather than raw markup.
@@ -1802,7 +1808,11 @@ terminalLinksJs = T.unlines
   , "    t.style.top  = (((ev && ev.clientY) || 0) + 16) + 'px';"
   , "    t.style.display = 'block';"
   , "  }"
-  , "  function hideTip(){ if (tip) tip.style.display = 'none'; shownRid = -1; }"
+  , "  function hideTip(){ if (tip) tip.style.display = 'none'; shownRid = -1; shownKey = null; }"
+    -- Defer the hide: a redraw fires leave immediately followed by hover on the
+    -- rebuilt link for the same token, which cancels this before it runs.
+  , "  function scheduleHide(){ if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(function(){ hideTimer = null; hideTip(); }, 150); }"
+  , "  function cancelHide(){ if (hideTimer){ clearTimeout(hideTimer); hideTimer = null; } }"
   -- Called from Haskell when requestTerminalHover replies; ignore stale replies.
   , "  function resolveHover(rid, text){"
   , "    if (rid !== shownRid || !tip) return;"
@@ -1875,8 +1885,19 @@ terminalLinksJs = T.unlines
   -- Hover: show the file link immediately, then ask Haskell (LSP diagnostics for
   -- the file, plus a symbol hover when hl>0) to fill the tooltip in.  hl is the
   -- symbol line for the LSP hover (0 = don't hover a symbol, file summary only).
-  , "        hover: function(ev){ if (!onHoverFile) return; var rid = ++hoverSeq; shownRid = rid; showTip(ev, txt); onHoverFile(f, hl||0, hcol, rid); },"
-  , "        leave: function(){ hideTip(); }"
+  , "        hover: function(ev){"
+  , "          if (!onHoverFile) return;"
+  , "          var key = f + '\\u0000' + (hl||0) + '\\u0000' + hcol;"
+  , "          cancelHide();"
+    -- Same token still hovered (xterm rebuilt the link under a redraw): keep the
+    -- existing tooltip and its in-flight/resolved LSP content untouched.
+  , "          if (tip && tip.style.display !== 'none' && key === shownKey) return;"
+  , "          shownKey = key;"
+  , "          var rid = ++hoverSeq; shownRid = rid;"
+  , "          showTip(ev, txt);"
+  , "          onHoverFile(f, hl||0, hcol, rid);"
+  , "        },"
+  , "        leave: function(){ scheduleHide(); }"
   , "      };"
   , "    }"
   , "    function mkLook(sx, ex, y, tok){"
