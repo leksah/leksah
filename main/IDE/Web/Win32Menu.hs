@@ -24,6 +24,7 @@ import Data.IORef (IORef, newIORef, writeIORef, readIORef)
 import Data.List (intercalate)
 import Data.Text (Text)
 import qualified Data.Text as T
+import System.IO (hPutStrLn, stderr)
 import System.IO.Unsafe (unsafePerformIO)
 
 import Foreign.C.String (CString, withCString, peekCString)
@@ -44,8 +45,39 @@ import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
+import IDE.Web.NewWindowRequest (setNewWindowHandler)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput (setActiveTerminalNotifier)
+
+-- NOTE: multiple OS windows are not yet available on Windows.  The shared
+-- multi-window machinery is complete and platform-neutral: the shared state
+-- ('IDE.Core.Types.webWindows') already holds one 'WebWindow' per OS window,
+-- each window would run its own reflex network ('IDE.Web.Main.jsMain') in its
+-- own jsaddle context, coordinating through the shared state + resync
+-- ('IDE.Web.WindowBridge'); the close-merge ('IDE.Web.WindowBridge.closeWindowMerge')
+-- and the flipper's cross-window raise are ready to use.  What is MISSING is a
+-- jsaddle-webview2 primitive to create a SECOND WebView2 window: the current C
+-- shim (@jsaddle-webview2/cbits/WebView2Shim.c@, entry @runJsaddleWebView2@)
+-- creates exactly ONE HWND + controller and owns the message loop, with no way
+-- to spawn another window/context on that UI thread.
+--
+-- To finish Windows multi-window (all in jsaddle-webview2, then a few lines here):
+--   1. Add a C entry @wv2CreateWindow(app, widthTag)@ that, ON THE UI THREAD
+--      (PostMessage a WM_APP to the existing loop), creates another HWND +
+--      ICoreWebView2Controller in the SAME environment and, once its controller
+--      completes, calls back a Haskell export @leksah_attach_wv2 :: CInt ->
+--      WebView2 -> IO ()@ — mirroring wkwebview's @c_newWindow@ /
+--      @leksah_attach_window@.
+--   2. That Haskell callback runs @jsaddleMainURL url (jsMain False False
+--      (Just wid) ideR) newWebView@ (from 'IDE.Web.Main' + jsaddle-webview2), so
+--      the new window gets its own context sharing the global 'IDERef'.
+--   3. Subclass the new window's wndProc so WM_CLOSE calls
+--      'closeWindowMerge' (…) wid (quit = PostQuitMessage on the last window),
+--      and WM_ACTIVATE records the active window (the 'leksah_window_activated'
+--      analog).
+--   4. Register the handlers here exactly as 'IDE.Web.GtkApp' / 'IDE.Web.MacMenu'
+--      do (setNewWindowHandler / setOpenWindowHandler / setRaiseWindowHandler).
+-- Until then New Window reports that it is unavailable (see 'installWin32Menu').
 
 foreign import ccall "leksah_win_menu_begin"    c_menuBegin   :: IO ()
 foreign import ccall "leksah_win_menu_add_menu" c_menuAddMenu :: CString -> IO ()
@@ -170,6 +202,12 @@ installWin32Menu wv = do
   -- The toolbar/menubar Open commands show the native open dialogs.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
+  -- File ▸ New Window: multi-window needs a jsaddle-webview2 primitive that does
+  -- not exist yet (see the module NOTE).  Give the user feedback instead of a
+  -- silent no-op, so the command's absence is explicable rather than a bug.
+  setNewWindowHandler $ hPutStrLn stderr
+    "leksah: New Window is not yet supported on Windows (needs jsaddle-webview2 \
+    \multi-window support; see IDE.Web.Win32Menu)."
   let winMenus = stripMacOnly menus
   -- Tags index this list; it must be the leaf commands in the same
   -- depth-first order that 'addItems' emits them.

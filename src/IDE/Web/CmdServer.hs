@@ -68,7 +68,7 @@ import System.Process
 
 import Network.Socket
        (Socket, Family(AF_UNIX), SocketType(Stream), SockAddr(SockAddrUnix),
-        socket, bind, listen, accept, close, defaultProtocol)
+        socket, bind, listen, accept, connect, close, defaultProtocol)
 import Network.Socket.ByteString (recv, sendAll)
 
 import Language.Javascript.JSaddle (eval, valToText)
@@ -79,6 +79,7 @@ import IDE.Core.State
         runProject, pjPackages, ipdPackageName, wsProjects, setLoggerLevel)
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.Types (filePathToProjectKey)
+import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
@@ -87,11 +88,13 @@ import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Workspaces (projectOpenThis, workspaceTryQuiet, makePackage')
 
--- | @~/.leksah/cmd.sock@ — the control socket both sides agree on.
+-- | The control socket both sides agree on: @~/.leksah/cmd.sock@ for the
+-- default instance, @~/.leksah/cmd-\<port\>.sock@ under a non-default
+-- @LEKSAH_PORT@ (see 'cmdSocketFileName').
 cmdSocketPath :: IO FilePath
 cmdSocketPath = do
   home <- getHomeDirectory
-  return $ home </> ".leksah" </> "cmd.sock"
+  return $ home </> ".leksah" </> cmdSocketFileName
 
 -- | Start the control socket listener on a background thread and return.  Any
 -- stale socket file from a previous run is removed first; failures to bind are
@@ -106,7 +109,18 @@ startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> ret
       path <- cmdSocketPath
       createDirectoryIfMissing True =<< (</> ".leksah") <$> getHomeDirectory
       exists <- doesFileExist path
-      when exists $ removeFile path `catch` \(_ :: SomeException) -> return ()
+      -- Only reclaim the socket file if nothing is listening on it.  A live
+      -- listener means another instance on this same LEKSAH_PORT already owns
+      -- it — don't steal it (that orphaned the older instance's leksah-cmd);
+      -- abort instead, leaving this instance without a control socket.  A
+      -- distinct-port instance uses a distinct filename (see 'cmdSocketFileName')
+      -- and never lands here.  A dead socket file (stale from a crash) has no
+      -- listener, so we remove and rebind as before.
+      when exists $ do
+        live <- socketInUse path
+        if live
+          then ioError (userError ("cmd socket in use: " <> path))
+          else removeFile path `catch` \(_ :: SomeException) -> return ()
       sock <- socket AF_UNIX Stream defaultProtocol
       bind sock (SockAddrUnix path)
       listen sock 5
@@ -115,6 +129,18 @@ startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> ret
         void . forkIO $
           (handleConn ideR conn `catch` \(_ :: SomeException) -> return ())
             `finally` close conn
+
+-- | Is a live listener answering on the AF_UNIX socket at @path@?  We just try
+-- to connect: success means someone is listening (a running instance);
+-- ECONNREFUSED / ENOENT (a stale file left by a crash, or none) throws and we
+-- report it free.  Used to avoid stealing a control socket another instance
+-- still owns (see 'startCmdServer').
+socketInUse :: FilePath -> IO Bool
+socketInUse path = (probe `catch` \(_ :: SomeException) -> return False)
+  where
+    probe = do
+      s <- socket AF_UNIX Stream defaultProtocol
+      (connect s (SockAddrUnix path) >> return True) `finally` close s
 
 -- | Read the whole request (client half-closes after sending), dispatch it and
 -- write the reply.  @restart@ never returns — it exits the process.

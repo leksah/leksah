@@ -6,6 +6,7 @@ import System.Environment (getArgs)
 
 import Language.Javascript.JSaddle.WKWebView as JSaddleWK (runHTMLWithBaseURL)
 
+import IDE.Web.Instance (leksahPort)
 import IDE.Web.Main (newIDE, startJSaddle)
 import IDE.Web.MacMenu (installMacMenu, setupMacTitlebar)
 
@@ -21,5 +22,5 @@ main = do
   dev <- elem "--develop-leksah" <$> getArgs
   -- Hide the web menu bar (native macOS menu instead) and let the toolbar use
   -- the native title bar.
-  newIDE False True dev $ startJSaddle 3367 (\html url -> JSaddleWK.runHTMLWithBaseURL html url def)
+  newIDE False True dev $ startJSaddle leksahPort (\html url -> JSaddleWK.runHTMLWithBaseURL html url def)
 

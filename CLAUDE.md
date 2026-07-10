@@ -17,14 +17,14 @@
   fire-and-forget ack, NOT streamed output. **`--use-cabal` is the failsafe**
   (and what agents should use for scripted builds): it bypasses leksah's build
   code entirely — in case it's broken — running `~/.leksah/rebuild.sh` (written
-  by leksah-nix.sh) directly and streaming output back; also the automatic
+  by leksah.sh) directly and streaming output back; also the automatic
   fallback when no leksah package is open in the workspace. On success both
   paths `exit(2)` → relaunch — unless `--no-restart` (build lands on disk;
   relaunch later). Prefer `--no-restart` while iterating: restarting per build
   is how duplicate instances pile up (single-instance rule below). On failure
   leksah stays up. Don't close the socket mid-build (`… | head`); redirect to a
   file or `tail`.
-- `leksah-cmd restart [--no-rebuild]` — exit immediately so `leksah-nix.sh`
+- `leksah-cmd restart [--no-rebuild]` — exit immediately so `leksah.sh`
   relaunches; plain restart exits 2 (loop rebuilds first), `--no-rebuild` exits
   3 (loop skips the build — use after rebuild-self already built). Both replace
   the older `./dev-relaunch.sh`.
@@ -41,23 +41,25 @@
   Tests: `FFCABAL_BIN=$(cabal list-bin --builddir dist-ghc-9.14.1 ffcabal)
   cabal test --builddir dist-ghc-9.14.1 ffcabal-test --test-show-details=direct`.
   `FFCABAL_TMUX_ARGS="-L sock"` redirects its repls to a scratch tmux server.
-- **Run exactly ONE `leksah-nix.sh` loop / one instance.** Each loop relaunches
+- **Run exactly ONE `leksah.sh` loop / one instance.** Each loop relaunches
   its own instance on `exit(2)`, and every instance's `startCmdServer` unlinks and
   rebinds `~/.leksah/cmd.sock` — so with several instances the newest wins the
   socket and the rest are orphaned (uncontrollable), and `leksah-cmd js eval` /
   `rebuild-self` hit whichever one currently owns it. If things get confused, kill
-  all `leksah-wkwebview` + `leksah-nix.sh`, then start one. When counting with
+  all `leksah-wkwebview` + `leksah.sh`, then start one. When counting with
   `pgrep -f <pattern>`, **exclude the self-match** — your own `pgrep`/shell command
   line contains the pattern and counts itself (match the running binary's exact
   argv, or `grep -v` your shell).
-- **Where the loop runs / recovery.** The `leksah-nix.sh` loop runs in the
+- **Where the loop runs / recovery.** The `leksah.sh` loop runs in the
   **`launch`** tmux session (`tmux -L leksah capture-pane -p -t launch`), logging
-  to `~/.leksah/leksah-nix-wkwebview.log`. It relaunches leksah on `exit(2/3)`;
+  to `~/.leksah/leksah-run.log`. It relaunches leksah on `exit(2/3)`;
   but if the loop *itself* dies — e.g. a `nix` eval error from a
   `cabal.project`/`flake.nix` edit that doesn't evaluate — **nothing relaunches**,
   and `leksah-cmd restart --wait` then **hangs forever** waiting for an instance
   that never comes. Restart the loop by running, in the `launch` session,
-  `cd ~/haskell/leksah && ./leksah-nix.sh ghc914 wkwebview 2>&1 | tee ~/.leksah/leksah-nix-wkwebview.log`.
+  `cd ~/haskell/leksah && ./leksah.sh --nix ghc914 2>&1 | tee ~/.leksah/leksah-run.log`
+  (the `launch` shell isn't inside a dev shell, so `--nix` is required there; the
+  default front end is exe:leksah — WKWebView on macOS).
   **Before** pointing `cabal.project`/`flake.nix` at a not-yet-pushed
   `source-repository-package`, confirm the commit is on its remote
   (`git ls-remote <url> <rev>`) — an unfetchable ref fails the loop's nix eval and
@@ -67,15 +69,22 @@
   index-refresh lock; your `git commit`/`add` in a terminal won't contend on
   `.git/index.lock`. (An old instance built before this fix still contends —
   retry the commit, or rebuild+restart to pick up the fix.)
-- Full driver: `./leksah-nix.sh GHCVER [gtk|warp|wkwebview|webkitgtk]`
+- Full driver: `./leksah.sh [--nix] [--warp|--classic] GHCVER [--in-tmux] [ARGS]`
   (GHCVER ∈ ghc96/ghc98/ghc910/ghc912/ghc914; oldest supported GHC is 9.6.7).
+  **Front end**: default is the native web exe:leksah (WKWebView on macOS,
+  WebKitGTK on Linux — one exe, chosen per-OS in the cabal file); `--warp` is
+  exe:leksah-warp (browser), `--classic` is the classic Gtk exe:leksah-classic.
+  **`--nix` re-enters the nix dev shell for every build/run command**; WITHOUT
+  it (the default) commands run in the **ambient** environment, so you must
+  already be inside a dev shell (or have ghc/cabal/tmux/leksah-server on PATH).
+  Either way leksah-server/leksah-cmd/ffcabal + the front end are built with cabal.
 - Build dir convention is `dist-ghc-<numeric-version>` — matches what leksah’s own
   in-IDE builds use, so don’t use a different `--builddir`.
-- **Editing `leksah-nix.sh` requires restarting it** — a running `bash` reads the
+- **Editing `leksah.sh` requires restarting it** — a running `bash` reads the
   whole script at start, so loop edits only take effect on a fresh launch.
 - **Incremental-build invariant (web UIs):** every `cabal` invocation must see the
   *same* `PATH` — cabal treats a different `PATH` as "configuration changed" and
-  rebuilds the world. So `leksah-nix.sh` prefixes `bin/$GHCARG` on PATH for every
+  rebuilds the world. So `leksah.sh` prefixes `bin/$GHCARG` on PATH for every
   cabal call, and — crucially — **launches the built binary directly** (`exec`
   via `cabal list-bin`, with `leksah_datadir="$(pwd)"`) rather than `cabal run`.
   `cabal run` augments the launched app's PATH with build-tool dirs, which would

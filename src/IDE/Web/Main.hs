@@ -121,6 +121,7 @@ import IDE.Core.State
         flipMirror, flipMru, ideVersion, focusLog, metaLog)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
+import IDE.Web.Instance (leksahPort)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel)
 import IDE.Web.Theme (themeVarsCss)
@@ -407,7 +408,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 develMain :: IO ()
 develMain = do
   dev <- elem "--develop-leksah" <$> getArgs
-  newIDE True False dev (debugJSaddle 3367)
+  newIDE True False dev (debugJSaddle leksahPort)
 
 -- | The default per-window state a freshly-minted (or adopted-but-unseeded)
 -- window inherits: no wide0 tabs, and side/bottom pane visibility taken from the

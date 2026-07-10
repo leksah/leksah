@@ -47,8 +47,24 @@ import Network.Socket
         ShutdownCmd(ShutdownSend), shutdown)
 import Network.Socket.ByteString (recv, sendAll)
 
+-- | The control socket to talk to.  Must match 'IDE.Web.Instance.cmdSocketPath'
+-- on the server side — replicated here (not imported) because leksah-cmd is a
+-- standalone exe with no leksah-library dependency: @~/.leksah/cmd.sock@ for
+-- the default instance, @~/.leksah/cmd-\<port\>.sock@ under a non-default
+-- @LEKSAH_PORT@, so `leksah-cmd` reaches the instance sharing its environment.
 cmdSocketPath :: IO FilePath
-cmdSocketPath = (</> ".leksah" </> "cmd.sock") <$> getHomeDirectory
+cmdSocketPath = do
+  home <- getHomeDirectory
+  tag  <- instanceTag
+  return $ home </> ".leksah" </> ("cmd" <> tag <> ".sock")
+
+-- | @""@ for the default port (3367), else @-\<port\>@; see 'cmdSocketPath'.
+instanceTag :: IO String
+instanceTag = do
+  m <- lookupEnv "LEKSAH_PORT"
+  return $ case m >>= readMaybe of
+    Just (p :: Int) | p > 0 && p /= 3367 -> "-" <> show p
+    _                                    -> ""
 
 usage :: Text
 usage = T.unlines

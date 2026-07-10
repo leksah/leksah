@@ -298,6 +298,7 @@ library
         IDE.Web.Main
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
+        IDE.Web.Instance
         IDE.Web.OpenFileRequest
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
@@ -541,6 +542,7 @@ library leksah-nogtk
         IDE.Web.Main
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
+        IDE.Web.Instance
         IDE.Web.OpenFileRequest
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
@@ -837,6 +839,7 @@ executable leksah
         IDE.Web.GtkMenu
       build-depends:
         bytestring >=0.10.6.0 && <0.13,
+        containers >=0.2.0.0 && <0.9,
         filepath >=1.1.0.1 && <1.6,
         jsaddle >=0.9.4.0 && <0.10,
         jsaddle-webkitgtk >=0.9.9.3 && <0.10,

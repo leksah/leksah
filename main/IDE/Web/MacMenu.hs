@@ -13,16 +13,14 @@ module IDE.Web.MacMenu
   , setupMacTitlebar
   ) where
 
-import Control.Applicative ((<|>))
-import Control.Lens ((^.), (.~), (?~), (&), (%~))
+import Control.Lens ((^.), (?~))
 import Control.Monad (void)
-import Control.Monad.IO.Class (liftIO)
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
 import Data.List (intercalate)
-import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack)
+import Data.Text.Encoding (encodeUtf8)
 
 import Foreign.C.String (CString, withCString, peekCString)
 import Foreign.C.Types (CInt(..))
@@ -33,14 +31,13 @@ import System.Posix.Process (exitImmediately)
 
 import Language.Javascript.JSaddle.WKWebView (WKWebView(..), jsaddleMainHTMLWithBaseURL)
 
-import IDE.Core.State (reflectIDE, readIDE, modifyIDE_)
-import IDE.Core.Types
-       (filePathToProjectKey, WindowId(..), webWindows, activeWindow,
-        wwWide0, wwActive)
+import IDE.Core.State (reflectIDE, modifyIDE_)
+import IDE.Core.Types (filePathToProjectKey, WindowId(..), activeWindow)
 import IDE.Gtk.Workspaces (workspaceTry)
 import IDE.Workspaces (projectOpenThis)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.IDERefStore (getGlobalIDERef)
+import IDE.Web.Instance (leksahPort)
 import IDE.Web.Main (jsMain, indexHtml, mintWindowId)
 import IDE.Web.MenuModel (menus, MenuItem(..))
 import IDE.Web.NewWindowRequest
@@ -51,7 +48,7 @@ import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
-import IDE.Web.WindowBridge (unregisterWindowBridge, unregisterResync)
+import IDE.Web.WindowBridge (closeWindowMerge)
 import IDE.Web.ScreenshotRequest
        (registerScreenshotHandler, registerScreenshotRegionHandler)
 import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
@@ -142,7 +139,9 @@ leksah_attach_window widInt pWebView = getGlobalIDERef >>= \case
     jsaddleMainHTMLWithBaseURL indexHtml baseURL
       (jsMain False True (Just (WindowId (fromIntegral widInt))) ideR)
       (WKWebView (castPtr pWebView))
-  where baseURL = "http://127.0.0.1:3367"
+  -- Same port the first window's jsaddle server bound (see 'IDE.Web.Instance');
+  -- a second instance on a different LEKSAH_PORT points its webviews at its own.
+  where baseURL = encodeUtf8 (T.pack ("http://127.0.0.1:" <> show leksahPort))
 
 -- | Called from Objective-C when a window becomes key (frontmost): record it as
 -- the active window, so the process-wide bridges (close/save/find/…) and the
@@ -156,34 +155,14 @@ leksah_window_activated widInt = getGlobalIDERef >>= \case
 
 -- | Called from Objective-C when a window is closing: its wide0 tabs merge into
 -- the frontmost remaining window (its 'activeWindow', else the lowest-id one);
--- closing the last window quits the app.  Also drops the window's bridge.
+-- closing the last window quits the app.  Also drops the window's bridge.  The
+-- merge itself lives in the shared 'closeWindowMerge' (identical across
+-- platforms); only the last-window quit is macOS-specific (hard exit).
 foreign export ccall "leksah_window_closing" leksah_window_closing :: CInt -> IO ()
 
 leksah_window_closing :: CInt -> IO ()
-leksah_window_closing widInt = getGlobalIDERef >>= \case
-  Nothing   -> return ()
-  Just ideR -> do
-    let wid = WindowId (fromIntegral widInt)
-    unregisterWindowBridge wid
-    unregisterResync wid
-    reflectIDE (do
-      wins <- readIDE webWindows
-      act  <- readIDE activeWindow
-      case M.lookup wid wins of
-        Nothing      -> return ()   -- already merged/gone
-        Just closing -> do
-          let others = M.delete wid wins
-          case M.keys others of
-            [] -> liftIO (exitImmediately ExitSuccess)   -- last window → quit
-            _  -> do
-              let target = case act of
-                             Just a | a /= wid, M.member a others -> a
-                             _ -> fst (M.findMin others)
-                  merge tw = tw & wwWide0  %~ (++ closing ^. wwWide0)
-                                & wwActive %~ (<|> closing ^. wwActive)
-              modifyIDE_ $ \i -> i & webWindows  .~ M.adjust merge target others
-                                   & activeWindow .~ Just target
-      ) ideR
+leksah_window_closing widInt =
+  closeWindowMerge (exitImmediately ExitSuccess) (WindowId (fromIntegral widInt))
 
 -- | The macOS app menu holds Settings… natively (see leksah-mac-menu.m), so
 -- strip the Preferences command from the shared menu model when building the

@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 -- | Routing for the process-global "act on the active window" bridges.
 --
 -- Menu/native commands (File ▸ Close/Save, Edit ▸ Find, the app-menu Settings…,
@@ -23,20 +24,25 @@ module IDE.Web.WindowBridge
   , unregisterResync
   , notifyResync
   , resyncStates
+  , closeWindowMerge
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, killThread, ThreadId)
 import GHC.Conc.Sync (labelThread)
 import Control.Concurrent.MVar
        (MVar, readMVar, newMVar, newEmptyMVar, takeMVar, tryPutMVar, tryReadMVar, withMVar)
-import Control.Lens ((^.))
+import Control.Lens ((^.), (.~), (%~), (&))
 import Control.Monad (forever, void)
+import Control.Monad.IO.Class (liftIO)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import Data.Map (Map)
 import qualified Data.Map as M
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Core.Types (IDERef, WindowId, activeWindow)
+import IDE.Core.State (reflectIDE, readIDE, modifyIDE_)
+import IDE.Core.Types (IDERef, WindowId, activeWindow, webWindows, wwWide0, wwActive)
+import IDE.Web.IDERefStore (getGlobalIDERef)
 
 import IDE.Web.CloseRequest (nextCloseRequest)
 import IDE.Web.SaveRequest (nextSaveRequest)
@@ -137,6 +143,40 @@ registerWindowBridge wid b =
 unregisterWindowBridge :: WindowId -> IO ()
 unregisterWindowBridge wid =
   atomicModifyIORef' bridgeRegistry (\m -> (M.delete wid m, ()))
+
+-- | The native window-close handler, shared by every front end.  When OS window
+-- @wid@ closes: drop its bridge + resync, then merge its wide0 tabs into the
+-- frontmost remaining window (its 'activeWindow', else the lowest-id one), so no
+-- open editor/terminal is orphaned.  Closing the LAST window runs @quit@ — each
+-- platform passes its own (hard @exitImmediately@ on macOS; @applicationQuit@ on
+-- GTK; the message-loop teardown on Windows).  A no-op if @wid@ is already gone
+-- (a double close) or no 'IDERef' has been published yet.  Keeping the merge here
+-- (rather than per platform) guarantees macOS/Linux/Windows behave identically;
+-- the @quit@ callback is the only platform-specific bit.  Mirrors what
+-- 'IDE.Web.MacMenu.leksah_window_closing' used to do inline.
+closeWindowMerge :: IO () -> WindowId -> IO ()
+closeWindowMerge quit wid = getGlobalIDERef >>= \case
+  Nothing   -> return ()
+  Just ideR -> do
+    unregisterWindowBridge wid
+    unregisterResync wid
+    (`reflectIDE` ideR) $ do
+      wins <- readIDE webWindows
+      act  <- readIDE activeWindow
+      case M.lookup wid wins of
+        Nothing      -> return ()   -- already merged/gone
+        Just closing -> do
+          let others = M.delete wid wins
+          case M.keys others of
+            [] -> liftIO quit                             -- last window → quit
+            _  -> do
+              let target = case act of
+                             Just a | a /= wid, M.member a others -> a
+                             _ -> fst (M.findMin others)
+                  merge tw = tw & wwWide0  %~ (++ closing ^. wwWide0)
+                                & wwActive %~ (<|> closing ^. wwActive)
+              modifyIDE_ $ \i -> i & webWindows   .~ M.adjust merge target others
+                                   & activeWindow .~ Just target
 
 -- | The bridge of the frontmost (active) window, falling back to any registered
 -- window (there is always at least one live window while a token can arrive).
