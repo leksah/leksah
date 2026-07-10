@@ -24,6 +24,8 @@ module IDE.Web.TerminalInput
   , unregisterTerminalPty
   , registerTerminalCC
   , unregisterTerminalCC
+  , registerCCStop
+  , unregisterCCStop
   , registerTerminalSplits
   , unregisterTerminalSplits
   , registerTerminalFocus
@@ -37,7 +39,9 @@ module IDE.Web.TerminalInput
   , tmuxCommandActiveTerminal
   ) where
 
+import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, catch)
+import Control.Monad (forM_, void)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef, writeIORef)
 import qualified Data.Map as M
@@ -58,6 +62,24 @@ ptyRegistry = unsafePerformIO (newIORef M.empty)
 {-# NOINLINE ccRegistry #-}
 ccRegistry :: IORef (M.Map Text (Text -> IO ()))
 ccRegistry = unsafePerformIO (newIORef M.empty)
+
+-- Teardown actions for the *control clients* (the @tmux -C@ processes), keyed
+-- by session id.  A session's wide0 tab lives in exactly one OS window at a
+-- time, so at most one leksah control client should be attached to it; when the
+-- tab moves to another window that window builds a fresh client and the old
+-- window's client would otherwise linger — attached, and (with @window-size
+-- latest@) clamping the tmux window to its stale size.  reflex-dom gives the
+-- widget no destructor to detach on, so instead each client registers its stop
+-- action here and 'registerCCStop' reaps the prior client for the same session
+-- on connect.  The 'Integer' tags each registration so a torn-down window's
+-- late 'unregisterCCStop' can't drop the *replacement* client (id mismatch).
+{-# NOINLINE ccStopRegistry #-}
+ccStopRegistry :: IORef (M.Map Text (Integer, IO ()))
+ccStopRegistry = unsafePerformIO (newIORef M.empty)
+
+{-# NOINLINE ccStopCounter #-}
+ccStopCounter :: IORef Integer
+ccStopCounter = unsafePerformIO (newIORef 0)
 
 -- Numbered split selectors of the control-mode terminals, by terminal (tab)
 -- id: given N (1-based), select the displayed window's Nth pane in layout
@@ -103,6 +125,32 @@ registerTerminalCC n run = atomicModifyIORef' ccRegistry $ \m -> (M.insert n run
 -- | Forget CC terminal @n@'s runner (its client exited or the tab closed).
 unregisterTerminalCC :: Text -> IO ()
 unregisterTerminalCC n = atomicModifyIORef' ccRegistry $ \m -> (M.delete n m, ())
+
+-- | Install session @n@'s control-client teardown, first running (on a fresh
+-- thread, so a slow detach never blocks the new client's setup) any prior one
+-- for the same session — the stale client left behind by the window this
+-- session's tab just moved away from.  Returns an id identifying this
+-- registration, to be passed back to 'unregisterCCStop'.
+registerCCStop :: Text -> IO () -> IO Integer
+registerCCStop n stop = do
+    myId  <- atomicModifyIORef' ccStopCounter $ \i -> (i + 1, i + 1)
+    prior <- atomicModifyIORef' ccStopRegistry $ \m ->
+                (M.insert n (myId, stop) m, M.lookup n m)
+    forM_ prior $ \(_, s) -> runStop s
+    return myId
+
+-- | Drop and run session @n@'s teardown — but only if the registered client is
+-- still the one that got id @myId@ (a later window may already own the slot).
+unregisterCCStop :: Text -> Integer -> IO ()
+unregisterCCStop n myId = do
+    mine <- atomicModifyIORef' ccStopRegistry $ \m ->
+                case M.lookup n m of
+                    Just (i, s) | i == myId -> (M.delete n m, Just s)
+                    _                       -> (m, Nothing)
+    forM_ mine runStop
+
+runStop :: IO () -> IO ()
+runStop s = void . forkIO $ s `catch` \(_ :: SomeException) -> return ()
 
 -- | Record CC terminal @n@'s numbered split selector (see 'splitRegistry').
 registerTerminalSplits :: Text -> (Int -> IO ()) -> IO ()

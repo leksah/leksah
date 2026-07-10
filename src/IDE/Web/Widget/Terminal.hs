@@ -73,7 +73,7 @@ import Data.List (find, intercalate)
 import Data.Map (Map)
 import qualified Data.Map as M
        (empty, singleton, fromListWith, unionWith, toAscList, toList, map)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines,
@@ -85,13 +85,14 @@ import Clay (height, width, pct, (?), (-:), Css, none, None(..))
 import qualified Clay (display)
 
 import Language.Javascript.JSaddle
-       (jsg, js, jss, js0, js1, js2, js3, fun, new, obj, valToText,
+       (jsg, js, jss, js0, js1, js2, js4, fun, new, obj, valToText,
         valToNumber, valToBool, liftJSM)
 
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE, focusLog)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.Metadata (lookupIdentLocations)
+import qualified IDE.LSP as LSP
 
 import Reflex
        (attach, attachWith, current, ffor, getPostBuild, holdDyn, never,
@@ -291,6 +292,10 @@ terminalWidget ide termId selectedE = do
   -- viewing this session's current window, tmux's alert-bell hook won't fire for
   -- a bell there — so we catch it here and let leksah surface the attention.
   (bellE, triggerBell) <- newTriggerEvent
+  -- Hovering a file link asks the LSP layer for a tooltip; the reply is fired
+  -- here and pushed back into JS (LeksahTermLinks.resolveHover) on this widget's
+  -- own reflex network, not from the LSP client thread.
+  (hoverRespE, fireHoverResp) <- newTriggerEvent
   -- The attached tmux client exited (its PTY hit EOF): the session ended — e.g.
   -- the last window's shell was `exit`ed — so the tab should close instead of
   -- lingering with a dead "[exited]" screen.
@@ -375,7 +380,7 @@ terminalWidget ide termId selectedE = do
       -- LeksahTermLinks.setProjectFiles) call back with the resolved absolute
       -- path + line/column.  With Ctrl/Cmd held, any identifier is clickable and
       -- calls back with the token + click position for a metadata lookup.
-      _ <- jsg ("LeksahTermLinks" :: Text) ^. js3 ("attach" :: Text) term
+      _ <- jsg ("LeksahTermLinks" :: Text) ^. js4 ("attach" :: Text) term
               (fun $ \_ _ as -> case as of
                   (p:l:c:_) -> do
                       path <- valToText p
@@ -389,6 +394,19 @@ terminalWidget ide termId selectedE = do
                       cx  <- valToNumber x
                       cy  <- valToNumber y
                       liftIO $ triggerLookup (tok, round cx :: Int, round cy :: Int)
+                  _ -> return ())
+              -- Hover: (file, hoverLine, hoverCol, requestId) -> LSP tooltip -> JS.
+              -- hoverCol < 0 means "column unknown" (file summary only).
+              (fun $ \_ _ as -> case as of
+                  (fV:lV:cV:rV:_) -> do
+                      path <- valToText fV
+                      hl   <- valToNumber lV
+                      hc   <- valToNumber cV
+                      rid  <- valToNumber rV
+                      let mline = let n = round hl :: Int in if n > 0 then Just n else Nothing
+                          mcol  = let n = round hc :: Int in if n >= 0 then Just n else Nothing
+                      liftIO $ LSP.requestTerminalHover (T.unpack path) mline mcol $ \mt ->
+                          fireHoverResp (round rid :: Int, mt)
                   _ -> return ())
       _ <- fit ^. js0 ("fit" :: Text)
       -- Re-fit on *any* size change of the terminal element: window resize and
@@ -474,6 +492,11 @@ terminalWidget ide termId selectedE = do
           _ <- fit ^. js0 ("fit" :: Text)
           syncPtySize term fit pty
       _ -> return ()
+
+  -- LSP hover reply -> fill the floating tooltip (this terminal's context).
+  performEvent_ $ ffor hoverRespE $ \(rid, mt) -> liftJSM . void $
+      jsg ("LeksahTermLinks" :: Text) ^. js2 ("resolveHover" :: Text)
+          (rid :: Int) (fromMaybe "" mt)
 
   -- Navigation from a clicked file path.
   let fileGotoE = (\(f, l, c) -> SrcSpan f l c l c) <$> linkE

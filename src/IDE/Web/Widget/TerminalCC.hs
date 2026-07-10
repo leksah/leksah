@@ -35,7 +35,7 @@ module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, killThread)
 import Control.Exception (try, SomeException)
 import Control.Lens ((^.))
 import Control.Monad (forM, forM_, forever, unless, when, void)
@@ -48,6 +48,7 @@ import Data.IORef
         writeIORef)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -65,16 +66,18 @@ import Reflex.Dom.Core
         elDynAttr, elDynAttr', listWithKey, text, widgetHold, _element_raw,
         EventName(Click), (=:))
 import Language.Javascript.JSaddle
-       (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, jsg, jss,
+       (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, js4, jsg, jss,
         liftJSM, new, obj, valIsNull, valIsUndefined, valToBool, valToNumber,
         valToText)
 
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE, focusLog)
 import IDE.Web.Events (TerminalEvents(..))
+import IDE.Web.ReplTmux (tmuxSocket)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
-       (registerTerminalCC, unregisterTerminalCC, registerTerminalSplits,
+       (registerTerminalCC, unregisterTerminalCC, registerCCStop,
+        unregisterCCStop, registerTerminalSplits,
         unregisterTerminalSplits, registerTerminalFocus, unregisterTerminalFocus,
         isActiveTerminal)
 import IDE.Web.JsaddleTunnel
@@ -82,6 +85,7 @@ import IDE.Web.JsaddleTunnel
 import IDE.Web.TmuxCC
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.Metadata (lookupIdentLocations)
+import qualified IDE.LSP as LSP
 import qualified Language.Javascript.JSaddle.Terminal.Protocol as P
 
 -- | Session-level widget: one control client; the current window's panes at
@@ -104,6 +108,11 @@ terminalCCWidget ide sessionId selectedE = do
     (linkE, triggerLink) <- newTriggerEvent
     (lookupE, triggerLookup) <- newTriggerEvent
     (bellE, triggerBell) <- newTriggerEvent
+    -- Hovering a file link in a pane's output asks the LSP layer for a tooltip
+    -- (file diagnostics + a symbol hover when a line is known); the reply is
+    -- fired here and pushed back into JS (LeksahTermLinks.resolveHover) on this
+    -- window's own reflex network — never from the LSP client thread.
+    (hoverRespE, fireHoverResp) <- newTriggerEvent
     -- A pane split/kill inside the session widget changes the pane set (and so a
     -- window's pane count); fired from there to poke the IDE's tree poll at once
     -- (see 'paneSetChangedE' use in the return / TerminalTreeChanged).
@@ -153,10 +162,14 @@ terminalCCWidget ide sessionId selectedE = do
     tunnelsRef <- liftIO $ newIORef (M.empty :: M.Map PaneId TunnelInfo)
     scansRef <- liftIO $ newIORef (M.empty :: M.Map PaneId P.OscScan)
     closedRef <- liftIO $ newIORef (S.empty :: S.Set PaneId)
+    -- Id of this widget's control-client teardown registration (see
+    -- registerCCStop), read back by the EvExit cleanup below.
+    ccStopIdRef <- liftIO $ newIORef (0 :: Integer)
     let paneCbs = PaneCallbacks
           { pcLink   = triggerLink
           , pcLookup = triggerLookup
           , pcBell   = triggerBell ()
+          , pcHover  = fireHoverResp
           }
 
     -- Start the control client once the widget exists; drain its events into
@@ -187,7 +200,7 @@ terminalCCWidget ide sessionId selectedE = do
                 in startCCWith
                     [ "ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"
                     , T.unpack host, remoteCmd ]
-            Nothing -> startCC ["-L", "leksah"] ["attach-session", "-t", T.unpack sessionId]
+            Nothing -> startCC ["-L", tmuxSocket] ["attach-session", "-t", T.unpack sessionId]
         -- Batched drain: everything queued is taken at once and consecutive
         -- same-pane output merged, so a scroll-storm burst is ONE reflex
         -- event + ONE xterm.write instead of thousands (which starved the
@@ -196,10 +209,16 @@ terminalCCWidget ide sessionId selectedE = do
         -- pausedRef routing, so flow-control pause/replay (which replays
         -- screen TEXT, never raw escapes) can neither eat nor duplicate a
         -- frame; residual bytes flow on as ordinary EvOutput.
-        _ <- forkIO . forever $ ccEventsBatch cc >>= mapM_
+        drainTid <- forkIO . forever $ ccEventsBatch cc >>= mapM_
                  (routeTunnelEv cc sessionId tunnelsRef scansRef closedRef
                                 fireEv fireTunnelEv fireBatchEv)
                  . coalesceOutputs
+        -- Reap any control client left attached to this session by the window
+        -- its tab just moved away from (reflex-dom gives this widget no
+        -- destructor; see registerCCStop): stop drops the drain thread first so
+        -- the detach can't push a spurious %exit into a dead network.
+        myStopId <- registerCCStop sessionId (killThread drainTid >> stopCC cc)
+        writeIORef ccStopIdRef myStopId
         -- NB initialSync runs from the session widget below, NOT here: its
         -- layout events would race the widgetHold swap — the foldDyn that
         -- consumes them doesn't exist yet, and events fired before it builds
@@ -215,6 +234,10 @@ terminalCCWidget ide sessionId selectedE = do
     performEvent_ $ ffor batchEvE $ \(pane, json) -> liftJSM . void $
         jsg ("LeksahJsaddlePane" :: Text) ^. js2 ("runBatch" :: Text)
             (tunnelUrlKey sessionId pane) json
+    -- LSP hover reply -> fill the pane's floating tooltip (this window's context).
+    performEvent_ $ ffor hoverRespE $ \(rid, mt) -> liftJSM . void $
+        jsg ("LeksahTermLinks" :: Text) ^. js2 ("resolveHover" :: Text)
+            (rid :: Int) (fromMaybe "" mt)
 
     -- Live xterm instances of this widget, keyed by pane id — disposed and
     -- re-created when the layout re-renders (dyn_ gives no destructors, so
@@ -800,6 +823,10 @@ terminalCCWidget ide sessionId selectedE = do
     performEvent_ $ ffor evE $ \case
         EvExit _ -> liftIO $ do
             unregisterTerminalCC sessionId
+            -- Drop this client's teardown (and kill its now-idle drain thread);
+            -- id-guarded so we never reap a newer window's client for the same
+            -- session that has already taken the slot.
+            readIORef ccStopIdRef >>= unregisterCCStop sessionId
             unregisterTerminalSplits sessionId
             unregisterTerminalFocus sessionId
             tunnels <- atomicModifyIORef' tunnelsRef $ \m -> (M.empty, M.keys m)
@@ -1058,6 +1085,7 @@ data PaneCallbacks = PaneCallbacks
   { pcLink   :: (FilePath, Int, Int) -> IO ()
   , pcLookup :: (Text, Int, Int) -> IO ()
   , pcBell   :: IO ()
+  , pcHover  :: (Int, Maybe Text) -> IO ()
   }
 
 -- | ONE pane, as a keyed widget that LIVES ACROSS LAYOUT CHANGES: the div's
@@ -1225,7 +1253,7 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
         _ <- term ^. js1 ("open" :: Text) (_element_raw paneEl)
         -- Make file paths / identifiers in the output clickable (see
         -- 'terminalLinksJs'); same callbacks as the classic widget.
-        _ <- jsg ("LeksahTermLinks" :: Text) ^. js3 ("attach" :: Text) term
+        _ <- jsg ("LeksahTermLinks" :: Text) ^. js4 ("attach" :: Text) term
                 (fun $ \_ _ as -> case as of
                     (p : l : c : _) -> do
                         path <- valToText p
@@ -1239,6 +1267,19 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
                         cx  <- valToNumber x
                         cy  <- valToNumber y
                         liftIO $ pcLookup cbs (tok, round cx :: Int, round cy :: Int)
+                    _ -> return ())
+                -- Hover: (file, hoverLine, hoverCol, requestId) -> LSP tooltip -> JS.
+                -- hoverCol < 0 means "column unknown" (file summary only).
+                (fun $ \_ _ as -> case as of
+                    (fV : lV : cV : rV : _) -> do
+                        path <- valToText fV
+                        hl   <- valToNumber lV
+                        hc   <- valToNumber cV
+                        rid  <- valToNumber rV
+                        let mline = let n = round hl :: Int in if n > 0 then Just n else Nothing
+                            mcol  = let n = round hc :: Int in if n >= 0 then Just n else Nothing
+                        liftIO $ LSP.requestTerminalHover (T.unpack path) mline mcol $ \mt ->
+                            pcHover cbs (round rid :: Int, mt)
                     _ -> return ())
         -- The find bar searches the FOCUSED pane: register the SearchAddon
         -- on xterm's own root element (the innermost .terminal the focus

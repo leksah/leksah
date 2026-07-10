@@ -37,10 +37,15 @@ import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 #endif
 import System.Process (readProcessWithExitCode)
 
--- | The private tmux socket leksah's terminals live on (so they don't mix with
--- the user's own tmux sessions, and so its options don't touch their config).
+import IDE.Web.Instance (tmuxServerSocket)
+
+-- | The private tmux server socket leksah's terminals live on (so they don't
+-- mix with the user's own tmux sessions, and so its options don't touch their
+-- config).  Per-instance (see 'IDE.Web.Instance.tmuxServerSocket'): @leksah@
+-- for the default instance, @leksah-\<port\>@ under a non-default
+-- @LEKSAH_PORT@, so a second instance's terminals get a wholly separate server.
 tmuxSocket :: String
-tmuxSocket = "leksah"
+tmuxSocket = tmuxServerSocket
 
 -- | Run a tmux command on leksah's private socket, ignoring failures.
 tmuxCmd :: [String] -> IO ()
