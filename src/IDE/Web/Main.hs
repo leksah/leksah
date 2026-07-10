@@ -100,14 +100,14 @@ import GHCJS.DOM.Types (askJSM)
 import GHCJS.DOM.Debug (addDebugMenu)
 
 import Reflex
-       (switchDyn, foldDyn, ffor,
+       (switchDyn, switchHold, foldDyn, ffor,
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never,
         performEvent_, getPostBuild, performEvent, select, fan, fanMap,
         fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate,
         listViewWithKey, sample,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
+       (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
         (=:), MonadWidget, mainWidgetWithCss)
 
 import IDE.Core.State
@@ -2788,8 +2788,11 @@ main showMenubar macTitlebar wid ide = mdo
     (saveBridgeE, fireSaveReq) <- newTriggerEvent
     let inPageSaveE = fmapMaybe (\case CommandFileSave -> Just (); _ -> Nothing) panelCmdE
         saveReqE    = leftmost [saveBridgeE, inPageSaveE]
-        saveFileE   = fmapMaybe (\case Just (EditorKey f) -> Just f; _ -> Nothing)
-                        (tag (current activePaneD) saveReqE)
+        saveFileE   = leftmost
+          [ fmapMaybe (\case Just (EditorKey f) -> Just f; _ -> Nothing)
+                      (tag (current activePaneD) saveReqE)
+          -- The save prompt's "Save" button (dirty editor being closed).
+          , promptSaveE ]
     (openFileE, openExternalE, lspRefsE, makeEditor) <- editorWidget ide allE saveFileE
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
@@ -3750,24 +3753,59 @@ main showMenubar macTitlebar wid ide = mdo
     -- tab — the tmux session (and its splits) survive so it can be reopened; it
     -- never kills a pane/split.  (The tree is still sampled so the shape is
     -- available should the decision ever need it again.)
-    let closeDecisionE = attachWith
-          (\(mk, _tree) () -> case mk of
-              Just k@(EditorKey _)   -> Just (Right [k])
-              Just k@(TerminalKey _) -> Just (Right [k])
+    let closeTargetE = fmapMaybe id $ attachWith
+          (\mk () -> case mk of
+              Just k@(EditorKey _)   -> Just k
+              Just k@(TerminalKey _) -> Just k
               _ -> Nothing)
-          ((,) <$> current activePaneD <*> current allTreeD) closeReqE
-        killSplitE = fmapMaybe (>>= either Just (const Nothing)) closeDecisionE
-        menuCloseE = fmapMaybe (>>= either (const Nothing) Just) closeDecisionE
-        -- A tab × or File ▸ Close just removes the tab.  For a terminal this
-        -- detaches: the tmux session (and its Terminals-list entry) survive, so
-        -- it can be reopened — unlike the Terminals pane's close, which kills it.
-        detachCloseE = leftmost [tabCloseBtnE, menuCloseE]
-    -- Kill the split through the tab's control channel when it has one (CC
-    -- tabs, remote included — the client's current pane is the displayed
-    -- one); a classic local tab falls back to tmux directly.
-    performEvent_ $ ffor killSplitE $ \n -> liftIO $ do
-        ok <- tmuxCommandActiveTerminal "kill-pane"
-        unless ok $ tmuxCmd ["kill-pane", "-t", T.unpack n]
+          (current activePaneD) closeReqE
+        -- A dirty editor is held for a save prompt (below); clean editors and
+        -- terminals close straight away.  Closing a terminal detaches it: its
+        -- tmux session (and Terminals-list entry) survive, so it can be reopened
+        -- — unlike the Terminals pane's close, which kills it.
+        decidedCloseE = attachWith
+          (\dirty k -> case k of
+              EditorKey f | f `S.member` dirty -> Left k
+              _                                -> Right k)
+          (current dirtyFilesD) closeTargetE
+        promptCloseE = fmapMaybe (either Just (const Nothing)) decidedCloseE
+        directCloseE = fmapMaybe (either (const Nothing) Just) decidedCloseE
+        -- A tab × still closes immediately; so does ⌘W / File ▸ Close of a clean
+        -- tab or a terminal.
+        detachCloseE = leftmost [tabCloseBtnE, (:[]) <$> directCloseE]
+    -- Editors whose CodeMirror buffer differs from disk: a CM edit surfaces as an
+    -- EditorTab event keyed by file; Save (saveFileE) and closing the tab
+    -- (closeTabsE) clear the flag.
+    let editorChangedFilesE = ffor tabE $ \m ->
+          [ f | (EditorKey f, dm) <- M.toList m, Just _ <- [DM.lookup EditorTab dm] ]
+    dirtyFilesD <- foldDyn ($) S.empty $ leftmost
+          [ (\fs s -> foldr S.insert s fs)                        <$> editorChangedFilesE
+          , S.delete                                              <$> saveFileE
+          , (\ks s -> foldr S.delete s [ f | EditorKey f <- ks ]) <$> closeTabsE ]
+    -- Prompt to save a dirty editor before closing it (⌘W / File ▸ Close).  The
+    -- modal uses the dyn/switchHold pattern (cf. Editor.hs's gutter menu): Save
+    -- writes then closes one frame later, Don't Save closes, Cancel dismisses.
+    promptTargetD <- holdDyn Nothing $ leftmost [ Just <$> promptCloseE, Nothing <$ promptDoneE ]
+    promptDoneE <- switchHold never =<< dyn (ffor promptTargetD $ \case
+        Nothing -> return never
+        Just k  ->
+          let lbl = case k of EditorKey f -> T.pack (takeFileName f); _ -> ""
+          in elAttr "div" ("class" =: "save-close-overlay"
+                  <> "style" =: "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35)") $
+             elAttr "div" ("class" =: "save-close-dialog"
+                  <> "style" =: "min-width:300px;padding:16px 20px;border-radius:8px;background:#fafafa;color:#222;box-shadow:0 6px 30px rgba(0,0,0,0.5)") $ do
+               el "p" $ text ("Save changes to " <> lbl <> " before closing?")
+               (saveEl, _)    <- elAttr' "button" ("style" =: "margin:12px 6px 0 0;padding:4px 12px;font-weight:bold") $ text "Save"
+               (discardEl, _) <- elAttr' "button" ("style" =: "margin:12px 6px 0 0;padding:4px 12px") $ text "Don't Save"
+               (cancelEl, _)  <- elAttr' "button" ("style" =: "margin:12px 6px 0 0;padding:4px 12px") $ text "Cancel"
+               return $ leftmost
+                 [ Just (k, True)  <$ domEvent Click saveEl
+                 , Just (k, False) <$ domEvent Click discardEl
+                 , Nothing         <$ domEvent Click cancelEl ])
+    let answeredE     = fmapMaybe id promptDoneE
+        promptSaveE   = fmapMaybe (\(k, s) -> case k of EditorKey f | s -> Just f; _ -> Nothing) answeredE
+        discardCloseE = fmapMaybe (\(k, s) -> if s then Nothing else Just [k]) answeredE
+    savedCloseE <- delay 0 (fmapMaybe (\(k, s) -> if s then Just [k] else Nothing) answeredE)
     let openInWide0 n = TerminalKey n =: ("wide0", Just ())
         openTabsE = leftmost
           [ openFileE'
@@ -3785,6 +3823,9 @@ main showMenubar macTitlebar wid ide = mdo
         closeRemoteSessTabE = ffor killRemoteSessE $ \(h, s, nm) ->
             [ TerminalKey (remoteKey h s), TerminalKey (remoteKey h nm) ]
         closeTabsE = leftmost [ (\n -> [TerminalKey n]) <$> closeTermE, detachCloseE
+                              -- Dirty editor closed via the save prompt: after Save
+                              -- (savedCloseE, one frame later) or Don't Save.
+                              , savedCloseE, discardCloseE
                               , exitedTermE, closeRemoteSessTabE ]
         -- Running a grep brings the Grep pane to the front of its area; Preferences…
         -- opens and shows the Preferences pane in the editor area.  The flipper

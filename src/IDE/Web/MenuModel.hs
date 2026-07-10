@@ -87,7 +87,7 @@ menus =
       , item "Open…"         CommandFileOpen
       , item "Open Project…" CommandProjectOpen
       , item "Save"          CommandFileSave
-      , item "Close"         commandFileClose
+      , MenuGlobalKey "Close" "cmd+w" commandFileClose
       ])
   , ("Edit",
       [ item "Find" CommandFind
