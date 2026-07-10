@@ -816,10 +816,10 @@
     Create a change desc from its JSON representation (as produced
     by [`toJSON`](https://codemirror.net/6/docs/ref/#state.ChangeDesc.toJSON).
     */
-    static fromJSON(json) {
-      if (!Array.isArray(json) || json.length % 2 || json.some((a) => typeof a != "number"))
+    static fromJSON(json2) {
+      if (!Array.isArray(json2) || json2.length % 2 || json2.some((a) => typeof a != "number"))
         throw new RangeError("Invalid JSON representation of ChangeDesc");
-      return new _ChangeDesc(json);
+      return new _ChangeDesc(json2);
     }
     /**
     @internal
@@ -1022,12 +1022,12 @@
     Create a changeset from its JSON representation (as produced by
     [`toJSON`](https://codemirror.net/6/docs/ref/#state.ChangeSet.toJSON).
     */
-    static fromJSON(json) {
-      if (!Array.isArray(json))
+    static fromJSON(json2) {
+      if (!Array.isArray(json2))
         throw new RangeError("Invalid JSON representation of ChangeSet");
       let sections = [], inserted2 = [];
-      for (let i = 0; i < json.length; i++) {
-        let part = json[i];
+      for (let i = 0; i < json2.length; i++) {
+        let part = json2[i];
         if (typeof part == "number") {
           sections.push(part, -1);
         } else if (!Array.isArray(part) || typeof part[0] != "number" || part.some((e, i2) => i2 && typeof e != "string")) {
@@ -1336,10 +1336,10 @@
     Convert a JSON representation of a range to a `SelectionRange`
     instance.
     */
-    static fromJSON(json) {
-      if (!json || typeof json.anchor != "number" || typeof json.head != "number")
+    static fromJSON(json2) {
+      if (!json2 || typeof json2.anchor != "number" || typeof json2.head != "number")
         throw new RangeError("Invalid JSON representation for SelectionRange");
-      return EditorSelection.range(json.anchor, json.head);
+      return EditorSelection.range(json2.anchor, json2.head);
     }
     /**
     @internal
@@ -1416,10 +1416,10 @@
     /**
     Create a selection from a JSON representation.
     */
-    static fromJSON(json) {
-      if (!json || !Array.isArray(json.ranges) || typeof json.main != "number" || json.main >= json.ranges.length)
+    static fromJSON(json2) {
+      if (!json2 || !Array.isArray(json2.ranges) || typeof json2.main != "number" || json2.main >= json2.ranges.length)
         throw new RangeError("Invalid JSON representation for EditorSelection");
-      return new _EditorSelection(json.ranges.map((r) => SelectionRange.fromJSON(r)), json.main);
+      return new _EditorSelection(json2.ranges.map((r) => SelectionRange.fromJSON(r)), json2.main);
     }
     /**
     Create a selection holding a single range.
@@ -2459,20 +2459,20 @@
     to [`toJSON`](https://codemirror.net/6/docs/ref/#state.EditorState.toJSON) when serializing as
     third argument.
     */
-    static fromJSON(json, config = {}, fields) {
-      if (!json || typeof json.doc != "string")
+    static fromJSON(json2, config = {}, fields) {
+      if (!json2 || typeof json2.doc != "string")
         throw new RangeError("Invalid JSON representation for EditorState");
       let fieldInit = [];
       if (fields)
         for (let prop in fields) {
-          if (Object.prototype.hasOwnProperty.call(json, prop)) {
-            let field = fields[prop], value = json[prop];
+          if (Object.prototype.hasOwnProperty.call(json2, prop)) {
+            let field = fields[prop], value = json2[prop];
             fieldInit.push(field.init((state) => field.spec.fromJSON(value, state)));
           }
         }
       return _EditorState.create({
-        doc: json.doc,
-        selection: EditorSelection.fromJSON(json.selection),
+        doc: json2.doc,
+        selection: EditorSelection.fromJSON(json2.selection),
         extensions: config.extensions ? fieldInit.concat([config.extensions]) : fieldInit
       });
     }
@@ -2619,7 +2619,7 @@
   EditorState.transactionFilter = transactionFilter;
   EditorState.transactionExtender = transactionExtender;
   Compartment.reconfigure = /* @__PURE__ */ StateEffect.define();
-  function combineConfig(configs, defaults2, combine = {}) {
+  function combineConfig(configs, defaults3, combine = {}) {
     let result = {};
     for (let config of configs)
       for (let key of Object.keys(config)) {
@@ -2632,9 +2632,9 @@
         else
           throw new Error("Config merge conflict for field " + key);
       }
-    for (let key in defaults2)
+    for (let key in defaults3)
       if (result[key] === void 0)
-        result[key] = defaults2[key];
+        result[key] = defaults3[key];
     return result;
   }
   var RangeValue = class {
@@ -18459,8 +18459,8 @@
     toJSON(value) {
       return { done: value.done.map((e) => e.toJSON()), undone: value.undone.map((e) => e.toJSON()) };
     },
-    fromJSON(json) {
-      return new HistoryState(json.done.map(HistEvent.fromJSON), json.undone.map(HistEvent.fromJSON));
+    fromJSON(json2) {
+      return new HistoryState(json2.done.map(HistEvent.fromJSON), json2.undone.map(HistEvent.fromJSON));
     }
   });
   function history(config = {}) {
@@ -18516,8 +18516,8 @@
         selectionsAfter: this.selectionsAfter.map((s) => s.toJSON())
       };
     }
-    static fromJSON(json) {
-      return new _HistEvent(json.changes && ChangeSet.fromJSON(json.changes), [], json.mapped && ChangeDesc.fromJSON(json.mapped), json.startSelection && EditorSelection.fromJSON(json.startSelection), json.selectionsAfter.map(EditorSelection.fromJSON));
+    static fromJSON(json2) {
+      return new _HistEvent(json2.changes && ChangeSet.fromJSON(json2.changes), [], json2.mapped && ChangeDesc.fromJSON(json2.mapped), json2.startSelection && EditorSelection.fromJSON(json2.startSelection), json2.selectionsAfter.map(EditorSelection.fromJSON));
     }
     // This does not check `addToHistory` and such, it assumes the
     // transaction needs to be converted to an item. Returns null when
@@ -19803,6 +19803,3605 @@
       commentTokens: { line: "--", block: { open: "{-", close: "-}" } }
     }
   };
+
+  // node_modules/@codemirror/legacy-modes/mode/javascript.js
+  function mkJavaScript(parserConfig) {
+    var statementIndent = parserConfig.statementIndent;
+    var jsonldMode = parserConfig.jsonld;
+    var jsonMode = parserConfig.json || jsonldMode;
+    var isTS = parserConfig.typescript;
+    var wordRE = parserConfig.wordCharacters || /[\w$\xa1-\uffff]/;
+    var keywords = (function() {
+      function kw(type2) {
+        return { type: type2, style: "keyword" };
+      }
+      var A = kw("keyword a"), B = kw("keyword b"), C2 = kw("keyword c"), D = kw("keyword d");
+      var operator2 = kw("operator"), atom = { type: "atom", style: "atom" };
+      return {
+        "if": kw("if"),
+        "while": A,
+        "with": A,
+        "else": B,
+        "do": B,
+        "try": B,
+        "finally": B,
+        "return": D,
+        "break": D,
+        "continue": D,
+        "new": kw("new"),
+        "delete": C2,
+        "void": C2,
+        "throw": C2,
+        "debugger": kw("debugger"),
+        "var": kw("var"),
+        "const": kw("var"),
+        "let": kw("var"),
+        "function": kw("function"),
+        "catch": kw("catch"),
+        "for": kw("for"),
+        "switch": kw("switch"),
+        "case": kw("case"),
+        "default": kw("default"),
+        "in": operator2,
+        "typeof": operator2,
+        "instanceof": operator2,
+        "true": atom,
+        "false": atom,
+        "null": atom,
+        "undefined": atom,
+        "NaN": atom,
+        "Infinity": atom,
+        "this": kw("this"),
+        "class": kw("class"),
+        "super": kw("atom"),
+        "yield": C2,
+        "export": kw("export"),
+        "import": kw("import"),
+        "extends": C2,
+        "await": C2
+      };
+    })();
+    var isOperatorChar = /[+\-*&%=<>!?|~^@]/;
+    var isJsonldKeyword = /^@(context|id|value|language|type|container|list|set|reverse|index|base|vocab|graph)"/;
+    function readRegexp(stream) {
+      var escaped = false, next, inSet = false;
+      while ((next = stream.next()) != null) {
+        if (!escaped) {
+          if (next == "/" && !inSet) return;
+          if (next == "[") inSet = true;
+          else if (inSet && next == "]") inSet = false;
+        }
+        escaped = !escaped && next == "\\";
+      }
+    }
+    var type, content2;
+    function ret(tp, style, cont2) {
+      type = tp;
+      content2 = cont2;
+      return style;
+    }
+    function tokenBase2(stream, state) {
+      var ch = stream.next();
+      if (ch == '"' || ch == "'") {
+        state.tokenize = tokenString2(ch);
+        return state.tokenize(stream, state);
+      } else if (ch == "." && stream.match(/^\d[\d_]*(?:[eE][+\-]?[\d_]+)?/)) {
+        return ret("number", "number");
+      } else if (ch == "." && stream.match("..")) {
+        return ret("spread", "meta");
+      } else if (/[\[\]{}\(\),;\:\.]/.test(ch)) {
+        return ret(ch);
+      } else if (ch == "=" && stream.eat(">")) {
+        return ret("=>", "operator");
+      } else if (ch == "0" && stream.match(/^(?:x[\dA-Fa-f_]+|o[0-7_]+|b[01_]+)n?/)) {
+        return ret("number", "number");
+      } else if (/\d/.test(ch)) {
+        stream.match(/^[\d_]*(?:n|(?:\.[\d_]*)?(?:[eE][+\-]?[\d_]+)?)?/);
+        return ret("number", "number");
+      } else if (ch == "/") {
+        if (stream.eat("*")) {
+          state.tokenize = tokenComment;
+          return tokenComment(stream, state);
+        } else if (stream.eat("/")) {
+          stream.skipToEnd();
+          return ret("comment", "comment");
+        } else if (expressionAllowed(stream, state, 1)) {
+          readRegexp(stream);
+          stream.match(/^\b(([gimyus])(?![gimyus]*\2))+\b/);
+          return ret("regexp", "string.special");
+        } else {
+          stream.eat("=");
+          return ret("operator", "operator", stream.current());
+        }
+      } else if (ch == "`") {
+        state.tokenize = tokenQuasi;
+        return tokenQuasi(stream, state);
+      } else if (ch == "#" && stream.peek() == "!") {
+        stream.skipToEnd();
+        return ret("meta", "meta");
+      } else if (ch == "#" && stream.eatWhile(wordRE)) {
+        return ret("variable", "property");
+      } else if (ch == "<" && stream.match("!--") || ch == "-" && stream.match("->") && !/\S/.test(stream.string.slice(0, stream.start))) {
+        stream.skipToEnd();
+        return ret("comment", "comment");
+      } else if (isOperatorChar.test(ch)) {
+        if (ch != ">" || !state.lexical || state.lexical.type != ">") {
+          if (stream.eat("=")) {
+            if (ch == "!" || ch == "=") stream.eat("=");
+          } else if (/[<>*+\-|&?]/.test(ch)) {
+            stream.eat(ch);
+            if (ch == ">") stream.eat(ch);
+          }
+        }
+        if (ch == "?" && stream.eat(".")) return ret(".");
+        return ret("operator", "operator", stream.current());
+      } else if (wordRE.test(ch)) {
+        stream.eatWhile(wordRE);
+        var word = stream.current();
+        if (state.lastType != ".") {
+          if (keywords.propertyIsEnumerable(word)) {
+            var kw = keywords[word];
+            return ret(kw.type, kw.style, word);
+          }
+          if (word == "async" && stream.match(/^(\s|\/\*([^*]|\*(?!\/))*?\*\/)*[\[\(\w]/, false))
+            return ret("async", "keyword", word);
+        }
+        return ret("variable", "variable", word);
+      }
+    }
+    function tokenString2(quote) {
+      return function(stream, state) {
+        var escaped = false, next;
+        if (jsonldMode && stream.peek() == "@" && stream.match(isJsonldKeyword)) {
+          state.tokenize = tokenBase2;
+          return ret("jsonld-keyword", "meta");
+        }
+        while ((next = stream.next()) != null) {
+          if (next == quote && !escaped) break;
+          escaped = !escaped && next == "\\";
+        }
+        if (!escaped) state.tokenize = tokenBase2;
+        return ret("string", "string");
+      };
+    }
+    function tokenComment(stream, state) {
+      var maybeEnd = false, ch;
+      while (ch = stream.next()) {
+        if (ch == "/" && maybeEnd) {
+          state.tokenize = tokenBase2;
+          break;
+        }
+        maybeEnd = ch == "*";
+      }
+      return ret("comment", "comment");
+    }
+    function tokenQuasi(stream, state) {
+      var escaped = false, next;
+      while ((next = stream.next()) != null) {
+        if (!escaped && (next == "`" || next == "$" && stream.eat("{"))) {
+          state.tokenize = tokenBase2;
+          break;
+        }
+        escaped = !escaped && next == "\\";
+      }
+      return ret("quasi", "string.special", stream.current());
+    }
+    var brackets = "([{}])";
+    function findFatArrow(stream, state) {
+      if (state.fatArrowAt) state.fatArrowAt = null;
+      var arrow = stream.string.indexOf("=>", stream.start);
+      if (arrow < 0) return;
+      if (isTS) {
+        var m = /:\s*(?:\w+(?:<[^>]*>|\[\])?|\{[^}]*\})\s*$/.exec(stream.string.slice(stream.start, arrow));
+        if (m) arrow = m.index;
+      }
+      var depth = 0, sawSomething = false;
+      for (var pos = arrow - 1; pos >= 0; --pos) {
+        var ch = stream.string.charAt(pos);
+        var bracket2 = brackets.indexOf(ch);
+        if (bracket2 >= 0 && bracket2 < 3) {
+          if (!depth) {
+            ++pos;
+            break;
+          }
+          if (--depth == 0) {
+            if (ch == "(") sawSomething = true;
+            break;
+          }
+        } else if (bracket2 >= 3 && bracket2 < 6) {
+          ++depth;
+        } else if (wordRE.test(ch)) {
+          sawSomething = true;
+        } else if (/["'\/`]/.test(ch)) {
+          for (; ; --pos) {
+            if (pos == 0) return;
+            var next = stream.string.charAt(pos - 1);
+            if (next == ch && stream.string.charAt(pos - 2) != "\\") {
+              pos--;
+              break;
+            }
+          }
+        } else if (sawSomething && !depth) {
+          ++pos;
+          break;
+        }
+      }
+      if (sawSomething && !depth) state.fatArrowAt = pos;
+    }
+    var atomicTypes = {
+      "atom": true,
+      "number": true,
+      "variable": true,
+      "string": true,
+      "regexp": true,
+      "this": true,
+      "import": true,
+      "jsonld-keyword": true
+    };
+    function JSLexical(indented, column, type2, align, prev, info) {
+      this.indented = indented;
+      this.column = column;
+      this.type = type2;
+      this.prev = prev;
+      this.info = info;
+      if (align != null) this.align = align;
+    }
+    function inScope(state, varname) {
+      for (var v = state.localVars; v; v = v.next)
+        if (v.name == varname) return true;
+      for (var cx2 = state.context; cx2; cx2 = cx2.prev) {
+        for (var v = cx2.vars; v; v = v.next)
+          if (v.name == varname) return true;
+      }
+    }
+    function parseJS(state, style, type2, content3, stream) {
+      var cc = state.cc;
+      cx.state = state;
+      cx.stream = stream;
+      cx.marked = null;
+      cx.cc = cc;
+      cx.style = style;
+      if (!state.lexical.hasOwnProperty("align"))
+        state.lexical.align = true;
+      while (true) {
+        var combinator = cc.length ? cc.pop() : jsonMode ? expression : statement;
+        if (combinator(type2, content3)) {
+          while (cc.length && cc[cc.length - 1].lex)
+            cc.pop()();
+          if (cx.marked) return cx.marked;
+          if (type2 == "variable" && inScope(state, content3)) return "variableName.local";
+          return style;
+        }
+      }
+    }
+    var cx = { state: null, column: null, marked: null, cc: null };
+    function pass() {
+      for (var i = arguments.length - 1; i >= 0; i--) cx.cc.push(arguments[i]);
+    }
+    function cont() {
+      pass.apply(null, arguments);
+      return true;
+    }
+    function inList(name2, list) {
+      for (var v = list; v; v = v.next) if (v.name == name2) return true;
+      return false;
+    }
+    function register(varname) {
+      var state = cx.state;
+      cx.marked = "def";
+      if (state.context) {
+        if (state.lexical.info == "var" && state.context && state.context.block) {
+          var newContext = registerVarScoped(varname, state.context);
+          if (newContext != null) {
+            state.context = newContext;
+            return;
+          }
+        } else if (!inList(varname, state.localVars)) {
+          state.localVars = new Var(varname, state.localVars);
+          return;
+        }
+      }
+      if (parserConfig.globalVars && !inList(varname, state.globalVars))
+        state.globalVars = new Var(varname, state.globalVars);
+    }
+    function registerVarScoped(varname, context) {
+      if (!context) {
+        return null;
+      } else if (context.block) {
+        var inner = registerVarScoped(varname, context.prev);
+        if (!inner) return null;
+        if (inner == context.prev) return context;
+        return new Context(inner, context.vars, true);
+      } else if (inList(varname, context.vars)) {
+        return context;
+      } else {
+        return new Context(context.prev, new Var(varname, context.vars), false);
+      }
+    }
+    function isModifier(name2) {
+      return name2 == "public" || name2 == "private" || name2 == "protected" || name2 == "abstract" || name2 == "readonly";
+    }
+    function Context(prev, vars, block2) {
+      this.prev = prev;
+      this.vars = vars;
+      this.block = block2;
+    }
+    function Var(name2, next) {
+      this.name = name2;
+      this.next = next;
+    }
+    var defaultVars = new Var("this", new Var("arguments", null));
+    function pushcontext() {
+      cx.state.context = new Context(cx.state.context, cx.state.localVars, false);
+      cx.state.localVars = defaultVars;
+    }
+    function pushblockcontext() {
+      cx.state.context = new Context(cx.state.context, cx.state.localVars, true);
+      cx.state.localVars = null;
+    }
+    pushcontext.lex = pushblockcontext.lex = true;
+    function popcontext() {
+      cx.state.localVars = cx.state.context.vars;
+      cx.state.context = cx.state.context.prev;
+    }
+    popcontext.lex = true;
+    function pushlex(type2, info) {
+      var result = function() {
+        var state = cx.state, indent = state.indented;
+        if (state.lexical.type == "stat") indent = state.lexical.indented;
+        else for (var outer = state.lexical; outer && outer.type == ")" && outer.align; outer = outer.prev)
+          indent = outer.indented;
+        state.lexical = new JSLexical(indent, cx.stream.column(), type2, null, state.lexical, info);
+      };
+      result.lex = true;
+      return result;
+    }
+    function poplex() {
+      var state = cx.state;
+      if (state.lexical.prev) {
+        if (state.lexical.type == ")")
+          state.indented = state.lexical.indented;
+        state.lexical = state.lexical.prev;
+      }
+    }
+    poplex.lex = true;
+    function expect(wanted) {
+      function exp(type2) {
+        if (type2 == wanted) return cont();
+        else if (wanted == ";" || type2 == "}" || type2 == ")" || type2 == "]") return pass();
+        else return cont(exp);
+      }
+      ;
+      return exp;
+    }
+    function statement(type2, value) {
+      if (type2 == "var") return cont(pushlex("vardef", value), vardef, expect(";"), poplex);
+      if (type2 == "keyword a") return cont(pushlex("form"), parenExpr, statement, poplex);
+      if (type2 == "keyword b") return cont(pushlex("form"), statement, poplex);
+      if (type2 == "keyword d") return cx.stream.match(/^\s*$/, false) ? cont() : cont(pushlex("stat"), maybeexpression, expect(";"), poplex);
+      if (type2 == "debugger") return cont(expect(";"));
+      if (type2 == "{") return cont(pushlex("}"), pushblockcontext, block, poplex, popcontext);
+      if (type2 == ";") return cont();
+      if (type2 == "if") {
+        if (cx.state.lexical.info == "else" && cx.state.cc[cx.state.cc.length - 1] == poplex)
+          cx.state.cc.pop()();
+        return cont(pushlex("form"), parenExpr, statement, poplex, maybeelse);
+      }
+      if (type2 == "function") return cont(functiondef);
+      if (type2 == "for") return cont(pushlex("form"), pushblockcontext, forspec, statement, popcontext, poplex);
+      if (type2 == "class" || isTS && value == "interface") {
+        cx.marked = "keyword";
+        return cont(pushlex("form", type2 == "class" ? type2 : value), className, poplex);
+      }
+      if (type2 == "variable") {
+        if (isTS && value == "declare") {
+          cx.marked = "keyword";
+          return cont(statement);
+        } else if (isTS && (value == "module" || value == "enum" || value == "type") && cx.stream.match(/^\s*\w/, false)) {
+          cx.marked = "keyword";
+          if (value == "enum") return cont(enumdef);
+          else if (value == "type") return cont(typename, expect("operator"), typeexpr, expect(";"));
+          else return cont(pushlex("form"), pattern, expect("{"), pushlex("}"), block, poplex, poplex);
+        } else if (isTS && value == "namespace") {
+          cx.marked = "keyword";
+          return cont(pushlex("form"), expression, statement, poplex);
+        } else if (isTS && value == "abstract") {
+          cx.marked = "keyword";
+          return cont(statement);
+        } else {
+          return cont(pushlex("stat"), maybelabel);
+        }
+      }
+      if (type2 == "switch") return cont(
+        pushlex("form"),
+        parenExpr,
+        expect("{"),
+        pushlex("}", "switch"),
+        pushblockcontext,
+        block,
+        poplex,
+        poplex,
+        popcontext
+      );
+      if (type2 == "case") return cont(expression, expect(":"));
+      if (type2 == "default") return cont(expect(":"));
+      if (type2 == "catch") return cont(pushlex("form"), pushcontext, maybeCatchBinding, statement, poplex, popcontext);
+      if (type2 == "export") return cont(pushlex("stat"), afterExport, poplex);
+      if (type2 == "import") return cont(pushlex("stat"), afterImport, poplex);
+      if (type2 == "async") return cont(statement);
+      if (value == "@") return cont(expression, statement);
+      return pass(pushlex("stat"), expression, expect(";"), poplex);
+    }
+    function maybeCatchBinding(type2) {
+      if (type2 == "(") return cont(funarg, expect(")"));
+    }
+    function expression(type2, value) {
+      return expressionInner(type2, value, false);
+    }
+    function expressionNoComma(type2, value) {
+      return expressionInner(type2, value, true);
+    }
+    function parenExpr(type2) {
+      if (type2 != "(") return pass();
+      return cont(pushlex(")"), maybeexpression, expect(")"), poplex);
+    }
+    function expressionInner(type2, value, noComma) {
+      if (cx.state.fatArrowAt == cx.stream.start) {
+        var body = noComma ? arrowBodyNoComma : arrowBody;
+        if (type2 == "(") return cont(pushcontext, pushlex(")"), commasep(funarg, ")"), poplex, expect("=>"), body, popcontext);
+        else if (type2 == "variable") return pass(pushcontext, pattern, expect("=>"), body, popcontext);
+      }
+      var maybeop = noComma ? maybeoperatorNoComma : maybeoperatorComma;
+      if (atomicTypes.hasOwnProperty(type2)) return cont(maybeop);
+      if (type2 == "function") return cont(functiondef, maybeop);
+      if (type2 == "class" || isTS && value == "interface") {
+        cx.marked = "keyword";
+        return cont(pushlex("form"), classExpression, poplex);
+      }
+      if (type2 == "keyword c" || type2 == "async") return cont(noComma ? expressionNoComma : expression);
+      if (type2 == "(") return cont(pushlex(")"), maybeexpression, expect(")"), poplex, maybeop);
+      if (type2 == "operator" || type2 == "spread") return cont(noComma ? expressionNoComma : expression);
+      if (type2 == "[") return cont(pushlex("]"), arrayLiteral, poplex, maybeop);
+      if (type2 == "{") return contCommasep(objprop, "}", null, maybeop);
+      if (type2 == "quasi") return pass(quasi, maybeop);
+      if (type2 == "new") return cont(maybeTarget(noComma));
+      return cont();
+    }
+    function maybeexpression(type2) {
+      if (type2.match(/[;\}\)\],]/)) return pass();
+      return pass(expression);
+    }
+    function maybeoperatorComma(type2, value) {
+      if (type2 == ",") return cont(maybeexpression);
+      return maybeoperatorNoComma(type2, value, false);
+    }
+    function maybeoperatorNoComma(type2, value, noComma) {
+      var me = noComma == false ? maybeoperatorComma : maybeoperatorNoComma;
+      var expr = noComma == false ? expression : expressionNoComma;
+      if (type2 == "=>") return cont(pushcontext, noComma ? arrowBodyNoComma : arrowBody, popcontext);
+      if (type2 == "operator") {
+        if (/\+\+|--/.test(value) || isTS && value == "!") return cont(me);
+        if (isTS && value == "<" && cx.stream.match(/^([^<>]|<[^<>]*>)*>\s*\(/, false))
+          return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, me);
+        if (value == "?") return cont(expression, expect(":"), expr);
+        return cont(expr);
+      }
+      if (type2 == "quasi") {
+        return pass(quasi, me);
+      }
+      if (type2 == ";") return;
+      if (type2 == "(") return contCommasep(expressionNoComma, ")", "call", me);
+      if (type2 == ".") return cont(property, me);
+      if (type2 == "[") return cont(pushlex("]"), maybeexpression, expect("]"), poplex, me);
+      if (isTS && value == "as") {
+        cx.marked = "keyword";
+        return cont(typeexpr, me);
+      }
+      if (type2 == "regexp") {
+        cx.state.lastType = cx.marked = "operator";
+        cx.stream.backUp(cx.stream.pos - cx.stream.start - 1);
+        return cont(expr);
+      }
+    }
+    function quasi(type2, value) {
+      if (type2 != "quasi") return pass();
+      if (value.slice(value.length - 2) != "${") return cont(quasi);
+      return cont(maybeexpression, continueQuasi);
+    }
+    function continueQuasi(type2) {
+      if (type2 == "}") {
+        cx.marked = "string.special";
+        cx.state.tokenize = tokenQuasi;
+        return cont(quasi);
+      }
+    }
+    function arrowBody(type2) {
+      findFatArrow(cx.stream, cx.state);
+      return pass(type2 == "{" ? statement : expression);
+    }
+    function arrowBodyNoComma(type2) {
+      findFatArrow(cx.stream, cx.state);
+      return pass(type2 == "{" ? statement : expressionNoComma);
+    }
+    function maybeTarget(noComma) {
+      return function(type2) {
+        if (type2 == ".") return cont(noComma ? targetNoComma : target);
+        else if (type2 == "variable" && isTS) return cont(maybeTypeArgs, noComma ? maybeoperatorNoComma : maybeoperatorComma);
+        else return pass(noComma ? expressionNoComma : expression);
+      };
+    }
+    function target(_, value) {
+      if (value == "target") {
+        cx.marked = "keyword";
+        return cont(maybeoperatorComma);
+      }
+    }
+    function targetNoComma(_, value) {
+      if (value == "target") {
+        cx.marked = "keyword";
+        return cont(maybeoperatorNoComma);
+      }
+    }
+    function maybelabel(type2) {
+      if (type2 == ":") return cont(poplex, statement);
+      return pass(maybeoperatorComma, expect(";"), poplex);
+    }
+    function property(type2) {
+      if (type2 == "variable") {
+        cx.marked = "property";
+        return cont();
+      }
+    }
+    function objprop(type2, value) {
+      if (type2 == "async") {
+        cx.marked = "property";
+        return cont(objprop);
+      } else if (type2 == "variable" || cx.style == "keyword") {
+        cx.marked = "property";
+        if (value == "get" || value == "set") return cont(getterSetter);
+        var m;
+        if (isTS && cx.state.fatArrowAt == cx.stream.start && (m = cx.stream.match(/^\s*:\s*/, false)))
+          cx.state.fatArrowAt = cx.stream.pos + m[0].length;
+        return cont(afterprop);
+      } else if (type2 == "number" || type2 == "string") {
+        cx.marked = jsonldMode ? "property" : cx.style + " property";
+        return cont(afterprop);
+      } else if (type2 == "jsonld-keyword") {
+        return cont(afterprop);
+      } else if (isTS && isModifier(value)) {
+        cx.marked = "keyword";
+        return cont(objprop);
+      } else if (type2 == "[") {
+        return cont(expression, maybetype, expect("]"), afterprop);
+      } else if (type2 == "spread") {
+        return cont(expressionNoComma, afterprop);
+      } else if (value == "*") {
+        cx.marked = "keyword";
+        return cont(objprop);
+      } else if (type2 == ":") {
+        return pass(afterprop);
+      }
+    }
+    function getterSetter(type2) {
+      if (type2 != "variable") return pass(afterprop);
+      cx.marked = "property";
+      return cont(functiondef);
+    }
+    function afterprop(type2) {
+      if (type2 == ":") return cont(expressionNoComma);
+      if (type2 == "(") return pass(functiondef);
+    }
+    function commasep(what, end, sep) {
+      function proceed(type2, value) {
+        if (sep ? sep.indexOf(type2) > -1 : type2 == ",") {
+          var lex = cx.state.lexical;
+          if (lex.info == "call") lex.pos = (lex.pos || 0) + 1;
+          return cont(function(type3, value2) {
+            if (type3 == end || value2 == end) return pass();
+            return pass(what);
+          }, proceed);
+        }
+        if (type2 == end || value == end) return cont();
+        if (sep && sep.indexOf(";") > -1) return pass(what);
+        return cont(expect(end));
+      }
+      return function(type2, value) {
+        if (type2 == end || value == end) return cont();
+        return pass(what, proceed);
+      };
+    }
+    function contCommasep(what, end, info) {
+      for (var i = 3; i < arguments.length; i++)
+        cx.cc.push(arguments[i]);
+      return cont(pushlex(end, info), commasep(what, end), poplex);
+    }
+    function block(type2) {
+      if (type2 == "}") return cont();
+      return pass(statement, block);
+    }
+    function maybetype(type2, value) {
+      if (isTS) {
+        if (type2 == ":") return cont(typeexpr);
+        if (value == "?") return cont(maybetype);
+      }
+    }
+    function maybetypeOrIn(type2, value) {
+      if (isTS && (type2 == ":" || value == "in")) return cont(typeexpr);
+    }
+    function mayberettype(type2) {
+      if (isTS && type2 == ":") {
+        if (cx.stream.match(/^\s*\w+\s+is\b/, false)) return cont(expression, isKW, typeexpr);
+        else return cont(typeexpr);
+      }
+    }
+    function isKW(_, value) {
+      if (value == "is") {
+        cx.marked = "keyword";
+        return cont();
+      }
+    }
+    function typeexpr(type2, value) {
+      if (value == "keyof" || value == "typeof" || value == "infer" || value == "readonly") {
+        cx.marked = "keyword";
+        return cont(value == "typeof" ? expressionNoComma : typeexpr);
+      }
+      if (type2 == "variable" || value == "void") {
+        cx.marked = "type";
+        return cont(afterType);
+      }
+      if (value == "|" || value == "&") return cont(typeexpr);
+      if (type2 == "string" || type2 == "number" || type2 == "atom") return cont(afterType);
+      if (type2 == "[") return cont(pushlex("]"), commasep(typeexpr, "]", ","), poplex, afterType);
+      if (type2 == "{") return cont(pushlex("}"), typeprops, poplex, afterType);
+      if (type2 == "(") return cont(commasep(typearg, ")"), maybeReturnType, afterType);
+      if (type2 == "<") return cont(commasep(typeexpr, ">"), typeexpr);
+      if (type2 == "quasi") return pass(quasiType, afterType);
+    }
+    function maybeReturnType(type2) {
+      if (type2 == "=>") return cont(typeexpr);
+    }
+    function typeprops(type2) {
+      if (type2.match(/[\}\)\]]/)) return cont();
+      if (type2 == "," || type2 == ";") return cont(typeprops);
+      return pass(typeprop, typeprops);
+    }
+    function typeprop(type2, value) {
+      if (type2 == "variable" || cx.style == "keyword") {
+        cx.marked = "property";
+        return cont(typeprop);
+      } else if (value == "?" || type2 == "number" || type2 == "string") {
+        return cont(typeprop);
+      } else if (type2 == ":") {
+        return cont(typeexpr);
+      } else if (type2 == "[") {
+        return cont(expect("variable"), maybetypeOrIn, expect("]"), typeprop);
+      } else if (type2 == "(") {
+        return pass(functiondecl, typeprop);
+      } else if (!type2.match(/[;\}\)\],]/)) {
+        return cont();
+      }
+    }
+    function quasiType(type2, value) {
+      if (type2 != "quasi") return pass();
+      if (value.slice(value.length - 2) != "${") return cont(quasiType);
+      return cont(typeexpr, continueQuasiType);
+    }
+    function continueQuasiType(type2) {
+      if (type2 == "}") {
+        cx.marked = "string.special";
+        cx.state.tokenize = tokenQuasi;
+        return cont(quasiType);
+      }
+    }
+    function typearg(type2, value) {
+      if (type2 == "variable" && cx.stream.match(/^\s*[?:]/, false) || value == "?") return cont(typearg);
+      if (type2 == ":") return cont(typeexpr);
+      if (type2 == "spread") return cont(typearg);
+      return pass(typeexpr);
+    }
+    function afterType(type2, value) {
+      if (value == "<") return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, afterType);
+      if (value == "|" || type2 == "." || value == "&") return cont(typeexpr);
+      if (type2 == "[") return cont(typeexpr, expect("]"), afterType);
+      if (value == "extends" || value == "implements") {
+        cx.marked = "keyword";
+        return cont(typeexpr);
+      }
+      if (value == "?") return cont(typeexpr, expect(":"), typeexpr);
+    }
+    function maybeTypeArgs(_, value) {
+      if (value == "<") return cont(pushlex(">"), commasep(typeexpr, ">"), poplex, afterType);
+    }
+    function typeparam() {
+      return pass(typeexpr, maybeTypeDefault);
+    }
+    function maybeTypeDefault(_, value) {
+      if (value == "=") return cont(typeexpr);
+    }
+    function vardef(_, value) {
+      if (value == "enum") {
+        cx.marked = "keyword";
+        return cont(enumdef);
+      }
+      return pass(pattern, maybetype, maybeAssign, vardefCont);
+    }
+    function pattern(type2, value) {
+      if (isTS && isModifier(value)) {
+        cx.marked = "keyword";
+        return cont(pattern);
+      }
+      if (type2 == "variable") {
+        register(value);
+        return cont();
+      }
+      if (type2 == "spread") return cont(pattern);
+      if (type2 == "[") return contCommasep(eltpattern, "]");
+      if (type2 == "{") return contCommasep(proppattern, "}");
+    }
+    function proppattern(type2, value) {
+      if (type2 == "variable" && !cx.stream.match(/^\s*:/, false)) {
+        register(value);
+        return cont(maybeAssign);
+      }
+      if (type2 == "variable") cx.marked = "property";
+      if (type2 == "spread") return cont(pattern);
+      if (type2 == "}") return pass();
+      if (type2 == "[") return cont(expression, expect("]"), expect(":"), proppattern);
+      return cont(expect(":"), pattern, maybeAssign);
+    }
+    function eltpattern() {
+      return pass(pattern, maybeAssign);
+    }
+    function maybeAssign(_type, value) {
+      if (value == "=") return cont(expressionNoComma);
+    }
+    function vardefCont(type2) {
+      if (type2 == ",") return cont(vardef);
+    }
+    function maybeelse(type2, value) {
+      if (type2 == "keyword b" && value == "else") return cont(pushlex("form", "else"), statement, poplex);
+    }
+    function forspec(type2, value) {
+      if (value == "await") return cont(forspec);
+      if (type2 == "(") return cont(pushlex(")"), forspec1, poplex);
+    }
+    function forspec1(type2) {
+      if (type2 == "var") return cont(vardef, forspec2);
+      if (type2 == "variable") return cont(forspec2);
+      return pass(forspec2);
+    }
+    function forspec2(type2, value) {
+      if (type2 == ")") return cont();
+      if (type2 == ";") return cont(forspec2);
+      if (value == "in" || value == "of") {
+        cx.marked = "keyword";
+        return cont(expression, forspec2);
+      }
+      return pass(expression, forspec2);
+    }
+    function functiondef(type2, value) {
+      if (value == "*") {
+        cx.marked = "keyword";
+        return cont(functiondef);
+      }
+      if (type2 == "variable") {
+        register(value);
+        return cont(functiondef);
+      }
+      if (type2 == "(") return cont(pushcontext, pushlex(")"), commasep(funarg, ")"), poplex, mayberettype, statement, popcontext);
+      if (isTS && value == "<") return cont(pushlex(">"), commasep(typeparam, ">"), poplex, functiondef);
+    }
+    function functiondecl(type2, value) {
+      if (value == "*") {
+        cx.marked = "keyword";
+        return cont(functiondecl);
+      }
+      if (type2 == "variable") {
+        register(value);
+        return cont(functiondecl);
+      }
+      if (type2 == "(") return cont(pushcontext, pushlex(")"), commasep(funarg, ")"), poplex, mayberettype, popcontext);
+      if (isTS && value == "<") return cont(pushlex(">"), commasep(typeparam, ">"), poplex, functiondecl);
+    }
+    function typename(type2, value) {
+      if (type2 == "keyword" || type2 == "variable") {
+        cx.marked = "type";
+        return cont(typename);
+      } else if (value == "<") {
+        return cont(pushlex(">"), commasep(typeparam, ">"), poplex);
+      }
+    }
+    function funarg(type2, value) {
+      if (value == "@") cont(expression, funarg);
+      if (type2 == "spread") return cont(funarg);
+      if (isTS && isModifier(value)) {
+        cx.marked = "keyword";
+        return cont(funarg);
+      }
+      if (isTS && type2 == "this") return cont(maybetype, maybeAssign);
+      return pass(pattern, maybetype, maybeAssign);
+    }
+    function classExpression(type2, value) {
+      if (type2 == "variable") return className(type2, value);
+      return classNameAfter(type2, value);
+    }
+    function className(type2, value) {
+      if (type2 == "variable") {
+        register(value);
+        return cont(classNameAfter);
+      }
+    }
+    function classNameAfter(type2, value) {
+      if (value == "<") return cont(pushlex(">"), commasep(typeparam, ">"), poplex, classNameAfter);
+      if (value == "extends" || value == "implements" || isTS && type2 == ",") {
+        if (value == "implements") cx.marked = "keyword";
+        return cont(isTS ? typeexpr : expression, classNameAfter);
+      }
+      if (type2 == "{") return cont(pushlex("}"), classBody, poplex);
+    }
+    function classBody(type2, value) {
+      if (type2 == "async" || type2 == "variable" && (value == "static" || value == "get" || value == "set" || isTS && isModifier(value)) && cx.stream.match(/^\s+#?[\w$\xa1-\uffff]/, false)) {
+        cx.marked = "keyword";
+        return cont(classBody);
+      }
+      if (type2 == "variable" || cx.style == "keyword") {
+        cx.marked = "property";
+        return cont(classfield, classBody);
+      }
+      if (type2 == "number" || type2 == "string") return cont(classfield, classBody);
+      if (type2 == "[")
+        return cont(expression, maybetype, expect("]"), classfield, classBody);
+      if (value == "*") {
+        cx.marked = "keyword";
+        return cont(classBody);
+      }
+      if (isTS && type2 == "(") return pass(functiondecl, classBody);
+      if (type2 == ";" || type2 == ",") return cont(classBody);
+      if (type2 == "}") return cont();
+      if (value == "@") return cont(expression, classBody);
+    }
+    function classfield(type2, value) {
+      if (value == "!" || value == "?") return cont(classfield);
+      if (type2 == ":") return cont(typeexpr, maybeAssign);
+      if (value == "=") return cont(expressionNoComma);
+      var context = cx.state.lexical.prev, isInterface = context && context.info == "interface";
+      return pass(isInterface ? functiondecl : functiondef);
+    }
+    function afterExport(type2, value) {
+      if (value == "*") {
+        cx.marked = "keyword";
+        return cont(maybeFrom, expect(";"));
+      }
+      if (value == "default") {
+        cx.marked = "keyword";
+        return cont(expression, expect(";"));
+      }
+      if (type2 == "{") return cont(commasep(exportField, "}"), maybeFrom, expect(";"));
+      return pass(statement);
+    }
+    function exportField(type2, value) {
+      if (value == "as") {
+        cx.marked = "keyword";
+        return cont(expect("variable"));
+      }
+      if (type2 == "variable") return pass(expressionNoComma, exportField);
+    }
+    function afterImport(type2) {
+      if (type2 == "string") return cont();
+      if (type2 == "(") return pass(expression);
+      if (type2 == ".") return pass(maybeoperatorComma);
+      return pass(importSpec, maybeMoreImports, maybeFrom);
+    }
+    function importSpec(type2, value) {
+      if (type2 == "{") return contCommasep(importSpec, "}");
+      if (type2 == "variable") register(value);
+      if (value == "*") cx.marked = "keyword";
+      return cont(maybeAs);
+    }
+    function maybeMoreImports(type2) {
+      if (type2 == ",") return cont(importSpec, maybeMoreImports);
+    }
+    function maybeAs(_type, value) {
+      if (value == "as") {
+        cx.marked = "keyword";
+        return cont(importSpec);
+      }
+    }
+    function maybeFrom(_type, value) {
+      if (value == "from") {
+        cx.marked = "keyword";
+        return cont(expression);
+      }
+    }
+    function arrayLiteral(type2) {
+      if (type2 == "]") return cont();
+      return pass(commasep(expressionNoComma, "]"));
+    }
+    function enumdef() {
+      return pass(pushlex("form"), pattern, expect("{"), pushlex("}"), commasep(enummember, "}"), poplex, poplex);
+    }
+    function enummember() {
+      return pass(pattern, maybeAssign);
+    }
+    function isContinuedStatement(state, textAfter) {
+      return state.lastType == "operator" || state.lastType == "," || isOperatorChar.test(textAfter.charAt(0)) || /[,.]/.test(textAfter.charAt(0));
+    }
+    function expressionAllowed(stream, state, backUp) {
+      return state.tokenize == tokenBase2 && /^(?:operator|sof|keyword [bcd]|case|new|export|default|spread|[\[{}\(,;:]|=>)$/.test(state.lastType) || state.lastType == "quasi" && /\{\s*$/.test(stream.string.slice(0, stream.pos - (backUp || 0)));
+    }
+    return {
+      name: parserConfig.name,
+      startState: function(indentUnit2) {
+        var state = {
+          tokenize: tokenBase2,
+          lastType: "sof",
+          cc: [],
+          lexical: new JSLexical(-indentUnit2, 0, "block", false),
+          localVars: parserConfig.localVars,
+          context: parserConfig.localVars && new Context(null, null, false),
+          indented: 0
+        };
+        if (parserConfig.globalVars && typeof parserConfig.globalVars == "object")
+          state.globalVars = parserConfig.globalVars;
+        return state;
+      },
+      token: function(stream, state) {
+        if (stream.sol()) {
+          if (!state.lexical.hasOwnProperty("align"))
+            state.lexical.align = false;
+          state.indented = stream.indentation();
+          findFatArrow(stream, state);
+        }
+        if (state.tokenize != tokenComment && stream.eatSpace()) return null;
+        var style = state.tokenize(stream, state);
+        if (type == "comment") return style;
+        state.lastType = type == "operator" && (content2 == "++" || content2 == "--") ? "incdec" : type;
+        return parseJS(state, style, type, content2, stream);
+      },
+      indent: function(state, textAfter, cx2) {
+        if (state.tokenize == tokenComment || state.tokenize == tokenQuasi) return null;
+        if (state.tokenize != tokenBase2) return 0;
+        var firstChar = textAfter && textAfter.charAt(0), lexical = state.lexical, top2;
+        if (!/^\s*else\b/.test(textAfter)) for (var i = state.cc.length - 1; i >= 0; --i) {
+          var c = state.cc[i];
+          if (c == poplex) lexical = lexical.prev;
+          else if (c != maybeelse && c != popcontext) break;
+        }
+        while ((lexical.type == "stat" || lexical.type == "form") && (firstChar == "}" || (top2 = state.cc[state.cc.length - 1]) && (top2 == maybeoperatorComma || top2 == maybeoperatorNoComma) && !/^[,\.=+\-*:?[\(]/.test(textAfter)))
+          lexical = lexical.prev;
+        if (statementIndent && lexical.type == ")" && lexical.prev.type == "stat")
+          lexical = lexical.prev;
+        var type2 = lexical.type, closing = firstChar == type2;
+        if (type2 == "vardef") return lexical.indented + (state.lastType == "operator" || state.lastType == "," ? lexical.info.length + 1 : 0);
+        else if (type2 == "form" && firstChar == "{") return lexical.indented;
+        else if (type2 == "form") return lexical.indented + cx2.unit;
+        else if (type2 == "stat")
+          return lexical.indented + (isContinuedStatement(state, textAfter) ? statementIndent || cx2.unit : 0);
+        else if (lexical.info == "switch" && !closing && parserConfig.doubleIndentSwitch != false)
+          return lexical.indented + (/^(?:case|default)\b/.test(textAfter) ? cx2.unit : 2 * cx2.unit);
+        else if (lexical.align) return lexical.column + (closing ? 0 : 1);
+        else return lexical.indented + (closing ? 0 : cx2.unit);
+      },
+      languageData: {
+        indentOnInput: /^\s*(?:case .*?:|default:|\{|\})$/,
+        commentTokens: jsonMode ? void 0 : { line: "//", block: { open: "/*", close: "*/" } },
+        closeBrackets: { brackets: ["(", "[", "{", "'", '"', "`"] },
+        wordChars: "$"
+      }
+    };
+  }
+  var javascript = mkJavaScript({ name: "javascript" });
+  var json = mkJavaScript({ name: "json", json: true });
+  var jsonld = mkJavaScript({ name: "json", jsonld: true });
+  var typescript = mkJavaScript({ name: "typescript", typescript: true });
+
+  // node_modules/@codemirror/legacy-modes/mode/css.js
+  function mkCSS(parserConfig) {
+    parserConfig = { ...defaults2, ...parserConfig };
+    var inline = parserConfig.inline;
+    var tokenHooks = parserConfig.tokenHooks, documentTypes2 = parserConfig.documentTypes || {}, mediaTypes2 = parserConfig.mediaTypes || {}, mediaFeatures2 = parserConfig.mediaFeatures || {}, mediaValueKeywords2 = parserConfig.mediaValueKeywords || {}, propertyKeywords2 = parserConfig.propertyKeywords || {}, nonStandardPropertyKeywords2 = parserConfig.nonStandardPropertyKeywords || {}, fontProperties2 = parserConfig.fontProperties || {}, counterDescriptors2 = parserConfig.counterDescriptors || {}, colorKeywords2 = parserConfig.colorKeywords || {}, valueKeywords2 = parserConfig.valueKeywords || {}, allowNested = parserConfig.allowNested, lineComment = parserConfig.lineComment, supportsAtComponent = parserConfig.supportsAtComponent === true, highlightNonStandardPropertyKeywords = parserConfig.highlightNonStandardPropertyKeywords !== false;
+    var type, override;
+    function ret(style, tp) {
+      type = tp;
+      return style;
+    }
+    function tokenBase2(stream, state) {
+      var ch = stream.next();
+      if (tokenHooks[ch]) {
+        var result = tokenHooks[ch](stream, state);
+        if (result !== false) return result;
+      }
+      if (ch == "@") {
+        stream.eatWhile(/[\w\\\-]/);
+        return ret("def", stream.current());
+      } else if (ch == "=" || (ch == "~" || ch == "|") && stream.eat("=")) {
+        return ret(null, "compare");
+      } else if (ch == '"' || ch == "'") {
+        state.tokenize = tokenString2(ch);
+        return state.tokenize(stream, state);
+      } else if (ch == "#") {
+        stream.eatWhile(/[\w\\\-]/);
+        return ret("atom", "hash");
+      } else if (ch == "!") {
+        stream.match(/^\s*\w*/);
+        return ret("keyword", "important");
+      } else if (/\d/.test(ch) || ch == "." && stream.eat(/\d/)) {
+        stream.eatWhile(/[\w.%]/);
+        return ret("number", "unit");
+      } else if (ch === "-") {
+        if (/[\d.]/.test(stream.peek())) {
+          stream.eatWhile(/[\w.%]/);
+          return ret("number", "unit");
+        } else if (stream.match(/^-[\w\\\-]*/)) {
+          stream.eatWhile(/[\w\\\-]/);
+          if (stream.match(/^\s*:/, false))
+            return ret("def", "variable-definition");
+          return ret("variableName", "variable");
+        } else if (stream.match(/^\w+-/)) {
+          return ret("meta", "meta");
+        }
+      } else if (/[,+>*\/]/.test(ch)) {
+        return ret(null, "select-op");
+      } else if (ch == "." && stream.match(/^-?[_a-z][_a-z0-9-]*/i)) {
+        return ret("qualifier", "qualifier");
+      } else if (/[:;{}\[\]\(\)]/.test(ch)) {
+        return ret(null, ch);
+      } else if (stream.match(/^[\w-.]+(?=\()/)) {
+        if (/^(url(-prefix)?|domain|regexp)$/i.test(stream.current())) {
+          state.tokenize = tokenParenthesized;
+        }
+        return ret("variableName.function", "variable");
+      } else if (/[\w\\\-]/.test(ch)) {
+        stream.eatWhile(/[\w\\\-]/);
+        return ret("property", "word");
+      } else {
+        return ret(null, null);
+      }
+    }
+    function tokenString2(quote) {
+      return function(stream, state) {
+        var escaped = false, ch;
+        while ((ch = stream.next()) != null) {
+          if (ch == quote && !escaped) {
+            if (quote == ")") stream.backUp(1);
+            break;
+          }
+          escaped = !escaped && ch == "\\";
+        }
+        if (ch == quote || !escaped && quote != ")") state.tokenize = null;
+        return ret("string", "string");
+      };
+    }
+    function tokenParenthesized(stream, state) {
+      stream.next();
+      if (!stream.match(/^\s*[\"\')]/, false))
+        state.tokenize = tokenString2(")");
+      else
+        state.tokenize = null;
+      return ret(null, "(");
+    }
+    function Context(type2, indent, prev) {
+      this.type = type2;
+      this.indent = indent;
+      this.prev = prev;
+    }
+    function pushContext(state, stream, type2, indent) {
+      state.context = new Context(type2, stream.indentation() + (indent === false ? 0 : stream.indentUnit), state.context);
+      return type2;
+    }
+    function popContext(state) {
+      if (state.context.prev)
+        state.context = state.context.prev;
+      return state.context.type;
+    }
+    function pass(type2, stream, state) {
+      return states[state.context.type](type2, stream, state);
+    }
+    function popAndPass(type2, stream, state, n) {
+      for (var i = n || 1; i > 0; i--)
+        state.context = state.context.prev;
+      return pass(type2, stream, state);
+    }
+    function wordAsValue(stream) {
+      var word = stream.current().toLowerCase();
+      if (valueKeywords2.hasOwnProperty(word))
+        override = "atom";
+      else if (colorKeywords2.hasOwnProperty(word))
+        override = "keyword";
+      else
+        override = "variable";
+    }
+    var states = {};
+    states.top = function(type2, stream, state) {
+      if (type2 == "{") {
+        return pushContext(state, stream, "block");
+      } else if (type2 == "}" && state.context.prev) {
+        return popContext(state);
+      } else if (supportsAtComponent && /@component/i.test(type2)) {
+        return pushContext(state, stream, "atComponentBlock");
+      } else if (/^@(-moz-)?document$/i.test(type2)) {
+        return pushContext(state, stream, "documentTypes");
+      } else if (/^@(media|supports|(-moz-)?document|import)$/i.test(type2)) {
+        return pushContext(state, stream, "atBlock");
+      } else if (/^@(font-face|counter-style)/i.test(type2)) {
+        state.stateArg = type2;
+        return "restricted_atBlock_before";
+      } else if (/^@(-(moz|ms|o|webkit)-)?keyframes$/i.test(type2)) {
+        return "keyframes";
+      } else if (type2 && type2.charAt(0) == "@") {
+        return pushContext(state, stream, "at");
+      } else if (type2 == "hash") {
+        override = "builtin";
+      } else if (type2 == "word") {
+        override = "tag";
+      } else if (type2 == "variable-definition") {
+        return "maybeprop";
+      } else if (type2 == "interpolation") {
+        return pushContext(state, stream, "interpolation");
+      } else if (type2 == ":") {
+        return "pseudo";
+      } else if (allowNested && type2 == "(") {
+        return pushContext(state, stream, "parens");
+      }
+      return state.context.type;
+    };
+    states.block = function(type2, stream, state) {
+      if (type2 == "word") {
+        var word = stream.current().toLowerCase();
+        if (propertyKeywords2.hasOwnProperty(word)) {
+          override = "property";
+          return "maybeprop";
+        } else if (nonStandardPropertyKeywords2.hasOwnProperty(word)) {
+          override = highlightNonStandardPropertyKeywords ? "string.special" : "property";
+          return "maybeprop";
+        } else if (allowNested) {
+          override = stream.match(/^\s*:(?:\s|$)/, false) ? "property" : "tag";
+          return "block";
+        } else {
+          override = "error";
+          return "maybeprop";
+        }
+      } else if (type2 == "meta") {
+        return "block";
+      } else if (!allowNested && (type2 == "hash" || type2 == "qualifier")) {
+        override = "error";
+        return "block";
+      } else {
+        return states.top(type2, stream, state);
+      }
+    };
+    states.maybeprop = function(type2, stream, state) {
+      if (type2 == ":") return pushContext(state, stream, "prop");
+      return pass(type2, stream, state);
+    };
+    states.prop = function(type2, stream, state) {
+      if (type2 == ";") return popContext(state);
+      if (type2 == "{" && allowNested) return pushContext(state, stream, "propBlock");
+      if (type2 == "}" || type2 == "{") return popAndPass(type2, stream, state);
+      if (type2 == "(") return pushContext(state, stream, "parens");
+      if (type2 == "hash" && !/^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(stream.current())) {
+        override = "error";
+      } else if (type2 == "word") {
+        wordAsValue(stream);
+      } else if (type2 == "interpolation") {
+        return pushContext(state, stream, "interpolation");
+      }
+      return "prop";
+    };
+    states.propBlock = function(type2, _stream, state) {
+      if (type2 == "}") return popContext(state);
+      if (type2 == "word") {
+        override = "property";
+        return "maybeprop";
+      }
+      return state.context.type;
+    };
+    states.parens = function(type2, stream, state) {
+      if (type2 == "{" || type2 == "}") return popAndPass(type2, stream, state);
+      if (type2 == ")") return popContext(state);
+      if (type2 == "(") return pushContext(state, stream, "parens");
+      if (type2 == "interpolation") return pushContext(state, stream, "interpolation");
+      if (type2 == "word") wordAsValue(stream);
+      return "parens";
+    };
+    states.pseudo = function(type2, stream, state) {
+      if (type2 == "meta") return "pseudo";
+      if (type2 == "word") {
+        override = "variableName.constant";
+        return state.context.type;
+      }
+      return pass(type2, stream, state);
+    };
+    states.documentTypes = function(type2, stream, state) {
+      if (type2 == "word" && documentTypes2.hasOwnProperty(stream.current())) {
+        override = "tag";
+        return state.context.type;
+      } else {
+        return states.atBlock(type2, stream, state);
+      }
+    };
+    states.atBlock = function(type2, stream, state) {
+      if (type2 == "(") return pushContext(state, stream, "atBlock_parens");
+      if (type2 == "}" || type2 == ";") return popAndPass(type2, stream, state);
+      if (type2 == "{") return popContext(state) && pushContext(state, stream, allowNested ? "block" : "top");
+      if (type2 == "interpolation") return pushContext(state, stream, "interpolation");
+      if (type2 == "word") {
+        var word = stream.current().toLowerCase();
+        if (word == "only" || word == "not" || word == "and" || word == "or")
+          override = "keyword";
+        else if (mediaTypes2.hasOwnProperty(word))
+          override = "attribute";
+        else if (mediaFeatures2.hasOwnProperty(word))
+          override = "property";
+        else if (mediaValueKeywords2.hasOwnProperty(word))
+          override = "keyword";
+        else if (propertyKeywords2.hasOwnProperty(word))
+          override = "property";
+        else if (nonStandardPropertyKeywords2.hasOwnProperty(word))
+          override = highlightNonStandardPropertyKeywords ? "string.special" : "property";
+        else if (valueKeywords2.hasOwnProperty(word))
+          override = "atom";
+        else if (colorKeywords2.hasOwnProperty(word))
+          override = "keyword";
+        else
+          override = "error";
+      }
+      return state.context.type;
+    };
+    states.atComponentBlock = function(type2, stream, state) {
+      if (type2 == "}")
+        return popAndPass(type2, stream, state);
+      if (type2 == "{")
+        return popContext(state) && pushContext(state, stream, allowNested ? "block" : "top", false);
+      if (type2 == "word")
+        override = "error";
+      return state.context.type;
+    };
+    states.atBlock_parens = function(type2, stream, state) {
+      if (type2 == ")") return popContext(state);
+      if (type2 == "{" || type2 == "}") return popAndPass(type2, stream, state, 2);
+      return states.atBlock(type2, stream, state);
+    };
+    states.restricted_atBlock_before = function(type2, stream, state) {
+      if (type2 == "{")
+        return pushContext(state, stream, "restricted_atBlock");
+      if (type2 == "word" && state.stateArg == "@counter-style") {
+        override = "variable";
+        return "restricted_atBlock_before";
+      }
+      return pass(type2, stream, state);
+    };
+    states.restricted_atBlock = function(type2, stream, state) {
+      if (type2 == "}") {
+        state.stateArg = null;
+        return popContext(state);
+      }
+      if (type2 == "word") {
+        if (state.stateArg == "@font-face" && !fontProperties2.hasOwnProperty(stream.current().toLowerCase()) || state.stateArg == "@counter-style" && !counterDescriptors2.hasOwnProperty(stream.current().toLowerCase()))
+          override = "error";
+        else
+          override = "property";
+        return "maybeprop";
+      }
+      return "restricted_atBlock";
+    };
+    states.keyframes = function(type2, stream, state) {
+      if (type2 == "word") {
+        override = "variable";
+        return "keyframes";
+      }
+      if (type2 == "{") return pushContext(state, stream, "top");
+      return pass(type2, stream, state);
+    };
+    states.at = function(type2, stream, state) {
+      if (type2 == ";") return popContext(state);
+      if (type2 == "{" || type2 == "}") return popAndPass(type2, stream, state);
+      if (type2 == "word") override = "tag";
+      else if (type2 == "hash") override = "builtin";
+      return "at";
+    };
+    states.interpolation = function(type2, stream, state) {
+      if (type2 == "}") return popContext(state);
+      if (type2 == "{" || type2 == ";") return popAndPass(type2, stream, state);
+      if (type2 == "word") override = "variable";
+      else if (type2 != "variable" && type2 != "(" && type2 != ")") override = "error";
+      return "interpolation";
+    };
+    return {
+      name: parserConfig.name,
+      startState: function() {
+        return {
+          tokenize: null,
+          state: inline ? "block" : "top",
+          stateArg: null,
+          context: new Context(inline ? "block" : "top", 0, null)
+        };
+      },
+      token: function(stream, state) {
+        if (!state.tokenize && stream.eatSpace()) return null;
+        var style = (state.tokenize || tokenBase2)(stream, state);
+        if (style && typeof style == "object") {
+          type = style[1];
+          style = style[0];
+        }
+        override = style;
+        if (type != "comment")
+          state.state = states[state.state](type, stream, state);
+        return override;
+      },
+      indent: function(state, textAfter, iCx) {
+        var cx = state.context, ch = textAfter && textAfter.charAt(0);
+        var indent = cx.indent;
+        if (cx.type == "prop" && (ch == "}" || ch == ")")) cx = cx.prev;
+        if (cx.prev) {
+          if (ch == "}" && (cx.type == "block" || cx.type == "top" || cx.type == "interpolation" || cx.type == "restricted_atBlock")) {
+            cx = cx.prev;
+            indent = cx.indent;
+          } else if (ch == ")" && (cx.type == "parens" || cx.type == "atBlock_parens") || ch == "{" && (cx.type == "at" || cx.type == "atBlock")) {
+            indent = Math.max(0, cx.indent - iCx.unit);
+          }
+        }
+        return indent;
+      },
+      languageData: {
+        indentOnInput: /^\s*\}$/,
+        commentTokens: { line: lineComment, block: { open: "/*", close: "*/" } },
+        autocomplete: allWords
+      }
+    };
+  }
+  function keySet(array) {
+    var keys = {};
+    for (var i = 0; i < array.length; ++i) {
+      keys[array[i].toLowerCase()] = true;
+    }
+    return keys;
+  }
+  var documentTypes_ = [
+    "domain",
+    "regexp",
+    "url",
+    "url-prefix"
+  ];
+  var documentTypes = keySet(documentTypes_);
+  var mediaTypes_ = [
+    "all",
+    "aural",
+    "braille",
+    "handheld",
+    "print",
+    "projection",
+    "screen",
+    "tty",
+    "tv",
+    "embossed"
+  ];
+  var mediaTypes = keySet(mediaTypes_);
+  var mediaFeatures_ = [
+    "width",
+    "min-width",
+    "max-width",
+    "height",
+    "min-height",
+    "max-height",
+    "device-width",
+    "min-device-width",
+    "max-device-width",
+    "device-height",
+    "min-device-height",
+    "max-device-height",
+    "aspect-ratio",
+    "min-aspect-ratio",
+    "max-aspect-ratio",
+    "device-aspect-ratio",
+    "min-device-aspect-ratio",
+    "max-device-aspect-ratio",
+    "color",
+    "min-color",
+    "max-color",
+    "color-index",
+    "min-color-index",
+    "max-color-index",
+    "monochrome",
+    "min-monochrome",
+    "max-monochrome",
+    "resolution",
+    "min-resolution",
+    "max-resolution",
+    "scan",
+    "grid",
+    "orientation",
+    "device-pixel-ratio",
+    "min-device-pixel-ratio",
+    "max-device-pixel-ratio",
+    "pointer",
+    "any-pointer",
+    "hover",
+    "any-hover",
+    "prefers-color-scheme",
+    "dynamic-range",
+    "video-dynamic-range"
+  ];
+  var mediaFeatures = keySet(mediaFeatures_);
+  var mediaValueKeywords_ = [
+    "landscape",
+    "portrait",
+    "none",
+    "coarse",
+    "fine",
+    "on-demand",
+    "hover",
+    "interlace",
+    "progressive",
+    "dark",
+    "light",
+    "standard",
+    "high"
+  ];
+  var mediaValueKeywords = keySet(mediaValueKeywords_);
+  var propertyKeywords_ = [
+    "align-content",
+    "align-items",
+    "align-self",
+    "alignment-adjust",
+    "alignment-baseline",
+    "all",
+    "anchor-point",
+    "animation",
+    "animation-delay",
+    "animation-direction",
+    "animation-duration",
+    "animation-fill-mode",
+    "animation-iteration-count",
+    "animation-name",
+    "animation-play-state",
+    "animation-timing-function",
+    "appearance",
+    "azimuth",
+    "backdrop-filter",
+    "backface-visibility",
+    "background",
+    "background-attachment",
+    "background-blend-mode",
+    "background-clip",
+    "background-color",
+    "background-image",
+    "background-origin",
+    "background-position",
+    "background-position-x",
+    "background-position-y",
+    "background-repeat",
+    "background-size",
+    "baseline-shift",
+    "binding",
+    "bleed",
+    "block-size",
+    "bookmark-label",
+    "bookmark-level",
+    "bookmark-state",
+    "bookmark-target",
+    "border",
+    "border-bottom",
+    "border-bottom-color",
+    "border-bottom-left-radius",
+    "border-bottom-right-radius",
+    "border-bottom-style",
+    "border-bottom-width",
+    "border-collapse",
+    "border-color",
+    "border-image",
+    "border-image-outset",
+    "border-image-repeat",
+    "border-image-slice",
+    "border-image-source",
+    "border-image-width",
+    "border-left",
+    "border-left-color",
+    "border-left-style",
+    "border-left-width",
+    "border-radius",
+    "border-right",
+    "border-right-color",
+    "border-right-style",
+    "border-right-width",
+    "border-spacing",
+    "border-style",
+    "border-top",
+    "border-top-color",
+    "border-top-left-radius",
+    "border-top-right-radius",
+    "border-top-style",
+    "border-top-width",
+    "border-width",
+    "bottom",
+    "box-decoration-break",
+    "box-shadow",
+    "box-sizing",
+    "break-after",
+    "break-before",
+    "break-inside",
+    "caption-side",
+    "caret-color",
+    "clear",
+    "clip",
+    "color",
+    "color-profile",
+    "column-count",
+    "column-fill",
+    "column-gap",
+    "column-rule",
+    "column-rule-color",
+    "column-rule-style",
+    "column-rule-width",
+    "column-span",
+    "column-width",
+    "columns",
+    "contain",
+    "content",
+    "counter-increment",
+    "counter-reset",
+    "crop",
+    "cue",
+    "cue-after",
+    "cue-before",
+    "cursor",
+    "direction",
+    "display",
+    "dominant-baseline",
+    "drop-initial-after-adjust",
+    "drop-initial-after-align",
+    "drop-initial-before-adjust",
+    "drop-initial-before-align",
+    "drop-initial-size",
+    "drop-initial-value",
+    "elevation",
+    "empty-cells",
+    "fit",
+    "fit-content",
+    "fit-position",
+    "flex",
+    "flex-basis",
+    "flex-direction",
+    "flex-flow",
+    "flex-grow",
+    "flex-shrink",
+    "flex-wrap",
+    "float",
+    "float-offset",
+    "flow-from",
+    "flow-into",
+    "font",
+    "font-family",
+    "font-feature-settings",
+    "font-kerning",
+    "font-language-override",
+    "font-optical-sizing",
+    "font-size",
+    "font-size-adjust",
+    "font-stretch",
+    "font-style",
+    "font-synthesis",
+    "font-variant",
+    "font-variant-alternates",
+    "font-variant-caps",
+    "font-variant-east-asian",
+    "font-variant-ligatures",
+    "font-variant-numeric",
+    "font-variant-position",
+    "font-variation-settings",
+    "font-weight",
+    "gap",
+    "grid",
+    "grid-area",
+    "grid-auto-columns",
+    "grid-auto-flow",
+    "grid-auto-rows",
+    "grid-column",
+    "grid-column-end",
+    "grid-column-gap",
+    "grid-column-start",
+    "grid-gap",
+    "grid-row",
+    "grid-row-end",
+    "grid-row-gap",
+    "grid-row-start",
+    "grid-template",
+    "grid-template-areas",
+    "grid-template-columns",
+    "grid-template-rows",
+    "hanging-punctuation",
+    "height",
+    "hyphens",
+    "icon",
+    "image-orientation",
+    "image-rendering",
+    "image-resolution",
+    "inline-box-align",
+    "inset",
+    "inset-block",
+    "inset-block-end",
+    "inset-block-start",
+    "inset-inline",
+    "inset-inline-end",
+    "inset-inline-start",
+    "isolation",
+    "justify-content",
+    "justify-items",
+    "justify-self",
+    "left",
+    "letter-spacing",
+    "line-break",
+    "line-height",
+    "line-height-step",
+    "line-stacking",
+    "line-stacking-ruby",
+    "line-stacking-shift",
+    "line-stacking-strategy",
+    "list-style",
+    "list-style-image",
+    "list-style-position",
+    "list-style-type",
+    "margin",
+    "margin-bottom",
+    "margin-left",
+    "margin-right",
+    "margin-top",
+    "marks",
+    "marquee-direction",
+    "marquee-loop",
+    "marquee-play-count",
+    "marquee-speed",
+    "marquee-style",
+    "mask-clip",
+    "mask-composite",
+    "mask-image",
+    "mask-mode",
+    "mask-origin",
+    "mask-position",
+    "mask-repeat",
+    "mask-size",
+    "mask-type",
+    "max-block-size",
+    "max-height",
+    "max-inline-size",
+    "max-width",
+    "min-block-size",
+    "min-height",
+    "min-inline-size",
+    "min-width",
+    "mix-blend-mode",
+    "move-to",
+    "nav-down",
+    "nav-index",
+    "nav-left",
+    "nav-right",
+    "nav-up",
+    "object-fit",
+    "object-position",
+    "offset",
+    "offset-anchor",
+    "offset-distance",
+    "offset-path",
+    "offset-position",
+    "offset-rotate",
+    "opacity",
+    "order",
+    "orphans",
+    "outline",
+    "outline-color",
+    "outline-offset",
+    "outline-style",
+    "outline-width",
+    "overflow",
+    "overflow-style",
+    "overflow-wrap",
+    "overflow-x",
+    "overflow-y",
+    "padding",
+    "padding-bottom",
+    "padding-left",
+    "padding-right",
+    "padding-top",
+    "page",
+    "page-break-after",
+    "page-break-before",
+    "page-break-inside",
+    "page-policy",
+    "pause",
+    "pause-after",
+    "pause-before",
+    "perspective",
+    "perspective-origin",
+    "pitch",
+    "pitch-range",
+    "place-content",
+    "place-items",
+    "place-self",
+    "play-during",
+    "position",
+    "presentation-level",
+    "punctuation-trim",
+    "quotes",
+    "region-break-after",
+    "region-break-before",
+    "region-break-inside",
+    "region-fragment",
+    "rendering-intent",
+    "resize",
+    "rest",
+    "rest-after",
+    "rest-before",
+    "richness",
+    "right",
+    "rotate",
+    "rotation",
+    "rotation-point",
+    "row-gap",
+    "ruby-align",
+    "ruby-overhang",
+    "ruby-position",
+    "ruby-span",
+    "scale",
+    "scroll-behavior",
+    "scroll-margin",
+    "scroll-margin-block",
+    "scroll-margin-block-end",
+    "scroll-margin-block-start",
+    "scroll-margin-bottom",
+    "scroll-margin-inline",
+    "scroll-margin-inline-end",
+    "scroll-margin-inline-start",
+    "scroll-margin-left",
+    "scroll-margin-right",
+    "scroll-margin-top",
+    "scroll-padding",
+    "scroll-padding-block",
+    "scroll-padding-block-end",
+    "scroll-padding-block-start",
+    "scroll-padding-bottom",
+    "scroll-padding-inline",
+    "scroll-padding-inline-end",
+    "scroll-padding-inline-start",
+    "scroll-padding-left",
+    "scroll-padding-right",
+    "scroll-padding-top",
+    "scroll-snap-align",
+    "scroll-snap-type",
+    "shape-image-threshold",
+    "shape-inside",
+    "shape-margin",
+    "shape-outside",
+    "size",
+    "speak",
+    "speak-as",
+    "speak-header",
+    "speak-numeral",
+    "speak-punctuation",
+    "speech-rate",
+    "stress",
+    "string-set",
+    "tab-size",
+    "table-layout",
+    "target",
+    "target-name",
+    "target-new",
+    "target-position",
+    "text-align",
+    "text-align-last",
+    "text-combine-upright",
+    "text-decoration",
+    "text-decoration-color",
+    "text-decoration-line",
+    "text-decoration-skip",
+    "text-decoration-skip-ink",
+    "text-decoration-style",
+    "text-emphasis",
+    "text-emphasis-color",
+    "text-emphasis-position",
+    "text-emphasis-style",
+    "text-height",
+    "text-indent",
+    "text-justify",
+    "text-orientation",
+    "text-outline",
+    "text-overflow",
+    "text-rendering",
+    "text-shadow",
+    "text-size-adjust",
+    "text-space-collapse",
+    "text-transform",
+    "text-underline-position",
+    "text-wrap",
+    "top",
+    "touch-action",
+    "transform",
+    "transform-origin",
+    "transform-style",
+    "transition",
+    "transition-delay",
+    "transition-duration",
+    "transition-property",
+    "transition-timing-function",
+    "translate",
+    "unicode-bidi",
+    "user-select",
+    "vertical-align",
+    "visibility",
+    "voice-balance",
+    "voice-duration",
+    "voice-family",
+    "voice-pitch",
+    "voice-range",
+    "voice-rate",
+    "voice-stress",
+    "voice-volume",
+    "volume",
+    "white-space",
+    "widows",
+    "width",
+    "will-change",
+    "word-break",
+    "word-spacing",
+    "word-wrap",
+    "writing-mode",
+    "z-index",
+    // SVG-specific
+    "clip-path",
+    "clip-rule",
+    "mask",
+    "enable-background",
+    "filter",
+    "flood-color",
+    "flood-opacity",
+    "lighting-color",
+    "stop-color",
+    "stop-opacity",
+    "pointer-events",
+    "color-interpolation",
+    "color-interpolation-filters",
+    "color-rendering",
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "image-rendering",
+    "marker",
+    "marker-end",
+    "marker-mid",
+    "marker-start",
+    "paint-order",
+    "shape-rendering",
+    "stroke",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-opacity",
+    "stroke-width",
+    "text-rendering",
+    "baseline-shift",
+    "dominant-baseline",
+    "glyph-orientation-horizontal",
+    "glyph-orientation-vertical",
+    "text-anchor",
+    "writing-mode"
+  ];
+  var propertyKeywords = keySet(propertyKeywords_);
+  var nonStandardPropertyKeywords_ = [
+    "accent-color",
+    "aspect-ratio",
+    "border-block",
+    "border-block-color",
+    "border-block-end",
+    "border-block-end-color",
+    "border-block-end-style",
+    "border-block-end-width",
+    "border-block-start",
+    "border-block-start-color",
+    "border-block-start-style",
+    "border-block-start-width",
+    "border-block-style",
+    "border-block-width",
+    "border-inline",
+    "border-inline-color",
+    "border-inline-end",
+    "border-inline-end-color",
+    "border-inline-end-style",
+    "border-inline-end-width",
+    "border-inline-start",
+    "border-inline-start-color",
+    "border-inline-start-style",
+    "border-inline-start-width",
+    "border-inline-style",
+    "border-inline-width",
+    "content-visibility",
+    "margin-block",
+    "margin-block-end",
+    "margin-block-start",
+    "margin-inline",
+    "margin-inline-end",
+    "margin-inline-start",
+    "overflow-anchor",
+    "overscroll-behavior",
+    "padding-block",
+    "padding-block-end",
+    "padding-block-start",
+    "padding-inline",
+    "padding-inline-end",
+    "padding-inline-start",
+    "scroll-snap-stop",
+    "scrollbar-3d-light-color",
+    "scrollbar-arrow-color",
+    "scrollbar-base-color",
+    "scrollbar-dark-shadow-color",
+    "scrollbar-face-color",
+    "scrollbar-highlight-color",
+    "scrollbar-shadow-color",
+    "scrollbar-track-color",
+    "searchfield-cancel-button",
+    "searchfield-decoration",
+    "searchfield-results-button",
+    "searchfield-results-decoration",
+    "shape-inside",
+    "zoom"
+  ];
+  var nonStandardPropertyKeywords = keySet(nonStandardPropertyKeywords_);
+  var fontProperties_ = [
+    "font-display",
+    "font-family",
+    "src",
+    "unicode-range",
+    "font-variant",
+    "font-feature-settings",
+    "font-stretch",
+    "font-weight",
+    "font-style"
+  ];
+  var fontProperties = keySet(fontProperties_);
+  var counterDescriptors_ = [
+    "additive-symbols",
+    "fallback",
+    "negative",
+    "pad",
+    "prefix",
+    "range",
+    "speak-as",
+    "suffix",
+    "symbols",
+    "system"
+  ];
+  var counterDescriptors = keySet(counterDescriptors_);
+  var colorKeywords_ = [
+    "aliceblue",
+    "antiquewhite",
+    "aqua",
+    "aquamarine",
+    "azure",
+    "beige",
+    "bisque",
+    "black",
+    "blanchedalmond",
+    "blue",
+    "blueviolet",
+    "brown",
+    "burlywood",
+    "cadetblue",
+    "chartreuse",
+    "chocolate",
+    "coral",
+    "cornflowerblue",
+    "cornsilk",
+    "crimson",
+    "cyan",
+    "darkblue",
+    "darkcyan",
+    "darkgoldenrod",
+    "darkgray",
+    "darkgreen",
+    "darkgrey",
+    "darkkhaki",
+    "darkmagenta",
+    "darkolivegreen",
+    "darkorange",
+    "darkorchid",
+    "darkred",
+    "darksalmon",
+    "darkseagreen",
+    "darkslateblue",
+    "darkslategray",
+    "darkslategrey",
+    "darkturquoise",
+    "darkviolet",
+    "deeppink",
+    "deepskyblue",
+    "dimgray",
+    "dimgrey",
+    "dodgerblue",
+    "firebrick",
+    "floralwhite",
+    "forestgreen",
+    "fuchsia",
+    "gainsboro",
+    "ghostwhite",
+    "gold",
+    "goldenrod",
+    "gray",
+    "grey",
+    "green",
+    "greenyellow",
+    "honeydew",
+    "hotpink",
+    "indianred",
+    "indigo",
+    "ivory",
+    "khaki",
+    "lavender",
+    "lavenderblush",
+    "lawngreen",
+    "lemonchiffon",
+    "lightblue",
+    "lightcoral",
+    "lightcyan",
+    "lightgoldenrodyellow",
+    "lightgray",
+    "lightgreen",
+    "lightgrey",
+    "lightpink",
+    "lightsalmon",
+    "lightseagreen",
+    "lightskyblue",
+    "lightslategray",
+    "lightslategrey",
+    "lightsteelblue",
+    "lightyellow",
+    "lime",
+    "limegreen",
+    "linen",
+    "magenta",
+    "maroon",
+    "mediumaquamarine",
+    "mediumblue",
+    "mediumorchid",
+    "mediumpurple",
+    "mediumseagreen",
+    "mediumslateblue",
+    "mediumspringgreen",
+    "mediumturquoise",
+    "mediumvioletred",
+    "midnightblue",
+    "mintcream",
+    "mistyrose",
+    "moccasin",
+    "navajowhite",
+    "navy",
+    "oldlace",
+    "olive",
+    "olivedrab",
+    "orange",
+    "orangered",
+    "orchid",
+    "palegoldenrod",
+    "palegreen",
+    "paleturquoise",
+    "palevioletred",
+    "papayawhip",
+    "peachpuff",
+    "peru",
+    "pink",
+    "plum",
+    "powderblue",
+    "purple",
+    "rebeccapurple",
+    "red",
+    "rosybrown",
+    "royalblue",
+    "saddlebrown",
+    "salmon",
+    "sandybrown",
+    "seagreen",
+    "seashell",
+    "sienna",
+    "silver",
+    "skyblue",
+    "slateblue",
+    "slategray",
+    "slategrey",
+    "snow",
+    "springgreen",
+    "steelblue",
+    "tan",
+    "teal",
+    "thistle",
+    "tomato",
+    "turquoise",
+    "violet",
+    "wheat",
+    "white",
+    "whitesmoke",
+    "yellow",
+    "yellowgreen"
+  ];
+  var colorKeywords = keySet(colorKeywords_);
+  var valueKeywords_ = [
+    "above",
+    "absolute",
+    "activeborder",
+    "additive",
+    "activecaption",
+    "afar",
+    "after-white-space",
+    "ahead",
+    "alias",
+    "all",
+    "all-scroll",
+    "alphabetic",
+    "alternate",
+    "always",
+    "amharic",
+    "amharic-abegede",
+    "antialiased",
+    "appworkspace",
+    "arabic-indic",
+    "armenian",
+    "asterisks",
+    "attr",
+    "auto",
+    "auto-flow",
+    "avoid",
+    "avoid-column",
+    "avoid-page",
+    "avoid-region",
+    "axis-pan",
+    "background",
+    "backwards",
+    "baseline",
+    "below",
+    "bidi-override",
+    "binary",
+    "bengali",
+    "blink",
+    "block",
+    "block-axis",
+    "blur",
+    "bold",
+    "bolder",
+    "border",
+    "border-box",
+    "both",
+    "bottom",
+    "break",
+    "break-all",
+    "break-word",
+    "brightness",
+    "bullets",
+    "button",
+    "buttonface",
+    "buttonhighlight",
+    "buttonshadow",
+    "buttontext",
+    "calc",
+    "cambodian",
+    "capitalize",
+    "caps-lock-indicator",
+    "caption",
+    "captiontext",
+    "caret",
+    "cell",
+    "center",
+    "checkbox",
+    "circle",
+    "cjk-decimal",
+    "cjk-earthly-branch",
+    "cjk-heavenly-stem",
+    "cjk-ideographic",
+    "clear",
+    "clip",
+    "close-quote",
+    "col-resize",
+    "collapse",
+    "color",
+    "color-burn",
+    "color-dodge",
+    "column",
+    "column-reverse",
+    "compact",
+    "condensed",
+    "conic-gradient",
+    "contain",
+    "content",
+    "contents",
+    "content-box",
+    "context-menu",
+    "continuous",
+    "contrast",
+    "copy",
+    "counter",
+    "counters",
+    "cover",
+    "crop",
+    "cross",
+    "crosshair",
+    "cubic-bezier",
+    "currentcolor",
+    "cursive",
+    "cyclic",
+    "darken",
+    "dashed",
+    "decimal",
+    "decimal-leading-zero",
+    "default",
+    "default-button",
+    "dense",
+    "destination-atop",
+    "destination-in",
+    "destination-out",
+    "destination-over",
+    "devanagari",
+    "difference",
+    "disc",
+    "discard",
+    "disclosure-closed",
+    "disclosure-open",
+    "document",
+    "dot-dash",
+    "dot-dot-dash",
+    "dotted",
+    "double",
+    "down",
+    "drop-shadow",
+    "e-resize",
+    "ease",
+    "ease-in",
+    "ease-in-out",
+    "ease-out",
+    "element",
+    "ellipse",
+    "ellipsis",
+    "embed",
+    "end",
+    "ethiopic",
+    "ethiopic-abegede",
+    "ethiopic-abegede-am-et",
+    "ethiopic-abegede-gez",
+    "ethiopic-abegede-ti-er",
+    "ethiopic-abegede-ti-et",
+    "ethiopic-halehame-aa-er",
+    "ethiopic-halehame-aa-et",
+    "ethiopic-halehame-am-et",
+    "ethiopic-halehame-gez",
+    "ethiopic-halehame-om-et",
+    "ethiopic-halehame-sid-et",
+    "ethiopic-halehame-so-et",
+    "ethiopic-halehame-ti-er",
+    "ethiopic-halehame-ti-et",
+    "ethiopic-halehame-tig",
+    "ethiopic-numeric",
+    "ew-resize",
+    "exclusion",
+    "expanded",
+    "extends",
+    "extra-condensed",
+    "extra-expanded",
+    "fantasy",
+    "fast",
+    "fill",
+    "fill-box",
+    "fixed",
+    "flat",
+    "flex",
+    "flex-end",
+    "flex-start",
+    "footnotes",
+    "forwards",
+    "from",
+    "geometricPrecision",
+    "georgian",
+    "grayscale",
+    "graytext",
+    "grid",
+    "groove",
+    "gujarati",
+    "gurmukhi",
+    "hand",
+    "hangul",
+    "hangul-consonant",
+    "hard-light",
+    "hebrew",
+    "help",
+    "hidden",
+    "hide",
+    "higher",
+    "highlight",
+    "highlighttext",
+    "hiragana",
+    "hiragana-iroha",
+    "horizontal",
+    "hsl",
+    "hsla",
+    "hue",
+    "hue-rotate",
+    "icon",
+    "ignore",
+    "inactiveborder",
+    "inactivecaption",
+    "inactivecaptiontext",
+    "infinite",
+    "infobackground",
+    "infotext",
+    "inherit",
+    "initial",
+    "inline",
+    "inline-axis",
+    "inline-block",
+    "inline-flex",
+    "inline-grid",
+    "inline-table",
+    "inset",
+    "inside",
+    "intrinsic",
+    "invert",
+    "italic",
+    "japanese-formal",
+    "japanese-informal",
+    "justify",
+    "kannada",
+    "katakana",
+    "katakana-iroha",
+    "keep-all",
+    "khmer",
+    "korean-hangul-formal",
+    "korean-hanja-formal",
+    "korean-hanja-informal",
+    "landscape",
+    "lao",
+    "large",
+    "larger",
+    "left",
+    "level",
+    "lighter",
+    "lighten",
+    "line-through",
+    "linear",
+    "linear-gradient",
+    "lines",
+    "list-item",
+    "listbox",
+    "listitem",
+    "local",
+    "logical",
+    "loud",
+    "lower",
+    "lower-alpha",
+    "lower-armenian",
+    "lower-greek",
+    "lower-hexadecimal",
+    "lower-latin",
+    "lower-norwegian",
+    "lower-roman",
+    "lowercase",
+    "ltr",
+    "luminosity",
+    "malayalam",
+    "manipulation",
+    "match",
+    "matrix",
+    "matrix3d",
+    "media-play-button",
+    "media-slider",
+    "media-sliderthumb",
+    "media-volume-slider",
+    "media-volume-sliderthumb",
+    "medium",
+    "menu",
+    "menulist",
+    "menulist-button",
+    "menutext",
+    "message-box",
+    "middle",
+    "min-intrinsic",
+    "mix",
+    "mongolian",
+    "monospace",
+    "move",
+    "multiple",
+    "multiple_mask_images",
+    "multiply",
+    "myanmar",
+    "n-resize",
+    "narrower",
+    "ne-resize",
+    "nesw-resize",
+    "no-close-quote",
+    "no-drop",
+    "no-open-quote",
+    "no-repeat",
+    "none",
+    "normal",
+    "not-allowed",
+    "nowrap",
+    "ns-resize",
+    "numbers",
+    "numeric",
+    "nw-resize",
+    "nwse-resize",
+    "oblique",
+    "octal",
+    "opacity",
+    "open-quote",
+    "optimizeLegibility",
+    "optimizeSpeed",
+    "oriya",
+    "oromo",
+    "outset",
+    "outside",
+    "outside-shape",
+    "overlay",
+    "overline",
+    "padding",
+    "padding-box",
+    "painted",
+    "page",
+    "paused",
+    "persian",
+    "perspective",
+    "pinch-zoom",
+    "plus-darker",
+    "plus-lighter",
+    "pointer",
+    "polygon",
+    "portrait",
+    "pre",
+    "pre-line",
+    "pre-wrap",
+    "preserve-3d",
+    "progress",
+    "push-button",
+    "radial-gradient",
+    "radio",
+    "read-only",
+    "read-write",
+    "read-write-plaintext-only",
+    "rectangle",
+    "region",
+    "relative",
+    "repeat",
+    "repeating-linear-gradient",
+    "repeating-radial-gradient",
+    "repeating-conic-gradient",
+    "repeat-x",
+    "repeat-y",
+    "reset",
+    "reverse",
+    "rgb",
+    "rgba",
+    "ridge",
+    "right",
+    "rotate",
+    "rotate3d",
+    "rotateX",
+    "rotateY",
+    "rotateZ",
+    "round",
+    "row",
+    "row-resize",
+    "row-reverse",
+    "rtl",
+    "run-in",
+    "running",
+    "s-resize",
+    "sans-serif",
+    "saturate",
+    "saturation",
+    "scale",
+    "scale3d",
+    "scaleX",
+    "scaleY",
+    "scaleZ",
+    "screen",
+    "scroll",
+    "scrollbar",
+    "scroll-position",
+    "se-resize",
+    "searchfield",
+    "searchfield-cancel-button",
+    "searchfield-decoration",
+    "searchfield-results-button",
+    "searchfield-results-decoration",
+    "self-start",
+    "self-end",
+    "semi-condensed",
+    "semi-expanded",
+    "separate",
+    "sepia",
+    "serif",
+    "show",
+    "sidama",
+    "simp-chinese-formal",
+    "simp-chinese-informal",
+    "single",
+    "skew",
+    "skewX",
+    "skewY",
+    "skip-white-space",
+    "slide",
+    "slider-horizontal",
+    "slider-vertical",
+    "sliderthumb-horizontal",
+    "sliderthumb-vertical",
+    "slow",
+    "small",
+    "small-caps",
+    "small-caption",
+    "smaller",
+    "soft-light",
+    "solid",
+    "somali",
+    "source-atop",
+    "source-in",
+    "source-out",
+    "source-over",
+    "space",
+    "space-around",
+    "space-between",
+    "space-evenly",
+    "spell-out",
+    "square",
+    "square-button",
+    "start",
+    "static",
+    "status-bar",
+    "stretch",
+    "stroke",
+    "stroke-box",
+    "sub",
+    "subpixel-antialiased",
+    "svg_masks",
+    "super",
+    "sw-resize",
+    "symbolic",
+    "symbols",
+    "system-ui",
+    "table",
+    "table-caption",
+    "table-cell",
+    "table-column",
+    "table-column-group",
+    "table-footer-group",
+    "table-header-group",
+    "table-row",
+    "table-row-group",
+    "tamil",
+    "telugu",
+    "text",
+    "text-bottom",
+    "text-top",
+    "textarea",
+    "textfield",
+    "thai",
+    "thick",
+    "thin",
+    "threeddarkshadow",
+    "threedface",
+    "threedhighlight",
+    "threedlightshadow",
+    "threedshadow",
+    "tibetan",
+    "tigre",
+    "tigrinya-er",
+    "tigrinya-er-abegede",
+    "tigrinya-et",
+    "tigrinya-et-abegede",
+    "to",
+    "top",
+    "trad-chinese-formal",
+    "trad-chinese-informal",
+    "transform",
+    "translate",
+    "translate3d",
+    "translateX",
+    "translateY",
+    "translateZ",
+    "transparent",
+    "ultra-condensed",
+    "ultra-expanded",
+    "underline",
+    "unidirectional-pan",
+    "unset",
+    "up",
+    "upper-alpha",
+    "upper-armenian",
+    "upper-greek",
+    "upper-hexadecimal",
+    "upper-latin",
+    "upper-norwegian",
+    "upper-roman",
+    "uppercase",
+    "urdu",
+    "url",
+    "var",
+    "vertical",
+    "vertical-text",
+    "view-box",
+    "visible",
+    "visibleFill",
+    "visiblePainted",
+    "visibleStroke",
+    "visual",
+    "w-resize",
+    "wait",
+    "wave",
+    "wider",
+    "window",
+    "windowframe",
+    "windowtext",
+    "words",
+    "wrap",
+    "wrap-reverse",
+    "x-large",
+    "x-small",
+    "xor",
+    "xx-large",
+    "xx-small"
+  ];
+  var valueKeywords = keySet(valueKeywords_);
+  var allWords = documentTypes_.concat(mediaTypes_).concat(mediaFeatures_).concat(mediaValueKeywords_).concat(propertyKeywords_).concat(nonStandardPropertyKeywords_).concat(colorKeywords_).concat(valueKeywords_);
+  var defaults2 = {
+    documentTypes,
+    mediaTypes,
+    mediaFeatures,
+    mediaValueKeywords,
+    propertyKeywords,
+    nonStandardPropertyKeywords,
+    fontProperties,
+    counterDescriptors,
+    colorKeywords,
+    valueKeywords,
+    tokenHooks: {
+      "/": function(stream, state) {
+        if (!stream.eat("*")) return false;
+        state.tokenize = tokenCComment;
+        return tokenCComment(stream, state);
+      }
+    }
+  };
+  var css = mkCSS({ name: "css" });
+  function tokenCComment(stream, state) {
+    var maybeEnd = false, ch;
+    while ((ch = stream.next()) != null) {
+      if (maybeEnd && ch == "/") {
+        state.tokenize = null;
+        break;
+      }
+      maybeEnd = ch == "*";
+    }
+    return ["comment", "comment"];
+  }
+  var sCSS = mkCSS({
+    name: "scss",
+    mediaTypes,
+    mediaFeatures,
+    mediaValueKeywords,
+    propertyKeywords,
+    nonStandardPropertyKeywords,
+    colorKeywords,
+    valueKeywords,
+    fontProperties,
+    allowNested: true,
+    lineComment: "//",
+    tokenHooks: {
+      "/": function(stream, state) {
+        if (stream.eat("/")) {
+          stream.skipToEnd();
+          return ["comment", "comment"];
+        } else if (stream.eat("*")) {
+          state.tokenize = tokenCComment;
+          return tokenCComment(stream, state);
+        } else {
+          return ["operator", "operator"];
+        }
+      },
+      ":": function(stream) {
+        if (stream.match(/^\s*\{/, false))
+          return [null, null];
+        return false;
+      },
+      "$": function(stream) {
+        stream.match(/^[\w-]+/);
+        if (stream.match(/^\s*:/, false))
+          return ["def", "variable-definition"];
+        return ["variableName.special", "variable"];
+      },
+      "#": function(stream) {
+        if (!stream.eat("{")) return false;
+        return [null, "interpolation"];
+      }
+    }
+  });
+  var less = mkCSS({
+    name: "less",
+    mediaTypes,
+    mediaFeatures,
+    mediaValueKeywords,
+    propertyKeywords,
+    nonStandardPropertyKeywords,
+    colorKeywords,
+    valueKeywords,
+    fontProperties,
+    allowNested: true,
+    lineComment: "//",
+    tokenHooks: {
+      "/": function(stream, state) {
+        if (stream.eat("/")) {
+          stream.skipToEnd();
+          return ["comment", "comment"];
+        } else if (stream.eat("*")) {
+          state.tokenize = tokenCComment;
+          return tokenCComment(stream, state);
+        } else {
+          return ["operator", "operator"];
+        }
+      },
+      "@": function(stream) {
+        if (stream.eat("{")) return [null, "interpolation"];
+        if (stream.match(/^(charset|document|font-face|import|(-(moz|ms|o|webkit)-)?keyframes|media|namespace|page|supports)\b/i, false)) return false;
+        stream.eatWhile(/[\w\\\-]/);
+        if (stream.match(/^\s*:/, false))
+          return ["def", "variable-definition"];
+        return ["variableName", "variable"];
+      },
+      "&": function() {
+        return ["atom", "atom"];
+      }
+    }
+  });
+  var gss = mkCSS({
+    name: "gss",
+    documentTypes,
+    mediaTypes,
+    mediaFeatures,
+    propertyKeywords,
+    nonStandardPropertyKeywords,
+    fontProperties,
+    counterDescriptors,
+    colorKeywords,
+    valueKeywords,
+    supportsAtComponent: true,
+    tokenHooks: {
+      "/": function(stream, state) {
+        if (!stream.eat("*")) return false;
+        state.tokenize = tokenCComment;
+        return tokenCComment(stream, state);
+      }
+    }
+  });
+
+  // node_modules/@codemirror/legacy-modes/mode/yaml.js
+  var cons = ["true", "false", "on", "off", "yes", "no"];
+  var keywordRegex = new RegExp("\\b((" + cons.join(")|(") + "))$", "i");
+  var yaml = {
+    name: "yaml",
+    token: function(stream, state) {
+      var ch = stream.peek();
+      var esc = state.escaped;
+      state.escaped = false;
+      if (ch == "#" && (stream.pos == 0 || /\s/.test(stream.string.charAt(stream.pos - 1)))) {
+        stream.skipToEnd();
+        return "comment";
+      }
+      if (stream.match(/^('([^']|\\.)*'?|"([^"]|\\.)*"?)/))
+        return "string";
+      if (state.literal && stream.indentation() > state.keyCol) {
+        stream.skipToEnd();
+        return "string";
+      } else if (state.literal) {
+        state.literal = false;
+      }
+      if (stream.sol()) {
+        state.keyCol = 0;
+        state.pair = false;
+        state.pairStart = false;
+        if (stream.match("---")) {
+          return "def";
+        }
+        if (stream.match("...")) {
+          return "def";
+        }
+        if (stream.match(/^\s*-\s+/)) {
+          return "meta";
+        }
+      }
+      if (stream.match(/^(\{|\}|\[|\])/)) {
+        if (ch == "{")
+          state.inlinePairs++;
+        else if (ch == "}")
+          state.inlinePairs--;
+        else if (ch == "[")
+          state.inlineList++;
+        else
+          state.inlineList--;
+        return "meta";
+      }
+      if (state.inlineList > 0 && !esc && ch == ",") {
+        stream.next();
+        return "meta";
+      }
+      if (state.inlinePairs > 0 && !esc && ch == ",") {
+        state.keyCol = 0;
+        state.pair = false;
+        state.pairStart = false;
+        stream.next();
+        return "meta";
+      }
+      if (state.pairStart) {
+        if (stream.match(/^\s*(\||\>)\s*/)) {
+          state.literal = true;
+          return "meta";
+        }
+        ;
+        if (stream.match(/^\s*(\&|\*)[a-z0-9\._-]+\b/i)) {
+          return "variable";
+        }
+        if (state.inlinePairs == 0 && stream.match(/^\s*-?[0-9\.\,]+\s?$/)) {
+          return "number";
+        }
+        if (state.inlinePairs > 0 && stream.match(/^\s*-?[0-9\.\,]+\s?(?=(,|}))/)) {
+          return "number";
+        }
+        if (stream.match(keywordRegex)) {
+          return "keyword";
+        }
+      }
+      if (!state.pair && stream.match(/^\s*(?:[,\[\]{}&*!|>'"%@`][^\s'":]|[^,\[\]{}#&*!|>'"%@`])[^#]*?(?=\s*:($|\s))/)) {
+        state.pair = true;
+        state.keyCol = stream.indentation();
+        return "atom";
+      }
+      if (state.pair && stream.match(/^:\s*/)) {
+        state.pairStart = true;
+        return "meta";
+      }
+      state.pairStart = false;
+      state.escaped = ch == "\\";
+      stream.next();
+      return null;
+    },
+    startState: function() {
+      return {
+        pair: false,
+        pairStart: false,
+        keyCol: 0,
+        inlinePairs: 0,
+        inlineList: 0,
+        literal: false,
+        escaped: false
+      };
+    },
+    languageData: {
+      commentTokens: { line: "#" }
+    }
+  };
+
+  // node_modules/@codemirror/legacy-modes/mode/shell.js
+  var words = {};
+  function define(style, dict) {
+    for (var i = 0; i < dict.length; i++) {
+      words[dict[i]] = style;
+    }
+  }
+  var commonAtoms = ["true", "false"];
+  var commonKeywords = [
+    "if",
+    "then",
+    "do",
+    "else",
+    "elif",
+    "while",
+    "until",
+    "for",
+    "in",
+    "esac",
+    "fi",
+    "fin",
+    "fil",
+    "done",
+    "exit",
+    "set",
+    "unset",
+    "export",
+    "function"
+  ];
+  var commonCommands = [
+    "ab",
+    "awk",
+    "bash",
+    "beep",
+    "cat",
+    "cc",
+    "cd",
+    "chown",
+    "chmod",
+    "chroot",
+    "clear",
+    "cp",
+    "curl",
+    "cut",
+    "diff",
+    "echo",
+    "find",
+    "gawk",
+    "gcc",
+    "get",
+    "git",
+    "grep",
+    "hg",
+    "kill",
+    "killall",
+    "ln",
+    "ls",
+    "make",
+    "mkdir",
+    "openssl",
+    "mv",
+    "nc",
+    "nl",
+    "node",
+    "npm",
+    "ping",
+    "ps",
+    "restart",
+    "rm",
+    "rmdir",
+    "sed",
+    "service",
+    "sh",
+    "shopt",
+    "shred",
+    "source",
+    "sort",
+    "sleep",
+    "ssh",
+    "start",
+    "stop",
+    "su",
+    "sudo",
+    "svn",
+    "tee",
+    "telnet",
+    "top",
+    "touch",
+    "vi",
+    "vim",
+    "wall",
+    "wc",
+    "wget",
+    "who",
+    "write",
+    "yes",
+    "zsh"
+  ];
+  define("atom", commonAtoms);
+  define("keyword", commonKeywords);
+  define("builtin", commonCommands);
+  function tokenBase(stream, state) {
+    if (stream.eatSpace()) return null;
+    var sol = stream.sol();
+    var ch = stream.next();
+    if (ch === "\\") {
+      stream.next();
+      return null;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      state.tokens.unshift(tokenString(ch, ch === "`" ? "quote" : "string"));
+      return tokenize(stream, state);
+    }
+    if (ch === "#") {
+      if (sol && stream.eat("!")) {
+        stream.skipToEnd();
+        return "meta";
+      }
+      stream.skipToEnd();
+      return "comment";
+    }
+    if (ch === "$") {
+      state.tokens.unshift(tokenDollar);
+      return tokenize(stream, state);
+    }
+    if (ch === "+" || ch === "=") {
+      return "operator";
+    }
+    if (ch === "-") {
+      stream.eat("-");
+      stream.eatWhile(/\w/);
+      return "attribute";
+    }
+    if (ch == "<") {
+      if (stream.match("<<")) return "operator";
+      var heredoc = stream.match(/^<-?\s*(?:['"]([^'"]*)['"]|([^'"\s]*))/);
+      if (heredoc) {
+        state.tokens.unshift(tokenHeredoc(heredoc[1] || heredoc[2]));
+        return "string.special";
+      }
+    }
+    if (/\d/.test(ch)) {
+      stream.eatWhile(/\d/);
+      if (stream.eol() || !/\w/.test(stream.peek())) {
+        return "number";
+      }
+    }
+    stream.eatWhile(/[\w-]/);
+    var cur2 = stream.current();
+    if (stream.peek() === "=" && /\w+/.test(cur2)) return "def";
+    return words.hasOwnProperty(cur2) ? words[cur2] : null;
+  }
+  function tokenString(quote, style) {
+    var close = quote == "(" ? ")" : quote == "{" ? "}" : quote;
+    return function(stream, state) {
+      var next, escaped = false;
+      while ((next = stream.next()) != null) {
+        if (next === close && !escaped) {
+          state.tokens.shift();
+          break;
+        } else if (next === "$" && !escaped && quote !== "'" && stream.peek() != close) {
+          escaped = true;
+          stream.backUp(1);
+          state.tokens.unshift(tokenDollar);
+          break;
+        } else if (!escaped && quote !== close && next === quote) {
+          state.tokens.unshift(tokenString(quote, style));
+          return tokenize(stream, state);
+        } else if (!escaped && /['"]/.test(next) && !/['"]/.test(quote)) {
+          state.tokens.unshift(tokenStringStart(next, "string"));
+          stream.backUp(1);
+          break;
+        }
+        escaped = !escaped && next === "\\";
+      }
+      return style;
+    };
+  }
+  function tokenStringStart(quote, style) {
+    return function(stream, state) {
+      state.tokens[0] = tokenString(quote, style);
+      stream.next();
+      return tokenize(stream, state);
+    };
+  }
+  var tokenDollar = function(stream, state) {
+    if (state.tokens.length > 1) stream.eat("$");
+    var ch = stream.next();
+    if (/['"({]/.test(ch)) {
+      state.tokens[0] = tokenString(ch, ch == "(" ? "quote" : ch == "{" ? "def" : "string");
+      return tokenize(stream, state);
+    }
+    if (!/\d/.test(ch)) stream.eatWhile(/\w/);
+    state.tokens.shift();
+    return "def";
+  };
+  function tokenHeredoc(delim) {
+    return function(stream, state) {
+      if (stream.sol() && stream.string == delim) state.tokens.shift();
+      stream.skipToEnd();
+      return "string.special";
+    };
+  }
+  function tokenize(stream, state) {
+    return (state.tokens[0] || tokenBase)(stream, state);
+  }
+  var shell = {
+    name: "shell",
+    startState: function() {
+      return { tokens: [] };
+    },
+    token: function(stream, state) {
+      return tokenize(stream, state);
+    },
+    languageData: {
+      autocomplete: commonAtoms.concat(commonKeywords, commonCommands),
+      closeBrackets: { brackets: ["(", "[", "{", "'", '"', "`"] },
+      commentTokens: { line: "#" }
+    }
+  };
+
+  // node_modules/@codemirror/legacy-modes/mode/toml.js
+  var toml = {
+    name: "toml",
+    startState: function() {
+      return {
+        inString: false,
+        stringType: "",
+        lhs: true,
+        inArray: 0
+      };
+    },
+    token: function(stream, state) {
+      let quote;
+      if (!state.inString && (quote = stream.match(/^('''|"""|'|")/))) {
+        state.stringType = quote[0];
+        state.inString = true;
+      }
+      if (stream.sol() && !state.inString && state.inArray === 0) {
+        state.lhs = true;
+      }
+      if (state.inString) {
+        while (state.inString) {
+          if (stream.match(state.stringType)) {
+            state.inString = false;
+          } else if (stream.peek() === "\\") {
+            stream.next();
+            stream.next();
+          } else if (stream.eol()) {
+            break;
+          } else {
+            stream.match(/^.[^\\\"\']*/);
+          }
+        }
+        return state.lhs ? "property" : "string";
+      } else if (state.inArray && stream.peek() === "]") {
+        stream.next();
+        state.inArray--;
+        return "bracket";
+      } else if (state.lhs && stream.peek() === "[" && stream.skipTo("]")) {
+        stream.next();
+        if (stream.peek() === "]") stream.next();
+        return "atom";
+      } else if (stream.peek() === "#") {
+        stream.skipToEnd();
+        return "comment";
+      } else if (stream.eatSpace()) {
+        return null;
+      } else if (state.lhs && stream.eatWhile(function(c) {
+        return c != "=" && c != " ";
+      })) {
+        return "property";
+      } else if (state.lhs && stream.peek() === "=") {
+        stream.next();
+        state.lhs = false;
+        return null;
+      } else if (!state.lhs && stream.match(/^\d\d\d\d[\d\-\:\.T]*Z/)) {
+        return "atom";
+      } else if (!state.lhs && (stream.match("true") || stream.match("false"))) {
+        return "atom";
+      } else if (!state.lhs && stream.peek() === "[") {
+        state.inArray++;
+        stream.next();
+        return "bracket";
+      } else if (!state.lhs && stream.match(/^\-?\d+(?:\.\d+)?/)) {
+        return "number";
+      } else if (!stream.eatSpace()) {
+        stream.next();
+      }
+      return null;
+    },
+    languageData: {
+      commentTokens: { line: "#" }
+    }
+  };
+
+  // node_modules/@codemirror/legacy-modes/mode/xml.js
+  var htmlConfig = {
+    autoSelfClosers: {
+      "area": true,
+      "base": true,
+      "br": true,
+      "col": true,
+      "command": true,
+      "embed": true,
+      "frame": true,
+      "hr": true,
+      "img": true,
+      "input": true,
+      "keygen": true,
+      "link": true,
+      "meta": true,
+      "param": true,
+      "source": true,
+      "track": true,
+      "wbr": true,
+      "menuitem": true
+    },
+    implicitlyClosed: {
+      "dd": true,
+      "li": true,
+      "optgroup": true,
+      "option": true,
+      "p": true,
+      "rp": true,
+      "rt": true,
+      "tbody": true,
+      "td": true,
+      "tfoot": true,
+      "th": true,
+      "tr": true
+    },
+    contextGrabbers: {
+      "dd": { "dd": true, "dt": true },
+      "dt": { "dd": true, "dt": true },
+      "li": { "li": true },
+      "option": { "option": true, "optgroup": true },
+      "optgroup": { "optgroup": true },
+      "p": {
+        "address": true,
+        "article": true,
+        "aside": true,
+        "blockquote": true,
+        "dir": true,
+        "div": true,
+        "dl": true,
+        "fieldset": true,
+        "footer": true,
+        "form": true,
+        "h1": true,
+        "h2": true,
+        "h3": true,
+        "h4": true,
+        "h5": true,
+        "h6": true,
+        "header": true,
+        "hgroup": true,
+        "hr": true,
+        "menu": true,
+        "nav": true,
+        "ol": true,
+        "p": true,
+        "pre": true,
+        "section": true,
+        "table": true,
+        "ul": true
+      },
+      "rp": { "rp": true, "rt": true },
+      "rt": { "rp": true, "rt": true },
+      "tbody": { "tbody": true, "tfoot": true },
+      "td": { "td": true, "th": true },
+      "tfoot": { "tbody": true },
+      "th": { "td": true, "th": true },
+      "thead": { "tbody": true, "tfoot": true },
+      "tr": { "tr": true }
+    },
+    doNotIndent: { "pre": true },
+    allowUnquoted: true,
+    allowMissing: true,
+    caseFold: true
+  };
+  var xmlConfig = {
+    autoSelfClosers: {},
+    implicitlyClosed: {},
+    contextGrabbers: {},
+    doNotIndent: {},
+    allowUnquoted: false,
+    allowMissing: false,
+    allowMissingTagName: false,
+    caseFold: false
+  };
+  function mkXML(parserConfig) {
+    var config = {};
+    var defaults3 = parserConfig.htmlMode ? htmlConfig : xmlConfig;
+    for (var prop in defaults3) config[prop] = defaults3[prop];
+    for (var prop in parserConfig) config[prop] = parserConfig[prop];
+    var type, setStyle;
+    function inText(stream, state) {
+      function chain(parser) {
+        state.tokenize = parser;
+        return parser(stream, state);
+      }
+      var ch = stream.next();
+      if (ch == "<") {
+        if (stream.eat("!")) {
+          if (stream.eat("[")) {
+            if (stream.match("CDATA[")) return chain(inBlock("atom", "]]>"));
+            else return null;
+          } else if (stream.match("--")) {
+            return chain(inBlock("comment", "-->"));
+          } else if (stream.match("DOCTYPE", true, true)) {
+            stream.eatWhile(/[\w\._\-]/);
+            return chain(doctype(1));
+          } else {
+            return null;
+          }
+        } else if (stream.eat("?")) {
+          stream.eatWhile(/[\w\._\-]/);
+          state.tokenize = inBlock("meta", "?>");
+          return "meta";
+        } else {
+          type = stream.eat("/") ? "closeTag" : "openTag";
+          state.tokenize = inTag;
+          return "angleBracket";
+        }
+      } else if (ch == "&") {
+        var ok;
+        if (stream.eat("#")) {
+          if (stream.eat("x")) {
+            ok = stream.eatWhile(/[a-fA-F\d]/) && stream.eat(";");
+          } else {
+            ok = stream.eatWhile(/[\d]/) && stream.eat(";");
+          }
+        } else {
+          ok = stream.eatWhile(/[\w\.\-:]/) && stream.eat(";");
+        }
+        return ok ? "atom" : "error";
+      } else {
+        stream.eatWhile(/[^&<]/);
+        return null;
+      }
+    }
+    inText.isInText = true;
+    function inTag(stream, state) {
+      var ch = stream.next();
+      if (ch == ">" || ch == "/" && stream.eat(">")) {
+        state.tokenize = inText;
+        type = ch == ">" ? "endTag" : "selfcloseTag";
+        return "angleBracket";
+      } else if (ch == "=") {
+        type = "equals";
+        return null;
+      } else if (ch == "<") {
+        state.tokenize = inText;
+        state.state = baseState;
+        state.tagName = state.tagStart = null;
+        state.tokenize(stream, state);
+        return "invalid";
+      } else if (/[\'\"]/.test(ch)) {
+        state.tokenize = inAttribute(ch);
+        state.stringStartCol = stream.column();
+        return state.tokenize(stream, state);
+      } else {
+        stream.match(/^[^\s\u00a0=<>\"\']*[^\s\u00a0=<>\"\'\/]/);
+        return "word";
+      }
+    }
+    function inAttribute(quote) {
+      var closure = function(stream, state) {
+        while (!stream.eol()) {
+          if (stream.next() == quote) {
+            state.tokenize = inTag;
+            break;
+          }
+        }
+        return "string";
+      };
+      closure.isInAttribute = true;
+      return closure;
+    }
+    function inBlock(style, terminator) {
+      return function(stream, state) {
+        while (!stream.eol()) {
+          if (stream.match(terminator)) {
+            state.tokenize = inText;
+            break;
+          }
+          stream.next();
+        }
+        return style;
+      };
+    }
+    function doctype(depth) {
+      return function(stream, state) {
+        var ch;
+        while ((ch = stream.next()) != null) {
+          if (ch == "<") {
+            state.tokenize = doctype(depth + 1);
+            return state.tokenize(stream, state);
+          } else if (ch == ">") {
+            if (depth == 1) {
+              state.tokenize = inText;
+              break;
+            } else {
+              state.tokenize = doctype(depth - 1);
+              return state.tokenize(stream, state);
+            }
+          }
+        }
+        return "meta";
+      };
+    }
+    function lower(tagName) {
+      return tagName && tagName.toLowerCase();
+    }
+    function Context(state, tagName, startOfLine) {
+      this.prev = state.context;
+      this.tagName = tagName || "";
+      this.indent = state.indented;
+      this.startOfLine = startOfLine;
+      if (config.doNotIndent.hasOwnProperty(tagName) || state.context && state.context.noIndent)
+        this.noIndent = true;
+    }
+    function popContext(state) {
+      if (state.context) state.context = state.context.prev;
+    }
+    function maybePopContext(state, nextTagName) {
+      var parentTagName;
+      while (true) {
+        if (!state.context) {
+          return;
+        }
+        parentTagName = state.context.tagName;
+        if (!config.contextGrabbers.hasOwnProperty(lower(parentTagName)) || !config.contextGrabbers[lower(parentTagName)].hasOwnProperty(lower(nextTagName))) {
+          return;
+        }
+        popContext(state);
+      }
+    }
+    function baseState(type2, stream, state) {
+      if (type2 == "openTag") {
+        state.tagStart = stream.column();
+        return tagNameState;
+      } else if (type2 == "closeTag") {
+        return closeTagNameState;
+      } else {
+        return baseState;
+      }
+    }
+    function tagNameState(type2, stream, state) {
+      if (type2 == "word") {
+        state.tagName = stream.current();
+        setStyle = "tag";
+        return attrState;
+      } else if (config.allowMissingTagName && type2 == "endTag") {
+        setStyle = "angleBracket";
+        return attrState(type2, stream, state);
+      } else {
+        setStyle = "error";
+        return tagNameState;
+      }
+    }
+    function closeTagNameState(type2, stream, state) {
+      if (type2 == "word") {
+        var tagName = stream.current();
+        if (state.context && state.context.tagName != tagName && config.implicitlyClosed.hasOwnProperty(lower(state.context.tagName)))
+          popContext(state);
+        if (state.context && state.context.tagName == tagName || config.matchClosing === false) {
+          setStyle = "tag";
+          return closeState;
+        } else {
+          setStyle = "error";
+          return closeStateErr;
+        }
+      } else if (config.allowMissingTagName && type2 == "endTag") {
+        setStyle = "angleBracket";
+        return closeState(type2, stream, state);
+      } else {
+        setStyle = "error";
+        return closeStateErr;
+      }
+    }
+    function closeState(type2, _stream, state) {
+      if (type2 != "endTag") {
+        setStyle = "error";
+        return closeState;
+      }
+      popContext(state);
+      return baseState;
+    }
+    function closeStateErr(type2, stream, state) {
+      setStyle = "error";
+      return closeState(type2, stream, state);
+    }
+    function attrState(type2, _stream, state) {
+      if (type2 == "word") {
+        setStyle = "attribute";
+        return attrEqState;
+      } else if (type2 == "endTag" || type2 == "selfcloseTag") {
+        var tagName = state.tagName, tagStart = state.tagStart;
+        state.tagName = state.tagStart = null;
+        if (type2 == "selfcloseTag" || config.autoSelfClosers.hasOwnProperty(lower(tagName))) {
+          maybePopContext(state, tagName);
+        } else {
+          maybePopContext(state, tagName);
+          state.context = new Context(state, tagName, tagStart == state.indented);
+        }
+        return baseState;
+      }
+      setStyle = "error";
+      return attrState;
+    }
+    function attrEqState(type2, stream, state) {
+      if (type2 == "equals") return attrValueState;
+      if (!config.allowMissing) setStyle = "error";
+      return attrState(type2, stream, state);
+    }
+    function attrValueState(type2, stream, state) {
+      if (type2 == "string") return attrContinuedState;
+      if (type2 == "word" && config.allowUnquoted) {
+        setStyle = "string";
+        return attrState;
+      }
+      setStyle = "error";
+      return attrState(type2, stream, state);
+    }
+    function attrContinuedState(type2, stream, state) {
+      if (type2 == "string") return attrContinuedState;
+      return attrState(type2, stream, state);
+    }
+    return {
+      name: "xml",
+      startState: function() {
+        var state = {
+          tokenize: inText,
+          state: baseState,
+          indented: 0,
+          tagName: null,
+          tagStart: null,
+          context: null
+        };
+        return state;
+      },
+      token: function(stream, state) {
+        if (!state.tagName && stream.sol())
+          state.indented = stream.indentation();
+        if (stream.eatSpace()) return null;
+        type = null;
+        var style = state.tokenize(stream, state);
+        if ((style || type) && style != "comment") {
+          setStyle = null;
+          state.state = state.state(type || style, stream, state);
+          if (setStyle) style = setStyle;
+        }
+        return style;
+      },
+      indent: function(state, textAfter, cx) {
+        var context = state.context;
+        if (state.tokenize.isInAttribute) {
+          if (state.tagStart == state.indented)
+            return state.stringStartCol + 1;
+          else
+            return state.indented + cx.unit;
+        }
+        if (context && context.noIndent) return null;
+        if (state.tokenize != inTag && state.tokenize != inText) return null;
+        if (state.tagName) {
+          if (config.multilineTagIndentPastTag !== false)
+            return state.tagStart + state.tagName.length + 2;
+          else
+            return state.tagStart + cx.unit * (config.multilineTagIndentFactor || 1);
+        }
+        if (config.alignCDATA && /<!\[CDATA\[/.test(textAfter)) return 0;
+        var tagAfter = textAfter && /^<(\/)?([\w_:\.-]*)/.exec(textAfter);
+        if (tagAfter && tagAfter[1]) {
+          while (context) {
+            if (context.tagName == tagAfter[2]) {
+              context = context.prev;
+              break;
+            } else if (config.implicitlyClosed.hasOwnProperty(lower(context.tagName))) {
+              context = context.prev;
+            } else {
+              break;
+            }
+          }
+        } else if (tagAfter) {
+          while (context) {
+            var grabbers = config.contextGrabbers[lower(context.tagName)];
+            if (grabbers && grabbers.hasOwnProperty(lower(tagAfter[2])))
+              context = context.prev;
+            else
+              break;
+          }
+        }
+        while (context && context.prev && !context.startOfLine)
+          context = context.prev;
+        if (context) return context.indent + cx.unit;
+        else return state.baseIndent || 0;
+      },
+      languageData: {
+        indentOnInput: /<\/[\s\w:]+>$/,
+        commentTokens: { block: { open: "<!--", close: "-->" } }
+      },
+      configuration: config.htmlMode ? "html" : "xml",
+      skipAttribute: function(state) {
+        if (state.state == attrValueState)
+          state.state = attrState;
+      },
+      xmlCurrentTag: function(state) {
+        return state.tagName ? { name: state.tagName, close: state.type == "closeTag" } : null;
+      },
+      xmlCurrentContext: function(state) {
+        var context = [];
+        for (var cx = state.context; cx; cx = cx.prev)
+          context.push(cx.tagName);
+        return context.reverse();
+      }
+    };
+  }
+  var xml = mkXML({});
+  var html = mkXML({ htmlMode: true });
 
   // node_modules/@codemirror/search/dist/index.js
   var basicNormalize = typeof String.prototype.normalize == "function" ? (x) => x.normalize("NFKD") : (x) => x;
@@ -22495,10 +26094,10 @@
   };
   function toSet(chars) {
     let flat = Object.keys(chars).join("");
-    let words = /\w/.test(flat);
-    if (words)
+    let words2 = /\w/.test(flat);
+    if (words2)
       flat = flat.replace(/\w/g, "");
-    return `[${words ? "\\w" : ""}${flat.replace(/[^\w\s]/g, "\\$&")}]`;
+    return `[${words2 ? "\\w" : ""}${flat.replace(/[^\w\s]/g, "\\$&")}]`;
   }
   function prefixMatch(options) {
     let first = /* @__PURE__ */ Object.create(null), rest = /* @__PURE__ */ Object.create(null);
@@ -24055,7 +27654,7 @@
     view.dom.style.setProperty("display", "none", "important");
     const ro = [
       gutterMenuLineNumbers(st.onGutterMenu),
-      baseExtensions(),
+      baseExtensions(st.languageExt),
       EditorView.editable.of(false),
       EditorState.readOnly.of(true)
     ];
@@ -24170,7 +27769,37 @@
     { tag: [tags.deleted], color: "#ffdcd7", backgroundColor: "#67060c" },
     { tag: [tags.inserted], color: "#aff5b4", backgroundColor: "#033a16" }
   ]);
-  function baseExtensions() {
+  var LANG_BY_EXT = {
+    hs: haskell,
+    lhs: haskell,
+    hsc: haskell,
+    js: javascript,
+    mjs: javascript,
+    cjs: javascript,
+    jsx: javascript,
+    ts: typescript,
+    tsx: typescript,
+    json,
+    css,
+    scss: sCSS,
+    less,
+    yaml,
+    yml: yaml,
+    sh: shell,
+    bash: shell,
+    zsh: shell,
+    toml,
+    xml,
+    html,
+    htm: html
+  };
+  function languageForFile(path) {
+    if (!path) return [];
+    const m = /\.([^.\/\\]+)$/.exec(path.toLowerCase());
+    const parser = m && LANG_BY_EXT[m[1]];
+    return parser ? StreamLanguage.define(parser) : [];
+  }
+  function baseExtensions(languageExt) {
     return [
       highlightActiveLineGutter(),
       foldGutter(),
@@ -24195,7 +27824,7 @@
         ...completionKeymap,
         ...lspNavKeymap
       ]),
-      StreamLanguage.define(haskell),
+      languageExt ?? [],
       githubDark,
       EditorView.theme({
         "&": { height: "100%" },
@@ -24230,12 +27859,13 @@
   }
   function createEditor(parent, doc2, onChange, onGutterMenu) {
     const inlineComp = new Compartment();
+    const languageExt = languageForFile(parent && parent.getAttribute("data-file"));
     const view = new EditorView({
       doc: doc2,
       parent,
       extensions: [
         gutterMenuLineNumbers(onGutterMenu),
-        baseExtensions(),
+        baseExtensions(languageExt),
         marksField,
         findField,
         dirtyField,
@@ -24248,7 +27878,7 @@
         })
       ]
     });
-    viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, onGutterMenu, onHover: null, onComplete: null, onDefinition: null, onReferences: null });
+    viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, languageExt, onGutterMenu, onHover: null, onComplete: null, onDefinition: null, onReferences: null });
     view.dom.addEventListener("focusin", () => {
       window.LeksahCM.activeView = view;
     });

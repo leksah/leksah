@@ -12,6 +12,12 @@ import { syntaxHighlighting, HighlightStyle, indentOnInput,
          bracketMatching, foldGutter, foldKeymap, StreamLanguage } from "@codemirror/language"
 import { tags as t } from "@lezer/highlight"
 import { haskell } from "@codemirror/legacy-modes/mode/haskell"
+import { javascript, json, typescript } from "@codemirror/legacy-modes/mode/javascript"
+import { css, sCSS, less } from "@codemirror/legacy-modes/mode/css"
+import { yaml } from "@codemirror/legacy-modes/mode/yaml"
+import { shell } from "@codemirror/legacy-modes/mode/shell"
+import { toml } from "@codemirror/legacy-modes/mode/toml"
+import { xml, html } from "@codemirror/legacy-modes/mode/xml"
 import { searchKeymap, highlightSelectionMatches, search,
          SearchCursor, RegExpCursor } from "@codemirror/search"
 import { MergeView, unifiedMergeView } from "@codemirror/merge"
@@ -303,7 +309,7 @@ function showSideBySide(view) {
   // CM6 core sets `.cm-editor { display: flex !important }`, so a plain inline
   // `display = "none"` is overridden — set it with `important` priority.
   view.dom.style.setProperty("display", "none", "important")
-  const ro = [gutterMenuLineNumbers(st.onGutterMenu), baseExtensions(),
+  const ro = [gutterMenuLineNumbers(st.onGutterMenu), baseExtensions(st.languageExt),
               EditorView.editable.of(false), EditorState.readOnly.of(true)]
   st.merge = new MergeView({
     parent: st.parent,
@@ -395,7 +401,30 @@ const githubDarkHighlightStyle = HighlightStyle.define([
   { tag: [t.inserted], color: "#aff5b4", backgroundColor: "#033a16" },
 ])
 
-function baseExtensions() {
+// Map a file path to a CM6 language extension (or [] for plain text) by its
+// extension.  All modes here come from @codemirror/legacy-modes, already
+// bundled — no new deps.  NOTE: .nix and .md have no legacy mode and fall back
+// to plain text (add a dedicated package if highlighting them is needed).
+const LANG_BY_EXT = {
+  hs: haskell, lhs: haskell, hsc: haskell,
+  js: javascript, mjs: javascript, cjs: javascript, jsx: javascript,
+  ts: typescript, tsx: typescript,
+  json: json,
+  css: css, scss: sCSS, less: less,
+  yaml: yaml, yml: yaml,
+  sh: shell, bash: shell, zsh: shell,
+  toml: toml,
+  xml: xml, html: html, htm: html,
+}
+
+function languageForFile(path) {
+  if (!path) return []
+  const m = /\.([^.\/\\]+)$/.exec(path.toLowerCase())
+  const parser = m && LANG_BY_EXT[m[1]]
+  return parser ? StreamLanguage.define(parser) : []
+}
+
+function baseExtensions(languageExt) {
   return [
     highlightActiveLineGutter(),
     foldGutter(),
@@ -420,7 +449,7 @@ function baseExtensions() {
       ...completionKeymap,
       ...lspNavKeymap,
     ]),
-    StreamLanguage.define(haskell),
+    languageExt ?? [],
     githubDark,
     EditorView.theme({
       "&": { height: "100%" },
@@ -453,12 +482,15 @@ function gutterMenuLineNumbers(onGutterMenu) {
 
 function createEditor(parent, doc, onChange, onGutterMenu) {
   const inlineComp = new Compartment()
+  // Pick syntax highlighting from the file's extension (data-file is set on the
+  // parent element by IDE.Web.Widget.Editor); reused by the side-by-side view.
+  const languageExt = languageForFile(parent && parent.getAttribute("data-file"))
   const view = new EditorView({
     doc,
     parent,
     extensions: [
       gutterMenuLineNumbers(onGutterMenu),
-      baseExtensions(),
+      baseExtensions(languageExt),
       marksField,
       findField,
       dirtyField,
@@ -469,7 +501,7 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
       EditorView.updateListener.of(u => { if (u.docChanged && onChange) onChange() }),
     ],
   })
-  viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, onGutterMenu, onHover: null, onComplete: null, onDefinition: null, onReferences: null })
+  viewState.set(view, { parent, original: null, merge: null, inline: false, inlineComp, languageExt, onGutterMenu, onHover: null, onComplete: null, onDefinition: null, onReferences: null })
   // Remember the most recently focused editor so the (shared) find bar knows
   // which pane to act on.  Set on creation too, since a new editor opens focused.
   view.dom.addEventListener("focusin", () => { window.LeksahCM.activeView = view })
