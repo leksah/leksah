@@ -71,11 +71,25 @@ layoutCss = do
     -- The app fills the window and never scrolls as a whole; only individual
     -- panes scroll.  Without this, scrolling past the end of a pane (e.g. a long
     -- workspace tree) chains to the document and drags the entire UI.
-    "html" ? ("height" -: "100%")
+    --
+    -- Use `overflow: clip`, NOT `hidden`.  `hidden` still creates a scroll
+    -- container, so it only suppresses *user* scrolling: a programmatic
+    -- scroll — a `.focus()` / `.scrollIntoView()` on off-screen content, or
+    -- xterm.js pulling its caret helper-textarea into view — can still scroll
+    -- the whole document.  That is exactly what shifted the entire UI up by
+    -- ~64px (toolbar off the top, statusbar too high): the bottom bar
+    -- (`.area-wide1`) is parked below the viewport with `translateY`, which
+    -- WebKit counts as scrollable overflow even through the `hidden`
+    -- ancestor, giving a caret/focus scroll somewhere to go.  `clip` creates
+    -- no scroll port at all, so `scrollTo`/`scrollIntoView` cannot move it —
+    -- while still clipping the parked content, exactly as before.
+    "html" ? do
+        "height" -: "100%"
+        "overflow" -: "clip"
     "body" ? do
         "margin" -: "0"
         "height" -: "100%"
-        "overflow" -: "hidden"
+        "overflow" -: "clip"
         "overscroll-behavior" -: "none"
     ".leksah" ? do
         Clay.display grid
@@ -138,14 +152,21 @@ layoutCss = do
     -- A constant 3px left pad on the editor column, in ALL side-pane states
     -- (shown, auto-hide, hidden): a small consistent gap from the side divider /
     -- window edge (in auto-hide it also gives the sensor peek strip its room).
+    -- The 1px grey line separating the side (tall) pane from the editor area
+    -- lives on the editor column's own left edge (see the gated colour rules by
+    -- the divider section below), not on a divider overlay.  It sits inside the
+    -- border-box left of the 3px pad, so it stays a constant width in every
+    -- side-pane state and never reflows the editor/terminal.
     ".area-wide0" ? do
         "padding-left" -: "3px"
         "padding-top" -: "3px"
         "box-sizing" -: "border-box"
+        "border-left" -: "1px solid rgb(128,128,128)"
     ".area-wide1" ? do
         "padding-left" -: "3px"
         "padding-top" -: "3px"
         "box-sizing" -: "border-box"
+        "border-left" -: "1px solid rgb(128,128,128)"
     -- The 3px top pad above is for the editor/terminal BODY (the terminal pulls
     -- it back with a -3px margin); on the tab STRIP it just dropped the tab
     -- buttons 3px below the side-bar (tall) tabs.  Zero it on the strips so the
@@ -274,15 +295,14 @@ layoutCss = do
     -- Divider overlays: a transparent box laid OVER the side pane / bottom bar
     -- (its own grid cell, so it sits on top of that panel's content).  It's
     -- click-through (pointer-events:none) so it never steals the panel's
-    -- mouse-over (e.g. the 3px auto-hide peek keeps working).  It carries a 1px
-    -- border on the edge next to the editor area, and — when one of that panel's
-    -- panes is active (:focus-within) — a drop shadow cast onto the editor area,
-    -- the same 64px mid-grey as the active terminal pane (.terminal-cc-hl).
-    -- The side divider fills the whole side column, so its border sits at the
-    -- pane's actual right edge (the boundary with the editor's 3px padding).
+    -- mouse-over (e.g. the 3px auto-hide peek keeps working).  The wide1 divider
+    -- carries a 1px border on the edge next to the editor area; the tall (side)
+    -- divider no longer draws its own line — that separator now lives on the
+    -- editor column's own left edge (.area-wide0/.area-wide1 border-left, gated
+    -- below).  The active-pane drop shadow is a separate overlay
+    -- (.leksah-pane-hl), not this box.
     ".tall-divider" ? do
         "grid-area" -: "tall"
-        "border-right" -: "1px solid rgb(128,128,128)"
         "pointer-events" -: "none"
         "z-index" -: "20"
         position relative
@@ -309,6 +329,24 @@ layoutCss = do
     -- even though we're technically still hovering — matching the collapsed pane.
     ".leksah.tall-auto.tall-suppress .tall-divider" ?
         ("transform" -: "translateX(-8px)")
+    -- The tall↔editor separator (the editor columns' border-left, added above):
+    -- show its grey only while the side (tall) pane is actually on-screen; hide
+    -- it (transparent, never zero-width — so nothing reflows) otherwise.
+    --   * tall-hide: side pane gone -> no line.
+    --   * tall-auto: side pane collapsed to 0 -> no line, UNTIL it's revealed by
+    --     hover/focus, when wide0's border reappears (the :has rule).
+    --   * fully-shown mode (neither class): the base grey border stands.
+    ".leksah.tall-hide .area-wide0" ? ("border-left-color" -: "transparent")
+    ".leksah.tall-hide .area-wide1" ? ("border-left-color" -: "transparent")
+    ".leksah.tall-auto .area-wide0" ? ("border-left-color" -: "transparent")
+    ".leksah.tall-auto .area-wide1" ? ("border-left-color" -: "transparent")
+    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within) .area-wide0" ?
+        ("border-left-color" -: "rgb(128,128,128)")
+    -- The bottom bar in auto mode is a full-width floating overlay (left:0), so a
+    -- left border there would be a stray vertical line at the window edge, not the
+    -- tall boundary — keep it transparent.  (wide1 thus shows its border only when
+    -- docked beside the tall pane in fully-shown mode.)
+    ".leksah.wide1-auto .area-wide1" ? ("border-left-color" -: "transparent")
     -- The auto-hide activation strip: an invisible 3px-wide, full-height grid item
     -- pinned to the left of the (0-width, collapsed) side column, overflowing into
     -- the editor column's 3px left padding.  It exists only in tall-auto; hovering

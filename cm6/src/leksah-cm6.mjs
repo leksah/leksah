@@ -137,14 +137,17 @@ function setCompletionHandler(view, onComplete) {
 // the result drives Haskell-side navigation: definition jumps the editor,
 // references populate the Grep pane).  Bound to F12 / Shift-F12; also callable
 // directly.  Positions are LSP 0-based line/character.
-function navAt(view, which) {
+function navAtPos(view, which, pos) {
   const st = viewState.get(view)
   const cb = st && st[which]
   if (!cb) return false
-  const pos = view.state.selection.main.head
   const line = view.state.doc.lineAt(pos)
   cb(line.number - 1, pos - line.from)
   return true
+}
+
+function navAt(view, which) {
+  return navAtPos(view, which, view.state.selection.main.head)
 }
 
 // Register the per-view navigation callbacks (Haskell `fun`s).
@@ -157,6 +160,20 @@ const lspNavKeymap = [
   { key: "F12",       preventDefault: true, run: v => navAt(v, "onDefinition") },
   { key: "Shift-F12", preventDefault: true, run: v => navAt(v, "onReferences") },
 ]
+
+// Command-click (⌘ on macOS) a symbol to jump to its definition — the same LSP
+// go-to-definition as F12, but at the position under the pointer rather than the
+// caret.  preventDefault stops the click from also moving the selection / adding
+// a multi-cursor.  Meta only (Ctrl-click is the context menu on macOS).
+const cmdClickGoto = EditorView.domEventHandlers({
+  mousedown(e, view) {
+    if (e.metaKey && e.button === 0) {
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
+      if (pos != null && navAtPos(view, "onDefinition", pos)) { e.preventDefault(); return true }
+    }
+    return false
+  },
+})
 
 // ---- error/warning/lint marks (replaces CM5 markText) ----------------------
 
@@ -446,6 +463,7 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
       findField,
       dirtyField,
       lspHover,
+      cmdClickGoto,
       autocompletion({ override: [lspCompletionSource] }),
       inlineComp.of([]),
       EditorView.updateListener.of(u => { if (u.docChanged && onChange) onChange() }),

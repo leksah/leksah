@@ -585,6 +585,9 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- the pane (the CSS reveal is hover-driven; this overrides it).
   _ <- eval collapseAutoHideJs
 
+  -- Esc collapses the auto-hidden side/bottom bar when focus is inside it.
+  _ <- eval escAutoHideJs
+
   -- window.leksahFlipMirror/Hide: the global flipper mirror overlay (a copy of
   -- another window's open flipper), driven by ideJSM_ broadcasts from main.
   _ <- eval flipMirrorJs
@@ -1363,13 +1366,15 @@ revealCheckJs = T.unlines
 -- it as usual); a timeout is a safety net if the mouse never moves.
 collapseAutoHideJs :: Text
 collapseAutoHideJs = T.unlines
-  [ "window.leksahCollapseAutoHide = function(){"
+  -- Optional `only` ('tall' | 'wide1') collapses just that bar; omitted -> both.
+  [ "window.leksahCollapseAutoHide = function(only){"
   , "  var root = document.querySelector('.leksah'); if (!root) return;"
   , "  var specs = ["
   , "    { auto:'tall-auto',  sup:'tall-suppress',  sel:'.tall-sensor, .area-tall' },"
   , "    { auto:'wide1-auto', sup:'wide1-suppress', sel:'.statusbar, .tab.area-wide1, .tab-buttons.area-wide1' }"
   , "  ];"
   , "  specs.forEach(function(s){"
+  , "    if (only && s.auto.indexOf(only) !== 0) return;"
   , "    if (!root.classList.contains(s.auto)) return;"
   , "    root.classList.add(s.sup);"
   , "    var timer = null;"
@@ -1383,6 +1388,63 @@ collapseAutoHideJs = T.unlines
   , "    timer = setTimeout(clear, 1500);"
   , "  });"
   , "};"
+  ]
+
+-- | Esc, when keyboard focus is inside ANY side ('tall') or bottom ('wide1') bar
+-- pane, returns focus to the top non-sidebar/bottombar pane in the flipper MRU —
+-- i.e. the central (@wide0@) pane you were last working in.  That MRU-front wide0
+-- pane is, by construction, the currently *shown* wide0 tab (activating a wide0
+-- pane floats it to the MRU front and makes it the visible one), so we just find
+-- the visible @.tab.area-wide0@ and focus its natural target: a CodeMirror
+-- editor's @.cm-content@, a terminal's xterm textarea, or the tab body itself.
+-- This works whether or not the bar is in auto-hide mode; when it IS auto-hide,
+-- we additionally 'leksahCollapseAutoHide' that bar so a revealed list pane
+-- (Workspace, Errors, Log, …) snaps shut on the same Esc — the collapse/re-reveal
+-- behaviour then matches a selection-driven collapse exactly.  Moving focus into
+-- wide0 also releases the bar's @:focus-within@, so we never strand focus in a
+-- now-hidden pane.  A focused TERMINAL in the bar is exempt — Esc is a real key
+-- there (vim, less, …) — as are INPUT/TEXTAREA/contentEditable fields (rename
+-- boxes, the find input) and any Esc a more specific handler already consumed
+-- (@defaultPrevented@).  Handled in JS (jsaddle's async dispatch makes a Haskell
+-- @preventDefault@ unreliable, and the focus move must be synchronous).
+escAutoHideJs :: Text
+escAutoHideJs = T.unlines
+  [ "(function(){"
+  , "  function shown(el){ if(!el) return false; var cs=getComputedStyle(el);"
+  , "    return cs.display!=='none' && cs.visibility!=='hidden' && el.offsetParent!==null; }"
+  -- Focus the top non-sidebar/bottombar (wide0) pane: the visible central tab,
+  -- which is this window's MRU-front wide0 pane.  Returns true iff focus moved.
+  , "  function focusTopWide0(){"
+  , "    var tabs = document.querySelectorAll('.tab.area-wide0');"
+  , "    for (var i=0;i<tabs.length;i++){ var t=tabs[i]; if(!shown(t)) continue;"
+  , "      var cm = t.querySelector('.cm-content');"
+  , "      if (cm){ cm.focus(); return true; }"
+  , "      var tx = t.querySelector('.xterm-helper-textarea');"
+  , "      if (tx){ tx.focus(); return true; }"
+  , "      if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex','-1');"
+  , "      t.focus(); return true; }"
+  , "    return false;"
+  , "  }"
+  , "  document.addEventListener('keydown', function(e){"
+  , "    if (e.key !== 'Escape' || e.defaultPrevented) return;"
+  , "    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;"
+  , "    var root = document.querySelector('.leksah'); if (!root) return;"
+  , "    var a = document.activeElement; if (!a || !a.closest) return;"
+  -- Terminals and text fields own Esc; leave it to them.
+  , "    if (a.closest('.xterm')) return;"
+  , "    if (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable) return;"
+  -- Only act when focus is inside a side (tall) or bottom (wide1) bar pane.
+  , "    var inTall = !!a.closest('.area-tall'), inWide1 = !!a.closest('.area-wide1');"
+  , "    if (!inTall && !inWide1) return;"
+  -- Return focus to the top wide0 pane; if there is none, at least blur so the
+  -- bar pane releases keyboard focus (and :focus-within, so an auto bar collapses).
+  , "    try { if (!focusTopWide0() && a.blur) a.blur(); } catch(_) {}"
+  -- If that bar is in auto-hide mode, snap it shut now (no-op otherwise).
+  , "    if (inTall  && root.classList.contains('tall-auto'))  window.leksahCollapseAutoHide('tall');"
+  , "    if (inWide1 && root.classList.contains('wide1-auto')) window.leksahCollapseAutoHide('wide1');"
+  , "    e.preventDefault(); e.stopPropagation();"
+  , "  }, false);"
+  , "})();"
   ]
 
 -- | Defines @window.leksahFlipMirror(owner, labelsJson, index)@ and
@@ -1633,6 +1695,75 @@ terminalLinksJs = T.unlines
   , "  window.addEventListener('keydown', function(e){ if (e.key==='Control'||e.key==='Meta') ctrlHeld=true; }, true);"
   , "  window.addEventListener('keyup',   function(e){ if (e.key==='Control'||e.key==='Meta') ctrlHeld=false; }, true);"
   , "  window.addEventListener('blur',    function(){ ctrlHeld=false; }, true);"
+  -- Hover tooltip for file links: a floating box that first shows the link
+  -- text, then is filled in asynchronously by the LSP round-trip (see
+  -- 'onHoverFile' below and IDE.LSP.requestTerminalHover).  shownRid tracks the
+  -- in-flight request so a late reply only lands if that link is still hovered.
+  , "  var tip = null, hoverSeq = 0, shownRid = -1;"
+  -- Escape HTML, then apply a markdown-lite pass so an HLS hover blurb (code
+  -- fences, `inline code`, **bold**, and a '---'/'***' rule between the type
+  -- signature and the docs) renders as a styled card rather than raw markup.
+  -- All text is escaped BEFORE any tag is introduced, and the only tags emitted
+  -- are a fixed, attribute-free set, so server-supplied hover text can't inject.
+  , "  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }"
+  , "  function inlineMd(s){"
+  , "    return s.replace(/`([^`]+)`/g, function(_,c){ return '<code>'+c+'</code>'; })"
+  , "            .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')"
+  , "            .replace(/__([^_]+)__/g, '<strong>$1</strong>');"
+  , "  }"
+  , "  function fmtTip(text){"
+  , "    var lines = String(text).split('\\n'), out = [], code = [], inCode = false;"
+  , "    for (var i=0;i<lines.length;i++){"
+  , "      var ln = lines[i];"
+  , "      if (/^\\s*```/.test(ln)){"
+  , "        if (inCode){ out.push('<pre>'+esc(code.join('\\n'))+'</pre>'); code=[]; inCode=false; }"
+  , "        else inCode = true;"
+  , "        continue;"
+  , "      }"
+  , "      if (inCode){ code.push(ln); continue; }"
+  , "      if (/^\\s*([-*_])(\\s*\\1){2,}\\s*$/.test(ln)){ out.push('<hr>'); continue; }"
+  , "      if (/^\\s*$/.test(ln)){ out.push('<br>'); continue; }"
+  , "      out.push(inlineMd(esc(ln))+'<br>');"
+  , "    }"
+  , "    if (inCode && code.length) out.push('<pre>'+esc(code.join('\\n'))+'</pre>');"
+  -- Drop <br>s butting against a block (<pre>/<hr>) so they don't double the gap
+  -- their own margins already give, and trim a trailing break.
+  , "    return out.join('').replace(/<br>(<(?:pre|hr))/g,'$1').replace(/(<\\/pre>|<hr>)<br>/g,'$1').replace(/(<br>)+$/,'');"
+  , "  }"
+  , "  function ensureTip(){"
+  , "    if (!tip){"
+  , "      if (!document.getElementById('leksah-hovertip-style')){"
+  , "        var st = document.createElement('style'); st.id = 'leksah-hovertip-style';"
+  , "        st.textContent = '.leksah-term-hovertip code{font-family:Menlo,Monaco,\"Courier New\",monospace;background:rgba(255,255,255,0.09);border-radius:3px;padding:0 3px;font-size:11.5px;}'"
+  , "          + '.leksah-term-hovertip pre{margin:4px 0;padding:5px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);border-radius:4px;font-family:Menlo,Monaco,\"Courier New\",monospace;font-size:11.5px;line-height:1.3;white-space:pre;overflow-x:hidden;}'"
+  , "          + '.leksah-term-hovertip hr{border:none;border-top:1px solid rgba(255,255,255,0.16);margin:5px 0;}'"
+  , "          + '.leksah-term-hovertip strong{color:#fff;font-weight:600;}';"
+  , "        document.head.appendChild(st);"
+  , "      }"
+  , "      tip = document.createElement('div');"
+  , "      tip.className = 'leksah-term-hovertip';"
+  , "      tip.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;'"
+  , "        + 'background:rgb(37,37,38);color:#d4d4d4;border:1px solid rgb(70,70,72);'"
+  , "        + 'border-radius:5px;padding:6px 9px;font-size:12px;max-width:72ch;max-height:60vh;'"
+  , "        + 'white-space:normal;overflow:hidden;display:none;box-shadow:0 4px 14px rgba(0,0,0,0.45);'"
+  , "        + 'font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;line-height:1.4;';"
+  , "      document.body.appendChild(tip);"
+  , "    }"
+  , "    return tip;"
+  , "  }"
+  , "  function showTip(ev, text){"
+  , "    var t = ensureTip();"
+  , "    t.innerHTML = fmtTip(text);"
+  , "    t.style.left = (((ev && ev.clientX) || 0) + 12) + 'px';"
+  , "    t.style.top  = (((ev && ev.clientY) || 0) + 16) + 'px';"
+  , "    t.style.display = 'block';"
+  , "  }"
+  , "  function hideTip(){ if (tip) tip.style.display = 'none'; shownRid = -1; }"
+  -- Called from Haskell when requestTerminalHover replies; ignore stale replies.
+  , "  function resolveHover(rid, text){"
+  , "    if (rid !== shownRid || !tip) return;"
+  , "    if (text && text.length){ tip.innerHTML = fmtTip(text); } else { hideTip(); }"
+  , "  }"
   , "  function setProjectFiles(paths){"
   , "    byBase = new Map();"
   , "    for (var i=0;i<paths.length;i++){"
@@ -1645,6 +1776,8 @@ terminalLinksJs = T.unlines
   , "  function resolve(tok){"
   , "    if (!tok) return null;"
   , "    if (tok.slice(0,2)==='./') tok = tok.slice(2);"
+  -- git diff paths carry an a/ or b/ prefix (--- a/src/Foo.hs, +++ b/src/Foo.hs).
+  , "    else if (tok.slice(0,2)==='a/' || tok.slice(0,2)==='b/') tok = tok.slice(2);"
   , "    var b = tok.substring(tok.lastIndexOf('/')+1);"
   , "    var c = byBase.get(b);"
   , "    if (!c || !c.length) return null;"
@@ -1659,14 +1792,47 @@ terminalLinksJs = T.unlines
   , "  var UM = /Update\\(([^)]+)\\)/g;"
   -- Identifier tokens (optionally module-qualified) for the Ctrl/Cmd lookup mode.
   , "  var ID = /[A-Za-z_][A-Za-z0-9_']*(?:\\.[A-Za-z_][A-Za-z0-9_']*)*/g;"
-  , "  function attach(term, onOpen, onLookup){"
+  -- A rendered diff/content line under a Claude edit or a unified diff: an
+  -- indent, a right-aligned source line number, then a fixed 4-column field
+  -- (\"    \" for context, \" - \"/\" + \" + a space for -/+ lines) and then the
+  -- verbatim source text.  Group 2 is the source line; the whole match's length
+  -- is where the source text starts, so a hovered identifier's offset past it is
+  -- its 0-based column in the file.
+  , "  var GUT = /^(\\s+)(\\d+) ([-+ ])  /;"
+  -- Headers that name the file a following diff belongs to: Claude tool headers
+  -- Update/Edit/Write/Read(path), or a unified-diff '+++ b/path' line.
+  , "  var HDR = /(?:Update|Edit|Write|Read)\\(([^)]+)\\)|^\\s*\\+\\+\\+ (?:b\\/)?(\\S+)/;"
+  -- From a diff/content line, walk UP to the header naming its file and resolve
+  -- it to a workspace path.  Give up on the first line that is neither a
+  -- diff/content line nor blank/decoration, so we never wander past the block;
+  -- bounded so a huge scrollback can't make hover expensive.
+  , "  function governingFile(buf, y){"
+  , "    for (var i=y-2, n=0; i>=0 && n<400; i--, n++){"
+  , "      var ln = buf.getLine(i); if (!ln) break;"
+  , "      var t = ln.translateToString(true);"
+  , "      var h = HDR.exec(t);"
+  , "      if (h) return resolve((h[1]||h[2]).trim());"
+  , "      if (GUT.test(t) || /^\\s*$/.test(t) || /^\\s*[\\u23bf\\u25cf]/.test(t)) continue;"
+  , "      break;"
+  , "    }"
+  , "    return null;"
+  , "  }"
+  , "  function attach(term, onOpen, onLookup, onHoverFile){"
   , "    if (!term || !term.registerLinkProvider) return;"
-  , "    function mkLink(sx, ex, y, txt, f, l, c){"
+  , "    function mkLink(sx, ex, y, txt, f, l, c, hl, hc){"
+  -- hc = 0-based column of the symbol to hover (default -1 = unknown, so the
+  -- tooltip is the file's diagnostics summary only).
+  , "      var hcol = (hc == null) ? -1 : hc;"
   , "      return {"
   , "        range: { start: { x: sx, y: y }, end: { x: ex, y: y } },"
   , "        text: txt,"
   , "        decorations: { pointerCursor: true, underline: true },"
-  , "        activate: function(ev){ if (ev.preventDefault) ev.preventDefault(); onOpen(f,l,c); }"
+  , "        activate: function(ev){ if (ev.preventDefault) ev.preventDefault(); onOpen(f,l,c); },"
+  -- Hover: show the file link immediately, then ask Haskell (LSP diagnostics for
+  -- the file, plus a symbol hover when hl>0) to fill the tooltip in.  hl is the
+  -- symbol line for the LSP hover (0 = don't hover a symbol, file summary only).
+  , "        hover: function(ev){ if (!onHoverFile) return; var rid = ++hoverSeq; shownRid = rid; showTip(ev, txt); onHoverFile(f, hl||0, hcol, rid); },"
+  , "        leave: function(){ hideTip(); }"
   , "      };"
   , "    }"
   , "    function mkLook(sx, ex, y, tok){"
@@ -1698,6 +1864,24 @@ terminalLinksJs = T.unlines
   -- Update(file): the diff starts a couple of lines below.  Take the line
   -- number at the start of the line-after-next and jump to it + 3 (the likely
   -- first changed line, after the leading context).
+  -- A diff CODE line (below an Update(...)/+++ header): make every identifier on
+  -- it an LSP-hover target at its real (line, column) in the governing file.
+  -- Clicking jumps there.  Gated on GUT + a header above, so ordinary output
+  -- isn't turned into a field of links.
+  , "        var g = GUT.exec(text);"
+  , "        if (g) {"
+  , "          var gov = governingFile(buf, y);"
+  , "          if (gov) {"
+  , "            var cs = g[0].length, srcLn = parseInt(g[2],10), code = text.slice(cs);"
+  , "            ID.lastIndex = 0;"
+  , "            var dm;"
+  , "            while ((dm = ID.exec(code))){"
+  , "              var ci = dm.index;"
+  , "              links.push(mkLink(cs+ci+1, cs+ci+dm[0].length, y, dm[0], gov, srcLn, ci+1, srcLn, ci));"
+  , "            }"
+  , "            if (links.length){ cb(links); return; }"
+  , "          }"
+  , "        }"
   , "        UM.lastIndex = 0;"
   , "        var u;"
   , "        while ((u = UM.exec(text))){"
@@ -1706,7 +1890,7 @@ terminalLinksJs = T.unlines
   , "          var target = 1;"
   , "          var peek = buf.getLine(y+1);"
   , "          if (peek){ var pm = /^\\s*(\\d+)/.exec(peek.translateToString(true)); if (pm) target = parseInt(pm[1],10)+3; }"
-  , "          links.push(mkLink(u.index+1, u.index+u[0].length, y, u[0], uf, target, 1));"
+  , "          links.push(mkLink(u.index+1, u.index+u[0].length, y, u[0], uf, target, 1, 0));"
   , "          consumed.push([u.index, u.index+u[0].length]);"
   , "        }"
   , "        RE.lastIndex = 0;"
@@ -1719,13 +1903,13 @@ terminalLinksJs = T.unlines
   , "          if (!abs) continue;"
   , "          var ln = m[2] ? parseInt(m[2],10) : 1;"
   , "          var col = m[3] ? parseInt(m[3],10) : 1;"
-  , "          links.push(mkLink(m.index+1, m.index+m[0].length, y, m[0], abs, ln, col));"
+  , "          links.push(mkLink(m.index+1, m.index+m[0].length, y, m[0], abs, ln, col, m[2] ? parseInt(m[2],10) : 0, m[3] ? col-1 : -1));"
   , "        }"
   , "        cb(links.length ? links : undefined);"
   , "      } catch(e){ cb(undefined); }"
   , "    }});"
   , "  }"
-  , "  return { setProjectFiles: setProjectFiles, attach: attach, setEnabled: setEnabled };"
+  , "  return { setProjectFiles: setProjectFiles, attach: attach, setEnabled: setEnabled, resolveHover: resolveHover };"
   , "})();"
   ]
 

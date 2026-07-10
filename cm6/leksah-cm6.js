@@ -23904,14 +23904,16 @@
     const st = viewState.get(view);
     if (st) st.onComplete = onComplete;
   }
-  function navAt(view, which) {
+  function navAtPos(view, which, pos) {
     const st = viewState.get(view);
     const cb = st && st[which];
     if (!cb) return false;
-    const pos = view.state.selection.main.head;
     const line = view.state.doc.lineAt(pos);
     cb(line.number - 1, pos - line.from);
     return true;
+  }
+  function navAt(view, which) {
+    return navAtPos(view, which, view.state.selection.main.head);
   }
   function setNavHandlers(view, onDefinition, onReferences) {
     const st = viewState.get(view);
@@ -23924,6 +23926,18 @@
     { key: "F12", preventDefault: true, run: (v) => navAt(v, "onDefinition") },
     { key: "Shift-F12", preventDefault: true, run: (v) => navAt(v, "onReferences") }
   ];
+  var cmdClickGoto = EditorView.domEventHandlers({
+    mousedown(e, view) {
+      if (e.metaKey && e.button === 0) {
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos != null && navAtPos(view, "onDefinition", pos)) {
+          e.preventDefault();
+          return true;
+        }
+      }
+      return false;
+    }
+  });
   var setMarksEffect = StateEffect.define();
   var marksField = StateField.define({
     create() {
@@ -24226,6 +24240,7 @@
         findField,
         dirtyField,
         lspHover,
+        cmdClickGoto,
         autocompletion({ override: [lspCompletionSource] }),
         inlineComp.of([]),
         EditorView.updateListener.of((u) => {
