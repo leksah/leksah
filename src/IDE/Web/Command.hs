@@ -101,7 +101,7 @@ commandAddModule, commandRefreshNix, commandPackageClean
   , commandToggleDebug, commandToggleMakeDocs, commandToggleTest
   , commandToggleRunBenchmarks, commandToggleMakeDependents
   , commandToggleShowIgnored, commandToggleShowHidden, commandToggleTallPane
-  , commandToggleWide1Pane
+  , commandToggleWide1Pane, commandToggleTmuxIntercept
   , commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal
   , commandDebugStepModule, commandDebugContinue, commandFileClose :: Command
 commandAddModule = CommandPackageAction
@@ -193,6 +193,17 @@ commandToggleShowHidden = CommandIDEToggleAction
   (__ "Show hidden (dot-) files in the workspace file trees")
   (modifyIDE_ (prefs %~ \p -> p { showHiddenFiles = not (showHiddenFiles p) }))
   (view $ prefs . to showHiddenFiles)
+
+-- | Toggle intercepting the tmux @C-b@ prefix in terminals: @C-b w@ activates
+-- the Terminals pane and other prefix keys run the equivalent tmux command
+-- (so they work in control-mode tabs, where a raw @C-b@ chord otherwise just
+-- types @^B@).  The interception state machine lives in JS
+-- (@window.LeksahTmux@); this flips the pref that each window mirrors into it.
+commandToggleTmuxIntercept = CommandIDEToggleAction
+  ""  -- menu-only: no toolbar icon
+  (__ "Intercept the tmux Ctrl+B prefix in terminals (C-b w shows the Terminals pane)")
+  (modifyIDE_ (prefs %~ \p -> p { tmuxInterceptPrefix = not (tmuxInterceptPrefix p) }))
+  (view $ prefs . to tmuxInterceptPrefix)
 
 -- | Cycle the side ("tall") pane: show -> auto-hide -> hide -> show.  Rendered
 -- by a dedicated toolbar button that shows the current state (see Toolbar).

@@ -37,16 +37,20 @@ module IDE.Web.TerminalInput
   , setActiveTerminalNotifier
   , sendToActiveTerminal
   , tmuxCommandActiveTerminal
+  , dispatchTmuxPrefix
   ) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, catch)
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, void, unless)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS (cons)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef, writeIORef)
 import qualified Data.Map as M
 import Data.Maybe (isJust)
 import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Text.Encoding (encodeUtf8)
 import System.IO.Unsafe (unsafePerformIO)
 #ifdef mingw32_HOST_OS
 import IDE.Web.ConPty (Pty, writePty)
@@ -232,3 +236,45 @@ tmuxCommandActiveTerminal cmd = do
       run cmd `catch` \(_ :: SomeException) -> return ()
       return True
     Nothing -> return False
+
+-- | A tmux prefix key (the key that followed a @C-b@ chord, intercepted in JS
+-- by @window.LeksahTmux@ when the "Intercept Ctrl+B" pref is on) — dispatch it
+-- to the active terminal.  Mapped keys run the equivalent tmux command on a
+-- control-mode (CC) tab's channel (where a raw @C-b@ chord can't work — it is
+-- @send-keys@'d into the pane, bypassing tmux's prefix handling) and fall back
+-- to typing the @C-b@ chord on a classic PTY tab, exactly like the Terminal
+-- menu's 'IDE.Web.Command.paneCmd'.  Unmapped single characters are forwarded
+-- as the raw @C-b@ chord (works on PTY tabs; a no-op on CC tabs, which register
+-- no PTY).  The special key @w@ is handled reflex-side (activate the Terminals
+-- pane) and never reaches here.  Tokens may carry @C-@\/@M-@ modifier prefixes.
+dispatchTmuxPrefix :: Text -> IO ()
+dispatchTmuxPrefix tok
+  | Just (ccCmd, chord) <- M.lookup tok tmuxPrefixMap = run ccCmd chord
+  | [d] <- T.unpack tok, d `elem` ['0' .. '9'] =
+      run ("select-window -t " <> tok) (encodeUtf8 tok)
+  | [_] <- T.unpack tok = sendToActiveTerminal (BS.cons 2 (encodeUtf8 tok))
+  | otherwise = return ()
+  where
+    run ccCmd chord = do
+      done <- tmuxCommandActiveTerminal ccCmd
+      unless done $ sendToActiveTerminal (BS.cons 2 chord)
+
+-- | Prefix keys we map to a tmux command (control channel) or @C-b@ chord
+-- (classic PTY).  Mirrors the command/chord pairs of the Terminal menu.
+tmuxPrefixMap :: M.Map Text (Text, ByteString)
+tmuxPrefixMap = M.fromList
+  [ ("c",     ("new-window",          "c"))
+  , ("n",     ("next-window",         "n"))
+  , ("p",     ("previous-window",     "p"))
+  , ("&",     ("kill-window",         "&"))
+  , ("%",     ("split-window -h",     "%"))
+  , ("\"",    ("split-window -v",     "\""))
+  , ("x",     ("kill-pane",           "x"))
+  , ("z",     ("resize-pane -Z",      "z"))
+  , ("o",     ("select-pane -t :.+",  "o"))
+  , (";",     ("select-pane -t :.-",  ";"))
+  , ("Up",    ("select-pane -U",      "\ESC[A"))
+  , ("Down",  ("select-pane -D",      "\ESC[B"))
+  , ("Left",  ("select-pane -L",      "\ESC[D"))
+  , ("Right", ("select-pane -R",      "\ESC[C"))
+  ]

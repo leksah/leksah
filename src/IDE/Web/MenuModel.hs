@@ -21,7 +21,7 @@ import IDE.Web.Command
         commandToggleRunBenchmarks, commandToggleMakeDependents,
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
         commandDebugStepModule, commandDebugContinue, commandFileClose,
-        commandNewWindow, tmuxKey,
+        commandNewWindow, commandToggleTmuxIntercept, tmuxKey,
         paneCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
         commandSendSelection, commandSendFileRef, commandSendError,
         commandFocusAITerminal)
@@ -178,6 +178,7 @@ terminalMenu =
       , Submenu "Unsnap" []
       ]
   , MenuSep
+  , item "Intercept Ctrl+B" commandToggleTmuxIntercept
   , Submenu "Tmux" tmuxMenu
   ]
 

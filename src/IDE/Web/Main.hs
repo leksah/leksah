@@ -139,7 +139,7 @@ import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported)
 import IDE.Web.TerminalInput
        (setActiveTerminal, tmuxCommandActiveTerminal, selectSplitActiveTerminal,
-        focusTerminalPane)
+        focusTerminalPane, dispatchTmuxPrefix)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
@@ -536,6 +536,10 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- Makes project-file paths in terminal output Ctrl-clickable (window.LeksahTermLinks).
   _ <- eval terminalLinksJs
   _ <- eval badgesJs
+
+  -- Defines window.LeksahTmux: the tmux C-b prefix interceptor attached to each
+  -- xterm.  Enabled per the tmuxInterceptPrefix pref (mirrored in from reflex).
+  _ <- eval leksahTmuxJs
 
   -- Builds xterm linkHandlers for OSC 8 hyperlinks (window.LeksahOscLinks): a hover
   -- tooltip with the URL, and click-to-open for http(s) links.
@@ -1684,6 +1688,45 @@ termActivityJs = T.unlines
 --     hover and clicking calls @onOpen(absPath, line, col)@.  While Ctrl/Cmd is
 --     held: any identifier underlines and clicking calls @onLookup(token, x, y)@
 --     (a metadata lookup, with the click position for a chooser popup).
+-- | @window.LeksahTmux@: intercepts the tmux @C-b@ prefix inside each xterm
+-- (attached via @LeksahTmux.attach(term)@ from the terminal widgets).  The state
+-- machine and the swallow decision run entirely in JS — jsaddle dispatches
+-- events to Haskell asynchronously, so a Haskell handler can neither reliably
+-- @preventDefault@ nor return a value to xterm's synchronous
+-- @attachCustomKeyEventHandler@.  When enabled (mirrored from the
+-- @tmuxInterceptPrefix@ pref), @C-b@ arms; the next key is swallowed and its
+-- token handed to @window.leksahTmuxKey@ (per-window callback): @w@ activates
+-- the Terminals pane, everything else routes to 'dispatchTmuxPrefix'.
+leksahTmuxJs :: Text
+leksahTmuxJs = T.unlines
+  [ "(function(){"
+  , "  var S = window.LeksahTmux = window.LeksahTmux || {};"
+  , "  S.enabled = false;"
+  , "  function swallow(e){ e.preventDefault(); e.stopPropagation(); return false; }"
+  , "  S.attach = function(term){"
+  , "    if (!term || typeof term.attachCustomKeyEventHandler !== 'function') return;"
+  , "    var armed = false;"
+  , "    term.attachCustomKeyEventHandler(function(e){"
+  , "      if (e.type !== 'keydown') return true;"
+  , "      if (!S.enabled) { armed = false; return true; }"
+  , "      var k = e.key;"
+  , "      if (!armed) {"
+  , "        if (e.ctrlKey && !e.altKey && !e.metaKey && (k === 'b' || k === 'B'))"
+  , "          { armed = true; return swallow(e); }"
+  , "        return true;"
+  , "      }"
+  , "      if (k === 'Control' || k === 'Shift' || k === 'Alt' || k === 'Meta') return swallow(e);"
+  , "      armed = false;"
+  , "      if (k === 'Escape') return swallow(e);"        -- C-b Esc: cancel the prefix
+  , "      if (k.indexOf('Arrow') === 0) k = k.slice(5);" -- ArrowUp -> Up
+  , "      var tok = (e.ctrlKey ? 'C-' : '') + (e.altKey ? 'M-' : '') + k;"
+  , "      try { if (window.leksahTmuxKey) window.leksahTmuxKey(tok); } catch(_) {}"
+  , "      return swallow(e);"
+  , "    });"
+  , "  };"
+  , "})();"
+  ]
+
 terminalLinksJs :: Text
 terminalLinksJs = T.unlines
   [ "window.LeksahTermLinks = (function(){"
@@ -3753,7 +3796,10 @@ main showMenubar macTitlebar wid ide = mdo
           [ fmapMaybe (fmap ("tall" =:)  . pickNth numberedTallTabs)
                       (numKeyE _CommandSelectSidePane)
           , fmapMaybe (fmap ("wide1" =:) . pickNth numberedWide1Tabs)
-                      (numKeyE _CommandSelectBottomPane) ]
+                      (numKeyE _CommandSelectBottomPane)
+          -- C-b w (tmux prefix interceptor): show + focus the Terminals pane,
+          -- exactly like the ⌥⌘N side-pane navigation it rides through here.
+          , ("tall" =: TerminalsKey) <$ activateTerminalsE ]
         selectTabE = leftmost [flipTabE, restoreVisibleE, ("wide1" =: GrepKey) <$ grepReqE
                               , ("wide1" =: GrepKey) <$ lspRefsE
                               , (\(s, _, _) -> "wide0" =: TerminalKey s) <$> flipPaneE
@@ -3892,6 +3938,11 @@ main showMenubar macTitlebar wid ide = mdo
     -- it floats exactly the clicked pane to the flipper MRU.  Consumed in the MRU
     -- block above via MonadFix (defined here next to its sibling term listeners).
     (jsPaneFocusE, fireJsPaneFocus) <- newTriggerEvent
+    -- C-b w in a terminal (intercepted by window.LeksahTmux, dispatched via the
+    -- window.leksahTmuxKey callback below) activates THIS window's Terminals side
+    -- pane.  A per-window trigger, not a global Chan, so the activation lands in
+    -- the window whose terminal received the key.  Consumed by numSelTabE above.
+    (activateTerminalsE, fireActivateTerminals) <- newTriggerEvent
     listNavPb <- getPostBuild
     performEvent_ $ ffor listNavPb $ \_ -> liftJSM $ do
         w <- jsg ("window" :: Text)
@@ -3920,7 +3971,25 @@ main showMenubar macTitlebar wid ide = mdo
                     focusLog ("[" <> show wid <> "] JS leksahPaneFocus " <> T.unpack pid)
                     liftIO (fireJsPaneFocus pid)
                 _ -> return ())
+        -- The tmux C-b prefix interceptor (window.LeksahTmux) hands the key that
+        -- followed C-b here: 'w' shows this window's Terminals pane, the rest run
+        -- the tmux command on the active terminal (see dispatchTmuxPrefix).
+        _ <- w ^. jss ("leksahTmuxKey" :: Text) (fun $ \_ _ args -> case args of
+                (tokV:_) -> do
+                    tok <- valToText tokV
+                    liftIO $ if tok == ("w" :: Text)
+                               then fireActivateTerminals ()
+                               else dispatchTmuxPrefix tok
+                _ -> return ())
         return ()
+    -- Mirror the tmuxInterceptPrefix pref into window.LeksahTmux.enabled so the
+    -- JS interceptor turns on/off the instant the menu toggle flips it (and on
+    -- first build, since 'updated' skips the initial value).
+    tmuxInterceptD <- holdUniqDyn ((tmuxInterceptPrefix . view prefs) <$> ide)
+    tmuxEnabledPb  <- getPostBuild
+    performEvent_ $ ffor (leftmost [ updated tmuxInterceptD
+                                   , tag (current tmuxInterceptD) tmuxEnabledPb ]) $ \on ->
+        liftJSM . void $ jsg ("LeksahTmux" :: Text) ^. jss ("enabled" :: Text) on
     let paneMoveE p   = fmapMaybe (\(pane, dir) -> if pane == p then Just dir else Nothing) listMoveE
         paneActivateE p = fmapMaybe (\pane -> if pane == p then Just () else Nothing) listActivateE
 

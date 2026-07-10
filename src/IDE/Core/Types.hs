@@ -761,6 +761,10 @@ data Prefs = Prefs {
     ,   terminalControlMode ::   Bool -- ^ render terminals via tmux control mode
                                       --   (-CC): one xterm per pane, native splits;
                                       --   off = classic whole-session PTY attach
+    ,   tmuxInterceptPrefix ::   Bool -- ^ intercept the tmux @C-b@ prefix in
+                                      --   terminals: @C-b w@ activates the
+                                      --   Terminals pane, other prefix keys run
+                                      --   the tmux command (works in CC tabs too)
     ,   remoteHosts         ::   [Text] -- ^ ssh hosts shown as top-level nodes in
                                         --   the Terminals tree (sessions open as
                                         --   control-mode tabs)
@@ -855,6 +859,7 @@ data PrefsFile = PrefsFile {
   , terminalFileLinks_   :: Maybe Bool
   , externalEditor_      :: Maybe Text
   , terminalControlMode_ :: Maybe Bool
+  , tmuxInterceptPrefix_ :: Maybe Bool
   , remoteHosts_         :: Maybe [Text]
   , uiSelectionColor_    :: Maybe Text
   , uiHoverColor_        :: Maybe Text

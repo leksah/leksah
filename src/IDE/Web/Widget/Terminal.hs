@@ -425,6 +425,8 @@ terminalWidget ide termId selectedE = do
                   s <- valToText d
                   liftIO $ ignorePtyError (writePty pty (encodeUtf8 s))
               _ -> return ())
+      -- Intercept the tmux C-b prefix (when the pref is on) — see window.LeksahTmux.
+      _ <- jsg ("LeksahTmux" :: Text) ^. js1 ("attach" :: Text) term
       -- title changes -> Terminals list
       _ <- term ^. js1 ("onTitleChange" :: Text) (fun $ \_ _ args -> case args of
               (titleVal:_) -> valToText titleVal >>= liftIO . triggerTitle

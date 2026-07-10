@@ -1309,6 +1309,11 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
                     s <- valToText d
                     liftIO $ ccSendBytes cc pane (encodeUtf8 s)
                 _ -> return ())
+        -- Intercept the tmux C-b prefix (when the pref is on).  Crucial for CC
+        -- tabs: keystrokes here are send-keys'd into the pane, so a raw C-b never
+        -- reaches tmux's prefix handling — the interceptor turns C-b chords into
+        -- tmux commands on the control channel instead (see window.LeksahTmux).
+        _ <- jsg ("LeksahTmux" :: Text) ^. js1 ("attach" :: Text) term
         -- Keep tmux's active pane in step with keyboard focus, so the
         -- Terminal menu's pane commands (split/resize/…, which act on
         -- the current pane) target the pane the user is typing in.
