@@ -1,0 +1,37 @@
+# HLS cradle for leksah.
+#
+# Several source trees are shared by more than one cabal component, so the
+# implicit cradle (a bare `cabal v2-repl <file>`) fails with
+# "Cabal-7132: Ambiguous target" and NO GHC session loads — hover, go-to-def
+# and live diagnostics then silently do nothing for the whole project:
+#   * src/            -> lib:leksah (classic) AND lib:leksah-nogtk (web UI)
+#   * vendor/ltk/src/ -> lib:ltk AND lib:leksah-nogtk (compiled in, not linked)
+#   * main/           -> all four executables (leksah, -classic, -warp, -cmd)
+# Pin each shared tree to one component.  hie-bios matches by longest path
+# prefix, so more specific entries (e.g. main/Cmd.hs) must come before the
+# general one (main/).
+cradle:
+  cabal:
+    # leksah-cmd is a standalone exe whose main-is (Cmd.hs) lives in main/.
+    - path: "./main/Cmd.hs"
+      component: "leksah:exe:leksah-cmd"
+    # Native web front end: the macOS exe:leksah is (src-wkwebview + main).
+    - path: "./main"
+      component: "leksah:exe:leksah"
+    - path: "./src-wkwebview"
+      component: "leksah:exe:leksah"
+    # Classic Gtk-only sources (unambiguous, pinned for explicitness).
+    - path: "./src-gtk"
+      component: "leksah:lib:leksah"
+    # Shared library sources -> the web-UI library (the current dev focus).
+    - path: "./src"
+      component: "leksah:lib:leksah-nogtk"
+    - path: "./src-nogtk"
+      component: "leksah:lib:leksah-nogtk"
+    - path: "./vendor/ltk/src"
+      component: "leksah:lib:leksah-nogtk"
+    # Vendored sibling packages (their own single-component packages).
+    - path: "./vendor/leksah-server"
+      component: "leksah-server:lib:leksah-server"
+    - path: "./vendor/lsp-types-client"
+      component: "lsp-types-client:lib:lsp-types-client"

@@ -347,7 +347,7 @@ library
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
                  -ferror-spans -Wall -finfo-table-map
     build-depends:
-        Cabal >=3.2.1.0 && <3.17,
+        Cabal >=3.2.1.0 && <3.18,
         Glob >=0.9.2 && <0.11,
         HTTP >=4000.3.3,
         QuickCheck >=2.4.2 && <2.19,
@@ -356,7 +356,7 @@ library
         array >=0.2.0.0 && <0.6,
         attoparsec >=0.10.0.3 && <0.15,
         base >=4.0.0.0 && <4.20,
-        base-compat >=0.9.0 && <0.14,
+        base-compat >=0.9.0 && <0.16,
         base64-bytestring >=1.0 && <1.3,
         binary >=0.5.0.0 && <0.9,
         binary-shared >=0.8.2 && <0.9,
@@ -591,7 +591,7 @@ library leksah-nogtk
     ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
                  -ferror-spans -Wall -finfo-table-map
     build-depends:
-        Cabal >=3.2.1.0 && <3.17,
+        Cabal >=3.2.1.0 && <3.18,
         Glob >=0.9.2 && <0.11,
         HTTP >=4000.3.3,
         QuickCheck >=2.4.2 && <2.19,
@@ -600,7 +600,7 @@ library leksah-nogtk
         array >=0.2.0.0 && <0.6,
         attoparsec >=0.10.0.3 && <0.15,
         base >=4.0.0.0 && <4.20,
-        base-compat >=0.9.0 && <0.14,
+        base-compat >=0.9.0 && <0.16,
         base64-bytestring >=1.0 && <1.3,
         binary >=0.5.0.0 && <0.9,
         binary-shared >=0.8.2 && <0.9,

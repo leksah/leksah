@@ -1,12 +1,41 @@
 packages:
  ./
- vendor/leksah-server/
- vendor/ltk/
- vendor/haskellVCSWrapper/vcswrapper/
- vendor/haskellVCSGUI/vcsgui
 -- vendor/gi-gobject/
  vendor/gi-gtkosxapplication/
  vendor/lsp-types-client/
+
+-- leksah-server, ltk and the Haskell VCS libraries (vcswrapper/vcsgui) used to
+-- be git submodules under vendor/ listed as local packages, which forced every
+-- nix invocation to use `.?submodules=1#…` (else the submodule dirs are empty
+-- and the packages vanish).  They now come from their own repos as
+-- source-repository-packages, so a plain `nix develop .#` works.  For nix each
+-- location+tag is resolved to a flake input via inputMap in flake.nix (no
+-- network fetch during pure eval).
+-- (NB: the leksah-nogtk library still compiles ltk's Control.Event straight
+-- from vendor/ltk/src via hs-source-dirs — see the NOTE in leksah.cabal — so a
+-- local `cabal build` still needs the ltk submodule checked out on disk, but
+-- nix's SRP-based *planning* does not.)
+source-repository-package
+  type: git
+  location: https://github.com/leksah/leksah-server
+  tag: 7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220
+
+source-repository-package
+  type: git
+  location: https://github.com/leksah/ltk
+  tag: cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f
+
+source-repository-package
+  type: git
+  location: https://github.com/leksah/haskellVCSWrapper
+  tag: b77a455d4250223a6bde047aa0901df72dfb9c7f
+  subdir: vcswrapper
+
+source-repository-package
+  type: git
+  location: https://github.com/leksah/haskellVCSGUI
+  tag: fbdd7bfaefb49b35a956b79e2958a826e6e86f66
+  subdir: vcsgui
 
 -- ffcabal lives in its own repo (hamishmack/ffcabal) now; consume it via a
 -- source-repository-package.  For nix the location+tag is resolved to a flake
@@ -28,7 +57,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: 5df202965b39f883f4d3213ce6c4b84767b83ea2
+  tag: ead142a5e736f1139a32a0335df48a5661fe1323
   subdir: jsaddle
           jsaddle-wkwebview
           jsaddle-terminal
@@ -44,12 +73,23 @@ package haddock-library
 package haddock-api
   tests: False
 
+-- For better stack traces
+package reflex
+  ghc-options: -finfo-table-map
+package reflex-dom-core
+  ghc-options: -finfo-table-map
+package jsaddle
+  ghc-options: -finfo-table-map
+package jsaddle-wkwebview
+  ghc-options: -finfo-table-map
+
 allow-older: *:haddock-api
 allow-newer:
     which:base
   , which:template-haskell
   , text-replace:base
   , text-replace:optparse-applicative
+  , text-replace:text
   , constraints-extras:base
   , constraints-extras:template-haskell
   , monoidal-containers:base
@@ -59,10 +99,10 @@ allow-newer:
   , reflex:template-haskell
   , reflex:these
   , reflex:profunctors
---  , reflex-dom-core:base
---  , reflex-dom-core:template-haskell
---  , reflex-dom-core:aeson
---  , reflex-dom-core:these
+  , reflex-dom-core:base
+  , reflex-dom-core:template-haskell
+  , reflex-dom-core:aeson
+  , reflex-dom-core:these
   , reflex-dom-core:lens
   , reflex-dom-svg:base
   , reflex-dom-svg:containers
@@ -89,6 +129,9 @@ allow-newer:
   , *:monoidal-containers
   , *:witherable
   , *:semialign
+  -- Newer hackage index snapshots ship aeson 2.3.x; many deps (jsaddle-warp,
+  -- reflex-dom-core, …) still carry a conservative aeson <2.3 upper bound.
+  , *:aeson
 
 constraints: monoidal-containers >=0.6.2.0, haskell-gi-overloading ==0.0, any.happy ==2.1.7, extra >=1.8, semialign <1.4
 

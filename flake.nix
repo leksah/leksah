@@ -1,7 +1,13 @@
 {
   # This is a template created by `hix init`
-  inputs.haskellNix.url = "github:input-output-hk/haskell.nix";
+  inputs.haskellNix.url = "github:input-output-hk/haskell.nix/hkm/darwin-linux-cross-hl";
   inputs.nixpkgs.follows = "haskellNix/nixpkgs-unstable";
+  # hyper-linux runs aarch64-linux / x86_64-linux ELF binaries on Apple Silicon
+  # via Hypervisor.framework.  haskell.nix's darwin→linux cross (the -hl branch
+  # above) reads it as the `hyper-linux` nixpkgs overlay attribute and runs its
+  # `hl` in place of qemu for TH (iserv) and tests; the `leksah-linux` app below
+  # uses the same `hl` to run the aarch64-linux-musl build on macOS.
+  inputs.hyper-linux.url = "github:zw3rk/hyper-linux";
   inputs.flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   inputs.flake-utils.url = "github:numtide/flake-utils";
   # Patched haddock-api (Haddock.Types exposed for leksah-server's
@@ -22,7 +28,7 @@
   # jsaddle-webview2 live in the jsaddle monorepo; wire it so the haskell.nix
   # planner resolves the source-repository-package in cabal.project without a
   # network fetch (pure eval).
-  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/5df202965b39f883f4d3213ce6c4b84767b83ea2";
+  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/ead142a5e736f1139a32a0335df48a5661fe1323";
   inputs.jsaddle-terminal-src.flake = false;
   # ffcabal lives in its own repo now; same wiring as above.
   inputs.ffcabal-src.url = "github:leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c";
@@ -32,6 +38,19 @@
   # base < 4.22).  Consumed as a tool `src` in nix/hix.nix.
   inputs.hls-github.url = "github:haskell/haskell-language-server";
   inputs.hls-github.flake = false;
+  # leksah-server, ltk and the Haskell VCS libs (vcswrapper/vcsgui) were git
+  # submodules under vendor/; they are now source-repository-packages in
+  # cabal.project.  Wire each to a flake input (same as ffcabal/jsaddle) so the
+  # haskell.nix planner resolves them without a network fetch (pure eval) and a
+  # plain `nix develop .#` works — no ?submodules=1 needed.
+  inputs.leksah-server-src.url = "github:leksah/leksah-server/7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220";
+  inputs.leksah-server-src.flake = false;
+  inputs.ltk-src.url = "github:leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f";
+  inputs.ltk-src.flake = false;
+  inputs.haskellvcswrapper-src.url = "github:leksah/haskellVCSWrapper/b77a455d4250223a6bde047aa0901df72dfb9c7f";
+  inputs.haskellvcswrapper-src.flake = false;
+  inputs.haskellvcsgui-src.url = "github:leksah/haskellVCSGUI/fbdd7bfaefb49b35a956b79e2958a826e6e86f66";
+  inputs.haskellvcsgui-src.flake = false;
   outputs = { self, nixpkgs, flake-utils, haskellNix, ... }@inputs:
     let
       supportedSystems = [
@@ -60,10 +79,19 @@
                   "https://github.com/leksah/haddock/ghc-9.10" = inputs.haddock-ghc910;
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
-                  "https://github.com/ghcjs/jsaddle/5df202965b39f883f4d3213ce6c4b84767b83ea2" = inputs.jsaddle-terminal-src;
+                  "https://github.com/ghcjs/jsaddle/ead142a5e736f1139a32a0335df48a5661fe1323" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c" = inputs.ffcabal-src;
+                  "https://github.com/leksah/leksah-server/7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220" = inputs.leksah-server-src;
+                  "https://github.com/leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f" = inputs.ltk-src;
+                  "https://github.com/leksah/haskellVCSWrapper/b77a455d4250223a6bde047aa0901df72dfb9c7f" = inputs.haskellvcswrapper-src;
+                  "https://github.com/leksah/haskellVCSGUI/fbdd7bfaefb49b35a956b79e2958a826e6e86f66" = inputs.haskellvcsgui-src;
                 };
               };
+          } // prev.lib.optionalAttrs (system == "aarch64-darwin") {
+            # The `hl` runner the haskell.nix darwin→linux cross looks up as
+            # `pkgsBuildBuild.hyper-linux` (there is no in-repo pin).  Only
+            # aarch64-darwin has a hyper-linux package.
+            "hyper-linux" = inputs.hyper-linux.packages.${system}.default;
           })
         ];
         pkgs = import nixpkgs { inherit system overlays;
@@ -153,6 +181,31 @@
                 --set 'XDG_DATA_DIRS' ""
               '';
           }) + "/bin/launch-leksah";
+        }
+        # macOS runners for the cross-compiled builds: `hl` (hyper-linux) runs
+        # the aarch64-linux-musl ELF directly on Apple Silicon, and wine runs the
+        # Windows exe.  Both cross builds come from crossPlatforms in nix/hix.nix.
+        // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          # nix run .#leksah-linux — the aarch64-unknown-linux-musl leksah-warp
+          # (the browser/warp front end: no native GTK, so it's the one that
+          # runs headless under hl; connect at http://127.0.0.1:3367/).
+          leksah-linux = {
+            type = "app";
+            program = (pkgs.writeShellScriptBin "leksah-linux" ''
+              exec ${inputs.hyper-linux.packages.${system}.default}/bin/hl \
+                ${flake.packages."aarch64-unknown-linux-musl:leksah:exe:leksah-warp"}/bin/leksah-warp "$@"
+            '') + "/bin/leksah-linux";
+          };
+          # nix run .#leksah-windows — the x86_64-w64-mingw32 leksah-webview2 exe
+          # under wine (WebView2Loader.dll sits next to the exe, so wine finds it).
+          # On Apple Silicon wine needs Rosetta 2 for the x86_64 guest.
+          leksah-windows = {
+            type = "app";
+            program = (pkgs.writeShellScriptBin "leksah-windows" ''
+              exec ${pkgs.wine64}/bin/wine64 \
+                ${flake.packages."x86_64-w64-mingw32:leksah:exe:leksah"}/bin/leksah.exe "$@"
+            '') + "/bin/leksah-windows";
+          };
         };
       });
 

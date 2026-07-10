@@ -56,7 +56,13 @@ let
     then pkgs.applyPatches {
       name = "haskell-language-server-src-patched";
       src = pkgs.hls-github-src;
-      patches = [ ./patches/hls-cabal-plugin-cabal-syntax-3.17.patch ];
+      patches = [
+        ./patches/hls-cabal-plugin-cabal-syntax-3.17.patch
+        # ghc914-sh reports the project GHC as "9.14" but HLS is compiled
+        # against its library (cProjectVersion "9.14.0"); relax ghcide's exact
+        # version-equality guard so it loads ghc914-sh projects.
+        ./patches/ghcide-relax-ghc-version-check.patch
+      ];
     }
     else pkgs.hls-github-src;
 in
