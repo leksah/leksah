@@ -42,7 +42,7 @@ import           Data.Int (Int32)
 import           Data.List (nub, sort, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
-import           Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
+import           Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, mapMaybe)
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -70,12 +70,29 @@ import           IDE.Web.IDERefStore (getGlobalIDERef)
 -- Configuration
 --------------------------------------------------------------------------------
 
--- | The fallback server command: @haskell-language-server@ on the ambient
--- @PATH@ (the bare binary, not the @-wrapper@ — leksah's own dev shell ships
--- only that).  Overridden by the 'lspServerCommand' pref, and per-project by a
--- @.leksah-lsp@ file (see 'serverCommandFor').
-defaultServerCommand :: (FilePath, [String])
-defaultServerCommand = ("haskell-language-server", ["--lsp"])
+-- | Per-language LSP config: the @languageId@ sent in @didOpen@ and the default
+-- server command (used when no @.leksah-lsp@/pref override applies).
+data LangConfig = LangConfig
+    { lcLanguageId :: Text
+    , lcDefaultCmd :: (FilePath, [String])
+    }
+
+-- | The built-in language server for each recognised extension.  Haskell uses
+-- @haskell-language-server@ (the bare binary, not the @-wrapper@ — leksah's own
+-- dev shell ships only that); Nix uses @nixd@ (added to the dev shell).  Extend
+-- this list to support more languages.
+languageOf :: FilePath -> Maybe LangConfig
+languageOf f = case takeExtension f of
+    ".hs"  -> Just haskell
+    ".lhs" -> Just haskell
+    ".nix" -> Just (LangConfig "nix" ("nixd", []))
+    _      -> Nothing
+  where
+    haskell = LangConfig "haskell" ("haskell-language-server", ["--lsp"])
+
+-- | Does this file have a language server we know how to launch?
+isSupportedFile :: FilePath -> Bool
+isSupportedFile = isJust . languageOf
 
 -- | The current LSP prefs — @(enabled, command-override)@ — read live from the
 -- shared IDE state.  Defaults (enabled, no override) before the IDE exists.
@@ -86,16 +103,19 @@ lspConfig = getGlobalIDERef >>= \case
         return (lspEnabled p, lspServerCommand p)
     Nothing   -> return (True, "")
 
--- | Resolve the server command for a project root: a @.leksah-lsp@ file in the
--- root (first non-blank, non-@#@-comment line) wins; then the global pref
--- override; then 'defaultServerCommand'.  The command line is split on
--- whitespace (no shell quoting).
-serverCommandFor :: FilePath -> Text -> IO (FilePath, [String])
-serverCommandFor root globalCmd = do
-    mFile <- readOverrideFile (root </> ".leksah-lsp")
-    return $ case mFile <|> nonBlank globalCmd of
+-- | Resolve the server command for a project root + language.  For Haskell a
+-- @.leksah-lsp@ file in the root (first non-blank, non-@#@ line) wins, then the
+-- global pref override, then the language's default command.  Other languages
+-- always use their built-in default (the pref/@.leksah-lsp@ target Haskell HLS).
+serverCommandFor :: FilePath -> Text -> LangConfig -> IO (FilePath, [String])
+serverCommandFor root globalCmd lc = do
+    let haskellOverride = lcLanguageId lc == "haskell"
+    mFile <- if haskellOverride then readOverrideFile (root </> ".leksah-lsp")
+                                else return Nothing
+    let override = if haskellOverride then mFile <|> nonBlank globalCmd else Nothing
+    return $ case override of
         Just cmdline | (c:as) <- T.words cmdline -> (T.unpack c, map T.unpack as)
-        _                                        -> defaultServerCommand
+        _                                        -> lcDefaultCmd lc
   where
     nonBlank t = let s = T.strip t in if T.null s then Nothing else Just s
 
@@ -107,10 +127,6 @@ readOverrideFile f = doesFileExist f >>= \case
         return $ listToMaybe
             [ l | l <- map T.strip ls, not (T.null l), not ("#" `T.isPrefixOf` l) ]
 
--- | Extensions we treat as Haskell source worth a language server.
-isHaskellFile :: FilePath -> Bool
-isHaskellFile f = takeExtension f `elem` [".hs", ".lhs"]
-
 --------------------------------------------------------------------------------
 -- Global state
 --------------------------------------------------------------------------------
@@ -118,7 +134,7 @@ isHaskellFile f = takeExtension f `elem` [".hs", ".lhs"]
 -- | A running (or failed) server per project root.  @Nothing@ marks a root we
 -- tried and failed to start, so we do not respawn on every keystroke.
 {-# NOINLINE registry #-}
-registry :: MVar (Map FilePath (Maybe ServerState))
+registry :: MVar (Map (FilePath, Text) (Maybe ServerState))  -- key = (project root, languageId)
 registry = unsafePerformIO (newMVar Map.empty)
 
 -- | The exact 'LogRef's we last published for each file, so a fresh
@@ -186,9 +202,11 @@ documentClosed file = withServer file $ \ss -> onReady ss $ do
 -- | Shared by 'documentOpened' \/ 'documentChanged': send @didOpen@ the first
 -- time we see a file and @didChange@ (full text) thereafter.
 touch :: FilePath -> Text -> IO ()
-touch file text = when (isHaskellFile file) $ do
+touch file text = case languageOf file of
+  Nothing -> return ()
+  Just lc -> do
     root <- projectRootOf file
-    ensureServer root >>= \case
+    ensureServer root lc >>= \case
         Nothing -> return ()
         Just ss -> onReady ss $ do
             let uri = toJSON (filePathToUri file)
@@ -198,7 +216,7 @@ touch file text = when (isHaskellFile file) $ do
                     atomically $ modifyTVar' (ssVersions ss) (Map.insert file 1)
                     notify (ssClient ss) SMethod_TextDocumentDidOpen $ buildParams $ object
                         [ "textDocument" .= object
-                            [ "uri" .= uri, "languageId" .= ("haskell" :: Text)
+                            [ "uri" .= uri, "languageId" .= lcLanguageId lc
                             , "version" .= (1 :: Int), "text" .= text ] ]
                 Just v -> do
                     let v' = v + 1
@@ -218,20 +236,15 @@ touch file text = when (isHaskellFile file) $ do
 -- called with 'Nothing'.
 requestHover :: FilePath -> Int -> Int -> (Maybe Text -> IO ()) -> IO ()
 requestHover file line ch cb
-    | not (isHaskellFile file) = cb Nothing
-    | otherwise = do
-        root <- projectRootOf file
-        m <- modifyMVar registry (\mp -> return (mp, mp))
-        case Map.lookup root m of
-            Just (Just ss) -> onReady ss $
-                void $ request (ssClient ss) SMethod_TextDocumentHover
-                    (buildParams $ object
-                        [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
-                        , "position" .= object [ "line" .= line, "character" .= ch ] ])
-                    (\case
-                        Right res -> cb (extractHover (toJSON res))
-                        Left _    -> cb Nothing)
-            _ -> cb Nothing
+    | not (isSupportedFile file) = cb Nothing
+    | otherwise = withServerReady file (cb Nothing) $ \ss ->
+        void $ request (ssClient ss) SMethod_TextDocumentHover
+            (buildParams $ object
+                [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                , "position" .= object [ "line" .= line, "character" .= ch ] ])
+            (\case
+                Right res -> cb (extractHover (toJSON res))
+                Left _    -> cb Nothing)
 
 -- | Pull a single plain-text blob out of an LSP @Hover@ result.  @contents@
 -- may be a @MarkupContent {kind,value}@, a @MarkedString@ (a bare string or
@@ -266,7 +279,7 @@ requestTerminalHover file mline mcol cb = do
     absFile <- makeAbsolute file `catch` \(_ :: SomeException) -> return file
     diag    <- diagnosticsSummary absFile mline
     case mline of
-        Just ln | isHaskellFile absFile ->
+        Just ln | isSupportedFile absFile ->
             -- @mcol@ is the 0-based column of the hovered symbol when the caller
             -- knows it (an identifier on a diff code line, or a @file:line:col@
             -- token); otherwise default to the start of the line.
@@ -326,20 +339,15 @@ maxCompletions = 200
 -- not a Haskell file), ready to hand to the CM6 @resolveComplete@ bridge.
 requestCompletion :: FilePath -> Int -> Int -> (Text -> IO ()) -> IO ()
 requestCompletion file line ch cb
-    | not (isHaskellFile file) = cb "[]"
-    | otherwise = do
-        root <- projectRootOf file
-        m <- modifyMVar registry (\mp -> return (mp, mp))
-        case Map.lookup root m of
-            Just (Just ss) -> onReady ss $
-                void $ request (ssClient ss) SMethod_TextDocumentCompletion
-                    (buildParams $ object
-                        [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
-                        , "position" .= object [ "line" .= line, "character" .= ch ] ])
-                    (\case
-                        Right res -> cb (encodeToText (parseCompletions (toJSON res)))
-                        Left _    -> cb "[]")
-            _ -> cb "[]"
+    | not (isSupportedFile file) = cb "[]"
+    | otherwise = withServerReady file (cb "[]") $ \ss ->
+        void $ request (ssClient ss) SMethod_TextDocumentCompletion
+            (buildParams $ object
+                [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                , "position" .= object [ "line" .= line, "character" .= ch ] ])
+            (\case
+                Right res -> cb (encodeToText (parseCompletions (toJSON res)))
+                Left _    -> cb "[]")
 
 -- | Reduce an LSP @CompletionList@ (or bare @CompletionItem[]@, or @null@) to a
 -- capped list of compact @{label, apply, detail?, kind?}@ objects.
@@ -377,7 +385,7 @@ compactItem = parseMaybe $ withObject "CompletionItem" $ \o -> do
 -- 0-based column; its filename is the file to open) or 'Nothing'.
 requestDefinition :: FilePath -> Int -> Int -> (Maybe SrcSpan -> IO ()) -> IO ()
 requestDefinition file line ch cb
-    | not (isHaskellFile file) = cb Nothing
+    | not (isSupportedFile file) = cb Nothing
     | otherwise = withServerReady file (cb Nothing) $ \ss ->
         void $ request (ssClient ss) SMethod_TextDocumentDefinition
             (buildParams (posParams file line ch))
@@ -420,7 +428,7 @@ maxReferences = 500
 -- @(file, 1-based line, trimmed line text)@ rows, ready for the Grep pane.
 requestReferences :: FilePath -> Int -> Int -> ([(FilePath, Int, Text)] -> IO ()) -> IO ()
 requestReferences file line ch cb
-    | not (isHaskellFile file) = cb []
+    | not (isSupportedFile file) = cb []
     | otherwise = withServerReady file (cb []) $ \ss ->
         void $ request (ssClient ss) SMethod_TextDocumentReferences
             (buildParams $ object
@@ -465,32 +473,34 @@ attachContext locs = do
 
 -- | Look up an already-running server for a file's project (never spawns).
 withServer :: FilePath -> (ServerState -> IO ()) -> IO ()
-withServer file act = when (isHaskellFile file) $ do
+withServer file act = case languageOf file of
+  Nothing -> return ()
+  Just lc -> do
     root <- projectRootOf file
-    m <- readMVarMap
-    case Map.lookup root m of
+    m <- modifyMVar registry (\mp -> return (mp, mp))
+    case Map.lookup (root, lcLanguageId lc) m of
         Just (Just ss) -> act ss
         _              -> return ()
-  where readMVarMap = modifyMVar registry (\m -> return (m, m))
 
 -- | Get (spawning if necessary) the server for a project root.  When LSP is
 -- disabled in prefs, never spawns and returns 'Nothing' without caching, so
 -- re-enabling takes effect on the next edit.
-ensureServer :: FilePath -> IO (Maybe ServerState)
-ensureServer root = do
+ensureServer :: FilePath -> LangConfig -> IO (Maybe ServerState)
+ensureServer root lc = do
     (enabled, cmdPref) <- lspConfig
     if not enabled
         then return Nothing
-        else modifyMVar registry $ \m -> case Map.lookup root m of
+        else modifyMVar registry $ \m -> case Map.lookup key m of
             Just entry -> return (m, entry)
             Nothing -> do
-                cmdArgs <- serverCommandFor root cmdPref
+                cmdArgs <- serverCommandFor root cmdPref lc
                 try (spawnAndInit root cmdArgs) >>= \case
-                    Right ss -> return (Map.insert root (Just ss) m, Just ss)
+                    Right ss -> return (Map.insert key (Just ss) m, Just ss)
                     Left (e :: SomeException) -> do
                         debugM "leksah" ("IDE.LSP: could not start language server in "
                                          <> root <> ": " <> show e)
-                        return (Map.insert root Nothing m, Nothing)
+                        return (Map.insert key Nothing m, Nothing)
+  where key = (root, lcLanguageId lc)
 
 spawnAndInit :: FilePath -> (FilePath, [String]) -> IO ServerState
 spawnAndInit root (cmd, args) = do
@@ -633,10 +643,12 @@ encodeToText = TL.toStrict . TLE.decodeUtf8 . encode
 -- | Run @act@ against the (already-running, ready) server for a file's project,
 -- or @onNone@ if there is none.  Never spawns.
 withServerReady :: FilePath -> IO () -> (ServerState -> IO ()) -> IO ()
-withServerReady file onNone act = do
+withServerReady file onNone act = case languageOf file of
+  Nothing -> onNone
+  Just lc -> do
     root <- projectRootOf file
     m <- modifyMVar registry (\mp -> return (mp, mp))
-    case Map.lookup root m of
+    case Map.lookup (root, lcLanguageId lc) m of
         Just (Just ss) -> onReady ss (act ss)
         _              -> onNone
 

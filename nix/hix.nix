@@ -270,6 +270,8 @@ rec {
         pkgs.tmux
         # Image tooling for verifying UI changes (crop/convert screenshots).
         pkgs.buildPackages.imagemagick
+        # Nix language server (nix-community/nixd) for .nix files (IDE.LSP).
+        pkgs.nixd
       ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.gtk-mac-integration;
     };
 })
