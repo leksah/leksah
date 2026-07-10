@@ -64,6 +64,9 @@ import Distribution.Utils.Path (makeSymbolicPath)
 import Distribution.Pretty (prettyShow)
 import Distribution.Text (simpleParse, display)
 import Distribution.Verbosity (normal)
+#if MIN_VERSION_Cabal(3,17,0)
+import Distribution.Verbosity (mkVerbosity, defaultVerbosityHandles)
+#endif
 import Distribution.Version
        (anyVersion, orLaterVersion, intersectVersionRanges,
         earlierVersion, versionNumbers, mkVersion)
@@ -124,6 +127,12 @@ import IDE.TextEditor (delete, setModified, getIterAtLine)
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.Utils.GHCUtils (mkDependency, LibraryName(..))
 import IDE.Utils.ServerConnection
+
+#if MIN_VERSION_Cabal(3,17,0)
+normalVerbosity = mkVerbosity defaultVerbosityHandles normal
+#else
+normalVerbosity = normal
+#endif
 
 -- Cabal 3.14 added a working-directory argument and takes a SymbolicPath.
 #if MIN_VERSION_Cabal(3,14,0)
@@ -256,7 +265,7 @@ addPackages errors = do
                     _ -> Nothing) errors
 
     forM_ packs $ \(cabalFile, d) -> do
-        gpd <- liftIO $ readGPD normal cabalFile
+        gpd <- liftIO $ readGPD normalVerbosity cabalFile
         ideMessage Normal $ "Adding build-depends " <> T.pack (display d <> " to " <> cabalFile)
         liftIO $ writeGenericPackageDescription' cabalFile
             gpd { condLibrary     = addDepToLib d (condLibrary gpd),

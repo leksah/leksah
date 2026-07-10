@@ -96,7 +96,14 @@ import Data.Void (Void)
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
+-- Cabal 3.17 (stable-haskell fork) added a `Normal` constructor to
+-- Distribution.Verbosity, which collides with leksah's own message-level
+-- `Normal` (IDE.Core.State) used in `ideMessage Normal`.  Hide Cabal's.
+#if MIN_VERSION_Cabal(3,17,0)
+import Distribution.Verbosity hiding (Normal)
+#else
 import Distribution.Verbosity
+#endif
 import Distribution.Utils.ShortText (fromShortText)
 
 import System.FilePath
@@ -388,19 +395,24 @@ withToolCommand project compiler (Just (cmd, args)) continuation = do
     enableNixCache <- if useVado prefs' then liftIO $ isRight <$> getMountPoint (pjDir $ pjKey project) else return True
     nixShellFile (pjKey project) >>= \case
         _ | enableNixCache -> do
-            let nixCompilerName = if compiler == GHCJS then "ghcjs" else "ghc"
-                nixContinuation env = continuation ("bash", ["-c", T.pack . showCommandForUser cmd $ map T.unpack args], Just env)
-            readIDE (to $ nixEnv (pjKey project) nixCompilerName) >>= \case
+            let nixContinuation env = continuation ("bash", ["-c", T.pack . showCommandForUser cmd $ map T.unpack args], Just env)
+            readIDE (to $ nixEnv (pjKey project) "ghc") >>= \case
                 Just env -> liftIDE $ nixContinuation env
-                Nothing -> updateNixCache project [nixCompilerName] $
-                    readIDE (to $ nixEnv (pjKey project) nixCompilerName) >>= mapM_ nixContinuation
+                Nothing -> updateNixCache project ["ghc"] $
+                    readIDE (to $ nixEnv (pjKey project) "ghc") >>= mapM_ nixContinuation
         Just nixFile ->
 
             liftIDE $ continuation ("nix-shell", [ "-E"
                     , "let x = (let fn = import " <> T.pack nixFile <>
-                                    "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = ({ env = x; } // x).env; }; } // x).shells." <> if compiler == GHCJS then "ghcjs" else "ghc"
+                                    "; in if builtins.isFunction fn then fn {} else fn); in ({ shells = { ghc = ({ env = x; } // x).env; }; } // x).shells.ghc"
                     , "--run", T.pack . showCommandForUser cmd $ map T.unpack args], Nothing)
         Nothing -> liftIDE $ continuation (cmd, args, Nothing)
+
+#if MIN_VERSION_Cabal(3,17,0)
+normalVerbosity = mkVerbosity defaultVerbosityHandles normal
+#else
+normalVerbosity = normal
+#endif
 
 -- Cabal 3.14 moved the cabal-file argument to a SymbolicPath and added a
 -- working-directory argument; older Cabal takes a plain FilePath.
@@ -419,7 +431,7 @@ mainPath p = p
 readAndFlattenPackageDescription :: MonadIDE m => IDEPackage -> m PackageDescription
 readAndFlattenPackageDescription package =
     liftIO $ flattenPackageDescription <$>
-         readGPD normal (ipdCabalFile package)
+         readGPD normalVerbosity (ipdCabalFile package)
 
 runCabalBuild :: CompilerFlavor -> Bool -> Bool -> Bool -> (Project, [IDEPackage]) -> (Bool -> IDEAction) -> IDEAction
 runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, packages) continuation = do
@@ -472,31 +484,16 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
               <> pjFileArgs
               <> activeComponent'
               <> flagsForTestsAndBenchmarks)
-            CabalTool {}
-              | compiler == GHCJS -> Just ("js-unknown-ghcjs-cabal", ["new-build"]
-                  <> pjFileArgs
-                  <> ["--ghcjs"]
-                  <> ["--builddir=" <> T.pack (cabalBuildDir (Just "js-unknown-ghcjs"))]
-                  <> activeComponent'
-                  <> flagsForTestsAndBenchmarks)
-              | otherwise -> Just nativeCabalCmd
-            CustomTool p -> (if compiler == GHCJS then pjCustomGhcjsBuild else pjCustomGhcBuild) p
+            CabalTool {} -> Just nativeCabalCmd
+            CustomTool p -> pjCustomGhcBuild p
             NixTool _ -> Nothing
             -- A Makefile project builds with make (through the nix env when
             -- the project has one, like the other tools).
-            MakeTool {} | compiler == GHCJS -> Nothing
-                        | otherwise         -> Just ("make", [])
+            MakeTool {} -> Just ("make", [])
         mbCmdAndArgs' = second (++ concatMap ipdBuildFlags packages) <$> mbCmdAndArgs
 
     withToolCommand project compiler mbCmdAndArgs' $ \(cmd, args', nixEnv') -> do
-        mbEnv <- if compiler == GHCJS
-                    then do
-                        env <- packagesEnv packages =<<
-                            maybe (liftIO getEnvironment) return (M.toList <$> nixEnv')
-                        dataDir <- getDataDir
-                        emptyFile <- liftIO $ getConfigFilePathForLoad "empty-file" Nothing dataDir
-                        return . Just $ ("GHC_ENVIRONMENT", emptyFile) : env
-                    else return $ M.toList <$> nixEnv'
+        let mbEnv = M.toList <$> nixEnv'
         -- ffcabal drives tmux repls: pin them to leksah's own tmux server so
         -- the workspace repl buttons / terminal tabs can reach the windows
         -- (see 'ffcabalTmuxEnv').  Materialize the environment when we'd
@@ -617,7 +614,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
         (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
     reloadDebug _ [] = do
         prefs' <- readIDE prefs
-        let compile' = compile ([GHC | native prefs'] ++ [GHCJS | javaScript prefs' && pjIsCabal (pjKey project)])
+        let compile' = compile [GHC | native prefs' || (javaScript prefs' && pjIsCabal (pjKey project))]
         compile'
     reloadDebug restart (package:rest) = do
         ideR  <- liftIDE ask
@@ -1101,7 +1098,7 @@ getPackageDescriptionAndPath = do
             ideMessage Normal (__ "No active package")
             return Nothing
         Just p  -> catchIDE (do
-                pd <- liftIO $ readGPD normal (ipdCabalFile p)
+                pd <- liftIO $ readGPD normalVerbosity (ipdCabalFile p)
                 return (Just (flattenPackageDescription pd,ipdCabalFile p)))
                     (\(e :: SomeException) -> do
                         ideMessage Normal (__ "Can't load package " <> T.pack (show e))
@@ -1140,7 +1137,7 @@ addModuleToPackageDescr :: ModuleName -> [ModuleLocation] -> PackageAction
 addModuleToPackageDescr moduleName locations = do
     p    <- ask
     liftIDE $ catchIDE (liftIO $ do
-        gpd <- readGPD normal (ipdCabalFile p)
+        gpd <- readGPD normalVerbosity (ipdCabalFile p)
         let npd = trace (show gpd) foldr addModule gpd locations
         writeGenericPackageDescription' (ipdCabalFile p) npd)
            (\(e :: SomeException) -> do
@@ -1157,26 +1154,36 @@ addModuleToPackageDescr moduleName locations = do
         }
     addModule _ x = x
 
-addModToLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
-    CondTree ConfVar [Dependency] Library
+-- Cabal-syntax 3.17 (stable-haskell fork) dropped CondTree's middle
+-- (aggregated-constraints) type parameter: CondTree v c a -> CondTree v a.
+-- This synonym keeps the signatures below working on both APIs (the term-level
+-- CondNode{condTreeData=..} access is unaffected).
+#if MIN_VERSION_Cabal(3,17,0)
+type CondTreeCV = CondTree ConfVar
+#else
+type CondTreeCV a = CondTree ConfVar [Dependency] a
+#endif
+
+addModToLib :: ModuleName -> CondTreeCV Library ->
+    CondTreeCV Library
 addModToLib modName ct@CondNode{condTreeData = lib} =
     ct{condTreeData = lib{exposedModules = modName `inOrderAdd` exposedModules lib}}
 
-addModToBuildInfoLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
-    CondTree ConfVar [Dependency] Library
+addModToBuildInfoLib :: ModuleName -> CondTreeCV Library ->
+    CondTreeCV Library
 addModToBuildInfoLib modName ct@CondNode{condTreeData = lib} =
     ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules = modName
         `inOrderAdd` otherModules (libBuildInfo lib)}}}
 
-addModToBuildInfoExe :: UnqualComponentName -> ModuleName -> (UnqualComponentName, CondTree ConfVar [Dependency] Executable) ->
-    (UnqualComponentName, CondTree ConfVar [Dependency] Executable)
+addModToBuildInfoExe :: UnqualComponentName -> ModuleName -> (UnqualComponentName, CondTreeCV Executable) ->
+    (UnqualComponentName, CondTreeCV Executable)
 addModToBuildInfoExe name modName (str,ct@CondNode{condTreeData = exe}) | str == name =
     (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules = modName
         `inOrderAdd` otherModules (buildInfo exe)}}})
 addModToBuildInfoExe _name _ x = x
 
-addModToBuildInfoTest :: UnqualComponentName -> ModuleName -> (UnqualComponentName, CondTree ConfVar [Dependency] TestSuite) ->
-    (UnqualComponentName, CondTree ConfVar [Dependency] TestSuite)
+addModToBuildInfoTest :: UnqualComponentName -> ModuleName -> (UnqualComponentName, CondTreeCV TestSuite) ->
+    (UnqualComponentName, CondTreeCV TestSuite)
 addModToBuildInfoTest name modName (str,ct@CondNode{condTreeData = test}) | str == name =
     (str, ct{condTreeData = test{testBuildInfo = (testBuildInfo test){otherModules = modName
         `inOrderAdd` otherModules (testBuildInfo test)}}})
@@ -1190,7 +1197,7 @@ delModuleFromPackageDescr :: ModuleName -> PackageAction
 delModuleFromPackageDescr moduleName = do
     p    <- ask
     liftIDE $ catchIDE (liftIO $ do
-        gpd <- readGPD normal (ipdCabalFile p)
+        gpd <- readGPD normalVerbosity (ipdCabalFile p)
         let isExposedAndJust = isExposedModule moduleName (condLibrary gpd)
         let npd = if isExposedAndJust
                 then gpd{
@@ -1210,24 +1217,24 @@ delModuleFromPackageDescr moduleName = do
             ideMessage Normal (__ "Can't update package " <> T.pack (show e))
             return ())
 
-delModFromLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
-    CondTree ConfVar [Dependency] Library
+delModFromLib :: ModuleName -> CondTreeCV Library ->
+    CondTreeCV Library
 delModFromLib modName ct@CondNode{condTreeData = lib} =
     ct{condTreeData = lib{exposedModules = delete modName (exposedModules lib)}}
 
-delModFromBuildInfoLib :: ModuleName -> CondTree ConfVar [Dependency] Library ->
-    CondTree ConfVar [Dependency] Library
+delModFromBuildInfoLib :: ModuleName -> CondTreeCV Library ->
+    CondTreeCV Library
 delModFromBuildInfoLib modName ct@CondNode{condTreeData = lib} =
     ct{condTreeData = lib{libBuildInfo = (libBuildInfo lib){otherModules =
         delete modName (otherModules (libBuildInfo lib))}}}
 
-delModFromBuildInfoExe :: ModuleName -> (UnqualComponentName, CondTree ConfVar [Dependency] Executable) ->
-    (UnqualComponentName, CondTree ConfVar [Dependency] Executable)
+delModFromBuildInfoExe :: ModuleName -> (UnqualComponentName, CondTreeCV Executable) ->
+    (UnqualComponentName, CondTreeCV Executable)
 delModFromBuildInfoExe modName (str,ct@CondNode{condTreeData = exe}) =
     (str, ct{condTreeData = exe{buildInfo = (buildInfo exe){otherModules =
         delete modName (otherModules (buildInfo exe))}}})
 
-isExposedModule :: ModuleName -> Maybe (CondTree ConfVar [Dependency] Library)  -> Bool
+isExposedModule :: ModuleName -> Maybe (CondTreeCV Library)  -> Bool
 isExposedModule _ Nothing                              = False
 isExposedModule mn (Just CondNode{condTreeData = lib}) = mn `elem` exposedModules lib
 
@@ -1367,7 +1374,7 @@ allBuildInfo' pkg_descr = [ libBuildInfo lib       | Just lib <- [library pkg_de
 idePackageFromPath' :: FilePath -> IDEM (Maybe IDEPackage)
 idePackageFromPath' ipdCabalFile = do
     mbPackageD <- catchIDE (liftIO $
-        Just . flattenPackageDescription <$> readGPD normal ipdCabalFile)
+        Just . flattenPackageDescription <$> readGPD normalVerbosity ipdCabalFile)
             (\ (e :: SomeException) -> do
                 ideMessage Normal (__ "Can't activate package " <> T.pack (show e))
                 return Nothing)
