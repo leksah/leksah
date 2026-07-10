@@ -1,0 +1,30 @@
+cabal-version:      3.4
+name:               breakout
+version:            0.1.0.0
+license:            MIT
+license-file:       LICENSE
+author:             Hamish Mackenzie
+maintainer:         Hamish.K.Mackenzie@gmail.com
+synopsis:           Breakout — a reflex-dom example app for the leksah sandpit
+description:
+  A small Breakout game, copied from the jsaddle-terminal demo, used as an
+  example workspace for leksah demos and screencasts.  The whole game — state,
+  physics, collisions — runs in Haskell (reflex); only the rendered DOM crosses
+  the wire.  It renders through jsaddle: opened inside leksah it tunnels over
+  the terminal (jsaddle-terminal) and renders in an IDE iframe; run standalone
+  it falls back to jsaddle-warp and prints a clickable URL.
+build-type:         Simple
+
+executable breakout
+  main-is:            Main.hs
+  hs-source-dirs:     app
+  build-depends:      base
+                    , containers
+                    , ghcjs-dom
+                    , jsaddle
+                    , jsaddle-terminal
+                    , reflex
+                    , reflex-dom-core
+                    , text
+  ghc-options:        -threaded -Wall
+  default-language:   Haskell2010

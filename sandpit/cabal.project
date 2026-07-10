@@ -1,0 +1,68 @@
+-- Sandpit: small example apps for leksah demos / screencasts.
+--
+-- This is a STANDALONE project (it does NOT `import: ../cabal.project`): cabal
+-- resolves an imported project's relative `packages:` paths against the
+-- importing directory, so importing the top-level project from this subdir made
+-- its `vendor/…` / `.` entries resolve to non-existent `sandpit/vendor/…`.
+-- Instead we carry just the slice the examples need — the jsaddle
+-- source-repository-package (built from source, as leksah does) plus the
+-- reflex / reflex-dom-core allow-newer + constraints machinery that lets the
+-- stack solve on GHC 9.14.  The top-level cabal.project is left untouched, so
+-- leksah's own dev loop (rebuild-self / ffcabal component checks) never sees
+-- these packages.  Build just the example with an explicit target, e.g.:
+--   cabal build breakout   (from this directory)
+
+packages: breakout
+
+-- jsaddle core (for runJavaScriptWithSerializer) + jsaddle-terminal, from the
+-- same monorepo pin leksah uses.  Keep the tag in sync with ../cabal.project.
+source-repository-package
+  type: git
+  location: https://github.com/ghcjs/jsaddle
+  tag: ead142a5e736f1139a32a0335df48a5661fe1323
+  subdir: jsaddle
+          jsaddle-terminal
+          jsaddle-warp
+
+package reflex
+  tests: False
+package reflex-dom-core
+  tests: False
+
+allow-newer:
+    reflex:base
+  , reflex:template-haskell
+  , reflex:these
+  , reflex:profunctors
+  , reflex-dom-core:base
+  , reflex-dom-core:template-haskell
+  , reflex-dom-core:aeson
+  , reflex-dom-core:these
+  , reflex-dom-core:lens
+  , patch:base
+  , patch:these
+  , constraints-extras:base
+  , constraints-extras:template-haskell
+  , monoidal-containers:base
+  , monoidal-containers:aeson
+  , monoidal-containers:these
+  , *:base
+  , *:bytestring
+  , *:containers
+  , *:template-haskell
+  , *:time
+  , *:mmorph
+  , *:monoidal-containers
+  , *:witherable
+  , *:semialign
+  , *:aeson
+
+constraints: monoidal-containers >=0.6.2.0, extra >=1.8, semialign <1.4
+
+if impl(ghc >=9.6)
+  allow-newer:
+    , reflex:primitive
+    , reflex-dom-core:primitive
+  constraints: dependent-sum-template >=0.2.0.1
+
+write-ghc-environment-files: never
