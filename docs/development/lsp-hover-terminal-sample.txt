@@ -1,0 +1,39 @@
+Test fixture for terminal LSP hover tooltips.
+
+`cat` this in a leksah terminal to reproduce a Claude Code `Update(...)` block,
+then mouse over the identifiers on the diff CODE lines below each
+`Update(...)` header (not just the header itself) — e.g. `unsafePerformIO`,
+`lookupEnv`, `readMaybe`, `leksahPort`, `defaultLeksahPort`, `instanceTag`,
+`tmuxServerSocket` — and confirm the LSP tooltip appears.
+
+The block references the real file src/IDE/Web/Instance.hs at its real line
+numbers, so the gutter line number + column of each hovered identifier maps to
+a genuine position HLS can resolve.  (The `+` lines are hypothetical edits and
+won't line up with the current file; the unchanged context lines and the `-`
+lines do.)
+
+    cat docs/development/lsp-hover-terminal-sample.txt
+
+────────────────────────────────────────────────────────────────────────────
+
+● Update(src/IDE/Web/Instance.hs)
+  ⎿  Updated src/IDE/Web/Instance.hs with 2 additions and 2 removals
+       28    defaultLeksahPort :: Int
+       29 -  defaultLeksahPort = 3367
+       29 +  defaultLeksahPort = 3367  -- historical default UI port
+       34    leksahPort :: Int
+       35    leksahPort = case unsafePerformIO (lookupEnv "LEKSAH_PORT") >>= readMaybe of
+       36 -      Just p | p > 0 -> p
+       36 +      Just p | p >= 1 -> p
+       37        _              -> defaultLeksahPort
+       38    {-# NOINLINE leksahPort #-}
+
+● Update(src/IDE/Web/Instance.hs)
+  ⎿  Updated src/IDE/Web/Instance.hs with 1 addition and 1 removal
+       43    instanceTag :: String
+       44    instanceTag
+       45      | leksahPort == defaultLeksahPort = ""
+       46      | otherwise                       = '-' : show leksahPort
+       60    tmuxServerSocket :: String
+       61 -  tmuxServerSocket = "leksah" <> instanceTag
+       61 +  tmuxServerSocket = "leksah" <> instanceTag  -- e.g. leksah-3368

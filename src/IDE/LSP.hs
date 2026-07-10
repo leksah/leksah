@@ -22,6 +22,7 @@ module IDE.LSP
     , documentSaved
     , documentClosed
     , requestHover
+    , requestTerminalHover
     , requestCompletion
     , requestDefinition
     , requestReferences
@@ -38,10 +39,10 @@ import           Data.Aeson.Types (Parser, parseMaybe)
 import           Data.Foldable (toList)
 import           Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import           Data.Int (Int32)
-import           Data.List (nub, sort)
+import           Data.List (nub, sort, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
-import           Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import           Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -250,6 +251,64 @@ extractHover = fmap T.strip . nonEmpty . parseMaybe (withObject "Hover" $ \o -> 
     parseMarked (String s) = pure s
     parseMarked (Object c) = c .: "value"
     parseMarked _          = pure ""
+
+-- | Tooltip for a file reference found in terminal output (git-diff @+++@\/@---@
+-- header paths, Claude Code @Update(...)@ headers, @file:line@ tokens; see
+-- @terminalLinksJs@ in "IDE.Web.Main").  LSP-backed two ways: a diagnostics
+-- summary drawn from the shared 'allLogRefs' store — which is populated by
+-- @textDocument/publishDiagnostics@ (and GHC builds) so it needs no open
+-- document — plus, when a line is known and the file is a Haskell source that is
+-- open in the language server, @textDocument/hover@ for the symbol at that line.
+-- Non-blocking: @cb@ is invoked exactly once with the tooltip text, or 'Nothing'
+-- when there is nothing useful to show.
+requestTerminalHover :: FilePath -> Maybe Int -> Maybe Int -> (Maybe Text -> IO ()) -> IO ()
+requestTerminalHover file mline mcol cb = do
+    absFile <- makeAbsolute file `catch` \(_ :: SomeException) -> return file
+    diag    <- diagnosticsSummary absFile mline
+    case mline of
+        Just ln | isHaskellFile absFile ->
+            -- @mcol@ is the 0-based column of the hovered symbol when the caller
+            -- knows it (an identifier on a diff code line, or a @file:line:col@
+            -- token); otherwise default to the start of the line.
+            requestHover absFile (max 0 (ln - 1)) (maybe 0 (max 0) mcol) $ \mhov ->
+                cb (joinTip [diag, mhov])
+        _ -> cb diag
+
+-- | Combine tooltip fragments (diagnostics summary, hover blurb), dropping the
+-- empty ones; 'Nothing' when nothing remains.
+joinTip :: [Maybe Text] -> Maybe Text
+joinTip parts = case filter (not . T.null) (map T.strip (catMaybes parts)) of
+    [] -> Nothing
+    xs -> Just (T.intercalate "\n\n" xs)
+
+-- | A short diagnostics blurb for @file@ from the shared LogRef store: a header
+-- counting errors\/warnings, then the message of the diagnostic on (or nearest)
+-- @mline@ if a line is given, else the first one.  'Nothing' when the file has
+-- no error\/warning\/lint refs.
+diagnosticsSummary :: FilePath -> Maybe Int -> IO (Maybe Text)
+diagnosticsSummary file mline = getGlobalIDERef >>= \case
+    Nothing   -> return Nothing
+    Just ideR -> do
+        refs <- reflectIDE (readIDE allLogRefs) ideR
+        let mine = [ r | r <- toList refs
+                       , srcSpanFilename (logRefSrcSpan r) == file
+                       , logRefType r `elem` [ErrorRef, WarningRef, LintRef, TestFailureRef] ]
+        if null mine then return Nothing else do
+            let count t   = length (filter ((== t) . logRefType) mine)
+                errs      = count ErrorRef + count TestFailureRef
+                warns     = count WarningRef + count LintRef
+                pick      = listToMaybe $ case mline of
+                                Just ln -> sortOn (\r -> abs (srcSpanStartLine (logRefSrcSpan r) - ln)) mine
+                                Nothing -> mine
+                header    = T.intercalate ", " $
+                                [ tshow errs  <> " error"   <> plural errs  | errs  > 0 ] ++
+                                [ tshow warns <> " warning" <> plural warns | warns > 0 ]
+                body      = maybe "" (\r -> "\n" <> firstLine (refDescription r)) pick
+            return (Just (header <> body))
+  where
+    plural n  = if n == (1 :: Int) then "" else "s"
+    tshow     = T.pack . show
+    firstLine = T.strip . T.takeWhile (/= '\n')
 
 --------------------------------------------------------------------------------
 -- Completion (textDocument/completion)
@@ -473,6 +532,12 @@ initParams root = buildParams $ object
         [ "textDocument" .= object
             [ "synchronization" .= object [ "didSave" .= True ]
             , "publishDiagnostics" .= object [ "relatedInformation" .= True ]
+            -- Advertise the request features we actually use.  For hover, prefer
+            -- plain text but accept markdown ('extractHover' handles both).
+            , "hover" .= object
+                [ "contentFormat" .= (["plaintext", "markdown"] :: [Text]) ]
+            , "definition" .= object [ "linkSupport" .= False ]
+            , "references" .= object []
             -- Ask for plain-text completions (snippetSupport = False) so items
             -- arrive without @${1:…}@ placeholders — CM6 inserts them verbatim.
             , "completion" .= object
