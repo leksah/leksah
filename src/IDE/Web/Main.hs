@@ -647,10 +647,10 @@ jsMain showMenubar macTitlebar mbWid ideR = do
           firstToRun <- modifyIDE $ \i ->
               ( i & currentState .~ IsRunning
               , case i ^. currentState of IsStartingUp -> True; _ -> False )
-          -- Load-once guard is in place, but metadata still balloons the heap to
-          -- 500MB+ and thrashes even loaded once, so keep it OFF pending a heap
-          -- fix.  Flip @metadataEnabled@ to True to re-enable with the guard.
-          let metadataEnabled = False
+          -- Load-once guard (above) means one metadata load serves every OS
+          -- window.  Historically kept OFF because the load ballooned the heap to
+          -- 500MB+; re-enabled here — flip back to False if the heap regresses.
+          let metadataEnabled = True
           metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun
                   <> " metadataEnabled=" <> show metadataEnabled
           if metadataEnabled && firstToRun
