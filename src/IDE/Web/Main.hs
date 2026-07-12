@@ -13,6 +13,7 @@ module IDE.Web.Main
     browserMain
 #else
     develMain
+  , splitFrontendMain
   , startJSaddle
   , indexHtml
 #endif
@@ -46,7 +47,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS (readFile)
 import qualified Data.ByteString.Char8 as BS (unlines)
 import qualified Data.ByteString.Lazy as BS (toStrict)
-import qualified Data.ByteString.Lazy as LBS (fromStrict)
+import qualified Data.ByteString.Lazy as LBS (fromStrict, readFile)
 import Data.Char (isAlphaNum)
 import qualified Data.Dependent.Map as DM (singleton, fromList, lookup)
 import Data.Dependent.Sum (DSum(..))
@@ -77,7 +78,8 @@ import System.Directory
        (doesFileExist, doesDirectoryExist, getDirectoryContents, removeFile,
         getHomeDirectory, makeRelativeToCurrentDirectory)
 import System.Process (readProcessWithExitCode)
-import Data.Aeson (encode)
+import Data.Aeson (Value, decodeStrict', encode)
+import qualified Data.Aeson as A
 import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
 import System.Exit (ExitCode(..))
@@ -109,7 +111,7 @@ import Clay
         FontFaceSrc(..))
 
 import Language.Javascript.JSaddle
-       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, jss, fun, valToText, valToBool, liftJSM)
+       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, jss, fun, valToText, valToBool, valToNumber, liftJSM, runJSM)
 #if defined(ghcjs_HOST_OS)
 -- Under the JS backend jsaddle-warp is a base-only shim whose `run` executes
 -- the JSM directly against the page (no port, no server) — the websocket
@@ -147,9 +149,18 @@ import IDE.Core.State
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
+import IDE.Web.Bridge
+       (Bridge, BridgeError, BridgeValue(..), HelloInfo(..), Side(..),
+        bridgeProtocolVersion, call, callJSON, encodeValue1, expose,
+        exposeJSON, helloHandshake, newDirectBridge, newJsBridge)
+import IDE.Web.BridgeStore
+       (getBackendBridge, getFrontendBridge, setBackendBridge,
+        setFrontendBridge)
 #if defined(ghcjs_HOST_OS)
 import IDE.Web.DemoTerminals (demoTerminals)
-import IDE.Web.FS (fsListFilesRecursive)
+import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
+#else
+import IDE.Web.FS (fsReadFile)
 #endif
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
@@ -370,6 +381,15 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- resync).  NEVER put reflex trigger fires or JS in this slot.
       ideR <- liftIO $ newMVar (const notifyResync, ide)
       liftIO $ setGlobalIDERef ideR  -- so the native macOS menu can run commands
+      -- Frontend↔backend bridge (UI-split stage 1, see IDE.Web.Bridge): here
+      -- both halves share this RTS, so the seam is a direct in-process pair.
+      -- The backend end serves the proof endpoints; the frontend end's are
+      -- registered per window in 'jsMain'.
+      liftIO $ do
+        (feBr, beBr) <- newDirectBridge
+        setFrontendBridge feBr
+        setBackendBridge beBr
+        exposeBackendProofEndpoints beBr
 #if !defined(ghcjs_HOST_OS)
       liftIO $ startCmdServer ideR   -- control socket for the leksah-cmd CLI
 #endif
@@ -526,7 +546,70 @@ develMain :: IO ()
 develMain = do
   dev <- elem "--develop-leksah" <$> getArgs
   newIDE True False dev (debugJSaddle leksahPort)
+
+-- | Mode-B proof of the UI split (see IDE.Web.Bridge): serve the ghcjs demo
+-- page in SPLIT mode — the page runs the frontend half compiled with the GHC
+-- JS backend, while THIS native process runs only the backend half of the
+-- bridge inside each connecting page's jsaddle context (no jsMain — the
+-- frontend owns the DOM).  `leksah-warp --split-frontend`.
+splitFrontendMain :: IO ()
+splitFrontendMain = do
+  dataDir <- getDataDir
+  let site = dataDir </> "docs" </> "website"
+  IO.hPutStrLn IO.stderr $
+    "leksah split-frontend backend on http://127.0.0.1:" <> show leksahPort
+    <> "/ (site root " <> site <> ")"
+  runSettings (setPort leksahPort (setTimeout 3600 defaultSettings)) =<<
+    jsaddleOr defaultConnectionOptions
+              (bridgeBackendMain >> syncPoint)
+              (\req sendResponse ->
+        case (W.requestMethod req, W.pathInfo req) of
+            -- The split page (the ghcjs demo page + the split flag +
+            -- jsaddle.js) — served at the root so its root-absolute asset
+            -- paths (/cm6, /pics, …) resolve against this server.
+            ("GET", []) -> do
+                 html <- LBS.readFile (site </> "try" </> "index-split.html")
+                 sendResponse
+                    $ W.responseLBS H.status200
+                        [("Content-Type", "text/html; charset=utf-8")]
+                      html
+            ("GET", ["jsaddle.js"]) ->
+                 sendResponse
+                    $ W.responseLBS H.status200
+                        [("Content-Type", "application/javascript")]
+                    $ jsaddleJs False
+            _ -> staticApp (defaultWebAppSettings site) req sendResponse)
+
+-- | The backend half's per-page-context entry: attach the backend bridge
+-- end to the page's @window.leksahBridge@, expose the proof endpoints, and
+-- (off the jsaddle thread) handshake and push one notification across.
+bridgeBackendMain :: JSM ()
+bridgeBackendMain = do
+  beBr <- newJsBridge BackendSide
+  liftIO $ do
+    setBackendBridge beBr
+    exposeBackendProofEndpoints beBr
+    void . forkIO $ do
+      r <- helloHandshake beBr (HelloInfo bridgeProtocolVersion "native-backend" [])
+      IO.hPutStrLn IO.stderr $ "[Bridge] backend handshake: " <> show r
+      case r of
+        Right _ -> do
+          -- give the frontend's widget postBuild a moment to expose its
+          -- showNotification endpoint, then prove backend→frontend push
+          threadDelay 2000000
+          nr <- call beBr "showNotification" [BText "hello from the native backend"]
+          IO.hPutStrLn IO.stderr $ "[Bridge] backend→frontend notify: " <> show nr
+        Left _ -> return ()
 #endif
+
+-- | The backend half's stage-1 proof endpoints, identical in dev (direct
+-- bridge in 'newIDE') and split mode ('bridgeBackendMain').
+exposeBackendProofEndpoints :: Bridge -> IO ()
+exposeBackendProofEndpoints beBr = do
+  exposeJSON beBr "echo" (return :: Value -> IO Value)
+  expose beBr "fsReadFile" $ \case
+    [BText fp] -> BBytes <$> fsReadFile (T.unpack fp)
+    _ -> ioError (userError "fsReadFile: expected one path argument")
 
 -- | The default per-window state a freshly-minted (or adopted-but-unseeded)
 -- window inherits: no wide0 tabs, and side/bottom pane visibility taken from the
@@ -632,6 +715,22 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- broadcasts to every context) can tell the windows apart.
   _ <- eval ("window.leksahWindowId = " <> T.pack (show (case wid of WindowId n -> n)))
 #if defined(ghcjs_HOST_OS)
+  -- Split-bridge mode (UI-split stage 1, see IDE.Web.Bridge): the hosting
+  -- page set window.leksahSplitBridge, meaning a NATIVE backend shares this
+  -- page through jsaddle.  Replace the in-process frontend end 'newIDE' made
+  -- with a JS-glue end (before any widget registers endpoints on it), then —
+  -- off this thread — handshake and prove a frontend→backend round trip.
+  split <- valToBool =<< eval ("!!window.leksahSplitBridge" :: Text)
+  when split $ do
+    feBr <- newJsBridge FrontendSide
+    liftIO $ do
+      setFrontendBridge feBr
+      void . forkIO $ do
+        hr <- helloHandshake feBr (HelloInfo bridgeProtocolVersion "ghcjs-frontend" [])
+        IO.hPutStrLn IO.stderr $ "[Bridge] frontend handshake: " <> show hr
+        er <- callJSON feBr "echo" (A.String "hello from the ghcjs frontend")
+        IO.hPutStrLn IO.stderr $
+          "[Bridge] echo across the split: " <> show (er :: Either BridgeError Value)
   -- JS backend: there is no datadir (and no filesystem) to read the bundles
   -- from — the hosting page loads cm6/leksah-cm6.js, xterm.js and its addons
   -- via <script> tags BEFORE the compiled leksah starts, so window.LeksahCM /
@@ -4235,6 +4334,76 @@ main showMenubar macTitlebar wid ide = mdo
                     liftIO $ if tok == ("w" :: Text)
                                then fireActivateTerminals ()
                                else dispatchTmuxPrefix tok
+                _ -> return ())
+        -- Bridge proof hooks (UI-split stage 1, see IDE.Web.Bridge).
+        -- leksahBridgeTest(name, argsJson) drives the FRONTEND end from page
+        -- JS (Promise + window.leksahBridgeLast for `leksah-cmd js eval`);
+        -- __leksahBridgeNotify(msg) pokes the BACKEND end into calling the
+        -- frontend's showNotification — both directions testable from a shell.
+        bridgeCtx <- askJSM
+        let bridgeTestJs = T.unlines
+              [ "window.__leksahBridgeToast = function(msg){"
+              , "  var d = document.createElement('div');"
+              , "  d.className = 'leksah-bridge-toast'; d.textContent = msg;"
+              , "  d.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#333;color:#fff;padding:10px 16px;border-radius:6px;z-index:99999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4)';"
+              , "  document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 4000);"
+              , "};"
+              , "window.__lbtPend = {}; window.__lbtNext = 1; window.leksahBridgeLast = null;"
+              , "window.leksahBridgeTest = function(name, argsJson){"
+              , "  return new Promise(function(res, rej){"
+              , "    var id = window.__lbtNext++;"
+              , "    window.__lbtPend[id] = { res: res, rej: rej };"
+              , "    window.__leksahBridgeTestGo(id, name, argsJson === undefined ? null : argsJson);"
+              , "  });"
+              , "};"
+              , "window.__leksahBridgeTestDone = function(id, ok, json){"
+              , "  window.leksahBridgeLast = { id: id, ok: ok, result: json };"
+              , "  var p = window.__lbtPend[id]; delete window.__lbtPend[id];"
+              , "  if (p) { (ok ? p.res : p.rej)(json); }"
+              , "};"
+              ]
+        _ <- eval bridgeTestJs
+        liftIO $ getFrontendBridge >>= mapM_ (\feBr ->
+            expose feBr "showNotification" $ \bargs -> do
+                let msg = case bargs of
+                        (BText t : _)          -> t
+                        (BJson (A.String t):_) -> t
+                        _                      -> "leksah bridge notification"
+                (`runJSM` bridgeCtx) . void $
+                    jsg ("window" :: Text) ^. js1 ("__leksahBridgeToast" :: Text) msg
+                return BNull)
+        _ <- w ^. jss ("__leksahBridgeTestGo" :: Text) (fun $ \_ _ args -> case args of
+                (idV:nameV:argsJsonV:_) -> do
+                    tid <- valToNumber idV
+                    name <- valToText nameV
+                    argsJson <- valToText argsJsonV
+                    liftIO . void . forkIO $ do
+                        mfe <- getFrontendBridge
+                        (ok, out) <- case mfe of
+                            Nothing -> return (False, "no frontend bridge end")
+                            Just feBr -> do
+                                -- one JSON value → the matching scalar
+                                -- BridgeValue (so both exposeJSON and
+                                -- BText-shaped endpoints accept it)
+                                let vargs = case decodeStrict' (encodeUtf8 argsJson) of
+                                        Nothing              -> []
+                                        Just A.Null          -> []
+                                        Just (A.String t)    -> [BText t]
+                                        Just (A.Bool b)      -> [BBool b]
+                                        Just v               -> [BJson v]
+                                r <- call feBr name vargs
+                                return $ case r of
+                                    Right v -> (True, encodeValue1 v)
+                                    Left e  -> (False, T.pack (show e))
+                        (`runJSM` bridgeCtx) . void $
+                            jsg ("window" :: Text) ^. js3 ("__leksahBridgeTestDone" :: Text)
+                                tid ok out
+                _ -> return ())
+        _ <- w ^. jss ("__leksahBridgeNotify" :: Text) (fun $ \_ _ args -> case args of
+                (msgV:_) -> do
+                    msg <- valToText msgV
+                    liftIO . void . forkIO $ getBackendBridge >>= mapM_ (\beBr ->
+                        void $ call beBr "showNotification" [BText msg])
                 _ -> return ())
         return ()
     -- Mirror the tmuxInterceptPrefix pref into window.LeksahTmux.enabled so the

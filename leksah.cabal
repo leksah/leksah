@@ -295,6 +295,8 @@ library
         IDE.Web.RegionGrabRequest
         IDE.Web.AIContextRequest
         IDE.Web.ScreenshotRequest
+        IDE.Web.Bridge
+        IDE.Web.BridgeStore
         IDE.Web.Events
         IDE.Web.FS
         IDE.Web.HostFlags
@@ -548,6 +550,8 @@ library leksah-nogtk
         IDE.Web.RegionGrabRequest
         IDE.Web.AIContextRequest
         IDE.Web.ScreenshotRequest
+        IDE.Web.Bridge
+        IDE.Web.BridgeStore
         IDE.Web.Events
         IDE.Web.FS
         IDE.Web.HostFlags
