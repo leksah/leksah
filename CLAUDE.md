@@ -28,6 +28,21 @@
   relaunches; plain restart exits 2 (loop rebuilds first), `--no-rebuild` exits
   3 (loop skips the build — use after rebuild-self already built). Both replace
   the older `./dev-relaunch.sh`.
+- **After a `cabal.project`/`flake.nix`/`flake.lock` change, DON'T
+  `rebuild-self` then `restart --no-rebuild`.** `rebuild-self --use-cabal`
+  builds in the **captured `~/.leksah/env.sh`** — a snapshot of the *running*
+  instance's env, i.e. the plan from **before** your change. `restart
+  --no-rebuild` (exit 3) then relaunches that old-env binary under the **new**
+  dev-shell whose haskell.nix v2 slices differ, so the store-sync guard
+  *refuses to overwrite* the changed dylibs and the binary **hangs at
+  `_dyld_start`** (frozen in the dynamic linker before `main`; socket never
+  rebinds, `ping` stays "not responding" though the process is alive — confirm
+  with `sample <pid>`). Instead: after such a change use a **plain `restart`
+  (exit 2, which rebuilds in the new env)**, not `rebuild-self` +
+  `--no-rebuild`. If you're already wedged: kill the instance + loop, `rm
+  ~/.leksah/cmd.sock`, run `nix develop ".?submodules=1#default" --command
+  haskell-nix-cabal-store-sync --force` (the guard prints this exact fix) to
+  reconcile the store to the new slices, then restart the loop.
 - **When NO instance is running**, build with the captured env (config-identical
   PATH): `sh -c '. ~/.leksah/env.sh; cd <repo>; cabal build --builddir
   dist-ghc-9.14.1 <targets>'` (`~/.leksah/env.sh` is a snapshot of the running
