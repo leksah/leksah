@@ -679,17 +679,17 @@
     "leksah-server-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1783678943,
-        "narHash": "sha256-VNxBIqqpYyLPo2LobJCr/Grjkk9/v5KCng+4rE+f93M=",
+        "lastModified": 1783836098,
+        "narHash": "sha256-kKBpmf+vaTcApvEx+NNC9a2M0waCnixXzboV8CU5mWA=",
         "owner": "leksah",
         "repo": "leksah-server",
-        "rev": "7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220",
+        "rev": "0b24e1705d3caef0bf7b7552724cf514554d8a13",
         "type": "github"
       },
       "original": {
         "owner": "leksah",
         "repo": "leksah-server",
-        "rev": "7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220",
+        "rev": "0b24e1705d3caef0bf7b7552724cf514554d8a13",
         "type": "github"
       }
     },

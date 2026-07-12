@@ -18,7 +18,7 @@ packages:
 source-repository-package
   type: git
   location: https://github.com/leksah/leksah-server
-  tag: 7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220
+  tag: 0b24e1705d3caef0bf7b7552724cf514554d8a13
 
 source-repository-package
   type: git

@@ -43,7 +43,7 @@
   # cabal.project.  Wire each to a flake input (same as ffcabal/jsaddle) so the
   # haskell.nix planner resolves them without a network fetch (pure eval) and a
   # plain `nix develop .#` works — no ?submodules=1 needed.
-  inputs.leksah-server-src.url = "github:leksah/leksah-server/7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220";
+  inputs.leksah-server-src.url = "github:leksah/leksah-server/0b24e1705d3caef0bf7b7552724cf514554d8a13";
   inputs.leksah-server-src.flake = false;
   inputs.ltk-src.url = "github:leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f";
   inputs.ltk-src.flake = false;
@@ -81,7 +81,7 @@
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
                   "https://github.com/ghcjs/jsaddle/ead142a5e736f1139a32a0335df48a5661fe1323" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c" = inputs.ffcabal-src;
-                  "https://github.com/leksah/leksah-server/7ae37bd0f5db6d7ddb58098dd1aa0bb0cd9b0220" = inputs.leksah-server-src;
+                  "https://github.com/leksah/leksah-server/0b24e1705d3caef0bf7b7552724cf514554d8a13" = inputs.leksah-server-src;
                   "https://github.com/leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f" = inputs.ltk-src;
                   "https://github.com/leksah/haskellVCSWrapper/b77a455d4250223a6bde047aa0901df72dfb9c7f" = inputs.haskellvcswrapper-src;
                   "https://github.com/leksah/haskellVCSGUI/fbdd7bfaefb49b35a956b79e2958a826e6e86f66" = inputs.haskellvcsgui-src;
