@@ -130,6 +130,13 @@ module IDE.Core.Types (
 ,   CandyTableForth
 ,   CandyTableBack
 ,   KeymapI(..)
+#if defined(ghcjs_HOST_OS)
+    -- Stand-ins for packages that don't build on the JS backend (see their
+    -- definitions below); natively the real ones come from hlint / fsnotify.
+,   Idea(..)
+,   WatchManager(..)
+,   StopListening
+#endif
 
 ,   PackageDescrCache
 ,   ModuleDescrCache
@@ -227,12 +234,16 @@ import qualified Data.Map as Map (Map)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
+#if !defined(ghcjs_HOST_OS)
 import Language.Haskell.HLint (Idea(..))
+#endif
 import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
 import Control.Monad ((>=>))
+#if !defined(ghcjs_HOST_OS)
 import System.FSNotify (StopListening, WatchManager)
+#endif
 import qualified Data.Map as M (fromList, lookup, elems)
 import System.Exit (ExitCode)
 import Data.Int (Int32)
@@ -935,6 +946,22 @@ logRootPath :: Log -> FilePath
 logRootPath LogProject{..} = logBasePath
 logRootPath LogCabal{..} = dropFileName logCabalFile
 logRootPath LogNix{..} = dropFileName logNixFile
+
+#if defined(ghcjs_HOST_OS)
+-- | Stand-in for hlint's 'Language.Haskell.HLint.Idea': hlint (via
+-- ghc-lib-parser, whose RTS-internals hsc doesn't compile) is unavailable on
+-- the JS backend.  'LogRef' stores one and 'IDE.Core.State.canResolve' reads
+-- 'ideaHint' / 'ideaTo'; nothing more of the real record is used here.
+data Idea = Idea { ideaHint :: String, ideaTo :: Maybe String }
+    deriving (Eq, Show)
+
+-- | Stand-ins for fsnotify's types: fsnotify (via unix-compat) doesn't build
+-- on the JS backend, and there is no file watching in a browser anyway.  The
+-- '_fsnotify' / '_watchers' fields still exist; the JS branch of
+-- 'IDE.Workspaces.Writer' registers only no-op watchers.
+data WatchManager = NoWatchManager
+type StopListening = IO ()
+#endif
 
 -- | Represents a message about a part of the source code
 data LogRef = LogRef {

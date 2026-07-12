@@ -175,7 +175,10 @@ import IDE.Pane.WebKit.Documentation
 import IDE.Pane.WebKit.Output
        (loadOutputUri, loadOutputHtmlFile, showOutputPane)
 import System.Log.Logger (debugM)
+#if !defined(ghcjs_HOST_OS)
+-- vado pulls monad-logger→fast-logger, which doesn't build on the JS backend.
 import System.Process.Vado (getMountPoint)
+#endif
 import qualified Data.Text as T
        (unlines, reverse, null, dropWhile, lines, isPrefixOf,
         stripPrefix, replace, unwords, takeWhile, pack, unpack)
@@ -198,7 +201,10 @@ import qualified Data.Map as M
        (toList, fromList)
 import Control.Lens ((.~), (?~), (%~), _Just, to)
 import System.Process (getProcessExitCode, showCommandForUser)
-#ifdef MIN_VERSION_unix
+-- unix is a boot library even on the JS backend, but there the process
+-- internals hold JSVal pids, so the POSIX group-kill doesn't typecheck —
+-- fall back to plain terminateProcess there.
+#if defined(MIN_VERSION_unix) && !defined(ghcjs_HOST_OS)
 import System.Posix (sigKILL, signalProcessGroup, getProcessGroupIDOf)
 import System.Process.Internals
        (withProcessHandle, ProcessHandle__(..))
@@ -215,6 +221,11 @@ import Distribution.PackageDescription.Parsec
 #endif
 #if MIN_VERSION_Cabal(3,14,0)
 import Distribution.Utils.Path (makeSymbolicPath, SymbolicPathX)
+#endif
+#if defined(ghcjs_HOST_OS)
+import Distribution.PackageDescription.Parsec
+       (parseGenericPackageDescriptionMaybe)
+import IDE.Web.FS (fsReadFile, fsDoesFileExist, fsListFilesRecursive)
 #endif
 import Distribution.Pretty (prettyShow)
 import qualified System.FilePath.Glob as Glob (globDir, compile)
@@ -392,7 +403,11 @@ withToolCommand project compiler (Just (cmd, args)) continuation = do
     liftIO $ debugM "leksah" $ "withToolCommand " <> show (project, compiler, cmd, args)
     prefs' <- readIDE prefs
     -- Nix cache will not work over vado
+#if defined(ghcjs_HOST_OS)
+    let enableNixCache = True  -- no vado (or nix) in the browser
+#else
     enableNixCache <- if useVado prefs' then liftIO $ isRight <$> getMountPoint (pjDir $ pjKey project) else return True
+#endif
     nixShellFile (pjKey project) >>= \case
         _ | enableNixCache -> do
             let nixContinuation env = continuation ("bash", ["-c", T.pack . showCommandForUser cmd $ map T.unpack args], Just env)
@@ -417,13 +432,22 @@ normalVerbosity = normal
 -- Cabal 3.14 moved the cabal-file argument to a SymbolicPath and added a
 -- working-directory argument; older Cabal takes a plain FilePath.
 readGPD :: Verbosity -> FilePath -> IO GenericPackageDescription
-#if MIN_VERSION_Cabal(3,14,0)
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: the .cabal file lives in the page-seeded mock tree
+-- (IDE.Web.FS), so parse it from bytes instead of opening a real file.
+readGPD _ f = parseGenericPackageDescriptionMaybe <$> fsReadFile f >>= \case
+    Just gpd -> return gpd
+    Nothing  -> ioError (userError ("Failed to parse " <> f))
+#elif MIN_VERSION_Cabal(3,14,0)
 readGPD v f = readGenericPackageDescription v Nothing (makeSymbolicPath f)
+#else
+readGPD v f = readGenericPackageDescription v f
+#endif
+#if MIN_VERSION_Cabal(3,14,0)
 -- main-module / exe paths became SymbolicPaths in Cabal 3.14.
 mainPath :: SymbolicPathX allowAbsolute from to -> FilePath
 mainPath p = getSymbolicPath p
 #else
-readGPD v f = readGenericPackageDescription v f
 mainPath :: FilePath -> FilePath
 mainPath p = p
 #endif
@@ -680,7 +704,7 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
                     Nothing  -> return ()
                 compile compilers
 
-#ifdef MIN_VERSION_unix
+#if defined(MIN_VERSION_unix) && !defined(ghcjs_HOST_OS)
 killProcess :: ProcessHandle -> IO ()
 killProcess ph =
   -- The process (and hence its group) may have already exited between our
@@ -1412,7 +1436,11 @@ idePackageFromPath' ipdCabalFile = do
                 packp               = IDEPackage {..}
                 pfile               = dropExtension ipdCabalFile
             pack <- do
+#if defined(ghcjs_HOST_OS)
+                flagFileExists <- liftIO $ fsDoesFileExist (pfile ++ leksahFlagFileExtension)
+#else
                 flagFileExists <- liftIO $ doesFileExist (pfile ++ leksahFlagFileExtension)
+#endif
                 if flagFileExists
                     then liftIO $ readFlags (pfile ++ leksahFlagFileExtension) packp
                     else return packp
@@ -1484,6 +1512,15 @@ ideProjectFromKey key = do
 --                ".yaml" -> Just (StackTool (StackProject filePath), extractStackPackageList)
 --                _ -> Nothing) of
 --        Just (key, extractPackageList) -> do
+#if defined(ghcjs_HOST_OS)
+            -- Browser demo: no Glob over a real file system — take every
+            -- .cabal file under the project directory from the page-seeded
+            -- mock tree (the demo tree is tiny, so the packages: globs are
+            -- not interpreted).  Paths in the tree are already absolute.
+            let dir = pjDir key
+            cabalFiles <- liftIO $ filter ((== ".cabal") . takeExtension)
+                              <$> fsListFilesRecursive dir
+#else
             patterns <- liftIO $ map (Glob.compile . (</> "*.cabal")) <$>
                 case key of
                     CabalTool (CabalProject filePath) -> extractCabalPackageList <$> T.readFile filePath
@@ -1497,6 +1534,7 @@ ideProjectFromKey key = do
             let dir = pjDir key
             cabalFiles <- liftIO $ mapM canonicalizePath =<< map (dir </>) . concat <$>
                               Glob.globDir patterns dir
+#endif
             packages <- fmap catMaybes . mapM idePackageFromPath' $ nub cabalFiles
             return . Just $ Project { pjKey = key, pjPackageMap = mkPackageMap packages }
           `catchIDE`

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- | Browser stub of leksah-server's IDE.Utils.VersionUtils (GHC JavaScript
 -- backend only; picked over @vendor/leksah-server/src@ by hs-source-dirs
 -- order).  The real module shells out to ghc/haddock and bakes in

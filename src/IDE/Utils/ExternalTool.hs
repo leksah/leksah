@@ -36,7 +36,11 @@ import Control.Exception (catch, SomeException(..))
 import Control.Lens ((?~))
 import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
 import Control.Concurrent (forkIO)
+#if !defined(ghcjs_HOST_OS)
+-- vado (run-build-on-the-machine-hosting-the-mount, over ssh) pulls
+-- monad-logger→fast-logger, which doesn't build on the JS backend.
 import System.Process.Vado (vado, readSettings, getMountPoint)
+#endif
 import Data.Conduit ((.|), runConduit, ConduitT)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Maybe (isNothing)
@@ -95,6 +99,11 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
             triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
         -- If vado is enabled then look up the mount point and transform
         -- the execuatble to "ssh" and the arguments
+#if defined(ghcjs_HOST_OS)
+        -- No vado in the browser (and no ssh to exec anyway).
+        let _unusedUseVado = useVado prefs'
+        (executable', args') <- return (executable, args)
+#else
         mountPoint <- if useVado prefs' then liftIO $ getMountPoint dir else return $ Right ""
         (executable', args') <- case mountPoint of
                                     Left mp -> do
@@ -102,6 +111,7 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
                                         a <- liftIO $ vado mp s dir [] executable (map T.unpack args)
                                         return ("ssh", map T.pack a)
                                     _ -> return (executable, args)
+#endif
         -- Run the tool
         (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
         -- The stored interrupt action can race the tool exiting on its own:

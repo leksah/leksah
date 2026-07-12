@@ -39,6 +39,7 @@ module IDE.Utils.Tool (
 
 import Control.Concurrent
        (MVar, Chan, newChan, newEmptyMVar, readMVar, tryPutMVar)
+import Control.DeepSeq (NFData(..))
 import Control.Monad.IO.Class (MonadIO)
 import Data.Conduit (ConduitT)
 import Data.Map (Map)
@@ -55,6 +56,13 @@ data ToolOutput = ToolInput Text
                 | ToolOutput Text
                 | ToolPrompt Text
                 | ToolExit ExitCode deriving(Eq, Show)
+
+instance NFData ToolOutput where
+    rnf (ToolInput t)  = rnf t
+    rnf (ToolError t)  = rnf t
+    rnf (ToolOutput t) = rnf t
+    rnf (ToolPrompt t) = rnf t
+    rnf (ToolExit c)   = rnf c
 
 toolline :: ToolOutput -> Text
 toolline (ToolInput l)  = l

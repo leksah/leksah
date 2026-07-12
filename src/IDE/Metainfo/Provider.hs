@@ -4,6 +4,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
+-- The GHC JavaScript backend builds leksah-nogtk without the `ghc` package,
+-- so cabal defines no VERSION_ghc macro there; it only names metadata paths.
+#ifndef VERSION_ghc
+#define VERSION_ghc "9.14.1"
+#endif
 -----------------------------------------------------------------------------
 --
 -- Module      :  IDE.Metainfo.Provider

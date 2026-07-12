@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -48,14 +49,18 @@ import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative)
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (unpack, pack)
+#if !defined(ghcjs_HOST_OS)
 import System.FSNotify (watchDir, Event(..), watchTree, eventPath)
+#endif
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
 import qualified Data.Map as Map (empty)
 import Data.Text (Text)
 import Data.Map (Map)
 import GHC.Generics (Generic)
-import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
+-- Workspace file access goes through the IDE.Web.FS seam (real FS
+-- natively; the in-memory demo tree in the browser build).
+import IDE.Web.FS (fsReadFileLazy, fsWriteFileLazy)
 import Data.Aeson
        (eitherDecode, ToJSON(..), FromJSON(..))
 import Data.Aeson.Types
@@ -105,12 +110,12 @@ writeWorkspace ws = do
                        & wsVersion .~ workspaceVersion
     setWorkspace $ Just newWs
     newWs' <- liftIO $ makePathsRelative newWs (ws ^. wsFile)
-    liftIO . LBS.writeFile (ws ^. wsFile) $ encodePretty newWs'
+    liftIO . fsWriteFileLazy (ws ^. wsFile) $ encodePretty newWs'
 
 readWorkspace :: FilePath -> IDEM (Either String Workspace)
 readWorkspace fp = do
     liftIO $ debugM "leksah" "readWorkspace"
-    liftIO (eitherDecode <$> LBS.readFile fp) >>= \case
+    liftIO (eitherDecode <$> fsReadFileLazy fp) >>= \case
         Left pe -> error $ "Error reading file " ++ show fp ++ " " ++ show pe
         Right ws -> do
             ws' <- makePathsAbsolute ws fp
@@ -242,17 +247,28 @@ setWorkspace mbWs = do
                             Just component -> " " <> component)
     case mbWs of
         Just ws -> do
+#if !defined(ghcjs_HOST_OS)
+            -- Only the (native-only) watcher callbacks below use these.
             fsn <- readIDE fsnotify
             tb <- readIDE triggerBuild
-            watchersMVar <- readIDE watchers
             extModsMVar <- readIDE externalModified
             let rebuild = void . liftIO $ tryPutMVar tb ()
+#endif
+            watchersMVar <- readIDE watchers
             liftIO $ do
                 oldWatchers <- takeMVar watchersMVar
                 let projectFiles = S.fromList $ map pjKey $ ws ^. wsProjects
                     packageFiles = S.fromList $ map ipdCabalFile $ pjPackages =<< ws ^. wsProjects
                     newProjects = filter (not . (`M.member` fst oldWatchers) . pjKey) $ ws ^. wsProjects
                     newPackages = filter (not . (`M.member` snd oldWatchers) . ipdCabalFile) $ pjPackages =<< ws ^. wsProjects
+#if defined(ghcjs_HOST_OS)
+                -- No file watching in the browser demo: shape-compatible
+                -- no-op watchers (StopListening = pure ()).
+                newProjectWatchers <- forM newProjects $ \project ->
+                    return (pjKey project, return ())
+                newPackageWatchers <- forM newPackages $ \package ->
+                    return (ipdCabalFile package, return ())
+#else
                 newProjectWatchers <- forM newProjects $ \project -> do
                     debugM "leksah" $ "Watching project " <> show (pjKey project)
                     fmap (pjKey project,) <$> watchDir fsn (pjDir $ pjKey project) (\case
@@ -282,6 +298,7 @@ setWorkspace mbWs = do
                                         extMods <- liftIO $ takeMVar extModsMVar
                                         liftIO $ putMVar extModsMVar =<< evaluate (S.insert f extMods)
                                         rebuild
+#endif
                 let (keepProjectWatchers, discardProjectWatches) = M.partitionWithKey (\f _ -> f `S.member` projectFiles) $ fst oldWatchers
                     (keepPackageWatchers, discardPackageWatches) = M.partitionWithKey (\f _ -> f `S.member` packageFiles) $ snd oldWatchers
                 forM_ discardProjectWatches id

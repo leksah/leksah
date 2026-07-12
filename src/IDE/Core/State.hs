@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -138,7 +139,11 @@ import Control.Lens
        ((^.), view, over, (.~), _Just, Getter, to, _1, _2, _3,
         Getting, Lens')
 import qualified Data.Foldable as F (Foldable(..))
+#if !defined(ghcjs_HOST_OS)
+-- On the JS backend hlint is unavailable (ghc-lib-parser doesn't build);
+-- there the Idea stand-in comes from IDE.Core.Types via Reexported above.
 import Language.Haskell.HLint (Idea(..))
+#endif
 import System.Log.Logger (debugM, updateGlobalLogger, setLevel)
 import qualified System.Log.Logger as HL (setHandlers)
 import System.Log (Priority(..))

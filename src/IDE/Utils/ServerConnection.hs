@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -16,6 +17,20 @@
 --
 -----------------------------------------------------------------------------
 
+#if defined(ghcjs_HOST_OS)
+
+-- Browser build: there is no leksah-server process (and no TCP to reach one);
+-- metadata commands are quietly dropped.
+module IDE.Utils.ServerConnection (
+    doServerCommand,
+) where
+
+import IDE.Core.State (ServerCommand, ServerAnswer, IDEM)
+
+doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEM ()
+doServerCommand _ _ = return ()
+
+#else
 module IDE.Utils.ServerConnection (
     doServerCommand,
 ) where
@@ -138,3 +153,5 @@ waitForServer prefs' s = do
 
 
 
+
+#endif
