@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -13,7 +14,9 @@ import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Lens (view, (^..), (^.))
 
-import qualified Data.ByteString as BS (readFile, writeFile)
+-- File access goes through the IDE.Web.FS seam (real FS natively; the
+-- in-memory demo tree in the browser build).
+import IDE.Web.FS (fsReadFile, fsWriteFile, fsDoesFileExist)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DM (lookup)
 import Data.Foldable (toList)
@@ -59,7 +62,6 @@ import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.Grep (GrepResult(..))
 import qualified IDE.LSP as LSP
 
-import System.Directory (doesFileExist)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeDirectory, takeFileName)
 import System.Process (readProcessWithExitCode)
@@ -114,6 +116,11 @@ diffActionJs HideDiff   = "hideDiff"
 --   * `Just ""`  — in a repo but untracked/new (every line is new)
 --   * `Just txt` — tracked: the HEAD version
 gitOriginal :: FilePath -> IO (Maybe Text)
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: no processes (and no git repo) — skip dirty-line
+-- highlighting rather than dying on the createProcess IOException.
+gitOriginal _ = return Nothing
+#else
 gitOriginal file = do
   let dir = takeDirectory file
       name = takeFileName file
@@ -125,6 +132,7 @@ gitOriginal file = do
         ExitSuccess -> T.pack out
         _           -> ""
     _ -> return Nothing
+#endif
 
 -- | Push the current LogRefs to the editor as CM6 mark decorations.
 updateTextMarks :: JSVal -> [LogRef] -> JSM ()
@@ -174,7 +182,7 @@ editorWidget ide allEvents saveFileE = do
   openFileE :: Event t FilePath <- fmapMaybe id <$> performEvent (ffor openFileRequestsE $ \case
     (True, file) -> return $ Just file
     (_, file) ->
-      liftIO (doesFileExist file) >>= \case
+      liftIO (fsDoesFileExist file) >>= \case
         False -> return Nothing
         True -> return $ Just file)
   let gotoLocationE :: Event t LogRef = fmapMaybe listToMaybe $ (^.. _ErrorsGoto) <$>
@@ -229,8 +237,8 @@ editorWidget ide allEvents saveFileE = do
       -- pending Promise in this window's own context.
       (compRespE, fireCompResp) <- newTriggerEvent
       logRefsD <- holdUniqDyn $ fromMaybe [] . M.lookup file <$> logRefsByFileD
-      exists <- liftIO (doesFileExist file)
-      liftIO (if exists then decodeUtf8' <$> BS.readFile file else return (Right "")) >>= \case
+      exists <- liftIO (fsDoesFileExist file)
+      liftIO (if exists then decodeUtf8' <$> fsReadFile file else return (Right "")) >>= \case
         Left _e -> return ()
         Right contents -> mdo
           -- data-file lets inline JS map LeksahCM.activeView back to its path
@@ -343,7 +351,7 @@ editorWidget ide allEvents saveFileE = do
           performEvent_ $ ffor (attach (current editorD) saveThisE) $ \case
               (Just editorView, _) -> do
                   txt <- liftJSM $ valToText =<< jsg ("LeksahCM" :: Text) ^. js1 ("getDoc" :: Text) editorView
-                  liftIO $ BS.writeFile file (encodeUtf8 txt)
+                  liftIO $ fsWriteFile file (encodeUtf8 txt)
                   liftIO $ LSP.documentSaved file txt
               _ -> return ()
           -- Gutter context menu (rendered in Reflex; the chosen action calls

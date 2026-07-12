@@ -1,16 +1,25 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE LambdaCase #-}
 module IDE.Web.Main
-  ( develMain
+  (
+#if defined(ghcjs_HOST_OS)
+  -- GHC JavaScript backend (the in-browser web demo): no warp server, no
+  -- jsaddle websocket transport — jsaddle-warp's `run` drives the page's own
+  -- DOM directly, so the server-side entry points don't exist here.
+    browserMain
+#else
+    develMain
+  , startJSaddle
+  , indexHtml
+#endif
   , newIDE
   , main
   , css
-  , startJSaddle
   , jsMain
-  , indexHtml
   , mintWindowId
   ) where
 
@@ -23,7 +32,12 @@ import Control.Exception (SomeException, catch)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import GHC.Stats
        (getRTSStats, getRTSStatsEnabled, RTSStats(..), GCDetails(..))
+#if defined(ghcjs_HOST_OS)
+import qualified System.IO as IO
+       (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode(..))
+#else
 import qualified System.IO as IO (hPutStrLn, stderr, hSetBuffering, BufferMode(..))
+#endif
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), _Just)
 import Control.Monad (forever, forM, forM_, unless, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -70,8 +84,11 @@ import System.Exit (ExitCode(..))
 import System.FilePath (takeFileName, takeExtension, dropFileName, (</>))
 import System.Environment (getArgs, setEnv)
 import IDE.Utils.ExitImmediately (exitImmediately)
+#if !defined(ghcjs_HOST_OS)
 import System.FSNotify (withManager)
+#endif
 
+#if !defined(ghcjs_HOST_OS)
 import Network.Socket (withSocketsDo)
 import qualified Network.HTTP.Types as H (status200, status504)
 import qualified Network.Wai as W
@@ -83,6 +100,7 @@ import Network.Wai.Handler.Warp
 import Network.WebSockets (defaultConnectionOptions)
 
 import Criterion.Measurement (initializeTime)
+#endif
 
 import Clay
        (height, pct, width, fontFaceSrc, fontWeight, fontStyle,
@@ -92,12 +110,19 @@ import Clay
 
 import Language.Javascript.JSaddle
        (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, jss, fun, valToText, valToBool, liftJSM)
+#if defined(ghcjs_HOST_OS)
+-- Under the JS backend jsaddle-warp is a base-only shim whose `run` executes
+-- the JSM directly against the page (no port, no server) — the websocket
+-- transport (jsaddleJs/jsaddleOr/debugWrapper) doesn't exist there.
+import qualified Language.Javascript.JSaddle.Warp as JSW (run)
+#else
 import Language.Javascript.JSaddle.Warp
        (jsaddleJs, jsaddleOr, debugWrapper)
 import Language.Javascript.JSaddle.Terminal.Bootstrap (bootstrapHtml)
 import IDE.Web.JsaddleTunnel (tunnelSyncRequest)
-import GHCJS.DOM.Types (askJSM)
 import GHCJS.DOM.Debug (addDebugMenu)
+#endif
+import GHCJS.DOM.Types (askJSM)
 
 import Reflex
        (switchDyn, switchHold, foldDyn, ffor,
@@ -121,8 +146,14 @@ import IDE.Core.State
         flipMirror, flipMru, ideVersion, focusLog, metaLog)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
+import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
+#if defined(ghcjs_HOST_OS)
+import IDE.Web.DemoTerminals (demoTerminals)
+import IDE.Web.FS (fsListFilesRecursive)
+#endif
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
+import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel)
 import IDE.Web.Theme (themeVarsCss)
 import IDE.Web.WindowBridge
@@ -146,8 +177,16 @@ import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest (requestOpenWindow, requestRaiseWindow)
 import qualified IDE.TextEditor.Yi.Config as Yi (start)
+#if defined(ghcjs_HOST_OS)
+-- Browser: no config dir or data files — 'newIDE' bakes in the defaults
+-- instead of loading prefs/candy from disk.  WatchManager is Core.Types'
+-- fsnotify stand-in (see the withManager shim below).
+import IDE.Core.Types (CandyTable(..), WatchManager(..))
+import IDE.Preferences (defaultPrefs, writePrefs)
+#else
 import IDE.Preferences (readPrefs, writePrefs)
 import IDE.SourceCandy (parseCandy)
+#endif
 import IDE.TextEditor.Yi.Config (defaultYiConfig)
 import IDE.Utils.FileUtils
        (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave)
@@ -204,12 +243,33 @@ import IDE.Workspaces (backgroundMake)
 
 -- > :fork 1 IDE.Web.Main.develMain
 
+#if defined(ghcjs_HOST_OS)
+-- | The JS backend has no sockets (and no Network.Socket import above); the
+-- native no-op wrapper is reproduced here so 'newIDE' reads the same.
+withSocketsDo :: IO a -> IO a
+withSocketsDo = id
+
+-- | No criterion-measurement on the JS backend (its cycle-counter cbits
+-- don't build); nothing in the browser reads the timer it would initialise.
+initializeTime :: IO ()
+initializeTime = return ()
+
+-- | No fsnotify on the JS backend (unix-compat doesn't build).  The stand-in
+-- 'WatchManager' in IDE.Core.Types carries no state, and the JS branch of
+-- IDE.Workspaces.Writer registers no watchers, so this just runs the body.
+withManager :: (WatchManager -> IO a) -> IO a
+withManager f = f NoWatchManager
+#endif
+
 -- | First 'Bool': whether to render the web menu bar (hidden for
 -- @leksah-wkwebview@, which has a native macOS menu).  Second 'Bool':
 -- develop-leksah mode — exit with code 2 when the leksah package is rebuilt in
 -- the IDE, so a wrapper (leksah-nix.sh) can rebuild and relaunch.
 newIDE :: Bool -> Bool -> Bool -> (JSM () -> IO ()) -> IO ()
 newIDE showMenubar macTitlebar developLeksah runJs = do
+  -- Browser-hosted (warp / web demo) exactly when the web menu bar shows;
+  -- recorded process-globally for deeply nested readers (tab flip hints).
+  setBrowserHosted showMenubar
   -- The Changes / file-tree / workspace panes poll `git status` and `git diff`
   -- every few seconds; those refresh the index and so take .git/index.lock,
   -- contending with git commands the user (or an agent) runs in a terminal.
@@ -224,10 +284,29 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
   -- threads (wlog, [MUT], [meta], focus) interleave char-by-char.  LineBuffering
   -- makes each hPutStrLn atomic under GHC's handle lock, keeping log lines whole.
   IO.hSetBuffering IO.stderr IO.LineBuffering
+#if defined(ghcjs_HOST_OS)
+  -- In the browser stdout is BLOCK-buffered: putStrLn diagnostics sit in the
+  -- buffer until it fills, so console ordering lies and a crash swallows the
+  -- tail.  LineBuffering flushes each line as one console write (NoBuffering
+  -- would emit one console line PER CHARACTER).
+  IO.hSetBuffering IO.stdout IO.LineBuffering
+#endif
   let yiConfig = defaultYiConfig
   initializeTime
   exitCode <- newIORef ExitSuccess
   withSocketsDo $ do
+#if defined(ghcjs_HOST_OS)
+    -- Browser: no config dir and no data files to read — bake in the
+    -- defaults (prefs, an empty candy table, an empty nix cache), tweaked
+    -- for the demo: ⌘-held shortcut badges on (defaultPrefs has them off,
+    -- and there is no prefs file to turn them on).
+    let initPrefs = defaultPrefs { showShortcutBadges = True }
+    withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
+      let candySt = CT ([], [])
+
+      triggerBuildVar <- newEmptyMVar
+      let nixCache = mempty
+#else
     dataDir         <- getDataDir
 
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
@@ -240,6 +319,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 
       triggerBuildVar <- newEmptyMVar
       nixCache <- loadNixCache
+#endif
       externalModified <- newMVar mempty
       watchers <- newMVar (mempty, mempty)
       let ide = IDE
@@ -290,18 +370,24 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- resync).  NEVER put reflex trigger fires or JS in this slot.
       ideR <- liftIO $ newMVar (const notifyResync, ide)
       liftIO $ setGlobalIDERef ideR  -- so the native macOS menu can run commands
+#if !defined(ghcjs_HOST_OS)
       liftIO $ startCmdServer ideR   -- control socket for the leksah-cmd CLI
+#endif
       -- Single process-wide drains for the "act on the active window" bridges
       -- (close/save/find/prefs/open-file); each window's network registers its
       -- triggers via 'registerWindowBridge' and the drain routes to the frontmost.
       liftIO $ startWindowBridgeDrains ideR
+#if !defined(ghcjs_HOST_OS)
       -- Detach control-mode clients left over from previous runs BEFORE any
       -- terminal attaches: they wedge on leksah exit, stay counted as attached,
       -- and their stale 80x24 sizes clamp every window they're attached to.
       liftIO reapControlClients
+#endif
+#if !defined(ghcjs_HOST_OS)
       -- GC monitor (needs +RTS -T, set via -with-rtsopts): log every major
       -- collection with its pause to stderr, so UI hitches can be correlated
       -- with GC (or ruled out) by watching the leksah-nix.sh window.
+      -- (JS backend: getRTSStatsEnabled has no JS-RTS shim.)
       _ <- liftIO . forkIO $ do
           enabled <- getRTSStatsEnabled
           when enabled $ do
@@ -318,6 +404,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                       threadDelay 250000
                       loop mg
               loop 0
+#endif
       -- Develop mode: rebuilding the leksah package in the IDE triggers
       -- QuitToRestart.  The Gtk front end handles that via its application; the
       -- web front ends have no such hook, so exit with code 2 and let the
@@ -349,7 +436,13 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                   when there $ do
                       removeFile trigger `catch` \(_ :: SomeException) -> return ()
                       exitImmediately (ExitFailure 2)
+#if defined(ghcjs_HOST_OS)
+      -- The browser demo's workspace lives in the page-seeded mock tree
+      -- (window.leksahDemoFiles → IDE.Web.FS).
+      let filePath = "/demo/demo.lkshw"
+#else
       let filePath = "/Users/hamish/leksah.lkshw"
+#endif
       liftIO $ (`reflectIDE` ideR) $
           catchIDE (
               Writer.readWorkspace filePath >>= \case
@@ -379,14 +472,30 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- natively (Cocoa per-window frame autosave), so none are stored here.
       liftIO $ do
         mbSession <- readWebSession
+#if defined(ghcjs_HOST_OS)
+        -- Browser demo: the canned sessions from the page (see
+        -- IDE.Web.DemoTerminals) stand in for live tmux sessions.
+        liveTerms <- demoTerminals
+#else
         liveTerms <- listTerminalSessions
+#endif
         let liveIds  = map fst liveTerms
             keepTab k = case k of
               TerminalKey n  -> n `elem` liveIds
               PreferencesKey -> False   -- transient, never restore
               _              -> True
+#if defined(ghcjs_HOST_OS)
+            -- Seed a tab per canned session so the demo shows its terminals at
+            -- first boot (there is no saved web session in the browser); the
+            -- page's auto-opened editor tab lands on top of these.
+            demoTabs = map (TerminalKey . fst) liveTerms
+            dfltWin  = WebWindowSession demoTabs (listToMaybe demoTabs)
+                                        (tallVisibility initPrefs)
+                                        (wide1Visibility initPrefs)
+#else
             dfltWin  = WebWindowSession [] Nothing (tallVisibility initPrefs)
                                         (wide1Visibility initPrefs)
+#endif
             wwsList  = case mbSession of
                          Just s | not (null (wsWindows s)) -> wsWindows s
                          _                                 -> [dfltWin]
@@ -405,10 +514,19 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         mapM_ requestOpenWindow [1 .. nWins - 1]
       runJs $ jsMain showMenubar macTitlebar (Just (WindowId 0)) ideR
 
+#if defined(ghcjs_HOST_OS)
+-- | Entry point of the JS-backend front end (src-ghcjs/Main.hs): the shared
+-- 'newIDE' → 'jsMain' pipeline, run directly against the hosting page's DOM.
+-- Web menu bar on (there is no native menu), mac title bar off, develop mode
+-- off (there is no wrapper loop to relaunch us).
+browserMain :: IO ()
+browserMain = newIDE True False False (JSW.run leksahPort)
+#else
 develMain :: IO ()
 develMain = do
   dev <- elem "--develop-leksah" <$> getArgs
   newIDE True False dev (debugJSaddle leksahPort)
+#endif
 
 -- | The default per-window state a freshly-minted (or adopted-but-unseeded)
 -- window inherits: no wide0 tabs, and side/bottom pane visibility taken from the
@@ -502,7 +620,9 @@ flipOwnerWindow wins fi =
 jsMain :: Bool -> Bool -> Maybe WindowId -> IDERef -> JSM ()
 jsMain showMenubar macTitlebar mbWid ideR = do
   -- enableLogging True -- Uncomment this to add verbose JSaddle logging
+#if !defined(ghcjs_HOST_OS)
   dataDir <- liftIO getDataDir
+#endif
   ctx <- askJSM
   -- Resolve this connection's window identity: adopt the id the native side
   -- pre-created (restore / New Window), or mint one (the first wkwebview window
@@ -511,6 +631,19 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- Tag this context with its window id, so tooling (leksah-cmd js eval, which
   -- broadcasts to every context) can tell the windows apart.
   _ <- eval ("window.leksahWindowId = " <> T.pack (show (case wid of WindowId n -> n)))
+#if defined(ghcjs_HOST_OS)
+  -- JS backend: there is no datadir (and no filesystem) to read the bundles
+  -- from — the hosting page loads cm6/leksah-cm6.js, xterm.js and its addons
+  -- via <script> tags BEFORE the compiled leksah starts, so window.LeksahCM /
+  -- Terminal / FitAddon etc. already exist here.  The xterm CSS however must
+  -- come through mainWidgetWithCss like it does natively (page-seeded text,
+  -- window.leksahXtermCss), NOT via a page <link>: mainWidgetWithCss rebuilds
+  -- <head> with the app's own <style>, dropping any page stylesheet link —
+  -- the terminals then render unstyled (.xterm-screen falls to static flow
+  -- far below its pane, xterm's IntersectionObserver reports it off-screen
+  -- and PAUSES rendering, and the pane shows empty).
+  xtermCss <- encodeUtf8 <$> (valToText =<< eval ("window.leksahXtermCss || ''" :: Text))
+#else
   -- CodeMirror 6 (bundled, exposes window.LeksahCM). It injects its own
   -- styles (incl. the editor theme) at runtime, so there is no CSS to load.
   _ <- liftIO (readFile $ dataDir </> "cm6/leksah-cm6.js") >>= eval
@@ -532,10 +665,11 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- OSC 52: programs in a terminal (vim/tmux copy-mode, incl. over ssh where
   -- pbcopy can't reach) set the system clipboard.
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-clipboard.js") >>= eval
+#endif
 
   -- Makes project-file paths in terminal output Ctrl-clickable (window.LeksahTermLinks).
   _ <- eval terminalLinksJs
-  _ <- eval badgesJs
+  _ <- eval (badgesJs showMenubar)
 
   -- Defines window.LeksahTmux: the tmux C-b prefix interceptor attached to each
   -- xterm.  Enabled per the tmuxInterceptPrefix pref (mirrored in from reflex).
@@ -601,8 +735,9 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   _ <- eval paneHlJs
   _ <- eval hintsJs
 
-  -- window.leksahSetColorIcons: swap every /pics/*.svg between the monochrome
-  -- default and the coloured set (/pics/color/*.svg), driven by the pref.
+  -- window.leksahSetColorIcons: swap every SVG icon under /pics between the
+  -- monochrome default and the coloured set under /pics/color, per the pref.
+  -- (No glob spellings in comments here: CPP reads slash-star as a comment.)
   _ <- eval colorIconsJs
 
   -- The Claude-coordination traffic light (top-right dot): leksahTestStart /
@@ -654,7 +789,12 @@ jsMain showMenubar macTitlebar mbWid ideR = do
           -- Load-once guard (above) means one metadata load serves every OS
           -- window.  Historically kept OFF because the load ballooned the heap to
           -- 500MB+; re-enabled here — flip back to False if the heap regresses.
+#if defined(ghcjs_HOST_OS)
+          -- No leksah-server, no config dir, no packagedb in the browser demo.
+          let metadataEnabled = False
+#else
           let metadataEnabled = True
+#endif
           metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun
                   <> " metadataEnabled=" <> show metadataEnabled
           if metadataEnabled && firstToRun
@@ -714,22 +854,34 @@ jsMain showMenubar macTitlebar mbWid ideR = do
       return ()
   liftIO $ threadDelay 1000000000
 
+#if !defined(ghcjs_HOST_OS)
+-- (A list rather than a multi-line string gap: CPP splices the gap's
+-- backslash-newlines, mangling the literal.)
 indexHtml :: ByteString
-indexHtml =
-    "<!DOCTYPE html>\n\
-    \<html>\n\
-    \<head>\n\
-    \<title>JSaddle</title>\n\
-    \</head>\n\
-    \<body>\n\
-    \</body>\n\
-    \</html>"
+indexHtml = BS.unlines
+    [ "<!DOCTYPE html>"
+    , "<html>"
+    , "<head>"
+    , "<title>JSaddle</title>"
+    , "</head>"
+    , "<body>"
+    , "</body>"
+    , "</html>"
+    ]
+#endif
 
 -- | All files in the workspace, for the find bar's workspace-tree search.  Uses
 -- @git ls-files@ (tracked + untracked, respecting .gitignore — matching what
 -- the tree shows) per package directory, falling back to a recursive walk for
 -- non-git directories.
 enumerateWorkspaceFiles :: Bool -> Bool -> [FilePath] -> IO [FilePath]
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: enumerate the mock tree (window.leksahDemoFiles).  Feeds the
+-- find bar AND LeksahTermLinks.setProjectFiles — the file set terminal
+-- output links/hovers resolve against.
+enumerateWorkspaceFiles _ _ dirs =
+    nub . concat <$> mapM fsListFilesRecursive (nub dirs)
+#else
 enumerateWorkspaceFiles showHidden showIgnored dirs =
     nub . concat <$> mapM enumDir (nub dirs)
   where
@@ -763,7 +915,9 @@ enumerateWorkspaceFiles showHidden showIgnored dirs =
             let p = dir </> name
             isDir <- doesDirectoryExist p
             if isDir then (p :) <$> walkFiles p else return [p]
+#endif
 
+#if !defined(ghcjs_HOST_OS)
 startJSaddle :: Int -> (ByteString -> ByteString -> JSM () -> IO ()) -> JSM () -> IO ()
 startJSaddle p runJs jsm = do
   dataDir <- getDataDir
@@ -841,6 +995,7 @@ debugJSaddle p f = do
 --                      $ W.responseLBS H.status404
 --                          [("Content-Type", "text/plain")]
 --                     "Not found")
+#endif
 
 css :: LT.Text
 css = render $ do
@@ -906,7 +1061,7 @@ tabLabelText k names = case k of
   PreferencesKey -> "Preferences"
   EditorKey file -> T.pack (takeFileName file)
 
--- | The leading B&W icon (a @/pics/*.svg@ path) for a side-pane tree tab, or
+-- | The leading B&W icon (an SVG path under @/pics@) for a side-pane tree tab, or
 -- 'Nothing' for tabs shown by their label alone (editors, terminals, …).
 tabIconSrc :: TabKey -> Maybe Text
 tabIconSrc k = case k of
@@ -981,7 +1136,7 @@ flipPaneLabel n w p tree =
                  (l:_) -> l
                  []    -> T.pack (show p)
 
--- | The leading icon (a @/pics/*.svg@ path) for a flipper entry, or 'Nothing'
+-- | The leading icon (an SVG path under @/pics@) for a flipper entry, or 'Nothing'
 -- for entries shown by label alone.  A terminal — whether the item is a whole
 -- terminal tab or one of its panes (which is all a terminal flip item ever is) —
 -- gets its tmux *window* icon, carrying the same fill/colour alert state the
@@ -1026,7 +1181,8 @@ tabShortcutBadge area k = case area of
     mk pre ks = forM_ (elemIndex k ks) $ \i ->
         when (i < 9) . elAttr "span" ("class" =: "leksah-shortcut-badge") $ do
             text (pre <> T.pack (show (i + 1)))
-            elAttr "span" ("class" =: "leksah-flip-suffix") $ text " \8984`"
+            hosted <- liftIO getBrowserHosted
+            elAttr "span" ("class" =: "leksah-flip-suffix") $ text (flipHintText hosted)
 
 -- | The wide0 tab-button order, taken from the flipper's item list: each tmux
 -- window (identified by @Left (session, window)@, collapsed from its panes) and
@@ -1852,6 +2008,10 @@ terminalLinksJs = T.unlines
   -- verbatim source text.  Group 2 is the source line; the whole match's length
   -- is where the source text starts, so a hovered identifier's offset past it is
   -- its 0-based column in the file.
+  --
+  -- NOTE: the web demo's docs/website/try/gen-demo-hovers.py carries Python
+  -- ports of HDR/GUT/ID (it precomputes hover tooltips for exactly the
+  -- tokens these match) — keep them in sync.
   , "  var GUT = /^(\\s+)(\\d+) ([-+ ])  /;"
   -- Headers that name the file a following diff belongs to: Claude tool headers
   -- Update/Edit/Write/Read(path), or a unified-diff '+++ b/path' line.
@@ -1872,6 +2032,10 @@ terminalLinksJs = T.unlines
   , "    return null;"
   , "  }"
   , "  function attach(term, onOpen, onLookup, onHoverFile){"
+  -- Testability seam: the last attached hover callback, so a scripted check
+  -- (docs/website/try/autotest.js) can drive the file->LSP->resolveHover
+  -- round-trip without synthesizing xterm mouse events.
+  , "    window.LeksahTermLinks.debugHover = onHoverFile;"
   , "    if (!term || !term.registerLinkProvider) return;"
   , "    function mkLink(sx, ex, y, txt, f, l, c, hl, hc){"
   -- hc = 0-based column of the symbol to hover (default -1 = unknown, so the
@@ -2060,6 +2224,20 @@ terminalWriteJs = T.unlines
   -- authority).  Cached; warmed at startup so callers see it synchronously.
   -- Everything downstream is feed-forward from this (grid = floor(box/cell)),
   -- the way iTerm2/Ghostty size their grids — never render-then-correct.
+  -- GPU renderer, guarded: xterm's WebglAddon throws from activate() when no
+  -- WebGL context can be created (headless Chrome --disable-gpu, GPU-less
+  -- environments), and under the GHC JS backend that failure is an
+  -- uncatchable RTS crash — so the probe AND the loadAddon both live here,
+  -- behind a JS try/catch, and Haskell only sees the boolean.
+  , "  function loadWebgl(term){"
+  , "    try {"
+  , "      if (!(window.WebglAddon && window.WebglAddon.WebglAddon)) return false;"
+  , "      var c = document.createElement('canvas');"
+  , "      if (!(c.getContext('webgl2') || c.getContext('webgl'))) return false;"
+  , "      term.loadAddon(new window.WebglAddon.WebglAddon());"
+  , "      return true;"
+  , "    } catch (e) { return false; }"
+  , "  }"
   , "  var cellCache = null;"
   , "  function cellMetrics(){"
   , "    if (cellCache) return cellCache;"
@@ -2080,7 +2258,7 @@ terminalWriteJs = T.unlines
   , "    return cellCache;"
   , "  }"
   , "  if (window.requestAnimationFrame) requestAnimationFrame(function(){ cellMetrics(); });"
-  , "  return { register: register, unregister: unregister, write: write, cellMetrics: cellMetrics, byId: byId };"
+  , "  return { register: register, unregister: unregister, write: write, loadWebgl: loadWebgl, cellMetrics: cellMetrics, byId: byId };"
   , "})();"
   ]
 
@@ -2298,8 +2476,8 @@ transparencyJs = T.unlines
 -- (.leksah-shortcut-badge): CC panes lay theirs at each pane's top-left
 -- corner; side-/bottom-bar tab buttons carry theirs inline.
 
--- | window.leksahSetColorIcons(on): switch every @\/pics\/*.svg@ icon between
--- the monochrome default and the coloured set at @\/pics\/color\/*.svg@ (same
+-- | window.leksahSetColorIcons(on): switch every SVG icon under @/pics@ between
+-- the monochrome default and the coloured set under @/pics/color@ (same
 -- shapes, recoloured).  Icons are plain @<img>@s scattered across many
 -- widgets and added/removed dynamically (tree nodes, tabs), so rather than
 -- thread the pref through every call site this rewrites the @src@ in place and
@@ -2342,10 +2520,14 @@ colorIconsJs = T.unlines
   , "})();"
   ]
 
-badgesJs :: Text
-badgesJs = T.unlines
+badgesJs :: Bool -> Text
+badgesJs browserHosted = T.unlines
   [ "window.__leksahShortcutBadges = false;"
   , "(function(){"
+  -- Browser-hosted builds flip tabs with Ctrl (Cmd+` belongs to the OS), so
+  -- holding Ctrl reveals the badges there too.
+  , "  var BROWSER = " <> (if browserHosted then "true" else "false") <> ";"
+  , "  function isMod(e){ return e.key === 'Meta' || (BROWSER && e.key === 'Control'); }"
   , "  function set(on){"
   , "    document.body.classList.toggle('leksah-show-badges',"
   , "        !!(on && window.__leksahShortcutBadges));"
@@ -2354,10 +2536,11 @@ badgesJs = T.unlines
   -- when you come straight back), so besides keyup/blur, clear whenever any
   -- later event reports the key is no longer held.
   , "  function sync(e){"
-  , "    if (!e.metaKey && document.body.classList.contains('leksah-show-badges')) set(false);"
+  , "    if (!e.metaKey && !(BROWSER && e.ctrlKey)"
+  , "        && document.body.classList.contains('leksah-show-badges')) set(false);"
   , "  }"
-  , "  window.addEventListener('keydown', function(e){ if (e.key === 'Meta') set(true); else sync(e); }, true);"
-  , "  window.addEventListener('keyup',   function(e){ if (e.key === 'Meta') set(false); else sync(e); }, true);"
+  , "  window.addEventListener('keydown', function(e){ if (isMod(e)) set(true); else sync(e); }, true);"
+  , "  window.addEventListener('keyup',   function(e){ if (isMod(e)) set(false); else sync(e); }, true);"
   , "  window.addEventListener('mousemove', sync, true);"
   , "  window.addEventListener('mousedown', sync, true);"
   , "  window.addEventListener('blur',    function(){ set(false); }, true);"
@@ -2569,7 +2752,7 @@ main showMenubar macTitlebar wid ide = mdo
                       <> tallClass tv <> wide1Class wv)
             <> "tabindex" =: "0") <$> tallVisD <*> wide1VisD
   (top, topEvents) <- elDynAttr' "div" rootAttrD $ mdo
-    keymapE <- keymapWidget top
+    keymapE <- keymapWidget showMenubar top
     -- The web menu bar is suppressed when a native menu is present
     -- (leksah-wkwebview); its command events then simply never fire.
     menubarE   <- if showMenubar then menubarWidget else return never
@@ -2722,9 +2905,10 @@ main showMenubar macTitlebar wid ide = mdo
           elDynAttr "span"
               ((\mb -> "class" =: maybe "" (const "leksah-shortcut-badge") mb) <$> badgeD) $ do
               dynText ((\mb -> maybe "" (\n -> "\8984" <> T.pack (show n)) mb) <$> badgeD)
-              -- Hidden ⌘` suffix, revealed by hintsJs when this button is the
-              -- flip target — so a numbered tab reads "⌘N ⌘`" as one hint.
-              elAttr "span" ("class" =: "leksah-flip-suffix") $ text " \8984`"
+              -- Hidden flip suffix (⌘`, or ⌃` browser-hosted), revealed by
+              -- hintsJs when this button is the flip target — so a numbered
+              -- tab reads "⌘N ⌘`" as one hint.
+              elAttr "span" ("class" =: "leksah-flip-suffix") $ text (flipHintText showMenubar)
           let clickE = domEvent Click be
           performEvent_ (liftIO onSel <$ clickE)
           pure $ leftmost [ (\_ -> (area =: k, [])) <$> clickE, (,) mempty <$> closeE ]
@@ -4032,6 +4216,15 @@ main showMenubar macTitlebar wid ide = mdo
                     pid <- valToText pV
                     focusLog ("[" <> show wid <> "] JS leksahPaneFocus " <> T.unpack pid)
                     liftIO (fireJsPaneFocus pid)
+                _ -> return ())
+        -- Open a file in an editor tab from page JS, via the same bridge the
+        -- native Open dialogs use (routes to the frontmost window).  The
+        -- browser demo's hosting page uses this (e.g. to open the sample
+        -- project's Main.hs), and it works on every front end.
+        _ <- w ^. jss ("leksahOpenFile" :: Text) (fun $ \_ _ args -> case args of
+                (fpV:_) -> do
+                    fp <- valToText fpV
+                    liftIO $ deliverOpenedFile (T.unpack fp)
                 _ -> return ())
         -- The tmux C-b prefix interceptor (window.LeksahTmux) hands the key that
         -- followed C-b here: 'w' shows this window's Terminals pane, the rest run

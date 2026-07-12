@@ -1,0 +1,38 @@
+[38;5;114m~/haskell/leksah[39m $ leksah-cmd rebuild-self --use-cabal --no-restart
+Rebuilding leksah (the app stays up; it restarts only if the build succeeds)…
+
+Run 'cabal update' to get the latest list of available packages.
+Resolving dependencies...
+Build profile: -w ghc-9.14.1 -O1
+In order, the following will be built (use -v for more details):
+ - leksah-0.17.0.0 (lib:leksah-nogtk) (configuration changed)
+ - leksah-0.17.0.0 (exe:leksah) (configuration changed)
+Configuring library 'leksah-nogtk' for leksah-0.17.0.0...
+Preprocessing library 'leksah-nogtk' for leksah-0.17.0.0...
+Building library 'leksah-nogtk' for leksah-0.17.0.0...
+[14 of 87] Compiling IDE.Web.DemoTerminals ( src/IDE/Web/DemoTerminals.hs, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/DemoTerminals.o, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/DemoTerminals.dyn_o )
+[77 of 87] Compiling IDE.Web.Widget.Terminal ( src/IDE/Web/Widget/Terminal.hs, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/Widget/Terminal.o, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/Widget/Terminal.dyn_o ) [Source file changed]
+src/IDE/Web/Widget/Terminal.hs:75:27-34: warning: [GHC-38856] [-Wunused-imports]
+    The qualified import of ‘fromList’
+    from module ‘Data.Map’ is redundant
+   |
+75 |        (empty, singleton, fromList, fromListWith, unionWith, toAscList,
+   |                           ^^^^^^^^
+
+[78 of 87] Compiling IDE.Web.Widget.Terminals ( src/IDE/Web/Widget/Terminals.hs, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/Widget/Terminals.o, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/Widget/Terminals.dyn_o ) [IDE.Web.Widget.Terminal changed]
+[87 of 87] Compiling IDE.Web.Main     ( src/IDE/Web/Main.hs, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/Main.o, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/l/leksah-nogtk/build/leksah-nogtk/IDE/Web/Main.dyn_o ) [Source file changed]
+src/IDE/Web/Main.hs:166:28-52: warning: [GHC-38856] [-Wunused-imports]
+    The import of ‘tmuxCommandActiveTerminal’
+    from module ‘IDE.Web.TerminalInput’ is redundant
+    |
+166 |        (setActiveTerminal, tmuxCommandActiveTerminal, selectSplitActiveTerminal,
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Configuring executable 'leksah' for leksah-0.17.0.0...
+Preprocessing executable 'leksah' for leksah-0.17.0.0...
+Building executable 'leksah' for leksah-0.17.0.0...
+[1 of 2] Compiling IDE.Web.MacMenu  ( main/IDE/Web/MacMenu.hs, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/x/leksah/build/leksah/leksah-tmp/IDE/Web/MacMenu.o ) [IDE.Web.Main changed]
+[2 of 2] Compiling Main             ( src-wkwebview/Main.hs, dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/x/leksah/build/leksah/leksah-tmp/Main.o ) [IDE.Web.MacMenu changed]
+[3 of 3] Linking dist-ghc-9.14.1/build/aarch64-osx/ghc-9.14.1/leksah-0.17.0.0/x/leksah/build/leksah/leksah [Objects changed]
+
+Build succeeded — app left running (--no-restart). Run `leksah-cmd restart` to relaunch into it.

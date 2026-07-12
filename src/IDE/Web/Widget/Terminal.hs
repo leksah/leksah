@@ -64,8 +64,8 @@ module IDE.Web.Widget.Terminal
 import Control.Concurrent (forkIO)
 import Control.Exception (try, catch, SomeException)
 import Control.Lens ((^.))
-import Control.Monad (void, forM_, when)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad (void, forM_, when, unless)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64 as B64 (encode)
@@ -87,6 +87,7 @@ import qualified Clay (display)
 import Language.Javascript.JSaddle
        (jsg, js, jss, js0, js1, js2, js4, fun, new, obj, valToText,
         valToNumber, valToBool, liftJSM)
+import GHCJS.DOM.Types (pToJSVal)
 
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE, focusLog)
@@ -107,9 +108,13 @@ import System.Directory
         createDirectoryIfMissing, doesFileExist)
 import System.Environment (getEnvironment)
 import System.FilePath ((</>), takeDirectory)
-#ifdef mingw32_HOST_OS
+#if defined(mingw32_HOST_OS)
 import IDE.Web.ConPty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
+#elif defined(ghcjs_HOST_OS)
+import IDE.Web.NoPty
+       (dummyPty, writePty, resizePty)
+import IDE.Web.DemoTerminals (demoTerminals, demoTerminalB64)
 #else
 import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
@@ -203,11 +208,19 @@ terminalCss = do
 -- 'listTerminalSessions').  The 'Event' fires whenever this terminal's tab is
 -- selected; the terminal grabs keyboard focus then (and on creation), so it
 -- takes input without an extra click.
+
 terminalWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE          -- ^ for Ctrl/Cmd-click identifier lookup in metadata
   -> Text -> Event t () -> m (Event t TerminalEvents)
 terminalWidget ide termId selectedE = do
+#if defined(ghcjs_HOST_OS)
+  -- Browser demo: no PTY.  The xterm below renders a canned session dump
+  -- (window.leksahDemoTerminals) written once after it is built; writes and
+  -- resizes to the dummy fail with a plain IOError every call site already
+  -- swallows (ignorePtyError / try).
+  let pty = dummyPty
+#else
   -- A real PTY running the user's shell.  Created up front so the xterm
   -- `onData` callback (wired below) can write keystrokes to it.
   pty <- liftIO $ do
@@ -275,6 +288,7 @@ terminalWidget ide termId selectedE = do
             mapM_ (\ev -> tmuxCmd ["set-hook", "-g", ev, "run-shell -b \"" <> lc <> " term-activity >/dev/null 2>&1\""])
                   ["after-select-window", "after-select-pane"])
       return pty
+#endif
 
   -- Output from the shell arrives on this trigger event from the reader
   -- thread (started once the terminal exists, so the prompt isn't dropped).
@@ -303,7 +317,10 @@ terminalWidget ide termId selectedE = do
 
   (resizeE, el) <- resizeDetectorWithAttrs ("style" =: "height:100%;width:100%") $
       fst <$> elAttr' "div" ("class" =: "terminal") (pure ())
-  let rawEl = _element_raw el
+  -- pToJSVal, not toJSVal/MakeArgs marshalling: under the GHC JS backend the
+  -- Element instance diverges (undefined closure entered in the args map) —
+  -- same fix as ContextMenu/Menubar's `contains` calls.
+  let rawEl = pToJSVal (_element_raw el)
 
   postBuild <- getPostBuild
   -- Build the xterm.js terminal, attach it to our div, wire input, then start
@@ -313,6 +330,7 @@ terminalWidget ide termId selectedE = do
       -- Register this terminal so the reader thread can route output to it by id
       -- (see window.LeksahTerm in IDE.Web.Main).
       _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("register" :: Text) termId term
+
       -- Pin an explicit monospace font/size *before* opening: xterm measures
       -- the character cell from the configured font, and without this it
       -- inherits the page's proportional `body` font, making cells wider than
@@ -324,12 +342,14 @@ terminalWidget ide termId selectedE = do
       -- API, which throws ("allowProposedApi") unless this is enabled.  Must be
       -- set before the find bar drives a search (it is — before loadAddon below).
       _ <- opts ^. jss ("allowProposedApi" :: Text) True
+
       -- Unicode 11 widths (xterm defaults to Unicode 6, where emoji are
       -- width 1 — tmux and modern apps assume 2, so ✅ etc. misalign).
       uni <- new (jsg ("Unicode11Addon" :: Text) ^. js ("Unicode11Addon" :: Text)) ()
       _ <- term ^. js1 ("loadAddon" :: Text) uni
       unicodeApi <- term ^. js ("unicode" :: Text)
       _ <- unicodeApi ^. jss ("activeVersion" :: Text) ("11" :: Text)
+
       -- Handle OSC 8 hyperlinks (forwarded by tmux): hover shows the URL.  Clicking
       -- an http(s) link opens it in the browser — snapping the browser over this
       -- terminal's active pane only when Command was held; a file:// link opens in
@@ -352,19 +372,31 @@ terminalWidget ide termId selectedE = do
                   liftIO $ triggerLink (T.unpack path, max 1 (round ln), max 1 (round col))
               _ -> return ())
       _ <- opts ^. jss ("linkHandler" :: Text) handler
+
       fit  <- new (jsg ("FitAddon" :: Text) ^. js ("FitAddon" :: Text)) ()
       _ <- term ^. js1 ("loadAddon" :: Text) fit
       _ <- term ^. js1 ("open" :: Text) rawEl
+
       -- GPU renderer: xterm's default DOM renderer rounds the character cell up
       -- to whole CSS pixels, so on HiDPI (retina) displays glyphs don't fill the
       -- cell and look too widely spaced.  The WebGL renderer draws from a texture
       -- atlas with correct device-pixel scaling, fixing the spacing.  It must be
       -- loaded after open() (it needs the terminal's screen element).
-      webgl <- new (jsg ("WebglAddon" :: Text) ^. js ("WebglAddon" :: Text)) ()
-      _ <- term ^. js1 ("loadAddon" :: Text) webgl
+      --
+      -- Detected at RUNTIME via LeksahTerm.loadWebgl (probe + loadAddon behind
+      -- a JS try/catch): when WebGL is unavailable (headless Chrome, GPU-less
+      -- environments) the addon's activate() failure would propagate as an
+      -- uncatchable RTS crash under the GHC JS backend — so the whole attempt
+      -- stays on the JS side and only a boolean comes back.
+      webglOk <- valToBool =<< jsg ("LeksahTerm" :: Text) ^. js1 ("loadWebgl" :: Text) term
+      unless webglOk . liftIO $
+          putStrLn ("terminal " <> T.unpack termId
+                    <> ": WebGL unavailable, using the DOM renderer")
+
       -- xterm's SearchAddon, registered on the terminal element so the find bar
       -- can search this pane (terminals render to a canvas, so no DOM find).
       _ <- jsg ("LeksahCM" :: Text) ^. js2 ("loadTerminalSearch" :: Text) term rawEl
+
       -- Inline images (SIXEL / iTerm2 OSC 1337).  storageLimit caps the image
       -- cache per terminal (MB) — the default 128 is a lot across many panes.
       imgOpts <- obj
@@ -375,6 +407,7 @@ terminalWidget ide termId selectedE = do
       -- over ssh, …).
       clip <- new (jsg ("ClipboardAddon" :: Text) ^. js ("ClipboardAddon" :: Text)) ()
       _ <- term ^. js1 ("loadAddon" :: Text) clip
+
       -- Make tokens in the output clickable.  Without a modifier, project-file
       -- paths (validated against the workspace file set kept in JS via
       -- LeksahTermLinks.setProjectFiles) call back with the resolved absolute
@@ -419,6 +452,7 @@ terminalWidget ide termId selectedE = do
           r <- valToNumber =<< term ^. js ("rows" :: Text)
           liftIO $ ignorePtyError (resizePty pty (round c, round r)))
       _ <- ro ^. js1 ("observe" :: Text) rawEl
+
       -- keystrokes -> shell
       _ <- term ^. js1 ("onData" :: Text) (fun $ \_ _ args -> case args of
               (d:_) -> do
@@ -427,6 +461,7 @@ terminalWidget ide termId selectedE = do
               _ -> return ())
       -- Intercept the tmux C-b prefix (when the pref is on) — see window.LeksahTmux.
       _ <- jsg ("LeksahTmux" :: Text) ^. js1 ("attach" :: Text) term
+
       -- title changes -> Terminals list
       _ <- term ^. js1 ("onTitleChange" :: Text) (fun $ \_ _ args -> case args of
               (titleVal:_) -> valToText titleVal >>= liftIO . triggerTitle
@@ -434,6 +469,14 @@ terminalWidget ide termId selectedE = do
       -- bell (Claude Code's needs-input signal) -> leksah attention
       _ <- term ^. js1 ("onBell" :: Text) (fun $ \_ _ _ -> liftIO (triggerBell ()))
       syncPtySize term fit pty
+#if defined(ghcjs_HOST_OS)
+      -- Static demo content instead of a shell: write the canned dump once.
+      -- The page blob is already base64 — exactly what LeksahTerm.write takes —
+      -- and the terminal registered with LeksahTerm above, so this synchronous
+      -- write inside the build action cannot race the output gate below.
+      liftIO (demoTerminalB64 termId) >>= mapM_ (\b64 ->
+          void $ jsg ("LeksahTerm" :: Text) ^. js2 ("write" :: Text) termId b64)
+#else
       -- shell -> screen: blocking reads on their own thread.  Each chunk is
       -- handed to xterm as raw bytes (see the output write below) rather than
       -- decoded here.  We don't coalesce reads: tmux (which backs these
@@ -448,6 +491,7 @@ terminalWidget ide termId selectedE = do
                   -- ended).  Tell reflex so the tab closes rather than lingering.
                   Left _   -> triggerExited ()
           in loop
+#endif
       return (term, fit)
 
   termFitD <- holdDyn Nothing (Just <$> termE)
@@ -628,6 +672,10 @@ notifyTerminalBell sid = (`catch` \(_ :: SomeException) -> return ()) $ do
 -- name)@ pairs — every session, not just leksah's own, so the Terminals list can
 -- show them all.  Empty if tmux is absent or no server is running.
 listTerminalSessions :: IO [(Text, Text)]
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: the canned sessions from the page stand in for tmux.
+listTerminalSessions = demoTerminals
+#else
 listTerminalSessions = (`catch` \(_ :: SomeException) -> return []) $
     findExecutable "tmux" >>= \case
         Nothing -> return []
@@ -638,6 +686,7 @@ listTerminalSessions = (`catch` \(_ :: SomeException) -> return []) $
                    | line <- lines out
                    , (sid:rest) <- [T.splitOn "\t" (T.pack line)]
                    , not (T.null sid) ]
+#endif
 
 -- | Kill the tmux session with id @n@ (so it no longer persists).
 killTerminalSession :: Text -> IO ()
@@ -679,6 +728,17 @@ data TmuxWindow = TmuxWindow
 -- a rename just changes the carried name on the next poll, not the key.  Includes
 -- all sessions, not only leksah's own.  Empty if tmux is absent / no server.
 listTerminalTree :: IO (Map Text (Text, [TmuxWindow]))
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: one window with one pane per canned session, so the
+-- Terminals pane and the wide0 tab labels populate.  Select/kill actions
+-- fall into the catch-everything tmux helpers, which no-op in the browser.
+listTerminalTree = do
+    ts <- demoTerminals
+    return $ M.fromListWith (\_ old -> old)
+        [ (sid, (name, [ TmuxWindow 0 name True False False False
+                             [ TmuxPane 0 ("%" <> sid) name True ] ]))
+        | (sid, name) <- ts ]
+#else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
     findExecutable "tmux" >>= \case
         Nothing -> return M.empty
@@ -686,6 +746,7 @@ listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
             (_rc, out, _) <- readProcessWithExitCode tmux
                 ["-L", tmuxSocket, "list-panes", "-a", "-F", paneTreeFormat] ""
             return (parsePaneTree out)
+#endif
 
 -- | Tab-separated so names / commands / titles (which won't contain tabs) stay
 -- intact: session id/name, window index/name/active, pane
@@ -832,7 +893,7 @@ reapControlClients = (`catch` \(_ :: SomeException) -> return ()) $
                     -- tmux stops reading the pane's pty, periodically
                     -- freezing the program inside (seen as the whole TUI
                     -- pausing every few seconds while it streams).
-#ifndef mingw32_HOST_OS
+#if !defined(mingw32_HOST_OS) && !defined(ghcjs_HOST_OS)
                     forM_ (readMaybe pid :: Maybe Int) $ \p ->
                         signalProcess sigKILL (fromIntegral p)
                             `catch` \(_ :: SomeException) -> return ()

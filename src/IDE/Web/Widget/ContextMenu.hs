@@ -14,7 +14,7 @@ import Language.Javascript.JSaddle (liftJSM, js1)
 
 import GHCJS.Marshal (FromJSVal(..))
 import GHCJS.DOM (currentDocumentUnchecked)
-import GHCJS.DOM.Types (HTMLElement(..), uncheckedCastTo)
+import GHCJS.DOM.Types (HTMLElement(..), uncheckedCastTo, pToJSVal)
 import qualified GHCJS.DOM.Types as DOM (Element(..))
 import qualified GHCJS.DOM.Event as Event (getTargetUnchecked)
 import GHCJS.DOM.EventM
@@ -68,10 +68,10 @@ contextMenu parent menu = mdo
       doc <- currentDocumentUnchecked
       docMouseDownE <- wrapDomEventMaybe doc (`onSync` mouseDown) $ do
         t <- event >>= Event.getTargetUnchecked
-        fmap (bool (Just ()) Nothing) . liftJSM $ _element_raw menuElement ^. js1 ("contains" :: Text) t >>= fromJSValUnchecked
+        fmap (bool (Just ()) Nothing) . liftJSM $ pToJSVal (_element_raw menuElement) ^. js1 ("contains" :: Text) (pToJSVal t) >>= fromJSValUnchecked
       docTouchStartE <- wrapDomEventMaybe doc (`onSync` touchStart) $ do
         t <- event >>= Event.getTargetUnchecked
-        fmap (bool (Just ()) Nothing) . liftJSM $ _element_raw menuElement ^. js1 ("contains" :: Text) t >>= fromJSValUnchecked
+        fmap (bool (Just ()) Nothing) . liftJSM $ pToJSVal (_element_raw menuElement) ^. js1 ("contains" :: Text) (pToJSVal t) >>= fromJSValUnchecked
 --      docScrollE <- wrapDomEvent doc (`onSync` touchStart) $ return ()
       return $ leftmost [ Nothing <$ docMouseDownE, Nothing <$ docTouchStartE, Just <$> menuEvent ]
   return (() <$ contextmenuE, fmapMaybe id events)

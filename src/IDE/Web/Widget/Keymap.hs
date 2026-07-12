@@ -24,16 +24,19 @@ import IDE.Web.Command
 
 keymapWidget
   :: forall t m . MonadWidget t m
-  => Element EventResult (DomBuilderSpace m) t
+  => Bool -- ^ browser-hosted (warp/web demo)?  Cmd+` belongs to the OS/browser
+          --   there, so Ctrl drives the tab flipper instead.
+  -> Element EventResult (DomBuilderSpace m) t
   -> m (Event t KeymapEvents)
-keymapWidget _top = do
+keymapWidget browserHosted _top = do
   -- Listen on the document (events bubble up to it) so we don't need the raw
   -- root element to satisfy IsGlobalEventHandlers.
   doc <- currentDocumentUnchecked
-  let keyToCommandMap = M.fromList $
+  let flipMod = if browserHosted then Control else Command
+      keyToCommandMap = M.fromList $
         map (\(mods, key, command) -> ((S.fromList mods, key), command)) $
-        [ ([Command]        , Backquote, CommandFlipDown)
-        , ([Command, Shift] , Backquote, CommandFlipUp)
+        [ ([flipMod]        , Backquote, CommandFlipDown)
+        , ([flipMod, Shift] , Backquote, CommandFlipUp)
         -- Build: Ctrl+Shift+B (Cmd+Shift+B on macOS), matching VS Code.  Plain
         -- Ctrl+B is avoided — it's the tmux prefix.
         , ([Control, Shift] , KeyB,      commandPackageBuild)
@@ -77,10 +80,11 @@ keymapWidget _top = do
         mbCmd = M.lookup (mods, key) keyToCommandMap
     when (maybe False (const True) mbCmd) preventDefault
     return mbCmd
-  -- The flipper commits when Command is released.
+  -- The flipper commits when its modifier (Command, or Control when
+  -- browser-hosted) is released.
   upE <- wrapDomEvent doc (`onSync` keyUp) $ do
     ke   <- event
     code <- getKeyCode ke
     return (keyCodeLookup (fromIntegral code))
-  let flipdone = CommandFlipDone <$ ffilter (== Command) upE
+  let flipdone = CommandFlipDone <$ ffilter (== flipMod) upE
   return $ KeymapCommand <$> leftmost [cmdE, flipdone]

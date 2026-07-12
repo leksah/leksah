@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -31,6 +32,31 @@
 -- Each pane also carries the classic widget's affordances: clickable
 -- file-path/identifier links, OSC 8 hyperlinks, find-bar search and the
 -- bell.  Still to come: underlay holes.
+#if defined(ghcjs_HOST_OS)
+
+-- Browser build: control-mode terminals need a tmux process; the tab renders
+-- a plain notice instead.
+module IDE.Web.Widget.TerminalCC
+  ( terminalCCWidget
+  ) where
+
+import Data.Text (Text)
+import Reflex (Dynamic, Event, never)
+import Reflex.Dom.Core (MonadWidget, el, text)
+import IDE.Core.State (IDE)
+import IDE.Web.Events (TerminalEvents)
+
+terminalCCWidget
+  :: forall t m . MonadWidget t m
+  => Dynamic t IDE
+  -> Text
+  -> Event t ()
+  -> m (Event t TerminalEvents)
+terminalCCWidget _ _ _ = do
+    el "div" $ text "Terminals are not available in the browser demo."
+    return never
+
+#else
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   ) where
@@ -80,6 +106,7 @@ import IDE.Web.TerminalInput
         unregisterCCStop, registerTerminalSplits,
         unregisterTerminalSplits, registerTerminalFocus, unregisterTerminalFocus,
         isActiveTerminal)
+import IDE.Web.HostFlags (getBrowserHosted, flipHintText)
 import IDE.Web.JsaddleTunnel
        (registerTunnelSync, unregisterTunnelSync, tunnelSyncReply)
 import IDE.Web.TmuxCC
@@ -1402,7 +1429,8 @@ renderShortcutBadges (cw, ch) l =
              <> "style" =: ("position:absolute;left:" <> pxAt x cw
                             <> ";top:" <> pxAt y ch <> ";z-index:6")) $ do
             text ("\8984" <> T.pack (show n))
-            elAttr "span" ("class" =: "leksah-flip-suffix") $ text " \8984`"
+            browser <- liftIO getBrowserHosted
+            elAttr "span" ("class" =: "leksah-flip-suffix") $ text (flipHintText browser)
 
 -- | One window's pane dividers: tmux's separator cells are blank gutters
 -- here (a full cell wide/tall); each becomes a grab strip with a crisp 1px
@@ -1583,3 +1611,5 @@ buildReplay body stLine =
           csi (show (y + 1 :: Int) <> ";" <> show (x + 1 :: Int) <> "H")
       _ -> ""
     csi s = "\ESC[" <> T.pack s
+
+#endif

@@ -1,0 +1,9 @@
+# HLS cradle for the sandpit examples.  Without this, hie-bios walks up past
+# sandpit/ and finds the leksah repo-root hie.yaml, whose cabal cradle knows
+# nothing about these packages ("Loading the module failed … may not be listed
+# in your .cabal file") — the sandpit is a standalone cabal project (see
+# cabal.project) and needs its own cradle rooted here.
+cradle:
+  cabal:
+    - path: "./breakout/app"
+      component: "breakout:exe:breakout"

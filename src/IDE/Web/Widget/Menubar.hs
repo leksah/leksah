@@ -24,6 +24,7 @@ import qualified Clay (display)
 import Language.Javascript.JSaddle (liftJSM, js1)
 import GHCJS.Marshal (fromJSValUnchecked)
 import GHCJS.DOM (currentDocumentUnchecked)
+import GHCJS.DOM.Types (pToJSVal)
 import qualified GHCJS.DOM.Event as Event (getTargetUnchecked)
 import GHCJS.DOM.EventM (event, onSync)
 import GHCJS.DOM.GlobalEventHandlers (mouseDown)
@@ -93,7 +94,7 @@ menubarWidget = mdo
   outsideE <- wrapDomEventMaybe doc (`onSync` mouseDown) $ do
     t <- event >>= Event.getTargetUnchecked
     fmap (bool (Just ()) Nothing) . liftJSM $
-      _element_raw bar ^. js1 ("contains" :: Text) t >>= fromJSValUnchecked
+      pToJSVal (_element_raw bar) ^. js1 ("contains" :: Text) (pToJSVal t) >>= fromJSValUnchecked
 
   -- One menu open at a time:
   --  * click a label  -> toggle it (closing any other)

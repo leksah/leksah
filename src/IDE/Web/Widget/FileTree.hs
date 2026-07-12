@@ -26,8 +26,9 @@ import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
 
-import System.Directory
-       (doesDirectoryExist, getDirectoryContents)
+-- File access goes through the IDE.Web.FS seam (real FS natively; the
+-- in-memory demo tree in the browser build).
+import IDE.Web.FS (fsDoesDirectoryExist, fsGetDirectoryContents)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeExtension, (</>))
 import System.Process (readProcessWithExitCode)
@@ -45,8 +46,8 @@ import IDE.Web.Widget.Tree
 
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
 filesAndDirs dir = liftIO $
-  filter (`notElem` [".", ".."]) <$> getDirectoryContents dir >>=
-    partitionM (doesDirectoryExist . (dir </>))
+  filter (`notElem` [".", ".."]) <$> fsGetDirectoryContents dir >>=
+    partitionM (fsDoesDirectoryExist . (dir </>))
 
 joinPaths :: Map FilePath (Map FilePath a) -> Map FilePath a
 joinPaths m = mconcat [mapKeys (dir </>) m' | (dir, m') <- M.toList m]

@@ -285,6 +285,8 @@ library
         IDE.Web.Command
         IDE.Web.CmdServer
         IDE.Web.CloseRequest
+        IDE.Web.DemoHovers
+        IDE.Web.DemoTerminals
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.PreferencesRequest
@@ -294,6 +296,8 @@ library
         IDE.Web.AIContextRequest
         IDE.Web.ScreenshotRequest
         IDE.Web.Events
+        IDE.Web.FS
+        IDE.Web.HostFlags
         IDE.Web.Layout
         IDE.Web.Main
         IDE.Web.MenuModel
@@ -435,7 +439,12 @@ library
 
     -- The GTK3 library has no Windows story any more (no gtk3 in the mingw
     -- pkg-config set); the Windows front end uses leksah-nogtk (below).
-    if os(windows)
+    -- It also can't build to JavaScript (gi-gtk, gobject-2.0 pkgconfig, …), and
+    -- because haskell.nix forwards a package's sublib pkgconfig-depends to its
+    -- sibling components, leaving it buildable under the JS backend would drag
+    -- gobject-2.0 → glib → freetype into leksah-warp/leksah's JS closure — where
+    -- nixpkgs deliberately provides no C compiler.  So exclude it under ghcjs.
+    if os(windows) || impl(ghcjs) || arch(javascript)
         buildable: False
     else
         build-depends:
@@ -479,7 +488,7 @@ library
 
     pkgconfig-depends: gobject-2.0 >=2
 
-    if !impl(ghcjs -any)
+    if !(impl(ghcjs) || arch(javascript))
         build-depends:
             ghc >=6.10.1 && <9.15,
             haskell-src-exts >=1.13.5 && <1.24,
@@ -529,6 +538,8 @@ library leksah-nogtk
         IDE.Web.Command
         IDE.Web.CmdServer
         IDE.Web.CloseRequest
+        IDE.Web.DemoHovers
+        IDE.Web.DemoTerminals
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.PreferencesRequest
@@ -538,6 +549,8 @@ library leksah-nogtk
         IDE.Web.AIContextRequest
         IDE.Web.ScreenshotRequest
         IDE.Web.Events
+        IDE.Web.FS
+        IDE.Web.HostFlags
         IDE.Web.Layout
         IDE.Web.Main
         IDE.Web.MenuModel
@@ -595,7 +608,6 @@ library leksah-nogtk
     build-depends:
         Cabal >=3.2.1.0 && <3.18,
         Glob >=0.9.2 && <0.11,
-        HTTP >=4000.3.3,
         QuickCheck >=2.4.2 && <2.19,
         aeson >=1.1.2.0 && <2.4,
         aeson-pretty >=0.8.7 && <0.9,
@@ -612,7 +624,6 @@ library leksah-nogtk
         conduit >=1.0.8 && <1.4,
         containers >=0.2.0.0 && <0.7,
         cpphs >=1.19 && <1.21,
-        criterion-measurement >=0.1.1.0 && <0.3,
         data-default >=0.7.1.1 && <0.9,
         deepseq >=1.1.0.0 && <1.6,
         dependent-map >=0.2.4 && <0.5,
@@ -622,15 +633,12 @@ library leksah-nogtk
         executable-path >=0.0.3 && <0.1,
         extra >=1.6.12 && <1.9,
         filepath >=1.1.0.1 && <1.6,
-        fsnotify >=0.3.0.1 && <0.5,
         generic-deriving >=1.10 && <1.15,
         ghcjs-codemirror,
         ghcjs-dom >=0.9.4.0 && <0.10,
-        hlint >=3.2 && <3.11,
         hslogger >=1.0.7 && <1.4,
         http-types >=0.12.2 && <0.13,
         jsaddle >=0.9.4.0 && <0.10,
-        jsaddle-terminal >=0.1 && <0.2,
         jsaddle-warp >=0.9.4.0 && <0.10,
         keycode >=0.2.2 && <0.3,
         lens >=4.15.4 && <5.4,
@@ -657,13 +665,28 @@ library leksah-nogtk
         transformers >=0.2.2.0 && <0.7,
         unliftio-core >=0.1 && < 0.3,
         utf8-string >=0.3.1.1 && <1.1,
-        vado >=0.0.1 && <0.1,
-        vcswrapper >=0.2.0 && <0.3,
-        wai >=3.2.1.2 && <3.3,
-        wai-app-static >=3.1.6.2 && <3.2,
-        wai-extra >=3.0.24.3 && <3.2,
-        warp >=3.2.25 && <3.5,
-        websockets >=0.12.5.2 && <0.14
+        vcswrapper >=0.2.0 && <0.3
+
+    -- Deps that do NOT compile with the GHC JavaScript backend, and are only
+    -- used by code that is CPP'd out / stubbed there:
+    --   * warp/wai-* pull auto-update, whose GHC.Event timer imports don't
+    --     exist under JS — only the (guarded) jsaddle-warp server plumbing in
+    --     IDE.Web.Main uses them;
+    --   * hlint pulls ghc-lib-parser, whose RTS-internals hsc fails — the JS
+    --     build carries a tiny Idea stand-in in IDE.Core.Types instead.
+    if !(impl(ghcjs) || arch(javascript))
+        build-depends:
+            HTTP >=4000.3.3,
+            criterion-measurement >=0.1.1.0 && <0.3,
+            fsnotify >=0.3.0.1 && <0.5,
+            hlint >=3.2 && <3.11,
+            jsaddle-terminal >=0.1 && <0.2,
+            vado >=0.0.1 && <0.1,
+            wai >=3.2.1.2 && <3.3,
+            wai-app-static >=3.1.6.2 && <3.2,
+            wai-extra >=3.0.24.3 && <3.2,
+            warp >=3.2.25 && <3.5,
+            websockets >=0.12.5.2 && <0.14
 
     -- NOTE: no `ltk` package dep here — the modules leksah-nogtk needs
     -- (Control.Event) are compiled straight from vendor/ltk/src via
@@ -681,6 +704,37 @@ library leksah-nogtk
             kernel32
         build-depends:
             Win32 >=2.2.0.0 && <2.15
+    elif impl(ghcjs) || arch(javascript)
+        -- No PTYs in a browser (posix-pty doesn't even compile for JS);
+        -- IDE.Web.NoPty is the same surface with graceful failures.
+        --
+        -- leksah-server is not a dependency here (its cabal predates the JS
+        -- backend and its collector needs the GHC API), but many web-UI
+        -- modules import its pure metadata/utility modules — so, exactly like
+        -- vendor/ltk/src above, those are compiled straight from
+        -- vendor/leksah-server/src.  src-ghcjs-stub comes FIRST so its
+        -- browser stand-ins shadow the server versions that cannot build for
+        -- JS (IDE.Utils.Tool needs conduit-extra→network; IDE.Utils.GHCUtils
+        -- needs the GHC API).
+        hs-source-dirs: src-ghcjs-stub vendor/leksah-server/src
+        other-modules:
+            IDE.Web.NoPty
+            IDE.Core.CTypes
+            IDE.Core.Serializable
+            IDE.StrippedPrefs
+            IDE.Utils.CabalPlan
+            IDE.Utils.CabalProject
+            IDE.Utils.FileUtils
+            IDE.Utils.GHCUtils
+            IDE.Utils.Project
+            IDE.Utils.Tool
+            IDE.Utils.Utils
+            IDE.Utils.VersionUtils
+        build-depends:
+            -- GHCJS.Marshal etc. come from jsaddle's compat modules natively,
+            -- but from the real ghcjs-base under the JS backend.
+            ghcjs-base,
+            unix >=2.3.1.0 && <2.9
     else
         build-depends:
             unix >=2.3.1.0 && <2.9,
@@ -701,13 +755,16 @@ library leksah-nogtk
 
     if flag(network-uri)
         build-depends:
-            network-uri >=2.6 && <2.7,
-            network >=2.6 && <3.3
+            network-uri >=2.6 && <2.7
+        if !(impl(ghcjs) || arch(javascript))
+            build-depends:
+                network >=2.6 && <3.3
     else
-        build-depends:
-            network >=2.2 && <2.6
+        if !(impl(ghcjs) || arch(javascript))
+            build-depends:
+                network >=2.2 && <2.6
 
-    if !impl(ghcjs -any)
+    if !(impl(ghcjs) || arch(javascript))
         build-depends:
             ghc >=6.10.1 && <9.15,
             haskell-src-exts >=1.13.5 && <1.24,
@@ -735,8 +792,10 @@ executable leksah-classic
         stm >=2.4.4 && <2.6
 
     -- The GTK3 UI has no Windows story any more (no gtk3 in the mingw
-    -- pkg-config set); the Windows front end is leksah-webview2.
-    if os(windows)
+    -- pkg-config set); the Windows front end is leksah-webview2.  It also
+    -- depends on the GTK3 `leksah` library, which is unbuildable under the JS
+    -- backend (see that library's buildable guard), so exclude it there too.
+    if os(windows) || impl(ghcjs) || arch(javascript)
         buildable: False
 
     if flag(yi)
@@ -754,7 +813,7 @@ executable leksah-classic
             hgettext,
             setlocale
 
-    if !impl(ghcjs -any)
+    if !(impl(ghcjs) || arch(javascript))
         build-depends:
             leksah-server
 
@@ -767,6 +826,11 @@ executable leksah-warp
     build-depends:
         leksah:leksah-nogtk,
         base >=4.0.0.0 && <4.23
+
+    -- Under the JS backend there is no warp server (develMain doesn't exist);
+    -- the in-browser front end is exe:leksah's arch(javascript) branch.
+    if impl(ghcjs) || arch(javascript)
+        buildable: False
 
     if os(windows)
         extra-libraries:
@@ -783,7 +847,7 @@ executable leksah-warp
             hgettext,
             setlocale
 
-    if !impl(ghcjs -any)
+    if !(impl(ghcjs) || arch(javascript))
         build-depends:
             leksah-server
 
@@ -803,9 +867,12 @@ executable leksah
     -- per-OS menu modules (IDE.Web.MacMenu / GtkApp / GtkMenu / Win32Menu).
     main-is: Main.hs
     default-language: Haskell2010
+    ghc-options: -Wall -ferror-spans
     -- -T: collect RTS stats so the GC monitor (IDE.Web.Main) can log
-    -- major-GC pauses to stderr; negligible overhead.
-    ghc-options: -threaded -rtsopts "-with-rtsopts=-T" -Wall -ferror-spans
+    -- major-GC pauses to stderr; negligible overhead.  The JS backend's RTS
+    -- is single-threaded and takes no RTS options, so these are native-only.
+    if !(impl(ghcjs) || arch(javascript))
+      ghc-options: -threaded -rtsopts "-with-rtsopts=-T"
     build-depends:
         base >=4.0.0.0 && <4.23,
         lens >=4.15.4 && <5.4,
@@ -869,6 +936,18 @@ executable leksah
         data-default >=0.7.1.1 && <0.9,
         jsaddle-webview2 >=0.1 && <0.2
 
+    -- GHC JavaScript backend (javascript-unknown-ghcjs): the whole web UI
+    -- compiled to JavaScript, running directly in the hosting browser page —
+    -- no native window and no warp server.  jsaddle-warp's `run` is a direct
+    -- in-browser runner under this backend (base-only; same trick as under
+    -- the old GHCJS), so the same jsMain the native front ends drive runs
+    -- against the page's own DOM.  os() is ghcjs here, so none of the
+    -- branches above match.
+    elif impl(ghcjs) || arch(javascript)
+      hs-source-dirs: src-ghcjs
+      build-depends:
+        jsaddle-warp >=0.9.4.0 && <0.10
+
     else
       buildable: False
 
@@ -881,8 +960,9 @@ executable leksah-cmd
     hs-source-dirs: main
     default-language: Haskell2010
     ghc-options: -Wall -ferror-spans
-    -- Unix-domain-socket only, so this exe isn't built on Windows.
-    if os(windows)
+    -- Unix-domain-socket only, so this exe isn't built on Windows — nor for
+    -- the JS backend (no sockets in a browser).
+    if os(windows) || impl(ghcjs) || arch(javascript)
         buildable: False
     build-depends:
         base >=4.0.0.0 && <4.23,

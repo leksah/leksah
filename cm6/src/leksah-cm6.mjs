@@ -34,6 +34,40 @@ const viewState = new WeakMap()
 let hoverSeq = 0
 const hoverResolvers = new Map()
 
+// Markdown-lite -> HTML for hover blurbs (HLS returns markdown: code fences,
+// `inline code`, **bold**, and a '---'/'***' rule between the type signature
+// and the docs).  Mirrors fmtTip in IDE.Web.Main's terminalLinksJs so editor
+// and terminal hovers render identically.  All text is escaped BEFORE any tag
+// is introduced, and the only tags emitted are a fixed, attribute-free set, so
+// server-supplied hover text can't inject.
+function hoverEsc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+function hoverInlineMd(s) {
+  return s.replace(/`([^`]+)`/g, (_, c) => "<code>" + c + "</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+          .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+}
+function renderHoverMd(text) {
+  const lines = String(text).split("\n"), out = []
+  let code = [], inCode = false
+  for (const ln of lines) {
+    if (/^\s*```/.test(ln)) {
+      if (inCode) { out.push("<pre>" + hoverEsc(code.join("\n")) + "</pre>"); code = []; inCode = false }
+      else inCode = true
+      continue
+    }
+    if (inCode) { code.push(ln); continue }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(ln)) { out.push("<hr>"); continue }
+    if (/^\s*$/.test(ln)) { out.push("<br>"); continue }
+    out.push(hoverInlineMd(hoverEsc(ln)) + "<br>")
+  }
+  if (inCode && code.length) out.push("<pre>" + hoverEsc(code.join("\n")) + "</pre>")
+  // Drop <br>s butting against a block (<pre>/<hr>) so they don't double the gap
+  // their own margins already give, and trim a trailing break.
+  return out.join("").replace(/<br>(<(?:pre|hr))/g, "$1").replace(/(<\/pre>|<hr>)<br>/g, "$1").replace(/(<br>)+$/, "")
+}
+
 const lspHover = hoverTooltip((view, pos) => {
   const st = viewState.get(view)
   if (!st || !st.onHover) return null
@@ -50,7 +84,7 @@ const lspHover = hoverTooltip((view, pos) => {
     return { pos, above: true, create() {
       const dom = document.createElement("div")
       dom.className = "cm-leksah-hover"
-      dom.textContent = text
+      dom.innerHTML = renderHoverMd(text)
       return { dom }
     } }
   })
@@ -457,8 +491,21 @@ function baseExtensions(languageExt) {
       ".cm-leksah-find": { backgroundColor: "rgba(255,200,0,.35)" },
       ".cm-leksah-find-active": { backgroundColor: "rgba(255,140,0,.6)" },
       ".cm-tooltip.cm-tooltip-hover": { border: "1px solid #30363d", backgroundColor: "#161b22" },
-      ".cm-leksah-hover": { padding: "4px 8px", whiteSpace: "pre-wrap", maxWidth: "600px",
-                            color: "#e6edf3", fontFamily: "Hasklig, Menlo, monospace", fontSize: "12px" },
+      ".cm-leksah-hover": { padding: "4px 8px", maxWidth: "600px", lineHeight: "1.4",
+                            color: "#e6edf3",
+                            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                            fontSize: "12px" },
+      ".cm-leksah-hover code": { fontFamily: "Hasklig, Menlo, monospace",
+                                 backgroundColor: "rgba(255,255,255,0.09)", borderRadius: "3px",
+                                 padding: "0 3px", fontSize: "11.5px" },
+      ".cm-leksah-hover pre": { margin: "4px 0", padding: "5px 8px",
+                                backgroundColor: "rgba(255,255,255,0.06)",
+                                border: "1px solid rgba(255,255,255,0.10)", borderRadius: "4px",
+                                fontFamily: "Hasklig, Menlo, monospace", fontSize: "11.5px",
+                                lineHeight: "1.3", whiteSpace: "pre", overflowX: "auto" },
+      ".cm-leksah-hover hr": { border: "none", borderTop: "1px solid rgba(255,255,255,0.16)",
+                               margin: "5px 0" },
+      ".cm-leksah-hover strong": { color: "#fff", fontWeight: "600" },
     }),
   ]
 }

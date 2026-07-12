@@ -1,0 +1,45 @@
+
+[38;5;114m⏺[39m [1mUpdate[0m(src/IDE/Web/Widget/Terminal.hs)
+[38;5;246m  ⎿  [39mAdded [1m1[0m line, removed [1m1[0m line
+     [2m[38;5;231m 711 [0m[38;5;231m [38;5;242m-- fall into the catch-everything tmux helpers, which no-op in the browser.[39m
+     [2m[38;5;231m 712 [0m[38;5;231m [38;5;148mlistTerminalTree[38;5;231m = [38;5;197mdo[39m
+     [2m[38;5;231m 713 [0m[38;5;231m     ts <- demoTerminals[39m
+     [38;5;167m[48;5;52m 714 -[38;5;231m    return $ M.fromList                                                           [39m[49m
+     [38;5;77m[48;5;22m 714 +[38;5;231m    return $ [38;5;148mM[38;5;231m.fromListWith (\_ old -> old)                                       [39m[49m
+     [2m[38;5;231m 715 [0m[38;5;231m         [ (sid, (name, [ [38;5;148mTmuxWindow[38;5;231m [38;5;141m0[38;5;231m name [38;5;148mTrue[38;5;231m [38;5;148mFalse[38;5;231m [38;5;148mFalse[38;5;231m [38;5;148mFalse[39m
+     [2m[38;5;231m 716 [0m[38;5;231m                              [ [38;5;148mTmuxPane[38;5;231m [38;5;141m0[38;5;231m ([38;5;186m"%"[38;5;231m <> sid) name [38;5;148mTrue[38;5;231m ] ]))[39m
+     [2m[38;5;231m 717 [0m[38;5;231m         | (sid, name) <- ts ][39m
+
+[38;5;231m⏺[39m Now the terminal captures. Let me see what live Claude Code panes exist to capture:
+
+  [38;5;246mRan [1m1[0m[38;5;246m shell command [39m
+
+[38;5;231m⏺[39m A live Claude Code pane exists ([38;5;153mleksah-1[39m %1 — this very session). Checking its size and the sample
+  fixture:
+
+  [38;5;246mRan [1m1[0m[38;5;246m shell command [39m
+
+[38;5;231m⏺[39m The live pane is 220 columns — too wide for the demo terminal. Let me look at what a capture gives
+  before deciding how to compose it:
+
+[38;5;246m⏺[39m Running [1m2[0m shell commands…
+[38;5;246m  ⎿  $ mkdir -p docs/website/try/terminals[39m
+     [38;5;246mtmux -L leksah resize-window -t 'leksah-1:0' -x 100 -y 45[39m
+     [38;5;246msleep 2[39m
+     [38;5;246mtmux -L leksah capture-pane -e -p -t %1 > docs/website/try/terminals/raw-claude-capture.ans[39m
+     [38;5;246mtmux -L leksah resize-window -A -t 'leksah-1:0'[39m
+     [38;5;246mwc -l -c docs/website/try/terminals/raw-claude-capture.…[39m
+
+[38;5;174m·[39m [38;5;216mPolishing hosting page & asset bundle (Phase D)…[38;5;174m [38;5;246m(57m 43s · ↓[39m [38;5;246m57.4k tokens)[39m
+[38;5;246m  ⎿  [38;5;174m◼ [1m[39mPhase D: hosting page & asset bundle[0m
+     [38;5;174m◼ [1m[39mFeature 2: static demo terminals (Haskell + assets)[0m
+     ◻ Feature 3: LSP stand-in + HLS hover extraction
+     ◻ JS build, restage, autotest verification
+     [38;5;114m✔ [9m[38;5;246mPhase A: nix — wire emscripten for JS cross[0m
+     [38;5;246m … +3 completed[39m
+
+[38;5;37m────────────────────────────────────────────────────────────────────[38;5;16m[48;5;37m leksah-browser-ghcjs-backend [38;5;37m[49m──
+[38;5;246m❯ [39m
+[38;5;37m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m                                                                                                [38;5;114m/rc[39m
+  [38;5;220m⏵⏵ auto mode on[38;5;246m (shift+tab to cycle) · gh auth login · ← for agents[39m

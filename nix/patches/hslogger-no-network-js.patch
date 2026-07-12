@@ -1,0 +1,30 @@
+--- a/hslogger.cabal	2001-09-09 13:46:40.000000000 +1200
++++ b/hslogger.cabal	2026-07-11 18:42:09.932248804 +1200
+@@ -63,8 +63,6 @@
+         System.Log.Handler
+         System.Log.Formatter
+         System.Log.Handler.Simple
+-        System.Log.Handler.Syslog
+-        System.Log.Handler.Growl
+         System.Log.Handler.Log4jXML
+         System.Log.Logger
+     other-modules:
+@@ -80,8 +78,16 @@
+       , containers   >= 0.5.7.1   && < 1
+       , deepseq      >= 1.4.2.0   && < 1.6
+       , time         >= 1.6.0.1   && < 2
+-      , network-bsd  >= 2.8.1     && <2.9
+-      , network      >= 3.0       && <3.3
++
++    -- The GHC JavaScript backend has no sockets: skip the handlers that need
++    -- network (syslog, growl) so the rest of the logging API still builds.
++    if !os(ghcjs)
++      exposed-modules:
++        System.Log.Handler.Syslog
++        System.Log.Handler.Growl
++      build-depends:
++          network-bsd  >= 2.8.1     && <2.9
++        , network      >= 3.0       && <3.3
+ 
+     if !os(windows)
+       Build-Depends: unix >= 2.7.2.0 && < 2.9

@@ -32,7 +32,7 @@ import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.Info (os)
-#ifndef mingw32_HOST_OS
+#if !defined(mingw32_HOST_OS) && !defined(ghcjs_HOST_OS)
 import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 #endif
 import System.Process (readProcessWithExitCode)
@@ -96,6 +96,11 @@ getLoginShell :: IO String
 #ifdef mingw32_HOST_OS
 -- No password database on Windows; use the command processor.
 getLoginShell = fromMaybe "powershell.exe" <$> lookupEnv "COMSPEC"
+#elif defined(ghcjs_HOST_OS)
+-- No password database in the browser — geteuid has no JS-RTS shim, and a
+-- missing shim raises a JS ReferenceError that Haskell `catch` cannot see.
+-- The value only labels the (unavailable) terminal there.
+getLoginShell = return "/bin/sh"
 #else
 getLoginShell = do
     loginShell <- (userShell <$> (getRealUserID >>= getUserEntryForID))
@@ -118,7 +123,7 @@ interactiveShellArgs = ["-i"]
 -- this platform.  There is no Windows tmux, so terminals there are plain,
 -- non-persistent ConPTY shells and the control-mode path is never taken.
 tmuxSupported :: Bool
-#ifdef mingw32_HOST_OS
+#if defined(mingw32_HOST_OS) || defined(ghcjs_HOST_OS)
 tmuxSupported = False
 #else
 tmuxSupported = True

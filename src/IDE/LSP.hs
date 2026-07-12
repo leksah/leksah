@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -65,6 +66,9 @@ import           IDE.Core.Types (Log(..), LogRef(..), LogRefType(..), allLogRefs
 import           IDE.Core.State (IDEAction, modifyIDE_, reflectIDE, readIDE, prefs,
                                  lspEnabled, lspServerCommand)
 import           IDE.Web.IDERefStore (getGlobalIDERef)
+#if defined(ghcjs_HOST_OS)
+import           IDE.Web.DemoHovers (demoHover)
+#endif
 
 --------------------------------------------------------------------------------
 -- Configuration
@@ -181,15 +185,22 @@ documentChanged = touch
 
 -- | The document was saved to disk.
 documentSaved :: FilePath -> Text -> IO ()
+#if defined(ghcjs_HOST_OS)
+documentSaved _ _ = return ()
+#else
 documentSaved file text = withServer file $ \ss -> onReady ss $ do
     open <- atomically $ Map.member file <$> readTVar (ssVersions ss)
     when open $
         notify (ssClient ss) SMethod_TextDocumentDidSave $ buildParams $ object
             [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
             , "text" .= text ]
+#endif
 
 -- | The document was closed in the editor.
 documentClosed :: FilePath -> IO ()
+#if defined(ghcjs_HOST_OS)
+documentClosed _ = return ()
+#else
 documentClosed file = withServer file $ \ss -> onReady ss $ do
     open <- atomically $ do
         m <- readTVar (ssVersions ss)
@@ -198,10 +209,16 @@ documentClosed file = withServer file $ \ss -> onReady ss $ do
     when open $
         notify (ssClient ss) SMethod_TextDocumentDidClose $ buildParams $ object
             [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ] ]
+#endif
 
 -- | Shared by 'documentOpened' \/ 'documentChanged': send @didOpen@ the first
 -- time we see a file and @didChange@ (full text) thereafter.
 touch :: FilePath -> Text -> IO ()
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: no language server to mirror documents to (and spawning one
+-- would fail at runtime); hovers are served from the precomputed map below.
+touch _ _ = return ()
+#else
 touch file text = case languageOf file of
   Nothing -> return ()
   Just lc -> do
@@ -224,6 +241,7 @@ touch file text = case languageOf file of
                     notify (ssClient ss) SMethod_TextDocumentDidChange $ buildParams $ object
                         [ "textDocument" .= object [ "uri" .= uri, "version" .= v' ]
                         , "contentChanges" .= [ object [ "text" .= text ] ] ]
+#endif
 
 --------------------------------------------------------------------------------
 -- Hover (textDocument/hover)
@@ -235,6 +253,12 @@ touch file text = case languageOf file of
 -- If no server is running for the file, or it is not a Haskell file, @cb@ is
 -- called with 'Nothing'.
 requestHover :: FilePath -> Int -> Int -> (Maybe Text -> IO ()) -> IO ()
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: serve the precomputed hover map (window.leksahDemoHovers) —
+-- real HLS responses captured at build time by gen-demo-hovers.py — instead
+-- of a live server.  Pure span lookup; see IDE.Web.DemoHovers.
+requestHover file line ch cb = demoHover file line ch >>= cb
+#else
 requestHover file line ch cb
     | not (isSupportedFile file) = cb Nothing
     | otherwise = withServerReady file (cb Nothing) $ \ss ->
@@ -245,6 +269,7 @@ requestHover file line ch cb
             (\case
                 Right res -> cb (extractHover (toJSON res))
                 Left _    -> cb Nothing)
+#endif
 
 -- | Pull a single plain-text blob out of an LSP @Hover@ result.  @contents@
 -- may be a @MarkupContent {kind,value}@, a @MarkedString@ (a bare string or
@@ -275,6 +300,14 @@ extractHover = fmap T.strip . nonEmpty . parseMaybe (withObject "Hover" $ \o -> 
 -- Non-blocking: @cb@ is invoked exactly once with the tooltip text, or 'Nothing'
 -- when there is nothing useful to show.
 requestTerminalHover :: FilePath -> Maybe Int -> Maybe Int -> (Maybe Text -> IO ()) -> IO ()
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: no diagnostics store worth summarising and no makeAbsolute
+-- (there is no cwd) — straight to the precomputed hover lookup.
+requestTerminalHover file mline mcol cb = case mline of
+    Just ln | isSupportedFile file ->
+        requestHover file (max 0 (ln - 1)) (maybe 0 (max 0) mcol) cb
+    _ -> cb Nothing
+#else
 requestTerminalHover file mline mcol cb = do
     absFile <- makeAbsolute file `catch` \(_ :: SomeException) -> return file
     diag    <- diagnosticsSummary absFile mline
@@ -286,6 +319,7 @@ requestTerminalHover file mline mcol cb = do
             requestHover absFile (max 0 (ln - 1)) (maybe 0 (max 0) mcol) $ \mhov ->
                 cb (joinTip [diag, mhov])
         _ -> cb diag
+#endif
 
 -- | Combine tooltip fragments (diagnostics summary, hover blurb), dropping the
 -- empty ones; 'Nothing' when nothing remains.
@@ -338,6 +372,9 @@ maxCompletions = 200
 -- @{label, detail, kind, apply}@ objects (empty @\"[]\"@ if none / no server /
 -- not a Haskell file), ready to hand to the CM6 @resolveComplete@ bridge.
 requestCompletion :: FilePath -> Int -> Int -> (Text -> IO ()) -> IO ()
+#if defined(ghcjs_HOST_OS)
+requestCompletion _ _ _ cb = cb "[]"
+#else
 requestCompletion file line ch cb
     | not (isSupportedFile file) = cb "[]"
     | otherwise = withServerReady file (cb "[]") $ \ss ->
@@ -348,6 +385,7 @@ requestCompletion file line ch cb
             (\case
                 Right res -> cb (encodeToText (parseCompletions (toJSON res)))
                 Left _    -> cb "[]")
+#endif
 
 -- | Reduce an LSP @CompletionList@ (or bare @CompletionItem[]@, or @null@) to a
 -- capped list of compact @{label, apply, detail?, kind?}@ objects.
@@ -384,6 +422,9 @@ compactItem = parseMaybe $ withObject "CompletionItem" $ \o -> do
 -- Non-blocking: @cb@ receives the target as a leksah 'SrcSpan' (1-based line,
 -- 0-based column; its filename is the file to open) or 'Nothing'.
 requestDefinition :: FilePath -> Int -> Int -> (Maybe SrcSpan -> IO ()) -> IO ()
+#if defined(ghcjs_HOST_OS)
+requestDefinition _ _ _ cb = cb Nothing
+#else
 requestDefinition file line ch cb
     | not (isSupportedFile file) = cb Nothing
     | otherwise = withServerReady file (cb Nothing) $ \ss ->
@@ -392,6 +433,7 @@ requestDefinition file line ch cb
             (\case
                 Right res -> cb (firstLocation (toJSON res))
                 Left _    -> cb Nothing)
+#endif
 
 -- | The @textDocument/definition@ result is a @Location@, a @Location[]@, or a
 -- @LocationLink[]@ (or @null@).  Take the first and turn it into a 'SrcSpan'.
@@ -427,6 +469,9 @@ maxReferences = 500
 -- @line@\/@char@), including its declaration.  Non-blocking: @cb@ receives
 -- @(file, 1-based line, trimmed line text)@ rows, ready for the Grep pane.
 requestReferences :: FilePath -> Int -> Int -> ([(FilePath, Int, Text)] -> IO ()) -> IO ()
+#if defined(ghcjs_HOST_OS)
+requestReferences _ _ _ cb = cb []
+#else
 requestReferences file line ch cb
     | not (isSupportedFile file) = cb []
     | otherwise = withServerReady file (cb []) $ \ss ->
@@ -438,6 +483,7 @@ requestReferences file line ch cb
             (\case
                 Right res -> attachContext (parseLocations (toJSON res)) >>= cb
                 Left _    -> cb [])
+#endif
 
 -- | Reduce a @Location[]@ (or single @Location@) to @(file, 0-based line)@ pairs.
 parseLocations :: Value -> [(FilePath, Int)]

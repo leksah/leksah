@@ -52,8 +52,10 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import System.IO.Unsafe (unsafePerformIO)
-#ifdef mingw32_HOST_OS
+#if defined(mingw32_HOST_OS)
 import IDE.Web.ConPty (Pty, writePty)
+#elif defined(ghcjs_HOST_OS)
+import IDE.Web.NoPty (Pty, writePty)
 #else
 import System.Posix.Pty (Pty, writePty)
 #endif

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -29,6 +30,32 @@
 --
 -- Relative paths are resolved against the *client's* working directory (sent as
 -- the first field), not leksah's.
+#if defined(ghcjs_HOST_OS)
+
+-- Browser build: no unix sockets, so no control-socket server.  The restart
+-- suppression flag is kept (the develop-mode code in IDE.Web.Main references
+-- it), though nothing arms it in a browser.
+module IDE.Web.CmdServer
+  ( startCmdServer
+  , cmdSocketPath
+  , suppressNextRestart
+  ) where
+
+import Data.IORef (IORef, newIORef)
+import System.IO.Unsafe (unsafePerformIO)
+import IDE.Core.State (IDERef)
+
+startCmdServer :: IDERef -> IO ()
+startCmdServer _ = return ()
+
+cmdSocketPath :: IO FilePath
+cmdSocketPath = return "/no-cmd-socket-in-the-browser"
+
+{-# NOINLINE suppressNextRestart #-}
+suppressNextRestart :: IORef Bool
+suppressNextRestart = unsafePerformIO (newIORef False)
+
+#else
 module IDE.Web.CmdServer
   ( startCmdServer
   , cmdSocketPath
@@ -251,8 +278,8 @@ handleConn ideR conn = do
         ok <- tryShot 6
         reply $ if ok
           then "Wrote screenshot to " <> T.pack path <> "\n"
-          else "screenshot: failed — no capture handler (the wkwebview and \
-               \webkitgtk front ends support it) or the snapshot errored.\n"
+          else "screenshot: failed — no capture handler (the wkwebview and "
+            <> "webkitgtk front ends support it) or the snapshot errored.\n"
 
       -- grab-region [TARGET]: interactively select a screen rectangle
       -- (`screencapture -i`) and type the resulting PNG's path into a terminal
@@ -262,9 +289,9 @@ handleConn ideR conn = do
       ("grab-region" : rest) -> do
         let mbTarget = case rest of (t : _) | not (T.null t) -> Just t; _ -> Nothing
         requestRegionGrab mbTarget
-        reply "grab-region: select a rectangle. If Screen Recording permission is \
-              \granted you'll get the system crosshair; otherwise drag inside the \
-              \leksah window. The image path is typed into the target pane.\n"
+        reply ("grab-region: select a rectangle. If Screen Recording permission is "
+              <> "granted you'll get the system crosshair; otherwise drag inside the "
+              <> "leksah window. The image path is typed into the target pane.\n")
 
       ("js" : "eval" : codeParts) | not (null codeParts) -> do
         let code = T.intercalate " " codeParts
@@ -299,8 +326,8 @@ handleConn ideR conn = do
           Nothing
             | useCabal  -> rebuildSelf noRestart
             | otherwise -> do
-                reply "rebuild-self: no leksah package in the workspace — using the \
-                      \direct cabal build instead.\n"
+                reply ("rebuild-self: no leksah package in the workspace — using the "
+                      <> "direct cabal build instead.\n")
                 rebuildSelf noRestart
           Just (project, package) -> do
             when noRestart $ writeIORef suppressNextRestart True
@@ -411,28 +438,28 @@ handleConn ideR conn = do
       let script = home </> ".leksah" </> "rebuild.sh"
       configured <- doesFileExist script
       if not configured
-        then reply "rebuild-self: not configured — no ~/.leksah/rebuild.sh \
-                   \(launch leksah via leksah-nix.sh).\n"
+        then reply ("rebuild-self: not configured — no ~/.leksah/rebuild.sh "
+                   <> "(launch leksah via leksah-nix.sh).\n")
         else tryTakeMVar buildLock >>= \case
           Nothing -> reply "rebuild-self: a build is already in progress.\n"
           Just () -> do
-            reply "Rebuilding leksah (the app stays up; it restarts only if the \
-                  \build succeeds)…\n\n"
+            reply ("Rebuilding leksah (the app stays up; it restarts only if the "
+                  <> "build succeeds)…\n\n")
             outcome <- try (streamBuild conn script) :: IO (Either SomeException Bool)
             case outcome of
               Right True
                 | noRestart -> do
                     putMVar buildLock ()
-                    reply "\nBuild succeeded — app left running (--no-restart). \
-                          \Run `leksah-cmd restart` to relaunch into it.\n"
+                    reply ("\nBuild succeeded — app left running (--no-restart). "
+                          <> "Run `leksah-cmd restart` to relaunch into it.\n")
                 | otherwise -> do
                     reply "\nBuild succeeded — restarting into the new build.\n"
                     threadDelay 150000  -- let the reply flush before we exit
                     exitImmediately (ExitFailure 2)
               Right False -> do
                 putMVar buildLock ()
-                reply "\nBuild FAILED — leksah left running. Fix the errors and \
-                      \run rebuild-self again.\n"
+                reply ("\nBuild FAILED — leksah left running. Fix the errors and "
+                      <> "run rebuild-self again.\n")
               Left e -> do
                 putMVar buildLock ()
                 reply $ "\nrebuild-self error: " <> T.pack (show e) <> "\n"
@@ -507,3 +534,5 @@ recvAll conn = go []
       if BS.null chunk
         then return (BS.concat (reverse acc))
         else go (chunk : acc)
+
+#endif
