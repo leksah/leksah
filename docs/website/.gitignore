@@ -1,0 +1,13 @@
+# Regenerable staged bundles: copy-assets.sh copies these to the site root from
+# the repo's own cm6/, fonts/, pics/ (the same files the native app serves from
+# its datadir), so they're reproduced at deploy time rather than committed —
+# same policy as try/leksah.js and the other generated demo artifacts.
+/cm6/
+/fonts/
+/pics/
+/xterm/
+
+# Screencast intermediate from record-demo.sh; the final .mp4/.webm/.gif in
+# media/ are committed deliverables (re-recording is manual), the raw capture
+# is not.
+media/*.raw.webm

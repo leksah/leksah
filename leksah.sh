@@ -78,7 +78,13 @@ if [ "$UI" = "leksah" ] && [ "$(uname)" = "Darwin" ]; then RUN_FROM_APP=1; fi
 # NIX_ARGS is intentionally unquoted so a multi-word override word-splits.
 # NIX_ARGS='--system x86_64-darwin'
 if [ "$USE_NIX" = 1 ]; then
-    DEV=(nix $NIX_ARGS develop ".?submodules=1#$GHCARG" --show-trace --command)
+    # Flake variants are disabled for now (hix.nix flake.variants is commented
+    # out), so there is no `#ghc914` dev shell any more — the DEFAULT shell is
+    # ghc914 (hix.nix compiler-nix-name).  Map ghc914 to it; other GHCVERs
+    # would need their variant re-enabled.
+    SHELL_ATTR=$GHCARG
+    [ "$GHCARG" = "ghc914" ] && SHELL_ATTR=default
+    DEV=(nix $NIX_ARGS develop ".?submodules=1#$SHELL_ATTR" --show-trace --command)
 else
     DEV=()
 fi
@@ -263,6 +269,18 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
         bash -c '
           set -e
           bd="$1"; gd="$2"; tgt="$3"
+          # haskell.nix dev shells ship sync helpers that write
+          # cabal.project.local (mirroring the shell'\''s cabalProjectLocal) and
+          # prime the cabal store for this compiler.  They must run before the
+          # build and in the SAME shell (one nix develop entry); --force
+          # replaces stale state left by a different compiler (e.g. a
+          # ghc914-sh cabal.project.local breaks mainline ghc914 configure).
+          if command -v haskell-nix-cabal-project-local-sync >/dev/null 2>&1; then
+            haskell-nix-cabal-project-local-sync --force
+          fi
+          if command -v haskell-nix-cabal-store-sync >/dev/null 2>&1; then
+            haskell-nix-cabal-store-sync --force
+          fi
           cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "$tgt"
           mkdir -p "bin/$gd"
           ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server)" "bin/$gd/leksah-server"

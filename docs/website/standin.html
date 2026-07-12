@@ -1,0 +1,80 @@
+<!doctype html><html><head><meta charset=utf-8><style>
+*{margin:0;box-sizing:border-box}html,body{height:100%}
+body{background:#0d0f12;color:#c9d1d9;font:14px -apple-system,'SF Pro Text',Segoe UI,sans-serif;overflow:hidden}
+#tb{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;background:#15181d;border-bottom:1px solid #232830}
+.btn{width:26px;height:26px;border-radius:5px;display:grid;place-items:center;color:#8b949e}
+.btn.on{background:#2f6feb;color:#fff}
+#main{display:flex;height:calc(100% - 38px - 22px)}
+#tree{width:230px;background:#0f1216;border-right:1px solid #232830;padding:8px 6px;font-size:13px}
+#tree .tab{display:inline-block;padding:3px 8px;border-radius:5px;margin-right:4px;color:#8b949e}
+#tree .tab.on{background:#2f6feb;color:#fff}
+#tree ul{list-style:none;padding-left:14px;margin-top:8px;line-height:1.9}
+#tree li:before{content:'▸ ';color:#6e7681}
+#stage{flex:1;position:relative;background:#0b0d10}
+#code{position:absolute;inset:0;padding:16px 18px;font:14px 'SF Mono',Menlo,monospace;white-space:pre;color:#c9d1d9;line-height:1.55}
+.kw{color:#ff7b72}.fn{color:#d2a8ff}.str{color:#a5d6ff}.co{color:#8b949e}.ty{color:#7ee787}
+#game{position:absolute;inset:0;display:none;place-items:center;background:#0b0d10}
+canvas{background:#05070a;border:1px solid #232830;border-radius:6px}
+#status{height:22px;display:flex;align-items:center;gap:16px;padding:0 12px;background:#15181d;border-top:1px solid #232830;font-size:12px;color:#8b949e}
+.dot{width:10px;height:10px;border-radius:50%;background:#2ea043;margin-left:auto}
+</style></head><body>
+<div id=tb></div>
+<div id=main>
+ <div id=tree>
+   <span class="tab on">Workspace</span><span class="tab">Terminals</span>
+   <ul id=files><li><b>breakout</b></li><li style=padding-left:12px>Main.hs</li><li style=padding-left:12px>Breakout.hs</li><li>breakout.cabal</li></ul>
+ </div>
+ <div id=stage>
+   <div id=code></div>
+   <div id=game><canvas id=cv width=520 height=360></canvas></div>
+ </div>
+</div>
+<div id=status><span>leksah — sandpit/breakout</span><span id=msg>Ready</span><span class=dot></span></div>
+<script>
+const T=['tb'];const tb=document.getElementById('tb');
+const icons=['▢','◱','⤓','▷','JS','⚙','◎','🔍','⧉'];
+icons.forEach((c,i)=>{const d=document.createElement('div');d.className='btn'+((i==3||i==4)?' on':'');d.textContent=c;tb.appendChild(d);});
+const code=`<span class=co>-- sandpit/breakout/Breakout.hs</span>
+<span class=kw>module</span> Breakout <span class=kw>where</span>
+
+<span class=kw>import</span> JSaddle.Terminal.Demo (<span class=fn>runGame</span>)
+
+<span class=co>-- | A tiny arcade demo running in a leksah terminal.</span>
+<span class=fn>main</span> :: <span class=ty>IO</span> ()
+<span class=fn>main</span> = <span class=fn>runGame</span> defaultConfig
+  { <span class=fn>ballSpeed</span> = <span class=str>6.0</span>
+  , <span class=fn>rows</span>      = <span class=str>5</span>
+  , <span class=fn>paddle</span>    = <span class=str>72</span> }
+`;
+function type(el,html,cb){el.innerHTML='';let plain=html.replace(/<[^>]+>/g,'');let i=0,buf='';const src=html;
+ // reveal by characters of the rendered text but keep tags: simple approach -> reveal token by token
+ const tokens=src.split(/(<[^>]+>)/).filter(Boolean);let ti=0,ci=0,acc='';
+ const t=setInterval(()=>{if(ti>=tokens.length){clearInterval(t);cb&&cb();return;}
+   let tok=tokens[ti];if(tok[0]==='<'){acc+=tok;ti++;}else{acc+=tok[ci++];if(ci>=tok.length){ti++;ci=0;}}
+   el.innerHTML=acc+'<span style="background:#2f6feb;color:#2f6feb">|</span>';},14);}
+window.__demo=function(done){
+  document.getElementById('msg').textContent='Editing…';
+  type(code,code,()=>{
+    setTimeout(()=>{
+      document.getElementById('msg').textContent='Running breakout ▷';
+      document.getElementById('code').style.display='none';
+      const g=document.getElementById('game');g.style.display='grid';
+      const cv=document.getElementById('cv'),x=cv.getContext('2d');
+      let bx=260,by=300,vx=3.2,vy=-3.4,px=224;const pw=72;
+      const bricks=[];const cols=9,bw=52,bh=16;
+      for(let r=0;r<5;r++)for(let c=0;c<cols;c++)bricks.push({x:8+c*(bw+2),y:30+r*(bh+4),w:bw,h:bh,c:`hsl(${200+r*22} 70% 55%)`,on:1});
+      let frames=0;
+      const loop=setInterval(()=>{frames++;px+=(bx-px-pw/2)*0.12;
+        bx+=vx;by+=vy;if(bx<6||bx>514)vx*=-1;if(by<6)vy*=-1;
+        if(by>330&&bx>px&&bx<px+pw){vy*=-1;by=330;}
+        for(const b of bricks){if(b.on&&bx>b.x&&bx<b.x+b.w&&by>b.y&&by<b.y+b.h){b.on=0;vy*=-1;}}
+        x.fillStyle='#05070a';x.fillRect(0,0,520,360);
+        for(const b of bricks)if(b.on){x.fillStyle=b.c;x.fillRect(b.x,b.y,b.w,b.h);}
+        x.fillStyle='#e6edf3';x.fillRect(px,344,pw,8);
+        x.beginPath();x.arc(bx,by,6,0,7);x.fill();
+        if(frames>150){clearInterval(loop);done&&done();}
+      },1000/60);
+    },500);
+  });
+};
+</script></body></html>

@@ -36,6 +36,16 @@ let
     packages: ${patchedHackage "cabal-doctest" "1.0.12" ./patches/cabal-doctest-cabal-3.17.patch}
     allow-newer: cabal-doctest:Cabal
   '';
+  # hslogger hard-depends on network (for its syslog/growl handlers), and
+  # network does not build for the GHC JavaScript backend.  For the JS cross
+  # (projectCross re-evaluates this module with the cross pkgs, so
+  # hostPlatform is the ghcjs platform here) hand the solver a patched
+  # hslogger whose network handlers/deps sit behind `if !os(ghcjs)` —
+  # System.Log.Logger et al still build, so the pervasive debugM logging
+  # works (console) in the browser.
+  hsloggerNoNetworkJs = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isGhcjs ''
+    packages: ${patchedHackage "hslogger" "1.3.2.0" ./patches/hslogger-no-network-js.patch}
+  '';
   # cabal-add (hls-cabal-plugin dep): the fork's Cabal-syntax 3.17
   # runParseResult yields PErrorWithSource, not PError.
   # ghc-exactprint 1.14 targets mainline ghc-9.14's AST; the fork moved
@@ -68,10 +78,10 @@ let
 in
 rec {
     projectFileName = "cabal.project";
-    cabalProjectLocal = clibNoRts + cabalDoctestPatched;
+    cabalProjectLocal = clibNoRts + cabalDoctestPatched + hsloggerNoNetworkJs;
     # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix -hl branch) that can
     # cross-compile from darwin to Linux (musl) via hyper-linux.
-    compiler-nix-name = "ghc914-sh";
+    compiler-nix-name = "ghc914";
     # v2 slice builds for the native platforms (what leksah's own incremental
     # builds use).  The mingw cross must use the classic builder: v2 compiles
     # custom Setup.hs (entropy, ghc-paths) with the cross GHC, producing a
@@ -79,13 +89,14 @@ rec {
     # build compiler.  projectCross re-evaluates this module with the cross
     # pkgs, so the condition picks the right builder per platform.
     builderVersion = if pkgs.stdenv.hostPlatform.isWindows then 1 else 2;
-    flake.variants = {
-      "ghc96".compiler-nix-name = pkgs.lib.mkForce "ghc96";
-      "ghc98".compiler-nix-name = pkgs.lib.mkForce "ghc98";
-      "ghc910".compiler-nix-name = pkgs.lib.mkForce "ghc910";
-      "ghc912".compiler-nix-name = pkgs.lib.mkForce "ghc912";
-      "ghc914".compiler-nix-name = pkgs.lib.mkForce "ghc914-sh";
-    };
+    # Disabled for now (takes too long to plan them all)
+    # flake.variants = {
+    #   "ghc96".compiler-nix-name = pkgs.lib.mkForce "ghc96";
+    #   "ghc98".compiler-nix-name = pkgs.lib.mkForce "ghc98";
+    #   "ghc910".compiler-nix-name = pkgs.lib.mkForce "ghc910";
+    #   "ghc912".compiler-nix-name = pkgs.lib.mkForce "ghc912";
+    #  "ghc914".compiler-nix-name = pkgs.lib.mkForce "ghc914-sh";
+    # };
     name = "leksah";
     # Cross targets exposed as flake packages (NOT pulled into the dev shell —
     # see `shell.crossPlatforms` below, which forces it empty so the native dev
@@ -98,10 +109,19 @@ rec {
       pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux")
         [ p.ucrt64 ]
       ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin
-        [ p.aarch64-multiplatform-musl p.ucrt64 ];
+        [ p.aarch64-multiplatform-musl p.ucrt64 ]
+      ++ [ p.ghcjs ];
     modules = [({pkgs, lib, config, ...}: let
         inherit (config) hsPkgs;
         inherit (pkgs.stdenv.hostPlatform) isWindows;
+        # The GHC JavaScript backend (javascript-unknown-ghcjs).  nixpkgs gives
+        # this platform NO C compiler by design (pkgs/stdenv/cross/default.nix:
+        # `targetPlatform.isGhcjs` → `cc = throw "no C compiler …"`), because the
+        # JS backend's cbits/RTS are handled by emscripten *inside* the GHC
+        # toolchain, not via stdenv.cc.  So the JS build must not reference any
+        # native C library (gtk3, cairo, …) — doing so forces that throw.  Every
+        # native-GUI module attr below is therefore gated `&& !isJS`.
+        isJS = pkgs.stdenv.hostPlatform.isGhcjs;
         # WebView2.h for jsaddle-webview2's C shim (compile time) and
         # WebView2Loader.dll for the installed exe (run time).  Only the
         # header is needed at build time — the DLL is loaded dynamically.
@@ -145,19 +165,19 @@ rec {
             --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin"
         '';
         packages.leksah.components.exes.leksah.build-tools =
-          lib.optionals (!isWindows) [
+          lib.optionals (!isWindows && !isJS) [
             pkgs.wrapGAppsHook3
             pkgs.makeWrapper
           ];
         packages.leksah.components.exes.leksah.libs =
-          lib.optionals (!isWindows) [
+          lib.optionals (!isWindows && !isJS) [
             pkgs.gtk3
             pkgs.dconf
             pkgs.adwaita-icon-theme
             pkgs.gsettings-desktop-schemas
           ];
         packages.leksah.components.exes.leksah.postInstall =
-          lib.optionalString (!isWindows) ''
+          lib.optionalString (!isWindows && !isJS) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
             cp -r ${../linux} $out/share/
@@ -172,11 +192,11 @@ rec {
             --set 'XDG_DATA_DIRS' ""
         '';
         packages.leksah.components.exes.leksah-warp.build-tools =
-          lib.optionals (!isWindows) [
+          lib.optionals (!isWindows && !isJS) [
             pkgs.makeWrapper
           ];
         packages.leksah.components.exes.leksah-warp.postInstall =
-          lib.optionalString (!isWindows) ''
+          lib.optionalString (!isWindows && !isJS) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
             cp -r ${../linux} $out/share/

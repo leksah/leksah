@@ -14,6 +14,12 @@ on the first colon).
 
 BEL bytes are stripped so the canned dump can't ring the demo's attention
 bell on load.
+
+Line endings are normalised LF -> CRLF: `tmux capture-pane -p` joins lines
+with bare LF, but xterm (like a real terminal) treats LF as "cursor down,
+SAME column" — a real shell's tty does the LF->CRLF translation (onlcr) that
+a raw dump never got, so without this every line starts where the previous
+one ended and the output staircases across the pane.
 """
 import base64
 import json
@@ -28,6 +34,7 @@ if not DUMPS:
 terms = []
 for i, p in enumerate(DUMPS):
     data = p.read_bytes().replace(b'\x07', b'')
+    data = data.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
     name = p.stem.split('-', 1)[1]
     terms.append({
         'id': '$d%d' % i,
