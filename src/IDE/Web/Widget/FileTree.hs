@@ -12,30 +12,35 @@ module IDE.Web.Widget.FileTree
   , gitBadge
   ) where
 
+import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
-import Control.Monad.Extra (partitionM)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.Bool (bool)
 import Data.Char (isSpace)
-import Data.List (isPrefixOf, tails, dropWhileEnd)
+import Data.List (isPrefixOf, tails, dropWhileEnd, partition)
 import Data.Map (Map, mapKeys)
 import qualified Data.Map as M (toList, fromList, lookup)
 import Data.Set (Set)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T (pack, unpack)
 
 -- File access goes through the IDE.Web.FS seam (real FS natively; the
--- in-memory demo tree in the browser build).
-import IDE.Web.FS (fsDoesDirectoryExist, fsGetDirectoryContents)
+-- in-memory demo tree in the browser build; ssh for remote projects).
+import IDE.Git (qualifyPath, runGitBatch)
+import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.FS (fsListDirectory)
+import IDE.Web.RemoteRefresh (registerRemoteRefresh)
+import IDE.Web.ReplTmux (openTerminalInDir)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeExtension, (</>))
-import System.Process (readProcessWithExitCode)
 
 import Reflex
        (Dynamic, listViewWithKey, Event, never, ffilter, updated, leftmost,
-        tag, current, getPostBuild, performEvent, holdDyn)
+        tag, current, getPostBuild, performEvent, performEvent_, holdDyn,
+        newTriggerEvent)
 import Reflex.Dom.Core
        (MonadWidget, elAttr, elDynAttr, (=:), text, el, elDynClass, dynText,
         domEvent, EventName(..))
@@ -45,9 +50,12 @@ import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeSelect', scrollIntoViewNearest)
 
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
-filesAndDirs dir = liftIO $
-  filter (`notElem` [".", ".."]) <$> fsGetDirectoryContents dir >>=
-    partitionM (fsDoesDirectoryExist . (dir </>))
+filesAndDirs dir = liftIO $ do
+  -- One fsListDirectory call: names + is-directory flags together, so a
+  -- remote directory costs one round trip instead of one per child.
+  entries <- filter ((`notElem` [".", ".."]) . fst) <$> fsListDirectory dir
+  let (dirs, files) = partition snd entries
+  return (map fst dirs, map fst files)
 
 joinPaths :: Map FilePath (Map FilePath a) -> Map FilePath a
 joinPaths m = mconcat [mapKeys (dir </>) m' | (dir, m') <- M.toList m]
@@ -98,20 +106,21 @@ classifyStatus = \case
 -- git is unavailable) — decoration/filtering is then simply absent.
 gitInfo :: MonadIO m => FilePath -> m (Map FilePath GitStatus, Set FilePath)
 gitInfo dir = liftIO $ (`catch` \(_ :: SomeException) -> return (mempty, mempty)) $ do
-  (rootRC, root, _) <- readProcessWithExitCode "git" ["-C", dir, "rev-parse", "--show-toplevel"] ""
-  case rootRC of
-    ExitSuccess -> do
-      let root' = dropWhileEnd isSpace root
+  -- One batch = one ssh round trip for a remote dir (IDE.Git routes).
+  results <- runGitBatch dir
+    [ ["rev-parse", "--show-toplevel"]
       -- `-uall` lists untracked files individually (so each is decorated).
-      (rc, out, _) <- readProcessWithExitCode "git"
-        ["-c", "core.quotePath=false", "-C", dir, "status", "--porcelain", "-uall"] ""
+    , ["-c", "core.quotePath=false", "status", "--porcelain", "-uall"]
       -- A second pass with `--ignored` (default `-u`, which collapses fully
       -- ignored directories like dist-newstyle into one entry rather than
       -- listing every file).
-      (_, iout, _) <- readProcessWithExitCode "git"
-        ["-c", "core.quotePath=false", "-C", dir, "status", "--porcelain", "--ignored"] ""
-      return ( if rc == ExitSuccess then parseStatus root' out else mempty
-             , parseIgnored root' iout )
+    , ["-c", "core.quotePath=false", "status", "--porcelain", "--ignored"]
+    ]
+  case results of
+    [(ExitSuccess, root, _), (rc, out, _), (_, iout, _)] -> do
+      let root' = qualifyPath dir (dropWhileEnd isSpace (T.unpack root))
+      return ( if rc == ExitSuccess then parseStatus root' (T.unpack out) else mempty
+             , parseIgnored root' (T.unpack iout) )
     _ -> return (mempty, mempty)
   where
     parseStatus root out = M.fromList
@@ -153,9 +162,17 @@ fileTree
   -> FilePath
   -> m (Event t FileEvents)
 fileTree treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD dir = do
-  -- Compute git status/ignored once for this (top-level) directory; thread down.
+  -- Compute git status/ignored once for this (top-level) directory; thread
+  -- down.  The scan runs off the frame thread (remote dirs = an ssh round
+  -- trip), and remote dirs rescan on RemoteRefresh events (save/build/⟳)
+  -- since they have no watchers or polling.
   postBuild <- getPostBuild
-  infoD <- holdDyn (mempty, mempty) =<< performEvent (gitInfo dir <$ postBuild)
+  (infoE, fireInfo) <- newTriggerEvent
+  let scan = liftIO . void . forkIO $ gitInfo dir >>= fireInfo
+  performEvent_ $ scan <$ postBuild
+  when (isRemotePath dir) . void . liftIO $
+      registerRemoteRefresh (\_ -> void . forkIO $ gitInfo dir >>= fireInfo)
+  infoD <- holdDyn (mempty, mempty) infoE
   fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD dir
 
 fileTree'
@@ -211,6 +228,8 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
         return never
       pbD <- getPostBuild
       scrollIntoViewNearest (ffilter id $ leftmost [updated isRevealD, tag (current isRevealD) pbD]) dirEl
+      -- Double-click a directory row → open a terminal there (local or ssh://).
+      performEvent_ $ openTerminalInDir subPath <$ domEvent Dblclick dirEl
       return never
       ) $ el "ul" $ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD subPath
   fileE <- listViewWithKey filesD $ \file _ -> do

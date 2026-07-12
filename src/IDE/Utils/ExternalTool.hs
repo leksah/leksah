@@ -30,10 +30,17 @@ import IDE.Utils.Tool
 import IDE.Core.State
        (runningTool, modifyIDE_, reflectIDE, useVado,
         reifyIDE, triggerEventIDE, prefs, readIDE,
-        IDEM, MonadIDE(..))
+        IDEM, MonadIDE(..), workspace, wsProjects, wsSettingsFor,
+        ProjectSettings(..), pjKey, pjDir, Project)
+import IDE.Utils.FileUtils (isSubPath)
+import IDE.Utils.RemoteExec
+       (interruptRemoteRun, newRunNonce, remoteRunScript, remoteSshArgs)
+import IDE.Utils.RemotePath (parseRemotePath)
+import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
 import Control.Monad (void, unless, when)
 import Control.Exception (catch, SomeException(..))
-import Control.Lens ((?~))
+import Control.Lens ((?~), (^.))
+import Data.List (find)
 import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
 import Control.Concurrent (forkIO)
 #if !defined(ghcjs_HOST_OS)
@@ -94,41 +101,77 @@ runExternalTool :: MonadIDE m
 runExternalTool runGuard pidHandler description executable args dir mbEnv handleOutput  = do
     prefs' <- readIDE prefs
     run <- runGuard
-    when run $ do
-        unless (T.null description) . void $
-            triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
-        -- If vado is enabled then look up the mount point and transform
-        -- the execuatble to "ssh" and the arguments
+    when run $
+      case parseRemotePath dir of
+        -- ssh://host/dir: run the command ON the host, in dir, under a
+        -- process group named by a nonce pidfile (see 'remoteRunScript').
+        -- cwd/env MUST be Nothing here: createProcess would crash on an
+        -- ssh:// cwd, and a locally-captured env (nix PATH,
+        -- FFCABAL_TMUX_ARGS, …) must never apply to the local ssh client.
+        -- The per-project command prefix (e.g. "nix develop -c") replaces
+        -- the local nix wrapping that 'withToolCommand' skips for remote.
+        Just (host, rdir) -> do
+            unless (T.null description) . void $
+                triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
+            mbWs <- readIDE workspace
+            let prefix = do
+                    ws <- mbWs
+                    project <- find (\p -> pjDir (pjKey p) `isSubPath` dir)
+                                    (ws ^. wsProjects)
+                    psCmdPrefix (wsSettingsFor (pjKey project) ws)
+            nonce <- liftIO newRunNonce
+            let (executable', args') =
+                    remoteSshArgs host (remoteRunScript prefix rdir nonce executable args)
+            liftIO . debugM "leksah" $ "runExternalTool remote: ssh " <> show args'
+            (output, pid) <- liftIO $ runTool executable' args' Nothing Nothing
+            -- Interrupt = SIGINT the remote process group (one pooled ssh
+            -- exec); if that ssh itself fails (host gone), fall back to
+            -- killing the local ssh client so isRunning can't wedge.
+            modifyIDE_ $ runningTool ?~
+              (pid, interruptRemoteRun host nonce
+                        `catch` \(SomeException _) ->
+                            interruptProcessGroupOf pid
+                                `catch` \(SomeException _) -> return ())
+            reifyIDE $ \ideR -> void . forkIO $ do
+                reflectIDE (pidHandler pid >> runConduit (output .| handleOutput)) ideR
+                -- Remote panes (Changes, git decorations) refresh on
+                -- events; a finished remote run is the main one.
+                requestRemoteRefresh RefreshBuildDone
+        Nothing -> do
+          unless (T.null description) . void $
+              triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
+          -- If vado is enabled then look up the mount point and transform
+          -- the execuatble to "ssh" and the arguments
 #if defined(ghcjs_HOST_OS)
-        -- No vado in the browser (and no ssh to exec anyway).
-        let _unusedUseVado = useVado prefs'
-        (executable', args') <- return (executable, args)
+          -- No vado in the browser (and no ssh to exec anyway).
+          let _unusedUseVado = useVado prefs'
+          (executable', args') <- return (executable, args)
 #else
-        mountPoint <- if useVado prefs' then liftIO $ getMountPoint dir else return $ Right ""
-        (executable', args') <- case mountPoint of
-                                    Left mp -> do
-                                        s <- liftIO readSettings
-                                        a <- liftIO $ vado mp s dir [] executable (map T.unpack args)
-                                        return ("ssh", map T.pack a)
-                                    _ -> return (executable, args)
+          mountPoint <- if useVado prefs' then liftIO $ getMountPoint dir else return $ Right ""
+          (executable', args') <- case mountPoint of
+                                      Left mp -> do
+                                          s <- liftIO readSettings
+                                          a <- liftIO $ vado mp s dir [] executable (map T.unpack args)
+                                          return ("ssh", map T.pack a)
+                                      _ -> return (executable, args)
 #endif
-        -- Run the tool
-        (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
-        -- The stored interrupt action can race the tool exiting on its own:
-        -- interruptProcessGroupOf (getProcessGroupIDOf inside it) then throws
-        -- "does not exist" — benign (it's already gone), but uncaught it kills
-        -- the calling thread (logged as "Uncaught exception").  Swallow it.
-        modifyIDE_ $ runningTool ?~
-          (pid, interruptProcessGroupOf pid `catch` \(SomeException _) -> return ())
-        reifyIDE $ \ideR -> void . forkIO $
-            reflectIDE (do
-                pidHandler pid
-                runConduit $ output .| handleOutput
-                -- We should not set runningTool = Nothing here becasuse the getProcessExitCode
-                -- in isRunning will let us know it is not in a running state and the next process
-                -- might already have started.
-                ) ideR
-        return ()
+          -- Run the tool
+          (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
+          -- The stored interrupt action can race the tool exiting on its own:
+          -- interruptProcessGroupOf (getProcessGroupIDOf inside it) then throws
+          -- "does not exist" — benign (it's already gone), but uncaught it kills
+          -- the calling thread (logged as "Uncaught exception").  Swallow it.
+          modifyIDE_ $ runningTool ?~
+            (pid, interruptProcessGroupOf pid `catch` \(SomeException _) -> return ())
+          reifyIDE $ \ideR -> void . forkIO $
+              reflectIDE (do
+                  pidHandler pid
+                  runConduit $ output .| handleOutput
+                  -- We should not set runningTool = Nothing here becasuse the getProcessExitCode
+                  -- in isRunning will let us know it is not in a running state and the next process
+                  -- might already have started.
+                  ) ideR
+          return ()
 
 -- ---------------------------------------------------------------------
 -- | Handling of Compiler errors

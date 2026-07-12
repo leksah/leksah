@@ -47,6 +47,7 @@ import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
+import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.WindowBridge (closeWindowMerge)
 import IDE.Web.ScreenshotRequest
@@ -209,6 +210,9 @@ leksah_menu_action tag = do
     -- File ▸ Open / Open Project are handled natively (NSOpenPanel).
     (CommandFileOpen:_)    -> c_showOpenPanel
     (CommandProjectOpen:_) -> c_showOpenProjectPanel
+    -- Add Remote Project… opens a reflex modal (host/path/prefix); signal it
+    -- via the bridge, like Find/Save.
+    (CommandProjectAddRemote:_) -> requestAddRemoteProject
     -- File ▸ Save acts on the active editor (reflex state); signal via the bridge.
     (CommandFileSave:_)    -> requestSaveActiveFile
     -- Edit ▸ Find toggles the find bar (reflex state); signal via the bridge.

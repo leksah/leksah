@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -89,7 +90,8 @@ import IDE.Core.State
         ideMessage, collectAtStart, prefs, readIDE, metaLog,
         ModuleDescrCache, workspInfoCache, IDEPackage, packageInfo,
         workspaceInfo, systemInfo, IDEM, IDEAction, wsProjectKeys,
-        Project, pjKey, wsProjectAndPackages, systemInfo)
+        Project, pjKey, pjDir, wsProjectAndPackages, systemInfo)
+import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Gtk.State (postAsyncIDE)
 import IDE.Utils.Utils
        (leksahMetadataPathFileExtension,
@@ -872,11 +874,18 @@ callCollectorWorkspace :: Bool -> Project -> IDEPackage -> [(Text,FilePath)] ->
     (Bool -> IDEAction) -> IDEAction
 callCollectorWorkspace rebuild project package modList cont = do
     liftIO $ infoM "leksah" "callCollectorWorkspace"
-    if null modList
-        then do
+    if  | isRemotePath (pjDir (pjKey project)) -> do
+            -- leksah-server runs locally and cannot see a remote project's
+            -- sources; skip metainfo collection for remote projects.
+            liftIO . infoM "leksah" $
+                "callCollectorWorkspace: skipped for remote project "
+                <> pjDir (pjKey project)
+            cont True
+        | null modList -> do
             liftIO $ infoM "leksah" "callCollectorWorkspace: Nothing to do"
             cont True
-        else
+        | otherwise ->
+
             doServerCommand command  $ \case
                 ServerOK         -> do
                     liftIO $ infoM "leksah" "callCollectorWorkspace finished"

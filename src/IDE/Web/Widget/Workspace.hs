@@ -17,19 +17,27 @@ import Control.Monad (void, when)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Bool (bool)
-import Data.List (stripPrefix, isPrefixOf, dropWhileEnd)
-import qualified Data.Map as M (elems, fromList)
+import Data.List (stripPrefix, isPrefixOf, dropWhileEnd, find)
+import qualified Data.Map as M (elems, fromList, keys)
 import Data.Maybe (listToMaybe, maybeToList, fromMaybe, isJust)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, strip, null, takeWhile)
+import qualified Data.Text as T (pack, strip, null)
 import Data.Time.Clock (UTCTime)
 
-import System.Directory (getModificationTime, doesFileExist)
+import System.Directory (getModificationTime)
 import System.Exit (ExitCode(..))
-import System.FilePath ((<.>), (</>), dropFileName, dropTrailingPathSeparator)
-import System.Process (readProcessWithExitCode)
+import System.FilePath
+       ((<.>), (</>), dropFileName, dropTrailingPathSeparator,
+        splitDirectories, joinPath)
+
+import IDE.Git (runGit)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
+import IDE.Web.RemoteSettingsRequest (requestRemoteSettings)
+import IDE.Web.ReplTmux (openTerminalInDir)
+import IDE.Web.FS (fsDoesFileExist)
+import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 
 import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
@@ -57,19 +65,19 @@ import IDE.Core.CTypes (packageIdentifierToString)
 import IDE.Core.State
        (DebugState(..), activeComponent, ipdPackageDir,
         ipdLib, pjDir, IDEPackage(..), runPackage, runProject,
-        pjPackages, Project(..), wsFile, workspace, wsProjects, IDE,
+        pjPackages, Project(..), workspace, wsProjects, IDE,
         activeProject, activePack, debugState, pjFile, pjFileOrDir,
         ProjectKey(..), pjCabalFile, prefs, showHiddenFiles, showIgnoredFiles)
 import IDE.Gtk.Package (packageRun)
 import IDE.Gtk.Workspaces (makePackage)
 import IDE.Package
        (packageClean, packageBench, packageTest, projectRefreshNix,
-        packageOpenRepl, packageRunComponentTerm)
+        packageOpenRepl, projectOpenTerminal)
 import IDE.Web.Command (Command(..))
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
 import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
-        flakeTreeWidget, runButton, execButton, openNixWindow, developAttr)
+        flakeTreeWidget, runButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.FileTree (fileTree)
 import IDE.Web.Widget.Tree
@@ -279,19 +287,45 @@ safeMtime :: FilePath -> IO (Maybe UTCTime)
 safeMtime f =
   either (const Nothing) Just <$> (try (getModificationTime f) :: IO (Either SomeException UTCTime))
 
+-- | The shortest right-anchored suffix (by path segment) of @dir@ that is
+-- unique among @allDirs@ on the same server, so the project label shows just
+-- enough of the path to tell projects apart (the full path is the tooltip).
+-- Uniqueness is per-server: the host pill already distinguishes hosts, so only
+-- projects sharing this project's host (or all-local, for a local project) can
+-- force the suffix longer.  @dir@/@allDirs@ are project directories, possibly
+-- @ssh:\/\/HOST\/…@; the host is stripped before comparing path segments.
+shortProjectSuffix :: FilePath -> [FilePath] -> Text
+shortProjectSuffix dir allDirs =
+    T.pack (joinPath (takeEnd k segs))
+  where
+    split q = case parseRemotePath q of
+                Just (h, l) -> (Just h, dropTrailingPathSeparator l)
+                Nothing     -> (Nothing, dropTrailingPathSeparator q)
+    (mbHost, local) = split dir
+    segs = splitDirectories local
+    n = length segs
+    takeEnd i xs = drop (length xs - i) xs
+    others = [ l | q <- allDirs, let (h, l) = split q, (h, l) /= (mbHost, local), h == mbHost ]
+    isUniq i = let s = takeEnd i segs
+               in all ((/= s) . takeEnd i . splitDirectories) others
+    k = fromMaybe n (find isUniq [1 .. n])
+
 -- | A git branch node: the checkout's current branch, read in the
 -- background; hidden entirely when @dir@ isn't inside a git checkout.
 gitBranchNode :: forall t m . MonadWidget t m => FilePath -> m ()
 gitBranchNode dir = do
   pb <- getPostBuild
   (brE, fireBr) <- newTriggerEvent
-  performEvent_ $ ffor pb $ \_ -> liftIO . void . forkIO $ do
-      r <- try (readProcessWithExitCode "git"
-                    ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"] "")
-      fireBr $ case r :: Either SomeException (ExitCode, String, String) of
-          Right (ExitSuccess, out, _)
-            | b <- T.strip (T.pack out), not (T.null b) -> Just b
-          _ -> Nothing
+  let scan = void . forkIO $ do
+        r <- try (runGit dir ["rev-parse", "--abbrev-ref", "HEAD"])
+        fireBr $ case r :: Either SomeException (ExitCode, Text, Text) of
+            Right (ExitSuccess, out, _)
+              | b <- T.strip out, not (T.null b) -> Just b
+            _ -> Nothing
+  performEvent_ $ liftIO scan <$ pb
+  -- Remote projects: re-read the branch on refresh events (no polling).
+  when (isRemotePath dir) . void . liftIO $
+      registerRemoteRefresh (\_ -> scan)
   brD <- holdDyn Nothing brE
   void . dyn $ ffor brD $ \case
       Nothing -> return ()
@@ -311,7 +345,7 @@ gitBranchNode dir = do
 flakeNode :: MonadWidget t m => FilePath -> m ()
 flakeNode dir = do
   pb <- getPostBuild
-  hasFlakeE <- performEvent $ ffor pb $ \_ -> liftIO (doesFileExist (dir </> "flake.nix"))
+  hasFlakeE <- performEvent $ ffor pb $ \_ -> liftIO (fsDoesFileExist (dir </> "flake.nix"))
   hasFlakeD <- holdUniqDyn =<< holdDyn False hasFlakeE
   void . dyn $ ffor hasFlakeD $ \hasFlake -> when hasFlake . void $
     treeItem "flake" False
@@ -396,14 +430,23 @@ allOutputsNode dir = void $ treeItem "flake-node" False
         return never)
     (el "ul" $ do
         ipb <- getPostBuild
-        ptick <- tickLossyFromPostBuildTime 2
-        mtimeE <- performEvent $ ffor (leftmost [ipb, () <$ ptick]) $ \_ -> liftIO $
-            (,) <$> safeMtime (dir </> "flake.nix") <*> safeMtime (dir </> "flake.lock")
-        mtimeD <- holdUniqDyn =<< holdDyn (Nothing, Nothing) mtimeE
         (resultE, fireResult) <- newTriggerEvent
-        -- The first mtime read (≈ on expand) and any later change re-evaluate.
-        performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
-            liftIO . void . forkIO $ flakeOutputs dir >>= fireResult
+        if isRemotePath dir
+          then do
+            -- Remote: no mtime polling — evaluate on expand and on
+            -- RemoteRefresh events (the eval itself runs on the host).
+            performEvent_ $ ffor ipb $ \_ ->
+                liftIO . void . forkIO $ flakeOutputs dir >>= fireResult
+            void . liftIO $ registerRemoteRefresh
+                (\_ -> void . forkIO $ flakeOutputs dir >>= fireResult)
+          else do
+            ptick <- tickLossyFromPostBuildTime 2
+            mtimeE <- performEvent $ ffor (leftmost [ipb, () <$ ptick]) $ \_ -> liftIO $
+                (,) <$> safeMtime (dir </> "flake.nix") <*> safeMtime (dir </> "flake.lock")
+            mtimeD <- holdUniqDyn =<< holdDyn (Nothing, Nothing) mtimeE
+            -- The first mtime read (≈ on expand) and any later change re-evaluate.
+            performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
+                liftIO . void . forkIO $ flakeOutputs dir >>= fireResult
         resultD <- holdDyn (Right [] :: FlakeResult) resultE
         flakeTreeWidget dir resultD
         return never)
@@ -425,11 +468,12 @@ workspaceWidget ide activeFileD revealFileD = do
       workspaceIsOpenD <- holdUniqDyn $ view (workspace . to isJust) <$> ide
       _ <- elDynAttr "div" (bool mempty ("style" =: "display: none") <$> workspaceIsOpenD) $
         button "Open Workspace (TODO)"
-      wsFileD <- holdUniqDyn $ view (workspace . _Just . wsFile) <$> ide
-      let wsDirD = dropFileName <$> wsFileD
       elClass "ul" "projects" $ do
         let addFileToKey = map (\(n, p) -> ((n, pjKey p), p))
             projectsD = M.fromList . addFileToKey . zip [0..] . fromMaybe mempty . preview (workspace . _Just . wsProjects) <$> ide
+        -- Every project's directory, for computing the shortest label suffix
+        -- that uniquely identifies each project (see 'shortProjectSuffix').
+        allProjectDirsD <- holdUniqDyn $ map (pjDir . snd) . M.keys <$> projectsD
         activeProjectKeyD <- holdUniqDyn $ fmap pjKey . view activeProject <$> ide
         activePackageFileD <- holdUniqDyn $ fmap ipdCabalFile . view activePack <$> ide
         activeComponentD <- holdUniqDyn $ view activeComponent <$> ide
@@ -438,7 +482,8 @@ workspaceWidget ide activeFileD revealFileD = do
           -- Reveal (expand) the project when the active file is anywhere under it.
           projNodeRevealD <- revealUnder (constDyn (pjDir pKey)) revealFileD
           treeItemDynAttr' projNodeRevealD (("class" =:) . ("project" <>) <$> (bool "" " active" <$> isActiveProjectD)) True
-            (treeSelect "workspace" (menu $
+            (do
+              (projRowEl, rowE) <- treeSelect' "workspace" (menu $
                 [ ("Activate",) . ProjectCommand . CommandWorkspaceAction "Set as Active Project" "" <$>
                     (workspaceActivatePackage <$> projectD <*> pure Nothing <*> pure Nothing)
                 ] <> case pjFile pKey of
@@ -448,16 +493,30 @@ workspaceWidget ide activeFileD revealFileD = do
                         CabalTool p ->
                           [ constDyn ("Open Project Configuration File", ProjectFileEvents . ("" =:) . OpenFile True $ pjCabalFile p <.> "local") ]
                         _ -> []
-                <> [ ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
+                <> [ ("Open Terminal Here",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
+                    (runProject projectOpenTerminal <$> projectD)
+                , ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
                     (runProject projectRefreshNix <$> projectD)
                 , constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (workspaceRemoveProject pKey)))
+                , constDyn ("Project Settings…", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (requestRemoteSettings pKey))))
                 ]) $ do
-              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
-              dynText $ do
-                wsDir <- wsDirD
-                let fileOrDir = pjFileOrDir pKey
-                return . T.pack $ fromMaybe fileOrDir (stripPrefix wsDir fileOrDir)
-              return never) $
+                elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
+                -- Label = (for a remote project) the server name, then the
+                -- shortest right-anchored path suffix that uniquely identifies
+                -- this project among the workspace; the full path is the
+                -- tooltip.  The server name is plain text, not a highlighted
+                -- pill.
+                let (mbHost, fullLocal) = case parseRemotePath (pjFileOrDir pKey) of
+                        Just (host, l) -> (Just host, l)
+                        Nothing        -> (Nothing, pjFileOrDir pKey)
+                    fullTitle = maybe id (\h t -> h <> ":" <> t) mbHost (T.pack fullLocal)
+                suffixD <- holdUniqDyn $ shortProjectSuffix (pjDir pKey) <$> allProjectDirsD
+                let labelD = maybe id (\h s -> h <> ":" <> s) mbHost <$> suffixD
+                elAttr "span" ("title" =: fullTitle) $ dynText labelD
+                return never
+              -- Double-click a project row → open a terminal at its directory.
+              performEvent_ $ openTerminalInDir (pjDir pKey) <$ domEvent Dblclick projRowEl
+              return rowE) $
             el "ul" $ do
               let packagesD = M.fromList . map (\p -> (ipdPackageId p, p)) . pjPackages <$> projectD
               packagesE <- listViewWithKey packagesD $ \packageId packageD -> do
@@ -520,45 +579,18 @@ workspaceWidget ide activeFileD revealFileD = do
                                     PackageCommand . CommandWorkspaceAction "" "" $
                                       runProject (runPackage (f comp) pkg) proj)
                                   <$> projectD <*> packageD <*> componentD
-                                runnable comp =
-                                  T.takeWhile (/= ':') comp `elem` ["exe", "test", "bench"]
                             (rowEl, rowE) <- treeSelect' "workspace" (menu
                               [ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Component" "" <$>
                                   (workspaceActivatePackage <$> projectD <*> (Just <$> packageD) <*> (Just <$> componentD))
                               ]) $ do
                               elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
                               dynText componentD
-                              -- The repl (>) button brings the component's
-                              -- ffcabal repl window up as a terminal tab; exe/
-                              -- test/bench components also get a run (▶)
-                              -- button (cabal run/test/bench in a window).
-                              case pKey of
-                                CabalTool {} -> do
-                                  btnsE <- dyn $ ffor componentD $ \comp -> do
-                                      mbRunE <- if runnable comp
-                                          then Just <$> execButton ("cabal "
-                                                  <> (case T.takeWhile (/= ':') comp of
-                                                        "test"  -> "test"
-                                                        "bench" -> "bench"
-                                                        _       -> "run")
-                                                  <> " (in a terminal window)")
-                                          else return Nothing
-                                      replE <- runButton "Open component repl (ffcabal)"
-                                      return (replE, fromMaybe never mbRunE)
-                                  replE <- switchHold never (fst <$> btnsE)
-                                  execE <- switchHold never (snd <$> btnsE)
-                                  return $ leftmost
-                                    [ tagPromptlyDyn (mkActD packageOpenRepl) replE
-                                    , tagPromptlyDyn (mkActD packageRunComponentTerm) execE ]
-                                _ -> return never
-                            -- Double-click = the row's only button: lib
-                            -- components have just the repl.
-                            let dblActD = (\act comp ->
-                                    if runnable comp then Nothing else Just act)
-                                  <$> mkActD packageOpenRepl <*> componentD
-                                dblE = case pKey of
-                                  CabalTool {} -> fmapMaybe id
-                                      (tagPromptlyDyn dblActD (domEvent Dblclick rowEl))
+                              return never
+                            -- Double-click a component opens its ffcabal repl as
+                            -- a terminal tab (replacing the old inline repl/run
+                            -- buttons that used to clutter every row).
+                            let dblE = case pKey of
+                                  CabalTool {} -> tagPromptlyDyn (mkActD packageOpenRepl) (domEvent Dblclick rowEl)
                                   _ -> never
                             return $ leftmost [rowE, dblE]
                     pkgDir <- sample (current pkgDirD)

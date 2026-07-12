@@ -55,7 +55,7 @@ import Prelude.Compat
 
 import Control.Applicative ((<|>))
 import Control.DeepSeq (NFData(..))
-import Control.Exception (evaluate)
+import Control.Exception (evaluate, catch, SomeException)
 import Control.Lens ((.~), (%~), Getting, to)
 import Control.Monad.Reader
 import Control.Monad (void, unless, when, forM_, filterM)
@@ -70,7 +70,9 @@ import Data.Conduit ((.|), ConduitT)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Foldable as F (toList, forM_)
-import Data.IORef (atomicModifyIORef, IORef)
+import Data.IORef (atomicModifyIORef, atomicModifyIORef', newIORef, readIORef, IORef)
+import Data.Map (Map)
+import qualified Data.Map as M (insert, lookup)
 import Data.Maybe (catMaybes, isJust)
 import Data.Sequence (ViewR(..), Seq)
 import qualified Data.Sequence as Seq
@@ -80,7 +82,7 @@ import qualified Data.Set as S (member, insert, empty)
 import Data.Text (Text)
 import qualified Data.Text as T
        (dropEnd, length, isPrefixOf, unpack, unlines, pack,
-        null)
+        null, strip)
 import Data.Void (Void)
 
 import Distribution.Text (simpleParse)
@@ -89,8 +91,12 @@ import GHC.Stack (HasCallStack, SrcLoc(..))
 
 import System.Directory (doesFileExist)
 import System.Exit (ExitCode(..))
-import System.FilePath (equalFilePath, isAbsolute, (</>))
+import System.FilePath (equalFilePath, isAbsolute, makeRelative, (</>))
+import System.IO.Unsafe (unsafePerformIO)
 import System.Log.Logger (debugM)
+import Data.Text.Encoding (decodeUtf8)
+import IDE.Utils.RemoteExec (runSsh)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 
 import IDE.Core.State
        (IDEAction, IDE, SrcSpan(..), LogRefType(..), IDEM, Project(..),
@@ -571,7 +577,15 @@ initialState = BuildOutputState False False [] 1 [] S.empty
 
 -- Sometimes we get error spans relative to a build dependency
 findLog :: Project -> Log -> FilePath -> IO Log
-findLog project log' file =
+findLog project log' file
+    -- Remote roots: the local doesFileExist probes below are always False
+    -- for ssh:// paths, which would mis-pin every error to the project
+    -- root in a multi-package project.  Disambiguate with ONE batched
+    -- remote existence check instead (memoised per (root,file) since
+    -- errors cluster per file).
+    | isRemotePath (logRootPath log') =
+        findRemoteLog project log' file
+    | otherwise =
     doesFileExist (logRootPath log' </> file) >>= \case
         True -> return log'
         False ->
@@ -579,6 +593,58 @@ findLog project log' file =
             filterM (\p -> doesFileExist $ ipdPackageDir p </> file) (pjPackages project) >>= \case
                 [p] -> return . LogCabal $ ipdCabalFile p
                 _   -> return log' -- Not really sure where this file is
+
+-- Cache of remote findLog answers, keyed by (root, error filename); a build
+-- of a big project can emit hundreds of spans for the same few files and
+-- each miss costs an ssh round trip.
+{-# NOINLINE remoteFindLogCache #-}
+remoteFindLogCache :: IORef (Map (FilePath, FilePath) Log)
+remoteFindLogCache = unsafePerformIO (newIORef mempty)
+
+findRemoteLog :: Project -> Log -> FilePath -> IO Log
+findRemoteLog project log' file = do
+    let key = (logRootPath log', file)
+    cached <- M.lookup key <$> readIORef remoteFindLogCache
+    case cached of
+        Just l  -> return l
+        Nothing -> do
+            l <- probe `catch` \(e :: SomeException) -> do
+                    debugM "leksah" $ "findRemoteLog probe failed: " <> show e
+                    return log'
+            atomicModifyIORef' remoteFindLogCache (\m -> (M.insert key l m, ()))
+            return l
+  where
+    candidates =
+        (log', logRootPath log' </> file)
+        : [ (LogCabal (ipdCabalFile p), ipdPackageDir p </> file)
+          | p <- pjPackages project ]
+    -- ONE ssh exec: print the index of the first candidate that exists.
+    probe = case parseRemotePath (logRootPath log') of
+        Nothing -> return log'
+        Just (host, _) -> do
+            let rpaths = [ maybe p snd (parseRemotePath p) | (_, p) <- candidates ]
+            -- args bind $0,$1,…: $0 is NOT in "$@", so pass a dummy $0.
+            (code, out, _) <- runSsh host
+                "i=0; for f in \"$@\"; do if [ -f \"$f\" ]; then echo $i; exit 0; fi; i=$((i+1)); done; exit 44"
+                ("leksah-findlog" : map T.pack rpaths) mempty
+            return $ case (code, reads (T.unpack (T.strip (decodeUtf8 out)))) of
+                (ExitSuccess, [(i, "")]) | i < length candidates -> fst (candidates !! i)
+                _ -> log'
+
+-- | Rewrite an error span whose filename is absolute on the REMOTE host
+-- (GHC prints /home/… paths for out-of-package spans): relative to the
+-- root when it is under it, else re-prefixed with ssh://host — so every
+-- stored span composes/deduplicates consistently downstream.
+remoteNormalizeSpan :: Log -> SrcSpan -> SrcSpan
+remoteNormalizeSpan lg sp =
+    case parseRemotePath (logRootPath lg) of
+        Just (host, rroot)
+          | isAbsolute f && not (isRemotePath f) ->
+            let rel = makeRelative rroot f
+            in sp { srcSpanFilename =
+                        if rel /= f then rel else renderRemotePath host f }
+        _ -> sp
+  where f = srcSpanFilename sp
 
 logOutputForBuild :: Project
                   -> Log
@@ -614,7 +680,7 @@ logOutputForBuild' project logSource backgroundBuild _jumpToWarnings log' = do
     readAndShow logLaunch state@BuildOutputState {..} output = do
         let logPrevious (previous:_) = addLogRef False backgroundBuild previous
             logPrevious _ = return ()
---        liftIO $ debugM "leksah" $ "readAndShow " ++ show output
+        liftIO $ debugM "leksah" $ "readAndShow " ++ take 160 (show output)
         liftIO . evaluate $ rnf output
         liftIDE $ postSyncIDE $
           case output of
@@ -637,7 +703,7 @@ logOutputForBuild' project logSource backgroundBuild _jumpToWarnings log' = do
                         return state { inError = False }
                     (Right (ErrorLine span' refType str), _, _) -> do
                         foundLog <- traceTimeTaken "findLog" $ liftIO $ findLog project logSource (srcSpanFilename span')
-                        let ref  = LogRef span' foundLog str Nothing (Just (lineNr,lineNr)) refType
+                        let ref  = LogRef (remoteNormalizeSpan foundLog span') foundLog str Nothing (Just (lineNr,lineNr)) refType
                             root = logRefRootPath ref
                             file = logRefFilePath ref
                             fullFilePath = logRefFullFilePath ref
@@ -774,9 +840,18 @@ logOutputForBuild' project logSource backgroundBuild _jumpToWarnings log' = do
             _logLn <- traceTimeTaken "appendLog" $ Log.appendLog log' logLaunch (line <> "\n") LogTag
             _ <- traceTimeTaken "StatusbarChanged" $ triggerEventIDE (StatusbarChanged [CompartmentState
                 (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])
-            f <- if isAbsolute file
+            f <- if isAbsolute file && not (isRemotePath (logRootPath logSource))
                     then return file
-                    else traceTimeTaken "findLog" $ liftIO $ (</> file) . logRootPath <$> findLog project logSource file
+                    else traceTimeTaken "findLog" $ liftIO $ do
+                        foundLog <- findLog project logSource file
+                        -- Same composition as ErrorLine (via the remote
+                        -- span normalisation) so removal keys match the
+                        -- keys errors were created under.
+                        let file' = srcSpanFilename $ remoteNormalizeSpan foundLog
+                                        (SrcSpan file 0 0 0 0)
+                        return $ if isAbsolute file' || isRemotePath file'
+                                    then file'
+                                    else logRootPath foundLog </> file'
             traceTimeTaken "removeBuildLogRefs" $ removeBuildLogRefs f
             when inDocTest $ traceTimeTaken "logPrevious" $ logPrevious testFails
             return state { inDocTest = False }

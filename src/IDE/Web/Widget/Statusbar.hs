@@ -13,8 +13,10 @@ module IDE.Web.Widget.Statusbar
 import Control.Lens (view, (^.))
 
 import Data.Foldable (toList)
+import Data.Map (Map)
+import qualified Data.Map as M (toList)
 import Data.Text (Text)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T (intercalate, pack)
 
 import Clay
        (vGradient, backgroundImage, whiteSpace, nowrap, fontSize, px,
@@ -49,6 +51,14 @@ activeLabel ide = case ide ^. activePack of
   Just pkg -> packageIdentifierToString (ipdPackageId pkg)
             <> maybe "" (\c -> " (" <> c <> ")") (ide ^. activeComponent)
 
+-- | Remote-activity blurb: @⇅ host (n)@ for each host with ssh ops in flight
+-- (build, grep, git, HLS start, file read), empty when the link is quiet.
+-- Fed from 'IDE.Utils.RemoteExec.remoteInFlight'.
+remoteActivity :: Map Text Int -> Text
+remoteActivity m = case [ (h, n) | (h, n) <- M.toList m, n > 0 ] of
+    [] -> ""
+    xs -> "⇅ " <> T.intercalate "  " [ h <> " (" <> T.pack (show n) <> ")" | (h, n) <- xs ]
+
 stateLabel :: IDEState -> Text
 stateLabel = \case
   IsStartingUp   -> "Starting up…"
@@ -62,11 +72,13 @@ stateLabel = \case
 statusbarWidget
   :: MonadWidget t m
   => Dynamic t IDE
+  -> Dynamic t (Map Text Int)  -- ^ in-flight remote (ssh) ops per host
   -> m (Event t StatusbarEvents)
-statusbarWidget ide = divClass "statusbar" $ do
+statusbarWidget ide remoteActD = divClass "statusbar" $ do
   (divClass "sb-section sb-package" . dynText) =<< holdUniqDyn (activeLabel <$> ide)
   (divClass "sb-section sb-counts"  . dynText) =<< holdUniqDyn (counts . toList . view allLogRefs <$> ide)
   (divClass "sb-section sb-state"   . dynText) =<< holdUniqDyn (stateLabel . view currentState <$> ide)
+  (divClass "sb-section sb-remote"  . dynText) =<< holdUniqDyn (remoteActivity <$> remoteActD)
   return never
   where
     counts refs =

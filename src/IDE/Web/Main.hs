@@ -27,6 +27,8 @@ module IDE.Web.Main
 import Control.Concurrent
        (tryPutMVar, takeMVar, putMVar, readMVar, threadDelay, modifyMVar,
         newMVar, newEmptyMVar, forkIO, myThreadId)
+import Control.Concurrent.Chan (readChan)
+import Control.Concurrent.STM (readTVarIO)
 import GHC.Conc.Sync (labelThread)
 import Control.Event (registerEvent)
 import Control.Exception (SomeException, catch)
@@ -158,10 +160,12 @@ import IDE.Web.BridgeStore
         setFrontendBridge)
 #if defined(ghcjs_HOST_OS)
 import IDE.Web.DemoTerminals (demoTerminals)
-import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
-#else
-import IDE.Web.FS (fsReadFile)
 #endif
+import IDE.Git (runGit)
+import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Utils.RemoteExec (remoteInFlight, remoteInFlightChanged)
+import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
+import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
@@ -171,6 +175,8 @@ import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
         registerResync, notifyResync)
 import IDE.Web.RegionGrabRequest (nextRegionGrab)
+import IDE.Web.AddRemoteRequest (nextAddRemoteRequest)
+import IDE.Web.RemoteSettingsRequest (nextRemoteSettings)
 import IDE.Web.ScreenshotRequest (requestScreenshotRegion)
 import IDE.Web.RegionCapture
        (screenCaptureAllowed, grabRegionToTarget, sendPathToTarget,
@@ -225,6 +231,8 @@ import IDE.Web.Widget.ContextMenu (contextMenuCss)
 import IDE.Web.Widget.Editor (editorCss, editorWidget)
 import IDE.Web.Widget.Errors (errorsCss, errorsWidget)
 import IDE.Web.Widget.Findbar (findbarCss, findbarWidget, findMatcher)
+import IDE.Web.Widget.AddRemote (addRemoteDialog)
+import IDE.Web.Widget.RemoteSettings (remoteSettingsDialog)
 import IDE.Web.Widget.Flipper (flipperCss, flipperWidget)
 import IDE.Web.Widget.Grep (grepCss, grepWidget, runGrep)
 import IDE.Web.Widget.Keymap (keymapWidget)
@@ -984,7 +992,19 @@ enumerateWorkspaceFiles _ _ dirs =
 enumerateWorkspaceFiles showHidden showIgnored dirs =
     nub . concat <$> mapM enumDir (nub dirs)
   where
-    enumDir dir = gitFiles dir `catch` \(_ :: SomeException) -> walkFiles dir
+    enumDir dir
+      -- Remote project dir: `git ls-files` over ssh (one round trip,
+      -- respects .gitignore like the local path), falling back to one
+      -- `find`.  Errors mean an empty list, not a hang.
+      | isRemotePath dir =
+          (do (rc, out, _) <- runGit dir (map T.pack gitArgs)
+              case rc of
+                ExitSuccess -> return $ withDirs dir
+                    [ l | l <- lines (T.unpack out), not (null l), notHidden l ]
+                _ -> filter notHiddenAbs <$> fsListFilesRecursive dir)
+            `catch` \(_ :: SomeException) -> return []
+      | otherwise = gitFiles dir `catch` \(_ :: SomeException) -> walkFiles dir
+    notHiddenAbs p = showHidden || not ("/." `isInfixOf` p)
     -- Without --exclude-standard, `--others` lists ignored files too.
     gitArgs = ["ls-files", "--cached", "--others"]
               ++ ["--exclude-standard" | not showIgnored]
@@ -3990,9 +4010,20 @@ main showMenubar macTitlebar wid ide = mdo
     wsShowHiddenD  <- holdUniqDyn $ view (prefs . to showHiddenFiles)  <$> ide
     wsShowIgnoredD <- holdUniqDyn $ view (prefs . to showIgnoredFiles) <$> ide
     enumInputsD <- holdUniqDyn $ (,,) <$> pkgDirsD <*> wsShowHiddenD <*> wsShowIgnoredD
-    workspaceFilesD <- holdDyn [] =<< performEvent
-        (liftIO . (\(dirs, h, i) -> enumerateWorkspaceFiles h i dirs)
-            <$> leftmost [updated enumInputsD, tag (current enumInputsD) wsFindPb])
+    -- Enumerate OFF the frame thread (remote dirs = ssh round trips), and
+    -- re-enumerate remote-project files on RemoteRefresh events (save/build/⟳
+    -- — they have no watchers or polling).
+    (wsFilesE, fireWsFiles) <- newTriggerEvent
+    (remoteEnumRefreshE, fireRemoteEnumRefresh) <- newTriggerEvent
+    _ <- liftIO $ registerRemoteRefresh fireRemoteEnumRefresh
+    let hasRemoteB = any isRemotePath . (\(dirs, _, _) -> dirs) <$> current enumInputsD
+    performEvent_ $ ffor (leftmost
+            [ updated enumInputsD
+            , tag (current enumInputsD) wsFindPb
+            , tag (current enumInputsD) (gate hasRemoteB (() <$ remoteEnumRefreshE)) ]) $
+        \(dirs, h, i) -> liftIO . void . forkIO $
+            enumerateWorkspaceFiles h i dirs >>= fireWsFiles
+    workspaceFilesD <- holdDyn [] wsFilesE
     -- Keep the terminal link provider's project-file index in sync, so terminal
     -- output only turns real project files into Ctrl-clickable links.
     performEvent_ $ ffor (updated workspaceFilesD) $ \files ->
@@ -4034,14 +4065,18 @@ main showMenubar macTitlebar wid ide = mdo
     -- first, then the rest) for the current query and lists the matches in the
     -- Grep pane.  Done by shelling out to `grep -rEn` (like the GTK pane).
     let grepReqE = fmapMaybe (\case FindGrep q fl -> Just (q, fl); _ -> Nothing) findbarE
-    grepResultsE <- performEvent $ ffor (attach (current ide) grepReqE) $ \(i, (q, fl)) -> liftIO $ do
+    -- The grep runs OFF the frame thread: remote project dirs make it one
+    -- ssh round trip per host, and even locally a big workspace grep can
+    -- take a while.
+    (grepResultsE, fireGrepResults) <- newTriggerEvent
+    performEvent_ $ ffor (attach (current ide) grepReqE) $ \(i, (q, fl)) -> liftIO $ do
         let pkgs    = (>>= pjPackages) . fromMaybe [] $ i ^? (workspace . _Just . wsProjects)
             allDirs = nub (map ipdPackageDir pkgs)
             activeD = dropFileName <$> (i ^? workspace . _Just . wsActivePackFile . _Just)
             dirs    = case activeD of
                         Just a  -> a : filter (/= a) allDirs
                         Nothing -> allDirs
-        runGrep q fl dirs
+        void . forkIO $ runGrep q fl dirs >>= fireGrepResults
     -- The Grep pane doubles as the LSP find-references list (Shift-F12): both a
     -- workspace grep and a references result replace its contents.
     grepResultsD <- holdDyn [] (leftmost [grepResultsE, lspRefsE])
@@ -4110,6 +4145,30 @@ main showMenubar macTitlebar wid ide = mdo
         promptSaveE   = fmapMaybe (\(k, s) -> case k of EditorKey f | s -> Just f; _ -> Nothing) answeredE
         discardCloseE = fmapMaybe (\(k, s) -> if s then Nothing else Just [k]) answeredE
     savedCloseE <- delay 0 (fmapMaybe (\(k, s) -> if s then Just [k] else Nothing) answeredE)
+    -- File ▸ Add Remote Project…: the native menu drops a token on the
+    -- AddRemoteRequest bridge (drained here); the web menubar fires the command
+    -- directly.  Either opens the modal (dyn/switchHold, like the save prompt);
+    -- the dialog owns its own validate+add and fires when it should close.
+    (addRemoteReqE, fireAddRemoteReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextAddRemoteRequest >>= fireAddRemoteReq
+    let menuAddRemoteE = fmapMaybe (\case CommandProjectAddRemote -> Just (); _ -> Nothing)
+                           (fmapMaybe (^? _MenubarCommand) menubarE)
+        openAddRemoteE = leftmost [addRemoteReqE, menuAddRemoteE]
+    addRemoteOpenD <- holdDyn False $ leftmost [ True <$ openAddRemoteE, False <$ addRemoteCloseE ]
+    addRemoteCloseE <- switchHold never =<< dyn (ffor addRemoteOpenD $ \case
+        False -> return never
+        True  -> addRemoteDialog remoteHostsD)
+    -- Project ▸ Remote Settings…: the context-menu item drops the project's
+    -- 'ProjectKey' on the RemoteSettingsRequest bridge (drained here); a token
+    -- opens the per-project prefix editor for that project, and the dialog
+    -- fires when it should close (Save or Cancel).
+    (remoteSettingsReqE, fireRemoteSettingsReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextRemoteSettings >>= fireRemoteSettingsReq
+    remoteSettingsPkD <- holdDyn Nothing $ leftmost
+        [ Just <$> remoteSettingsReqE, Nothing <$ remoteSettingsCloseE ]
+    remoteSettingsCloseE <- switchHold never =<< dyn (ffor remoteSettingsPkD $ \case
+        Nothing -> return never
+        Just pk -> remoteSettingsDialog pk)
     let openInWide0 n = TerminalKey n =: ("wide0", Just ())
         openTabsE = leftmost
           [ openFileE'
@@ -4259,7 +4318,14 @@ main showMenubar macTitlebar wid ide = mdo
         , fmapMaybe (\v -> if v then Just () else Nothing) (updated findbarVisibleD) ]) $ \_ ->
       liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahFocusFind" :: Text)
     findbarE   <- findbarWidget activePaneD findbarVisibleD
-    statusbarE <- statusbarWidget ide
+    -- Remote-activity feed for the statusbar: every time a remote (ssh) op
+    -- starts/finishes, RemoteExec signals on 'remoteInFlightChanged'; re-read
+    -- the per-host in-flight counts and push them in.  Off the frame thread.
+    (remoteActE, fireRemoteAct) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $
+            readChan remoteInFlightChanged >> readTVarIO remoteInFlight >>= fireRemoteAct
+    remoteActD <- holdDyn M.empty remoteActE
+    statusbarE <- statusbarWidget ide remoteActD
 
     -- The virtualized list panes (Errors/Log) can't be driven by DOM roving (off-
     -- screen rows aren't in the DOM), so the keyboard handler (listNavJs) calls

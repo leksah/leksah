@@ -196,10 +196,14 @@ module IDE.Core.Types (
 ,   wsName
 ,   wsFile
 ,   wsProjects
+,   wsProjectSettings
 ,   wsActiveProjectKey
 ,   wsActivePackFile
 ,   wsActiveComponent
 ,   packageVcsConf
+,   ProjectSettings(..)
+,   defaultProjectSettings
+,   wsSettingsFor
 
 ,   __
 ) where
@@ -214,6 +218,9 @@ import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.List (find, nubBy)
+import Data.Maybe (fromMaybe)
+import IDE.Utils.RemotePath
+       (isRemotePath, parseRemotePath, remoteMakeRelative, renderRemotePath)
 import Control.Concurrent (modifyMVar_, readMVar, MVar)
 import Distribution.ModuleName (ModuleName)
 import Distribution.Simple (Extension(..))
@@ -251,7 +258,7 @@ import Data.Aeson (FromJSON(..), ToJSON(..))
 import GHC.Generics (Generic)
 import Data.Aeson.Types
        (genericParseJSON, genericToEncoding, genericToJSON,
-        defaultOptions, fieldLabelModifier, Options)
+        defaultOptions, fieldLabelModifier, omitNothingFields, Options)
 import Language.Javascript.JSaddle (JSContextRef)
 import Control.Lens (makeLenses, (^.), Getter, to, view)
 import Control.Event
@@ -637,12 +644,38 @@ mkPackageMap = M.fromList . map (\p -> (ipdCabalFile p, p))
 -- ---------------------------------------------------------------------
 -- Workspace
 --
+
+-- | Per-project user settings persisted in the workspace file (they must
+-- survive 'Project' being rebuilt from disk, so they live beside the
+-- project list keyed by 'ProjectKey', not inside 'Project').
+data ProjectSettings = ProjectSettings {
+    -- | Shell fragment prefixed to tool commands run for this project on
+    -- its remote host (e.g. @nix develop -c@).  Spliced verbatim into the
+    -- remote command line — it may carry flags and shell syntax.
+    psCmdPrefix :: Maybe Text
+} deriving (Show, Eq, Generic)
+
+defaultProjectSettings :: ProjectSettings
+defaultProjectSettings = ProjectSettings {
+    psCmdPrefix = Nothing
+}
+
+instance ToJSON ProjectSettings where
+    toJSON = genericToJSON projectSettingsAesonOptions
+    toEncoding = genericToEncoding projectSettingsAesonOptions
+instance FromJSON ProjectSettings where
+    parseJSON = genericParseJSON projectSettingsAesonOptions
+
+projectSettingsAesonOptions :: Options
+projectSettingsAesonOptions = defaultOptions { omitNothingFields = True }
+
 data Workspace = Workspace {
     _wsVersion           ::   Int
 ,   _wsSaveTime          ::   Text
 ,   _wsName              ::   Text
 ,   _wsFile              ::   FilePath
 ,   _wsProjects          ::   [Project]
+,   _wsProjectSettings   ::   Map ProjectKey ProjectSettings
 ,   _wsActiveProjectKey  ::   Maybe ProjectKey
 ,   _wsActivePackFile    ::   Maybe FilePath
 ,   _wsActiveComponent   ::   Maybe Text
@@ -993,8 +1026,12 @@ logRefRootPath = logRootPath . logRefLog
 -- | The file path the message references, relative to the root path
 logRefFilePath :: LogRef -> FilePath
 logRefFilePath lr = let
-    f =srcSpanFilename $ logRefSrcSpan lr
-    in if isAbsolute f -- can happen, at least when building with stack a source file that is present in several components (ie library and test)
+    f = srcSpanFilename $ logRefSrcSpan lr
+    in if isRemotePath f
+            -- Stored ssh:// span (an out-of-root remote file): show it
+            -- relative to the (remote) root when possible.
+            then remoteMakeRelative (logRefRootPath lr) f
+       else if isAbsolute f -- can happen, at least when building with stack a source file that is present in several components (ie library and test)
             then makeRelative (logRefRootPath lr) f
             else f
 
@@ -1003,9 +1040,14 @@ logRefFullFilePath :: LogRef -- ^ The log ref
     -> FilePath -- ^ the result
 logRefFullFilePath lr = let
     f = srcSpanFilename $ logRefSrcSpan lr
-    in if isAbsolute f
+    root = logRefRootPath lr
+    in if isRemotePath f
             then f
-            else logRefRootPath lr </> f
+       else if isAbsolute f
+            -- An absolute (host-local) filename under a remote root came
+            -- from the remote compiler — re-attach the host.
+            then maybe f (\(host, _) -> renderRemotePath host f) (parseRemotePath root)
+            else root </> f
 
 isError :: LogRef -> Bool
 isError = (== ErrorRef) . logRefType
@@ -1105,6 +1147,10 @@ _wsAllPackages w = nubBy ((==) `on` ipdCabalFile) $ w ^. wsPackages
 
 wsAllPackages :: Getter Workspace [IDEPackage]
 wsAllPackages = to _wsAllPackages
+
+-- | The (total, defaulting) per-project settings for a project key.
+wsSettingsFor :: ProjectKey -> Workspace -> ProjectSettings
+wsSettingsFor pk = fromMaybe defaultProjectSettings . M.lookup pk . _wsProjectSettings
 
 activeProject :: Getter IDE (Maybe Project)
 activeProject = workspace . to (>>= view wsActiveProject)

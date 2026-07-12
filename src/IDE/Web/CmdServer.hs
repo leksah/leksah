@@ -70,7 +70,7 @@ import GHC.Conc.Sync (listThreads, threadLabel)
 import GHC.Stack.CloneStack (cloneThreadStack, decode, StackEntry(..))
 import Data.List (isPrefixOf, isInfixOf)
 import Control.Lens ((^.))
-import Control.Monad (forever, void, when)
+import Control.Monad (forever, void, when, (<=<))
 
 import Data.IORef (IORef, newIORef, writeIORef)
 import Data.Maybe (listToMaybe)
@@ -103,9 +103,12 @@ import Text.Printf (printf)
 
 import IDE.Core.State
        (IDERef, reflectIDE, ideJSM, readIDE, workspace, runWorkspace,
-        runProject, pjPackages, ipdPackageName, wsProjects, setLoggerLevel)
+        runProject, pjPackages, ipdPackageName, ipdCabalFile, wsProjects,
+        setLoggerLevel)
 import qualified IDE.Core.State as State (runPackage)
-import IDE.Core.Types (filePathToProjectKey)
+import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
+import IDE.Utils.RemoteExec (resolveProjectInput)
+import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
@@ -113,7 +116,9 @@ import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.ScreenshotRequest (requestScreenshot)
 import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
-import IDE.Workspaces (projectOpenThis, workspaceTryQuiet, makePackage')
+import IDE.Workspaces
+       (projectOpenThis, setProjectSettings, workspaceActivatePackage,
+        workspaceTryQuiet, makePackage')
 
 -- | The control socket both sides agree on: @~/.leksah/cmd.sock@ for the
 -- default instance, @~/.leksah/cmd-\<port\>.sock@ under a non-default
@@ -182,7 +187,15 @@ handleConn ideR conn = do
     reply = sendAll conn . encodeUtf8
 
     -- Resolve a (possibly relative) client path against the client's cwd.
-    resolve cwd p = let s = T.unpack p in if isRelative s then cwd </> s else s
+    -- ssh://host/… paths pass through untouched.
+    resolve cwd p = let s = T.unpack p in
+        if isRemotePath s || not (isRelative s) then s else cwd </> s
+
+    -- Resolve user input that may also be scp-style (host:~/path etc.) —
+    -- one cached ssh round trip expands a leading ~ (see RemoteExec).
+    resolveInput cwd p = resolveProjectInput cwd p >>= \case
+        Left err -> return (Left (err <> "\n"))
+        Right fp -> return (Right fp)
 
     dispatch cwd = \case
       ("restart" : args) -> do
@@ -199,12 +212,50 @@ handleConn ideR conn = do
         exitImmediately (ExitFailure (if noRebuild then 3 else 2))
 
       ("cm" : "open" : files) | not (null files) -> do
-        mapM_ (deliverOpenedFile . resolve cwd) files
-        reply $ "Opened " <> T.pack (show (length files)) <> " file(s) in the editor.\n"
+        results <- mapM (resolveInput cwd) files
+        mapM_ deliverOpenedFile [ fp | Right fp <- results ]
+        reply $ case [ e | Left e <- results ] of
+          []   -> "Opened " <> T.pack (show (length files)) <> " file(s) in the editor.\n"
+          errs -> mconcat errs
 
       ("project" : "open" : files) | not (null files) -> do
-        results <- mapM (openProject . resolve cwd) files
-        reply $ T.unlines results
+        results <- mapM (either return openProject <=< resolveInput cwd) files
+        reply $ T.unlines (map T.strip results)
+
+      -- Make the package with this .cabal file (and its project) active —
+      -- what the workspace tree's Activate context-menu item does.
+      ("package" : "activate" : file : _) ->
+        resolveInput cwd file >>= \case
+          Left e -> reply e
+          Right fp ->
+            reflectIDE (readIDE workspace) ideR >>= \case
+              Nothing -> reply "No workspace open\n"
+              Just ws ->
+                case [ (project, p)
+                     | project <- ws ^. wsProjects
+                     , p <- pjPackages project
+                     , ipdCabalFile p == fp ] of
+                  ((project, package):_) -> do
+                    void $ reflectIDE (workspaceTryQuiet
+                        (workspaceActivatePackage project (Just package) Nothing)) ideR
+                    reply $ "Activated " <> T.pack fp <> "\n"
+                  [] -> reply $ "No package with cabal file " <> T.pack fp <> " in the workspace\n"
+
+      -- Set (or clear, with no prefix argument) the per-project command
+      -- prefix — the shell fragment remote tool runs are wrapped in, e.g.
+      -- `leksah-cmd project set-prefix host:~/proj/cabal.project nix develop -c`.
+      ("project" : "set-prefix" : file : prefixParts) ->
+        resolveInput cwd file >>= \case
+          Left e -> reply e
+          Right fp -> case filePathToProjectKey fp of
+            Nothing -> reply $ "Not a project file: " <> T.pack fp <> "\n"
+            Just pk -> do
+              let prefix = T.strip (T.unwords prefixParts)
+                  settings = ProjectSettings
+                    { psCmdPrefix = if T.null prefix then Nothing else Just prefix }
+              void $ reflectIDE (workspaceTryQuiet (setProjectSettings pk settings)) ideR
+              reply $ "Command prefix for " <> T.pack fp <> ": "
+                      <> (if T.null prefix then "(cleared)" else prefix) <> "\n"
 
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point

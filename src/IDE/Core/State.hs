@@ -519,6 +519,8 @@ addLogRef' hlintFileScope backgroundBuild ref markInBuffers = unless (srcSpanFil
 removeLogRefs' :: (Log -> FilePath -> Bool) -> [LogRefType] -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
 removeLogRefs' toRemove' types removeFromBuffers = do
     (remove, keep) <- Seq.partition toRemove <$> readIDE allLogRefs
+    liftIO . debugM "leksah" $ "removeLogRefs': removing " <> show (length remove)
+        <> ", keeping " <> show (length keep)
     let removeDetails = M.fromListWith (<>) . nub $ map (\ref ->
                             (logRefRootPath ref </> logRefFilePath ref,
                             [logRefType ref])) $ F.toList remove

@@ -125,6 +125,7 @@ import IDE.Metainfo.Provider
 import IDE.Pane.SourceBuffer
 import IDE.TextEditor (delete, setModified, getIterAtLine)
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
+import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Utils.GHCUtils (mkDependency, LibraryName(..))
 import IDE.Utils.ServerConnection
 
@@ -322,6 +323,11 @@ getScopeForRef ref =
                 (_,pack'):_ -> getPackageImportInfo pack'
 
 addImport' :: NotInScopeParseResult -> FilePath -> Descr -> [Descr] -> ((Bool,[Descr]) -> IDEAction) -> IDEAction
+addImport' _nis filePath _descr descrList continuation | isRemotePath filePath = do
+    -- Add-import needs leksah-server to parse the module header, and the
+    -- server cannot see remote files yet.
+    ideMessage Normal (__ "Add import is not yet supported for remote projects")
+    continuation (False, descrList)
 addImport' nis filePath descr descrList continuation =  do
     mbBuf  <- selectSourceBuf filePath
     let mbMod  = case dsMbModu descr of

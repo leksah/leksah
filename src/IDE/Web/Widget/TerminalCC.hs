@@ -317,8 +317,18 @@ terminalCCWidget ide sessionId selectedE = do
                       s { csLayouts = M.insert w l (csLayouts s) }
                 , ffor (fmapMaybe closedWin evE) $ \w s ->
                       s { csLayouts = M.delete w (csLayouts s) }
-                , ffor (fmapMaybe (currentWin sessionId) evE) $ \w s ->
-                      s { csCurrent = Just w }
+                , ffor (fmapMaybe sessionWinOf evE) $ \(sess, w) s ->
+                      -- The attached session's current window changed.  Accept it
+                      -- when it matches the initialSync wildcard (""), the local
+                      -- $id / ssh:// label (sessionId), OR — crucially for remote
+                      -- tabs, whose notifications carry the REMOTE tmux's own $id
+                      -- rather than the ssh:// label — the attached session id
+                      -- learned from %session-changed (csSession).  Without the
+                      -- last clause a remote window switch (select-window) is
+                      -- silently dropped and every remote window shows the same one.
+                      if sess == "" || sess == sessionId || Just sess == csSession s
+                        then s { csCurrent = Just w }
+                        else s
                 -- Attaching to a different session (switch-client): adopt it,
                 -- and — only when it genuinely changed from a prior session —
                 -- drop the old session's windows so the re-sync below repaints
@@ -666,7 +676,8 @@ terminalCCWidget ide sessionId selectedE = do
                 -- frame), so this fires only for the *active* window's close.
                 _ | Just w <- closedWin ev, csCurrent st == Just w ->
                     liftIO $ fireActiveWinClosed ()
-                EvSessionWindowChanged s w | s == "" || s == sessionId ->
+                EvSessionWindowChanged s w
+                  | s == "" || s == sessionId || Just s == csSession st ->
                     liftIO . void . forkIO $ do
                         r <- ccCommand cc ("display-message -p -t " <> w
                                            <> " -F '#{pane_id}'")
@@ -943,16 +954,17 @@ closedWin (EvWindowClose w) = Just w
 closedWin (EvUnlinkedWindowClose w) = Just w
 closedWin _ = Nothing
 
--- | The attached session's current window changed.  tmux broadcasts
--- %session-window-changed for EVERY session to every control client, so the
--- event MUST be filtered to this widget's own session — a foreign session's
--- window id set as csCurrent matches nothing in csLayouts, hiding every
--- window container (the tab shows blank).  The empty session id is
+-- | The (session, window) of a %session-window-changed notification.  tmux
+-- broadcasts it for EVERY session to every control client, so the fold that
+-- consumes this MUST filter to this widget's own session (a foreign session's
+-- window id set as csCurrent matches nothing in csLayouts, hiding every window
+-- container — the tab shows blank).  The filter lives in the fold because a
+-- remote tab must match on the attached session id (csSession, the remote
+-- tmux's $id) rather than its ssh:// label.  The empty session id is
 -- 'initialSync''s wildcard for its own seed event.
-currentWin :: Text -> TmuxEvent -> Maybe WindowId
-currentWin sess (EvSessionWindowChanged s w)
-  | s == "" || s == sess = Just w
-currentWin _ _ = Nothing
+sessionWinOf :: TmuxEvent -> Maybe (SessionId, WindowId)
+sessionWinOf (EvSessionWindowChanged s w) = Just (s, w)
+sessionWinOf _                            = Nothing
 
 data CCState = CCState
   { csLayouts :: M.Map WindowId Layout

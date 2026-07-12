@@ -27,9 +27,9 @@ import Data.IORef (atomicModifyIORef', newIORef, writeIORef)
 import Data.Char (isSpace)
 import Data.List (nub, dropWhileEnd, sortOn, isPrefixOf, tails)
 import Data.Map (Map)
-import qualified Data.Map as M (fromList, lookup, elems, null)
+import qualified Data.Map as M (fromList, lookup, elems, null, size)
 import Data.Maybe (listToMaybe)
-import qualified Data.Text as T (pack)
+import qualified Data.Text as T (pack, unpack)
 import Data.Time.Clock (NominalDiffTime)
 
 import Clay
@@ -38,8 +38,13 @@ import Clay
         Cursor(..), cursorDefault)
 
 import System.Exit (ExitCode(..))
+import System.Log.Logger (debugM)
 import System.FilePath ((</>), dropFileName, makeRelative)
-import System.Process (readProcessWithExitCode)
+
+import IDE.Git (qualifyPath, runGitBatch)
+import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.RemoteRefresh
+       (RefreshReason(..), registerRemoteRefresh, requestRemoteRefresh)
 
 import Reflex
        (holdDyn, holdUniqDyn, listViewWithKey, never, ffor, switchHold,
@@ -47,8 +52,8 @@ import Reflex
         newTriggerEvent, performEvent_,
         constDyn, getPostBuild, tickLossyFromPostBuildTime, Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, el, elClass, elDynAttr', elDynClass, dynText,
-        text, dyn, domEvent, EventName(..), (=:))
+       (MonadWidget, divClass, el, elClass, elClass', elDynAttr', elDynClass,
+        dynText, text, dyn, domEvent, EventName(..), (=:))
 
 import IDE.Core.State (IDE, workspace, wsFile, wsProjects, pjDir, pjKey)
 import IDE.Web.Events (ChangesEvents(..), FindbarEvents)
@@ -89,6 +94,8 @@ changesCss = do
     ".changes .changes-hint" ? do
         color grey
         padding (px 8) (px 8) (px 8) (px 8)
+    ".changes .changes-header" ?
+        padding (px 2) (px 4) (px 2) (px 4)
 
 changesWidget
   :: forall t m . MonadWidget t m
@@ -96,28 +103,52 @@ changesWidget
   -> Event t FindbarEvents
   -> m (Event t ChangesEvents)
 changesWidget ide findE = divClass "changes leksah-nav" $ do
+  -- Header: a refresh button — the manual rescan path for remote projects
+  -- (which never poll), and a free instant rescan locally.
+  refreshClickE <- divClass "changes-header" $ do
+      (e, _) <- elClass' "button" "changes-refresh" $ text "⟳ Refresh"
+      return (domEvent Click e)
+  performEvent_ $ liftIO (requestRemoteRefresh RefreshManual) <$ refreshClickE
   -- The distinct project directories of the open workspace.
   dirsD <- holdUniqDyn $ nub . (^.. workspace . _Just . wsProjects . traverse . to (pjDir . pjKey)) <$> ide
   -- The workspace file's directory; paths are shown relative to it.
   wsDirD <- holdUniqDyn $ maybe "" dropFileName . preview (workspace . _Just . wsFile) <$> ide
   postBuild <- getPostBuild
   tick <- tickLossyFromPostBuildTime pollInterval
-  let refreshE = leftmost [ tag (current dirsD) postBuild
-                          , tag (current dirsD) tick
-                          , updated dirsD ]
-  -- The git scan runs OFF the reflex thread: it's several subprocesses per
-  -- project dir (hundreds of ms in a big workspace), and running it in a
-  -- synchronous performEvent blocked the whole UI — keystrokes included —
-  -- on every tick, felt as a rhythmic ~0.6s freeze every 3s.  A busy guard
-  -- skips a tick rather than letting scans pile up.
-  (scanE, fireScan) <- newTriggerEvent
-  scanBusy <- liftIO $ newIORef False
-  performEvent_ $ ffor refreshE $ \dirs -> liftIO $ do
-      busy <- atomicModifyIORef' scanBusy (\b -> (True, b))
-      unless busy . void . forkIO $
-          ((mconcat <$> mapM gitChanges dirs) >>= fireScan)
-              `finally` writeIORef scanBusy False
-  changesD <- holdUniqDyn =<< holdDyn mempty scanE
+  -- Local project dirs keep the slow poll; REMOTE dirs never tick — they
+  -- rescan only on RemoteRefresh events (remote save, build done, project
+  -- open, the ⟳ button), since each scan is an ssh round trip.
+  (remoteRefreshE, fireRemoteRefresh) <- newTriggerEvent
+  _ <- liftIO $ registerRemoteRefresh fireRemoteRefresh
+  let localDirsD  = filter (not . isRemotePath) <$> dirsD
+      remoteDirsD = filter isRemotePath <$> dirsD
+      localE  = leftmost [ tag (current localDirsD) postBuild
+                         , tag (current localDirsD) tick
+                         , tag (current localDirsD) refreshClickE
+                         , updated localDirsD ]
+      remoteE = leftmost [ tag (current remoteDirsD) postBuild
+                         , tag (current remoteDirsD) (() <$ remoteRefreshE)
+                         , updated remoteDirsD ]
+  -- The git scans run OFF the reflex thread: several subprocesses (or ssh
+  -- round trips) per project dir; a synchronous performEvent would block
+  -- the whole UI.  A busy guard per class skips a trigger rather than
+  -- letting scans pile up.
+  let scanPipeline :: Event t [FilePath] -> m (Dynamic t (Map FilePath FileChange))
+      scanPipeline scanDirsE = do
+        (scanE, fireScan) <- newTriggerEvent
+        scanBusy <- liftIO $ newIORef False
+        performEvent_ $ ffor scanDirsE $ \dirs -> liftIO $ do
+            busy <- atomicModifyIORef' scanBusy (\b -> (True, b))
+            unless busy . void . forkIO $
+                ((mconcat <$> mapM gitChanges dirs) >>= \r -> do
+                    debugM "leksah" $ "changes scan " <> show dirs
+                        <> " -> " <> show (M.size r) <> " changes"
+                    fireScan r)
+                    `finally` writeIORef scanBusy False
+        holdDyn mempty scanE
+  localMapD  <- scanPipeline localE
+  remoteMapD <- scanPipeline remoteE
+  changesD <- holdUniqDyn $ (<>) <$> localMapD <*> remoteMapD
   -- Find selects a changed file: match its workspace-relative path; the row is
   -- highlighted and scrolled into view (see changeRow).
   let findItemsD = (\wsDir -> map (\c -> (changePath c, T.pack (makeRelative wsDir (changePath c))))
@@ -169,18 +200,20 @@ changeRow wsDirD findSelD path cD = do
 -- returns empty if @dir@ is not in a repo or git is unavailable.
 gitChanges :: FilePath -> IO (Map FilePath FileChange)
 gitChanges dir = (`catch` \(_ :: SomeException) -> return mempty) $ do
-  (rootRC, root, _) <- readProcessWithExitCode "git" ["-C", dir, "rev-parse", "--show-toplevel"] ""
-  case rootRC of
-    ExitSuccess -> do
-      let root' = dropWhileEnd isSpace root
-      (rc, out, _) <- readProcessWithExitCode "git"
-        ["-c", "core.quotePath=false", "-C", dir, "status", "--porcelain", "-uall"] ""
+  -- One batch = one ssh round trip for a remote dir (IDE.Git routes).
+  results <- runGitBatch dir
+    [ ["rev-parse", "--show-toplevel"]
+    , ["-c", "core.quotePath=false", "status", "--porcelain", "-uall"]
       -- Added/deleted line counts for tracked changes relative to HEAD.
-      (_, nout, _) <- readProcessWithExitCode "git"
-        ["-c", "core.quotePath=false", "-C", dir, "diff", "--numstat", "HEAD"] ""
-      let counts = parseNumstat root' nout
+    , ["-c", "core.quotePath=false", "diff", "--numstat", "HEAD"]
+    ]
+  case results of
+    [(ExitSuccess, root, _), (rc, out, _), (_, nout, _)] -> do
+      let root' = qualifyPath dir (dropWhileEnd isSpace (T.unpack root))
+          counts = parseNumstat root' (T.unpack nout)
           mk (p, st) = (p, FileChange p st (fst <$> M.lookup p counts) (snd <$> M.lookup p counts))
-      return . M.fromList . map mk $ if rc == ExitSuccess then parseStatus root' out else []
+      return . M.fromList . map mk $
+          if rc == ExitSuccess then parseStatus root' (T.unpack out) else []
     _ -> return mempty
   where
     parseStatus root out =

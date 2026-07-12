@@ -4,18 +4,20 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | The file-system seam for the web UI's file access.
 --
--- Natively every function is a passthrough to the real file system, so this
--- module changes nothing.  Under the GHC JavaScript backend (the in-browser
--- web demo) there is no file system at all: the same functions run against a
--- process-global in-memory tree seeded from @window.leksahDemoFiles@ — a
--- plain @{ "/demo/path": "contents", … }@ object the hosting page defines
+-- Natively every function is a passthrough to the real file system — except
+-- for @ssh:\/\/HOST\/…@ paths (remote projects, see "IDE.Utils.RemotePath"),
+-- which route to one-shot pooled ssh operations in "IDE.Utils.RemoteExec".
+-- Under the GHC JavaScript backend (the in-browser web demo) there is no
+-- file system at all: the same functions run against a process-global
+-- in-memory tree seeded from @window.leksahDemoFiles@ — a plain
+-- @{ "/demo/path": "contents", … }@ object the hosting page defines
 -- (docs/website/try).  Keeping the seed in the page means the demo project
 -- can be edited without recompiling leksah.
 --
 -- Only the operations the UI shell actually performs go through here (editor
--- buffer load/save, file-tree listing, workspace read/write); native-only
--- subsystems keep their direct imports and are compiled out or stubbed for
--- the JS build instead.
+-- buffer load/save, file-tree listing, workspace read/write, project
+-- loading); native-only subsystems keep their direct imports and are
+-- compiled out or stubbed for the JS build instead.
 module IDE.Web.FS
   ( fsReadFile
   , fsWriteFile
@@ -24,9 +26,9 @@ module IDE.Web.FS
   , fsDoesFileExist
   , fsDoesDirectoryExist
   , fsGetDirectoryContents
-#if defined(ghcjs_HOST_OS)
+  , fsListDirectory
   , fsListFilesRecursive
-#endif
+  , fsCreateDirectoryIfMissing
   ) where
 
 import Data.ByteString (ByteString)
@@ -127,32 +129,91 @@ fsGetDirectoryContents p = do
         ]
   if null children then notFound "getDirectoryContents" p else return children
 
+-- | Immediate children with an is-directory flag (one call — matters for
+-- the remote backend, a no-op difference here).
+fsListDirectory :: FilePath -> IO [(FilePath, Bool)]
+fsListDirectory p = do
+  names <- fsGetDirectoryContents p
+  mapM (\n -> (,) n <$> fsDoesDirectoryExist (norm p <> "/" <> n)) names
+
+-- | Directories are implicit in the mock tree.
+fsCreateDirectoryIfMissing :: FilePath -> IO ()
+fsCreateDirectoryIfMissing _ = return ()
+
 #else
 
+import Control.Monad (forM)
 import qualified Data.ByteString as BS (readFile, writeFile)
 import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
+import Data.Text (Text)
 import System.Directory
-       (doesFileExist, doesDirectoryExist, getDirectoryContents)
+       (createDirectoryIfMissing, doesFileExist, doesDirectoryExist,
+        getDirectoryContents, listDirectory)
+import System.FilePath ((</>))
+
+import IDE.Utils.RemoteExec
+       (remoteCreateDirectoryIfMissing, remoteDirExists, remoteFileExists,
+        remoteListDirectoryAnnotated, remoteListFilesRecursive,
+        remoteReadFile, remoteWriteFile)
+import IDE.Utils.RemotePath (parseRemotePath, renderRemotePath)
+
+-- Route on the path: ssh:// → RemoteExec (host, host-local path), else the
+-- local passthrough.
+withRemote :: FilePath -> (Text -> FilePath -> IO a) -> IO a -> IO a
+withRemote p remote local = case parseRemotePath p of
+  Just (host, rp) -> remote host rp
+  Nothing         -> local
 
 fsReadFile :: FilePath -> IO ByteString
-fsReadFile = BS.readFile
+fsReadFile p = withRemote p remoteReadFile (BS.readFile p)
 
 fsWriteFile :: FilePath -> ByteString -> IO ()
-fsWriteFile = BS.writeFile
+fsWriteFile p c = withRemote p (\h rp -> remoteWriteFile h rp c) (BS.writeFile p c)
 
+-- Laziness is a local-IO detail; the remote backend is strict either way.
 fsReadFileLazy :: FilePath -> IO LBS.ByteString
-fsReadFileLazy = LBS.readFile
+fsReadFileLazy p =
+  withRemote p (\h rp -> LBS.fromStrict <$> remoteReadFile h rp) (LBS.readFile p)
 
 fsWriteFileLazy :: FilePath -> LBS.ByteString -> IO ()
-fsWriteFileLazy = LBS.writeFile
+fsWriteFileLazy p c =
+  withRemote p (\h rp -> remoteWriteFile h rp (LBS.toStrict c)) (LBS.writeFile p c)
 
 fsDoesFileExist :: FilePath -> IO Bool
-fsDoesFileExist = doesFileExist
+fsDoesFileExist p = withRemote p remoteFileExists (doesFileExist p)
 
 fsDoesDirectoryExist :: FilePath -> IO Bool
-fsDoesDirectoryExist = doesDirectoryExist
+fsDoesDirectoryExist p = withRemote p remoteDirExists (doesDirectoryExist p)
 
 fsGetDirectoryContents :: FilePath -> IO [FilePath]
-fsGetDirectoryContents = getDirectoryContents
+fsGetDirectoryContents p =
+  withRemote p (\h rp -> map fst <$> remoteListDirectoryAnnotated h rp)
+               (getDirectoryContents p)
+
+-- | Immediate children with an is-directory flag — ONE round trip remotely
+-- (a per-child doesDirectoryExist would be N+1).
+fsListDirectory :: FilePath -> IO [(FilePath, Bool)]
+fsListDirectory p = withRemote p remoteListDirectoryAnnotated $ do
+  names <- listDirectory p
+  forM names $ \n -> (,) n <$> doesDirectoryExist (p </> n)
+
+-- | Every file under the directory, any depth, full paths (remote results
+-- keep their @ssh:\/\/host@ prefix).
+fsListFilesRecursive :: FilePath -> IO [FilePath]
+fsListFilesRecursive p =
+  withRemote p
+    (\h rp -> map (renderRemotePath h) <$> remoteListFilesRecursive h rp)
+    (walk p)
+  where
+    walk d = do
+      names <- listDirectory d
+      fmap concat . forM names $ \n -> do
+        let q = d </> n
+        isDir <- doesDirectoryExist q
+        if isDir then walk q else return [q]
+
+fsCreateDirectoryIfMissing :: FilePath -> IO ()
+fsCreateDirectoryIfMissing p =
+  withRemote p remoteCreateDirectoryIfMissing (createDirectoryIfMissing True p)
 
 #endif

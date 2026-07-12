@@ -37,6 +37,7 @@ import IDE.Gtk.State
 import IDE.Package
        (activatePackage, deactivatePackage, ideProjectFromKey)
 import IDE.Utils.FileUtils(myCanonicalizePath)
+import IDE.Utils.RemotePath (isRemotePath)
 
 import Data.Maybe
 import Data.Function ((&))
@@ -74,7 +75,8 @@ import Control.Concurrent (putMVar, takeMVar, tryPutMVar)
 import qualified Data.Set as S (fromList, insert, member)
 import Control.Exception (evaluate)
 import qualified Data.Map as M
-       (partitionWithKey, fromList, member)
+       (partitionWithKey, fromList, member, toList)
+import Data.List (find)
 import Data.Foldable (forM_)
 
 data WorkspaceFile = WorkspaceFile {
@@ -88,6 +90,9 @@ data WorkspaceFile = WorkspaceFile {
 ,   wsfActivePackFile    ::   Maybe FilePath
 ,   wsfActiveComponent   ::   Maybe Text
 ,   wsfPackageVcsConf    ::   Map FilePath VCSConf
+    -- | Per-project settings keyed by the (relativized; remote verbatim)
+    -- project file-or-dir.  Maybe so old workspace files still parse.
+,   wsfProjectSettings   ::   Maybe (Map FilePath ProjectSettings)
 } deriving (Show, Generic)
 
 wsfAesonOptions :: Options
@@ -123,11 +128,15 @@ readWorkspace fp = do
             return $ Right ws'
 
 makeAbsolute :: MonadIO m => FilePath -> FilePath -> m FilePath
-makeAbsolute basePath relativePath = liftIO $
-    myCanonicalizePath
-       (if isAbsolute relativePath
-            then relativePath
-            else basePath </> relativePath)
+makeAbsolute basePath relativePath
+    -- ssh://host/… paths are absolute on their host; joining the (local)
+    -- workspace dir or canonicalizing locally would mangle them.
+    | isRemotePath relativePath = return relativePath
+    | otherwise = liftIO $
+        myCanonicalizePath
+           (if isAbsolute relativePath
+                then relativePath
+                else basePath </> relativePath)
 
 makeProjectKeyAbsolute :: MonadIO m => FilePath -> ProjectKey -> m ProjectKey
 makeProjectKeyAbsolute wsFile' (StackTool (StackProject f)) =
@@ -155,12 +164,20 @@ makePathsAbsolute ws bp = do
     let keys = fromMaybe (mapMaybe filePathToProjectKey (wsfProjectFiles ws)) $ wsfProjectKeys ws
     projectKeys      <- mapM (makeProjectKeyAbsolute wsFile') keys
     projects          <- catMaybes <$> mapM ideProjectFromKey projectKeys
+    -- Re-associate persisted per-project settings with the absolutized keys
+    -- (the stored key is the relativized pjFileOrDir; remote ones verbatim).
+    projectSettings  <- case wsfProjectSettings ws of
+        Nothing -> return mempty
+        Just m  -> fmap (M.fromList . catMaybes) . forM (M.toList m) $ \(k, s) -> do
+            ak <- makeAbsolute (dropFileName wsFile') k
+            return $ (, s) <$> find ((== ak) . pjFileOrDir) projectKeys
     return Workspace
                 { _wsFile             = wsFile'
                 , _wsVersion          = wsfVersion ws
                 , _wsSaveTime         = wsfSaveTime ws
                 , _wsName             = wsfName ws
                 , _wsProjects         = projects
+                , _wsProjectSettings  = projectSettings
                 , _wsActiveProjectKey = wsActiveProjectKey'
                 , _wsActivePackFile   = wsActivePackFile'
                 , _wsActiveComponent  = wsfActiveComponent ws
@@ -192,6 +209,7 @@ emptyWorkspaceFile =  WorkspaceFile {
 ,   wsfActivePackFile    =   Nothing
 ,   wsfActiveComponent   =   Nothing
 ,   wsfPackageVcsConf    =   Map.empty
+,   wsfProjectSettings   =   Nothing
 }
 
 getProject :: ProjectKey -> [Project] -> Maybe Project
@@ -269,7 +287,12 @@ setWorkspace mbWs = do
                 newPackageWatchers <- forM newPackages $ \package ->
                     return (ipdCabalFile package, return ())
 #else
-                newProjectWatchers <- forM newProjects $ \project -> do
+                newProjectWatchers <- forM newProjects $ \project ->
+                  -- Remote projects: no local file watching (refresh is
+                  -- event-driven); shape-compatible no-op watcher.
+                  if isRemotePath (pjDir (pjKey project))
+                   then return (pjKey project, return ())
+                   else do
                     debugM "leksah" $ "Watching project " <> show (pjKey project)
                     fmap (pjKey project,) <$> watchDir fsn (pjDir $ pjKey project) (\case
                         Modified {} -> True
@@ -281,7 +304,10 @@ setWorkspace mbWs = do
                                     readWorkspace (ws ^. wsFile) >>= \case
                                         Left _ -> return ()
                                         Right ws' -> setWorkspace (Just ws')
-                newPackageWatchers <- forM newPackages $ \package -> do
+                newPackageWatchers <- forM newPackages $ \package ->
+                  if isRemotePath (ipdCabalFile package)
+                   then return (ipdCabalFile package, return ())
+                   else do
                     debugM "leksah" $ "Watching package " <> show (ipdCabalFile package)
                     nonRootSrcPaths <- map (<>"/") . filter (/=ipdPackageDir package) <$>
                         mapM (myCanonicalizePath . (ipdPackageDir package </>)) (ipdSrcDirs package)
@@ -316,16 +342,23 @@ setWorkspace mbWs = do
 
 makeProjectKeyRelative :: FilePath -> ProjectKey -> IO ProjectKey
 makeProjectKeyRelative wsFile' (StackTool (StackProject f)) =
-    StackTool . StackProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
+    StackTool . StackProject <$> relativeTo wsFile' f
 makeProjectKeyRelative wsFile' (CabalTool (CabalProject f)) =
-    CabalTool . CabalProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
+    CabalTool . CabalProject <$> relativeTo wsFile' f
 makeProjectKeyRelative wsFile' (CustomTool p) =
-    CustomTool . (\dir -> p { pjCustomDir = dir }) . makeRelative (dropFileName wsFile')
-        <$> myCanonicalizePath (pjCustomDir p)
+    CustomTool . (\dir -> p { pjCustomDir = dir }) <$> relativeTo wsFile' (pjCustomDir p)
 makeProjectKeyRelative wsFile' (NixTool (NixProject f)) =
-    NixTool . NixProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
+    NixTool . NixProject <$> relativeTo wsFile' f
 makeProjectKeyRelative wsFile' (MakeTool (MakeProject f)) =
-    MakeTool . MakeProject . makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
+    MakeTool . MakeProject <$> relativeTo wsFile' f
+
+-- Remote paths are stored verbatim in the .lkshw (they are not relative to
+-- anything local); local ones are canonicalized and relativized to the
+-- workspace-file directory as before.
+relativeTo :: FilePath -> FilePath -> IO FilePath
+relativeTo wsFile' f
+    | isRemotePath f = return f
+    | otherwise = makeRelative (dropFileName wsFile') <$> myCanonicalizePath f
 
 makePathsRelative :: Workspace -> FilePath -> IO WorkspaceFile
 makePathsRelative ws wsFile' = do
@@ -336,6 +369,9 @@ makePathsRelative ws wsFile' = do
                                 nfp <- liftIO $ myCanonicalizePath fp
                                 return (Just (makeRelative (dropFileName wsFile') nfp))
     wsProjectKeys' <- mapM (makeProjectKeyRelative wsFile') $ ws ^. wsProjectKeys
+    wsProjectSettings' <- forM (M.toList (ws ^. wsProjectSettings)) $ \(pk, s) -> do
+        pk' <- makeProjectKeyRelative wsFile' pk
+        return (pjFileOrDir pk', s)
     return WorkspaceFile
                 { wsfVersion           = ws ^. wsVersion
                 , wsfSaveTime          = ws ^. wsSaveTime
@@ -347,5 +383,8 @@ makePathsRelative ws wsFile' = do
                 , wsfActivePackFile    = wsActivePackFile'
                 , wsfActiveComponent   = ws ^. wsActiveComponent
                 , wsfPackageVcsConf    = ws ^. packageVcsConf
+                , wsfProjectSettings   = if null wsProjectSettings'
+                                            then Nothing
+                                            else Just (M.fromList wsProjectSettings')
                 }
 

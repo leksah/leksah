@@ -51,6 +51,7 @@ import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
+import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput (setActiveTerminalNotifier)
@@ -99,6 +100,7 @@ dispatchTag win tag = do
     -- These act on reflex state; signal via the bridges.
     (CommandFileSave:_)        -> requestSaveActiveFile
     (CommandFind:_)            -> requestToggleFindbar
+    (CommandProjectAddRemote:_) -> requestAddRemoteProject
     (CommandShowPreferences:_) -> requestShowPreferences
     (cmd:_) -> getGlobalIDERef >>= \case
       Just ideR -> case cmd ^. commandAction of

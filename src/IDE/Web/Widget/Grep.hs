@@ -10,15 +10,22 @@ module IDE.Web.Widget.Grep
   ) where
 
 import Control.Exception (catch, SomeException)
+import Control.Monad (forM)
 
 import Data.Bits (testBit)
+import Data.List (partition)
+import qualified Data.Map as M (fromListWith, toList)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, null)
+import qualified Data.Text as T (pack, unpack, null, unwords)
+import Data.Text.Encoding (decodeUtf8Lenient)
 
 import Text.Read (readMaybe)
 
 import System.Process (readProcessWithExitCode)
+
+import IDE.Utils.RemoteExec (runSsh, shellQuote)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 
 import Clay
        (overflow, auto, height, pct, whiteSpace, nowrap, grey, color, bold,
@@ -108,9 +115,24 @@ runGrep q flags dirs
                   , "--exclude-dir=.git", "--exclude-dir=.svn", "--exclude-dir=_darcs"
                   , "--exclude-dir=dist", "--exclude-dir=dist-newstyle", "--exclude-dir=dist-ghcjs"
                   , T.unpack q ]
-               ++ dirs
-      (_ec, out, _err) <- readProcessWithExitCode "grep" args ""
-      return $ take 1000 $ mapMaybe parseGrepLine (lines out)
+          (remoteDirs, localDirs) = partition isRemotePath dirs
+      localResults <- if null localDirs then return [] else do
+          (_ec, out, _err) <- readProcessWithExitCode "grep" (args ++ localDirs) ""
+          return $ mapMaybe parseGrepLine (lines out)
+      -- Remote dirs, grouped per host: ONE ssh exec per host running the
+      -- identical grep; result paths get their ssh://host prefix back so
+      -- clicking a match opens the remote file.  grep exit 1 = no matches.
+      remoteResults <- fmap concat . forM (groupByHost remoteDirs) $ \(host, rdirs) ->
+          (do (_code, out, _) <- runSsh host
+                  ("exec grep " <> T.unwords (map (shellQuote . T.pack) (args ++ rdirs)))
+                  [] mempty
+              return [ r { grepFile = renderRemotePath host (grepFile r) }
+                     | r <- mapMaybe parseGrepLine (lines (T.unpack (decodeUtf8Lenient out))) ])
+            `catch` \(_ :: SomeException) -> return []
+      return $ take 1000 (localResults ++ remoteResults)
+  where
+    groupByHost rdirs = M.toList $ M.fromListWith (++)
+        [ (host, [rdir]) | Just (host, rdir) <- map parseRemotePath rdirs ]
 
 -- | Parse a @grep -n@ output line: @path:line:matched text@.  File paths can't
 -- contain a newline and rarely contain a colon, so split on the first two.

@@ -98,11 +98,16 @@ import IDE.Pane.SourceBuffer
         inActiveBufContext, addLogRef, removeLintLogRefs)
 import IDE.TextEditor (TextEditor(getSelectionBounds, getLine, getLineOffset, setModified, getIterAtLine, forwardCharsC, beginUserAction, delete, endUserAction))
 import IDE.Utils.FileUtils (cabalProjectBuildDir, cabalBuildDir)
+import IDE.Utils.RemotePath (isRemotePath)
 
 packageHLint :: PackageAction
 packageHLint = asks ipdCabalFile >>= (liftIDE . scheduleHLint . Left)
 
 scheduleHLint :: Either FilePath FilePath -> IDEAction
+scheduleHLint what | isRemotePath (either id id what) =
+    -- hlint runs in-process against local files (and needs local cabal
+    -- macros); remote projects skip it for now.
+    liftIO $ debugM "leksah" "scheduleHLint: skipped for remote path"
 scheduleHLint what = do
     liftIO $ debugM "leksah" "scheduleHLint"
     mbQueue <- readIDE hlintQueue

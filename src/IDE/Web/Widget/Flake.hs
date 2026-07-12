@@ -43,8 +43,9 @@ import qualified Data.ByteString.Lazy as LBS (fromStrict)
 import Data.List (intercalate)
 import Data.Text (Text)
 import qualified Data.Text as T
-       (pack, unpack, strip, replace, concatMap, singleton, intercalate)
-import Data.Text.Encoding (encodeUtf8)
+       (pack, unpack, strip, replace, concatMap, singleton, intercalate,
+        unwords)
+import Data.Text.Encoding (decodeUtf8Lenient, encodeUtf8)
 
 import Clay
        (color, grey, red, padding, px, whiteSpace, nowrap, cursor,
@@ -61,8 +62,10 @@ import System.Directory (findExecutable)
 import System.Exit (ExitCode(..))
 import System.Process (readProcessWithExitCode)
 
-import IDE.Web.RemoteTermRequest (requestLocalTerm)
-import IDE.Web.ReplTmux (ensureCommandWindow)
+import IDE.Utils.RemoteExec (runSsh, shellQuote)
+import IDE.Utils.RemotePath (parseRemotePath)
+import IDE.Web.RemoteTermRequest (requestLocalTerm, requestRemoteTerm)
+import IDE.Web.ReplTmux (ensureCommandWindow, ensureRemoteWindow)
 import IDE.Web.Widget.Tree (treeItem, treeSelect, treeSelect')
 
 -- | One node of the top-level flake-outputs listing: a category and its
@@ -98,28 +101,45 @@ instance FromJSON FlakeChild where
 -- | Either an error message (nix missing, eval/parse failure) or the outputs.
 type FlakeResult = Either Text [FlakeNode]
 
--- | Run @nix eval --impure --json@ on an expression and parse the JSON.
-nixEvalJson :: forall a . FromJSON a => [String] -> Text -> IO (Either Text a)
-nixEvalJson extraOpts expr = either (Left . T.pack . show) id <$>
+-- | Run @nix eval --impure --json@ on an expression (on the project's host
+-- when @dir@ is remote) and parse the JSON.
+nixEvalJson :: forall a . FromJSON a => FilePath -> [String] -> Text -> IO (Either Text a)
+nixEvalJson dir extraOpts expr = either (Left . T.pack . show) id <$>
     (try go :: IO (Either SomeException (Either Text a)))
   where
-    go = findExecutable "nix" >>= \case
-      Nothing  -> return (Left "nix was not found on $PATH")
-      Just nix -> do
-        (rc, out, err) <- readProcessWithExitCode nix
-            ([ "--extra-experimental-features", "nix-command flakes" ]
-             <> extraOpts
-             <> [ "eval", "--impure", "--json", "--expr", T.unpack expr ]) ""
-        return $ case rc of
-          ExitSuccess ->
-            case eitherDecode (LBS.fromStrict (encodeUtf8 (T.pack out))) of
-              Right v -> Right v
-              Left e  -> Left (T.pack ("could not parse nix output: " <> e))
-          _ -> Left (T.strip (T.pack err))
+    go = case parseRemotePath dir of
+      Just (host, _) -> do
+        (rc, out, err) <- runSsh host
+            ("exec nix " <> T.unwords (map (shellQuote . T.pack)
+                ([ "--extra-experimental-features", "nix-command flakes" ]
+                 <> extraOpts
+                 <> [ "eval", "--impure", "--json", "--expr" ]))
+             <> " \"$0\"")
+            [expr] mempty
+        return $ parseResult rc (decodeUtf8Lenient out) (decodeUtf8Lenient err)
+      Nothing -> findExecutable "nix" >>= \case
+        Nothing  -> return (Left "nix was not found on $PATH")
+        Just nix -> do
+          (rc, out, err) <- readProcessWithExitCode nix
+              ([ "--extra-experimental-features", "nix-command flakes" ]
+               <> extraOpts
+               <> [ "eval", "--impure", "--json", "--expr", T.unpack expr ]) ""
+          return $ parseResult rc (T.pack out) (T.pack err)
+    parseResult rc out err = case rc of
+      ExitSuccess ->
+        case eitherDecode (LBS.fromStrict (encodeUtf8 out)) of
+          Right v -> Right v
+          Left e  -> Left (T.pack ("could not parse nix output: " <> e))
+      _ -> Left (T.strip err)
+
+-- | The directory as the flake's own host sees it (the local part of an
+-- ssh:// dir) — what goes inside the nix expression.
+nixDirOf :: FilePath -> FilePath
+nixDirOf dir = maybe dir snd (parseRemotePath dir)
 
 -- | Evaluate the flake in @dir@ and return its top-level output tree.
 flakeOutputs :: FilePath -> IO FlakeResult
-flakeOutputs dir = nixEvalJson [] (flakeExpr dir)
+flakeOutputs dir = nixEvalJson dir [] (flakeExpr (nixDirOf dir))
 
 -- | A nix string literal (escaping @"@, @\\@ and @${@ interpolation).
 nixString :: Text -> Text
@@ -181,8 +201,8 @@ flakeChildren dir path =
       Right cs -> return (Right cs)
       Left err -> either (const (Left err)) Right <$> childrenEval False
   where
-    childrenEval withKinds = nixEvalJson noIFD
-        . T.replace "__DIR__" (T.pack dir) . T.pack $ intercalate "\n"
+    childrenEval withKinds = nixEvalJson dir noIFD
+        . T.replace "__DIR__" (T.pack (nixDirOf dir)) . T.pack $ intercalate "\n"
       [ "let"
       , "  flake = builtins.getFlake \"git+file://__DIR__\";"
       , "  v = builtins.foldl' (a: n: builtins.getAttr n a) flake [ "
@@ -206,8 +226,8 @@ flakeChildren dir path =
 -- node expands, where nobody asked for a build).  @legacyPackages@ is
 -- skipped (it mirrors all of nixpkgs).
 flakeSystemCategories :: FilePath -> IO (Either Text (Text, [Text]))
-flakeSystemCategories dir = fmap (fmap unSysNames) . nixEvalJson noIFD
-    . T.replace "__DIR__" (T.pack dir) . T.pack $ intercalate "\n"
+flakeSystemCategories dir = fmap (fmap unSysNames) . nixEvalJson dir noIFD
+    . T.replace "__DIR__" (T.pack (nixDirOf dir)) . T.pack $ intercalate "\n"
   [ "let"
   , "  flake = builtins.getFlake \"git+file://__DIR__\";"
   , "  sys = builtins.currentSystem;"
@@ -225,8 +245,8 @@ flakeSystemCategories dir = fmap (fmap unSysNames) . nixEvalJson noIFD
 -- listing e.g. haskell.nix packages would otherwise kick off builds nobody
 -- asked for.
 flakeSystemNames :: FilePath -> Text -> IO (Either Text (Text, [Text]))
-flakeSystemNames dir cat = fmap (fmap unSysNames) . nixEvalJson noIFD
-    . T.replace "__DIR__" (T.pack dir) . T.pack $ intercalate "\n"
+flakeSystemNames dir cat = fmap (fmap unSysNames) . nixEvalJson dir noIFD
+    . T.replace "__DIR__" (T.pack (nixDirOf dir)) . T.pack $ intercalate "\n"
   [ "let"
   , "  flake = builtins.getFlake \"git+file://__DIR__\";"
   , "  sys = builtins.currentSystem;"
@@ -276,8 +296,15 @@ execButton tip = do
 -- and ask 'IDE.Web.Main' for its terminal tab.
 openNixWindow :: FilePath -> Text -> Text -> IO ()
 openNixWindow dir name cmd = void . forkIO $
-    ensureCommandWindow False (T.pack dir <> "#" <> name) dir name cmd
-        >>= mapM_ requestLocalTerm
+    case parseRemotePath dir of
+        -- Remote project: the window lives in the host's default tmux
+        -- `leksah` session, surfaced as the ssh://HOST tab.
+        Just (host, rdir) -> do
+            _ <- ensureRemoteWindow host rdir name (Just cmd)
+            requestRemoteTerm (host <> "#leksah")
+        Nothing ->
+            ensureCommandWindow False (T.pack dir <> "#" <> name) dir name cmd
+                >>= mapM_ requestLocalTerm
 
 -- | Open @nix develop .#\<attr path\>@ in a repl-session terminal window.
 developAttr :: FilePath -> Text -> IO ()

@@ -281,6 +281,9 @@ library
         IDE.Utils.ExitImmediately
         IDE.Utils.ExternalTool
         IDE.Utils.GUIUtils
+        IDE.Git
+        IDE.Utils.RemoteExec
+        IDE.Utils.RemotePath
         IDE.Utils.ServerConnection
         IDE.Web.Command
         IDE.Web.CmdServer
@@ -289,6 +292,8 @@ library
         IDE.Web.DemoTerminals
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
+        IDE.Web.AddRemoteRequest
+        IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
         IDE.Web.WindowBridge
         IDE.Web.RegionCapture
@@ -299,6 +304,7 @@ library
         IDE.Web.BridgeStore
         IDE.Web.Events
         IDE.Web.FS
+        IDE.Web.RemoteRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
         IDE.Web.Main
@@ -326,6 +332,8 @@ library
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
         IDE.Web.Widget.Findbar
+        IDE.Web.Widget.AddRemote
+        IDE.Web.Widget.RemoteSettings
         IDE.Web.Widget.FileTree
         IDE.Web.Widget.Flake
         IDE.Web.Widget.Flipper
@@ -535,6 +543,9 @@ library leksah-nogtk
         IDE.Utils.DirectoryUtils
         IDE.Utils.ExitImmediately
         IDE.Utils.ExternalTool
+        IDE.Git
+        IDE.Utils.RemoteExec
+        IDE.Utils.RemotePath
         IDE.Utils.ServerConnection
         IDE.LSP
         IDE.Web.Command
@@ -544,6 +555,8 @@ library leksah-nogtk
         IDE.Web.DemoTerminals
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
+        IDE.Web.AddRemoteRequest
+        IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
         IDE.Web.WindowBridge
         IDE.Web.RegionCapture
@@ -554,6 +567,7 @@ library leksah-nogtk
         IDE.Web.BridgeStore
         IDE.Web.Events
         IDE.Web.FS
+        IDE.Web.RemoteRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
         IDE.Web.Main
@@ -582,6 +596,8 @@ library leksah-nogtk
         IDE.Web.Widget.Errors
         IDE.Web.Widget.FileTree
         IDE.Web.Widget.Findbar
+        IDE.Web.Widget.AddRemote
+        IDE.Web.Widget.RemoteSettings
         IDE.Web.Widget.Flake
         IDE.Web.Widget.Flipper
         IDE.Web.Widget.Grep

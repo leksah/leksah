@@ -10,9 +10,14 @@ module IDE.Web.Widget.Editor
   , editorWidget
   ) where
 
-import Control.Monad (void)
+import Control.Concurrent (forkIO)
+import Control.Exception (SomeException, try)
+import Control.Monad (void, when)
+import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Lens (view, (^..), (^.))
+import System.Log.Logger (errorM)
 
 -- File access goes through the IDE.Web.FS seam (real FS natively; the
 -- in-memory demo tree in the browser build).
@@ -64,7 +69,7 @@ import qualified IDE.LSP as LSP
 
 import System.Exit (ExitCode(..))
 import System.FilePath (takeDirectory, takeFileName)
-import System.Process (readProcessWithExitCode)
+import IDE.Git (runGitBatch)
 
 editorCss :: Css
 editorCss = do
@@ -124,14 +129,15 @@ gitOriginal _ = return Nothing
 gitOriginal file = do
   let dir = takeDirectory file
       name = takeFileName file
-  (treeRC, _, _) <- readProcessWithExitCode "git" ["-C", dir, "rev-parse", "--is-inside-work-tree"] ""
-  case treeRC of
-    ExitSuccess -> do
-      (rc, out, _) <- readProcessWithExitCode "git" ["-C", dir, "show", "HEAD:./" <> name] ""
-      return . Just $ case rc of
-        ExitSuccess -> T.pack out
-        _           -> ""
-    _ -> return Nothing
+  -- One batch = one ssh round trip when the file is remote (IDE.Git routes).
+  results <- runGitBatch dir
+    [ ["rev-parse", "--is-inside-work-tree"]
+    , ["show", "HEAD:./" <> T.pack name]
+    ]
+  return $ case results of
+    [(ExitSuccess, _, _), (rc, out, _)] ->
+        Just (if rc == ExitSuccess then out else "")
+    _ -> Nothing
 #endif
 
 -- | Push the current LogRefs to the editor as CM6 mark decorations.
@@ -258,11 +264,15 @@ editorWidget ide allEvents saveFileE = do
                           liftIO $ triggerGutterMenu (round x :: Int, round y :: Int)
                       _ -> return ())
           -- Tell the editor the file's committed contents (drives the
-          -- dirty-line highlighting and the diff views).
+          -- dirty-line highlighting and the diff views).  Fetched off the
+          -- frame thread — for a remote file it's an ssh round trip.
+          (origE, fireOrig) <- newTriggerEvent
           performEvent_ $ ffor editorE $ \editorView ->
-              liftIO (gitOriginal file) >>= \case
-                Just orig -> liftJSM . void $ jsg ("LeksahCM" :: Text) ^. js2 ("setOriginal" :: Text) editorView orig
+              liftIO . void . forkIO $ gitOriginal file >>= \case
+                Just orig -> fireOrig (editorView, orig)
                 Nothing   -> return ()
+          performEvent_ $ ffor origE $ \(editorView, orig) ->
+              liftJSM . void $ jsg ("LeksahCM" :: Text) ^. js2 ("setOriginal" :: Text) editorView orig
           performEvent_ $ ffor (attach (current $ (,) <$> locationsD <*> logRefsD) editorE) $ \((locations, logRefs), editorView) -> liftJSM $ do
               case M.lookup file locations of
                 Nothing -> return ()
@@ -351,8 +361,17 @@ editorWidget ide allEvents saveFileE = do
           performEvent_ $ ffor (attach (current editorD) saveThisE) $ \case
               (Just editorView, _) -> do
                   txt <- liftJSM $ valToText =<< jsg ("LeksahCM" :: Text) ^. js1 ("getDoc" :: Text) editorView
-                  liftIO $ fsWriteFile file (encodeUtf8 txt)
-                  liftIO $ LSP.documentSaved file txt
+                  -- A failed write (a remote host down, a permissions error)
+                  -- must be reported, not silently dropped — and must not
+                  -- kill this window's frame thread.
+                  liftIO $ try (fsWriteFile file (encodeUtf8 txt)) >>= \case
+                      Left (e :: SomeException) ->
+                          errorM "leksah" ("Failed to save " <> file <> ": " <> show e)
+                      Right () -> do
+                          LSP.documentSaved file txt
+                          -- Remote panes refresh on events, not timers.
+                          when (isRemotePath file) $
+                              requestRemoteRefresh (RefreshSaved file)
               _ -> return ()
           -- Gutter context menu (rendered in Reflex; the chosen action calls
           -- the CM6 diff toggles in the bundle).

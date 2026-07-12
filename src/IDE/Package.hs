@@ -67,6 +67,7 @@ module IDE.Package (
 ,   runPackage
 ,   packageOpenRepl
 ,   packageRunComponentTerm
+,   projectOpenTerminal
 ,   getActiveComponent
 ,   projectFileArguments
 ,   exeToRun
@@ -127,10 +128,10 @@ import Data.Foldable (forM_)
 import Debug.Trace (trace)
 import Control.Exception (SomeException(..), IOException, catch)
 
-import IDE.Web.RemoteTermRequest (requestLocalTerm)
+import IDE.Web.RemoteTermRequest (requestLocalTerm, requestRemoteTerm)
 import IDE.Web.ReplTmux
        (ffcabalTmuxEnv, findReplWindow, selectTmuxWindowById,
-        ensureCommandWindow)
+        ensureCommandWindow, ensureRemoteWindow, openTerminalInDir)
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.State
        (packageDebugState, debugState, pjPackages, changePackage,
@@ -149,7 +150,8 @@ import IDE.Core.State
         MonadIDE(..), IDEEvent(..), SensitivityMask(..), DebugState(..),
         ProjectKey(..), autoURI, pDBsPaths, errorRefs, reflectIDE,
         StackProject(..), CabalProject(..), pjKey, pjIsCabal, pjIsStack,
-        CustomProject(..))
+        pjFileOrDir, CustomProject(..), ProjectSettings(..),
+        defaultProjectSettings, wsSettingsFor)
 import IDE.Gtk.State (postSyncIDE, postAsyncIDE, delayedBy)
 import IDE.Utils.CabalUtils (writeGenericPackageDescription')
 import IDE.Pane.Log
@@ -157,7 +159,7 @@ import IDE.Pane.Log
         showDefaultLogLaunch', getDefaultLogLaunch)
 import IDE.Pane.SourceBuffer
        (removeTestLogRefs, fileSaveAll, belongsToWorkspace')
-import IDE.PackageFlags (writeFlags, readFlags)
+import IDE.PackageFlags (writeFlags, readFlags, readFlagsFromBytes)
 import IDE.Utils.FileUtils
        (getPackageDBs', cabalProjectBuildDir, cabalBuildDir, loadNixCache, saveNixCache,
         getConfigDir, nixShellFile, getConfigFilePathForLoad)
@@ -165,7 +167,7 @@ import IDE.LogRef
        (logIdleOutput, logOutputForBuild, logOutputDefault, logOutput)
 import Distribution.ModuleName (ModuleName)
 import Data.List
-       (intercalate, nub, delete)
+       (intercalate, nub, nubBy, delete)
 import IDE.Utils.Tool
        (toolProcess, ToolOutput(..), newGhci, ToolState(..),
         ProcessHandle, executeGhciCommand, interruptTool,
@@ -198,7 +200,9 @@ import Distribution.Simple.LocalBuildInfo
        (Component(..))
 import Distribution.Compiler (CompilerFlavor(..))
 import qualified Data.Map as M
-       (toList, fromList)
+       (toList, fromList, lookup)
+import qualified Data.ByteString.Lazy as LBS (ByteString, fromStrict)
+import Data.Text.Encoding (decodeUtf8)
 import Control.Lens ((.~), (?~), (%~), _Just, to)
 import System.Process (getProcessExitCode, showCommandForUser)
 -- unix is a boot library even on the JS backend, but there the process
@@ -222,10 +226,14 @@ import Distribution.PackageDescription.Parsec
 #if MIN_VERSION_Cabal(3,14,0)
 import Distribution.Utils.Path (makeSymbolicPath, SymbolicPathX)
 #endif
-#if defined(ghcjs_HOST_OS)
+import Data.ByteString (ByteString)
 import Distribution.PackageDescription.Parsec
        (parseGenericPackageDescriptionMaybe)
 import IDE.Web.FS (fsReadFile, fsDoesFileExist, fsListFilesRecursive)
+import IDE.Utils.RemotePath
+       (isRemotePath, parseRemotePath, remoteMakeRelative, renderRemotePath)
+#if !defined(ghcjs_HOST_OS)
+import IDE.Utils.RemoteExec (SnapshotEntry(..), remoteCabalSnapshot)
 #endif
 import Distribution.Pretty (prettyShow)
 import qualified System.FilePath.Glob as Glob (globDir, compile)
@@ -256,8 +264,10 @@ activatePackage mbPath mbProject mbPack mbComponent = do
     liftIO $ debugM "leksah" $ "activatePackage " <> show (mbPath, pjKey <$> mbProject, ipdCabalFile <$> mbPack, mbComponent)
     oldActivePack <- readIDE activePack
     case mbPath of
-        Just p -> liftIO $ setCurrentDirectory (dropFileName p)
-        Nothing -> return ()
+        -- A remote package's directory doesn't exist locally; leave the
+        -- process cwd alone (remote runs cd on the far side).
+        Just p | not (isRemotePath p) -> liftIO $ setCurrentDirectory (dropFileName p)
+        _ -> return ()
     when (isJust mbPack || isJust oldActivePack) $
         triggerEventIDE_ (Sensitivity [(SensitivityProjectActive,isJust mbPack)])
     wsStr <- readIDE (workspace . _Just . wsName)
@@ -376,6 +386,12 @@ updateNixCache project compilers continuation = do
 projectFileArguments :: MonadIO m => Project -> FilePath -> m [Text]
 projectFileArguments project dir =
     case pjKey project of
+        -- Remote: no local findProjectRoot walk — same semantics, no IO.
+        CabalTool (CabalProject file) | isRemotePath dir -> do
+            let projectFile = remoteMakeRelative dir file
+            return $ if projectFile /= "cabal.project"
+                                then [ "--project-file", T.pack projectFile ]
+                                else []
         CabalTool (CabalProject file) -> do
             let projectFile = T.pack $ makeRelative dir file
             defaultProjectRoot <- liftIO $ findProjectRoot dir
@@ -383,7 +399,7 @@ projectFileArguments project dir =
                                 then [ "--project-file", projectFile ]
                                 else []
         StackTool (StackProject file) -> do
-            let projectFile = T.pack $ makeRelative dir file
+            let projectFile = T.pack $ remoteMakeRelative dir file
             return $ if projectFile /= "stack.yaml"
                                 then [ "--stack-yaml", projectFile ]
                                 else []
@@ -399,6 +415,12 @@ getActiveComponent project package = do
 
 withToolCommand :: MonadIDE m => Project -> CompilerFlavor -> Maybe (FilePath, [Text]) -> ((FilePath, [Text], Maybe (Map String String)) -> IDEAction) -> m ()
 withToolCommand project _compiler Nothing _continuation = ideMessage High $ "withToolCommand failed for " <> T.pack (show $ pjKey project)
+withToolCommand project compiler (Just (cmd, args)) continuation
+  | isRemotePath (pjDir (pjKey project)) =
+    -- Remote project: the local nix machinery (nix cache env, nix-shell,
+    -- vado mount points) does not apply — the per-project command prefix
+    -- wraps the command on the remote side (see runExternalTool).
+    liftIDE $ continuation (cmd, args, Nothing)
 withToolCommand project compiler (Just (cmd, args)) continuation = do
     liftIO $ debugM "leksah" $ "withToolCommand " <> show (project, compiler, cmd, args)
     prefs' <- readIDE prefs
@@ -429,19 +451,30 @@ normalVerbosity = mkVerbosity defaultVerbosityHandles normal
 normalVerbosity = normal
 #endif
 
+-- | Parse a .cabal file from bytes that came through the FS seam (the
+-- browser demo's mock tree, a remote host, or a project snapshot).
+gpdFromBytes :: FilePath -> ByteString -> IO GenericPackageDescription
+gpdFromBytes f bs = case parseGenericPackageDescriptionMaybe bs of
+    Just gpd -> return gpd
+    Nothing  -> ioError (userError ("Failed to parse " <> f))
+
 -- Cabal 3.14 moved the cabal-file argument to a SymbolicPath and added a
 -- working-directory argument; older Cabal takes a plain FilePath.
 readGPD :: Verbosity -> FilePath -> IO GenericPackageDescription
 #if defined(ghcjs_HOST_OS)
 -- Browser demo: the .cabal file lives in the page-seeded mock tree
 -- (IDE.Web.FS), so parse it from bytes instead of opening a real file.
-readGPD _ f = parseGenericPackageDescriptionMaybe <$> fsReadFile f >>= \case
-    Just gpd -> return gpd
-    Nothing  -> ioError (userError ("Failed to parse " <> f))
-#elif MIN_VERSION_Cabal(3,14,0)
-readGPD v f = readGenericPackageDescription v Nothing (makeSymbolicPath f)
+readGPD _ f = gpdFromBytes f =<< fsReadFile f
 #else
-readGPD v f = readGenericPackageDescription v f
+readGPD v f
+    -- Remote .cabal files come through the FS seam as bytes.
+    | isRemotePath f = gpdFromBytes f =<< fsReadFile f
+    | otherwise =
+#if MIN_VERSION_Cabal(3,14,0)
+        readGenericPackageDescription v Nothing (makeSymbolicPath f)
+#else
+        readGenericPackageDescription v f
+#endif
 #endif
 #if MIN_VERSION_Cabal(3,14,0)
 -- main-module / exe paths became SymbolicPaths in Cabal 3.14.
@@ -463,20 +496,30 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
     activeComponent' <- catMaybes <$> mapM (getActiveComponent project) packages
     pjFileArgs <- projectFileArguments project dir
     flagsForTestsAndBenchmarks <- fmap concat $ forM packages $ \package -> do
-        pd <- readAndFlattenPackageDescription package
+        -- Local packages re-read the .cabal so the flags see edits made
+        -- since the project loaded; a remote re-read would cost one ssh
+        -- round trip per package per build, so those use the names loaded
+        -- with the project instead.
+        (testNames, benchNames) <-
+            if isRemotePath (ipdCabalFile package)
+                then return (ipdTests package, ipdBenchmarks package)
+                else do
+                    pd <- readAndFlattenPackageDescription package
+                    return ( map (T.pack . unUnqualComponentName . testName) (testSuites pd)
+                           , map (T.pack . unUnqualComponentName . benchmarkName) (benchmarks pd) )
         let pkgName = ipdPackageName package
         return $
             [ pkgName <> ":lib:" <> pkgName | ipdHasLib package ]
             <> (if "--enable-tests" `elem` ipdConfigFlags package
                 then case pjKey project of
                     StackTool {} -> ["--test", "--no-run-tests"] -- if we use stack, with tests enabled, we build the tests without running them
-                    CabalTool {} -> map (\t -> pkgName <> ":test:" <> T.pack (unUnqualComponentName $ testName t)) $ testSuites pd
+                    CabalTool {} -> map (\t -> pkgName <> ":test:" <> t) testNames
                     _ -> []
                 else [])
             <> (if "--enable-benchmarks" `elem` ipdConfigFlags package
                 then case pjKey project of
                     StackTool {} -> ["--bench", "--no-run-benchmarks"] -- if we use stack, with benchmarks enabled, we build the benchmarks without running them
-                    CabalTool {} -> map (\t -> pkgName <> ":benchmark:" <> T.pack (unUnqualComponentName $ benchmarkName t)) $ benchmarks pd
+                    CabalTool {} -> map (\t -> pkgName <> ":benchmark:" <> t) benchNames
                     _ -> []
                 else [])
     -- Native GHC builds of cabal projects go through ffcabal (vendor/ffcabal)
@@ -488,7 +531,12 @@ runCabalBuild compiler backgroundBuild jumpToWarnings withoutLinking (project, p
     -- Cross compilation (GHCJS) and stack always use plain cabal/stack, and
     -- we fall back to cabal when ffcabal isn't on PATH.
     ghciMode <- debug <$> readIDE prefs
-    mbFFCabal <- if ghciMode then liftIO (findExecutable "ffcabal") else return Nothing
+    -- Remote projects always take the plain-cabal arm for now: ffcabal's
+    -- cached repls live in the LOCAL tmux server (remote ffcabal is a
+    -- planned follow-up via the remote-terminal machinery).
+    mbFFCabal <- if ghciMode && not (isRemotePath dir)
+                    then liftIO (findExecutable "ffcabal")
+                    else return Nothing
     let nativeCabalCmd = case mbFFCabal of
             Just _ -> ("ffcabal", ["build"]
               <> pjFileArgs
@@ -549,8 +597,20 @@ packageOpenRepl :: Text -> PackageAction
 packageOpenRepl component = do
     project <- lift ask
     package <- ask
+    prefix <- psCmdPrefix <$> liftIDE (projectSettings project)
     let target = ipdPackageName package <> ":" <> component
-    liftIDE $ liftIO (findReplWindow target) >>= \case
+    case parseRemotePath (pjDir (pjKey project)) of
+      -- Remote: no ffcabal window cache yet (follow-up) — a plain
+      -- `cabal repl TARGET` window in the host's `leksah` tmux session,
+      -- reused by name on later clicks.
+      Just (host, rdir) -> do
+        let shq t = "'" <> T.replace "'" "'\\''" t <> "'"
+            rcmd = maybe "" (<> " ") prefix <> "cabal repl " <> shq target
+        liftIO . void . forkIO $ do
+            _ <- ensureRemoteWindow host rdir ("repl " <> target) (Just rcmd)
+            requestRemoteTerm (host <> "#leksah")
+      Nothing ->
+        liftIDE $ liftIO (findReplWindow target) >>= \case
         Just (sid, wid) -> liftIO $ do
             selectTmuxWindowById wid
             requestLocalTerm sid
@@ -584,6 +644,7 @@ packageRunComponentTerm :: Text -> PackageAction
 packageRunComponentTerm component = do
     project <- lift ask
     package <- ask
+    prefix <- psCmdPrefix <$> liftIDE (projectSettings project)
     let dir = pjDir $ pjKey project
         target = ipdPackageName package <> ":" <> component
         sub = case T.takeWhile (/= ':') component of
@@ -596,10 +657,33 @@ packageRunComponentTerm component = do
         cmd = "[ -f " <> envQ <> " ] && . " <> envQ <> " ; cabal " <> sub
               <> " --builddir=" <> shq (T.pack (cabalBuildDir Nothing))
               <> " " <> shq target
-    liftIO . void . forkIO $
-        ensureCommandWindow True (T.pack dir <> "#" <> sub <> " " <> target)
-                            dir (sub <> " " <> target) cmd
-            >>= mapM_ requestLocalTerm
+    case parseRemotePath dir of
+        -- Remote: run in a window of the host's default tmux `leksah`
+        -- session (the ssh://HOST tab), with the per-project prefix and no
+        -- local ffcabal env.sh sourcing (that file is a local capture).
+        Just (host, rdir) -> do
+            let rcmd = maybe "" (<> " ") prefix <> "cabal " <> sub <> " " <> shq target
+            liftIO . void . forkIO $ do
+                _ <- ensureRemoteWindow host rdir (sub <> " " <> target) (Just rcmd)
+                requestRemoteTerm (host <> "#leksah")
+        Nothing ->
+            liftIO . void . forkIO $
+                ensureCommandWindow True (T.pack dir <> "#" <> sub <> " " <> target)
+                                    dir (sub <> " " <> target) cmd
+                    >>= mapM_ requestLocalTerm
+
+-- | The per-project settings (command prefix etc.) for a project, read
+-- from the open workspace.
+projectSettings :: Project -> IDEM ProjectSettings
+projectSettings project =
+    maybe defaultProjectSettings (wsSettingsFor (pjKey project)) <$> readIDE workspace
+
+-- | Project context menu: open a terminal in the project's directory.
+-- Remote projects get a window in the host's default tmux @leksah@ session
+-- surfaced as an @ssh:\/\/HOST@ tab; local ones a window in the shared
+-- repl session.
+projectOpenTerminal :: ProjectAction
+projectOpenTerminal = openTerminalInDir . pjDir . pjKey =<< ask
 
 --isConfigError :: Monad m => C.Sink ToolOutput m Bool
 --isConfigError = CL.foldM (\a b -> return $ a || isCErr b) False
@@ -1294,7 +1378,11 @@ debugStart continue = do
     project <- lift ask
     package <- ask
     let projectAndPackage = (pjKey project, ipdCabalFile package)
-    liftIDE $ catchIDE (do
+    -- newGhci would createProcess with an ssh:// cwd; remote debug sessions
+    -- (ghci over ssh with a custom interrupt) are a planned follow-up.
+    if isRemotePath (pjDir (pjKey project))
+      then ideMessage Normal (__ "Debugging is not yet supported for remote projects")
+      else liftIDE $ catchIDE (do
         ideRef     <- ask
         prefs'     <- readIDE prefs
         lookupDebugState projectAndPackage >>= \case
@@ -1396,16 +1484,23 @@ allBuildInfo' pkg_descr = [ libBuildInfo lib       | Just lib <- [library pkg_de
 --testMainPath _ = []
 
 idePackageFromPath' :: FilePath -> IDEM (Maybe IDEPackage)
-idePackageFromPath' ipdCabalFile = do
-    mbPackageD <- catchIDE (liftIO $
-        Just . flattenPackageDescription <$> readGPD normalVerbosity ipdCabalFile)
+idePackageFromPath' cabalFile = do
+    mbGPD <- catchIDE (liftIO $ Just <$> readGPD normalVerbosity cabalFile)
             (\ (e :: SomeException) -> do
                 ideMessage Normal (__ "Can't activate package " <> T.pack (show e))
                 return Nothing)
-    case mbPackageD of
-        Nothing       -> return Nothing
-        Just packageD -> do
+    case mbGPD of
+        Nothing  -> return Nothing
+        Just gpd -> idePackageFromGPD cabalFile gpd Nothing
 
+-- | Build the 'IDEPackage' from an already-parsed .cabal ('ideProjectFromKey'
+-- parses remote packages from snapshot bytes — no per-package file reads).
+-- @mbFlagBytes@ is the .lkshf contents when the caller already has them;
+-- 'Nothing' checks for the flag file next to the .cabal via the FS seam.
+idePackageFromGPD :: FilePath -> GenericPackageDescription -> Maybe LBS.ByteString -> IDEM (Maybe IDEPackage)
+idePackageFromGPD ipdCabalFile gpd mbFlagBytes = do
+        let packageD = flattenPackageDescription gpd
+        do
             let ipdModules          = M.fromList $ myLibModules packageD ++ myExeModules packageD
                                         ++ myTestModules packageD ++ myBenchmarkModules packageD
                 ipdMain             = [ (mainPath (modulePath exe), buildInfo exe, False) | exe <- executables packageD ]
@@ -1435,15 +1530,13 @@ idePackageFromPath' ipdCabalFile = do
                 ipdSdistFlags       = []
                 packp               = IDEPackage {..}
                 pfile               = dropExtension ipdCabalFile
-            pack <- do
-#if defined(ghcjs_HOST_OS)
-                flagFileExists <- liftIO $ fsDoesFileExist (pfile ++ leksahFlagFileExtension)
-#else
-                flagFileExists <- liftIO $ doesFileExist (pfile ++ leksahFlagFileExtension)
-#endif
-                if flagFileExists
-                    then liftIO $ readFlags (pfile ++ leksahFlagFileExtension) packp
-                    else return packp
+            pack <- case mbFlagBytes of
+                Just bytes -> liftIO $ readFlagsFromBytes bytes packp
+                Nothing -> do
+                    flagFileExists <- liftIO $ fsDoesFileExist (pfile ++ leksahFlagFileExtension)
+                    if flagFileExists
+                        then liftIO $ readFlags (pfile ++ leksahFlagFileExtension) packp
+                        else return packp
             return (Just pack)
 
 extractStackPackageList :: Text -> [String]
@@ -1520,22 +1613,59 @@ ideProjectFromKey key = do
             let dir = pjDir key
             cabalFiles <- liftIO $ filter ((== ".cabal") . takeExtension)
                               <$> fsListFilesRecursive dir
-#else
-            patterns <- liftIO $ map (Glob.compile . (</> "*.cabal")) <$>
-                case key of
-                    CabalTool (CabalProject filePath) -> extractCabalPackageList <$> T.readFile filePath
-                    StackTool (StackProject filePath) -> extractStackPackageList <$> T.readFile filePath
-                    CustomTool _ -> return []
-                    -- A flake project has no cabal packages; its tree shows the
-                    -- flake outputs + files instead (see IDE.Web.Widget.Flake).
-                    NixTool _ -> return []
-                    -- A Makefile project builds with make, not cabal.
-                    MakeTool _ -> return []
-            let dir = pjDir key
-            cabalFiles <- liftIO $ mapM canonicalizePath =<< map (dir </>) . concat <$>
-                              Glob.globDir patterns dir
-#endif
             packages <- fmap catMaybes . mapM idePackageFromPath' $ nub cabalFiles
+#else
+            packages <- case parseRemotePath (pjFileOrDir key) of
+              Just (host, _) -> do
+                -- Remote project: 2 round trips — read the project file,
+                -- then one batched snapshot streaming back every matched
+                -- .cabal (and sibling .lkshf) as bytes; the packages parse
+                -- locally from those bytes with no further remote reads.
+                let rdir = maybe (pjDir key) snd (parseRemotePath (pjDir key))
+                pkgDirs <- case key of
+                    CabalTool (CabalProject filePath) ->
+                        extractCabalPackageList . decodeUtf8 <$> liftIO (fsReadFile filePath)
+                    StackTool (StackProject filePath) ->
+                        extractStackPackageList . decodeUtf8 <$> liftIO (fsReadFile filePath)
+                    _ -> return []
+                if null pkgDirs then return [] else do
+                    entries <- nubBy ((==) `on` seLocalPath)
+                        <$> liftIO (remoteCabalSnapshot host rdir pkgDirs)
+                    let flagMap = M.fromList
+                            [ (seLocalPath e, seBytes e)
+                            | e <- entries
+                            , takeExtension (seLocalPath e) == leksahFlagFileExtension ]
+                        cabalEntries =
+                            [ e | e <- entries
+                            , takeExtension (seLocalPath e) == ".cabal" ]
+                    fmap catMaybes . forM cabalEntries $ \e -> do
+                        let cabalFile = renderRemotePath host (seLocalPath e)
+                            mbFlags = LBS.fromStrict <$> M.lookup
+                                (dropExtension (seLocalPath e) ++ leksahFlagFileExtension)
+                                flagMap
+                        mbGpd <- catchIDE (liftIO $ Just <$> gpdFromBytes cabalFile (seBytes e))
+                            (\(e' :: SomeException) -> do
+                                ideMessage Normal (__ "Can't activate package " <> T.pack (show e'))
+                                return Nothing)
+                        case mbGpd of
+                            Nothing  -> return Nothing
+                            Just gpd -> idePackageFromGPD cabalFile gpd mbFlags
+              Nothing -> do
+                patterns <- liftIO $ map (Glob.compile . (</> "*.cabal")) <$>
+                    case key of
+                        CabalTool (CabalProject filePath) -> extractCabalPackageList <$> T.readFile filePath
+                        StackTool (StackProject filePath) -> extractStackPackageList <$> T.readFile filePath
+                        CustomTool _ -> return []
+                        -- A flake project has no cabal packages; its tree shows the
+                        -- flake outputs + files instead (see IDE.Web.Widget.Flake).
+                        NixTool _ -> return []
+                        -- A Makefile project builds with make, not cabal.
+                        MakeTool _ -> return []
+                let dir = pjDir key
+                cabalFiles <- liftIO $ mapM canonicalizePath =<< map (dir </>) . concat <$>
+                                  Glob.globDir patterns dir
+                fmap catMaybes . mapM idePackageFromPath' $ nub cabalFiles
+#endif
             return . Just $ Project { pjKey = key, pjPackageMap = mkPackageMap packages }
           `catchIDE`
              (\(e :: SomeException) -> do

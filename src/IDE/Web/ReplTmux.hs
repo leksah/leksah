@@ -15,6 +15,8 @@ module IDE.Web.ReplTmux
   , findReplWindow
   , selectTmuxWindowById
   , ensureCommandWindow
+  , ensureRemoteWindow
+  , openTerminalInDir
   , getLoginShell
   , interactiveShellArgs
   , tmuxSupported
@@ -22,22 +24,34 @@ module IDE.Web.ReplTmux
   , clipboardCopyCmd
   ) where
 
+import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
-import Control.Monad (void)
+import Control.Lens ((^.))
+import Control.Monad (void, mfilter)
+import Control.Monad.IO.Class (MonadIO(..))
+import Data.List (find, isPrefixOf)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.Directory (findExecutable, getTemporaryDirectory)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
-import System.FilePath ((</>))
+import System.FilePath
+       ((</>), takeFileName, dropTrailingPathSeparator, addTrailingPathSeparator)
 import System.Info (os)
 #if !defined(mingw32_HOST_OS) && !defined(ghcjs_HOST_OS)
 import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 #endif
 import System.Process (readProcessWithExitCode)
 
+import IDE.Core.State
+       (reflectIDE, readIDE, workspace, wsProjects, wsSettingsFor,
+        ProjectSettings(..), pjKey, pjDir)
+import IDE.Utils.RemoteExec (runSsh)
+import IDE.Utils.RemotePath (parseRemotePath)
+import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Instance (tmuxServerSocket)
+import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
 
 -- | The private tmux server socket leksah's terminals live on (so they don't
 -- mix with the user's own tmux sessions, and so its options don't touch their
@@ -226,6 +240,91 @@ clipboardCopyCmd
 -- its output stays readable (run/test/bench windows); without it a clean
 -- exit closes the window and only a FAILING @cmd@ keeps a shell (repl
 -- windows — exiting the repl should exit right out).
+-- | Remote analogue of 'ensureCommandWindow': ensure the REMOTE host's
+-- default-socket tmux has a @leksah@ session (the one @ssh:\/\/HOST@ tabs
+-- attach — see IDE.Web.Widget.TerminalCC) with a window named @name@ whose
+-- cwd is @rdir@, optionally running @cmd@ (dropping to a login shell when
+-- it ends), and select it.  ONE pooled ssh round trip.
+ensureRemoteWindow :: Text      -- ^ host
+                   -> FilePath  -- ^ remote directory (host-local, absolute)
+                   -> Text      -- ^ window name
+                   -> Maybe Text -- ^ optional command to run in the window
+                   -> IO Bool
+ensureRemoteWindow host rdir name mbCmd = do
+    (code, _, _) <- runSsh host script
+        [T.pack rdir, name, fromMaybe "" mbCmd] mempty
+    return (code == ExitSuccess)
+  where
+    script =
+      "d=\"$0\"; n=\"$1\"; c=\"$2\"; "
+      <> "if [ -n \"$c\" ]; then set -- sh -lc \"$c; exec \\\"${SHELL:-sh}\\\" -l\"; else set --; fi; "
+      <> "if ! tmux has-session -t =leksah 2>/dev/null; then "
+      <> "exec tmux new-session -d -s leksah -c \"$d\" -n \"$n\" \"$@\"; "
+      <> "elif tmux list-windows -t =leksah -F '#{window_name}' 2>/dev/null | grep -Fqx \"$n\"; then "
+      <> "exec tmux select-window -t \"=leksah:$n\"; "
+      <> "else exec tmux new-window -t =leksah -c \"$d\" -n \"$n\" \"$@\"; fi"
+
+-- | Open (or focus) a terminal whose working directory is @dir@ — local or
+-- @ssh:\/\/HOST\/…@.  Shared by "Open Terminal Here" (projectOpenTerminal) and
+-- by double-clicking a project or directory in the workspace tree.  The tmux
+-- window is named after the directory's last path segment; a remote dir lands
+-- in the host's shared @leksah@ session (one pooled ssh round trip), a local
+-- dir in leksah's own tmux server keyed by the directory (each directory its
+-- own window).
+--
+-- If the project that owns @dir@ has a stored command prefix (@psCmdPrefix@,
+-- e.g. @nix develop -c@ / @nix shell … -c@ — for both local and remote
+-- projects), the terminal opens *inside* that environment: the window @exec@s
+-- the prefixed login shell, so the tools the prefix puts on @PATH@ are there,
+-- and exiting the shell closes the window.  No prefix → a plain login shell.
+--
+-- Fire-and-forget on a background thread, so it never blocks the reflex frame
+-- thread / the calling IDEAction.
+openTerminalInDir :: MonadIO m => FilePath -> m ()
+openTerminalInDir dir0 = liftIO . void . forkIO $ do
+    -- 'pjDir' (and hence @dir0@) usually ends in a path separator, which would
+    -- leave the shell's cwd — and its prompt — with a trailing "//"; strip it.
+    let dir = dropTrailingPathSeparator dir0
+    mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir dir
+    let shellUnder p = "exec " <> p <> " \"${SHELL:-bash}\" -l"
+    case parseRemotePath dir of
+        Just (host, rdir0) -> do
+            let rdir = dropTrailingPathSeparator rdir0
+            _ <- ensureRemoteWindow host rdir (winName rdir) (shellUnder <$> mbPrefix)
+            requestRemoteTerm (host <> "#leksah")
+        Nothing ->
+            ensureCommandWindow True (T.pack dir <> "#shell") dir (winName dir)
+                (maybe "true" shellUnder mbPrefix)
+                >>= mapM_ requestLocalTerm
+  where
+    winName p = case T.pack (takeFileName p) of
+                  "" -> "shell"
+                  n  -> n
+
+-- | The stored command prefix (@psCmdPrefix@) of the workspace project that
+-- contains @dir@, read from the live IDE — 'Nothing' when there's no IDE yet,
+-- no matching project, or no prefix set.  Used to open a project's terminals
+-- inside its environment (local or remote).  Mirrors @IDE.LSP.remotePrefixFor@.
+cmdPrefixForDir :: FilePath -> IO (Maybe Text)
+cmdPrefixForDir dir = getGlobalIDERef >>= \case
+    Nothing   -> return Nothing
+    Just ideR -> do
+        mbWs <- reflectIDE (readIDE workspace) ideR
+        return $ do
+            ws      <- mbWs
+            project <- find (\p -> pjDir (pjKey p) `dirContains` dir) (ws ^. wsProjects)
+            psCmdPrefix (wsSettingsFor (pjKey project) ws)
+  where
+    -- Does directory @parent@ contain (or equal) @child@?  A textual test
+    -- rather than 'IDE.Utils.FileUtils.isSubPath', which runs 'normalise' —
+    -- that both mangles @ssh:\/\/@ paths and, via 'splitPath', trips on a
+    -- trailing-slash mismatch between 'pjDir' (keeps one) and a stripped dir.
+    -- Normalising both to exactly one trailing separator keeps the prefix test
+    -- on segment boundaries (so @…/foo@ doesn't match @…/foobar@).
+    dirContains parent child =
+        let norm p = addTrailingPathSeparator (dropTrailingPathSeparator p)
+        in norm parent `isPrefixOf` norm child
+
 ensureCommandWindow :: Bool -> Text -> FilePath -> Text -> Text -> IO (Maybe Text)
 ensureCommandWindow keepShell key dir name cmd = (`catch` \(_ :: SomeException) -> return Nothing) $
     findExecutable "tmux" >>= \case

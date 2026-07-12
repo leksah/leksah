@@ -33,14 +33,14 @@ import           Control.Applicative ((<|>))
 import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import           Control.Concurrent.STM
 import           Control.Exception (SomeException, catch, try)
-import           Control.Lens ((%~))
+import           Control.Lens ((%~), (^.))
 import           Control.Monad (forM, join, void, when)
 import           Data.Aeson
 import           Data.Aeson.Types (Parser, parseMaybe)
 import           Data.Foldable (toList)
 import           Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import           Data.Int (Int32)
-import           Data.List (nub, sort, sortOn)
+import           Data.List (find, nub, sort, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
 import           Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, mapMaybe)
@@ -64,8 +64,18 @@ import           Language.LSP.Client (Client, ClientConfig(..), defaultClientCon
 import           IDE.Core.CTypes (SrcSpan(..))
 import           IDE.Core.Types (Log(..), LogRef(..), LogRefType(..), allLogRefs)
 import           IDE.Core.State (IDEAction, modifyIDE_, reflectIDE, readIDE, prefs,
-                                 lspEnabled, lspServerCommand)
+                                 lspEnabled, lspServerCommand,
+                                 workspace, wsProjects, wsSettingsFor,
+                                 ProjectSettings(..), pjKey, pjDir)
+import           IDE.Utils.FileUtils (isSubPath)
+import           IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
+import           IDE.Web.FS (fsReadFile)
 import           IDE.Web.IDERefStore (getGlobalIDERef)
+#if !defined(ghcjs_HOST_OS)
+import           Data.Text.Encoding (decodeUtf8With)
+import           Data.Text.Encoding.Error (lenientDecode)
+import           IDE.Utils.RemoteExec (remoteSshArgs, runSsh, shellQuote)
+#endif
 #if defined(ghcjs_HOST_OS)
 import           IDE.Web.DemoHovers (demoHover)
 #endif
@@ -192,7 +202,7 @@ documentSaved file text = withServer file $ \ss -> onReady ss $ do
     open <- atomically $ Map.member file <$> readTVar (ssVersions ss)
     when open $
         notify (ssClient ss) SMethod_TextDocumentDidSave $ buildParams $ object
-            [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+            [ "textDocument" .= object [ "uri" .= fileUri file ]
             , "text" .= text ]
 #endif
 
@@ -208,7 +218,7 @@ documentClosed file = withServer file $ \ss -> onReady ss $ do
         return (Map.member file m)
     when open $
         notify (ssClient ss) SMethod_TextDocumentDidClose $ buildParams $ object
-            [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ] ]
+            [ "textDocument" .= object [ "uri" .= fileUri file ] ]
 #endif
 
 -- | Shared by 'documentOpened' \/ 'documentChanged': send @didOpen@ the first
@@ -226,7 +236,7 @@ touch file text = case languageOf file of
     ensureServer root lc >>= \case
         Nothing -> return ()
         Just ss -> onReady ss $ do
-            let uri = toJSON (filePathToUri file)
+            let uri = fileUri file
             mv <- atomically $ Map.lookup file <$> readTVar (ssVersions ss)
             case mv of
                 Nothing -> do
@@ -264,7 +274,7 @@ requestHover file line ch cb
     | otherwise = withServerReady file (cb Nothing) $ \ss ->
         void $ request (ssClient ss) SMethod_TextDocumentHover
             (buildParams $ object
-                [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                [ "textDocument" .= object [ "uri" .= fileUri file ]
                 , "position" .= object [ "line" .= line, "character" .= ch ] ])
             (\case
                 Right res -> cb (extractHover (toJSON res))
@@ -309,7 +319,9 @@ requestTerminalHover file mline mcol cb = case mline of
     _ -> cb Nothing
 #else
 requestTerminalHover file mline mcol cb = do
-    absFile <- makeAbsolute file `catch` \(_ :: SomeException) -> return file
+    absFile <- if isRemotePath file
+                 then return file  -- ssh:// is already absolute; makeAbsolute mangles it
+                 else makeAbsolute file `catch` \(_ :: SomeException) -> return file
     diag    <- diagnosticsSummary absFile mline
     case mline of
         Just ln | isSupportedFile absFile ->
@@ -380,7 +392,7 @@ requestCompletion file line ch cb
     | otherwise = withServerReady file (cb "[]") $ \ss ->
         void $ request (ssClient ss) SMethod_TextDocumentCompletion
             (buildParams $ object
-                [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                [ "textDocument" .= object [ "uri" .= fileUri file ]
                 , "position" .= object [ "line" .= line, "character" .= ch ] ])
             (\case
                 Right res -> cb (encodeToText (parseCompletions (toJSON res)))
@@ -431,7 +443,7 @@ requestDefinition file line ch cb
         void $ request (ssClient ss) SMethod_TextDocumentDefinition
             (buildParams (posParams file line ch))
             (\case
-                Right res -> cb (firstLocation (toJSON res))
+                Right res -> cb (qualifySpan file <$> firstLocation (toJSON res))
                 Left _    -> cb Nothing)
 #endif
 
@@ -477,11 +489,11 @@ requestReferences file line ch cb
     | otherwise = withServerReady file (cb []) $ \ss ->
         void $ request (ssClient ss) SMethod_TextDocumentReferences
             (buildParams $ object
-                [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+                [ "textDocument" .= object [ "uri" .= fileUri file ]
                 , "position" .= object [ "line" .= line, "character" .= ch ]
                 , "context" .= object [ "includeDeclaration" .= True ] ])
             (\case
-                Right res -> attachContext (parseLocations (toJSON res)) >>= cb
+                Right res -> attachContext file (parseLocations (toJSON res)) >>= cb
                 Left _    -> cb [])
 #endif
 
@@ -502,16 +514,30 @@ locFileLine = parseMaybe $ withObject "Location" $ \o -> do
 
 -- | Read each referenced file once to attach the (trimmed) source line as
 -- context, de-duplicating and sorting lines within a file, then cap the total.
-attachContext :: [(FilePath, Int)] -> IO [(FilePath, Int, Text)]
-attachContext locs = do
-    let byFile = Map.toList $ Map.fromListWith (++) [ (f, [l]) | (f, l) <- locs ]
+-- Result paths from a remote server are bare (host-local); @ref@ (the file the
+-- request was made from) carries the host to re-attach so the Grep pane rows
+-- open the right remote file, and remote files are read through the FS seam.
+attachContext :: FilePath -> [(FilePath, Int)] -> IO [(FilePath, Int, Text)]
+attachContext ref locs = do
+    let byFile = Map.toList $
+                   Map.fromListWith (++) [ (qualifyLike ref f, [l]) | (f, l) <- locs ]
     rows <- forM byFile $ \(f, ls) -> do
-        ls' <- (T.lines <$> TIO.readFile f)
-                 `catch` \(_ :: SomeException) -> return []
+        ls' <- readSourceLines f `catch` \(_ :: SomeException) -> return []
         let lineAt i | i >= 0 && i < length ls' = T.strip (ls' !! i)
                      | otherwise                = ""
         return [ (f, l + 1, lineAt l) | l <- sort (nub ls) ]
     return $ take maxReferences (concat rows)
+
+-- | Read a source file's lines, routing remote (@ssh:\/\/@) paths through the
+-- FS seam and local paths through 'TIO.readFile' as before.
+readSourceLines :: FilePath -> IO [Text]
+#if defined(ghcjs_HOST_OS)
+readSourceLines f = T.lines <$> TIO.readFile f
+#else
+readSourceLines f
+    | isRemotePath f = T.lines . decodeUtf8With lenientDecode <$> fsReadFile f
+    | otherwise      = T.lines <$> TIO.readFile f
+#endif
 
 --------------------------------------------------------------------------------
 -- Server lifecycle
@@ -556,7 +582,7 @@ spawnAndInit root (cmd, args) = do
     let cfg = defaultClientConfig
             { onNotification = handleNotification root
             , onStderr = \l -> debugM "leksah" ("HLS[" <> root <> "]: " <> T.unpack l) }
-    client <- start cmd args (Just root) Nothing cfg
+    client <- spawnClient root cmd args cfg
     let ss = ServerState client ready pending vers
     debugM "leksah" ("IDE.LSP: started language server in " <> root)
     void $ request client SMethod_Initialize (initParams root) $ \case
@@ -572,6 +598,43 @@ spawnAndInit root (cmd, args) = do
             debugM "leksah" ("IDE.LSP: initialize failed in " <> root <> ": " <> show err)
     return ss
 
+-- | Spawn the language-server client for a project root.  A local root runs
+-- the server in @root@ as before; a remote (@ssh:\/\/host\/…@) root runs it ON
+-- the host over ssh stdio: @ssh host \'cd rroot && exec \<prefix\> \<cmd\>\'@.
+-- cwd\/env MUST be 'Nothing' — an ssh:\/\/ cwd would crash createProcess, and
+-- the local env (nix PATH, …) must not reach the ssh client.  The per-project
+-- command prefix (e.g. @nix develop -c@) supplies the remote server's
+-- environment, exactly as it does for remote builds.
+spawnClient :: FilePath -> FilePath -> [String] -> ClientConfig -> IO Client
+#if defined(ghcjs_HOST_OS)
+spawnClient root cmd args cfg = start cmd args (Just root) Nothing cfg
+#else
+spawnClient root cmd args cfg = case parseRemotePath root of
+    Just (host, rroot) -> do
+        prefix <- remotePrefixFor root
+        let remoteCmd = "cd " <> shellQuote (T.pack rroot) <> " && exec "
+                     <> maybe "" (<> " ") prefix
+                     <> T.unwords (map (shellQuote . T.pack) (cmd : args))
+            (sshCmd, sshArgs) = remoteSshArgs host remoteCmd
+        debugM "leksah" ("IDE.LSP: starting remote HLS on " <> T.unpack host
+                         <> ": " <> T.unpack remoteCmd)
+        start sshCmd (map T.unpack sshArgs) Nothing Nothing cfg
+    Nothing -> start cmd args (Just root) Nothing cfg
+#endif
+
+-- | The per-project command prefix (@psCmdPrefix@) for the project containing
+-- @root@, read from the live workspace settings; 'Nothing' when there is no
+-- workspace, no matching project, or no prefix set.
+remotePrefixFor :: FilePath -> IO (Maybe Text)
+remotePrefixFor root = getGlobalIDERef >>= \case
+    Nothing   -> return Nothing
+    Just ideR -> do
+        mbWs <- reflectIDE (readIDE workspace) ideR
+        return $ do
+            ws      <- mbWs
+            project <- find (\p -> pjDir (pjKey p) `isSubPath` root) (ws ^. wsProjects)
+            psCmdPrefix (wsSettingsFor (pjKey project) ws)
+
 -- | Run an action now if the server has initialized, otherwise queue it.
 onReady :: ServerState -> IO () -> IO ()
 onReady ss act = join . atomically $ do
@@ -583,7 +646,7 @@ onReady ss act = join . atomically $ do
 initParams :: FilePath -> InitializeParams
 initParams root = buildParams $ object
     [ "processId" .= Null
-    , "rootUri" .= toJSON (filePathToUri root)
+    , "rootUri" .= fileUri root
     , "capabilities" .= object
         [ "textDocument" .= object
             [ "synchronization" .= object [ "didSave" .= True ]
@@ -609,8 +672,11 @@ handleNotification :: FilePath -> Text -> Value -> IO ()
 handleNotification root method params = case method of
     "textDocument/publishDiagnostics" -> case parsePublish params of
         Just (uriText, diags)
-            | Just file <- uriTextToFilePath uriText -> do
-                let newRefs = map (toLogRef root file) diags
+            | Just file0 <- uriTextToFilePath uriText -> do
+                -- The server reports host-local paths; re-attach the root's
+                -- host so refs match the editor's ssh:// buffer.
+                let file    = qualifyLike root file0
+                    newRefs = map (toLogRef root file) diags
                 old <- atomicModifyIORef' lastRefs $ \m ->
                     (Map.insert file newRefs m, Map.findWithDefault [] file m)
                 runIDE (replaceRefs old newRefs)
@@ -701,7 +767,7 @@ withServerReady file onNone act = case languageOf file of
 -- | @TextDocumentPositionParams@ for a file + LSP 0-based position.
 posParams :: FilePath -> Int -> Int -> Value
 posParams file line ch = object
-    [ "textDocument" .= object [ "uri" .= toJSON (filePathToUri file) ]
+    [ "textDocument" .= object [ "uri" .= fileUri file ]
     , "position" .= object [ "line" .= line, "character" .= ch ] ]
 
 -- | Parse an LSP @Position@ to a @(line, character)@ pair (both 0-based).
@@ -720,16 +786,85 @@ uriTextToFilePath t = case fromJSON (String t) of
     Success u -> uriToFilePath u
     Error _   -> Nothing
 
--- | Walk up from a source file to the nearest project root.
+--------------------------------------------------------------------------------
+-- URI boundary: leksah ssh://host/abs paths  <->  the remote-local paths the
+-- language server (running ON the host) speaks.  A server is bound to one root,
+-- hence one host, so we strip the host on the way out and re-attach the
+-- requesting file's/root's host on the way back (every path a remote server
+-- returns — including /nix/store dependency paths — lives on that host).
+--------------------------------------------------------------------------------
+
+-- | The path the server expects: for @ssh:\/\/host\/abs@ that is @\/abs@; a
+-- local path is unchanged.
+localPart :: FilePath -> FilePath
+localPart p = maybe p snd (parseRemotePath p)
+
+-- | Build the @DocumentUri@ 'Value' for a (possibly remote) leksah path,
+-- stripping any @ssh:\/\/host@ so the server sees its own filesystem.
+fileUri :: FilePath -> Value
+fileUri = toJSON . filePathToUri . localPart
+
+-- | Re-attach the host of a reference leksah path (the requesting file, or the
+-- server root) to a bare local path the server returned.  Local reference ->
+-- returned path unchanged.
+qualifyLike :: FilePath -> FilePath -> FilePath
+qualifyLike ref p = case parseRemotePath ref of
+    Just (host, _) -> renderRemotePath host p
+    Nothing        -> p
+
+-- | 'qualifyLike' applied to a 'SrcSpan' filename.
+qualifySpan :: FilePath -> SrcSpan -> SrcSpan
+qualifySpan ref s = s { srcSpanFilename = qualifyLike ref (srcSpanFilename s) }
+
+-- | Walk up from a source file to the nearest project root.  Remote files walk
+-- up ON the host in one ssh round trip (never 'makeAbsolute', which mangles
+-- @ssh:\/\/@); local files as before.
 findProjectRoot :: FilePath -> IO FilePath
-findProjectRoot file = do
-    abs' <- makeAbsolute file
-    let dir0 = takeDirectory abs'
-        loop dir = hasMarker dir >>= \case
-            True  -> return (Just dir)
-            False -> let up = takeDirectory dir
-                     in if up == dir then return Nothing else loop up
-    loop dir0 >>= maybe (return dir0) return
+findProjectRoot file
+    | isRemotePath file = remoteFindProjectRoot file
+    | otherwise = do
+        abs' <- makeAbsolute file
+        let dir0 = takeDirectory abs'
+            loop dir = hasMarker dir >>= \case
+                True  -> return (Just dir)
+                False -> let up = takeDirectory dir
+                         in if up == dir then return Nothing else loop up
+        loop dir0 >>= maybe (return dir0) return
+
+-- | Remote analogue: one ssh script walks up from the file's directory looking
+-- for a @cabal.project@ \/ @stack.yaml@ \/ @*.cabal@ marker, printing the first
+-- match (empty if none).  The result is re-prefixed with the file's host.
+remoteFindProjectRoot :: FilePath -> IO FilePath
+#if defined(ghcjs_HOST_OS)
+remoteFindProjectRoot = return . takeDirectory
+#else
+remoteFindProjectRoot file = case parseRemotePath file of
+    Nothing             -> return (takeDirectory file)
+    Just (host, rlocal) -> do
+        let startDir = takeDirectory rlocal
+            -- The cabal-file test uses `find … -name '*.cabal'` rather than a
+            -- shell glob so this source has no slash-star (CPP would read that
+            -- as the start of a C comment).
+            script = T.intercalate "\n"
+                [ "d=\"$0\""
+                , "while :; do"
+                , "  if [ -f \"$d/cabal.project\" ] || [ -f \"$d/stack.yaml\" ] || "
+                    <> "[ -n \"$(find \"$d\" -maxdepth 1 -name '*.cabal' 2>/dev/null)\" ]; then"
+                , "    echo \"$d\"; exit 0"
+                , "  fi"
+                , "  p=$(dirname \"$d\")"
+                , "  [ \"$p\" = \"$d\" ] && break"
+                , "  d=\"$p\""
+                , "done"
+                , "echo \"\"" ]
+            fallback = renderRemotePath host startDir
+            pick (_ec, out, _) =
+                case T.strip (decodeUtf8With lenientDecode out) of
+                    r | T.null r  -> fallback
+                      | otherwise -> renderRemotePath host (T.unpack r)
+        (pick <$> runSsh host script [T.pack startDir] mempty)
+            `catch` \(_ :: SomeException) -> return fallback
+#endif
 
 hasMarker :: FilePath -> IO Bool
 hasMarker dir = do
