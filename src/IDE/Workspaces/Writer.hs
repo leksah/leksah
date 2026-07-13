@@ -51,7 +51,12 @@ import System.FilePath
 import System.Log.Logger (debugM)
 import qualified Data.Text as T (unpack, pack)
 #if !defined(ghcjs_HOST_OS)
-import System.FSNotify (watchDir, Event(..), watchTree, eventPath)
+import System.FSNotify (watchDir, Event(..), watchTree, eventPath, StopListening, WatchManager)
+import System.Directory (doesDirectoryExist)
+import System.Exit (ExitCode(..))
+import Control.Exception (catch, SomeException)
+import IDE.Git (runGit)
+import IDE.Web.LocalRefresh (requestLocalRefresh)
 #endif
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
@@ -294,16 +299,25 @@ setWorkspace mbWs = do
                    then return (pjKey project, return ())
                    else do
                     debugM "leksah" $ "Watching project " <> show (pjKey project)
-                    fmap (pjKey project,) <$> watchDir fsn (pjDir $ pjKey project) (\case
+                    stopMain <- watchDir fsn (pjDir $ pjKey project) (\case
                         Modified {} -> True
+                        Added {} -> True
+                        Removed {} -> True
                         _ -> False) $ \event -> do
                             let f = eventPath event
-                            void . (`reflectIDE` ideR) $ setModifiedOnDisk f
+                            requestLocalRefresh f
+                            case event of
+                                Removed {} -> return ()  -- deleted: refresh only; don't stat it
+                                _          -> void . (`reflectIDE` ideR) $ setModifiedOnDisk f
                             when (Just (takeFileName f) == (takeFileName <$> pjFile (pjKey project))) $
                                 (`reflectIDE` ideR) $ postAsyncIDE $
                                     readWorkspace (ws ^. wsFile) >>= \case
                                         Left _ -> return ()
                                         Right ws' -> setWorkspace (Just ws')
+                    -- Also watch the repo's git metadata (index/HEAD/refs) so
+                    -- external commits/checkouts/staging refresh Changes.
+                    stopGit <- watchGitMeta fsn (pjDir $ pjKey project)
+                    return (pjKey project, stopMain >> stopGit)
                 newPackageWatchers <- forM newPackages $ \package ->
                   if isRemotePath (ipdCabalFile package)
                    then return (ipdCabalFile package, return ())
@@ -314,11 +328,17 @@ setWorkspace mbWs = do
 
                     fmap (ipdCabalFile package,) <$> watchTree fsn (ipdPackageDir package) (\case
                         Modified {} -> True
+                        Added {} -> True
+                        Removed {} -> True
                         _ -> False) $ \event -> do
                             let f = eventPath event
-                            (`reflectIDE` ideR) $ setModifiedOnDisk f >>= \case
-                                True -> rebuild
-                                False ->
+                            requestLocalRefresh f
+                            case event of
+                              Removed {} -> return ()  -- deleted: refresh only; don't stat it
+                              _ ->
+                                (`reflectIDE` ideR) $ setModifiedOnDisk f >>= \case
+                                  True -> rebuild
+                                  False ->
                                     when (any (`isSourceIn` f) nonRootSrcPaths) $ do
                                         liftIO $ debugM "leksah" $ "Modified source file " <> f <> " in " <> T.unpack (ipdPackageName package)
                                         extMods <- liftIO $ takeMVar extModsMVar
@@ -339,6 +359,32 @@ setWorkspace mbWs = do
         case stripPrefix srcDir f of
             Just rest -> not $ any (`isPrefixOf` rest) ["dist/", "dist-", "."]
             _ -> False
+
+#if !defined(ghcjs_HOST_OS)
+-- | Watch a local project's git metadata (index, HEAD, refs) so external git
+-- operations — commit, checkout, stage from a terminal — refresh the Changes
+-- pane without polling.  The git-dir is resolved with @git rev-parse@ (handles
+-- enclosing repos, worktrees and submodules); returns a combined
+-- 'StopListening' (@return ()@ if @dir@ isn't in a git repo or git is
+-- unavailable).  Only the @.git@ dir + its @refs@ subtree are watched, never
+-- @objects@ (which churns on every fetch/gc).
+watchGitMeta :: WatchManager -> FilePath -> IO StopListening
+watchGitMeta fsn dir = do
+    res <- runGit dir ["rev-parse", "--absolute-git-dir"]
+             `catch` \(_ :: SomeException) -> return (ExitFailure 1, "", "")
+    case res of
+        (ExitSuccess, out, _)
+          | (gd:_) <- lines (T.unpack out), not (null gd) -> do
+              stopTop  <- watchDir fsn gd (const True) fire
+              hasRefs  <- doesDirectoryExist (gd </> "refs")
+              stopRefs <- if hasRefs
+                            then watchTree fsn (gd </> "refs") (const True) fire
+                            else return (return ())
+              return (stopTop >> stopRefs)
+        _ -> return (return ())
+  where
+    fire = requestLocalRefresh . eventPath
+#endif
 
 makeProjectKeyRelative :: FilePath -> ProjectKey -> IO ProjectKey
 makeProjectKeyRelative wsFile' (StackTool (StackProject f)) =

@@ -63,7 +63,7 @@ import Data.Map (mapKeys)
 import qualified Data.Map as M
        (Map, keys, elems, toList, fromList, union, findWithDefault, lookup,
         insert, insertWith, adjust, delete, member, filterWithKey,
-        singleton, mapWithKey, empty, size)
+        singleton, mapWithKey, empty, size, null)
 import Data.Map (Map)
 import qualified Data.Set as S
        (fromList, delete, singleton, empty, insert, member, intersection)
@@ -941,11 +941,13 @@ jsMain showMenubar macTitlebar mbWid ideR = do
       -- syncPoint, still let sustained bursts overlap and wedge a window.)
       resyncSettledE <- delay 0 (void polledIdeE)
       performEvent_ $ ffor resyncSettledE $ \_ -> liftIO (putMVar resyncAck ())
-      -- Freeze detector: a coarse (1s) keepalive per window.  If a window stops
+      -- Freeze detector: a coarse (5s) keepalive per window.  If a window stops
       -- emitting "alive" lines, its reflex network has frozen.  Doubles as the
-      -- fallback poll: it feeds the same version guard, so a lost resync signal
-      -- self-heals within a second.
-      heartbeatTick <- tickLossyFromPostBuildTime 1
+      -- resync fallback: it feeds the same version guard, so a lost resync signal
+      -- self-heals within a few seconds (resync normally fires via WindowBridge
+      -- events — this timer is only the backstop, so a slow tick is fine and
+      -- keeps the idle window from waking every second).
+      heartbeatTick <- tickLossyFromPostBuildTime 5
       heartbeatE <- performEvent $ ffor heartbeatTick $ \_ -> liftIO (snd <$> readMVar ideR)
       let freshPolledE = attachWithMaybe
             (\cur new -> if new ^. ideVersion > cur ^. ideVersion then Just new else Nothing)
@@ -2783,8 +2785,10 @@ statusLightJs = T.unlines
   -- distinct from red (an active test).  Set before rebuild-self/restart.
   , "  window.leksahRestarting = function(){ set('blue'); };"
   -- Land the dot in the final <body> (mainWidget replaces an early append) and
-  -- keep it there: a cheap 0.5s poll re-appends it if it's ever detached.
-  , "  ensure(); setInterval(ensure, 500);"
+  -- keep it there: a MutationObserver re-appends it only when body's children
+  -- change (a reflex rebuild detaches it) — no idle timer, silent while idle.
+  , "  ensure();"
+  , "  try { new MutationObserver(function(){ ensure(); }).observe(document.body, { childList: true }); } catch(e){}"
   , "})();"
   ]
 
@@ -3955,7 +3959,14 @@ main showMenubar macTitlebar wid ide = mdo
     performEvent_ $ ffor (updated snappedPanesD) $ \m ->
         liftJSM . void $ jsg ("window" :: Text) ^. js1 ("leksahSetSnapKeys" :: Text)
             ("[" <> T.intercalate "," [ "\"" <> paneKey k <> "\"" | k <- M.keys m ] <> "]")
-    holeTick <- tickLossyFromPostBuildTime 0.5
+    -- The 0.5s geometry poll catches the terminal panes drifting under a native
+    -- window move/resize; only run it while some pane is actually holed or
+    -- snapped, so an idle window with no transparent panes never wakes.
+    holesActiveD <- holdUniqDyn $ (\h s -> not (M.null h) || not (M.null s))
+                        <$> holedTermsD <*> snappedPanesD
+    holeTick <- switchHold never =<< dyn (ffor holesActiveD $ \active ->
+        if active then (() <$) <$> tickLossyFromPostBuildTime 0.5
+                  else return never)
     -- Refresh the holes on the tick, when the holed/snapped sets change, and when
     -- the flipper overlay shows/hides (so transparency clears while it's up).
     let refreshHolesE = leftmost [() <$ holeTick, () <$ updated holedTermsD

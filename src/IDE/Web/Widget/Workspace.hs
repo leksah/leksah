@@ -24,12 +24,10 @@ import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, strip, null)
-import Data.Time.Clock (UTCTime)
 
-import System.Directory (getModificationTime)
 import System.Exit (ExitCode(..))
 import System.FilePath
-       ((<.>), (</>), dropFileName, dropTrailingPathSeparator,
+       ((<.>), (</>), dropFileName, dropTrailingPathSeparator, takeFileName,
         splitDirectories, joinPath)
 
 import IDE.Git (runGit)
@@ -38,6 +36,7 @@ import IDE.Web.RemoteSettingsRequest (requestRemoteSettings)
 import IDE.Web.ReplTmux (openTerminalInDir)
 import IDE.Web.FS (fsDoesFileExist)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
+import IDE.Web.LocalRefresh (registerLocalRefresh)
 
 import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
@@ -54,7 +53,7 @@ import Clay.Stylesheet (key)
 import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffor, updated,
         current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
-        performEvent_, newTriggerEvent, tickLossyFromPostBuildTime, Dynamic,
+        performEvent_, newTriggerEvent, Dynamic,
         Event, never, fmapMaybe, tagPromptlyDyn, sample)
 import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
@@ -280,13 +279,6 @@ revealUnderExcept dirD exceptD activeFileD =
   pure $ (\dir except mf -> fileUnder dir mf && not (any (\d -> fileUnder d mf) except))
            <$> dirD <*> exceptD <*> activeFileD
 
--- | A file's modification time, or 'Nothing' if it doesn't exist / can't be
--- read.  Used to cheaply detect when a flake's @flake.nix@/@flake.lock@ changed
--- so its outputs can be re-evaluated.
-safeMtime :: FilePath -> IO (Maybe UTCTime)
-safeMtime f =
-  either (const Nothing) Just <$> (try (getModificationTime f) :: IO (Either SomeException UTCTime))
-
 -- | The shortest right-anchored suffix (by path segment) of @dir@ that is
 -- unique among @allDirs@ on the same server, so the project label shows just
 -- enough of the path to tell projects apart (the full path is the tooltip).
@@ -440,13 +432,17 @@ allOutputsNode dir = void $ treeItem "flake-node" False
             void . liftIO $ registerRemoteRefresh
                 (\_ -> void . forkIO $ flakeOutputs dir >>= fireResult)
           else do
-            ptick <- tickLossyFromPostBuildTime 2
-            mtimeE <- performEvent $ ffor (leftmost [ipb, () <$ ptick]) $ \_ -> liftIO $
-                (,) <$> safeMtime (dir </> "flake.nix") <*> safeMtime (dir </> "flake.lock")
-            mtimeD <- holdUniqDyn =<< holdDyn (Nothing, Nothing) mtimeE
-            -- The first mtime read (≈ on expand) and any later change re-evaluate.
-            performEvent_ $ ffor (() <$ updated mtimeD) $ \_ ->
+            -- Local: no mtime polling — evaluate on expand and when an
+            -- fsnotify LocalRefresh reports flake.nix / flake.lock changed
+            -- (both live directly in the project dir, so they're covered by
+            -- the project-dir watcher in IDE.Workspaces.Writer).
+            performEvent_ $ ffor ipb $ \_ ->
                 liftIO . void . forkIO $ flakeOutputs dir >>= fireResult
+            let base = dropTrailingPathSeparator dir
+            void . liftIO $ registerLocalRefresh $ \p ->
+                when (takeFileName p `elem` ["flake.nix", "flake.lock"]
+                      && (base <> "/") `isPrefixOf` p) $
+                    void . forkIO $ flakeOutputs dir >>= fireResult
         resultD <- holdDyn (Right [] :: FlakeResult) resultE
         flakeTreeWidget dir resultD
         return never)

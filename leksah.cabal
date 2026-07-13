@@ -305,6 +305,7 @@ library
         IDE.Web.Events
         IDE.Web.FS
         IDE.Web.RemoteRefresh
+        IDE.Web.LocalRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
         IDE.Web.Main
@@ -568,6 +569,7 @@ library leksah-nogtk
         IDE.Web.Events
         IDE.Web.FS
         IDE.Web.RemoteRefresh
+        IDE.Web.LocalRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
         IDE.Web.Main

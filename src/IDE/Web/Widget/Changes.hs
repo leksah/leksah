@@ -8,8 +8,9 @@
 -- git cues as the workspace tree (status colour + a single-letter badge) and an
 -- added/deleted line count.  Clicking a row opens that file in the editor.
 --
--- The change set is recomputed on a slow poll (and whenever the workspace's
--- project directories change), so it stays current as files are edited/saved;
+-- The change set is recomputed on fsnotify-driven LocalRefresh events (a save,
+-- a build, an external git op) and whenever the workspace's project directories
+-- change — no polling — so it stays current as files are edited/saved;
 -- 'holdUniqDyn' keeps the DOM from churning when nothing actually changed.
 module IDE.Web.Widget.Changes
   ( changesCss
@@ -30,7 +31,6 @@ import Data.Map (Map)
 import qualified Data.Map as M (fromList, lookup, elems, null, size)
 import Data.Maybe (listToMaybe)
 import qualified Data.Text as T (pack, unpack)
-import Data.Time.Clock (NominalDiffTime)
 
 import Clay
        (overflow, auto, height, pct, whiteSpace, nowrap, grey, color,
@@ -45,12 +45,13 @@ import IDE.Git (qualifyPath, runGitBatch)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.RemoteRefresh
        (RefreshReason(..), registerRemoteRefresh, requestRemoteRefresh)
+import IDE.Web.LocalRefresh (registerLocalRefresh)
 
 import Reflex
        (holdDyn, holdUniqDyn, listViewWithKey, never, ffor, switchHold,
         fmapMaybe, ffilter, leftmost, tag, current, updated,
-        newTriggerEvent, performEvent_,
-        constDyn, getPostBuild, tickLossyFromPostBuildTime, Dynamic, Event)
+        newTriggerEvent, performEvent_, debounce,
+        constDyn, getPostBuild, Dynamic, Event)
 import Reflex.Dom.Core
        (MonadWidget, divClass, el, elClass, elClass', elDynAttr', elDynClass,
         dynText, text, dyn, domEvent, EventName(..), (=:))
@@ -69,10 +70,6 @@ data FileChange = FileChange
   , changeAdded   :: Maybe Int
   , changeDeleted :: Maybe Int
   } deriving (Eq)
-
--- How often to re-scan the workspace for changes.
-pollInterval :: NominalDiffTime
-pollInterval = 3
 
 changesCss :: Css
 changesCss = do
@@ -114,16 +111,20 @@ changesWidget ide findE = divClass "changes leksah-nav" $ do
   -- The workspace file's directory; paths are shown relative to it.
   wsDirD <- holdUniqDyn $ maybe "" dropFileName . preview (workspace . _Just . wsFile) <$> ide
   postBuild <- getPostBuild
-  tick <- tickLossyFromPostBuildTime pollInterval
-  -- Local project dirs keep the slow poll; REMOTE dirs never tick — they
-  -- rescan only on RemoteRefresh events (remote save, build done, project
-  -- open, the ⟳ button), since each scan is an ssh round trip.
+  -- No polling: local dirs rescan when an fsnotify watcher fires a
+  -- LocalRefresh (a save, a build writing files, an external git op on the
+  -- watched .git), and remote dirs on a RemoteRefresh (each remote scan is an
+  -- ssh round trip).  Both also rescan on the ⟳ button and on postBuild.
   (remoteRefreshE, fireRemoteRefresh) <- newTriggerEvent
   _ <- liftIO $ registerRemoteRefresh fireRemoteRefresh
+  (localRefreshE, fireLocalRefresh) <- newTriggerEvent
+  _ <- liftIO $ registerLocalRefresh fireLocalRefresh
+  -- Coalesce bursts (a build writes many files) into one rescan.
+  localRefreshDebouncedE <- debounce 0.3 (() <$ localRefreshE)
   let localDirsD  = filter (not . isRemotePath) <$> dirsD
       remoteDirsD = filter isRemotePath <$> dirsD
       localE  = leftmost [ tag (current localDirsD) postBuild
-                         , tag (current localDirsD) tick
+                         , tag (current localDirsD) localRefreshDebouncedE
                          , tag (current localDirsD) refreshClickE
                          , updated localDirsD ]
       remoteE = leftmost [ tag (current remoteDirsD) postBuild

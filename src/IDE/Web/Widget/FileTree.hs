@@ -14,7 +14,7 @@ module IDE.Web.Widget.FileTree
 
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
-import Control.Monad (void, when)
+import Control.Monad (void, when, unless)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.Bool (bool)
@@ -33,9 +33,10 @@ import IDE.Git (qualifyPath, runGitBatch)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.FS (fsListDirectory)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
+import IDE.Web.LocalRefresh (registerLocalRefresh)
 import IDE.Web.ReplTmux (openTerminalInDir)
 import System.Exit (ExitCode(..))
-import System.FilePath (takeExtension, (</>))
+import System.FilePath (takeExtension, (</>), dropTrailingPathSeparator)
 
 import Reflex
        (Dynamic, listViewWithKey, Event, never, ffilter, updated, leftmost,
@@ -172,6 +173,14 @@ fileTree treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD
   performEvent_ $ scan <$ postBuild
   when (isRemotePath dir) . void . liftIO $
       registerRemoteRefresh (\_ -> void . forkIO $ gitInfo dir >>= fireInfo)
+  -- Local dirs: no polling — rescan when an fsnotify watcher fires a
+  -- LocalRefresh for a path inside this tree.
+  unless (isRemotePath dir) $ do
+      let base = dropTrailingPathSeparator dir
+      void . liftIO $
+          registerLocalRefresh $ \p ->
+              when (p == base || (base <> "/") `isPrefixOf` p) $
+                  void . forkIO $ gitInfo dir >>= fireInfo
   infoD <- holdDyn (mempty, mempty) infoE
   fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD dir
 
