@@ -129,6 +129,7 @@ import IDE.Web.ReplTmux
         selectTmuxWindowById, getLoginShell, interactiveShellArgs,
         writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
+import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
 
 terminalCss :: Css
@@ -916,6 +917,8 @@ parsePaneTree out = M.map toSession grouped
       | line <- lines out
       , (sid:sname:wiT:wn:wa:wb:wac:ws:piT:pa:pid:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
       , not (T.null sid)
+      -- The control-mode monitor's hidden session is not a real terminal.
+      , sname /= monitorSessionName
       , Just wi   <- [readMaybe (T.unpack wiT)]
       , Just pidx <- [readMaybe (T.unpack piT)]
       , let title    = T.intercalate "\t" rest

@@ -44,7 +44,6 @@ import qualified Data.Set as S (member)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T (breakOn, drop, null)
-import Data.Time.Clock (NominalDiffTime)
 
 import Clay
        (overflow, auto, height, pct, padding, px, (-:), display, flex,
@@ -56,7 +55,7 @@ import Clay.Stylesheet (key)
 import Reflex
        (holdUniqDyn, listViewWithKey, leftmost, fmapMaybe, ffor, ffilter, holdDyn,
         switchHold, switchDyn, never, constDyn, tagPromptlyDyn, newTriggerEvent,
-        performEvent_, getPostBuild, tickLossyFromPostBuildTime, updated,
+        performEvent_, getPostBuild, debounce, updated,
         Dynamic, Event)
 import Reflex.Dom.Core
        (MonadWidget, divClass, el, elClass, elClass', elAttr, elAttr', elDynAttr', dyn,
@@ -72,10 +71,7 @@ import IDE.Web.Widget.Terminal
         killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane,
         renameTmuxSession, renameTmuxWindow)
 import IDE.Web.Widget.Tree (treeItem)
-
--- | How often the window/pane levels are refreshed from tmux.
-terminalsPollInterval :: NominalDiffTime
-terminalsPollInterval = 2
+import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
 
 -- | Shared positioning for the close control's contents: pinned to the right of
 -- its (relative) slot and vertically centred, out of normal flow so it overlays
@@ -264,19 +260,27 @@ terminalsWidget
                                --   per host, feeding this tree AND the flipper)
   -> m (Event t TerminalsEvents)
 terminalsWidget activeD attnD remoteHostsD hostTreesD = divClass "terminals leksah-nav" $ do
-  -- Poll tmux for the whole session/window/pane tree (keyed by session id, each
-  -- carrying its current name): on first build, on a timer, and just after a
-  -- "new session" click.  Polling every tick is what refreshes a renamed
+  -- Read the whole session/window/pane tree (keyed by session id, each carrying
+  -- its current name): on first build, on a "new session" click, and — instead
+  -- of a timer — whenever the persistent tmux control-mode monitor
+  -- ('IDE.Web.TerminalRefresh') reports a structural change (an external rename,
+  -- a window added inside a terminal, …).  Re-reading refreshes a renamed
   -- session's label (the id key is unchanged, so only the display updates).
   postBuild <- getPostBuild
-  tick <- tickLossyFromPostBuildTime terminalsPollInterval
+  -- The monitor fires a burst of notifications for one logical change (e.g. a
+  -- window add is add + layout-change + rename); debounce so we read the tree
+  -- once it settles rather than once per line.
+  (refreshE, fireRefresh) <- newTriggerEvent
+  _ <- liftIO $ registerTerminalRefresh (fireRefresh ())
+  refreshE' <- debounce 0.3 refreshE
   rec
-    -- Polls run OFF the reflex thread (tmux subprocesses — a synchronous
-    -- performEvent here hitches the whole UI, keystrokes included, on
-    -- every tick).
+    -- Reads run OFF the reflex thread (tmux subprocesses — a synchronous
+    -- performEvent here hitches the whole UI, keystrokes included).  Each read
+    -- also (idempotently) ensures the monitor is running, so it re-arms after a
+    -- server restart when the user next opens a terminal.
     (polledE, firePolled) <- newTriggerEvent
-    performEvent_ $ ffor (leftmost [() <$ postBuild, () <$ tick, () <$ newE]) $ \_ ->
-        liftIO . void . forkIO $ listTerminalTree >>= firePolled
+    performEvent_ $ ffor (leftmost [() <$ postBuild, refreshE', () <$ newE]) $ \_ ->
+        liftIO . void . forkIO $ ensureTerminalMonitor >> listTerminalTree >>= firePolled
     -- A window/pane kill: run it, then immediately re-read the tree (in the same
     -- action, so the order is fixed) so the row goes away at once rather than on
     -- the next poll tick.

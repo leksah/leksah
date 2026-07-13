@@ -3209,13 +3209,14 @@ main showMenubar macTitlebar wid ide = mdo
     remoteTabsD <- holdUniqDyn $
         (\rt -> nub [ n | (_, TerminalKey n) <- rt, "ssh://" `T.isPrefixOf` n ])
           <$> recentTabs
-    remoteFlipTick <- tickLossyFromPostBuildTime 10
     (hostTreesE, fireHostTrees) <- newTriggerEvent
-    -- Poked right after a remote window/pane select (and on CC window
-    -- add/close), so the active-window highlight moves at once instead of on
-    -- the next 10s poll.
+    -- No periodic remote polling (a high-latency ssh link must not tick): the
+    -- host trees load once on post-build and re-load only when the host set
+    -- changes or something pokes — a remote window/pane select and remote CC
+    -- window add/close both fire 'fireRemotePoke' (see treeChangedTabsE above),
+    -- so the active-window highlight and tree still track user actions.
     (remotePokeE, fireRemotePoke) <- newTriggerEvent
-    performEvent_ $ ffor (leftmost [ tag (current remoteHostsD) remoteFlipTick
+    performEvent_ $ ffor (leftmost [ tag (current remoteHostsD) treePb
                                    , tag (current remoteHostsD) remotePokeE
                                    , updated remoteHostsD ]) $ \hosts ->
         liftIO . void . forkIO $ do
