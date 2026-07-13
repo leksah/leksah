@@ -51,7 +51,7 @@ import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import           System.Directory (doesFileExist, listDirectory, makeAbsolute)
-import           System.FilePath (takeDirectory, takeExtension, (</>))
+import           System.FilePath (addTrailingPathSeparator, takeDirectory, takeExtension, (</>))
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Log.Logger (debugM)
 
@@ -69,7 +69,7 @@ import           IDE.Core.State (IDEAction, modifyIDE_, reflectIDE, readIDE, pre
                                  ProjectSettings(..), pjKey, pjDir)
 import           IDE.Utils.FileUtils (isSubPath)
 import           IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
-import           IDE.Web.FS (fsReadFile)
+import           IDE.Web.FS (fsReadFile, fsDoesFileExist)
 import           IDE.Web.IDERefStore (getGlobalIDERef)
 #if !defined(ghcjs_HOST_OS)
 import           Data.Text.Encoding (decodeUtf8With)
@@ -133,11 +133,16 @@ serverCommandFor root globalCmd lc = do
   where
     nonBlank t = let s = T.strip t in if T.null s then Nothing else Just s
 
+-- Read through the FS seam ('fsDoesFileExist'\/'fsReadFile') so a @.leksah-lsp@
+-- in a REMOTE (@ssh:\/\/@) project root is found over ssh — a plain
+-- 'doesFileExist' would test the literal @ssh:\/\/…@ path on the local disk and
+-- always miss it.
 readOverrideFile :: FilePath -> IO (Maybe Text)
-readOverrideFile f = doesFileExist f >>= \case
+readOverrideFile f = fsDoesFileExist f >>= \case
     False -> return Nothing
     True  -> do
-        ls <- (T.lines <$> TIO.readFile f) `catch` \(_ :: SomeException) -> return []
+        ls <- (T.lines . decodeUtf8With lenientDecode <$> fsReadFile f)
+                 `catch` \(_ :: SomeException) -> return []
         return $ listToMaybe
             [ l | l <- map T.strip ls, not (T.null l), not ("#" `T.isPrefixOf` l) ]
 
@@ -562,27 +567,43 @@ ensureServer root lc = do
     (enabled, cmdPref) <- lspConfig
     if not enabled
         then return Nothing
-        else modifyMVar registry $ \m -> case Map.lookup key m of
-            Just entry -> return (m, entry)
-            Nothing -> do
-                cmdArgs <- serverCommandFor root cmdPref lc
-                try (spawnAndInit root cmdArgs) >>= \case
-                    Right ss -> return (Map.insert key (Just ss) m, Just ss)
-                    Left (e :: SomeException) -> do
-                        debugM "leksah" ("IDE.LSP: could not start language server in "
-                                         <> root <> ": " <> show e)
-                        return (Map.insert key Nothing m, Nothing)
+        else do
+            -- A remote server is launched over ssh under the project's command
+            -- prefix (e.g. @nix develop .# -c@ / @nix shell … -c@), which is what
+            -- puts ghc\/cabal\/HLS on PATH.  Resolve it BEFORE touching the
+            -- registry: if the workspace\/project settings are not loaded yet
+            -- (e.g. an editor restored from the session before the workspace
+            -- opens), DEFER — return 'Nothing' WITHOUT caching, so a later
+            -- 'touch' retries once settings are available.  Caching a prefixless
+            -- failure here is what left remote LSP permanently dead.
+            mPrefix <- if isRemotePath root then remotePrefixFor root
+                                            else return (Just Nothing)
+            case mPrefix of
+                Nothing -> do
+                    debugM "leksah" ("IDE.LSP: deferring remote server in " <> root
+                                     <> " (workspace settings not loaded yet)")
+                    return Nothing
+                Just prefix -> modifyMVar registry $ \m -> case Map.lookup key m of
+                    Just entry -> return (m, entry)
+                    Nothing -> do
+                        cmdArgs <- serverCommandFor root cmdPref lc
+                        try (spawnAndInit root prefix cmdArgs) >>= \case
+                            Right ss -> return (Map.insert key (Just ss) m, Just ss)
+                            Left (e :: SomeException) -> do
+                                debugM "leksah" ("IDE.LSP: could not start language server in "
+                                                 <> root <> ": " <> show e)
+                                return (Map.insert key Nothing m, Nothing)
   where key = (root, lcLanguageId lc)
 
-spawnAndInit :: FilePath -> (FilePath, [String]) -> IO ServerState
-spawnAndInit root (cmd, args) = do
+spawnAndInit :: FilePath -> Maybe Text -> (FilePath, [String]) -> IO ServerState
+spawnAndInit root prefix (cmd, args) = do
     ready   <- newTVarIO False
     pending <- newTVarIO []
     vers    <- newTVarIO Map.empty
     let cfg = defaultClientConfig
             { onNotification = handleNotification root
             , onStderr = \l -> debugM "leksah" ("HLS[" <> root <> "]: " <> T.unpack l) }
-    client <- spawnClient root cmd args cfg
+    client <- spawnClient root prefix cmd args cfg
     let ss = ServerState client ready pending vers
     debugM "leksah" ("IDE.LSP: started language server in " <> root)
     void $ request client SMethod_Initialize (initParams root) $ \case
@@ -603,15 +624,14 @@ spawnAndInit root (cmd, args) = do
 -- the host over ssh stdio: @ssh host \'cd rroot && exec \<prefix\> \<cmd\>\'@.
 -- cwd\/env MUST be 'Nothing' — an ssh:\/\/ cwd would crash createProcess, and
 -- the local env (nix PATH, …) must not reach the ssh client.  The per-project
--- command prefix (e.g. @nix develop -c@) supplies the remote server's
--- environment, exactly as it does for remote builds.
-spawnClient :: FilePath -> FilePath -> [String] -> ClientConfig -> IO Client
+-- command @prefix@ (e.g. @nix develop .# -c@), resolved by the caller, supplies
+-- the remote server's environment, exactly as it does for remote builds.
+spawnClient :: FilePath -> Maybe Text -> FilePath -> [String] -> ClientConfig -> IO Client
 #if defined(ghcjs_HOST_OS)
-spawnClient root cmd args cfg = start cmd args (Just root) Nothing cfg
+spawnClient root _prefix cmd args cfg = start cmd args (Just root) Nothing cfg
 #else
-spawnClient root cmd args cfg = case parseRemotePath root of
+spawnClient root prefix cmd args cfg = case parseRemotePath root of
     Just (host, rroot) -> do
-        prefix <- remotePrefixFor root
         let remoteCmd = "cd " <> shellQuote (T.pack rroot) <> " && exec "
                      <> maybe "" (<> " ") prefix
                      <> T.unwords (map (shellQuote . T.pack) (cmd : args))
@@ -622,18 +642,40 @@ spawnClient root cmd args cfg = case parseRemotePath root of
     Nothing -> start cmd args (Just root) Nothing cfg
 #endif
 
--- | The per-project command prefix (@psCmdPrefix@) for the project containing
--- @root@, read from the live workspace settings; 'Nothing' when there is no
--- workspace, no matching project, or no prefix set.
-remotePrefixFor :: FilePath -> IO (Maybe Text)
+-- | Resolve the command prefix for a REMOTE project root from the live
+-- workspace settings.  The nesting distinguishes two cases the caller must
+-- treat differently:
+--
+--   * @Nothing@        — no workspace, or no project matching @root@, is loaded
+--     yet (e.g. an editor restored before the workspace opened).  The caller
+--     should DEFER the spawn rather than launch without a prefix.
+--   * @Just prefix@     — a project was found; @prefix@ is its (possibly
+--     'Nothing') @psCmdPrefix@.
+remotePrefixFor :: FilePath -> IO (Maybe (Maybe Text))
 remotePrefixFor root = getGlobalIDERef >>= \case
     Nothing   -> return Nothing
     Just ideR -> do
         mbWs <- reflectIDE (readIDE workspace) ideR
-        return $ do
-            ws      <- mbWs
-            project <- find (\p -> pjDir (pjKey p) `isSubPath` root) (ws ^. wsProjects)
-            psCmdPrefix (wsSettingsFor (pjKey project) ws)
+        -- 'isSubPath' compares 'splitPath' components, and 'splitPath' leaves a
+        -- trailing slash on every component EXCEPT the last — so a bare dir
+        -- @…\/proj@ (last component @proj@, no slash) never matches the same
+        -- name appearing mid-path (@proj\/@).  'pjDir' happens to carry a
+        -- trailing slash ('dropFileName') but @root@ (from 'renderRemotePath')
+        -- does not, which broke the exact-match case; forcing a trailing slash
+        -- on BOTH normalises every component and makes 'isSubPath' correct for
+        -- @pjDir == root@ (single-package) and @pjDir@ an ancestor of @root@
+        -- (multi-package, file under a sub-package).
+        let root' = addTrailingPathSeparator root
+            res = do
+                ws      <- mbWs
+                project <- find (\p -> addTrailingPathSeparator (pjDir (pjKey p))
+                                         `isSubPath` root') (ws ^. wsProjects)
+                Just (psCmdPrefix (wsSettingsFor (pjKey project) ws))
+        debugM "leksah" ("IDE.LSP: remotePrefixFor " <> root <> " -> "
+                         <> show (fmap (fmap T.unpack) res)
+                         <> " (workspace=" <> show (isJust mbWs)
+                         <> " projects=" <> show (maybe 0 (length . (^. wsProjects)) mbWs) <> ")")
+        return res
 
 -- | Run an action now if the server has initialized, otherwise queue it.
 onReady :: ServerState -> IO () -> IO ()
@@ -831,9 +873,14 @@ findProjectRoot file
                          in if up == dir then return Nothing else loop up
         loop dir0 >>= maybe (return dir0) return
 
--- | Remote analogue: one ssh script walks up from the file's directory looking
--- for a @cabal.project@ \/ @stack.yaml@ \/ @*.cabal@ marker, printing the first
--- match (empty if none).  The result is re-prefixed with the file's host.
+-- | Remote analogue: one ssh script walks up from the file's directory.  It
+-- PREFERS the @cabal.project@ \/ @stack.yaml@ root (returned as soon as one is
+-- seen walking up) over an intermediate package's @*.cabal@ — so a file under a
+-- sub-package of a multi-package project resolves to the project root, which is
+-- where @cabal.project@ and the flake live (a per-project @nix develop .#@
+-- prefix must run there, not in the package dir).  It only falls back to the
+-- lowest bare @*.cabal@ dir when no @cabal.project@\/@stack.yaml@ exists above.
+-- The result is re-prefixed with the file's host.
 remoteFindProjectRoot :: FilePath -> IO FilePath
 #if defined(ghcjs_HOST_OS)
 remoteFindProjectRoot = return . takeDirectory
@@ -847,16 +894,23 @@ remoteFindProjectRoot file = case parseRemotePath file of
             -- as the start of a C comment).
             script = T.intercalate "\n"
                 [ "d=\"$0\""
+                , "pkg=\"\""
                 , "while :; do"
-                , "  if [ -f \"$d/cabal.project\" ] || [ -f \"$d/stack.yaml\" ] || "
-                    <> "[ -n \"$(find \"$d\" -maxdepth 1 -name '*.cabal' 2>/dev/null)\" ]; then"
+                -- A cabal.project / stack.yaml IS the project root: return at once.
+                , "  if [ -f \"$d/cabal.project\" ] || [ -f \"$d/stack.yaml\" ]; then"
                 , "    echo \"$d\"; exit 0"
+                , "  fi"
+                -- Remember the lowest bare *.cabal dir as a fallback, but keep
+                -- walking up in case a cabal.project sits above it.
+                , "  if [ -z \"$pkg\" ] && "
+                    <> "[ -n \"$(find \"$d\" -maxdepth 1 -name '*.cabal' 2>/dev/null)\" ]; then"
+                , "    pkg=\"$d\""
                 , "  fi"
                 , "  p=$(dirname \"$d\")"
                 , "  [ \"$p\" = \"$d\" ] && break"
                 , "  d=\"$p\""
                 , "done"
-                , "echo \"\"" ]
+                , "echo \"$pkg\"" ]
             fallback = renderRemotePath host startDir
             pick (_ec, out, _) =
                 case T.strip (decodeUtf8With lenientDecode out) of
