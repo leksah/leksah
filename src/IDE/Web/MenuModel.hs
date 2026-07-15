@@ -183,16 +183,24 @@ terminalMenu =
   , Submenu "Tmux" tmuxMenu
   ]
 
--- | Every default @tmux@ prefix (@C-b@) key binding, grouped into submenus, as
--- items that send the shortcut to the active terminal (see 'tmuxKey').  Each
--- shows its chord in the native shortcut column (@⌃B@ = the C-b prefix).  The
--- bytes following the prefix are printable keys as-is, arrows/meta as escape
--- sequences (@\\ESC[A@ = Up, @\\ESC1@ = M-1).  Chords only work on classic
--- (▭, attached-client) tabs; the Terminal menu's 'paneCmd' items above cover
--- the common pane operations on CC tabs too.
+-- | Every default @tmux@ prefix (@C-b@) key binding, grouped into submenus.
+-- Each shows its chord in the native shortcut column (@⌃B@ = the C-b prefix).
+--
+-- Items that map to a concrete tmux command use 'paneCmd', so they work on
+-- control-mode (⊞ / CC) tabs — the common case — by running that command over
+-- the control channel, falling back to typing the @C-b@ chord on a classic
+-- (▭, attached-client) PTY tab.  The remaining items are genuinely
+-- interactive (choose-tree, a command-prompt dialog, find/rename, display-panes,
+-- list-keys, the clock, …): tmux only renders those in an attached client, so
+-- they stay 'tmuxKey' (chord-only, i.e. PTY tabs).  For 'paneCmd' the second
+-- argument is the same chord byte the 'tmuxKey' used, so the PTY behaviour is
+-- unchanged; only CC tabs gain the action.
 tmuxMenu :: [MenuItem]
 tmuxMenu =
   [ Submenu "Sessions"
+      -- Session-level bindings steer the *client's* session and are either
+      -- interactive or would repoint/detach leksah's per-tab control client, so
+      -- they stay chord-only (PTY tabs).
       [ key "Detach client"    "⌃B d" (tmuxKey "d")
       , key "Choose session"   "⌃B s" (tmuxKey "s")
       , key "Rename session"   "⌃B $" (tmuxKey "$")
@@ -202,80 +210,80 @@ tmuxMenu =
       , key "Last session"     "⌃B ⇧Tab" (tmuxKey "\ESC[Z")
       ]
   , Submenu "Windows"
-      [ key "New window"       "⌃B c" (tmuxKey "c")
-      , key "Rename window"    "⌃B ," (tmuxKey ",")
-      , key "Kill window"      "⌃B &" (tmuxKey "&")
-      , key "Next window"      "⌃B n" (tmuxKey "n")
-      , key "Previous window"  "⌃B p" (tmuxKey "p")
+      [ key "New window"       "⌃B c" (paneCmd "new-window" "c")
+      , key "Rename window"    "⌃B ," (tmuxKey ",")           -- prompt
+      , key "Kill window"      "⌃B &" (paneCmd "kill-window" "&")
+      , key "Next window"      "⌃B n" (paneCmd "next-window" "n")
+      , key "Previous window"  "⌃B p" (paneCmd "previous-window" "p")
       -- ⌃B l is rebound to select-pane-right (vim hjkl), so last-window moves to Tab.
-      , key "Last window"      "⌃B Tab" (tmuxKey "\t")
-      , key "Choose window"    "⌃B w" (tmuxKey "w")
-      , key "Find window"      "⌃B f" (tmuxKey "f")
-      , key "Select by index"  "⌃B '" (tmuxKey "'")
-      , key "Move window"      "⌃B ." (tmuxKey ".")
+      , key "Last window"      "⌃B Tab" (paneCmd "last-window" "\t")
+      , key "Choose window"    "⌃B w" (tmuxKey "w")           -- chooser overlay
+      , key "Find window"      "⌃B f" (tmuxKey "f")           -- prompt
+      , key "Select by index"  "⌃B '" (tmuxKey "'")           -- prompt
+      , key "Move window"      "⌃B ." (tmuxKey ".")           -- prompt
       , Submenu "Select window"
-          [ key "Window 0" "⌃B 0" (tmuxKey "0")
-          , key "Window 1" "⌃B 1" (tmuxKey "1")
-          , key "Window 2" "⌃B 2" (tmuxKey "2")
-          , key "Window 3" "⌃B 3" (tmuxKey "3")
-          , key "Window 4" "⌃B 4" (tmuxKey "4")
-          , key "Window 5" "⌃B 5" (tmuxKey "5")
-          , key "Window 6" "⌃B 6" (tmuxKey "6")
-          , key "Window 7" "⌃B 7" (tmuxKey "7")
-          , key "Window 8" "⌃B 8" (tmuxKey "8")
-          , key "Window 9" "⌃B 9" (tmuxKey "9")
+          [ key "Window 0" "⌃B 0" (paneCmd "select-window -t :0" "0")
+          , key "Window 1" "⌃B 1" (paneCmd "select-window -t :1" "1")
+          , key "Window 2" "⌃B 2" (paneCmd "select-window -t :2" "2")
+          , key "Window 3" "⌃B 3" (paneCmd "select-window -t :3" "3")
+          , key "Window 4" "⌃B 4" (paneCmd "select-window -t :4" "4")
+          , key "Window 5" "⌃B 5" (paneCmd "select-window -t :5" "5")
+          , key "Window 6" "⌃B 6" (paneCmd "select-window -t :6" "6")
+          , key "Window 7" "⌃B 7" (paneCmd "select-window -t :7" "7")
+          , key "Window 8" "⌃B 8" (paneCmd "select-window -t :8" "8")
+          , key "Window 9" "⌃B 9" (paneCmd "select-window -t :9" "9")
           ]
       ]
   , Submenu "Panes"
-      [ key "Split left/right"     "⌃B %"  (tmuxKey "%")
-      , key "Split top/bottom"     "⌃B \"" (tmuxKey "\"")
-      , key "Next pane"            "⌃B o"  (tmuxKey "o")
-      , key "Last pane"            "⌃B ;"  (tmuxKey ";")
-      , key "Swap pane up"         "⌃B {"  (tmuxKey "{")
-      , key "Swap pane down"       "⌃B }"  (tmuxKey "}")
-      , key "Rotate panes"         "⌃B ⌃O" (tmuxKey "\SI")
-      , key "Kill pane"            "⌃B x"  (tmuxKey "x")
-      , key "Zoom/unzoom pane"     "⌃B z"  (tmuxKey "z")
-      , key "Break pane to window" "⌃B !"  (tmuxKey "!")
-      , key "Show pane numbers"    "⌃B q"  (tmuxKey "q")
-      , key "Mark pane"            "⌃B m"  (tmuxKey "m")
-      , key "Clear marked pane"    "⌃B M"  (tmuxKey "M")
+      [ key "Split left/right"     "⌃B %"  (paneCmd "split-window -h" "%")
+      , key "Split top/bottom"     "⌃B \"" (paneCmd "split-window -v" "\"")
+      , key "Next pane"            "⌃B o"  (paneCmd "select-pane -t :.+" "o")
+      , key "Last pane"            "⌃B ;"  (paneCmd "last-pane" ";")
+      , key "Swap pane up"         "⌃B {"  (paneCmd "swap-pane -U" "{")
+      , key "Swap pane down"       "⌃B }"  (paneCmd "swap-pane -D" "}")
+      , key "Rotate panes"         "⌃B ⌃O" (paneCmd "rotate-window" "\SI")
+      , key "Kill pane"            "⌃B x"  (paneCmd "kill-pane" "x")
+      , key "Zoom/unzoom pane"     "⌃B z"  (paneCmd "resize-pane -Z" "z")
+      , key "Break pane to window" "⌃B !"  (paneCmd "break-pane" "!")
+      , key "Show pane numbers"    "⌃B q"  (tmuxKey "q")      -- transient overlay
+      , key "Mark pane"            "⌃B m"  (paneCmd "select-pane -m" "m")
+      , key "Clear marked pane"    "⌃B M"  (paneCmd "select-pane -M" "M")
       , Submenu "Select pane"
-          [ key "Above" "⌃B ↑ / k" (tmuxKey "\ESC[A")
-          , key "Below" "⌃B ↓ / j" (tmuxKey "\ESC[B")
-          , key "Right" "⌃B → / l" (tmuxKey "\ESC[C")
-          , key "Left"  "⌃B ← / h" (tmuxKey "\ESC[D")
+          [ key "Above" "⌃B ↑ / k" (paneCmd "select-pane -U" "\ESC[A")
+          , key "Below" "⌃B ↓ / j" (paneCmd "select-pane -D" "\ESC[B")
+          , key "Right" "⌃B → / l" (paneCmd "select-pane -R" "\ESC[C")
+          , key "Left"  "⌃B ← / h" (paneCmd "select-pane -L" "\ESC[D")
           ]
       , Submenu "Resize pane"
-          [ key "Up (5)"    "⌃B K"  (tmuxKey "K")
-          , key "Down (5)"  "⌃B J"  (tmuxKey "J")
-          , key "Right (5)" "⌃B L"  (tmuxKey "L")
-          , key "Left (5)"  "⌃B H"  (tmuxKey "H")
-          , key "Up (1)"    "⌃B ⌃k" (tmuxKey "\v")
-          , key "Down (1)"  "⌃B ⌃j" (tmuxKey "\n")
-          , key "Right (1)" "⌃B ⌃l" (tmuxKey "\f")
-          , key "Left (1)"  "⌃B ⌃h" (tmuxKey "\b")
+          [ key "Up (5)"    "⌃B K"  (paneCmd "resize-pane -U 5" "K")
+          , key "Down (5)"  "⌃B J"  (paneCmd "resize-pane -D 5" "J")
+          , key "Right (5)" "⌃B L"  (paneCmd "resize-pane -R 5" "L")
+          , key "Left (5)"  "⌃B H"  (paneCmd "resize-pane -L 5" "H")
+          , key "Up (1)"    "⌃B ⌃k" (paneCmd "resize-pane -U 1" "\v")
+          , key "Down (1)"  "⌃B ⌃j" (paneCmd "resize-pane -D 1" "\n")
+          , key "Right (1)" "⌃B ⌃l" (paneCmd "resize-pane -R 1" "\f")
+          , key "Left (1)"  "⌃B ⌃h" (paneCmd "resize-pane -L 1" "\b")
           ]
       ]
   , Submenu "Layout"
-      [ key "Next layout"     "⌃B Space" (tmuxKey " ")
-      , key "Even horizontal" "⌃B ⌥1"    (tmuxKey "\ESC1")
-      , key "Even vertical"   "⌃B ⌥2"    (tmuxKey "\ESC2")
-      , key "Main horizontal" "⌃B ⌥3"    (tmuxKey "\ESC3")
-      , key "Main vertical"   "⌃B ⌥4"    (tmuxKey "\ESC4")
-      , key "Tiled"           "⌃B ⌥5"    (tmuxKey "\ESC5")
+      [ key "Next layout"     "⌃B Space" (paneCmd "next-layout" " ")
+      , key "Even horizontal" "⌃B ⌥1"    (paneCmd "select-layout even-horizontal" "\ESC1")
+      , key "Even vertical"   "⌃B ⌥2"    (paneCmd "select-layout even-vertical" "\ESC2")
+      , key "Main horizontal" "⌃B ⌥3"    (paneCmd "select-layout main-horizontal" "\ESC3")
+      , key "Main vertical"   "⌃B ⌥4"    (paneCmd "select-layout main-vertical" "\ESC4")
+      , key "Tiled"           "⌃B ⌥5"    (paneCmd "select-layout tiled" "\ESC5")
       ]
   , Submenu "Copy & Buffers"
-      [ key "Copy (scroll) mode" "⌃B [" (tmuxKey "[")
-      , key "Paste buffer"       "⌃B ]" (tmuxKey "]")
-      , key "Choose buffer"      "⌃B =" (tmuxKey "=")
-      , key "List paste buffers" "⌃B #" (tmuxKey "#")
+      [ key "Copy (scroll) mode" "⌃B [" (paneCmd "copy-mode" "[")
+      , key "Paste buffer"       "⌃B ]" (paneCmd "paste-buffer" "]")
+      , key "Choose buffer"      "⌃B =" (tmuxKey "=")         -- chooser overlay
+      , key "List paste buffers" "⌃B #" (tmuxKey "#")         -- list overlay
       ]
   , Submenu "Misc"
-      [ key "Command prompt"   "⌃B :" (tmuxKey ":")
-      , key "List key bindings" "⌃B ?" (tmuxKey "?")
-      , key "Clock"            "⌃B t" (tmuxKey "t")
-      , key "Refresh client"   "⌃B r" (tmuxKey "r")
-      , key "Show messages"    "⌃B ~" (tmuxKey "~")
+      [ key "Command prompt"    "⌃B :" (tmuxKey ":")          -- prompt
+      , key "List key bindings" "⌃B ?" (tmuxKey "?")          -- list overlay
+      , key "Clock"             "⌃B t" (tmuxKey "t")          -- clock mode
+      , key "Refresh client"    "⌃B r" (paneCmd "refresh-client" "r")
+      , key "Show messages"     "⌃B ~" (tmuxKey "~")          -- message log overlay
       ]
   ]
