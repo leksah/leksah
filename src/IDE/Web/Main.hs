@@ -3079,20 +3079,18 @@ main showMenubar macTitlebar wid ide = mdo
                         (pure ())
                     dynText labelTextD
                 orderStyleD = buttonOrderStyleD (Left (s, widx)) baseOrderD
-                -- Switch the shared terminal to this window, then poke a pane-tree
-                -- refresh so the "current window" highlight updates at once (not on
-                -- the next 2 s poll).
+                -- Clicking a terminal-window button in the tab bar: promote its
+                -- pane in the shared flip MRU and switch tmux straight to it (the
+                -- termWinFlip handler below, for local AND remote) — no waiting to
+                -- see which pane wins focus.  Then refresh the tree so the "current
+                -- window" highlight updates at once (not on the next poll):
+                -- fireTermActivity locally, fireRemotePoke for a remote host.
                 onSel | widx < 0  = pure ()
-                      | otherwise = case remoteTabHostTarget s of
-                          Just (host, target) -> void . forkIO $ do
-                              selectRemoteTmuxWindow host target widx
-                              fireRemotePoke ()
-                          -- Clicking a terminal-window button in the tab bar: we
-                          -- already know leksah's MRU pane for this (session,
-                          -- window), so promote it and switch straight to it (the
-                          -- handler below) — no waiting to see which pane wins
-                          -- focus.  fireTermActivity refreshes the tree/highlight.
-                          Nothing -> fireTermWinSel (s, widx) >> fireTermActivity ()
+                      | otherwise = do
+                          fireTermWinSel (s, widx)
+                          case remoteTabHostTarget s of
+                            Just _  -> fireRemotePoke ()
+                            Nothing -> fireTermActivity ()
                 badgeD = M.lookup (Left (s, widx)) <$> badgeNumsD
             tabButton area (winFlipKey s widx) k selectedD orderStyleD badgeD Nothing Nothing labelW onSel
           pure (mconcat . M.elems <$> winButtonsE)
@@ -3333,16 +3331,35 @@ main showMenubar macTitlebar wid ide = mdo
           (current allTreeD) becameKeyPaneIdE
         flipBumpE = leftmost [ localFlipBumpE, becameKeyEditorE, becameKeyPaneFlipE ]
     flipMruD <- holdUniqDyn (_flipMru <$> ide)
-    -- Terminal-window button clicked (from 'fireTermWinSel'): look up leksah's
-    -- MRU pane for that (session, window) in the shared flip list, switch tmux
-    -- straight to it, and promote it — all at once, no focus round-trip.  Falls
-    -- back to plain select-window (tmux picks the pane) when we have no recorded
-    -- pane for that window yet.
+    -- Terminal-window button clicked (from 'fireTermWinSel', local OR remote):
+    -- find the pane to switch to and promote, switch tmux straight to it, and
+    -- return it so it floats to the flip MRU front — all at once, no focus
+    -- round-trip.  The pane is leksah's remembered MRU pane for that (session,
+    -- window) if we have one, else the window's active (or first) pane from the
+    -- tree.  The tree fallback is what makes a REMOTE window's button rise in the
+    -- flipper (and so move to the start of the tab bar): the tab bar is the only
+    -- promoter for remote windows, whose panes are otherwise never in the MRU.
+    -- Falls back to plain select-window (tmux picks the pane, no promotion) only
+    -- when the tree has no pane for that window yet.
     termWinFlipE <- fmap (fmapMaybe id) . performEvent $
-        ffor (attach (current flipMruD) termWinSelE) $ \(mru, (s, widx)) -> do
+        ffor (attach ((,) <$> current flipMruD <*> current allTreeD) termWinSelE) $ \((mru, tree), (s, widx)) -> do
             wlog wid ("ENTER termWinFlip " <> show (s, widx))
-            r <- liftIO $
-                case listToMaybe [ p | FlipPane s' w p <- mru, s' == s, w == widx ] of
+            let mruPane  = listToMaybe [ p | FlipPane s' w p <- mru, s' == s, w == widx ]
+                treePane = do
+                    (_, wins) <- M.lookup s tree
+                    w <- find ((== widx) . twIndex) wins
+                    p <- listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+                    pure (tpIndex p)
+                mbPane   = case mruPane of Just p -> Just p; Nothing -> treePane
+            r <- liftIO $ case remoteTabHostTarget s of
+                -- Remote: switch over ssh off the reflex thread (as flipPaneE does);
+                -- the MRU promotion is leksah's own record, so return it immediately.
+                Just (host, target) -> do
+                    void . forkIO $ case mbPane of
+                        Just p  -> selectRemoteTmuxPane host target widx p
+                        Nothing -> selectRemoteTmuxWindow host target widx
+                    return (FlipPane s widx <$> mbPane)
+                Nothing -> case mbPane of
                     Just p  -> selectTmuxPane s widx p >> return (Just (FlipPane s widx p))
                     Nothing -> selectTmuxWindow s widx >> return Nothing
             wlog wid "EXIT termWinFlip"
