@@ -22,7 +22,7 @@ import IDE.Web.Command
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
         commandDebugStepModule, commandDebugContinue, commandFileClose,
         commandNewWindow, commandToggleTmuxIntercept, tmuxKey,
-        paneCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
+        paneCmd, splitCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
         commandSendSelection, commandSendFileRef, commandSendError,
         commandFocusAITerminal)
 
@@ -148,8 +148,8 @@ terminalMenu =
   , MenuKey "Previous Window" "cmd+shift+[" (paneCmd "previous-window" "p")
   , MenuKey "Next Window"     "cmd+shift+]" (paneCmd "next-window" "n")
   , MenuSep
-  , MenuKey "Split Right" "cmd+d"       (paneCmd "split-window -h" "%")
-  , MenuKey "Split Down"  "cmd+shift+d" (paneCmd "split-window -v" "\"")
+  , MenuKey "Split Right" "cmd+d"       (splitCmd True  "%")
+  , MenuKey "Split Down"  "cmd+shift+d" (splitCmd False "\"")
   , MenuSep
   , Submenu "Select Split"
       [ MenuKey "Select Split Above" "cmd+alt+Up"    (paneCmd "select-pane -U" "\ESC[A")

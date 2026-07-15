@@ -13,9 +13,9 @@
 -- names (each force guarded by @builtins.tryEval@), so it stays cheap.  Deeper
 -- levels load lazily, one @nix eval@ per expanded node ('flakeChildren'),
 -- stopping at derivations (forcing into a derivation's attributes would
--- trigger builds / import-from-derivation).  Every node also carries a run
--- (>) button that opens @nix develop .#<attribute path>@ in a repl-session
--- terminal window; the tree root's button runs @nix repl .#@.
+-- trigger builds / import-from-derivation).  Double-clicking a node opens
+-- @nix develop .#<attribute path>@ in a repl-session terminal window;
+-- double-clicking the tree root runs @nix repl .#@.
 module IDE.Web.Widget.Flake
   ( FlakeNode(..)
   , FlakeKind(..)
@@ -27,7 +27,6 @@ module IDE.Web.Widget.Flake
   , flakeSystemNames
   , flakeCss
   , flakeTreeWidget
-  , runButton
   , execButton
   , openNixWindow
   , developAttr
@@ -279,13 +278,7 @@ flakeCss = do
         whiteSpace nowrap
         padding (px 2) (px 8) (px 2) (px 8)
 
--- | A small run (>) glyph — the traditional prompt character — for a tree row.
-runButton :: MonadWidget t m => Text -> m (Event t ())
-runButton tip = do
-  (e, _) <- elAttr' "button" ("class" =: "ws-run" <> "title" =: tip) $ text ">"
-  return (domEvent Click e)
-
--- | A small execute (▶) glyph — 'runButton' opens repls; this RUNS things.
+-- | A small execute (▶) glyph button for a tree row — runs a component.
 execButton :: MonadWidget t m => Text -> m (Event t ())
 execButton tip = do
   (e, _) <- elAttr' "button" ("class" =: "ws-run" <> "title" =: tip) $ text "▶"
@@ -334,10 +327,9 @@ flakeTreeWidget dir resultD = void . dyn $ ffor resultD $ \case
 
 -- | A node at @path@ under the flake root.  @kind@ 'Nothing' = unknown (not
 -- yet evaluated — offer an expander and find out on demand); derivations and
--- plain values are leaves.  Every node gets a run button for
--- @nix develop .#<path>@ — its only button, so double-clicking the row does
--- the same; rows are tree selections (click/keyboard) like the rest of the
--- workspace tree.
+-- plain values are leaves.  Double-clicking a row opens
+-- @nix develop .#<path>@; rows are tree selections (click/keyboard) like the
+-- rest of the workspace tree.
 flakeChildNode :: forall t m . MonadWidget t m => FilePath -> [Text] -> Maybe FlakeKind -> m ()
 flakeChildNode dir path kind = case kind of
     Just KindDerivation -> leafRow
@@ -367,9 +359,8 @@ flakeChildNode dir path kind = case kind of
     developRow label = do
         (rowEl, _) <- treeSelect' "workspace" (return never) $ do
             label
-            runE <- runButton ("nix develop .#" <> attr)
-            performEvent_ $ ffor runE $ \_ -> liftIO $ developAttr dir attr
             return (never :: Event t ())
+        -- double-click opens `nix develop .#…` (no inline button)
         performEvent_ $ ffor (domEvent Dblclick rowEl) $ \_ ->
             liftIO $ developAttr dir attr
         return never

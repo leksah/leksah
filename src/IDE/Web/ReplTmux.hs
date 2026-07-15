@@ -17,6 +17,7 @@ module IDE.Web.ReplTmux
   , ensureCommandWindow
   , ensureRemoteWindow
   , openTerminalInDir
+  , buildSplitWindowCommand
   , getLoginShell
   , interactiveShellArgs
   , tmuxSupported
@@ -42,6 +43,7 @@ import System.Info (os)
 #if !defined(mingw32_HOST_OS) && !defined(ghcjs_HOST_OS)
 import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 #endif
+import System.Log.Logger (debugM)
 import System.Process (readProcessWithExitCode)
 
 import IDE.Core.State
@@ -324,6 +326,57 @@ cmdPrefixForDir dir = getGlobalIDERef >>= \case
     dirContains parent child =
         let norm p = addTrailingPathSeparator (dropTrailingPathSeparator p)
         in norm parent `isPrefixOf` norm child
+
+-- | Build the tmux @split-window@ command for splitting the active terminal's
+-- current pane.  A bare split starts a login shell in the pane's current
+-- directory; this reproduces the *window's* setup instead.  A directory window
+-- — one opened by double-clicking a directory, whose @\@leksah_run@ key ends in
+-- @#shell@ — re-enters that project's command prefix (@nix develop -c@ …), so
+-- the new pane lands in the same environment.  Any other window (a component
+-- repl, a run\/test\/bench window, a nix window, or one with no marker) just
+-- inherits the directory with a plain shell — \"just set the directory\".
+-- Falls back to a plain @split-window@ when the pane can't be inspected.
+buildSplitWindowCommand :: Bool     -- ^ horizontal split (Split Right)?
+                        -> Text     -- ^ the active (local) tmux session id
+                        -> IO Text
+buildSplitWindowCommand horizontal session = do
+    (path, runKey) <- queryActivePane session
+    result <-
+      if null path
+        then return bare
+        else do
+          -- Only a directory window re-applies its project's prefix; every
+          -- other window just gets a plain shell in the inherited directory.
+          mbPrefix <- if "#shell" `T.isSuffixOf` runKey
+                        then mfilter (not . T.null) <$> cmdPrefixForDir path
+                        else return Nothing
+          let cwd = " -c " <> shq (T.pack path)
+              cmd = case mbPrefix of
+                      Just p  -> " " <> shq ("exec " <> p <> " \"${SHELL:-bash}\" -l")
+                      Nothing -> ""
+          return (bare <> cwd <> cmd)
+    debugM "leksah" $ "buildSplitWindowCommand: session=" <> T.unpack session
+        <> " path=" <> show path <> " runKey=" <> show runKey
+        <> " -> " <> T.unpack result
+    return result
+  where
+    bare = "split-window " <> (if horizontal then "-h" else "-v")
+    -- The active pane's current directory and its window's @leksah_run marker,
+    -- in one round trip on leksah's private tmux server.
+    queryActivePane sess = (`catch` \(_ :: SomeException) -> return ("", "")) $
+        findExecutable "tmux" >>= \case
+          Nothing   -> return ("", "")
+          Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "display-message", "-p", "-t", T.unpack sess
+                , "-F", "#{pane_current_path}\t#{@leksah_run}" ] ""
+            case T.splitOn "\t" (T.strip (T.pack out)) of
+              (p : rest) -> return (T.unpack p, T.intercalate "\t" rest)
+              _          -> return ("", "")
+    -- tmux command-line single-quoting (tmux unquotes '…' literally and
+    -- concatenates adjacent quotes, like the shell): keeps @${SHELL}@ out of
+    -- tmux's own format expansion, passing it through to the pane's /bin/sh.
+    shq t = "'" <> T.replace "'" "'\\''" t <> "'"
 
 ensureCommandWindow :: Bool -> Text -> FilePath -> Text -> Text -> IO (Maybe Text)
 ensureCommandWindow keepShell key dir name cmd = (`catch` \(_ :: SomeException) -> return Nothing) $

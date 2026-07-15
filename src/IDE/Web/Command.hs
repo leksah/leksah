@@ -18,7 +18,7 @@ import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.NewWindowRequest (requestNewWindow)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.TerminalInput
-       (sendToActiveTerminal, tmuxCommandActiveTerminal)
+       (sendToActiveTerminal, tmuxCommandActiveTerminal, splitActiveTerminal)
 import IDE.Web.TransparencyRequest (requestToggleTransparency)
 import IDE.Web.SnapRequest (requestSnapWindow)
 
@@ -336,6 +336,16 @@ paneCmd ccCmd chord = CommandIDEAction
   (liftIO $ do
       done <- tmuxCommandActiveTerminal ccCmd
       unless done $ sendToActiveTerminal (BS.cons 2 chord))
+
+-- | The Terminal menu's split commands.  Unlike 'paneCmd' these build a
+-- @split-window@ that reproduces a directory window's environment — the new
+-- pane re-enters the project's command prefix (a repl just inherits the
+-- directory); see 'IDE.Web.TerminalInput.splitActiveTerminal'.
+splitCmd :: Bool -> ByteString -> Command
+splitCmd horizontal chord = CommandIDEAction
+  ""  -- menu-only: no toolbar icon
+  (__ "Split the terminal pane (re-entering a directory window's environment)")
+  (liftIO (splitActiveTerminal horizontal chord))
 
 -- | A menu command that toggles whether the active terminal's active tmux pane
 -- is shown as a see-through, click-through hole in the window (macOS).  The work

@@ -23,7 +23,7 @@ import Data.Maybe (listToMaybe, maybeToList, fromMaybe, isJust)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, strip, null)
+import qualified Data.Text as T (pack, strip, null, takeWhile)
 
 import System.Exit (ExitCode(..))
 import System.FilePath
@@ -71,12 +71,12 @@ import IDE.Gtk.Package (packageRun)
 import IDE.Gtk.Workspaces (makePackage)
 import IDE.Package
        (packageClean, packageBench, packageTest, projectRefreshNix,
-        packageOpenRepl, projectOpenTerminal)
+        packageOpenRepl, packageRunComponentTerm, projectOpenTerminal)
 import IDE.Web.Command (Command(..))
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
 import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
-        flakeTreeWidget, runButton, openNixWindow, developAttr)
+        flakeTreeWidget, execButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.FileTree (fileTree)
 import IDE.Web.Widget.Tree
@@ -254,6 +254,15 @@ absolutSourceDirs :: IDEPackage -> Set FilePath
 absolutSourceDirs p =
   S.fromList ((ipdPackageDir p </>) <$> ipdSrcDirs p)
 
+-- | Tooltip for a runnable component's ▶ button — the cabal subcommand it
+-- runs (@run@ for exes, @test@\/@bench@ for the others).
+runComponentTip :: Text -> Text
+runComponentTip comp = "cabal " <> sub <> " " <> comp
+  where sub = case T.takeWhile (/= ':') comp of
+                "test"  -> "test"
+                "bench" -> "bench"
+                _       -> "run"
+
 -- | Is the focused file somewhere under @dir@?
 fileUnder :: FilePath -> Maybe FilePath -> Bool
 fileUnder dir = maybe False ((dropWhileEnd (== '/') dir <> "/") `isPrefixOf`)
@@ -333,7 +342,7 @@ gitBranchNode dir = do
 -- has a @${builtins.currentSystem}@ attribute under it (devShells, packages,
 -- …), each listing that category's current-system names, and finally an
 -- \"All Outputs\" node with the full lazily-drillable output tree (see
--- "IDE.Web.Widget.Flake").  The row's run (>) button opens @nix repl .#@.
+-- "IDE.Web.Widget.Flake").  Double-clicking the row opens @nix repl .#@.
 flakeNode :: MonadWidget t m => FilePath -> m ()
 flakeNode dir = do
   pb <- getPostBuild
@@ -344,11 +353,8 @@ flakeNode dir = do
       (do (rowEl, _) <- treeSelect' "workspace" (return never) $ do
               elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/nix.svg") (return ())
               text "Flake"
-              runE <- runButton "nix repl .#"
-              performEvent_ $ ffor runE $ \_ -> liftIO $
-                  openNixWindow dir "nix repl" "nix repl .# --show-trace"
               return never
-          -- double-click = the row's only button
+          -- double-click opens `nix repl .#` (no inline button)
           performEvent_ $ ffor (domEvent Dblclick rowEl) $ \_ -> liftIO $
               openNixWindow dir "nix repl" "nix repl .# --show-trace"
           return never)
@@ -369,9 +375,9 @@ flakeNode dir = do
           return never)
 
 -- | One per-system output category (devShells, packages, …): its children
--- are the names under @<category>.${currentSystem}@, each with a run (>)
--- button opening @nix develop@ for it; when a @default@ name exists the
--- collapsed row itself gets the button.
+-- are the names under @<category>.${currentSystem}@, each double-clickable to
+-- open @nix develop@ for it; when a @default@ name exists the collapsed row
+-- itself opens it on double-click.
 systemCatNode :: forall t m . MonadWidget t m => FilePath -> Text -> m ()
 systemCatNode dir cat = do
   (namesE, fireNames) <- newTriggerEvent
@@ -379,7 +385,6 @@ systemCatNode dir cat = do
   performEvent_ $ ffor pb $ \_ ->
       liftIO . void . forkIO $ flakeSystemNames dir cat >>= fireNames
   resultD <- holdDyn (Right ("", [])) namesE
-  hasDefaultD <- holdUniqDyn $ either (const False) (elem "default" . snd) <$> resultD
   void $ treeItem "flake-node" False
     (do let runDefault = \case
                 Right (sys, names) | "default" `elem` names ->
@@ -387,12 +392,8 @@ systemCatNode dir cat = do
                 _ -> return ()
         (rowEl, _) <- treeSelect' "workspace" (return never) $ do
             elClass "span" "flake-label" (text (" " <> cat))
-            -- Open the default entry without having to expand the node.
-            void . dyn $ ffor hasDefaultD $ \hasDef -> when hasDef $ do
-                runE <- runButton ("nix develop .#" <> cat <> ".default")
-                performEvent_ $ ffor (tagPromptlyDyn resultD runE) runDefault
             return never
-        -- double-click = the row's (only) button, when it exists
+        -- double-click opens the category's `default` entry (no inline button)
         performEvent_ $ ffor (tagPromptlyDyn resultD (domEvent Dblclick rowEl)) runDefault
         return never)
     (do
@@ -405,10 +406,8 @@ systemCatNode dir cat = do
     nameRow sys nm = elClass "li" "flake-leaf" $ do
         (rowEl, _) <- treeSelect' "workspace" (return never) $ do
             text (" " <> nm)
-            runE <- runButton ("nix develop .#" <> cat <> "." <> sys <> "." <> nm)
-            performEvent_ $ ffor runE $ \_ -> liftIO $
-                developAttr dir (cat <> "." <> sys <> "." <> nm)
             return (never :: Event t ())
+        -- double-click opens `nix develop .#…` (no inline button)
         performEvent_ $ ffor (domEvent Dblclick rowEl) $ \_ -> liftIO $
             developAttr dir (cat <> "." <> sys <> "." <> nm)
 
@@ -581,10 +580,21 @@ workspaceWidget ide activeFileD revealFileD = do
                               ]) $ do
                               elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
                               dynText componentD
-                              return never
+                              -- A ▶ button on runnable components (exe/test/bench,
+                              -- of a cabal project) runs the component in a
+                              -- terminal (cabal run/test/bench); libraries have
+                              -- none.  Opening the repl is the row's double-click.
+                              case pKey of
+                                CabalTool {} -> switchHold never =<< dyn (ffor componentD $ \comp ->
+                                  if T.takeWhile (/= ':') comp `elem` ["exe", "test", "bench"]
+                                    then do
+                                      runE <- execButton (runComponentTip comp)
+                                      return $ tagPromptlyDyn (mkActD packageRunComponentTerm) runE
+                                    else return never)
+                                _ -> return never
                             -- Double-click a component opens its ffcabal repl as
-                            -- a terminal tab (replacing the old inline repl/run
-                            -- buttons that used to clutter every row).
+                            -- a terminal tab (replacing the old inline repl button
+                            -- that used to clutter every row).
                             let dblE = case pKey of
                                   CabalTool {} -> tagPromptlyDyn (mkActD packageOpenRepl) (domEvent Dblclick rowEl)
                                   _ -> never

@@ -37,6 +37,7 @@ module IDE.Web.TerminalInput
   , setActiveTerminalNotifier
   , sendToActiveTerminal
   , tmuxCommandActiveTerminal
+  , splitActiveTerminal
   , dispatchTmuxPrefix
   ) where
 
@@ -59,6 +60,8 @@ import IDE.Web.NoPty (Pty, writePty)
 #else
 import System.Posix.Pty (Pty, writePty)
 #endif
+
+import IDE.Web.ReplTmux (buildSplitWindowCommand)
 
 {-# NOINLINE ptyRegistry #-}
 ptyRegistry :: IORef (M.Map Text Pty)
@@ -239,6 +242,24 @@ tmuxCommandActiveTerminal cmd = do
       return True
     Nothing -> return False
 
+-- | Split the active terminal.  On a control-mode (CC) tab we build a
+-- @split-window@ that reproduces the window's setup — a directory window
+-- re-enters its project's command prefix, other windows just inherit the
+-- directory (see 'IDE.Web.ReplTmux.buildSplitWindowCommand').  Remote (@ssh:\/\/@)
+-- tabs get a plain split (the local socket can't inspect the remote pane), and
+-- a classic PTY tab (no CC runner) falls back to the @C-b@ chord.
+splitActiveTerminal :: Bool -> ByteString -> IO ()
+splitActiveTerminal horizontal chord = do
+  mActive <- readIORef activeRef
+  reg <- readIORef ccRegistry
+  case mActive of
+    Just sid | Just run <- M.lookup sid reg -> do
+      cmd <- if "ssh://" `T.isPrefixOf` sid
+               then return ("split-window " <> if horizontal then "-h" else "-v")
+               else buildSplitWindowCommand horizontal sid
+      run cmd `catch` \(_ :: SomeException) -> return ()
+    _ -> sendToActiveTerminal (BS.cons 2 chord)
+
 -- | A tmux prefix key (the key that followed a @C-b@ chord, intercepted in JS
 -- by @window.LeksahTmux@ when the "Intercept Ctrl+B" pref is on) — dispatch it
 -- to the active terminal.  Mapped keys run the equivalent tmux command on a
@@ -251,6 +272,8 @@ tmuxCommandActiveTerminal cmd = do
 -- pane) and never reaches here.  Tokens may carry @C-@\/@M-@ modifier prefixes.
 dispatchTmuxPrefix :: Text -> IO ()
 dispatchTmuxPrefix tok
+  | tok == "%"  = splitActiveTerminal True  "%"
+  | tok == "\"" = splitActiveTerminal False "\""
   | Just (ccCmd, chord) <- M.lookup tok tmuxPrefixMap = run ccCmd chord
   | [d] <- T.unpack tok, d `elem` ['0' .. '9'] =
       run ("select-window -t " <> tok) (encodeUtf8 tok)
@@ -269,8 +292,9 @@ tmuxPrefixMap = M.fromList
   , ("n",     ("next-window",         "n"))
   , ("p",     ("previous-window",     "p"))
   , ("&",     ("kill-window",         "&"))
-  , ("%",     ("split-window -h",     "%"))
-  , ("\"",    ("split-window -v",     "\""))
+  -- "%" (Split Right) and "\"" (Split Down) are handled specially in
+  -- 'dispatchTmuxPrefix' via 'splitActiveTerminal' (they reproduce a directory
+  -- window's environment rather than issuing a bare split).
   , ("x",     ("kill-pane",           "x"))
   , ("z",     ("resize-pane -Z",      "z"))
   , ("o",     ("select-pane -t :.+",  "o"))
