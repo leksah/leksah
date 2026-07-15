@@ -43,7 +43,8 @@ import Data.Set (Set)
 import qualified Data.Set as S (member)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T (breakOn, drop, null)
+import qualified Data.Text as T (breakOn, drop, null, pack, splitOn, unpack)
+import Text.Read (readMaybe)
 
 import Clay
        (overflow, auto, height, pct, padding, px, (-:), display, flex,
@@ -58,18 +59,18 @@ import Reflex
         performEvent_, getPostBuild, debounce, updated,
         Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, el, elClass, elClass', elAttr, elAttr', elDynAttr', dyn,
+       (MonadWidget, el, elClass, elClass', elAttr, elAttr', elDynAttr', dyn,
         blank, dynText, text, domEvent, EventName(..), (=:), textInput, attributes,
         widgetHold, textInputConfig_initialValue, _textInput_value,
-        _textInput_keydown, _textInput_hasFocus)
-import Language.Javascript.JSaddle (liftJSM, jsg, js1, fun, eval)
+        _textInput_keydown, _textInput_hasFocus, _element_raw)
+import Language.Javascript.JSaddle (liftJSM, jsg, js1, jss, fun, eval, valToText)
 
 import IDE.Web.Theme (selectionColor, hoverColor, dimColor, dimOpacity)
 import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
        (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
-        killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane,
-        renameTmuxSession, renameTmuxWindow)
+        killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane, moveTmuxPane,
+        moveRemoteTmuxPane, renameTmuxSession, renameTmuxWindow)
 import IDE.Web.Widget.Tree (treeItem)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
 
@@ -267,6 +268,15 @@ terminalsCss = do
     ".terminals .terminal-cancel" ? do
         padding (px 0) (px 4) (px 0) (px 4)
         fontSize (px 11)
+    -- Drag-and-drop (see 'paneDragJs'): only the pane label span drags — mark it
+    -- and stop the leading icon from being grabbed as an image drag instead.
+    ".terminals .terminals-label[draggable=true]" ? ("-webkit-user-drag" -: "element")
+    ".terminals img.tree-icon" ? ("-webkit-user-drag" -: "none")
+    -- The pane being dragged dims; the window row it's hovering over (a valid,
+    -- same-host drop target) gets a selection-blue outline.
+    ".terminals .terminals-label.tdrag-src" ? opacity 0.4
+    ".terminals .terminals-label.drop-target" ?
+        ("box-shadow" -: "inset 0 0 0 2px var(--leksah-selection)")
 
 -- | A node event is either a local tmux side effect to run here (killing a
 -- window/pane: it doesn't touch leksah's session list/tabs, so it needn't go up
@@ -284,53 +294,91 @@ terminalsWidget
                                --   shared ssh poll in 'IDE.Web.Main' (one ssh
                                --   per host, feeding this tree AND the flipper)
   -> m (Event t TerminalsEvents)
-terminalsWidget activeD attnD remoteHostsD hostTreesD = divClass "terminals leksah-nav" $ do
-  -- Read the whole session/window/pane tree (keyed by session id, each carrying
-  -- its current name): on first build, on a "new session" click, and — instead
-  -- of a timer — whenever the persistent tmux control-mode monitor
-  -- ('IDE.Web.TerminalRefresh') reports a structural change (an external rename,
-  -- a window added inside a terminal, …).  Re-reading refreshes a renamed
-  -- session's label (the id key is unchanged, so only the display updates).
-  postBuild <- getPostBuild
-  -- The monitor fires a burst of notifications for one logical change (e.g. a
-  -- window add is add + layout-change + rename); debounce so we read the tree
-  -- once it settles rather than once per line.
-  (refreshE, fireRefresh) <- newTriggerEvent
-  _ <- liftIO $ registerTerminalRefresh (fireRefresh ())
-  refreshE' <- debounce 0.3 refreshE
-  rec
-    -- Reads run OFF the reflex thread (tmux subprocesses — a synchronous
-    -- performEvent here hitches the whole UI, keystrokes included).  Each read
-    -- also (idempotently) ensures the monitor is running, so it re-arms after a
-    -- server restart when the user next opens a terminal.
-    (polledE, firePolled) <- newTriggerEvent
-    performEvent_ $ ffor (leftmost [() <$ postBuild, refreshE', () <$ newE]) $ \_ ->
-        liftIO . void . forkIO $ ensureTerminalMonitor >> listTerminalTree >>= firePolled
-    -- A window/pane kill: run it, then immediately re-read the tree (in the same
-    -- action, so the order is fixed) so the row goes away at once rather than on
-    -- the next poll tick.
-    (killedE, fireKilled) <- newTriggerEvent
-    performEvent_ $ ffor killActE $ \act ->
-        liftIO . void . forkIO $ (act >> listTerminalTree) >>= fireKilled
-    -- Every live session (id -> (name, windows)); this is the tree directly.
-    itemsD <- holdUniqDyn =<< holdDyn mempty (leftmost [polledE, killedE])
-    -- "Local": the host node for leksah's own tmux server, expanded by default;
-    -- its "+" glyph replaces the old full-width "New Session" button.
-    localE <- el "ul" $ treeItem "terminals-host" True
-        (hostRow "Local" NewTerminal "New local session")
-        (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\n vD ->
-            sessionNode ((== Just n) <$> activeD) (S.member n <$> attnD) n vD))
-    let killActE = fmapMaybe (either Just (const Nothing)) localE
-        newE     = fmapMaybe (\e -> case e of NewTerminal -> Just (); _ -> Nothing) bubbleLocalE
-        bubbleLocalE = fmapMaybe (either (const Nothing) Just) localE
-  -- One node per remote host, sessions/windows/panes over ssh (select-only);
-  -- the data comes from the shared per-host poll in 'IDE.Web.Main'.
-  remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
-      (\host _ -> remoteHostNode activeD host
-          (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
-  return $ leftmost [ bubbleLocalE
-                    , fmapMaybe (\m -> listToMaybe (M.elems m)
-                                        >>= either (const Nothing) Just) remoteE ]
+terminalsWidget activeD attnD remoteHostsD hostTreesD = do
+  (termRoot, ev) <- elClass' "div" "terminals leksah-nav" $ do
+    -- Read the whole session/window/pane tree (keyed by session id, each carrying
+    -- its current name): on first build, on a "new session" click, and — instead
+    -- of a timer — whenever the persistent tmux control-mode monitor
+    -- ('IDE.Web.TerminalRefresh') reports a structural change (an external rename,
+    -- a window added inside a terminal, …).  Re-reading refreshes a renamed
+    -- session's label (the id key is unchanged, so only the display updates).
+    postBuild <- getPostBuild
+    -- The monitor fires a burst of notifications for one logical change (e.g. a
+    -- window add is add + layout-change + rename); debounce so we read the tree
+    -- once it settles rather than once per line.
+    (refreshE, fireRefresh) <- newTriggerEvent
+    _ <- liftIO $ registerTerminalRefresh (fireRefresh ())
+    refreshE' <- debounce 0.3 refreshE
+    rec
+      -- Reads run OFF the reflex thread (tmux subprocesses — a synchronous
+      -- performEvent here hitches the whole UI, keystrokes included).  Each read
+      -- also (idempotently) ensures the monitor is running, so it re-arms after a
+      -- server restart when the user next opens a terminal.
+      (polledE, firePolled) <- newTriggerEvent
+      performEvent_ $ ffor (leftmost [() <$ postBuild, refreshE', () <$ newE]) $ \_ ->
+          liftIO . void . forkIO $ ensureTerminalMonitor >> listTerminalTree >>= firePolled
+      -- A window/pane kill: run it, then immediately re-read the tree (in the same
+      -- action, so the order is fixed) so the row goes away at once rather than on
+      -- the next poll tick.
+      (killedE, fireKilled) <- newTriggerEvent
+      performEvent_ $ ffor killActE $ \act ->
+          liftIO . void . forkIO $ (act >> listTerminalTree) >>= fireKilled
+      -- Every live session (id -> (name, windows)); this is the tree directly.
+      itemsD <- holdUniqDyn =<< holdDyn mempty (leftmost [polledE, killedE])
+      -- "Local": the host node for leksah's own tmux server, expanded by default;
+      -- its "+" glyph replaces the old full-width "New Session" button.
+      localE <- el "ul" $ treeItem "terminals-host" True
+          (hostRow "Local" NewTerminal "New local session")
+          (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\n vD ->
+              sessionNode ((== Just n) <$> activeD) (S.member n <$> attnD) n vD))
+      let killActE = fmapMaybe (either Just (const Nothing)) localE
+          newE     = fmapMaybe (\e -> case e of NewTerminal -> Just (); _ -> Nothing) bubbleLocalE
+          bubbleLocalE = fmapMaybe (either (const Nothing) Just) localE
+    -- One node per remote host, sessions/windows/panes over ssh (select-only);
+    -- the data comes from the shared per-host poll in 'IDE.Web.Main'.
+    remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
+        (\host _ -> remoteHostNode activeD host
+            (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
+    return $ leftmost [ bubbleLocalE
+                      , fmapMaybe (\m -> listToMaybe (M.elems m)
+                                          >>= either (const Nothing) Just) remoteE ]
+  -- Arm tree drag-and-drop: drag a pane row onto a window row to move the pane
+  -- into that window (a tmux move-pane).  The gesture runs in JS ('paneDragJs') —
+  -- HTML5 DnD needs a synchronous dragover preventDefault jsaddle's async dispatch
+  -- can't provide — calling back here only for the final move.  Arm the CONTAINER
+  -- element handle DIRECTLY (never document.querySelector): at postBuild the
+  -- '.terminals' div isn't attached in wkwebview's batched DOM, so a querySelector
+  -- returns null and setting a property on it aborts the whole build batch (a
+  -- blank UI).  The callback lives on this window's element, so each OS window
+  -- drives its own.
+  pb <- getPostBuild
+  performEvent_ $ ffor pb $ \_ -> liftJSM $ do
+      let raw = _element_raw termRoot
+      _ <- raw ^. jss ("__leksahMovePane" :: Text) (fun $ \_ _ args -> case args of
+              (s : d : _) -> do
+                  src <- valToText s
+                  dst <- valToText d
+                  liftIO (performPaneMove src dst)
+              _ -> return ())
+      void $ jsg ("LeksahPaneDrag" :: Text) ^. js1 ("arm" :: Text) raw
+  return ev
+
+-- | Carry out a Terminals-tree pane drag-drop.  @src@ is @\"host|paneId\"@ and
+-- @dst@ is @\"host|session|widx\"@ (host empty = leksah's local tmux), as set on
+-- the dragged pane row / dropped-on window row.  Runs off the reflex thread (a
+-- tmux/ssh subprocess); the resulting tmux layout-change is picked up by the
+-- monitor, which re-polls the tree.  Cross-host drops are already rejected in
+-- JS (see 'paneDragJs'), so a mismatch here is just ignored.
+performPaneMove :: Text -> Text -> IO ()
+performPaneMove src dst =
+    case (T.splitOn "|" src, T.splitOn "|" dst) of
+        ([sh, paneId], [dh, sess, widxT])
+          | sh == dh
+          , Just widx <- readMaybe (T.unpack widxT) ->
+              void . forkIO $
+                  if T.null sh then moveTmuxPane paneId sess widx
+                               else moveRemoteTmuxPane sh paneId sess widx
+        _ -> return ()
 
 -- | A leading B&W node icon (a @/pics/*.svg@) for a Terminals-tree row.
 termIcon :: MonadWidget t m => Text -> m ()
@@ -412,6 +460,8 @@ remoteWindowsTree host sid nameD windowsD =
         treeItem "terminals-window" False
           (do let attrs = ffor wD $ \w ->
                     "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
+                    -- Drop target for pane drag-and-drop within this host.
+                    <> "data-win-dst" =: (host <> "|" <> sid <> "|" <> T.pack (show widx))
               (e, _) <- elDynAttr' "span" attrs $ do
                     termWinIcon wD
                     dynText (twLabel <$> wD)
@@ -433,6 +483,9 @@ remotePanesTree host sid nameD widx panesD =
       (\pidx pD -> el "li" $ do
         let attrs = ffor pD $ \p ->
               "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
+              -- Drag source within this host: "host|paneId".
+              <> "draggable" =: "true"
+              <> "data-pane-src" =: (host <> "|" <> tpId p)
         (e, _) <- elDynAttr' "span" attrs $ do
               termIcon "tree-pane.svg"
               dynText (tpLabel <$> pD)
@@ -558,6 +611,9 @@ windowsTree n windowsD =
         treeItem "terminals-window" False
           (do let attrs = ffor wD $ \w ->
                     "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
+                    -- Drop target for pane drag-and-drop: "host|session|widx"
+                    -- (host empty = leksah's local tmux); see 'paneDragJs'.
+                    <> "data-win-dst" =: ("|" <> n <> "|" <> T.pack (show widx))
               (e, _) <- elDynAttr' "span" attrs $ do
                     termWinIcon wD
                     dynText (twLabel <$> wD)
@@ -578,6 +634,10 @@ panesTree n widx panesD =
       (\pidx pD -> el "li" $ do
         let attrs = ffor pD $ \p ->
               "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
+              -- Drag source: "host|paneId" (host empty = local); drop onto a
+              -- window row to move the pane there (see 'paneDragJs').
+              <> "draggable" =: "true"
+              <> "data-pane-src" =: ("|" <> tpId p)
         (e, _) <- elDynAttr' "span" attrs $ do
               termIcon "tree-pane.svg"
               dynText (tpLabel <$> pD)

@@ -37,6 +37,7 @@ module IDE.Web.Widget.Terminal
   , newRemoteTmuxWindow
   , zoomRemoteTmuxPane
   , breakRemoteTmuxPane
+  , moveRemoteTmuxPane
   , renameRemoteTmuxSession
   , renameRemoteTmuxWindow
   , reapControlClients
@@ -53,6 +54,7 @@ module IDE.Web.Widget.Terminal
   , newTmuxWindow
   , zoomTmuxPane
   , breakTmuxPane
+  , moveTmuxPane
   , renameTmuxSession
   , renameTmuxWindow
   , activePaneId
@@ -866,6 +868,15 @@ breakRemoteTmuxPane :: Text -> Text -> Int -> Int -> IO ()
 breakRemoteTmuxPane host s w p =
     void $ sshTmux host ["break-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
 
+-- | Move pane @srcPaneId@ (a tmux pane id like @%5@) into window @dstW@ of
+-- remote session @dstS@ on @host@, splitting the target window.  Pane ids are
+-- stable across the renumbering a move triggers, so this is the source target
+-- used by the Terminals-tree drag-and-drop (see 'moveTmuxPane').
+moveRemoteTmuxPane :: Text -> Text -> Text -> Int -> IO ()
+moveRemoteTmuxPane host srcPaneId dstS dstW =
+    void $ sshTmux host ["move-pane", "-s", T.unpack srcPaneId,
+                         "-t", T.unpack dstS <> ":" <> show dstW]
+
 -- | Rename remote session @s@ to @name@.
 renameRemoteTmuxSession :: Text -> Text -> Text -> IO ()
 renameRemoteTmuxSession host s name =
@@ -982,6 +993,15 @@ zoomTmuxPane s w p =
 breakTmuxPane :: Text -> Int -> Int -> IO ()
 breakTmuxPane s w p =
     tmuxCmd ["break-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Move pane @srcPaneId@ (a tmux pane id like @%5@) into window @dstW@ of
+-- session @dstS@, splitting the target window.  Targeting by pane id keeps the
+-- source unambiguous even after tmux renumbers pane indices on the move; used
+-- by the Terminals-tree drag-and-drop (drag a pane row onto a window row).
+moveTmuxPane :: Text -> Text -> Int -> IO ()
+moveTmuxPane srcPaneId dstS dstW =
+    tmuxCmd ["move-pane", "-s", T.unpack srcPaneId,
+             "-t", T.unpack dstS <> ":" <> show dstW]
 
 -- | Rename session @s@ (a session id) to @name@.
 renameTmuxSession :: Text -> Text -> IO ()

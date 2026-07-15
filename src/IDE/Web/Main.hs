@@ -806,6 +806,11 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- far too laggy for mousemove; Haskell is called back once, on drop).
   _ <- eval dividerDragJs
 
+  -- Defines window.LeksahPaneDrag: drag a Terminals-tree pane row onto a window
+  -- row to move the pane there (the DnD gesture runs in JS — jsaddle can't do
+  -- the synchronous dragover preventDefault a drop needs; see IDE.Web.Widget.Terminals).
+  _ <- eval paneDragJs
+
   -- Defines window.leksahSetHoles/leksahClearHoles: clips transparent tmux panes
   -- out of the page root so the window shows through (macOS click-through holes).
   _ <- eval transparencyJs
@@ -2497,6 +2502,62 @@ dividerDragJs = T.unlines
   , "    }"
   , "    document.addEventListener('mousemove', mv);"
   , "    document.addEventListener('mouseup', up);"
+  , "  });"
+  , "} };"
+  ]
+
+-- | Defines @window.LeksahPaneDrag.arm(root)@: HTML5 drag-and-drop for the
+-- Terminals tree — drag a pane row (@[data-pane-src]@ = @\"host|paneId\"@) onto
+-- a window row (@[data-win-dst]@ = @\"host|session|widx\"@) to move the pane
+-- into that window.  Listeners are delegated on @root@ (the @.terminals@
+-- container) so they survive reflex re-rendering the rows.  A drop is only
+-- allowed within the SAME host (you can't relocate a pane's process across an
+-- ssh boundary), which is why the whole gesture — including the synchronous
+-- @preventDefault@ on @dragover@ that HTML5 DnD needs to permit a drop (jsaddle
+-- dispatches Haskell handlers async, too late for that) — runs here in JS; only
+-- the final move is called back to Haskell via @root.__leksahMovePane@.
+paneDragJs :: Text
+paneDragJs = T.unlines
+  [ "window.LeksahPaneDrag = { arm: function(root){"
+  , "  if (!root || root.__leksahPaneDragArmed) return;"
+  , "  root.__leksahPaneDragArmed = true;"
+  , "  var dragSrc = null, dropEl = null;"
+  , "  function hostOf(spec){ return spec ? spec.split('|')[0] : null; }"
+  , "  function clearDrop(){ if (dropEl) { dropEl.classList.remove('drop-target'); dropEl = null; } }"
+  , "  root.addEventListener('dragstart', function(e){"
+  , "    var src = e.target && e.target.closest && e.target.closest('[data-pane-src]');"
+  , "    if (!src) { dragSrc = null; return; }"
+  , "    dragSrc = src.getAttribute('data-pane-src');"
+  , "    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move';"
+  , "      try { e.dataTransfer.setData('text/plain', dragSrc); } catch(_){} }"
+  , "    src.classList.add('tdrag-src');"
+  , "  });"
+  , "  root.addEventListener('dragend', function(e){"
+  , "    var src = e.target && e.target.closest && e.target.closest('[data-pane-src]');"
+  , "    if (src) src.classList.remove('tdrag-src');"
+  , "    dragSrc = null; clearDrop();"
+  , "  });"
+  , "  root.addEventListener('dragover', function(e){"
+  , "    if (!dragSrc) return;"
+  , "    var dst = e.target && e.target.closest && e.target.closest('[data-win-dst]');"
+  , "    if (!dst || hostOf(dst.getAttribute('data-win-dst')) !== hostOf(dragSrc)) { clearDrop(); return; }"
+  , "    e.preventDefault();"                       -- MUST be sync → allows the drop
+  , "    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';"
+  , "    if (dropEl !== dst) { clearDrop(); dropEl = dst; dst.classList.add('drop-target'); }"
+  , "  });"
+  , "  root.addEventListener('dragleave', function(e){"
+  , "    var dst = e.target && e.target.closest && e.target.closest('[data-win-dst]');"
+  , "    if (dst && dst === dropEl && !(e.relatedTarget && dst.contains(e.relatedTarget))) clearDrop();"
+  , "  });"
+  , "  root.addEventListener('drop', function(e){"
+  , "    if (!dragSrc) return;"
+  , "    var dst = e.target && e.target.closest && e.target.closest('[data-win-dst]');"
+  , "    if (!dst) { clearDrop(); return; }"
+  , "    var dstSpec = dst.getAttribute('data-win-dst');"
+  , "    if (hostOf(dstSpec) !== hostOf(dragSrc)) { clearDrop(); return; }"
+  , "    e.preventDefault();"
+  , "    var src = dragSrc; clearDrop();"
+  , "    if (root.__leksahMovePane) root.__leksahMovePane(src, dstSpec);"
   , "  });"
   , "} };"
   ]
