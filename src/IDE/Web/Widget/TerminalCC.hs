@@ -90,7 +90,7 @@ import Reflex
 import Reflex.Dom.Core
        (MonadWidget, blank, divClass, domEvent, dyn, dyn_, elAttr, elAttr',
         elDynAttr, elDynAttr', listWithKey, text, widgetHold, _element_raw,
-        EventName(Click), (=:))
+        EventName(Click, Keydown), (=:))
 import Language.Javascript.JSaddle
        (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, js4, jsg, jss,
         liftJSM, new, obj, valIsNull, valIsUndefined, valToBool, valToNumber,
@@ -183,8 +183,13 @@ terminalCCWidget ide sessionId selectedE = do
         -- drops: the reason, plus Retry (re-run the connection) and Close (drop
         -- the tab).  Fills the tab; no absolute positioning needed since it
         -- REPLACES the session UI via the widgetHold below.
-        connErrorView msg =
-            elAttr "div" ("class" =: "terminal-cc-error"
+        -- 'tabindex=-1' so the view itself can hold focus and receive key
+        -- events; Retry is focused as soon as it appears (below) so the whole
+        -- thing is keyboard-driven: Enter/Space on the focused button, Tab
+        -- between Retry and Close, and Escape closes the tab.
+        connErrorView msg = do
+            (box, _) <- elAttr' "div"
+                      ("class" =: "terminal-cc-error" <> "tabindex" =: "-1"
                       <> "style" =: ("height:100%;box-sizing:border-box;overflow:auto"
                                      <> ";padding:14px;background:#111;color:#ddd"
                                      <> ";font:13px/1.5 Menlo,Monaco,monospace")) $ do
@@ -195,8 +200,22 @@ terminalCCWidget ide sessionId selectedE = do
                     ("style" =: "padding:4px 12px;margin-right:8px;cursor:pointer") $ text "Retry"
                 (cb, _) <- elAttr' "button"
                     ("style" =: "padding:4px 12px;cursor:pointer") $ text "Close"
+                -- Focus Retry when the error view appears, so a keyboard user
+                -- lands on it without hunting for the buttons.  Re-assert once
+                -- after a beat: the widgetHold swap tears down the old xterm just
+                -- after this builds, and removing a focused xterm bounces focus
+                -- to <body>, so the immediate focus alone is lost.  0.1s beats
+                -- the teardown yet is too quick for the user to have Tabbed away.
+                pbErr <- getPostBuild
+                reErr  <- delay 0.1 pbErr
+                performEvent_ $ ffor (leftmost [pbErr, reErr]) $ \_ -> liftJSM $
+                    void $ _element_raw rb ^. js0 ("focus" :: Text)
                 performEvent_ $ liftIO (fireRetry ())    <$ domEvent Click rb
                 performEvent_ $ liftIO (fireCloseErr ()) <$ domEvent Click cb
+            -- Escape (from anywhere in the view — it bubbles from the buttons)
+            -- closes the tab, mirroring the Close button.
+            performEvent_ $ liftIO (fireCloseErr ())
+                <$ ffilter (== 27) (domEvent Keydown box)
     -- jsaddle-terminal tunnels (vendor/jsaddle-terminal): a pane app can
     -- handshake over its own stdout/stdin (OSC-5799 frames in %output,
     -- RS frames injected via send-keys -H) and render as an iframe over its

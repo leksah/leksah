@@ -160,6 +160,12 @@ terminalCss = do
     -- and brightens on hover/drag.  Geometry is inline (per-layout).
     -- Above a tunnel iframe (z-index 5): the grab strip and its line must sit
     -- on top of an adjacent pane's iframe, not under it.
+    -- The connection-error / Retry view is keyboard-driven (Retry autofocused,
+    -- Tab to Close, Enter/Space activate, Escape closes), so make the focused
+    -- button clearly visible with an on-brand blue ring.
+    ".terminal-cc-error button:focus" ? do
+        "outline" -: "2px solid var(--leksah-selection)"
+        "outline-offset" -: "1px"
     ".terminal-cc-divider" ? ("z-index" -: "10")
     ".terminal-cc-divider.vert" ? ("cursor" -: "col-resize")
     ".terminal-cc-divider.horiz" ? ("cursor" -: "row-resize")
