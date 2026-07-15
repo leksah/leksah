@@ -42,7 +42,7 @@ import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
         borderRadius, borderStyle, backgroundImage, vGradient,
         paddingRight, marginBottom, marginTop, marginRight, checked,
-        userSelect, (|+), absolute, position, left, nil, paddingLeft, px,
+        userSelect, (|+), (-:), absolute, position, left, nil, paddingLeft, px,
         marginLeft, listStyleType, listStyleImage, middle, grey, color, rgb,
         opacity, nowrap, whiteSpace, inlineBlock, scroll, overflow, height, (?),
         Css, background, none, white, Color(..), VerticalAlign(..),
@@ -241,6 +241,14 @@ workspaceCss = do
         background selectionColor
     ".workspace li.dir.active > label" ?
         background selectionColor
+    -- Keyboard-nav cursor: a blue OUTLINE, matching the Terminals tree (see
+    -- 'IDE.Web.Widget.Terminals') — so it doesn't paint a SECOND blue fill on top
+    -- of the active-file highlight above (both are the same blue).  The default
+    -- '.leksah-nav-current' is a fill (see 'IDE.Web.Layout'); this overrides it
+    -- for the workspace pane only.
+    ".workspace .leksah-nav-item.leksah-nav-current" ? do
+        "background" -: "transparent"
+        "box-shadow" -: "inset 0 0 0 1px var(--leksah-selection)"
 
 components :: IDEPackage -> [Text]
 components package =

@@ -218,10 +218,9 @@ terminalsCss = do
     -- rule — they share its specificity and win only by source order.)
     ".terminals .terminals-label" ? color dimColor
     ".terminals .terminals-label img.tree-icon" ? opacity dimOpacity
-    -- The focused session (shown in the editor area): highlighted + white.
-    ".terminals .terminals-active" ? do
-        background selectionColor
-        color white
+    -- The focused session's active-pane CHAIN (the session, its current window
+    -- and its active pane) is lit white; everything else stays dimmed grey.
+    ".terminals .terminals-active" ? color white
     ".terminals .terminals-active img.tree-icon" ? opacity 1
     -- The active session's machine: the host row whose subtree holds the focused
     -- session (`:has(.terminals-active)`) — its own direct host label goes white.
@@ -232,13 +231,30 @@ terminalsCss = do
     -- session's current window/pane stays grey.
     ".terminals li:has(> .terminals-active) .terminals-current" ? color white
     ".terminals li:has(> .terminals-active) .terminals-current img.tree-icon" ? opacity 1
-    -- The keyboard-nav cursor uses the shared '.leksah-nav-current' highlight,
-    -- which is a blue FILL by default (see 'IDE.Web.Layout') — a SECOND blue row
-    -- alongside the active terminal, which reads as confusing.  In this tree draw
-    -- it as a blue OUTLINE (same blue) instead, so the ONLY blue fill is the
-    -- active terminal.  When the cursor sits on the active row it keeps that fill
-    -- (':not(.terminals-active)').
-    ".terminals .leksah-nav-item.leksah-nav-current:not(.terminals-active)" ? do
+    -- The blue FILL marks exactly ONE node: the DEEPEST node of that chain that
+    -- is actually VISIBLE.  A collapsed tree node renders no '.tree-children'
+    -- (see 'IDE.Web.Widget.Tree'), so ':has(> .tree-children)' means expanded and
+    -- ':not(:has(> .tree-children))' means collapsed.  Hence the fill sits on the
+    -- session when it's collapsed, else its current window when THAT's collapsed,
+    -- else the active pane.  Each node is 'li > .tree-children > ul > li'.
+    -- 'box-shadow:none' stops the filled node also drawing the nav-cursor outline
+    -- below when the two coincide, so the filled row shows a fill only.
+    let deepestFill = do { background selectionColor; color white; "box-shadow" -: "none" }
+    -- session, collapsed:
+    ".terminals li:has(> .terminals-active):not(:has(> .tree-children)) > .terminals-active"
+        ? deepestFill
+    -- current window, session expanded but window collapsed:
+    ".terminals li:has(> .terminals-active) > .tree-children > ul > li:has(> .terminals-current):not(:has(> .tree-children)) > .terminals-current"
+        ? deepestFill
+    -- active pane, its window expanded:
+    ".terminals li:has(> .terminals-active) > .tree-children > ul > li:has(> .terminals-current) > .tree-children > ul > li > .terminals-current"
+        ? deepestFill
+    -- The keyboard-nav cursor is a blue OUTLINE (not a fill), so the only blue
+    -- fill in the tree is the deepest-visible chain node above.  On that node the
+    -- fill rules win (higher specificity + box-shadow:none) and it shows a fill
+    -- only.  The Workspace tree carries a matching rule (see
+    -- 'IDE.Web.Widget.Workspace').
+    ".terminals .leksah-nav-item.leksah-nav-current" ? do
         "background" -: "transparent"
         "box-shadow" -: "inset 0 0 0 1px var(--leksah-selection)"
     -- The state-carrying window/session icon encodes its meaning in colour, so it
