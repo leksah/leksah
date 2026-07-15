@@ -232,6 +232,15 @@ terminalsCss = do
     -- session's current window/pane stays grey.
     ".terminals li:has(> .terminals-active) .terminals-current" ? color white
     ".terminals li:has(> .terminals-active) .terminals-current img.tree-icon" ? opacity 1
+    -- The keyboard-nav cursor uses the shared '.leksah-nav-current' highlight,
+    -- which is a blue FILL by default (see 'IDE.Web.Layout') — a SECOND blue row
+    -- alongside the active terminal, which reads as confusing.  In this tree draw
+    -- it as a blue OUTLINE (same blue) instead, so the ONLY blue fill is the
+    -- active terminal.  When the cursor sits on the active row it keeps that fill
+    -- (':not(.terminals-active)').
+    ".terminals .leksah-nav-item.leksah-nav-current:not(.terminals-active)" ? do
+        "background" -: "transparent"
+        "box-shadow" -: "inset 0 0 0 1px var(--leksah-selection)"
     -- The state-carrying window/session icon encodes its meaning in colour, so it
     -- is never dimmed (would mute the white/yellow attention states).
     ".terminals .terminals-label img.term-alert-icon" ? opacity 1
