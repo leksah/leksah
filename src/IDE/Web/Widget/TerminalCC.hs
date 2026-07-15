@@ -84,7 +84,7 @@ import Text.Read (readMaybe)
 
 import Reflex
        (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe, foldDyn,
-        delay, getPostBuild, holdDyn, holdUniqDyn, leftmost, never,
+        delay, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost, never,
         newTriggerEvent, performEvent, performEvent_, switchHold, tag,
         updated)
 import Reflex.Dom.Core
@@ -158,6 +158,26 @@ terminalCCWidget ide sessionId selectedE = do
     (connErrE, fireConnErr) <- newTriggerEvent
     (retryE, fireRetry) <- newTriggerEvent
     (closeErrE, fireCloseErr) <- newTriggerEvent
+    -- Whether the Retry/error page is currently shown in place of the panes
+    -- (set when a connection drops, cleared when one (re)connects).  Lets us
+    -- tell "the user navigated to a tab already showing the Retry page" apart
+    -- from ordinary tab selection.
+    inErrorD <- holdDyn False $ leftmost [ True <$ connErrE, False <$ ccStartedE ]
+    -- "Went to the Retry page": it appeared (connErrE — flag False, the IDE
+    -- floats it only if it's the visible tab) OR the user deliberately selected
+    -- this tab while it was showing (gate on inErrorD — flag True, always float).
+    let connErrShownWE = leftmost
+          [ TerminalConnErrShown False <$  connErrE
+          , TerminalConnErrShown True  <$  gate (current inErrorD) selectedE ]
+    -- A Retry attempt actually reconnected: the FIRST real session data (a
+    -- layout notification) to arrive after a Retry click.  A failed ssh retry
+    -- produces only EvExit (→ the error view again), never a layout, so this
+    -- stays silent for it.  'armedD' is set by each Retry and cleared by that
+    -- first layout, so 'reconnectedE' fires exactly once per successful retry
+    -- (never during ordinary session activity, when no Retry preceded it).
+    let layoutE = fmapMaybe layoutOf evE
+    armedD <- foldDyn ($) False $ leftmost [ const True <$ retryE, const False <$ layoutE ]
+    let reconnectedE = gate (current armedD) layoutE
     let isRemote = "ssh://" `T.isPrefixOf` sessionId
         -- The error view shown in place of the panes when a (remote) connection
         -- drops: the reason, plus Retry (re-run the connection) and Close (drop
@@ -920,7 +940,12 @@ terminalCCWidget ide sessionId selectedE = do
       -- The active window closed: the IDE activates the ⌘1 button (below).
       , TerminalActiveWinClosed <$ activeWinClosedE
       -- A leksah-issued pane focus (⌘-number split select): float it to the MRU.
-      , TerminalPaneFocused <$> paneFocusE ]
+      , TerminalPaneFocused <$> paneFocusE
+      -- Went to the Retry page (appeared here, or selected while showing):
+      -- float this terminal to the flipper front (IDE gates the appear case).
+      , connErrShownWE
+      -- A Retry reconnected: refocus the window if this tab is still active.
+      , TerminalReconnected <$ reconnectedE ]
 
 -- | The message shown when a remote connection drops: the tmux @%exit@ reason
 -- (if any) plus whatever the child wrote to stderr (ssh's "Permission denied",

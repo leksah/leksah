@@ -94,6 +94,17 @@ data TerminalEvents
   -- tmux is about to pick a replacement by its own rule — the IDE overrides that
   -- to activate the second entry in the tab-button list (the ⌘1 button) instead.
   | TerminalActiveWinClosed
+  -- | The user went to a terminal's Retry/error page: the IDE floats this
+  -- terminal to the flipper MRU front so it's easy to flip back to.  The flag
+  -- is 'True' for a deliberate navigation (selecting a tab already showing the
+  -- page — always float it) and 'False' for the page merely appearing on a
+  -- dropped connection (float only if it's the visible tab, so a background
+  -- drop doesn't reorder tabs under the user).
+  | TerminalConnErrShown Bool
+  -- | A Retry attempt actually reconnected (real session data arrived, not just
+  -- a doomed ssh that will exit): if this terminal is still the active tab, the
+  -- IDE brings its OS window forward.
+  | TerminalReconnected
 
 makePrisms ''TerminalEvents
 

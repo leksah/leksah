@@ -1238,6 +1238,17 @@ flipForPaneId pid tree = listToMaybe
   [ FlipPane n (twIndex w) (tpIndex p)
   | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w, tpId p == pid ]
 
+-- | The flip item representing a whole session — its active (or first) window's
+-- active (or first) pane, from the tree.  Used to float a terminal to the MRU
+-- front when we know only its session (e.g. its connection dropped and the
+-- Retry page appeared); 'Nothing' when the session isn't in the tree.
+flipForSession :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe FlipItem
+flipForSession s tree = do
+  (_, wins) <- M.lookup s tree
+  w <- listToMaybe (filter twActive wins ++ wins)
+  p <- listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+  pure (FlipPane s (twIndex w) (tpIndex p))
+
 -- | Flipper label for a tmux pane: "session-name · window-name", with a
 -- trailing " · pane-name" only when the window has more than one pane (a
 -- single-pane window IS the pane, so its name would just be noise).  Uses the
@@ -3269,6 +3280,25 @@ main showMenubar macTitlebar wid ide = mdo
         -- Translate a clicked/selected pane id to its FlipPane (pure tree lookup).
         paneFocusFlipE = fmapMaybe id $ attachWith (\tree pid -> flipForPaneId pid tree)
                      (current allTreeD) (leftmost [ jsPaneFocusE, ccPaneFocusE ])
+        -- The user went to a terminal's Retry/error page: (deliberate?, session)
+        -- from the tab that bubbled TerminalConnErrShown.  Resolve the session
+        -- to its current pane via the tree and float it to the flipper MRU
+        -- front.  A deliberate navigation (nav) always floats; the page merely
+        -- appearing on a drop floats only when that terminal is the visible
+        -- wide0 tab, so a background drop doesn't reorder tabs under the user.
+        connErrShownE = fmapMaybe (\m -> listToMaybe
+                     [ (nav, s) | (TerminalKey s, dm) <- M.toList m
+                         , Just (Identity (TerminalConnErrShown nav)) <- [DM.lookup TerminalTab dm] ]) tabE
+        connErrFlipE = fmapMaybe id $ attachWith
+                     (\(tree, vis) (nav, s) ->
+                        if nav || vis == Just (TerminalKey s)
+                          then flipForSession s tree else Nothing)
+                     ((,) <$> current allTreeD <*> current wide0ActiveD) connErrShownE
+        -- A terminal's Retry attempt reconnected: the session id whose tab
+        -- bubbled TerminalReconnected (see the raise-window handler below).
+        reconnectedE = fmapMaybe (\m -> listToMaybe
+                     [ s | (TerminalKey s, dm) <- M.toList m
+                         , Just (Identity TerminalReconnected) <- [DM.lookup TerminalTab dm] ]) tabE
         -- A tab focused programmatically (editor opened by workspace double-click
         -- or terminal link) arrives as a focusin.  Float NON-terminal tabs only:
         -- a terminal's programmatic focus also fires on a control-mode follow of
@@ -3290,6 +3320,7 @@ main showMenubar macTitlebar wid ide = mdo
                                   , snd <$> newTermPolledE
                                   , paneFocusFlipE
                                   , termWinFlipE
+                                  , connErrFlipE
                                   , tabFlipE
                                   , focusFlipE
                                   , openEditorFlipE
@@ -3366,6 +3397,15 @@ main showMenubar macTitlebar wid ide = mdo
             return r
     performEvent_ $ ffor flipBumpE $ \fi -> wlog wid ("flipBump " <> show fi)
     performEvent_ $ ffor (updated flipMruD) $ \mru -> wlog wid ("flipMru<-shared front=" <> show (take 3 mru))
+    -- A terminal's Retry reconnected: if that terminal is STILL this window's
+    -- active tab (the user didn't navigate away while it reconnected), bring
+    -- this window forward so the reconnected terminal is visible again.  The
+    -- event fires in the window that owns the tab, so raising 'widN' is right.
+    performEvent_ $ ffor
+        (attachWithMaybe (\act s -> if act == Just (TerminalKey s) then Just s else Nothing)
+                         (current wide0ActiveD) reconnectedE) $ \s -> do
+        wlog wid ("reconnected while active -> raise window " <> T.unpack s)
+        liftIO (requestRaiseWindow widN)
     -- The flip list, kept populated and updated ONLY while the flipper is hidden
     -- (frozen during a flip) and only on genuine changes (holdUniqDyn).  This
     -- mirrors the old tab MRU, which never changed the list under the flipper —
