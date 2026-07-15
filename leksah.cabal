@@ -314,6 +314,7 @@ library
         IDE.Web.IDERefStore
         IDE.Web.Instance
         IDE.Web.OpenFileRequest
+        IDE.Web.GitLogRequest
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
@@ -329,6 +330,7 @@ library
         IDE.Web.SnapRequest
         IDE.Web.Session
         IDE.Web.Widget.Changes
+        IDE.Web.Widget.GitLog
         IDE.Web.Widget.ContextMenu
         IDE.Web.Widget.Preferences
         IDE.Web.Widget.Editor
@@ -579,6 +581,7 @@ library leksah-nogtk
         IDE.Web.IDERefStore
         IDE.Web.Instance
         IDE.Web.OpenFileRequest
+        IDE.Web.GitLogRequest
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
@@ -594,6 +597,7 @@ library leksah-nogtk
         IDE.Web.SnapRequest
         IDE.Web.Session
         IDE.Web.Widget.Changes
+        IDE.Web.Widget.GitLog
         IDE.Web.Widget.ContextMenu
         IDE.Web.Widget.Preferences
         IDE.Web.Widget.Editor

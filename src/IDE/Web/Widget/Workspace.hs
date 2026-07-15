@@ -13,7 +13,7 @@ import Control.Concurrent (forkIO)
 import Control.Exception (try, SomeException)
 import Control.Lens
        (to, view, preview, _Just)
-import Control.Monad (void, when)
+import Control.Monad (void, when, forM_)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Bool (bool)
@@ -22,19 +22,27 @@ import qualified Data.Map as M (elems, fromList, keys)
 import Data.Maybe (listToMaybe, maybeToList, fromMaybe, isJust)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
+import Data.Aeson (FromJSON(..), withObject, (.:), eitherDecodeStrict)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, strip, null, takeWhile)
+import qualified Data.Text as T
+       (pack, unpack, strip, null, takeWhile, lines, words, isPrefixOf, drop,
+        length, breakOn, splitOn, stripSuffix, dropWhile)
+import Data.Text.Encoding (encodeUtf8)
 
+import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.FilePath
        ((<.>), (</>), dropFileName, dropTrailingPathSeparator, takeFileName,
         splitDirectories, joinPath)
+import System.Info (os)
+import System.Process (proc, createProcess, readProcessWithExitCode)
 
 import IDE.Git (runGit)
-import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import IDE.Web.RemoteSettingsRequest (requestRemoteSettings)
+import IDE.Web.GitLogRequest (requestGitLog)
 import IDE.Web.ReplTmux (openTerminalInDir)
-import IDE.Web.FS (fsDoesFileExist)
+import IDE.Web.FS (fsDoesFileExist, fsDoesDirectoryExist)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 import IDE.Web.LocalRefresh (registerLocalRefresh)
 
@@ -51,7 +59,7 @@ import qualified Clay (display, (#))
 import Clay.Stylesheet (key)
 
 import Reflex
-       (leftmost, listViewWithKey, switchHold, constDyn, ffor, updated,
+       (leftmost, listViewWithKey, switchHold, constDyn, ffor,
         current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
         performEvent_, newTriggerEvent, Dynamic,
         Event, never, fmapMaybe, tagPromptlyDyn, sample)
@@ -249,6 +257,10 @@ workspaceCss = do
     ".workspace .leksah-nav-item.leksah-nav-current" ? do
         "background" -: "transparent"
         "box-shadow" -: "inset 0 0 0 1px var(--leksah-selection)"
+    -- The checkout's current branch stands out (bold) among the Branches list.
+    ".workspace .git-branch-current" ? fontWeight bold
+    -- The open PR whose head is the current branch's upstream, bolded too.
+    ".workspace .git-pr-current" ? fontWeight bold
 
 components :: IDEPackage -> [Text]
 components package =
@@ -319,30 +331,355 @@ shortProjectSuffix dir allDirs =
                in all ((/= s) . takeEnd i . splitDirectories) others
     k = fromMaybe n (find isUniq [1 .. n])
 
--- | A git branch node: the checkout's current branch, read in the
--- background; hidden entirely when @dir@ isn't inside a git checkout.
-gitBranchNode :: forall t m . MonadWidget t m => FilePath -> m ()
-gitBranchNode dir = do
+-- | The git subtree for the checkout rooted at @dir@ — shown as the top node
+-- under a project (or a non-root package) whose directory is a git checkout,
+-- hidden entirely otherwise.  Collapsed by default; its children only load when
+-- expanded.  The row shows the current branch.
+--
+-- Children: \"Branches\" (click one to check it out), \"Submodules\" (only when
+-- the checkout has any), the GitHub issue/PR nodes (only for a github.com
+-- origin — see 'gitHubNodes'), and \"Worktrees\" (the repo's OTHER worktrees;
+-- click to open one in a terminal).  All git reads go through 'runGit', so a
+-- remote (@ssh://@) checkout works too; refreshes ride the
+-- LocalRefresh/RemoteRefresh buses.
+gitTreeNode :: forall t m . MonadWidget t m => FilePath -> m ()
+gitTreeNode dir = do
   pb <- getPostBuild
-  (brE, fireBr) <- newTriggerEvent
-  let scan = void . forkIO $ do
-        r <- try (runGit dir ["rev-parse", "--abbrev-ref", "HEAD"])
-        fireBr $ case r :: Either SomeException (ExitCode, Text, Text) of
-            Right (ExitSuccess, out, _)
-              | b <- T.strip out, not (T.null b) -> Just b
-            _ -> Nothing
-  performEvent_ $ liftIO scan <$ pb
-  -- Remote projects: re-read the branch on refresh events (no polling).
-  when (isRemotePath dir) . void . liftIO $
-      registerRemoteRefresh (\_ -> scan)
-  brD <- holdDyn Nothing brE
-  void . dyn $ ffor brD $ \case
-      Nothing -> return ()
-      Just b  -> void . elClass "li" "branch" $
-          treeSelect "workspace" (return never) $ do
-              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-git.svg") $ return ()
-              text b
-              return (never :: Event t ())
+  isGitE <- performEvent $ ffor pb $ \_ -> liftIO (isGitCheckout dir)
+  isGitD <- holdUniqDyn =<< holdDyn False isGitE
+  void . dyn $ ffor isGitD $ \isGit -> when isGit $ do
+      (brE, fireBr) <- newTriggerEvent
+      let scanBr = void . forkIO $ gitCurrentBranch dir >>= fireBr
+      bpb <- getPostBuild
+      performEvent_ $ liftIO scanBr <$ bpb
+      liftIO $ registerGitRefresh dir scanBr
+      brD <- holdDyn Nothing brE
+      void $ treeItem "git" False
+        (treeSelect "workspace" (return never) $ do
+            gitIcon
+            dynText $ ffor brD $ maybe " git" (" " <>)
+            return (never :: Event t ()))
+        (el "ul" $ do
+            gitBranchesNode dir brD
+            gitSubmodulesNode dir
+            gitHubNodes dir
+            gitWorktreesNode dir
+            return (never :: Event t ()))
+
+-- | A leading git tree-row icon.
+gitIcon :: MonadWidget t m => m ()
+gitIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-git.svg") (return ())
+
+-- | \"Branches\": every local branch, the current one bolded; clicking a branch
+-- opens a git log viewer for it (a center tab) rather than checking it out.
+gitBranchesNode :: forall t m . MonadWidget t m => FilePath -> Dynamic t (Maybe Text) -> m ()
+gitBranchesNode dir curD = void $ treeItem "git-branches" False
+    (treeSelect "workspace" (return never) $ gitIcon >> text "Branches" >> return (never :: Event t ()))
+    (el "ul" $ do
+        (bsE, fireBs) <- newTriggerEvent
+        cpb <- getPostBuild
+        let scan = void . forkIO $ gitBranches dir >>= fireBs
+        performEvent_ $ liftIO scan <$ cpb
+        liftIO $ registerGitRefresh dir scan
+        bsD <- holdDyn [] bsE
+        void . dyn $ ffor ((,) <$> bsD <*> curD) $ \(bs, cur) ->
+            forM_ bs $ \b -> el "li" $ do
+                (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+                    gitIcon
+                    elClass "span" (if Just b == cur then "git-branch-current" else "git-branch")
+                        (text b)
+                    return (never :: Event t ())
+                performEvent_ $ ffor (domEvent Click rowEl) $ \_ ->
+                    liftIO (requestGitLog dir b)
+                return ()
+        return (never :: Event t ()))
+
+-- | \"Submodules\": the checkout's submodule paths.  The whole node self-hides
+-- when there are none.
+gitSubmodulesNode :: forall t m . MonadWidget t m => FilePath -> m ()
+gitSubmodulesNode dir = do
+    cpb <- getPostBuild
+    subsE <- performEvent $ ffor cpb $ \_ -> liftIO (gitSubmodulePaths dir)
+    subsD <- holdDyn [] subsE
+    void . dyn $ ffor subsD $ \subs -> when (not (null subs)) . void $
+        treeItem "git-submodules" False
+          (treeSelect "workspace" (return never) $ gitIcon >> text "Submodules" >> return (never :: Event t ()))
+          (el "ul" $ do
+              forM_ subs $ \s -> el "li" . void . treeSelect "workspace" (return never) $
+                  gitIcon >> text s >> return (never :: Event t ())
+              return (never :: Event t ()))
+
+-- | \"Worktrees\": the repo's OTHER worktrees (the current checkout is dropped);
+-- clicking one opens a terminal at its directory.
+gitWorktreesNode :: forall t m . MonadWidget t m => FilePath -> m ()
+gitWorktreesNode dir = void $ treeItem "git-worktrees" False
+    (treeSelect "workspace" (return never) $ gitIcon >> text "Worktrees" >> return (never :: Event t ()))
+    (el "ul" $ do
+        (wtE, fireWt) <- newTriggerEvent
+        cpb <- getPostBuild
+        let scan = void . forkIO $ gitWorktrees dir >>= fireWt
+        performEvent_ $ liftIO scan <$ cpb
+        liftIO $ registerGitRefresh dir scan
+        wtD <- holdDyn [] wtE
+        void . dyn $ ffor wtD $ \wts ->
+            forM_ (filter (not . isCurrentWorktree dir) wts) $ \wt -> el "li" $ do
+                (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+                    gitIcon
+                    text (worktreeLabel wt)
+                    return (never :: Event t ())
+                performEvent_ $ ffor (domEvent Click rowEl) $ \_ ->
+                    openTerminalInDir (fullWorktreePath dir wt)
+                return ()
+        return (never :: Event t ()))
+
+-- | True when @dir@ is the root of a git checkout — it has its own @.git@ dir
+-- (a normal checkout) or @.git@ file (a linked worktree).  A subdirectory of a
+-- repo has no @.git@ and returns False, which is exactly the \"the dir has a
+-- .git\" rule for whether to show a git tree.
+isGitCheckout :: FilePath -> IO Bool
+isGitCheckout dir = do
+    d <- fsDoesDirectoryExist (dir </> ".git")
+    if d then return True else fsDoesFileExist (dir </> ".git")
+
+gitCurrentBranch :: FilePath -> IO (Maybe Text)
+gitCurrentBranch dir = do
+    r <- try (runGit dir ["rev-parse", "--abbrev-ref", "HEAD"])
+    return $ case r :: Either SomeException (ExitCode, Text, Text) of
+        Right (ExitSuccess, out, _) | b <- T.strip out, not (T.null b) -> Just b
+        _ -> Nothing
+
+gitBranches :: FilePath -> IO [Text]
+gitBranches dir = do
+    r <- try (runGit dir ["for-each-ref", "--format=%(refname:short)", "refs/heads"])
+    return $ case r :: Either SomeException (ExitCode, Text, Text) of
+        Right (ExitSuccess, out, _) -> filter (not . T.null) (map T.strip (T.lines out))
+        _ -> []
+
+-- @git config -f .gitmodules --get-regexp path@ prints @submodule.NAME.path PATH@
+-- per submodule (and fails when there's no .gitmodules — hence []).
+gitSubmodulePaths :: FilePath -> IO [Text]
+gitSubmodulePaths dir = do
+    r <- try (runGit dir ["config", "-f", ".gitmodules", "--get-regexp", "path"])
+    return $ case r :: Either SomeException (ExitCode, Text, Text) of
+        Right (ExitSuccess, out, _) ->
+            [ p | l <- T.lines out, Just p <- [listToMaybe (reverse (T.words l))] ]
+        _ -> []
+
+data GitWorktree = GitWorktree { gwPath :: Text, gwBranch :: Text }
+
+gitWorktrees :: FilePath -> IO [GitWorktree]
+gitWorktrees dir = do
+    r <- try (runGit dir ["worktree", "list", "--porcelain"])
+    return $ case r :: Either SomeException (ExitCode, Text, Text) of
+        Right (ExitSuccess, out, _) -> parseWorktrees out
+        _ -> []
+
+-- @--porcelain@ is blank-line-separated blocks; each has a @worktree <path>@
+-- line and either @branch refs/heads/<b>@ or @detached@.
+parseWorktrees :: Text -> [GitWorktree]
+parseWorktrees out =
+    [ GitWorktree path br
+    | block <- splitBlocks (T.lines out)
+    , Just path <- [field "worktree " block]
+    , let br = fromMaybe (if "detached" `elem` block then "detached" else "")
+                         (field "branch refs/heads/" block) ]
+  where
+    splitBlocks ls = case break T.null ls of
+        (blk, [])     -> filter (not . null) [blk]
+        (blk, _:rest) -> filter (not . null) [blk] ++ splitBlocks rest
+    field pre ls = listToMaybe [ T.drop (T.length pre) l | l <- ls, pre `T.isPrefixOf` l ]
+
+-- | The current checkout's own worktree entry (dropped from the list, since
+-- \"Worktrees\" shows the OTHER worktrees).
+isCurrentWorktree :: FilePath -> GitWorktree -> Bool
+isCurrentWorktree dir wt =
+    dropTrailingPathSeparator (T.unpack (gwPath wt)) == dropTrailingPathSeparator localDir
+  where localDir = maybe dir snd (parseRemotePath dir)
+
+-- | A worktree's full path in the caller's namespace — re-qualified with the
+-- @ssh://host@ prefix when the checkout is remote (git prints host-local paths).
+fullWorktreePath :: FilePath -> GitWorktree -> FilePath
+fullWorktreePath dir wt = case parseRemotePath dir of
+    Just (host, _) -> renderRemotePath host (T.unpack (gwPath wt))
+    Nothing        -> T.unpack (gwPath wt)
+
+worktreeLabel :: GitWorktree -> Text
+worktreeLabel wt =
+    T.pack (takeFileName (dropTrailingPathSeparator (T.unpack (gwPath wt))))
+      <> (if T.null (gwBranch wt) then "" else "  [" <> gwBranch wt <> "]")
+
+-- | Re-scan @act@ whenever this checkout changes: for a local checkout, on any
+-- LocalRefresh under @dir@ (the fsnotify @.git@/@.git\/refs@ watcher fires those
+-- on branch/HEAD/worktree changes — see "IDE.Workspaces.Writer"); for a remote
+-- one, on any RemoteRefresh.  (Registration leaks if the node is rebuilt, as in
+-- the sibling flake/allOutputs nodes — the accepted pattern here.)
+registerGitRefresh :: FilePath -> IO () -> IO ()
+registerGitRefresh dir act
+    | isRemotePath dir = void $ registerRemoteRefresh (const act)
+    | otherwise        = void $ registerLocalRefresh $ \p ->
+          when ((dropTrailingPathSeparator dir <> "/") `isPrefixOf` p) act
+
+-- | The GitHub issue/PR section of the git tree, shown only when the checkout's
+-- @origin@ is a github.com URL: \"Open Issues (N)\", \"Open PRs (N)\", and
+-- \"Closed\" (which expands to \"Closed Issues (N)\" and \"Closed PRs (N)\").
+-- Each count node expands to the items (\"#number title\"), and clicking an item
+-- opens it in the browser.  Counts + items come from one GitHub search per
+-- category (see 'ghSearch'); the closed searches only run when \"Closed\" is
+-- expanded.
+gitHubNodes :: forall t m . MonadWidget t m => FilePath -> m ()
+gitHubNodes dir = do
+    pb <- getPostBuild
+    ghE <- performEvent $ ffor pb $ \_ -> liftIO ((>>= parseGitHub) <$> gitOriginUrl dir)
+    ghD <- holdDyn Nothing ghE
+    -- The open PR whose head branch is the current branch's upstream — bolded
+    -- in the Open PRs list.  Resolved once (upstream lookup + one pulls query).
+    (prE, firePr) <- newTriggerEvent
+    matchPrD <- holdDyn Nothing prE
+    void . dyn $ ffor ghD $ \case
+        Nothing   -> return ()
+        Just repo -> do
+            liftIO . void . forkIO $ do
+                mhead <- gitUpstreamBranch dir
+                mpr   <- maybe (return Nothing) (ghPullForHead repo) mhead
+                firePr mpr
+            ghSearchNode repo "Open Issues" "issue" "open" (constDyn Nothing)
+            ghSearchNode repo "Open PRs"    "pr"    "open" matchPrD
+            void $ treeItem "git-closed" False
+                (treeSelect "workspace" (return never) $
+                    gitIcon >> text "Closed" >> return (never :: Event t ()))
+                (el "ul" $ do
+                    ghSearchNode repo "Closed Issues" "issue" "closed" (constDyn Nothing)
+                    ghSearchNode repo "Closed PRs"    "pr"    "closed" (constDyn Nothing)
+                    return (never :: Event t ()))
+
+-- | One GitHub search node: its label carries the total count, and it expands
+-- to the (up to 30) matching items; clicking an item opens it in the browser.
+ghSearchNode
+    :: forall t m . MonadWidget t m
+    => (Text, Text) -> Text -> Text -> Text -> Dynamic t (Maybe Int) -> m ()
+ghSearchNode repo label typ state hlD = do
+    (resE, fireRes) <- newTriggerEvent
+    pb <- getPostBuild
+    performEvent_ $ ffor pb $ \_ ->
+        liftIO . void . forkIO $ ghSearch repo typ state >>= fireRes
+    resD <- holdDyn Nothing resE
+    void $ treeItem "git-gh" False
+        (treeSelect "workspace" (return never) $ do
+            gitIcon
+            dynText $ ffor resD $ \r ->
+                " " <> label <> maybe "" (\s -> " (" <> T.pack (show (ghTotal s)) <> ")") r
+            return (never :: Event t ()))
+        (el "ul" $ do
+            void . dyn $ ffor resD $ \case
+                Nothing -> return ()
+                Just s  -> forM_ (ghItems s) $ \it -> el "li" $ do
+                    (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+                        gitIcon
+                        elDynClass "span"
+                            (ffor hlD $ \mh -> if mh == Just (ghNumber it) then "git-pr-current" else "")
+                            (text ("#" <> T.pack (show (ghNumber it)) <> " " <> ghTitle it))
+                        return (never :: Event t ())
+                    performEvent_ $ ffor (domEvent Click rowEl) $ \_ ->
+                        liftIO (openUrl (ghUrl it))
+                    return ()
+            return (never :: Event t ()))
+
+-- | The checkout's @remote.origin.url@ (if any).
+gitOriginUrl :: FilePath -> IO (Maybe Text)
+gitOriginUrl dir = do
+    r <- try (runGit dir ["config", "--get", "remote.origin.url"])
+    return $ case r :: Either SomeException (ExitCode, Text, Text) of
+        Right (ExitSuccess, out, _) | u <- T.strip out, not (T.null u) -> Just u
+        _ -> Nothing
+
+-- | Parse a github.com remote URL into @(owner, repo)@ — handling the
+-- @git\@github.com:owner\/repo(.git)@, @https:\/\/github.com\/owner\/repo(.git)@
+-- and @ssh:\/\/git\@github.com\/owner\/repo(.git)@ forms.
+parseGitHub :: Text -> Maybe (Text, Text)
+parseGitHub raw =
+    case T.breakOn "github.com" (fromMaybe u (T.stripSuffix ".git" u)) of
+        (_, rest)
+          | not (T.null rest)
+          , path <- T.dropWhile (`elem` (":/" :: String)) (T.drop (T.length "github.com") rest)
+          , (owner : repo : _) <- T.splitOn "/" path
+          , not (T.null owner), not (T.null repo) -> Just (owner, repo)
+        _ -> Nothing
+  where u = T.strip raw
+
+data GhItem = GhItem { ghNumber :: Int, ghTitle :: Text, ghUrl :: Text }
+instance FromJSON GhItem where
+    parseJSON = withObject "GhItem" $ \o ->
+        GhItem <$> o .: "number" <*> o .: "title" <*> o .: "html_url"
+
+data GhSearch = GhSearch { ghTotal :: Int, ghItems :: [GhItem] }
+instance FromJSON GhSearch where
+    parseJSON = withObject "GhSearch" $ \o ->
+        GhSearch <$> o .: "total_count" <*> o .: "items"
+
+-- | Query the GitHub search API for @type:<typ> state:<state>@ in @owner/repo@;
+-- returns the total count and up to 30 items.  Uses @$GITHUB_TOKEN@ when set
+-- (higher rate limit / private repos), else the unauthenticated API (public
+-- repos only).  Any failure (no curl, offline, rate-limited, private) → Nothing,
+-- which just hides the count/list — matching the tree's "empty on failure"
+-- convention.
+ghSearch :: (Text, Text) -> Text -> Text -> IO (Maybe GhSearch)
+ghSearch (owner, repo) typ state = do
+    tok <- lookupEnv "GITHUB_TOKEN"
+    let q   = "repo:" <> owner <> "/" <> repo <> "+type:" <> typ <> "+state:" <> state
+        url = "https://api.github.com/search/issues?per_page=30&q=" <> q
+        auth = maybe [] (\t -> ["-H", "Authorization: Bearer " <> t]) tok
+        args = [ "-s", "-H", "Accept: application/vnd.github+json"
+               , "-H", "User-Agent: leksah" ] <> auth <> [T.unpack url]
+    r <- try (readProcessWithExitCode "curl" args "")
+    return $ case r :: Either SomeException (ExitCode, String, String) of
+        Right (ExitSuccess, out, _) ->
+            either (const Nothing) Just (eitherDecodeStrict (encodeUtf8 (T.pack out)))
+        _ -> Nothing
+
+-- | The upstream (tracking) branch's head ref for the current branch — e.g.
+-- @origin/foo@ → @foo@ (the remote name is stripped, keeping any @/@ in the
+-- branch).  'Nothing' when there is no upstream configured.
+gitUpstreamBranch :: FilePath -> IO (Maybe Text)
+gitUpstreamBranch dir = do
+    r <- try (runGit dir ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+    return $ case r :: Either SomeException (ExitCode, Text, Text) of
+        Right (ExitSuccess, out, _)
+          | u <- T.strip out, not (T.null u)
+          , let (_remote, rest) = T.breakOn "/" u
+          , h <- T.drop 1 rest, not (T.null h) -> Just h
+        _ -> Nothing
+
+-- | The number of the open PR whose head branch is @headRef@ (in the repo's own
+-- @owner@ namespace — same-repo PRs; a fork's PR won't match).  The
+-- @search/issues@ API 'ghSearch' uses doesn't return a PR's head ref, so this
+-- hits the @pulls@ endpoint filtered by @head=owner:branch@.
+ghPullForHead :: (Text, Text) -> Text -> IO (Maybe Int)
+ghPullForHead (owner, repo) headRef = do
+    tok <- lookupEnv "GITHUB_TOKEN"
+    let url  = "https://api.github.com/repos/" <> owner <> "/" <> repo
+                 <> "/pulls?state=open&head=" <> owner <> ":" <> headRef
+        auth = maybe [] (\t -> ["-H", "Authorization: Bearer " <> t]) tok
+        args = [ "-s", "-H", "Accept: application/vnd.github+json"
+               , "-H", "User-Agent: leksah" ] <> auth <> [T.unpack url]
+    r <- try (readProcessWithExitCode "curl" args "")
+    return $ case r :: Either SomeException (ExitCode, String, String) of
+        Right (ExitSuccess, out, _) ->
+            case eitherDecodeStrict (encodeUtf8 (T.pack out)) of
+                Right (p : _) -> Just (ghpNumber p)
+                _             -> Nothing
+        _ -> Nothing
+
+newtype GhPull = GhPull { ghpNumber :: Int }
+instance FromJSON GhPull where
+    parseJSON = withObject "GhPull" $ \o -> GhPull <$> o .: "number"
+
+-- | Open a URL in the system browser (macOS @open@ / else @xdg-open@).
+openUrl :: Text -> IO ()
+openUrl url = do
+    _ <- (try (void $ createProcess (proc opener [T.unpack url]))
+            :: IO (Either SomeException ()))
+    return ()
+  where opener = if os == "darwin" then "open" else "xdg-open"
 
 -- | The collapsed \"Flake\" tree node for the project directory @dir@, shown
 -- only when @dir/flake.nix@ exists.  Its children — built, and so evaluated,
@@ -521,6 +858,9 @@ workspaceWidget ide activeFileD revealFileD = do
               performEvent_ $ openTerminalInDir (pjDir pKey) <$ domEvent Dblclick projRowEl
               return rowE) $
             el "ul" $ do
+              -- Top item: the project's git tree (self-hides unless the project
+              -- dir is itself a git checkout).
+              gitTreeNode (pjDir pKey)
               let packagesD = M.fromList . map (\p -> (ipdPackageId p, p)) . pjPackages <$> projectD
               packagesE <- listViewWithKey packagesD $ \packageId packageD -> do
                 cabalFileD <- holdUniqDyn $ ipdCabalFile <$> packageD
@@ -569,6 +909,11 @@ workspaceWidget ide activeFileD revealFileD = do
                           else ""
                     return never) $
                   el "ul" $ do
+                    -- Top item: the package's git tree — only when the package
+                    -- is NOT the project root and is itself a git checkout.
+                    pkgDir <- sample (current pkgDirD)
+                    when (dropTrailingPathSeparator pkgDir /= dropTrailingPathSeparator (pjDir pKey)) $
+                        gitTreeNode pkgDir
                     componentsE <- treeItem "components" False
                       (treeSelect "workspace" (return never) $ do
                           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
@@ -607,8 +952,6 @@ workspaceWidget ide activeFileD revealFileD = do
                                   CabalTool {} -> tagPromptlyDyn (mkActD packageOpenRepl) (domEvent Dblclick rowEl)
                                   _ -> never
                             return $ leftmost [rowE, dblE]
-                    pkgDir <- sample (current pkgDirD)
-                    gitBranchNode pkgDir
                     filesE <- treeItem' pkgRevealE "package-files" False (treeSelect "workspace" (return never) $ do
                       elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
                       text "Files"
@@ -649,12 +992,6 @@ workspaceWidget ide activeFileD revealFileD = do
                           (switchHold never =<<) . dyn $
                             (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD (pjDir pKey))
                               <$> pjSourceDirsD <*> pkgDirsD)
-              -- Nix/Makefile projects have no package rows to carry a git
-              -- branch node, so it lives at the project level.
-              case pKey of
-                NixTool {}  -> gitBranchNode (pjDir pKey)
-                MakeTool {} -> gitBranchNode (pjDir pKey)
-                _           -> return ()
               -- Any project with a flake.nix gets a (collapsed) Flake node;
               -- it self-hides when there's no flake and only evaluates once
               -- expanded, so there's no overhead otherwise.

@@ -225,6 +225,8 @@ import IDE.Web.Events
         _ZoomRemoteTerminalPane, _BreakRemoteTerminalPane, _KillRemoteTerminalPane)
 import IDE.Web.Layout (layoutCss)
 import IDE.Web.Widget.Changes (changesCss, changesWidget)
+import IDE.Web.Widget.GitLog (gitLogCss, gitLogWidget, gitLogSplitJs)
+import IDE.Web.GitLogRequest (nextGitLogRequest)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
 import IDE.Web.Widget.Flake (flakeCss)
 import IDE.Web.Widget.ContextMenu (contextMenuCss)
@@ -511,6 +513,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             keepTab k = case k of
               TerminalKey n  -> n `elem` liveIds
               PreferencesKey -> False   -- transient, never restore
+              GitLogKey{}    -> False   -- transient, never restore
               _              -> True
 #if defined(ghcjs_HOST_OS)
             -- Seed a tab per canned session so the demo shows its terminals at
@@ -805,6 +808,10 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- (the drag itself runs in JS — jsaddle dispatches events asynchronously,
   -- far too laggy for mousemove; Haskell is called back once, on drop).
   _ <- eval dividerDragJs
+
+  -- Defines window.LeksahGitLogSplit: drag-to-resize the git log viewer's panes
+  -- (live in JS, for the same async-dispatch reason as the divider drag above).
+  _ <- eval gitLogSplitJs
 
   -- Defines window.LeksahPaneDrag: drag a Terminals-tree pane row onto a window
   -- row to move the pane there (the DnD gesture runs in JS — jsaddle can't do
@@ -1167,6 +1174,7 @@ css = render $ do
     terminalsCss
     metadataCss
     changesCss
+    gitLogCss
     preferencesCss
     flakeCss
 
@@ -1185,6 +1193,7 @@ tabLabelText k names = case k of
   MetadataKey    -> "Metadata"
   ChangesKey     -> "Changes"
   PreferencesKey -> "Preferences"
+  GitLogKey _ b  -> "Log: " <> b
   EditorKey file -> T.pack (takeFileName file)
 
 -- | The leading B&W icon (an SVG path under @/pics@) for a side-pane tree tab, or
@@ -1194,6 +1203,7 @@ tabIconSrc k = case k of
   WorkspaceKey   -> Just "/pics/workspace.svg"
   TerminalsKey   -> Just "/pics/terminals.svg"
   MetadataKey    -> Just "/pics/metadata.svg"
+  GitLogKey{}    -> Just "/pics/tree-git.svg"
   EditorKey file -> Just (fileIconSrc file)
   _              -> Nothing
 
@@ -1384,6 +1394,7 @@ tabFlipKey k = "tab:" <> case k of
     ChangesKey     -> "changes"
     PreferencesKey -> "preferences"
     TerminalKey s  -> "terminal:" <> s
+    GitLogKey d b  -> "gitlog:" <> T.pack d <> ":" <> b
     EditorKey f    -> "editor:" <> T.pack f
 
 -- | Where the ⌘` hint chip should sit for the flipper's one-press destination
@@ -3218,6 +3229,10 @@ main showMenubar macTitlebar wid ide = mdo
     -- 'IDE.Web.RemoteTermRequest.requestLocalTerm').
     (termRequestE, fireTermRequest) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextTermRequest >>= fireTermRequest
+    -- Git log viewer requested from the workspace git tree (a branch click drops
+    -- (repo dir, branch) on the GitLogRequest queue); open it as a center tab.
+    (gitLogReqE, fireGitLogReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextGitLogRequest >>= fireGitLogReq
     -- Hosts shown as top-level Terminals-tree nodes: the preference list plus
     -- any host that has an open ssh:// tab.
     remoteHostsD <- holdUniqDyn $ (\p rt -> nub $ remoteHosts p ++
@@ -4343,6 +4358,7 @@ main showMenubar macTitlebar wid ide = mdo
           , openInWide0 <$> selectAnyTermE
           , (\(s, _, _) -> openInWide0 s) <$> flipPaneE
           , (\(s, _)    -> openInWide0 s) <$> alertTargetE
+          , ((\(d, b) -> GitLogKey d b =: ("wide0", Just ())) <$> gitLogReqE)
           , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE ]
         -- Killing a remote session server-side also drops its tab if open — under
         -- either identity it may be keyed by (its id, or its name from a
@@ -4373,6 +4389,7 @@ main showMenubar macTitlebar wid ide = mdo
                               , (\(s, _, _) -> "wide0" =: TerminalKey s) <$> flipPaneE
                               , (\(s, _)    -> "wide0" =: TerminalKey s) <$> alertTargetE
                               , ("wide0" =: PreferencesKey) <$ showPrefsE
+                              , (\(d, b) -> "wide0" =: GitLogKey d b) <$> gitLogReqE
                               , numSelTabE
                               -- Keep the wide0 visible tab in sync with the shared
                               -- per-window active tab (restore, or a tab moved to/from
@@ -4439,6 +4456,7 @@ main showMenubar macTitlebar wid ide = mdo
           MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
+          GitLogKey d b  -> toDM GitLogTab <$> gitLogWidget d b
           EditorKey file -> toDM EditorTab <$> makeEditor file selectedE v)
     -- The active pane became a wide0 tab THIS window owns: float it to the MRU
     -- front / mark it active in the shared state (ignored for side/bottom tabs and

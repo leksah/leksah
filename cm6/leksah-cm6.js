@@ -27713,6 +27713,29 @@
     hideInline(view);
     hideSideBySide(view);
   }
+  function showDiff(parent, filePath, oldDoc, newDoc) {
+    destroyDiff(parent);
+    const ro = [
+      baseExtensions(languageForFile(filePath)),
+      EditorView.editable.of(false),
+      EditorState.readOnly.of(true)
+    ];
+    const mv = new MergeView({
+      parent,
+      a: { doc: oldDoc, extensions: ro },
+      // old / parent, left
+      b: { doc: newDoc, extensions: ro }
+      // new / commit, right
+    });
+    parent.__leksahDiff = mv;
+    return mv;
+  }
+  function destroyDiff(parent) {
+    if (parent && parent.__leksahDiff) {
+      parent.__leksahDiff.destroy();
+      parent.__leksahDiff = null;
+    }
+  }
   function offsetOf(doc2, line, ch) {
     const l = Math.max(1, Math.min(line, doc2.lines));
     const lineObj = doc2.line(l);
@@ -28252,6 +28275,8 @@
     showSideBySide,
     showInline,
     hideDiff,
+    showDiff,
+    destroyDiff,
     activeView: null,
     onActivePane: null,
     findSet,

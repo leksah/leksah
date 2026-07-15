@@ -700,6 +700,8 @@ data TabKey
   | ChangesKey
   | PreferencesKey
   | EditorKey FilePath
+  -- | A git log viewer for a branch: the repo dir and the branch/ref to log.
+  | GitLogKey FilePath Text
     deriving (Ord, Eq, Show, Generic)
 
 -- | Identifies one native OS window in the multi-window web UI.  Minted

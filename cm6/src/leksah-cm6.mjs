@@ -362,6 +362,28 @@ function hideSideBySide(view) {
 }
 function hideDiff(view) { hideInline(view); hideSideBySide(view) }
 
+// A standalone, read-only side-by-side diff mounted directly into `parent`
+// (not tied to an on-disk editor view) — used by the git log viewer to show a
+// commit's change to one file.  Old (parent) content on the left, new (commit)
+// on the right, both syntax-highlighted for `filePath` and read-only, so it
+// looks like the editor's own showSideBySide.  The MergeView handle is stashed
+// on the element so destroyDiff / a re-show can tear it down first.
+function showDiff(parent, filePath, oldDoc, newDoc) {
+  destroyDiff(parent)
+  const ro = [baseExtensions(languageForFile(filePath)),
+              EditorView.editable.of(false), EditorState.readOnly.of(true)]
+  const mv = new MergeView({
+    parent,
+    a: { doc: oldDoc, extensions: ro },   // old / parent, left
+    b: { doc: newDoc, extensions: ro },   // new / commit, right
+  })
+  parent.__leksahDiff = mv
+  return mv
+}
+function destroyDiff(parent) {
+  if (parent && parent.__leksahDiff) { parent.__leksahDiff.destroy(); parent.__leksahDiff = null }
+}
+
 // ---- editor construction ---------------------------------------------------
 
 function offsetOf(doc, line, ch) {
@@ -838,7 +860,7 @@ function replaceAll() { const v = cmActiveView(); if (v) cmReplaceAll(v) }
 window.LeksahCM = {
   EditorState, EditorView, Compartment, MergeView, unifiedMergeView,
   createEditor, getDoc, setMarks, setOriginal, gotoPos,
-  showSideBySide, showInline, hideDiff,
+  showSideBySide, showInline, hideDiff, showDiff, destroyDiff,
   activeView: null, onActivePane: null,
   findSet, findNext, findPrev, replaceNext, replaceAll,
   loadTerminalSearch,

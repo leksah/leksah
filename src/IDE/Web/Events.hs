@@ -159,6 +159,9 @@ makePrisms ''ChangesEvents
 newtype PreferencesEvents = PrefsUpdate (Prefs -> Prefs)
 
 makePrisms ''PreferencesEvents
+
+-- | The git log viewer's diff is shown in-pane, so it reports nothing outward.
+type GitLogEvents = ()
 type StatusbarEvents = ()
 newtype MenubarEvents =
   MenubarCommand Command
@@ -184,6 +187,7 @@ data TabEvents e where
   ChangesTab   :: TabEvents ChangesEvents
   PreferencesTab :: TabEvents PreferencesEvents
   WorkspaceTab :: TabEvents ProjectEvents
+  GitLogTab    :: TabEvents GitLogEvents
 
 deriveGEq      ''TabEvents
 deriveGCompare ''TabEvents
