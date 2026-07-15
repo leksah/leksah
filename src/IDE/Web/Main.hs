@@ -1249,6 +1249,23 @@ flipForSession s tree = do
   p <- listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
   pure (FlipPane s (twIndex w) (tpIndex p))
 
+-- | The flip item for a Terminals-tree selection of a session ('Nothing'
+-- window), a window ('Just' window, 'Nothing' pane) or an exact pane, resolved
+-- against the tree.  A given pane index is trusted; otherwise the selected
+-- window's (or the session's active/first window's) active-or-first pane is
+-- used.  'Nothing' when the session/window isn't in the tree (e.g. a remote
+-- terminal not open yet).
+flipForSel :: Text -> Maybe Int -> Maybe Int -> Map Text (Text, [TmuxWindow]) -> Maybe FlipItem
+flipForSel s mw mp tree = do
+  (_, wins) <- M.lookup s tree
+  w <- case mw of
+         Just wi -> find ((== wi) . twIndex) wins
+         Nothing -> listToMaybe (filter twActive wins ++ wins)
+  pidx <- case mp of
+            Just p  -> Just p
+            Nothing -> tpIndex <$> listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+  pure (FlipPane s (twIndex w) pidx)
+
 -- | Flipper label for a tmux pane: "session-name · window-name", with a
 -- trailing " · pane-name" only when the window has more than one pane (a
 -- single-pane window IS the pane, so its name would just be noise).  Uses the
@@ -3321,6 +3338,7 @@ main showMenubar macTitlebar wid ide = mdo
                                   , paneFocusFlipE
                                   , termWinFlipE
                                   , connErrFlipE
+                                  , treeSelFlipE
                                   , tabFlipE
                                   , focusFlipE
                                   , openEditorFlipE
@@ -3694,6 +3712,22 @@ main showMenubar macTitlebar wid ide = mdo
                        (current recentTabs) selRemoteWinE
           , attachWith (\rt (h, sid, nm, _, _) -> resolveRemoteKey rt h sid nm)
                        (current recentTabs) selRemotePaneE ]
+        -- Selecting a terminal in the Terminals tree (session / window / pane,
+        -- local or remote) is a precise, leksah-issued choice, so float that
+        -- terminal to the flipper MRU front — the tree-select path otherwise
+        -- brings the tab up without touching recency (see 'treeSelFlipE' in
+        -- 'localFlipBumpE').  Resolve each selection to its FlipPane via the tree
+        -- (exact pane when given, else the window's / session's active-or-first
+        -- pane); remote selects resolve the open tab key with resolveRemoteKey.
+        treeRtB = (,) <$> current allTreeD <*> current recentTabs
+        treeSelFlipE = fmapMaybe id $ leftmost
+          [ attachWith (\tr s       -> flipForSel s Nothing  Nothing  tr) (current allTreeD) selectTermE
+          , attachWith (\tr (s,w)   -> flipForSel s (Just w) Nothing  tr) (current allTreeD) selectWinE
+          , attachWith (\tr (s,w,p) -> flipForSel s (Just w) (Just p) tr) (current allTreeD) selectPaneE
+          , attachWith (\(tr,_)  h              -> flipForSel ("ssh://" <> h)            Nothing  Nothing  tr) treeRtB selRemoteHostE
+          , attachWith (\(tr,rt) (h,sid,nm)     -> flipForSel (resolveRemoteKey rt h sid nm) Nothing  Nothing  tr) treeRtB selRemoteE
+          , attachWith (\(tr,rt) (h,sid,nm,w)   -> flipForSel (resolveRemoteKey rt h sid nm) (Just w) Nothing  tr) treeRtB selRemoteWinE
+          , attachWith (\(tr,rt) (h,sid,nm,w,p) -> flipForSel (resolveRemoteKey rt h sid nm) (Just w) (Just p) tr) treeRtB selRemotePaneE ]
     -- Restore the saved web session (open files, open terminals, visible tabs)
     -- together with the tmux sessions left over from a previous run, in one read
     -- so the two can't race.
