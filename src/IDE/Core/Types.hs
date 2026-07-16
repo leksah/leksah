@@ -749,6 +749,8 @@ data Prefs = Prefs {
     ,   removeTBlanks       ::   Bool
     ,   textviewFont        ::   Maybe Text
     ,   workspaceFont       ::   (Bool, Maybe Text)
+    ,   monospaceFont       ::   Text   -- ^ CSS font-family for the web UI's monospace surfaces (editor, terminals, log)
+    ,   monospaceFontSize   ::   Int    -- ^ …and its size in px
     ,   sourceStyle         ::   (Bool, Text)
     ,   foundBackgroundLight      ::   Color
     ,   matchBackgroundLight      ::   Color
@@ -855,6 +857,8 @@ data PrefsFile = PrefsFile {
   , removeTBlanks_       :: Maybe Bool
   , textviewFont_        :: Maybe (Maybe Text)
   , workspaceFont_       :: Maybe (Bool, Maybe Text)
+  , monospaceFont_       :: Maybe Text
+  , monospaceFontSize_   :: Maybe Int
   , sourceStyle_         :: Maybe (Bool, Text)
   , foundBackgroundLight_      :: Maybe Color
   , matchBackgroundLight_      :: Maybe Color

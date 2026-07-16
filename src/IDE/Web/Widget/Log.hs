@@ -12,7 +12,7 @@ import Control.Lens (view)
 import qualified Data.Map as M (lookup, size, fromList, toList)
 
 import Clay
-       (lightblue, grey, green, red, color, fontFamily, overflowX,
+       (lightblue, grey, green, red, color, (-:), overflowX,
         px, width, cursorDefault, whiteSpace, pct, vGradient,
         backgroundImage, height, (?), Css, Cursor(..), Auto(..))
 import Clay.Text (pre)
@@ -40,7 +40,7 @@ logCss :: Css
 logCss = do
     ".log" ? do
         -- Flat black (via the bottom-bar pane's black background), like the Changes pane.
-        fontFamily ["Hasklig"] []
+        "font-family" -: "var(--leksah-mono, Hasklig, Menlo, monospace)"
         height (pct 100)
         overflowX auto
     ".log-child" ? do

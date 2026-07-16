@@ -72,6 +72,12 @@ preferencesWidget ide = do
         , b "Automatically load files modified outside Leksah" autoLoad (\v p -> p { autoLoad = v })
         , txt "External editor command (blank = built-in editor)" externalEditor (\v p -> p { externalEditor = v })
         ]
+    , section "Fonts"
+        [ txt "Monospace font family (editor, terminals, log)"
+            monospaceFont (\v p -> p { monospaceFont = v })
+        , i "Monospace font size (px)"
+            monospaceFontSize (\v p -> p { monospaceFontSize = v })
+        ]
     , section "Language Server (LSP)"
         [ b "Enable language server (diagnostics, hover, completion, F12 navigation)"
             lspEnabled (\v p -> p { lspEnabled = v })
@@ -187,6 +193,8 @@ wiredLabels =
   , "Packages excluded from the modules pane (one per line, e.g. base or base >=4)"
   , "Clickable file paths and identifiers in terminal output"
   , "External editor command (blank = built-in editor)"
+  , "Monospace font family (editor, terminals, log)"
+  , "Monospace font size (px)"
   , "Use tmux control mode (-CC): native pane splits (new terminals)"
   , "Remote hosts in the Terminals tree (ssh, one per line)"
   , "Selection highlight colour"

@@ -2374,6 +2374,10 @@ terminalWriteJs :: Text
 terminalWriteJs = T.unlines
   [ "window.LeksahTerm = (function(){"
   , "  var byId = {};"
+  -- Terminal font (monospace-font pref, published by IDE.Web.Main); seed a system
+  -- default so the probe and terminals have a value before the prefs publish.
+  , "  window.__leksahMonoFamily = window.__leksahMonoFamily || 'Menlo, Monaco, \"Courier New\", monospace';"
+  , "  window.__leksahMonoSize = window.__leksahMonoSize || 13;"
   , "  function register(id, term){ byId[id] = term; }"
   , "  function unregister(id){ delete byId[id]; }"
   , "  function write(id, b64){"
@@ -2403,26 +2407,45 @@ terminalWriteJs = T.unlines
   , "      return true;"
   , "    } catch (e) { return false; }"
   , "  }"
+  -- Cell metrics are keyed by the font they were measured with (cellCache =
+  -- {fam,size,w,h}).  The monospace-font pref publishes __leksahMono* AFTER page
+  -- init, so an early measure sees the seed font; re-measuring whenever the active
+  -- font differs guarantees the probe metric matches the font the terminals
+  -- actually render (else the row count overflows the pane and clips the bottom).
   , "  var cellCache = null;"
-  , "  function cellMetrics(){"
-  , "    if (cellCache) return cellCache;"
+  , "  function measureCell(){"
+  , "    var fam = window.__leksahMonoFamily, sz = window.__leksahMonoSize;"
+  , "    if (cellCache && cellCache.fam === fam && cellCache.size === sz) return cellCache;"
   , "    try {"
   , "      var host = document.createElement('div');"
   , "      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:700px;';"
   , "      document.body.appendChild(host);"
   , "      var t = new Terminal({cols: 80, rows: 24});"
-  , "      t.options.fontFamily = 'Menlo, Monaco, \"Courier New\", monospace';"
-  , "      t.options.fontSize = 13;"
+  , "      t.options.fontFamily = fam;"
+  , "      t.options.fontSize = sz;"
+  , "      t.options.lineHeight = 1.07;"
+  , "      t.options.letterSpacing = -0.5;"
   , "      t.open(host);"
   , "      var s = host.querySelector('.xterm-screen');"
   , "      var r = s ? s.getBoundingClientRect() : null;"
-  , "      if (r && r.width && r.height) cellCache = { w: r.width / 80, h: r.height / 24 };"
+  , "      if (r && r.width && r.height) cellCache = { fam: fam, size: sz, w: r.width / 80, h: r.height / 24 };"
   , "      t.dispose();"
   , "      document.body.removeChild(host);"
   , "    } catch (e) {}"
   , "    return cellCache;"
   , "  }"
-  , "  if (window.requestAnimationFrame) requestAnimationFrame(function(){ cellMetrics(); });"
+  , "  function cellMetrics(){ return measureCell(); }"
+  -- After the configured font has actually loaded, drop the cache and re-measure:
+  -- a web font (e.g. bundled Hasklig) reports fallback metrics before it loads.
+  -- document.fonts.ready settles after pending loads (immediately for system
+  -- fonts like Menlo/Monaco).
+  , "  function warmCell(){"
+  , "    try {"
+  , "      if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ cellCache = null; measureCell(); }, measureCell);"
+  , "      else measureCell();"
+  , "    } catch (e) { measureCell(); }"
+  , "  }"
+  , "  if (window.requestAnimationFrame) requestAnimationFrame(warmCell); else warmCell();"
   , "  return { register: register, unregister: unregister, write: write, loadWebgl: loadWebgl, cellMetrics: cellMetrics, byId: byId };"
   , "})();"
   ]
@@ -4734,6 +4757,23 @@ main showMenubar macTitlebar wid ide = mdo
     themeCssD <- holdUniqDyn $
         (\p -> themeVarsCss (uiSelectionColor p) (uiHoverColor p)) <$> prefsD
     el "style" $ dynText themeCssD
+    -- The monospace-font prefs drive the --leksah-mono / --leksah-mono-size CSS
+    -- variables the editor (CodeMirror) and monospace panes (git log, log)
+    -- reference, so a change in Preferences reflows them live.
+    fontCssD <- holdUniqDyn $
+        (\p -> ":root{--leksah-mono:" <> monospaceFont p
+            <> ";--leksah-mono-size:" <> T.pack (show (monospaceFontSize p)) <> "px}") <$> prefsD
+    el "style" $ dynText fontCssD
+    -- …and are published to window globals the terminals (xterm, fixed cell grid)
+    -- read when they are created.  A terminal-font change takes effect for new
+    -- terminals / on restart (open terminals keep their measured grid).
+    monoPrefD <- holdUniqDyn ((\p -> (monospaceFont p, monospaceFontSize p)) <$> prefsD)
+    monoPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [updated monoPrefD, tag (current monoPrefD) monoPb]) $ \(fam, sz) ->
+        liftJSM $ do
+            w <- jsg ("window" :: Text)
+            _ <- w ^. jss ("__leksahMonoFamily" :: Text) fam
+            void $ w ^. jss ("__leksahMonoSize" :: Text) sz
     -- Publish the shortcut-badges preference to the ⌘-held handler (badgesJs).
     badgesPrefD <- holdUniqDyn (showShortcutBadges <$> prefsD)
     badgesPb <- getPostBuild

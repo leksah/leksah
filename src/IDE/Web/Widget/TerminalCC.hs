@@ -1299,9 +1299,18 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
     performEvent_ $ ffor (tag (current rectD) pb) $ \(_, _, w, h) -> liftJSM $ do
         term <- new (jsg ("Terminal" :: Text)) ()
         opts <- term ^. js ("options" :: Text)
-        _ <- opts ^. jss ("fontFamily" :: Text)
-                ("Menlo, Monaco, \"Courier New\", monospace" :: Text)
-        _ <- opts ^. jss ("fontSize" :: Text) (13 :: Int)
+        -- Monospace font/size from the prefs-driven window globals (see the note
+        -- in "IDE.Web.Widget.Terminal"): the cell-metrics probe waits for the font
+        -- to load before measuring, so a system font like Monaco fits correctly.
+        win <- jsg ("window" :: Text)
+        monoFam <- win ^. js ("__leksahMonoFamily" :: Text)
+        monoSz  <- win ^. js ("__leksahMonoSize" :: Text)
+        _ <- opts ^. jss ("fontFamily" :: Text) monoFam
+        _ <- opts ^. jss ("fontSize" :: Text) monoSz
+        -- Line/letter spacing tuned to match a native terminal (see the note in
+        -- "IDE.Web.Widget.Terminal"); the cell-metrics probe uses the same values.
+        _ <- opts ^. jss ("lineHeight" :: Text) (1.07 :: Double)
+        _ <- opts ^. jss ("letterSpacing" :: Text) (-0.5 :: Double)
         _ <- opts ^. jss ("allowProposedApi" :: Text) True
         -- Unicode 11 widths, as in the classic widget — emoji are
         -- width 2 to tmux and the apps, so xterm must agree.

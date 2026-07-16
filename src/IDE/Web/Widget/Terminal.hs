@@ -139,6 +139,10 @@ terminalCss = do
     ".terminal" ? do
         height (pct 100)
         width (pct 100)
+    -- Match native terminal weight (e.g. iTerm2).  macOS defaults web text to
+    -- subpixel antialiasing, which renders noticeably bolder than a native
+    -- terminal; grayscale (antialiased) matches the lighter native rendering.
+    ".xterm" ? ("-webkit-font-smoothing" -: "antialiased")
     -- The pane box reserves a uniform inset around the grid (see
     -- 'terminalPanePad'); the whole cell grid, being quantised to whole rows,
     -- is a little shorter than the pane's content box, so centre it vertically
@@ -345,8 +349,20 @@ terminalWidget ide termId selectedE = do
       -- inherits the page's proportional `body` font, making cells wider than
       -- the glyphs (visible gaps between characters).
       opts <- term ^. js ("options" :: Text)
-      _ <- opts ^. jss ("fontFamily" :: Text) ("Menlo, Monaco, \"Courier New\", monospace" :: Text)
-      _ <- opts ^. jss ("fontSize" :: Text) (13 :: Int)
+      -- Monospace font/size from the prefs-driven window globals (seeded with a
+      -- system default in window.LeksahTerm; see IDE.Web.Main).  The cell-metrics
+      -- probe waits for the font to load before measuring, so the row count and
+      -- the rendered cell agree (a system font like Monaco loads immediately).
+      win <- jsg ("window" :: Text)
+      monoFam <- win ^. js ("__leksahMonoFamily" :: Text)
+      monoSz  <- win ^. js ("__leksahMonoSize" :: Text)
+      _ <- opts ^. jss ("fontFamily" :: Text) monoFam
+      _ <- opts ^. jss ("fontSize" :: Text) monoSz
+      -- Line/letter spacing tuned to match a native terminal (iTerm2 with Monaco)
+      -- rather than xterm's tighter default; the cell-metrics probe applies the
+      -- same values so the row/column fit stays correct.
+      _ <- opts ^. jss ("lineHeight" :: Text) (1.07 :: Double)
+      _ <- opts ^. jss ("letterSpacing" :: Text) (-0.5 :: Double)
       -- The SearchAddon highlights matches via xterm's *proposed* decorations
       -- API, which throws ("allowProposedApi") unless this is enabled.  Must be
       -- set before the find bar drives a search (it is — before loadAddon below).

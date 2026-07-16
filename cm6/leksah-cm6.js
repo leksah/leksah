@@ -27886,7 +27886,10 @@
       githubDark,
       EditorView.theme({
         "&": { height: "100%" },
-        ".cm-scroller": { fontFamily: "Hasklig, Menlo, monospace" },
+        ".cm-scroller": {
+          fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)",
+          fontSize: "var(--leksah-mono-size, 13px)"
+        },
         ".cm-leksah-find": { backgroundColor: "rgba(255,200,0,.35)" },
         ".cm-leksah-find-active": { backgroundColor: "rgba(255,140,0,.6)" },
         ".cm-tooltip.cm-tooltip-hover": { border: "1px solid #30363d", backgroundColor: "#161b22" },
@@ -27899,7 +27902,7 @@
           fontSize: "12px"
         },
         ".cm-leksah-hover code": {
-          fontFamily: "Hasklig, Menlo, monospace",
+          fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)",
           backgroundColor: "rgba(255,255,255,0.09)",
           borderRadius: "3px",
           padding: "0 3px",
@@ -27911,7 +27914,7 @@
           backgroundColor: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
           borderRadius: "4px",
-          fontFamily: "Hasklig, Menlo, monospace",
+          fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)",
           fontSize: "11.5px",
           lineHeight: "1.3",
           whiteSpace: "pre",
