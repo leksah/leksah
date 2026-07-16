@@ -4297,15 +4297,18 @@ main showMenubar macTitlebar wid ide = mdo
     -- File ▸ Close: a background thread turns close requests (from the menu
     -- command's IDEAction, via the close bridge) into a reflex event.
     (closeReqE, fireCloseReq) <- newTriggerEvent
-    -- Close via the menu (⌘W) acts on the active pane (only editors and
-    -- terminals have something to close).  ⌘W on a terminal DETACHES the whole
-    -- tab — the tmux session (and its splits) survive so it can be reopened; it
-    -- never kills a pane/split.  (The tree is still sampled so the shape is
-    -- available should the decision ever need it again.)
+    -- Close via the menu (⌘W) acts on the active pane: editors, terminals, and
+    -- the transient center tabs (Preferences, a git log view) — tab buttons
+    -- carry no × so ⌘W is their only close.  ⌘W on a terminal DETACHES the
+    -- whole tab — the tmux session (and its splits) survive so it can be
+    -- reopened; it never kills a pane/split.  (The tree is still sampled so
+    -- the shape is available should the decision ever need it again.)
     let closeTargetE = fmapMaybe id $ attachWith
           (\mk () -> case mk of
               Just k@(EditorKey _)   -> Just k
               Just k@(TerminalKey _) -> Just k
+              Just k@GitLogKey{}     -> Just k
+              Just k@PreferencesKey  -> Just k
               _ -> Nothing)
           (current activePaneD) closeReqE
         -- A dirty editor is held for a save prompt (below); clean editors and
