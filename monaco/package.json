@@ -1,0 +1,15 @@
+{
+  "name": "leksah-monaco",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Bundled Monaco editor for Leksah's web editor (exposed as window.LeksahMonaco).",
+  "scripts": {
+    "build": "esbuild src/leksah-monaco.mjs --bundle --format=iife --minify --legal-comments=none --loader:.ttf=dataurl --outfile=leksah-monaco.js && esbuild node_modules/monaco-editor/esm/vs/editor/editor.worker.js --bundle --format=iife --minify --legal-comments=none --outfile=leksah-monaco-worker.js"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.55.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

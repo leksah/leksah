@@ -1743,7 +1743,8 @@ escAutoHideJs = T.unlines
   , "  function focusTopWide0(){"
   , "    var tabs = document.querySelectorAll('.tab.area-wide0');"
   , "    for (var i=0;i<tabs.length;i++){ var t=tabs[i]; if(!shown(t)) continue;"
-  , "      var cm = t.querySelector('.cm-content');"
+  , "      var cm = t.querySelector('.cm-content')"
+  , "            || t.querySelector('.monaco-editor textarea.inputarea');"
   , "      if (cm){ cm.focus(); return true; }"
   , "      var tx = t.querySelector('.xterm-helper-textarea');"
   , "      if (tx){ tx.focus(); return true; }"
@@ -2810,7 +2811,9 @@ activeEditorFile = nonEmpty <$> (valToText =<< eval activeEditorFileJs)
 activeEditorFileJs :: Text
 activeEditorFileJs = mconcat
   [ "(function(){var v=window.LeksahCM&&window.LeksahCM.activeView;if(!v)return '';"
-  , "var ed=v.dom&&v.dom.closest&&v.dom.closest('.editor');"
+  -- CM views expose .dom; Monaco editors (also tracked via activeView) getDomNode().
+  , "var dom=v.dom||(v.getDomNode&&v.getDomNode());"
+  , "var ed=dom&&dom.closest&&dom.closest('.editor');"
   , "return (ed&&ed.getAttribute('data-file'))||'';})()" ]
 
 -- | The focused editor's file plus its selection's 1-based start/end lines.
@@ -2826,6 +2829,11 @@ activeEditorSelection = do
 activeEditorSelectionJs :: Text
 activeEditorSelectionJs = mconcat
   [ "(function(){var v=window.LeksahCM&&window.LeksahCM.activeView;if(!v)return '';"
+  , "if(v.__leksahMonaco){"                       -- Monaco editor handle
+  , "var md=v.getDomNode&&v.getDomNode();var me=md&&md.closest&&md.closest('.editor');"
+  , "var mf=me&&me.getAttribute('data-file');if(!mf)return '';"
+  , "var ms=v.getSelection();if(!ms)return '';"
+  , "return mf+'\\t'+ms.startLineNumber+'\\t'+ms.endLineNumber;}"
   , "var ed=v.dom&&v.dom.closest&&v.dom.closest('.editor');"
   , "var f=ed&&ed.getAttribute('data-file');if(!f)return '';"
   , "var s=v.state.selection.main;"
@@ -4479,7 +4487,10 @@ main showMenubar macTitlebar wid ide = mdo
           MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
-          GitLogKey d b  -> toDM GitLogTab <$> gitLogWidget d b
+          GitLogKey d b  -> toDM GitLogTab <$> do
+              -- Same editor-backend pref as file tabs (decided at creation).
+              mon <- monacoEditor . view prefs <$> sample (current ide)
+              gitLogWidget mon d b
           EditorKey file -> toDM EditorTab <$> makeEditor file selectedE v)
     -- The active pane became a wide0 tab THIS window owns: float it to the MRU
     -- front / mark it active in the shared state (ignored for side/bottom tabs and

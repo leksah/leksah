@@ -8,11 +8,12 @@
 module IDE.Web.Widget.Editor
   ( editorCss
   , editorWidget
+  , ensureMonacoLoaded
   ) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, try)
-import Control.Monad (void, when)
+import Control.Monad (void, when, unless)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -33,6 +34,7 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, null)
+import qualified Data.Text.IO as TIO (readFile)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import Data.Traversable (forM)
 
@@ -43,13 +45,13 @@ import Clay
 
 import Language.Javascript.JSaddle
        (fun, MonadJSM, JSM, js0, js1, js2, js3, js4, jsg, jss, obj, valToNumber,
-        valToText, liftJSM, JSVal)
+        valToText, valToBool, eval, liftJSM, JSVal)
 
 import Reflex
        (ffilter, leftmost, attach, holdUniqDyn, foldDyn, fanMap, select,
         fmapMaybe, getPostBuild, performEvent, performEvent_, ffor, constDyn,
         switchHold, never, Dynamic, Event, fan, current, updated, holdDyn,
-        newTriggerEvent, delay, gate)
+        newTriggerEvent, delay, gate, sample)
 import Reflex.Dom.Core
        ((=:), MonadWidget, elAttr, elAttr', dyn, _element_raw, blank)
 
@@ -58,7 +60,7 @@ import IDE.Core.CTypes
         srcSpanStartLine)
 import IDE.Core.State
        (LogRef, logRefType, logRefSrcSpan, allLogRefs, logRefFullFilePath, IDE,
-        prefs, externalEditor)
+        prefs, externalEditor, monacoEditor, getDataDir)
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TerminalEvents(..), _OpenFile, TabKey(..),
         _ErrorsGoto, _MetadataGoto, _GrepGoto, _ChangesOpen, _ProjectFileEvents,
@@ -68,7 +70,7 @@ import IDE.Web.Widget.Grep (GrepResult(..))
 import qualified IDE.LSP as LSP
 
 import System.Exit (ExitCode(..))
-import System.FilePath (takeDirectory, takeFileName)
+import System.FilePath (takeDirectory, takeFileName, (</>))
 import IDE.Git (runGitBatch)
 
 editorCss :: Css
@@ -90,6 +92,19 @@ editorCss = do
     ".cm-dirty-gutter" ? do
         background (Rgba 226 192 141 0.22)
         color (Rgba 226 192 141 1.0)
+    -- The Monaco backend's twins of the dirty/find styling (the wavy LogRef
+    -- underline classes below are shared as-is via inlineClassName).
+    ".editor .monaco-editor" ?
+        height (pct 100)
+    ".monaco-dirty-line" ?
+        background (Rgba 226 192 141 0.08)
+    ".monaco-dirty-gutter" ? do
+        background (Rgba 226 192 141 0.22)
+        width (px 3)
+    ".monaco-leksah-find" ?
+        background (Rgba 255 200 0 0.35)
+    ".monaco-leksah-find-active" ?
+        background (Rgba 255 140 0 0.6)
     -- LogRef decorations (error/warning/lint underlines), applied as CM6 mark
     -- decorations with these classes.
     ".ErrorRef" ? do
@@ -107,6 +122,42 @@ editorCss = do
         textDecorationStyle wavy
         textDecorationColor blue
         borderBottom (px 1) solid blue
+
+-- | Whether new editors should use the Monaco backend (the in-browser demo is
+-- always CodeMirror — no datadir to load the bundle from).
+useMonacoPref :: IDE -> Bool
+#if defined(ghcjs_HOST_OS)
+useMonacoPref _ = False
+#else
+useMonacoPref = monacoEditor . view prefs
+#endif
+
+-- | Load the Monaco bundle once (lazily, on the first Monaco editor):
+-- the worker source is published to @window.leksahMonacoWorkerSrc@ first
+-- (the bundle's @MonacoEnvironment.getWorker@ builds Blob-URL workers from
+-- it — origin-safe under wkwebview, where the page isn't served from the
+-- warp origin), then the extracted CSS is injected and the bundle eval'd.
+-- Running lazily also keeps the injected <style> clear of the
+-- mainWidgetWithCss <head> rebuild at startup.
+ensureMonacoLoaded :: JSM ()
+#if defined(ghcjs_HOST_OS)
+ensureMonacoLoaded = return ()
+#else
+ensureMonacoLoaded = do
+    loaded <- valToBool =<< eval ("!!window.LeksahMonaco" :: Text)
+    unless loaded $ do
+        dataDir <- getDataDir
+        worker <- liftIO . TIO.readFile $ dataDir </> "monaco/leksah-monaco-worker.js"
+        css    <- liftIO . TIO.readFile $ dataDir </> "monaco/leksah-monaco.css"
+        mainJs <- liftIO . TIO.readFile $ dataDir </> "monaco/leksah-monaco.js"
+        w <- jsg ("window" :: Text)
+        _ <- w ^. jss ("leksahMonacoWorkerSrc" :: Text) worker
+        _ <- w ^. jss ("leksahMonacoCss" :: Text) css
+        _ <- eval (("(function(){var s=document.createElement('style');"
+                 <> "s.id='leksah-monaco-css';s.textContent=window.leksahMonacoCss;"
+                 <> "document.head.appendChild(s);delete window.leksahMonacoCss})()") :: Text)
+        void $ eval mainJs
+#endif
 
 -- Which view of the original to show from the gutter context menu.
 data DiffAction = SideBySide | Inline | HideDiff
@@ -140,9 +191,10 @@ gitOriginal file = do
     _ -> Nothing
 #endif
 
--- | Push the current LogRefs to the editor as CM6 mark decorations.
-updateTextMarks :: JSVal -> [LogRef] -> JSM ()
-updateTextMarks editorView logRefs = do
+-- | Push the current LogRefs to the editor as mark decorations (apiNs is the
+-- backend's JS namespace: LeksahCM or LeksahMonaco).
+updateTextMarks :: Text -> JSVal -> [LogRef] -> JSM ()
+updateTextMarks apiNs editorView logRefs = do
   marks <- forM logRefs $ \logRef -> do
       let sp = logRefSrcSpan logRef
       m <- obj
@@ -152,11 +204,11 @@ updateTextMarks editorView logRefs = do
       m ^. jss ("toCh"     :: Text) (srcSpanEndColumn sp + 1)
       m ^. jss ("cls"      :: Text) (T.pack . show $ logRefType logRef)
       return m
-  void $ jsg ("LeksahCM" :: Text) ^. js2 ("setMarks" :: Text) editorView marks
+  void $ jsg apiNs ^. js2 ("setMarks" :: Text) editorView marks
 
-gotoSrcSpan :: MonadJSM m => JSVal -> SrcSpan -> m ()
-gotoSrcSpan editorView srcSpan = liftJSM . void $
-  jsg ("LeksahCM" :: Text) ^. js3 ("gotoPos" :: Text) editorView
+gotoSrcSpan :: MonadJSM m => Text -> JSVal -> SrcSpan -> m ()
+gotoSrcSpan apiNs editorView srcSpan = liftJSM . void $
+  jsg apiNs ^. js3 ("gotoPos" :: Text) editorView
       (srcSpanStartLine srcSpan) (srcSpanStartColumn srcSpan)
 
 editorWidget
@@ -232,6 +284,11 @@ editorWidget ide allEvents saveFileE = do
     , refsE
     , \file selectedE _ -> do
       (changeE, triggerChangeE) <- newTriggerEvent
+      -- Editor backend, decided when the tab is created (like the terminals'
+      -- control-mode pref): existing tabs keep their editor until reopened.
+      useMonaco <- useMonacoPref <$> sample (current ide)
+      let apiNs :: Text
+          apiNs = if useMonaco then "LeksahMonaco" else "LeksahCM"
       -- LSP hover: the CM6 hover source calls back with (reqId, line, ch); the
       -- reply from the language server is delivered here (reqId, maybe text)
       -- from the LSP client thread via this trigger, then resolved into the
@@ -253,8 +310,9 @@ editorWidget ide allEvents saveFileE = do
               ("class" =: "editor" <> "data-file" =: T.pack file) blank
           postBuild <- getPostBuild
           (gutterMenuE, triggerGutterMenu) <- newTriggerEvent
-          editorE <- performEvent $ ffor postBuild $ \_ -> liftJSM $
-              jsg ("LeksahCM" :: Text) ^. js4 ("createEditor" :: Text)
+          editorE <- performEvent $ ffor postBuild $ \_ -> liftJSM $ do
+              when useMonaco ensureMonacoLoaded
+              jsg apiNs ^. js4 ("createEditor" :: Text)
                   (_element_raw editorEl) contents
                   (fun $ \_ _ _ -> liftIO $ triggerChangeE ())
                   (fun $ \_ _ args -> case args of
@@ -272,12 +330,12 @@ editorWidget ide allEvents saveFileE = do
                 Just orig -> fireOrig (editorView, orig)
                 Nothing   -> return ()
           performEvent_ $ ffor origE $ \(editorView, orig) ->
-              liftJSM . void $ jsg ("LeksahCM" :: Text) ^. js2 ("setOriginal" :: Text) editorView orig
+              liftJSM . void $ jsg apiNs ^. js2 ("setOriginal" :: Text) editorView orig
           performEvent_ $ ffor (attach (current $ (,) <$> locationsD <*> logRefsD) editorE) $ \((locations, logRefs), editorView) -> liftJSM $ do
               case M.lookup file locations of
                 Nothing -> return ()
-                Just sp -> gotoSrcSpan editorView sp
-              updateTextMarks editorView logRefs
+                Just sp -> gotoSrcSpan apiNs editorView sp
+              updateTextMarks apiNs editorView logRefs
           editorD <- holdDyn Nothing $ Just <$> editorE
           -- LSP (Stage 1): mirror this document to the language server — open
           -- it when the editor is created, and send full-text changes as it is
@@ -286,13 +344,13 @@ editorWidget ide allEvents saveFileE = do
               liftIO $ LSP.documentOpened file contents
           performEvent_ $ ffor (attach (current editorD) changeE) $ \case
               (Just editorView, ()) -> do
-                  txt <- liftJSM $ valToText =<< jsg ("LeksahCM" :: Text) ^. js1 ("getDoc" :: Text) editorView
+                  txt <- liftJSM $ valToText =<< jsg apiNs ^. js1 ("getDoc" :: Text) editorView
                   liftIO $ LSP.documentChanged file txt
               _ -> return ()
           -- LSP (Stage 2): register the hover callback so the CM6 hover source
           -- asks the language server; resolve the JS Promise when it replies.
           performEvent_ $ ffor editorE $ \editorView -> liftJSM . void $
-              jsg ("LeksahCM" :: Text) ^. js2 ("setHoverHandler" :: Text) editorView
+              jsg apiNs ^. js2 ("setHoverHandler" :: Text) editorView
                   (fun $ \_ _ args -> case args of
                       (idv:lnv:chv:_) -> do
                           rid <- valToNumber idv
@@ -302,12 +360,12 @@ editorWidget ide allEvents saveFileE = do
                               fireHoverResp (round rid :: Int, mtext)
                       _ -> return ())
           performEvent_ $ ffor hoverRespE $ \(rid, mtext) -> liftJSM . void $
-              jsg ("LeksahCM" :: Text) ^. js2 ("resolveHover" :: Text) rid (fromMaybe "" mtext)
+              jsg apiNs ^. js2 ("resolveHover" :: Text) rid (fromMaybe "" mtext)
           -- LSP (Stage 3): register the completion callback so the CM6
           -- completion source asks the language server; resolve the JS Promise
           -- (a JSON items array) when it replies.
           performEvent_ $ ffor editorE $ \editorView -> liftJSM . void $
-              jsg ("LeksahCM" :: Text) ^. js2 ("setCompletionHandler" :: Text) editorView
+              jsg apiNs ^. js2 ("setCompletionHandler" :: Text) editorView
                   (fun $ \_ _ args -> case args of
                       (idv:lnv:chv:_) -> do
                           rid <- valToNumber idv
@@ -317,12 +375,12 @@ editorWidget ide allEvents saveFileE = do
                               fireCompResp (round rid :: Int, items)
                       _ -> return ())
           performEvent_ $ ffor compRespE $ \(rid, items) -> liftJSM . void $
-              jsg ("LeksahCM" :: Text) ^. js2 ("resolveComplete" :: Text) rid items
+              jsg apiNs ^. js2 ("resolveComplete" :: Text) rid items
           -- LSP (Stage 4): F12 go-to-definition (jumps via the unified goto,
           -- opening the target file if needed) and Shift-F12 find-references
           -- (populates the Grep pane).  Both are fire-and-forget from JS.
           performEvent_ $ ffor editorE $ \editorView -> liftJSM . void $
-              jsg ("LeksahCM" :: Text) ^. js3 ("setNavHandlers" :: Text) editorView
+              jsg apiNs ^. js3 ("setNavHandlers" :: Text) editorView
                   (fun $ \_ _ args -> case args of
                       (lnv:chv:_) -> do
                           ln <- valToNumber lnv
@@ -349,10 +407,10 @@ editorWidget ide allEvents saveFileE = do
             _ -> return ()
           performEvent_ $ ffor (attach (current editorD) (updated logRefsD)) $ \case
             (Nothing, _) -> return ()
-            (Just editorView, logRefs) -> liftJSM $ updateTextMarks editorView logRefs
+            (Just editorView, logRefs) -> liftJSM $ updateTextMarks apiNs editorView logRefs
           let gotoE = ffilter ((==file) . srcSpanFilename) gotoSpanE
           performEvent_ $ ffor (attach (current editorD) gotoE) $ \case
-              (Just editorView, sp) -> gotoSrcSpan editorView sp
+              (Just editorView, sp) -> gotoSrcSpan apiNs editorView sp
               _ -> return ()
           -- File ▸ Save / the Save toolbar button: write this editor's current
           -- contents to disk.  (The dirty-line highlighting is relative to git,
@@ -360,7 +418,7 @@ editorWidget ide allEvents saveFileE = do
           let saveThisE = ffilter (== file) saveFileE
           performEvent_ $ ffor (attach (current editorD) saveThisE) $ \case
               (Just editorView, _) -> do
-                  txt <- liftJSM $ valToText =<< jsg ("LeksahCM" :: Text) ^. js1 ("getDoc" :: Text) editorView
+                  txt <- liftJSM $ valToText =<< jsg apiNs ^. js1 ("getDoc" :: Text) editorView
                   -- A failed write (a remote host down, a permissions error)
                   -- must be reported, not silently dropped — and must not
                   -- kill this window's frame thread.
@@ -386,7 +444,7 @@ editorWidget ide allEvents saveFileE = do
                        , constDyn ("Hide original", HideDiff) ])
           performEvent_ $ ffor (attach (current editorD) menuActionE) $ \case
               (Just editorView, action) -> liftJSM . void $
-                  jsg ("LeksahCM" :: Text) ^. js1 (diffActionJs action) editorView
+                  jsg apiNs ^. js1 (diffActionJs action) editorView
               _ -> return ()
           return ()
       return changeE)

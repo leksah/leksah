@@ -71,6 +71,8 @@ preferencesWidget ide = do
         , b "Remove trailing blanks when saving" removeTBlanks (\v p -> p { removeTBlanks = v })
         , b "Automatically load files modified outside Leksah" autoLoad (\v p -> p { autoLoad = v })
         , txt "External editor command (blank = built-in editor)" externalEditor (\v p -> p { externalEditor = v })
+        , b "Use Monaco (VS Code) editor instead of CodeMirror (new editors)"
+            monacoEditor (\v p -> p { monacoEditor = v })
         ]
     , section "Fonts"
         [ txt "Monospace font family (editor, terminals, log)"
@@ -193,6 +195,7 @@ wiredLabels =
   , "Packages excluded from the modules pane (one per line, e.g. base or base >=4)"
   , "Clickable file paths and identifiers in terminal output"
   , "External editor command (blank = built-in editor)"
+  , "Use Monaco (VS Code) editor instead of CodeMirror (new editors)"
   , "Monospace font family (editor, terminals, log)"
   , "Monospace font size (px)"
   , "Use tmux control mode (-CC): native pane splits (new terminals)"

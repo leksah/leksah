@@ -806,6 +806,10 @@ data Prefs = Prefs {
                                       --   unobstructed
     ,   externalEditor      ::   Text -- ^ command to open files with (e.g. @vim@);
                                       --   blank = the built-in CodeMirror editor
+    ,   monacoEditor        ::   Bool -- ^ use the Monaco (VS Code) editor control
+                                      --   instead of CodeMirror 6 for file tabs
+                                      --   opened from now on (the in-browser demo
+                                      --   is always CodeMirror)
     ,   terminalControlMode ::   Bool -- ^ render terminals via tmux control mode
                                       --   (-CC): one xterm per pane, native splits;
                                       --   off = classic whole-session PTY attach
@@ -908,6 +912,7 @@ data PrefsFile = PrefsFile {
   , collapseErrors_      :: Maybe Bool
   , terminalFileLinks_   :: Maybe Bool
   , externalEditor_      :: Maybe Text
+  , monacoEditor_        :: Maybe Bool
   , terminalControlMode_ :: Maybe Bool
   , tmuxInterceptPrefix_ :: Maybe Bool
   , remoteHosts_         :: Maybe [Text]

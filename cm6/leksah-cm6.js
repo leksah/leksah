@@ -28003,7 +28003,7 @@
     const tab = target.closest(".tab");
     if (!tab) return;
     activePaneEl = tab;
-    activeIsCM = !!tab.querySelector(".cm-editor");
+    activeIsCM = !!tab.querySelector(".cm-editor") || !!tab.querySelector(".monaco-editor");
     const focusTerm = target.closest(".terminal");
     const termDiv = focusTerm && focusTerm._leksahTermSearch ? focusTerm : tab.querySelector(".terminal");
     activeTermSearch = !activeIsCM && termDiv && termDiv._leksahTermSearch || null;
@@ -28035,7 +28035,12 @@
   document.addEventListener("focusin", (e) => onFocusPane(e.target), true);
   document.addEventListener("mousedown", (e) => onFocusPane(e.target), true);
   function cmActiveView() {
-    return activeIsCM ? window.LeksahCM.activeView || null : null;
+    const v = activeIsCM ? window.LeksahCM.activeView || null : null;
+    return v && !v.__leksahMonaco ? v : null;
+  }
+  function monacoActiveView() {
+    const v = activeIsCM ? window.LeksahCM.activeView || null : null;
+    return v && v.__leksahMonaco && window.LeksahMonaco ? v : null;
   }
   function escapeRe(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -28239,28 +28244,53 @@
   var lastFind = { searchText: "", flags: 0 };
   function findSet(searchText, replace2, flags) {
     lastFind = { searchText, flags };
+    const mv = monacoActiveView();
+    if (mv) {
+      window.LeksahMonaco.findSet(mv, searchText, replace2, flags);
+      return;
+    }
     const v = cmActiveView();
     if (v) cmFindSet(v, searchText, replace2, flags);
     else if (activeTermSearch) {
     } else domFindSet(searchText, flags);
   }
   function findNext2() {
+    const mv = monacoActiveView();
+    if (mv) {
+      window.LeksahMonaco.findNext(mv);
+      return;
+    }
     const v = cmActiveView();
     if (v) cmStep(v, 1);
     else if (activeTermSearch) activeTermSearch.search.findNext(lastFind.searchText, termSearchOptions(lastFind.flags));
     else domStep(1);
   }
   function findPrev() {
+    const mv = monacoActiveView();
+    if (mv) {
+      window.LeksahMonaco.findPrev(mv);
+      return;
+    }
     const v = cmActiveView();
     if (v) cmStep(v, -1);
     else if (activeTermSearch) activeTermSearch.search.findPrevious(lastFind.searchText, termSearchOptions(lastFind.flags));
     else domStep(-1);
   }
   function replaceNext2() {
+    const mv = monacoActiveView();
+    if (mv) {
+      window.LeksahMonaco.replaceNext(mv);
+      return;
+    }
     const v = cmActiveView();
     if (v) cmReplaceNext(v);
   }
   function replaceAll2() {
+    const mv = monacoActiveView();
+    if (mv) {
+      window.LeksahMonaco.replaceAll(mv);
+      return;
+    }
     const v = cmActiveView();
     if (v) cmReplaceAll(v);
   }

@@ -624,7 +624,9 @@ function onFocusPane(target) {
   const tab = target.closest(".tab")
   if (!tab) return
   activePaneEl = tab
-  activeIsCM = !!tab.querySelector(".cm-editor")
+  // Monaco editors (the LeksahMonaco backend) count as "editor" panes too —
+  // they share the activeView slot and the find bar's editor path.
+  activeIsCM = !!tab.querySelector(".cm-editor") || !!tab.querySelector(".monaco-editor")
   // Prefer the terminal the focus is IN (a control-mode tab has one xterm per
   // tmux pane, each with the search addon on its own root element); fall back
   // to the tab's first .terminal (classic tabs register it there).
@@ -660,7 +662,17 @@ function termSearchOptions(flags) {
 document.addEventListener("focusin", e => onFocusPane(e.target), true)
 document.addEventListener("mousedown", e => onFocusPane(e.target), true)
 
-function cmActiveView() { return activeIsCM ? (window.LeksahCM.activeView || null) : null }
+// The active editor may be a CM view or a Monaco editor (LeksahMonaco marks
+// its handles with __leksahMonaco and writes them into the same activeView
+// slot); each accessor returns only its own kind.
+function cmActiveView() {
+  const v = activeIsCM ? (window.LeksahCM.activeView || null) : null
+  return (v && !v.__leksahMonaco) ? v : null
+}
+function monacoActiveView() {
+  const v = activeIsCM ? (window.LeksahCM.activeView || null) : null
+  return (v && v.__leksahMonaco && window.LeksahMonaco) ? v : null
+}
 
 function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
 function findPattern(searchText, flags) {
@@ -834,29 +846,43 @@ function domStep(dir) {
   domRender()
 }
 
-// --- dispatch by active pane: CM editor / terminal / other DOM ---
+// --- dispatch by active pane: CM/Monaco editor / terminal / other DOM ---
 let lastFind = { searchText: "", flags: 0 }
 function findSet(searchText, replace, flags) {
   lastFind = { searchText, flags }
+  const mv = monacoActiveView()
+  if (mv) { window.LeksahMonaco.findSet(mv, searchText, replace, flags); return }
   const v = cmActiveView()
   if (v) cmFindSet(v, searchText, replace, flags)
   else if (activeTermSearch) { /* searched on findNext/findPrev */ }
   else domFindSet(searchText, flags)
 }
 function findNext() {
+  const mv = monacoActiveView()
+  if (mv) { window.LeksahMonaco.findNext(mv); return }
   const v = cmActiveView()
   if (v) cmStep(v, 1)
   else if (activeTermSearch) activeTermSearch.search.findNext(lastFind.searchText, termSearchOptions(lastFind.flags))
   else domStep(1)
 }
 function findPrev() {
+  const mv = monacoActiveView()
+  if (mv) { window.LeksahMonaco.findPrev(mv); return }
   const v = cmActiveView()
   if (v) cmStep(v, -1)
   else if (activeTermSearch) activeTermSearch.search.findPrevious(lastFind.searchText, termSearchOptions(lastFind.flags))
   else domStep(-1)
 }
-function replaceNext() { const v = cmActiveView(); if (v) cmReplaceNext(v) }
-function replaceAll() { const v = cmActiveView(); if (v) cmReplaceAll(v) }
+function replaceNext() {
+  const mv = monacoActiveView()
+  if (mv) { window.LeksahMonaco.replaceNext(mv); return }
+  const v = cmActiveView(); if (v) cmReplaceNext(v)
+}
+function replaceAll() {
+  const mv = monacoActiveView()
+  if (mv) { window.LeksahMonaco.replaceAll(mv); return }
+  const v = cmActiveView(); if (v) cmReplaceAll(v)
+}
 
 window.LeksahCM = {
   EditorState, EditorView, Compartment, MergeView, unifiedMergeView,

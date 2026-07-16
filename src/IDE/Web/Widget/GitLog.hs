@@ -24,7 +24,7 @@ module IDE.Web.Widget.GitLog
 
 import Control.Concurrent (forkIO)
 import Control.Exception (try, SomeException)
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Lens ((^.))
 
@@ -53,6 +53,7 @@ import Reflex.Dom.Core
 
 import IDE.Git (runGit, runGitBatch)
 import IDE.Web.Events (GitLogEvents)
+import IDE.Web.Widget.Editor (ensureMonacoLoaded)
 import IDE.Web.Widget.FileTree (GitStatus(..), gitClass)
 
 -- | A parsed @git log@ entry.
@@ -84,8 +85,9 @@ logLimit = 500
 
 gitLogWidget
   :: forall t m . MonadWidget t m
-  => FilePath -> Text -> m (Event t GitLogEvents)
-gitLogWidget dir branch = divClass "gitlog" $ do
+  => Bool             -- ^ render diffs with the Monaco backend (the pref)
+  -> FilePath -> Text -> m (Event t GitLogEvents)
+gitLogWidget useMonaco dir branch = divClass "gitlog" $ do
   -- Load the log off-frame (several are large; a remote one is an ssh round trip).
   (commitsE, fireCommits) <- newTriggerEvent
   pb <- getPostBuild
@@ -132,7 +134,7 @@ gitLogWidget dir branch = divClass "gitlog" $ do
         return (cClickE, sFileD)
     gitLogDivider "h"   -- drag to resize the upper panes / diff split
     -- Side-by-side diff of the selected file — full width, under both panes.
-    diffPane dir selCommitD selFileD
+    diffPane useMonaco dir selCommitD selFileD
   return (never :: Event t GitLogEvents)
 
 -- | A draggable splitter between two flex panes: @"v"@ is a vertical bar that
@@ -235,21 +237,25 @@ fileRow selFileD dfD = do
           elClass "span" "gitlog-deleted" $ dynText (maybe "" (\n -> "\x2212" <> T.pack (show n)) . dfDeleted <$> dfD)
   return $ tag (current dfD) (domEvent Click e)
 
--- | The side-by-side diff: reuse the editor's CodeMirror MergeView via the
--- bundle's @LeksahCM.showDiff@ helper (old\/parent left, new\/commit right).
--- Mounts into a captured element by its raw handle — never a postBuild
--- querySelector (batched-DOM: the element isn't attached yet).
+-- | The side-by-side diff: reuse the editor backend's standalone diff view —
+-- the CodeMirror MergeView via @LeksahCM.showDiff@, or Monaco's DiffEditor via
+-- @LeksahMonaco.showDiff@ when the Monaco pref is on (old\/parent left,
+-- new\/commit right).  Mounts into a captured element by its raw handle —
+-- never a postBuild querySelector (batched-DOM: the element isn't attached yet).
 diffPane
   :: forall t m . MonadWidget t m
-  => FilePath
+  => Bool
+  -> FilePath
   -> Dynamic t (Maybe Commit)
   -> Dynamic t (Maybe DiffFile)
   -> m ()
-diffPane dir selCommitD selFileD = do
+diffPane useMonaco dir selCommitD selFileD = do
+  let apiNs :: Text
+      apiNs = if useMonaco then "LeksahMonaco" else "LeksahCM"
   (diffEl, _) <- elClass' "div" "gitlog-diffview" blank
   -- Clear the diff whenever the commit changes (a new file must be picked).
   performEvent_ $ ffor (updated selCommitD) $ \_ -> liftJSM . void $
-      jsg ("LeksahCM" :: Text) ^. js1 ("destroyDiff" :: Text) (_element_raw diffEl)
+      jsg apiNs ^. js1 ("destroyDiff" :: Text) (_element_raw diffEl)
   let reqE = fmapMaybe id $ updated ((\mc mf -> (,) <$> mc <*> mf) <$> selCommitD <*> selFileD)
   (contentE, fireContent) <- newTriggerEvent
   performEvent_ $ ffor reqE $ \(c, df) ->
@@ -258,8 +264,9 @@ diffPane dir selCommitD selFileD = do
           new <- gitShowFile dir (cHash c) path
           old <- gitShowFile dir (cHash c <> "^") path
           fireContent (T.pack path, old, new)
-  performEvent_ $ ffor contentE $ \(path, old, new) -> liftJSM . void $
-      jsg ("LeksahCM" :: Text) ^. js4 ("showDiff" :: Text) (_element_raw diffEl) path old new
+  performEvent_ $ ffor contentE $ \(path, old, new) -> liftJSM . void $ do
+      when useMonaco ensureMonacoLoaded
+      jsg apiNs ^. js4 ("showDiff" :: Text) (_element_raw diffEl) path old new
 
 --------------------------------------------------------------------------------
 -- git
