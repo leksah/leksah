@@ -14,7 +14,7 @@ import Data.Foldable (foldr')
 import Data.List (elemIndex)
 import Data.Map (Map)
 import qualified Data.Map as M
-       (toList, fromList, elems, filter, delete, lookup, union)
+       (toList, fromList, elems, filter, delete, lookup, union, member)
 import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
@@ -218,9 +218,14 @@ tabsWidget initialTabs initialVisibleTabs wide0OrderD openTabE closeTabE selectT
   -- The full MRU/flipper order: this window's wide0 tabs (already MRU-ordered in
   -- the shared state) first, then the side/bottom-bar tabs.  The wide0 CSS
   -- `order` (below) indexes into this, so the active wide0 tab is slot 0.
-  let recentTabs = (\ks rest -> map (\k -> ("wide0", k)) ks
-                                ++ filter ((`notElem` ks) . snd) rest)
-                     <$> wide0KeysD <*> barRecent
+  -- barRecent is also filtered to tabs that still EXIST: selecting a wide0 tab
+  -- adds it to barRecent (openedPairsE), but a wide0 close goes through the
+  -- shared state (closeWide0), never closeTabE — without the filter a closed
+  -- editor/git-log/Preferences tab would linger in the flipper forever.
+  let recentTabs = (\ks rest tabs ->
+                       map (\k -> ("wide0", k)) ks
+                       ++ filter (\(_, k) -> k `notElem` ks && k `M.member` tabs) rest)
+                     <$> wide0KeysD <*> barRecent <*> tabsD
   tabBtnE <- fmap (fmap (mconcat . (^.. traverse . traverse))) $
         listViewWithKey visibleTabs $ \gridArea visibleTab -> do
     let tabs = M.filter ((gridArea ==) . fst) <$> tabsD

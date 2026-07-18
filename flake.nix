@@ -1,6 +1,6 @@
 {
   # This is a template created by `hix init`
-  inputs.haskellNix.url = "github:input-output-hk/haskell.nix/hkm/darwin-linux-cross-hl";
+  inputs.haskellNix.url = "github:input-output-hk/haskell.nix/hkm/stable-haskell";
   inputs.nixpkgs.follows = "haskellNix/nixpkgs-unstable";
   # hyper-linux runs aarch64-linux / x86_64-linux ELF binaries on Apple Silicon
   # via Hypervisor.framework.  haskell.nix's darwin→linux cross (the -hl branch
@@ -28,7 +28,7 @@
   # jsaddle-webview2 live in the jsaddle monorepo; wire it so the haskell.nix
   # planner resolves the source-repository-package in cabal.project without a
   # network fetch (pure eval).
-  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/ead142a5e736f1139a32a0335df48a5661fe1323";
+  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/8ea768493731d3b3483e303e8592d3fc8163c9b0";
   inputs.jsaddle-terminal-src.flake = false;
   # ffcabal lives in its own repo now; same wiring as above.
   inputs.ffcabal-src.url = "github:leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c";
@@ -79,7 +79,7 @@
                   "https://github.com/leksah/haddock/ghc-9.10" = inputs.haddock-ghc910;
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
-                  "https://github.com/ghcjs/jsaddle/ead142a5e736f1139a32a0335df48a5661fe1323" = inputs.jsaddle-terminal-src;
+                  "https://github.com/ghcjs/jsaddle/8ea768493731d3b3483e303e8592d3fc8163c9b0" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c" = inputs.ffcabal-src;
                   "https://github.com/leksah/leksah-server/0b24e1705d3caef0bf7b7552724cf514554d8a13" = inputs.leksah-server-src;
                   "https://github.com/leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f" = inputs.ltk-src;

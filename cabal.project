@@ -54,10 +54,13 @@ source-repository-package
 -- buildable only on their own platforms (guards in their .cabal files).
 -- For nix the location+tag is resolved to a flake input via inputMap in
 -- flake.nix (no network fetch during pure eval).
+-- The hkm/wkwebview-objc-callbacks branch adds registered ObjC↔Haskell
+-- callbacks + the objc-in-library flag that leksah.sh --ghci needs (GHCi's RTS
+-- linker can't register ObjC classes, so the ObjC is preloaded as dylibs).
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: ead142a5e736f1139a32a0335df48a5661fe1323
+  tag: 8ea768493731d3b3483e303e8592d3fc8163c9b0
   subdir: jsaddle
           jsaddle-wkwebview
           jsaddle-terminal
@@ -133,7 +136,7 @@ allow-newer:
   -- reflex-dom-core, …) still carry a conservative aeson <2.3 upper bound.
   , *:aeson
 
-constraints: monoidal-containers >=0.6.2.0, haskell-gi-overloading ==0.0, any.happy ==2.1.7, extra >=1.8, semialign <1.4
+constraints: monoidal-containers >=0.6.2.0, any.haskell-gi-overloading ==0.0, any.happy ==2.1.7, extra >=1.8, semialign <1.4
 
 -- source-repository-package
 --  type: git

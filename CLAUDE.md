@@ -28,6 +28,17 @@
   relaunches; plain restart exits 2 (loop rebuilds first), `--no-rebuild` exits
   3 (loop skips the build — use after rebuild-self already built). Both replace
   the older `./dev-relaunch.sh`.
+- **ghci mode**: `./leksah.sh --nix --ghci ghc914` runs the app INTERPRETED in
+  a cabal multi-repl (tmux session `ghci` on `-L leksah`; first bytecode load
+  is slow, once). Against a ghci instance (`leksah-cmd mode` → `ghci`),
+  `rebuild-self`/`restart` become `:reload` + `:main` at the prompt (seconds,
+  no relink; `--no-restart`/`--use-cabal` don't apply), and
+  `leksah-cmd hs eval 'CODE'` evaluates Haskell in the live process (suspends
+  the UI run loop, evals at the prompt, resumes — `js eval`'s Haskell
+  sibling). The ObjC + foreign-export glue lives in the compiled
+  `leksah-mac-glue` sublib (foreign export is illegal interpreted);
+  `IDE.Web.GhciMode` gates the exit sites so "restart" stops `[NSApp run]`
+  instead of killing the ghci process. See docs/building.md "ghci mode".
 - **After a `cabal.project`/`flake.nix`/`flake.lock` change, DON'T
   `rebuild-self` then `restart --no-rebuild`.** `rebuild-self --use-cabal`
   builds in the **captured `~/.leksah/env.sh`** — a snapshot of the *running*
@@ -84,8 +95,11 @@
   index-refresh lock; your `git commit`/`add` in a terminal won't contend on
   `.git/index.lock`. (An old instance built before this fix still contends —
   retry the commit, or rebuild+restart to pick up the fix.)
-- Full driver: `./leksah.sh [--nix] [--warp|--classic] GHCVER [--in-tmux] [ARGS]`
-  (GHCVER ∈ ghc96/ghc98/ghc910/ghc912/ghc914; oldest supported GHC is 9.6.7).
+- Full driver: `./leksah.sh [--nix] [--warp|--classic|--ghci] [GHCVER] [--in-tmux] [ARGS]`
+  (GHCVER ∈ ghc96/ghc98/ghc910/ghc912/ghc914, **optional — defaults to
+  ghc914**; oldest supported GHC is 9.6.7). A bare `./leksah.sh` with no args
+  still prints usage; pass at least one flag (e.g. `./leksah.sh --nix`) to run
+  with the default GHC.
   **Front end**: default is the native web exe:leksah (WKWebView on macOS,
   WebKitGTK on Linux — one exe, chosen per-OS in the cabal file); `--warp` is
   exe:leksah-warp (browser), `--classic` is the classic Gtk exe:leksah-classic.

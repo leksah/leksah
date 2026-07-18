@@ -50,7 +50,8 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
-import           System.Directory (doesFileExist, listDirectory, makeAbsolute)
+import           System.Directory (doesDirectoryExist, doesFileExist, findExecutable,
+                                   listDirectory, makeAbsolute)
 import           System.FilePath (addTrailingPathSeparator, takeDirectory, takeExtension, (</>))
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Log.Logger (debugM)
@@ -87,22 +88,56 @@ import           IDE.Web.DemoHovers (demoHover)
 -- | Per-language LSP config: the @languageId@ sent in @didOpen@ and the default
 -- server command (used when no @.leksah-lsp@/pref override applies).
 data LangConfig = LangConfig
-    { lcLanguageId :: Text
-    , lcDefaultCmd :: (FilePath, [String])
+    { lcLanguageId  :: Text
+    , lcDefaultCmd  :: (FilePath, [String])
+    , lcRootMarkers :: [String]
+      -- ^ Marker files whose directory is the project root.  Empty = use the
+      -- Haskell-style walk (@cabal.project@ \/ @stack.yaml@ \/ @*.cabal@).
+      -- Non-empty markers fall back to the nearest @.git@ dir, then the
+      -- file's own directory.
     }
 
 -- | The built-in language server for each recognised extension.  Haskell uses
 -- @haskell-language-server@ (the bare binary, not the @-wrapper@ — leksah's own
--- dev shell ships only that); Nix uses @nixd@ (added to the dev shell).  Extend
--- this list to support more languages.
+-- dev shell ships only that); Nix uses @nixd@ (added to the dev shell).  The
+-- rest are launched only when their binary is on PATH (see 'ensureServer').
+-- Extend this list to support more languages.
 languageOf :: FilePath -> Maybe LangConfig
 languageOf f = case takeExtension f of
-    ".hs"  -> Just haskell
-    ".lhs" -> Just haskell
-    ".nix" -> Just (LangConfig "nix" ("nixd", []))
-    _      -> Nothing
+    ".hs"   -> Just haskell
+    ".lhs"  -> Just haskell
+    ".nix"  -> Just (LangConfig "nix" ("nixd", [])
+                                 ["flake.nix", "shell.nix", "default.nix"])
+    ".ts"   -> Just (ts "typescript")
+    ".tsx"  -> Just (ts "typescriptreact")
+    ".js"   -> Just (ts "javascript")
+    ".jsx"  -> Just (ts "javascriptreact")
+    ".mjs"  -> Just (ts "javascript")
+    ".cjs"  -> Just (ts "javascript")
+    ".rs"   -> Just (LangConfig "rust" ("rust-analyzer", []) ["Cargo.toml"])
+    ".go"   -> Just (LangConfig "go" ("gopls", []) ["go.work", "go.mod"])
+    ".py"   -> Just (LangConfig "python" ("pyright-langserver", ["--stdio"])
+                                ["pyproject.toml", "setup.py", "requirements.txt"])
+    ".c"    -> Just (clangd "c")
+    ".h"    -> Just (clangd "c")
+    ".cpp"  -> Just (clangd "cpp")
+    ".cc"   -> Just (clangd "cpp")
+    ".cxx"  -> Just (clangd "cpp")
+    ".hpp"  -> Just (clangd "cpp")
+    ".hh"   -> Just (clangd "cpp")
+    _       -> Nothing
   where
-    haskell = LangConfig "haskell" ("haskell-language-server", ["--lsp"])
+    haskell = LangConfig "haskell" ("haskell-language-server", ["--lsp"]) []
+    ts lang = LangConfig lang ("typescript-language-server", ["--stdio"])
+                         ["tsconfig.json", "package.json"]
+    clangd lang = LangConfig lang ("clangd", []) ["compile_commands.json", ".clangd"]
+
+-- | Registry key part: one server process per (root, server binary), so e.g.
+-- @.ts@ and @.js@ files in one project share a single
+-- @typescript-language-server@ (each file still sends its own @languageId@ in
+-- @didOpen@).
+serverKey :: LangConfig -> Text
+serverKey = T.pack . fst . lcDefaultCmd
 
 -- | Does this file have a language server we know how to launch?
 isSupportedFile :: FilePath -> Bool
@@ -153,7 +188,7 @@ readOverrideFile f = fsDoesFileExist f >>= \case
 -- | A running (or failed) server per project root.  @Nothing@ marks a root we
 -- tried and failed to start, so we do not respawn on every keystroke.
 {-# NOINLINE registry #-}
-registry :: MVar (Map (FilePath, Text) (Maybe ServerState))  -- key = (project root, languageId)
+registry :: MVar (Map (FilePath, Text) (Maybe ServerState))  -- key = (project root, 'serverKey')
 registry = unsafePerformIO (newMVar Map.empty)
 
 -- | The exact 'LogRef's we last published for each file, so a fresh
@@ -169,12 +204,14 @@ lastRefs = unsafePerformIO (newIORef Map.empty)
 rootCache :: IORef (Map FilePath FilePath)
 rootCache = unsafePerformIO (newIORef Map.empty)
 
-projectRootOf :: FilePath -> IO FilePath
-projectRootOf file = readIORef rootCache >>= \c ->
+-- (A file's language is fixed by its extension, so keying the cache by file
+-- alone stays sound with per-language root walks.)
+projectRootOf :: LangConfig -> FilePath -> IO FilePath
+projectRootOf lc file = readIORef rootCache >>= \c ->
     case Map.lookup file c of
         Just r  -> return r
         Nothing -> do
-            r <- findProjectRoot file
+            r <- findProjectRoot lc file
             atomicModifyIORef' rootCache (\m -> (Map.insert file r m, ()))
             return r
 
@@ -237,7 +274,7 @@ touch _ _ = return ()
 touch file text = case languageOf file of
   Nothing -> return ()
   Just lc -> do
-    root <- projectRootOf file
+    root <- projectRootOf lc file
     ensureServer root lc >>= \case
         Nothing -> return ()
         Just ss -> onReady ss $ do
@@ -553,9 +590,9 @@ withServer :: FilePath -> (ServerState -> IO ()) -> IO ()
 withServer file act = case languageOf file of
   Nothing -> return ()
   Just lc -> do
-    root <- projectRootOf file
+    root <- projectRootOf lc file
     m <- modifyMVar registry (\mp -> return (mp, mp))
-    case Map.lookup (root, lcLanguageId lc) m of
+    case Map.lookup (root, serverKey lc) m of
         Just (Just ss) -> act ss
         _              -> return ()
 
@@ -565,7 +602,11 @@ withServer file act = case languageOf file of
 ensureServer :: FilePath -> LangConfig -> IO (Maybe ServerState)
 ensureServer root lc = do
     (enabled, cmdPref) <- lspConfig
-    if not enabled
+    -- Remote (ssh://) roots are only supported for Haskell and Nix so far —
+    -- the other servers' remote environments have not been wired up.
+    let remoteUnsupported = isRemotePath root
+                         && lcLanguageId lc `notElem` ["haskell", "nix"]
+    if not enabled || remoteUnsupported
         then return Nothing
         else do
             -- A remote server is launched over ssh under the project's command
@@ -586,14 +627,25 @@ ensureServer root lc = do
                 Just prefix -> modifyMVar registry $ \m -> case Map.lookup key m of
                     Just entry -> return (m, entry)
                     Nothing -> do
-                        cmdArgs <- serverCommandFor root cmdPref lc
-                        try (spawnAndInit root prefix cmdArgs) >>= \case
-                            Right ss -> return (Map.insert key (Just ss) m, Just ss)
-                            Left (e :: SomeException) -> do
-                                debugM "leksah" ("IDE.LSP: could not start language server in "
-                                                 <> root <> ": " <> show e)
+                        cmdArgs@(cmd, _) <- serverCommandFor root cmdPref lc
+                        -- A local server whose binary is not on PATH is simply
+                        -- unavailable: cache the miss (per root) and stay quiet
+                        -- rather than fail a spawn on every new root.
+                        available <- if isRemotePath root
+                                        then return True
+                                        else isJust <$> findExecutable cmd
+                        if not available
+                            then do
+                                debugM "leksah" ("IDE.LSP: " <> cmd
+                                                 <> " not on PATH; no language server for " <> root)
                                 return (Map.insert key Nothing m, Nothing)
-  where key = (root, lcLanguageId lc)
+                            else try (spawnAndInit root prefix cmdArgs) >>= \case
+                                Right ss -> return (Map.insert key (Just ss) m, Just ss)
+                                Left (e :: SomeException) -> do
+                                    debugM "leksah" ("IDE.LSP: could not start language server in "
+                                                     <> root <> ": " <> show e)
+                                    return (Map.insert key Nothing m, Nothing)
+  where key = (root, serverKey lc)
 
 spawnAndInit :: FilePath -> Maybe Text -> (FilePath, [String]) -> IO ServerState
 spawnAndInit root prefix (cmd, args) = do
@@ -800,9 +852,9 @@ withServerReady :: FilePath -> IO () -> (ServerState -> IO ()) -> IO ()
 withServerReady file onNone act = case languageOf file of
   Nothing -> onNone
   Just lc -> do
-    root <- projectRootOf file
+    root <- projectRootOf lc file
     m <- modifyMVar registry (\mp -> return (mp, mp))
-    case Map.lookup (root, lcLanguageId lc) m of
+    case Map.lookup (root, serverKey lc) m of
         Just (Just ss) -> onReady ss (act ss)
         _              -> onNone
 
@@ -860,18 +912,39 @@ qualifySpan ref s = s { srcSpanFilename = qualifyLike ref (srcSpanFilename s) }
 
 -- | Walk up from a source file to the nearest project root.  Remote files walk
 -- up ON the host in one ssh round trip (never 'makeAbsolute', which mangles
--- @ssh:\/\/@); local files as before.
-findProjectRoot :: FilePath -> IO FilePath
-findProjectRoot file
+-- @ssh:\/\/@); local files as before.  Languages with 'lcRootMarkers' look for
+-- one of their marker files, falling back to the nearest @.git@ dir; Haskell
+-- (empty markers) keeps the @cabal.project@ \/ @stack.yaml@ \/ @*.cabal@ walk.
+findProjectRoot :: LangConfig -> FilePath -> IO FilePath
+findProjectRoot lc file
     | isRemotePath file = remoteFindProjectRoot file
     | otherwise = do
         abs' <- makeAbsolute file
         let dir0 = takeDirectory abs'
-            loop dir = hasMarker dir >>= \case
-                True  -> return (Just dir)
-                False -> let up = takeDirectory dir
-                         in if up == dir then return Nothing else loop up
-        loop dir0 >>= maybe (return dir0) return
+        case lcRootMarkers lc of
+            [] -> do
+                let loop dir = hasMarker dir >>= \case
+                        True  -> return (Just dir)
+                        False -> let up = takeDirectory dir
+                                 in if up == dir then return Nothing else loop up
+                loop dir0 >>= maybe (return dir0) return
+            markers -> do
+                -- Remember the lowest .git dir seen on the way up, but keep
+                -- walking in case a marker sits above it.
+                let loop dir mbGit = do
+                        hit <- or <$> mapM (\mk -> doesFileExist (dir </> mk)) markers
+                        if hit
+                            then return dir
+                            else do
+                                mbGit' <- case mbGit of
+                                    Just _  -> return mbGit
+                                    Nothing -> doesDirectoryExist (dir </> ".git") >>= \g ->
+                                        return (if g then Just dir else Nothing)
+                                let up = takeDirectory dir
+                                if up == dir
+                                    then return (fromMaybe dir0 mbGit')
+                                    else loop up mbGit'
+                loop dir0 Nothing
 
 -- | Remote analogue: one ssh script walks up from the file's directory.  It
 -- PREFERS the @cabal.project@ \/ @stack.yaml@ root (returned as soon as one is

@@ -130,10 +130,14 @@ module IDE.Core.Types (
 ,   CandyTableForth
 ,   CandyTableBack
 ,   KeymapI(..)
+#if defined(ghcjs_HOST_OS) || defined(LEKSAH_NO_HLINT)
+    -- Idea stand-in (see below); natively the real one comes from hlint,
+    -- unless the no-hlint flag drops it (leksah.sh --ghci).
+,   Idea(..)
+#endif
 #if defined(ghcjs_HOST_OS)
     -- Stand-ins for packages that don't build on the JS backend (see their
-    -- definitions below); natively the real ones come from hlint / fsnotify.
-,   Idea(..)
+    -- definitions below); natively the real ones come from fsnotify.
 ,   WatchManager(..)
 ,   StopListening
 #endif
@@ -241,7 +245,7 @@ import qualified Data.Map as Map (Map)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
-#if !defined(ghcjs_HOST_OS)
+#if !defined(ghcjs_HOST_OS) && !defined(LEKSAH_NO_HLINT)
 import Language.Haskell.HLint (Idea(..))
 #endif
 import Data.Function (on)
@@ -991,14 +995,18 @@ logRootPath LogProject{..} = logBasePath
 logRootPath LogCabal{..} = dropFileName logCabalFile
 logRootPath LogNix{..} = dropFileName logNixFile
 
-#if defined(ghcjs_HOST_OS)
+#if defined(ghcjs_HOST_OS) || defined(LEKSAH_NO_HLINT)
 -- | Stand-in for hlint's 'Language.Haskell.HLint.Idea': hlint (via
 -- ghc-lib-parser, whose RTS-internals hsc doesn't compile) is unavailable on
--- the JS backend.  'LogRef' stores one and 'IDE.Core.State.canResolve' reads
--- 'ideaHint' / 'ideaTo'; nothing more of the real record is used here.
+-- the JS backend, and is dropped by the no-hlint flag (leksah.sh --ghci, where
+-- the RTS linker can't load ghc-lib-parser's static archive).  'LogRef' stores
+-- one and 'IDE.Core.State.canResolve' reads 'ideaHint' / 'ideaTo'; nothing
+-- more of the real record is used here.
 data Idea = Idea { ideaHint :: String, ideaTo :: Maybe String }
     deriving (Eq, Show)
+#endif
 
+#if defined(ghcjs_HOST_OS)
 -- | Stand-ins for fsnotify's types: fsnotify (via unix-compat) doesn't build
 -- on the JS backend, and there is no file watching in a browser anyway.  The
 -- '_fsnotify' / '_watchers' fields still exist; the JS branch of

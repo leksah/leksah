@@ -139,9 +139,10 @@ import Control.Lens
        ((^.), view, over, (.~), _Just, Getter, to, _1, _2, _3,
         Getting, Lens')
 import qualified Data.Foldable as F (Foldable(..))
-#if !defined(ghcjs_HOST_OS)
--- On the JS backend hlint is unavailable (ghc-lib-parser doesn't build);
--- there the Idea stand-in comes from IDE.Core.Types via Reexported above.
+#if !defined(ghcjs_HOST_OS) && !defined(LEKSAH_NO_HLINT)
+-- On the JS backend (and under the no-hlint flag, leksah.sh --ghci) hlint is
+-- unavailable / dropped; there the Idea stand-in comes from IDE.Core.Types via
+-- the re-export above.
 import Language.Haskell.HLint (Idea(..))
 #endif
 import System.Log.Logger (debugM, updateGlobalLogger, setLevel)

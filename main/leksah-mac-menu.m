@@ -16,17 +16,51 @@
 #include <unistd.h>
 #include <pthread.h>
 
-// Exported from Haskell (foreign export ccall).
-extern void leksah_menu_action(int tag);
-extern void leksah_open_file(const char *path);
-extern void leksah_open_project(const char *path);
-extern void leksah_unsnap(const char *key);   // Tmux ▸ Underlay ▸ Unsnap <window>
-extern void leksah_open_settings(void);        // app menu ▸ Settings…
-// Multi-window: attach a jsaddle context to a just-created webview; track the
-// frontmost window; merge a closing window's tabs into another (or quit).
-extern void leksah_attach_window(int wid, void *webview);
-extern void leksah_window_activated(int wid);
-extern void leksah_window_closing(int wid);
+// Haskell callbacks.  Registered at runtime by IDE.Web.MacGlue
+// (leksah_set_haskell_callbacks) rather than linked as `extern` foreign
+// exports: under leksah.sh --ghci this file is loaded as a dylib (GHCi's RTS
+// linker can load ObjC objects but never registers their classes with the
+// ObjC runtime, so the ObjC must come in through dyld) — and a dylib cannot
+// reference RTS-linker-loaded foreign exports by name.  Function pointers
+// made with `foreign import ccall "wrapper"` work from both worlds, and
+// identically in the ordinary compiled app.
+typedef struct {
+    void (*menu_action)(int tag);
+    void (*open_file)(const char *path);
+    void (*open_project)(const char *path);
+    void (*unsnap)(const char *key);       // Tmux ▸ Underlay ▸ Unsnap <window>
+    void (*open_settings)(void);           // app menu ▸ Settings…
+    // Multi-window: attach a jsaddle context to a just-created webview; track
+    // the frontmost window; merge a closing window's tabs into another.
+    void (*attach_window)(int wid, void *webview);
+    void (*window_activated)(int wid);
+    void (*window_closing)(int wid);
+    void (*color_picked)(const char *hex); // NSColorPanel change ("#rrggbb")
+} leksah_haskell_callbacks;
+
+static leksah_haskell_callbacks gHs;   // zero-initialised
+
+void leksah_set_haskell_callbacks(
+    void (*menu_action)(int),
+    void (*open_file)(const char *),
+    void (*open_project)(const char *),
+    void (*unsnap)(const char *),
+    void (*open_settings)(void),
+    void (*attach_window)(int, void *),
+    void (*window_activated)(int),
+    void (*window_closing)(int),
+    void (*color_picked)(const char *))
+{
+    gHs.menu_action      = menu_action;
+    gHs.open_file        = open_file;
+    gHs.open_project     = open_project;
+    gHs.unsnap           = unsnap;
+    gHs.open_settings    = open_settings;
+    gHs.attach_window    = attach_window;
+    gHs.window_activated = window_activated;
+    gHs.window_closing   = window_closing;
+    gHs.color_picked     = color_picked;
+}
 
 // The title bar is transparent and the WKWebView fills the whole window, so the
 // web toolbar sits in the title-bar strip.  The WKWebView swallows mouse events,
@@ -64,9 +98,14 @@ void leksah_set_terminal_active(int on) {
     gTerminalActive = on;
 }
 
+// Set while leksah_close_all_windows runs (ghci-mode teardown): the
+// WillClose observers skip leksah_window_closing so the Haskell side's
+// merge/quit logic doesn't fire for windows it is closing itself.
+static volatile int gTeardownInProgress = 0;
+
 @implementation LeksahMenuTarget
 - (void)leksahAction:(id)sender {
-    leksah_menu_action((int)[(NSMenuItem *)sender tag]);
+    if (gHs.menu_action) gHs.menu_action((int)[(NSMenuItem *)sender tag]);
 }
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     if ([@"terminal" isEqual:[item representedObject]])
@@ -80,7 +119,7 @@ void leksah_set_terminal_active(int on) {
 }
 - (void)leksahOpenSettings:(id)sender {
     (void)sender;
-    leksah_open_settings();
+    if (gHs.open_settings) gHs.open_settings();
 }
 @end
 
@@ -104,7 +143,7 @@ static int gMenuDepth = 0;
 @implementation LeksahRecentTarget
 - (void)openRecent:(id)sender {
     NSString *path = [(NSMenuItem *)sender representedObject];
-    if (path != nil) leksah_open_file([path UTF8String]);
+    if (path != nil && gHs.open_file) gHs.open_file([path UTF8String]);
 }
 @end
 
@@ -392,8 +431,13 @@ static int leksah_snapshot_impl(const char *cpath, BOOL useRect, NSRect rect) {
         Class cfgClass = NSClassFromString(@"WKSnapshotConfiguration");
         id cfg = (cfgClass != nil) ? [[cfgClass alloc] init] : nil;
         if (useRect && cfg != nil) {
+            // NB: @catch (...), NOT a typed @catch: any typed catch (even
+            // `id`) references an _OBJC_EHTYPE_* symbol via an
+            // ARM64_RELOC_POINTER_TO_GOT relocation, which GHCi's RTS linker
+            // can't process — and this file must stay loadable in ghci
+            // (leksah.sh --ghci).  Same for every @catch in this file.
             @try { [cfg setValue:[NSValue valueWithRect:rect] forKey:@"rect"]; }
-            @catch (__unused NSException *e) {}
+            @catch (...) {}
         }
         void (^handler)(id, id) = ^(id image, id error) {
             if (error == nil && [image isKindOfClass:[NSImage class]]) {
@@ -556,8 +600,7 @@ static void leksah_apply_transparency(BOOL on) {
             [gLeksahWindow setIgnoresMouseEvents:NO];
             if (web != nil) [web setValue:@YES forKey:@"drawsBackground"];
         }
-    } @catch (NSException *ex) {
-        (void)ex;
+    } @catch (...) {   // (...), not NSException*: see the ghci reloc note above
     }
 }
 
@@ -613,7 +656,7 @@ static int gFrontmostTries = 0;              // ticks spent waiting for the brow
 @implementation LeksahUnsnapTarget
 - (void)unsnap:(id)sender {
     NSString *key = [(NSMenuItem *)sender representedObject];
-    if (key != nil) leksah_unsnap([key UTF8String]);
+    if (key != nil && gHs.unsnap) gHs.unsnap([key UTF8String]);
 }
 @end
 static LeksahUnsnapTarget *gUnsnapTarget = nil;
@@ -960,7 +1003,7 @@ static void leksah_read_holes(void) {
                 AXError axerr = AXUIElementCopyAttributeValue(gSnaps[i].win, kAXRoleAttribute, &role);
                 if (role != NULL) CFRelease(role);
                 if (axerr == kAXErrorInvalidUIElement) {
-                    leksah_unsnap([gSnaps[i].key UTF8String]);
+                    if (gHs.unsnap) gHs.unsnap([gSnaps[i].key UTF8String]);
                     continue;
                 }
                 if (keys != nil && ![keys containsObject:gSnaps[i].key]) {
@@ -1045,7 +1088,7 @@ static void leksah_install_beep_handler(id webview) {
         SEL add = @selector(addScriptMessageHandler:name:);
         ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, beepHandler,  @"leksahBeep");
         ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, speakHandler, @"leksahSpeak");
-    } @catch (__unused NSException *e) {}
+    } @catch (...) {}   // (...): see the ghci reloc note above
 }
 
 // The per-window title-bar configuration shared by the first window and every
@@ -1073,14 +1116,14 @@ static void leksah_configure_window(NSWindow *win, int wid) {
     // Frontmost window → active window (routes the bridges + flipper in-place).
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeKeyNotification
         object:win queue:[NSOperationQueue mainQueue]
-        usingBlock:^(NSNotification *note){ (void)note; leksah_window_activated(wid); }];
+        usingBlock:^(NSNotification *note){ (void)note; if (gHs.window_activated) gHs.window_activated(wid); }];
     // Closing: merge this window's tabs elsewhere (or quit if it was the last),
     // then forget it.
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowWillCloseNotification
         object:win queue:[NSOperationQueue mainQueue]
         usingBlock:^(NSNotification *note){
             (void)note;
-            leksah_window_closing(wid);
+            if (!gTeardownInProgress && gHs.window_closing) gHs.window_closing(wid);
             [gWindows removeObjectForKey:@(wid)];
         }];
     // Let this window's JS ring the native beep (see LeksahBeepHandler).
@@ -1103,7 +1146,7 @@ void leksah_new_window(int wid) {
         Class cfgClass = NSClassFromString(@"WKWebViewConfiguration");
         id cfg = [[cfgClass alloc] init];
         @try { [[cfg valueForKey:@"preferences"] setValue:@YES forKey:@"developerExtrasEnabled"]; }
-        @catch (__unused NSException *e) {}
+        @catch (...) {}   // (...): see the ghci reloc note above
         Class wkClass = NSClassFromString(@"WKWebView");
         NSRect frame = [[win contentView] frame];
         id web = ((id (*)(id, SEL, NSRect, id))objc_msgSend)(
@@ -1112,7 +1155,17 @@ void leksah_new_window(int wid) {
         leksah_configure_window(win, wid);
         [win center];
         [win makeKeyAndOrderFront:nil];
-        leksah_attach_window(wid, (void *)web);
+        // Activate the app.  jsaddle's SYNCHRONOUS callbacks ride a JS
+        // prompt("JSaddleSync",…) handled by the WKWebView's UIDelegate — but
+        // WebKit SUPPRESSES JS dialogs while the app is not frontmost/active, so
+        // the prompt never reaches the handler and the sync round-trip hangs,
+        // stalling the reflex DOM build (seen freezing at ~128 elements on a
+        // ghci reload, where — unlike a first launch — re-entering [NSApp run]
+        // does not re-activate the app).  Activating lets the (invisible) sync
+        // prompts through so the build completes.  On File ▸ New Window the app
+        // is already active, so this is a harmless no-op there.
+        [NSApp activateIgnoringOtherApps:YES];
+        if (gHs.attach_window) gHs.attach_window(wid, (void *)web);
     });
 }
 
@@ -1121,6 +1174,92 @@ void leksah_raise_window(int wid) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSWindow *win = (gWindows != nil) ? [gWindows objectForKey:@(wid)] : nil;
         if (win != nil) [win makeKeyAndOrderFront:nil];
+    });
+}
+
+// --- ghci-mode lifecycle (leksah.sh --ghci) --------------------------------
+// Under a cabal repl the app must be able to hand control back to the ghci
+// prompt and take it again: [NSApp stop:] makes [NSApp run] return (after the
+// next event — hence the posted no-op event), and leksah_run_app re-enters
+// the loop.  Windows and app state survive a stop; IDE.Web.MacGlue drives
+// these.
+
+// First-launch flag for the reload story: 1 the first call in the process, 0
+// after.  A C static in THIS dylib — which is preloaded once and never reloaded
+// — so it survives a ghci :reload, unlike a Haskell CAF in the leksah-mac-glue
+// object module (:reload gives that a fresh instance, resetting it, which
+// wrongly routed reloads through the dead-bridge app-launch path).  Lets
+// exe:leksah's main pick the runtime new-window path on every reload.
+static int gTookFirstLaunch = 0;
+int leksah_take_first_launch(void) {
+    if (gTookFirstLaunch) return 0;
+    gTookFirstLaunch = 1;
+    return 1;
+}
+
+void leksah_stop_app(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSApp stop:nil];
+        NSEvent *e = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+            location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0
+            context:nil subtype:0 data1:0 data2:0];
+        [NSApp postEvent:e atStart:YES];
+    });
+}
+
+// Re-enter the run loop.  Must be called on the process main thread (with
+// -fno-ghci-sandbox the ghci prompt evaluates there); blocks until the next
+// leksah_stop_app.
+void leksah_run_app(void) {
+    [NSApp run];
+}
+
+// Close every leksah window without the merge/quit callbacks (teardown before
+// a :reload + fresh :main).  gLeksahWindow is also in gWindows; just nil it.
+void leksah_close_all_windows(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        gTeardownInProgress = 1;
+        // The tracked windows, PLUS a defensive sweep: any leksah window (one
+        // hosting a WKWebView) still in [NSApp windows] that gWindows never
+        // recorded.  Such orphans arise only from abnormal recovery paths (e.g.
+        // a window created while state was wedged, or a hand-driven :main), but
+        // once orphaned they are invisible to gWindows and so would linger — a
+        // dead husk on screen — across every subsequent reload.  Matching on the
+        // presence of a WKWebView keeps this to our own windows (not the
+        // title-bar helper strips or a stray system panel).  A set dedupes the
+        // overlap with gWindows.
+        NSMutableSet *toClose = [NSMutableSet set];
+        if (gWindows != nil) [toClose addObjectsFromArray:[gWindows allValues]];
+        for (NSWindow *w in [NSApp windows])
+            if (leksah_find_webview([w contentView]) != nil) [toClose addObject:w];
+        for (NSWindow *w in toClose) [w close];
+        [gWindows removeAllObjects];
+        gLeksahWindow = nil;
+        gTeardownInProgress = 0;
+    });
+}
+
+// jsaddle-wkwebview's AppDelegate answers YES to
+// applicationShouldTerminateAfterLastWindowClosed:, which would exit the
+// whole process — including the ghci session — when leksah's last window
+// closes.  In ghci mode leksah manages quitting explicitly, so rewrite the
+// delegate's answer to NO at runtime.
+static BOOL leksah_no_auto_terminate(id self, SEL _cmd, id sender) {
+    (void)self; (void)_cmd; (void)sender;
+    return NO;
+}
+
+void leksah_disable_auto_terminate(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        id delegate = [NSApp delegate];
+        if (delegate == nil) return;
+        Class cls = object_getClass(delegate);
+        SEL sel = @selector(applicationShouldTerminateAfterLastWindowClosed:);
+        Method m = class_getInstanceMethod(cls, sel);
+        if (m != NULL)
+            method_setImplementation(m, (IMP)leksah_no_auto_terminate);
+        else
+            class_addMethod(cls, sel, (IMP)leksah_no_auto_terminate, "c@:@");
     });
 }
 
@@ -1203,7 +1342,7 @@ void leksah_show_open_panel(void) {
         void (^done)(NSModalResponse) = ^(NSModalResponse result) {
             if (result == NSModalResponseOK) {
                 NSURL *url = [[panel URLs] firstObject];
-                if (url != nil) leksah_open_file([[url path] UTF8String]);
+                if (url != nil && gHs.open_file) gHs.open_file([[url path] UTF8String]);
             }
         };
         if (gLeksahWindow != nil)
@@ -1225,7 +1364,7 @@ void leksah_show_open_project_panel(void) {
         void (^done)(NSModalResponse) = ^(NSModalResponse result) {
             if (result == NSModalResponseOK) {
                 NSURL *url = [[panel URLs] firstObject];
-                if (url != nil) leksah_open_project([[url path] UTF8String]);
+                if (url != nil && gHs.open_project) gHs.open_project([[url path] UTF8String]);
             }
         };
         if (gLeksahWindow != nil)
@@ -1242,7 +1381,6 @@ void leksah_show_open_project_panel(void) {
 // opens the shared NSColorPanel seeded with the current value, and every
 // change while it is open is reported back through leksah_color_picked (a
 // Haskell foreign export) as "#rrggbb".
-extern void leksah_color_picked(const char *hex);
 
 @interface LeksahColorTarget : NSObject
 - (void)colorChanged:(id)sender;
@@ -1258,7 +1396,7 @@ extern void leksah_color_picked(const char *hex);
              (int)lround(c.redComponent   * 255.0),
              (int)lround(c.greenComponent * 255.0),
              (int)lround(c.blueComponent  * 255.0));
-    leksah_color_picked(hex);
+    if (gHs.color_picked) gHs.color_picked(hex);
 }
 @end
 

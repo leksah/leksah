@@ -89,13 +89,16 @@ import System.FilePath (isRelative, (</>))
 import System.IO (hSetBinaryMode)
 import System.IO.Unsafe (unsafePerformIO)
 import IDE.Utils.ExitImmediately (exitImmediately)
+import IDE.Web.GhciMode
+       (ghciMode, registerGhciCleanup, stopForGhci, suspendForGhci)
 import System.Process
        (createProcess, proc, shell, waitForProcess, CreateProcess(std_out, std_in),
         StdStream(CreatePipe, NoStream))
 
 import Network.Socket
        (Socket, Family(AF_UNIX), SocketType(Stream), SockAddr(SockAddrUnix),
-        socket, bind, listen, accept, connect, close, defaultProtocol)
+        socket, bind, listen, accept, connect, close, defaultProtocol,
+        withFdSocket, setCloseOnExecIfNeeded)
 import Network.Socket.ByteString (recv, sendAll)
 
 import Language.Javascript.JSaddle (eval, valToText)
@@ -154,8 +157,17 @@ startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> ret
           then ioError (userError ("cmd socket in use: " <> path))
           else removeFile path `catch` \(_ :: SomeException) -> return ()
       sock <- socket AF_UNIX Stream defaultProtocol
+      -- Never let spawned children (leksah-server, tmux, git …) inherit the
+      -- listener: an inheritor outliving this instance keeps the socket
+      -- "connectable" after we exit, so the NEXT instance's in-use guard sees
+      -- a live listener and silently declines to bind — leaving it without a
+      -- control socket (and leksah-cmd hanging in the dead backlog).
+      withFdSocket sock setCloseOnExecIfNeeded
       bind sock (SockAddrUnix path)
       listen sock 5
+      -- ghci mode: free the fd at teardown (the fresh :main unlinks + rebinds
+      -- the path anyway, this just avoids leaking a listener per reload).
+      when ghciMode $ registerGhciCleanup (close sock)
       forever $ do
         (conn, _) <- accept sock
         void . forkIO $
@@ -204,12 +216,20 @@ handleConn ideR conn = do
         -- built), avoiding the redundant build + its `nix develop`.  A loop that
         -- predates this only continues on 2, so plain restart stays 2.
         let noRebuild = "--no-rebuild" `elem` args
-        reply $ if noRebuild
-          then "Restarting leksah (exit 3 → leksah-nix.sh relaunches without rebuilding).\n"
-          else "Restarting leksah (exit 2 → leksah-nix.sh rebuilds and relaunches).\n"
-        -- Give the reply a moment to flush over the socket before we exit.
-        threadDelay 100000
-        exitImmediately (ExitFailure (if noRebuild then 3 else 2))
+        if ghciMode
+          then do
+            -- ghci mode: there is no relaunch loop — tear down and return to
+            -- the ghci prompt; the client (leksah-cmd) drives :reload/:main.
+            reply "Stopping leksah (ghci mode: back to the prompt for :reload / :main).\n"
+            threadDelay 100000
+            stopForGhci
+          else do
+            reply $ if noRebuild
+              then "Restarting leksah (exit 3 → leksah-nix.sh relaunches without rebuilding).\n"
+              else "Restarting leksah (exit 2 → leksah-nix.sh rebuilds and relaunches).\n"
+            -- Give the reply a moment to flush over the socket before we exit.
+            threadDelay 100000
+            exitImmediately (ExitFailure (if noRebuild then 3 else 2))
 
       ("cm" : "open" : files) | not (null files) -> do
         results <- mapM (resolveInput cwd) files
@@ -261,6 +281,23 @@ handleConn ideR conn = do
       -- answered as soon as the control socket is serving, so it marks the point
       -- the relaunched UI is back.
       ("ping" : _) -> reply "ok\n"
+
+      -- How this instance runs: "ghci" (leksah.sh --ghci, a cabal repl) or
+      -- "binary".  leksah-cmd picks its rebuild/restart behaviour off this.
+      ("mode" : _) -> reply $ if ghciMode then "ghci\n" else "binary\n"
+
+      -- ghci mode only: hand control back to the ghci prompt.  With
+      -- --keep-windows just the run loop stops (leksah-cmd hs eval's suspend;
+      -- resumeApp at the prompt takes the UI straight back); without it the
+      -- full teardown runs (close windows + listeners) so the prompt is ready
+      -- for :reload + a fresh :main.
+      ("ghci-stop" : args)
+        | not ghciMode -> reply "not in ghci mode (start with leksah.sh --ghci)\n"
+        | otherwise -> do
+            let keepWindows = "--keep-windows" `elem` args
+            reply "ok\n"
+            threadDelay 100000  -- let the reply flush before the loop stops
+            if keepWindows then suspendForGhci else stopForGhci
 
       -- threads: dump every RTS (green) thread's label + status.  The definitive
       -- view of a pure-Haskell freeze — which thread is blocked on what — that
@@ -506,7 +543,10 @@ handleConn ideR conn = do
                 | otherwise -> do
                     reply "\nBuild succeeded — restarting into the new build.\n"
                     threadDelay 150000  -- let the reply flush before we exit
-                    exitImmediately (ExitFailure 2)
+                    -- ghci mode: the client normally reloads via the prompt and
+                    -- never gets here, but if it does, stop instead of exiting.
+                    if ghciMode then stopForGhci
+                                else exitImmediately (ExitFailure 2)
               Right False -> do
                 putMVar buildLock ()
                 reply ("\nBuild FAILED — leksah left running. Fix the errors and "

@@ -2,7 +2,7 @@
 
 if [ $# -eq 0 ]
   then
-    echo "Usage: ./leksah.sh [--nix] [--warp|--classic] GHCVER [--in-tmux] [LEKSAH_ARGS]"
+    echo "Usage: ./leksah.sh [--nix] [--warp|--classic|--ghci] [GHCVER] [--in-tmux] [LEKSAH_ARGS]"
     echo
     echo "  --nix     : re-enter the nix dev shell for every build/run command"
     echo "              (nix develop \".?submodules=1#GHCVER\").  WITHOUT --nix"
@@ -15,7 +15,12 @@ if [ $# -eq 0 ]
     echo "              WebKitGTK on Linux — one exe, chosen per-OS in the cabal file)."
     echo "  --warp    : the browser front end, exe:leksah-warp (http://127.0.0.1:PORT/)."
     echo "  --classic : the classic Gtk front end, exe:leksah-classic."
-    echo "  GHCVER    : ghc914 (default/web front ends); ghc8107 or ghc98 (--classic)"
+    echo "  --ghci    : run the native web front end INTERPRETED in a cabal multi-repl"
+    echo "              (cabal repl exe:leksah lib:leksah-nogtk) inside a tmux session,"
+    echo "              so 'leksah-cmd rebuild-self' becomes :reload + :main (seconds,"
+    echo "              no relink) and 'leksah-cmd hs eval' can poke the live IDE."
+    echo "              First load compiles everything to bytecode — slow, once."
+    echo "  GHCVER    : optional, defaults to ghc914 (web front ends); ghc8107 or ghc98 (--classic)"
     echo "  --in-tmux : (web front ends) run leksah inside a tmux session so its own"
     echo "              output shows up as \"Terminal 0\" in leksah's Terminals pane"
     echo
@@ -23,7 +28,8 @@ if [ $# -eq 0 ]
     echo "  N (default 3367) is the UI port; leksah keys its control socket and"
     echo "  tmux server off it, and this script its run log + \"Terminal 0\" session."
     echo
-    echo "Examples: ./leksah.sh --nix ghc914"
+    echo "Examples: ./leksah.sh --nix                       # GHCVER defaults to ghc914"
+    echo "          ./leksah.sh --nix ghc914"
     echo "          ./leksah.sh --nix ghc914 --verbosity=DEBUG"
     echo "          ./leksah.sh --warp ghc914 --in-tmux    # ambient shell, no nix"
     echo "          ./leksah.sh --nix --classic ghc98"
@@ -43,12 +49,14 @@ INVOCATION="$0 $*"
 # and --classic select the two alternative front ends instead.
 USE_NIX=0
 IN_TMUX=0
+GHCI=0
 UI=leksah
 POS=()
 for a in "$@"; do
     case "$a" in
         --nix)     USE_NIX=1 ;;
         --in-tmux) IN_TMUX=1 ;;
+        --ghci)    GHCI=1 ;;
         --warp)    UI=warp ;;
         --classic) UI=classic ;;
         *)         POS+=("$a") ;;
@@ -56,13 +64,14 @@ for a in "$@"; do
 done
 set -- "${POS[@]}"
 
-if [ $# -eq 0 ]; then
-    echo "Missing GHCVER (e.g. ghc914).  Run ./leksah.sh with no args for usage." >&2
-    exit 1
-fi
-
-GHCARG=$1
-shift
+# GHCVER is optional and defaults to ghc914 (the only enabled dev shell).  A
+# leading positional that looks like a GHC version (ghc<digits>) is consumed as
+# GHCVER; otherwise every positional is treated as a LEKSAH_ARG (so e.g.
+# `./leksah.sh --nix --verbosity=DEBUG` runs ghc914 and passes the flag on).
+case "${1:-}" in
+    ghc[0-9]*) GHCARG=$1; shift ;;
+    *)         GHCARG=ghc914 ;;
+esac
 
 # On macOS the default exe:leksah is the WKWebView front end, which we run from a
 # real Leksah.app bundle (correct name in the menu bar / Dock / ⌘-Tab).  --warp
@@ -147,7 +156,7 @@ cat > "$HOME/.leksah/rebuild.sh" <<EOF
 # environment — calling cabal directly here matches the loop's build config and
 # stays incremental (no slow nested 'nix develop', no full rebuild).
 cd "$(pwd)" || exit 1
-exec cabal build --builddir "$BUILDDIR" $REBUILD_TARGET exe:ffcabal
+exec cabal build --builddir "$BUILDDIR" $REBUILD_TARGET exe:leksah-cmd exe:ffcabal
 EOF
 
 # macOS: run the wkwebview front end from a real .app bundle so CFBundleName
@@ -210,6 +219,230 @@ set -g mouse on
 set -g history-limit 50000
 EOF
     LOGFILE="$RUNLOGDIR/leksah$LOG_TAG$INSTANCE_TAG.log"
+fi
+
+# --ghci: run the native web front end INTERPRETED in a cabal multi-repl
+# instead of building + launching the binary.  The repl lives in a tmux pane
+# (on leksah's own tmux server) so `leksah-cmd hs eval` and the reload flow
+# (rebuild-self against a ghci instance = :reload + :main) can drive the
+# prompt with send-keys; the pane's exact environment — including the PATH
+# invariant every cabal call must share — is captured into a generated script.
+# There is no exit-2/3 relaunch loop here: the ghci session IS the loop.
+if [ "$GHCI" = "1" ]; then
+  if [ "$UI" != "leksah" ]; then
+    echo "--ghci only applies to the native web front end (exe:leksah); ignoring --$UI." >&2
+  fi
+  rm -f .ghc.environment.*
+  mkdir -p bin
+  # Same helper prebuild as the binary arm (leksah-server/leksah-cmd/ffcabal
+  # must be on PATH for the IDE), same PATH prefix — the repl's dependency
+  # builds then share the same plan and stay incremental.
+  PATH=$(pwd)/bin/$GHCARG:$PATH "${DEV[@]}" \
+    bash -c '
+      set -e
+      bd="$1"; gd="$2"
+      if command -v haskell-nix-cabal-project-local-sync >/dev/null 2>&1; then
+        haskell-nix-cabal-project-local-sync --force
+      fi
+      if command -v haskell-nix-cabal-store-sync >/dev/null 2>&1; then
+        haskell-nix-cabal-store-sync --force
+      fi
+      cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal
+      mkdir -p "bin/$gd"
+      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server)" "bin/$gd/leksah-server"
+      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd)"    "bin/$gd/leksah-cmd"
+      ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal)"       "bin/$gd/ffcabal"
+    ' _ "$BUILDDIR" "$GHCARG"
+
+  # ghci uses its OWN builddir: its config differs from the binary loop's
+  # (the -objc-in-library flags below), and sharing a builddir would make
+  # cabal reconfigure + rebuild the whole leksah package on every switch
+  # between the two modes.  Dependencies still come from the shared store.
+  GHCI_BUILDDIR="dist-ghci-${GHCNUMVER:-$GHCARG}"
+
+  # GHCi's RTS linker can load Objective-C objects but never registers their
+  # classes with the ObjC runtime (only dyld does) — so in ghci mode the ObjC
+  # is kept OUT of the Haskell archives (-objc-in-library flags) and preloaded
+  # as dylibs instead (ghci -L/-l), where the Haskell foreign imports resolve
+  # against them.  Compile both dylibs: leksah's own native glue and
+  # jsaddle-wkwebview's (from the unpacked source-repository-package).
+  GHCI_NATIVE="$RUNLOGDIR/ghci-native"
+  mkdir -p "$GHCI_NATIVE"
+  PATH=$(pwd)/bin/$GHCARG:$PATH "${DEV[@]}" \
+    bash -c '
+      set -e
+      out="$1"
+      cc -dynamiclib main/leksah-mac-menu.m \
+         -framework Cocoa -framework ApplicationServices \
+         -o "$out/libleksah-mac-menu.dylib"
+      js_src=$(ls -d dist-ghc-*/src/jsaddle-*/jsaddle-wkwebview 2>/dev/null | head -1)
+      if [ -z "$js_src" ]; then
+        echo "jsaddle-wkwebview source not unpacked yet — building dependencies first" >&2
+        exit 1
+      fi
+      hs_inc=""
+      for d in $(ghc-pkg field rts include-dirs --simple-output); do
+        hs_inc="$hs_inc -I$d"
+      done
+      cc -dynamiclib "$js_src/cbits-cocoa/WKWebView-AppDelegate.m" \
+         -DUSE_COCOA -I"$js_src/cbits" $hs_inc -Wno-everything \
+         -framework Foundation -framework WebKit -framework Cocoa \
+         -o "$out/libjsaddle-wkwebview-objc.dylib"
+    ' _ "$GHCI_NATIVE"
+
+  TMUXSOCK="leksah$INSTANCE_TAG"
+  GHCI_LOG="$RUNLOGDIR/ghci$INSTANCE_TAG.log"
+  GHCI_RUN="$RUNLOGDIR/ghci-run$INSTANCE_TAG.sh"
+  # tmux comes from the dev shell with --nix; resolve it once (polling through
+  # `nix develop` would re-evaluate the flake every 2s).
+  TMUX_BIN=$("${DEV[@]}" bash -c 'command -v tmux')
+  if [ "$USE_NIX" = 1 ]; then
+    DEVSTR="nix $NIX_ARGS develop \".?submodules=1#$SHELL_ATTR\" --show-trace --command"
+  else
+    DEVSTR=""
+  fi
+  cat > "$GHCI_RUN" <<EOF
+#!/usr/bin/env bash
+# Generated by leksah.sh --ghci; exec'd inside the ghci tmux pane.  Captures
+# the launching shell's environment so every cabal call (this repl, the
+# binary-arm builds, rebuild-self) sees the SAME PATH — cabal treats a
+# different PATH as "configuration changed" and rebuilds the world.
+cd "$(pwd)" || exit 1
+export LEKSAH_PORT=$LEKSAH_PORT
+export LEKSAH_GHCI=1
+export leksah_datadir="$(pwd)"
+export PATH="$(pwd)/bin/$GHCARG:$PATH"
+# TERM=dumb makes ghci's haskeline drop all cursor/keypad control escapes, so
+# the prompt no longer rewrites its line — echoed input and command output land
+# on separate clean lines.  leksah-cmd (hs eval / rebuild-self) scrapes the pane
+# for its output fences; without this, haskeline glues a command echo to the
+# previous output and the scrape misses (or swallows) results.
+export TERM=dumb
+exec $DEVSTR cabal repl leksah:exe:leksah leksah:lib:leksah-nogtk \\
+  --enable-multi-repl --builddir "$GHCI_BUILDDIR" \\
+  --constraint="leksah -objc-in-library" \\
+  --constraint="leksah +no-hlint" \\
+  --constraint="jsaddle-wkwebview -objc-in-library" \\
+  --repl-options=-fno-ghci-sandbox \\
+  --repl-options=-L"$GHCI_NATIVE" \\
+  --repl-options=-lleksah-mac-menu \\
+  --repl-options=-ljsaddle-wkwebview-objc
+EOF
+  chmod +x "$GHCI_RUN"
+  # The :main line (with this run's LEKSAH_ARGS) — leksah-cmd replays it after
+  # a :reload.
+  printf ':main %s\n' "$*" > "$RUNLOGDIR/ghci-main$INSTANCE_TAG"
+
+  if "$TMUX_BIN" -L "$TMUXSOCK" has-session -t ghci 2>/dev/null; then
+    echo "A ghci session already exists on tmux -L $TMUXSOCK — reusing it."
+    echo "(kill it with: tmux -L $TMUXSOCK kill-session -t ghci)"
+  else
+    # leksah-cmd hs eval / rebuild-self read the ghci output from the pane's
+    # RENDERED scrollback (haskeline's control codes make the raw pipe log
+    # unsplittable); raise the server's history-limit so long :reload output
+    # isn't truncated before the fence markers.
+    "$TMUX_BIN" -L "$TMUXSOCK" set-option -g history-limit 100000 2>/dev/null || true
+    # The GHC RTS MachO linker sometimes can't relocate a large static archive
+    # (reflex, ghc-lib-parser, …) at :main time: an info-table SUBTRACTOR falls
+    # out of the signed-32-bit range when ASLR happens to map that archive's
+    # low region and the dyld region >2 GB apart.  It's a per-run memory-layout
+    # lottery (see docs/building.md "ghci mode"), so retry the whole load a few
+    # times — a fresh process re-rolls the layout.  (The real fix is in the
+    # RTS linker; this keeps the dev loop usable meanwhile.)
+    ghci_ok=0
+    for gattempt in 1 2 3 4 5 6; do
+      "$TMUX_BIN" -L "$TMUXSOCK" kill-session -t ghci 2>/dev/null || true
+      : > "$GHCI_LOG"
+      PANE=$("$TMUX_BIN" -L "$TMUXSOCK" new-session -d -P -F '#{pane_id}' -s ghci "$GHCI_RUN")
+      "$TMUX_BIN" -L "$TMUXSOCK" pipe-pane -o -t "$PANE" "cat >> $GHCI_LOG"
+      printf '%s %s\n' "$TMUXSOCK" "$PANE" > "$RUNLOGDIR/ghci-pane$INSTANCE_TAG"
+      echo "cabal repl starting in tmux (-L $TMUXSOCK, session ghci, pane $PANE; attempt $gattempt)"
+      echo "Log: $GHCI_LOG   Pane file: $RUNLOGDIR/ghci-pane$INSTANCE_TAG"
+      echo "Waiting for the ghci prompt (the first load compiles/loads everything — slow, once)…"
+      prompt=0
+      while :; do
+        dead=$("$TMUX_BIN" -L "$TMUXSOCK" display-message -p -t "$PANE" '#{pane_dead}' 2>/dev/null) || dead=1
+        if [ "$dead" = "1" ]; then break; fi
+        last=$("$TMUX_BIN" -L "$TMUXSOCK" capture-pane -p -t "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)
+        case "$last" in
+          *"ghci>"*) prompt=1; break ;;
+        esac
+        sleep 2
+      done
+      if [ "$prompt" != 1 ]; then
+        echo "ghci exited before the prompt (attempt $gattempt) — see $GHCI_LOG; retrying."
+        continue
+      fi
+      # The Cocoa run loop (and NSWindow creation) must be on the process main
+      # OS thread.  -fno-ghci-sandbox makes GHCi run statements on its own
+      # (bound, thread-0) REPL thread instead of a forked worker — but cabal's
+      # --enable-multi-repl does NOT propagate --repl-options=-fno-ghci-sandbox
+      # to the interactive session, so set it here at the prompt (it persists
+      # across :reload for the whole session).  Without this, :main builds the
+      # NSWindow on a worker thread and Cocoa aborts ("NSWindow should only be
+      # instantiated on the main thread!").
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" -l ':set -fno-ghci-sandbox'
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" Enter
+      # Turn OFF the pty's line-discipline echo.  When leksah-cmd (hs eval /
+      # rebuild-self) drives the prompt with send-keys, the tty would otherwise
+      # echo each keystroke char-by-char AS IT ARRIVES — interleaving it with
+      # ghci's concurrent output (e.g. `[1,2:!echo…END,3,4]`) and racing/over-
+      # writing on wrap boundaries, which broke the pane scrape.  With -echo the
+      # only remaining echo is haskeline's own clean `ghci> <cmd>` line, trivially
+      # stripped.  Persists across :reload; a human attaching won't see their
+      # own typing, which is fine for this driver pane.
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" -l ':!stty -echo'
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" Enter
+      # Multi-repl: the interactive scope starts empty, so bring Main in first
+      # (":main" runs whatever `main` is in scope).
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" -l ':module + Main'
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" Enter
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" -l ":main $*"
+      "$TMUX_BIN" -L "$TMUXSOCK" send-keys -t "$PANE" Enter
+      echo "Sent :main — waiting for the UI to build (or a linker-lottery crash)…"
+      outcome=""
+      dom=""
+      LEKSAHCMD="$(pwd)/bin/$GHCARG/leksah-cmd"
+      for _wait in $(seq 1 75); do
+        if grep -q "Relocation out of range" "$GHCI_LOG" 2>/dev/null; then outcome=reloc; break; fi
+        dead=$("$TMUX_BIN" -L "$TMUXSOCK" display-message -p -t "$PANE" '#{pane_dead}' 2>/dev/null) || dead=1
+        if [ "$dead" = "1" ]; then outcome=dead; break; fi
+        if grep -q "alive ideVer" "$GHCI_LOG" 2>/dev/null; then
+          # The heartbeat is up — but the RTS linker can also load reflex with a
+          # SILENTLY bad relocation (no crash message): the app runs yet the
+          # reflex network is corrupt and never builds the DOM.  So require the
+          # DOM to actually populate (max across windows) before declaring
+          # success; otherwise it's a dud layout — retry.
+          dom=$("$LEKSAHCMD" js eval 'document.querySelectorAll("*").length' 2>/dev/null \
+                  | grep -oE '[0-9]+' | sort -n | tail -1)
+          if [ -n "$dom" ] && [ "$dom" -gt 2000 ] 2>/dev/null; then outcome=up; break; fi
+        fi
+        sleep 2
+      done
+      case "$outcome" in
+        up) ghci_ok=1; echo "leksah is up (attempt $gattempt, DOM=$dom)."; break ;;
+        reloc) echo "RTS-linker relocation lottery lost (attempt $gattempt) — retrying with a fresh layout." ;;
+        *) echo "ghci UI did not build (attempt $gattempt, outcome=${outcome:-frozen}) — retrying with a fresh layout." ;;
+      esac
+    done
+    if [ "$ghci_ok" != 1 ]; then
+      echo "Gave up starting the ghci session after retries — see $GHCI_LOG." >&2
+      exit 1
+    fi
+  fi
+  # Interactive: attach to the repl pane (not from inside another tmux —
+  # nested attach refuses); in a tmux pane, tail the log instead; headless
+  # (scripts/agents), just leave the repl running detached.
+  if [ -t 0 ] && [ -z "${TMUX:-}" ]; then
+    exec "$TMUX_BIN" -L "$TMUXSOCK" attach -t ghci </dev/tty >/dev/tty 2>&1
+  elif [ -t 0 ]; then
+    echo "(inside tmux — tailing $GHCI_LOG; the repl runs in session ghci)"
+    exec tail -n +1 -f "$GHCI_LOG"
+  else
+    echo "Not a terminal — the repl keeps running detached in tmux."
+    echo "Attach with: tmux -L $TMUXSOCK attach -t ghci"
+    exit 0
+  fi
 fi
 
 LEKSAH_EXIT_CODE=2

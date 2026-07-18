@@ -70,6 +70,7 @@ module IDE.Web.TmuxCC
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
+import IDE.Web.ThreadPriority (ThreadPriority(..), forkPriorityThread)
 import Control.Concurrent.STM
        (TChan, atomically, newTChanIO, readTChan, tryReadTChan, writeTChan)
 import Control.Exception (SomeException, catch, try)
@@ -217,7 +218,10 @@ startCCWith argv = do
                                 T.takeEnd 8192 (acc <> TE.decodeUtf8With TEE.lenientDecode chunk)
                             pump
             pump) `catch` \(_ :: SomeException) -> return ()
-    _ <- forkIO $ reader cc hout
+    -- The reader parses the tmux control-mode stream; run it as a
+    -- priority-raised bound thread so terminal output stays responsive under
+    -- heavy background CPU load.
+    _ <- forkPriorityThread High $ reader cc hout
     return cc
 
 -- | The reader thread: one ordered pass over stdout.

@@ -1,0 +1,94 @@
+diff -ru a/src/Cabal/Config.hs b/src/Cabal/Config.hs
+--- a/src/Cabal/Config.hs	2026-07-17 23:44:39.431164000 +1200
++++ b/src/Cabal/Config.hs	2026-07-17 23:45:13.033826604 +1200
+@@ -156,7 +156,11 @@
+         cfg <- C.parseFieldGrammar C.cabalSpecLatest fields grammar
+         foldl' (&) cfg <$> traverse parseSec (concat sections)
+ 
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++    parseSec :: C.Section C.Position -> C.ParseResult src (Config f -> Config f)
++#else
+     parseSec :: C.Section C.Position -> C.ParseResult (Config f -> Config f)
++#endif
+     parseSec (C.MkSection (C.Name _pos name) [C.SecArgName _pos' secName] fields) | name == "repository" = do
+         let repoName = C.fromUTF8BS secName
+         let fields' = fst $ C.partitionFields fields
+diff -ru a/src/Cabal/Package.hs b/src/Cabal/Package.hs
+--- a/src/Cabal/Package.hs	2026-07-17 23:44:39.431956000 +1200
++++ b/src/Cabal/Package.hs	2026-07-17 23:48:51.898475248 +1200
+@@ -1,3 +1,4 @@
++{-# LANGUAGE CPP #-}
+ module Cabal.Package (
+     readPackage,
+     parsePackage,
+@@ -9,6 +10,9 @@
+ 
+ import qualified Data.ByteString                        as BS
+ import qualified Distribution.Fields                    as C
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++import qualified Distribution.Parsec                    as C
++#endif
+ import qualified Distribution.PackageDescription        as C
+ import qualified Distribution.PackageDescription.Parsec as C
+ 
+@@ -26,5 +30,11 @@
+ -- | Parse @.cabal@ file.
+ parsePackage :: FilePath -> ByteString -> Either (ParseError NonEmpty) C.GenericPackageDescription
+ parsePackage fp contents = case C.runParseResult $ C.parseGenericPackageDescription contents of
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++    -- Cabal-syntax 3.17: runParseResult wraps warnings/errors in
++    -- PWarningWithSource / PErrorWithSource.
++    (ws, Left (_mv, errs)) -> Left $ ParseError fp contents (fmap C.perror errs) (map C.pwarning ws)
++#else
+     (ws, Left (_mv, errs)) -> Left $ ParseError fp contents errs ws
++#endif
+     (_, Right gpd)         -> Right gpd
+diff -ru a/src/Cabal/Parse.hs b/src/Cabal/Parse.hs
+--- a/src/Cabal/Parse.hs	2026-07-17 23:44:39.432096000 +1200
++++ b/src/Cabal/Parse.hs	2026-07-17 23:45:13.033666483 +1200
+@@ -1,3 +1,4 @@
++{-# LANGUAGE CPP                  #-}
+ {-# LANGUAGE DeriveGeneric        #-}
+ {-# LANGUAGE StandaloneDeriving   #-}
+ {-# LANGUAGE UndecidableInstances #-}
+@@ -32,13 +33,25 @@
+ -- This variant doesn't return any warnings in the successful case.
+ --
+ parseWith
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++    -- Cabal-syntax 3.17: ParseResult gained a source type parameter.
++    :: ([C.Field C.Position] -> C.ParseResult src a)  -- ^ parse
++#else
+     :: ([C.Field C.Position] -> C.ParseResult a)  -- ^ parse
++#endif
+     -> FilePath                                   -- ^ filename
+     -> ByteString                                 -- ^ contents
+     -> Either (ParseError NonEmpty) a
+ parseWith parser fp bs = case C.runParseResult result of
+     (_, Right x)       -> return x
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++    -- Cabal-syntax 3.17: runParseResult wraps warnings/errors in
++    -- PWarningWithSource / PErrorWithSource; ParseError keeps the
++    -- plain PError/PWarning payloads.
++    (ws, Left (_, es)) -> Left $ ParseError fp bs (fmap C.perror es) (map C.pwarning ws)
++#else
+     (ws, Left (_, es)) -> Left $ ParseError fp bs es ws
++#endif
+   where
+     result = case C.readFields' bs of
+         Left perr -> C.parseFatalFailure pos (show perr) where
+diff -ru a/src/Cabal/Project.hs b/src/Cabal/Project.hs
+--- a/src/Cabal/Project.hs	2026-07-17 23:44:39.432237000 +1200
++++ b/src/Cabal/Project.hs	2026-07-17 23:45:13.033961933 +1200
+@@ -199,7 +199,11 @@
+ 
+     -- Special case for source-repository-package. If you add another such
+     -- special case, make sure to update otherFieldName appropriately.
++#if MIN_VERSION_Cabal_syntax(3,17,0)
++    parseSec :: C.Section C.Position -> C.ParseResult src (Project Void String String -> Project Void String String)
++#else
+     parseSec :: C.Section C.Position -> C.ParseResult (Project Void String String -> Project Void String String)
++#endif
+     parseSec (C.MkSection (C.Name _pos name) [] fields) | name == sourceRepoSectionName = do
+         let fields' = fst $ C.partitionFields fields
+         repos <- C.parseFieldGrammar C.cabalSpecLatest fields' sourceRepositoryPackageGrammar

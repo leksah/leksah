@@ -11,10 +11,14 @@ import Language.Javascript.JSaddle.WebView2.Internal (jsaddleMainURL)
 
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.Main (newIDE, startJSaddle)
+import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.Win32Menu (installWin32Menu)
 
 main :: IO ()
 main = do
+  -- Raise the UI thread so it keeps CPU under heavy background load.  No-op on
+  -- Windows for now (see IDE.Web.ThreadPriority); kept for entry-point parity.
+  raiseCurrentThreadPriority Interactive
   dev <- elem "--develop-leksah" <$> getArgs
   let cfg = def { _webView2Config_title = Just "Leksah"
                 , _webView2Config_width = 1200

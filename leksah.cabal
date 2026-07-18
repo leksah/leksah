@@ -3,17 +3,22 @@ name: leksah
 version: 0.17.0.0
 license: GPL-2.0-or-later
 license-file: LICENSE
-copyright: 2007-2016 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
+copyright: 2007-2026 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 maintainer: maintainer@leksah.org
 author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 stability: provisional
-tested-with: ghc ==8.2.1 ghc ==8.0.2
-homepage: http://www.leksah.org
-package-url: http://code.haskell.org/leksah
+tested-with: ghc ==9.6.7 ghc ==9.8.4 ghc ==9.10.1 ghc ==9.12.2 ghc ==9.14.1
+homepage: https://leksah.org
 bug-reports: https://github.com/leksah/leksah/issues
-synopsis: Haskell IDE written in Haskell
+synopsis: An IDE written in Haskell
 description:
-    An Integrated Development Environment for Haskell written in Haskell.
+    A fast, hackable development environment written in Haskell.  The UI is
+    one reflex-dom program that runs as a native app (WKWebView on macOS,
+    GTK4/WebKitGTK on Linux, WebView2 on Windows), serves itself to any
+    browser, or compiles to JavaScript and runs entirely in-page.  Deep
+    Haskell tooling (cabal workspaces, haskell-language-server, GHCi
+    debugging) plus multi-language LSP support, tmux-backed terminals and
+    built-in git panes.
 category: Development, IDE, Editor
 x-gettext-po-files: po/*.po
 x-gettext-domain-name: leksah
@@ -205,6 +210,29 @@ flag webkitgtk
         Linux unconditionally against jsaddle-webkitgtk (GTK4/WebKitGTK 6.0).
     default: False
 
+flag objc-in-library
+    description:
+        Compile leksah-mac-menu.m into the leksah-mac-glue sublibrary (the
+        default).  leksah.sh --ghci switches this off: GHCi's RTS linker can
+        load Objective-C objects but never registers their classes with the
+        ObjC runtime, so the ghci session preloads the same file compiled as
+        libleksah-mac-menu.dylib instead (dyld registers the classes) and the
+        sublibrary's foreign imports resolve against it.
+    default: True
+    manual: True
+
+flag no-hlint
+    description:
+        Drop the hlint dependency (and thus ghc-lib-parser) from the
+        leksah-nogtk library, using the tiny Idea stand-in in IDE.Core.Types
+        instead (the same one the JS backend uses).  leksah.sh --ghci switches
+        this on: GHCi's RTS linker cannot load ghc-lib-parser's ~125 MB static
+        archive (its info-table SUBTRACTOR relocations fall out of range).  The
+        native web UI never calls hlint — it only carries the Idea type — so
+        the interpreted dev loop loses nothing.
+    default: False
+    manual: True
+
 library
     exposed-modules:
         IDE.BufferMode
@@ -324,6 +352,8 @@ library
         IDE.Web.ColorPick
         IDE.Web.TerminalInput
         IDE.Web.TmuxCC
+        IDE.Web.GhciMode
+        IDE.Web.ThreadPriority
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
@@ -591,6 +621,8 @@ library leksah-nogtk
         IDE.Web.ColorPick
         IDE.Web.TerminalInput
         IDE.Web.TmuxCC
+        IDE.Web.GhciMode
+        IDE.Web.ThreadPriority
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
@@ -707,7 +739,6 @@ library leksah-nogtk
             HTTP >=4000.3.3,
             criterion-measurement >=0.1.1.0 && <0.3,
             fsnotify >=0.3.0.1 && <0.5,
-            hlint >=3.2 && <3.11,
             jsaddle-terminal >=0.1 && <0.2,
             vado >=0.0.1 && <0.1,
             wai >=3.2.1.2 && <3.3,
@@ -715,6 +746,17 @@ library leksah-nogtk
             wai-extra >=3.0.24.3 && <3.2,
             warp >=3.2.25 && <3.5,
             websockets >=0.12.5.2 && <0.14
+
+    -- hlint pulls ghc-lib-parser.  It is unavailable on the JS backend (its
+    -- RTS-internals hsc doesn't compile) and is deliberately dropped by the
+    -- no-hlint flag for leksah.sh --ghci (the RTS linker can't load
+    -- ghc-lib-parser's static archive).  In both cases IDE.Core.Types'
+    -- Idea stand-in takes over; the native web UI only carries the type.
+    if !(impl(ghcjs) || arch(javascript) || flag(no-hlint))
+        build-depends:
+            hlint >=3.2 && <3.11
+    if flag(no-hlint)
+        cpp-options: -DLEKSAH_NO_HLINT
 
     -- NOTE: no `ltk` package dep here — the modules leksah-nogtk needs
     -- (Control.Event) are compiled straight from vendor/ltk/src via
@@ -806,6 +848,30 @@ library leksah-nogtk
             HaRe >=0.8.4.1 && <0.9,
             ghc-mod-core >=5.9.0.0 && <5.10,
             monad-control >=1.0.2.3 && <1.1
+
+-- The compiled home of the macOS native glue: leksah-mac-menu.m plus the
+-- foreign-export shims Objective-C calls back into (dispatching through
+-- callbacks registered by IDE.Web.MacMenu).  A separate always-compiled
+-- sublibrary because `foreign export` is illegal in interpreted code — under
+-- `leksah.sh --ghci` the executable is bytecode, but ghci dlopens this
+-- sublibrary's dylib like any package dependency, so the ObjC classes
+-- register and the exports resolve.  Off macOS it compiles to no-op stubs
+-- (no c-sources), so the component builds everywhere.
+library leksah-mac-glue
+    default-language: Haskell2010
+    ghc-options: -Wall -ferror-spans
+    hs-source-dirs: src-mac-glue
+    exposed-modules:
+        IDE.Web.MacGlue
+    build-depends:
+        base >=4.0.0.0 && <4.23
+    if os(osx)
+      frameworks:
+        Cocoa
+        ApplicationServices
+      if flag(objc-in-library)
+        c-sources:
+          main/leksah-mac-menu.m
 
 executable leksah-classic
     main-is: Main.hs
@@ -913,16 +979,15 @@ executable leksah
       hs-source-dirs: src-wkwebview main
       other-modules:
         IDE.Web.MacMenu
-      c-sources:
-        main/leksah-mac-menu.m
-      frameworks:
-        Cocoa
-        ApplicationServices
+      -- The ObjC (leksah-mac-menu.m) + its foreign-export shims live in the
+      -- compiled leksah-mac-glue sublibrary so this executable can also be
+      -- loaded interpreted (leksah.sh --ghci); see that stanza.
       build-depends:
         containers >=0.2.0.0 && <0.9,
         data-default >=0.7.1.1 && <0.9,
         unix >=2.3.1.0 && <2.9,
-        jsaddle-wkwebview >=0.9.4.0 && <0.10
+        jsaddle-wkwebview >=0.9.4.0 && <0.10,
+        leksah:leksah-mac-glue
 
     -- Linux: the leksah web UI in a native GTK4 window hosting a WebKitGTK 6.0
     -- WebView (jsaddle-webkitgtk), with a native GMenu menubar built from the
@@ -998,6 +1063,13 @@ executable leksah-cmd
         directory >=1.0.0.2 && <1.4,
         filepath >=1.1.0.1 && <1.6,
         network >=2.6 && <3.3,
+        -- process: `hs eval` and the ghci-mode restart drive the repl's tmux
+        -- pane (send-keys / capture-pane); still no leksah-library deps.
+        process >=1.6 && <1.7,
+        -- unix: getProcessID, to make each invocation's ghci output-fence
+        -- markers unique (so a poll never matches a previous run's stale window
+        -- still sitting in the pane scrollback).
+        unix >=2.7 && <2.9,
         text >=0.11.1.5 && <2.2
 
 --test-suite tests

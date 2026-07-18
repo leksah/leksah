@@ -1,0 +1,315 @@
+<!doctype html>
+<!-- leksah.org homepage.  Authored in the leksah repo at docs/website/
+     (the site root) and mirrored to the leksah/leksah.github.io repo for
+     GitHub Pages.  Self-contained: inline CSS/JS, assets by root-absolute
+     path (/pics, /media) matching the deployed layout; the live demo at
+     /try/ is embedded on demand (click) so visitors don't download its
+     ~58 MB leksah.js unless they ask for it. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Leksah — an IDE written in Haskell</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+        content="Leksah is a fast, hackable IDE written in Haskell: one functional-reactive codebase that runs natively on macOS, Linux and Windows, in your browser, and even compiled to JavaScript.">
+  <link rel="icon" href="/pics/leksah.png">
+  <style>
+    :root {
+      --bg: #0d1117; --panel: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #9198a1; --accent: #a371f7;
+      --accent2: #58a6ff; --green: #3fb950;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text);
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+    header.site {
+      display: flex; align-items: center; gap: 12px;
+      padding: 18px 0; border-bottom: 1px solid var(--border);
+    }
+    header.site img { width: 32px; height: 32px; }
+    header.site .name { font-weight: 700; font-size: 18px; }
+    header.site nav { margin-left: auto; display: flex; gap: 20px; flex-wrap: wrap; }
+    header.site nav a { color: var(--muted); }
+    header.site nav a:hover { color: var(--text); text-decoration: none; }
+
+    .hero { text-align: center; padding: 72px 0 40px; }
+    .hero img.logo { width: 96px; height: 96px; margin-bottom: 20px; }
+    .hero h1 {
+      font-size: clamp(34px, 6vw, 56px); line-height: 1.15;
+      letter-spacing: -0.02em; font-weight: 800;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .hero p.sub {
+      margin: 18px auto 0; max-width: 640px; color: var(--muted); font-size: 19px;
+    }
+    .cta { margin-top: 32px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: 12px 22px; border-radius: 8px;
+      font-weight: 600; border: 1px solid var(--border);
+    }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { filter: brightness(1.1); text-decoration: none; }
+    .btn.ghost { color: var(--text); background: var(--panel); }
+    .btn.ghost:hover { border-color: var(--muted); text-decoration: none; }
+
+    .demo { margin: 40px 0 24px; }
+    .demo .frame {
+      position: relative; border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; background: #000;
+      box-shadow: 0 24px 80px rgba(0,0,0,.55);
+    }
+    .demo video { display: block; width: 100%; }
+    .demo .overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      background: linear-gradient(rgba(13,17,23,.15), rgba(13,17,23,.55));
+      cursor: pointer; border: 0; width: 100%; color: var(--text);
+    }
+    .demo .overlay .play {
+      padding: 14px 26px; border-radius: 10px; background: var(--accent);
+      color: #fff; font-weight: 700; font-size: 17px;
+      box-shadow: 0 8px 30px rgba(163,113,247,.45);
+    }
+    .demo .overlay:hover .play { filter: brightness(1.1); }
+    .demo .overlay .hint { font-size: 13px; color: #c9d1d9; text-shadow: 0 1px 4px #000; }
+    .demo iframe { display: block; width: 100%; height: min(78vh, 760px); border: 0; background: var(--bg); }
+    .demo .below { text-align: center; margin-top: 12px; color: var(--muted); font-size: 14px; }
+
+    section { padding: 56px 0 8px; }
+    section h2 { font-size: 28px; letter-spacing: -0.01em; margin-bottom: 8px; }
+    section p.lead { color: var(--muted); max-width: 720px; margin-bottom: 28px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+    }
+    .card h3 { font-size: 16px; margin-bottom: 6px; }
+    .card p { color: var(--muted); font-size: 14.5px; }
+    .card .tag {
+      font-size: 11px; font-weight: 600; color: var(--bg);
+      background: var(--muted); border-radius: 4px; padding: 1px 6px;
+      vertical-align: 2px; margin-left: 6px;
+    }
+
+    .platforms { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    .platforms span {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+      padding: 6px 14px; font-size: 14px; color: var(--muted);
+    }
+    .platforms b { color: var(--text); font-weight: 600; }
+
+    pre.install {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 18px 20px; overflow-x: auto; line-height: 1.7;
+    }
+    pre.install .c { color: var(--muted); }
+    pre.install .p { color: var(--green); user-select: none; }
+
+    .haskell {
+      background: linear-gradient(180deg, rgba(163,113,247,.07), transparent);
+      border: 1px solid var(--border); border-radius: 12px; padding: 28px;
+    }
+    .haskell p { color: var(--muted); max-width: 780px; }
+    .haskell p + p { margin-top: 12px; }
+    .haskell b { color: var(--text); }
+
+    footer {
+      margin-top: 72px; border-top: 1px solid var(--border);
+      padding: 28px 0 40px; color: var(--muted); font-size: 14px;
+      display: flex; gap: 18px; flex-wrap: wrap;
+    }
+    footer .spacer { flex: 1; }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site">
+    <img src="/pics/leksah.png" alt="">
+    <span class="name">Leksah</span>
+    <nav>
+      <a href="/try/">Demo</a>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#haskell">Haskell</a>
+      <a href="https://github.com/leksah/leksah/tree/master/docs">Docs</a>
+      <a href="https://github.com/leksah/leksah">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <img class="logo" src="/pics/leksah.png" alt="Leksah logo">
+    <h1>An IDE <em>written in Haskell</em></h1>
+    <p class="sub">
+      One functional-reactive codebase that runs as a native app on macOS,
+      Linux and Windows, serves itself to your browser — and compiles to
+      JavaScript to run entirely in this page.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="/try/">▶&nbsp; Try it in your browser</a>
+      <a class="btn ghost" href="https://github.com/leksah/leksah">View on GitHub</a>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="frame" id="demoFrame">
+      <video autoplay muted loop playsinline poster="" aria-label="Screencast of Leksah editing a Haskell game project">
+        <source src="/media/breakout-demo.webm" type="video/webm">
+        <source src="/media/breakout-demo.mp4" type="video/mp4">
+      </video>
+      <button class="overlay" id="launchDemo" type="button">
+        <span class="play">▶&nbsp; Launch the live demo</span>
+        <span class="hint">the real IDE, compiled to JavaScript — a few&nbsp;MB download, no install</span>
+      </button>
+    </div>
+    <div class="below">
+      The demo is Leksah itself, built with GHC's JavaScript backend, editing a
+      small game project. Prefer a full window? <a href="/try/">Open it full-page&nbsp;↗</a>
+    </div>
+  </div>
+
+  <section id="features">
+    <h2>Batteries included</h2>
+    <p class="lead">
+      Leksah is deepest at Haskell — and its editor, terminals, git and
+      language-server support work the same for any language.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3>Your choice of editor</h3>
+        <p>CodeMirror&nbsp;6 by default, or Monaco — the editor from VS&nbsp;Code —
+           via a preference. Shared find bar, dirty-change gutter, in-editor diffs.</p>
+      </div>
+      <div class="card">
+        <h3>Language servers, zero config</h3>
+        <p>Deep <code>haskell-language-server</code> integration, and automatic use of
+           <code>typescript-language-server</code>, <code>rust-analyzer</code>,
+           <code>gopls</code>, <code>pyright</code>, <code>clangd</code> and
+           <code>nixd</code> when they're on your PATH: diagnostics, hover,
+           completion, go-to-definition, references.</p>
+      </div>
+      <div class="card">
+        <h3>Real terminals</h3>
+        <p>Terminal panes are tmux sessions — persistent, searchable, and still
+           running after a restart. File references in output are clickable.</p>
+      </div>
+      <div class="card">
+        <h3>Git built in</h3>
+        <p>A live changes pane and a history browser with side-by-side diffs
+           for any commit.</p>
+      </div>
+      <div class="card">
+        <h3>Haskell projects, understood</h3>
+        <p>Cabal workspaces, packages and components; incremental and background
+           builds; errors as squiggles and a structured Errors pane; GHCi debugging;
+           cached Nix dev-shell environments.</p>
+      </div>
+      <div class="card">
+        <h3>Remote projects <span class="tag">experimental</span></h3>
+        <p>Open a project over SSH: editing, builds and the language server run
+           on the remote machine while the UI stays local.</p>
+      </div>
+      <div class="card">
+        <h3>AI assistant <span class="tag">experimental</span></h3>
+        <p>Run your AI tool in a terminal pane and send it the current selection,
+           a <code>file#L10-20</code> reference, the current error, or a screenshot
+           region — straight from the menu.</p>
+      </div>
+      <div class="card">
+        <h3>Multiple windows</h3>
+        <p>Open extra OS windows onto the same session; a tab flipper switches
+           between recent tabs across all of them.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>One codebase, every platform</h2>
+    <p class="lead">
+      The whole UI is a single <a href="https://reflex-frp.org/">reflex-dom</a>
+      program. Each platform just gives it a different home:
+    </p>
+    <div class="platforms">
+      <span><b>macOS</b> — native WKWebView app</span>
+      <span><b>Linux</b> — GTK4 + WebKitGTK app</span>
+      <span><b>Windows</b> — Edge WebView2 app</span>
+      <span><b>Any browser</b> — served over HTTP</span>
+      <span><b>No install at all</b> — compiled to JavaScript (<a href="/try/">the demo</a>)</span>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Get it</h2>
+    <p class="lead">Install <a href="https://nixos.org/download/">Nix</a>, then:</p>
+    <pre class="install"><code><span class="p">$</span> git clone --recursive https://github.com/leksah/leksah.git
+<span class="p">$</span> cd leksah
+<span class="p">$</span> ./leksah.sh --nix ghc914   <span class="c"># native app (or --warp for the browser UI)</span></code></pre>
+    <p class="lead" style="margin-top:16px">
+      See <a href="https://github.com/leksah/leksah/blob/master/docs/getting-started.md">getting started</a>
+      and <a href="https://github.com/leksah/leksah/blob/master/docs/building.md">building from source</a>
+      for details, front-end variants and packaging outputs.
+    </p>
+  </section>
+
+  <section id="haskell">
+    <h2>Written in Haskell, since 2007</h2>
+    <div class="haskell">
+      <p>
+        Leksah isn't just <i>for</i> Haskell — it's one of the larger open-source
+        applications <b>written in</b> it. The UI is functional-reactive
+        programming end to end: the same Haskell renders through a native
+        WebView via <a href="https://github.com/ghcjs/jsaddle">jsaddle</a>,
+        over a websocket to your browser, or compiled to JavaScript outright
+        — the <a href="/try/">demo above</a> is the IDE itself, built with
+        GHC's JS backend.
+      </p>
+      <p>
+        It's also self-hosting in the most literal sense: Leksah is developed
+        in Leksah, and a running instance rebuilds itself, in place, with its
+        own build system. If you want to see what a substantial, long-lived
+        Haskell codebase looks like — or hack on one —
+        <a href="https://github.com/leksah/leksah">the source is right here</a>.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <span>© 2007–2026 the Leksah team · <a href="https://github.com/leksah/leksah/blob/master/LICENSE">GPL-2.0</a></span>
+    <span class="spacer"></span>
+    <a href="https://github.com/leksah/leksah">GitHub</a>
+    <a href="https://github.com/leksah/leksah/issues">Issues</a>
+    <a href="https://github.com/leksah/leksah/blob/master/CHANGELOG.md">Changelog</a>
+  </footer>
+</div>
+
+<script>
+  // Swap the screencast for the live in-browser IDE on demand (its leksah.js
+  // is ~58 MB after compression tricks; never auto-load it).
+  document.getElementById('launchDemo').addEventListener('click', function () {
+    var frame = document.getElementById('demoFrame');
+    var iframe = document.createElement('iframe');
+    iframe.src = '/try/';
+    iframe.title = 'Leksah running in your browser';
+    frame.replaceChildren(iframe);
+  });
+</script>
+
+</body>
+</html>

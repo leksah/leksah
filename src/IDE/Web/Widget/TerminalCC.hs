@@ -110,6 +110,7 @@ import IDE.Web.HostFlags (getBrowserHosted, flipHintText)
 import IDE.Web.JsaddleTunnel
        (registerTunnelSync, unregisterTunnelSync, tunnelSyncReply)
 import IDE.Web.TmuxCC
+import IDE.Web.ThreadPriority (ThreadPriority(..), forkPriorityThread)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Widget.Metadata (lookupIdentLocations)
 import qualified IDE.LSP as LSP
@@ -275,7 +276,10 @@ terminalCCWidget ide sessionId selectedE = do
         -- pausedRef routing, so flow-control pause/replay (which replays
         -- screen TEXT, never raw escapes) can neither eat nor duplicate a
         -- frame; residual bytes flow on as ordinary EvOutput.
-        drainTid <- forkIO . forever $ ccEventsBatch cc >>= mapM_
+        -- Priority-raised bound thread: this drain feeds the jsaddle bridge and
+        -- xterm, so keeping it scheduled under heavy background CPU load is what
+        -- keeps typing/scrolling smooth while compilations run.
+        drainTid <- forkPriorityThread High . forever $ ccEventsBatch cc >>= mapM_
                  (routeTunnelEv cc sessionId tunnelsRef scansRef closedRef
                                 fireEv fireTunnelEv fireBatchEv)
                  . coalesceOutputs

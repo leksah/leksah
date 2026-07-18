@@ -26,7 +26,7 @@ module IDE.Web.Main
 
 import Control.Concurrent
        (tryPutMVar, takeMVar, putMVar, readMVar, threadDelay, modifyMVar,
-        newMVar, newEmptyMVar, forkIO, myThreadId)
+        newMVar, newEmptyMVar, forkIO, killThread, myThreadId)
 import Control.Concurrent.Chan (readChan)
 import Control.Concurrent.STM (readTVarIO)
 import GHC.Conc.Sync (labelThread)
@@ -184,6 +184,8 @@ import IDE.Web.RegionCapture
 import IDE.Web.AIContextRequest (AIAction(..), nextAIAction)
 import IDE.Web.RemoteTermRequest (nextTermRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
+import IDE.Web.GhciMode (ghciMode, registerGhciCleanup, stopForGhci)
+import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported)
 import IDE.Web.TerminalInput
        (setActiveTerminal, tmuxCommandActiveTerminal, selectSplitActiveTerminal,
@@ -448,7 +450,10 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                   suppress <- liftIO $ atomicModifyIORef' suppressNextRestart (\s -> (False, s))
                   if suppress
                     then liftIO $ putStrLn "leksah: QuitToRestart suppressed (rebuild-self --no-restart)"
-                    else liftIO $ exitImmediately (ExitFailure 2)
+                    -- ghci mode: never exit the process (it IS the ghci
+                    -- session) — tear down and return to the prompt instead.
+                    else liftIO $ if ghciMode then stopForGhci
+                                              else exitImmediately (ExitFailure 2)
                   return e
           -- External relaunch trigger (dev-relaunch.sh): poll for a request
           -- file and exit(2) so leksah-nix.sh's loop rebuilds and relaunches.
@@ -465,7 +470,8 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                   there <- doesFileExist trigger
                   when there $ do
                       removeFile trigger `catch` \(_ :: SomeException) -> return ()
-                      exitImmediately (ExitFailure 2)
+                      if ghciMode then stopForGhci
+                                  else exitImmediately (ExitFailure 2)
 #if defined(ghcjs_HOST_OS)
       -- The browser demo's workspace lives in the page-seeded mock tree
       -- (window.leksahDemoFiles → IDE.Web.FS).
@@ -843,6 +849,10 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- the pane (the CSS reveal is hover-driven; this overrides it).
   _ <- eval collapseAutoHideJs
 
+  -- Drag-to-resize the side (tall) and bottom (wide1) panes by their divider
+  -- edge handles; the widths persist in localStorage across reloads.
+  _ <- eval resizeBarsJs
+
   -- Esc collapses the auto-hidden side/bottom bar when focus is inside it.
   _ <- eval escAutoHideJs
 
@@ -966,8 +976,15 @@ jsMain showMenubar macTitlebar mbWid ideR = do
             (current ideD) (leftmost [polledIdeE, heartbeatE])
       performEvent_ $ ffor (attach (current ideD) heartbeatE) $ \(cur, new) -> do
           -- Label this window's frame thread (processAsyncEvents) so a
-          -- `leksah-cmd threads` dump can tell the windows apart.  Idempotent.
-          liftIO (myThreadId >>= (`labelThread` ("reflex-frames-" <> show wid)))
+          -- `leksah-cmd threads` dump can tell the windows apart, and raise its
+          -- OS-thread priority so UI reactivity keeps CPU when background
+          -- compilations saturate the machine.  This handler runs ON the frame
+          -- thread (reflex processes a network's effects on its single frame
+          -- thread), so the priority sticks to the right OS thread.  Both are
+          -- idempotent; the 5s cadence makes the repeat cost negligible.
+          liftIO $ do
+              myThreadId >>= (`labelThread` ("reflex-frames-" <> show wid))
+              raiseCurrentThreadPriority Interactive
           wlog wid ("alive ideVer=" <> show (cur ^. ideVersion) <> " mvarVer=" <> show (new ^. ideVersion)
                     <> if new ^. ideVersion > cur ^. ideVersion then " STALE(+" <> show (new ^. ideVersion - cur ^. ideVersion) <> ")" else "")
       performEvent_ $ ffor freshPolledE $ \i -> wlog wid ("ideD<-resync ver=" <> show (i ^. ideVersion))
@@ -1054,7 +1071,9 @@ enumerateWorkspaceFiles showHidden showIgnored dirs =
 startJSaddle :: Int -> (ByteString -> ByteString -> JSM () -> IO ()) -> JSM () -> IO ()
 startJSaddle p runJs jsm = do
   dataDir <- getDataDir
-  _ <- forkIO $ runSettings (setPort p (setTimeout 3600 defaultSettings)) =<<
+  -- ghci mode: killing the warp thread closes the port-p listener (warp
+  -- brackets the bind), so a fresh :main after :reload can rebind it.
+  warpTid <- forkIO $ runSettings (setPort p (setTimeout 3600 defaultSettings)) =<<
     jsaddleOr defaultConnectionOptions
               (addDebugMenu >> jsm >> syncPoint)
               (\req sendResponse ->
@@ -1092,6 +1111,7 @@ startJSaddle p runJs jsm = do
                       (LBS.fromStrict batch)
                   Nothing -> W.responseLBS H.status504 [] "no such tunnel"
             _ -> staticApp (defaultWebAppSettings dataDir) req sendResponse)
+  when ghciMode $ registerGhciCleanup (killThread warpTid)
   runJs indexHtml ("http://127.0.0.1:" <> encodeUtf8 (T.pack $ show p)) jsm
 
 debugJSaddle :: Int -> JSM () -> IO ()
@@ -1203,6 +1223,10 @@ tabIconSrc k = case k of
   WorkspaceKey   -> Just "/pics/workspace.svg"
   TerminalsKey   -> Just "/pics/terminals.svg"
   MetadataKey    -> Just "/pics/metadata.svg"
+  ErrorsKey      -> Just "/pics/errors.svg"
+  LogKey         -> Just "/pics/log.svg"
+  GrepKey        -> Just "/pics/grep.svg"
+  ChangesKey     -> Just "/pics/changes.svg"
   GitLogKey{}    -> Just "/pics/tree-git.svg"
   EditorKey file -> Just (fileIconSrc file)
   _              -> Nothing
@@ -1658,6 +1682,63 @@ hintsJs = T.unlines
   , "  document.addEventListener('focusin', window.leksahUpdateHints, true);"
   , "  window.addEventListener('resize', window.leksahUpdateHints);"
   , "  window.addEventListener('keydown', function(e){ if(e.key==='Meta') window.leksahUpdateHints(); }, true);"
+  , "})();"
+  ]
+
+-- | Drag-to-resize the side ("tall") and bottom ("wide1") panes.  The dividers'
+-- ::after edge strips (see IDE.Web.Layout) are the only grabbable bits; a
+-- mousedown on one starts a drag that drives the @--tall-col@ / @--wide1-row@
+-- custom properties on the @.leksah@ root live, clamped to sane bounds, and
+-- persisted in localStorage so the sizes survive a reload/relaunch.  Handled
+-- entirely in JS (document-level, capture phase) because jsaddle-wkwebview
+-- dispatches events to Haskell asynchronously, so a reflex handler couldn't
+-- track the mouse or preventDefault synchronously.
+resizeBarsJs :: Text
+resizeBarsJs = T.unlines
+  [ "(function(){"
+  , "  if (window.leksahResizeInit) return; window.leksahResizeInit = true;"
+  , "  function root(){ return document.querySelector('.leksah'); }"
+  , "  var drag = null;"
+  , "  document.addEventListener('mousedown', function(e){"
+  , "    var t = e.target;"
+  , "    if (!t || !t.classList) return;"
+  , "    if (t.classList.contains('tall-divider')) drag = 'tall';"
+  , "    else if (t.classList.contains('wide1-divider')) drag = 'wide1';"
+  , "    else return;"
+  , "    e.preventDefault();"
+  , "    document.body.style.cursor = (drag === 'tall') ? 'col-resize' : 'row-resize';"
+  , "  }, true);"
+  , "  document.addEventListener('mousemove', function(e){"
+  , "    if (!drag) return;"
+  , "    var r = root(); if (!r) return;"
+  , "    if (drag === 'tall') {"
+  , "      var maxW = Math.max(200, Math.min(700, window.innerWidth - 200));"
+  , "      var w = Math.max(120, Math.min(maxW, e.clientX - r.getBoundingClientRect().left));"
+  , "      r.style.setProperty('--tall-col', w + 'px');"
+  , "    } else {"
+  , "      var wd = document.querySelector('.wide1-divider');"
+  , "      var bottom = wd ? wd.getBoundingClientRect().bottom : (window.innerHeight - 20);"
+  , "      var h = Math.max(60, Math.min(window.innerHeight - 120, bottom - e.clientY));"
+  , "      r.style.setProperty('--wide1-row', h + 'px');"
+  , "    }"
+  , "    e.preventDefault();"
+  , "  }, true);"
+  , "  document.addEventListener('mouseup', function(){"
+  , "    if (!drag) return;"
+  , "    var r = root();"
+  , "    if (r) { try {"
+  , "      localStorage.setItem('leksahTallCol', r.style.getPropertyValue('--tall-col'));"
+  , "      localStorage.setItem('leksahWide1Row', r.style.getPropertyValue('--wide1-row'));"
+  , "    } catch(_){} }"
+  , "    drag = null; document.body.style.cursor = '';"
+  , "  }, true);"
+  , "  (function restore(){"
+  , "    var r = root(); if (!r) { setTimeout(restore, 200); return; }"
+  , "    try {"
+  , "      var tc = localStorage.getItem('leksahTallCol'); if (tc) r.style.setProperty('--tall-col', tc);"
+  , "      var wr = localStorage.getItem('leksahWide1Row'); if (wr) r.style.setProperty('--wide1-row', wr);"
+  , "    } catch(_){}"
+  , "  })();"
   , "})();"
   ]
 
@@ -4833,6 +4914,12 @@ main showMenubar macTitlebar wid ide = mdo
       <> ((\m -> [modifyIDE_ (webWindows %~ \wins ->
                     foldl' (\ws k -> moveTabTo wid k ws) wins (M.keys m))]) <$> openTabsE)
       <> ((\ks -> [modifyIDE_ (webWindows %~ closeWide0 wid ks)]) <$> closeTabsE)
+      -- Closing a tab also drops it from the shared flip MRU, so the flipper
+      -- forgets it at once (the display filter would hide it anyway, but a
+      -- stale entry would otherwise resurface a reopened tab mid-list).
+      <> ((\ks -> [modifyIDE_ (flipMru %~ filter (\case
+              FlipTab k -> k `notElem` ks
+              _         -> True))]) <$> closeTabsE)
       <> ((\k -> [modifyIDE_ (webWindows %~ activateWide0 wid k)]) <$> wide0ActivateE)
       -- Cross-window flip: make the selected tab active in ITS window (which was
       -- just raised), without moving it here.

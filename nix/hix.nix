@@ -51,8 +51,12 @@ let
   # ghc-exactprint 1.14 targets mainline ghc-9.14's AST; the fork moved
   # the INLINE/RULES phase SourceText from the Activation constructors
   # into ActivationAnn's new aa_phase field.
+  # cabal-install-parsers (cabal-add dep): the fork's ParseResult gained a
+  # source type parameter (`ParseResult src a`) alongside the same
+  # *WithSource error/warning wrappers.
   hlsDepsPatched = pkgs.lib.optionalString isGhc914sh ''
     packages: ${patchedHackage "cabal-add" "0.2" ./patches/cabal-add-cabal-syntax-3.17.patch}
+    packages: ${patchedHackage "cabal-install-parsers" "0.6.3" ./patches/cabal-install-parsers-cabal-syntax-3.17.patch}
     packages: ${patchedHackage "ghc-exactprint" "1.14.0.0" ./patches/ghc-exactprint-1.14-stable-ghc-9.14.patch}
   '';
   # HLS's own hls-cabal-plugin doesn't compile against the fork's Cabal-syntax
@@ -79,16 +83,20 @@ in
 rec {
     projectFileName = "cabal.project";
     cabalProjectLocal = clibNoRts + cabalDoctestPatched + hsloggerNoNetworkJs;
-    # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix -hl branch) that can
-    # cross-compile from darwin to Linux (musl) via hyper-linux.
-    compiler-nix-name = "ghc914";
+    # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix hkm/stable-haskell
+    # branch) that can cross-compile from darwin to Linux (musl) via hyper-linux.
+    compiler-nix-name = "ghc914-sh";
     # v2 slice builds for the native platforms (what leksah's own incremental
     # builds use).  The mingw cross must use the classic builder: v2 compiles
     # custom Setup.hs (entropy, ghc-paths) with the cross GHC, producing a
     # setup.exe the Linux build host can't run; v1's setup-builder uses the
     # build compiler.  projectCross re-evaluates this module with the cross
     # pkgs, so the condition picks the right builder per platform.
-    builderVersion = if pkgs.stdenv.hostPlatform.isWindows then 1 else 2;
+    # mkForce: hkm/stable-haskell's cabal-project.nix now sets builderVersion
+    # itself (=2), so a plain assignment here collides ("conflicting definition
+    # values"); the override takes priority for both the native and cross evals.
+    builderVersion = pkgs.lib.mkForce
+      (if pkgs.stdenv.hostPlatform.isWindows then 1 else 2);
     # Disabled for now (takes too long to plan them all)
     # flake.variants = {
     #   "ghc96".compiler-nix-name = pkgs.lib.mkForce "ghc96";
@@ -266,8 +274,13 @@ rec {
           # HLS's hls-cabal-plugin pulls cabal-add, which caps Cabal-syntax <3.17
           # and can't solve against GHC 9.14's boot Cabal-syntax 3.17.  Relax that
           # bound so the plan resolves (cabal-add still targets the 3.17 API).
+          # -dynamic: HLS's `dynamic` flag (default True) adds `-dynamic` to the
+          # exe's ghc-options, but ghc914-sh is a static GHC and every slice is
+          # built static-only (`shared: False`), so there are no dyn libs to
+          # link — build the exe the static way like the rest of the project.
           cabalProjectLocal =
             "allow-newer: cabal-add:Cabal-syntax, cabal-add:Cabal\n"
+            + "constraints: haskell-language-server -dynamic\n"
             + clibNoRts + hlsDepsPatched;
         };
       };

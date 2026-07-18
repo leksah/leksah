@@ -4,7 +4,7 @@ module IDE.Web.Layout where
 import qualified Data.Text as T (unwords)
 
 import Clay
-       (vh, height, (-:), grid, position, relative, none, (?), Css)
+       (vh, height, (-:), grid, position, relative, none, (?), (#), after, Css)
 import qualified Clay (display)
 
 layoutCss :: Css
@@ -99,8 +99,12 @@ layoutCss = do
         -- (and without a combinatorial explosion across the menubar variants).
         "--wide1-row" -: "150px"
         "--bar-row" -: "20px"
+        -- Side ("tall") pane width, like --wide1-row for the bottom pane: a custom
+        -- property so the drag-to-resize handle (see resizeBarsJs) can set it live
+        -- on this element, and the collapse states override just the column track.
+        "--tall-col" -: "300px"
         "grid-template-rows" -: "20px 28px 1fr var(--wide1-row) var(--bar-row) 20px"
-        "grid-template-columns" -: "300px 1fr"
+        "grid-template-columns" -: "var(--tall-col) 1fr"
         "grid-template-areas" -: T.unwords
           [ "\"menubar   menubar\""
           , "\"toolbar   toolbar\""
@@ -142,7 +146,7 @@ layoutCss = do
     -- pane focuses its list, which holds the bar open; it collapses again on its
     -- own once focus leaves.
     ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)" ?
-        ("grid-template-columns" -: "300px 100vw")
+        ("grid-template-columns" -: "var(--tall-col) 100vw")
     -- Force-collapse override: a selection that activated a file/terminal adds
     -- '.tall-suppress' (see leksahCollapseAutoHide), snapping the pane shut even
     -- while the cursor is still hovering it — the extra class outranks the reveal
@@ -178,7 +182,7 @@ layoutCss = do
     -- its contents (e.g. the "New Terminal" button) don't reflow as the column
     -- narrows -- the narrow column just clips them.
     ".leksah.tall-auto .tab.area-tall > *" ?
-        ("width" -: "300px")
+        ("width" -: "var(--tall-col)")
     -- When the web menu bar is hidden (native menu present), drop its row so
     -- the toolbar sits at the top with no empty strip.
     ".leksah.no-menubar" ? do
@@ -312,6 +316,33 @@ layoutCss = do
         "pointer-events" -: "none"
         "z-index" -: "20"
         position relative
+    -- Drag-to-resize handles.  The dividers are pointer-events:none overlays (so
+    -- clicks fall through to the pane content); a thin ::after edge strip with
+    -- pointer-events:auto makes JUST the boundary grabbable.  Events on the strip
+    -- still target the divider element, so resizeBarsJs keys on its class.  The
+    -- tall handle sits on the sidebar↔editor edge (full height), the wide1 handle
+    -- on the editor↔bottom-bar edge (full width); each drives --tall-col /
+    -- --wide1-row live.
+    ".tall-divider" # after ? do
+        "content" -: "\"\""
+        "position" -: "absolute"
+        "top" -: "0"
+        "bottom" -: "0"
+        "right" -: "-3px"
+        "width" -: "7px"
+        "cursor" -: "col-resize"
+        "pointer-events" -: "auto"
+        "z-index" -: "21"
+    ".wide1-divider" # after ? do
+        "content" -: "\"\""
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "top" -: "-3px"
+        "height" -: "7px"
+        "cursor" -: "row-resize"
+        "pointer-events" -: "auto"
+        "z-index" -: "21"
     -- Hide each divider when its panel is hidden (else a stray 1px line lingers
     -- against a zero-width/height cell).
     ".leksah.tall-hide .tall-divider" ? Clay.display none
