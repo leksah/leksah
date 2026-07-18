@@ -357,7 +357,7 @@ gitTreeNode dir = do
       void $ treeItem "git" False
         (treeSelect "workspace" (return never) $ do
             gitIcon
-            dynText $ ffor brD $ maybe " git" (" " <>)
+            dynText $ ffor brD $ maybe "git" id
             return (never :: Event t ()))
         (el "ul" $ do
             gitBranchesNode dir brD
@@ -567,7 +567,7 @@ ghSearchNode repo label typ state hlD = do
         (treeSelect "workspace" (return never) $ do
             gitIcon
             dynText $ ffor resD $ \r ->
-                " " <> label <> maybe "" (\s -> " (" <> T.pack (show (ghTotal s)) <> ")") r
+                label <> maybe "" (\s -> " (" <> T.pack (show (ghTotal s)) <> ")") r
             return (never :: Event t ()))
         (el "ul" $ do
             void . dyn $ ffor resD $ \case
