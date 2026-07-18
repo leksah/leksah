@@ -17,16 +17,13 @@ import Clay
         backgroundImage, height, (?), Css, Cursor(..), Auto(..))
 import Clay.Text (pre)
 
-import GHCJS.DOM.Types (Element(..), HTMLElement(..), uncheckedCastTo)
-import GHCJS.DOM.HTMLElement (getOffsetHeight)
-
 import Reflex
        (attachWithMaybe, attachWith, zipDynWith, updated,
         leftmost, delay, holdUniqDyn, Dynamic, holdDyn, never, current,
-        getPostBuild, performEvent, fmapMaybe, foldDyn, tag, ffilter)
+        fmapMaybe, foldDyn, tag, ffilter)
 import Reflex.Dom.Core
-       (elDynAttr', virtualList, elAttr, elAttr',
-        resizeDetectorWithAttrs, dynText, MonadWidget, (=:), Event,
+       (elDynAttr', virtualList, elAttr, elClass',
+        dynText, MonadWidget, (=:), Event,
         _element_raw)
 
 import IDE.Web.Theme (selectionColor)
@@ -34,6 +31,7 @@ import IDE.Core.State
        (IDE, logLineMap)
 import IDE.Web.Events (LogEvents, FindbarEvents)
 import IDE.Web.Widget.Findbar (findSelection)
+import IDE.Web.Widget.ResizeObserver (resizeObserver)
 import qualified Data.Text as T (pack)
 
 logCss :: Css
@@ -69,12 +67,10 @@ logWidget
   -> m (Event t LogEvents)
 logWidget ide findE moveE _activateE =
   elAttr "div" ("class" =: "log leksah-vlist" <> "data-pane" =: "log" <> "tabindex" =: "-1") $ mdo
-    (resizeE, result) <- resizeDetectorWithAttrs ("class" =: "log-child") $ mdo
-      let p = uncheckedCastTo HTMLElement $ _element_raw parent
-      postPostBuild <- delay 0 =<< getPostBuild
-      initialHeightE <- performEvent (getOffsetHeight p <$ postPostBuild)
-      let sizeE = leftmost [ initialHeightE, fmapMaybe snd resizeE]
-      (parent, result) <- elAttr' "div" ("style" =: "height: 100%") $ mdo
+    -- The virtual list needs a pixel viewport height; a ResizeObserver on the
+    -- pane feeds it (the scroll-based reflex resize detector is dead in
+    -- wkwebview — see IDE.Web.Widget.ResizeObserver).
+    (childEl, result) <- elClass' "div" "log-child" $ mdo
         logLines <- -- fmap (M.fromList . zip [0..] . toList) <$>
           holdUniqDyn (view logLineMap <$> ide)
         -- Find selects a log line: matching index highlights it and scrolls to it.
@@ -86,7 +82,7 @@ logWidget ide findE moveE _activateE =
           , (\n x -> let x' = pred x in if x' < 0  then n - 1 else x') <$> tag (current numD) (ffilter not moveE)
           , const <$> fmapMaybe id (updated findSelD)
           ])
-        heightD <- holdDyn 80 $ round <$> sizeE
+        heightD <- holdDyn 80 $ round . snd <$> resizeE
         let expandWindow (idx, num) = (max 0 (idx - 20), num + 40)
             itemsInWindow = zipDynWith (\(idx,num) is ->
                 M.fromList $ map (\ix -> (ix, M.lookup ix is)) [idx .. idx + num]) (expandWindow <$> windowD) logLines
@@ -126,6 +122,6 @@ logWidget ide findE moveE _activateE =
               dynText $ maybe "" fst <$> v
             return ()) ---- $ tag (current $ logRefSrcSpan <$> v) (domEvent Dblclick e))
         return never -- . fmapMaybe (fmap ErrorsGoto . listToMaybe . M.elems) $ switchDyn (mergeMap <$> eventsD)
-      return result
+    resizeE <- resizeObserver (_element_raw childEl)
     return result
 

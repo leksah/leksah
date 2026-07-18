@@ -102,8 +102,10 @@ import Reflex
         leftmost, constDyn, fmapMaybe, switchHold, performEvent, performEvent_,
         newTriggerEvent, delay, Dynamic, Event)
 import Reflex.Dom.Core
-       (elAttr, elAttr', dyn, resizeDetectorWithAttrs, MonadWidget, (=:),
+       (elAttr, elAttr', dyn, MonadWidget, (=:),
         _element_raw)
+
+import IDE.Web.Widget.ResizeObserver (resizeObserverWithAttrs)
 
 import System.Directory
        (findExecutable, getHomeDirectory,
@@ -328,7 +330,7 @@ terminalWidget ide termId selectedE = do
   -- lingering with a dead "[exited]" screen.
   (exitedE, triggerExited) <- newTriggerEvent
 
-  (resizeE, el) <- resizeDetectorWithAttrs ("style" =: "height:100%;width:100%") $
+  (resizeE, el) <- resizeObserverWithAttrs ("style" =: "height:100%;width:100%") $
       fst <$> elAttr' "div" ("class" =: "terminal") (pure ())
   -- pToJSVal, not toJSVal/MakeArgs marshalling: under the GHC JS backend the
   -- Element instance diverges (undefined closure entered in the args map) —

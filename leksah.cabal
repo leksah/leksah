@@ -365,6 +365,7 @@ library
         IDE.Web.Widget.Preferences
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
+        IDE.Web.Widget.ResizeObserver
         IDE.Web.Widget.Findbar
         IDE.Web.Widget.AddRemote
         IDE.Web.Widget.RemoteSettings
@@ -634,6 +635,7 @@ library leksah-nogtk
         IDE.Web.Widget.Preferences
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
+        IDE.Web.Widget.ResizeObserver
         IDE.Web.Widget.FileTree
         IDE.Web.Widget.Findbar
         IDE.Web.Widget.AddRemote

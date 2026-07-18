@@ -26,18 +26,17 @@ import Clay
         nowrap, whiteSpace, pct, height, (?),
         Css, Cursor(..), Auto(..), Background(..))
 
-import GHCJS.DOM.Types (Element(..), HTMLElement(..), uncheckedCastTo)
-import GHCJS.DOM.HTMLElement (getOffsetHeight)
-
 import Reflex
        (attachWithMaybe, select,
         attachWith, mergeMap, switchDyn, zipDynWith, updated, leftmost,
         delay, holdUniqDyn, Dynamic, holdDyn, fmapMaybe, tag,
-        current, getPostBuild, performEvent, fan, foldDyn, ffilter)
+        current, fan, foldDyn, ffilter)
 import Reflex.Dom.Core
-       (elDynClass', virtualList, elAttr, elAttr',
-        resizeDetectorWithAttrs, dynText, elDynAttr, text, MonadWidget,
+       (elDynClass', virtualList, elAttr, elClass',
+        dynText, elDynAttr, text, MonadWidget,
         (=:), Event, domEvent, EventName(..), _element_raw)
+
+import IDE.Web.Widget.ResizeObserver (resizeObserver)
 
 import IDE.Web.Theme (selectionColor)
 import IDE.Core.State
@@ -90,42 +89,40 @@ errorsWidget ide allEvents findE moveE activateE = do
       activateSelE = attachWithMaybe (!?) (current allRefs) (tag (current selectionIndexD) activateE)
   goE <- delay 0 $ ErrorsGoto <$> leftmost [selChangeE, activateSelE]
   elAttr "div" ("class" =: "errors leksah-vlist" <> "data-pane" =: "errors" <> "tabindex" =: "-1") $ mdo
-    (resizeE, result) <- resizeDetectorWithAttrs ("class" =: "errors-child") $ mdo
-      let p = uncheckedCastTo HTMLElement $ _element_raw parent
-      postPostBuild <- delay 0 =<< getPostBuild
-      initialHeightE <- performEvent (getOffsetHeight p <$ postPostBuild)
-      let sizeE = leftmost [ initialHeightE, fmapMaybe snd resizeE]
-      (parent, result) <- elAttr' "div" ("style" =: "height: 100%") $ mdo
-        let refs = fmap (M.fromList . zip [0..] . toList) allRefs
-        heightD <- holdDyn 80 $ round <$> sizeE
-        let expandWindow (idx, num) = (max 0 (idx - 20), num + 40)
-            itemsInWindow = zipDynWith (\(idx,num) is ->
-                M.fromList $ map (\ix -> (ix, M.lookup ix is)) [idx .. idx + num]) (expandWindow <$> windowD) refs
-            updateMap old new = (Just <$> new) <> (Nothing <$ old)
-            itemsUpdate = attachWith updateMap (current itemsInWindow) (updated itemsInWindow)
-        (windowD, eventsD) <- virtualList
-          heightD
-          20
-          (M.size <$> refs)
-          0
-          (fmapMaybe (\i -> if i >= 0 then Just i else Nothing) (updated selectionIndexD))
-          id
-          mempty
-          itemsUpdate
-          (\k iv u -> do
-            v <- holdDyn iv u
-            (e, _) <- elDynClass' "div" (("error-item" <>) . bool "" " selected" . (==k) <$> selectionIndexD) $ do
-              let imgSrc l = case logRefType <$> l of
-                    Just LintRef -> "/pics/ide_suggestion.png"
-                    Just WarningRef -> "/pics/ide_warning.png"
-                    Just TestFailureRef -> "/pics/tango/status/software-update-urgent.svg"
-                    _ -> "/pics/ide_error.png"
-              elDynAttr "img" (("src" =:) . imgSrc <$> v) $ return ()
-              text " "
-              dynText $ maybe "" errorLine <$> v
-            return $ fmapMaybe id $ tag (current v) (domEvent Dblclick e))
-        return . fmapMaybe (fmap ErrorsGoto . listToMaybe . M.elems) $ switchDyn (mergeMap <$> eventsD)
-      return result
+    -- The virtual list needs a pixel viewport height; a ResizeObserver on the
+    -- pane feeds it (the scroll-based reflex resize detector is dead in
+    -- wkwebview — see IDE.Web.Widget.ResizeObserver).
+    (childEl, result) <- elClass' "div" "errors-child" $ mdo
+      let refs = fmap (M.fromList . zip [0..] . toList) allRefs
+      heightD <- holdDyn 80 $ round . snd <$> resizeE
+      let expandWindow (idx, num) = (max 0 (idx - 20), num + 40)
+          itemsInWindow = zipDynWith (\(idx,num) is ->
+              M.fromList $ map (\ix -> (ix, M.lookup ix is)) [idx .. idx + num]) (expandWindow <$> windowD) refs
+          updateMap old new = (Just <$> new) <> (Nothing <$ old)
+          itemsUpdate = attachWith updateMap (current itemsInWindow) (updated itemsInWindow)
+      (windowD, eventsD) <- virtualList
+        heightD
+        20
+        (M.size <$> refs)
+        0
+        (fmapMaybe (\i -> if i >= 0 then Just i else Nothing) (updated selectionIndexD))
+        id
+        mempty
+        itemsUpdate
+        (\k iv u -> do
+          v <- holdDyn iv u
+          (e, _) <- elDynClass' "div" (("error-item" <>) . bool "" " selected" . (==k) <$> selectionIndexD) $ do
+            let imgSrc l = case logRefType <$> l of
+                  Just LintRef -> "/pics/ide_suggestion.png"
+                  Just WarningRef -> "/pics/ide_warning.png"
+                  Just TestFailureRef -> "/pics/tango/status/software-update-urgent.svg"
+                  _ -> "/pics/ide_error.png"
+            elDynAttr "img" (("src" =:) . imgSrc <$> v) $ return ()
+            text " "
+            dynText $ maybe "" errorLine <$> v
+          return $ fmapMaybe id $ tag (current v) (domEvent Dblclick e))
+      return . fmapMaybe (fmap ErrorsGoto . listToMaybe . M.elems) $ switchDyn (mergeMap <$> eventsD)
+    resizeE <- resizeObserver (_element_raw childEl)
     return $ leftmost [ result, goE ]
 
 -- | One-line description of an error/warning (file + message), used for both
