@@ -97,7 +97,12 @@ layoutCss = do
         -- properties so the hide/auto-hide states (and the find-bar toggle) can
         -- each adjust just their own row without re-stating the whole template
         -- (and without a combinatorial explosion across the menubar variants).
-        "--wide1-row" -: "150px"
+        -- --wide1-bar is the bottom bar's CONTENT height (what the resize handle
+        -- sets, persisted in localStorage).  The grid row (--wide1-row) follows it
+        -- in show mode and is forced to 0 in hide/auto-hide, where the bar floats
+        -- as a transform overlay sized from --wide1-bar instead of the grid track.
+        "--wide1-bar" -: "150px"
+        "--wide1-row" -: "var(--wide1-bar)"
         "--bar-row" -: "20px"
         -- Side ("tall") pane width, like --wide1-row for the bottom pane: a custom
         -- property so the drag-to-resize handle (see resizeBarsJs) can set it live
@@ -145,13 +150,13 @@ layoutCss = do
     -- the area has keyboard focus (:focus-within): activating/flipping to a side
     -- pane focuses its list, which holds the bar open; it collapses again on its
     -- own once focus leaves.
-    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)" ?
+    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)" ?
         ("grid-template-columns" -: "var(--tall-col) 100vw")
     -- Force-collapse override: a selection that activated a file/terminal adds
     -- '.tall-suppress' (see leksahCollapseAutoHide), snapping the pane shut even
     -- while the cursor is still hovering it — the extra class outranks the reveal
     -- rule above, so it wins under :hover.  Cleared on the next mouse-out.
-    ".leksah.tall-auto.tall-suppress:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)" ?
+    ".leksah.tall-auto.tall-suppress:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)" ?
         ("grid-template-columns" -: "0px 100vw")
     -- A constant 3px left pad on the editor column, in ALL side-pane states
     -- (shown, auto-hide, hidden): a small consistent gap from the side divider /
@@ -218,14 +223,11 @@ layoutCss = do
     -- on .leksah): hide collapses its grid row; auto-hide keeps the row
     -- collapsed permanently and reveals the bar as a transform-only overlay --
     -- see the note below.
-    -- !important: resizeBarsJs writes --wide1-row as an INLINE style on .leksah
-    -- (drag-to-resize + its localStorage restore).  An inline declaration outranks
-    -- a class rule, so without !important this collapse would lose to the user's
-    -- resized value and the row would never shrink — the pane would stay docked in
-    -- hide mode, and in auto mode (below) the transform-overlay parking math, which
-    -- assumes a zero-height row, would strand the tab strip mid-window.
+    -- Collapse the grid row to 0 (the bar is display:none in hide mode).  No
+    -- !important needed: resizeBarsJs writes --wide1-bar, not --wide1-row, so
+    -- nothing inline fights this class rule.
     ".leksah.wide1-hide" ?
-        ("--wide1-row" -: "0px !important")
+        ("--wide1-row" -: "0px")
     ".leksah.wide1-hide .area-wide1" ?
         Clay.display none
     -- Bottom-bar auto-reveal must never change any element's SIZE: a size
@@ -237,60 +239,59 @@ layoutCss = do
     -- ResizeObserver):
     --   * the bar (tab buttons + tab body) is absolutely positioned in its
     --     zero-height grid area with the same geometry it has in show mode
-    --     (40px buttons on top, 130px body below), parked just below the
-    --     window at translateY(170px) = its 150px height + the 20px statusbar
-    --     row -- parked fully off-screen, so no residual strip of it peeks
-    --     over the statusbar while hidden -- and slides to translateY(0);
-    --   * each wide0 tab's content slides up by the same 150px, its top
-    --     clipped by the tab's overflow:hidden, and the vacated bottom strip
-    --     is covered by the revealed bar;
-    --   * the statusbar stacks above the sliding bar, so the bar emerges
-    --     from behind it.
-    -- !important for the same reason as wide1-hide above: the inline --wide1-row
-    -- from resizeBarsJs must not keep this row open, or the zero-row parking
-    -- assumption breaks and the tab strip lands mid-window instead of off-screen.
+    --     (20px buttons on top, the rest below), parked just below the window at
+    --     translateY(--wide1-bar + 20px) = its height + the 20px statusbar row --
+    --     parked fully off-screen, so no residual strip peeks over the statusbar
+    --     while hidden -- and slides to translateY(0);
+    --   * each wide0 tab's content slides up by --wide1-bar, its top clipped by
+    --     the tab's overflow:hidden, and the vacated bottom strip is covered by
+    --     the revealed bar;
+    --   * the statusbar stacks above the sliding bar, so the bar emerges from
+    --     behind it.
+    -- Sizing the overlay from --wide1-bar (not a hard-coded 150px) is what lets
+    -- the bar be drag-resized in auto-hide and keep that height across mode
+    -- switches.  The grid track itself stays 0, so nothing reflows:
     ".leksah.wide1-auto" ?
-        ("--wide1-row" -: "0px !important")
+        ("--wide1-row" -: "0px")
     ".leksah.wide1-auto .tab-buttons.area-wide1" ? do
         "position" -: "absolute"
         "left" -: "0"
         "right" -: "0"
-        "top" -: "-150px"
-        -- 20px, matching the base tab-button row height (the 130px body below
-        -- makes the 150px bar); the buttons then tile flush onto the body.
+        "top" -: "calc(-1 * var(--wide1-bar))"
+        -- 20px button row; the body below fills the rest of --wide1-bar.
         "height" -: "20px"
         "z-index" -: "1"
-        "transform" -: "translateY(170px)"
+        "transform" -: "translateY(calc(var(--wide1-bar) + 20px))"
         "transition" -: "transform 0.15s ease"
     ".leksah.wide1-auto .tab.area-wide1" ? do
         "position" -: "absolute"
         "left" -: "0"
         "right" -: "0"
         "bottom" -: "0"
-        "height" -: "130px"
+        "height" -: "calc(var(--wide1-bar) - 20px)"
         "z-index" -: "1"
-        "transform" -: "translateY(170px)"
+        "transform" -: "translateY(calc(var(--wide1-bar) + 20px))"
         "transition" -: "transform 0.15s ease"
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab-buttons.area-wide1" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab-buttons.area-wide1" ?
         ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide1" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide1" ?
         ("transform" -: "translateY(0)")
     ".leksah.wide1-auto .statusbar" ? do
         "position" -: "relative"
         "z-index" -: "2"
     ".leksah.wide1-auto .tab.area-wide0 > *" ?
         ("transition" -: "transform 0.15s ease")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide0 > *" ?
-        ("transform" -: "translateY(-150px)")
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide0 > *" ?
+        ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
     -- Force-collapse override (bottom bar): '.wide1-suppress' slides the bar back
     -- off-screen and un-shifts the editor content even while hovered, so a
     -- selection that activated a file/terminal snaps the bar shut with the cursor
     -- still over it.  The extra class outranks the reveal rules, so it wins.
-    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab-buttons.area-wide1" ?
-        ("transform" -: "translateY(170px)")
-    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide1" ?
-        ("transform" -: "translateY(170px)")
-    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within) .tab.area-wide0 > *" ?
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab-buttons.area-wide1" ?
+        ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide1" ?
+        ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide0 > *" ?
         ("transform" -: "translateY(0)")
     ".statusbar" ? do
         "grid-area" -: "statusbar"
@@ -357,18 +358,65 @@ layoutCss = do
     ".leksah.tall-hide .tall-divider" ? Clay.display none
     ".leksah.wide1-hide .wide1-divider" ? Clay.display none
     -- In bottom-bar auto-hide the wide1 row is 0 (the bar is a transform overlay),
-    -- so the divider would collapse to a stray 1px line above the statusbar.
+    -- so the grid-positioned divider would be a stray 1px line above the statusbar
+    -- — hide it while the bar is parked.
     ".leksah.wide1-auto .wide1-divider" ? Clay.display none
+    -- …but when the bar is REVEALED, float the divider up to SPAN the revealed
+    -- bar, so the bottom bar stays resizable in auto-hide.  Anchored to the bar's
+    -- bottom (bottom:0 in the 0-height wide1 grid area = the statusbar top = the
+    -- bar's bottom edge) with height:--wide1-bar, its TOP lands on the bar's top
+    -- edge, where the ::after row-resize handle sits; its box is pointer-events:
+    -- none so it doesn't block the bar's tabs, and z-index above the bar (1) and
+    -- statusbar (2) keeps the handle grabbable.  Spanning the bar (rather than a
+    -- 0-height line at the top) means getBoundingClientRect().bottom is the bar's
+    -- bottom, which resizeBarsJs uses as the fixed edge for the drag height.
+    -- Hovering the handle is in the reveal :has() above (.wide1-divider:hover), so
+    -- grabbing it holds the bar open instead of collapsing it out from under you.
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .wide1-divider" ? do
+        "display" -: "block"
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "bottom" -: "0"
+        "height" -: "var(--wide1-bar)"
+        "z-index" -: "3"
     -- While the side pane is collapsed to its 3px peek, the divider's border would
     -- sit hard against the window's left edge (x=0); margin can't push it past 0,
     -- so slide the whole overlay off-screen instead.  It slides back when the pane
     -- expands (hover/focus).
-    ".leksah.tall-auto:not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within)) .tall-divider" ?
+    -- (…and not while a resize drag holds the pane open — see leksah-resizing-tall
+    -- below — or the divider would slide out from under the dragging cursor.)
+    ".leksah.tall-auto:not(.leksah-resizing-tall):not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)) .tall-divider" ?
         ("transform" -: "translateX(-8px)")
     -- Keep the divider off-screen while the pane is force-collapsed (suppressed)
     -- even though we're technically still hovering — matching the collapsed pane.
     ".leksah.tall-auto.tall-suppress .tall-divider" ?
         ("transform" -: "translateX(-8px)")
+    -- Drag-resize must not let an auto-hide pane collapse: while a drag is live
+    -- resizeBarsJs marks .leksah with .leksah-resizing-tall / -wide1, and these
+    -- rules pin the matching pane fully revealed (the hover-reveal geometry)
+    -- regardless of where the cursor goes.  Without this, dragging OUTWARD to grow
+    -- a pane moves the mouse off it and it snaps shut — so you could only ever drag
+    -- it smaller.  transition:none so the live drag tracks the cursor instead of
+    -- easing 0.15s behind it.
+    ".leksah.tall-auto.leksah-resizing-tall" ? do
+        "grid-template-columns" -: "var(--tall-col) 100vw"
+        "transition" -: "none"
+    ".leksah.wide1-auto.leksah-resizing-wide1 .tab-buttons.area-wide1" ?
+        ("transform" -: "translateY(0)")
+    ".leksah.wide1-auto.leksah-resizing-wide1 .tab.area-wide1" ?
+        ("transform" -: "translateY(0)")
+    ".leksah.wide1-auto.leksah-resizing-wide1 .tab.area-wide0 > *" ? do
+        "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
+        "transition" -: "none"
+    ".leksah.wide1-auto.leksah-resizing-wide1 .wide1-divider" ? do
+        "display" -: "block"
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "bottom" -: "0"
+        "height" -: "var(--wide1-bar)"
+        "z-index" -: "3"
     -- The tall↔editor separator (the editor columns' border-left, added above):
     -- show its grey only while the side (tall) pane is actually on-screen; hide
     -- it (transparent, never zero-width — so nothing reflows) otherwise.
@@ -380,7 +428,7 @@ layoutCss = do
     ".leksah.tall-hide .area-wide1" ? ("border-left-color" -: "transparent")
     ".leksah.tall-auto .area-wide0" ? ("border-left-color" -: "transparent")
     ".leksah.tall-auto .area-wide1" ? ("border-left-color" -: "transparent")
-    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within) .area-wide0" ?
+    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover) .area-wide0" ?
         ("border-left-color" -: "rgb(128,128,128)")
     -- The bottom bar in auto mode is a full-width floating overlay (left:0), so a
     -- left border there would be a stray vertical line at the window edge, not the
