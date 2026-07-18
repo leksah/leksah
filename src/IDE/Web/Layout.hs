@@ -4,7 +4,7 @@ module IDE.Web.Layout where
 import qualified Data.Text as T (unwords)
 
 import Clay
-       (vh, height, (-:), grid, position, relative, none, (?), (#), after, Css)
+       (vh, height, (-:), grid, position, relative, none, (?), (#), after, before, Css)
 import qualified Clay (display)
 
 layoutCss :: Css
@@ -218,8 +218,14 @@ layoutCss = do
     -- on .leksah): hide collapses its grid row; auto-hide keeps the row
     -- collapsed permanently and reveals the bar as a transform-only overlay --
     -- see the note below.
+    -- !important: resizeBarsJs writes --wide1-row as an INLINE style on .leksah
+    -- (drag-to-resize + its localStorage restore).  An inline declaration outranks
+    -- a class rule, so without !important this collapse would lose to the user's
+    -- resized value and the row would never shrink — the pane would stay docked in
+    -- hide mode, and in auto mode (below) the transform-overlay parking math, which
+    -- assumes a zero-height row, would strand the tab strip mid-window.
     ".leksah.wide1-hide" ?
-        ("--wide1-row" -: "0px")
+        ("--wide1-row" -: "0px !important")
     ".leksah.wide1-hide .area-wide1" ?
         Clay.display none
     -- Bottom-bar auto-reveal must never change any element's SIZE: a size
@@ -240,8 +246,11 @@ layoutCss = do
     --     is covered by the revealed bar;
     --   * the statusbar stacks above the sliding bar, so the bar emerges
     --     from behind it.
+    -- !important for the same reason as wide1-hide above: the inline --wide1-row
+    -- from resizeBarsJs must not keep this row open, or the zero-row parking
+    -- assumption breaks and the tab strip lands mid-window instead of off-screen.
     ".leksah.wide1-auto" ?
-        ("--wide1-row" -: "0px")
+        ("--wide1-row" -: "0px !important")
     ".leksah.wide1-auto .tab-buttons.area-wide1" ? do
         "position" -: "absolute"
         "left" -: "0"
@@ -378,6 +387,29 @@ layoutCss = do
     -- tall boundary — keep it transparent.  (wide1 thus shows its border only when
     -- docked beside the tall pane in fully-shown mode.)
     ".leksah.wide1-auto .area-wide1" ? ("border-left-color" -: "transparent")
+    -- The tall↔editor separator, drawn on the persistent .tall-divider so it is
+    -- present even when the editor area (wide0) has no VISIBLE tab.  The border on
+    -- .area-wide0 (above) only renders while a wide0 tab is on-screen; but a tab
+    -- can exist yet be visibility:hidden (e.g. this OS window has no active editor,
+    -- or all its editors belong elsewhere), leaving the area visually blank with no
+    -- separator.  So draw the line unconditionally here (whenever the side pane is
+    -- on-screen): when a wide0 tab IS visible, this 1px grey line lands exactly on
+    -- that tab's own grey border-left — same colour, same x, an invisible overlap;
+    -- when the area is blank, this is the separator.  ::after is already the resize
+    -- handle, so use ::before.  Gating: tall-hide sets the divider display:none and
+    -- tall-auto slides it off-screen while collapsed (the transform rules above),
+    -- so `:not(.tall-hide)` covers "side pane visible".  Cover only the wide0 row
+    -- (top down to the wide1 row height), not the wide1 (bottom-bar) portion.
+    ".leksah:not(.tall-hide) .tall-divider" # before ? do
+        "content" -: "\"\""
+        "position" -: "absolute"
+        "top" -: "0"
+        "bottom" -: "var(--wide1-row)"
+        "right" -: "-1px"
+        "width" -: "1px"
+        "background" -: "rgb(128,128,128)"
+        "pointer-events" -: "none"
+        "z-index" -: "21"
     -- The auto-hide activation strip: an invisible 3px-wide, full-height grid item
     -- pinned to the left of the (0-width, collapsed) side column, overflowing into
     -- the editor column's 3px left padding.  It exists only in tall-auto; hovering

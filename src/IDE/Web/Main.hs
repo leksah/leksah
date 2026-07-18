@@ -4537,7 +4537,15 @@ main showMenubar macTitlebar wid ide = mdo
                 promoted = filter (`elem` base) mru
             in map (\k -> (k, Just ())) (promoted ++ filter (`notElem` promoted) base))
         <$> myWinD <*> localWide0MruD
-    wide0ActiveD <- holdUniqDyn (_wwActive <$> myWinD)
+    -- Default the visible editor to the MRU-front of this window's wide0 list when
+    -- no active tab is recorded (_wwActive == Nothing while _wwWide0 is non-empty).
+    -- That state arises when a window is restored with editors but no saved active
+    -- tab (session "wwsActive": null) — e.g. after a ghci :reload window-recreate —
+    -- where the restorePb seed below would otherwise select nothing, leaving the
+    -- whole editor tab-bar unrendered and every editor body visibility:hidden.
+    -- Showing the seeded tab runs activateWide0, so _wwActive self-heals on save.
+    wide0ActiveD <- holdUniqDyn
+        ((\ww -> maybe (listToMaybe (_wwWide0 ww)) Just (_wwActive ww)) <$> myWinD)
     (recentTabs, tabE, visibleTabsD, activePaneD, tabCloseBtnE) <- tabsWidget
       initialTabs
       initialVisibleTabs
