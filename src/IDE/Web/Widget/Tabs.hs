@@ -51,19 +51,10 @@ tabsCss = do
         "display" -: "flex"
         "align-items" -: "flex-start"
         "position" -: "relative"
-    -- The bottom bar's tab row also gets a line on TOP, separating it from the
-    -- editor above.  (Side/editor rows sit under the toolbar and don't need one;
-    -- and the wide1 top divider is hidden in bottom-bar auto-hide, so the tab
-    -- row carries its own top line here.)
-    ".tab-buttons.area-wide1::before" ? do
-        "content" -: "''"
-        "position" -: "absolute"
-        "left" -: "0"
-        "right" -: "0"
-        "top" -: "0"
-        "height" -: "1px"
-        "background" -: "rgb(128,128,128)"
-        "pointer-events" -: "none"
+    -- (The bottom bar's 1px top line, separating it from the editor above, is
+    -- drawn by the .wide1-divider's border-top in Layout.hs — shown docked and
+    -- floated up to the bar's top edge when revealed in auto-hide — so the tab
+    -- row needs no ::before line of its own.)
     -- A blank item the width of the side pane, kept last, so when the auto-hide
     -- side pane slides over the content the part that's covered is this spacer
     -- rather than a real tab.
