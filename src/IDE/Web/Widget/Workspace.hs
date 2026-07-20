@@ -87,7 +87,7 @@ import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEv
 import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
         flakeTreeWidget, execButton, openNixWindow, developAttr)
-import IDE.Web.Widget.Menu (menu)
+import IDE.Web.Widget.Menu (menu, menuSplit)
 import IDE.Web.Widget.FileTree (fileTree, claudeNode)
 import IDE.Web.Claude (claudeAvailable, runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.Widget.Tree
@@ -418,37 +418,46 @@ refreshGit dir
 -- | Right-click menu for the root git row: whole-repo network actions, the
 -- current branch's log, and a manual refresh.
 gitRootMenu :: forall t m. MonadWidget t m => FilePath -> Dynamic t (Maybe Text) -> m (Event t (IO ()))
-gitRootMenu dir curD = menu
-  [ constDyn ("Fetch",   gitAction dir ["fetch", "--all", "--prune"])
-  , constDyn ("Pull",    gitAction dir ["pull"])
-  , constDyn ("Push",    gitAction dir ["push"])
-  , ffor curD $ \mb -> ("Open Log", maybe (return ()) (requestGitLog dir) mb)
-  , constDyn ("Refresh", refreshGit dir)
+gitRootMenu dir curD = menuSplit
+  [ constDyn ("Fetch",   (Nothing, gitAction dir ["fetch", "--all", "--prune"]))
+  , constDyn ("Pull",    (Nothing, gitAction dir ["pull"]))
+  , constDyn ("Push",    (Nothing, gitAction dir ["push"]))
+  , ffor curD $ \mb ->
+      ("Open Log", ( if isRemotePath dir then Nothing else STGitLog dir <$> mb
+                   , maybe (return ()) (requestGitLog dir) mb ))
+  , constDyn ("Refresh", (Nothing, refreshGit dir))
   ]
 
 -- | Right-click menu for a branch row: its log always; pull/push for the current
 -- branch, or checkout/delete for any other.
 gitBranchMenu :: forall t m. MonadWidget t m => FilePath -> Bool -> Text -> m (Event t (IO ()))
-gitBranchMenu dir isCurrent name = menu $
-  constDyn ("Open Log", requestGitLog dir name)
+gitBranchMenu dir isCurrent name = menuSplit $
+  constDyn ("Open Log", ( if isRemotePath dir then Nothing else Just (STGitLog dir name)
+                        , requestGitLog dir name ))
   : if isCurrent
-      then [ constDyn ("Pull", gitAction dir ["pull"])
-           , constDyn ("Push", gitAction dir ["push"]) ]
-      else [ constDyn ("Checkout",      gitAction dir ["checkout", name])
-           , constDyn ("Delete Branch", gitAction dir ["branch", "-d", name]) ]
+      then [ constDyn ("Pull", (Nothing, gitAction dir ["pull"]))
+           , constDyn ("Push", (Nothing, gitAction dir ["push"])) ]
+      else [ constDyn ("Checkout",      (Nothing, gitAction dir ["checkout", name]))
+           , constDyn ("Delete Branch", (Nothing, gitAction dir ["branch", "-d", name])) ]
 
 -- | Right-click menu for a submodule row.
 gitSubmoduleMenu :: forall t m. MonadWidget t m => FilePath -> Text -> m (Event t (IO ()))
-gitSubmoduleMenu dir path = menu
-  [ constDyn ("Open Terminal Here", openTerminalInDir (dir </> T.unpack path))
-  , constDyn ("Update Submodule",   gitAction dir ["submodule", "update", "--init", "--", path])
+gitSubmoduleMenu dir path = menuSplit
+  [ let p = dir </> T.unpack path
+    in constDyn ("Open Terminal Here",
+                 ( if isRemotePath p then Nothing else Just (STTermDir p)
+                 , openTerminalInDir p ))
+  , constDyn ("Update Submodule",   (Nothing, gitAction dir ["submodule", "update", "--init", "--", path]))
   ]
 
 -- | Right-click menu for a worktree row.
 gitWorktreeMenu :: forall t m. MonadWidget t m => FilePath -> GitWorktree -> m (Event t (IO ()))
-gitWorktreeMenu dir wt = menu
-  [ constDyn ("Open Terminal Here", openTerminalInDir (fullWorktreePath dir wt))
-  , constDyn ("Remove Worktree",    gitAction dir ["worktree", "remove", gwPath wt])
+gitWorktreeMenu dir wt = menuSplit
+  [ let p = fullWorktreePath dir wt
+    in constDyn ("Open Terminal Here",
+                 ( if isRemotePath p then Nothing else Just (STTermDir p)
+                 , openTerminalInDir p ))
+  , constDyn ("Remove Worktree",    (Nothing, gitAction dir ["worktree", "remove", gwPath wt]))
   ]
 
 -- | \"Branches\": every local branch, the current one bolded; clicking a branch

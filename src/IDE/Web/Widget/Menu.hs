@@ -15,7 +15,7 @@ import Clay
         em, minWidth)
 import qualified Clay (display, none)
 
-import Reflex (leftmost, never, Event, Dynamic, tag, current)
+import Reflex (leftmost, never, Event, Dynamic, tag, current, attachWith)
 
 import Reflex.Dom.Core
        (dynText, el', el, elClass, divClass, text, MonadWidget,
@@ -24,6 +24,8 @@ import Reflex.Dom.Core
 import IDE.Web.Theme (selectionColor)
 import IDE.Web.Command (Command)
 import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec)
+import IDE.Web.Widget.Tree (clickMods)
+import IDE.Web.SplitOpenRequest (SplitTarget, requestSplitOpen)
 
 menuCss :: Css
 menuCss = do
@@ -80,6 +82,34 @@ menu items =
       fmap leftmost . forM items $ \d -> do
         (li, _) <- el' "li" . dynText $ fst <$> d
         return $ tag (snd <$> current d) $ domEvent Click li
+
+-- | Like 'menu', but each item's click also carries the (alt, shift) modifier
+-- state — so a menu can offer ⌥-variants of its items (see 'menuSplit').
+menuMods
+  :: MonadWidget t m
+  => [Dynamic t (Text, a)]
+  -> m (Event t ((Bool, Bool), a))
+menuMods items =
+  divClass "menu" $
+    el "ul" $
+      fmap leftmost . forM items $ \d -> do
+        (li, _) <- el' "li" . dynText $ fst <$> d
+        modsE <- clickMods li
+        return $ attachWith (\v mods -> (mods, v)) (snd <$> current d) modsE
+
+-- | A context-menu whose items may declare a 'SplitTarget' (@Just@): holding ⌥
+-- while clicking such an item opens it into a split of the active pane (⌥⇧ =
+-- vertical) instead of running its normal action, mirroring the ⌥-open tree
+-- gestures.  @Nothing@ items always run their action.  Returns the chosen 'IO'
+-- action, so callers use it exactly like 'menu'.
+menuSplit
+  :: MonadWidget t m
+  => [Dynamic t (Text, (Maybe SplitTarget, IO ()))]
+  -> m (Event t (IO ()))
+menuSplit = fmap (fmap decide) . menuMods
+  where decide ((alt, sh), (mt, normal)) = case (alt, mt) of
+          (True, Just t) -> requestSplitOpen (t, sh)
+          _              -> normal
 
 -- | Render a (possibly nested) list of 'MenuItem's as a dropdown, returning the
 -- 'Command' chosen anywhere in the tree.  Leaf items fire on click; submenu

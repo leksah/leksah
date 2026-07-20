@@ -53,7 +53,7 @@ import IDE.Web.Widget.Tree
        (treeItem, treeItemDynAttr', treeSelect', scrollIntoViewNearest,
         dblclickMods)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
-import IDE.Web.Widget.Menu (menu)
+import IDE.Web.Widget.Menu (menu, menuSplit)
 import IDE.Web.Claude
        (claudeAvailable, claudeSessionsFor, ClaudeSession(..),
         ClaudeCmd(..), runClaudeCmd, claudeRunning, activateMruClaude,
@@ -307,9 +307,9 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
 dirClaudeMenu :: forall t m. MonadWidget t m => Bool -> FilePath -> m (Event t (IO ()))
 dirClaudeMenu avail dir
   | not avail = return never
-  | otherwise = menu
-      [ constDyn ("New Claude Session",           runClaudeCmd (ClaudeNew dir))
-      , constDyn ("Continue Last Claude Session", runClaudeCmd (ClaudeContinue dir))
+  | otherwise = menuSplit
+      [ constDyn ("New Claude Session",           (Just (STClaudeNew dir),      runClaudeCmd (ClaudeNew dir)))
+      , constDyn ("Continue Last Claude Session", (Just (STClaudeContinue dir), runClaudeCmd (ClaudeContinue dir)))
       ]
 
 -- | The right-click menu for a file row — currently just "Ask Claude about this
@@ -375,10 +375,10 @@ claudeNode treeName dir = do
           void . dyn $ ffor sessD $ mapM_ (sessionRow treeName dir doScan)
           return (never :: Event t ()))
   where
-    rootMenu = menu
-      [ constDyn ("New Claude Session",           runClaudeCmd (ClaudeNew dir))
-      , constDyn ("Continue Last Claude Session", runClaudeCmd (ClaudeContinue dir))
-      , constDyn ("Resume Session…",              runClaudeCmd (ClaudeResumePicker dir))
+    rootMenu = menuSplit
+      [ constDyn ("New Claude Session",           (Just (STClaudeNew dir),      runClaudeCmd (ClaudeNew dir)))
+      , constDyn ("Continue Last Claude Session", (Just (STClaudeContinue dir), runClaudeCmd (ClaudeContinue dir)))
+      , constDyn ("Resume Session…",              (Nothing,                     runClaudeCmd (ClaudeResumePicker dir)))
       ]
 
 -- | One session row under a Claude node (@rescan@ refreshes the list, e.g. after
