@@ -92,7 +92,7 @@ import IDE.Web.Widget.FileTree (fileTree, claudeNode)
 import IDE.Web.Claude (claudeAvailable, runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeSelect, treeSelect', treeItem,
-        treeItem', clickMods)
+        treeItem', clickMods, dblclickMods)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
 import IDE.Workspaces
        (workspaceRemoveProject, workspaceActivatePackage)
@@ -520,8 +520,13 @@ gitWorktreesNode dir = void $ treeItem "git-worktrees" False
                     gitIcon
                     text (worktreeLabel wt)
                     return (never :: Event t (IO ()))
-                performEvent_ $ ffor (domEvent Click rowEl) $ \_ ->
-                    openTerminalInDir (fullWorktreePath dir wt)
+                -- ⌥-click opens the worktree terminal into a split of the
+                -- active pane instead (local only).
+                wmE <- clickMods rowEl
+                performEvent_ $ ffor wmE $ \(alt, sh) ->
+                    if alt && not (isRemotePath (fullWorktreePath dir wt))
+                      then liftIO (requestSplitOpen (STTermDir (fullWorktreePath dir wt), sh))
+                      else openTerminalInDir (fullWorktreePath dir wt)
                 performEvent_ $ liftIO <$> mE
                 return ()
         return (never :: Event t ()))
@@ -996,7 +1001,12 @@ workspaceWidget ide activeFileD revealFileD = do
                 elAttr "span" ("title" =: fullTitle) $ dynText labelD
                 return never
               -- Double-click a project row → open a terminal at its directory.
-              performEvent_ $ openTerminalInDir (pjDir pKey) <$ domEvent Dblclick projRowEl
+              -- ⌥ opens it into a split of the active pane instead (local only).
+              pmE <- dblclickMods projRowEl
+              performEvent_ $ ffor pmE $ \(alt, sh) ->
+                if alt && not (isRemotePath (pjDir pKey))
+                  then liftIO (requestSplitOpen (STTermDir (pjDir pKey), sh))
+                  else openTerminalInDir (pjDir pKey)
               return rowE) $
             el "ul" $ do
               -- Top item: the project's git tree (self-hides unless the project

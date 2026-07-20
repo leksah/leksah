@@ -11,6 +11,7 @@ module IDE.Web.ReplTmux
   ( tmuxSocket
   , tmuxCmd
   , activePaneIdOfSession
+  , splitPane
   , replSessionName
   , ffcabalTmuxEnv
   , findReplWindow
@@ -97,6 +98,27 @@ activePaneIdOfSession sess = (`catch` \(_ :: SomeException) -> return Nothing) $
                       , act == "1"
                       , let pid = T.drop 1 rest
                       , not (T.null pid) ]
+
+-- | Split @targetPane@ in place (@True@ = horizontal, side by side) with
+-- working dir @cwd@, optionally running @mcmd@ (falling back to a login shell
+-- when it exits, as 'ensureCommandWindow' does); returns the new pane id.  Used
+-- by the ⌥-open-into-split pipeline for terminal-family targets (a plain shell,
+-- or a claude command).
+splitPane :: Bool -> Text -> FilePath -> Maybe Text -> IO (Maybe Text)
+splitPane horiz targetPane cwd mcmd = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return Nothing
+        Just tmux -> do
+            shell <- getLoginShell
+            let cmdArgs = case mcmd of
+                    Nothing -> []
+                    Just c  -> [T.unpack c <> " || exec " <> shell]
+            (_, out, _) <- readProcessWithExitCode tmux
+                ([ "-L", tmuxSocket, "split-window", if horiz then "-h" else "-v"
+                 , "-t", T.unpack targetPane, "-c", cwd, "-P", "-F", "#{pane_id}"
+                 ] ++ cmdArgs) ""
+            let pid = T.strip (T.pack out)
+            return $ if T.null pid then Nothing else Just pid
 
 -- | The shared repl session: ffcabal's cached component repls live here
 -- (windows named @pkg:comp@), and the workspace-tree run buttons add their

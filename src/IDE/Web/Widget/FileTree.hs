@@ -256,7 +256,13 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
       pbD <- getPostBuild
       scrollIntoViewNearest (ffilter id $ leftmost [updated isRevealD, tag (current isRevealD) pbD]) dirEl
       -- Double-click a directory row → open a terminal there (local or ssh://).
-      performEvent_ $ openTerminalInDir subPath <$ domEvent Dblclick dirEl
+      -- ⌥ opens the terminal into a split of the active pane instead (local
+      -- dirs only — a split runs on the local tmux server).
+      dmE <- dblclickMods dirEl
+      performEvent_ $ ffor dmE $ \(alt, sh) ->
+        if alt && not (isRemotePath subPath)
+          then liftIO (requestSplitOpen (STTermDir subPath, sh))
+          else openTerminalInDir subPath
       -- Right-click → "New Claude Session" / "Continue Last …" (when claude is on PATH).
       performEvent_ $ liftIO <$> dmenuE
       return never
@@ -385,8 +391,13 @@ sessionRow treeName dir rescan s = el "li" $ do
       claudeIcon
       elClass "span" "claude-session-label" $ text (csAge s <> " · " <> csLabel s)
       return (never :: Event t (IO ()))
-  -- Double-click / Enter → resume this session.
-  performEvent_ $ liftIO (runClaudeCmd (ClaudeResume dir (csId s))) <$ domEvent Dblclick sEl
+  -- Double-click / Enter → resume this session.  ⌥ resumes it into a split of
+  -- the active pane instead (local dirs only).
+  smE <- dblclickMods sEl
+  performEvent_ $ ffor smE $ \(alt, sh) -> liftIO $
+    if alt && not (isRemotePath dir)
+      then requestSplitOpen (STClaudeResume dir (csId s), sh)
+      else runClaudeCmd (ClaudeResume dir (csId s))
   performEvent_ $ liftIO <$> actE
   where
     sessMenu = menu

@@ -20,6 +20,7 @@ module IDE.Web.Claude
   , claudeSessionsFor
   , ClaudeCmd(..)
   , runClaudeCmd
+  , claudeCommandLine
   , claudeRunning
   , activateMruClaude
   , copySessionId
@@ -203,14 +204,21 @@ data ClaudeCmd
 -- "running" dot and frees the per-directory window key, see 'claudeRunning').
 runClaudeCmd :: ClaudeCmd -> IO ()
 runClaudeCmd cmd = void . forkIO $ do
-  let d = dropTrailingPathSeparator dir
-  -- Launch inside the owning project's command prefix (e.g. @nix develop -c@)
-  -- so the tools claude spawns (cabal/ghc/hls) inherit the project environment;
-  -- no prefix set → a plain launch.
-  mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
-  let line' = maybe line (\p -> p <> " " <> line) mbPrefix
+  (d, key, line') <- claudeCommandLine cmd
   void $ ensureCommandWindow False key d "claude" line'
            >>= mapM_ requestLocalTerm
+
+-- | Resolve a 'ClaudeCmd' to its @(working dir, run key, shell command line)@,
+-- with the owning project's command prefix (e.g. @nix develop -c@) applied so
+-- the tools claude spawns inherit the project environment.  Shared by
+-- 'runClaudeCmd' and the ⌥-open-into-split pipeline (which runs the line in a
+-- split pane rather than a new window).
+claudeCommandLine :: ClaudeCmd -> IO (FilePath, Text, Text)
+claudeCommandLine cmd = do
+  let d = dropTrailingPathSeparator dir
+  mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
+  let line' = maybe line (\p -> p <> " " <> line) mbPrefix
+  return (d, key, line')
   where
     (dir, keyTag, line) = case cmd of
       ClaudeNew d          -> (d, "claude",            "claude")

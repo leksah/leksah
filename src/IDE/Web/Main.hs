@@ -190,8 +190,8 @@ import IDE.Web.GhciMode (ghciMode, registerGhciCleanup, stopForGhci)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.ReplTmux
        (tmuxCmd, tmuxSupported, liveRunPanes, activePaneIdOfSession,
-        openTerminalInDir)
-import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
+        openTerminalInDir, splitPane)
+import IDE.Web.Claude (runClaudeCmd, claudeCommandLine, ClaudeCmd(..))
 import IDE.Web.TerminalInput
        (setActiveTerminal, setActiveConvertible, tmuxCommandActiveTerminal,
         selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
@@ -4702,6 +4702,18 @@ main showMenubar macTitlebar wid ide = mdo
                     fireConvertDone (k, itemPid)
                     tmuxCmd ["select-pane", "-t", T.unpack itemPid]
                     sessionOfPane activePid >>= mapM_ requestLocalTerm
+            -- A terminal-family item (a plain shell, or a claude command): a
+            -- real split of the active pane running the command (no overlay).
+            placeShell activePid cwd mcmd mkey = splitPane horiz activePid cwd mcmd >>= \case
+              Nothing  -> return ()
+              Just pid -> do
+                forM_ mkey $ \k ->
+                  tmuxCmd ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack k]
+                tmuxCmd ["select-pane", "-t", T.unpack pid]
+                sessionOfPane activePid >>= mapM_ requestLocalTerm
+            placeClaude activePid ccmd = do
+              (d, key, line') <- claudeCommandLine ccmd
+              placeShell activePid d (Just line') (Just key)
         mTerm <- getActiveTerminal
         mActivePid <- case mTerm of
           Just sid | "ssh://" `T.isPrefixOf` sid -> return Nothing
@@ -4717,9 +4729,12 @@ main showMenubar macTitlebar wid ide = mdo
         case mActivePid of
           Nothing        -> normalOpen
           Just activePid -> case target of
-            STFile f     -> placeOverlay activePid (EditorKey f)
-            STGitLog d b -> placeOverlay activePid (GitLogKey d b)
-            _            -> normalOpen   -- terminal-family: Stage B
+            STFile f           -> placeOverlay activePid (EditorKey f)
+            STGitLog d b       -> placeOverlay activePid (GitLogKey d b)
+            STTermDir d        -> placeShell activePid d Nothing Nothing
+            STClaudeNew d      -> placeClaude activePid (ClaudeNew d)
+            STClaudeContinue d -> placeClaude activePid (ClaudeContinue d)
+            STClaudeResume d i -> placeClaude activePid (ClaudeResume d i)
     let convertCloseE = (\(k, _) -> [k]) <$> convertDoneE
     -- Overlay/backing-pane GC: a converted pane killed in tmux (exit at its
     -- prompt, kill-pane, its window closed — even while the tab is detached)
