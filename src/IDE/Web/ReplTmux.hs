@@ -18,6 +18,7 @@ module IDE.Web.ReplTmux
   , ensureCommandWindow
   , ensureRemoteWindow
   , openTerminalInDir
+  , runInTerminal
   , cmdPrefixForDir
   , buildSplitWindowCommand
   , getLoginShell
@@ -316,6 +317,26 @@ openTerminalInDir dir0 = liftIO . void . forkIO $ do
     winName p = case T.pack (takeFileName p) of
                   "" -> "shell"
                   n  -> n
+
+-- | Open (or focus) a terminal in @dir@ (local or @ssh:\/\/@) that runs @cmd@
+-- inside the owning project's command prefix, then drops to a login shell so its
+-- output stays readable.  One reusable window per @(dir, keySuffix)@ — e.g. a
+-- single @"git"@ window per checkout.  Fire-and-forget; for a plain shell (no
+-- command) use 'openTerminalInDir'.
+runInTerminal :: MonadIO m => FilePath -> Text -> Text -> Text -> m ()
+runInTerminal dir0 keySuffix name cmd = liftIO . void . forkIO $ do
+    let dir = dropTrailingPathSeparator dir0
+    mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir dir
+    let full = maybe cmd (\p -> p <> " " <> cmd) mbPrefix
+    case parseRemotePath dir of
+        Just (host, rdir0) -> do
+            -- ensureRemoteWindow wraps a non-empty command as
+            -- @sh -lc "<cmd>; exec ${SHELL} -l"@, keeping the shell afterwards.
+            _ <- ensureRemoteWindow host (dropTrailingPathSeparator rdir0) name (Just full)
+            requestRemoteTerm (host <> "#leksah")
+        Nothing ->
+            ensureCommandWindow True (T.pack dir <> "#" <> keySuffix) dir name full
+                >>= mapM_ requestLocalTerm
 
 -- | The stored command prefix (@psCmdPrefix@) of the workspace project that
 -- contains @dir@, read from the live IDE — 'Nothing' when there's no IDE yet,

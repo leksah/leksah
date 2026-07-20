@@ -26,8 +26,10 @@ import Data.Aeson (FromJSON(..), withObject, (.:), eitherDecodeStrict)
 import Data.Text (Text)
 import qualified Data.Text as T
        (pack, unpack, strip, null, takeWhile, lines, words, isPrefixOf, drop,
-        length, breakOn, splitOn, stripSuffix, dropWhile)
+        length, breakOn, splitOn, stripSuffix, stripPrefix, dropWhile,
+        intercalate, replace)
 import Data.Text.Encoding (encodeUtf8)
+import Text.Read (readMaybe)
 
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
@@ -41,10 +43,10 @@ import IDE.Git (runGit)
 import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import IDE.Web.RemoteSettingsRequest (requestRemoteSettings)
 import IDE.Web.GitLogRequest (requestGitLog)
-import IDE.Web.ReplTmux (openTerminalInDir)
+import IDE.Web.ReplTmux (openTerminalInDir, runInTerminal)
 import IDE.Web.FS (fsDoesFileExist, fsDoesDirectoryExist)
-import IDE.Web.RemoteRefresh (registerRemoteRefresh)
-import IDE.Web.LocalRefresh (registerLocalRefresh)
+import IDE.Web.RemoteRefresh (registerRemoteRefresh, requestRemoteRefresh, RefreshReason(..))
+import IDE.Web.LocalRefresh (registerLocalRefresh, requestLocalRefresh)
 
 import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
@@ -350,15 +352,25 @@ gitTreeNode dir = do
   isGitD <- holdUniqDyn =<< holdDyn False isGitE
   void . dyn $ ffor isGitD $ \isGit -> when isGit $ do
       (brE, fireBr) <- newTriggerEvent
-      let scanBr = void . forkIO $ gitCurrentBranch dir >>= fireBr
+      (abE, fireAb) <- newTriggerEvent
+      let scanBr = void . forkIO $ do
+            gitCurrentBranch dir >>= fireBr
+            gitAheadBehind dir   >>= fireAb
       bpb <- getPostBuild
       performEvent_ $ liftIO scanBr <$ bpb
       liftIO $ registerGitRefresh dir scanBr
       brD <- holdDyn Nothing brE
+      abD <- holdDyn Nothing abE
       void $ treeItem "git" False
-        (treeSelect "workspace" (return never) $ do
-            gitIcon
-            dynText $ ffor brD $ maybe "git" id
+        (do (_, mE) <- treeSelect' "workspace" (gitRootMenu dir brD) $ do
+                gitIcon
+                dynText $ ffor brD $ maybe "git" id
+                -- Ahead/behind of the current branch vs its upstream.
+                void . dyn $ ffor abD $ \case
+                    Just (a, b) -> abSpan a b
+                    Nothing     -> return ()
+                return (never :: Event t (IO ()))
+            performEvent_ $ liftIO <$> mE
             return (never :: Event t ()))
         (el "ul" $ do
             gitBranchesNode dir brD
@@ -370,6 +382,71 @@ gitTreeNode dir = do
 -- | A leading git tree-row icon.
 gitIcon :: MonadWidget t m => m ()
 gitIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-git.svg") (return ())
+
+-- | A muted @↑ahead ↓behind@ indicator vs the upstream; renders nothing when the
+-- branch is level with (or has no) upstream.
+abSpan :: MonadWidget t m => Int -> Int -> m ()
+abSpan ahead behind = when (ahead > 0 || behind > 0) $
+    elAttr "span"
+        (  "class" =: "git-ab"
+        <> "title" =: "commits ahead / behind upstream"
+        <> "style" =: "color:#888;margin-left:6px;font-size:11px" )
+        (text label)
+  where
+    label = T.intercalate " " $
+        [ "\x2191" <> tshow ahead  | ahead  > 0 ] ++
+        [ "\x2193" <> tshow behind | behind > 0 ]
+    tshow = T.pack . show
+
+-- | Run @git \<args\>@ in a reusable "git" terminal for this checkout, so network
+-- auth, progress and any errors/conflicts are visible.  The working tree change
+-- (e.g. a checkout) is picked up by the @.git@ watcher, which refreshes the tree.
+gitAction :: FilePath -> [Text] -> IO ()
+gitAction dir args =
+    runInTerminal dir "git" "git" (T.intercalate " " ("git" : map shq args))
+  where shq a = "'" <> T.replace "'" "'\\''" a <> "'"
+
+-- | Ask the git subtree to rescan now (branches, ahead/behind, worktrees, …).
+refreshGit :: FilePath -> IO ()
+refreshGit dir
+  | isRemotePath dir = requestRemoteRefresh RefreshManual
+  | otherwise        = requestLocalRefresh (dir </> ".git" </> "HEAD")
+
+-- | Right-click menu for the root git row: whole-repo network actions, the
+-- current branch's log, and a manual refresh.
+gitRootMenu :: forall t m. MonadWidget t m => FilePath -> Dynamic t (Maybe Text) -> m (Event t (IO ()))
+gitRootMenu dir curD = menu
+  [ constDyn ("Fetch",   gitAction dir ["fetch", "--all", "--prune"])
+  , constDyn ("Pull",    gitAction dir ["pull"])
+  , constDyn ("Push",    gitAction dir ["push"])
+  , ffor curD $ \mb -> ("Open Log", maybe (return ()) (requestGitLog dir) mb)
+  , constDyn ("Refresh", refreshGit dir)
+  ]
+
+-- | Right-click menu for a branch row: its log always; pull/push for the current
+-- branch, or checkout/delete for any other.
+gitBranchMenu :: forall t m. MonadWidget t m => FilePath -> Bool -> Text -> m (Event t (IO ()))
+gitBranchMenu dir isCurrent name = menu $
+  constDyn ("Open Log", requestGitLog dir name)
+  : if isCurrent
+      then [ constDyn ("Pull", gitAction dir ["pull"])
+           , constDyn ("Push", gitAction dir ["push"]) ]
+      else [ constDyn ("Checkout",      gitAction dir ["checkout", name])
+           , constDyn ("Delete Branch", gitAction dir ["branch", "-d", name]) ]
+
+-- | Right-click menu for a submodule row.
+gitSubmoduleMenu :: forall t m. MonadWidget t m => FilePath -> Text -> m (Event t (IO ()))
+gitSubmoduleMenu dir path = menu
+  [ constDyn ("Open Terminal Here", openTerminalInDir (dir </> T.unpack path))
+  , constDyn ("Update Submodule",   gitAction dir ["submodule", "update", "--init", "--", path])
+  ]
+
+-- | Right-click menu for a worktree row.
+gitWorktreeMenu :: forall t m. MonadWidget t m => FilePath -> GitWorktree -> m (Event t (IO ()))
+gitWorktreeMenu dir wt = menu
+  [ constDyn ("Open Terminal Here", openTerminalInDir (fullWorktreePath dir wt))
+  , constDyn ("Remove Worktree",    gitAction dir ["worktree", "remove", gwPath wt])
+  ]
 
 -- | \"Branches\": every local branch, the current one bolded; clicking a branch
 -- opens a git log viewer for it (a center tab) rather than checking it out.
@@ -385,13 +462,18 @@ gitBranchesNode dir curD = void $ treeItem "git-branches" False
         bsD <- holdDyn [] bsE
         void . dyn $ ffor ((,) <$> bsD <*> curD) $ \(bs, cur) ->
             forM_ bs $ \b -> el "li" $ do
-                (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+                let name  = gbName b
+                    isCur = Just name == cur
+                (rowEl, mE) <- treeSelect' "workspace" (gitBranchMenu dir isCur name) $ do
                     gitIcon
-                    elClass "span" (if Just b == cur then "git-branch-current" else "git-branch")
-                        (text b)
-                    return (never :: Event t ())
+                    elClass "span" (if isCur then "git-branch-current" else "git-branch")
+                        (text name)
+                    -- Ahead/behind vs this branch's upstream.
+                    abSpan (gbAhead b) (gbBehind b)
+                    return (never :: Event t (IO ()))
                 performEvent_ $ ffor (domEvent Click rowEl) $ \_ ->
-                    liftIO (requestGitLog dir b)
+                    liftIO (requestGitLog dir name)
+                performEvent_ $ liftIO <$> mE
                 return ()
         return (never :: Event t ()))
 
@@ -406,8 +488,11 @@ gitSubmodulesNode dir = do
         treeItem "git-submodules" False
           (treeSelect "workspace" (return never) $ gitIcon >> text "Submodules" >> return (never :: Event t ()))
           (el "ul" $ do
-              forM_ subs $ \s -> el "li" . void . treeSelect "workspace" (return never) $
-                  gitIcon >> text s >> return (never :: Event t ())
+              forM_ subs $ \s -> el "li" $ do
+                  (_, mE) <- treeSelect' "workspace" (gitSubmoduleMenu dir s) $
+                      gitIcon >> text s >> return (never :: Event t (IO ()))
+                  performEvent_ $ liftIO <$> mE
+                  return ()
               return (never :: Event t ()))
 
 -- | \"Worktrees\": the repo's OTHER worktrees (the current checkout is dropped);
@@ -424,12 +509,13 @@ gitWorktreesNode dir = void $ treeItem "git-worktrees" False
         wtD <- holdDyn [] wtE
         void . dyn $ ffor wtD $ \wts ->
             forM_ (filter (not . isCurrentWorktree dir) wts) $ \wt -> el "li" $ do
-                (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+                (rowEl, mE) <- treeSelect' "workspace" (gitWorktreeMenu dir wt) $ do
                     gitIcon
                     text (worktreeLabel wt)
-                    return (never :: Event t ())
+                    return (never :: Event t (IO ()))
                 performEvent_ $ ffor (domEvent Click rowEl) $ \_ ->
                     openTerminalInDir (fullWorktreePath dir wt)
+                performEvent_ $ liftIO <$> mE
                 return ()
         return (never :: Event t ()))
 
@@ -449,12 +535,54 @@ gitCurrentBranch dir = do
         Right (ExitSuccess, out, _) | b <- T.strip out, not (T.null b) -> Just b
         _ -> Nothing
 
-gitBranches :: FilePath -> IO [Text]
+-- | A local branch and how far it is ahead/behind its upstream (0/0 when level,
+-- or when it has no upstream — the indicator then just hides).
+data GitBranch = GitBranch
+  { gbName   :: Text
+  , gbAhead  :: Int
+  , gbBehind :: Int
+  } deriving (Eq, Show)
+
+-- @%(upstream:track,nobracket)@ prints e.g. @ahead 1, behind 2@ / @gone@ / empty
+-- (no upstream or level), so one @for-each-ref@ gives every branch's divergence.
+gitBranches :: FilePath -> IO [GitBranch]
 gitBranches dir = do
-    r <- try (runGit dir ["for-each-ref", "--format=%(refname:short)", "refs/heads"])
+    r <- try (runGit dir
+        [ "for-each-ref", "--format=%(refname:short)%09%(upstream:track,nobracket)"
+        , "refs/heads" ])
     return $ case r :: Either SomeException (ExitCode, Text, Text) of
-        Right (ExitSuccess, out, _) -> filter (not . T.null) (map T.strip (T.lines out))
+        Right (ExitSuccess, out, _) ->
+            [ GitBranch name a b
+            | l <- T.lines out, not (T.null (T.strip l))
+            , let (n, rest)   = T.breakOn "\t" l
+                  name        = T.strip n
+                  (a, b)      = parseTrack (T.drop 1 rest)
+            , not (T.null name) ]
         _ -> []
+
+-- | Parse a @%(upstream:track,nobracket)@ value (@"ahead 1, behind 2"@, @"gone"@,
+-- @""@) into @(ahead, behind)@.
+parseTrack :: Text -> (Int, Int)
+parseTrack track = foldr acc (0, 0) (T.splitOn ", " track)
+  where
+    acc piece (a, b)
+      | Just n <- num "ahead "  piece = (n, b)
+      | Just n <- num "behind " piece = (a, n)
+      | otherwise                     = (a, b)
+    num kw p = T.stripPrefix kw (T.strip p) >>= (readMaybe . T.unpack)
+
+-- | The current branch's @(ahead, behind)@ vs its upstream, for the root git
+-- row.  @rev-list --left-right --count \@{u}...HEAD@ prints @behind<TAB>ahead@
+-- (left = upstream-only, right = HEAD-only); 'Nothing' with no upstream.
+gitAheadBehind :: FilePath -> IO (Maybe (Int, Int))
+gitAheadBehind dir = do
+    r <- try (runGit dir ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
+    return $ case r :: Either SomeException (ExitCode, Text, Text) of
+        Right (ExitSuccess, out, _)
+          | [bh, ah] <- T.words (T.strip out)
+          , Just behind <- readMaybe (T.unpack bh)
+          , Just ahead  <- readMaybe (T.unpack ah) -> Just (ahead, behind)
+        _ -> Nothing
 
 -- @git config -f .gitmodules --get-regexp path@ prints @submodule.NAME.path PATH@
 -- per submodule (and fails when there's no .gitmodules — hence []).
