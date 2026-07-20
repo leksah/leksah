@@ -15,6 +15,7 @@ import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, try)
 import Control.Monad (void, when, unless)
 import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.HostFlags (getBrowserHosted)
 import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Lens (view, (^..), (^.))
@@ -33,7 +34,7 @@ import qualified Data.Map as M
        (lookup, fromListWith, toList)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, null)
+import qualified Data.Text as T (pack, null, unlines)
 import qualified Data.Text.IO as TIO (readFile)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import Data.Traversable (forM)
@@ -157,6 +158,19 @@ ensureMonacoLoaded = do
                  <> "s.id='leksah-monaco-css';s.textContent=window.leksahMonacoCss;"
                  <> "document.head.appendChild(s);delete window.leksahMonacoCss})()") :: Text)
         void $ eval mainJs
+        -- Native front end: free ⌘D for the Terminal menu's Split Right key
+        -- equivalent (the convert-to-tmux-pane gesture).  Monaco binds ⌘D to
+        -- "Add Selection To Next Find Match" and preventDefaults it inside
+        -- the page, so the native menu never sees the key; move that action
+        -- to ⌥⌘D instead.  Browser-hosted (warp) keeps Monaco's default —
+        -- there is no native menu to feed there.
+        browser <- liftIO getBrowserHosted
+        unless browser . void $ eval $ T.unlines
+          [ "(function(){var m=window.LeksahMonaco&&window.LeksahMonaco.monaco;"
+          , "if(!m)return;"
+          , "m.editor.addKeybindingRule({keybinding:m.KeyMod.CtrlCmd|m.KeyCode.KeyD,command:null});"
+          , "m.editor.addKeybindingRule({keybinding:m.KeyMod.CtrlCmd|m.KeyMod.Alt|m.KeyCode.KeyD,"
+          , "  command:'editor.action.addSelectionToNextFindMatch'});})()" ]
 #endif
 
 -- Which view of the original to show from the gutter context menu.

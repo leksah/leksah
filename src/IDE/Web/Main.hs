@@ -1656,7 +1656,10 @@ paneHlJs = T.unlines
 --     hidden \" ⌘`\" suffix inside it — so a coincident target reads \"⌘N ⌘`\".
 --   * ⌘D / ⌘⇧D — absolute overlay chips (like 'paneHlJs') on the active terminal
 --     pane (the one a split would act on, found via its shown highlight marker):
---     ⌘D at the bottom-middle, ⌘⇧D at the right-middle.
+--     ⌘D at the bottom-middle, ⌘⇧D at the right-middle.  When no terminal pane
+--     is on screen, the same chips land on the visible CONVERTIBLE tab body
+--     (.leksah-convertible — an editor / git-log view, see withConvertHint):
+--     there ⌘D/⌘⇧D convert the tab to its backing tmux pane and split it.
 --
 -- Recomputed (rAF-debounced) on focus change, resize, the Meta keydown that
 -- reveals the badges, and whenever the flip target changes.
@@ -1684,6 +1687,8 @@ hintsJs = T.unlines
   , "    var sd=c.querySelector('.leksah-hint-splitd'), sr=c.querySelector('.leksah-hint-splitr');"
   , "    sd.style.display='none'; sr.style.display='none';"
   , "    var ap=activePaneEl();"
+  , "    if(!ap){ var cs=document.querySelectorAll('.leksah-convertible');"
+  , "      for(var k=0;k<cs.length;k++){ if(shown(cs[k])){ ap=cs[k]; break; } } }"
   , "    if(ap){ var r=ap.getBoundingClientRect();"
   , "      put(sd, r.right - 18, r.top + r.height/2);"
   , "      put(sr, r.left + r.width/2, r.bottom - 12); }"
@@ -3425,6 +3430,15 @@ main showMenubar macTitlebar wid ide = mdo
             mon <- monacoEditor . view prefs <$> sample (current ide)
             void $ gitLogWidget mon d b
           _ -> return ()
+        -- Mark UNCONVERTED convertible tab bodies (editor / git-log) so the
+        -- ⌘-held navigation hints (hintsJs) can drop their yellow ⌘D / ⌘⇧D
+        -- chips on them, exactly as they do on the active terminal pane —
+        -- here the keys convert the tab to its backing tmux pane and split.
+        -- Overlay-hosted views (already converted) render via overlayW above,
+        -- inside a terminal pane, and get the pane chips instead.
+        withConvertHint body =
+          elAttr "div" ("class" =: "leksah-convertible"
+              <> "style" =: "position:relative;width:100%;height:100%") body
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
@@ -4814,8 +4828,9 @@ main showMenubar macTitlebar wid ide = mdo
           GitLogKey d b  -> toDM GitLogTab <$> do
               -- Same editor-backend pref as file tabs (decided at creation).
               mon <- monacoEditor . view prefs <$> sample (current ide)
-              gitLogWidget mon d b
-          EditorKey file -> toDM EditorTab <$> makeEditor file selectedE v)
+              withConvertHint $ gitLogWidget mon d b
+          EditorKey file -> toDM EditorTab <$>
+              withConvertHint (makeEditor file selectedE v))
     -- The active pane became a wide0 tab THIS window owns: float it to the MRU
     -- front / mark it active in the shared state (ignored for side/bottom tabs and
     -- for tabs owned by other windows).
