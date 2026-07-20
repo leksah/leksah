@@ -56,7 +56,8 @@ import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
-import IDE.Web.TerminalInput (setActiveTerminalNotifier)
+import IDE.Web.TerminalInput
+       (setActiveTerminalNotifier, setSplitActiveNotifier)
 
 -- | Run an action on the GTK main loop.  Bridge handlers are invoked from
 -- reflex\/jsaddle\/CmdServer threads, which must not touch GTK directly.
@@ -186,9 +187,12 @@ installGtkMenu app win = do
   -- depth-first order that the menu build emits them.
   writeIORef commandsRef (concatMap (flattenCmds . snd) gtkMenus)
 
-  -- Three parameterized actions carry the tag (avoids one named action per
+  -- Four parameterized actions carry the tag (avoids one named action per
   -- command).  termcmd's enabled state mirrors the macOS terminal gating:
   -- terminal-pane commands grey out unless a terminal tab is on screen.
+  -- splitcmd mirrors the macOS 'splittable' gate: the Split items are enabled
+  -- on EITHER a terminal (to split) OR a convertible editor/git-log tab (⌘D
+  -- converts it to a backing tmux pane, then splits).
   it <- GLib.variantTypeNew "i"
   let mkTagAction name = do
         act <- Gio.simpleActionNew name (Just it)
@@ -197,12 +201,26 @@ installGtkMenu app win = do
             mapM_ (dispatchTag win . fromIntegral)
         Gio.actionMapAddAction app act
         return act
-  _       <- mkTagAction "cmd"
-  termAct <- mkTagAction "termcmd"
-  _       <- mkTagAction "globalcmd"
+  _        <- mkTagAction "cmd"
+  termAct  <- mkTagAction "termcmd"
+  splitAct <- mkTagAction "splitcmd"
+  _        <- mkTagAction "globalcmd"
   Gio.simpleActionSetEnabled termAct False
-  setActiveTerminalNotifier $ \on ->
-    postGUIAsync $ Gio.simpleActionSetEnabled termAct on
+  Gio.simpleActionSetEnabled splitAct False
+  -- The split gate is the OR of two independently-notified booleans, so track
+  -- both and recompute on either change.
+  termActiveRef  <- newIORef False
+  splitActiveRef <- newIORef False
+  let refreshSplit =
+        (||) <$> readIORef termActiveRef <*> readIORef splitActiveRef
+          >>= Gio.simpleActionSetEnabled splitAct
+  setActiveTerminalNotifier $ \on -> postGUIAsync $ do
+    writeIORef termActiveRef on
+    Gio.simpleActionSetEnabled termAct on
+    refreshSplit
+  setSplitActiveNotifier $ \on -> postGUIAsync $ do
+    writeIORef splitActiveRef on
+    refreshSplit
 
   -- Open Recent (a section of app.recent items, rebuilt on every change).
   recentMenu <- Gio.menuNew
@@ -264,10 +282,12 @@ installGtkMenu app win = do
             go section tag (MenuKey label _ _ : rs) = do
               addLeaf section label "app.termcmd" tag
               go section (tag + 1) rs
-            -- Split items: convert-to-pane gating is macOS-only so far; on
-            -- Gtk they behave like the other terminal items (clicks only).
+            -- Split items: enabled on a terminal OR a convertible editor/
+            -- git-log tab (app.splitcmd's dual gate, above).  No accelerator
+            -- for the same reason as MenuKey — Ctrl+D would steal the key from
+            -- the terminal; menu clicks only.
             go section tag (MenuSplitKey label _ _ : rs) = do
-              addLeaf section label "app.termcmd" tag
+              addLeaf section label "app.splitcmd" tag
               go section (tag + 1) rs
             go section tag (MenuGlobalKey label spec _ : rs) = do
               addLeaf section label "app.globalcmd" tag

@@ -56,6 +56,13 @@ static UINT gGated[512];
 static int gGatedCount = 0;
 static int gTerminalActive = 0;
 
+/* Menu ids of the Split items: enabled on a terminal OR a convertible editor/
+ * git-log tab (the macOS 'splittable' gate — see leksah_win_set_split_active).
+ * ⌘D on such a tab converts it to a backing tmux pane, then splits. */
+static UINT gSplit[64];
+static int gSplitCount = 0;
+static int gSplitActive = 0;
+
 static LPWSTR wideFromUtf8(const char *s)
 {
     if (!s) return NULL;
@@ -98,6 +105,7 @@ void leksah_win_menu_begin(void)
     gFileMenu = NULL;
     gDepth = 0;
     gGatedCount = 0;
+    gSplitCount = 0;
 }
 
 void leksah_win_menu_add_menu(const char *title)
@@ -111,16 +119,23 @@ void leksah_win_menu_add_menu(const char *title)
     gDepth = 1;
 }
 
+/* gated: 0 = always enabled; 1 = terminal-gated (a terminal tab on screen);
+ * 2 = split-gated (a terminal OR a convertible editor/git-log tab). */
 void leksah_win_menu_add_item(const char *label, const char *accel,
                               int tag, int gated)
 {
     UINT id = (UINT)(LEKSAH_CMD_BASE + tag);
     LPWSTR w = captionFromUtf8(label, accel);
-    UINT flags = MF_STRING | (gated && !gTerminalActive ? MF_GRAYED : 0);
+    int enabled = gated == 0
+                  || (gated == 1 && gTerminalActive)
+                  || (gated == 2 && (gTerminalActive || gSplitActive));
+    UINT flags = MF_STRING | (enabled ? 0 : MF_GRAYED);
     AppendMenuW(gStack[gDepth - 1], flags, id, w ? w : L"?");
     free(w);
-    if (gated && gGatedCount < (int)(sizeof gGated / sizeof gGated[0]))
+    if (gated == 1 && gGatedCount < (int)(sizeof gGated / sizeof gGated[0]))
         gGated[gGatedCount++] = id;
+    if (gated == 2 && gSplitCount < (int)(sizeof gSplit / sizeof gSplit[0]))
+        gSplit[gSplitCount++] = id;
 }
 
 void leksah_win_menu_add_separator(void)
@@ -149,6 +164,23 @@ void leksah_win_set_terminal_active(int active)
     for (int i = 0; i < gGatedCount; i++)
         EnableMenuItem(gMenuBar, gGated[i],
                        MF_BYCOMMAND | (active ? MF_ENABLED : MF_GRAYED));
+    /* The Split items are enabled on a terminal too, so refresh them. */
+    for (int i = 0; i < gSplitCount; i++)
+        EnableMenuItem(gMenuBar, gSplit[i],
+                       MF_BYCOMMAND |
+                       ((active || gSplitActive) ? MF_ENABLED : MF_GRAYED));
+}
+
+/* Whether the active tab, though not a terminal, can convert to a tmux pane
+ * (an editor/git-log with a backing pane): enables the Split items so ⌘D
+ * converts-and-splits.  The macOS sibling is leksah_set_split_active. */
+void leksah_win_set_split_active(int active)
+{
+    gSplitActive = active;
+    for (int i = 0; i < gSplitCount; i++)
+        EnableMenuItem(gMenuBar, gSplit[i],
+                       MF_BYCOMMAND |
+                       ((gTerminalActive || active) ? MF_ENABLED : MF_GRAYED));
 }
 
 static void showOpenPanel(int project)

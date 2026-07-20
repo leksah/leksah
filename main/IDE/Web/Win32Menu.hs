@@ -48,7 +48,8 @@ import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.NewWindowRequest (setNewWindowHandler)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
-import IDE.Web.TerminalInput (setActiveTerminalNotifier)
+import IDE.Web.TerminalInput
+       (setActiveTerminalNotifier, setSplitActiveNotifier)
 
 -- NOTE: multiple OS windows are not yet available on Windows.  The shared
 -- multi-window machinery is complete and platform-neutral: the shared state
@@ -94,6 +95,9 @@ foreign import ccall "leksah_win_menu_pop_submenu"  c_menuPopSubmenu  :: IO ()
 foreign import ccall "leksah_win_menu_install"  c_menuInstall :: Ptr () -> IO ()
 -- Whether a terminal tab is on screen: enables/greys the gated items.
 foreign import ccall "leksah_win_set_terminal_active" c_setTerminalActive :: CInt -> IO ()
+-- Whether the active tab can convert to a tmux pane (an editor/git-log with a
+-- backing pane): enables the Split items so ⌘D converts-and-splits.
+foreign import ccall "leksah_win_set_split_active" c_setSplitActive :: CInt -> IO ()
 -- Show the native "Open File"/"Open Project" dialog (marshalled to the UI
 -- thread); it calls back leksah_open_file/leksah_open_project.
 foreign import ccall "leksah_win_show_open_panel" c_showOpenPanel :: IO ()
@@ -204,6 +208,9 @@ installWin32Menu wv = do
   -- screen.  Local PTY terminals are disabled on Windows, but control-mode
   -- (ssh tmux) tabs still count.
   setActiveTerminalNotifier $ \on -> c_setTerminalActive (if on then 1 else 0)
+  -- …and whether the active tab, though not a terminal, can convert to a tmux
+  -- pane — enables the Split items so ⌘D converts-and-splits (macOS parity).
+  setSplitActiveNotifier $ \on -> c_setSplitActive (if on then 1 else 0)
   -- The toolbar/menubar Open commands show the native open dialogs.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
@@ -241,10 +248,10 @@ installWin32Menu wv = do
       addItems tag (MenuGlobalKey label spec _ : rs) = do
         addItem label spec tag 0
         addItems (tag + 1) rs
-      -- Split items: convert-to-pane gating is macOS-only so far; on Windows
-      -- they keep the terminal gate.
+      -- Split items: gate mode 2 = enabled on a terminal OR a convertible
+      -- editor/git-log tab (⌘D converts-and-splits), matching macOS.
       addItems tag (MenuSplitKey label spec _ : rs) = do
-        addItem label spec tag 1
+        addItem label spec tag 2
         addItems (tag + 1) rs
       addItems tag (MenuSep : rs) = do
         c_menuAddSeparator
