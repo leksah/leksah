@@ -288,7 +288,7 @@ if [ "$GHCI" = "1" ]; then
   # nix cc-wrapper vars don't redirect the system clang back to the broken linker.
   syscc() { env -i PATH=/usr/bin:/bin HOME="$HOME" /usr/bin/xcrun clang "$@"; }
   syscc -dynamiclib main/leksah-mac-menu.m \
-     -framework Cocoa -framework ApplicationServices \
+     -framework Cocoa -framework ApplicationServices -framework AVFoundation \
      -o "$GHCI_NATIVE/libleksah-mac-menu.dylib"
   syscc -dynamiclib "$JS_SRC/cbits-cocoa/WKWebView-AppDelegate.m" \
      -DUSE_COCOA -I"$JS_SRC/cbits" $HS_INC -Wno-everything \

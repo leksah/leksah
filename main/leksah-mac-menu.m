@@ -10,6 +10,7 @@
 
 #import <Cocoa/Cocoa.h>
 #import <ApplicationServices/ApplicationServices.h>   // accessibility (AXUIElement) for window snapping
+#import <AVFoundation/AVFoundation.h>                 // AVSpeechSynthesizer (terminal-bell announcement)
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <signal.h>
@@ -1073,24 +1074,25 @@ static void leksah_read_holes(void) {
 }
 @end
 
-// Speaks text posted to the "leksahSpeak" handler via NSSpeechSynthesizer — the
+// Speaks text posted to the "leksahSpeak" handler via AVSpeechSynthesizer — the
 // terminal-bell announcement ("window <name>, pane <n>").  Like NSSound it plays
-// over other audio and never seizes the session.  stopSpeaking first so a newer
-// bell interrupts an in-progress announcement (newest alert wins) rather than
-// being dropped while the synth is busy.
+// over other audio and never seizes the session.  stopSpeakingAtBoundary first
+// so a newer bell interrupts an in-progress announcement (newest alert wins)
+// rather than being dropped while the synth is busy.  (Was NSSpeechSynthesizer,
+// deprecated in macOS 14.)
 @interface LeksahSpeakHandler : NSObject
 @end
 @implementation LeksahSpeakHandler
 - (void)userContentController:(id)ucc didReceiveScriptMessage:(id)message {
     (void)ucc;
-    static NSSpeechSynthesizer *synth = nil;
-    if (synth == nil) synth = [[NSSpeechSynthesizer alloc] initWithVoice:nil];
+    static AVSpeechSynthesizer *synth = nil;
+    if (synth == nil) synth = [[AVSpeechSynthesizer alloc] init];
     id body = [message valueForKey:@"body"];          // WKScriptMessage.body (via KVC)
     NSString *text = [body isKindOfClass:[NSString class]]
                        ? (NSString *)body : [body description];
     if (synth != nil && text != nil && [text length] > 0) {
-        [synth stopSpeaking];
-        [synth startSpeakingString:text];
+        [synth stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+        [synth speakUtterance:[AVSpeechUtterance speechUtteranceWithString:text]];
     }
 }
 @end

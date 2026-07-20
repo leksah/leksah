@@ -875,6 +875,7 @@ library leksah-mac-glue
       frameworks:
         Cocoa
         ApplicationServices
+        AVFoundation
       if flag(objc-in-library)
         c-sources:
           main/leksah-mac-menu.m
