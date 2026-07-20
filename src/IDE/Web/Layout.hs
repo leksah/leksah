@@ -4,7 +4,7 @@ module IDE.Web.Layout where
 import qualified Data.Text as T (unwords)
 
 import Clay
-       (vh, height, (-:), grid, position, relative, none, (?), (#), after, before, Css)
+       (vh, height, (-:), grid, position, relative, none, (?), (#), after, Css)
 import qualified Clay (display)
 
 layoutCss :: Css
@@ -380,18 +380,20 @@ layoutCss = do
         "bottom" -: "0"
         "height" -: "var(--wide1-bar)"
         "z-index" -: "3"
-    -- While the side pane is collapsed to its 3px peek, the divider's border would
-    -- sit hard against the window's left edge (x=0); margin can't push it past 0,
-    -- so slide the whole overlay off-screen instead.  It slides back when the pane
-    -- expands (hover/focus).
-    -- (…and not while a resize drag holds the pane open — see leksah-resizing-tall
-    -- below — or the divider would slide out from under the dragging cursor.)
-    ".leksah.tall-auto:not(.leksah-resizing-tall):not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)) .tall-divider" ?
-        ("transform" -: "translateX(-8px)")
-    -- Keep the divider off-screen while the pane is force-collapsed (suppressed)
-    -- even though we're technically still hovering — matching the collapsed pane.
-    ".leksah.tall-auto.tall-suppress .tall-divider" ?
-        ("transform" -: "translateX(-8px)")
+    -- While the side pane is collapsed to its 3px peek, the divider's ::after
+    -- grab strip would sit at the window's left edge, catching hovers with a
+    -- col-resize cursor.  Park it with display:none (NOT the old
+    -- translateX(-8px) slide of the whole overlay: the transform snapped
+    -- instantly while the column collapse animates, flashing the divider's
+    -- then-line 8px left of the still-wide boundary).  It comes back when the
+    -- pane expands (hover/focus), and stays during a resize drag — see
+    -- leksah-resizing-tall below — so it can't vanish from under the cursor.
+    ".leksah.tall-auto:not(.leksah-resizing-tall):not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)) .tall-divider" # after ?
+        ("display" -: "none")
+    -- Keep it parked while the pane is force-collapsed (suppressed) even
+    -- though we're technically still hovering — matching the collapsed pane.
+    ".leksah.tall-auto.tall-suppress .tall-divider" # after ?
+        ("display" -: "none")
     -- Drag-resize must not let an auto-hide pane collapse: while a drag is live
     -- resizeBarsJs marks .leksah with .leksah-resizing-tall / -wide1, and these
     -- rules pin the matching pane fully revealed (the hover-reveal geometry)
@@ -435,29 +437,12 @@ layoutCss = do
     -- tall boundary — keep it transparent.  (wide1 thus shows its border only when
     -- docked beside the tall pane in fully-shown mode.)
     ".leksah.wide1-auto .area-wide1" ? ("border-left-color" -: "transparent")
-    -- The tall↔editor separator, drawn on the persistent .tall-divider so it is
-    -- present even when the editor area (wide0) has no VISIBLE tab.  The border on
-    -- .area-wide0 (above) only renders while a wide0 tab is on-screen; but a tab
-    -- can exist yet be visibility:hidden (e.g. this OS window has no active editor,
-    -- or all its editors belong elsewhere), leaving the area visually blank with no
-    -- separator.  So draw the line unconditionally here (whenever the side pane is
-    -- on-screen): when a wide0 tab IS visible, this 1px grey line lands exactly on
-    -- that tab's own grey border-left — same colour, same x, an invisible overlap;
-    -- when the area is blank, this is the separator.  ::after is already the resize
-    -- handle, so use ::before.  Gating: tall-hide sets the divider display:none and
-    -- tall-auto slides it off-screen while collapsed (the transform rules above),
-    -- so `:not(.tall-hide)` covers "side pane visible".  Cover only the wide0 row
-    -- (top down to the wide1 row height), not the wide1 (bottom-bar) portion.
-    ".leksah:not(.tall-hide) .tall-divider" # before ? do
-        "content" -: "\"\""
-        "position" -: "absolute"
-        "top" -: "0"
-        "bottom" -: "var(--wide1-row)"
-        "right" -: "-1px"
-        "width" -: "1px"
-        "background" -: "rgb(128,128,128)"
-        "pointer-events" -: "none"
-        "z-index" -: "21"
+    -- (The tall↔editor separator is solely the editor columns' border-left,
+    -- gated above; the .tall-divider draws nothing — it exists only as the
+    -- ::after resize handle.  It used to also paint a 1px ::before line for the
+    -- case where the editor area has no visible tab, but that risked stray
+    -- second lines during the auto-hide animations and isn't worth it: a blank
+    -- editor area just has no separator.)
     -- The auto-hide activation strip: an invisible 3px-wide, full-height grid item
     -- pinned to the left of the (0-width, collapsed) side column, overflowing into
     -- the editor column's 3px left padding.  It exists only in tall-auto; hovering
