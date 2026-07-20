@@ -7,6 +7,7 @@ module IDE.Web.Widget.FileTree
   ( filesAndDirs
   , joinPaths
   , fileTree
+  , claudeNode
   , GitStatus(..)
   , gitClass
   , gitBadge
@@ -53,7 +54,8 @@ import IDE.Web.Widget.Tree
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Claude
        (claudeAvailable, claudeSessionsFor, ClaudeSession(..),
-        ClaudeCmd(..), runClaudeCmd, copySessionId, revealSession, deleteSession)
+        ClaudeCmd(..), runClaudeCmd, claudeRunning, copySessionId,
+        revealSession, deleteSession)
 
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
 filesAndDirs dir = liftIO $ do
@@ -165,9 +167,12 @@ fileTree
   -> Dynamic t Bool   -- ^ show git-ignored files
   -> Dynamic t (Maybe FilePath)  -- ^ the focused file (highlighted)
   -> Dynamic t (Maybe FilePath)  -- ^ the file to reveal (expand/scroll to)
+  -> Bool             -- ^ show a Claude node for the ROOT dir (subdirs always
+                      --   do); pass False when a project/package row already
+                      --   surfaces the Claude node for this dir, to avoid a dup
   -> FilePath
   -> m (Event t FileEvents)
-fileTree treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD dir = do
+fileTree treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD claudeAtRoot dir = do
   -- Compute git status/ignored once for this (top-level) directory; thread
   -- down.  The scan runs off the frame thread (remote dirs = an ssh round
   -- trip), and remote dirs rescan on RemoteRefresh events (save/build/⟳)
@@ -187,7 +192,7 @@ fileTree treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD
               when (p == base || (base <> "/") `isPrefixOf` p) $
                   void . forkIO $ gitInfo dir >>= fireInfo
   infoD <- holdDyn (mempty, mempty) infoE
-  fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD dir
+  fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD claudeAtRoot dir
 
 fileTree'
   :: MonadWidget t m
@@ -199,13 +204,15 @@ fileTree'
   -> Dynamic t (Maybe FilePath)
   -> Dynamic t (Maybe FilePath)
   -> Dynamic t (Map FilePath GitStatus, Set FilePath)
+  -> Bool             -- ^ show the Claude node for THIS dir (subdirs always do)
   -> FilePath
   -> m (Event t FileEvents)
-fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD dir = do
+fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD claudeHere dir = do
   -- A synthetic "Claude" node at the top of every directory that has saved
   -- Claude Code sessions (self-hiding otherwise; only when the CLI is on PATH).
+  -- Suppressed at a dir already covered by a project/package row's Claude node.
   avail <- liftIO claudeAvailable
-  when avail $ claudeNode treeName dir
+  when (claudeHere && avail) $ claudeNode treeName dir
   postBuild <- getPostBuild
   newListE <- performEvent $ filesAndDirs dir <$ postBuild
   allD <- holdDyn ([], []) newListE
@@ -251,7 +258,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
       -- Right-click → "New Claude Session" / "Continue Last …" (when claude is on PATH).
       performEvent_ $ liftIO <$> dmenuE
       return never
-      ) $ el "ul" $ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD subPath
+      ) $ el "ul" $ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD True subPath
   fileE <- listViewWithKey filesD $ \file _ -> do
     let imgSrc = "/pics/" <> case takeExtension file of
                     ".cabal" -> "tree-file-cabal.svg"
@@ -265,13 +272,15 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
         liAttrsD = (\mf -> "class" =: ("file" <> bool "" " active" (mf == Just absPath))
                         <> "data-reveal-key" =: T.pack absPath) <$> highlightD
     elDynAttr "li" liAttrsD $ do
-      (elFile, _) <- treeSelect' treeName (return never) $ do
+      (elFile, fmenuE) <- treeSelect' treeName (fileClaudeMenu avail absPath) $ do
         elAttr "img" ("class" =: "tree-icon" <> "src" =: imgSrc) $ return ()
         elDynClass "span" (gitNameClass <$> fileStatusD) . text $ T.pack file
         -- VS Code-style status letter to the right of the name.
         elDynClass "span" (("git-badge" <>) . maybe "" ((" " <>) . gitClass) <$> fileStatusD) $
           dynText $ maybe "" gitBadge <$> fileStatusD
         return never
+      -- Right-click → "Ask Claude about this file" (when claude is on PATH).
+      performEvent_ $ liftIO <$> fmenuE
       -- Scroll this file into view when it is the one to reveal.
       pbF <- getPostBuild
       let revealMeD = (== Just absPath) <$> revealD
@@ -289,6 +298,15 @@ dirClaudeMenu avail dir
       , constDyn ("Continue Last Claude Session", runClaudeCmd (ClaudeContinue dir))
       ]
 
+-- | The right-click menu for a file row — currently just "Ask Claude about this
+-- file", which starts a @claude@ session seeded to explain it.  Empty (so the
+-- browser's own menu shows) when the @claude@ CLI isn't on PATH.
+fileClaudeMenu :: forall t m. MonadWidget t m => Bool -> FilePath -> m (Event t (IO ()))
+fileClaudeMenu avail f
+  | not avail = return never
+  | otherwise = menu
+      [ constDyn ("Ask Claude about this file", runClaudeCmd (ClaudeAsk f)) ]
+
 -- | A leading robot icon for Claude tree rows.
 claudeIcon :: MonadWidget t m => m ()
 claudeIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") (return ())
@@ -303,19 +321,28 @@ claudeNode :: forall t m. MonadWidget t m => Text -> FilePath -> m ()
 claudeNode treeName dir = do
   pb <- getPostBuild
   (sessE, fireSess) <- newTriggerEvent
-  let doScan = void . forkIO $
-        (claudeAvailable >>= \ok -> if ok then claudeSessionsFor dir else return [])
-          >>= fireSess
+  (runE,  fireRun)  <- newTriggerEvent
+  let doScan = void . forkIO $ do
+        ok <- claudeAvailable
+        (if ok then claudeSessionsFor dir else return []) >>= fireSess
+        (if ok then claudeRunning dir     else return False) >>= fireRun
   performEvent_ $ liftIO doScan <$ pb
   tick <- tickLossyFromPostBuildTime 30
   performEvent_ $ liftIO doScan <$ tick
   sessD <- holdDyn [] sessE
+  runD  <- holdUniqDyn =<< holdDyn False runE
   hasD  <- holdUniqDyn (not . null <$> sessD)
   void . dyn $ ffor hasD $ \has -> when has . void $
     treeItem "claude" False
       (do (rowEl, dmenuE) <- treeSelect' treeName rootMenu $ do
              claudeIcon
              dynText $ ffor sessD $ \ss -> "Claude (" <> T.pack (show (length ss)) <> ")"
+             -- Green "running" dot while a live claude terminal exists here.
+             elDynAttr "span"
+               (ffor runD $ \r -> "title" =: "A Claude session is running here"
+                  <> "style" =: (if r then "color:#3fb950;margin-left:5px"
+                                      else "display:none"))
+               (text "●")
              return (never :: Event t (IO ()))
           -- Double-click / Enter on the Claude node → the interactive picker.
           performEvent_ $ liftIO (runClaudeCmd (ClaudeResumePicker dir)) <$ domEvent Dblclick rowEl

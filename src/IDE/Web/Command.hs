@@ -25,7 +25,8 @@ import IDE.Web.SnapRequest (requestSnapWindow)
 import IDE.Core.State
        (readIDE, modifyIDE_, Prefs(..), prefs, PackageAction, ProjectAction,
         WorkspaceAction, IDEAction, __, IDE, TallVisibility(..),
-        webWindows, activeWindow, wwTall, wwWide1)
+        webWindows, activeWindow, wwTall, wwWide1, activeProject, pjDir, pjKey)
+import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
 import IDE.Debug
        (debugContinue, debugStepModule, debugStepLocal, debugStep,
         debugToggled)
@@ -312,6 +313,22 @@ commandDebugContinue = CommandIDEAction
   "/pics/debug-continue.svg"
   (__ "Resume after a breakpoint")
   debugContinue
+
+-- | Start a new Claude Code session in the active project's directory (toolbar
+-- + AI menu).  A no-op when no project is active or @claude@ isn't on PATH
+-- (runClaudeCmd just opens nothing).
+commandClaudeNew :: Command
+commandClaudeNew = CommandIDEAction
+  "/pics/tree-claude.svg"
+  (__ "Start a Claude Code session in the active project")
+  (readIDE activeProject >>= mapM_ (liftIO . runClaudeCmd . ClaudeNew . pjDir . pjKey))
+
+-- | Continue the most recent Claude Code session in the active project.
+commandClaudeContinue :: Command
+commandClaudeContinue = CommandIDEAction
+  ""
+  (__ "Continue the most recent Claude Code session in the active project")
+  (readIDE activeProject >>= mapM_ (liftIO . runClaudeCmd . ClaudeContinue . pjDir . pjKey))
 
 -- | A menu command that sends the tmux prefix (@C-b@, byte 0x02) followed by
 -- @keys@ to the active terminal — exactly as if the shortcut had been typed

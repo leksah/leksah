@@ -86,7 +86,8 @@ import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
         flakeTreeWidget, execButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu)
-import IDE.Web.Widget.FileTree (fileTree)
+import IDE.Web.Widget.FileTree (fileTree, claudeNode)
+import IDE.Web.Claude (claudeAvailable, runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeSelect, treeSelect', treeItem,
         treeItem')
@@ -823,6 +824,7 @@ workspaceWidget ide activeFileD revealFileD = do
           projNodeRevealD <- revealUnder (constDyn (pjDir pKey)) revealFileD
           treeItemDynAttr' projNodeRevealD (("class" =:) . ("project" <>) <$> (bool "" " active" <$> isActiveProjectD)) True
             (do
+              claudeAvail <- liftIO claudeAvailable
               (projRowEl, rowE) <- treeSelect' "workspace" (menu $
                 [ ("Activate",) . ProjectCommand . CommandWorkspaceAction "Set as Active Project" "" <$>
                     (workspaceActivatePackage <$> projectD <*> pure Nothing <*> pure Nothing)
@@ -839,7 +841,11 @@ workspaceWidget ide activeFileD revealFileD = do
                     (runProject projectRefreshNix <$> projectD)
                 , constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (workspaceRemoveProject pKey)))
                 , constDyn ("Project Settings…", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (requestRemoteSettings pKey))))
-                ]) $ do
+                ]
+                -- Claude Code (only when the CLI is on PATH): start a fresh
+                -- session or continue the most recent one in the project dir.
+                <> [ constDyn ("New Claude Session", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeNew (pjDir pKey)))))) | claudeAvail ]
+                <> [ constDyn ("Continue Last Claude Session", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeContinue (pjDir pKey)))))) | claudeAvail ]) $ do
                 elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
                 -- Label = (for a remote project) the server name, then the
                 -- shortest right-anchored path suffix that uniquely identifies
@@ -861,6 +867,11 @@ workspaceWidget ide activeFileD revealFileD = do
               -- Top item: the project's git tree (self-hides unless the project
               -- dir is itself a git checkout).
               gitTreeNode (pjDir pKey)
+              -- The project's Claude Code sessions, surfaced right under the
+              -- project row (self-hides unless the project dir has sessions) so
+              -- it's reachable without drilling into the Files node.
+              claudeAvail <- liftIO claudeAvailable
+              when claudeAvail $ claudeNode "workspace" (pjDir pKey)
               let packagesD = M.fromList . map (\p -> (ipdPackageId p, p)) . pjPackages <$> projectD
               packagesE <- listViewWithKey packagesD $ \packageId packageD -> do
                 cabalFileD <- holdUniqDyn $ ipdCabalFile <$> packageD
@@ -879,8 +890,12 @@ workspaceWidget ide activeFileD revealFileD = do
                 pkgRevealE <- revealUnderExcept pkgDirD nestedPkgDirsD revealFileD
                 let isActivePackageD = (&&) <$> isActiveProjectD <*> ((==) <$> activePackageFileD <*> (Just <$> cabalFileD))
                     pkgCmd t f = (t,) . PackageCommand . CommandWorkspaceAction "" "" <$> (runProject . runPackage f <$> packageD <*> projectD)
+                    -- A Claude launch item for the package's directory (Dynamic
+                    -- because the package dir is).
+                    pkgClaude t c = (\d -> (t, PackageCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (c d)))))) <$> pkgDirD
+                -- claudeAvail is the project-level binding above (in scope here).
                 treeItemDynAttr' pkgRevealE (("class" =:) . ("package" <>) <$> (bool "" " active" <$> isActivePackageD)) False
-                  (treeSelect "workspace" (menu
+                  (treeSelect "workspace" (menu $
                       [ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Package" "" <$>
                           (workspaceActivatePackage <$> projectD <*> (Just <$> packageD) <*> pure Nothing)
                       , pkgCmd "Build" makePackage
@@ -889,7 +904,9 @@ workspaceWidget ide activeFileD revealFileD = do
                       , pkgCmd "Benchmark" packageBench
                       , pkgCmd "Clean" packageClean
                       , ("Open Package File",) . PackageFileEvents . (("" =:) . OpenFile False . ipdCabalFile) <$> packageD
-                      ]) $ do
+                      ]
+                      <> [ pkgClaude "New Claude Session" ClaudeNew | claudeAvail ]
+                      <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue | claudeAvail ]) $ do
                     let isDebugD = S.member . (pKey,) <$> cabalFileD <*> debugPackagesD
                     elDynAttr "img" (("class" =: "tree-icon" <>) . ("src" =:) . (\f -> "/pics/tree-" <> f <> ".svg") . bool "package" "debug" <$> isDebugD) $ return ()
                     -- The package's cabal-file path (relative to the project)
@@ -960,7 +977,11 @@ workspaceWidget ide activeFileD revealFileD = do
                           sourceDirsD <- holdUniqDyn $ absolutSourceDirs <$> packageD
                           dirD <- holdUniqDyn $ dropFileName . ipdCabalFile <$> packageD
                           (switchHold never =<<) . dyn $
-                            (\sd ig d -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD d)
+                            -- Show the package's own Claude node unless the
+                            -- package sits at the project root (the project row
+                            -- already surfaces that dir's Claude node).
+                            (\sd ig d -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD
+                                (dropTrailingPathSeparator d /= dropTrailingPathSeparator (pjDir pKey)) d)
                               <$> sourceDirsD <*> nestedPkgDirsD <*> dirD
                     return $ leftmost [componentsE, PackageFileEvents <$> filesE]
               pjSourceDirsD <- holdUniqDyn $ mconcat . (fmap absolutSourceDirs . pjPackages) <$> projectD
@@ -990,7 +1011,9 @@ workspaceWidget ide activeFileD revealFileD = do
                       return never) $
                         el "ul" $
                           (switchHold never =<<) . dyn $
-                            (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD (pjDir pKey))
+                            -- The project row already surfaces the Claude node
+                            -- for pjDir, so suppress it on this "Other Files" tree.
+                            (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD False (pjDir pKey))
                               <$> pjSourceDirsD <*> pkgDirsD)
               -- Any project with a flake.nix gets a (collapsed) Flake node;
               -- it self-hides when there's no flake and only evaluates once

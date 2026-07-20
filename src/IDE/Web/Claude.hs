@@ -20,6 +20,7 @@ module IDE.Web.Claude
   , claudeSessionsFor
   , ClaudeCmd(..)
   , runClaudeCmd
+  , claudeRunning
   , copySessionId
   , revealSession
   , deleteSession
@@ -27,7 +28,7 @@ module IDE.Web.Claude
 
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
-import Control.Monad (void, forM)
+import Control.Monad (void, forM, mfilter)
 
 import Data.Char (isAlphaNum)
 import Data.Foldable (toList)
@@ -49,14 +50,15 @@ import System.Directory
        (findExecutable, getHomeDirectory, doesDirectoryExist,
         listDirectory, getModificationTime, removeFile)
 import System.FilePath
-       ((</>), takeExtension, takeBaseName, takeDirectory,
+       ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator)
 import System.Info (os)
 import System.IO (withFile, IOMode(ReadMode), hIsEOF)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (createProcess, proc, readProcess)
 
-import IDE.Web.ReplTmux (ensureCommandWindow, clipboardCopyCmd)
+import IDE.Web.ReplTmux
+       (ensureCommandWindow, clipboardCopyCmd, cmdPrefixForDir, liveRunKeys)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 
 -- | A saved Claude Code session for some directory.
@@ -186,13 +188,21 @@ data ClaudeCmd
   | ClaudeResumePicker FilePath        -- ^ @claude --resume@ — interactive picker
   | ClaudeResume       FilePath Text   -- ^ @claude --resume <id>@
   | ClaudeResumeFork   FilePath Text   -- ^ @claude --resume <id> --fork-session@
+  | ClaudeAsk          FilePath        -- ^ @claude "<prompt>"@ — new session
+                                       --   seeded to explain the given file
 
 -- | Open (or focus) a terminal in the right directory running the command.
 -- Interactive/new sessions share one @claude@ window per directory; a specific
 -- resumed session gets its own window keyed by id.  Fire-and-forget.
 runClaudeCmd :: ClaudeCmd -> IO ()
-runClaudeCmd cmd = void . forkIO $
-  void $ ensureCommandWindow True key (dropTrailingPathSeparator dir) "claude" line
+runClaudeCmd cmd = void . forkIO $ do
+  let d = dropTrailingPathSeparator dir
+  -- Launch inside the owning project's command prefix (e.g. @nix develop -c@)
+  -- so the tools claude spawns (cabal/ghc/hls) inherit the project environment;
+  -- no prefix set → a plain launch.
+  mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
+  let line' = maybe line (\p -> p <> " " <> line) mbPrefix
+  void $ ensureCommandWindow True key d "claude" line'
            >>= mapM_ requestLocalTerm
   where
     (dir, keyTag, line) = case cmd of
@@ -201,7 +211,23 @@ runClaudeCmd cmd = void . forkIO $
       ClaudeResumePicker d -> (d, "claude",            "claude --resume")
       ClaudeResume d i     -> (d, "claude#" <> i,      "claude --resume " <> i)
       ClaudeResumeFork d i -> (d, "claude#fork#" <> i, "claude --resume " <> i <> " --fork-session")
+      ClaudeAsk f          -> let b = T.pack (takeFileName f)
+                              in ( takeDirectory f
+                                 , "claude#ask#" <> b
+                                 , "claude " <> shq ("Please explain the file @" <> b
+                                     <> " — what it does and how it fits into this project.") )
     key = T.pack (dropTrailingPathSeparator dir) <> "#" <> keyTag
+    -- Single-quote for the shell tmux runs the window command through, so a
+    -- multi-word seeded prompt reaches @claude@ as one argument.
+    shq t = "'" <> T.replace "'" "'\\''" t <> "'"
+
+-- | Is a @claude@ terminal window currently live for @dir@ — the shared
+-- interactive window (@dir#claude@) or any resumed/ask window (@dir#claude#…@)?
+-- Used to show a "running" marker on the tree node.
+claudeRunning :: FilePath -> IO Bool
+claudeRunning dir = do
+  let base = T.pack (dropTrailingPathSeparator dir) <> "#claude"
+  any (\k -> k == base || (base <> "#") `T.isPrefixOf` k) <$> liveRunKeys
 
 -- | Copy a session id to the system clipboard (best-effort).
 copySessionId :: Text -> IO ()

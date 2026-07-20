@@ -13,10 +13,12 @@ module IDE.Web.ReplTmux
   , replSessionName
   , ffcabalTmuxEnv
   , findReplWindow
+  , liveRunKeys
   , selectTmuxWindowById
   , ensureCommandWindow
   , ensureRemoteWindow
   , openTerminalInDir
+  , cmdPrefixForDir
   , buildSplitWindowCommand
   , getLoginShell
   , interactiveShellArgs
@@ -98,6 +100,18 @@ findReplWindow name = (`catch` \(_ :: SomeException) -> return Nothing) $
                 [ (sid, wid) | l <- T.lines (T.pack out)
                 , (sid : wid : wname) <- [T.splitOn "\t" l]
                 , T.intercalate "\t" wname == name ]
+
+-- | Every @\@leksah_run@ window key currently live on leksah's private tmux
+-- server (empty on any failure / no tmux).  Used to detect which command
+-- windows — e.g. a running @claude@ session — are currently open.
+liveRunKeys :: IO [Text]
+liveRunKeys = (`catch` \(_ :: SomeException) -> return []) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return []
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "list-windows", "-a", "-F", "#{@leksah_run}"] ""
+            return $ filter (not . T.null) (T.lines (T.pack out))
 
 -- | Select a tmux window by its unique window id (@\@N@) — repl window names
 -- contain ':' (@pkg:lib:name@), so id targeting is the only unambiguous form.

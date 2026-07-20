@@ -50,7 +50,7 @@ import qualified Data.ByteString as BS (readFile)
 import qualified Data.ByteString.Char8 as BS (unlines)
 import qualified Data.ByteString.Lazy as BS (toStrict)
 import qualified Data.ByteString.Lazy as LBS (fromStrict, readFile)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isDigit)
 import qualified Data.Dependent.Map as DM (singleton, fromList, lookup)
 import Data.Dependent.Sum (DSum(..))
 import Data.Foldable (Foldable(..))
@@ -1331,6 +1331,33 @@ flipPaneLabel n w p tree =
 -- Terminals tree shows (bell/activity/…); a file tab gets its file-type icon;
 -- the side-pane tabs reuse 'tabIconSrc'.  The state-carrying window icon means a
 -- belled terminal is spottable in the flipper at a glance.
+-- | A tmux window created by 'runClaudeCmd' (named @"claude"@) — a Claude Code
+-- session window, shown with the robot icon in the tab bar and flipper.  Strips
+-- any leading @"N: "@ index prefix (the label's number can differ from
+-- 'twIndex', so we don't rely on 'stripIdxPrefix' here).
+isClaudeWindow :: TmuxWindow -> Bool
+isClaudeWindow w = stripAnyIdxPrefix (twLabel w) == "claude"
+
+-- | Drop a leading @"&lt;digits&gt;: "@ prefix from a window/pane label, whatever the
+-- number is (unlike 'stripIdxPrefix', which needs the exact index).
+stripAnyIdxPrefix :: Text -> Text
+stripAnyIdxPrefix l =
+  let d = T.takeWhile isDigit l
+  in if T.null d
+       then l
+       else maybe l (\rest -> fromMaybe l (T.stripPrefix ": " rest)) (T.stripPrefix d l)
+
+-- | The window's leading icon: the robot for a calm/idle Claude window, but the
+-- bell/activity/silence alert icon otherwise (so "claude wants input" stays
+-- visible on a claude tab).
+windowIconSrc :: TmuxWindow -> Text
+windowIconSrc w
+  | isClaudeWindow w
+  , src `elem` ["/pics/tree-window-calm.svg", "/pics/tree-window-idle.svg"]
+      = "/pics/tree-claude.svg"
+  | otherwise = src
+  where src = windowAlertSrc w
+
 flipIconSrc :: Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Text
 flipIconSrc tree = \case
     FlipPane n w _          -> Just (winIcon n w)
@@ -1338,7 +1365,7 @@ flipIconSrc tree = \case
     FlipTab k               -> tabIconSrc k
   where
     winIcon n w = case M.lookup n tree >>= find ((== w) . twIndex) . snd of
-        Just win -> windowAlertSrc win
+        Just win -> windowIconSrc win
         Nothing  -> "/pics/tree-window-idle.svg"
     activeWinIdx sid = maybe 0 twIndex $ M.lookup sid tree
         >>= (\wins -> listToMaybe (filter twActive wins ++ wins)) . snd
@@ -3289,7 +3316,7 @@ main showMenubar macTitlebar wid ide = mdo
                               Nothing | s `S.member` att -> "/pics/tree-window-bell.svg"
                                       | otherwise        -> "/pics/tree-window-idle.svg"
                               Just w  | s `S.member` att && twActive w -> "/pics/tree-window-bell.svg"
-                                      | otherwise                      -> windowAlertSrc w)
+                                      | otherwise                      -> windowIconSrc w)
                             <$> mwD <*> attentionD
                 labelW = do
                     void $ elDynAttr' "img"

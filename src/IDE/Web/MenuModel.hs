@@ -24,7 +24,7 @@ import IDE.Web.Command
         commandNewWindow, commandToggleTmuxIntercept, tmuxKey,
         paneCmd, splitCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
         commandSendSelection, commandSendFileRef, commandSendError,
-        commandFocusAITerminal)
+        commandFocusAITerminal, commandClaudeNew, commandClaudeContinue)
 
 -- | One entry in a menu: a clickable command (optionally with a shortcut hint
 -- shown the macOS way — right-aligned and greyed), or a nested submenu.
@@ -133,6 +133,9 @@ menus =
       , MenuGlobalKey "Send Error"          "cmd+ctrl+e" commandSendError
       , MenuGlobalKey "Focus AI Terminal"   "cmd+ctrl+j" commandFocusAITerminal
       , MenuGlobalKey "Grab Region"         "cmd+ctrl+g" commandGrabRegion
+      , MenuSep
+      , MenuGlobalKey "New Claude Session"       "cmd+ctrl+c" commandClaudeNew
+      , MenuGlobalKey "Continue Claude Session"  "cmd+ctrl+k" commandClaudeContinue
       ])
   ]
 
