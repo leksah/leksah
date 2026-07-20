@@ -61,6 +61,11 @@ data WebSession = WebSession
   , wsWindows :: [WebWindowSession] -- ^ per-OS-window state, ordered by window id
   , wsVisible :: [(Text, TabKey)]   -- ^ shared side/bottom area -> tab visible there
   , wsRecentFiles :: Maybe [FilePath] -- ^ recently opened files, most recent first
+  , wsPaneOverlays :: Maybe [(Text, TabKey)]
+      -- ^ tmux pane id -> the leksah view drawn over it (an editor / git log
+      --   converted to a pane by ⌘D — see '_paneOverlays').  Optional (absent
+      --   in older files); restore validates each pane still exists and still
+      --   carries the matching @leksah_run tag before re-adopting it.
   } deriving (Eq, Show, Generic)
 
 instance ToJSON WebWindowSession
@@ -77,7 +82,7 @@ instance ToJSON TallVisibility
 instance FromJSON TallVisibility
 
 emptyWebSession :: WebSession
-emptyWebSession = WebSession webSessionVersion [] [] Nothing
+emptyWebSession = WebSession webSessionVersion [] [] Nothing Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = getConfigFilePathForSave "web-session.json"

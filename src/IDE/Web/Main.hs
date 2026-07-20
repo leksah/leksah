@@ -187,7 +187,7 @@ import IDE.Web.ConvertRequest (nextConvertRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.GhciMode (ghciMode, registerGhciCleanup, stopForGhci)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
-import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported)
+import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported, liveRunPanes)
 import IDE.Web.TerminalInput
        (setActiveTerminal, setActiveConvertible, tmuxCommandActiveTerminal,
         selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
@@ -547,8 +547,27 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                             (wwsTall w) (wwsWide1 w) Nothing)
               | (i, w) <- zip [0 ..] wwsList ]
             nWins    = length wwsList
+        -- Re-adopt saved pane overlays (editors / git logs converted to tmux
+        -- panes by ⌘D): only where the pane still exists AND still carries
+        -- the matching @leksah_run tag — tmux may have been restarted and
+        -- reused the %ids for something else entirely.
+#if defined(ghcjs_HOST_OS)
+        let overlays = M.empty
+#else
+        liveKeysByPane <- M.fromList . map (\(key, _, _, pid) -> (pid, key))
+                            <$> liveRunPanes
+        let expectedRunKey (EditorKey f)   = Just (T.pack f <> "#edit")
+            expectedRunKey (GitLogKey d b) = Just (T.pack d <> "#gitlog#" <> b)
+            expectedRunKey _               = Nothing
+            overlays = M.fromList
+              [ (pid, k)
+              | (pid, k) <- concat (mbSession >>= wsPaneOverlays)
+              , Just want <- [expectedRunKey k]
+              , M.lookup pid liveKeysByPane == Just want ]
+#endif
         (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
           i & webWindows .~ seeded & nextWindowId .~ nWins & activeWindow ?~ WindowId 0
+            & paneOverlays .~ overlays
         -- Ask native to create the windows past the first (the first is created
         -- by the wkwebview AppDelegate / warp connection and attached below).
         -- No-op on warp (no handler), which stays single-window.
@@ -5080,15 +5099,17 @@ main showMenubar macTitlebar wid ide = mdo
     isActiveD   <- holdUniqDyn ((== Just wid) . _activeWindow <$> ide)
     -- The Preferences pane is transient — never save/restore it as an open tab.
     let notPrefs = (/= PreferencesKey)
+    paneOverlaysMainD <- holdUniqDyn ((^. paneOverlays) <$> ide)
     sessionD <- holdUniqDyn $
-      (\wins vis recF ->
+      (\wins vis recF ovs ->
           WebSession 4
             [ WebWindowSession (filter notPrefs (_wwWide0 ww)) (_wwActive ww)
                                (_wwTall ww) (_wwWide1 ww)
             | (_, ww) <- M.toList wins ]
             (M.toList (M.filterWithKey (\a k -> a /= "wide0" && notPrefs k) vis))
-            (Just recF))
-        <$> webWindowsD <*> visibleTabsD <*> recentFilesD
+            (Just recF)
+            (Just (M.toList ovs)))
+        <$> webWindowsD <*> visibleTabsD <*> recentFilesD <*> paneOverlaysMainD
     let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
     saveSessE <- debounce (1 :: NominalDiffTime) (gate (current writeGateD) (updated sessionD))
     performEvent_ $ ffor saveSessE $ liftIO . writeWebSession
