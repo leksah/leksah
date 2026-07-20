@@ -1095,7 +1095,9 @@ static void leksah_install_beep_handler(id webview) {
 // window from leksah_new_window: transparent full-size-content title bar (so the
 // web toolbar occupies it), per-window frame autosave, and the become-key /
 // will-close observers that drive active-window tracking and close-merge.
-static void leksah_configure_window(NSWindow *win, int wid) {
+// Returns YES if a previously-saved frame was restored (so the caller knows not
+// to override it, e.g. by centring a fresh window).
+static BOOL leksah_configure_window(NSWindow *win, int wid) {
     if (gWindows == nil) gWindows = [[NSMutableDictionary alloc] init];
     [gWindows setObject:win forKey:@(wid)];
     if (wid == 0) gLeksahWindow = win;
@@ -1111,7 +1113,7 @@ static void leksah_configure_window(NSWindow *win, int wid) {
     // wid 0 keeps the historical name so existing saved geometry is preserved.
     NSString *autosave = (wid == 0) ? @"LeksahMainWindow"
                                     : [NSString stringWithFormat:@"LeksahWindow%d", wid];
-    [win setFrameUsingName:autosave];
+    BOOL restored = [win setFrameUsingName:autosave];
     [win setFrameAutosaveName:autosave];
     // Frontmost window → active window (routes the bridges + flipper in-place).
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeKeyNotification
@@ -1128,6 +1130,7 @@ static void leksah_configure_window(NSWindow *win, int wid) {
         }];
     // Let this window's JS ring the native beep (see LeksahBeepHandler).
     leksah_install_beep_handler(leksah_find_webview([win contentView]));
+    return restored;
 }
 
 // Create a native window + WKWebView for a freshly-minted WindowId and hand the
@@ -1152,8 +1155,12 @@ void leksah_new_window(int wid) {
         id web = ((id (*)(id, SEL, NSRect, id))objc_msgSend)(
             [wkClass alloc], @selector(initWithFrame:configuration:), frame, cfg);
         [win setContentView:web];
-        leksah_configure_window(win, wid);
-        [win center];
+        // Restore this window's saved position/size; only centre a genuinely new
+        // window (no saved frame).  Centring unconditionally would clobber the
+        // remembered location on a ghci-mode restart, where even window 0 comes
+        // back through this path (see src-wkwebview/Main.hs).
+        BOOL restored = leksah_configure_window(win, wid);
+        if (!restored) [win center];
         [win makeKeyAndOrderFront:nil];
         // Activate the app.  jsaddle's SYNCHRONOUS callbacks ride a JS
         // prompt("JSaddleSync",…) handled by the WKWebView's UIDelegate — but
