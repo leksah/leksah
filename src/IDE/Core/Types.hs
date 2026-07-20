@@ -187,6 +187,7 @@ module IDE.Core.Types (
 ,   jsContexts
 ,   logLineMap
 ,   webWindows
+,   paneOverlays
 ,   activeWindow
 ,   nextWindowId
 ,   flipMirror
@@ -330,6 +331,10 @@ data IDE            =  IDE {
 ,   _jsContexts          :: [JSContextRef]
 ,   _logLineMap          :: Map Int (Text, LogTag)
 ,   _webWindows          :: Map WindowId WebWindow -- ^ per-OS-window state (multi-window web UI)
+,   _paneOverlays        :: Map Text TabKey        -- ^ tmux pane id (@%N@) -> the leksah view drawn
+                                                    --   OVER that pane in the CC terminal widget (an
+                                                    --   editor / git-log converted to a pane by ⌘D);
+                                                    --   shared so every OS window renders the overlay
 ,   _activeWindow        :: Maybe WindowId         -- ^ the frontmost OS window (native becomeKey)
 ,   _nextWindowId        :: Int                    -- ^ monotonic 'WindowId' minter
 ,   _flipMirror          :: Maybe (Int, [(Text, Int, Text)], Int)

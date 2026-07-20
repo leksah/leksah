@@ -133,7 +133,7 @@ import Reflex
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never,
         performEvent_, getPostBuild, performEvent, select, fan, fanMap,
         fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate,
-        listViewWithKey, sample,
+        listViewWithKey, sample, constDyn,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
@@ -147,7 +147,7 @@ import IDE.Core.State
         currentError, logRefFullFilePath, refDescription, logRefSrcSpan,
         srcSpanStartLine,
         WindowId(..), WebWindow(..), webWindows, activeWindow, nextWindowId,
-        flipMirror, flipMru, ideVersion, focusLog, metaLog)
+        paneOverlays, flipMirror, flipMru, ideVersion, focusLog, metaLog)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
@@ -383,6 +383,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             ,   _jsContexts        =   []
             ,   _logLineMap        =   mempty
             ,   _webWindows        =   mempty
+            ,   _paneOverlays      =   mempty
             ,   _activeWindow      =   Nothing
             ,   _nextWindowId      =   0
             ,   _flipMirror        =   Nothing
@@ -3375,12 +3376,41 @@ main showMenubar macTitlebar wid ide = mdo
     (saveBridgeE, fireSaveReq) <- newTriggerEvent
     let inPageSaveE = fmapMaybe (\case CommandFileSave -> Just (); _ -> Nothing) panelCmdE
         saveReqE    = leftmost [saveBridgeE, inPageSaveE]
-        saveFileE   = leftmost
+    -- ⌘S with a TERMINAL tab active: if that session's tmux-active pane hosts
+    -- an overlay editor ('_paneOverlays'), save that file — the overlay editor
+    -- is "the active editor" even though the active pane key is a TerminalKey.
+    overlaySaveE <- fmap (fmapMaybe id) . performEvent $
+      ffor (tag ((,) <$> current activePaneD <*> current ide) saveReqE) $ \(mk, i) ->
+        case mk of
+          Just (TerminalKey n) | not ("ssh://" `T.isPrefixOf` n) -> liftIO $ do
+            mbP <- activePaneId n
+            return $ do
+              p <- mbP
+              k <- M.lookup p (i ^. paneOverlays)
+              case k of EditorKey f -> Just f; _ -> Nothing
+          _ -> return Nothing
+    let saveFileE   = leftmost
           [ fmapMaybe (\case Just (EditorKey f) -> Just f; _ -> Nothing)
                       (tag (current activePaneD) saveReqE)
           -- The save prompt's "Save" button (dirty editor being closed).
-          , promptSaveE ]
+          , promptSaveE
+          , overlaySaveE ]
     (openFileE, fileLineE, lspRefsE, makeEditor) <- editorWidget ide allE saveFileE
+    -- Overlay-hosted leksah views (an editor / git log converted to a pane by
+    -- ⌘D — see '_paneOverlays'): the same widgets the tabs use, rendered
+    -- inside a terminal pane by TerminalCC's paneWidget.  The editor's change
+    -- event is re-routed through this trigger because the tab-dispatch
+    -- plumbing (tabE/EditorTab → dirtyFilesD / the build trigger) never sees
+    -- overlay editors.
+    (overlayChangedE, fireOverlayChanged) <- newTriggerEvent
+    let overlayW k selE = case k of
+          EditorKey f -> do
+            changeE <- makeEditor f selE (constDyn Nothing)
+            performEvent_ $ liftIO (fireOverlayChanged f) <$ changeE
+          GitLogKey d b -> do
+            mon <- monacoEditor . view prefs <$> sample (current ide)
+            void $ gitLogWidget mon d b
+          _ -> return ()
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
@@ -4500,6 +4530,7 @@ main showMenubar macTitlebar wid ide = mdo
           [ f | (EditorKey f, dm) <- M.toList m, Just _ <- [DM.lookup EditorTab dm] ]
     dirtyFilesD <- foldDyn ($) S.empty $ leftmost
           [ (\fs s -> foldr S.insert s fs)                        <$> editorChangedFilesE
+          , S.insert                                              <$> overlayChangedE
           , S.delete                                              <$> saveFileE
           , (\ks s -> foldr S.delete s [ f | EditorKey f <- ks ]) <$> closeTabsE ]
     -- Prompt to save a dirty editor before closing it (⌘W / File ▸ Close).  The
@@ -4674,7 +4705,7 @@ main showMenubar macTitlebar wid ide = mdo
               -- classic ConPTY-backed widget is the only option.
               let useCC = tmuxSupported && (cm || "ssh://" `T.isPrefixOf` n)
               if useCC
-                then terminalCCWidget ide n selectedE
+                then terminalCCWidget ide n selectedE overlayW
                 else terminalWidget ide n selectedE
           MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
@@ -5012,6 +5043,11 @@ main showMenubar macTitlebar wid ide = mdo
       <> ((^.. (to $ \() -> do
         tb <- readIDE triggerBuild
         void . liftIO $ tryPutMVar tb ())) <$> editorE)
+      -- Overlay editors ('_paneOverlays') aren't in the tab fan above; their
+      -- changes trigger the background build the same way.
+      <> ((^.. (to $ \_ -> do
+        tb <- readIDE triggerBuild
+        void . liftIO $ tryPutMVar tb ())) <$> overlayChangedE)
       -- (Per-window side/bottom visibility is seeded into '_webWindows' by
       -- 'newIDE' at restore, so there is no restore-visibility event here.)
       <> ((\(PrefsUpdate f) -> [modifyIDE_ (prefs %~ f)]) <$> prefsPaneE)

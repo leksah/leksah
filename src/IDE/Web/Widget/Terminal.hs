@@ -222,6 +222,19 @@ terminalCss = do
         "border" -: "0"
         "background" -: "rgb(16,16,16)"
         "z-index" -: "5"
+    -- A pane backing a leksah view (an editor / git log converted to a pane by
+    -- ⌘D — see paneOverlays): the leksah widget overlays the pane, the xterm
+    -- underneath is hidden exactly like a tunnel pane's.
+    ".terminal-cc-pane-overlay > .terminal" ? Clay.display none
+    ".terminal-cc-overlay" ? do
+        "position" -: "absolute"
+        "left" -: "0"
+        "top" -: "0"
+        "width" -: "100%"
+        "height" -: "100%"
+        "overflow" -: "hidden"
+        "background" -: "rgb(16,16,16)"
+        "z-index" -: "5"
 
 -- | A terminal pane.  The 'Int' is the terminal's id; it maps to a tmux
 -- session named @leksah-N@ so the shell survives a leksah restart (see

@@ -43,7 +43,7 @@ module IDE.Web.Widget.TerminalCC
 import Data.Text (Text)
 import Reflex (Dynamic, Event, never)
 import Reflex.Dom.Core (MonadWidget, el, text)
-import IDE.Core.State (IDE)
+import IDE.Core.State (IDE, TabKey)
 import IDE.Web.Events (TerminalEvents)
 
 terminalCCWidget
@@ -51,8 +51,9 @@ terminalCCWidget
   => Dynamic t IDE
   -> Text
   -> Event t ()
+  -> (TabKey -> Event t () -> m ())
   -> m (Event t TerminalEvents)
-terminalCCWidget _ _ _ = do
+terminalCCWidget _ _ _ _ = do
     el "div" $ text "Terminals are not available in the browser demo."
     return never
 
@@ -85,7 +86,7 @@ import Text.Read (readMaybe)
 import Reflex
        (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe, foldDyn,
         delay, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost, never,
-        newTriggerEvent, performEvent, performEvent_, switchHold, tag,
+        newTriggerEvent, performEvent, performEvent_, sample, switchHold, tag,
         updated)
 import Reflex.Dom.Core
        (MonadWidget, blank, divClass, domEvent, dyn, dyn_, elAttr, elAttr',
@@ -97,7 +98,7 @@ import Language.Javascript.JSaddle
         valToText)
 
 import IDE.Core.CTypes (SrcSpan(..))
-import IDE.Core.State (IDE, focusLog)
+import IDE.Core.State (IDE, TabKey, focusLog, paneOverlays)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux (tmuxSocket)
 import IDE.Web.SnapRequest (requestSnapPane)
@@ -124,8 +125,12 @@ terminalCCWidget
   => Dynamic t IDE
   -> Text                -- ^ tmux session id (\"$3\") or \"ssh://host[#target]\"
   -> Event t ()          -- ^ fires when this tab is selected
+  -> (TabKey -> Event t () -> m ())
+                         -- ^ builds the leksah view drawn OVER a pane listed in
+                         --   '_paneOverlays' (an editor / git log converted to a
+                         --   pane); the event is \"this pane was selected\"
   -> m (Event t TerminalEvents)
-terminalCCWidget ide sessionId selectedE = do
+terminalCCWidget ide sessionId selectedE overlayW = do
     pb <- getPostBuild
     (evE, fireEv) <- newTriggerEvent
     (ccStartedE, fireCCStarted) <- newTriggerEvent
@@ -301,6 +306,12 @@ terminalCCWidget ide sessionId selectedE = do
     tunnelGenD <- foldDyn
         (\(p, mg) m -> maybe (M.delete p m) (\g -> M.insert p g m) mg)
         M.empty tunnelEvE
+    -- Panes carrying a leksah view overlay (an editor / git log converted to
+    -- a pane): shared IDE state, so every OS window renders the same overlay.
+    -- The IORef mirror is for the focus helpers below (plain JSM, no reflex).
+    overlaysD <- holdUniqDyn ((^. paneOverlays) <$> ide)
+    overlaysRef <- liftIO . newIORef =<< sample (current overlaysD)
+    performEvent_ $ ffor (updated overlaysD) $ liftIO . writeIORef overlaysRef
     performEvent_ $ ffor batchEvE $ \(pane, json) -> liftJSM . void $
         jsg ("LeksahJsaddlePane" :: Text) ^. js2 ("runBatch" :: Text)
             (tunnelUrlKey sessionId pane) json
@@ -501,7 +512,8 @@ terminalCCWidget ide sessionId selectedE = do
                       Nothing -> containerHasFocus
                       Just p  -> do
                         tunnels <- liftIO $ readIORef tunnelsRef
-                        if M.member p tunnels
+                        overlays <- liftIO $ readIORef overlaysRef
+                        if M.member p tunnels || M.member p overlays
                           then containerHasFocus
                           else do
                             terms <- liftIO $ readIORef termsRef
@@ -528,6 +540,23 @@ terminalCCWidget ide sessionId selectedE = do
                         -- holds focus — see leksahJsaddlePaneJs).
                         void $ jsg ("LeksahJsaddlePane" :: Text)
                             ^. js1 ("focus" :: Text) (tunnelUrlKey sessionId p)
+                        -- …and a leksah view overlay ('_paneOverlays'): focus
+                        -- the editor's input surface inside the pane div
+                        -- (CM6 .cm-content / Monaco textarea.inputarea; any
+                        -- focusable fallback).
+                        overlays <- liftIO $ readIORef overlaysRef
+                        when (M.member p overlays) $ do
+                            mbC <- liftIO $ readIORef containerRef
+                            forM_ mbC $ \c -> do
+                                t <- c ^. js1 ("querySelector" :: Text)
+                                        (".terminal-cc-pane[data-pane=\"" <> p
+                                         <> "\"] .terminal-cc-overlay .cm-content, "
+                                         <> ".terminal-cc-pane[data-pane=\"" <> p
+                                         <> "\"] .terminal-cc-overlay textarea.inputarea, "
+                                         <> ".terminal-cc-pane[data-pane=\"" <> p
+                                         <> "\"] .terminal-cc-overlay [tabindex]")
+                                nul <- valIsNull t
+                                unless nul $ void $ t ^. js0 ("focus" :: Text)
                     -- Safety net: if the keyboard still isn't in this terminal (no
                     -- active pane recorded yet, or its xterm wasn't focusable),
                     -- focus the visible container's textarea directly — so
@@ -545,8 +574,10 @@ terminalCCWidget ide sessionId selectedE = do
                     -- focused it above; focusActivePaneSoon retries on later frames
                     -- if it wasn't laid out yet, so we must NOT fall back here.
                     tunnels <- liftIO $ readIORef tunnelsRef
+                    overlays' <- liftIO $ readIORef overlaysRef
                     let haveActiveTarget =
-                          maybe False (\p -> M.member p terms || M.member p tunnels) mbP
+                          maybe False (\p -> M.member p terms || M.member p tunnels
+                                          || M.member p overlays') mbP
                     inFocus <- containerHasFocus
                     unless (inFocus || haveActiveTarget) $ do
                         mbC <- liftIO $ readIORef containerRef
@@ -834,6 +865,9 @@ terminalCCWidget ide sessionId selectedE = do
                                     paneWidget cc sessionId paneCbs termsRef
                                                pausedRef tunnelsRef activePaneRef cell pane rectD
                                                dimsD (M.lookup pane <$> tunnelGenD)
+                                               (M.lookup pane <$> overlaysD)
+                                               overlayW
+                                               (void (ffilter (== pane) paneFocusE))
                                 -- Repaint this window's panes when it becomes
                                 -- visible: their xterms may have been built
                                 -- hidden (display:none) and so never painted
@@ -1189,11 +1223,15 @@ paneWidget
   -> (Double, Double) -> PaneId -> Dynamic t (Int, Int, Int, Int)
   -> Dynamic t (Int, Int)    -- ^ layout size in cells (for edge panes)
   -> Dynamic t (Maybe Int)   -- ^ jsaddle-terminal tunnel generation (Just = iframe)
+  -> Dynamic t (Maybe TabKey) -- ^ leksah view overlaid on this pane ('_paneOverlays')
+  -> (TabKey -> Event t () -> m ())  -- ^ overlay view builder
+  -> Event t ()              -- ^ this pane was selected (⌘-number split select)
   -> m ()
-paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch) pane rectD0 dimsD0 tunnelD0 = do
+paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch) pane rectD0 dimsD0 tunnelD0 overlayD0 overlayW overlaySelE = do
     rectD <- holdUniqDyn rectD0
     dimsD <- holdUniqDyn dimsD0
     tunnelD <- holdUniqDyn tunnelD0
+    overlayD <- holdUniqDyn overlayD0
     -- The pane box uses the SAME extents as the active-pane shadow marker
     -- ('renderHlSegments'), so the two line up exactly: at the layout's outer
     -- edges it is flush with the container (covering the sub-cell remainder —
@@ -1224,12 +1262,13 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
                <> (if y + h >= lh then ";bottom:0" else ";height:" <> p (bI - tI))
         key = tunnelUrlKey sessionId pane
     (paneEl, _) <- elDynAttr' "div"
-        ((\r d mt -> "class" =: ("terminal-cc-pane"
-                               <> maybe "" (const " terminal-cc-pane-tunnel") mt)
+        ((\r d mt mo -> "class" =: ("terminal-cc-pane"
+                               <> maybe "" (const " terminal-cc-pane-tunnel") mt
+                               <> maybe "" (const " terminal-cc-pane-overlay") mo)
                  -- data-pane = the tmux %id, so a flip target (published by
                  -- reflex as a %id) can be located in the DOM to hang a ⌘` hint.
                  <> "data-pane" =: pane
-                 <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD) $
+                 <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD <*> overlayD) $ do
         -- jsaddle-terminal overlay: while a tunnel generation is active an
         -- iframe (keyed by the generation, so an app restart rebuilds it)
         -- covers the pane; the hidden xterm keeps consuming non-frame output.
@@ -1299,6 +1338,31 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
                                     ccSend cc ("select-pane -t " <> pane)
                             _ -> return ()
                         _ -> return ())
+        -- leksah view overlay ('_paneOverlays'): an editor / git log converted
+        -- to a pane by ⌘D renders here, filling the pane div (so it tracks the
+        -- pane's rectangle through every layout change, like the tunnel
+        -- iframe); the hidden xterm keeps consuming output underneath.
+        dyn_ $ ffor overlayD $ \case
+          Nothing -> return ()
+          Just k -> do
+            (ovEl, _) <- elAttr' "div" ("class" =: "terminal-cc-overlay") $
+                overlayW k overlaySelE
+            -- Focus entering the overlaid view makes its pane tmux's active
+            -- pane — same contract (and echo suppression) as the tunnel
+            -- iframe's "focus" message above.
+            pbO <- getPostBuild
+            performEvent_ $ ffor pbO $ \_ -> liftJSM . void $
+                _element_raw ovEl ^. js2 ("addEventListener" :: Text)
+                    ("focusin" :: Text)
+                    (fun $ \_ _ _ -> liftIO $ do
+                        active <- readIORef activePaneRef
+                        if active == Just pane
+                          then focusLog $ "[" <> T.unpack sessionId <> "] overlay FOCUS pane="
+                                 <> T.unpack pane <> " == active -> skip select-pane (echo)"
+                          else do
+                            focusLog $ "[" <> T.unpack sessionId <> "] overlay FOCUS pane="
+                                <> T.unpack pane <> " -> select-pane"
+                            ccSend cc ("select-pane -t " <> pane))
     pb <- getPostBuild
     performEvent_ $ ffor (tag (current rectD) pb) $ \(_, _, w, h) -> liftJSM $ do
         term <- new (jsg ("Terminal" :: Text)) ()
