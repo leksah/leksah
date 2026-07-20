@@ -21,6 +21,7 @@ module IDE.Web.Claude
   , ClaudeCmd(..)
   , runClaudeCmd
   , claudeRunning
+  , activateMruClaude
   , copySessionId
   , revealSession
   , deleteSession
@@ -58,7 +59,8 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Process (createProcess, proc, readProcess)
 
 import IDE.Web.ReplTmux
-       (ensureCommandWindow, clipboardCopyCmd, cmdPrefixForDir, liveRunKeys)
+       (ensureCommandWindow, clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
+        liveRunPanes, tmuxCmd)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 
 -- | A saved Claude Code session for some directory.
@@ -232,7 +234,30 @@ runClaudeCmd cmd = void . forkIO $ do
 claudeRunning :: FilePath -> IO Bool
 claudeRunning dir = do
   let base = T.pack (dropTrailingPathSeparator dir) <> "#claude"
-  any (\k -> k == base || (base <> "#") `T.isPrefixOf` k) <$> liveRunKeys
+  any (claudeKeyFor base) <$> liveRunKeys
+
+-- | Does run key @k@ belong to @dir@'s claude terminals (@base@ =
+-- @\<dir\>#claude@)?  Matches the shared interactive window and any
+-- resumed\/fork\/ask window.
+claudeKeyFor :: Text -> Text -> Bool
+claudeKeyFor base k = k == base || (base <> "#") `T.isPrefixOf` k
+
+-- | Activate the most-recently-used LIVE claude terminal for @dir@ (select its
+-- tmux window\/pane wherever it now lives and open that session's terminal
+-- tab); 'False' when no claude terminal is open here.  MRU is tmux
+-- @window_activity@ — the pane that last produced output\/was used — via
+-- 'liveRunPanes'.
+activateMruClaude :: FilePath -> IO Bool
+activateMruClaude dir = do
+  let base = T.pack (dropTrailingPathSeparator dir) <> "#claude"
+  panes <- filter (\(k, _, _, _) -> claudeKeyFor base k) <$> liveRunPanes
+  case panes of
+    [] -> return False
+    ((_, sid, wid, pid) : _) -> do
+      tmuxCmd ["select-window", "-t", T.unpack wid]
+      tmuxCmd ["select-pane", "-t", T.unpack pid]
+      requestLocalTerm sid
+      return True
 
 -- | Copy a session id to the system clipboard (best-effort).
 copySessionId :: Text -> IO ()

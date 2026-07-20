@@ -54,8 +54,8 @@ import IDE.Web.Widget.Tree
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Claude
        (claudeAvailable, claudeSessionsFor, ClaudeSession(..),
-        ClaudeCmd(..), runClaudeCmd, claudeRunning, copySessionId,
-        revealSession, deleteSession)
+        ClaudeCmd(..), runClaudeCmd, claudeRunning, activateMruClaude,
+        copySessionId, revealSession, deleteSession)
 
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
 filesAndDirs dir = liftIO $ do
@@ -312,8 +312,10 @@ claudeIcon :: MonadWidget t m => m ()
 claudeIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") (return ())
 
 -- | The synthetic "Claude" node for @dir@, shown only while @dir@ has saved
--- Claude Code sessions.  The row (robot icon + count) resumes via the picker on
--- double-click/Enter and offers New/Continue on right-click; each child is a
+-- Claude Code sessions.  Double-click/Enter on the row (robot icon + count)
+-- activates the most-recently-used OPEN claude terminal here, falling back to
+-- the resume picker when none is open; right-click offers New/Continue/Resume.
+-- Each child is a
 -- session (MRU order) that resumes on double-click/Enter, with fork/copy/reveal/
 -- delete on right-click.  The list rescans on a slow tick, so new sessions —
 -- and freshening "3h ago" ages — appear on their own.
@@ -344,8 +346,15 @@ claudeNode treeName dir = do
                                       else "display:none"))
                (text "●")
              return (never :: Event t (IO ()))
-          -- Double-click / Enter on the Claude node → the interactive picker.
-          performEvent_ $ liftIO (runClaudeCmd (ClaudeResumePicker dir)) <$ domEvent Dblclick rowEl
+          -- Double-click / Enter on the Claude node → the most-recently-used
+          -- OPEN claude terminal for this directory, if any (activated in
+          -- place, wherever its pane lives now); otherwise the interactive
+          -- picker.
+          performEvent_ $
+            (liftIO . void . forkIO $
+               activateMruClaude dir >>= \hit ->
+                 unless hit $ runClaudeCmd (ClaudeResumePicker dir))
+            <$ domEvent Dblclick rowEl
           performEvent_ $ liftIO <$> dmenuE
           return (never :: Event t ()))
       (el "ul" $ do

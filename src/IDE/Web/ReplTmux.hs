@@ -15,6 +15,7 @@ module IDE.Web.ReplTmux
   , findReplWindow
   , findRunPane
   , liveRunKeys
+  , liveRunPanes
   , selectTmuxWindowById
   , ensureCommandWindow
   , ensureRemoteWindow
@@ -34,8 +35,9 @@ import Control.Exception (catch, SomeException)
 import Control.Lens ((^.))
 import Control.Monad (void, mfilter)
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.List (find, isPrefixOf)
+import Data.List (find, isPrefixOf, sortOn)
 import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Ord (Down(..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.Directory (findExecutable, getTemporaryDirectory)
@@ -49,6 +51,7 @@ import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 #endif
 import System.Log.Logger (debugM)
 import System.Process (readProcessWithExitCode)
+import Text.Read (readMaybe)
 
 import IDE.Core.State
        (reflectIDE, readIDE, workspace, wsProjects, wsSettingsFor,
@@ -138,6 +141,25 @@ findRunPane key = (`catch` \(_ :: SomeException) -> return Nothing) $
                 [ (sid, wid, pid) | l <- T.lines (T.pack out)
                 , (sid : wid : pid : k) <- [T.splitOn "\t" l]
                 , T.intercalate "\t" k == key ]
+
+-- | Every live pane carrying a @\@leksah_run@ key, most-recently-active first
+-- (tmux @window_activity@, so \"recently used\" reflects actual output\/use):
+-- @(key, session id, window id, pane id)@.  Empty on any failure / no tmux.
+liveRunPanes :: IO [(Text, Text, Text, Text)]
+liveRunPanes = (`catch` \(_ :: SomeException) -> return []) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return []
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
+                , "#{window_activity}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ] ""
+            return $ map snd $ sortOn (Down . fst)
+                [ (act, (key, sid, wid, pid))
+                | l <- T.lines (T.pack out)
+                , (actT : sid : wid : pid : k) <- [T.splitOn "\t" l]
+                , let key = T.intercalate "\t" k
+                , not (T.null key)
+                , Just act <- [readMaybe (T.unpack actT) :: Maybe Integer] ]
 
 -- | Select a tmux window by its unique window id (@\@N@) — repl window names
 -- contain ':' (@pkg:lib:name@), so id targeting is the only unambiguous form.
