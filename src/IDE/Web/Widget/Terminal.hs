@@ -131,7 +131,7 @@ import IDE.Web.Claude (claudeSessionsFor, ClaudeSession(..))
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
-        selectTmuxWindowById, getLoginShell, interactiveShellArgs,
+        findRunPane, selectTmuxWindowById, getLoginShell, interactiveShellArgs,
         writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.TerminalRefresh (monitorSessionName)
@@ -627,25 +627,42 @@ createTerminalSession name = (`catch` \(_ :: SomeException) -> return Nothing) $
 -- as a new *window* in the shared @leksah-editor@ tmux session — created on the
 -- first open, reused after — so every externally-opened file is a window-tab
 -- (named @winName@, the file's basename) under one Terminals-tree node.  Returns
--- the @leksah-editor@ session id (the terminal tab is keyed by it).  When the last
--- window is @:q@'d the session ends; the next open recreates it.
-openFileInEditor :: String -> [String] -> IO (Maybe Text)
-openFileInEditor winName argv = (`catch` \(_ :: SomeException) -> return Nothing) $
+-- the session id the editor pane lives in (the terminal tab is keyed by it).
+-- When the last window is @:q@'d the session ends; the next open recreates it.
+--
+-- One editor per file: the pane is tagged @\<file\>#edit@ (a *pane* option, so
+-- the tag follows the pane through the Terminals-tree drag-and-drop), and a
+-- reopen selects + returns the existing pane — wherever it lives now — instead
+-- of launching a second editor.  (Reopening at a different line just activates
+-- it; the @+line@ only applies to a fresh launch.)
+openFileInEditor :: FilePath -> String -> [String] -> IO (Maybe Text)
+openFileInEditor file winName argv = (`catch` \(_ :: SomeException) -> return Nothing) $
     findExecutable "tmux" >>= \case
         Nothing -> return Nothing
         Just tmux -> do
             shell <- getLoginShell
             conf  <- writeTmuxConf shell
             let base = ["-L", tmuxSocket, "-f", conf]
-            -- Add a window to leksah-editor if it exists, else create the session.
-            (hasRc, _, _) <- readProcessWithExitCode tmux
-                (base ++ ["has-session", "-t", "=leksah-editor"]) ""
-            let mk = if hasRc == ExitSuccess
-                       then ["new-window", "-t", "=leksah-editor"]
-                       else ["new-session", "-d", "-s", "leksah-editor"]
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                (base ++ mk ++ ["-n", winName, "-P", "-F", "#{session_id}"] ++ argv) ""
-            return . listToMaybe . filter (not . T.null) . map T.strip . T.lines $ T.pack out
+                run as = readProcessWithExitCode tmux (base ++ as) ""
+                key = T.pack file <> "#edit"
+            findRunPane key >>= \case
+              Just (sid, wid, pid) -> do
+                _ <- run ["select-window", "-t", T.unpack wid]
+                _ <- run ["select-pane", "-t", T.unpack pid]
+                return (Just sid)
+              Nothing -> do
+                -- Add a window to leksah-editor if it exists, else create the session.
+                (hasRc, _, _) <- run ["has-session", "-t", "=leksah-editor"]
+                let mk = if hasRc == ExitSuccess
+                           then ["new-window", "-t", "=leksah-editor"]
+                           else ["new-session", "-d", "-s", "leksah-editor"]
+                (_rc, out, _) <- run
+                    (mk ++ ["-n", winName, "-P", "-F", "#{session_id}\t#{pane_id}"] ++ argv)
+                case T.splitOn "\t" (T.strip (T.pack out)) of
+                  (sid : pid : _) | not (T.null pid) -> do
+                    _ <- run ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack key]
+                    return (Just sid)
+                  _ -> return Nothing
 
 -- | Write (idempotently) a tiny helper that posts a macOS Notification Center
 -- notification for a tmux bell alert, and return its path.  Driven by the
@@ -997,7 +1014,12 @@ parsePaneTree out = M.map toSession grouped
       [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid))))
       | (sid, sname, wi, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, paneName) <- rows ]
     mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
-    mergeWin (wn, wa, wb, wac, ws, rk, ps1) (_, _, _, _, _, _, ps2) = (wn, wa, wb, wac, ws, rk, ps1 <> ps2)
+    -- The run key is a *pane* option (rows differ within a window — e.g. a
+    -- claude pane dragged into a window of shell panes), so a window's
+    -- 'twRunKey' is any non-empty pane key; legacy window-tagged windows give
+    -- every row the same inherited key, so this reduces to the old behaviour.
+    mergeWin (wn, wa, wb, wac, ws, rk1, ps1) (_, _, _, _, _, rk2, ps2) =
+      (wn, wa, wb, wac, ws, if T.null rk1 then rk2 else rk1, ps1 <> ps2)
     toSession (sname, wm) =
       ( sname
       , [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk Nothing

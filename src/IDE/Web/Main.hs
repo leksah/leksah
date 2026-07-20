@@ -4019,7 +4019,7 @@ main showMenubar macTitlebar wid ide = mdo
     -- like a new terminal below.
     editTermSidE <- fmapMaybe id <$> performEvent
       (ffor (attach (current prefsD) (leftmost [openExternalE, nativeOpenExtE])) $ \(p, (file, line)) ->
-         liftIO $ openFileInEditor (takeFileName file)
+         liftIO $ openFileInEditor file (takeFileName file)
            (words (T.unpack (externalEditor p)) ++ ["+" <> show line, file]))
     let newOrEditTermE = leftmost [newTermIdE, editTermSidE]
     -- Once the new session/window exists, poll the tree and float its active pane

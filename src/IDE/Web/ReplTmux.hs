@@ -13,6 +13,7 @@ module IDE.Web.ReplTmux
   , replSessionName
   , ffcabalTmuxEnv
   , findReplWindow
+  , findRunPane
   , liveRunKeys
   , selectTmuxWindowById
   , ensureCommandWindow
@@ -102,17 +103,41 @@ findReplWindow name = (`catch` \(_ :: SomeException) -> return Nothing) $
                 , (sid : wid : wname) <- [T.splitOn "\t" l]
                 , T.intercalate "\t" wname == name ]
 
--- | Every @\@leksah_run@ window key currently live on leksah's private tmux
--- server (empty on any failure / no tmux).  Used to detect which command
--- windows — e.g. a running @claude@ session — are currently open.
+-- | Every @\@leksah_run@ key currently live on leksah's private tmux server
+-- (empty on any failure / no tmux).  Used to detect which command panes —
+-- e.g. a running @claude@ session — are currently open.  Scans *panes*: the
+-- key is a pane option (so it follows the pane through the Terminals-tree
+-- drag-and-drop / break-pane), and pane→window option inheritance keeps
+-- legacy window-tagged windows visible too.  May contain duplicates (all
+-- panes of a legacy-tagged window report its key); callers do membership
+-- tests, so that's harmless.
 liveRunKeys :: IO [Text]
 liveRunKeys = (`catch` \(_ :: SomeException) -> return []) $
     findExecutable "tmux" >>= \case
         Nothing   -> return []
         Just tmux -> do
             (_, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-windows", "-a", "-F", "#{@leksah_run}"] ""
+                ["-L", tmuxSocket, "list-panes", "-a", "-F", "#{@leksah_run}"] ""
             return $ filter (not . T.null) (T.lines (T.pack out))
+
+-- | The first pane whose @\@leksah_run@ resolves to @key@, as
+-- @(session id, window id, pane id)@ — a pane option set by
+-- 'ensureCommandWindow' \/ 'IDE.Web.Widget.Terminal.openFileInEditor' (which
+-- travels with the pane when it's dragged to another tmux window\/session),
+-- or a legacy *window* option reaching the pane through tmux's option
+-- inheritance.  'Nothing' when no pane matches / tmux is unavailable.
+findRunPane :: Text -> IO (Maybe (Text, Text, Text))
+findRunPane key = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return Nothing
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
+                , "#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ] ""
+            return $ listToMaybe
+                [ (sid, wid, pid) | l <- T.lines (T.pack out)
+                , (sid : wid : pid : k) <- [T.splitOn "\t" l]
+                , T.intercalate "\t" k == key ]
 
 -- | Select a tmux window by its unique window id (@\@N@) — repl window names
 -- contain ':' (@pkg:lib:name@), so id targeting is the only unambiguous form.
@@ -272,14 +297,26 @@ ensureRemoteWindow host rdir name mbCmd = do
         [T.pack rdir, name, fromMaybe "" mbCmd] mempty
     return (code == ExitSuccess)
   where
+    -- Like the local 'ensureCommandWindow', the identity lives on the *pane*
+    -- (@leksah_run pane option = the window name) so it survives the
+    -- Terminals-tree drag-and-drop; the window-name grep remains as the
+    -- fallback for panes created before tagging (or a remote tmux too old
+    -- for pane options — set-option -p failures are ignored).
     script =
       "d=\"$0\"; n=\"$1\"; c=\"$2\"; "
       <> "if [ -n \"$c\" ]; then set -- sh -lc \"$c; exec \\\"${SHELL:-sh}\\\" -l\"; else set --; fi; "
-      <> "if ! tmux has-session -t =leksah 2>/dev/null; then "
-      <> "exec tmux new-session -d -s leksah -c \"$d\" -n \"$n\" \"$@\"; "
-      <> "elif tmux list-windows -t =leksah -F '#{window_name}' 2>/dev/null | grep -Fqx \"$n\"; then "
-      <> "exec tmux select-window -t \"=leksah:$n\"; "
-      <> "else exec tmux new-window -t =leksah -c \"$d\" -n \"$n\" \"$@\"; fi"
+      <> "if tmux has-session -t =leksah 2>/dev/null; then "
+      <> "p=$(tmux list-panes -s -t =leksah -F '#{pane_id}\t#{@leksah_run}' 2>/dev/null"
+      <> " | awk -F '\t' -v k=\"$n\" '$2==k{print $1; exit}'); "
+      <> "if [ -n \"$p\" ]; then tmux select-window -t \"$p\"; exec tmux select-pane -t \"$p\"; fi; "
+      <> "if tmux list-windows -t =leksah -F '#{window_name}' 2>/dev/null | grep -Fqx \"$n\"; then "
+      <> "exec tmux select-window -t \"=leksah:$n\"; fi; "
+      <> "p=$(tmux new-window -t =leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
+      <> "else "
+      <> "p=$(tmux new-session -d -s leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
+      <> "fi; "
+      <> "[ -n \"$p\" ] || exit 1; "
+      <> "tmux set-option -p -t \"$p\" @leksah_run \"$n\" 2>/dev/null; exit 0"
 
 -- | Open (or focus) a terminal whose working directory is @dir@ — local or
 -- @ssh:\/\/HOST\/…@.  Shared by "Open Terminal Here" (projectOpenTerminal) and
@@ -396,7 +433,17 @@ buildSplitWindowCommand horizontal session = do
               cmd = case mbPrefix of
                       Just p  -> " " <> shq ("exec " <> p <> " \"${SHELL:-bash}\" -l")
                       Nothing -> ""
-          return (bare <> cwd <> cmd)
+              -- A directory window's key lives on its pane (see
+              -- 'ensureCommandWindow'); copy it to the new pane — split-window
+              -- leaves it active, so a target-less @set-option -p@ hits it —
+              -- keeping the directory findable from the tree even if the
+              -- original shell pane later exits.  Command panes (claude/git/
+              -- repl) deliberately don't propagate: their key must stay on
+              -- the one pane running the command, so re-opening focuses it.
+              tag = if "#shell" `T.isSuffixOf` runKey
+                      then " ; set-option -p @leksah_run " <> shq runKey
+                      else ""
+          return (bare <> cwd <> cmd <> tag)
     debugM "leksah" $ "buildSplitWindowCommand: session=" <> T.unpack session
         <> " path=" <> show path <> " runKey=" <> show runKey
         <> " -> " <> T.unpack result
@@ -429,27 +476,32 @@ ensureCommandWindow keepShell key dir name cmd = (`catch` \(_ :: SomeException) 
             conf  <- writeTmuxConf shell
             let base = ["-L", tmuxSocket, "-f", conf]
                 run as = readProcessWithExitCode tmux (base ++ as) ""
-            (_, existing, _) <- run
-                [ "list-windows", "-a", "-F"
-                , "#{session_id}\t#{window_id}\t#{@leksah_run}" ]
-            case [ (sid, wid) | l <- T.lines (T.pack existing)
-                 , (sid : wid : k) <- [T.splitOn "\t" l]
-                 , T.intercalate "\t" k == key ] of
-              ((sid, wid) : _) -> do
+            -- The key lives on the *pane* (it travels with the Terminals-tree
+            -- drag-and-drop / break-pane), so find the pane wherever it is
+            -- now, make it the shown pane of its (possibly new) session, and
+            -- return THAT session's id — the terminal-tab key — so the tab
+            -- that opens is the one the pane actually lives in.
+            findRunPane key >>= \case
+              Just (sid, wid, pid) -> do
                 _ <- run ["select-window", "-t", T.unpack wid]
+                _ <- run ["select-pane", "-t", T.unpack pid]
                 return (Just sid)
-              [] -> do
+              Nothing -> do
                 (hasRc, _, _) <- run ["has-session", "-t", "=" <> T.unpack replSessionName]
                 let mk = if hasRc == ExitSuccess
                            then ["new-window", "-t", "=" <> T.unpack replSessionName]
                            else ["new-session", "-d", "-s", T.unpack replSessionName]
                 (_, out, _) <- run $ mk ++
                     [ "-c", dir, "-n", T.unpack name, "-P", "-F"
-                    , "#{session_id}\t#{window_id}"
+                    , "#{session_id}\t#{window_id}\t#{pane_id}"
                     , T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell ]
                 case T.splitOn "\t" (T.strip (T.pack out)) of
-                  (sid : wid : _) | not (T.null wid) -> do
-                    _ <- run ["set-option", "-w", "-t", T.unpack wid, "@leksah_run", T.unpack key]
+                  (sid : wid : pid : _) | not (T.null pid) -> do
+                    -- Tag the pane, not the window: a window option would
+                    -- stay behind when the pane is dragged away (and, through
+                    -- option inheritance, would keep matching any sibling
+                    -- panes left in the source window — the wrong pane).
+                    _ <- run ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack key]
                     _ <- run ["select-window", "-t", T.unpack wid]
                     return (Just sid)
                   _ -> return Nothing
