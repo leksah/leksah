@@ -10,6 +10,7 @@
 module IDE.Web.ReplTmux
   ( tmuxSocket
   , tmuxCmd
+  , activePaneIdOfSession
   , replSessionName
   , ffcabalTmuxEnv
   , findReplWindow
@@ -76,6 +77,26 @@ tmuxCmd args = (`catch` \(_ :: SomeException) -> return ()) $
     findExecutable "tmux" >>= \case
         Nothing -> return ()
         Just tmux -> void $ readProcessWithExitCode tmux (["-L", tmuxSocket] <> args) ""
+
+-- | The active pane of @sess@'s current window (the one shown in that session's
+-- terminal tab), or 'Nothing'.  'display-message -t \<session\>' proved
+-- unreliable here (empty for detached / CC-client sessions), so scan
+-- 'list-panes' and pick the active one.  Used by the split-open pipeline to
+-- find the pane to split against.
+activePaneIdOfSession :: Text -> IO (Maybe Text)
+activePaneIdOfSession sess = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "list-panes", "-t", T.unpack sess
+                , "-F", "#{pane_active}\t#{pane_id}" ] ""
+            return $ listToMaybe
+                [ pid | l <- T.lines (T.pack out)
+                      , let (act, rest) = T.breakOn "\t" l
+                      , act == "1"
+                      , let pid = T.drop 1 rest
+                      , not (T.null pid) ]
 
 -- | The shared repl session: ffcabal's cached component repls live here
 -- (windows named @pkg:comp@), and the workspace-tree run buttons add their

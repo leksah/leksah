@@ -50,7 +50,9 @@ import Reflex.Dom.Core
 
 import IDE.Web.Events (FileEvents, FileEvent(..))
 import IDE.Web.Widget.Tree
-       (treeItem, treeItemDynAttr', treeSelect', scrollIntoViewNearest)
+       (treeItem, treeItemDynAttr', treeSelect', scrollIntoViewNearest,
+        dblclickMods)
+import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
 import IDE.Web.Widget.Menu (menu)
 import IDE.Web.Claude
        (claudeAvailable, claudeSessionsFor, ClaudeSession(..),
@@ -285,7 +287,13 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
       pbF <- getPostBuild
       let revealMeD = (== Just absPath) <$> revealD
       scrollIntoViewNearest (ffilter id $ leftmost [updated revealMeD, tag (current revealMeD) pbF]) elFile
-      return $ OpenFile False absPath <$ domEvent Dblclick elFile
+      -- ⌥-double-click (or ⌥-Enter) opens the file into a split of the active
+      -- pane instead of a new editor tab (⌥⇧ = split the other way); a plain
+      -- double-click opens it normally.
+      mE <- dblclickMods elFile
+      performEvent_ $ ffor (ffilter fst mE) $ \(_, sh) ->
+        liftIO (requestSplitOpen (STFile absPath, sh))
+      return $ OpenFile False absPath <$ ffilter (not . fst) mE
   return $ (joinPaths <$> subdirE) <> fileE
 
 -- | The "New Claude Session" context menu for a directory row — empty when the

@@ -343,6 +343,7 @@ library
         IDE.Web.Instance
         IDE.Web.OpenFileRequest
         IDE.Web.ConvertRequest
+        IDE.Web.SplitOpenRequest
         IDE.Web.GitLogRequest
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
@@ -615,6 +616,7 @@ library leksah-nogtk
         IDE.Web.Instance
         IDE.Web.OpenFileRequest
         IDE.Web.ConvertRequest
+        IDE.Web.SplitOpenRequest
         IDE.Web.GitLogRequest
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel

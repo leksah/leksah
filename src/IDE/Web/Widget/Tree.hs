@@ -13,6 +13,8 @@ module IDE.Web.Widget.Tree
   , treeItem
   , treeItem'
   , scrollIntoViewNearest
+  , dblclickMods
+  , clickMods
   ) where
 
 import Control.Lens
@@ -38,7 +40,15 @@ import Reflex.Dom.Core
         MonadWidget, DomBuilderSpace, dyn, (=:), elDynAttr, divClass, el,
         inputElement, inputElementConfig_elementConfig,
         elementConfig_initialAttributes, domEvent, EventName(..),
-        _element_raw)
+        _element_raw, wrapDomEvent)
+
+import GHCJS.DOM.EventM (event, onSync)
+import GHCJS.DOM.GlobalEventHandlers (click, dblClick)
+import GHCJS.DOM.MouseEvent (getAltKey, getShiftKey)
+import GHCJS.DOM.Types (HTMLElement(..), uncheckedCastTo)
+-- The source 'Element(..)' constructor must be in scope for uncheckedCastTo's
+-- Coercible (qualified so it doesn't clash with Reflex.Dom.Core's Element).
+import qualified GHCJS.DOM.Types as DOM (Element(..))
 
 import Reflex.Dom.Widget.SVG (BasicSVG(..), svgBasicDyn_, svg_)
 import Reflex.Dom.Widget.SVG.Types
@@ -70,6 +80,29 @@ triangleRight =
   , _l (_PosX # (-5.0)) (_PosY # (-5.0))
   , _z
   ]
+
+-- | Fire on a double-click of @el@, carrying the (alt, shift) modifier state.
+-- Used to route ⌥ / ⌥⇧ "open into a split pane" gestures from workspace rows —
+-- reflex's @domEvent Dblclick@ discards modifiers, so read the raw 'MouseEvent'.
+dblclickMods
+  :: MonadWidget t m
+  => Element EventResult (DomBuilderSpace m) t
+  -> m (Event t (Bool, Bool))
+dblclickMods el =
+  wrapDomEvent (uncheckedCastTo HTMLElement (_element_raw el)) (`onSync` dblClick) $ do
+    ev <- event
+    (,) <$> getAltKey ev <*> getShiftKey ev
+
+-- | Like 'dblclickMods' but for a single click (rows that open on click, e.g.
+-- git-log branches).
+clickMods
+  :: MonadWidget t m
+  => Element EventResult (DomBuilderSpace m) t
+  -> m (Event t (Bool, Bool))
+clickMods el =
+  wrapDomEvent (uncheckedCastTo HTMLElement (_element_raw el)) (`onSync` click) $ do
+    ev <- event
+    (,) <$> getAltKey ev <*> getShiftKey ev
 
 treeSelect'
   :: MonadWidget t m

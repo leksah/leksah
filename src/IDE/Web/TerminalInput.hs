@@ -35,6 +35,8 @@ module IDE.Web.TerminalInput
   , selectSplitActiveTerminal
   , setActiveTerminal
   , isActiveTerminal
+  , getActiveTerminal
+  , getActiveConvertible
   , setActiveTerminalNotifier
   , setActiveConvertible
   , setSplitActiveNotifier
@@ -264,6 +266,17 @@ setActiveTerminal mb = do
 -- connection that only completes after they have moved on must not steal focus.
 isActiveTerminal :: Text -> IO Bool
 isActiveTerminal n = (== Just n) <$> readIORef activeRef
+
+-- | The session id of the terminal currently on screen ('Nothing' if the
+-- visible tab isn't a terminal) — the read side of 'setActiveTerminal', used by
+-- the split-open pipeline to find the pane to split.
+getActiveTerminal :: IO (Maybe Text)
+getActiveTerminal = readIORef activeRef
+
+-- | The active tab when it is a convertible editor/git-log ('Nothing'
+-- otherwise) — the read side of 'setActiveConvertible'.
+getActiveConvertible :: IO (Maybe TabKey)
+getActiveConvertible = readIORef activeConvertibleRef
 
 -- | Register the callback told whether a terminal is active (native menu
 -- enabling).  Called once at startup by the front end.

@@ -92,7 +92,8 @@ import IDE.Web.Widget.FileTree (fileTree, claudeNode)
 import IDE.Web.Claude (claudeAvailable, runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeSelect, treeSelect', treeItem,
-        treeItem')
+        treeItem', clickMods)
+import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
 import IDE.Workspaces
        (workspaceRemoveProject, workspaceActivatePackage)
 
@@ -473,8 +474,12 @@ gitBranchesNode dir curD = void $ treeItem "git-branches" False
                     -- Ahead/behind vs this branch's upstream.
                     abSpan (gbAhead b) (gbBehind b)
                     return (never :: Event t (IO ()))
-                performEvent_ $ ffor (domEvent Click rowEl) $ \_ ->
-                    liftIO (requestGitLog dir name)
+                -- ⌥-click (or ⌥-Enter) opens the git log into a split of the
+                -- active pane instead of a new tab (⌥⇧ = the other direction).
+                cmE <- clickMods rowEl
+                performEvent_ $ ffor cmE $ \(alt, sh) -> liftIO $
+                    if alt then requestSplitOpen (STGitLog dir name, sh)
+                           else requestGitLog dir name
                 performEvent_ $ liftIO <$> mE
                 return ()
         return (never :: Event t ()))

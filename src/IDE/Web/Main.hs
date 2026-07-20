@@ -184,13 +184,18 @@ import IDE.Web.RegionCapture
 import IDE.Web.AIContextRequest (AIAction(..), nextAIAction)
 import IDE.Web.RemoteTermRequest (nextTermRequest, requestLocalTerm)
 import IDE.Web.ConvertRequest (nextConvertRequest)
+import IDE.Web.SplitOpenRequest (SplitTarget(..), nextSplitOpenRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.GhciMode (ghciMode, registerGhciCleanup, stopForGhci)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
-import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported, liveRunPanes)
+import IDE.Web.ReplTmux
+       (tmuxCmd, tmuxSupported, liveRunPanes, activePaneIdOfSession,
+        openTerminalInDir)
+import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.TerminalInput
        (setActiveTerminal, setActiveConvertible, tmuxCommandActiveTerminal,
         selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
+        getActiveTerminal, getActiveConvertible,
         registerBackingPane, lookupBackingPane, unregisterBackingPane)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
@@ -230,7 +235,7 @@ import IDE.Web.Events
 import IDE.Web.Layout (layoutCss)
 import IDE.Web.Widget.Changes (changesCss, changesWidget)
 import IDE.Web.Widget.GitLog (gitLogCss, gitLogWidget, gitLogSplitJs)
-import IDE.Web.GitLogRequest (nextGitLogRequest)
+import IDE.Web.GitLogRequest (nextGitLogRequest, requestGitLog)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
 import IDE.Web.Widget.Flake (flakeCss)
 import IDE.Web.Widget.ContextMenu (contextMenuCss)
@@ -2051,7 +2056,11 @@ listNavJs = T.unlines
   [ "(function(){"
   , "  function items(p){ return Array.prototype.slice.call(p.querySelectorAll('.leksah-nav-item')); }"
   , "  document.addEventListener('keydown', function(e){"
-  , "    if (e.metaKey || e.ctrlKey || e.altKey) return;"
+  -- ⌘/⌃ are always the keymap's; ⌥ is meaningful only as the "open into a split
+  -- pane" modifier on Enter/Space (⌥⇧ for the other direction), so let those
+  -- through but leave ⌥+other keys to the keymap.
+  , "    if (e.metaKey || e.ctrlKey) return;"
+  , "    if (e.altKey && e.key !== 'Enter' && e.key !== ' ') return;"
   , "    var a = document.activeElement;"
   -- An editable field inside a nav pane (e.g. the Terminals-tree rename box) owns
   -- its own keys: arrows must move the caret, Enter/Space type/commit — not drive
@@ -2065,12 +2074,16 @@ listNavJs = T.unlines
   , "      if (e.key === 'ArrowDown') i = Math.min(its.length - 1, i + 1);"
   , "      else if (e.key === 'ArrowUp') i = (i <= 0 ? 0 : i - 1);"
   , "      else if (e.key === 'Enter' || e.key === ' ') {"
-  , "        if (cur) { cur.click();"
+  -- Forward the ⌥/⇧ modifier bits into the synthetic click/dblclick (via the
+  -- MouseEvent init dict) so the workspace row's ⌥-open-into-split handler sees
+  -- them — a bare cur.click() would carry none.
+  , "        if (cur) { var mo = {bubbles:true, cancelable:true, view:window, altKey:e.altKey, shiftKey:e.shiftKey};"
+  , "          cur.dispatchEvent(new MouseEvent('click', mo));"
   -- A workspace file row opens on double-click (single click just selects it),
   -- so Enter/Space on a file must synthesise a dblclick to open it in the editor.
   -- Claude nodes (the "Claude" row and its session children, nested in li.claude)
   -- likewise act on double-click, so Enter/Space there resumes/launches.
-  , "          if (cur.closest('li.file, li.claude')) cur.dispatchEvent(new MouseEvent('dblclick', {bubbles:true, cancelable:true, view:window})); }"
+  , "          if (cur.closest('li.file, li.claude')) cur.dispatchEvent(new MouseEvent('dblclick', mo)); }"
   , "        e.preventDefault(); return; }"
   , "      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {"
   , "        if (cur) { var li = cur.closest('li');"
@@ -4627,9 +4640,11 @@ main showMenubar macTitlebar wid ide = mdo
     -- A beat for the save to land on disk before the pane world takes over.
     convertReadyE <- delay 0.2 convertReqE
     (convertDoneE, fireConvertDone) <- newTriggerEvent
-    performEvent_ $ ffor (attach (current prefsD) convertReadyE) $ \(p, (k, horiz)) ->
-      liftIO . void . forkIO $ do
-        mbPane <- lookupBackingPane k >>= \case
+    -- Ensure (or reuse) the backing tmux pane for a convertible tab (editor /
+    -- git-log): pre-types the editor / git-log command, tags the pane's run
+    -- key, registers it.  Shared by the ⌘D conversion and the ⌥-open-into-split
+    -- pipelines.
+    let ensureBackingFor p k = lookupBackingPane k >>= \case
           Just t  -> return (Just t)
           Nothing -> do
             r <- case k of
@@ -4644,11 +4659,67 @@ main showMenubar macTitlebar wid ide = mdo
               _ -> return Nothing
             mapM_ (registerBackingPane k) r
             return r
+    performEvent_ $ ffor (attach (current prefsD) convertReadyE) $ \(p, (k, horiz)) ->
+      liftIO . void . forkIO $ do
+        mbPane <- ensureBackingFor p k
         forM_ mbPane $ \(_sid, _wid, pid) -> do
           fireConvertDone (k, pid)
           tmuxCmd ["select-window", "-t", T.unpack pid]
           tmuxCmd ["split-window", if horiz then "-h" else "-v", "-t", T.unpack pid]
           sessionOfPane pid >>= mapM_ requestLocalTerm
+    -- ⌥-open-into-split: holding Option while opening from the workspace splits
+    -- the ACTIVE pane and puts the item there (⌥⇧ = the other direction, like
+    -- ⌘⇧D) instead of opening a new tab.  Reuses the convert machinery:
+    --   * resolve the active pane — a terminal's active pane, else convert a
+    --     convertible active tab first (its backing pane), else give up;
+    --   * place the item into a fresh split half: a file/git-log by joining its
+    --     backing pane in beside the active one (pane-scoped run keys make the
+    --     overlay follow — cf. the drag-survival feature); a terminal/claude by
+    --     a plain split (Stage B).
+    -- When the active tab is neither a terminal nor convertible (or is remote,
+    -- which can't cross tmux servers) it falls back to a normal open.
+    (splitOpenReqE, fireSplitOpen) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextSplitOpenRequest >>= fireSplitOpen
+    performEvent_ $ ffor (attach (current prefsD) splitOpenReqE) $ \(p, (target, vertical)) ->
+      liftIO . void . forkIO $ do
+        let horiz     = not vertical
+            splitFlag = if horiz then "-h" else "-v"
+            normalOpen = case target of
+              STFile f           -> deliverOpenedFile f
+              STGitLog d b       -> requestGitLog d b
+              STTermDir d        -> openTerminalInDir d
+              STClaudeNew d      -> runClaudeCmd (ClaudeNew d)
+              STClaudeContinue d -> runClaudeCmd (ClaudeContinue d)
+              STClaudeResume d i -> runClaudeCmd (ClaudeResume d i)
+            placeOverlay activePid k = ensureBackingFor p k >>= \case
+              Nothing -> return ()
+              Just (_, _, itemPid)
+                | itemPid == activePid -> do   -- opening the very tab we split from
+                    fireConvertDone (k, itemPid)
+                    tmuxCmd ["select-pane", "-t", T.unpack itemPid]
+                | otherwise -> do
+                    tmuxCmd ["join-pane", splitFlag, "-s", T.unpack itemPid, "-t", T.unpack activePid]
+                    fireConvertDone (k, itemPid)
+                    tmuxCmd ["select-pane", "-t", T.unpack itemPid]
+                    sessionOfPane activePid >>= mapM_ requestLocalTerm
+        mTerm <- getActiveTerminal
+        mActivePid <- case mTerm of
+          Just sid | "ssh://" `T.isPrefixOf` sid -> return Nothing
+                   | otherwise                   -> activePaneIdOfSession sid
+          Nothing -> getActiveConvertible >>= \case
+            Nothing -> return Nothing
+            Just k  -> ensureBackingFor p k >>= \case
+              Nothing          -> return Nothing
+              Just (_, _, pid) -> do
+                fireConvertDone (k, pid)
+                tmuxCmd ["select-window", "-t", T.unpack pid]
+                return (Just pid)
+        case mActivePid of
+          Nothing        -> normalOpen
+          Just activePid -> case target of
+            STFile f     -> placeOverlay activePid (EditorKey f)
+            STGitLog d b -> placeOverlay activePid (GitLogKey d b)
+            _            -> normalOpen   -- terminal-family: Stage B
     let convertCloseE = (\(k, _) -> [k]) <$> convertDoneE
     -- Overlay/backing-pane GC: a converted pane killed in tmux (exit at its
     -- prompt, kill-pane, its window closed — even while the tab is detached)
