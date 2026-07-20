@@ -399,11 +399,13 @@ abSpan ahead behind = when (ahead > 0 || behind > 0) $
     tshow = T.pack . show
 
 -- | Run @git \<args\>@ in a reusable "git" terminal for this checkout, so network
--- auth, progress and any errors/conflicts are visible.  The working tree change
--- (e.g. a checkout) is picked up by the @.git@ watcher, which refreshes the tree.
+-- auth, progress and any errors/conflicts are visible.  The window closes itself
+-- on success (exit 0) and only lingers as a shell when git fails — so a clean run
+-- tidies up while an error stays on screen.  The working tree change (e.g. a
+-- checkout) is picked up by the @.git@ watcher, which refreshes the tree.
 gitAction :: FilePath -> [Text] -> IO ()
 gitAction dir args =
-    runInTerminal dir "git" "git" (T.intercalate " " ("git" : map shq args))
+    runInTerminal False dir "git" "git" (T.intercalate " " ("git" : map shq args))
   where shq a = "'" <> T.replace "'" "'\\''" a <> "'"
 
 -- | Ask the git subtree to rescan now (branches, ahead/behind, worktrees, …).
