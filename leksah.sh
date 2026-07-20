@@ -268,27 +268,32 @@ if [ "$GHCI" = "1" ]; then
   # jsaddle-wkwebview's (from the unpacked source-repository-package).
   GHCI_NATIVE="$RUNLOGDIR/ghci-native"
   mkdir -p "$GHCI_NATIVE"
-  PATH=$(pwd)/bin/$GHCARG:$PATH "${DEV[@]}" \
-    bash -c '
-      set -e
-      out="$1"
-      cc -dynamiclib main/leksah-mac-menu.m \
-         -framework Cocoa -framework ApplicationServices \
-         -o "$out/libleksah-mac-menu.dylib"
-      js_src=$(ls -d dist-ghc-*/src/jsaddle-*/jsaddle-wkwebview 2>/dev/null | head -1)
-      if [ -z "$js_src" ]; then
-        echo "jsaddle-wkwebview source not unpacked yet — building dependencies first" >&2
-        exit 1
-      fi
-      hs_inc=""
-      for d in $(ghc-pkg field rts include-dirs --simple-output); do
-        hs_inc="$hs_inc -I$d"
-      done
-      cc -dynamiclib "$js_src/cbits-cocoa/WKWebView-AppDelegate.m" \
-         -DUSE_COCOA -I"$js_src/cbits" $hs_inc -Wno-everything \
-         -framework Foundation -framework WebKit -framework Cocoa \
-         -o "$out/libjsaddle-wkwebview-objc.dylib"
-    ' _ "$GHCI_NATIVE"
+  # Both dylibs are OS-native (Cocoa/WebKit/ApplicationServices).  We LINK them
+  # with the SYSTEM toolchain (xcrun clang) rather than the dev-shell cc: some
+  # pinned haskell.nix toolchains drive an old cctools `ld` (ld64-956.6) from
+  # clang-21 + llvm-21's libLTO, which SIGTRAPs (`Trace/BPT trap`) on any
+  # `-dynamiclib` link that pulls in Cocoa.  The system linker isn't affected,
+  # and native dylibs are exactly what it's for.  Only the RTS include dirs and
+  # the unpacked jsaddle source path come from the dev shell (last stdout line).
+  DYLIB_INFO=$("${DEV[@]}" bash -c '
+      js=$(ls -d dist-ghc-*/src/jsaddle-*/jsaddle-wkwebview 2>/dev/null | head -1)
+      inc=""; for d in $(ghc-pkg field rts include-dirs --simple-output); do inc="$inc -I$d"; done
+      printf "%s %s\n" "$js" "$inc"' 2>/dev/null | tail -1)
+  read -r JS_SRC HS_INC <<< "$DYLIB_INFO"
+  if [ -z "$JS_SRC" ]; then
+    echo "jsaddle-wkwebview source not unpacked yet — building dependencies first" >&2
+    exit 1
+  fi
+  # env -i so that when leksah.sh runs inside a dev shell (the no-`--nix` path) the
+  # nix cc-wrapper vars don't redirect the system clang back to the broken linker.
+  syscc() { env -i PATH=/usr/bin:/bin HOME="$HOME" /usr/bin/xcrun clang "$@"; }
+  syscc -dynamiclib main/leksah-mac-menu.m \
+     -framework Cocoa -framework ApplicationServices \
+     -o "$GHCI_NATIVE/libleksah-mac-menu.dylib"
+  syscc -dynamiclib "$JS_SRC/cbits-cocoa/WKWebView-AppDelegate.m" \
+     -DUSE_COCOA -I"$JS_SRC/cbits" $HS_INC -Wno-everything \
+     -framework Foundation -framework WebKit -framework Cocoa \
+     -o "$GHCI_NATIVE/libjsaddle-wkwebview-objc.dylib"
 
   TMUXSOCK="leksah$INSTANCE_TAG"
   GHCI_LOG="$RUNLOGDIR/ghci$INSTANCE_TAG.log"
