@@ -40,6 +40,17 @@ import IDE.Web.Theme (selectionColor, dimColor, dimOpacity)
 
 tabsCss :: Css
 tabsCss = do
+    -- A hidden (inactive) tab body uses `visibility:hidden` — not `display:none`
+    -- — so its editors keep their layout/scroll instead of collapsing.  But
+    -- Monaco and CodeMirror set an inline `visibility:visible` on their own
+    -- layers, which overrides the inherited hidden and leaves e.g. the git-log
+    -- side-by-side diff painted on top of whatever tab is now active.  Force
+    -- those layers hidden; the editors' inline style isn't !important, so a
+    -- stylesheet !important wins.
+    ".tab-hidden .monaco-editor" ? ("visibility" -: "hidden !important")
+    ".tab-hidden .editor"        ? ("visibility" -: "hidden !important")
+    ".tab-hidden .cm-editor"     ? ("visibility" -: "hidden !important")
+    ".tab-hidden .cm-mergeView"  ? ("visibility" -: "hidden !important")
     ".tab-buttons" ? do
         background (Rgba 0 0 0 1.0)
         height (px 20)
@@ -254,7 +265,10 @@ tabsWidget initialTabs initialVisibleTabs wide0OrderD openTabE closeTabE selectT
             visible <- visibleD
             gridArea <- gridAreaD
             return $
-                 ("class" =: ("tab area-" <> gridArea))
+                 -- 'tab-hidden' (see 'tabsCss') force-hides editor layers that set
+                 -- their own inline visibility, so a hidden tab's Monaco/CM diff
+                 -- doesn't paint over the active one.
+                 ("class" =: ("tab area-" <> gridArea <> bool " tab-hidden" "" visible))
               <> ("data-tabkey" =: T.pack (show k))   -- focusin → MRU reorder (see focusTabJs)
               <> bool ("style" =: "visibility:hidden;") mempty visible
     (el, ev) <- elDynAttr' "div" attrD $
