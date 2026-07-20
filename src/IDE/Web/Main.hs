@@ -66,7 +66,7 @@ import qualified Data.Map as M
         singleton, mapWithKey, empty, size, null)
 import Data.Map (Map)
 import qualified Data.Set as S
-       (fromList, delete, singleton, empty, insert, member, intersection)
+       (fromList, delete, singleton, empty, insert, member, intersection, toList)
 import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, take, length)
@@ -85,7 +85,7 @@ import qualified Data.Aeson as A
 import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
 import System.Exit (ExitCode(..))
-import System.FilePath (takeFileName, takeExtension, dropFileName, (</>))
+import System.FilePath (takeFileName, takeExtension, dropFileName, takeDirectory, (</>))
 import System.Environment (getArgs, setEnv)
 import IDE.Utils.ExitImmediately (exitImmediately)
 #if !defined(ghcjs_HOST_OS)
@@ -189,7 +189,8 @@ import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported)
 import IDE.Web.TerminalInput
        (setActiveTerminal, tmuxCommandActiveTerminal, selectSplitActiveTerminal,
-        focusTerminalPane, dispatchTmuxPrefix)
+        focusTerminalPane, dispatchTmuxPrefix,
+        registerBackingPane, unregisterBackingPane)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
@@ -250,6 +251,7 @@ import IDE.Web.Widget.Terminal
        (terminalCss, terminalWidget, listTerminalSessions, killTerminalSession,
         selectTmuxWindow, selectTmuxPane, activePaneId, paneGeometry, sessionOfPane,
         listTerminalTree, createTerminalSession, openFileInEditor, notifyTerminalBell,
+        ensureShellPane, killRunPaneIfIdle, resolveEditorCmd, shellQuoteArg,
         createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
         killRemoteTmuxSession, killRemoteTmuxWindow, killRemoteTmuxPane,
         newRemoteTmuxWindow, zoomRemoteTmuxPane, breakRemoteTmuxPane,
@@ -3378,7 +3380,7 @@ main showMenubar macTitlebar wid ide = mdo
                       (tag (current activePaneD) saveReqE)
           -- The save prompt's "Save" button (dirty editor being closed).
           , promptSaveE ]
-    (openFileE, openExternalE, lspRefsE, makeEditor) <- editorWidget ide allE saveFileE
+    (openFileE, fileLineE, lspRefsE, makeEditor) <- editorWidget ide allE saveFileE
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
@@ -3392,6 +3394,14 @@ main showMenubar macTitlebar wid ide = mdo
     -- (repo dir, branch) on the GitLogRequest queue); open it as a center tab.
     (gitLogReqE, fireGitLogReq) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextGitLogRequest >>= fireGitLogReq
+    -- Backing shell pane for the git log view: `git log <branch>` pre-typed,
+    -- unrun, in a leksah-editor window — the external-attacher counterpart of
+    -- the GitLogKey tab (same idea as the editor tabs' panes above).
+    performEvent_ $ ffor gitLogReqE $ \(d, b) ->
+      liftIO . void . forkIO $
+        ensureShellPane (T.pack d <> "#gitlog#" <> b) ("log:" <> T.unpack b) d
+            ("git log " <> shellQuoteArg b)
+          >>= mapM_ (registerBackingPane (GitLogKey d b))
     -- Hosts shown as top-level Terminals-tree nodes: the preference list plus
     -- any host that has an open ssh:// tab.
     remoteHostsD <- holdUniqDyn $ (\p rt -> nub $ remoteHosts p ++
@@ -3401,9 +3411,29 @@ main showMenubar macTitlebar wid ide = mdo
     -- Native File▸Open / `leksah-cmd cm open` honour the external-editor pref too:
     -- when set, they open in the external editor (line 1) rather than CodeMirror.
     let extActiveMainB = current ((not . T.null . externalEditor) <$> prefsD)
+        -- fileLineE is UNGATED (every open, with its line); external-editor
+        -- opens are the gated slice, and the built-in slice drives the
+        -- backing shell panes below.
+        openExternalE = gate extActiveMainB fileLineE
         nativeOpenE = (\fp -> EditorKey fp =: ("wide0", Just ()))
                         <$> gate (not <$> extActiveMainB) nativeOpenedFileE
         nativeOpenExtE = (\fp -> (fp, 1)) <$> gate extActiveMainB nativeOpenedFileE
+    -- Backing shell panes: every file open in the BUILT-IN editor gets (or
+    -- keeps) a pane in the shared leksah-editor tmux session with the
+    -- preferred editor command pre-typed, unrun, at a login-shell prompt —
+    -- so someone attached to the session externally can press Enter to open
+    -- the same file (see 'ensureShellPane').  The editor command comes from
+    -- the external-editor pref, else $EDITOR, else vi.  Fire-and-forget.
+    let builtinOpenLineE = leftmost
+          [ gate (not <$> extActiveMainB) fileLineE
+          , (\fp -> (fp, 1)) <$> gate (not <$> extActiveMainB) nativeOpenedFileE ]
+    performEvent_ $ ffor (attach (current prefsD) builtinOpenLineE) $ \(p, (file, line)) ->
+      liftIO . void . forkIO $ do
+        cmd <- resolveEditorCmd (externalEditor p)
+        ensureShellPane (T.pack file <> "#edit") (takeFileName file)
+            (takeDirectory file)
+            (cmd <> " +" <> T.pack (show line) <> " " <> shellQuoteArg (T.pack file))
+          >>= mapM_ (registerBackingPane (EditorKey file))
     -- The tmux pane tree, re-read whenever the active pane might have changed, so
     -- the flipper's per-pane list + MRU stay current (tmux-internal switches like
     -- ⌃B o / clicking a split aren't otherwise visible to leksah).
@@ -4004,6 +4034,16 @@ main showMenubar macTitlebar wid ide = mdo
         -- The flipper MRU seeds from this window's wide0 order (Step 6 makes the
         -- flipper global); no separate saved-order event any more.
         setRecentE = never
+    -- Session-restored editors get their backing shell panes too (idempotent —
+    -- ensureShellPane dedups on the pane's run key; line 1, the saved cursor
+    -- isn't known here).
+    performEvent_ $ ffor (attach (current prefsD) restoreFileKeysE) $ \(p, ks) ->
+      liftIO . void . forkIO $ do
+        cmd <- resolveEditorCmd (externalEditor p)
+        forM_ [ f | EditorKey f <- S.toList ks ] $ \f ->
+          ensureShellPane (T.pack f <> "#edit") (takeFileName f) (takeDirectory f)
+              (cmd <> " +1 " <> shellQuoteArg (T.pack f))
+            >>= mapM_ (registerBackingPane (EditorKey f))
     -- "New Terminal": name the session @leksah-<k>@ (k past the highest existing
     -- leksah-N), create it up front, and key the new tab by the session id tmux
     -- assigns.  Falls back to the name as the key if tmux is unavailable.
@@ -4486,6 +4526,19 @@ main showMenubar macTitlebar wid ide = mdo
         promptSaveE   = fmapMaybe (\(k, s) -> case k of EditorKey f | s -> Just f; _ -> Nothing) answeredE
         discardCloseE = fmapMaybe (\(k, s) -> if s then Nothing else Just [k]) answeredE
     savedCloseE <- delay 0 (fmapMaybe (\(k, s) -> if s then Just [k] else Nothing) answeredE)
+    -- USER-closed tabs (× button / ⌘W / the save prompt's Save & Don't Save)
+    -- retire their backing shell pane — but only when it is idle (still at the
+    -- login shell): an editor the attacher actually opened, or anything else
+    -- running there, is left alone.  Deliberately NOT hooked on the whole
+    -- closeTabsE funnel, so a session-exit or a ⌘D conversion (which closes
+    -- the tab but must KEEP the pane) can never kill it.
+    performEvent_ $ ffor (leftmost [detachCloseE, savedCloseE, discardCloseE]) $ \ks ->
+      liftIO . void . forkIO $ forM_ ks $ \case
+        k@(EditorKey f)   -> do killRunPaneIfIdle (T.pack f <> "#edit")
+                                unregisterBackingPane k
+        k@(GitLogKey d b) -> do killRunPaneIfIdle (T.pack d <> "#gitlog#" <> b)
+                                unregisterBackingPane k
+        _ -> return ()
     -- File ▸ Add Remote Project…: the native menu drops a token on the
     -- AddRemoteRequest bridge (drained here); the web menubar fires the command
     -- directly.  Either opens the modal (dyn/switchHold, like the save prompt);

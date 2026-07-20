@@ -43,6 +43,10 @@ module IDE.Web.Widget.Terminal
   , reapControlClients
   , createTerminalSession
   , openFileInEditor
+  , ensureShellPane
+  , killRunPaneIfIdle
+  , resolveEditorCmd
+  , shellQuoteArg
   , replSessionName
   , ffcabalTmuxEnv
   , findReplWindow
@@ -66,7 +70,7 @@ module IDE.Web.Widget.Terminal
 import Control.Concurrent (forkIO)
 import Control.Exception (try, catch, SomeException)
 import Control.Lens ((^.))
-import Control.Monad (void, forM_, when, unless)
+import Control.Monad (void, forM_, when, unless, mfilter)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import Data.ByteString (ByteString)
@@ -79,7 +83,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines,
-        null, breakOn, drop, isPrefixOf)
+        null, breakOn, drop, isPrefixOf, replace)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Text.Read (readMaybe)
 
@@ -110,8 +114,8 @@ import IDE.Web.Widget.ResizeObserver (resizeObserverWithAttrs)
 import System.Directory
        (findExecutable, getHomeDirectory,
         createDirectoryIfMissing, doesFileExist)
-import System.Environment (getEnvironment)
-import System.FilePath ((</>), takeDirectory)
+import System.Environment (getEnvironment, lookupEnv)
+import System.FilePath ((</>), takeDirectory, takeFileName)
 #if defined(mingw32_HOST_OS)
 import IDE.Web.ConPty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
@@ -663,6 +667,77 @@ openFileInEditor file winName argv = (`catch` \(_ :: SomeException) -> return No
                     _ <- run ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack key]
                     return (Just sid)
                   _ -> return Nothing
+
+-- | Ensure a *shell* pane tagged @key@ exists in the shared @leksah-editor@
+-- session with @preTyped@ sitting UNRUN at its prompt (@send-keys -l@, no
+-- Enter) — the backing pane for a file open in leksah's own editor (or a git
+-- log view): someone attached to the tmux session from a plain terminal sees,
+-- per file, e.g. @vi +12 '/path/file.hs'@ ready to go and can press Enter to
+-- open it, while leksah shows its own editor.  Returns
+-- @(session id, window id, pane id)@.
+--
+-- Unlike 'openFileInEditor' the dedup path does NOT select the found
+-- window\/pane: this runs in the background on every file open, and yanking
+-- the session's current window would fight an external attacher's navigation.
+ensureShellPane :: Text -> String -> FilePath -> Text -> IO (Maybe (Text, Text, Text))
+ensureShellPane key winName cwd preTyped = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            shell <- getLoginShell
+            conf  <- writeTmuxConf shell
+            let base = ["-L", tmuxSocket, "-f", conf]
+                run as = readProcessWithExitCode tmux (base ++ as) ""
+            findRunPane key >>= \case
+              Just found -> return (Just found)
+              Nothing -> do
+                (hasRc, _, _) <- run ["has-session", "-t", "=leksah-editor"]
+                let mk = if hasRc == ExitSuccess
+                           then ["new-window", "-d", "-t", "=leksah-editor"]
+                           else ["new-session", "-d", "-s", "leksah-editor"]
+                (_rc, out, _) <- run
+                    (mk ++ [ "-c", cwd, "-n", winName, "-P", "-F"
+                           , "#{session_id}\t#{window_id}\t#{pane_id}" ])
+                case T.splitOn "\t" (T.strip (T.pack out)) of
+                  (sid : wid : pid : _) | not (T.null pid) -> do
+                    _ <- run ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack key]
+                    _ <- run ["send-keys", "-t", T.unpack pid, "-l", T.unpack preTyped]
+                    return (Just (sid, wid, pid))
+                  _ -> return Nothing
+
+-- | The editor command to pre-type in a backing pane: the external-editor
+-- preference when set, else @$EDITOR@, else @vi@.
+resolveEditorCmd :: Text -> IO Text
+resolveEditorCmd prefCmd
+  | not (T.null (T.strip prefCmd)) = return (T.strip prefCmd)
+  | otherwise = maybe "vi" T.pack . mfilter (not . null) <$> lookupEnv "EDITOR"
+
+-- | Single-quote @t@ for a shell command line (the pre-typed text sits at a
+-- login-shell prompt), with the usual @'\\''@ escaping for embedded quotes.
+shellQuoteArg :: Text -> Text
+shellQuoteArg t = "'" <> T.replace "'" "'\\''" t <> "'"
+
+-- | Kill the pane tagged @key@ — but only if nothing is running in it (its
+-- current command is still the login shell), so an editor the user actually
+-- opened (Enter on the pre-typed command), or anything else they started
+-- there, is left alone.  Used when the leksah tab that created the backing
+-- pane is closed by the user.
+killRunPaneIfIdle :: Text -> IO ()
+killRunPaneIfIdle key = (`catch` \(_ :: SomeException) -> return ()) $
+    findRunPane key >>= \case
+      Nothing -> return ()
+      Just (_sid, _wid, pid) -> findExecutable "tmux" >>= \case
+        Nothing -> return ()
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "display-message", "-p", "-t", T.unpack pid
+                , "#{pane_current_command}" ] ""
+            shell <- getLoginShell
+            let cmd = T.strip (T.pack out)
+                idle = cmd `elem` T.pack (takeFileName shell)
+                              : ["sh", "bash", "zsh", "fish", "ksh", "dash"]
+            when idle . void $ readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "kill-pane", "-t", T.unpack pid] ""
 
 -- | Write (idempotently) a tiny helper that posts a macOS Notification Center
 -- notification for a tmux bell alert, and return its path.  Driven by the

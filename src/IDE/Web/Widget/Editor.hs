@@ -218,7 +218,9 @@ editorWidget
   -> Event t FilePath        -- ^ save the editor for this file (write to disk)
   -> m
     ( Event t (Map FilePath (Text, Maybe ()))  -- ^ built-in (CodeMirror) opens
-    , Event t (FilePath, Int)                   -- ^ external-editor opens (file, line)
+    , Event t (FilePath, Int)                   -- ^ every open with its line (ungated;
+                                                --   Main gates external-editor opens
+                                                --   and drives backing shell panes)
     , Event t [GrepResult]                      -- ^ LSP find-references results (→ Grep pane)
     , FilePath -> Event t () -> Dynamic t (Maybe ()) -> m (Event t ()))
 editorWidget ide allEvents saveFileE = do
@@ -274,13 +276,16 @@ editorWidget ide allEvents saveFileE = do
         [ (, 1) <$> openFileE
         , (\sp -> (srcSpanFilename sp, srcSpanStartLine sp)) <$> gotoSpanE ]
       -- When an external editor is configured, files open there instead of in the
-      -- built-in editor.  Gate the two open streams on the (live) preference.
+      -- built-in editor.  Gate the built-in stream on the (live) preference;
+      -- the (file, line) stream is returned UNGATED — Main re-derives the
+      -- external-editor opens with its own gate, and also uses every open to
+      -- keep the file's backing tmux shell pane in step (see ensureShellPane).
       extActiveB = current ((not . T.null . externalEditor . view prefs) <$> ide)
   logRefsByFileD <- fmap (M.fromListWith (<>) . map (\lr -> (logRefFullFilePath lr, [lr])) . toList) <$> holdUniqDyn (view allLogRefs <$> ide)
   locationsD <- foldDyn (<>) mempty $ (\sp -> srcSpanFilename sp =: sp) <$> gotoSpanE
   return
     ( gate (not <$> extActiveB) ((=:("wide0", Just())) <$> fileE)
-    , gate extActiveB fileWithLineE
+    , fileWithLineE
     , refsE
     , \file selectedE _ -> do
       (changeE, triggerChangeE) <- newTriggerEvent

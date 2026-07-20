@@ -35,6 +35,9 @@ module IDE.Web.TerminalInput
   , setActiveTerminal
   , isActiveTerminal
   , setActiveTerminalNotifier
+  , registerBackingPane
+  , lookupBackingPane
+  , unregisterBackingPane
   , sendToActiveTerminal
   , tmuxCommandActiveTerminal
   , splitActiveTerminal
@@ -61,6 +64,7 @@ import IDE.Web.NoPty (Pty, writePty)
 import System.Posix.Pty (Pty, writePty)
 #endif
 
+import IDE.Core.Types (TabKey)
 import IDE.Web.ReplTmux (buildSplitWindowCommand)
 
 {-# NOINLINE ptyRegistry #-}
@@ -104,6 +108,25 @@ splitRegistry = unsafePerformIO (newIORef M.empty)
 {-# NOINLINE focusRegistry #-}
 focusRegistry :: IORef (M.Map Text (IO ()))
 focusRegistry = unsafePerformIO (newIORef M.empty)
+
+-- The backing tmux shell panes of editor / git-log tabs, by tab key:
+-- @(session id, window id, pane id)@ as returned by
+-- 'IDE.Web.Widget.Terminal.ensureShellPane'.  Registered when the tab's
+-- background ensure completes; read by the ⌘D convert-to-pane path (which
+-- needs the pane to split against) and dropped when the pane dies or the
+-- tab is user-closed.
+{-# NOINLINE backingPanesRef #-}
+backingPanesRef :: IORef (M.Map TabKey (Text, Text, Text))
+backingPanesRef = unsafePerformIO (newIORef M.empty)
+
+registerBackingPane :: TabKey -> (Text, Text, Text) -> IO ()
+registerBackingPane k v = atomicModifyIORef' backingPanesRef $ \m -> (M.insert k v m, ())
+
+lookupBackingPane :: TabKey -> IO (Maybe (Text, Text, Text))
+lookupBackingPane k = M.lookup k <$> readIORef backingPanesRef
+
+unregisterBackingPane :: TabKey -> IO ()
+unregisterBackingPane k = atomicModifyIORef' backingPanesRef $ \m -> (M.delete k m, ())
 
 {-# NOINLINE activeRef #-}
 activeRef :: IORef (Maybe Text)
