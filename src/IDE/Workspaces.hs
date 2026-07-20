@@ -16,6 +16,8 @@
 -----------------------------------------------------------------------------
 module IDE.Workspaces (
     projectOpenThis
+,   projectOpenPath
+,   dirProjectKey
 ,   setProjectSettings
 ,   workspaceClean
 ,   workspaceMake
@@ -77,7 +79,8 @@ import IDE.Core.State
         ipdPackageDir, activePack, runPackage, saveAllBeforeBuild,
         __, externalModified, forkIDE, sysMessage, ipdPackageName, native,
         developLeksah, belongsToPackage, pjStackFile, pjCabalFile, wsFile,
-        CabalProject(..), StackProject(..), ProjectSettings(..),
+        CabalProject(..), StackProject(..), CustomProject(..),
+        filePathToProjectKey, ProjectSettings(..),
         defaultProjectSettings, wsProjectSettings)
 import IDE.Package
        (getModuleTemplate, idePackageFromPath',
@@ -89,6 +92,7 @@ import IDE.Pane.SourceBuffer
 import qualified IDE.Workspaces.Writer as Writer
 import IDE.Utils.FileUtils (myCanonicalizePath)
 import Distribution.Utils.Path (getSymbolicPath)
+import System.Directory (doesDirectoryExist)
 
 projectNewHere :: FilePath -> WorkspaceAction
 projectNewHere filePath = do
@@ -134,6 +138,31 @@ projectOpenThis projectKey = do
                       & wsActiveComponent .~ Nothing
                     when (isRemotePath (pjDir projectKey')) . liftIO $
                         requestRemoteRefresh RefreshProjectOpened
+
+-- | The 'ProjectKey' of a plain-directory project: a 'CustomTool' rooted at
+-- @dir@ with no build/repl/doc commands.  Such a project carries no packages;
+-- its files, git checkout and terminals all work from @dir@.  Handy for adding
+-- a folder (e.g. @iohk/infra@) just to edit its contents (@iohk/infra/ops@)
+-- without a cabal.project/stack.yaml/flake.nix.
+dirProjectKey :: FilePath -> ProjectKey
+dirProjectKey dir = CustomTool (CustomProject dir [] Nothing Nothing Nothing Nothing)
+
+-- | Add the project at a path to the workspace.  A directory is added as a
+-- plain-directory project ('dirProjectKey'); anything else is treated as a
+-- project file (cabal.project / stack.yaml / flake.nix / Makefile).  This is the
+-- single entry shared by the Open Project / Open Folder panels and
+-- @leksah-cmd project open@.
+projectOpenPath :: FilePath -> WorkspaceAction
+projectOpenPath fp
+    | isRemotePath fp = openFileKey fp   -- remote: can't stat; treat as a file
+    | otherwise = liftIO (doesDirectoryExist fp) >>= \case
+        True  -> projectOpenThis (dirProjectKey fp)
+        False -> openFileKey fp
+  where
+    openFileKey f = case filePathToProjectKey f of
+        Just pk -> projectOpenThis pk
+        Nothing -> ideMessage Normal $
+            __ "Not a project file or folder : " <> T.pack f
 
 -- | Set (and persist) the per-project settings for a project in the
 -- workspace — e.g. the remote command prefix (@nix develop -c@).

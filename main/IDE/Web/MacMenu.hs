@@ -36,9 +36,9 @@ import System.Posix.Process (exitImmediately)
 import Language.Javascript.JSaddle.WKWebView (WKWebView(..), jsaddleMainHTMLWithBaseURL)
 
 import IDE.Core.State (reflectIDE, modifyIDE_)
-import IDE.Core.Types (filePathToProjectKey, WindowId(..), activeWindow)
+import IDE.Core.Types (WindowId(..), activeWindow)
 import IDE.Gtk.Workspaces (workspaceTry)
-import IDE.Workspaces (projectOpenThis)
+import IDE.Workspaces (projectOpenPath)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.GhciMode
        (ghciMode, registerGhciCleanup, setGhciStop, stopForGhci)
@@ -50,7 +50,9 @@ import IDE.Web.MenuModel (menus, MenuItem(..))
 import IDE.Web.NewWindowRequest
        (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
-import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
+import IDE.Web.OpenPanel
+       (setOpenFilePanelHandler, setOpenProjectPanelHandler,
+        setOpenFolderPanelHandler)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
@@ -63,15 +65,14 @@ import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput (setActiveTerminalNotifier)
 
--- | Called from Objective-C (via the glue) with the project file chosen in
--- the open-project dialog; add it to the workspace, like the GTK projectOpen.
+-- | Called from Objective-C (via the glue) with the path chosen in the
+-- open-project OR open-folder dialog; add it to the workspace, like the GTK
+-- projectOpen.  'projectOpenPath' handles both: a directory becomes a
+-- plain-directory project, a file is a project file (cabal.project / …).
 macOpenProject :: FilePath -> IO ()
-macOpenProject fp =
-  case filePathToProjectKey fp of
-    Nothing -> return ()
-    Just pk -> getGlobalIDERef >>= \case
-      Just ideR -> void $ reflectIDE (workspaceTry (projectOpenThis pk)) ideR
-      Nothing   -> return ()
+macOpenProject fp = getGlobalIDERef >>= \case
+  Just ideR -> void $ reflectIDE (workspaceTry (projectOpenPath fp)) ideR
+  Nothing   -> return ()
 
 -- | Called (via the glue) once 'c_newWindow' (or the restore path) has
 -- created an NSWindow + WKWebView for 'wid': attach a fresh jsaddle context so a
@@ -146,6 +147,7 @@ macMenuAction tag = do
     -- File ▸ Open / Open Project are handled natively (NSOpenPanel).
     (CommandFileOpen:_)    -> c_showOpenPanel
     (CommandProjectOpen:_) -> c_showOpenProjectPanel
+    (CommandProjectOpenFolder:_) -> c_showOpenFolderPanel
     -- Add Remote Project… opens a reflex modal (host/path/prefix); signal it
     -- via the bridge, like Find/Save.
     (CommandProjectAddRemote:_) -> requestAddRemoteProject
@@ -194,6 +196,7 @@ installMacMenu = do
   -- The toolbar/menubar Open commands show the native open panels.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
+  setOpenFolderPanelHandler c_showOpenFolderPanel
   -- File ▸ New Window: mint a WindowId (seeds an empty WebWindow), then ask the
   -- ObjC glue to create an NSWindow + WKWebView; it calls back macAttachWindow.
   setNewWindowHandler $ getGlobalIDERef >>= \case

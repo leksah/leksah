@@ -1374,6 +1374,30 @@ void leksah_show_open_project_panel(void) {
     });
 }
 
+// File ▸ Open Folder: pick a plain directory and add it to the workspace as a
+// directory project (no build file needed).  Hands the chosen folder back via
+// the same leksah_open_project callback -- the Haskell side (projectOpenPath)
+// treats a directory as a plain-directory project and a file as a project file.
+void leksah_show_open_folder_panel(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSOpenPanel *panel = [NSOpenPanel openPanel];
+        panel.canChooseFiles = NO;
+        panel.canChooseDirectories = YES;
+        panel.allowsMultipleSelection = NO;
+        panel.message = @"Select a folder to add to the workspace";
+        void (^done)(NSModalResponse) = ^(NSModalResponse result) {
+            if (result == NSModalResponseOK) {
+                NSURL *url = [[panel URLs] firstObject];
+                if (url != nil && gHs.open_project) gHs.open_project([[url path] UTF8String]);
+            }
+        };
+        if (gLeksahWindow != nil)
+            [panel beginSheetModalForWindow:gLeksahWindow completionHandler:done];
+        else
+            [panel beginWithCompletionHandler:done];
+    });
+}
+
 // ---- Colour picker (NSColorPanel) -----------------------------------------
 // The web <input type="color"> popover mis-anchors inside our transparent-
 // titlebar window (WebKit positions it against the wrong rect), so the

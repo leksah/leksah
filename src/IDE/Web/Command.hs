@@ -47,6 +47,7 @@ data Command =
   | CommandDebugAction Text Text IDEAction
   | CommandFileOpen
   | CommandProjectOpen
+  | CommandProjectOpenFolder
   | CommandProjectAddRemote
   | CommandFileSave
   | CommandFind

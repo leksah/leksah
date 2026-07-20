@@ -354,6 +354,7 @@ library
         IDE.Web.TmuxCC
         IDE.Web.GhciMode
         IDE.Web.ThreadPriority
+        IDE.Web.Claude
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
@@ -624,6 +625,7 @@ library leksah-nogtk
         IDE.Web.TmuxCC
         IDE.Web.GhciMode
         IDE.Web.ThreadPriority
+        IDE.Web.Claude
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
@@ -1024,9 +1026,11 @@ executable leksah
         main/leksah-win-menu.c
       extra-libraries:
         user32
-      -- comdlg32 (GetOpenFileNameW) via -optl: haskell.nix's system-library
-      -- map doesn't know comdlg32, so extra-libraries would fail its plan.
-      ghc-options: -optl-lcomdlg32
+      -- comdlg32 (GetOpenFileNameW), shell32 (SHBrowseForFolderW /
+      -- SHGetPathFromIDListW, Open Folder) and ole32 (CoTaskMemFree) via -optl:
+      -- haskell.nix's system-library map doesn't know these, so extra-libraries
+      -- would fail its plan.
+      ghc-options: -optl-lcomdlg32 -optl-lshell32 -optl-lole32
       build-depends:
         data-default >=0.7.1.1 && <0.9,
         jsaddle-webview2 >=0.1 && <0.2

@@ -27,3 +27,4 @@ leksah.lkshw
 
 # Dev .app wrapper built by leksah-nix.sh (wkwebview naming)
 /Leksah.app/
+/dist-ghci-9.14/

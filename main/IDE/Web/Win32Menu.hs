@@ -34,14 +34,15 @@ import Foreign.Ptr (Ptr)
 import Language.Javascript.JSaddle.WebView2 (WebView2, webView2Hwnd)
 
 import IDE.Core.State (reflectIDE)
-import IDE.Core.Types (filePathToProjectKey)
 import IDE.Gtk.Workspaces (workspaceTry)
-import IDE.Workspaces (projectOpenThis)
+import IDE.Workspaces (projectOpenPath)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.MenuModel (menus, MenuItem(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
-import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
+import IDE.Web.OpenPanel
+       (setOpenFilePanelHandler, setOpenProjectPanelHandler,
+        setOpenFolderPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
@@ -97,6 +98,9 @@ foreign import ccall "leksah_win_set_terminal_active" c_setTerminalActive :: CIn
 -- thread); it calls back leksah_open_file/leksah_open_project.
 foreign import ccall "leksah_win_show_open_panel" c_showOpenPanel :: IO ()
 foreign import ccall "leksah_win_show_open_project_panel" c_showOpenProjectPanel :: IO ()
+-- Show the native "Open Folder" dialog; it also calls back leksah_open_project
+-- (the handler adds a directory as a plain-directory project).
+foreign import ccall "leksah_win_show_open_folder_panel" c_showOpenFolderPanel :: IO ()
 -- Populate the "Open Recent" submenu (newline-separated paths).
 foreign import ccall "leksah_win_set_recent_files" c_setRecentFiles :: CString -> IO ()
 
@@ -107,18 +111,17 @@ foreign export ccall "leksah_open_file" leksah_open_file :: CString -> IO ()
 leksah_open_file :: CString -> IO ()
 leksah_open_file cstr = peekCString cstr >>= deliverOpenedFile
 
--- | Called from C with the project file chosen in the open-project dialog;
--- add it to the workspace.
+-- | Called from C with the path chosen in the open-project OR open-folder
+-- dialog; add it to the workspace.  'projectOpenPath' handles both: a directory
+-- becomes a plain-directory project, a file is a project file.
 foreign export ccall "leksah_open_project" leksah_open_project :: CString -> IO ()
 
 leksah_open_project :: CString -> IO ()
 leksah_open_project cstr = do
   fp <- peekCString cstr
-  case filePathToProjectKey fp of
-    Nothing -> return ()
-    Just pk -> getGlobalIDERef >>= \case
-      Just ideR -> void $ reflectIDE (workspaceTry (projectOpenThis pk)) ideR
-      Nothing   -> return ()
+  getGlobalIDERef >>= \case
+    Just ideR -> void $ reflectIDE (workspaceTry (projectOpenPath fp)) ideR
+    Nothing   -> return ()
 
 -- | The Underlay submenu (pane transparency, window snapping) is macOS-only
 -- window trickery; drop it.  Preferences stays in Edit — the Windows
@@ -157,6 +160,7 @@ leksah_menu_action tag = do
     -- File ▸ Open / Open Project are handled natively (GetOpenFileName).
     (CommandFileOpen:_)        -> c_showOpenPanel
     (CommandProjectOpen:_)     -> c_showOpenProjectPanel
+    (CommandProjectOpenFolder:_) -> c_showOpenFolderPanel
     -- These act on reflex state; signal via the bridges.
     (CommandFileSave:_)        -> requestSaveActiveFile
     (CommandFind:_)            -> requestToggleFindbar
@@ -202,6 +206,7 @@ installWin32Menu wv = do
   -- The toolbar/menubar Open commands show the native open dialogs.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
+  setOpenFolderPanelHandler c_showOpenFolderPanel
   -- File ▸ New Window: multi-window needs a jsaddle-webview2 primitive that does
   -- not exist yet (see the module NOTE).  Give the user feedback instead of a
   -- silent no-op, so the command's absence is explicable rather than a bug.

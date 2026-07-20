@@ -46,6 +46,7 @@ module IDE.Web.MacGlue
   , c_raiseWindow
   , c_showOpenPanel
   , c_showOpenProjectPanel
+  , c_showOpenFolderPanel
   , c_setRecentFiles
   , c_screenshot
   , c_snapshotRect
@@ -133,6 +134,9 @@ foreign import ccall "leksah_raise_window" c_raiseWindow :: CInt -> IO ()
 foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
 -- Show the native "Open Project" panel; it calls back 'cbOpenProject'.
 foreign import ccall "leksah_show_open_project_panel" c_showOpenProjectPanel :: IO ()
+-- Show the native "Open Folder" panel; it also calls back 'cbOpenProject' (the
+-- handler adds a directory as a plain-directory project).
+foreign import ccall "leksah_show_open_folder_panel" c_showOpenFolderPanel :: IO ()
 -- Populate the native "Open Recent" submenu (newline-separated paths).
 foreign import ccall "leksah_set_recent_files" c_setRecentFiles :: CString -> IO ()
 -- Snapshot the WKWebView content to a PNG at the given path; returns 1 on success.
@@ -256,6 +260,8 @@ c_showOpenPanel :: IO ()
 c_showOpenPanel = return ()
 c_showOpenProjectPanel :: IO ()
 c_showOpenProjectPanel = return ()
+c_showOpenFolderPanel :: IO ()
+c_showOpenFolderPanel = return ()
 c_setRecentFiles :: CString -> IO ()
 c_setRecentFiles _ = return ()
 c_screenshot :: CString -> IO CInt

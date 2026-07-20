@@ -14,6 +14,7 @@
  */
 
 #include <windows.h>
+#include <shlobj.h>   /* SHBrowseForFolderW / SHGetPathFromIDListW (Open Folder) */
 #include <string.h>
 #include <stdlib.h>
 
@@ -34,6 +35,7 @@ extern void leksah_open_project(const char *utf8Path);
 #define WM_LEKSAH_OPEN_PANEL          (WM_APP + 0x101)
 #define WM_LEKSAH_OPEN_PROJECT_PANEL  (WM_APP + 0x102)
 #define WM_LEKSAH_SET_RECENT          (WM_APP + 0x103)
+#define WM_LEKSAH_OPEN_FOLDER_PANEL   (WM_APP + 0x104)
 
 static HMENU gMenuBar = NULL;
 static HMENU gFileMenu = NULL;    /* first top-level menu (File) */
@@ -171,6 +173,28 @@ static void showOpenPanel(int project)
     }
 }
 
+/* Open Folder: pick a directory and add it to the workspace as a plain-directory
+ * project (no project file needed).  Hands the folder to leksah_open_project --
+ * the Haskell side (projectOpenPath) treats a directory as a plain-directory
+ * project.  The macOS sibling is leksah_show_open_folder_panel. */
+static void showOpenFolderPanel(void)
+{
+    WCHAR path[MAX_PATH];
+    BROWSEINFOW bi;
+    memset(&bi, 0, sizeof bi);
+    bi.hwndOwner = gWnd;
+    bi.lpszTitle = L"Select a folder to add to the workspace";
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_EDITBOX;
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+    if (pidl) {
+        if (SHGetPathFromIDListW(pidl, path)) {
+            char *u = utf8FromWide(path);
+            if (u) { leksah_open_project(u); free(u); }
+        }
+        CoTaskMemFree(pidl);
+    }
+}
+
 /* Rebuild the Open Recent submenu from a newline-separated UTF-8 path list
  * (UI thread; the string is owned here and freed). */
 static void setRecentFiles(char *paths)
@@ -226,6 +250,7 @@ static LRESULT CALLBACK leksahWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         break;
     case WM_LEKSAH_OPEN_PANEL:         showOpenPanel(0); return 0;
     case WM_LEKSAH_OPEN_PROJECT_PANEL: showOpenPanel(1); return 0;
+    case WM_LEKSAH_OPEN_FOLDER_PANEL:  showOpenFolderPanel(); return 0;
     case WM_LEKSAH_SET_RECENT:         setRecentFiles((char *)lp); return 0;
     }
     return CallWindowProcW(gPrevProc, hwnd, msg, wp, lp);
@@ -258,6 +283,11 @@ void leksah_win_show_open_panel(void)
 void leksah_win_show_open_project_panel(void)
 {
     if (gWnd) PostMessageW(gWnd, WM_LEKSAH_OPEN_PROJECT_PANEL, 0, 0);
+}
+
+void leksah_win_show_open_folder_panel(void)
+{
+    if (gWnd) PostMessageW(gWnd, WM_LEKSAH_OPEN_FOLDER_PANEL, 0, 0);
 }
 
 void leksah_win_set_recent_files(const char *newlineSeparated)

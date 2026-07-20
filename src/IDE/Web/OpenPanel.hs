@@ -10,6 +10,8 @@ module IDE.Web.OpenPanel
   , runOpenFilePanel
   , setOpenProjectPanelHandler
   , runOpenProjectPanel
+  , setOpenFolderPanelHandler
+  , runOpenFolderPanel
   ) where
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
@@ -34,3 +36,13 @@ setOpenProjectPanelHandler = writeIORef openProjectHandler
 
 runOpenProjectPanel :: IO ()
 runOpenProjectPanel = readIORef openProjectHandler >>= id
+
+{-# NOINLINE openFolderHandler #-}
+openFolderHandler :: IORef (IO ())
+openFolderHandler = unsafePerformIO (newIORef (return ()))
+
+setOpenFolderPanelHandler :: IO () -> IO ()
+setOpenFolderPanelHandler = writeIORef openFolderHandler
+
+runOpenFolderPanel :: IO ()
+runOpenFolderPanel = readIORef openFolderHandler >>= id

@@ -86,6 +86,7 @@ menus =
       , MenuSep
       , item "Open…"         CommandFileOpen
       , item "Open Project…" CommandProjectOpen
+      , item "Open Folder…"  CommandProjectOpenFolder
       , item "Add Remote Project…" CommandProjectAddRemote
       , item "Save"          CommandFileSave
       , MenuGlobalKey "Close" "cmd+w" commandFileClose

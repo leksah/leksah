@@ -41,14 +41,19 @@ import System.FilePath (takeExtension, (</>), dropTrailingPathSeparator)
 import Reflex
        (Dynamic, listViewWithKey, Event, never, ffilter, updated, leftmost,
         tag, current, getPostBuild, performEvent, performEvent_, holdDyn,
-        newTriggerEvent)
+        newTriggerEvent, holdUniqDyn, ffor, constDyn,
+        tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (MonadWidget, elAttr, elDynAttr, (=:), text, el, elDynClass, dynText,
-        domEvent, EventName(..))
+       (MonadWidget, elAttr, elDynAttr, (=:), text, el, elClass, elDynClass,
+        dynText, dyn, domEvent, EventName(..))
 
 import IDE.Web.Events (FileEvents, FileEvent(..))
 import IDE.Web.Widget.Tree
-       (treeItemDynAttr', treeSelect', scrollIntoViewNearest)
+       (treeItem, treeItemDynAttr', treeSelect', scrollIntoViewNearest)
+import IDE.Web.Widget.Menu (menu)
+import IDE.Web.Claude
+       (claudeAvailable, claudeSessionsFor, ClaudeSession(..),
+        ClaudeCmd(..), runClaudeCmd, copySessionId, revealSession, deleteSession)
 
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
 filesAndDirs dir = liftIO $ do
@@ -197,6 +202,10 @@ fileTree'
   -> FilePath
   -> m (Event t FileEvents)
 fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD dir = do
+  -- A synthetic "Claude" node at the top of every directory that has saved
+  -- Claude Code sessions (self-hiding otherwise; only when the CLI is on PATH).
+  avail <- liftIO claudeAvailable
+  when avail $ claudeNode treeName dir
   postBuild <- getPostBuild
   newListE <- performEvent $ filesAndDirs dir <$ postBuild
   allD <- holdDyn ([], []) newListE
@@ -231,7 +240,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
         isRevealD = (== Just subPath) <$> revealD
         dirClassD = ("class" =:) . ("dir" <>) . bool "" " active" . (== Just subPath) <$> highlightD
     treeItemDynAttr' underD dirClassD False (do
-      (dirEl, _) <- treeSelect' treeName (return never) $ do
+      (dirEl, dmenuE) <- treeSelect' treeName (dirClaudeMenu avail subPath) $ do
         elAttr "img" ("class" =: "tree-icon" <> "src" =: imgSrc) $ return ()
         elDynClass "span" (gitNameClass <$> aggD) . text $ T.pack subdir
         return never
@@ -239,6 +248,8 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
       scrollIntoViewNearest (ffilter id $ leftmost [updated isRevealD, tag (current isRevealD) pbD]) dirEl
       -- Double-click a directory row → open a terminal there (local or ssh://).
       performEvent_ $ openTerminalInDir subPath <$ domEvent Dblclick dirEl
+      -- Right-click → "New Claude Session" / "Continue Last …" (when claude is on PATH).
+      performEvent_ $ liftIO <$> dmenuE
       return never
       ) $ el "ul" $ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD subPath
   fileE <- listViewWithKey filesD $ \file _ -> do
@@ -267,3 +278,76 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
       scrollIntoViewNearest (ffilter id $ leftmost [updated revealMeD, tag (current revealMeD) pbF]) elFile
       return $ OpenFile False absPath <$ domEvent Dblclick elFile
   return $ (joinPaths <$> subdirE) <> fileE
+
+-- | The "New Claude Session" context menu for a directory row — empty when the
+-- @claude@ CLI isn't on PATH.  Each item's value is the 'IO' action to run.
+dirClaudeMenu :: forall t m. MonadWidget t m => Bool -> FilePath -> m (Event t (IO ()))
+dirClaudeMenu avail dir
+  | not avail = return never
+  | otherwise = menu
+      [ constDyn ("New Claude Session",           runClaudeCmd (ClaudeNew dir))
+      , constDyn ("Continue Last Claude Session", runClaudeCmd (ClaudeContinue dir))
+      ]
+
+-- | A leading robot icon for Claude tree rows.
+claudeIcon :: MonadWidget t m => m ()
+claudeIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") (return ())
+
+-- | The synthetic "Claude" node for @dir@, shown only while @dir@ has saved
+-- Claude Code sessions.  The row (robot icon + count) resumes via the picker on
+-- double-click/Enter and offers New/Continue on right-click; each child is a
+-- session (MRU order) that resumes on double-click/Enter, with fork/copy/reveal/
+-- delete on right-click.  The list rescans on a slow tick, so new sessions —
+-- and freshening "3h ago" ages — appear on their own.
+claudeNode :: forall t m. MonadWidget t m => Text -> FilePath -> m ()
+claudeNode treeName dir = do
+  pb <- getPostBuild
+  (sessE, fireSess) <- newTriggerEvent
+  let doScan = void . forkIO $
+        (claudeAvailable >>= \ok -> if ok then claudeSessionsFor dir else return [])
+          >>= fireSess
+  performEvent_ $ liftIO doScan <$ pb
+  tick <- tickLossyFromPostBuildTime 30
+  performEvent_ $ liftIO doScan <$ tick
+  sessD <- holdDyn [] sessE
+  hasD  <- holdUniqDyn (not . null <$> sessD)
+  void . dyn $ ffor hasD $ \has -> when has . void $
+    treeItem "claude" False
+      (do (rowEl, dmenuE) <- treeSelect' treeName rootMenu $ do
+             claudeIcon
+             dynText $ ffor sessD $ \ss -> "Claude (" <> T.pack (show (length ss)) <> ")"
+             return (never :: Event t (IO ()))
+          -- Double-click / Enter on the Claude node → the interactive picker.
+          performEvent_ $ liftIO (runClaudeCmd (ClaudeResumePicker dir)) <$ domEvent Dblclick rowEl
+          performEvent_ $ liftIO <$> dmenuE
+          return (never :: Event t ()))
+      (el "ul" $ do
+          void . dyn $ ffor sessD $ mapM_ (sessionRow treeName dir doScan)
+          return (never :: Event t ()))
+  where
+    rootMenu = menu
+      [ constDyn ("New Claude Session",           runClaudeCmd (ClaudeNew dir))
+      , constDyn ("Continue Last Claude Session", runClaudeCmd (ClaudeContinue dir))
+      , constDyn ("Resume Session…",              runClaudeCmd (ClaudeResumePicker dir))
+      ]
+
+-- | One session row under a Claude node (@rescan@ refreshes the list, e.g. after
+-- a delete).
+sessionRow
+  :: forall t m. MonadWidget t m
+  => Text -> FilePath -> IO () -> ClaudeSession -> m ()
+sessionRow treeName dir rescan s = el "li" $ do
+  (sEl, actE) <- treeSelect' treeName sessMenu $ do
+      claudeIcon
+      elClass "span" "claude-session-label" $ text (csAge s <> " · " <> csLabel s)
+      return (never :: Event t (IO ()))
+  -- Double-click / Enter → resume this session.
+  performEvent_ $ liftIO (runClaudeCmd (ClaudeResume dir (csId s))) <$ domEvent Dblclick sEl
+  performEvent_ $ liftIO <$> actE
+  where
+    sessMenu = menu
+      [ constDyn ("Resume in New Session (fork)", runClaudeCmd (ClaudeResumeFork dir (csId s)))
+      , constDyn ("Copy Session Id",              copySessionId (csId s))
+      , constDyn ("Reveal Transcript",            revealSession (csPath s))
+      , constDyn ("Delete Session",               deleteSession (csPath s) >> rescan)
+      ]

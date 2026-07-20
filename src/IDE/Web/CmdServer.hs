@@ -82,7 +82,7 @@ import Data.Text.Encoding (encodeUtf8, decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 
 import System.Directory
-       (getHomeDirectory, removeFile, doesFileExist,
+       (getHomeDirectory, removeFile, doesFileExist, doesDirectoryExist,
         createDirectoryIfMissing)
 import System.Exit (ExitCode(..))
 import System.FilePath (isRelative, (</>))
@@ -120,8 +120,8 @@ import IDE.Web.ScreenshotRequest (requestScreenshot)
 import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Workspaces
-       (projectOpenThis, setProjectSettings, workspaceActivatePackage,
-        workspaceTryQuiet, makePackage')
+       (projectOpenThis, dirProjectKey, setProjectSettings,
+        workspaceActivatePackage, workspaceTryQuiet, makePackage')
 
 -- | The control socket both sides agree on: @~/.leksah/cmd.sock@ for the
 -- default instance, @~/.leksah/cmd-\<port\>.sock@ under a non-default
@@ -477,11 +477,17 @@ handleConn ideR conn = do
                 , p <- pjPackages project
                 , ipdPackageName p == "leksah" ]
 
-    openProject fp = case filePathToProjectKey fp of
-      Nothing -> return $ "Not a project file: " <> T.pack fp
-      Just pk -> do
-        void $ reflectIDE (workspaceTryQuiet (projectOpenThis pk)) ideR
-        return $ "Added project to workspace: " <> T.pack fp
+    -- A directory becomes a plain-directory project (no build file needed);
+    -- otherwise the path is a project file (cabal.project / stack.yaml / …).
+    openProject fp = doesDirectoryExist fp >>= \case
+      True -> do
+        void $ reflectIDE (workspaceTryQuiet (projectOpenThis (dirProjectKey fp))) ideR
+        return $ "Added folder to workspace: " <> T.pack fp
+      False -> case filePathToProjectKey fp of
+        Nothing -> return $ "Not a project file or folder: " <> T.pack fp
+        Just pk -> do
+          void $ reflectIDE (workspaceTryQuiet (projectOpenThis pk)) ideR
+          return $ "Added project to workspace: " <> T.pack fp
 
     -- The user's CODE is evaluated inside a JS-side try/catch: a throwing
     -- expression must never raise into jsaddle itself.  An uncaught JS

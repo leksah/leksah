@@ -169,7 +169,7 @@ import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
-import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel)
+import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel, runOpenFolderPanel)
 import IDE.Web.Theme (themeVarsCss)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
@@ -1999,7 +1999,9 @@ listNavJs = T.unlines
   , "        if (cur) { cur.click();"
   -- A workspace file row opens on double-click (single click just selects it),
   -- so Enter/Space on a file must synthesise a dblclick to open it in the editor.
-  , "          if (cur.closest('li.file')) cur.dispatchEvent(new MouseEvent('dblclick', {bubbles:true, cancelable:true, view:window})); }"
+  -- Claude nodes (the "Claude" row and its session children, nested in li.claude)
+  -- likewise act on double-click, so Enter/Space there resumes/launches.
+  , "          if (cur.closest('li.file, li.claude')) cur.dispatchEvent(new MouseEvent('dblclick', {bubbles:true, cancelable:true, view:window})); }"
   , "        e.preventDefault(); return; }"
   , "      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {"
   , "        if (cur) { var li = cur.closest('li');"
@@ -3109,9 +3111,10 @@ main showMenubar macTitlebar wid ide = mdo
           [ fmapMaybe (^? _ToolbarCommand) toolbarE
           , fmapMaybe (^? _MenubarCommand) menubarE ]
     performEvent_ $ ffor panelCmdE $ \case
-      CommandFileOpen    -> liftIO runOpenFilePanel
-      CommandProjectOpen -> liftIO runOpenProjectPanel
-      _                  -> return ()
+      CommandFileOpen          -> liftIO runOpenFilePanel
+      CommandProjectOpen       -> liftIO runOpenProjectPanel
+      CommandProjectOpenFolder -> liftIO runOpenFolderPanel
+      _                        -> return ()
     -- The web toolbar/menubar's Preferences command, ⌘, (keymap), or the native
     -- macOS app-menu "Settings…" item (via the bridge) opens the Preferences pane.
     (prefsBridgeE, firePrefsReq) <- newTriggerEvent

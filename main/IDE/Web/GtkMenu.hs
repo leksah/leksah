@@ -38,17 +38,19 @@ import qualified GI.Gio as Gio
 import qualified GI.Gtk as Gtk
        (Application, ApplicationWindow, applicationSetAccelsForAction,
         applicationSetMenubar, applicationWindowSetShowMenubar, fileDialogNew,
-        fileDialogOpen, fileDialogOpenFinish)
+        fileDialogOpen, fileDialogOpenFinish,
+        fileDialogSelectFolder, fileDialogSelectFolderFinish)
 
 import IDE.Core.State (reflectIDE)
-import IDE.Core.Types (filePathToProjectKey)
 import IDE.Gtk.Workspaces (workspaceTry)
-import IDE.Workspaces (projectOpenThis)
+import IDE.Workspaces (projectOpenPath)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.MenuModel (menus, MenuItem(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
-import IDE.Web.OpenPanel (setOpenFilePanelHandler, setOpenProjectPanelHandler)
+import IDE.Web.OpenPanel
+       (setOpenFilePanelHandler, setOpenProjectPanelHandler,
+        setOpenFolderPanelHandler)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
@@ -97,6 +99,7 @@ dispatchTag win tag = do
     -- File ▸ Open / Open Project use the native GtkFileDialog.
     (CommandFileOpen:_)        -> openFilePanel win
     (CommandProjectOpen:_)     -> openProjectPanel win
+    (CommandProjectOpenFolder:_) -> openFolderPanel win
     -- These act on reflex state; signal via the bridges.
     (CommandFileSave:_)        -> requestSaveActiveFile
     (CommandFind:_)            -> requestToggleFindbar
@@ -128,14 +131,27 @@ openProjectPanel win = postGUIAsync $ do
   Gtk.fileDialogOpen d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
     \_ res ->
       try (Gtk.fileDialogOpenFinish d res) >>= \case
-        Right file -> Gio.fileGetPath file >>= mapM_ openProject
+        Right file -> Gio.fileGetPath file >>= mapM_ addToWorkspace
         Left (_ :: SomeException) -> return ()
-  where
-    openProject fp = case filePathToProjectKey fp of
-      Nothing -> return ()
-      Just pk -> getGlobalIDERef >>= \case
-        Just ideR -> void $ reflectIDE (workspaceTry (projectOpenThis pk)) ideR
-        Nothing   -> return ()
+
+-- | Native open-folder dialog; adds the chosen directory to the workspace as a
+-- plain-directory project ('projectOpenPath' turns a directory into a
+-- package-less 'CustomTool').  The macOS sibling is leksah_show_open_folder_panel.
+openFolderPanel :: Gtk.ApplicationWindow -> IO ()
+openFolderPanel win = postGUIAsync $ do
+  d <- Gtk.fileDialogNew
+  Gtk.fileDialogSelectFolder d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
+    \_ res ->
+      try (Gtk.fileDialogSelectFolderFinish d res) >>= \case
+        Right file -> Gio.fileGetPath file >>= mapM_ addToWorkspace
+        Left (_ :: SomeException) -> return ()
+
+-- | Add a path (project file or directory) to the workspace; 'projectOpenPath'
+-- decides which.  Shared by the open-project and open-folder dialogs.
+addToWorkspace :: FilePath -> IO ()
+addToWorkspace fp = getGlobalIDERef >>= \case
+  Just ideR -> void $ reflectIDE (workspaceTry (projectOpenPath fp)) ideR
+  Nothing   -> return ()
 
 -- | Translate a key spec like @\"cmd+ctrl+s\"@ to a GTK accelerator string.
 -- cmd is the primary modifier → Control on Linux; the specs' extra ctrl
@@ -211,6 +227,7 @@ installGtkMenu app win = do
   -- The toolbar/menubar Open commands show the native dialogs.
   setOpenFilePanelHandler (openFilePanel win)
   setOpenProjectPanelHandler (openProjectPanel win)
+  setOpenFolderPanelHandler (openFolderPanel win)
 
   -- Build the menubar.  MenuSep splits a level into GMenu sections (GMenu has
   -- no separator primitive; section boundaries render as separators).
