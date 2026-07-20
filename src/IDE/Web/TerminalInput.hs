@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 -- | A process-global bridge for injecting input into the active terminal.
@@ -35,6 +36,8 @@ module IDE.Web.TerminalInput
   , setActiveTerminal
   , isActiveTerminal
   , setActiveTerminalNotifier
+  , setActiveConvertible
+  , setSplitActiveNotifier
   , registerBackingPane
   , lookupBackingPane
   , unregisterBackingPane
@@ -65,6 +68,7 @@ import System.Posix.Pty (Pty, writePty)
 #endif
 
 import IDE.Core.Types (TabKey)
+import IDE.Web.ConvertRequest (requestConvert)
 import IDE.Web.ReplTmux (buildSplitWindowCommand)
 
 {-# NOINLINE ptyRegistry #-}
@@ -138,6 +142,31 @@ activeRef = unsafePerformIO (newIORef Nothing)
 {-# NOINLINE notifierRef #-}
 notifierRef :: IORef (Bool -> IO ())
 notifierRef = unsafePerformIO (newIORef (const (return ())))
+
+-- The active wide0 tab when it is not a terminal but CAN convert to a tmux
+-- pane (an editor / git-log tab with a 'backingPanesRef' entry).  ⌘D on such
+-- a tab converts it (see 'splitActiveTerminal'); the paired notifier drives
+-- the native Split items' enablement (leksah_set_split_active).
+{-# NOINLINE activeConvertibleRef #-}
+activeConvertibleRef :: IORef (Maybe TabKey)
+activeConvertibleRef = unsafePerformIO (newIORef Nothing)
+
+{-# NOINLINE splitNotifierRef #-}
+splitNotifierRef :: IORef (Bool -> IO ())
+splitNotifierRef = unsafePerformIO (newIORef (const (return ())))
+
+-- | Publish whether the active wide0 tab is a convertible editor/git-log tab
+-- (and which); called from Main whenever the active tab changes.
+setActiveConvertible :: Maybe TabKey -> IO ()
+setActiveConvertible mb = do
+  writeIORef activeConvertibleRef mb
+  notify <- readIORef splitNotifierRef
+  notify (isJust mb) `catch` \(_ :: SomeException) -> return ()
+
+-- | Install the native "split enabled" notifier (the wkwebview front end's
+-- 'c_setSplitActive'); mirrors 'setActiveTerminalNotifier'.
+setSplitActiveNotifier :: (Bool -> IO ()) -> IO ()
+setSplitActiveNotifier = writeIORef splitNotifierRef
 
 -- | Record the PTY backing terminal @n@ (its tmux session id; called as the
 -- terminal is created).
@@ -281,7 +310,12 @@ splitActiveTerminal horizontal chord = do
                then return ("split-window " <> if horizontal then "-h" else "-v")
                else buildSplitWindowCommand horizontal sid
       run cmd `catch` \(_ :: SomeException) -> return ()
-    _ -> sendToActiveTerminal (BS.cons 2 chord)
+    Just _ -> sendToActiveTerminal (BS.cons 2 chord)
+    Nothing -> readIORef activeConvertibleRef >>= \case
+      -- ⌘D on a convertible editor/git-log tab: convert it to its backing
+      -- tmux pane, then split (the pipeline lives in IDE.Web.Main).
+      Just k  -> requestConvert (k, horizontal)
+      Nothing -> sendToActiveTerminal (BS.cons 2 chord)
 
 -- | A tmux prefix key (the key that followed a @C-b@ chord, intercepted in JS
 -- by @window.LeksahTmux@ when the "Intercept Ctrl+B" pref is on) — dispatch it

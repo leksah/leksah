@@ -88,6 +88,7 @@ flattenCmds = concatMap $ \case
   MenuShortcut _ _ cmd  -> [cmd]
   MenuKey _ _ cmd       -> [cmd]
   MenuGlobalKey _ _ cmd -> [cmd]
+  MenuSplitKey _ _ cmd  -> [cmd]
   MenuSep               -> []
   Submenu _ subs        -> flattenCmds subs
 
@@ -261,6 +262,11 @@ installGtkMenu app win = do
             -- their Ctrl translations (Ctrl+D, Ctrl+[/]) would steal keys
             -- from the terminal these commands act on.  Menu clicks only.
             go section tag (MenuKey label _ _ : rs) = do
+              addLeaf section label "app.termcmd" tag
+              go section (tag + 1) rs
+            -- Split items: convert-to-pane gating is macOS-only so far; on
+            -- Gtk they behave like the other terminal items (clicks only).
+            go section tag (MenuSplitKey label _ _ : rs) = do
               addLeaf section label "app.termcmd" tag
               go section (tag + 1) rs
             go section tag (MenuGlobalKey label spec _ : rs) = do

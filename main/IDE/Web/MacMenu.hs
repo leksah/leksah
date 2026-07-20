@@ -63,7 +63,7 @@ import IDE.Web.ScreenshotRequest
        (registerScreenshotHandler, registerScreenshotRegionHandler)
 import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
-import IDE.Web.TerminalInput (setActiveTerminalNotifier)
+import IDE.Web.TerminalInput (setActiveTerminalNotifier, setSplitActiveNotifier)
 
 -- | Called from Objective-C (via the glue) with the path chosen in the
 -- open-project OR open-folder dialog; add it to the workspace, like the GTK
@@ -136,6 +136,7 @@ flattenCmds = concatMap $ \case
   MenuShortcut _ _ cmd  -> [cmd]
   MenuKey _ _ cmd       -> [cmd]
   MenuGlobalKey _ _ cmd -> [cmd]
+  MenuSplitKey _ _ cmd  -> [cmd]
   MenuSep               -> []
   Submenu _ subs        -> flattenCmds subs
 
@@ -193,6 +194,10 @@ installMacMenu = do
   -- Keep the native menu told whether a terminal tab is on screen, so the
   -- Terminal menu's key equivalents only fire then.
   setActiveTerminalNotifier $ \on -> c_setTerminalActive (if on then 1 else 0)
+  -- …and whether the active tab, though not a terminal, can convert to a tmux
+  -- pane (editor/git-log with a backing pane) — enables the Split items so
+  -- ⌘D converts-and-splits.
+  setSplitActiveNotifier $ \on -> c_setSplitActive (if on then 1 else 0)
   -- The toolbar/menubar Open commands show the native open panels.
   setOpenFilePanelHandler c_showOpenPanel
   setOpenProjectPanelHandler c_showOpenProjectPanel
@@ -246,6 +251,10 @@ installMacMenu = do
       addItems tag (MenuGlobalKey label spec _ : rs) = do
         withCString (T.unpack label) $ \l ->
           withCString (T.unpack spec) $ \s -> c_menuAddItemKeyGlobal l s (fromIntegral tag)
+        addItems (tag + 1) rs
+      addItems tag (MenuSplitKey label spec _ : rs) = do
+        withCString (T.unpack label) $ \l ->
+          withCString (T.unpack spec) $ \s -> c_menuAddItemKeySplittable l s (fromIntegral tag)
         addItems (tag + 1) rs
       addItems tag (MenuSep : rs) = do
         c_menuAddSeparator

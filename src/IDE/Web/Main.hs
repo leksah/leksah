@@ -63,7 +63,7 @@ import Data.Map (mapKeys)
 import qualified Data.Map as M
        (Map, keys, elems, toList, fromList, union, findWithDefault, lookup,
         insert, insertWith, adjust, delete, member, filterWithKey,
-        singleton, mapWithKey, empty, size, null)
+        singleton, mapWithKey, empty, size, null, withoutKeys)
 import Data.Map (Map)
 import qualified Data.Set as S
        (fromList, delete, singleton, empty, insert, member, intersection, toList)
@@ -83,7 +83,7 @@ import System.Process (readProcessWithExitCode)
 import Data.Aeson (Value, decodeStrict', encode)
 import qualified Data.Aeson as A
 import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex)
-import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
+import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeFileName, takeExtension, dropFileName, takeDirectory, (</>))
 import System.Environment (getArgs, setEnv)
@@ -182,15 +182,16 @@ import IDE.Web.RegionCapture
        (screenCaptureAllowed, grabRegionToTarget, sendPathToTarget,
         sendTextToTarget, nextRegionFile, resolveTmuxSessionId)
 import IDE.Web.AIContextRequest (AIAction(..), nextAIAction)
-import IDE.Web.RemoteTermRequest (nextTermRequest)
+import IDE.Web.RemoteTermRequest (nextTermRequest, requestLocalTerm)
+import IDE.Web.ConvertRequest (nextConvertRequest)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.GhciMode (ghciMode, registerGhciCleanup, stopForGhci)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.ReplTmux (tmuxCmd, tmuxSupported)
 import IDE.Web.TerminalInput
-       (setActiveTerminal, tmuxCommandActiveTerminal, selectSplitActiveTerminal,
-        focusTerminalPane, dispatchTmuxPrefix,
-        registerBackingPane, unregisterBackingPane)
+       (setActiveTerminal, setActiveConvertible, tmuxCommandActiveTerminal,
+        selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
+        registerBackingPane, lookupBackingPane, unregisterBackingPane)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
@@ -3394,7 +3395,11 @@ main showMenubar macTitlebar wid ide = mdo
                       (tag (current activePaneD) saveReqE)
           -- The save prompt's "Save" button (dirty editor being closed).
           , promptSaveE
-          , overlaySaveE ]
+          , overlaySaveE
+          -- ⌘D conversion of a dirty editor saves it first.
+          , convertSaveE
+          -- Overlay editors autosave (debounced) — see overlayW.
+          , overlaySaveReqE ]
     (openFileE, fileLineE, lspRefsE, makeEditor) <- editorWidget ide allE saveFileE
     -- Overlay-hosted leksah views (an editor / git log converted to a pane by
     -- ⌘D — see '_paneOverlays'): the same widgets the tabs use, rendered
@@ -3403,10 +3408,19 @@ main showMenubar macTitlebar wid ide = mdo
     -- plumbing (tabE/EditorTab → dirtyFilesD / the build trigger) never sees
     -- overlay editors.
     (overlayChangedE, fireOverlayChanged) <- newTriggerEvent
+    (overlaySaveReqE, fireOverlaySave) <- newTriggerEvent
     let overlayW k selE = case k of
           EditorKey f -> do
             changeE <- makeEditor f selE (constDyn Nothing)
             performEvent_ $ liftIO (fireOverlayChanged f) <$ changeE
+            -- Debounced autosave, overlay editors ONLY: the pane can be
+            -- killed in tmux at any moment, and detaching/re-showing the tab
+            -- tears the widget down and re-reads disk — unsaved changes are a
+            -- data-loss hazard the tab world doesn't have.  (It also makes
+            -- vim's swap/mtime guards fire correctly if an external attacher
+            -- opens the same file.)
+            autosaveE <- debounce 1 changeE
+            performEvent_ $ liftIO (fireOverlaySave f) <$ autosaveE
           GitLogKey d b -> do
             mon <- monacoEditor . view prefs <$> sample (current ide)
             void $ gitLogWidget mon d b
@@ -3445,7 +3459,7 @@ main showMenubar macTitlebar wid ide = mdo
         -- opens are the gated slice, and the built-in slice drives the
         -- backing shell panes below.
         openExternalE = gate extActiveMainB fileLineE
-        nativeOpenE = (\fp -> EditorKey fp =: ("wide0", Just ()))
+        nativeOpenE0 = (\fp -> EditorKey fp =: ("wide0", Just ()))
                         <$> gate (not <$> extActiveMainB) nativeOpenedFileE
         nativeOpenExtE = (\fp -> (fp, 1)) <$> gate extActiveMainB nativeOpenedFileE
     -- Backing shell panes: every file open in the BUILT-IN editor gets (or
@@ -3889,7 +3903,25 @@ main showMenubar macTitlebar wid ide = mdo
                                         Just CommandFocusAlert -> Just (); _ -> Nothing) keymapE
         alertTargetE = fmapMaybe firstAlertWindow (tag (current paneTreeD) focusAlertE)
     performEvent_ $ ffor alertTargetE $ \(s, w) -> liftIO (selectTmuxWindow s w)
-    let openFileE' = mapKeys EditorKey <$> openFileE
+    let openFileE'0 = mapKeys EditorKey <$> openFileE
+        -- A file CONVERTED to a tmux pane (⌘D — it has a '_paneOverlays'
+        -- entry) must not reopen as an editor tab: activate its pane instead,
+        -- wherever it lives now, and bring up the terminal tab of the session
+        -- containing it.  Applied to the MERGED editor-open stream, so both
+        -- in-page opens (tree/goto) and native ones (File ▸ Open,
+        -- `leksah-cmd cm open`) are intercepted.
+        convertedPane i k = listToMaybe [ pid | (pid, k') <- M.toList (i ^. paneOverlays), k' == k ]
+        openFileSplitE = attachWith
+          (\i m -> ( [ pid | (k, _) <- M.toList m, Just pid <- [convertedPane i k] ]
+                   , M.filterWithKey (\k _ -> isNothing (convertedPane i k)) m ))
+          (current ide) (leftmost [openFileE'0, nativeOpenE0])
+        openFileE' = ffilter (not . M.null) (snd <$> openFileSplitE)
+        openConvertedE = ffilter (not . null) (fst <$> openFileSplitE)
+    performEvent_ $ ffor openConvertedE $ \pids ->
+      liftIO . void . forkIO $ forM_ pids $ \pid -> do
+        tmuxCmd ["select-window", "-t", T.unpack pid]
+        tmuxCmd ["select-pane", "-t", T.unpack pid]
+        sessionOfPane pid >>= mapM_ requestLocalTerm
     openFileKeysD <- foldDyn ($) mempty $ leftmost
       [ (\new s -> s <> new) . S.fromList . M.keys <$> openFileE'
       , (\new s -> s <> new) <$> restoreFileKeysE
@@ -4209,6 +4241,14 @@ main showMenubar macTitlebar wid ide = mdo
                                             _                    -> Nothing) <$> visibleTabsD
     -- Publish the active terminal so the Tmux menu can send C-b sequences to it.
     performEvent_ $ liftIO . setActiveTerminal <$> updated activeTermD
+    -- …and whether the active tab, though not a terminal, can CONVERT to a
+    -- tmux pane (⌘D): any editor/git-log tab qualifies — the conversion
+    -- pipeline ensures the backing pane on demand, so no registry race here.
+    activeConvD <- holdUniqDyn $ (\vis -> case M.lookup "wide0" vis of
+                                            Just k@(EditorKey _) -> Just k
+                                            Just k@GitLogKey{}   -> Just k
+                                            _                    -> Nothing) <$> visibleTabsD
+    performEvent_ $ liftIO . setActiveConvertible <$> updated activeConvD
     -- The ⌘` flipper hint's target: the one-press destination is the second
     -- entry of the MRU flip list (index 0 is the current pane).  Resolve it to
     -- an on-screen pane %id or a tab button and publish to hintsJs.
@@ -4532,7 +4572,67 @@ main showMenubar macTitlebar wid ide = mdo
           [ (\fs s -> foldr S.insert s fs)                        <$> editorChangedFilesE
           , S.insert                                              <$> overlayChangedE
           , S.delete                                              <$> saveFileE
+          , (\fs s -> foldr S.delete s fs)                        <$> overlayDeadFilesE
           , (\ks s -> foldr S.delete s [ f | EditorKey f <- ks ]) <$> closeTabsE ]
+    -- ⌘D on an editor/git-log tab (splitActiveTerminal → the ConvertRequest
+    -- bridge): convert the tab to its backing tmux pane, then split.
+    --   1. a dirty editor is saved first (convertSaveE joins saveFileE);
+    --   2. off the frame thread: find/ensure the backing pane, then
+    --      select its window, split it, and bring up the backing session's
+    --      terminal tab (requestLocalTerm reuses the whole open+focus path);
+    --   3. back on the reflex side: register the pane overlay (the editor
+    --      now renders OVER the pane) and close the original tab
+    --      (convertCloseE joins closeTabsE — deliberately NOT the
+    --      kill-if-idle hook, which must never fire for a conversion).
+    (convertReqE, fireConvertReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextConvertRequest >>= fireConvertReq
+    let convertSaveE = attachWithMaybe
+          (\dirty (k, _) -> case k of
+              EditorKey f | f `S.member` dirty -> Just f
+              _                                -> Nothing)
+          (current dirtyFilesD) convertReqE
+    -- A beat for the save to land on disk before the pane world takes over.
+    convertReadyE <- delay 0.2 convertReqE
+    (convertDoneE, fireConvertDone) <- newTriggerEvent
+    performEvent_ $ ffor (attach (current prefsD) convertReadyE) $ \(p, (k, horiz)) ->
+      liftIO . void . forkIO $ do
+        mbPane <- lookupBackingPane k >>= \case
+          Just t  -> return (Just t)
+          Nothing -> do
+            r <- case k of
+              EditorKey f -> do
+                cmd <- resolveEditorCmd (externalEditor p)
+                ensureShellPane (T.pack f <> "#edit") (takeFileName f)
+                    (takeDirectory f)
+                    (cmd <> " +1 " <> shellQuoteArg (T.pack f))
+              GitLogKey d b ->
+                ensureShellPane (T.pack d <> "#gitlog#" <> b) ("log:" <> T.unpack b) d
+                    ("git log " <> shellQuoteArg b)
+              _ -> return Nothing
+            mapM_ (registerBackingPane k) r
+            return r
+        forM_ mbPane $ \(_sid, _wid, pid) -> do
+          fireConvertDone (k, pid)
+          tmuxCmd ["select-window", "-t", T.unpack pid]
+          tmuxCmd ["split-window", if horiz then "-h" else "-v", "-t", T.unpack pid]
+          sessionOfPane pid >>= mapM_ requestLocalTerm
+    let convertCloseE = (\(k, _) -> [k]) <$> convertDoneE
+    -- Overlay/backing-pane GC: a converted pane killed in tmux (exit at its
+    -- prompt, kill-pane, its window closed — even while the tab is detached)
+    -- must drop its overlay, its backing-pane registration and its dirty flag.
+    -- Driven by the polled pane tree; fires only when something actually died
+    -- (a modifyIDE_ per poll would bump ideVersion forever).
+    let overlayDeadE = ffilter (not . null) $ attachWith
+          (\i tree ->
+             let live = S.fromList
+                   [ tpId p | (_, (_, wins)) <- M.toList tree
+                            , w <- wins, p <- twPanes w ]
+             in [ (pid, k) | (pid, k) <- M.toList (i ^. paneOverlays)
+                           , not (pid `S.member` live) ])
+          (current ide) (updated paneTreeD)
+    performEvent_ $ ffor overlayDeadE $ \dead -> liftIO $
+        mapM_ (unregisterBackingPane . snd) dead
+    let overlayDeadFilesE = (\dead -> [ f | (_, EditorKey f) <- dead ]) <$> overlayDeadE
     -- Prompt to save a dirty editor before closing it (⌘W / File ▸ Close).  The
     -- modal uses the dyn/switchHold pattern (cf. Editor.hs's gutter menu): Save
     -- writes then closes one frame later, Don't Save closes, Cancel dismisses.
@@ -4596,8 +4696,7 @@ main showMenubar macTitlebar wid ide = mdo
         Just pk -> remoteSettingsDialog pk)
     let openInWide0 n = TerminalKey n =: ("wide0", Just ())
         openTabsE = leftmost
-          [ openFileE'
-          , nativeOpenE
+          [ openFileE'   -- carries native opens too (see openFileSplitE)
           , openInWide0 <$> newOrEditTermE
           , openInWide0 <$> termRequestE
           , openInWide0 <$> remoteOpenKeyE
@@ -4615,6 +4714,8 @@ main showMenubar macTitlebar wid ide = mdo
                               -- Dirty editor closed via the save prompt: after Save
                               -- (savedCloseE, one frame later) or Don't Save.
                               , savedCloseE, discardCloseE
+                              -- ⌘D conversion replaces the tab with its pane.
+                              , convertCloseE
                               , exitedTermE, closeRemoteSessTabE ]
         -- Running a grep brings the Grep pane to the front of its area; Preferences…
         -- opens and shows the Preferences pane in the editor area.  The flipper
@@ -5048,6 +5149,11 @@ main showMenubar macTitlebar wid ide = mdo
       <> ((^.. (to $ \_ -> do
         tb <- readIDE triggerBuild
         void . liftIO $ tryPutMVar tb ())) <$> overlayChangedE)
+      -- ⌘D conversion: record the pane→view overlay in the shared state (the
+      -- CC widgets render it; every OS window sees it via the resync poll).
+      <> ((\(k, pid) -> [modifyIDE_ (paneOverlays %~ M.insert pid k)]) <$> convertDoneE)
+      -- …and drop overlays whose pane died in tmux (see overlayDeadE).
+      <> ((\dead -> [modifyIDE_ (paneOverlays %~ (`M.withoutKeys` S.fromList (map fst dead)))]) <$> overlayDeadE)
       -- (Per-window side/bottom visibility is seeded into '_webWindows' by
       -- 'newIDE' at restore, so there is no restore-visibility event here.)
       <> ((\(PrefsUpdate f) -> [modifyIDE_ (prefs %~ f)]) <$> prefsPaneE)

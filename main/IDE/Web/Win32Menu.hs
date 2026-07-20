@@ -147,6 +147,7 @@ flattenCmds = concatMap $ \case
   MenuShortcut _ _ cmd  -> [cmd]
   MenuKey _ _ cmd       -> [cmd]
   MenuGlobalKey _ _ cmd -> [cmd]
+  MenuSplitKey _ _ cmd  -> [cmd]
   MenuSep               -> []
   Submenu _ subs        -> flattenCmds subs
 
@@ -239,6 +240,11 @@ installWin32Menu wv = do
         addItems (tag + 1) rs
       addItems tag (MenuGlobalKey label spec _ : rs) = do
         addItem label spec tag 0
+        addItems (tag + 1) rs
+      -- Split items: convert-to-pane gating is macOS-only so far; on Windows
+      -- they keep the terminal gate.
+      addItems tag (MenuSplitKey label spec _ : rs) = do
+        addItem label spec tag 1
         addItems (tag + 1) rs
       addItems tag (MenuSep : rs) = do
         c_menuAddSeparator

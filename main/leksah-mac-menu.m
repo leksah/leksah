@@ -98,6 +98,16 @@ void leksah_set_terminal_active(int on) {
     gTerminalActive = on;
 }
 
+// Whether the active tab, though not a terminal, can CONVERT to a tmux pane
+// (an editor / git-log tab with a backing pane — see paneOverlays).  The two
+// Split items are marked "splittable": enabled when a terminal is active OR
+// a convertible tab is — so ⌘D on an editor tab converts it and splits.
+static volatile int gSplitActive = 0;
+
+void leksah_set_split_active(int on) {
+    gSplitActive = on;
+}
+
 // Set while leksah_close_all_windows runs (ghci-mode teardown): the
 // WillClose observers skip leksah_window_closing so the Haskell side's
 // merge/quit logic doesn't fire for windows it is closing itself.
@@ -110,6 +120,8 @@ static volatile int gTeardownInProgress = 0;
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     if ([@"terminal" isEqual:[item representedObject]])
         return gTerminalActive != 0;
+    if ([@"splittable" isEqual:[item representedObject]])
+        return gTerminalActive != 0 || gSplitActive != 0;
     return YES;
 }
 - (void)leksahRemeasure:(NSTimer *)timer {
@@ -260,7 +272,8 @@ void leksah_menu_add_item_kv(const char *desc, const char *shortcut, int tag) {
 // Right/Enter).  The item is marked terminal-only: it is enabled (and its key
 // equivalent consumed) only while a terminal tab is on screen — see
 // validateMenuItem above.
-void leksah_menu_add_item_key(const char *title, const char *spec, int tag) {
+static void leksah_menu_add_item_key_repr(const char *title, const char *spec,
+                                          int tag, NSString *repr) {
     if (gMenuDepth <= 0) return;
     NSString *t = [NSString stringWithUTF8String:title];
     NSString *s = [NSString stringWithUTF8String:spec];
@@ -293,8 +306,19 @@ void leksah_menu_add_item_key(const char *title, const char *spec, int tag) {
     [item setKeyEquivalentModifierMask:mask];
     [item setTarget:gTarget];
     [item setTag:tag];
-    [item setRepresentedObject:@"terminal"];   // gate on a terminal being active
+    [item setRepresentedObject:repr];
     [gMenuStack[gMenuDepth - 1] addItem:item];
+}
+
+void leksah_menu_add_item_key(const char *title, const char *spec, int tag) {
+    // gate on a terminal being active
+    leksah_menu_add_item_key_repr(title, spec, tag, @"terminal");
+}
+
+// A Split item: enabled while a terminal OR a convertible (editor/git-log)
+// tab is active — see validateMenuItem.
+void leksah_menu_add_item_key_splittable(const char *title, const char *spec, int tag) {
+    leksah_menu_add_item_key_repr(title, spec, tag, @"splittable");
 }
 
 // Like leksah_menu_add_item_key but WITHOUT the terminal gate — an always-enabled

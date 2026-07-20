@@ -40,6 +40,11 @@ data MenuItem
   | MenuGlobalKey Text Text Command  -- ^ like 'MenuKey' but NOT gated to a
                                      --   terminal — an always-available real
                                      --   key equivalent (label, spec, command)
+  | MenuSplitKey Text Text Command   -- ^ like 'MenuKey' but enabled while a
+                                     --   terminal OR a convertible tab (an
+                                     --   editor/git-log with a backing tmux
+                                     --   pane) is active — the Split items,
+                                     --   so ⌘D on an editor converts it
   | MenuSep                          -- ^ a separator line
   | Submenu  Text [MenuItem]         -- ^ a labelled nested menu
 
@@ -152,8 +157,8 @@ terminalMenu =
   , MenuKey "Previous Window" "cmd+shift+[" (paneCmd "previous-window" "p")
   , MenuKey "Next Window"     "cmd+shift+]" (paneCmd "next-window" "n")
   , MenuSep
-  , MenuKey "Split Right" "cmd+d"       (splitCmd True  "%")
-  , MenuKey "Split Down"  "cmd+shift+d" (splitCmd False "\"")
+  , MenuSplitKey "Split Right" "cmd+d"       (splitCmd True  "%")
+  , MenuSplitKey "Split Down"  "cmd+shift+d" (splitCmd False "\"")
   , MenuSep
   , Submenu "Select Split"
       [ MenuKey "Select Split Above" "cmd+alt+Up"    (paneCmd "select-pane -U" "\ESC[A")

@@ -36,11 +36,13 @@ module IDE.Web.MacGlue
   , c_menuAddItemKV
   , c_menuAddItemKey
   , c_menuAddItemKeyGlobal
+  , c_menuAddItemKeySplittable
   , c_menuAddSeparator
   , c_menuPushSubmenu
   , c_menuPopSubmenu
   , c_menuInstall
   , c_setTerminalActive
+  , c_setSplitActive
   , c_titlebarSetup
   , c_newWindow
   , c_raiseWindow
@@ -116,6 +118,9 @@ foreign import ccall "leksah_menu_add_item_key" c_menuAddItemKey :: CString -> C
 -- Like add_item_key but NOT gated to a terminal — an always-available real key
 -- equivalent (e.g. the AI menu's Grab Region).
 foreign import ccall "leksah_menu_add_item_key_global" c_menuAddItemKeyGlobal :: CString -> CString -> CInt -> IO ()
+-- A Split item: enabled while a terminal OR a convertible (editor/git-log)
+-- tab is active — see leksah_set_split_active.
+foreign import ccall "leksah_menu_add_item_key_splittable" c_menuAddItemKeySplittable :: CString -> CString -> CInt -> IO ()
 foreign import ccall "leksah_menu_add_separator" c_menuAddSeparator :: IO ()
 foreign import ccall "leksah_menu_push_submenu" c_menuPushSubmenu :: CString -> IO ()
 foreign import ccall "leksah_menu_pop_submenu"  c_menuPopSubmenu  :: IO ()
@@ -123,6 +128,9 @@ foreign import ccall "leksah_menu_install"  c_menuInstall :: IO ()
 -- Whether a terminal tab is on screen: gates the Terminal menu's key
 -- equivalents so ⌘D etc. pass through to the editor otherwise.
 foreign import ccall "leksah_set_terminal_active" c_setTerminalActive :: CInt -> IO ()
+-- Whether the active tab, though not a terminal, can convert to a tmux pane
+-- (an editor/git-log tab with a backing pane): enables the Split items.
+foreign import ccall "leksah_set_split_active" c_setSplitActive :: CInt -> IO ()
 foreign import ccall "leksah_titlebar_setup" c_titlebarSetup :: IO ()
 -- Create a native NSWindow + WKWebView for a freshly-minted 'WindowId'; the ObjC
 -- glue calls back 'cbAttachWindow' once the webview exists so Haskell can
@@ -240,6 +248,8 @@ c_menuAddItemKey :: CString -> CString -> CInt -> IO ()
 c_menuAddItemKey _ _ _ = return ()
 c_menuAddItemKeyGlobal :: CString -> CString -> CInt -> IO ()
 c_menuAddItemKeyGlobal _ _ _ = return ()
+c_menuAddItemKeySplittable :: CString -> CString -> CInt -> IO ()
+c_menuAddItemKeySplittable _ _ _ = return ()
 c_menuAddSeparator :: IO ()
 c_menuAddSeparator = return ()
 c_menuPushSubmenu :: CString -> IO ()
@@ -250,6 +260,8 @@ c_menuInstall :: IO ()
 c_menuInstall = return ()
 c_setTerminalActive :: CInt -> IO ()
 c_setTerminalActive _ = return ()
+c_setSplitActive :: CInt -> IO ()
+c_setSplitActive _ = return ()
 c_titlebarSetup :: IO ()
 c_titlebarSetup = return ()
 c_newWindow :: CInt -> IO ()
