@@ -69,7 +69,7 @@ import qualified Data.Set as S
        (fromList, delete, singleton, empty, insert, member, intersection)
 import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn)
+import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, take, length)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
@@ -1319,7 +1319,7 @@ flipPaneLabel n w p tree =
     stripIdx i lbl = fromMaybe lbl (T.stripPrefix (T.pack (show i) <> ": ") lbl)
     mbWin   = find ((== w) . twIndex) (maybe [] snd (M.lookup n tree))
     panes   = maybe [] twPanes mbWin
-    winName = maybe (T.pack (show w)) (stripIdx w . twLabel) mbWin
+    winName = maybe (T.pack (show w)) windowTabLabel mbWin
     paneName = case [ stripIdx p (tpLabel pn) | pn <- panes, tpIndex pn == p ] of
                  (l:_) -> l
                  []    -> T.pack (show p)
@@ -1357,6 +1357,20 @@ windowIconSrc w
       = "/pics/tree-claude.svg"
   | otherwise = src
   where src = windowAlertSrc w
+
+-- | The tab/flipper text for a tmux window.  A Claude window shows its current
+-- session's title (the transcript's first prompt, carried in 'twClaudeTitle')
+-- instead of the bare window name "claude"; everything else shows its window
+-- name with the leading "idx: " prefix stripped.
+windowTabLabel :: TmuxWindow -> Text
+windowTabLabel w
+  | isClaudeWindow w = case twClaudeTitle w of
+      Just t | not (T.null t) -> ellipsize 32 t
+      _                       -> "claude"
+  | otherwise = stripIdxPrefix (twIndex w) (twLabel w)
+  where
+    ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
+                  | otherwise      = t
 
 flipIconSrc :: Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Text
 flipIconSrc tree = \case
@@ -3307,7 +3321,7 @@ main showMenubar macTitlebar wid ide = mdo
                 -- only before the first poll, when no window is known yet.
                 labelTextD = (\names mw -> case mw of
                                 Nothing -> M.findWithDefault s s names
-                                Just w  -> stripIdxPrefix (twIndex w) (twLabel w))
+                                Just w  -> windowTabLabel w)
                              <$> terminalNamesD <*> mwD
                 -- The leading state icon carries the notification (bell / activity
                 -- / silence) instead of a trailing 🔔/●/○; a leksah-tracked bell

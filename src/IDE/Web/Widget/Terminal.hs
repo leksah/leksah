@@ -79,7 +79,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines,
-        null, breakOn, drop)
+        null, breakOn, drop, isPrefixOf)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Text.Read (readMaybe)
 
@@ -127,6 +127,7 @@ import System.Posix.Signals (signalProcess, sigKILL)
 import System.Process (readProcessWithExitCode, createProcess, proc)
 import System.Exit (ExitCode(ExitSuccess))
 
+import IDE.Web.Claude (claudeSessionsFor, ClaudeSession(..))
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
@@ -746,6 +747,10 @@ data TmuxWindow = TmuxWindow
   , twBell     :: Bool
   , twActivity :: Bool
   , twSilence  :: Bool
+  , twRunKey   :: Text        -- ^ the @\@leksah_run@ marker (@""@ = none), e.g.
+                              --   @\<dir\>#claude@ for a Claude Code window
+  , twClaudeTitle :: Maybe Text  -- ^ for a Claude window, its current session's
+                                 --   title (transcript first prompt); else 'Nothing'
   , twPanes    :: [TmuxPane]
   } deriving (Eq, Show)
 
@@ -762,7 +767,7 @@ listTerminalTree :: IO (Map Text (Text, [TmuxWindow]))
 listTerminalTree = do
     ts <- demoTerminals
     return $ M.fromListWith (\_ old -> old)
-        [ (sid, (name, [ TmuxWindow 0 name True False False False
+        [ (sid, (name, [ TmuxWindow 0 name True False False False "" Nothing
                              [ TmuxPane 0 ("%" <> sid) name True ] ]))
         | (sid, name) <- ts ]
 #else
@@ -772,7 +777,35 @@ listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
         Just tmux -> do
             (_rc, out, _) <- readProcessWithExitCode tmux
                 ["-L", tmuxSocket, "list-panes", "-a", "-F", paneTreeFormat] ""
-            return (parsePaneTree out)
+            enrichClaudeTitles (parsePaneTree out)
+
+-- | Fill in 'twClaudeTitle' for every Claude Code window in the tree: read its
+-- directory's most-recent session title (transcript first prompt) so the tab and
+-- flipper can show what the conversation is about instead of the bare name
+-- "claude".  Cheap in practice — Claude windows are few and 'claudeSessionsFor'
+-- reads only each transcript's head.  Non-Claude windows are left untouched.
+enrichClaudeTitles
+  :: Map Text (Text, [TmuxWindow]) -> IO (Map Text (Text, [TmuxWindow]))
+enrichClaudeTitles = traverse (\(nm, ws) -> (,) nm <$> traverse fillTitle ws)
+  where
+    fillTitle w = case claudeDirOf w of
+      Nothing  -> return w
+      Just dir -> do
+        ss <- claudeSessionsFor dir
+        return w { twClaudeTitle = case csLabel <$> listToMaybe ss of
+                     -- A session with no user prompt yet has no real title.
+                     Just t | t /= "(untitled session)" -> Just t
+                     _                                   -> Nothing }
+
+-- | The working directory of a Claude Code window from its @\@leksah_run@ marker
+-- (@\<dir\>#claude@, @…#claude#\<id\>@, @…#claude#ask#\<file\>@, …), or 'Nothing'
+-- when the window isn't a Claude one.
+claudeDirOf :: TmuxWindow -> Maybe FilePath
+claudeDirOf w = case T.breakOn "#claude" (twRunKey w) of
+  (d, rest)
+    | not (T.null d)
+    , rest == "#claude" || "#claude#" `T.isPrefixOf` rest -> Just (T.unpack d)
+  _ -> Nothing
 #endif
 
 -- | Tab-separated so names / commands / titles (which won't contain tabs) stay
@@ -784,7 +817,7 @@ paneTreeFormat :: String
 paneTreeFormat = intercalate "\t"
     [ "#{session_id}", "#{session_name}", "#{window_index}", "#{window_name}"
     , "#{window_active}", "#{window_bell_flag}", "#{window_activity_flag}"
-    , "#{window_silence_flag}", "#{pane_index}", "#{pane_active}"
+    , "#{window_silence_flag}", "#{@leksah_run}", "#{pane_index}", "#{pane_active}"
     , "#{pane_id}", "#{pane_current_command}", "#{pane_title}" ]
 
 -- | Run tmux on a remote host over ssh (no PTY, BatchMode — key auth only).
@@ -948,9 +981,9 @@ parsePaneTree :: String -> Map Text (Text, [TmuxWindow])
 parsePaneTree out = M.map toSession grouped
   where
     rows =
-      [ (sid, sname, wi, wn, wa == "1", wb == "1", wac == "1", ws == "1", pidx, pa == "1", pid, paneName)
+      [ (sid, sname, wi, wn, wa == "1", wb == "1", wac == "1", ws == "1", runkey, pidx, pa == "1", pid, paneName)
       | line <- lines out
-      , (sid:sname:wiT:wn:wa:wb:wac:ws:piT:pa:pid:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
+      , (sid:sname:wiT:wn:wa:wb:wac:ws:runkey:piT:pa:pid:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
       , not (T.null sid)
       -- The control-mode monitor's hidden session is not a real terminal.
       , sname /= monitorSessionName
@@ -958,19 +991,19 @@ parsePaneTree out = M.map toSession grouped
       , Just pidx <- [readMaybe (T.unpack piT)]
       , let title    = T.intercalate "\t" rest
             paneName = if T.null title then cmd else title ]
-    -- session id -> (name, window index -> (name, active, bell, activity, silence, pane idx -> (paneName, active, pane id)))
-    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Map Int (Text, Bool, Text)))
+    -- session id -> (name, window index -> (name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id)))
+    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text)))
     grouped = M.fromListWith mergeSess
-      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, M.singleton pidx (paneName, pa, pid))))
-      | (sid, sname, wi, wn, wa, wb, wac, ws, pidx, pa, pid, paneName) <- rows ]
+      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid))))
+      | (sid, sname, wi, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, paneName) <- rows ]
     mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
-    mergeWin (wn, wa, wb, wac, ws, ps1) (_, _, _, _, _, ps2) = (wn, wa, wb, wac, ws, ps1 <> ps2)
+    mergeWin (wn, wa, wb, wac, ws, rk, ps1) (_, _, _, _, _, _, ps2) = (wn, wa, wb, wac, ws, rk, ps1 <> ps2)
     toSession (sname, wm) =
       ( sname
-      , [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa wb wac ws
+      , [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk Nothing
             [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) pa
             | (pidx, (paneName, pa, pid)) <- M.toAscList ps ]
-        | (wi, (wn, wa, wb, wac, ws, ps)) <- M.toAscList wm ] )
+        | (wi, (wn, wa, wb, wac, ws, rk, ps)) <- M.toAscList wm ] )
 
 -- | Make window @w@ of session @s@ (a tmux session id) the current window.
 selectTmuxWindow :: Text -> Int -> IO ()
