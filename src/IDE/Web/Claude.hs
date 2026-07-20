@@ -194,6 +194,11 @@ data ClaudeCmd
 -- | Open (or focus) a terminal in the right directory running the command.
 -- Interactive/new sessions share one @claude@ window per directory; a specific
 -- resumed session gets its own window keyed by id.  Fire-and-forget.
+--
+-- The window closes itself when @claude@ exits cleanly (status 0, e.g. @\/exit@
+-- or Ctrl-D) and only lingers as a shell on a non-zero exit — so a crash stays
+-- on screen but a normal quit tidies up (which also clears the tree's
+-- "running" dot and frees the per-directory window key, see 'claudeRunning').
 runClaudeCmd :: ClaudeCmd -> IO ()
 runClaudeCmd cmd = void . forkIO $ do
   let d = dropTrailingPathSeparator dir
@@ -202,7 +207,7 @@ runClaudeCmd cmd = void . forkIO $ do
   -- no prefix set → a plain launch.
   mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
   let line' = maybe line (\p -> p <> " " <> line) mbPrefix
-  void $ ensureCommandWindow True key d "claude" line'
+  void $ ensureCommandWindow False key d "claude" line'
            >>= mapM_ requestLocalTerm
   where
     (dir, keyTag, line) = case cmd of
