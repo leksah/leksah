@@ -40,10 +40,16 @@ source-repository-package
 -- ffcabal lives in its own repo (hamishmack/ffcabal) now; consume it via a
 -- source-repository-package.  For nix the location+tag is resolved to a flake
 -- input via inputMap in flake.nix (no network fetch during pure eval).
+-- It's leksah's native fail-fast cabal wrapper (run at runtime by the in-app
+-- build system, not a library dep) and can't build for the GHC JavaScript
+-- backend (its `unix` dep is `buildable: False` there).  As of this tag its
+-- .cabal marks the lib/exe/test `buildable: False` under impl(ghcjs)/
+-- arch(javascript), so the JS cross plan drops it (a cabal.project `if` can't
+-- gate a source-repository-package).
 source-repository-package
   type: git
   location: https://github.com/leksah/ffcabal
-  tag: 03d5d8f99b41db4ea8af74712354ff334112ae5c
+  tag: ad54e7188587423e60d34b76334b526f5e36deed
 
 -- jsaddle (core), jsaddle-wkwebview, jsaddle-terminal, jsaddle-webkitgtk
 -- (GTK4/WebKitGTK 6.0) and jsaddle-webview2 (Windows) come from the jsaddle

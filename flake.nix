@@ -31,7 +31,7 @@
   inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/8ea768493731d3b3483e303e8592d3fc8163c9b0";
   inputs.jsaddle-terminal-src.flake = false;
   # ffcabal lives in its own repo now; same wiring as above.
-  inputs.ffcabal-src.url = "github:leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c";
+  inputs.ffcabal-src.url = "github:leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed";
   inputs.ffcabal-src.flake = false;
   # HLS built from its master branch: its cabal.project uses allow-newer to
   # support GHC 9.14, which no hackage-released HLS does yet (hie-compat caps
@@ -80,7 +80,7 @@
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
                   "https://github.com/ghcjs/jsaddle/8ea768493731d3b3483e303e8592d3fc8163c9b0" = inputs.jsaddle-terminal-src;
-                  "https://github.com/leksah/ffcabal/03d5d8f99b41db4ea8af74712354ff334112ae5c" = inputs.ffcabal-src;
+                  "https://github.com/leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed" = inputs.ffcabal-src;
                   "https://github.com/leksah/leksah-server/0b24e1705d3caef0bf7b7552724cf514554d8a13" = inputs.leksah-server-src;
                   "https://github.com/leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f" = inputs.ltk-src;
                   "https://github.com/leksah/haskellVCSWrapper/b77a455d4250223a6bde047aa0901df72dfb9c7f" = inputs.haskellvcswrapper-src;
