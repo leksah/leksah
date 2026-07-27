@@ -1,6 +1,6 @@
 # Staged/generated demo artifacts (copy-assets.sh + generators).
 # demo-hovers.js is NOT ignored: regenerating it needs a dev shell with a
-# working haskell-language-server (gen-demo-hovers.py), so the captured
+# working haskell-language-server (gen-demo-hovers.hs), so the captured
 # hover content is committed like the terminal dumps it derives from.
 __pycache__/
 .hover-cache.json

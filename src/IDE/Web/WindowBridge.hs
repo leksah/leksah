@@ -48,6 +48,7 @@ import IDE.Web.CloseRequest (nextCloseRequest)
 import IDE.Web.SaveRequest (nextSaveRequest)
 import IDE.Web.FindRequest (nextFindRequest)
 import IDE.Web.PreferencesRequest (nextPreferencesRequest)
+import IDE.Web.ShortcutsRequest (nextShortcutsRequest)
 import IDE.Web.OpenFileRequest (nextOpenedFile)
 
 -- | One window's set of "act on me" triggers (the per-network reflex fire
@@ -57,6 +58,7 @@ data WindowBridge = WindowBridge
   , wbSave       :: IO ()             -- ^ save the active editor in this window
   , wbFind       :: IO ()             -- ^ toggle the find bar in this window
   , wbPrefs      :: IO ()             -- ^ show the Preferences pane in this window
+  , wbShortcuts  :: IO ()             -- ^ show the Shortcuts pane in this window
   , wbOpenedFile :: FilePath -> IO () -- ^ open a natively-chosen file in this window
   }
 
@@ -202,5 +204,6 @@ startWindowBridgeDrains ideR = do
   drain "bridge-drain-save"  $ nextSaveRequest        >>  route ideR wbSave
   drain "bridge-drain-find"  $ nextFindRequest        >>  route ideR wbFind
   drain "bridge-drain-prefs" $ nextPreferencesRequest >>  route ideR wbPrefs
+  drain "bridge-drain-shortcuts" $ nextShortcutsRequest >> route ideR wbShortcuts
   drain "bridge-drain-open"  $
     nextOpenedFile >>= \fp -> route ideR (`wbOpenedFile` fp)

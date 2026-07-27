@@ -26,7 +26,7 @@ import Data.Text.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 
 import Clay
-       (overflow, auto, height, pct, whiteSpace, nowrap, grey, color,
+       (overflow, auto, height, pct, whiteSpace, nowrap, color,
         background, padding, px, (?), (-:), Css, Cursor(..), cursorDefault)
 import Clay.Stylesheet (key)
 
@@ -40,7 +40,7 @@ import Reflex.Dom.Core
        (MonadWidget, divClass, el, elClass, elAttr, elDynAttr', dynText, text,
         dyn, blank, domEvent, EventName(..), (=:))
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme (selectionColor, dimColor)
 import IDE.Core.CTypes
        (PackageDescr, pdPackage, pdModules, ModuleDescr, mdModuleId,
         mdMbSourcePath, mdIdDescriptions, Descr(..), RealDescr(..),
@@ -64,7 +64,7 @@ metadataCss = do
         overflow auto
         -- The expand/collapse triangles are SVG; give them a visible fill
         -- (only `.workspace` sets it otherwise, so here they'd be black-on-dark).
-        key "fill" grey
+        key "fill" dimColor
     ".metadata li" ? do
         whiteSpace nowrap
         cursor cursorDefault
@@ -78,7 +78,7 @@ metadataCss = do
     ".metadata .metadata-active" ?
         background selectionColor
     ".metadata .metadata-hint" ? do
-        color grey
+        color dimColor
         padding (px 8) (px 8) (px 8) (px 8)
 
 -- | The packages to browse, tagged with a sort group so they stay ordered

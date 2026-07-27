@@ -170,12 +170,12 @@ layoutCss = do
         "padding-left" -: "3px"
         "padding-top" -: "3px"
         "box-sizing" -: "border-box"
-        "border-left" -: "1px solid rgb(128,128,128)"
+        "border-left" -: "1px solid var(--leksah-border-line)"
     ".area-wide1" ? do
         "padding-left" -: "3px"
         "padding-top" -: "3px"
         "box-sizing" -: "border-box"
-        "border-left" -: "1px solid rgb(128,128,128)"
+        "border-left" -: "1px solid var(--leksah-border-line)"
     -- The 3px top pad above is for the editor/terminal BODY (the terminal pulls
     -- it back with a -3px margin); on the tab STRIP it just dropped the tab
     -- buttons 3px below the side-bar (tall) tabs.  Zero it on the strips so the
@@ -305,7 +305,7 @@ layoutCss = do
     -- an absolutely-positioned overlay that slides up OVER the editor content, so
     -- a transparent pane would let that content show through behind it.
     ".tab.area-wide1" ?
-        ("background" -: "rgb(0,0,0)")
+        ("background" -: "var(--leksah-bg)")
     -- Divider overlays: a transparent box laid OVER the side pane / bottom bar
     -- (its own grid cell, so it sits on top of that panel's content).  It's
     -- click-through (pointer-events:none) so it never steals the panel's
@@ -322,7 +322,7 @@ layoutCss = do
         position relative
     ".wide1-divider" ? do
         "grid-area" -: "wide1"
-        "border-top" -: "1px solid rgb(128,128,128)"
+        "border-top" -: "1px solid var(--leksah-border-line)"
         "pointer-events" -: "none"
         "z-index" -: "20"
         position relative
@@ -431,7 +431,7 @@ layoutCss = do
     ".leksah.tall-auto .area-wide0" ? ("border-left-color" -: "transparent")
     ".leksah.tall-auto .area-wide1" ? ("border-left-color" -: "transparent")
     ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover) .area-wide0" ?
-        ("border-left-color" -: "rgb(128,128,128)")
+        ("border-left-color" -: "var(--leksah-border-line)")
     -- The bottom bar in auto mode is a full-width floating overlay (left:0), so a
     -- left border there would be a stray vertical line at the window edge, not the
     -- tall boundary — keep it transparent.  (wide1 thus shows its border only when
@@ -464,7 +464,7 @@ layoutCss = do
     -- .leksah-nav-item in a focused .leksah-nav pane), highlighted like a
     -- selected/active row.  And don't draw a focus ring around a whole focused
     -- list pane.
-    ".leksah-nav-item.leksah-nav-current" ? ("background" -: "rgb(30,88,209)")
+    ".leksah-nav-item.leksah-nav-current" ? ("background" -: "var(--leksah-selection)")
     ".leksah-nav:focus" ? ("outline" -: "none")
     ".leksah-vlist:focus" ? ("outline" -: "none")
 

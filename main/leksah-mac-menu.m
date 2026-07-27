@@ -37,6 +37,9 @@ typedef struct {
     void (*window_activated)(int wid);
     void (*window_closing)(int wid);
     void (*color_picked)(const char *hex); // NSColorPanel change ("#rrggbb")
+    // A menu item's toggle state, by tag: -1 = not a toggle (leave unchanged),
+    // 0 = off, 1 = on.  Queried in validateMenuItem to show a checkmark.
+    int  (*toggle_state)(int tag);
 } leksah_haskell_callbacks;
 
 static leksah_haskell_callbacks gHs;   // zero-initialised
@@ -61,6 +64,13 @@ void leksah_set_haskell_callbacks(
     gHs.window_activated = window_activated;
     gHs.window_closing   = window_closing;
     gHs.color_picked     = color_picked;
+}
+
+// Registered separately (additive — keeps leksah_set_haskell_callbacks's ABI
+// stable): the callback that reports a menu item's live toggle state.
+void leksah_set_toggle_state_callback(int (*toggle_state)(int))
+{
+    gHs.toggle_state = toggle_state;
 }
 
 // The title bar is transparent and the WKWebView fills the whole window, so the
@@ -123,6 +133,13 @@ static volatile int gTeardownInProgress = 0;
         return gTerminalActive != 0;
     if ([@"splittable" isEqual:[item representedObject]])
         return gTerminalActive != 0 || gSplitActive != 0;
+    // Reflect a toggle command's live state as a checkmark (e.g. Terminal ▸
+    // Intercept Ctrl+B, Build ▸ Native/JavaScript/Debug).  -1 = not a toggle.
+    if (gHs.toggle_state) {
+        int st = gHs.toggle_state((int)[item tag]);
+        if (st >= 0)
+            [item setState:(st ? NSControlStateValueOn : NSControlStateValueOff)];
+    }
     return YES;
 }
 - (void)leksahRemeasure:(NSTimer *)timer {
@@ -1330,11 +1347,12 @@ void leksah_titlebar_setup(void) {
     dispatch_async(dispatch_get_main_queue(), ^{ leksah_configure_titlebar(); });
 }
 
-// Lazily add an "Open Recent" item (with an empty submenu) to the File menu.
+// Lazily add an "Open Recent" item (with an empty submenu) to the Workspace
+// menu (the app's File menu — title kept in sync with MenuModel.hs).
 static void leksah_ensure_recent_menu(void) {
     if (gRecentMenu != nil) return;
     if (gRecentTarget == nil) gRecentTarget = [[LeksahRecentTarget alloc] init];
-    NSMenuItem *fileItem = (gMainMenu != nil) ? [gMainMenu itemWithTitle:@"File"] : nil;
+    NSMenuItem *fileItem = (gMainMenu != nil) ? [gMainMenu itemWithTitle:@"Workspace"] : nil;
     if (fileItem == nil || [fileItem submenu] == nil) return;
     gRecentMenu = [[NSMenu alloc] initWithTitle:@"Open Recent"];
     NSMenuItem *recentItem = [[NSMenuItem alloc] initWithTitle:@"Open Recent"
@@ -1393,7 +1411,7 @@ void leksah_show_open_project_panel(void) {
         panel.canChooseFiles = YES;
         panel.canChooseDirectories = NO;
         panel.allowsMultipleSelection = NO;
-        panel.message = @"Select a flake.nix, cabal.project or stack.yaml file";
+        panel.message = @"Select a project file: cabal.project, stack.yaml, flake.nix, Cargo.toml, or pyproject.toml";
         void (^done)(NSModalResponse) = ^(NSModalResponse result) {
             if (result == NSModalResponseOK) {
                 NSURL *url = [[panel URLs] firstObject];

@@ -30,7 +30,7 @@ module IDE.Web.Claude
 
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
-import Control.Monad (void, forM, mfilter)
+import Control.Monad (void, forM, mfilter, when)
 
 import Data.Char (isAlphaNum)
 import Data.Foldable (toList)
@@ -73,19 +73,24 @@ data ClaudeSession = ClaudeSession
   , csLabel    :: Text      -- ^ first user prompt (best-effort), for the row
   }
 
--- Whether @claude@ is on PATH, resolved once and cached (a benign race just
--- re-checks).  The whole feature is gated on this.
+-- Whether @claude@ is on PATH.  We cache only the *positive* result: once the
+-- CLI is seen it can't disappear from under a running process in any way we
+-- care about, so that's resolved once.  A negative result is NOT cached — the
+-- @claude@ binary is often installed (or self-updates its symlink) after leksah
+-- has already started, and re-checking on a miss lets the feature light up
+-- without a restart.  @findExecutable@ on a miss is a cheap PATH scan and only
+-- runs from tree builds / the 30s claudeNode poll.
 {-# NOINLINE claudeAvailableRef #-}
-claudeAvailableRef :: IORef (Maybe Bool)
-claudeAvailableRef = unsafePerformIO (newIORef Nothing)
+claudeAvailableRef :: IORef Bool
+claudeAvailableRef = unsafePerformIO (newIORef False)
 
 claudeAvailable :: IO Bool
 claudeAvailable = readIORef claudeAvailableRef >>= \case
-  Just b  -> return b
-  Nothing -> do
-    b <- maybe False (const True) <$> findExecutable "claude"
-    writeIORef claudeAvailableRef (Just b)
-    return b
+  True  -> return True
+  False -> do
+    found <- maybe False (const True) <$> findExecutable "claude"
+    when found $ writeIORef claudeAvailableRef True
+    return found
 
 -- | Encode an absolute directory the way Claude Code names its project folder:
 -- every non-alphanumeric character becomes @-@.

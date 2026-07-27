@@ -58,7 +58,7 @@ import qualified Data.Text as T
 import Distribution.PackageDescription (hsSourceDirs)
 
 import System.FilePath
-       ((</>), dropFileName, takeExtension, (<.>))
+       ((</>), dropFileName, takeExtension, takeFileName, (<.>))
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import IDE.Utils.RemotePath (isRemotePath, remoteMakeRelative)
 import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
@@ -159,10 +159,17 @@ projectOpenPath fp
         True  -> projectOpenThis (dirProjectKey fp)
         False -> openFileKey fp
   where
-    openFileKey f = case filePathToProjectKey f of
-        Just pk -> projectOpenThis pk
-        Nothing -> ideMessage Normal $
-            __ "Not a project file or folder : " <> T.pack f
+    -- A Rust/Python project is identified by a marker file the user selects
+    -- (Cargo.toml / pyproject.toml / setup.py); we open its CONTAINING directory
+    -- as a plain-directory (CustomTool) project — the tree introspects the marker
+    -- and the LSP (rust-analyzer / pyright) keys off the file's directory.
+    openFileKey f
+      | takeFileName f `elem` ["Cargo.toml", "pyproject.toml", "setup.py"]
+          = projectOpenThis (dirProjectKey (dropFileName f))
+      | otherwise = case filePathToProjectKey f of
+          Just pk -> projectOpenThis pk
+          Nothing -> ideMessage Normal $
+              __ "Not a project file or folder : " <> T.pack f
 
 -- | Set (and persist) the per-project settings for a project in the
 -- workspace — e.g. the remote command prefix (@nix develop -c@).

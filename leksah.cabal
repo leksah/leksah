@@ -321,8 +321,10 @@ library
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.AddRemoteRequest
+        IDE.Web.AddServerRequest
         IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
+        IDE.Web.ShortcutsRequest
         IDE.Web.WindowBridge
         IDE.Web.RegionCapture
         IDE.Web.RegionGrabRequest
@@ -341,6 +343,7 @@ library
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
         IDE.Web.Instance
+        IDE.Web.Handoff
         IDE.Web.OpenFileRequest
         IDE.Web.ConvertRequest
         IDE.Web.SplitOpenRequest
@@ -366,11 +369,13 @@ library
         IDE.Web.Widget.GitLog
         IDE.Web.Widget.ContextMenu
         IDE.Web.Widget.Preferences
+        IDE.Web.Widget.Shortcuts
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
         IDE.Web.Widget.ResizeObserver
         IDE.Web.Widget.Findbar
         IDE.Web.Widget.AddRemote
+        IDE.Web.Widget.AddServer
         IDE.Web.Widget.RemoteSettings
         IDE.Web.Widget.FileTree
         IDE.Web.Widget.Flake
@@ -594,8 +599,10 @@ library leksah-nogtk
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.AddRemoteRequest
+        IDE.Web.AddServerRequest
         IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
+        IDE.Web.ShortcutsRequest
         IDE.Web.WindowBridge
         IDE.Web.RegionCapture
         IDE.Web.RegionGrabRequest
@@ -614,6 +621,7 @@ library leksah-nogtk
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
         IDE.Web.Instance
+        IDE.Web.Handoff
         IDE.Web.OpenFileRequest
         IDE.Web.ConvertRequest
         IDE.Web.SplitOpenRequest
@@ -639,12 +647,14 @@ library leksah-nogtk
         IDE.Web.Widget.GitLog
         IDE.Web.Widget.ContextMenu
         IDE.Web.Widget.Preferences
+        IDE.Web.Widget.Shortcuts
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
         IDE.Web.Widget.ResizeObserver
         IDE.Web.Widget.FileTree
         IDE.Web.Widget.Findbar
         IDE.Web.Widget.AddRemote
+        IDE.Web.Widget.AddServer
         IDE.Web.Widget.RemoteSettings
         IDE.Web.Widget.Flake
         IDE.Web.Widget.Flipper

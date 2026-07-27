@@ -14,9 +14,9 @@ import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 
 import Clay
-       (shadowWithSpread, black, bsColor, boxShadow, white, color,
+       (shadowWithSpread, bsColor, boxShadow, color,
         fontSize, borderStyle, textDecoration, margin, middle, start,
-        padding, px, borderRadius, vGradient, backgroundImage, inlineBlock,
+        padding, px, borderRadius, inlineBlock,
         overflowY, pointerEvents, textAlign, width, height, pct, top,
         zIndex, absolute, position, borderColor, borderWidth, solid,
         (?), Css, Auto(..), None(..),
@@ -31,7 +31,7 @@ import Reflex.Dom.Core
        (el, elDynAttr', (=:), elDynAttr, divClass,
         MonadWidget, HasDomEvent(..), EventName(..))
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme (selectionColor, bgSunkenColor, dropShadowColor, fgColor)
 
 flipperCss :: Css
 flipperCss = do
@@ -48,7 +48,9 @@ flipperCss = do
     Clay.display inlineBlock
     height (pct 100)
   ".flipper-content" ? do
-    backgroundImage (vGradient (Rgba 64 64 64 0.9) (Rgba 32 32 32 0.9))
+    -- Solid, fully opaque (the translucent gradient read badly); the sunken
+    -- background tone in both themes.
+    background bgSunkenColor
     -- Border in the owning OS window's colour (set per window as the
     -- --leksah-window-color CSS var, see flipMirrorJs).
     borderStyle solid
@@ -62,7 +64,7 @@ flipperCss = do
     padding (px 10) (px 10) (px 10) (px 10)
     pointerEvents auto
     textAlign start
-    boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+    boxShadow (pure $ bsColor dropShadowColor $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
   -- When the highlighted item lives in THIS window, switch the border to the
   -- full-brightness window colour (rather than widening it) as a strong "the
   -- selected pane is here" cue.
@@ -77,7 +79,7 @@ flipperCss = do
     borderStyle none
     fontSize (px 13)
     background (Rgba 0 0 0 0.0)
-    color white
+    color fgColor
   ".flipper-content button.selected" ?
     background selectionColor
   -- Per-entry window icon: a small square coloured by the owning window (filled
@@ -93,7 +95,7 @@ flipperCss = do
     margin (px 0) (px 8) (px 0) (px 0)
     verticalAlign middle
   ".flip-win-icon.shared" ?
-    borderColor (Other "#888")
+    borderColor (Other "var(--leksah-fg-dim)")
   -- Per-entry type icon: file icon for editors, the tmux-window icon (with its
   -- alert fill/colour) for terminals and their panes.  Sized to sit centred on
   -- the label, a small gap before the text.

@@ -104,6 +104,8 @@ data MacCallbacks = MacCallbacks
   , cbWindowActivated :: Int -> IO ()          -- ^ window became key
   , cbWindowClosing   :: Int -> IO ()          -- ^ window closing
   , cbColorPicked     :: String -> IO ()       -- ^ NSColorPanel change ("#rrggbb")
+  , cbToggleState     :: Int -> IO Int         -- ^ a menu item's toggle state by
+                                               --   tag: -1 not a toggle, 0 off, 1 on
   }
 
 #ifdef darwin_HOST_OS
@@ -170,6 +172,13 @@ foreign import ccall "wrapper" mkUnitCb
   :: IO () -> IO (FunPtr (IO ()))
 foreign import ccall "wrapper" mkIntPtrCb
   :: (CInt -> Ptr () -> IO ()) -> IO (FunPtr (CInt -> Ptr () -> IO ()))
+foreign import ccall "wrapper" mkIntRetCb
+  :: (CInt -> IO CInt) -> IO (FunPtr (CInt -> IO CInt))
+-- Registered separately from the main callbacks (additive, so the 9-arg
+-- leksah_set_haskell_callbacks keeps its ABI): reports a menu item's live
+-- toggle state to validateMenuItem.
+foreign import ccall "leksah_set_toggle_state_callback" c_setToggleStateCallback
+  :: FunPtr (CInt -> IO CInt) -> IO ()
 foreign import ccall "leksah_set_haskell_callbacks" c_setHaskellCallbacks
   :: FunPtr (CInt -> IO ())           -- menu_action
   -> FunPtr (CString -> IO ())        -- open_file
@@ -198,8 +207,10 @@ setMacCallbacks cb = do
   activated    <- mkIntCb $ \wid -> cbWindowActivated cb (fromIntegral wid)
   closing      <- mkIntCb $ \wid -> cbWindowClosing cb (fromIntegral wid)
   colorPicked  <- mkStringCb $ \cs -> peekCString cs >>= cbColorPicked cb
+  toggleState  <- mkIntRetCb $ \tag -> fromIntegral <$> cbToggleState cb (fromIntegral tag)
   c_setHaskellCallbacks menuAction openFile openProject unsnap openSettings
                         attachWindow activated closing colorPicked
+  c_setToggleStateCallback toggleState
 
 -- | Make @[NSApp run]@ return (posts a stop + wake event on the main queue).
 -- Windows and app state survive; 'resumeApp' re-enters the run loop.

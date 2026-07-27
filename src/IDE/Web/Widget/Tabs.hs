@@ -22,7 +22,7 @@ import qualified Data.Text as T (pack)
 import Data.Tuple (swap)
 
 import Clay
-       (nowrap, whiteSpace, marginTop, scroll, overflow, white,
+       (nowrap, whiteSpace, marginTop, scroll, overflow,
         color, fontSize, borderStyle, textDecoration, middle,
         borderRadius, padding, hover, (#), background, opacity,
         margin, px, height, cursor, cursorDefault, (?), (-:), Css,
@@ -36,7 +36,7 @@ import Reflex.Dom.Core
        (elDynAttr', elAttr, blank, MonadWidget, (=:),
         divClass, Event, domEvent, EventName(..))
 
-import IDE.Web.Theme (selectionColor, dimColor, dimOpacity)
+import IDE.Web.Theme (selectionColor, dimColor, dimOpacity, bgColor, accentHoverColor, fgColor, onAccentColor)
 
 tabsCss :: Css
 tabsCss = do
@@ -52,7 +52,7 @@ tabsCss = do
     ".tab-hidden .cm-editor"     ? ("visibility" -: "hidden !important")
     ".tab-hidden .cm-mergeView"  ? ("visibility" -: "hidden !important")
     ".tab-buttons" ? do
-        background (Rgba 0 0 0 1.0)
+        background bgColor
         height (px 20)
         overflow scroll
         -- A flex row so tabs can be ordered (via the CSS `order` property) by
@@ -84,13 +84,13 @@ tabsCss = do
         cursor cursorDefault
         "position" -: "relative"
     ".tab-buttons .tab-wrap" # hover ?
-        background (Rgba 61 96 150 1.0)
+        background accentHoverColor
     ".tab-buttons .tab-wrap.selected" ?
         background selectionColor
     -- The flipper's live selection tints its tab button with the hover colour
     -- (set by leksahSetFlipSel while the flipper is open).
     ".tab-buttons .tab-wrap.leksah-flip-sel" ?
-        background (Rgba 61 96 150 1.0)
+        background accentHoverColor
     ".tab-buttons button" ? do
         verticalAlign middle
         padding (px 0) (px 10) (px 0) (px 2)
@@ -111,24 +111,31 @@ tabsCss = do
         verticalAlign middle
         "margin" -: "0 4px 2px 2px"
         opacity dimOpacity
-    -- Full brightness for the selected / hovered / flipper-preview tab.
-    ".tab-buttons .tab-wrap.selected button" ? color white
-    ".tab-buttons .tab-wrap.leksah-flip-sel button" ? color white
-    ".tab-buttons .tab-wrap:hover button" ? color white
+    -- Full brightness for the selected / hovered / flipper-preview tab.  The
+    -- SELECTED tab sits on the dark-blue selection background in both themes, so
+    -- its label stays light ('onAccentColor') rather than 'fgColor' (which flips
+    -- to near-black in light mode).  Hover / flip-preview use the PALE accent in
+    -- light mode, where 'fgColor' (dark) is the readable choice — so keep it.
+    ".tab-buttons .tab-wrap.selected button" ? color onAccentColor
+    ".tab-buttons .tab-wrap.leksah-flip-sel button" ? color fgColor
+    ".tab-buttons .tab-wrap:hover button" ? color fgColor
     ".tab-buttons .tab-wrap.selected button img.tab-icon" ? opacity 1
     ".tab-buttons .tab-wrap.leksah-flip-sel button img.tab-icon" ? opacity 1
     ".tab-buttons .tab-wrap:hover button img.tab-icon" ? opacity 1
     -- A bell (needs-input) terminal tab is pulled to full brightness — name AND
     -- icon — even when it is neither selected nor hovered, so the alert stands
     -- out (matching the moused-over look).
-    ".tab-buttons .tab-wrap:has(img[src*='tree-window-bell']) button" ? color white
+    ".tab-buttons .tab-wrap:has(img[src*='tree-window-bell']) button" ? color fgColor
     ".tab-buttons .tab-wrap:has(img[src*='tree-window-bell']) button img.tab-icon" ? opacity 1
     ".tab-buttons .tab-close" ? do
         verticalAlign middle
-        color white
+        color fgColor
         padding (px 0) (px 4) (px 0) (px 8)
         fontSize (px 13)
         cursor cursorDefault
+    -- The × is inside the tab-wrap, so on a selected tab it's over the blue —
+    -- keep it light there too (matches the label).
+    ".tab-buttons .tab-wrap.selected .tab-close" ? color onAccentColor
     ".tab" ? do
         marginTop (px 20)
         height auto

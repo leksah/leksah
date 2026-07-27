@@ -13,6 +13,7 @@
 -- these are exposed as pure constants.
 module IDE.Web.Instance
   ( leksahPort
+  , assetPort
   , defaultLeksahPort
   , cmdSocketFileName
   , tmuxServerSocket
@@ -36,6 +37,19 @@ leksahPort = case unsafePerformIO (lookupEnv "LEKSAH_PORT") >>= readMaybe of
     Just p | p > 0 -> p
     _              -> defaultLeksahPort
 {-# NOINLINE leksahPort #-}
+
+-- | The port the jsaddle\/warp asset server actually binds.  Normally
+-- 'leksahPort'; but @LEKSAH_ASSET_PORT@ overrides it, and @0@ means "pick a
+-- free loopback port" (see 'IDE.Web.Main.startJSaddle').  The overlapping
+-- handoff (see "IDE.Web.Handoff") launches the successor with
+-- @LEKSAH_ASSET_PORT=0@ so it can serve its UI while the predecessor still owns
+-- 'leksahPort' — the control socket and tmux server stay keyed to 'leksahPort',
+-- so the instance's identity is unchanged.
+assetPort :: Int
+assetPort = case unsafePerformIO (lookupEnv "LEKSAH_ASSET_PORT") >>= readMaybe of
+    Just p | p >= 0 -> p
+    _              -> leksahPort
+{-# NOINLINE assetPort #-}
 
 -- | A per-instance name suffix: empty for the default port (so the primary
 -- instance keeps the historical unsuffixed names the dev tooling and docs

@@ -22,6 +22,31 @@ import IDE.Web.Events (KeymapEvents(..))
 import IDE.Web.Command
        (commandPackageBuild, snapWindowCmd, toggleTransparencyCmd, Command(..))
 
+-- | The fixed global keyboard chords, shared by 'keymapWidget' (which turns
+-- them into the live lookup table) and the Shortcuts cheat-sheet pane (which
+-- renders them) so the two can never drift apart.  The flipper's modifier
+-- ('flipMod', Command vs Control) and the numbered-navigation chords (⌘/⌥⌘/⌃⌘
+-- 1-9) are added in 'keymapWidget' itself — they depend on host/runtime — and
+-- the cheat sheet represents those separately.
+globalBindings :: [([Key], Key, Command)]
+globalBindings =
+    -- Build: Ctrl+Shift+B (Cmd+Shift+B on macOS), matching VS Code.  Plain
+    -- Ctrl+B is avoided — it's the tmux prefix.
+    [ ([Control, Shift] , KeyB,      commandPackageBuild)
+    , ([Command, Shift] , KeyB,      commandPackageBuild)
+    , ([Control]        , KeyJ,      CommandNextError)
+    , ([Control, Shift] , KeyJ,      CommandPreviousError)
+    , ([Command]        , KeyF,      CommandFind)
+    , ([Command]        , Comma,     CommandShowPreferences)
+    , ([Command]        , ForwardSlash, CommandShowShortcuts)
+    -- Underlay (macOS): ⌘⌥U snap/unsnap a window on the active pane, ⌘⌥Y
+    -- toggle the active pane's transparency.  Reuse the menu commands.
+    , ([Command, Alt]   , KeyU,      snapWindowCmd)
+    , ([Command, Alt]   , KeyY,      toggleTransparencyCmd)
+    -- Jump to the next terminal window wanting attention (bell, then activity).
+    , ([Control, Alt]   , KeyA,      CommandFocusAlert)
+    ]
+
 keymapWidget
   :: forall t m . MonadWidget t m
   => Bool -- ^ browser-hosted (warp/web demo)?  Cmd+` belongs to the OS/browser
@@ -35,23 +60,12 @@ keymapWidget browserHosted _top = do
   let flipMod = if browserHosted then Control else Command
       keyToCommandMap = M.fromList $
         map (\(mods, key, command) -> ((S.fromList mods, key), command)) $
+        -- The flipper's modifier is host-dependent, so it stays here rather
+        -- than in the shared 'globalBindings'.
         [ ([flipMod]        , Backquote, CommandFlipDown)
         , ([flipMod, Shift] , Backquote, CommandFlipUp)
-        -- Build: Ctrl+Shift+B (Cmd+Shift+B on macOS), matching VS Code.  Plain
-        -- Ctrl+B is avoided — it's the tmux prefix.
-        , ([Control, Shift] , KeyB,      commandPackageBuild)
-        , ([Command, Shift] , KeyB,      commandPackageBuild)
-        , ([Control]        , KeyJ,      CommandNextError)
-        , ([Control, Shift] , KeyJ,      CommandPreviousError)
-        , ([Command]        , KeyF,      CommandFind)
-        , ([Command]        , Comma,     CommandShowPreferences)
-        -- Underlay (macOS): ⌘⌥U snap/unsnap a window on the active pane, ⌘⌥Y
-        -- toggle the active pane's transparency.  Reuse the menu commands.
-        , ([Command, Alt]   , KeyU,      snapWindowCmd)
-        , ([Command, Alt]   , KeyY,      toggleTransparencyCmd)
-        -- Jump to the next terminal window wanting attention (bell, then activity).
-        , ([Control, Alt]   , KeyA,      CommandFocusAlert)
         ]
+        ++ globalBindings
         -- Numbered navigation (terminal-app style): ⌘1…9 the active
         -- terminal's Nth split (layout order), ⌥⌘1…9 the Nth side-bar pane,
         -- ⌃⌘1…9 the Nth bottom-bar pane.  Hold ⌘ to see the numbers as

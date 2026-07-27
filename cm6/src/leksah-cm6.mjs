@@ -18,6 +18,8 @@ import { yaml } from "@codemirror/legacy-modes/mode/yaml"
 import { shell } from "@codemirror/legacy-modes/mode/shell"
 import { toml } from "@codemirror/legacy-modes/mode/toml"
 import { xml, html } from "@codemirror/legacy-modes/mode/xml"
+import { rust } from "@codemirror/legacy-modes/mode/rust"
+import { python } from "@codemirror/legacy-modes/mode/python"
 import { searchKeymap, highlightSelectionMatches, search,
          SearchCursor, RegExpCursor } from "@codemirror/search"
 import { MergeView, unifiedMergeView } from "@codemirror/merge"
@@ -457,6 +459,86 @@ const githubDarkHighlightStyle = HighlightStyle.define([
   { tag: [t.inserted], color: "#aff5b4", backgroundColor: "#033a16" },
 ])
 
+// ---- GitHub-light theme (Primer light palette) -----------------------------
+// The light counterpart, so the editor matches github.com's light code view.
+const ghl = {
+  bg:        "#ffffff",
+  fg:        "#1f2328",
+  gutterFg:  "#8c959f",
+  gutterActiveFg: "#1f2328",
+  activeLine: "rgba(234,238,242,0.5)",
+  selection: "rgba(84,174,255,0.35)",
+  matchBracket: "rgba(84,174,255,0.30)",
+  selectionMatch: "rgba(84,174,255,0.20)",
+  gray:   "#6e7781",  // comment / meta
+  red:    "#cf222e",  // keyword / storage
+  blue:   "#0550ae",  // number / constant / builtin
+  lightblue: "#0a3069", // string
+  purple: "#8250df",  // entity: type / class / function / definition
+  green:  "#116329",  // tag
+  orange: "#953800",  // variable (params)
+  coral:  "#82071e",  // invalid
+}
+
+const githubLight = EditorView.theme({
+  "&": { color: ghl.fg, backgroundColor: ghl.bg },
+  ".cm-content": { caretColor: ghl.fg },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: ghl.fg },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+    { backgroundColor: ghl.selection },
+  ".cm-activeLine": { backgroundColor: ghl.activeLine },
+  ".cm-gutters": { backgroundColor: ghl.bg, color: ghl.gutterFg, border: "none" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent", color: ghl.gutterActiveFg },
+  ".cm-foldPlaceholder": { backgroundColor: "transparent", border: "none", color: ghl.gray },
+  ".cm-matchingBracket": { backgroundColor: ghl.matchBracket, color: "inherit" },
+  ".cm-nonmatchingBracket": { backgroundColor: "rgba(207,34,46,0.20)" },
+  ".cm-selectionMatch": { backgroundColor: ghl.selectionMatch },
+}, { dark: false })
+
+const githubLightHighlightStyle = HighlightStyle.define([
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: ghl.gray },
+  { tag: [t.keyword, t.moduleKeyword, t.controlKeyword, t.operatorKeyword,
+          t.definitionKeyword, t.modifier, t.self, t.null], color: ghl.red },
+  { tag: [t.string, t.special(t.string), t.character, t.regexp, t.docString], color: ghl.lightblue },
+  { tag: [t.number, t.integer, t.float, t.bool, t.atom, t.unit], color: ghl.blue },
+  { tag: [t.typeName, t.className, t.namespace, t.macroName,
+          t.function(t.variableName), t.function(t.propertyName),
+          t.definition(t.variableName), t.definition(t.propertyName)], color: ghl.purple },
+  { tag: [t.standard(t.variableName), t.propertyName, t.attributeName,
+          t.labelName, t.constant(t.variableName)], color: ghl.blue },
+  { tag: [t.tagName, t.angleBracket], color: ghl.green },
+  { tag: [t.special(t.variableName)], color: ghl.orange },
+  { tag: [t.meta, t.processingInstruction, t.documentMeta], color: ghl.gray },
+  { tag: [t.link], color: ghl.lightblue, textDecoration: "underline" },
+  { tag: [t.heading, t.strong], color: ghl.blue, fontWeight: "bold" },
+  { tag: [t.emphasis], color: ghl.blue, fontStyle: "italic" },
+  { tag: [t.strikethrough], textDecoration: "line-through" },
+  { tag: [t.invalid], color: ghl.coral },
+  { tag: [t.deleted], color: "#82071e", backgroundColor: "#ffebe9" },
+  { tag: [t.inserted], color: "#116329", backgroundColor: "#dafbe1" },
+])
+
+// The theme lives in a Compartment so `setTheme` can swap it on every live
+// editor at runtime (driven by the OS light/dark setting) without recreating
+// the view.  New editors bake in `currentTheme` at creation (see baseExtensions).
+const themeComp = new Compartment()
+const THEMES = {
+  "github-dark":  [githubDark,  syntaxHighlighting(githubDarkHighlightStyle)],
+  "github-light": [githubLight, syntaxHighlighting(githubLightHighlightStyle)],
+}
+let currentTheme = "github-dark"
+// Swap the theme on every mounted editor.  We locate views through the DOM
+// (EditorView.findFromDOM) rather than a registry, so diff/merge sub-views are
+// covered too; a just-unmounted node simply yields no view.
+function setTheme(name) {
+  if (!THEMES[name]) return
+  currentTheme = name
+  document.querySelectorAll(".cm-editor").forEach(dom => {
+    const v = EditorView.findFromDOM(dom)
+    if (v) { try { v.dispatch({ effects: themeComp.reconfigure(THEMES[name]) }) } catch (e) {} }
+  })
+}
+
 // Map a file path to a CM6 language extension (or [] for plain text) by its
 // extension.  All modes here come from @codemirror/legacy-modes, already
 // bundled — no new deps.  NOTE: .nix and .md have no legacy mode and fall back
@@ -471,6 +553,8 @@ const LANG_BY_EXT = {
   sh: shell, bash: shell, zsh: shell,
   toml: toml,
   xml: xml, html: html, htm: html,
+  rs: rust,
+  py: python, pyi: python, pyw: python,
 }
 
 function languageForFile(path) {
@@ -488,7 +572,6 @@ function baseExtensions(languageExt) {
     drawSelection(),
     dropCursor(),
     indentOnInput(),
-    syntaxHighlighting(githubDarkHighlightStyle),
     bracketMatching(),
     highlightActiveLine(),
     highlightSelectionMatches(),
@@ -506,29 +589,29 @@ function baseExtensions(languageExt) {
       ...lspNavKeymap,
     ]),
     languageExt ?? [],
-    githubDark,
+    themeComp.of(THEMES[currentTheme]),
     EditorView.theme({
       "&": { height: "100%" },
       ".cm-scroller": { fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)",
                         fontSize: "var(--leksah-mono-size, 13px)" },
       ".cm-leksah-find": { backgroundColor: "rgba(255,200,0,.35)" },
       ".cm-leksah-find-active": { backgroundColor: "rgba(255,140,0,.6)" },
-      ".cm-tooltip.cm-tooltip-hover": { border: "1px solid #30363d", backgroundColor: "#161b22" },
+      ".cm-tooltip.cm-tooltip-hover": { border: "1px solid var(--leksah-border-control)", backgroundColor: "var(--leksah-surface)" },
       ".cm-leksah-hover": { padding: "4px 8px", maxWidth: "600px", lineHeight: "1.4",
-                            color: "#e6edf3",
+                            color: "var(--leksah-fg-muted)",
                             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
                             fontSize: "12px" },
       ".cm-leksah-hover code": { fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)",
-                                 backgroundColor: "rgba(255,255,255,0.09)", borderRadius: "3px",
+                                 backgroundColor: "var(--leksah-inset-bg)", borderRadius: "3px",
                                  padding: "0 3px", fontSize: "11.5px" },
       ".cm-leksah-hover pre": { margin: "4px 0", padding: "5px 8px",
-                                backgroundColor: "rgba(255,255,255,0.06)",
-                                border: "1px solid rgba(255,255,255,0.10)", borderRadius: "4px",
+                                backgroundColor: "var(--leksah-inset-bg)",
+                                border: "1px solid var(--leksah-inset-line)", borderRadius: "4px",
                                 fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)", fontSize: "11.5px",
                                 lineHeight: "1.3", whiteSpace: "pre", overflowX: "auto" },
-      ".cm-leksah-hover hr": { border: "none", borderTop: "1px solid rgba(255,255,255,0.16)",
+      ".cm-leksah-hover hr": { border: "none", borderTop: "1px solid var(--leksah-inset-line)",
                                margin: "5px 0" },
-      ".cm-leksah-hover strong": { color: "#fff", fontWeight: "600" },
+      ".cm-leksah-hover strong": { color: "var(--leksah-fg)", fontWeight: "600" },
     }),
   ]
 }
@@ -576,6 +659,9 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
   // which pane to act on.  Set on creation too, since a new editor opens focused.
   view.dom.addEventListener("focusin", () => { window.LeksahCM.activeView = view })
   window.LeksahCM.activeView = view
+  // Apply the OS-appropriate theme to the just-mounted view (no-op until the
+  // re-theme engine is wired; the startup + OS-change calls cover the rest).
+  if (window.leksahRetheme) window.leksahRetheme()
   return view
 }
 
@@ -889,6 +975,7 @@ window.LeksahCM = {
   createEditor, getDoc, setMarks, setOriginal, gotoPos,
   showSideBySide, showInline, hideDiff, showDiff, destroyDiff,
   activeView: null, onActivePane: null,
+  setTheme,
   findSet, findNext, findPrev, replaceNext, replaceAll,
   loadTerminalSearch,
   setHoverHandler, resolveHover,

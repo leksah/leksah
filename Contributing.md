@@ -85,7 +85,7 @@ A running Leksah listens on `~/.leksah/cmd.sock`:
 leksah-cmd rebuild-self          # rebuild the running instance in place
 leksah-cmd js eval 'CODE'        # poke the live DOM from a shell
 leksah-cmd screenshot out.png    # capture the UI
-leksah-cmd cm open FILE          # open a file in the editor
+leksah-cmd editor open FILE      # open a file in the editor (alias: cm)
 ```
 
 ## FAQ

@@ -30,7 +30,9 @@ module IDE.Preferences (
 import Prelude ()
 import Prelude.Compat
 import IDE.Core.State
-       (Prefs(..), TallVisibility(..), PrefsFile(..), sysMessage, MessageLevel(..))
+       (Prefs(..), TallVisibility(..), PrefsFile(..), EditorChoice(..),
+        editorChoiceToText, editorChoiceFromText, externalEditor, monacoEditor,
+        sysMessage, MessageLevel(..))
 import IDE.Gtk.State
        (Color(..), PanePathElement(..), PaneDirection(..))
 import System.Time (getClockTime)
@@ -38,7 +40,7 @@ import qualified IDE.StrippedPrefs as SP
 import Control.Exception (SomeException)
 import Data.Maybe (fromMaybe)
 import Control.Monad.IO.Class (MonadIO(..))
-import System.FilePath ((</>))
+import System.FilePath ((</>), takeFileName)
 import qualified Data.Text as T (unpack, pack)
 import Distribution.Text (display, simpleParse)
 import qualified Control.Exception as E (catch)
@@ -50,7 +52,7 @@ import Data.Aeson.Encode.Pretty (encodePretty)
 
 -- | This needs to be incremented when the preferences format changes
 prefsVersion :: Int
-prefsVersion = 12
+prefsVersion = 14
 
 -- | The default preferences
 defaultPrefs :: Prefs
@@ -150,13 +152,18 @@ defaultPrefs = Prefs {
     ,   hlintOnSave = True
     ,   collapseErrors = True
     ,   terminalFileLinks = True
-    ,   externalEditor = ""
-    ,   monacoEditor = False
+    ,   editorChoice = EditorMonaco
     ,   terminalControlMode = True
     ,   tmuxInterceptPrefix = False
     ,   remoteHosts = []
     ,   uiSelectionColor = "#1e58d1"
     ,   uiHoverColor = "#0c1e46"
+    ,   monacoThemeDark = "leksah-github-dark"
+    ,   monacoThemeLight = "leksah-github-light"
+    ,   codeMirrorThemeDark = "github-dark"
+    ,   codeMirrorThemeLight = "github-light"
+    ,   xtermThemeDark = "leksah-dark"
+    ,   xtermThemeLight = "leksah-light"
     ,   showShortcutBadges = False
     ,   colorfulIcons = False
     ,   regionCaptureTarget = "claude/leksah/0"
@@ -238,12 +245,27 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , hlintOnSave = fromMaybe hlintOnSave hlintOnSave_
   , collapseErrors = fromMaybe collapseErrors collapseErrors_
   , terminalFileLinks = fromMaybe terminalFileLinks terminalFileLinks_
-  , externalEditor = fromMaybe externalEditor externalEditor_
-  , monacoEditor = fromMaybe monacoEditor monacoEditor_
+  , editorChoice = case editorChoice_ >>= editorChoiceFromText of
+      Just c  -> c
+      -- Migrate pre-13 prefs: a recognised external-editor command wins, else
+      -- the old Monaco/CodeMirror boolean.  An unrecognised command (the enum
+      -- can't hold arbitrary commands) falls back to the in-app editor.
+      Nothing -> case externalEditor_ >>= editorFromCommand of
+        Just c  -> c
+        Nothing -> case monacoEditor_ of
+          Just True  -> EditorMonaco
+          Just False -> EditorCodeMirror
+          Nothing    -> editorChoice
   , terminalControlMode = fromMaybe terminalControlMode terminalControlMode_
   , tmuxInterceptPrefix = fromMaybe tmuxInterceptPrefix tmuxInterceptPrefix_
   , uiSelectionColor = fromMaybe uiSelectionColor uiSelectionColor_
   , uiHoverColor = fromMaybe uiHoverColor uiHoverColor_
+  , monacoThemeDark = fromMaybe monacoThemeDark monacoThemeDark_
+  , monacoThemeLight = fromMaybe monacoThemeLight monacoThemeLight_
+  , codeMirrorThemeDark = fromMaybe codeMirrorThemeDark codeMirrorThemeDark_
+  , codeMirrorThemeLight = fromMaybe codeMirrorThemeLight codeMirrorThemeLight_
+  , xtermThemeDark = fromMaybe xtermThemeDark xtermThemeDark_
+  , xtermThemeLight = fromMaybe xtermThemeLight xtermThemeLight_
   , showShortcutBadges = fromMaybe showShortcutBadges showShortcutBadges_
   , colorfulIcons = fromMaybe colorfulIcons colorfulIcons_
   , regionCaptureTarget = fromMaybe regionCaptureTarget regionCaptureTarget_
@@ -251,9 +273,21 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , lspServerCommand = fromMaybe lspServerCommand lspServerCommand_
   , remoteHosts = fromMaybe remoteHosts remoteHosts_
   }
+  where
+    -- The old free-form command, mapped onto the enum by the basename of its
+    -- first word ("/usr/bin/vim -p" -> vim).
+    editorFromCommand cmd = case words (T.unpack cmd) of
+      (w:_) -> case takeFileName w of
+        "nano"  -> Just EditorNano
+        "vi"    -> Just EditorVim
+        "vim"   -> Just EditorVim
+        "nvim"  -> Just EditorVim
+        "emacs" -> Just EditorEmacs
+        _       -> Nothing
+      []    -> Nothing
 
 toPrefsFile :: Prefs -> PrefsFile
-toPrefsFile Prefs{..} = PrefsFile
+toPrefsFile p@Prefs{..} = PrefsFile
   { prefsFormat_ = Just prefsFormat
   , prefsSaveTime_ = Just prefsSaveTime
   , showLineNumbers_ = Just showLineNumbers
@@ -324,12 +358,21 @@ toPrefsFile Prefs{..} = PrefsFile
   , hlintOnSave_ = Just hlintOnSave
   , collapseErrors_ = Just collapseErrors
   , terminalFileLinks_ = Just terminalFileLinks
-  , externalEditor_ = Just externalEditor
-  , monacoEditor_ = Just monacoEditor
+  -- Legacy mirrors of editorChoice, so an older leksah reading this file
+  -- still lands on a sensible editor.
+  , externalEditor_ = Just (externalEditor p)
+  , monacoEditor_ = Just (monacoEditor p)
+  , editorChoice_ = Just (editorChoiceToText editorChoice)
   , terminalControlMode_ = Just terminalControlMode
   , tmuxInterceptPrefix_ = Just tmuxInterceptPrefix
   , uiSelectionColor_ = Just uiSelectionColor
   , uiHoverColor_ = Just uiHoverColor
+  , monacoThemeDark_ = Just monacoThemeDark
+  , monacoThemeLight_ = Just monacoThemeLight
+  , codeMirrorThemeDark_ = Just codeMirrorThemeDark
+  , codeMirrorThemeLight_ = Just codeMirrorThemeLight
+  , xtermThemeDark_ = Just xtermThemeDark
+  , xtermThemeLight_ = Just xtermThemeLight
   , showShortcutBadges_ = Just showShortcutBadges
   , colorfulIcons_ = Just colorfulIcons
   , regionCaptureTarget_ = Just regionCaptureTarget

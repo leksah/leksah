@@ -18,22 +18,22 @@ lines do.)
 
 ● Update(src/IDE/Web/Instance.hs)
   ⎿  Updated src/IDE/Web/Instance.hs with 2 additions and 2 removals
-       28    defaultLeksahPort :: Int
-       29 -  defaultLeksahPort = 3367
-       29 +  defaultLeksahPort = 3367  -- historical default UI port
-       34    leksahPort :: Int
-       35    leksahPort = case unsafePerformIO (lookupEnv "LEKSAH_PORT") >>= readMaybe of
-       36 -      Just p | p > 0 -> p
-       36 +      Just p | p >= 1 -> p
-       37        _              -> defaultLeksahPort
-       38    {-# NOINLINE leksahPort #-}
+       29    defaultLeksahPort :: Int
+       30 -  defaultLeksahPort = 3367
+       30 +  defaultLeksahPort = 3367  -- historical default UI port
+       35    leksahPort :: Int
+       36    leksahPort = case unsafePerformIO (lookupEnv "LEKSAH_PORT") >>= readMaybe of
+       37 -      Just p | p > 0 -> p
+       37 +      Just p | p >= 1 -> p
+       38        _              -> defaultLeksahPort
+       39    {-# NOINLINE leksahPort #-}
 
 ● Update(src/IDE/Web/Instance.hs)
   ⎿  Updated src/IDE/Web/Instance.hs with 1 addition and 1 removal
-       43    instanceTag :: String
-       44    instanceTag
-       45      | leksahPort == defaultLeksahPort = ""
-       46      | otherwise                       = '-' : show leksahPort
-       60    tmuxServerSocket :: String
-       61 -  tmuxServerSocket = "leksah" <> instanceTag
-       61 +  tmuxServerSocket = "leksah" <> instanceTag  -- e.g. leksah-3368
+       57    instanceTag :: String
+       58    instanceTag
+       59      | leksahPort == defaultLeksahPort = ""
+       60      | otherwise                       = '-' : show leksahPort
+       74    tmuxServerSocket :: String
+       75 -  tmuxServerSocket = "leksah" <> instanceTag
+       75 +  tmuxServerSocket = "leksah" <> instanceTag  -- e.g. leksah-3368

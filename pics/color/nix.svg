@@ -17,7 +17,7 @@
    version="1.1"
    inkscape:version="0.92.2 (5c3e80d, 2017-08-06)"
    sodipodi:docname="ide_nix.svg">
-<style type="text/css">*{fill:#ffffff !important;stroke:none !important}</style>
+<!-- colour icon: keep the nix logo's own blue gradient fills (no white override) -->
 
   <defs
      id="defs4">

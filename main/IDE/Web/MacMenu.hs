@@ -18,7 +18,7 @@ module IDE.Web.MacMenu
   , setupMacTitlebar
   ) where
 
-import Control.Lens ((^.), (?~))
+import Control.Lens ((^.), (?~), to)
 import Control.Monad (void, when)
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
@@ -35,11 +35,11 @@ import System.Posix.Process (exitImmediately)
 
 import Language.Javascript.JSaddle.WKWebView (WKWebView(..), jsaddleMainHTMLWithBaseURL)
 
-import IDE.Core.State (reflectIDE, modifyIDE_)
+import IDE.Core.State (reflectIDE, modifyIDE_, readIDE)
 import IDE.Core.Types (WindowId(..), activeWindow)
 import IDE.Gtk.Workspaces (workspaceTry)
 import IDE.Workspaces (projectOpenPath)
-import IDE.Web.Command (Command(..), commandAction)
+import IDE.Web.Command (Command(..), commandAction, commandGetToggleState)
 import IDE.Web.GhciMode
        (ghciMode, registerGhciCleanup, setGhciStop, stopForGhci)
 import IDE.Web.IDERefStore (getGlobalIDERef)
@@ -57,6 +57,7 @@ import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
+import IDE.Web.ShortcutsRequest (requestShowShortcuts)
 import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.WindowBridge (closeWindowMerge)
 import IDE.Web.ScreenshotRequest
@@ -156,12 +157,28 @@ macMenuAction tag = do
     (CommandFileSave:_)    -> requestSaveActiveFile
     -- Edit ▸ Find toggles the find bar (reflex state); signal via the bridge.
     (CommandFind:_)        -> requestToggleFindbar
+    -- Edit ▸ Keyboard Shortcuts opens the reflex cheat-sheet pane; bridge it.
+    (CommandShowShortcuts:_) -> requestShowShortcuts
     (cmd:_) -> getGlobalIDERef >>= \case
       Just ideR -> case cmd ^. commandAction of
         Just act -> void $ reflectIDE act ideR
         Nothing  -> return ()  -- special commands (Save/…) have no IDEAction
       Nothing -> return ()
     [] -> return ()
+
+-- | Report a menu item's live toggle state to the native validateMenuItem (so
+-- a toggle command shows a checkmark): -1 if the item's command isn't a toggle,
+-- else 0/1 from its state getter read off the current IDE.  @tag@ indexes
+-- 'commandsRef' exactly as 'macMenuAction'.
+macToggleState :: Int -> IO Int
+macToggleState tag = do
+  cmds <- readIORef commandsRef
+  case drop tag cmds of
+    (c:_) | Just f <- commandGetToggleState c ->
+      getGlobalIDERef >>= \case
+        Just ideR -> (\on -> if on then 1 else 0) <$> reflectIDE (readIDE (to f)) ideR
+        Nothing   -> return (-1)
+    _ -> return (-1)
 
 -- | Build and install the native menu bar.  Safe to call before the app's run
 -- loop starts; the actual menu-bar install is scheduled onto the main thread.
@@ -179,6 +196,7 @@ installMacMenu = do
     , cbWindowActivated = macWindowActivated
     , cbWindowClosing   = macWindowClosing
     , cbColorPicked     = colorPicked . T.pack
+    , cbToggleState     = macToggleState
     }
   when ghciMode $ do
     -- Returning to the ghci prompt = stopping the Cocoa run loop; and Cocoa

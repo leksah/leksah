@@ -134,6 +134,12 @@ GHCNUMVER=$("${DEV[@]}" ghc --numeric-version 2>/dev/null | tail -1)
 BUILDDIR="dist-ghc-${GHCNUMVER:-$GHCARG}"
 echo "Using build dir: $BUILDDIR"
 
+# The stable-haskell cabal fork keeps a PROJECT-LOCAL store under the build dir
+# (distStoreDirLayout = <builddir>/store), not a shared ~/.cabal/store.  The v2
+# dev-shell's `haskell-nix-cabal-store-sync` seeds that store — it takes the
+# builddir as an argument (default dist-newstyle), so pass "$BUILDDIR" wherever
+# it's invoked below so the deps land in the store `cabal build` actually reads.
+
 # A self-contained rebuild script for `leksah-cmd rebuild-self`.  It runs inside
 # the already-running leksah's dev-shell environment (cabal/ghc are already on
 # PATH), so it calls cabal directly rather than re-entering `nix develop`.  Uses
@@ -245,13 +251,13 @@ if [ "$GHCI" = "1" ]; then
         haskell-nix-cabal-project-local-sync --force
       fi
       if command -v haskell-nix-cabal-store-sync >/dev/null 2>&1; then
-        haskell-nix-cabal-store-sync --force
+        haskell-nix-cabal-store-sync --force "$bd"
       fi
       cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal
       mkdir -p "bin/$gd"
-      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server)" "bin/$gd/leksah-server"
-      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd)"    "bin/$gd/leksah-cmd"
-      ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal)"       "bin/$gd/ffcabal"
+      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server | grep "^/" | tail -1)" "bin/$gd/leksah-server"
+      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd | grep "^/" | tail -1)"    "bin/$gd/leksah-cmd"
+      ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal | grep "^/" | tail -1)"       "bin/$gd/ffcabal"
     ' _ "$BUILDDIR" "$GHCARG"
 
   # ghci uses its OWN builddir: its config differs from the binary loop's
@@ -450,6 +456,113 @@ EOF
   fi
 fi
 
+# ===========================================================================
+# Zero-downtime handoff supervisor (opt-in: LEKSAH_HANDOFF=1; native web UI
+# only — not --warp/--classic, and ghci has its own arm above).  Keeps the
+# current instance up while its successor starts on an ephemeral asset port,
+# and retires it only once the successor's UI signals ready.  See
+# IDE.Web.Handoff.  When off, control falls through to the ordinary exit-2/3
+# relaunch loop below, which is unchanged.
+# ===========================================================================
+if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "classic" ] && [ "$UI" != "warp" ]; then
+  export LEKSAH_HANDOFF=1
+
+  # Same launch recipe as the loop's launch_leksah, duplicated so the default
+  # loop stays byte-for-byte unchanged.
+  handoff_launch_str='
+    bd="$1"; app="$2"; tgt="$3"; shift 3
+    export leksah_datadir="$(pwd)"
+    bin="$(cabal list-bin --builddir "$bd" "$tgt" | grep "^/" | tail -1)"
+    if [ "$app" = "1" ]; then
+      macos="$(pwd)/Leksah.app/Contents/MacOS"
+      ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
+      exec "$macos/leksah" --develop-leksah "$@"
+    fi
+    exec "$bin" --develop-leksah "$@"'
+
+  handoff_build() {
+    rm -f .ghc.environment.*
+    PATH="$(pwd)/bin/$GHCARG:$PATH" "${DEV[@]}" \
+      bash -c '
+        set -e
+        bd="$1"; gd="$2"; tgt="$3"
+        command -v haskell-nix-cabal-project-local-sync >/dev/null 2>&1 && haskell-nix-cabal-project-local-sync --force
+        command -v haskell-nix-cabal-store-sync >/dev/null 2>&1 && haskell-nix-cabal-store-sync --force "$bd"
+        cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "$tgt"
+        mkdir -p "bin/$gd"
+        ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server | grep "^/" | tail -1)" "bin/$gd/leksah-server"
+        ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd | grep "^/" | tail -1)"    "bin/$gd/leksah-cmd"
+        ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal | grep "^/" | tail -1)"       "bin/$gd/ffcabal"
+      ' _ "$BUILDDIR" "$GHCARG" "$EXE_TARGET"
+  }
+
+  # $1 = "successor" (ephemeral asset port, LEKSAH_SUCCESSOR=1) or "" (primary).
+  # Backgrounds the instance and echoes its job pid; extra leksah args follow.
+  handoff_launch() {
+    local kind="$1"; shift
+    rm -f .ghc.environment.*
+    if [ "$kind" = "successor" ]; then
+      LEKSAH_SUCCESSOR=1 LEKSAH_ASSET_PORT=0 \
+        PATH="$(pwd)/bin/$GHCARG:$PATH" "${DEV[@]}" \
+        bash -c "$handoff_launch_str" _ "$BUILDDIR" "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
+        >> "$RUNLOG" 2>&1 &
+    else
+      PATH="$(pwd)/bin/$GHCARG:$PATH" "${DEV[@]}" \
+        bash -c "$handoff_launch_str" _ "$BUILDDIR" "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
+        >> "$RUNLOG" 2>&1 &
+    fi
+    echo $!
+  }
+
+  REQ="$RUNLOGDIR/handoff-request"
+  READY="$RUNLOGDIR/handoff-ready"
+  rm -f "$REQ" "$READY"
+  echo "LEKSAH_HANDOFF=1: zero-downtime handoff supervisor active."
+  handoff_build || read -n 1 -s -r -p "Build failed.  Press any key to run the last built version."
+  PID=$(handoff_launch "" "$@")
+  echo "handoff: instance up (job $PID)."
+  while :; do
+    # Wait for a restart request (handoff) OR for the instance to exit on its own.
+    while kill -0 "$PID" 2>/dev/null && [ ! -f "$REQ" ]; do sleep 0.3; done
+    if ! kill -0 "$PID" 2>/dev/null; then
+      wait "$PID" 2>/dev/null; code=$?
+      case "$code" in
+        2) handoff_build || true; PID=$(handoff_launch "" "$@") ;;   # legacy/crash restart
+        3) PID=$(handoff_launch "" "$@") ;;
+        *) echo "handoff: instance exited ($code) — supervisor stopping."; exit "$code" ;;
+      esac
+      continue
+    fi
+    mode=$(cat "$REQ" 2>/dev/null); rm -f "$REQ"
+    echo "handoff: restart requested (${mode:-rebuild}); building successor — current stays up."
+    [ "$mode" != "norebuild" ] && { handoff_build || echo "handoff: build failed; launching successor from last build."; }
+    rm -f "$READY"
+    NEW=$(handoff_launch "successor" "$@")
+    echo "handoff: successor launched (job $NEW); waiting for its UI to come up…"
+    waited=0; ok=0
+    while [ "$waited" -lt 200 ]; do        # ~60s
+      [ -f "$READY" ] && { ok=1; break; }
+      kill -0 "$NEW" 2>/dev/null || { echo "handoff: successor exited before signalling ready."; break; }
+      sleep 0.3; waited=$((waited+1))
+    done
+    if [ "$ok" = 1 ]; then
+      echo "handoff: successor ready — the old instance retires itself now."
+      # The old instance self-retires (exit 0) once it sees the ready file, so it
+      # releases cmd.sock/windows to the successor; just wait for it to go.
+      w2=0
+      while kill -0 "$PID" 2>/dev/null && [ "$w2" -lt 100 ]; do sleep 0.3; w2=$((w2+1)); done
+      wait "$PID" 2>/dev/null || true
+      rm -f "$READY"
+      PID="$NEW"
+      echo "handoff: complete — now supervising job $PID."
+    else
+      echo "handoff: successor did not come up in time — aborting, keeping the current instance."
+      kill -TERM "$NEW" 2>/dev/null || true
+      wait "$NEW" 2>/dev/null || true
+    fi
+  done
+fi
+
 LEKSAH_EXIT_CODE=2
 
 # Exit 2 => relaunch after rebuilding (in-IDE / rebuild-self); exit 3 =>
@@ -517,13 +630,13 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
             haskell-nix-cabal-project-local-sync --force
           fi
           if command -v haskell-nix-cabal-store-sync >/dev/null 2>&1; then
-            haskell-nix-cabal-store-sync --force
+            haskell-nix-cabal-store-sync --force "$bd"
           fi
           cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "$tgt"
           mkdir -p "bin/$gd"
-          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server)" "bin/$gd/leksah-server"
-          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd)"    "bin/$gd/leksah-cmd"
-          ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal)"       "bin/$gd/ffcabal"
+          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server | grep "^/" | tail -1)" "bin/$gd/leksah-server"
+          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd | grep "^/" | tail -1)"    "bin/$gd/leksah-cmd"
+          ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal | grep "^/" | tail -1)"       "bin/$gd/ffcabal"
         ' _ "$BUILDDIR" "$GHCARG" "$EXE_TARGET" \
           || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
     else
@@ -537,7 +650,7 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
     launch_leksah='
       bd="$1"; app="$2"; tgt="$3"; shift 3
       export leksah_datadir="$(pwd)"
-      bin="$(cabal list-bin --builddir "$bd" "$tgt")"
+      bin="$(cabal list-bin --builddir "$bd" "$tgt" | grep "^/" | tail -1)"
       if [ "$app" = "1" ]; then
         # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name
         # everywhere).  cabal relinks a new inode each build, so refresh the

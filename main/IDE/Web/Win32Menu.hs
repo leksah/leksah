@@ -46,6 +46,7 @@ import IDE.Web.OpenPanel
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
+import IDE.Web.ShortcutsRequest (requestShowShortcuts)
 import IDE.Web.NewWindowRequest (setNewWindowHandler)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput
@@ -170,6 +171,7 @@ leksah_menu_action tag = do
     (CommandFileSave:_)        -> requestSaveActiveFile
     (CommandFind:_)            -> requestToggleFindbar
     (CommandShowPreferences:_) -> requestShowPreferences
+    (CommandShowShortcuts:_)   -> requestShowShortcuts
     (cmd:_) -> getGlobalIDERef >>= \case
       Just ideR -> case cmd ^. commandAction of
         Just act -> void $ reflectIDE act ideR

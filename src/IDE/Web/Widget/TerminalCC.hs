@@ -40,6 +40,7 @@ module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   ) where
 
+import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import Reflex (Dynamic, Event, never)
 import Reflex.Dom.Core (MonadWidget, el, text)
@@ -52,8 +53,9 @@ terminalCCWidget
   -> Text
   -> Event t ()
   -> (TabKey -> Event t () -> m ())
+  -> Dynamic t (M.Map Text Text)
   -> m (Event t TerminalEvents)
-terminalCCWidget _ _ _ _ = do
+terminalCCWidget _ _ _ _ _ = do
     el "div" $ text "Terminals are not available in the browser demo."
     return never
 
@@ -100,7 +102,7 @@ import Language.Javascript.JSaddle
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE, TabKey, focusLog, paneOverlays)
 import IDE.Web.Events (TerminalEvents(..))
-import IDE.Web.ReplTmux (tmuxSocket)
+import IDE.Web.ReplTmux (tmuxSocket, isBackingRunKey)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
        (registerTerminalCC, unregisterTerminalCC, registerCCStop,
@@ -129,8 +131,17 @@ terminalCCWidget
                          -- ^ builds the leksah view drawn OVER a pane listed in
                          --   '_paneOverlays' (an editor / git log converted to a
                          --   pane); the event is \"this pane was selected\"
+  -> Dynamic t (M.Map Text Text)
+                         -- ^ pane id (@%N@) -> its @\@leksah_run@ tag, so a
+                         --   hidden backing twin ('isBackingRunKey') that isn't
+                         --   currently an overlay can be suppressed
+  -> Dynamic t (Maybe (Text, Bool))
+                         -- ^ ⌘W close-menu target: (pane %id, multi-pane?), so
+                         --   the matching pane renders the menu inside itself
+  -> (Text -> Bool -> m ())
+                         -- ^ render the close menu for (pane %id, multi-pane?)
   -> m (Event t TerminalEvents)
-terminalCCWidget ide sessionId selectedE overlayW = do
+terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD renderCloseMenu = do
     pb <- getPostBuild
     (evE, fireEv) <- newTriggerEvent
     (ccStartedE, fireCCStarted) <- newTriggerEvent
@@ -197,7 +208,7 @@ terminalCCWidget ide sessionId selectedE overlayW = do
             (box, _) <- elAttr' "div"
                       ("class" =: "terminal-cc-error" <> "tabindex" =: "-1"
                       <> "style" =: ("height:100%;box-sizing:border-box;overflow:auto"
-                                     <> ";padding:14px;background:#111;color:#ddd"
+                                     <> ";padding:14px;background:var(--leksah-bg);color:var(--leksah-fg-muted)"
                                      <> ";font:13px/1.5 Menlo,Monaco,monospace")) $ do
                 elAttr "div" ("style" =: "color:#ff7b72;font-weight:bold;margin-bottom:8px") $
                     text ("Connection to " <> sessionId <> " failed")
@@ -844,19 +855,47 @@ terminalCCWidget ide sessionId selectedE overlayW = do
                 dyn_ $ ffor metricsD $ \case
                     Nothing -> divClass "terminal-cc-empty" $ text "(connecting…)"
                     Just cell -> do
-                        let windowsD = csLayouts <$> stD
-                            currentD = csCurrent <$> stD
+                        let rawWindowsD = csLayouts <$> stD
+                            currentD    = csCurrent <$> stD
+                            -- Suppress hidden backing twins (see 'isBackingRunKey'):
+                            -- a pane whose run tag marks it a backing twin AND which
+                            -- isn't currently adopted as an overlay.  So a control-
+                            -- mode terminal on the shared 'leksah-editor' session
+                            -- shows only converted overlays and the user's own panes
+                            -- — never the pre-warmed editor twins that would other-
+                            -- wise duplicate an open editor as a bare shell pane.
+                            hiddenPane ov rk p =
+                                  isBackingRunKey (M.findWithDefault "" p rk)
+                                  && not (p `M.member` ov)
+                            -- Drop windows made up ENTIRELY of hidden twins (each
+                            -- twin is its own single-pane window) so they neither
+                            -- render nor take a slot in this session's window list.
+                            windowsD = (\wins ov rk ->
+                                  M.filter (any (\(p, _, _, _, _) -> not (hiddenPane ov rk p))
+                                                . layoutPanes) wins)
+                                <$> rawWindowsD <*> overlaysD <*> paneRunKeysD
+                            -- If tmux's current window was one we dropped, fall back
+                            -- to the first surviving window so the tab isn't blank.
+                            effCurrentD = (\cur wins -> case cur of
+                                  Just c | M.member c wins -> Just c
+                                  _                        -> fst <$> M.lookupMin wins)
+                                <$> currentD <*> windowsD
                         _ <- listWithKey windowsD $ \wid layD -> do
-                            let visD = (== Just wid) <$> currentD
+                            let visD = (== Just wid) <$> effCurrentD
                             elDynAttr "div"
                                 ((\v -> "class" =: "terminal-cc-window"
                                      <> "style" =: ("position:absolute;left:0;top:0;right:0;bottom:0;display:"
                                                     <> (if v then "block" else "none")))
                                   <$> visD) $ do
                                 layUniqD <- holdUniqDyn layD
-                                let panesD = ffor layUniqD $ \l -> M.fromList
+                                -- Filter hidden twins here too, so a MIXED window
+                                -- (a twin's window a user split into) keeps the
+                                -- user's pane(s) while the twin pane stays hidden.
+                                let panesD = (\l ov rk -> M.fromList
                                         [ (p, (x, y, w, h))
-                                        | (p, x, y, w, h) <- layoutPanes l ]
+                                        | (p, x, y, w, h) <- layoutPanes l
+                                        , not (hiddenPane ov rk p) ])
+                                      <$> layUniqD <*> overlaysD <*> paneRunKeysD
                                     -- Layout size in cells: a pane at the
                                     -- layout's right/bottom edge fills to the
                                     -- container edge (see paneWidget).
@@ -868,6 +907,7 @@ terminalCCWidget ide sessionId selectedE overlayW = do
                                                (M.lookup pane <$> overlaysD)
                                                overlayW
                                                (void (ffilter (== pane) paneFocusE))
+                                               closeMenuD renderCloseMenu
                                 -- Repaint this window's panes when it becomes
                                 -- visible: their xterms may have been built
                                 -- hidden (display:none) and so never painted
@@ -1226,8 +1266,10 @@ paneWidget
   -> Dynamic t (Maybe TabKey) -- ^ leksah view overlaid on this pane ('_paneOverlays')
   -> (TabKey -> Event t () -> m ())  -- ^ overlay view builder
   -> Event t ()              -- ^ this pane was selected (⌘-number split select)
+  -> Dynamic t (Maybe (Text, Bool)) -- ^ ⌘W close-menu target: (pane %id, multi-pane?)
+  -> (Text -> Bool -> m ())  -- ^ render the close menu for (pane %id, multi-pane?)
   -> m ()
-paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch) pane rectD0 dimsD0 tunnelD0 overlayD0 overlayW overlaySelE = do
+paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch) pane rectD0 dimsD0 tunnelD0 overlayD0 overlayW overlaySelE closeMenuD renderCloseMenu = do
     rectD <- holdUniqDyn rectD0
     dimsD <- holdUniqDyn dimsD0
     tunnelD <- holdUniqDyn tunnelD0
@@ -1269,6 +1311,15 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
                  -- reflex as a %id) can be located in the DOM to hang a ⌘` hint.
                  <> "data-pane" =: pane
                  <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD <*> overlayD) $ do
+        -- ⌘W close menu, rendered INSIDE this pane so CSS centres it (no JS
+        -- geometry) — shown only for the pane the menu currently targets.  The
+        -- render function comes from IDE.Web.Main (it owns the menu logic).
+        let menuHereD = ffor closeMenuD $ \mt -> case mt of
+                          Just (p, m) | p == pane -> Just m
+                          _                       -> Nothing
+        dyn_ $ ffor menuHereD $ \mm -> case mm of
+          Nothing    -> blank
+          Just multi -> renderCloseMenu pane multi
         -- jsaddle-terminal overlay: while a tunnel generation is active an
         -- iframe (keyed by the generation, so an app restart rebuilds it)
         -- covers the pane; the hidden xterm keeps consuming non-frame output.

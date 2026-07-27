@@ -66,7 +66,7 @@ import qualified Data.Map as M
         singleton, mapWithKey, empty, size, null, withoutKeys)
 import Data.Map (Map)
 import qualified Data.Set as S
-       (fromList, delete, singleton, empty, insert, member, intersection, toList)
+       (Set, fromList, delete, singleton, empty, insert, member, intersection, toList)
 import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, take, length)
@@ -78,7 +78,7 @@ import Text.Read (readMaybe)
 
 import System.Directory
        (doesFileExist, doesDirectoryExist, getDirectoryContents, removeFile,
-        getHomeDirectory, makeRelativeToCurrentDirectory)
+        getHomeDirectory, getTemporaryDirectory, makeRelativeToCurrentDirectory)
 import System.Process (readProcessWithExitCode)
 import Data.Aeson (Value, decodeStrict', encode)
 import qualified Data.Aeson as A
@@ -93,14 +93,17 @@ import System.FSNotify (withManager)
 #endif
 
 #if !defined(ghcjs_HOST_OS)
-import Network.Socket (withSocketsDo)
+import Network.Socket
+       (withSocketsDo, socket, bind, listen, socketPort, setSocketOption,
+        SocketOption(ReuseAddr), SockAddr(SockAddrInet), Family(AF_INET),
+        SocketType(Stream), defaultProtocol, tupleToHostAddress)
 import qualified Network.HTTP.Types as H (status200, status504)
 import qualified Network.Wai as W
        (responseLBS, pathInfo, requestMethod, strictRequestBody)
 import Network.Wai.Application.Static
        (defaultWebAppSettings, staticApp)
 import Network.Wai.Handler.Warp
-       (defaultSettings, setTimeout, setPort, runSettings)
+       (defaultSettings, setTimeout, setPort, runSettings, runSettingsSocket)
 import Network.WebSockets (defaultConnectionOptions)
 
 import Criterion.Measurement (initializeTime)
@@ -113,7 +116,7 @@ import Clay
         FontFaceSrc(..))
 
 import Language.Javascript.JSaddle
-       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, jss, fun, valToText, valToBool, valToNumber, liftJSM, runJSM)
+       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, jss, fun, toJSVal, valToText, valToBool, valToNumber, liftJSM, runJSM)
 #if defined(ghcjs_HOST_OS)
 -- Under the JS backend jsaddle-warp is a base-only shim whose `run` executes
 -- the JSM directly against the page (no port, no server) — the websocket
@@ -137,17 +140,18 @@ import Reflex
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', text, domEvent, EventName(..),
-        (=:), MonadWidget, mainWidgetWithCss)
+        _element_raw, (=:), MonadWidget, mainWidgetWithCss)
 
 import IDE.Core.State
        (triggerBuild, readIDE, IDEAction, wsFile, jsContexts, workspace,
         IDEState(..), Prefs(..), TallVisibility(..), IDE(..), IDERef, __,
+        externalEditor, monacoEditor,
         reflectIDE, getDataDir, catchIDE, modifyIDE_, modifyIDE, prefs, currentState,
         wsProjects, pjPackages, ipdCabalFile, ipdPackageDir, wsActivePackFile,
         currentError, logRefFullFilePath, refDescription, logRefSrcSpan,
         srcSpanStartLine,
         WindowId(..), WebWindow(..), webWindows, activeWindow, nextWindowId,
-        paneOverlays, flipMirror, flipMru, ideVersion, focusLog, metaLog)
+        paneOverlays, hiddenWindows, flipMirror, flipMru, ideVersion, focusLog, metaLog)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef)
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
@@ -167,15 +171,19 @@ import IDE.Utils.RemoteExec (remoteInFlight, remoteInFlightChanged)
 import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 import IDE.Web.Instance (leksahPort)
+import IDE.Web.Handoff
+       (handoffEnabled, isHandoffSuccessor, requestHandoff, handingOff, signalHandoffReady,
+        registerSessionFlush, signalSessionFlushDone)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel, runOpenFolderPanel)
-import IDE.Web.Theme (themeVarsCss)
+import IDE.Web.Theme (themeVarsCss, paletteCss, contrastCss, bgColor, fgColor)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
         registerResync, notifyResync)
 import IDE.Web.RegionGrabRequest (nextRegionGrab)
 import IDE.Web.AddRemoteRequest (nextAddRemoteRequest)
+import IDE.Web.AddServerRequest (nextAddServerRequest)
 import IDE.Web.RemoteSettingsRequest (nextRemoteSettings)
 import IDE.Web.ScreenshotRequest (requestScreenshotRegion)
 import IDE.Web.RegionCapture
@@ -190,7 +198,7 @@ import IDE.Web.GhciMode (ghciMode, registerGhciCleanup, stopForGhci)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.ReplTmux
        (tmuxCmd, tmuxSupported, liveRunPanes, activePaneIdOfSession,
-        openTerminalInDir, splitPane)
+        openTerminalInDir, splitPane, isBackingRunKey)
 import IDE.Web.Claude (runClaudeCmd, claudeCommandLine, ClaudeCmd(..))
 import IDE.Web.TerminalInput
        (setActiveTerminal, setActiveConvertible, tmuxCommandActiveTerminal,
@@ -237,12 +245,14 @@ import IDE.Web.Widget.Changes (changesCss, changesWidget)
 import IDE.Web.Widget.GitLog (gitLogCss, gitLogWidget, gitLogSplitJs)
 import IDE.Web.GitLogRequest (nextGitLogRequest, requestGitLog)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
+import IDE.Web.Widget.Shortcuts (shortcutsCss, shortcutsWidget, shortcutsPlainText)
 import IDE.Web.Widget.Flake (flakeCss)
 import IDE.Web.Widget.ContextMenu (contextMenuCss)
 import IDE.Web.Widget.Editor (editorCss, editorWidget)
 import IDE.Web.Widget.Errors (errorsCss, errorsWidget)
 import IDE.Web.Widget.Findbar (findbarCss, findbarWidget, findMatcher)
 import IDE.Web.Widget.AddRemote (addRemoteDialog)
+import IDE.Web.Widget.AddServer (addServerDialog)
 import IDE.Web.Widget.RemoteSettings (remoteSettingsDialog)
 import IDE.Web.Widget.Flipper (flipperCss, flipperWidget)
 import IDE.Web.Widget.Grep (grepCss, grepWidget, runGrep)
@@ -258,6 +268,7 @@ import IDE.Web.Widget.Terminal
         selectTmuxWindow, selectTmuxPane, activePaneId, paneGeometry, sessionOfPane,
         listTerminalTree, createTerminalSession, openFileInEditor, notifyTerminalBell,
         ensureShellPane, killRunPaneIfIdle, resolveEditorCmd, shellQuoteArg,
+        killTmuxPaneId, breakTmuxPaneId, windowIndexOfPane, paneCountOfSession,
         createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
         killRemoteTmuxSession, killRemoteTmuxWindow, killRemoteTmuxPane,
         newRemoteTmuxWindow, zoomRemoteTmuxPane, breakRemoteTmuxPane,
@@ -390,6 +401,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             ,   _logLineMap        =   mempty
             ,   _webWindows        =   mempty
             ,   _paneOverlays      =   mempty
+            ,   _hiddenWindows     =   mempty
             ,   _activeWindow      =   Nothing
             ,   _nextWindowId      =   0
             ,   _flipMirror        =   Nothing
@@ -461,8 +473,11 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                     then liftIO $ putStrLn "leksah: QuitToRestart suppressed (rebuild-self --no-restart)"
                     -- ghci mode: never exit the process (it IS the ghci
                     -- session) — tear down and return to the prompt instead.
+                    -- Handoff: the in-IDE build already ran, so hand off with no
+                    -- rebuild and stay up until the successor is ready.
                     else liftIO $ if ghciMode then stopForGhci
-                                              else exitImmediately (ExitFailure 2)
+                                  else if handoffEnabled then requestHandoff True
+                                  else exitImmediately (ExitFailure 2)
                   return e
           -- External relaunch trigger (dev-relaunch.sh): poll for a request
           -- file and exit(2) so leksah-nix.sh's loop rebuilds and relaunches.
@@ -480,6 +495,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                   when there $ do
                       removeFile trigger `catch` \(_ :: SomeException) -> return ()
                       if ghciMode then stopForGhci
+                                  else if handoffEnabled then requestHandoff False
                                   else exitImmediately (ExitFailure 2)
 #if defined(ghcjs_HOST_OS)
       -- The browser demo's workspace lives in the page-seeded mock tree
@@ -528,6 +544,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             keepTab k = case k of
               TerminalKey n  -> n `elem` liveIds
               PreferencesKey -> False   -- transient, never restore
+              ShortcutsKey   -> False   -- transient, never restore
               GitLogKey{}    -> False   -- transient, never restore
               _              -> True
 #if defined(ghcjs_HOST_OS)
@@ -573,6 +590,9 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
           i & webWindows .~ seeded & nextWindowId .~ nWins & activeWindow ?~ WindowId 0
             & paneOverlays .~ overlays
+            -- Restore the flipper MRU (buildFlipItems filters out any entries
+            -- whose tab/pane no longer exists, so stale ones are harmless).
+            & flipMru .~ fromMaybe [] (mbSession >>= wsFlipMru)
         -- Ask native to create the windows past the first (the first is created
         -- by the wkwebview AppDelegate / warp connection and attached below).
         -- No-op on warp (no handler), which stays single-window.
@@ -716,6 +736,9 @@ closeWide0 w ks = M.adjust
           in ww { _wwWide0 = w0'
                 , _wwActive = if maybe False (`elem` ks) (_wwActive ww)
                               then listToMaybe w0' else _wwActive ww }) w
+
+-- | The user's pick from the ⌘W terminal pane close menu.
+data TermCloseChoice = TCKill | TCHide | TCMove | TCCancel deriving Eq
 
 -- | Each OS window gets its own vivid, stable hue derived from its id (golden-ish
 -- step for good separation).  Used for the flipper border and the per-entry
@@ -897,6 +920,13 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- (No glob spellings in comments here: CPP reads slash-star as a comment.)
   _ <- eval colorIconsJs
 
+  -- window.leksahRetheme + the matchMedia listener: switch the Monaco/CodeMirror
+  -- editors and xterm terminals between their light and dark themes with the OS.
+  _ <- eval themeSwitchJs
+
+  -- Keep context menus inside the viewport (they're placed at the click point).
+  _ <- eval contextMenuClampJs
+
   -- The Claude-coordination traffic light (top-right dot): leksahTestStart /
   -- leksahTestEnd / leksahStatus, driven over the cmd socket via `js eval`.
   _ <- eval statusLightJs
@@ -904,7 +934,9 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- window.leksahSelectRegion: the permission-free region picker for grab-region.
   _ <- eval regionSelectJs
 
-  mainWidgetWithCss (BS.unlines [xtermCss, BS.toStrict (LT.encodeUtf8 css)]) $ mdo
+  -- The colour palette (all --leksah-* tokens, dark + light) goes in first, so
+  -- every stylesheet below resolves them; see "IDE.Web.Theme".
+  mainWidgetWithCss (BS.unlines [xtermCss, encodeUtf8 paletteCss, encodeUtf8 contrastCss, BS.toStrict (LT.encodeUtf8 css)]) $ mdo
       ideActionE <- main showMenubar macTitlebar wid ideD
       performEvent_ $ ffor ideActionE $ \act -> do
           wlog wid "ENTER ideAction (reflectIDE)"
@@ -1099,9 +1131,23 @@ enumerateWorkspaceFiles showHidden showIgnored dirs =
 startJSaddle :: Int -> (ByteString -> ByteString -> JSM () -> IO ()) -> JSM () -> IO ()
 startJSaddle p runJs jsm = do
   dataDir <- getDataDir
-  -- ghci mode: killing the warp thread closes the port-p listener (warp
-  -- brackets the bind), so a fresh :main after :reload can rebind it.
-  warpTid <- forkIO $ runSettings (setPort p (setTimeout 3600 defaultSettings)) =<<
+  -- Normally serve on the fixed port p; but p<=0 (a handoff successor — see
+  -- IDE.Web.Handoff) means "pick a free loopback port", which we must bind
+  -- ourselves so we know it for the WKWebView base URL (warp's setPort 0
+  -- wouldn't report the chosen port back).
+  (actualPort, runServer) <-
+    if p > 0
+      then return (p, \app -> runSettings (setPort p (setTimeout 3600 defaultSettings)) app)
+      else do
+        s <- socket AF_INET Stream defaultProtocol
+        setSocketOption s ReuseAddr 1
+        bind s (SockAddrInet 0 (tupleToHostAddress (127,0,0,1)))
+        listen s 1024
+        pn <- socketPort s
+        return (fromIntegral pn, \app -> runSettingsSocket (setTimeout 3600 defaultSettings) s app)
+  -- ghci mode: killing the warp thread closes the listener (warp brackets the
+  -- bind), so a fresh :main after :reload can rebind it.
+  warpTid <- forkIO $ runServer =<<
     jsaddleOr defaultConnectionOptions
               (addDebugMenu >> jsm >> syncPoint)
               (\req sendResponse ->
@@ -1140,7 +1186,7 @@ startJSaddle p runJs jsm = do
                   Nothing -> W.responseLBS H.status504 [] "no such tunnel"
             _ -> staticApp (defaultWebAppSettings dataDir) req sendResponse)
   when ghciMode $ registerGhciCleanup (killThread warpTid)
-  runJs indexHtml ("http://127.0.0.1:" <> encodeUtf8 (T.pack $ show p)) jsm
+  runJs indexHtml ("http://127.0.0.1:" <> encodeUtf8 (T.pack $ show actualPort)) jsm
 
 debugJSaddle :: Int -> JSM () -> IO ()
 debugJSaddle p f = do
@@ -1199,8 +1245,8 @@ css = render $ do
           ] []
         fontSize (px 12)
         margin nil nil nil nil
-        background black
-        color white
+        background bgColor
+        color fgColor
     ".leksah" ? do
         width (pct 100)
         height (pct 100)
@@ -1224,6 +1270,7 @@ css = render $ do
     changesCss
     gitLogCss
     preferencesCss
+    shortcutsCss
     flakeCss
 
 -- Fallback label for a terminal that hasn't reported a window title yet.
@@ -1241,6 +1288,7 @@ tabLabelText k names = case k of
   MetadataKey    -> "Metadata"
   ChangesKey     -> "Changes"
   PreferencesKey -> "Preferences"
+  ShortcutsKey   -> "Shortcuts"
   GitLogKey _ b  -> "Log: " <> b
   EditorKey file -> T.pack (takeFileName file)
 
@@ -1255,6 +1303,7 @@ tabIconSrc k = case k of
   LogKey         -> Just "/pics/log.svg"
   GrepKey        -> Just "/pics/grep.svg"
   ChangesKey     -> Just "/pics/changes.svg"
+  ShortcutsKey   -> Just "/pics/shortcuts.svg"
   GitLogKey{}    -> Just "/pics/tree-git.svg"
   EditorKey file -> Just (fileIconSrc file)
   _              -> Nothing
@@ -1400,11 +1449,34 @@ windowTabLabel w
     ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
                   | otherwise      = t
 
-flipIconSrc :: Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Text
-flipIconSrc tree = \case
-    FlipPane n w _          -> Just (winIcon n w)
-    FlipTab (TerminalKey n) -> Just (winIcon n (activeWinIdx n))
-    FlipTab k               -> tabIconSrc k
+-- | The leksah view a flip item's pane has been CONVERTED to (⌘D — a
+-- '_paneOverlays' entry), if any, so the item can show that view's type icon
+-- instead of the generic tmux icon.  For a 'FlipPane' it's that specific pane;
+-- for a whole-terminal 'FlipTab' only when its shown window has a SINGLE pane
+-- (a multi-pane window has no one pane whose icon could stand for it).
+flipOverlayKey :: Map Text TabKey -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe TabKey
+flipOverlayKey overlays tree = \case
+    FlipPane n w p          -> lk n w (find ((== p) . tpIndex))
+    FlipTab (TerminalKey n) -> lk n (awIdx n) onlyPane
+    _                       -> Nothing
+  where
+    lk n w pick = do
+        (_, wins) <- M.lookup n tree
+        win       <- find ((== w) . twIndex) wins
+        tp        <- pick (twPanes win)
+        M.lookup (tpId tp) overlays
+    onlyPane [p] = Just p
+    onlyPane _   = Nothing
+    awIdx sid = maybe 0 twIndex $ M.lookup sid tree
+        >>= (\wins -> listToMaybe (filter twActive wins ++ wins)) . snd
+
+flipIconSrc :: Map Text TabKey -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Text
+flipIconSrc overlays tree fi
+    | Just k <- flipOverlayKey overlays tree fi, Just src <- tabIconSrc k = Just src
+    | otherwise = case fi of
+        FlipPane n w _          -> Just (winIcon n w)
+        FlipTab (TerminalKey n) -> Just (winIcon n (activeWinIdx n))
+        FlipTab k               -> tabIconSrc k
   where
     winIcon n w = case M.lookup n tree >>= find ((== w) . twIndex) . snd of
         Just win -> windowIconSrc win
@@ -1486,6 +1558,7 @@ tabFlipKey k = "tab:" <> case k of
     MetadataKey    -> "metadata"
     ChangesKey     -> "changes"
     PreferencesKey -> "preferences"
+    ShortcutsKey   -> "shortcuts"
     TerminalKey s  -> "terminal:" <> s
     GitLogKey d b  -> "gitlog:" <> T.pack d <> ":" <> b
     EditorKey f    -> "editor:" <> T.pack f
@@ -1540,10 +1613,16 @@ flipSelHighlight front tree = \case
 -- from @tree@, not per-window), so only editor tabs need adding here.  On
 -- commit, a selection owned by another window raises that window (see the
 -- ownership split in 'main').
-buildFlipItems :: [FlipItem] -> [(Text, TabKey)] -> [TabKey] -> Map Text (Text, [TmuxWindow]) -> [(Text, FlipItem)]
-buildFlipItems mru rt otherTabs tree =
+buildFlipItems :: [FlipItem] -> [(Text, TabKey)] -> [TabKey] -> Map Text (Text, [TmuxWindow]) -> S.Set Text -> S.Set (Text, Int) -> [(Text, FlipItem)]
+buildFlipItems mru rt otherTabs tree overlaid hidden =
+  -- Skip hidden backing twins (see 'isBackingRunKey') that aren't currently
+  -- adopted as an overlay — otherwise a pre-warmed editor twin lists a second
+  -- time in the flipper beside its own open editor tab.  Per PANE (via
+  -- 'tpRunKey'), so a user's own pane in a twin's window is kept.
   let panes = [ FlipPane n (twIndex w) (tpIndex p)
-              | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w ]
+              | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w
+              , not ((n, twIndex w) `S.member` hidden)
+              , not (isBackingRunKey (tpRunKey p) && not (tpId p `S.member` overlaid)) ]
       notTerm (TerminalKey _) = False
       notTerm _               = True
       tabs    = [ FlipTab k | (_, k) <- rt, notTerm k ]
@@ -1611,6 +1690,14 @@ paneHlJs = T.unlines
   , "  }"
   , "  function update(){"
   , "    var clip = getClip(), hl = clip.firstChild;"
+  -- The ⌘W close menu pins the shadow to a whole element (the focused pane, or —
+  -- for "Hide Window" — its terminal-cc container = all the window's panes) via
+  -- window.__leksahMenuHl (set by leksahMenuShadow below); when set it wins
+  -- outright (no focus/flipsel/clamp logic).  Cleared => normal focus-follow.
+  , "    var mh = window.__leksahMenuHl;"
+  , "    if (mh && shown(mh)) { var mr = mh.getBoundingClientRect();"
+  , "      clip.style.top='0';clip.style.left='0';clip.style.right='0';clip.style.bottom='0';clip.style.display='block';"
+  , "      hl.style.left=mr.left+'px';hl.style.top=mr.top+'px';hl.style.width=mr.width+'px';hl.style.height=mr.height+'px'; return; }"
   -- While the flipper is open, the shadow highlights its selected pane instead of
   -- the focused one: leksahFlipSel.pane is the on-screen pane id (null => the
   -- selection isn't an on-screen pane, so show no shadow).  Closed => follow focus.
@@ -1667,6 +1754,13 @@ paneHlJs = T.unlines
   , "  document.addEventListener('transitionrun', kick, true);"
   , "  document.addEventListener('transitionstart', kick, true);"
   , "  document.addEventListener('animationstart', kick, true);"
+  -- The ⌘W close menu (IDE.Web.Main renderCloseMenu) pins this shadow to a whole
+  -- element via __leksahMenuHl: the focused pane, or its .terminal-cc container
+  -- (= all the window's panes) while "Hide Window" is selected.  Null => normal.
+  , "  function paneEl(id){ return document.querySelector('.terminal-cc-pane[data-pane='+JSON.stringify(id)+']'); }"
+  , "  window.leksahMenuShadow = function(paneId, whole){ var p = paneEl(paneId);"
+  , "    window.__leksahMenuHl = p ? (whole ? p.closest('.terminal-cc') : p) : null; update(); };"
+  , "  window.leksahMenuShadowClear = function(){ window.__leksahMenuHl = null; update(); };"
   , "})();"
   ]
 
@@ -1797,6 +1891,10 @@ resizeBarsJs = T.unlines
   , "      var h = Math.max(60, Math.min(window.innerHeight - 120, bottom - e.clientY));"
   , "      r.style.setProperty('--wide1-bar', h + 'px');"
   , "    }"
+  -- Resizing a bar moves the active pane's edges without a window 'resize' event
+  -- or a CSS transition, so the active-pane shadow overlay wouldn't follow it —
+  -- nudge it every move (it's rAF-debounced, so this coalesces per frame).
+  , "    if (window.leksahUpdatePaneHl) window.leksahUpdatePaneHl();"
   , "    e.preventDefault();"
   , "  }, true);"
   , "  document.addEventListener('mouseup', function(){"
@@ -1808,6 +1906,8 @@ resizeBarsJs = T.unlines
   , "    } catch(_){} }"
   , "    if (r) r.classList.remove('leksah-resizing-tall', 'leksah-resizing-wide1');"
   , "    drag = null; document.body.style.cursor = '';"
+  -- Final settle after the drag ends, so the shadow lands on the new edges.
+  , "    if (window.leksahUpdatePaneHl) window.leksahUpdatePaneHl();"
   , "  }, true);"
   , "  (function restore(){"
   , "    var r = root(); if (!r) { setTimeout(restore, 200); return; }"
@@ -2274,18 +2374,18 @@ terminalLinksJs = T.unlines
   , "    if (!tip){"
   , "      if (!document.getElementById('leksah-hovertip-style')){"
   , "        var st = document.createElement('style'); st.id = 'leksah-hovertip-style';"
-  , "        st.textContent = '.leksah-term-hovertip code{font-family:Menlo,Monaco,\"Courier New\",monospace;background:rgba(255,255,255,0.09);border-radius:3px;padding:0 3px;font-size:11.5px;}'"
-  , "          + '.leksah-term-hovertip pre{margin:4px 0;padding:5px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);border-radius:4px;font-family:Menlo,Monaco,\"Courier New\",monospace;font-size:11.5px;line-height:1.3;white-space:pre;overflow-x:hidden;}'"
-  , "          + '.leksah-term-hovertip hr{border:none;border-top:1px solid rgba(255,255,255,0.16);margin:5px 0;}'"
-  , "          + '.leksah-term-hovertip strong{color:#fff;font-weight:600;}';"
+  , "        st.textContent = '.leksah-term-hovertip code{font-family:Menlo,Monaco,\"Courier New\",monospace;background:var(--leksah-inset-bg);border-radius:3px;padding:0 3px;font-size:11.5px;}'"
+  , "          + '.leksah-term-hovertip pre{margin:4px 0;padding:5px 8px;background:var(--leksah-inset-bg);border:1px solid var(--leksah-inset-line);border-radius:4px;font-family:Menlo,Monaco,\"Courier New\",monospace;font-size:11.5px;line-height:1.3;white-space:pre;overflow-x:hidden;}'"
+  , "          + '.leksah-term-hovertip hr{border:none;border-top:1px solid var(--leksah-inset-line);margin:5px 0;}'"
+  , "          + '.leksah-term-hovertip strong{color:var(--leksah-fg);font-weight:600;}';"
   , "        document.head.appendChild(st);"
   , "      }"
   , "      tip = document.createElement('div');"
   , "      tip.className = 'leksah-term-hovertip';"
   , "      tip.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;'"
-  , "        + 'background:rgb(37,37,38);color:#d4d4d4;border:1px solid rgb(70,70,72);'"
+  , "        + 'background:var(--leksah-surface-alt);color:var(--leksah-fg-muted);border:1px solid var(--leksah-border-control);'"
   , "        + 'border-radius:5px;padding:6px 9px;font-size:12px;max-width:72ch;max-height:60vh;'"
-  , "        + 'white-space:normal;overflow:hidden;display:none;box-shadow:0 4px 14px rgba(0,0,0,0.45);'"
+  , "        + 'white-space:normal;overflow:hidden;display:none;box-shadow:0 4px 14px var(--leksah-shadow-drop);'"
   , "        + 'font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;line-height:1.4;';"
   , "      document.body.appendChild(tip);"
   , "    }"
@@ -2492,7 +2592,7 @@ terminalOscLinksJs = T.unlines
   , "      tip = document.createElement('div');"
   , "      tip.className = 'leksah-osc-tip';"
   , "      tip.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;'"
-  , "        + 'background:rgb(40,40,40);color:#dcdcdc;border:1px solid rgb(80,80,80);'"
+  , "        + 'background:var(--leksah-surface);color:var(--leksah-fg-muted);border:1px solid var(--leksah-border-control);'"
   , "        + 'border-radius:3px;padding:2px 6px;font-size:12px;max-width:60ch;'"
   , "        + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:none';"
   , "      document.body.appendChild(tip);"
@@ -2547,7 +2647,8 @@ terminalWriteJs = T.unlines
   -- default so the probe and terminals have a value before the prefs publish.
   , "  window.__leksahMonoFamily = window.__leksahMonoFamily || 'Menlo, Monaco, \"Courier New\", monospace';"
   , "  window.__leksahMonoSize = window.__leksahMonoSize || 13;"
-  , "  function register(id, term){ byId[id] = term; }"
+  , "  function register(id, term){ byId[id] = term;"
+  , "    try { if (window.__leksahXtermActive) term.options.theme = window.__leksahXtermActive; } catch (e) {} }"
   , "  function unregister(id){ delete byId[id]; }"
   , "  function write(id, b64){"
   , "    var term = byId[id];"
@@ -2897,6 +2998,106 @@ transparencyJs = T.unlines
 -- a MutationObserver keeps newly-added or reflex-updated icons in the current
 -- mode.  Rewrites are idempotent (a src already in the target form is skipped),
 -- so the observer seeing our own change doesn't loop.
+-- | Editor/terminal theming that follows the OS light/dark setting.  The chrome
+-- (trees, tabs, panels) already switches via CSS @prefers-color-scheme@ (see
+-- "IDE.Web.Theme"); the Monaco and CodeMirror editors and the xterm.js terminals
+-- have their own theming, driven here.  @window.leksahRetheme@ reads the six
+-- theme-name globals published from the Preferences (@window.__leksahMonacoDark@
+-- etc.), picks the light or dark one with
+-- @matchMedia('(prefers-color-scheme: dark)')@, and applies it: Monaco via its
+-- global @editor.setTheme@, CodeMirror via @LeksahCM.setTheme@, and xterm by
+-- iterating @LeksahTerm.byId@ (also stashing the active ITheme in
+-- @__leksahXtermActive@ so a terminal created later themes itself in
+-- 'register', and setting @--leksah-terminal-bg@ so the pane backing matches).
+-- A @matchMedia@ 'change' listener re-runs it when the OS appearance flips.
+-- The xterm ITheme palettes live here since xterm has no named themes of its own.
+themeSwitchJs :: Text
+themeSwitchJs = T.unlines
+  [ "(function(){"
+  , "  'use strict';"
+  , "  var DARK = {"
+  , "    foreground:'#e6edf3', background:'#0d1117', cursor:'#e6edf3', cursorAccent:'#0d1117',"
+  , "    selectionBackground:'rgba(56,139,253,0.40)',"
+  , "    black:'#484f58', red:'#ff7b72', green:'#3fb950', yellow:'#d29922', blue:'#58a6ff', magenta:'#bc8cff', cyan:'#39c5cf', white:'#b1bac4',"
+  , "    brightBlack:'#6e7681', brightRed:'#ffa198', brightGreen:'#56d364', brightYellow:'#e3b341', brightBlue:'#79c0ff', brightMagenta:'#d2a8ff', brightCyan:'#56d4dd', brightWhite:'#f0f6fc' };"
+  , "  var LIGHT = {"
+  , "    foreground:'#1f2328', background:'#ffffff', cursor:'#1f2328', cursorAccent:'#ffffff',"
+  , "    selectionBackground:'rgba(84,174,255,0.40)',"
+  , "    black:'#24292f', red:'#cf222e', green:'#116329', yellow:'#953800', blue:'#0969da', magenta:'#8250df', cyan:'#1b7c83', white:'#6e7781',"
+  , "    brightBlack:'#57606a', brightRed:'#a40e26', brightGreen:'#1a7f37', brightYellow:'#633c01', brightBlue:'#218bff', brightMagenta:'#a475f9', brightCyan:'#3192aa', brightWhite:'#8c959f' };"
+  , "  var SOL_DARK = {"
+  , "    foreground:'#839496', background:'#002b36', cursor:'#93a1a1', cursorAccent:'#002b36',"
+  , "    selectionBackground:'rgba(88,110,117,0.40)',"
+  , "    black:'#073642', red:'#dc322f', green:'#859900', yellow:'#b58900', blue:'#268bd2', magenta:'#d33682', cyan:'#2aa198', white:'#eee8d5',"
+  , "    brightBlack:'#586e75', brightRed:'#cb4b16', brightGreen:'#586e75', brightYellow:'#657b83', brightBlue:'#839496', brightMagenta:'#6c71c4', brightCyan:'#93a1a1', brightWhite:'#fdf6e3' };"
+  , "  var SOL_LIGHT = {"
+  , "    foreground:'#657b83', background:'#fdf6e3', cursor:'#586e75', cursorAccent:'#fdf6e3',"
+  , "    selectionBackground:'rgba(147,161,161,0.40)',"
+  , "    black:'#073642', red:'#dc322f', green:'#859900', yellow:'#b58900', blue:'#268bd2', magenta:'#d33682', cyan:'#2aa198', white:'#eee8d5',"
+  , "    brightBlack:'#586e75', brightRed:'#cb4b16', brightGreen:'#586e75', brightYellow:'#657b83', brightBlue:'#839496', brightMagenta:'#6c71c4', brightCyan:'#93a1a1', brightWhite:'#fdf6e3' };"
+  , "  window.leksahXtermThemes = { 'leksah-dark':DARK, 'leksah-light':LIGHT, 'solarized-dark':SOL_DARK, 'solarized-light':SOL_LIGHT };"
+  , "  function osDark(){ try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch(e){ return true; } }"
+  , "  window.leksahRetheme = function(){"
+  , "    var dark = osDark();"
+  , "    var mo = dark ? window.__leksahMonacoDark : window.__leksahMonacoLight;"
+  , "    var cm = dark ? window.__leksahCmDark     : window.__leksahCmLight;"
+  , "    var xn = dark ? window.__leksahXtermDark  : window.__leksahXtermLight;"
+  , "    try { if (mo && window.LeksahMonaco) window.LeksahMonaco.monaco.editor.setTheme(mo); } catch(e){}"
+  , "    try { if (cm && window.LeksahCM && window.LeksahCM.setTheme) window.LeksahCM.setTheme(cm); } catch(e){}"
+  , "    try {"
+  , "      var th = (window.leksahXtermThemes||{})[xn] || DARK;"
+  , "      window.__leksahXtermActive = th;"
+  , "      var byId = (window.LeksahTerm && window.LeksahTerm.byId) || {};"
+  , "      Object.keys(byId).forEach(function(k){ try { byId[k].options.theme = th; } catch(e){} });"
+  , "      document.documentElement.style.setProperty('--leksah-terminal-bg', th.background || '');"
+  , "    } catch(e){}"
+  , "  };"
+  , "  try {"
+  , "    var mq = window.matchMedia('(prefers-color-scheme: dark)');"
+  , "    var h = function(){ window.leksahRetheme(); };"
+  , "    if (mq.addEventListener) mq.addEventListener('change', h); else if (mq.addListener) mq.addListener(h);"
+  , "  } catch(e){}"
+  , "})();"
+  ]
+
+-- | Keep context menus on-screen.  The menu is positioned at the raw click
+-- coordinates (see 'IDE.Web.Widget.ContextMenu'), so one opened near the bottom
+-- or right edge overflows the window.  A MutationObserver spots each
+-- @.context-menu@ as it is inserted and, after layout (rAF, so its items are
+-- measured), nudges it back inside the viewport — shifting it up/left by its
+-- overflow rather than letting it spill off.
+contextMenuClampJs :: Text
+contextMenuClampJs = T.unlines
+  [ "(function(){"
+  , "  'use strict';"
+  , "  var M = 4;"  -- viewport margin
+  , "  function clamp(el){"
+  , "    try {"
+  , "      var r = el.getBoundingClientRect();"
+  , "      var vw = window.innerWidth, vh = window.innerHeight;"
+  , "      var top = parseFloat(el.style.top); if (isNaN(top)) top = r.top;"
+  , "      var left = parseFloat(el.style.left); if (isNaN(left)) left = r.left;"
+  , "      if (top + r.height > vh - M) top = vh - M - r.height;"
+  , "      if (left + r.width > vw - M) left = vw - M - r.width;"
+  , "      if (top < M) top = M;"
+  , "      if (left < M) left = M;"
+  , "      el.style.top = top + 'px';"
+  , "      el.style.left = left + 'px';"
+  , "    } catch (e) {}"
+  , "  }"
+  , "  function check(n){"
+  , "    if (!n || n.nodeType !== 1) return;"
+  , "    var el = (n.classList && n.classList.contains('context-menu')) ? n"
+  , "           : (n.querySelector && n.querySelector('.context-menu'));"
+  , "    if (el) requestAnimationFrame(function(){ clamp(el); });"
+  , "  }"
+  , "  new MutationObserver(function(muts){"
+  , "    for (var i=0;i<muts.length;i++)"
+  , "      for (var j=0;j<muts[i].addedNodes.length;j++) check(muts[i].addedNodes[j]);"
+  , "  }).observe(document.body, { childList: true, subtree: true });"
+  , "})();"
+  ]
+
 colorIconsJs :: Text
 colorIconsJs = T.unlines
   [ "window.__leksahColorIcons = false;"
@@ -3103,7 +3304,7 @@ regionSelectJs = T.unlines
   [ "window.leksahSelectRegion = function(){"
   , "  if (window.__leksahRegionActive) return; window.__leksahRegionActive = true;"
   , "  var ov = document.createElement('div');"
-  , "  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;cursor:crosshair;background:rgba(0,0,0,0.04)';"
+  , "  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;cursor:crosshair;background:var(--leksah-scrim-faint)';"
   , "  var box = document.createElement('div');"
   , "  box.style.cssText = 'position:fixed;border:1px solid #4a90d9;background:rgba(74,144,217,0.15);pointer-events:none;display:none';"
   , "  document.body.appendChild(ov); document.body.appendChild(box);"
@@ -3149,6 +3350,12 @@ main
   -> m (Event t IDEAction)
 main showMenubar macTitlebar wid ide = mdo
   let widN = case wid of WindowId n -> n   -- this window's id as an Int (for JS)
+  -- Handoff readiness: when this process is the successor, touch the ready file
+  -- once window 0's DOM has built, so the supervisor loop knows it may retire
+  -- the predecessor (see IDE.Web.Handoff).  Harmless / no-op otherwise.
+  when (isHandoffSuccessor && widN == 0) $ do
+    handoffPb <- getPostBuild
+    performEvent_ (liftIO signalHandoffReady <$ handoffPb)
   -- This OS window's slice of the shared per-window state (used here for the root
   -- CSS classes and the toolbar's visibility indicators, and inside the inner
   -- widget for wide0 ownership).  Defined in main's outer scope so rootAttrD —
@@ -3200,11 +3407,21 @@ main showMenubar macTitlebar wid ide = mdo
     -- The web toolbar/menubar's Preferences command, ⌘, (keymap), or the native
     -- macOS app-menu "Settings…" item (via the bridge) opens the Preferences pane.
     (prefsBridgeE, firePrefsReq) <- newTriggerEvent
+    -- The native menu's "Keyboard Shortcuts…" item (Mac/Win32/Gtk) can't touch
+    -- reflex state, so it drops a token drained here (mirrors prefsBridgeE).
+    (shortcutsBridgeE, fireShortcutsReq) <- newTriggerEvent
     let showPrefsE = leftmost
           [ fmapMaybe (\case CommandShowPreferences -> Just (); _ -> Nothing) panelCmdE
           , fmapMaybe (\e -> case e ^? _KeymapCommand of
                                Just CommandShowPreferences -> Just (); _ -> Nothing) keymapE
           , prefsBridgeE ]
+        -- The Edit ▸ Keyboard Shortcuts command, ⌘/ (keymap), or the native menu
+        -- item (via the bridge) opens the read-only cheat-sheet pane, like Preferences.
+        showShortcutsE = leftmost
+          [ fmapMaybe (\case CommandShowShortcuts -> Just (); _ -> Nothing) panelCmdE
+          , fmapMaybe (\e -> case e ^? _KeymapCommand of
+                               Just CommandShowShortcuts -> Just (); _ -> Nothing) keymapE
+          , shortcutsBridgeE ]
 
     -- AI ▸ Grab Region / `leksah-cmd grab-region`.  Choose the capture path by
     -- whether Screen Recording permission is granted (probed off-thread):
@@ -3350,10 +3567,33 @@ main showMenubar macTitlebar wid ide = mdo
           -- window tab is ordered independently (see buttonOrderOf).  No close ×:
           -- there's no non-destructive per-window close, so detach the whole
           -- session via File ▸ Close / the Terminals tree instead.
-          let winsD   = maybe [] snd . M.lookup s <$> allTreeD
-              winMapD = ffor winsD $ \ws ->
-                          if null ws then M.singleton (-1) Nothing
-                          else M.fromList [ (twIndex w, Just w) | w <- ws ]
+          let -- Drop windows made up ENTIRELY of hidden backing twins (a pre-warmed
+              -- editor / git-log pane not currently ⌘D-adopted) so they get no wide0
+              -- tab button — else an un-converted editor's twin shows beside its own
+              -- editor tab (the same filter the flipper and CC terminal apply).  A
+              -- window with any non-twin (user) pane is kept, labelled by the window.
+              -- Derive the overlay set from 'ide' (an always-available argument),
+              -- NOT the 'overlaysD' bind defined later in this mdo: this feeds a
+              -- listViewWithKey KEY SET, which forces its inputs at build time, and
+              -- forcing a not-yet-run mdo bind blackholes the whole widget build.
+              winsD   = (\tree i -> let ov = i ^. paneOverlays
+                                        hidden = i ^. hiddenWindows in filter
+                            (\w -> not ((s, twIndex w) `S.member` hidden)
+                                   && any (\p -> not (isBackingRunKey (tpRunKey p)
+                                             && not (tpId p `M.member` ov))) (twPanes w))
+                            (maybe [] snd (M.lookup s tree)))
+                        <$> allTreeD <*> ide
+              -- The lone fallback session button (keyed -1) is only for BEFORE the
+              -- first pane-tree poll (no windows known yet).  Once the session has
+              -- windows in the tree but they're all filtered out (hidden / backing
+              -- twins), show NO button — so "Hide Window" on a session's last window
+              -- removes its tab entirely, not a stray fallback.
+              rawWinsD = (\tree -> maybe [] snd (M.lookup s tree)) <$> allTreeD
+              winMapD = (\ws raw ->
+                          if null ws
+                          then (if null raw then M.singleton (-1) Nothing else M.empty)
+                          else M.fromList [ (twIndex w, Just w) | w <- ws ])
+                        <$> winsD <*> rawWinsD
           winButtonsE <- listViewWithKey winMapD $ \widx mwD -> do
             let curD      = maybe True twActive <$> mwD          -- fallback: current
                 selectedD = (&&) <$> isVisibleD <*> curD          -- visible session + current window
@@ -3367,15 +3607,27 @@ main showMenubar macTitlebar wid ide = mdo
                 -- The leading state icon carries the notification (bell / activity
                 -- / silence) instead of a trailing 🔔/●/○; a leksah-tracked bell
                 -- (viewed-window bell tmux's hook skips) forces the bell icon too.
-                iconSrcD  = (\mw att -> case mw of
-                              Nothing | s `S.member` att -> "/pics/tree-window-bell.svg"
-                                      | otherwise        -> "/pics/tree-window-idle.svg"
-                              Just w  | s `S.member` att && twActive w -> "/pics/tree-window-bell.svg"
-                                      | otherwise                      -> windowIconSrc w)
-                            <$> mwD <*> attentionD
+                -- A single-pane window whose pane is a converted overlay: that
+                -- view's type icon (else Nothing → keep the tmux window icon).
+                singlePaneOverlaySrc ov w = case twPanes w of
+                              [p] -> M.lookup (tpId p) ov >>= tabIconSrc
+                              _   -> Nothing
+                -- The window's icon: a single-pane window that is a CONVERTED
+                -- overlay (⌘D) shows that view's own type icon (class "tab-icon",
+                -- so it swaps mono/colour like a file icon); otherwise the tmux
+                -- window icon (bell/activity/…, class "tab-icon term-alert-icon").
+                iconD  = (\ov mw att -> case mw of
+                              Nothing | s `S.member` att -> ("tab-icon term-alert-icon", "/pics/tree-window-bell.svg")
+                                      | otherwise        -> ("tab-icon term-alert-icon", "/pics/tree-window-idle.svg")
+                              Just w  -> case singlePaneOverlaySrc ov w of
+                                  Just src -> ("tab-icon", src)
+                                  Nothing
+                                    | s `S.member` att && twActive w -> ("tab-icon term-alert-icon", "/pics/tree-window-bell.svg")
+                                    | otherwise                      -> ("tab-icon term-alert-icon", windowIconSrc w))
+                            <$> overlaysD <*> mwD <*> attentionD
                 labelW = do
                     void $ elDynAttr' "img"
-                        ((\src -> "class" =: "tab-icon term-alert-icon" <> "src" =: src) <$> iconSrcD)
+                        ((\(cls, src) -> "class" =: cls <> "src" =: src) <$> iconD)
                         (pure ())
                     dynText labelTextD
                 orderStyleD = buttonOrderStyleD (Left (s, widx)) baseOrderD
@@ -3461,6 +3713,7 @@ main showMenubar macTitlebar wid ide = mdo
           GitLogKey d b -> do
             mon <- monacoEditor . view prefs <$> sample (current ide)
             void $ gitLogWidget mon d b
+          ShortcutsKey -> void $ shortcutsWidget ide
           _ -> return ()
         -- Mark UNCONVERTED convertible tab bodies (editor / git-log) so the
         -- ⌘-held navigation hints (hintsJs) can drop their yellow ⌘D / ⌘⇧D
@@ -3498,7 +3751,7 @@ main showMenubar macTitlebar wid ide = mdo
           [ T.takeWhile (/= '#') rest
           | (_, TerminalKey n) <- rt, Just rest <- [T.stripPrefix "ssh://" n] ])
         <$> prefsD <*> recentTabs
-    -- Native File▸Open / `leksah-cmd cm open` honour the external-editor pref too:
+    -- Native File▸Open / `leksah-cmd editor open` honour the external-editor pref too:
     -- when set, they open in the external editor (line 1) rather than CodeMirror.
     let extActiveMainB = current ((not . T.null . externalEditor) <$> prefsD)
         -- fileLineE is UNGATED (every open, with its line); external-editor
@@ -3582,6 +3835,12 @@ main showMenubar macTitlebar wid ide = mdo
     (newTermPolledE, fireNewTermPolled) <- newTriggerEvent
     paneTreeD <- holdUniqDyn =<< holdDyn mempty
       (leftmost [ otherPollE, snd <$> openPollE, fst <$> newTermPolledE ])
+    -- pane id (@%N@) -> its own @\@leksah_run@ tag, for the CC widget's
+    -- backing-twin filter (hide an un-adopted editor/git-log twin so it doesn't
+    -- surface as a bare shell pane beside its own open editor).
+    paneRunKeysD <- holdUniqDyn $ (\tree -> M.fromList
+        [ (tpId p, tpRunKey p)
+        | (_, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w ]) <$> paneTreeD
     -- ONE ssh poll per remote host (10s, off the reflex thread, plus pokes),
     -- feeding BOTH remote surfaces: the Terminals tree's host nodes (all
     -- sessions of each host, with reachability) and the flipper/tab row's
@@ -3686,6 +3945,8 @@ main showMenubar macTitlebar wid ide = mdo
         openEditorFlipE = fmapMaybe (fmap FlipTab . listToMaybe . M.keys) openFileE'
         -- Opening Preferences (⌘, / menu) needs an explicit bump (it takes no focus).
         openPrefsFlipE = FlipTab PreferencesKey <$ showPrefsE
+        -- The Shortcuts pane (⌘/ / menu) likewise takes no focus — bump it too.
+        openShortcutsFlipE = FlipTab ShortcutsKey <$ showShortcutsE
         -- Every leksah-originated promotion from THIS window (all but the
         -- OS-window-became-key bump, which reads the log held below).
         localFlipBumpE = leftmost [ snd <$> flipSelE
@@ -3697,7 +3958,8 @@ main showMenubar macTitlebar wid ide = mdo
                                   , tabFlipE
                                   , focusFlipE
                                   , openEditorFlipE
-                                  , openPrefsFlipE ]
+                                  , openPrefsFlipE
+                                  , openShortcutsFlipE ]
     -- The MRU: THE shared flip order — one '_flipMru' list in the IDE record used
     -- by every OS window (single source of truth, no per-window copies).  This
     -- window WRITES its promotions via modifyIDE_ (flipBumpE, in the ideAction
@@ -3790,7 +4052,11 @@ main showMenubar macTitlebar wid ide = mdo
     -- below), rather than stealing it into this window.
     otherTabsD <- holdUniqDyn
       ((\wins -> [ k | (w, ww) <- M.toList wins, w /= wid, k <- _wwWide0 ww ]) <$> webWindowsD)
-    flipLiveD <- holdUniqDyn (buildFlipItems <$> flipMruD <*> recentTabs <*> otherTabsD <*> allTreeD)
+    -- Pane ids currently adopted as overlays (⌘D-converted) — the exception to
+    -- the backing-twin filter in 'buildFlipItems'.
+    overlaidPidsD <- holdUniqDyn (S.fromList . M.keys . (^. paneOverlays) <$> ide)
+    hiddenWinsD   <- holdUniqDyn ((^. hiddenWindows) <$> ide)
+    flipLiveD <- holdUniqDyn (buildFlipItems <$> flipMruD <*> recentTabs <*> otherTabsD <*> allTreeD <*> overlaidPidsD <*> hiddenWinsD)
     -- The list the flipper shows.  It updates freely while hidden (labels, tabs),
     -- but the authoritative refresh is a *snapshot taken on open* (openListE),
     -- built from the current shared MRU and the freshly-read tree.  We trust our
@@ -3800,10 +4066,10 @@ main showMenubar macTitlebar wid ide = mdo
     -- front) re-bump, so the flipper reopened with the pre-flip order.  The
     -- snapshot fires one frame before the flipper actually opens.
     let openListE = attachWith
-          (\(mru, rt, rtree, other) (_, tree) ->
-             buildFlipItems mru rt other (M.union tree rtree))
-          ((,,,) <$> current flipMruD <*> current recentTabs <*> current remoteFlipD
-                 <*> current otherTabsD)
+          (\(mru, rt, rtree, other, overlaid, hidden) (_, tree) ->
+             buildFlipItems mru rt other (M.union tree rtree) overlaid hidden)
+          ((,,,,,) <$> current flipMruD <*> current recentTabs <*> current remoteFlipD
+                  <*> current otherTabsD <*> current overlaidPidsD <*> current hiddenWinsD)
           openPollE
     flipItemsD <- holdDyn [] (leftmost
           [ openListE
@@ -3827,20 +4093,30 @@ main showMenubar macTitlebar wid ide = mdo
         -- 'term-alert-icon' to stay exempt from the mono/colour icon swap; a file
         -- icon is a plain B&W glyph and swaps like the editor-tab icons.  Hidden
         -- when the entry has no icon.
-        flipTypeClass :: FlipItem -> Text
-        flipTypeClass fi = case fi of
-          FlipPane {}             -> "flip-type-icon term-alert-icon"
-          FlipTab (TerminalKey _) -> "flip-type-icon term-alert-icon"
-          _                       -> "flip-type-icon"
-        flipTypeIconAttr :: Map Text (Text, [TmuxWindow]) -> FlipItem -> Map Text Text
-        flipTypeIconAttr tree fi = case flipIconSrc tree fi of
-          Just src -> "class" =: flipTypeClass fi <> "src" =: src
+        -- A converted overlay pane shows its view's file/type icon (a plain B&W
+        -- glyph that swaps mono/colour like the editor-tab icons), so it must NOT
+        -- carry 'term-alert-icon' (which is only for the colour-meaningful tmux
+        -- window icons).
+        flipTypeClass :: Map Text TabKey -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Text
+        flipTypeClass overlays tree fi
+          | Just _ <- flipOverlayKey overlays tree fi = "flip-type-icon"
+          | otherwise = case fi of
+              FlipPane {}             -> "flip-type-icon term-alert-icon"
+              FlipTab (TerminalKey _) -> "flip-type-icon term-alert-icon"
+              _                       -> "flip-type-icon"
+        flipTypeIconAttr :: Map Text TabKey -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Map Text Text
+        flipTypeIconAttr overlays tree fi = case flipIconSrc overlays tree fi of
+          Just src -> "class" =: flipTypeClass overlays tree fi <> "src" =: src
           Nothing  -> "style" =: "display:none"
         flipLabel fiD = do
           elDynAttr "span" (flipIconAttr <$> winCountD <*> webWindowsD <*> fiD) (pure ())
-          elDynAttr "img" (flipTypeIconAttr <$> allTreeD <*> fiD) (pure ())
+          elDynAttr "img" (flipTypeIconAttr <$> overlaysD <*> allTreeD <*> fiD) (pure ())
           dynText $ flipItemLabel <$> terminalNamesD <*> allTreeD <*> fiD
     winCountD <- holdUniqDyn (M.size <$> webWindowsD)
+    -- The converted-pane overlays (pane id %N -> the leksah view drawn over it),
+    -- so the flipper and terminal tab buttons can show a converted pane's own
+    -- type icon instead of the tmux window/terminal icon.
+    overlaysD <- holdUniqDyn ((^. paneOverlays) <$> ide)
     (flipperVisibleD, flipperSelD, flipSelIndexD, flipRawE) <- flipperWidget flipItemsD flipStepE rawFlipDoneE selfSelectedD flipLabel
     -- Thicken THIS window's flipper border when the highlighted item lives here.
     selfSelectedD <- holdUniqDyn $
@@ -3859,12 +4135,12 @@ main showMenubar macTitlebar wid ide = mdo
     -- Each mirror entry carries its owner window id (-1 = shared) so the mirror
     -- can draw the owner-coloured icon and thicken the border on the owning window.
     flipMirrorItemsD <- holdUniqDyn $
-      (\items wins names tree ->
+      (\items wins names tree overlays ->
          [ ( flipItemLabel names tree fi
            , maybe (-1) (\(WindowId n) -> n) (flipOwnerWindow wins fi)
-           , fromMaybe "" (flipIconSrc tree fi) )
+           , fromMaybe "" (flipIconSrc overlays tree fi) )
          | (_, fi) <- items ])
-      <$> flipItemsD <*> webWindowsD <*> terminalNamesD <*> allTreeD
+      <$> flipItemsD <*> webWindowsD <*> terminalNamesD <*> allTreeD <*> overlaysD
     flipMirrorStateD <- holdUniqDyn $
       (,,) <$> flipperVisibleD <*> flipMirrorItemsD <*> flipSelIndexD
     let flipMirrorShowE = fmapMaybe (\(v, is, i) -> if v then Just (is, i) else Nothing)
@@ -3955,7 +4231,7 @@ main showMenubar macTitlebar wid ide = mdo
         -- wherever it lives now, and bring up the terminal tab of the session
         -- containing it.  Applied to the MERGED editor-open stream, so both
         -- in-page opens (tree/goto) and native ones (File ▸ Open,
-        -- `leksah-cmd cm open`) are intercepted.
+        -- `leksah-cmd editor open`) are intercepted.
         convertedPane i k = listToMaybe [ pid | (pid, k') <- M.toList (i ^. paneOverlays), k' == k ]
         openFileSplitE = attachWith
           (\i m -> ( [ pid | (k, _) <- M.toList m, Just pid <- [convertedPane i k] ]
@@ -4293,6 +4569,7 @@ main showMenubar macTitlebar wid ide = mdo
     activeConvD <- holdUniqDyn $ (\vis -> case M.lookup "wide0" vis of
                                             Just k@(EditorKey _) -> Just k
                                             Just k@GitLogKey{}   -> Just k
+                                            Just k@ShortcutsKey  -> Just k
                                             _                    -> Nothing) <$> visibleTabsD
     performEvent_ $ liftIO . setActiveConvertible <$> updated activeConvD
     -- The ⌘` flipper hint's target: the one-press destination is the second
@@ -4581,34 +4858,40 @@ main showMenubar macTitlebar wid ide = mdo
     -- File ▸ Close: a background thread turns close requests (from the menu
     -- command's IDEAction, via the close bridge) into a reflex event.
     (closeReqE, fireCloseReq) <- newTriggerEvent
-    -- Close via the menu (⌘W) acts on the active pane: editors, terminals, and
-    -- the transient center tabs (Preferences, a git log view) — tab buttons
-    -- carry no × so ⌘W is their only close.  ⌘W on a terminal DETACHES the
-    -- whole tab — the tmux session (and its splits) survive so it can be
-    -- reopened; it never kills a pane/split.  (The tree is still sampled so
-    -- the shape is available should the decision ever need it again.)
+    -- Close via the menu (⌘W) acts on the active pane.  Non-terminal targets
+    -- (editors, and the transient center tabs Preferences / git-log / Shortcuts
+    -- — none carry a × so ⌘W is their only close) decide-then-close: a dirty
+    -- editor prompts to save, everything else closes at once.  A TERMINAL
+    -- instead opens the pane close MENU (Kill Pane / Hide Window / Move Pane to
+    -- Hidden Window / Cancel) — see 'termMenuOpenE' / 'menuChoiceE' below.
     let closeTargetE = fmapMaybe id $ attachWith
           (\mk () -> case mk of
               Just k@(EditorKey _)   -> Just k
               Just k@(TerminalKey _) -> Just k
               Just k@GitLogKey{}     -> Just k
               Just k@PreferencesKey  -> Just k
+              Just k@ShortcutsKey    -> Just k
               _ -> Nothing)
           (current activePaneD) closeReqE
-        -- A dirty editor is held for a save prompt (below); clean editors and
-        -- terminals close straight away.  Closing a terminal detaches it: its
-        -- tmux session (and Terminals-list entry) survive, so it can be reopened
-        -- — unlike the Terminals pane's close, which kills it.
+        -- Terminals branch off to the close menu; everything else keeps the
+        -- decide-then-close path.
+        termCloseReqE = fmapMaybe (\case TerminalKey n -> Just n; _ -> Nothing) closeTargetE
+        nonTermCloseE = fmapMaybe (\case TerminalKey _ -> Nothing; k -> Just k) closeTargetE
+        -- A dirty editor is held for a save prompt (below); everything else
+        -- closes straight away.
         decidedCloseE = attachWith
           (\dirty k -> case k of
               EditorKey f | f `S.member` dirty -> Left k
               _                                -> Right k)
-          (current dirtyFilesD) closeTargetE
+          (current dirtyFilesD) nonTermCloseE
         promptCloseE = fmapMaybe (either Just (const Nothing)) decidedCloseE
         directCloseE = fmapMaybe (either (const Nothing) Just) decidedCloseE
         -- A tab × still closes immediately; so does ⌘W / File ▸ Close of a clean
-        -- tab or a terminal.
-        detachCloseE = leftmost [tabCloseBtnE, (:[]) <$> directCloseE]
+        -- non-terminal tab.  A terminal's no-tmux fallback also detaches the whole
+        -- session here.  ("Hide Window" does NOT detach — it hides the pane's tmux
+        -- window via 'hiddenWindows'; see the close-menu wiring below.)
+        detachCloseE = leftmost [ tabCloseBtnE, (:[]) <$> directCloseE
+                                , termFallbackDetachE ]
     -- Editors whose CodeMirror buffer differs from disk: a CM edit surfaces as an
     -- EditorTab event keyed by file; Save (saveFileE) and closing the tab
     -- (closeTabsE) clear the flag.
@@ -4656,6 +4939,14 @@ main showMenubar macTitlebar wid ide = mdo
               GitLogKey d b ->
                 ensureShellPane (T.pack d <> "#gitlog#" <> b) ("log:" <> T.unpack b) d
                     ("git log " <> shellQuoteArg b)
+              -- The Shortcuts pane's shell twin: dump the same cheat sheet to a
+              -- file and page it, so ⌘D converts the tab to a real pane.
+              ShortcutsKey -> do
+                tmp <- getTemporaryDirectory
+                let path = tmp </> "leksah-shortcuts.txt"
+                writeFile path (T.unpack shortcutsPlainText)
+                ensureShellPane "shortcuts#view" "Shortcuts" tmp
+                    ("less -R " <> shellQuoteArg (T.pack path))
               _ -> return Nothing
             mapM_ (registerBackingPane k) r
             return r
@@ -4752,30 +5043,166 @@ main showMenubar macTitlebar wid ide = mdo
     performEvent_ $ ffor overlayDeadE $ \dead -> liftIO $
         mapM_ (unregisterBackingPane . snd) dead
     let overlayDeadFilesE = (\dead -> [ f | (_, EditorKey f) <- dead ]) <$> overlayDeadE
-    -- Prompt to save a dirty editor before closing it (⌘W / File ▸ Close).  The
-    -- modal uses the dyn/switchHold pattern (cf. Editor.hs's gutter menu): Save
-    -- writes then closes one frame later, Don't Save closes, Cancel dismisses.
+    -- Prompt to save a dirty editor before closing it (⌘W / File ▸ Close).  Same
+    -- look and interaction as the terminal pane close menu (renderCloseMenu): a
+    -- centred keyboard-navigable menu.  Save (default) writes then closes one
+    -- frame later, Discard closes, Cancel dismisses; ↑/↓ move, Enter/Space commit,
+    -- Esc cancels.  Rendered in a fixed full-screen overlay (an editor tab is not
+    -- a tmux pane, so it can't nest inside one like the terminal menu does).
     promptTargetD <- holdDyn Nothing $ leftmost [ Just <$> promptCloseE, Nothing <$ promptDoneE ]
     promptDoneE <- switchHold never =<< dyn (ffor promptTargetD $ \case
         Nothing -> return never
-        Just k  ->
-          let lbl = case k of EditorKey f -> T.pack (takeFileName f); _ -> ""
-          in elAttr "div" ("class" =: "save-close-overlay"
-                  <> "style" =: "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35)") $
-             elAttr "div" ("class" =: "save-close-dialog"
-                  <> "style" =: "min-width:300px;padding:16px 20px;border-radius:8px;background:#fafafa;color:#222;box-shadow:0 6px 30px rgba(0,0,0,0.5)") $ do
-               el "p" $ text ("Save changes to " <> lbl <> " before closing?")
-               (saveEl, _)    <- elAttr' "button" ("style" =: "margin:12px 6px 0 0;padding:4px 12px;font-weight:bold") $ text "Save"
-               (discardEl, _) <- elAttr' "button" ("style" =: "margin:12px 6px 0 0;padding:4px 12px") $ text "Don't Save"
-               (cancelEl, _)  <- elAttr' "button" ("style" =: "margin:12px 6px 0 0;padding:4px 12px") $ text "Cancel"
-               return $ leftmost
-                 [ Just (k, True)  <$ domEvent Click saveEl
-                 , Just (k, False) <$ domEvent Click discardEl
-                 , Nothing         <$ domEvent Click cancelEl ])
+        Just k  -> do
+          let lbl  = case k of EditorKey f -> T.pack (takeFileName f); _ -> ""
+              opts = [ ("Save",    Just (k, True))
+                     , ("Discard", Just (k, False))
+                     , ("Cancel",  Nothing) ]
+              nOpt = length opts
+          pb <- getPostBuild
+          rec
+            let keyE   = domEvent Keydown menuEl
+                upE    = ffilter (`elem` [38, 37]) keyE
+                downE  = ffilter (`elem` [40, 39]) keyE
+                enterE = ffilter (`elem` [13, 32]) keyE
+                escE   = ffilter (== 27) keyE
+            selD <- foldDyn ($) 0 $ leftmost
+                      [ (\s -> (s - 1) `mod` nOpt) <$  upE
+                      , (\s -> (s + 1) `mod` nOpt) <$  downE
+                      , const                      <$> hoverE ]
+            (menuEl, (clickE, hoverE)) <-
+              elAttr "div" ("class" =: "save-close-overlay") $
+                elAttr' "div" ("class" =: "save-close-menu" <> "tabindex" =: "-1") $ do
+                  el "p" $ text ("Save changes to " <> lbl <> " before closing?")
+                  rows <- forM (zip [0 :: Int ..] opts) $ \(i, (lbl', res)) -> do
+                    let attrD = ffor selD $ \s ->
+                          "class" =: ("pane-close-opt" <> if s == i then " selected" else "")
+                    (b, _) <- elDynAttr' "button" attrD (text lbl')
+                    return (res <$ domEvent Click b, i <$ domEvent Mouseenter b)
+                  return (leftmost (map fst rows), leftmost (map snd rows))
+          focusE <- delay 0.03 pb
+          performEvent_ $ ffor focusE $ \_ -> liftJSM . void $
+              toJSVal (_element_raw menuEl) >>= \o -> o ^. js0 ("focus" :: Text)
+          let keyChoiceE = ffor (tag (current selD) enterE) $ \s -> snd (opts !! s)
+          return $ leftmost [ clickE, keyChoiceE, Nothing <$ escE ])
     let answeredE     = fmapMaybe id promptDoneE
         promptSaveE   = fmapMaybe (\(k, s) -> case k of EditorKey f | s -> Just f; _ -> Nothing) answeredE
         discardCloseE = fmapMaybe (\(k, s) -> if s then Nothing else Just [k]) answeredE
     savedCloseE <- delay 0 (fmapMaybe (\(k, s) -> if s then Just [k] else Nothing) answeredE)
+
+    -- ══ ⌘W on a terminal: the pane close menu ══════════════════════════════
+    -- Gather the focused tmux pane %id + the pane count of its current window
+    -- (to choose the 4-option vs 2-option form).  No tmux / no pane → fall back
+    -- to the old whole-terminal detach.
+    termGatheredE <- performEvent $ ffor termCloseReqE $ \sess -> liftIO $
+        (\mp c -> (sess, mp, c)) <$> activePaneId sess <*> paneCountOfSession sess
+    let termMenuOpenE       = fmapMaybe (\(s,mp,c) -> (\p -> (s,p,c)) <$> mp) termGatheredE
+        termFallbackDetachE = fmapMaybe (\(s,mp,_) -> if isNothing mp then Just [TerminalKey s] else Nothing) termGatheredE
+    -- The menu renders INSIDE its target pane (paneWidget's slot), so CSS centres
+    -- it — no JS geometry, no top-level modal.  'closeMenuD' tells every pane
+    -- whether it is the target (and multi-pane?); 'renderCloseMenu' is the reflex
+    -- menu, which reports its pick through 'fireCloseChoice'.  All interaction is
+    -- reflex: a Dynamic selection driven by ↑/↓ keydown + mouse hover, Enter/Space
+    -- commit, Esc / "Cancel Close" cancel.
+    (closeChoiceE, fireCloseChoice) <- newTriggerEvent
+    closeMenuTargetD <- holdDyn Nothing $ leftmost [ Just <$> termMenuOpenE, Nothing <$ closeChoiceE ]
+    let closeMenuD  = ffor closeMenuTargetD (fmap (\(_, p, c) -> (p, c > 1)))
+        menuChoiceE = attachWithMaybe (\mt ch -> (\(s, p, _) -> (ch, s, p)) <$> mt)
+                          (current closeMenuTargetD) closeChoiceE
+        renderCloseMenu paneId multi = do
+          let opts | multi     = [ (TCHide,   "Hide Window")
+                                 , (TCKill,   "Kill Pane")
+                                 , (TCMove,   "Move Pane to Hidden Window")
+                                 , (TCCancel, "Cancel Close") ]
+                   | otherwise = [ (TCHide, "Hide"), (TCKill, "Kill"), (TCCancel, "Cancel Close") ]
+              nOpt = length opts
+          pb <- getPostBuild
+          rec
+            -- ↑/↓ (37/38 & 39/40) move the selection; Enter/Space (13/32) commit
+            -- it; Esc (27) cancels.  Keydown fires on the menu div once focused.
+            let keyE   = domEvent Keydown menuEl
+                upE    = ffilter (`elem` [38, 37]) keyE
+                downE  = ffilter (`elem` [40, 39]) keyE
+                enterE = ffilter (`elem` [13, 32]) keyE
+                escE   = ffilter (== 27) keyE
+            selD <- foldDyn ($) 0 $ leftmost
+                      [ (\s -> (s - 1) `mod` nOpt) <$  upE
+                      , (\s -> (s + 1) `mod` nOpt) <$  downE
+                      , const                      <$> hoverE ]
+            -- The overlay covers the pane and CSS-centres the menu box (grid).
+            (menuEl, (clickE, hoverE)) <-
+              elAttr "div" ("class" =: "pane-close-overlay") $
+                elAttr' "div" ("class" =: "pane-close-menu" <> "tabindex" =: "-1") $ do
+                  rows <- forM (zip [0 :: Int ..] opts) $ \(i, (ch, lbl)) -> do
+                    let attrD = ffor selD $ \s ->
+                          "class" =: ("pane-close-opt" <> if s == i then " selected" else "")
+                    (b, _) <- elDynAttr' "button" attrD (text lbl)
+                    return (ch <$ domEvent Click b, i <$ domEvent Mouseenter b)
+                  return (leftmost (map fst rows), leftmost (map snd rows))
+          -- Focus the menu one tick after build (attached + laid out) so its
+          -- keydown reaches reflex — Haskell-side, via jsaddle, no JS helper.
+          focusE <- delay 0.03 pb
+          performEvent_ $ ffor focusE $ \_ -> liftJSM . void $
+              toJSVal (_element_raw menuEl) >>= \o -> o ^. js0 ("focus" :: Text)
+          -- Shadow: whole terminal while "Hide Window" is selected (multi), else
+          -- the focused pane — drives the existing shadow overlay (paneHlJs).
+          performEvent_ $ ffor (leftmost [tag (current selD) pb, updated selD]) $ \s ->
+              liftJSM . void $ jsg ("window" :: Text) ^. js2 ("leksahMenuShadow" :: Text)
+                  paneId (multi && fst (opts !! s) == TCHide)
+          let keyChoiceE = ffor (tag (current selD) enterE) $ \s -> fst (opts !! s)
+              chE = leftmost [ clickE, keyChoiceE, TCCancel <$ escE ]
+          performEvent_ $ ffor chE $ \ch -> do
+              liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahMenuShadowClear" :: Text)
+              liftIO (fireCloseChoice ch)
+    let termKillE = fmapMaybe (\(ch,_,p) -> if ch == TCKill then Just p       else Nothing) menuChoiceE
+        termHideE = fmapMaybe (\(ch,s,p) -> if ch == TCHide then Just (s, p)  else Nothing) menuChoiceE
+        termMoveE = fmapMaybe (\(ch,s,p) -> if ch == TCMove then Just (s, p)  else Nothing) menuChoiceE
+    -- Kill: just kill the pane (it vanishes from the live tree → flipper/tabs).
+    performEvent_ $ ffor termKillE $ liftIO . void . forkIO . killTmuxPaneId
+    -- Hide: hide the focused pane's window.  Move: break the pane into a new
+    -- window and hide THAT.  Both resolve to (session, windowIndex) → 'hiddenWindows'.
+    hideWinE <- performEvent $ ffor termHideE $ \(s, p) -> liftIO $ fmap (\w -> (s, w)) <$> windowIndexOfPane p
+    moveWinE <- performEvent $ ffor termMoveE $ \(s, p) -> liftIO $ fmap (\w -> (s, w)) <$> breakTmuxPaneId p
+    let hideOrMoveWinE = fmapMaybe id (leftmost [hideWinE, moveWinE])
+    -- Un-hide: whenever a pane is focused (Terminals tree select, a Claude session
+    -- reopened, an editor pane reopened — all focus the pane), drop its window from
+    -- 'hiddenWindows'.  Suppress the just-hidden window for ~1s so the focus that
+    -- settles right after "Hide" doesn't immediately un-hide it.
+    unsuppressE  <- delay 1.0 hideOrMoveWinE
+    suppressHideD <- foldDyn ($) S.empty $ leftmost
+                       [ S.insert <$> hideOrMoveWinE, S.delete <$> unsuppressE ]
+    -- Un-hide: a hidden window comes back the moment leksah shows it again — i.e.
+    -- it's the current tmux window (twActive) of the session that is the active
+    -- wide0 tab.  Every "show" path — Terminals-tree select, a Claude session
+    -- reopened, an editor pane reopened — select-window's to it, so this single
+    -- poll-driven rule covers them all (no per-path hooks, and no reliance on DOM
+    -- focus which a programmatic reopen doesn't fire).  The ~1s suppress stops the
+    -- window just hidden (still tmux-current for a beat) from instantly returning.
+    let unhideWinE = fmapMaybe id $ attachWith
+          (\(hidden, sup, mact) tree -> case mact of
+             Just (TerminalKey s) -> listToMaybe
+               [ sw | (s', (_, wins)) <- M.toList tree, s' == s
+                    , w <- wins, twActive w
+                    , let sw = (s, twIndex w)
+                    , sw `S.member` hidden, not (sw `S.member` sup) ]
+             _ -> Nothing)
+          ((,,) <$> current hiddenWinsD <*> current suppressHideD <*> current wide0ActiveD)
+          (updated allTreeD)
+    -- "Hide Window" hid the currently-shown window, so wide0 would keep rendering
+    -- it (the active tab still points there).  Activate the MRU-next flip item
+    -- (⌘`-style, via the same synthetic-flip path) so it's replaced — excluding
+    -- the just-hidden window; a no-op if the flipper is otherwise empty.  (Move is
+    -- multi-pane only, so its source window keeps its remaining panes — no flip.)
+    let hiddenNowE = fmapMaybe id hideWinE
+        -- Next WIDE0 item only (skip side/bottom panes like Workspace — that's why
+        -- this isn't plain ⌘`, which would include them), excluding the just-hidden
+        -- window.  A no-op if nothing else is in wide0.
+        nextFlipE  = attachWithMaybe
+          (\flips (s, w) -> listToMaybe
+              [ fi | (area, fi) <- flips, area == "wide0"
+                   , case fi of FlipPane s' w' _ -> not (s' == s && w' == w); _ -> True ])
+          (current flipLiveD) hiddenNowE
+    performEvent_ $ ffor nextFlipE $ liftIO . fireNumFlip
+
     -- USER-closed tabs (× button / ⌘W / the save prompt's Save & Don't Save)
     -- retire their backing shell pane — but only when it is idle (still at the
     -- login shell): an editor the attacher actually opened, or anything else
@@ -4802,6 +5229,18 @@ main showMenubar macTitlebar wid ide = mdo
     addRemoteCloseE <- switchHold never =<< dyn (ffor addRemoteOpenD $ \case
         False -> return never
         True  -> addRemoteDialog remoteHostsD)
+    -- File ▸ Add Server… / the Terminals-tree "Add Server…" row: same bridge
+    -- pattern as Add Remote Project above ('commandAddServer' drops a token on
+    -- the AddServerRequest bridge from any dispatch route).  The dialog owns
+    -- its validate+add (appends to the remoteHosts pref); the debounced prefs
+    -- writer below persists the change and remoteHostsD picks it up.
+    (addServerReqE, fireAddServerReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextAddServerRequest >>= fireAddServerReq
+    addServerOpenD <- holdDyn False $ leftmost
+        [ True <$ addServerReqE, False <$ addServerCloseE ]
+    addServerCloseE <- switchHold never =<< dyn (ffor addServerOpenD $ \case
+        False -> return never
+        True  -> addServerDialog)
     -- Project ▸ Remote Settings…: the context-menu item drops the project's
     -- 'ProjectKey' on the RemoteSettingsRequest bridge (drained here); a token
     -- opens the per-project prefix editor for that project, and the dialog
@@ -4823,7 +5262,8 @@ main showMenubar macTitlebar wid ide = mdo
           , (\(s, _, _) -> openInWide0 s) <$> flipPaneE
           , (\(s, _)    -> openInWide0 s) <$> alertTargetE
           , ((\(d, b) -> GitLogKey d b =: ("wide0", Just ())) <$> gitLogReqE)
-          , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE ]
+          , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE
+          , (ShortcutsKey =: ("wide0", Just ())) <$ showShortcutsE ]
         -- Killing a remote session server-side also drops its tab if open — under
         -- either identity it may be keyed by (its id, or its name from a
         -- cc-connect HOST#NAME tab); closeWide0 ignores whichever isn't present.
@@ -4855,6 +5295,7 @@ main showMenubar macTitlebar wid ide = mdo
                               , (\(s, _, _) -> "wide0" =: TerminalKey s) <$> flipPaneE
                               , (\(s, _)    -> "wide0" =: TerminalKey s) <$> alertTargetE
                               , ("wide0" =: PreferencesKey) <$ showPrefsE
+                              , ("wide0" =: ShortcutsKey) <$ showShortcutsE
                               , (\(d, b) -> "wide0" =: GitLogKey d b) <$> gitLogReqE
                               , numSelTabE
                               -- Keep the wide0 visible tab in sync with the shared
@@ -4925,11 +5366,12 @@ main showMenubar macTitlebar wid ide = mdo
               -- classic ConPTY-backed widget is the only option.
               let useCC = tmuxSupported && (cm || "ssh://" `T.isPrefixOf` n)
               if useCC
-                then terminalCCWidget ide n selectedE overlayW
+                then terminalCCWidget ide n selectedE overlayW paneRunKeysD closeMenuD renderCloseMenu
                 else terminalWidget ide n selectedE
           MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
+          ShortcutsKey   -> toDM ShortcutsTab <$> withConvertHint (shortcutsWidget ide)
           GitLogKey d b  -> toDM GitLogTab <$> do
               -- Same editor-backend pref as file tabs (decided at creation).
               mon <- monacoEditor . view prefs <$> sample (current ide)
@@ -4963,6 +5405,7 @@ main showMenubar macTitlebar wid ide = mdo
       , wbSave  = fireSaveReq ()
       , wbFind  = fireFindReq ()
       , wbPrefs = firePrefsReq ()
+      , wbShortcuts = fireShortcutsReq ()
       , wbOpenedFile = fireOpenedFile
       }
     -- Toolbar/menu Find toggles the bar; Cmd+F (keymap) always shows + focuses it.
@@ -5071,7 +5514,7 @@ main showMenubar macTitlebar wid ide = mdo
               [ "window.__leksahBridgeToast = function(msg){"
               , "  var d = document.createElement('div');"
               , "  d.className = 'leksah-bridge-toast'; d.textContent = msg;"
-              , "  d.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#333;color:#fff;padding:10px 16px;border-radius:6px;z-index:99999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4)';"
+              , "  d.style.cssText = 'position:fixed;bottom:20px;right:20px;background:var(--leksah-surface);color:var(--leksah-fg);padding:10px 16px;border-radius:6px;z-index:99999;font-family:sans-serif;box-shadow:0 2px 8px var(--leksah-shadow-drop)';"
               , "  document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 4000);"
               , "};"
               , "window.__lbtPend = {}; window.__lbtNext = 1; window.leksahBridgeLast = null;"
@@ -5183,22 +5626,38 @@ main showMenubar macTitlebar wid ide = mdo
     -- + visibility all come from the shared '_webWindows', so any single window
     -- writes the full multi-window layout.  Gating to one avoids N racing writers.
     isActiveD   <- holdUniqDyn ((== Just wid) . _activeWindow <$> ide)
-    -- The Preferences pane is transient — never save/restore it as an open tab.
-    let notPrefs = (/= PreferencesKey)
+    -- The Preferences and Shortcuts panes are transient — never save/restore
+    -- them as open tabs.
+    let notPrefs k = k /= PreferencesKey && k /= ShortcutsKey
     paneOverlaysMainD <- holdUniqDyn ((^. paneOverlays) <$> ide)
     sessionD <- holdUniqDyn $
-      (\wins vis recF ovs ->
+      (\wins vis recF ovs mru ->
           WebSession 4
             [ WebWindowSession (filter notPrefs (_wwWide0 ww)) (_wwActive ww)
                                (_wwTall ww) (_wwWide1 ww)
             | (_, ww) <- M.toList wins ]
             (M.toList (M.filterWithKey (\a k -> a /= "wide0" && notPrefs k) vis))
             (Just recF)
-            (Just (M.toList ovs)))
-        <$> webWindowsD <*> visibleTabsD <*> recentFilesD <*> paneOverlaysMainD
+            (Just (M.toList ovs))
+            (Just mru))
+        <$> webWindowsD <*> visibleTabsD <*> recentFilesD <*> paneOverlaysMainD <*> flipMruD
     let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
     saveSessE <- debounce (1 :: NominalDiffTime) (gate (current writeGateD) (updated sessionD))
-    performEvent_ $ ffor saveSessE $ liftIO . writeWebSession
+    -- Once this instance has initiated a handoff, stop writing the session — the
+    -- successor has restored it and is now the authoritative writer (otherwise
+    -- the retiring old instance races the successor on the same file).
+    performEvent_ $ ffor saveSessE $ \s -> liftIO $
+        handingOff >>= \ho -> when (not ho) (writeWebSession s)
+    -- Handoff flush: 'requestHandoff' fires these (via registerSessionFlush) to
+    -- force the CURRENT session to disk before the successor launches, so it
+    -- restores the up-to-date flipper/tab/layout state.  Only the active window
+    -- actually writes (the same single-writer rule as the debounced saver) and
+    -- signals completion back to the waiting 'flushSessionAndWait'.
+    (flushE, fireFlush) <- newTriggerEvent
+    liftIO $ registerSessionFlush (fireFlush ())
+    performEvent_ $ ffor (gate (current isActiveD) flushE) $ \_ -> do
+        s <- sample (current sessionD)
+        liftIO (writeWebSession s >> signalSessionFlushDone)
 
     -- Persist preference toggles (toolbar buttons: show hidden/ignored files,
     -- build flags, ...) so they survive a restart.  They already load at startup
@@ -5243,6 +5702,23 @@ main showMenubar macTitlebar wid ide = mdo
     performEvent_ $ ffor (leftmost [updated colorPrefD, tag (current colorPrefD) colorPb]) $ \v ->
         liftJSM . void $ jsg ("window" :: Text)
             ^. js1 ("leksahSetColorIcons" :: Text) v
+    -- The six editor/terminal theme names → window globals the re-theme engine
+    -- (themeSwitchJs) reads, then re-theme now.  Fires on any theme-pref change
+    -- and once at post-build; the matchMedia listener covers OS appearance flips.
+    themePrefD <- holdUniqDyn ((\p -> ( monacoThemeDark p, monacoThemeLight p
+                                      , codeMirrorThemeDark p, codeMirrorThemeLight p
+                                      , xtermThemeDark p, xtermThemeLight p )) <$> prefsD)
+    themePb <- getPostBuild
+    performEvent_ $ ffor (leftmost [updated themePrefD, tag (current themePrefD) themePb]) $
+        \(md, ml, cd, cl, xd, xl) -> liftJSM $ do
+            w <- jsg ("window" :: Text)
+            _ <- w ^. jss ("__leksahMonacoDark"  :: Text) md
+            _ <- w ^. jss ("__leksahMonacoLight" :: Text) ml
+            _ <- w ^. jss ("__leksahCmDark"      :: Text) cd
+            _ <- w ^. jss ("__leksahCmLight"     :: Text) cl
+            _ <- w ^. jss ("__leksahXtermDark"   :: Text) xd
+            _ <- w ^. jss ("__leksahXtermLight"  :: Text) xl
+            void $ w ^. js0 ("leksahRetheme" :: Text)
 
     let allE = merge (DM.fromList
             [ MenubarWidget   :=> menubarE
@@ -5271,6 +5747,11 @@ main showMenubar macTitlebar wid ide = mdo
       <> ((^.. (to $ \_ -> do
         tb <- readIDE triggerBuild
         void . liftIO $ tryPutMVar tb ())) <$> overlayChangedE)
+      -- ⌘W close menu: "Hide Window"/"Move Pane to Hidden Window" add a tmux
+      -- window to 'hiddenWindows' (dropped from tab rows + flipper, kept alive);
+      -- focusing a pane in a hidden window (tree/claude/editor reopen) un-hides it.
+      <> ((\sw -> [modifyIDE_ (hiddenWindows %~ S.insert sw)]) <$> hideOrMoveWinE)
+      <> ((\sw -> [modifyIDE_ (hiddenWindows %~ S.delete sw)]) <$> unhideWinE)
       -- ⌘D conversion: record the pane→view overlay in the shared state (the
       -- CC widgets render it; every OS window sees it via the resync poll).
       <> ((\(k, pid) -> [modifyIDE_ (paneOverlays %~ M.insert pid k)]) <$> convertDoneE)

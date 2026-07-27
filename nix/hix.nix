@@ -46,6 +46,16 @@ let
   hsloggerNoNetworkJs = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isGhcjs ''
     packages: ${patchedHackage "hslogger" "1.3.2.0" ./patches/hslogger-no-network-js.patch}
   '';
+  # reflex-dom-core hard-selects its jsffi-flavored `src-ghcjs` module on
+  # arch(javascript), which only typechecks against ghcjs-dom's jsffi
+  # flavor.  Leksah's web UI is written against the JSADDLE flavor
+  # (cabal.project pins `ghcjs-dom -jsffi` for the JS build), so patch the
+  # conditional to keep `src-ghcjs` for legacy GHCJS only and use the
+  # jsaddle-flavored `src-ghc` module on the GHC JS backend (it is pure
+  # jsaddle and compiles there; JSM = IO).  The JS-arch deps are kept.
+  reflexDomCoreJsaddleJs = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isGhcjs ''
+    packages: ${patchedHackage "reflex-dom-core" "0.8.1.4" ./patches/reflex-dom-core-js-jsaddle.patch}
+  '';
   # cabal-add (hls-cabal-plugin dep): the fork's Cabal-syntax 3.17
   # runParseResult yields PErrorWithSource, not PError.
   # ghc-exactprint 1.14 targets mainline ghc-9.14's AST; the fork moved
@@ -82,7 +92,8 @@ let
 in
 rec {
     projectFileName = "cabal.project";
-    cabalProjectLocal = clibNoRts + cabalDoctestPatched + hsloggerNoNetworkJs;
+    cabalProjectLocal = clibNoRts + cabalDoctestPatched + hsloggerNoNetworkJs
+      + reflexDomCoreJsaddleJs;
     # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix hkm/stable-haskell
     # branch) that can cross-compile from darwin to Linux (musl) via hyper-linux.
     compiler-nix-name = "ghc914-sh";
@@ -263,7 +274,16 @@ rec {
         vcswrapper
       ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin gi-gtkosxapplication;
       tools = {
-        cabal = "latest";
+        # The stable-haskell cabal FORK (Cabal 3.17, distStoreDirLayout →
+        # ~/.cabal/store/host/<platform>/package.conf.d) — the SAME cabal the
+        # v2 slice builder runs.  Mainline cabal ("latest") reads the old
+        # ghc-<ver>/package.db layout, so it can't see the v2 composed store
+        # and `cabal build --dry-run` re-plans/rebuilds everything.  Passed as
+        # a prebuilt derivation: shell-for-v2.nix puts it straight on PATH
+        # (it can't be rebuilt via haskell-nix.tool under ghc914-sh, which has
+        # no nixpkgs-prebuilt GHC — v2-cabal-install builds itself with a
+        # nixpkgs ghc9141).
+        cabal = pkgs.pkgsBuildBuild.haskell-nix.v2-cabal-install;
         # Build HLS from its master branch rather than hackage: released HLS
         # can't solve for GHC 9.14 (hie-compat caps base < 4.22), but master's
         # cabal.project uses allow-newer to support it.  Passing `src` overrides

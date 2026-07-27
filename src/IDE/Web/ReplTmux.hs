@@ -18,6 +18,7 @@ module IDE.Web.ReplTmux
   , findRunPane
   , liveRunKeys
   , liveRunPanes
+  , isBackingRunKey
   , selectTmuxWindowById
   , ensureCommandWindow
   , ensureRemoteWindow
@@ -71,6 +72,19 @@ import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
 -- @LEKSAH_PORT@, so a second instance's terminals get a wholly separate server.
 tmuxSocket :: String
 tmuxSocket = tmuxServerSocket
+
+-- | True when a pane's @\@leksah_run@ tag marks it a hidden backing twin for a
+-- leksah view — an editor (@\<file\>#edit@), a git log (@\<dir\>#gitlog#\<branch\>@)
+-- or the shortcuts pager (@shortcuts#view@).  These panes live in the shared
+-- @leksah-editor@ session so ⌘D conversion is instant and an external attacher
+-- can open the same file; they must stay invisible (in a control-mode terminal,
+-- the flipper, the Terminals tree) UNLESS currently adopted as an overlay
+-- (⌘D-converted).  A user's own pane (a split of a twin's window, an external
+-- attach) carries no such tag, so it is never suppressed.  @\#claude@
+-- deliberately does NOT match — Claude windows are real terminals.
+isBackingRunKey :: Text -> Bool
+isBackingRunKey k =
+    "#edit" `T.isSuffixOf` k || "#gitlog#" `T.isInfixOf` k || k == "shortcuts#view"
 
 -- | Run a tmux command on leksah's private socket, ignoring failures.
 tmuxCmd :: [String] -> IO ()

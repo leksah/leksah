@@ -162,6 +162,8 @@ makePrisms ''PreferencesEvents
 
 -- | The git log viewer's diff is shown in-pane, so it reports nothing outward.
 type GitLogEvents = ()
+-- | The Shortcuts cheat-sheet pane is read-only, so it reports nothing outward.
+type ShortcutsEvents = ()
 type StatusbarEvents = ()
 newtype MenubarEvents =
   MenubarCommand Command
@@ -186,6 +188,7 @@ data TabEvents e where
   MetadataTab  :: TabEvents MetadataEvents
   ChangesTab   :: TabEvents ChangesEvents
   PreferencesTab :: TabEvents PreferencesEvents
+  ShortcutsTab :: TabEvents ShortcutsEvents
   WorkspaceTab :: TabEvents ProjectEvents
   GitLogTab    :: TabEvents GitLogEvents
 

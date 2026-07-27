@@ -12,7 +12,7 @@ import Control.Lens (view)
 import qualified Data.Map as M (lookup, size, fromList, toList)
 
 import Clay
-       (lightblue, grey, green, red, color, (-:), overflowX,
+       (lightblue, green, red, color, (-:), overflowX,
         px, width, cursorDefault, whiteSpace, pct, vGradient,
         backgroundImage, height, (?), Css, Cursor(..), Auto(..))
 import Clay.Text (pre)
@@ -26,7 +26,7 @@ import Reflex.Dom.Core
         dynText, MonadWidget, (=:), Event,
         _element_raw)
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme (selectionColor, dimColor)
 import IDE.Core.State
        (IDE, logLineMap)
 import IDE.Web.Events (LogEvents, FindbarEvents)
@@ -56,7 +56,7 @@ logCss = do
     ".log .InputTag" ? do
         color lightblue
     ".log .InfoTag" ? do
-        color grey
+        color dimColor
 
 logWidget
   :: forall t m . MonadWidget t m

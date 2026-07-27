@@ -14,6 +14,7 @@ import Data.Text (Text)
 
 import IDE.Web.AIContextRequest
        (AIAction(..), requestAIAction)
+import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.NewWindowRequest (requestNewWindow)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
@@ -53,6 +54,7 @@ data Command =
   | CommandFileSave
   | CommandFind
   | CommandShowPreferences
+  | CommandShowShortcuts
   | CommandNextError
   | CommandPreviousError
   | CommandFlipDown
@@ -92,6 +94,7 @@ commandImageAndTip CommandFileSave = ("/pics/file-save.svg", __ "Saves the curre
 commandImageAndTip CommandFind = ("/pics/find.svg", __ "Show or hide the find bar")
 commandImageAndTip CommandNextError = ("/pics/error-next.svg", __ "Go to the next error")
 commandImageAndTip CommandPreviousError = ("/pics/error-prev.svg", __ "Go to the previous error")
+commandImageAndTip CommandShowShortcuts = ("/pics/shortcuts.svg", __ "Show the keyboard shortcut cheat sheet")
 commandImageAndTip _ = ("", "")
 
 commandGetToggleState :: Command -> Maybe (IDE -> Bool)
@@ -257,6 +260,17 @@ commandNewWindow = CommandIDEAction
   ""
   (__ "Open a new window")
   (liftIO requestNewWindow)
+
+-- | File ▸ Add Server… (and the Terminals-tree row): register an ssh host in
+-- the 'remoteHosts' preference.  A plain 'CommandIDEAction', so both the web
+-- menubar and the native menus dispatch it generically; the action drops a
+-- token on the "IDE.Web.AddServerRequest" bridge and the reflex modal in
+-- 'IDE.Web.Main' does the actual work.
+commandAddServer :: Command
+commandAddServer = CommandIDEAction
+  ""
+  (__ "Add an ssh server to the Terminals tree")
+  (liftIO requestAddServer)
 
 -- | AI ▸ Grab Region: select a screen rectangle and drop its PNG path into the
 -- terminal named by the 'regionCaptureTarget' preference.  The orchestration

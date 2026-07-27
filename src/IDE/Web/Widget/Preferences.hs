@@ -44,7 +44,8 @@ import Reflex.Dom.Core
         _textAreaElement_value, textAreaElementConfig_initialValue,
         textAreaElementConfig_elementConfig, dropdown, _dropdown_value)
 
-import IDE.Core.State (IDE, Prefs(..), prefs, TallVisibility(..))
+import IDE.Core.State
+       (IDE, Prefs(..), prefs, TallVisibility(..), EditorChoice(..))
 import IDE.Core.CTypes (RetrieveStrategy(..))
 import IDE.Web.ColorPick (hasColorPickImpl, requestColorPick)
 import IDE.Web.Events (PreferencesEvents(..))
@@ -70,15 +71,27 @@ preferencesWidget ide = do
         , b "Use standard line ends even on Windows" forceLineEnds (\v p -> p { forceLineEnds = v })
         , b "Remove trailing blanks when saving" removeTBlanks (\v p -> p { removeTBlanks = v })
         , b "Automatically load files modified outside Leksah" autoLoad (\v p -> p { autoLoad = v })
-        , txt "External editor command (blank = built-in editor)" externalEditor (\v p -> p { externalEditor = v })
-        , b "Use Monaco (VS Code) editor instead of CodeMirror (new editors)"
-            monacoEditor (\v p -> p { monacoEditor = v })
+        , enumField p0 "Editor" editorOptions editorChoice (\v p -> p { editorChoice = v })
         ]
     , section "Fonts"
         [ txt "Monospace font family (editor, terminals, log)"
             monospaceFont (\v p -> p { monospaceFont = v })
         , i "Monospace font size (px)"
             monospaceFontSize (\v p -> p { monospaceFontSize = v })
+        ]
+    , section "Themes (auto-switch with the OS light/dark setting)"
+        [ enumField p0 "Monaco editor theme — dark" monacoThemeOpts
+            monacoThemeDark (\v p -> p { monacoThemeDark = v })
+        , enumField p0 "Monaco editor theme — light" monacoThemeOpts
+            monacoThemeLight (\v p -> p { monacoThemeLight = v })
+        , enumField p0 "CodeMirror editor theme — dark" cmThemeOpts
+            codeMirrorThemeDark (\v p -> p { codeMirrorThemeDark = v })
+        , enumField p0 "CodeMirror editor theme — light" cmThemeOpts
+            codeMirrorThemeLight (\v p -> p { codeMirrorThemeLight = v })
+        , enumField p0 "Terminal (xterm.js) theme — dark" xtermThemeOpts
+            xtermThemeDark (\v p -> p { xtermThemeDark = v })
+        , enumField p0 "Terminal (xterm.js) theme — light" xtermThemeOpts
+            xtermThemeLight (\v p -> p { xtermThemeLight = v })
         ]
     , section "Language Server (LSP)"
         [ b "Enable language server (diagnostics, hover, completion, F12 navigation)"
@@ -160,6 +173,33 @@ preferencesWidget ide = do
       elClass "div" "pref-section" $ sequence fields
 
     tallVisOptions = [ ("Show", TallShow), ("Auto-hide", TallAutoHide), ("Hide", TallHide) ]
+    -- Applies to tabs opened from now on (like the terminals' control-mode
+    -- pref); nano/vim/emacs open files in the file's backing tmux pane.
+    editorOptions =
+      [ ("Monaco (VS Code, default)", EditorMonaco)
+      , ("CodeMirror 6",              EditorCodeMirror)
+      , ("nano (in terminal pane)",   EditorNano)
+      , ("vim (in terminal pane)",    EditorVim)
+      , ("emacs (in terminal pane)",  EditorEmacs) ]
+    -- Theme options — the values are the ids the JS bundles / xterm palette
+    -- table understand (see IDE.Web.Main's themeSwitchJs).  Each dropdown offers
+    -- both light and dark themes; leksah picks the light or dark selection based
+    -- on the OS appearance.
+    monacoThemeOpts =
+      [ ("GitHub Dark",          "leksah-github-dark")
+      , ("GitHub Light",         "leksah-github-light")
+      , ("VS Dark",              "vs-dark")
+      , ("VS Light",             "vs")
+      , ("High Contrast Dark",   "hc-black")
+      , ("High Contrast Light",  "hc-light") ] :: [(Text, Text)]
+    cmThemeOpts =
+      [ ("GitHub Dark",  "github-dark")
+      , ("GitHub Light", "github-light") ] :: [(Text, Text)]
+    xtermThemeOpts =
+      [ ("Dark",            "leksah-dark")
+      , ("Light",           "leksah-light")
+      , ("Solarized Dark",  "solarized-dark")
+      , ("Solarized Light", "solarized-light") ] :: [(Text, Text)]
     retrieveOptions =
       [ ("Download then build", RetrieveThenBuild)
       , ("Build then download", BuildThenRetrieve)
@@ -194,8 +234,7 @@ wiredLabels =
   , "Stop leksah-server when leksah disconnects"
   , "Packages excluded from the modules pane (one per line, e.g. base or base >=4)"
   , "Clickable file paths and identifiers in terminal output"
-  , "External editor command (blank = built-in editor)"
-  , "Use Monaco (VS Code) editor instead of CodeMirror (new editors)"
+  , "Editor"
   , "Monospace font family (editor, terminals, log)"
   , "Monospace font size (px)"
   , "Use tmux control mode (-CC): native pane splits (new terminals)"
@@ -205,6 +244,10 @@ wiredLabels =
   , "Show navigation shortcut badges while Cmd is held"
   , "Enable language server (diagnostics, hover, completion, F12 navigation)"
   , "Server command (blank = haskell-language-server --lsp)"
+  , "Monaco editor theme — dark", "Monaco editor theme — light"
+  , "CodeMirror editor theme — dark", "CodeMirror editor theme — light"
+  , "Terminal (xterm.js) theme — dark", "Terminal (xterm.js) theme — light"
+  , "Colourful icons"
   ]
 
 -- | A checkbox driven by the live prefs (stays in sync with toolbar toggles).
@@ -341,8 +384,8 @@ preferencesCss = do
     "box-sizing" -: "border-box"   -- include padding, so the last rows aren't clipped
     "overflow" -: "auto"
     "padding" -: "10px 18px 24px 18px"
-    "color" -: "#dcdcdc"
-    "background" -: "rgb(24,24,24)"
+    "color" -: "var(--leksah-fg-muted)"
+    "background" -: "var(--leksah-bg-sunken)"
     "font-size" -: "13px"
   -- Lay the sections out in as many ~480px columns as the pane is wide enough for
   -- (so a wide window gets two columns), scrolling vertically in .preferences.
@@ -358,9 +401,9 @@ preferencesCss = do
   ".preferences .pref-section-title" ? do
     "font-size" -: "15px"
     "font-weight" -: "bold"
-    "color" -: "#fff"
+    "color" -: "var(--leksah-fg)"
     "margin" -: "18px 0 6px 0"
-    "border-bottom" -: "1px solid rgb(60,60,60)"
+    "border-bottom" -: "1px solid var(--leksah-border-control)"
     "padding-bottom" -: "3px"
   ".preferences .pref-row" ? do
     "display" -: "flex"
@@ -372,7 +415,7 @@ preferencesCss = do
     "min-width" -: "120px"
     "padding-top" -: "2px"
   ".preferences .pref-todo" ? do
-    "color" -: "#888"
+    "color" -: "var(--leksah-fg-dim)"
   ".preferences .pref-control" ? do
     "flex" -: "1 1 200px"
     "min-width" -: "0"
@@ -382,9 +425,9 @@ preferencesCss = do
     "display" -: "inline-block"
     "width" -: "14px"
     "height" -: "14px"
-    "border" -: "1px solid rgb(90,90,90)"
+    "border" -: "1px solid var(--leksah-border-control)"
     "border-radius" -: "3px"
-    "background" -: "rgb(40,40,40)"
+    "background" -: "var(--leksah-surface)"
     "cursor" -: "pointer"
   ".preferences .pref-check.on" ? do
     "background" -: "var(--leksah-selection)"
@@ -395,14 +438,14 @@ preferencesCss = do
     "display" -: "inline-block"
     "width" -: "44px"
     "height" -: "18px"
-    "border" -: "1px solid rgb(90,90,90)"
+    "border" -: "1px solid var(--leksah-border-control)"
     "border-radius" -: "3px"
     "padding" -: "0"
     "cursor" -: "pointer"
   ".preferences .pref-input" ? do
-    "background" -: "rgb(40,40,40)"
-    "color" -: "#eee"
-    "border" -: "1px solid rgb(70,70,70)"
+    "background" -: "var(--leksah-surface)"
+    "color" -: "var(--leksah-fg-muted)"
+    "border" -: "1px solid var(--leksah-border-control)"
     "border-radius" -: "3px"
     "padding" -: "2px 6px"
     "box-sizing" -: "border-box"
@@ -410,9 +453,9 @@ preferencesCss = do
     "width" -: "100%"
     "max-width" -: "260px"
   ".preferences .pref-textarea" ? do
-    "background" -: "rgb(40,40,40)"
-    "color" -: "#eee"
-    "border" -: "1px solid rgb(70,70,70)"
+    "background" -: "var(--leksah-surface)"
+    "color" -: "var(--leksah-fg-muted)"
+    "border" -: "1px solid var(--leksah-border-control)"
     "border-radius" -: "3px"
     "padding" -: "4px 6px"
     "box-sizing" -: "border-box"
@@ -421,8 +464,8 @@ preferencesCss = do
     "height" -: "80px"
     "font-family" -: "Hasklig, Menlo, monospace"
   ".preferences select" ? do
-    "background" -: "rgb(40,40,40)"
-    "color" -: "#eee"
-    "border" -: "1px solid rgb(70,70,70)"
+    "background" -: "var(--leksah-surface)"
+    "color" -: "var(--leksah-fg-muted)"
+    "border" -: "1px solid var(--leksah-border-control)"
     "border-radius" -: "3px"
     "padding" -: "2px 6px"

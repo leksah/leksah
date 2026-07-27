@@ -128,7 +128,7 @@
     `--no-restart` the app stays up (build lands on disk), else it restarts on
     success. Preferred way to build while an instance is running; see above.
   - `leksah-cmd restart` — blunt relaunch (exits 2 immediately; see above).
-  - `leksah-cmd cm open FILE…` — open files in the editor (CodeMirror).
+  - `leksah-cmd editor open FILE…` — open files in the editor (alias: `cm`).
   - `leksah-cmd project open FILE…` — add project files to the workspace.
   - `leksah-cmd js eval 'CODE'` — **evaluate JS in the running leksah and print
     the result.** Very useful for inspecting/poking the live page from a shell

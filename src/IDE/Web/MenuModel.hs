@@ -21,7 +21,7 @@ import IDE.Web.Command
         commandToggleRunBenchmarks, commandToggleMakeDependents,
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
         commandDebugStepModule, commandDebugContinue, commandFileClose,
-        commandNewWindow, commandToggleTmuxIntercept, tmuxKey,
+        commandNewWindow, commandAddServer, commandToggleTmuxIntercept, tmuxKey,
         paneCmd, splitCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
         commandSendSelection, commandSendFileRef, commandSendError,
         commandFocusAITerminal, commandClaudeNew, commandClaudeContinue)
@@ -86,23 +86,29 @@ prettyKeySpec spec =
 
 menus :: [(Text, [MenuItem])]
 menus =
-  [ ("File",
+  -- "Workspace" is the app's File menu (first after the app menu): the
+  -- file/project items plus what used to be a separate Workspace menu.
+  -- NB the native front ends hang OS furniture off this menu BY TITLE
+  -- (Open Recent in leksah-mac-menu.m leksah_ensure_recent_menu, Open
+  -- Recent + Quit in GtkMenu.hs addTop) — keep the title in sync there.
+  [ ("Workspace",
       [ MenuGlobalKey "New Window" "cmd+n" commandNewWindow
       , MenuSep
-      , item "Open…"         CommandFileOpen
+      , item "Open File…"    CommandFileOpen
       , item "Open Project…" CommandProjectOpen
       , item "Open Folder…"  CommandProjectOpenFolder
       , item "Add Remote Project…" CommandProjectAddRemote
-      , item "Save"          CommandFileSave
-      , MenuGlobalKey "Close" "cmd+w" commandFileClose
+      , item "Add Server…"   commandAddServer
+      , item "Save File"     CommandFileSave
+      , MenuGlobalKey "Close File" "cmd+w" commandFileClose
+      , MenuSep
+      , item "Refresh Nix Environment" commandRefreshNix
+      , item "Update Workspace Info"   commandUpdateWorkspaceInfo
       ])
   , ("Edit",
       [ item "Find" CommandFind
+      , item "Keyboard Shortcuts…" CommandShowShortcuts
       , item "Preferences…" CommandShowPreferences
-      ])
-  , ("Workspace",
-      [ item "Refresh Nix Environment" commandRefreshNix
-      , item "Update Workspace Info"   commandUpdateWorkspaceInfo
       ])
   , ("Package",
       [ item "Add Module"     commandAddModule

@@ -28,7 +28,7 @@ import IDE.Utils.RemoteExec (runSsh, shellQuote)
 import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 
 import Clay
-       (overflow, auto, height, pct, whiteSpace, nowrap, grey, color, bold,
+       (overflow, auto, height, pct, whiteSpace, nowrap, color, bold,
         fontWeight, paddingRight, cursorDefault,
         background, padding, px, (?), Css, Cursor(..), cursor)
 
@@ -38,7 +38,7 @@ import Reflex.Dom.Core
        (MonadWidget, divClass, elClass, elDynAttr', simpleList, dynText,
         domEvent, EventName(..), (=:))
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme (selectionColor, dimColor)
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Web.Events (GrepEvents(..), FindbarEvents)
 import IDE.Web.Widget.Findbar (findSelection)
@@ -63,11 +63,11 @@ grepCss = do
     ".grep .grep-item.selected" ?
         background selectionColor
     ".grep .grep-loc" ? do
-        color grey
+        color dimColor
         fontWeight bold
         paddingRight (px 8)
     ".grep .grep-empty" ? do
-        color grey
+        color dimColor
         padding (px 8) (px 8) (px 8) (px 8)
 
 grepWidget

@@ -502,7 +502,7 @@ gitLogCss = do
         "font-weight" -: "bold"
         "white-space" -: "pre-wrap"
     ".gitlog-detail-meta" ? do
-        "color"       -: "grey"
+        "color"       -: "var(--leksah-fg-dim)"
         "font-size"   -: "90%"
         "padding"     -: "2px 0"
     ".gitlog-detail-body" ? do
@@ -532,7 +532,7 @@ gitLogCss = do
         "flex"         -: "0 0 auto"
         "margin-right" -: "4px"
     ".gitlog-hash" ? do
-        "color"        -: "grey"
+        "color"        -: "var(--leksah-fg-dim)"
         "font-family"  -: "var(--leksah-mono, monospace)"
         "margin-right" -: "6px"
     ".gitlog-subject" ? do
@@ -545,11 +545,11 @@ gitLogCss = do
         "text-align"    -: "right"
         "overflow"      -: "hidden"
         "text-overflow" -: "ellipsis"
-        "color"         -: "grey"
+        "color"         -: "var(--leksah-fg-dim)"
         "font-size"     -: "90%"
         "margin-left"   -: "8px"
     ".gitlog-date" ? do
-        "color"                 -: "grey"
+        "color"                 -: "var(--leksah-fg-dim)"
         "font-size"             -: "90%"
         "margin-left"           -: "8px"
         -- Fixed-width digits so the dates line up as a column.
@@ -565,5 +565,5 @@ gitLogCss = do
     ".gitlog-added"   ? ("color" -: "#73c991")
     ".gitlog-deleted" ? ("color" -: "#c74e39")
     ".gitlog-hint" ? do
-        "color"   -: "grey"
+        "color"   -: "var(--leksah-fg-dim)"
         "padding" -: "8px"

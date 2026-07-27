@@ -12,7 +12,7 @@ import Data.Text (Text)
 
 import Clay
        (transitionDuration, sec, transitionDelay,
-        opacity, (|+), visibility, absolute, position, inlineBlock,
+        opacity, (|+), (|>), visibility, absolute, position, inlineBlock,
         display, nowrap, whiteSpace,
         borderRadius, padding, hover, (#), background, margin, px, width,
         height, (?), Css, hidden, visible, zIndex, Color(..))
@@ -22,7 +22,7 @@ import Reflex.Dom.Core
        (elDynAttr', text, dynText, MonadWidget, (=:), elAttr, divClass,
         Event, domEvent, EventName(..))
 
-import IDE.Web.Theme (selectionColor, selectionColorFaint, dimOpacity)
+import IDE.Web.Theme (selectionColor, selectionColorFaint, dimOpacity, surfaceHiColor, accentHoverColor)
 import IDE.Core.State (IDE, prefs, tallVisibility, wide1Visibility, TallVisibility(..))
 import IDE.Web.Events (ToolbarEvents(..))
 import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
@@ -41,8 +41,14 @@ toolbarCss :: Css
 toolbarCss = do
     ".toolbar" ? do
         whiteSpace nowrap
-    ".toolbar-item" ?
+    ".toolbar-item" ? do
         display inlineBlock
+        -- The hover / toggled / pane-state background lives HERE on the wrapper,
+        -- not on the <img> below: in light mode the icon <img> is colour-inverted
+        -- (filter: invert) to render black, and a filter on the <img> inverts its
+        -- background too — which would turn the pale-blue hover into a dark
+        -- colour.  The wrapper is not filtered, so its background keeps its hue.
+        borderRadius (px 3) (px 3) (px 3) (px 3)
     ".tooltip" ? do
         position absolute
         -- Above the tab bar below it: the tooltip drops into the tab row, which
@@ -50,7 +56,7 @@ toolbarCss = do
         zIndex 50
         padding (px 3) (px 3) (px 3) (px 3)
         borderRadius (px 3) (px 3) (px 3) (px 3)
-        background (Rgba 64 64 64 1.0)
+        background surfaceHiColor
         visibility hidden
         opacity 0
         transitionDelay (sec 0)
@@ -66,33 +72,28 @@ toolbarCss = do
         -- command is toggled / a pane state is active (the background rules
         -- further down each restore full brightness too).
         opacity dimOpacity
-    ".toolbar-button" # hover ? do
-        background (Rgba 61 96 150 1.0)
-        opacity 1
-    ".toolbar-button" # hover |+ ".tooltip" ? do
+    ".toolbar-item" # hover ? background accentHoverColor
+    ".toolbar-item" # hover |> ".toolbar-button" ? opacity 1
+    ".toolbar-item" # hover |> ".tooltip" ? do
         visibility visible
         opacity 1
         transitionDelay (sec 1)
         transitionDuration (sec 0.2)
-    ".toggled .toolbar-button" ? do
-        background selectionColor
-        opacity 1
-    ".toggled .toolbar-button" # hover ?
-        background (Rgba 61 96 150 1.0)
+    ".toolbar-item.toggled" ? background selectionColor
+    ".toolbar-item.toggled" # hover ? background accentHoverColor
     -- The 3-state side-pane button: shown = solid, auto-hide = dim, hidden = none.
-    ".tall-state-show .toolbar-button" ? do
-        background selectionColor
-        opacity 1
-    ".tall-state-auto .toolbar-button" ? do
-        background selectionColorFaint
-        opacity 1
+    ".toolbar-item.tall-state-show" ? background selectionColor
+    ".toolbar-item.tall-state-auto" ? background selectionColorFaint
     -- The 3-state bottom-pane button: shown = solid, auto-hide = dim, hidden = none.
-    ".wide1-state-show .toolbar-button" ? do
-        background selectionColor
-        opacity 1
-    ".wide1-state-auto .toolbar-button" ? do
-        background selectionColorFaint
-        opacity 1
+    ".toolbar-item.wide1-state-show" ? background selectionColor
+    ".toolbar-item.wide1-state-auto" ? background selectionColorFaint
+    -- Toggled / active-state buttons keep their icon at full brightness (their
+    -- highlight background is on the wrapper above).
+    ".toolbar-item.toggled .toolbar-button" ? opacity 1
+    ".toolbar-item.tall-state-show .toolbar-button" ? opacity 1
+    ".toolbar-item.tall-state-auto .toolbar-button" ? opacity 1
+    ".toolbar-item.wide1-state-show .toolbar-button" ? opacity 1
+    ".toolbar-item.wide1-state-auto .toolbar-button" ? opacity 1
 
 toolbarButton
   :: MonadWidget t m

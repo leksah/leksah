@@ -105,10 +105,11 @@ addRemoteIO host path prefix fire =
 overlayStyle, dialogStyle, fieldStyle, btnStyle, primaryBtnStyle :: Text
 overlayStyle =
     "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;\
-    \justify-content:center;background:rgba(0,0,0,0.35)"
+    \justify-content:center;background:var(--leksah-scrim)"
 dialogStyle =
-    "min-width:360px;padding:16px 20px;border-radius:8px;background:#fafafa;\
-    \color:#222;box-shadow:0 6px 30px rgba(0,0,0,0.5)"
+    "min-width:360px;padding:16px 20px;border-radius:8px;background:var(--leksah-surface);\
+    \color:var(--leksah-fg-muted);border:1px solid var(--leksah-border-control);\
+    \box-shadow:0 0 64px var(--leksah-shadow-glow)"
 fieldStyle =
     "display:block;width:100%;box-sizing:border-box;margin:4px 0;padding:5px 8px"
 btnStyle        = "margin:12px 6px 0 0;padding:4px 12px"

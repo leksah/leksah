@@ -20,7 +20,7 @@
   const g = globalThis;
 
   // The browser "environment" (read by the RTS env functions after
-  // patch-rts.py rewrites them; see that file).  HOME in particular:
+  // patch-rts.hs rewrites them; see that file).  HOME in particular:
   // without it directory's getHomeDirectory falls back to the passwd
   // database, which doesn't exist here either.
   g.leksahDemoEnv = g.leksahDemoEnv || {
@@ -87,4 +87,28 @@
     // rts panics
     'h$stg_absentErrorzh', 'h$stg_paniczh',
   ].forEach((n) => { if (typeof g[n] === 'undefined') g[n] = notInBrowser(n); });
+})();
+
+// Open the keyboard-shortcuts cheat sheet (⌘/) once the UI is up, so the
+// demo greets visitors with the key bindings visible.  ShortcutsKey is
+// deliberately excluded from session save/restore ("transient, never
+// restore" — IDE.Web.Main), so a canned web-session.json can't do this;
+// instead synthesize the ⌘/ keydown the web keymap listens for
+// (document-level, reads .keyCode — a synthetic event passes, but keyCode
+// must be installed via getter because the KeyboardEvent constructor
+// discards it).  Retries until the pane's div.shortcuts exists: a dispatch
+// that lands before the keymap widget is wired is simply lost.
+(function () {
+  'use strict';
+  var t0 = Date.now();
+  var timer = setInterval(function () {
+    if (document.querySelector('.shortcuts') || Date.now() - t0 > 90000) {
+      clearInterval(timer);
+      return;
+    }
+    if (!document.querySelector('.workspace')) return; // UI not built yet
+    var e = new KeyboardEvent('keydown', { metaKey: true, bubbles: true });
+    Object.defineProperty(e, 'keyCode', { get: function () { return 191; } }); // '/'
+    document.dispatchEvent(e);
+  }, 500);
 })();

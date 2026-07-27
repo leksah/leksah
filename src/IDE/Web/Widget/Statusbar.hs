@@ -30,15 +30,16 @@ import IDE.Core.CTypes (packageIdentifierToString)
 import IDE.Core.State
        (IDE, IDEState(..), currentState, activePack, activeComponent,
         allLogRefs, logRefType, LogRefType(..), ipdPackageId)
+import IDE.Web.Theme (barTopColor, barBottomColor, fgMutedColor)
 import IDE.Web.Events (StatusbarEvents)
 
 statusbarCss :: Css
 statusbarCss = do
     ".statusbar" ? do
-        backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
+        backgroundImage (vGradient barTopColor barBottomColor)
         whiteSpace nowrap
         fontSize (px 12)
-        color (Rgba 200 200 200 1.0)
+        color fgMutedColor
         padding (px 2) (px 8) (px 2) (px 8)
     ".statusbar .sb-section" ? do
         Clay.display inlineBlock

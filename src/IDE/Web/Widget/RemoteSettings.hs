@@ -59,9 +59,9 @@ remoteSettingsDialog pk = do
       elAttr "div" ("class" =: "remote-settings-dialog" <> "style" =: dialogStyle) $ do
         elAttr "p" ("style" =: "font-weight:bold;margin:0 0 4px 0") $
             text "Project Settings"
-        elAttr "p" ("style" =: "margin:0 0 10px 0;font-size:12px;color:#555") $
+        elAttr "p" ("style" =: "margin:0 0 10px 0;font-size:12px;color:var(--leksah-fg-dim)") $
             text label
-        elAttr "label" ("style" =: "font-size:12px;color:#333") $
+        elAttr "label" ("style" =: "font-size:12px;color:var(--leksah-fg-muted)") $
             text "Command prefix (e.g. nix develop -c) — used to open terminals, and to run tools on remote projects:"
         prefTi <- textInput $ def
             & attributes .~ constDyn
@@ -98,10 +98,11 @@ savePrefix pk raw =
 overlayStyle, dialogStyle, fieldStyle, btnStyle, primaryBtnStyle :: Text
 overlayStyle =
     "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;\
-    \justify-content:center;background:rgba(0,0,0,0.35)"
+    \justify-content:center;background:var(--leksah-scrim)"
 dialogStyle =
-    "min-width:380px;padding:16px 20px;border-radius:8px;background:#fafafa;\
-    \color:#222;box-shadow:0 6px 30px rgba(0,0,0,0.5)"
+    "min-width:380px;padding:16px 20px;border-radius:8px;background:var(--leksah-surface);\
+    \color:var(--leksah-fg-muted);border:1px solid var(--leksah-border-control);\
+    \box-shadow:0 0 64px var(--leksah-shadow-glow)"
 fieldStyle =
     "display:block;width:100%;box-sizing:border-box;margin:4px 0 0 0;padding:5px 8px"
 btnStyle        = "margin:12px 6px 0 0;padding:4px 12px"

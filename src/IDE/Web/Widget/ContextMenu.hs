@@ -23,9 +23,11 @@ import qualified GHCJS.DOM.GlobalEventHandlers as DOM (contextMenu)
 import GHCJS.DOM.GlobalEventHandlers (touchStart, mouseDown)
 
 import Clay
-       (shadowWithSpread, black, bsColor, boxShadow,
-        absolute, padding, px, borderRadius, vGradient, backgroundImage,
+       (shadowWithSpread, bsColor, boxShadow,
+        absolute, padding, px, borderRadius, background,
         position, (?), Css, Color(..), nil, zIndex)
+
+import IDE.Web.Theme (menuTopColor, dropShadowColor)
 
 import Reflex
        (leftmost, ffor, Event, never, holdDyn, switchHold,
@@ -38,10 +40,13 @@ contextMenuCss :: Css
 contextMenuCss =
   ".context-menu" ? do
     position absolute
-    backgroundImage (vGradient (Rgba 64 64 64 0.9) (Rgba 32 32 32 0.9))
+    -- Solid opaque background: Clay's 'vGradient' emits the legacy unprefixed
+    -- @linear-gradient(top, …)@ syntax, which modern WebKit rejects (→ no
+    -- background → a see-through menu), so use a flat colour like the flipper.
+    background menuTopColor
     borderRadius (px 5) (px 5) (px 5) (px 5)
     padding nil nil nil nil
-    boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+    boxShadow (pure $ bsColor dropShadowColor $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
     zIndex 1000
 
 contextMenu

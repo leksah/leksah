@@ -21,8 +21,8 @@
 --     Long-running, which the one-shot streamed reply handles fine: the
 --     client half-closes after sending, then prints whatever the server streams
 --     until it closes.
---   * @cm open FILE…@ — open each file in the editor (CodeMirror) area, reusing
---     the same bridge the native "Open File" dialog feeds.
+--   * @editor open FILE…@ (alias @cm open@) — open each file in the editor
+--     area, reusing the same bridge the native "Open File" dialog feeds.
 --   * @project open FILE…@ — add each project file to the workspace, like the
 --     GTK @projectOpen@ / the native open-project dialog.
 --   * @js eval CODE@ — evaluate CODE in leksah's JS engine(s) and reply with the
@@ -113,6 +113,7 @@ import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.Instance (cmdSocketFileName)
+import IDE.Web.Handoff (handoffEnabled, requestHandoff)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
@@ -120,7 +121,7 @@ import IDE.Web.ScreenshotRequest (requestScreenshot)
 import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Workspaces
-       (projectOpenThis, dirProjectKey, setProjectSettings,
+       (projectOpenThis, projectOpenPath, dirProjectKey, setProjectSettings,
         workspaceActivatePackage, workspaceTryQuiet, makePackage')
 
 -- | The control socket both sides agree on: @~/.leksah/cmd.sock@ for the
@@ -143,19 +144,28 @@ startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> ret
     serve = do
       path <- cmdSocketPath
       createDirectoryIfMissing True =<< (</> ".leksah") <$> getHomeDirectory
+      acquire path (240 :: Int)
+
+    -- Acquire the control socket.  Only reclaim the file if nothing is listening
+    -- on it.  A live listener normally means another instance on this same
+    -- LEKSAH_PORT already owns it — don't steal it (that orphaned the older
+    -- instance's leksah-cmd); abort, leaving this instance without a control
+    -- socket.  A dead socket file (stale from a crash) has no listener, so we
+    -- remove and rebind.  Under the handoff (see IDE.Web.Handoff) the live owner
+    -- is our own predecessor, about to be retired — so retry instead of aborting
+    -- until it releases the socket (bounded, ~120s).
+    acquire path retriesLeft = do
       exists <- doesFileExist path
-      -- Only reclaim the socket file if nothing is listening on it.  A live
-      -- listener means another instance on this same LEKSAH_PORT already owns
-      -- it — don't steal it (that orphaned the older instance's leksah-cmd);
-      -- abort instead, leaving this instance without a control socket.  A
-      -- distinct-port instance uses a distinct filename (see 'cmdSocketFileName')
-      -- and never lands here.  A dead socket file (stale from a crash) has no
-      -- listener, so we remove and rebind as before.
-      when exists $ do
-        live <- socketInUse path
-        if live
-          then ioError (userError ("cmd socket in use: " <> path))
-          else removeFile path `catch` \(_ :: SomeException) -> return ()
+      live   <- if exists then socketInUse path else return False
+      if live
+        then if handoffEnabled && retriesLeft > 0
+               then threadDelay 500000 >> acquire path (retriesLeft - 1)
+               else ioError (userError ("cmd socket in use: " <> path))
+        else do
+          when exists $ removeFile path `catch` \(_ :: SomeException) -> return ()
+          bindAndServe path
+
+    bindAndServe path = do
       sock <- socket AF_UNIX Stream defaultProtocol
       -- Never let spawned children (leksah-server, tmux, git …) inherit the
       -- listener: an inheritor outliving this instance keeps the socket
@@ -223,15 +233,24 @@ handleConn ideR conn = do
             reply "Stopping leksah (ghci mode: back to the prompt for :reload / :main).\n"
             threadDelay 100000
             stopForGhci
-          else do
-            reply $ if noRebuild
-              then "Restarting leksah (exit 3 → leksah-nix.sh relaunches without rebuilding).\n"
-              else "Restarting leksah (exit 2 → leksah-nix.sh rebuilds and relaunches).\n"
-            -- Give the reply a moment to flush over the socket before we exit.
-            threadDelay 100000
-            exitImmediately (ExitFailure (if noRebuild then 3 else 2))
+          else if handoffEnabled
+            -- Zero-downtime handoff: stay up and let the supervisor loop start a
+            -- successor, retiring us only once it's ready (see IDE.Web.Handoff).
+            then do
+              reply "Handing off to a fresh leksah (staying up until it's ready)…\n"
+              requestHandoff noRebuild
+            else do
+              reply $ if noRebuild
+                then "Restarting leksah (exit 3 → leksah-nix.sh relaunches without rebuilding).\n"
+                else "Restarting leksah (exit 2 → leksah-nix.sh rebuilds and relaunches).\n"
+              -- Give the reply a moment to flush over the socket before we exit.
+              threadDelay 100000
+              exitImmediately (ExitFailure (if noRebuild then 3 else 2))
 
-      ("cm" : "open" : files) | not (null files) -> do
+      -- @editor open FILE…@ (was @cm open@, renamed once the editor stopped
+      -- being CodeMirror-only — Monaco/nano/vim/emacs too); @cm@ kept as a
+      -- silent back-compat alias.
+      (verb : "open" : files) | verb `elem` ["editor", "cm"], not (null files) -> do
         results <- mapM (resolveInput cwd) files
         mapM_ deliverOpenedFile [ fp | Right fp <- results ]
         reply $ case [ e | Left e <- results ] of
@@ -479,15 +498,12 @@ handleConn ideR conn = do
 
     -- A directory becomes a plain-directory project (no build file needed);
     -- otherwise the path is a project file (cabal.project / stack.yaml / …).
-    openProject fp = doesDirectoryExist fp >>= \case
-      True -> do
-        void $ reflectIDE (workspaceTryQuiet (projectOpenThis (dirProjectKey fp))) ideR
-        return $ "Added folder to workspace: " <> T.pack fp
-      False -> case filePathToProjectKey fp of
-        Nothing -> return $ "Not a project file or folder: " <> T.pack fp
-        Just pk -> do
-          void $ reflectIDE (workspaceTryQuiet (projectOpenThis pk)) ideR
-          return $ "Added project to workspace: " <> T.pack fp
+    -- Route through 'projectOpenPath' — the single recognition point shared with
+    -- the Open Project / Open Folder panels — so Cargo.toml / pyproject.toml /
+    -- setup.py (Rust/Python) are recognised here too.
+    openProject fp = do
+      void $ reflectIDE (workspaceTryQuiet (projectOpenPath fp)) ideR
+      return $ "Opened in workspace: " <> T.pack fp
 
     -- The user's CODE is evaluated inside a JS-side try/catch: a throwing
     -- expression must never raise into jsaddle itself.  An uncaught JS
@@ -547,12 +563,15 @@ handleConn ideR conn = do
                     reply ("\nBuild succeeded — app left running (--no-restart). "
                           <> "Run `leksah-cmd restart` to relaunch into it.\n")
                 | otherwise -> do
-                    reply "\nBuild succeeded — restarting into the new build.\n"
                     threadDelay 150000  -- let the reply flush before we exit
                     -- ghci mode: the client normally reloads via the prompt and
                     -- never gets here, but if it does, stop instead of exiting.
-                    if ghciMode then stopForGhci
-                                else exitImmediately (ExitFailure 2)
+                    if ghciMode then reply "\nBuild succeeded — restarting into the new build.\n" >> stopForGhci
+                    -- Handoff: the build already produced the binary, so ask the
+                    -- loop for a no-rebuild successor and stay up until it's ready.
+                    else if handoffEnabled
+                      then reply "\nBuild succeeded — handing off to the new build (staying up until it's ready)…\n" >> requestHandoff True
+                      else reply "\nBuild succeeded — restarting into the new build.\n" >> exitImmediately (ExitFailure 2)
               Right False -> do
                 putMVar buildLock ()
                 reply ("\nBuild FAILED — leksah left running. Fix the errors and "
@@ -569,7 +588,7 @@ usage = T.unlines
   , "                          rebuild leksah via the IDE build system (errors in the UI);"
   , "                          restart on success unless --no-restart; --use-cabal is the"
   , "                          failsafe: bypass the IDE build, run cabal directly (streamed)"
-  , "  cm open FILE...         open files in the editor"
+  , "  editor open FILE...     open files in the editor (alias: cm)"
   , "  project open FILE...    add project files to the workspace"
   , "  cc-connect HOST         terminal tab on HOST's tmux (ssh, control mode)"
   , "  open-browser URL        open the default browser snapped to this pane"

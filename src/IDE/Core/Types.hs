@@ -99,6 +99,11 @@ module IDE.Core.Types (
 ,   KeyString
 
 ,   Prefs(..)
+,   EditorChoice(..)
+,   editorChoiceToText
+,   editorChoiceFromText
+,   externalEditor
+,   monacoEditor
 ,   TallVisibility(..)
 ,   TabKey(..)
 ,   WindowId(..)
@@ -188,6 +193,7 @@ module IDE.Core.Types (
 ,   logLineMap
 ,   webWindows
 ,   paneOverlays
+,   hiddenWindows
 ,   activeWindow
 ,   nextWindowId
 ,   flipMirror
@@ -335,6 +341,11 @@ data IDE            =  IDE {
                                                     --   OVER that pane in the CC terminal widget (an
                                                     --   editor / git-log converted to a pane by ⌘D);
                                                     --   shared so every OS window renders the overlay
+,   _hiddenWindows       :: Set (Text, Int)        -- ^ (tmux session id, window index) hidden from the
+                                                    --   tab rows + flipper by the ⌘W menu's "Hide Window"
+                                                    --   / "Move Pane to Hidden Window" — still alive in
+                                                    --   tmux + shown in the Terminals tree; un-hidden when
+                                                    --   the pane is next focused (tree/claude/editor)
 ,   _activeWindow        :: Maybe WindowId         -- ^ the frontmost OS window (native becomeKey)
 ,   _nextWindowId        :: Int                    -- ^ monotonic 'WindowId' minter
 ,   _flipMirror          :: Maybe (Int, [(Text, Int, Text)], Int)
@@ -695,6 +706,34 @@ data Workspace = Workspace {
 data TallVisibility = TallShow | TallAutoHide | TallHide
     deriving (Eq, Show, Read, Enum, Bounded, Generic)
 
+-- | Which editor opens files: one of the two in-app controls (Monaco /
+-- CodeMirror 6), or a terminal editor (nano\/vim\/emacs) run in the file's
+-- backing tmux pane.  One selection replaces the old @externalEditor@ command
+-- + @monacoEditor@ boolean pair.
+data EditorChoice
+    = EditorMonaco      -- ^ the Monaco (VS Code) editor control (default)
+    | EditorCodeMirror  -- ^ the CodeMirror 6 editor control
+    | EditorNano
+    | EditorVim
+    | EditorEmacs
+    deriving (Eq, Show, Read, Enum, Bounded, Generic)
+
+-- | Stable names used in the prefs file (see 'PrefsFile').
+editorChoiceToText :: EditorChoice -> Text
+editorChoiceToText EditorMonaco     = "monaco"
+editorChoiceToText EditorCodeMirror = "codemirror"
+editorChoiceToText EditorNano       = "nano"
+editorChoiceToText EditorVim        = "vim"
+editorChoiceToText EditorEmacs      = "emacs"
+
+editorChoiceFromText :: Text -> Maybe EditorChoice
+editorChoiceFromText "monaco"     = Just EditorMonaco
+editorChoiceFromText "codemirror" = Just EditorCodeMirror
+editorChoiceFromText "nano"       = Just EditorNano
+editorChoiceFromText "vim"        = Just EditorVim
+editorChoiceFromText "emacs"      = Just EditorEmacs
+editorChoiceFromText _            = Nothing
+
 -- | Identifies one open tab/pane in the web UI.  Lives here (rather than in
 -- @IDE.Web.Events@, which re-exports it) because 'WebWindow' below references
 -- it and @IDE.Core@ must not depend on @IDE.Web@.
@@ -708,6 +747,8 @@ data TabKey
   | MetadataKey
   | ChangesKey
   | PreferencesKey
+  -- | The keyboard-shortcut cheat sheet (read-only, ⌘D-convertible).
+  | ShortcutsKey
   | EditorKey FilePath
   -- | A git log viewer for a branch: the repo dir and the branch/ref to log.
   | GitLogKey FilePath Text
@@ -738,7 +779,7 @@ data WebWindow = WebWindow
 -- flip MRU ('flipMru') references it and @IDE.Core@ must not depend on
 -- @IDE.Web@.
 data FlipItem = FlipTab TabKey | FlipPane Text Int Int
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 --
 -- | Preferences is a data structure to hold configuration data
@@ -813,12 +854,12 @@ data Prefs = Prefs {
                                       --   terminal output (the custom xterm link
                                       --   provider); off lets OSC 8 links through
                                       --   unobstructed
-    ,   externalEditor      ::   Text -- ^ command to open files with (e.g. @vim@);
-                                      --   blank = the built-in CodeMirror editor
-    ,   monacoEditor        ::   Bool -- ^ use the Monaco (VS Code) editor control
-                                      --   instead of CodeMirror 6 for file tabs
-                                      --   opened from now on (the in-browser demo
-                                      --   is always CodeMirror)
+    ,   editorChoice        ::   EditorChoice
+                                      -- ^ the editor files open in, applied to
+                                      --   tabs opened from now on: Monaco
+                                      --   (default) / CodeMirror in-app, or
+                                      --   nano\/vim\/emacs in the file's tmux
+                                      --   pane (see 'externalEditor')
     ,   terminalControlMode ::   Bool -- ^ render terminals via tmux control mode
                                       --   (-CC): one xterm per pane, native splits;
                                       --   off = classic whole-session PTY attach
@@ -833,6 +874,12 @@ data Prefs = Prefs {
                                       --   (#rrggbb; bound to --leksah-selection)
     ,   uiHoverColor        ::   Text -- ^ run-button hover row colour
                                       --   (#rrggbb; bound to --leksah-hover)
+    ,   monacoThemeDark     ::   Text -- ^ Monaco editor theme names, applied per
+    ,   monacoThemeLight    ::   Text --   OS appearance (dark vs light); values
+    ,   codeMirrorThemeDark ::   Text --   are the theme ids the bundles know
+    ,   codeMirrorThemeLight::   Text --   (Monaco: leksah-github-dark\/-light,
+    ,   xtermThemeDark      ::   Text --   vs\/vs-dark\/hc-*; CM: github-dark\/-light;
+    ,   xtermThemeLight     ::   Text --   xterm: leksah-dark\/-light, solarized-*)
     ,   showShortcutBadges  ::   Bool -- ^ holding Cmd overlays each pane's
                                       --   navigation shortcut as a badge
     ,   colorfulIcons       ::   Bool -- ^ use the coloured icon set (pics/color)
@@ -920,13 +967,22 @@ data PrefsFile = PrefsFile {
   , hlintOnSave_         :: Maybe Bool
   , collapseErrors_      :: Maybe Bool
   , terminalFileLinks_   :: Maybe Bool
-  , externalEditor_      :: Maybe Text
-  , monacoEditor_        :: Maybe Bool
+  , externalEditor_      :: Maybe Text -- ^ legacy (pre-13); also written as a
+                                       --   mirror of 'editorChoice' for older
+                                       --   leksahs reading a new prefs file
+  , monacoEditor_        :: Maybe Bool -- ^ legacy (pre-13); mirror, as above
+  , editorChoice_        :: Maybe Text
   , terminalControlMode_ :: Maybe Bool
   , tmuxInterceptPrefix_ :: Maybe Bool
   , remoteHosts_         :: Maybe [Text]
   , uiSelectionColor_    :: Maybe Text
   , uiHoverColor_        :: Maybe Text
+  , monacoThemeDark_     :: Maybe Text
+  , monacoThemeLight_    :: Maybe Text
+  , codeMirrorThemeDark_ :: Maybe Text
+  , codeMirrorThemeLight_:: Maybe Text
+  , xtermThemeDark_      :: Maybe Text
+  , xtermThemeLight_     :: Maybe Text
   , showShortcutBadges_  :: Maybe Bool
   , colorfulIcons_       :: Maybe Bool
   , regionCaptureTarget_ :: Maybe Text
@@ -953,6 +1009,21 @@ instance FromJSON PrefsFile where
 
 candyState :: Prefs -> Bool
 candyState = fst . sourceCandy
+
+-- | Legacy view of 'editorChoice': the external-editor command, blank when an
+-- in-app editor is selected.  Kept as a function with the old field's name and
+-- type so its call sites (backing-pane pre-typed commands, external opens)
+-- read the enum unchanged.
+externalEditor :: Prefs -> Text
+externalEditor p = case editorChoice p of
+    EditorNano  -> "nano"
+    EditorVim   -> "vim"
+    EditorEmacs -> "emacs"
+    _           -> ""
+
+-- | Legacy view of 'editorChoice': whether in-app editors use Monaco.
+monacoEditor :: Prefs -> Bool
+monacoEditor = (== EditorMonaco) . editorChoice
 
 data EditorStyle = EditorStyle { styleName    :: Maybe Text
                                , preferDark   :: Bool

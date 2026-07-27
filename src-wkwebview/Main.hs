@@ -6,7 +6,7 @@ import System.Environment (getArgs)
 
 import Language.Javascript.JSaddle.WKWebView as JSaddleWK (runHTMLWithBaseURL)
 
-import IDE.Web.Instance (leksahPort)
+import IDE.Web.Instance (assetPort)
 import IDE.Web.Main (newIDE, startJSaddle)
 import IDE.Web.MacMenu (installMacMenu, setupMacTitlebar)
 import IDE.Web.MacGlue (takeFirstLaunch, resumeApp)
@@ -38,7 +38,7 @@ main = do
   -- a new WKWebView, exactly like File ▸ New Window) and re-enter the run loop.
   -- newIDE already re-seeded WebWindow 0 (with the restored session tabs), so
   -- wid 0 is reused; the jsm argument is unused on that path.
-  newIDE False True dev $ startJSaddle leksahPort $ \html url jsm -> do
+  newIDE False True dev $ startJSaddle assetPort $ \html url jsm -> do
     first <- takeFirstLaunch
     if ghciMode && not first
       then requestOpenWindow 0 >> resumeApp

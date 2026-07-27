@@ -133,6 +133,34 @@ monaco.editor.defineTheme("leksah-github-dark", {
   },
 })
 
+// The GitHub-light counterpart (Primer light palette), matching the cm6 bundle.
+monaco.editor.defineTheme("leksah-github-light", {
+  base: "vs", inherit: true,
+  rules: [
+    { token: "comment",         foreground: "6e7781" },
+    { token: "keyword",         foreground: "cf222e" },
+    { token: "string",          foreground: "0a3069" },
+    { token: "string.escape",   foreground: "0a3069" },
+    { token: "number",          foreground: "0550ae" },
+    { token: "type.identifier", foreground: "8250df" },
+    { token: "type",            foreground: "8250df" },
+    { token: "meta",            foreground: "6e7781" },
+    { token: "operator",        foreground: "1f2328" },
+    { token: "identifier",      foreground: "1f2328" },
+  ],
+  colors: {
+    "editor.background": "#ffffff", "editor.foreground": "#1f2328",
+    "editorLineNumber.foreground": "#8c959f",
+    "editorLineNumber.activeForeground": "#1f2328",
+    "editor.lineHighlightBackground": "#eaeef280",
+    "editor.selectionBackground": "#54aeff59",
+    "editorBracketMatch.background": "#54aeff4d",
+    "editorWidget.background": "#ffffff", "editorWidget.border": "#d0d7de",
+    "editorSuggestWidget.background": "#ffffff",
+    "editorHoverWidget.background": "#ffffff", "editorHoverWidget.border": "#d0d7de",
+  },
+})
+
 // Same CSS vars the cm6 bundle reads (set from the Fonts preferences).
 function fontOptions() {
   const cs = getComputedStyle(document.documentElement)
@@ -315,6 +343,10 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
     "semanticHighlighting.enabled": false,
   })
   editor.__leksahMonaco = true         // marker for the cm6 bundle's dispatch
+  // Monaco's theme is global; a freshly-created editor would otherwise sit on
+  // whatever `theme:` above named.  Re-apply the OS-appropriate theme (no-op if
+  // leksahRetheme isn't wired yet — the startup call covers that case).
+  if (window.leksahRetheme) window.leksahRetheme()
   const st = { parent, edNode, editor, model, langId,
                original: null, diff: null,
                marks: editor.createDecorationsCollection(),

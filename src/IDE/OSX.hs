@@ -63,7 +63,7 @@ updateMenu app uiManager = do
             applicationSetMenuBar app menu
         Nothing   -> return ()
 
-    uIManagerGetWidget uiManager "/ui/menubar/_File/_Quit" >>= \case
+    uIManagerGetWidget uiManager "/ui/menubar/_Workspace/_Quit" >>= \case
         Just quit -> widgetHide quit
         Nothing   -> return ()
 

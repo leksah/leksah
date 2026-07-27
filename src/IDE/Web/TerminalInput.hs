@@ -373,4 +373,27 @@ tmuxPrefixMap = M.fromList
   , ("Down",  ("select-pane -D",      "\ESC[B"))
   , ("Left",  ("select-pane -L",      "\ESC[D"))
   , ("Right", ("select-pane -R",      "\ESC[C"))
+  -- The remaining Terminal-menu 'paneCmd's: without these a C-b chord for one
+  -- of them fell through to the raw-chord path, a no-op on CC (control-mode)
+  -- tabs — so it worked from the menu but not the keyboard.  The token is what
+  -- 'window.LeksahTmux' hands us: the produced character ('{' etc.), a 'C-'/'M-'
+  -- prefix for ctrl/alt, and 'Tab'/'Space' spelled out.
+  , ("{",     ("swap-pane -U",        "{"))
+  , ("}",     ("swap-pane -D",        "}"))
+  , ("C-o",   ("rotate-window",       "\SI"))
+  , ("!",     ("break-pane",          "!"))
+  , ("m",     ("select-pane -m",      "m"))
+  , ("M",     ("select-pane -M",      "M"))
+  , ("[",     ("copy-mode",           "["))
+  , ("]",     ("paste-buffer",        "]"))
+  , ("r",     ("refresh-client",      "r"))
+  , ("Tab",   ("last-window",         "\t"))
+  , ("K",     ("resize-pane -U 5",    "K"))
+  , ("J",     ("resize-pane -D 5",    "J"))
+  , ("L",     ("resize-pane -R 5",    "L"))
+  , ("H",     ("resize-pane -L 5",    "H"))
+  , ("C-k",   ("resize-pane -U 1",    "\v"))
+  , ("C-j",   ("resize-pane -D 1",    "\n"))
+  , ("C-l",   ("resize-pane -R 1",    "\f"))
+  , ("C-h",   ("resize-pane -L 1",    "\b"))
   ]

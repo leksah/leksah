@@ -36,16 +36,16 @@ per-command Nix evaluation.
 
 ## Opening a project
 
-Use **File ▸ Open…** to edit individual files and **File ▸ Open Project…**
+Use **Workspace ▸ Open…** to edit individual files and **Workspace ▸ Open Project…**
 to add a project (its `cabal.project` or `.cabal` file) to the workspace:
 the Workspace pane shows the project's packages and components, and the
-file tree follows the project directory. **File ▸ Add Remote Project…**
+file tree follows the project directory. **Workspace ▸ Add Remote Project…**
 opens a project on another machine over SSH (experimental).
 
 From a shell, a running Leksah can be driven with `leksah-cmd`:
 
 ```shell
-leksah-cmd cm open src/Main.hs        # open files in the editor
+leksah-cmd editor open src/Main.hs    # open files in the editor
 leksah-cmd project open cabal.project # add a project to the workspace
 ```
 

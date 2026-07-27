@@ -1,0 +1,15 @@
+--- a/reflex-dom-core.cabal	2026-07-23 01:33:18.452150909 +1200
++++ b/reflex-dom-core.cabal	2026-07-23 01:33:18.455170430 +1200
+@@ -108,10 +108,11 @@
+     zenc == 0.1.*
+ 
+   if impl(ghcjs) || arch(javascript)
+-    hs-source-dirs: src-ghcjs
+     build-depends:
+       ghcjs-base,
+       hashable >= 1.2 && < 1.6
++  if impl(ghcjs)
++    hs-source-dirs: src-ghcjs
+   else
+     hs-source-dirs: src-ghc
+     if !os(windows)

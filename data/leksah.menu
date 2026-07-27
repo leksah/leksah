@@ -1,6 +1,6 @@
    <ui>
     <menubar>
-      <menu name="_File" action="File">
+      <menu name="_Workspace" action="File">
        <menu name="_New" action="FileNew">
            <menuitem name="_Package..." action="FileNewPackage" />
            <menuitem name="_Module..." action="FileNewModule" />
@@ -28,6 +28,16 @@
        <menuitem name="Close All" action="FileCloseAll" />
        <menuitem name="Close All but Package" action="FileCloseAllButPackage" />
        <menuitem name="Close All but Workspace" action="FileCloseAllButWorkspace" />
+       <separator/>
+       <menuitem name="_Add Package..." action="WorkspaceAddPackage" />
+       <menuitem name="_Add Copy Of Installed Package..." action="WorkspaceAddPackageCopy" />
+       <separator />
+       <menuitem name="Cl_ean All packages" action="CleanWorkspace" />
+       <menuitem name="_Build All packages" action="MakeWorkspace" />
+       <separator/>
+       <menuitem name="_Next Error" action="NextError" />
+       <menuitem name="_Previous Error" action="PreviousError" />
+       <menuitem name="Resol_ve Errors" action="ResolveErrors" />
        <separator/>
       <menuitem name="_Quit" action="Quit" />
      </menu>
@@ -67,17 +77,6 @@
        <menuitem name="Align &lt;-" action="EditAlignLeftArrow" />
        <menuitem name="Align -&gt;" action="EditAlignRightArrow" />
        <menuitem name="Align ::" action="EditAlignTypeSig" />
-     </menu>
-    <menu name="_Workspace" action="Workspace">
-       <menuitem name="_Add Package..." action="WorkspaceAddPackage" />
-       <menuitem name="_Add Copy Of Installed Package..." action="WorkspaceAddPackageCopy" />
-       <separator />
-       <menuitem name="Cl_ean All packages" action="CleanWorkspace" />
-       <menuitem name="_Build All packages" action="MakeWorkspace" />
-       <separator/>
-       <menuitem name="_Next Error" action="NextError" />
-       <menuitem name="_Previous Error" action="PreviousError" />
-       <menuitem name="Resol_ve Errors" action="ResolveErrors" />
      </menu>
     <menu name="_Package" action="Package">
        <menuitem name="Edit _Package" action="EditPackage" />

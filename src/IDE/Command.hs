@@ -198,7 +198,10 @@ mkActions =
     [
      AD "vcs" (__ "Version _Control") Nothing Nothing (return ()) [] False
     ,AD "FilePrint" (__ "_Print File") Nothing Nothing filePrint [] False
-    ,AD "File" (__ "_File") Nothing Nothing (return ()) [] False
+    -- The app's File menu is titled "Workspace" (the old separate Workspace
+    -- menu's items are folded into it in leksah.menu); the action id stays
+    -- "File" so accelerator/keymap references are unchanged.
+    ,AD "File" (__ "_Workspace") Nothing Nothing (return ()) [] False
     ,AD "FileNew" (__ "_New") Nothing Nothing (return ()) [] False
     ,AD "FileNewWorkspace" (__ "_Workspace...") Nothing Nothing
         (workspaceNew >> showWorkspacePane) [] False
@@ -210,7 +213,7 @@ mkActions =
         (packageTry $ addModule []) [] False
     ,AD "FileNewTextFile" (__ "_Text File...") Nothing Nothing
         fileNew [] False
-    ,AD "FileOpen" (__ "_Open") Nothing Nothing (return ()) [] False
+    ,AD "FileOpen" (__ "_Open File") Nothing Nothing (return ()) [] False
     ,AD "FileOpenWorkspace" (__ "_Workspace...") Nothing Nothing
         (workspaceOpen >> showWorkspacePane) [] False
     ,AD "FileOpenProject" (__ "Pro_ject...") Nothing Nothing
@@ -221,13 +224,13 @@ mkActions =
         fileOpen [] False
     ,AD "FileRecentFiles" (__ "Recent Files") Nothing Nothing (return ()) [] False
     ,AD "FileRecentWorkspaces" (__ "Recent Workspaces") Nothing Nothing (return ()) [] False
-    ,AD "FileSave" (__ "_Save") Nothing (Just "gtk-save")
+    ,AD "FileSave" (__ "_Save File") Nothing (Just "gtk-save")
         (void $ fileSave False) [] False
     ,AD "FileSaveAs" (__ "Save _As...") Nothing (Just "gtk-save-as")
         (void $ fileSave True) [] False
     ,AD "FileSaveAll" (__ "Save A_ll") Nothing Nothing
         (void . fileSaveAll $ \ b -> return (bufferName b /= "_Eval.hs")) [] False
-    ,AD "FileClose" (__ "_Close") Nothing (Just "gtk-close")
+    ,AD "FileClose" (__ "_Close File") Nothing (Just "gtk-close")
         (void fileClose) [] False
     ,AD "FileCloseWorkspace" (__ "Close Workspace") Nothing Nothing
         workspaceClose [] False
@@ -304,7 +307,6 @@ mkActions =
     ,AD "EditAlignTypeSig" (__ "Align _::") Nothing Nothing
         (align "::") [] False
 
-    ,AD "Workspace" (__ "_Workspace") Nothing Nothing (return ()) [] False
     ,AD "WorkspaceAddPackage" (__ "_Add Package...") Nothing Nothing
         (showWorkspacePane >> projectTry projectAddPackage) [] False
     ,AD "WorkspaceAddPackageCopy" (__ "_Add Copy Of Installed Package...") Nothing Nothing

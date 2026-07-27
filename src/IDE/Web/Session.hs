@@ -32,7 +32,7 @@ import Data.Text (Text)
 
 import GHC.Generics (Generic)
 
-import IDE.Core.Types (TallVisibility(..))
+import IDE.Core.Types (TallVisibility(..), FlipItem(..))
 import IDE.Utils.FileUtils (getConfigFilePathForSave)
 import IDE.Web.Events (TabKey(..))
 
@@ -66,12 +66,19 @@ data WebSession = WebSession
       --   converted to a pane by ⌘D — see '_paneOverlays').  Optional (absent
       --   in older files); restore validates each pane still exists and still
       --   carries the matching @leksah_run tag before re-adopting it.
+  , wsFlipMru :: Maybe [FlipItem]
+      -- ^ the flipper MRU (⌘\` order): the shared '_flipMru'.  Optional (absent
+      --   in older files → restored empty); entries whose tab/pane no longer
+      --   exist are filtered out on rebuild, so a stale list is harmless.  Saved
+      --   so a restart / zero-downtime handoff keeps the flip order.
   } deriving (Eq, Show, Generic)
 
 instance ToJSON WebWindowSession
 instance FromJSON WebWindowSession
 instance ToJSON WebSession
 instance FromJSON WebSession
+instance ToJSON FlipItem
+instance FromJSON FlipItem
 
 -- TabKey is defined in IDE.Web.Events and TallVisibility in IDE.Core.Types; we
 -- serialize them here (orphan instances, internal use only).  An absent
@@ -82,7 +89,7 @@ instance ToJSON TallVisibility
 instance FromJSON TallVisibility
 
 emptyWebSession :: WebSession
-emptyWebSession = WebSession webSessionVersion [] [] Nothing Nothing
+emptyWebSession = WebSession webSessionVersion [] [] Nothing Nothing Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = getConfigFilePathForSave "web-session.json"

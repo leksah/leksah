@@ -72,9 +72,9 @@ import           IDE.Utils.FileUtils (isSubPath)
 import           IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import           IDE.Web.FS (fsReadFile, fsDoesFileExist)
 import           IDE.Web.IDERefStore (getGlobalIDERef)
-#if !defined(ghcjs_HOST_OS)
 import           Data.Text.Encoding (decodeUtf8With)
 import           Data.Text.Encoding.Error (lenientDecode)
+#if !defined(ghcjs_HOST_OS)
 import           IDE.Utils.RemoteExec (remoteSshArgs, runSsh, shellQuote)
 #endif
 #if defined(ghcjs_HOST_OS)
@@ -618,7 +618,7 @@ ensureServer root lc = do
             -- 'touch' retries once settings are available.  Caching a prefixless
             -- failure here is what left remote LSP permanently dead.
             mPrefix <- if isRemotePath root then remotePrefixFor root
-                                            else return (Just Nothing)
+                                            else Just <$> localPrefixFor lc root
             case mPrefix of
                 Nothing -> do
                     debugM "leksah" ("IDE.LSP: deferring remote server in " <> root
@@ -631,7 +631,11 @@ ensureServer root lc = do
                         -- A local server whose binary is not on PATH is simply
                         -- unavailable: cache the miss (per root) and stay quiet
                         -- rather than fail a spawn on every new root.
-                        available <- if isRemotePath root
+                        -- With a command prefix (remote ssh, or a local
+                        -- @nix develop -c@) the server binary lives in THAT
+                        -- environment, not on the ambient PATH — so skip the
+                        -- local PATH probe (a nix-develop wrap resolves it).
+                        available <- if isRemotePath root || isJust prefix
                                         then return True
                                         else isJust <$> findExecutable cmd
                         if not available
@@ -691,7 +695,19 @@ spawnClient root prefix cmd args cfg = case parseRemotePath root of
         debugM "leksah" ("IDE.LSP: starting remote HLS on " <> T.unpack host
                          <> ": " <> T.unpack remoteCmd)
         start sshCmd (map T.unpack sshArgs) Nothing Nothing cfg
-    Nothing -> start cmd args (Just root) Nothing cfg
+    Nothing -> case prefix of
+        -- A local project with a command prefix (e.g. @nix develop -c@, from the
+        -- project's settings or auto-detected from a flake.nix) runs its server
+        -- INSIDE that environment, so rust-analyzer / pyright / … come from the
+        -- flake's dev shell rather than the ambient PATH.  cwd = root so the
+        -- flake there is the one entered.
+        Just p | not (T.null (T.strip p)) -> do
+            let full = "exec " <> p <> " "
+                    <> T.unwords (map (shellQuote . T.pack) (cmd : args))
+            debugM "leksah" ("IDE.LSP: starting local server in " <> root
+                             <> " under prefix: " <> T.unpack full)
+            start "sh" ["-c", T.unpack full] (Just root) Nothing cfg
+        _ -> start cmd args (Just root) Nothing cfg
 #endif
 
 -- | Resolve the command prefix for a REMOTE project root from the live
@@ -728,6 +744,36 @@ remotePrefixFor root = getGlobalIDERef >>= \case
                          <> " (workspace=" <> show (isJust mbWs)
                          <> " projects=" <> show (maybe 0 (length . (^. wsProjects)) mbWs) <> ")")
         return res
+
+-- | The command prefix for a LOCAL project server.  Prefers the project's
+-- explicit @psCmdPrefix@ (Project Settings…), and otherwise — for a non-Haskell
+-- project whose root has a @flake.nix@ — defaults to @nix develop -c@ so the
+-- server (rust-analyzer, pyright, …) runs inside the flake's dev shell.  Haskell
+-- HLS is deliberately left on the ambient PATH (as before), since wrapping it
+-- could hide a working install when the flake doesn't provide it.
+localPrefixFor :: LangConfig -> FilePath -> IO (Maybe Text)
+localPrefixFor lc root = localExplicitPrefix root >>= \case
+    Just p | not (T.null (T.strip p)) -> return (Just p)
+    _ -> do
+        hasFlake <- doesFileExist (root </> "flake.nix")
+        return $ if hasFlake && lcLanguageId lc /= "haskell"
+                    then Just "nix develop -c"
+                    else Nothing
+
+-- | The explicit @psCmdPrefix@ of the workspace project containing a LOCAL
+-- @root@ (mirrors 'remotePrefixFor'\''s project lookup; 'Nothing' if no IDE /
+-- workspace / matching project / prefix).
+localExplicitPrefix :: FilePath -> IO (Maybe Text)
+localExplicitPrefix root = getGlobalIDERef >>= \case
+    Nothing   -> return Nothing
+    Just ideR -> do
+        mbWs <- reflectIDE (readIDE workspace) ideR
+        let root' = addTrailingPathSeparator root
+        return $ do
+            ws      <- mbWs
+            project <- find (\p -> addTrailingPathSeparator (pjDir (pjKey p))
+                                     `isSubPath` root') (ws ^. wsProjects)
+            psCmdPrefix (wsSettingsFor (pjKey project) ws)
 
 -- | Run an action now if the server has initialized, otherwise queue it.
 onReady :: ServerState -> IO () -> IO ()

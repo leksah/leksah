@@ -17,8 +17,8 @@ import Clay
        (vGradient, backgroundImage, cursorDefault, nowrap, relative,
         whiteSpace, padding, hover, (#), fontSize, nil, inlineBlock,
         margin, px, pct, position, absolute, top, left, zIndex, block,
-        borderRadius, boxShadow, bsColor, shadowWithSpread, black,
-        (?), Css, background, Color(..), Cursor(..))
+        borderRadius, boxShadow, bsColor, shadowWithSpread,
+        (?), Css, background, Cursor(..))
 import qualified Clay (display)
 
 import Language.Javascript.JSaddle (liftJSM, js1)
@@ -35,7 +35,9 @@ import Reflex.Dom.Core
        (text, el, el', elAttr', dyn, wrapDomEventMaybe, _element_raw,
         MonadWidget, (=:), domEvent, EventName(..))
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme
+       (selectionColor, barTopColor, barBottomColor,
+        menuTopColor, menuBottomColor, dropShadowColor)
 import IDE.Web.Events (MenubarEvents(..))
 import IDE.Web.MenuModel (menus)
 import IDE.Web.Widget.Menu (menuItems)
@@ -45,16 +47,16 @@ menubarCss = do
     ".menubar" ? do
         whiteSpace nowrap
         cursor cursorDefault
-        backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
+        backgroundImage (vGradient barTopColor barBottomColor)
         -- The dropdown for a menu is rendered inside its <li>; anchor it there.
         ".menu" ? do
             position absolute
             top (pct 100)
             left nil
             zIndex 1000
-            backgroundImage (vGradient (Rgba 64 64 64 0.95) (Rgba 32 32 32 0.95))
+            backgroundImage (vGradient menuTopColor menuBottomColor)
             borderRadius (px 5) (px 5) (px 5) (px 5)
-            boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+            boxShadow (pure $ bsColor dropShadowColor $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
         -- The menubar's own li are laid out horizontally; dropdown items must
         -- stack vertically (more specific so it wins over `.menubar ul li`).
         ".menu ul li" ? Clay.display block

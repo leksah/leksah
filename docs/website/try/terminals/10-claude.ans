@@ -34,25 +34,25 @@
 
 [38;5;114m⏺[39m [1mUpdate[0m(src/IDE/Web/Instance.hs)
 [38;5;246m  ⎿  Updated src/IDE/Web/Instance.hs with 2 additions and 2 removals[39m
-       [2m[38;5;231m28 [0m[38;5;231m   defaultLeksahPort :: Int[39m
-       [38;5;167m[48;5;52m29 -  defaultLeksahPort = 3367[38;5;231m                                                               [39m[49m
-       [38;5;77m[48;5;22m29 +  defaultLeksahPort = 3367  -- historical default UI port[38;5;231m                                [39m[49m
-       [2m[38;5;231m34 [0m[38;5;231m   leksahPort :: Int[39m
-       [2m[38;5;231m35 [0m[38;5;231m   leksahPort = case unsafePerformIO (lookupEnv "LEKSAH_PORT") >>= readMaybe of[39m
-       [38;5;167m[48;5;52m36 -      Just p | p > 0 -> p[38;5;231m                                                                [39m[49m
-       [38;5;77m[48;5;22m36 +      Just p | p >= 1 -> p[38;5;231m                                                               [39m[49m
-       [2m[38;5;231m37 [0m[38;5;231m       _              -> defaultLeksahPort[39m
-       [2m[38;5;231m38 [0m[38;5;231m   {-# NOINLINE leksahPort #-}[39m
+       [2m[38;5;231m29 [0m[38;5;231m   defaultLeksahPort :: Int[39m
+       [38;5;167m[48;5;52m30 -  defaultLeksahPort = 3367[38;5;231m                                                               [39m[49m
+       [38;5;77m[48;5;22m30 +  defaultLeksahPort = 3367  -- historical default UI port[38;5;231m                                [39m[49m
+       [2m[38;5;231m35 [0m[38;5;231m   leksahPort :: Int[39m
+       [2m[38;5;231m36 [0m[38;5;231m   leksahPort = case unsafePerformIO (lookupEnv "LEKSAH_PORT") >>= readMaybe of[39m
+       [38;5;167m[48;5;52m37 -      Just p | p > 0 -> p[38;5;231m                                                                [39m[49m
+       [38;5;77m[48;5;22m37 +      Just p | p >= 1 -> p[38;5;231m                                                               [39m[49m
+       [2m[38;5;231m38 [0m[38;5;231m       _              -> defaultLeksahPort[39m
+       [2m[38;5;231m39 [0m[38;5;231m   {-# NOINLINE leksahPort #-}[39m
 
 [38;5;114m⏺[39m [1mUpdate[0m(src/IDE/Web/Instance.hs)
 [38;5;246m  ⎿  Updated src/IDE/Web/Instance.hs with 1 addition and 1 removal[39m
-       [2m[38;5;231m43 [0m[38;5;231m   instanceTag :: String[39m
-       [2m[38;5;231m44 [0m[38;5;231m   instanceTag[39m
-       [2m[38;5;231m45 [0m[38;5;231m     | leksahPort == defaultLeksahPort = ""[39m
-       [2m[38;5;231m46 [0m[38;5;231m     | otherwise                       = '-' : show leksahPort[39m
-       [2m[38;5;231m60 [0m[38;5;231m   tmuxServerSocket :: String[39m
-       [38;5;167m[48;5;52m61 -  tmuxServerSocket = "leksah" <> instanceTag[38;5;231m                                             [39m[49m
-       [38;5;77m[48;5;22m61 +  tmuxServerSocket = "leksah" <> instanceTag  -- e.g. leksah-3368[38;5;231m                        [39m[49m
+       [2m[38;5;231m57 [0m[38;5;231m   instanceTag :: String[39m
+       [2m[38;5;231m58 [0m[38;5;231m   instanceTag[39m
+       [2m[38;5;231m59 [0m[38;5;231m     | leksahPort == defaultLeksahPort = ""[39m
+       [2m[38;5;231m60 [0m[38;5;231m     | otherwise                       = '-' : show leksahPort[39m
+       [2m[38;5;231m74 [0m[38;5;231m   tmuxServerSocket :: String[39m
+       [38;5;167m[48;5;52m75 -  tmuxServerSocket = "leksah" <> instanceTag[38;5;231m                                             [39m[49m
+       [38;5;77m[48;5;22m75 +  tmuxServerSocket = "leksah" <> instanceTag  -- e.g. leksah-3368[38;5;231m                        [39m[49m
 
 [38;5;174m·[39m [38;5;216mPolishing hosting page & asset bundle (Phase D)…[38;5;174m [38;5;246m(57m 43s · ↓[39m [38;5;246m57.4k tokens)[39m
 [38;5;246m  ⎿  [38;5;174m◼ [1m[39mPhase D: hosting page & asset bundle[0m

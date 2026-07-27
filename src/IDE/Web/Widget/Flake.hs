@@ -47,8 +47,10 @@ import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8Lenient, encodeUtf8)
 
 import Clay
-       (color, grey, red, padding, px, whiteSpace, nowrap, cursor,
+       (color, red, padding, px, whiteSpace, nowrap, cursor,
         cursorDefault, (?), Css)
+
+import IDE.Web.Theme (dimColor)
 
 import Reflex
        (ffor, never, holdDyn, newTriggerEvent, performEvent_, getPostBuild,
@@ -271,7 +273,7 @@ flakeCss = do
         cursor cursorDefault
     ".flake-leaf" ? whiteSpace nowrap
     ".flake-hint" ? do
-        color grey
+        color dimColor
         padding (px 2) (px 8) (px 2) (px 8)
     ".flake-error" ? do
         color red

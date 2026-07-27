@@ -78,7 +78,7 @@ shell so builds don't pay Nix evaluation on every command.
 
 ## Remote projects over SSH *(experimental)*
 
-**File ▸ Add Remote Project…** opens a project that lives on another
+**Workspace ▸ Add Remote Project…** opens a project that lives on another
 machine (`ssh://host/path`). Editing, building and the language server all
 run on the remote host; the UI stays local.
 
@@ -91,6 +91,6 @@ AI target. The **AI** menu then sends context to it: the current selection
 
 ## Multiple windows
 
-**File ▸ New Window** opens additional OS windows onto the same IDE
+**Workspace ▸ New Window** opens additional OS windows onto the same IDE
 session; tabs can live in any window and the tab flipper (ctrl+tab)
 switches between recently used tabs.

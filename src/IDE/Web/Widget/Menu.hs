@@ -11,7 +11,7 @@ import Clay
         Background(..), Color(..), margin, nil, borderRadius, Cursor(..),
         position, absolute, relative, top, left, pct, nowrap, whiteSpace,
         zIndex, block, backgroundImage, vGradient, boxShadow, bsColor,
-        shadowWithSpread, black, (|>), color, float, floatRight, marginLeft,
+        shadowWithSpread, (|>), color, float, floatRight, marginLeft,
         em, minWidth)
 import qualified Clay (display, none)
 
@@ -21,7 +21,8 @@ import Reflex.Dom.Core
        (dynText, el', el, elClass, divClass, text, MonadWidget,
         HasDomEvent(..), EventName(..))
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme
+       (selectionColor, dimColor, menuTopColor, menuBottomColor, dropShadowColor)
 import IDE.Web.Command (Command)
 import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec)
 import IDE.Web.Widget.Tree (clickMods)
@@ -47,12 +48,12 @@ menuCss = do
   ".menu .menu-shortcut" ? do
     float floatRight
     marginLeft (em 2)
-    color (Rgba 153 153 153 1.0)
+    color dimColor
   -- Separator rows: a thin line, not hoverable/clickable.
   ".menu li.menu-sep" ? do
     padding (px 0) (px 0) (px 0) (px 0)
     margin (px 4) (px 8) (px 4) (px 8)
-    "border-top" -: "1px solid rgba(153,153,153,0.4)"
+    "border-top" -: "1px solid var(--leksah-border-faint)"
     "pointer-events" -: "none"
   -- A submenu item anchors its flyout, which is a nested `.menu` shown to the
   -- right on hover.  These selectors are more specific than `.menubar .menu`
@@ -64,9 +65,9 @@ menuCss = do
     left (pct 100)
     top nil
     Clay.display Clay.none
-    backgroundImage (vGradient (Rgba 64 64 64 0.95) (Rgba 32 32 32 0.95))
+    backgroundImage (vGradient menuTopColor menuBottomColor)
     borderRadius (px 5) (px 5) (px 5) (px 5)
-    boxShadow (pure $ bsColor black $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+    boxShadow (pure $ bsColor dropShadowColor $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
     zIndex 1001
   -- Only the directly-hovered item's flyout opens (child combinator), so
   -- hovering an outer item doesn't reveal its grandchildren.

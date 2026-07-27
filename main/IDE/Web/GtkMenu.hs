@@ -55,6 +55,7 @@ import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
+import IDE.Web.ShortcutsRequest (requestShowShortcuts)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput
        (setActiveTerminalNotifier, setSplitActiveNotifier)
@@ -107,6 +108,7 @@ dispatchTag win tag = do
     (CommandFind:_)            -> requestToggleFindbar
     (CommandProjectAddRemote:_) -> requestAddRemoteProject
     (CommandShowPreferences:_) -> requestShowPreferences
+    (CommandShowShortcuts:_)   -> requestShowShortcuts
     (cmd:_) -> getGlobalIDERef >>= \case
       Just ideR -> case cmd ^. commandAction of
         Just act -> void $ reflectIDE act ideR
@@ -304,8 +306,9 @@ installGtkMenu app win = do
       addTop tag (title, items) = do
         top <- Gio.menuNew
         tag' <- fillMenu top tag items
-        -- File gets the native Open Recent and Quit sections appended.
-        when (title == ("File" :: Text)) $ do
+        -- Workspace (the app's File menu — title kept in sync with
+        -- MenuModel.hs) gets the native Open Recent and Quit sections.
+        when (title == ("Workspace" :: Text)) $ do
           recentSection <- Gio.menuNew
           Gio.menuAppendSubmenu recentSection (Just "Open Recent") recentMenu
           Gio.menuAppendSection top Nothing recentSection

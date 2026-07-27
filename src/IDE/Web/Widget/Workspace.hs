@@ -17,8 +17,9 @@ import Control.Monad (void, when, forM_)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Bool (bool)
-import Data.List (stripPrefix, isPrefixOf, dropWhileEnd, find)
-import qualified Data.Map as M (elems, fromList, keys)
+import Data.List (stripPrefix, isPrefixOf, dropWhileEnd, find, nub, sortBy, sortOn)
+import Data.Ord (comparing)
+import qualified Data.Map as M (elems, fromList, fromListWith, keys, toList)
 import Data.Maybe (listToMaybe, maybeToList, fromMaybe, isJust)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
@@ -27,15 +28,17 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (pack, unpack, strip, null, takeWhile, lines, words, isPrefixOf, drop,
         length, breakOn, splitOn, stripSuffix, stripPrefix, dropWhile,
-        intercalate, replace)
-import Data.Text.Encoding (encodeUtf8)
+        intercalate, replace, isSuffixOf, dropEnd, dropAround)
+import Data.Text.Encoding (encodeUtf8, decodeUtf8With)
+import Data.Text.Encoding.Error (lenientDecode)
 import Text.Read (readMaybe)
+import Data.Time.Clock.POSIX (getPOSIXTime, POSIXTime)
 
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.FilePath
        ((<.>), (</>), dropFileName, dropTrailingPathSeparator, takeFileName,
-        splitDirectories, joinPath)
+        splitDirectories, joinPath, makeRelative)
 import System.Info (os)
 import System.Process (proc, createProcess, readProcessWithExitCode)
 
@@ -44,7 +47,7 @@ import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import IDE.Web.RemoteSettingsRequest (requestRemoteSettings)
 import IDE.Web.GitLogRequest (requestGitLog)
 import IDE.Web.ReplTmux (openTerminalInDir, runInTerminal)
-import IDE.Web.FS (fsDoesFileExist, fsDoesDirectoryExist)
+import IDE.Web.FS (fsReadFile, fsDoesFileExist, fsDoesDirectoryExist)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh, requestRemoteRefresh, RefreshReason(..))
 import IDE.Web.LocalRefresh (registerLocalRefresh, requestLocalRefresh)
 
@@ -53,9 +56,9 @@ import Clay
         borderRadius, borderStyle, backgroundImage, vGradient,
         paddingRight, marginBottom, marginTop, marginRight, checked,
         userSelect, (|+), (-:), absolute, position, left, nil, paddingLeft, px,
-        marginLeft, listStyleType, listStyleImage, middle, grey, color, rgb,
+        marginLeft, listStyleType, listStyleImage, middle, color, rgb,
         opacity, nowrap, whiteSpace, inlineBlock, scroll, overflow, height, (?),
-        Css, background, none, white, Color(..), VerticalAlign(..),
+        Css, background, none, VerticalAlign(..),
         cursorDefault, Cursor(..))
 import qualified Clay (display, (#))
 import Clay.Stylesheet (key)
@@ -69,7 +72,9 @@ import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
         divClass, text, el, elClass, dynText, domEvent, EventName(..))
 
-import IDE.Web.Theme (selectionColor, hoverColor, dimColor, dimOpacity)
+import IDE.Web.Theme
+       (selectionColor, hoverColor, dimColor, dimOpacity, fgColor,
+        btnTopColor, btnBottomColor, btnHoverTopColor, btnHoverBottomColor)
 import IDE.Core.CTypes (packageIdentifierToString)
 import IDE.Core.State
        (DebugState(..), activeComponent, ipdPackageDir,
@@ -88,7 +93,10 @@ import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
         flakeTreeWidget, execButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu, menuSplit)
-import IDE.Web.Widget.FileTree (fileTree, claudeNode)
+import IDE.Web.Widget.FileTree
+       (fileTree, claudeNode, gitClass, gitBadge)
+import IDE.Web.Widget.Changes (gitChanges, FileChange(..))
+import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.Claude (claudeAvailable, runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeSelect, treeSelect', treeItem,
@@ -101,7 +109,7 @@ workspaceCss :: Css
 workspaceCss = do
     ".workspace" ? do
         height (pct 100)
-        key "fill" grey
+        key "fill" dimColor
         overflow scroll
         -- A uniform right inset so the run buttons line up clear of the
         -- scrollbar.  On the PANE, not the rows — row padding would compound
@@ -109,7 +117,7 @@ workspaceCss = do
         key "padding-right" ("8px" :: Text)
         key "box-sizing" ("border-box" :: Text)
     ".workspace li.active > .tree-expand" ?
-        key "fill" white
+        key "fill" fgColor
     ".workspace li > .tree-expand" Clay.# hover ?
         key "fill" selectionColor
     -- De-emphasis instead of emphasis: rather than bolding the active row, dim
@@ -121,7 +129,7 @@ workspaceCss = do
     ".workspace img.tree-icon" ?
         opacity dimOpacity
     ".workspace li.active > label" ?
-        color white
+        color fgColor
     ".workspace li.active > label img.tree-icon" ?
         opacity 1
     ".tree-item" ? do
@@ -191,10 +199,10 @@ workspaceCss = do
     -- rows are flex, below); the extra bottom padding rides the glyph 2px
     -- high, which optically centres it.
     ".workspace .ws-run" ? do
-        color white
+        color fgColor
         borderStyle none
         borderRadius (px 3) (px 3) (px 3) (px 3)
-        backgroundImage (vGradient (Rgba 64 64 64 1.0) (Rgba 40 40 40 1.0))
+        backgroundImage (vGradient btnTopColor btnBottomColor)
         key "font-size" ("11px" :: Text)
         key "font-weight" ("bold" :: Text)
         key "padding" ("0 4px 2px 4px" :: Text)
@@ -209,7 +217,7 @@ workspaceCss = do
         key "margin-left" ("auto" :: Text)
     (".workspace .ws-run" Clay.# hover) ? do
         key "opacity" ("1" :: Text)
-        backgroundImage (vGradient (Rgba 84 84 84 1.0) (Rgba 60 60 60 1.0))
+        backgroundImage (vGradient btnHoverTopColor btnHoverBottomColor)
     -- Rows that carry a run button lay out like the Terminals pane's rows:
     -- flexbox, label taking the free space, the button at the right edge,
     -- expanded children wrapping onto their own full-width line.
@@ -374,6 +382,7 @@ gitTreeNode dir = do
             performEvent_ $ liftIO <$> mE
             return (never :: Event t ()))
         (el "ul" $ do
+            gitChangesNode dir
             gitBranchesNode dir brD
             gitSubmodulesNode dir
             gitHubNodes dir
@@ -391,7 +400,7 @@ abSpan ahead behind = when (ahead > 0 || behind > 0) $
     elAttr "span"
         (  "class" =: "git-ab"
         <> "title" =: "commits ahead / behind upstream"
-        <> "style" =: "color:#888;margin-left:6px;font-size:11px" )
+        <> "style" =: "color:var(--leksah-fg-dim);margin-left:6px;font-size:11px" )
         (text label)
   where
     label = T.intercalate " " $
@@ -473,25 +482,120 @@ gitBranchesNode dir curD = void $ treeItem "git-branches" False
         liftIO $ registerGitRefresh dir scan
         bsD <- holdDyn [] bsE
         void . dyn $ ffor ((,) <$> bsD <*> curD) $ \(bs, cur) ->
-            forM_ bs $ \b -> el "li" $ do
-                let name  = gbName b
-                    isCur = Just name == cur
-                (rowEl, mE) <- treeSelect' "workspace" (gitBranchMenu dir isCur name) $ do
-                    gitIcon
-                    elClass "span" (if isCur then "git-branch-current" else "git-branch")
-                        (text name)
-                    -- Ahead/behind vs this branch's upstream.
-                    abSpan (gbAhead b) (gbBehind b)
-                    return (never :: Event t (IO ()))
-                -- ⌥-click (or ⌥-Enter) opens the git log into a split of the
-                -- active pane instead of a new tab (⌥⇧ = the other direction).
-                cmE <- clickMods rowEl
-                performEvent_ $ ffor cmE $ \(alt, sh) -> liftIO $
-                    if alt then requestSplitOpen (STGitLog dir name, sh)
-                           else requestGitLog dir name
-                performEvent_ $ liftIO <$> mE
-                return ()
+            -- Branches are grouped into a tree by their "/" segments (all
+            -- `hkm/…` under an `hkm/` node); at each level the group (container)
+            -- nodes are listed before the leaf branches, as in the file tree.
+            let renderForest pfx = mapM_ (renderNode pfx)
+                -- A group starts expanded only when it contains the current
+                -- branch (its full "…/" path is a prefix of the current branch
+                -- name); otherwise it starts collapsed, like a directory.
+                renderNode pfx (BranchGroup seg kids) =
+                    let full = pfx <> seg <> "/"
+                    in void $ treeItem "git-branch-group"
+                        (maybe False (full `T.isPrefixOf`) cur)
+                        (treeSelect "workspace" (return never) $
+                            gitIcon >> text (seg <> "/") >> return (never :: Event t ()))
+                        (el "ul" $ renderForest full kids >> return (never :: Event t ()))
+                renderNode _ (BranchLeaf b label) = el "li" $ do
+                    let name  = gbName b
+                        isCur = Just name == cur
+                    -- Show only the last "/" segment (the prefix is on the group
+                    -- node), but click/menu still act on the full branch name.
+                    (rowEl, mE) <- treeSelect' "workspace" (gitBranchMenu dir isCur name) $ do
+                        gitIcon
+                        elClass "span" (if isCur then "git-branch-current" else "git-branch")
+                            (text label)
+                        abSpan (gbAhead b) (gbBehind b)
+                        return (never :: Event t (IO ()))
+                    -- ⌥-click (or ⌥-Enter) opens the git log into a split of the
+                    -- active pane instead of a new tab (⌥⇧ = the other direction).
+                    cmE <- clickMods rowEl
+                    performEvent_ $ ffor cmE $ \(alt, sh) -> liftIO $
+                        if alt then requestSplitOpen (STGitLog dir name, sh)
+                               else requestGitLog dir name
+                    performEvent_ $ liftIO <$> mE
+                    return ()
+            in do
+                -- Recent branches form the main tree; branches whose last commit
+                -- is over a year old are tucked into an "Old" node at the bottom
+                -- (collapsed unless it holds the current branch).
+                renderForest "" (buildBranchForest (filter (not . gbOld) bs))
+                let old = filter gbOld bs
+                when (not (null old)) . void $
+                    treeItem "git-branch-group"
+                        (any (\b -> Just (gbName b) == cur) old)
+                        (treeSelect "workspace" (return never) $
+                            gitIcon >> text ("Old (" <> T.pack (show (length old)) <> ")")
+                                    >> return (never :: Event t ()))
+                        (el "ul" $ renderForest "" (buildBranchForest old)
+                                   >> return (never :: Event t ()))
         return (never :: Event t ()))
+
+-- | A branch tree node: a @\/@-delimited prefix group (its segment + children),
+-- or a leaf branch (the full 'GitBranch' plus its last-segment display label).
+data BranchNode = BranchGroup Text [BranchNode] | BranchLeaf GitBranch Text
+
+-- | Group a flat branch list into a tree by splitting names on @\/@, so all
+-- @hkm\/…@ branches nest under an @hkm\/@ group.  Each level lists group
+-- (container) nodes before leaf branches, each alphabetically — the same
+-- \"directories first\" ordering the file tree uses.
+buildBranchForest :: [GitBranch] -> [BranchNode]
+buildBranchForest bs = groupByPath [ (T.splitOn "/" (gbName b), b) | b <- bs ]
+
+groupByPath :: [([Text], GitBranch)] -> [BranchNode]
+groupByPath items =
+    sortBy (comparing nodeKey) (concatMap toNodes (M.toList byFirst))
+  where
+    byFirst = M.fromListWith (flip (++))
+        [ (seg, [(rest, gb)]) | (seg : rest, gb) <- items ]
+    toNodes (seg, subs) =
+        [ BranchGroup seg (groupByPath deeper) | not (null deeper) ]
+        ++ [ BranchLeaf gb seg | ([], gb) <- subs ]
+      where deeper = [ (r, gb) | (r@(_:_), gb) <- subs ]
+    nodeKey (BranchGroup s _) = (0 :: Int, s)   -- container nodes first…
+    nodeKey (BranchLeaf _ s)  = (1 :: Int, s)   -- …then leaf branches
+
+-- | \"Changes\": the staged + unstaged changes for this checkout (reusing the
+-- Changes pane's 'gitChanges' scan).  Each row shows a git status badge and the
+-- path relative to the checkout; clicking opens the file in the editor (⌥-click
+-- opens it into a split).  Refreshes on the git/local-refresh bus, so the count
+-- tracks edits and git operations.
+gitChangesNode :: forall t m . MonadWidget t m => FilePath -> m ()
+gitChangesNode dir = do
+    (chE, fireCh) <- newTriggerEvent
+    cpb <- getPostBuild
+    let scan = void . forkIO $ (M.elems <$> gitChanges dir) >>= fireCh
+    performEvent_ $ liftIO scan <$ cpb
+    liftIO $ registerGitRefresh dir scan
+    chD <- holdDyn [] chE
+    void $ treeItem "git-changes" False
+        (treeSelect "workspace" (return never) $ do
+            gitIcon
+            dynText $ ffor chD $ \cs ->
+                "Changes" <> if null cs then "" else " (" <> T.pack (show (length cs)) <> ")"
+            return (never :: Event t ()))
+        (el "ul" $ do
+            void . dyn $ ffor chD $ \changes ->
+                forM_ (sortOn changePath changes) $ \c -> el "li" $ do
+                    let path = changePath c
+                        st   = changeStatus c
+                    (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+                        elClass "span" ("git-change-badge " <> gitClass st) (text (gitBadge st))
+                        text " "
+                        elClass "span" (gitClass st) (text (T.pack (makeRelative dir path)))
+                        -- +added / -deleted line counts (as in the Changes pane);
+                        -- a zero count is omitted (no -0 on a new file, +0 on a
+                        -- deleted one).
+                        let fmt sign = maybe "" (\n -> if n == 0 then "" else sign <> T.pack (show n))
+                        elClass "span" "git-added"   (text (fmt " +" (changeAdded c)))
+                        elClass "span" "git-deleted" (text (fmt " \x2212" (changeDeleted c)))
+                        return (never :: Event t (IO ()))
+                    cmE <- clickMods rowEl
+                    performEvent_ $ ffor cmE $ \(alt, sh) -> liftIO $
+                        if alt then requestSplitOpen (STFile path, sh)
+                               else deliverOpenedFile path
+                    return ()
+            return (never :: Event t ()))
 
 -- | \"Submodules\": the checkout's submodule paths.  The whole node self-hides
 -- when there are none.
@@ -562,22 +666,30 @@ data GitBranch = GitBranch
   { gbName   :: Text
   , gbAhead  :: Int
   , gbBehind :: Int
+  , gbOld    :: Bool   -- ^ last commit more than a year ago
   } deriving (Eq, Show)
 
 -- @%(upstream:track,nobracket)@ prints e.g. @ahead 1, behind 2@ / @gone@ / empty
 -- (no upstream or level), so one @for-each-ref@ gives every branch's divergence.
 gitBranches :: FilePath -> IO [GitBranch]
 gitBranches dir = do
+    now <- getPOSIXTime
+    let yearAgo   = now - 365 * 24 * 60 * 60   -- ~1 year, in POSIX seconds
+        isOld ts  = ts < yearAgo
+        atOr d i xs = if length xs > i then xs !! i else d
+        parseUnix t = fromInteger <$> (readMaybe (T.unpack (T.strip t)) :: Maybe Integer) :: Maybe POSIXTime
     r <- try (runGit dir
-        [ "for-each-ref", "--format=%(refname:short)%09%(upstream:track,nobracket)"
+        [ "for-each-ref"
+        , "--format=%(refname:short)%09%(upstream:track,nobracket)%09%(committerdate:unix)"
         , "refs/heads" ])
     return $ case r :: Either SomeException (ExitCode, Text, Text) of
         Right (ExitSuccess, out, _) ->
-            [ GitBranch name a b
+            [ GitBranch name a b old
             | l <- T.lines out, not (T.null (T.strip l))
-            , let (n, rest)   = T.breakOn "\t" l
-                  name        = T.strip n
-                  (a, b)      = parseTrack (T.drop 1 rest)
+            , let fs      = T.splitOn "\t" l
+                  name    = T.strip (atOr "" 0 fs)
+                  (a, b)  = parseTrack (atOr "" 1 fs)
+                  old     = maybe False isOld (parseUnix (atOr "" 2 fs))
             , not (T.null name) ]
         _ -> []
 
@@ -869,6 +981,139 @@ flakeNode dir = do
               allOutputsNode dir
           return never)
 
+-- | Introspection node for a Rust or Python project directory: collapsed and
+-- self-hiding unless a @Cargo.toml@ / @pyproject.toml@ / @setup.py@ exists.  On
+-- expand it parses the manifest (on a background thread) and lists the package
+-- name, its dependencies, and — for Cargo — its binary targets, as child rows.
+-- The header row double-clicks to open the manifest in the editor.
+manifestNode :: forall t m . MonadWidget t m => FilePath -> m ()
+manifestNode dir = do
+  pb <- getPostBuild
+  kindE <- performEvent $ ffor pb $ \_ -> liftIO $ do
+    cargo <- fsDoesFileExist (dir </> "Cargo.toml")
+    py    <- fsDoesFileExist (dir </> "pyproject.toml")
+    setup <- fsDoesFileExist (dir </> "setup.py")
+    return $ if cargo then Just ("Cargo.toml" :: FilePath, "Crate" :: Text)
+             else if py then Just ("pyproject.toml", "Python package")
+             else if setup then Just ("setup.py", "Python package")
+             else Nothing
+  kindD <- holdUniqDyn =<< holdDyn Nothing kindE
+  void . dyn $ ffor kindD $ \case
+    Nothing -> pure ()
+    Just (file, label) -> void $ treeItem "manifest" False
+      (do (rowEl, _) <- treeSelect' "workspace" (return never) $ do
+              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-package.svg") (return ())
+              text label
+              return (never :: Event t ())
+          performEvent_ $ ffor (domEvent Dblclick rowEl) $ \_ -> liftIO $
+              deliverOpenedFile (dir </> file)
+          return (never :: Event t ()))
+      (do (infoE, fireInfo) <- newTriggerEvent
+          cpb <- getPostBuild
+          performEvent_ $ ffor cpb $ \_ ->
+              liftIO . void . forkIO $ parseManifest (dir </> file) >>= fireInfo
+          infoD <- holdDyn Nothing (Just <$> infoE)
+          _ <- el "ul" . dyn $ ffor infoD $ \case
+              Nothing -> divClass "flake-hint" (text "reading…")
+              Just (mName, secs)
+                | mName == Nothing && null secs -> divClass "flake-hint" (text "(no metadata)")
+                | otherwise -> do
+                    forM_ mName $ \nm -> elClass "li" "flake-leaf" . void $
+                        treeSelect' "workspace" (return never) $ do
+                            elClass "span" "flake-label" (text (" name: " <> nm))
+                            return (never :: Event t ())
+                    mapM_ manifestSection secs
+          return (never :: Event t ()))
+  where
+    manifestSection :: (Text, [Text]) -> m ()
+    manifestSection (title, items) = void $ treeItem "flake-node" False
+      (do _ <- treeSelect' "workspace" (return never) $ do
+              elClass "span" "flake-label"
+                  (text (" " <> title <> " (" <> T.pack (show (length items)) <> ")"))
+              return (never :: Event t ())
+          return (never :: Event t ()))
+      (do _ <- el "ul" $ forM_ items $ \it -> elClass "li" "flake-leaf" . void $
+              treeSelect' "workspace" (return never) $ do
+                  text (" " <> it)
+                  return (never :: Event t ())
+          return (never :: Event t ()))
+
+-- | Parse a project manifest into (package name, [(section title, entries)]).
+-- Best-effort: an unreadable file yields @(Nothing, [])@.
+parseManifest :: FilePath -> IO (Maybe Text, [(Text, [Text])])
+parseManifest path = do
+  r <- try (decodeUtf8With lenientDecode <$> fsReadFile path)
+  return $ case r :: Either SomeException Text of
+    Left _    -> (Nothing, [])
+    Right src
+      | takeFileName path == "Cargo.toml" -> parseCargo src
+      | otherwise                         -> parsePyproject src
+
+-- | Cargo.toml: @[package].name@, @[[bin]].name@ targets, @[…dependencies]@ keys.
+parseCargo :: Text -> (Maybe Text, [(Text, [Text])])
+parseCargo src =
+  let secs = tomlSections src
+      name = listToMaybe [ v | ("package", body) <- secs, Just v <- map (kvString "name") body ]
+      bins = nub [ v | ("bin", body) <- secs, Just v <- map (kvString "name") body ]
+      deps = nub $ concat [ tableKeys body | (h, body) <- secs, "dependencies" `T.isSuffixOf` h ]
+  in (name, [ ("Binaries", bins) | not (null bins) ]
+         ++ [ ("Dependencies", deps) | not (null deps) ])
+
+-- | pyproject.toml: name from @[project]@ or @[tool.poetry]@; deps from a
+-- @[…dependencies]@ table (poetry) or a @dependencies = [ … ]@ array (PEP 621).
+parsePyproject :: Text -> (Maybe Text, [(Text, [Text])])
+parsePyproject src =
+  let secs = tomlSections src
+      name = listToMaybe $
+                 [ v | ("project", body)     <- secs, Just v <- map (kvString "name") body ]
+              ++ [ v | ("tool.poetry", body) <- secs, Just v <- map (kvString "name") body ]
+      tableDeps = concat [ tableKeys body | (h, body) <- secs, "dependencies" `T.isSuffixOf` h ]
+      arrDeps   = concat [ arrayItems body | ("project", body) <- secs ]
+      deps = nub (tableDeps ++ arrDeps)
+  in (name, [ ("Dependencies", deps) | not (null deps) ])
+
+-- | A crude TOML reader: groups lines into (header, body) sections, header being
+-- the bracketed name with brackets stripped (@[[bin]]@ and @[bin]@ both → @bin@;
+-- @[tool.poetry.dependencies]@ → @tool.poetry.dependencies@).  Not full TOML —
+-- enough to pull a package name and a few name/dependency lists.
+tomlSections :: Text -> [(Text, [Text])]
+tomlSections = go "" [] . filter (not . T.null) . map (T.strip . fst . T.breakOn "#") . T.lines
+  where
+    go h acc [] = [(h, reverse acc)]
+    go h acc (l:ls) = case header l of
+        Just h' -> (h, reverse acc) : go h' [] ls
+        Nothing -> go h (l:acc) ls
+    header s
+      | "[[" `T.isPrefixOf` s && "]]" `T.isSuffixOf` s = Just (T.strip (T.dropEnd 2 (T.drop 2 s)))
+      | "["  `T.isPrefixOf` s && "]"  `T.isSuffixOf` s = Just (T.strip (T.dropEnd 1 (T.drop 1 s)))
+      | otherwise                                      = Nothing
+
+-- | Split a @key = value@ line (value un-trimmed of quotes).
+kv :: Text -> Maybe (Text, Text)
+kv l = case T.breakOn "=" l of
+    (k, v) | not (T.null v) -> Just (T.strip k, T.strip (T.drop 1 v))
+    _                       -> Nothing
+
+kvString :: Text -> Text -> Maybe Text
+kvString key l = case kv l of { Just (k, v) | k == key -> Just (unquote v); _ -> Nothing }
+
+unquote :: Text -> Text
+unquote = T.dropAround (`elem` ("\"'" :: String))
+
+-- | Keys of @key = …@ lines in a table body (skips nested @[...]@ headers).
+tableKeys :: [Text] -> [Text]
+tableKeys body =
+    [ k | l <- body, Just (k, _) <- [kv l], not (T.null k), not ("[" `T.isPrefixOf` k) ]
+
+-- | Package names from a single-line @dependencies = [ "a>=1", "b" ]@ array.
+arrayItems :: [Text] -> [Text]
+arrayItems body =
+    [ dep
+    | l <- body, Just (k, v) <- [kv l], k == "dependencies", "[" `T.isPrefixOf` v
+    , raw <- T.splitOn "," (T.dropAround (`elem` ("[]" :: String)) v)
+    , let dep = T.strip (T.takeWhile (`notElem` (" ><=!~;[" :: String)) (unquote (T.strip raw)))
+    , not (T.null dep) ]
+
 -- | One per-system output category (devShells, packages, …): its children
 -- are the names under @<category>.${currentSystem}@, each double-clickable to
 -- open @nix develop@ for it; when a @default@ name exists the collapsed row
@@ -1156,12 +1401,14 @@ workspaceWidget ide activeFileD revealFileD = do
                   projRevealE <- revealUnderExcept (constDyn (pjDir pKey)) pkgDirsD revealFileD
                   treeItem' projRevealE "project-files" False (treeSelect "workspace" (return never) $ do
                       elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
-                      -- A nix project's tree has no package "Files" nodes to
-                      -- distinguish from, so plain "Files" reads better.
+                      -- A directory project (nix / make / plain "Open Folder"
+                      -- CustomTool) has no package "Files" nodes to distinguish
+                      -- from, so plain "Files" reads better than "Other Files".
                       text $ case pKey of
-                        NixTool {}  -> "Files"
-                        MakeTool {} -> "Files"
-                        _           -> "Other Files"
+                        NixTool {}    -> "Files"
+                        MakeTool {}   -> "Files"
+                        CustomTool {} -> "Files"
+                        _             -> "Other Files"
                       return never) $
                         el "ul" $
                           (switchHold never =<<) . dyn $
@@ -1173,4 +1420,7 @@ workspaceWidget ide activeFileD revealFileD = do
               -- it self-hides when there's no flake and only evaluates once
               -- expanded, so there's no overhead otherwise.
               flakeNode (pjDir pKey)
+              -- Rust (Cargo.toml) / Python (pyproject.toml / setup.py) manifest
+              -- introspection, self-hiding like the flake node.
+              manifestNode (pjDir pKey)
               return $ leftmost [ProjectPackageEvents <$> packagesE, ProjectFileEvents <$> projectFilesE]

@@ -55,7 +55,7 @@ leksah-cmd rebuild-self --use-cabal   # failsafe: bypass leksah's build code
                                       # and stream plain cabal output
 ```
 
-Other useful commands: `leksah-cmd cm open FILE…`, `leksah-cmd project
+Other useful commands: `leksah-cmd editor open FILE…`, `leksah-cmd project
 open FILE…`, `leksah-cmd js eval 'CODE'` (evaluate JavaScript in the live
 UI), `leksah-cmd screenshot FILE.png`, `leksah-cmd ping` /
 `wait-ready`.

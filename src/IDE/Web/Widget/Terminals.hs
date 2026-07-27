@@ -48,9 +48,9 @@ import Text.Read (readMaybe)
 
 import Clay
        (overflow, auto, height, pct, padding, px, (-:), display, flex,
-        width, background, color, white, borderStyle, borderRadius,
-        backgroundImage, vGradient, fontSize, fontWeight, bold, hover, grey,
-        opacity, (#), cursor, cursorDefault, (?), Css, Color(..), None(..), Cursor(..))
+        width, background, color, borderStyle, borderRadius,
+        backgroundImage, vGradient, fontSize, fontWeight, bold, hover,
+        opacity, (#), cursor, cursorDefault, (?), Css, None(..), Cursor(..))
 import Clay.Stylesheet (key)
 
 import Reflex
@@ -65,13 +65,17 @@ import Reflex.Dom.Core
         _textInput_keydown, _textInput_hasFocus, _element_raw)
 import Language.Javascript.JSaddle (liftJSM, jsg, js1, jss, fun, eval, valToText)
 
-import IDE.Web.Theme (selectionColor, hoverColor, dimColor, dimOpacity)
+import IDE.Web.Theme
+       (selectionColor, onAccentColor, hoverColor, dimColor, dimOpacity, fgColor,
+        surfaceSunkenColor, btnTopColor, btnBottomColor, btnHoverTopColor,
+        btnHoverBottomColor)
 import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
        (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
         killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane, moveTmuxPane,
         moveRemoteTmuxPane, renameTmuxSession, renameTmuxWindow)
 import IDE.Web.Widget.Tree (treeItem)
+import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
 
 -- | Shared positioning for the close control's contents: pinned to the right of
@@ -96,7 +100,7 @@ terminalsCss = do
         overflow auto
         -- The expand/collapse triangles are SVG; give them a visible fill (the
         -- shared tree rules only set it under .workspace / .metadata otherwise).
-        key "fill" grey
+        key "fill" dimColor
         -- The tree text is not editable, so keep the normal arrow cursor.
         cursor cursorDefault
         -- A uniform right inset: every row's right edge (and so every close
@@ -105,14 +109,14 @@ terminalsCss = do
     -- All buttons in this pane share a dark look; the default native button is
     -- light and clashes with the dark UI.
     ".terminals button" ? do
-        color white
+        color fgColor
         borderStyle none
         borderRadius (px 3) (px 3) (px 3) (px 3)
-        backgroundImage (vGradient (Rgba 64 64 64 1.0) (Rgba 40 40 40 1.0))
+        backgroundImage (vGradient btnTopColor btnBottomColor)
         fontSize (px 13)
         cursor cursorDefault
     ".terminals button" # hover ?
-        backgroundImage (vGradient (Rgba 84 84 84 1.0) (Rgba 60 60 60 1.0))
+        backgroundImage (vGradient btnHoverTopColor btnHoverBottomColor)
     -- Compact management glyphs (new window / zoom / break / rename) sitting in a
     -- row, kept subtle until hovered so they don't shout over the labels.
     ".terminals .terminals-action" ? do
@@ -149,8 +153,8 @@ terminalsCss = do
         "top" -: "1px"
         "box-sizing" -: "border-box"
         "z-index" -: "2"
-        color white
-        background (Rgba 30 30 30 1.0)
+        color fgColor
+        background surfaceSunkenColor
         borderStyle none
         borderRadius (px 3) (px 3) (px 3) (px 3)
         fontSize (px 13)
@@ -208,7 +212,7 @@ terminalsCss = do
         closeOverlay
         display flex
         -- Mask the title underneath the confirm buttons.
-        background (Rgba 32 32 32 1.0)
+        background surfaceSunkenColor
     -- De-emphasis instead of emphasis (matching the Workspace tree): every
     -- host/session/window/pane label + icon is dimmed to light grey by default —
     -- "Local", the remote server names, and all sessions read grey.  Only the
@@ -221,16 +225,16 @@ terminalsCss = do
     ".terminals .terminals-label img.tree-icon" ? opacity dimOpacity
     -- The focused session's active-pane CHAIN (the session, its current window
     -- and its active pane) is lit white; everything else stays dimmed grey.
-    ".terminals .terminals-active" ? color white
+    ".terminals .terminals-active" ? color fgColor
     ".terminals .terminals-active img.tree-icon" ? opacity 1
     -- The active session's machine: the host row whose subtree holds the focused
     -- session (`:has(.terminals-active)`) — its own direct host label goes white.
-    ".terminals li:has(.terminals-active) > .terminals-host-label" ? color white
+    ".terminals li:has(.terminals-active) > .terminals-host-label" ? color fgColor
     ".terminals li:has(.terminals-active) > .terminals-host-label img.tree-icon" ? opacity 1
     -- The current window / active pane, but ONLY inside the focused session
     -- (`> .terminals-active` = that session li's own label) — a background
     -- session's current window/pane stays grey.
-    ".terminals li:has(> .terminals-active) .terminals-current" ? color white
+    ".terminals li:has(> .terminals-active) .terminals-current" ? color fgColor
     ".terminals li:has(> .terminals-active) .terminals-current img.tree-icon" ? opacity 1
     -- The blue FILL marks exactly ONE node: the DEEPEST node of that chain that
     -- is actually VISIBLE.  A collapsed tree node renders no '.tree-children'
@@ -240,7 +244,7 @@ terminalsCss = do
     -- else the active pane.  Each node is 'li > .tree-children > ul > li'.
     -- 'box-shadow:none' stops the filled node also drawing the nav-cursor outline
     -- below when the two coincide, so the filled row shows a fill only.
-    let deepestFill = do { background selectionColor; color white; "box-shadow" -: "none" }
+    let deepestFill = do { background selectionColor; color onAccentColor; "box-shadow" -: "none" }
     -- session, collapsed:
     ".terminals li:has(> .terminals-active):not(:has(> .tree-children)) > .terminals-active"
         ? deepestFill
@@ -339,6 +343,18 @@ terminalsWidget activeD attnD remoteHostsD hostTreesD = do
     remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
         (\host _ -> remoteHostNode activeD host
             (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
+    -- Trailing "Add Server…" row: opens the Add Server modal (the same one as
+    -- File ▸ Add Server…) via the request bridge; the added host lands in the
+    -- remoteHosts pref, so a node appears above on the resync.
+    addSrvE <- el "ul" $ el "li" $ do
+        (lbl, _) <- elAttr' "span"
+            ("class" =: "terminals-label terminals-add-server leksah-nav-item"
+             <> "style" =: "opacity:0.65;cursor:pointer"
+             <> "title" =: "Register an ssh host as a server in this tree") $ do
+            termIcon "tree-host-remote.svg"
+            text "Add Server…"
+        return (domEvent Click lbl)
+    performEvent_ $ ffor addSrvE $ \_ -> liftIO requestAddServer
     return $ leftmost [ bubbleLocalE
                       , fmapMaybe (\m -> listToMaybe (M.elems m)
                                           >>= either (const Nothing) Just) remoteE ]

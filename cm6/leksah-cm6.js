@@ -476,8 +476,8 @@
       this.done = this.lineBreak = false;
       for (; ; ) {
         let last = this.nodes.length - 1;
-        let top2 = this.nodes[last], offsetValue = this.offsets[last], offset = offsetValue >> 1;
-        let size = top2 instanceof TextLeaf ? top2.text.length : top2.children.length;
+        let top3 = this.nodes[last], offsetValue = this.offsets[last], offset = offsetValue >> 1;
+        let size = top3 instanceof TextLeaf ? top3.text.length : top3.children.length;
         if (offset == (dir > 0 ? size : 0)) {
           if (last == 0) {
             this.done = true;
@@ -496,8 +496,8 @@
             return this;
           }
           skip--;
-        } else if (top2 instanceof TextLeaf) {
-          let next = top2.text[offset + (dir < 0 ? -1 : 0)];
+        } else if (top3 instanceof TextLeaf) {
+          let next = top3.text[offset + (dir < 0 ? -1 : 0)];
           this.offsets[last] += dir;
           if (next.length > Math.max(0, skip)) {
             this.value = skip == 0 ? next : dir > 0 ? next.slice(skip) : next.slice(0, next.length - skip);
@@ -505,7 +505,7 @@
           }
           skip -= next.length;
         } else {
-          let next = top2.children[offset + (dir < 0 ? -1 : 0)];
+          let next = top3.children[offset + (dir < 0 ? -1 : 0)];
           if (skip > next.length) {
             skip -= next.length;
             this.offsets[last] += dir;
@@ -3210,13 +3210,13 @@
         this.value = null;
         this.rank = -1;
       } else {
-        let top2 = this.heap[0];
-        this.from = top2.from;
-        this.to = top2.to;
-        this.value = top2.value;
-        this.rank = top2.rank;
-        if (top2.value)
-          top2.next();
+        let top3 = this.heap[0];
+        this.from = top3.from;
+        this.to = top3.to;
+        this.value = top3.value;
+        this.rank = top3.rank;
+        if (top3.value)
+          top3.next();
         heapBubble(this.heap, 0);
       }
     }
@@ -4172,9 +4172,9 @@
     let doc2 = dom.ownerDocument, win = doc2.defaultView || window;
     for (let cur2 = dom, stop = false; cur2 && !stop; ) {
       if (cur2.nodeType == 1) {
-        let bounding, top2 = cur2 == doc2.body;
+        let bounding, top3 = cur2 == doc2.body;
         let scaleX = 1, scaleY = 1;
-        if (top2) {
+        if (top3) {
           bounding = windowRect(win);
         } else {
           if (/^(fixed|sticky)$/.test(getComputedStyle(cur2).position))
@@ -4223,7 +4223,7 @@
           moveX = targetLeft - bounding.left;
         }
         if (moveX || moveY) {
-          if (top2) {
+          if (top3) {
             win.scrollBy(moveX, moveY);
           } else {
             let movedX = 0, movedY = 0;
@@ -4249,7 +4249,7 @@
               y = "nearest";
           }
         }
-        if (top2)
+        if (top3)
           break;
         if (rect.top < bounding.top || rect.bottom > bounding.bottom || rect.left < bounding.left || rect.right > bounding.right)
           rect = {
@@ -4329,9 +4329,9 @@
     if (!preventScrollSupported) {
       preventScrollSupported = false;
       for (let i = 0; i < stack.length; ) {
-        let elt = stack[i++], top2 = stack[i++], left = stack[i++];
-        if (elt.scrollTop != top2)
-          elt.scrollTop = top2;
+        let elt = stack[i++], top3 = stack[i++], left = stack[i++];
+        if (elt.scrollTop != top3)
+          elt.scrollTop = top3;
         if (elt.scrollLeft != left)
           elt.scrollLeft = left;
       }
@@ -4991,7 +4991,7 @@
   }
   var scrollMargins = /* @__PURE__ */ Facet.define();
   function getScrollMargins(view) {
-    let left = 0, right = 0, top2 = 0, bottom = 0;
+    let left = 0, right = 0, top3 = 0, bottom = 0;
     for (let source of view.state.facet(scrollMargins)) {
       let m = source(view);
       if (m) {
@@ -5000,12 +5000,12 @@
         if (m.right != null)
           right = Math.max(right, m.right);
         if (m.top != null)
-          top2 = Math.max(top2, m.top);
+          top3 = Math.max(top3, m.top);
         if (m.bottom != null)
           bottom = Math.max(bottom, m.bottom);
       }
     }
-    return { left, right, top: top2, bottom };
+    return { left, right, top: top3, bottom };
   }
   var styleModule = /* @__PURE__ */ Facet.define();
   var ChangedRange = class _ChangedRange {
@@ -5633,11 +5633,11 @@
     }
   };
   var TilePointer = class {
-    constructor(top2) {
+    constructor(top3) {
       this.index = 0;
       this.beforeBreak = false;
       this.parents = [];
-      this.tile = top2;
+      this.tile = top3;
     }
     // Advance by the given distance. If side is -1, stop leaving or
     // entering tiles, or skipping zero-length tiles, once the distance
@@ -7329,12 +7329,12 @@
         return this.scan(positions, getRects, true);
       }
       if (closestDx && !recursed) {
-        let { top: top2, bottom } = closestRect;
-        if (above && above.bottom > (top2 + top2 + bottom) / 3) {
+        let { top: top3, bottom } = closestRect;
+        if (above && above.bottom > (top3 + top3 + bottom) / 3) {
           this.y = above.bottom - 1;
           return this.scan(positions, getRects, true);
         }
-        if (below && below.top < (top2 + bottom + bottom) / 3) {
+        if (below && below.top < (top3 + bottom + bottom) / 3) {
           this.y = below.top + 1;
           return this.scan(positions, getRects, true);
         }
@@ -8008,18 +8008,18 @@
         return;
       this.select(this.lastEvent = event);
       let sx = 0, sy = 0;
-      let left = 0, top2 = 0, right = this.view.win.innerWidth, bottom = this.view.win.innerHeight;
+      let left = 0, top3 = 0, right = this.view.win.innerWidth, bottom = this.view.win.innerHeight;
       if (this.scrollParents.x)
         ({ left, right } = this.scrollParents.x.getBoundingClientRect());
       if (this.scrollParents.y)
-        ({ top: top2, bottom } = this.scrollParents.y.getBoundingClientRect());
+        ({ top: top3, bottom } = this.scrollParents.y.getBoundingClientRect());
       let margins = getScrollMargins(this.view);
       if (event.clientX - margins.left <= left + dragScrollMargin)
         sx = -dragScrollSpeed(left - event.clientX);
       else if (event.clientX + margins.right >= right - dragScrollMargin)
         sx = dragScrollSpeed(event.clientX - right);
-      if (event.clientY - margins.top <= top2 + dragScrollMargin)
-        sy = -dragScrollSpeed(top2 - event.clientY);
+      if (event.clientY - margins.top <= top3 + dragScrollMargin)
+        sy = -dragScrollSpeed(top3 - event.clientY);
       else if (event.clientY + margins.bottom >= bottom - dragScrollMargin)
         sy = dragScrollSpeed(event.clientY - bottom);
       this.setScrollSpeed(sx, sy);
@@ -8626,10 +8626,10 @@
     /**
     @internal
     */
-    constructor(from, length, top2, height, _content) {
+    constructor(from, length, top3, height, _content) {
       this.from = from;
       this.length = length;
-      this.top = top2;
+      this.top = top3;
       this.height = height;
       this._content = _content;
     }
@@ -8803,19 +8803,19 @@
       this.deco = deco;
       this.spaceAbove = 0;
     }
-    mainBlock(top2, offset) {
-      return new BlockInfo(offset, this.length, top2 + this.spaceAbove, this.height - this.spaceAbove, this.deco || 0);
+    mainBlock(top3, offset) {
+      return new BlockInfo(offset, this.length, top3 + this.spaceAbove, this.height - this.spaceAbove, this.deco || 0);
     }
-    blockAt(height, _oracle, top2, offset) {
-      return this.spaceAbove && height < top2 + this.spaceAbove ? new BlockInfo(offset, 0, top2, this.spaceAbove, SpaceDeco) : this.mainBlock(top2, offset);
+    blockAt(height, _oracle, top3, offset) {
+      return this.spaceAbove && height < top3 + this.spaceAbove ? new BlockInfo(offset, 0, top3, this.spaceAbove, SpaceDeco) : this.mainBlock(top3, offset);
     }
-    lineAt(_value, _type, oracle, top2, offset) {
-      let main = this.mainBlock(top2, offset);
-      return this.spaceAbove ? this.blockAt(0, oracle, top2, offset).join(main) : main;
+    lineAt(_value, _type, oracle, top3, offset) {
+      let main = this.mainBlock(top3, offset);
+      return this.spaceAbove ? this.blockAt(0, oracle, top3, offset).join(main) : main;
     }
-    forEachLine(from, to, oracle, top2, offset, f) {
+    forEachLine(from, to, oracle, top3, offset, f) {
       if (from <= offset + this.length && to >= offset)
-        f(this.lineAt(0, QueryType.ByPos, oracle, top2, offset));
+        f(this.lineAt(0, QueryType.ByPos, oracle, top3, offset));
     }
     setMeasuredHeight(measured) {
       let next = measured.heights[measured.index++];
@@ -8845,8 +8845,8 @@
       this.breaks = 0;
       this.spaceAbove = above;
     }
-    mainBlock(top2, offset) {
-      return new BlockInfo(offset, this.length, top2 + this.spaceAbove, this.height - this.spaceAbove, this.breaks);
+    mainBlock(top3, offset) {
+      return new BlockInfo(offset, this.length, top3 + this.spaceAbove, this.height - this.spaceAbove, this.breaks);
     }
     replace(_from, _to, nodes) {
       let node = nodes[0];
@@ -8894,22 +8894,22 @@
       }
       return { firstLine, lastLine, perLine, perChar };
     }
-    blockAt(height, oracle, top2, offset) {
+    blockAt(height, oracle, top3, offset) {
       let { firstLine, lastLine, perLine, perChar } = this.heightMetrics(oracle, offset);
       if (oracle.lineWrapping) {
-        let guess = offset + (height < oracle.lineHeight ? 0 : Math.round(Math.max(0, Math.min(1, (height - top2) / this.height)) * this.length));
+        let guess = offset + (height < oracle.lineHeight ? 0 : Math.round(Math.max(0, Math.min(1, (height - top3) / this.height)) * this.length));
         let line = oracle.doc.lineAt(guess), lineHeight = perLine + line.length * perChar;
-        let lineTop = Math.max(top2, height - lineHeight / 2);
+        let lineTop = Math.max(top3, height - lineHeight / 2);
         return new BlockInfo(line.from, line.length, lineTop, lineHeight, 0);
       } else {
-        let line = Math.max(0, Math.min(lastLine - firstLine, Math.floor((height - top2) / perLine)));
+        let line = Math.max(0, Math.min(lastLine - firstLine, Math.floor((height - top3) / perLine)));
         let { from, length } = oracle.doc.line(firstLine + line);
-        return new BlockInfo(from, length, top2 + perLine * line, perLine, 0);
+        return new BlockInfo(from, length, top3 + perLine * line, perLine, 0);
       }
     }
-    lineAt(value, type, oracle, top2, offset) {
+    lineAt(value, type, oracle, top3, offset) {
       if (type == QueryType.ByHeight)
-        return this.blockAt(value, oracle, top2, offset);
+        return this.blockAt(value, oracle, top3, offset);
       if (type == QueryType.ByPosNoHeight) {
         let { from, to } = oracle.doc.lineAt(value);
         return new BlockInfo(from, to - from, 0, 0, 0);
@@ -8917,14 +8917,14 @@
       let { firstLine, perLine, perChar } = this.heightMetrics(oracle, offset);
       let line = oracle.doc.lineAt(value), lineHeight = perLine + line.length * perChar;
       let linesAbove = line.number - firstLine;
-      let lineTop = top2 + perLine * linesAbove + perChar * (line.from - offset - linesAbove);
-      return new BlockInfo(line.from, line.length, Math.max(top2, Math.min(lineTop, top2 + this.height - lineHeight)), lineHeight, 0);
+      let lineTop = top3 + perLine * linesAbove + perChar * (line.from - offset - linesAbove);
+      return new BlockInfo(line.from, line.length, Math.max(top3, Math.min(lineTop, top3 + this.height - lineHeight)), lineHeight, 0);
     }
-    forEachLine(from, to, oracle, top2, offset, f) {
+    forEachLine(from, to, oracle, top3, offset, f) {
       from = Math.max(from, offset);
       to = Math.min(to, offset + this.length);
       let { firstLine, perLine, perChar } = this.heightMetrics(oracle, offset);
-      for (let pos = from, lineTop = top2; pos <= to; ) {
+      for (let pos = from, lineTop = top3; pos <= to; ) {
         let line = oracle.doc.lineAt(pos);
         if (pos == from) {
           let linesAbove = line.number - firstLine;
@@ -9010,33 +9010,33 @@
     get break() {
       return this.flags & 1;
     }
-    blockAt(height, oracle, top2, offset) {
-      let mid = top2 + this.left.height;
-      return height < mid ? this.left.blockAt(height, oracle, top2, offset) : this.right.blockAt(height, oracle, mid, offset + this.left.length + this.break);
+    blockAt(height, oracle, top3, offset) {
+      let mid = top3 + this.left.height;
+      return height < mid ? this.left.blockAt(height, oracle, top3, offset) : this.right.blockAt(height, oracle, mid, offset + this.left.length + this.break);
     }
-    lineAt(value, type, oracle, top2, offset) {
-      let rightTop = top2 + this.left.height, rightOffset = offset + this.left.length + this.break;
+    lineAt(value, type, oracle, top3, offset) {
+      let rightTop = top3 + this.left.height, rightOffset = offset + this.left.length + this.break;
       let left = type == QueryType.ByHeight ? value < rightTop : value < rightOffset;
-      let base2 = left ? this.left.lineAt(value, type, oracle, top2, offset) : this.right.lineAt(value, type, oracle, rightTop, rightOffset);
+      let base2 = left ? this.left.lineAt(value, type, oracle, top3, offset) : this.right.lineAt(value, type, oracle, rightTop, rightOffset);
       if (this.break || (left ? base2.to < rightOffset : base2.from > rightOffset))
         return base2;
       let subQuery = type == QueryType.ByPosNoHeight ? QueryType.ByPosNoHeight : QueryType.ByPos;
       if (left)
         return base2.join(this.right.lineAt(rightOffset, subQuery, oracle, rightTop, rightOffset));
       else
-        return this.left.lineAt(rightOffset, subQuery, oracle, top2, offset).join(base2);
+        return this.left.lineAt(rightOffset, subQuery, oracle, top3, offset).join(base2);
     }
-    forEachLine(from, to, oracle, top2, offset, f) {
-      let rightTop = top2 + this.left.height, rightOffset = offset + this.left.length + this.break;
+    forEachLine(from, to, oracle, top3, offset, f) {
+      let rightTop = top3 + this.left.height, rightOffset = offset + this.left.length + this.break;
       if (this.break) {
         if (from < rightOffset)
-          this.left.forEachLine(from, to, oracle, top2, offset, f);
+          this.left.forEachLine(from, to, oracle, top3, offset, f);
         if (to >= rightOffset)
           this.right.forEachLine(from, to, oracle, rightTop, rightOffset, f);
       } else {
-        let mid = this.lineAt(rightOffset, QueryType.ByPos, oracle, top2, offset);
+        let mid = this.lineAt(rightOffset, QueryType.ByPos, oracle, top3, offset);
         if (from < mid.from)
-          this.left.forEachLine(from, mid.from - 1, oracle, top2, offset, f);
+          this.left.forEachLine(from, mid.from - 1, oracle, top3, offset, f);
         if (mid.to >= from && mid.from <= to)
           f(mid);
         if (to > mid.to)
@@ -9264,7 +9264,7 @@
     let rect = dom.getBoundingClientRect();
     let doc2 = dom.ownerDocument, win = doc2.defaultView || window;
     let left = Math.max(0, rect.left), right = Math.min(win.innerWidth, rect.right);
-    let top2 = Math.max(0, rect.top), bottom = Math.min(win.innerHeight, rect.bottom);
+    let top3 = Math.max(0, rect.top), bottom = Math.min(win.innerHeight, rect.bottom);
     for (let parent = dom.parentNode; parent && parent != doc2.body; ) {
       if (parent.nodeType == 1) {
         let elt = parent;
@@ -9273,7 +9273,7 @@
           let parentRect = elt.getBoundingClientRect();
           left = Math.max(left, parentRect.left);
           right = Math.min(right, parentRect.right);
-          top2 = Math.max(top2, parentRect.top);
+          top3 = Math.max(top3, parentRect.top);
           bottom = Math.min(parent == dom.parentNode ? win.innerHeight : bottom, parentRect.bottom);
         }
         parent = style.position == "absolute" || style.position == "fixed" ? elt.offsetParent : elt.parentNode;
@@ -9286,8 +9286,8 @@
     return {
       left: left - rect.left,
       right: Math.max(left, right) - rect.left,
-      top: top2 - (rect.top + paddingTop),
-      bottom: Math.max(top2, bottom) - (rect.top + paddingTop)
+      top: top3 - (rect.top + paddingTop),
+      bottom: Math.max(top3, bottom) - (rect.top + paddingTop)
     };
   }
   function inWindow(elt) {
@@ -9588,10 +9588,10 @@
     viewportIsAppropriate({ from, to }, bias = 0) {
       if (!this.inView)
         return true;
-      let { top: top2 } = this.heightMap.lineAt(from, QueryType.ByPos, this.heightOracle, 0, 0);
+      let { top: top3 } = this.heightMap.lineAt(from, QueryType.ByPos, this.heightOracle, 0, 0);
       let { bottom } = this.heightMap.lineAt(to, QueryType.ByPos, this.heightOracle, 0, 0);
       let { visibleTop, visibleBottom } = this;
-      return (from == 0 || top2 <= visibleTop - Math.max(10, Math.min(
+      return (from == 0 || top3 <= visibleTop - Math.max(10, Math.min(
         -bias,
         250
         /* VP.MaxCoverMargin */
@@ -9599,7 +9599,7 @@
         bias,
         250
         /* VP.MaxCoverMargin */
-      ))) && (top2 > visibleTop - 2 * 1e3 && bottom < visibleBottom + 2 * 1e3);
+      ))) && (top3 > visibleTop - 2 * 1e3 && bottom < visibleBottom + 2 * 1e3);
     }
     mapLineGaps(gaps, changes) {
       if (!gaps.length || changes.empty)
@@ -9659,17 +9659,17 @@
         let viewFrom, viewTo;
         if (wrapping) {
           let marginHeight = margin / this.heightOracle.lineLength * this.heightOracle.lineHeight;
-          let top2, bot;
+          let top3, bot;
           if (target != null) {
             let targetFrac = findFraction(structure, target);
             let spaceFrac = ((this.visibleBottom - this.visibleTop) / 2 + marginHeight) / line.height;
-            top2 = targetFrac - spaceFrac;
+            top3 = targetFrac - spaceFrac;
             bot = targetFrac + spaceFrac;
           } else {
-            top2 = (this.visibleTop - line.top - marginHeight) / line.height;
+            top3 = (this.visibleTop - line.top - marginHeight) / line.height;
             bot = (this.visibleBottom - line.top + marginHeight) / line.height;
           }
-          viewFrom = findPosition(structure, top2);
+          viewFrom = findPosition(structure, top3);
           viewTo = findPosition(structure, bot);
         } else {
           let totalWidth = structure.total * this.heightOracle.charWidth;
@@ -9851,10 +9851,10 @@
     constructor(oracle, heightMap, viewports) {
       let vpHeight = 0, base2 = 0, domBase = 0;
       this.viewports = viewports.map(({ from, to }) => {
-        let top2 = heightMap.lineAt(from, QueryType.ByPos, oracle, 0, 0).top;
+        let top3 = heightMap.lineAt(from, QueryType.ByPos, oracle, 0, 0).top;
         let bottom = heightMap.lineAt(to, QueryType.ByPos, oracle, 0, 0).bottom;
-        vpHeight += bottom - top2;
-        return { from, to, top: top2, bottom, domTop: 0, domBottom: 0 };
+        vpHeight += bottom - top3;
+        return { from, to, top: top3, bottom, domTop: 0, domBottom: 0 };
       });
       this.scale = (7e6 - vpHeight) / (heightMap.height - vpHeight);
       for (let obj of this.viewports) {
@@ -12039,10 +12039,10 @@
     Create a marker with the given class and dimensions. If `width`
     is null, the DOM element will get no width style.
     */
-    constructor(className, left, top2, width, height) {
+    constructor(className, left, top3, width, height) {
       this.className = className;
       this.left = left;
-      this.top = top2;
+      this.top = top3;
       this.width = width;
       this.height = height;
     }
@@ -12123,32 +12123,32 @@
     if (visualStart && visualEnd && visualStart.from == visualEnd.from && visualStart.to == visualEnd.to) {
       return pieces(drawForLine(range.from, range.to, visualStart));
     } else {
-      let top2 = visualStart ? drawForLine(range.from, null, visualStart) : drawForWidget(startBlock, false);
+      let top3 = visualStart ? drawForLine(range.from, null, visualStart) : drawForWidget(startBlock, false);
       let bottom = visualEnd ? drawForLine(null, range.to, visualEnd) : drawForWidget(endBlock, true);
       let between = [];
-      if ((visualStart || startBlock).to < (visualEnd || endBlock).from - (visualStart && visualEnd ? 1 : 0) || startBlock.widgetLineBreaks > 1 && top2.bottom + view.defaultLineHeight / 2 < bottom.top)
-        between.push(piece(leftSide, top2.bottom, rightSide, bottom.top));
-      else if (top2.bottom < bottom.top && view.elementAtHeight((top2.bottom + bottom.top) / 2).type == BlockType.Text)
-        top2.bottom = bottom.top = (top2.bottom + bottom.top) / 2;
-      return pieces(top2).concat(between).concat(pieces(bottom));
+      if ((visualStart || startBlock).to < (visualEnd || endBlock).from - (visualStart && visualEnd ? 1 : 0) || startBlock.widgetLineBreaks > 1 && top3.bottom + view.defaultLineHeight / 2 < bottom.top)
+        between.push(piece(leftSide, top3.bottom, rightSide, bottom.top));
+      else if (top3.bottom < bottom.top && view.elementAtHeight((top3.bottom + bottom.top) / 2).type == BlockType.Text)
+        top3.bottom = bottom.top = (top3.bottom + bottom.top) / 2;
+      return pieces(top3).concat(between).concat(pieces(bottom));
     }
-    function piece(left, top2, right, bottom) {
-      return new RectangleMarker(className, left - base2.left, top2 - base2.top, Math.max(0, right - left), bottom - top2);
+    function piece(left, top3, right, bottom) {
+      return new RectangleMarker(className, left - base2.left, top3 - base2.top, Math.max(0, right - left), bottom - top3);
     }
-    function pieces({ top: top2, bottom, horizontal }) {
+    function pieces({ top: top3, bottom, horizontal }) {
       let pieces2 = [];
       for (let i = 0; i < horizontal.length; i += 2)
-        pieces2.push(piece(horizontal[i], top2, horizontal[i + 1], bottom));
+        pieces2.push(piece(horizontal[i], top3, horizontal[i + 1], bottom));
       return pieces2;
     }
     function drawForLine(from2, to2, line) {
-      let top2 = 1e9, bottom = -1e9, horizontal = [];
+      let top3 = 1e9, bottom = -1e9, horizontal = [];
       function addSpan(from3, fromOpen, to3, toOpen, dir) {
         let fromCoords = view.coordsAtPos(from3, from3 == line.to ? -2 : 2);
         let toCoords = view.coordsAtPos(to3, to3 == line.from ? 2 : -2);
         if (!fromCoords || !toCoords)
           return;
-        top2 = Math.min(fromCoords.top, toCoords.top, top2);
+        top3 = Math.min(fromCoords.top, toCoords.top, top3);
         bottom = Math.max(fromCoords.bottom, toCoords.bottom, bottom);
         if (dir == Direction.LTR)
           horizontal.push(ltr && fromOpen ? leftSide : fromCoords.left, ltr && toOpen ? rightSide : toCoords.right);
@@ -12174,10 +12174,10 @@
         }
       if (horizontal.length == 0)
         addSpan(start, from2 == null, end, to2 == null, view.textDirection);
-      return { top: top2, bottom, horizontal };
+      return { top: top3, bottom, horizontal };
     }
-    function drawForWidget(block, top2) {
-      let y = contentRect.top + (top2 ? block.top : block.bottom);
+    function drawForWidget(block, top3) {
+      let y = contentRect.top + (top3 ? block.top : block.bottom);
       return { top: y, bottom: y, horizontal: [] };
     }
   }
@@ -12743,18 +12743,18 @@
         } else if (dom.style.height) {
           dom.style.height = "";
         }
-        let top2 = above ? pos.top - height - arrowHeight - offset.y : pos.bottom + arrowHeight + offset.y;
+        let top3 = above ? pos.top - height - arrowHeight - offset.y : pos.bottom + arrowHeight + offset.y;
         let right = left + width;
         if (tView.overlap !== true) {
           for (let r of others)
-            if (r.left < right && r.right > left && r.top < top2 + height && r.bottom > top2)
-              top2 = above ? r.top - height - 2 - arrowHeight : r.bottom + arrowHeight + 2;
+            if (r.left < right && r.right > left && r.top < top3 + height && r.bottom > top3)
+              top3 = above ? r.top - height - 2 - arrowHeight : r.bottom + arrowHeight + 2;
         }
         if (this.position == "absolute") {
-          dom.style.top = (top2 - measured.parent.top) / scaleY + "px";
+          dom.style.top = (top3 - measured.parent.top) / scaleY + "px";
           setLeftStyle(dom, (left - measured.parent.left) / scaleX);
         } else {
-          dom.style.top = top2 / scaleY + "px";
+          dom.style.top = top3 / scaleY + "px";
           setLeftStyle(dom, left / scaleX);
         }
         if (arrow) {
@@ -12762,7 +12762,7 @@
           arrow.style.left = arrowLeft / scaleX + "px";
         }
         if (tView.overlap !== true)
-          others.push({ left, top: top2, right, bottom: top2 + height });
+          others.push({ left, top: top3, right, bottom: top3 + height });
         dom.classList.toggle("cm-tooltip-above", above);
         dom.classList.toggle("cm-tooltip-below", !above);
         if (tView.positioned)
@@ -13075,13 +13075,13 @@
   };
   var tooltipMargin = 4;
   function isInTooltip(tooltip, event) {
-    let { left, right, top: top2, bottom } = tooltip.getBoundingClientRect(), arrow;
+    let { left, right, top: top3, bottom } = tooltip.getBoundingClientRect(), arrow;
     if (arrow = tooltip.querySelector(".cm-tooltip-arrow")) {
       let arrowRect = arrow.getBoundingClientRect();
-      top2 = Math.min(arrowRect.top, top2);
+      top3 = Math.min(arrowRect.top, top3);
       bottom = Math.max(arrowRect.bottom, bottom);
     }
-    return event.clientX >= left - tooltipMargin && event.clientX <= right + tooltipMargin && event.clientY >= top2 - tooltipMargin && event.clientY <= bottom + tooltipMargin;
+    return event.clientX >= left - tooltipMargin && event.clientX <= right + tooltipMargin && event.clientY >= top3 - tooltipMargin && event.clientY <= bottom + tooltipMargin;
   }
   function isOverRange(view, from, to, x, y, margin) {
     let rect = view.scrollDOM.getBoundingClientRect();
@@ -13209,7 +13209,7 @@
       let input = update.state.facet(showPanel);
       if (input != this.input) {
         let specs = input.filter((x) => x);
-        let panels = [], top2 = [], bottom = [], mount = [];
+        let panels = [], top3 = [], bottom = [], mount = [];
         for (let spec of specs) {
           let known = this.specs.indexOf(spec), panel;
           if (known < 0) {
@@ -13221,11 +13221,11 @@
               panel.update(update);
           }
           panels.push(panel);
-          (panel.top ? top2 : bottom).push(panel);
+          (panel.top ? top3 : bottom).push(panel);
         }
         this.specs = specs;
         this.panels = panels;
-        this.top.sync(top2);
+        this.top.sync(top3);
         this.bottom.sync(bottom);
         for (let p of mount) {
           p.dom.classList.add("cm-panel");
@@ -13249,9 +13249,9 @@
     })
   });
   var PanelGroup = class {
-    constructor(view, top2, container) {
+    constructor(view, top3, container) {
       this.view = view;
-      this.top = top2;
+      this.top = top3;
       this.container = container;
       this.dom = void 0;
       this.classes = "";
@@ -16269,12 +16269,12 @@
       this.extension = [
         language.of(this),
         EditorState.languageData.of((state, pos, side) => {
-          let top2 = topNodeAt(state, pos, side), data2 = top2.type.prop(languageDataProp);
+          let top3 = topNodeAt(state, pos, side), data2 = top3.type.prop(languageDataProp);
           if (!data2)
             return [];
-          let base2 = state.facet(data2), sub = top2.type.prop(sublanguageProp);
+          let base2 = state.facet(data2), sub = top3.type.prop(sublanguageProp);
           if (sub) {
-            let innerNode = top2.resolve(pos - top2.from, side);
+            let innerNode = top3.resolve(pos - top3.from, side);
             for (let sublang of sub)
               if (sublang.test(innerNode, state)) {
                 let data3 = state.facet(sublang.facet);
@@ -20761,13 +20761,13 @@
       indent: function(state, textAfter, cx2) {
         if (state.tokenize == tokenComment || state.tokenize == tokenQuasi) return null;
         if (state.tokenize != tokenBase2) return 0;
-        var firstChar = textAfter && textAfter.charAt(0), lexical = state.lexical, top2;
+        var firstChar = textAfter && textAfter.charAt(0), lexical = state.lexical, top3;
         if (!/^\s*else\b/.test(textAfter)) for (var i = state.cc.length - 1; i >= 0; --i) {
           var c = state.cc[i];
           if (c == poplex) lexical = lexical.prev;
           else if (c != maybeelse && c != popcontext) break;
         }
-        while ((lexical.type == "stat" || lexical.type == "form") && (firstChar == "}" || (top2 = state.cc[state.cc.length - 1]) && (top2 == maybeoperatorComma || top2 == maybeoperatorNoComma) && !/^[,\.=+\-*:?[\(]/.test(textAfter)))
+        while ((lexical.type == "stat" || lexical.type == "form") && (firstChar == "}" || (top3 = state.cc[state.cc.length - 1]) && (top3 == maybeoperatorComma || top3 == maybeoperatorNoComma) && !/^[,\.=+\-*:?[\(]/.test(textAfter)))
           lexical = lexical.prev;
         if (statementIndent && lexical.type == ")" && lexical.prev.type == "stat")
           lexical = lexical.prev;
@@ -23403,6 +23403,616 @@
   var xml = mkXML({});
   var html = mkXML({ htmlMode: true });
 
+  // node_modules/@codemirror/legacy-modes/mode/simple-mode.js
+  function simpleMode(states) {
+    ensureState(states, "start");
+    var states_ = {}, meta2 = states.languageData || {}, hasIndentation = false;
+    for (var state in states) if (state != meta2 && states.hasOwnProperty(state)) {
+      var list = states_[state] = [], orig = states[state];
+      for (var i = 0; i < orig.length; i++) {
+        var data = orig[i];
+        list.push(new Rule2(data, states));
+        if (data.indent || data.dedent) hasIndentation = true;
+      }
+    }
+    return {
+      name: meta2.name,
+      startState: function() {
+        return { state: "start", pending: null, indent: hasIndentation ? [] : null };
+      },
+      copyState: function(state2) {
+        var s = { state: state2.state, pending: state2.pending, indent: state2.indent && state2.indent.slice(0) };
+        if (state2.stack)
+          s.stack = state2.stack.slice(0);
+        return s;
+      },
+      token: tokenFunction(states_),
+      indent: indentFunction(states_, meta2),
+      mergeTokens: meta2.mergeTokens,
+      languageData: meta2
+    };
+  }
+  function ensureState(states, name2) {
+    if (!states.hasOwnProperty(name2))
+      throw new Error("Undefined state " + name2 + " in simple mode");
+  }
+  function toRegex(val, caret) {
+    if (!val) return /(?:)/;
+    var flags = "";
+    if (val instanceof RegExp) {
+      if (val.ignoreCase) flags = "i";
+      if (val.unicode) flags += "u";
+      val = val.source;
+    } else {
+      val = String(val);
+    }
+    return new RegExp((caret === false ? "" : "^") + "(?:" + val + ")", flags);
+  }
+  function asToken(val) {
+    if (!val) return null;
+    if (val.apply) return val;
+    if (typeof val == "string") return val.replace(/\./g, " ");
+    var result = [];
+    for (var i = 0; i < val.length; i++)
+      result.push(val[i] && val[i].replace(/\./g, " "));
+    return result;
+  }
+  function Rule2(data, states) {
+    if (data.next || data.push) ensureState(states, data.next || data.push);
+    this.regex = toRegex(data.regex);
+    this.token = asToken(data.token);
+    this.data = data;
+  }
+  function tokenFunction(states) {
+    return function(stream, state) {
+      if (state.pending) {
+        var pend = state.pending.shift();
+        if (state.pending.length == 0) state.pending = null;
+        stream.pos += pend.text.length;
+        return pend.token;
+      }
+      var curState = states[state.state];
+      for (var i = 0; i < curState.length; i++) {
+        var rule = curState[i];
+        var matches = (!rule.data.sol || stream.sol()) && stream.match(rule.regex);
+        if (matches) {
+          if (rule.data.next) {
+            state.state = rule.data.next;
+          } else if (rule.data.push) {
+            (state.stack || (state.stack = [])).push(state.state);
+            state.state = rule.data.push;
+          } else if (rule.data.pop && state.stack && state.stack.length) {
+            state.state = state.stack.pop();
+          }
+          if (rule.data.indent)
+            state.indent.push(stream.indentation() + stream.indentUnit);
+          if (rule.data.dedent)
+            state.indent.pop();
+          var token = rule.token;
+          if (token && token.apply) token = token(matches);
+          if (matches.length > 2 && rule.token && typeof rule.token != "string") {
+            state.pending = [];
+            for (var j = 2; j < matches.length; j++)
+              if (matches[j])
+                state.pending.push({ text: matches[j], token: rule.token[j - 1] });
+            stream.backUp(matches[0].length - (matches[1] ? matches[1].length : 0));
+            return token[0];
+          } else if (token && token.join) {
+            return token[0];
+          } else {
+            return token;
+          }
+        }
+      }
+      stream.next();
+      return null;
+    };
+  }
+  function indentFunction(states, meta2) {
+    return function(state, textAfter) {
+      if (state.indent == null || meta2.dontIndentStates && meta2.dontIndentStates.indexOf(state.state) > -1)
+        return null;
+      var pos = state.indent.length - 1, rules = states[state.state];
+      scan: for (; ; ) {
+        for (var i = 0; i < rules.length; i++) {
+          var rule = rules[i];
+          if (rule.data.dedent && rule.data.dedentIfLineStart !== false) {
+            var m = rule.regex.exec(textAfter);
+            if (m && m[0]) {
+              pos--;
+              if (rule.next || rule.push) rules = states[rule.next || rule.push];
+              textAfter = textAfter.slice(m[0].length);
+              continue scan;
+            }
+          }
+        }
+        break;
+      }
+      return pos < 0 ? 0 : state.indent[pos];
+    };
+  }
+
+  // node_modules/@codemirror/legacy-modes/mode/rust.js
+  var rust = simpleMode({
+    start: [
+      // string and byte string
+      { regex: /b?"/, token: "string", next: "string" },
+      // raw string and raw byte string
+      { regex: /b?r"/, token: "string", next: "string_raw" },
+      { regex: /b?r#+"/, token: "string", next: "string_raw_hash" },
+      // character
+      { regex: /'(?:[^'\\]|\\(?:[nrt0'"]|x[\da-fA-F]{2}|u\{[\da-fA-F]{6}\}))'/, token: "string.special" },
+      // byte
+      { regex: /b'(?:[^']|\\(?:['\\nrt0]|x[\da-fA-F]{2}))'/, token: "string.special" },
+      {
+        regex: /(?:(?:[0-9][0-9_]*)(?:(?:[Ee][+-]?[0-9_]+)|\.[0-9_]+(?:[Ee][+-]?[0-9_]+)?)(?:f32|f64)?)|(?:0(?:b[01_]+|(?:o[0-7_]+)|(?:x[0-9a-fA-F_]+))|(?:[0-9][0-9_]*))(?:u8|u16|u32|u64|i8|i16|i32|i64|isize|usize)?/,
+        token: "number"
+      },
+      { regex: /(let(?:\s+mut)?|fn|enum|mod|struct|type|union)(\s+)([a-zA-Z_][a-zA-Z0-9_]*)/, token: ["keyword", null, "def"] },
+      { regex: /(?:abstract|alignof|as|async|await|box|break|continue|const|crate|do|dyn|else|enum|extern|fn|for|final|if|impl|in|loop|macro|match|mod|move|offsetof|override|priv|proc|pub|pure|ref|return|self|sizeof|static|struct|super|trait|type|typeof|union|unsafe|unsized|use|virtual|where|while|yield)\b/, token: "keyword" },
+      { regex: /\b(?:Self|isize|usize|char|bool|u8|u16|u32|u64|f16|f32|f64|i8|i16|i32|i64|str|Option)\b/, token: "atom" },
+      { regex: /\b(?:true|false|Some|None|Ok|Err)\b/, token: "builtin" },
+      {
+        regex: /\b(fn)(\s+)([a-zA-Z_][a-zA-Z0-9_]*)/,
+        token: ["keyword", null, "def"]
+      },
+      { regex: /#!?\[.*\]/, token: "meta" },
+      { regex: /\/\/.*/, token: "comment" },
+      { regex: /\/\*/, token: "comment", next: "comment" },
+      { regex: /[-+\/*=<>!]+/, token: "operator" },
+      { regex: /[a-zA-Z_]\w*!/, token: "macroName" },
+      { regex: /[a-zA-Z_]\w*/, token: "variable" },
+      { regex: /[\{\[\(]/, indent: true },
+      { regex: /[\}\]\)]/, dedent: true }
+    ],
+    string: [
+      { regex: /"/, token: "string", next: "start" },
+      { regex: /(?:[^\\"]|\\(?:.|$))*/, token: "string" }
+    ],
+    string_raw: [
+      { regex: /"/, token: "string", next: "start" },
+      { regex: /[^"]*/, token: "string" }
+    ],
+    string_raw_hash: [
+      { regex: /"#+/, token: "string", next: "start" },
+      { regex: /(?:[^"]|"(?!#))*/, token: "string" }
+    ],
+    comment: [
+      { regex: /.*?\*\//, token: "comment", next: "start" },
+      { regex: /.*/, token: "comment" }
+    ],
+    languageData: {
+      name: "rust",
+      dontIndentStates: ["comment"],
+      indentOnInput: /^\s*\}$/,
+      commentTokens: { line: "//", block: { open: "/*", close: "*/" } }
+    }
+  });
+
+  // node_modules/@codemirror/legacy-modes/mode/python.js
+  function wordRegexp(words3) {
+    return new RegExp("^((" + words3.join(")|(") + "))\\b");
+  }
+  var wordOperators = wordRegexp(["and", "or", "not", "is"]);
+  var commonKeywords2 = [
+    "as",
+    "assert",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "finally",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "lambda",
+    "pass",
+    "raise",
+    "return",
+    "try",
+    "while",
+    "with",
+    "yield",
+    "in",
+    "False",
+    "True"
+  ];
+  var commonBuiltins = [
+    "abs",
+    "all",
+    "any",
+    "bin",
+    "bool",
+    "bytearray",
+    "callable",
+    "chr",
+    "classmethod",
+    "compile",
+    "complex",
+    "delattr",
+    "dict",
+    "dir",
+    "divmod",
+    "enumerate",
+    "eval",
+    "filter",
+    "float",
+    "format",
+    "frozenset",
+    "getattr",
+    "globals",
+    "hasattr",
+    "hash",
+    "help",
+    "hex",
+    "id",
+    "input",
+    "int",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "list",
+    "locals",
+    "map",
+    "max",
+    "memoryview",
+    "min",
+    "next",
+    "object",
+    "oct",
+    "open",
+    "ord",
+    "pow",
+    "property",
+    "range",
+    "repr",
+    "reversed",
+    "round",
+    "set",
+    "setattr",
+    "slice",
+    "sorted",
+    "staticmethod",
+    "str",
+    "sum",
+    "super",
+    "tuple",
+    "type",
+    "vars",
+    "zip",
+    "__import__",
+    "NotImplemented",
+    "Ellipsis",
+    "__debug__"
+  ];
+  function top2(state) {
+    return state.scopes[state.scopes.length - 1];
+  }
+  function mkPython(parserConf) {
+    var ERRORCLASS = "error";
+    var delimiters = parserConf.delimiters || parserConf.singleDelimiters || /^[\(\)\[\]\{\}@,:`=;\.\\]/;
+    var operators = [
+      parserConf.singleOperators,
+      parserConf.doubleOperators,
+      parserConf.doubleDelimiters,
+      parserConf.tripleDelimiters,
+      parserConf.operators || /^([-+*/%\/&|^]=?|[<>=]+|\/\/=?|\*\*=?|!=|[~!@]|\.\.\.)/
+    ];
+    for (var i = 0; i < operators.length; i++) if (!operators[i]) operators.splice(i--, 1);
+    var hangingIndent = parserConf.hangingIndent;
+    var myKeywords = commonKeywords2, myBuiltins = commonBuiltins;
+    if (parserConf.extra_keywords != void 0)
+      myKeywords = myKeywords.concat(parserConf.extra_keywords);
+    if (parserConf.extra_builtins != void 0)
+      myBuiltins = myBuiltins.concat(parserConf.extra_builtins);
+    var py3 = !(parserConf.version && Number(parserConf.version) < 3);
+    if (py3) {
+      var identifiers = parserConf.identifiers || /^[_A-Za-z\u00A1-\uFFFF][_A-Za-z0-9\u00A1-\uFFFF]*/;
+      myKeywords = myKeywords.concat(["nonlocal", "None", "aiter", "anext", "async", "await", "breakpoint", "match", "case"]);
+      myBuiltins = myBuiltins.concat(["ascii", "bytes", "exec", "print"]);
+      var stringPrefixes = new RegExp(`^(([rbuf]|(br)|(rb)|(fr)|(rf))?('{3}|"{3}|['"]))`, "i");
+    } else {
+      var identifiers = parserConf.identifiers || /^[_A-Za-z][_A-Za-z0-9]*/;
+      myKeywords = myKeywords.concat(["exec", "print"]);
+      myBuiltins = myBuiltins.concat([
+        "apply",
+        "basestring",
+        "buffer",
+        "cmp",
+        "coerce",
+        "execfile",
+        "file",
+        "intern",
+        "long",
+        "raw_input",
+        "reduce",
+        "reload",
+        "unichr",
+        "unicode",
+        "xrange",
+        "None"
+      ]);
+      var stringPrefixes = new RegExp(`^(([rubf]|(ur)|(br))?('{3}|"{3}|['"]))`, "i");
+    }
+    var keywords = wordRegexp(myKeywords);
+    var builtins = wordRegexp(myBuiltins);
+    function tokenBase2(stream, state) {
+      var sol = stream.sol() && state.lastToken != "\\";
+      if (sol) state.indent = stream.indentation();
+      if (sol && top2(state).type == "py") {
+        var scopeOffset = top2(state).offset;
+        if (stream.eatSpace()) {
+          var lineOffset = stream.indentation();
+          if (lineOffset > scopeOffset)
+            pushPyScope(stream, state);
+          else if (lineOffset < scopeOffset && dedent(stream, state) && stream.peek() != "#")
+            state.errorToken = true;
+          return null;
+        } else {
+          var style = tokenBaseInner(stream, state);
+          if (scopeOffset > 0 && dedent(stream, state))
+            style += " " + ERRORCLASS;
+          return style;
+        }
+      }
+      return tokenBaseInner(stream, state);
+    }
+    function tokenBaseInner(stream, state, inFormat) {
+      if (stream.eatSpace()) return null;
+      if (!inFormat && stream.match(/^#.*/)) return "comment";
+      if (stream.match(/^[0-9\.]/, false)) {
+        var floatLiteral = false;
+        if (stream.match(/^[\d_]*\.\d+(e[\+\-]?\d+)?/i)) {
+          floatLiteral = true;
+        }
+        if (stream.match(/^[\d_]+\.\d*/)) {
+          floatLiteral = true;
+        }
+        if (stream.match(/^\.\d+/)) {
+          floatLiteral = true;
+        }
+        if (floatLiteral) {
+          stream.eat(/J/i);
+          return "number";
+        }
+        var intLiteral = false;
+        if (stream.match(/^0x[0-9a-f_]+/i)) intLiteral = true;
+        if (stream.match(/^0b[01_]+/i)) intLiteral = true;
+        if (stream.match(/^0o[0-7_]+/i)) intLiteral = true;
+        if (stream.match(/^[1-9][\d_]*(e[\+\-]?[\d_]+)?/)) {
+          stream.eat(/J/i);
+          intLiteral = true;
+        }
+        if (stream.match(/^0(?![\dx])/i)) intLiteral = true;
+        if (intLiteral) {
+          stream.eat(/L/i);
+          return "number";
+        }
+      }
+      if (stream.match(stringPrefixes)) {
+        var isFmtString = stream.current().toLowerCase().indexOf("f") !== -1;
+        if (!isFmtString) {
+          state.tokenize = tokenStringFactory(stream.current(), state.tokenize);
+          return state.tokenize(stream, state);
+        } else {
+          state.tokenize = formatStringFactory(stream.current(), state.tokenize);
+          return state.tokenize(stream, state);
+        }
+      }
+      for (var i2 = 0; i2 < operators.length; i2++)
+        if (stream.match(operators[i2])) return "operator";
+      if (stream.match(delimiters)) return "punctuation";
+      if (state.lastToken == "." && stream.match(identifiers))
+        return "property";
+      if (stream.match(keywords) || stream.match(wordOperators))
+        return "keyword";
+      if (stream.match(builtins))
+        return "builtin";
+      if (stream.match(/^(self|cls)\b/))
+        return "self";
+      if (stream.match(identifiers)) {
+        if (state.lastToken == "def" || state.lastToken == "class")
+          return "def";
+        return "variable";
+      }
+      stream.next();
+      return inFormat ? null : ERRORCLASS;
+    }
+    function formatStringFactory(delimiter, tokenOuter) {
+      while ("rubf".indexOf(delimiter.charAt(0).toLowerCase()) >= 0)
+        delimiter = delimiter.substr(1);
+      var singleline = delimiter.length == 1;
+      var OUTCLASS = "string";
+      function tokenNestedExpr(depth) {
+        return function(stream, state) {
+          var inner = tokenBaseInner(stream, state, true);
+          if (inner == "punctuation") {
+            if (stream.current() == "{") {
+              state.tokenize = tokenNestedExpr(depth + 1);
+            } else if (stream.current() == "}") {
+              if (depth > 1) state.tokenize = tokenNestedExpr(depth - 1);
+              else state.tokenize = tokenString2;
+            }
+          }
+          return inner;
+        };
+      }
+      function tokenString2(stream, state) {
+        while (!stream.eol()) {
+          stream.eatWhile(/[^'"\{\}\\]/);
+          if (stream.eat("\\")) {
+            stream.next();
+            if (singleline && stream.eol())
+              return OUTCLASS;
+          } else if (stream.match(delimiter)) {
+            state.tokenize = tokenOuter;
+            return OUTCLASS;
+          } else if (stream.match("{{")) {
+            return OUTCLASS;
+          } else if (stream.match("{", false)) {
+            state.tokenize = tokenNestedExpr(0);
+            if (stream.current()) return OUTCLASS;
+            else return state.tokenize(stream, state);
+          } else if (stream.match("}}")) {
+            return OUTCLASS;
+          } else if (stream.match("}")) {
+            return ERRORCLASS;
+          } else {
+            stream.eat(/['"]/);
+          }
+        }
+        if (singleline) {
+          if (parserConf.singleLineStringErrors)
+            return ERRORCLASS;
+          else
+            state.tokenize = tokenOuter;
+        }
+        return OUTCLASS;
+      }
+      tokenString2.isString = true;
+      return tokenString2;
+    }
+    function tokenStringFactory(delimiter, tokenOuter) {
+      while ("rubf".indexOf(delimiter.charAt(0).toLowerCase()) >= 0)
+        delimiter = delimiter.substr(1);
+      var singleline = delimiter.length == 1;
+      var OUTCLASS = "string";
+      function tokenString2(stream, state) {
+        while (!stream.eol()) {
+          stream.eatWhile(/[^'"\\]/);
+          if (stream.eat("\\")) {
+            stream.next();
+            if (singleline && stream.eol())
+              return OUTCLASS;
+          } else if (stream.match(delimiter)) {
+            state.tokenize = tokenOuter;
+            return OUTCLASS;
+          } else {
+            stream.eat(/['"]/);
+          }
+        }
+        if (singleline) {
+          if (parserConf.singleLineStringErrors)
+            return ERRORCLASS;
+          else
+            state.tokenize = tokenOuter;
+        }
+        return OUTCLASS;
+      }
+      tokenString2.isString = true;
+      return tokenString2;
+    }
+    function pushPyScope(stream, state) {
+      while (top2(state).type != "py") state.scopes.pop();
+      state.scopes.push({
+        offset: top2(state).offset + stream.indentUnit,
+        type: "py",
+        align: null
+      });
+    }
+    function pushBracketScope(stream, state, type) {
+      var align = stream.match(/^[\s\[\{\(]*(?:#|$)/, false) ? null : stream.column() + 1;
+      state.scopes.push({
+        offset: state.indent + (hangingIndent || stream.indentUnit),
+        type,
+        align
+      });
+    }
+    function dedent(stream, state) {
+      var indented = stream.indentation();
+      while (state.scopes.length > 1 && top2(state).offset > indented) {
+        if (top2(state).type != "py") return true;
+        state.scopes.pop();
+      }
+      return top2(state).offset != indented;
+    }
+    function tokenLexer(stream, state) {
+      if (stream.sol()) {
+        state.beginningOfLine = true;
+        state.dedent = false;
+      }
+      var style = state.tokenize(stream, state);
+      var current = stream.current();
+      if (state.beginningOfLine && current == "@")
+        return stream.match(identifiers, false) ? "meta" : py3 ? "operator" : ERRORCLASS;
+      if (/\S/.test(current)) state.beginningOfLine = false;
+      if ((style == "variable" || style == "builtin") && state.lastToken == "meta")
+        style = "meta";
+      if (current == "pass" || current == "return")
+        state.dedent = true;
+      if (current == "lambda") state.lambda = true;
+      if (current == ":" && !state.lambda && top2(state).type == "py" && stream.match(/^\s*(?:#|$)/, false))
+        pushPyScope(stream, state);
+      if (current.length == 1 && !/string|comment/.test(style)) {
+        var delimiter_index = "[({".indexOf(current);
+        if (delimiter_index != -1)
+          pushBracketScope(stream, state, "])}".slice(delimiter_index, delimiter_index + 1));
+        delimiter_index = "])}".indexOf(current);
+        if (delimiter_index != -1) {
+          if (top2(state).type == current) state.indent = state.scopes.pop().offset - (hangingIndent || stream.indentUnit);
+          else return ERRORCLASS;
+        }
+      }
+      if (state.dedent && stream.eol() && top2(state).type == "py" && state.scopes.length > 1)
+        state.scopes.pop();
+      return style;
+    }
+    return {
+      name: "python",
+      startState: function() {
+        return {
+          tokenize: tokenBase2,
+          scopes: [{ offset: 0, type: "py", align: null }],
+          indent: 0,
+          lastToken: null,
+          lambda: false,
+          dedent: 0
+        };
+      },
+      token: function(stream, state) {
+        var addErr = state.errorToken;
+        if (addErr) state.errorToken = false;
+        var style = tokenLexer(stream, state);
+        if (style && style != "comment")
+          state.lastToken = style == "keyword" || style == "punctuation" ? stream.current() : style;
+        if (style == "punctuation") style = null;
+        if (stream.eol() && state.lambda)
+          state.lambda = false;
+        return addErr ? ERRORCLASS : style;
+      },
+      indent: function(state, textAfter, cx) {
+        if (state.tokenize != tokenBase2)
+          return state.tokenize.isString ? null : 0;
+        var scope = top2(state);
+        var closing = scope.type == textAfter.charAt(0) || scope.type == "py" && !state.dedent && /^(else:|elif |except |finally:)/.test(textAfter);
+        if (scope.align != null)
+          return scope.align - (closing ? 1 : 0);
+        else
+          return scope.offset - (closing ? hangingIndent || cx.unit : 0);
+      },
+      languageData: {
+        autocomplete: commonKeywords2.concat(commonBuiltins).concat(["exec", "print"]),
+        indentOnInput: /^\s*([\}\]\)]|else:|elif |except |finally:)$/,
+        commentTokens: { line: "#" },
+        closeBrackets: { brackets: ["(", "[", "{", "'", '"', "'''", '"""'] }
+      }
+    };
+  }
+  var words2 = function(str) {
+    return str.split(" ");
+  };
+  var python = mkPython({});
+  var cython = mkPython({
+    extra_keywords: words2("by cdef cimport cpdef ctypedef enum except extern gil include nogil property public readonly struct union DEF IF ELIF ELSE")
+  });
+
   // node_modules/@codemirror/search/dist/index.js
   var basicNormalize = typeof String.prototype.normalize == "function" ? (x) => x.normalize("NFKD") : (x) => x;
   var SearchCursor = class {
@@ -25670,21 +26280,21 @@
           break;
         if (chunk.fromA < vpA.from || chunk.fromB < vpB.from)
           continue;
-        let top2 = this.a.lineBlockAt(chunk.fromA).top + "px";
+        let top3 = this.a.lineBlockAt(chunk.fromA).top + "px";
         while (next && +next.dataset.chunk < i)
           next = rm2(next);
         if (next && next.dataset.chunk == String(i)) {
-          if (next.style.top != top2)
-            next.style.top = top2;
+          if (next.style.top != top3)
+            next.style.top = top3;
           next = next.nextSibling;
         } else {
-          dom.insertBefore(this.renderRevertButton(top2, i), next);
+          dom.insertBefore(this.renderRevertButton(top3, i), next);
         }
       }
       while (next)
         next = rm2(next);
     }
-    renderRevertButton(top2, chunk) {
+    renderRevertButton(top3, chunk) {
       let elt;
       if (this.renderRevert) {
         elt = this.renderRevert();
@@ -25695,7 +26305,7 @@
         elt.setAttribute("title", text);
         elt.textContent = this.revertToLeft ? "\u21DC" : "\u21DD";
       }
-      elt.style.top = top2;
+      elt.style.top = top3;
       elt.setAttribute("data-chunk", String(chunk));
       return elt;
     }
@@ -26094,10 +26704,10 @@
   };
   function toSet(chars) {
     let flat = Object.keys(chars).join("");
-    let words2 = /\w/.test(flat);
-    if (words2)
+    let words3 = /\w/.test(flat);
+    if (words3)
       flat = flat.replace(/\w/g, "");
-    return `[${words2 ? "\\w" : ""}${flat.replace(/[^\w\s]/g, "\\$&")}]`;
+    return `[${words3 ? "\\w" : ""}${flat.replace(/[^\w\s]/g, "\\$&")}]`;
   }
   function prefixMatch(options) {
     let first = /* @__PURE__ */ Object.create(null), rest = /* @__PURE__ */ Object.create(null);
@@ -27827,6 +28437,106 @@
     { tag: [tags.deleted], color: "#ffdcd7", backgroundColor: "#67060c" },
     { tag: [tags.inserted], color: "#aff5b4", backgroundColor: "#033a16" }
   ]);
+  var ghl = {
+    bg: "#ffffff",
+    fg: "#1f2328",
+    gutterFg: "#8c959f",
+    gutterActiveFg: "#1f2328",
+    activeLine: "rgba(234,238,242,0.5)",
+    selection: "rgba(84,174,255,0.35)",
+    matchBracket: "rgba(84,174,255,0.30)",
+    selectionMatch: "rgba(84,174,255,0.20)",
+    gray: "#6e7781",
+    // comment / meta
+    red: "#cf222e",
+    // keyword / storage
+    blue: "#0550ae",
+    // number / constant / builtin
+    lightblue: "#0a3069",
+    // string
+    purple: "#8250df",
+    // entity: type / class / function / definition
+    green: "#116329",
+    // tag
+    orange: "#953800",
+    // variable (params)
+    coral: "#82071e"
+    // invalid
+  };
+  var githubLight = EditorView.theme({
+    "&": { color: ghl.fg, backgroundColor: ghl.bg },
+    ".cm-content": { caretColor: ghl.fg },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: ghl.fg },
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: ghl.selection },
+    ".cm-activeLine": { backgroundColor: ghl.activeLine },
+    ".cm-gutters": { backgroundColor: ghl.bg, color: ghl.gutterFg, border: "none" },
+    ".cm-activeLineGutter": { backgroundColor: "transparent", color: ghl.gutterActiveFg },
+    ".cm-foldPlaceholder": { backgroundColor: "transparent", border: "none", color: ghl.gray },
+    ".cm-matchingBracket": { backgroundColor: ghl.matchBracket, color: "inherit" },
+    ".cm-nonmatchingBracket": { backgroundColor: "rgba(207,34,46,0.20)" },
+    ".cm-selectionMatch": { backgroundColor: ghl.selectionMatch }
+  }, { dark: false });
+  var githubLightHighlightStyle = HighlightStyle.define([
+    { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: ghl.gray },
+    { tag: [
+      tags.keyword,
+      tags.moduleKeyword,
+      tags.controlKeyword,
+      tags.operatorKeyword,
+      tags.definitionKeyword,
+      tags.modifier,
+      tags.self,
+      tags.null
+    ], color: ghl.red },
+    { tag: [tags.string, tags.special(tags.string), tags.character, tags.regexp, tags.docString], color: ghl.lightblue },
+    { tag: [tags.number, tags.integer, tags.float, tags.bool, tags.atom, tags.unit], color: ghl.blue },
+    { tag: [
+      tags.typeName,
+      tags.className,
+      tags.namespace,
+      tags.macroName,
+      tags.function(tags.variableName),
+      tags.function(tags.propertyName),
+      tags.definition(tags.variableName),
+      tags.definition(tags.propertyName)
+    ], color: ghl.purple },
+    { tag: [
+      tags.standard(tags.variableName),
+      tags.propertyName,
+      tags.attributeName,
+      tags.labelName,
+      tags.constant(tags.variableName)
+    ], color: ghl.blue },
+    { tag: [tags.tagName, tags.angleBracket], color: ghl.green },
+    { tag: [tags.special(tags.variableName)], color: ghl.orange },
+    { tag: [tags.meta, tags.processingInstruction, tags.documentMeta], color: ghl.gray },
+    { tag: [tags.link], color: ghl.lightblue, textDecoration: "underline" },
+    { tag: [tags.heading, tags.strong], color: ghl.blue, fontWeight: "bold" },
+    { tag: [tags.emphasis], color: ghl.blue, fontStyle: "italic" },
+    { tag: [tags.strikethrough], textDecoration: "line-through" },
+    { tag: [tags.invalid], color: ghl.coral },
+    { tag: [tags.deleted], color: "#82071e", backgroundColor: "#ffebe9" },
+    { tag: [tags.inserted], color: "#116329", backgroundColor: "#dafbe1" }
+  ]);
+  var themeComp = new Compartment();
+  var THEMES = {
+    "github-dark": [githubDark, syntaxHighlighting(githubDarkHighlightStyle)],
+    "github-light": [githubLight, syntaxHighlighting(githubLightHighlightStyle)]
+  };
+  var currentTheme = "github-dark";
+  function setTheme(name2) {
+    if (!THEMES[name2]) return;
+    currentTheme = name2;
+    document.querySelectorAll(".cm-editor").forEach((dom) => {
+      const v = EditorView.findFromDOM(dom);
+      if (v) {
+        try {
+          v.dispatch({ effects: themeComp.reconfigure(THEMES[name2]) });
+        } catch (e) {
+        }
+      }
+    });
+  }
   var LANG_BY_EXT = {
     hs: haskell,
     lhs: haskell,
@@ -27849,7 +28559,11 @@
     toml,
     xml,
     html,
-    htm: html
+    htm: html,
+    rs: rust,
+    py: python,
+    pyi: python,
+    pyw: python
   };
   function languageForFile(path) {
     if (!path) return [];
@@ -27865,7 +28579,6 @@
       drawSelection(),
       dropCursor(),
       indentOnInput(),
-      syntaxHighlighting(githubDarkHighlightStyle),
       bracketMatching(),
       highlightActiveLine(),
       highlightSelectionMatches(),
@@ -27883,7 +28596,7 @@
         ...lspNavKeymap
       ]),
       languageExt ?? [],
-      githubDark,
+      themeComp.of(THEMES[currentTheme]),
       EditorView.theme({
         "&": { height: "100%" },
         ".cm-scroller": {
@@ -27892,18 +28605,18 @@
         },
         ".cm-leksah-find": { backgroundColor: "rgba(255,200,0,.35)" },
         ".cm-leksah-find-active": { backgroundColor: "rgba(255,140,0,.6)" },
-        ".cm-tooltip.cm-tooltip-hover": { border: "1px solid #30363d", backgroundColor: "#161b22" },
+        ".cm-tooltip.cm-tooltip-hover": { border: "1px solid var(--leksah-border-control)", backgroundColor: "var(--leksah-surface)" },
         ".cm-leksah-hover": {
           padding: "4px 8px",
           maxWidth: "600px",
           lineHeight: "1.4",
-          color: "#e6edf3",
+          color: "var(--leksah-fg-muted)",
           fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
           fontSize: "12px"
         },
         ".cm-leksah-hover code": {
           fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)",
-          backgroundColor: "rgba(255,255,255,0.09)",
+          backgroundColor: "var(--leksah-inset-bg)",
           borderRadius: "3px",
           padding: "0 3px",
           fontSize: "11.5px"
@@ -27911,8 +28624,8 @@
         ".cm-leksah-hover pre": {
           margin: "4px 0",
           padding: "5px 8px",
-          backgroundColor: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.10)",
+          backgroundColor: "var(--leksah-inset-bg)",
+          border: "1px solid var(--leksah-inset-line)",
           borderRadius: "4px",
           fontFamily: "var(--leksah-mono, Hasklig, Menlo, monospace)",
           fontSize: "11.5px",
@@ -27922,10 +28635,10 @@
         },
         ".cm-leksah-hover hr": {
           border: "none",
-          borderTop: "1px solid rgba(255,255,255,0.16)",
+          borderTop: "1px solid var(--leksah-inset-line)",
           margin: "5px 0"
         },
-        ".cm-leksah-hover strong": { color: "#fff", fontWeight: "600" }
+        ".cm-leksah-hover strong": { color: "var(--leksah-fg)", fontWeight: "600" }
       })
     ];
   }
@@ -27969,6 +28682,7 @@
       window.LeksahCM.activeView = view;
     });
     window.LeksahCM.activeView = view;
+    if (window.leksahRetheme) window.leksahRetheme();
     return view;
   }
   function getDoc(view) {
@@ -28312,6 +29026,7 @@
     destroyDiff,
     activeView: null,
     onActivePane: null,
+    setTheme,
     findSet,
     findNext: findNext2,
     findPrev,

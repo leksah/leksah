@@ -58,6 +58,10 @@ module IDE.Web.Widget.Terminal
   , newTmuxWindow
   , zoomTmuxPane
   , breakTmuxPane
+  , killTmuxPaneId
+  , breakTmuxPaneId
+  , windowIndexOfPane
+  , paneCountOfSession
   , moveTmuxPane
   , renameTmuxSession
   , renameTmuxWindow
@@ -150,6 +154,14 @@ terminalCss = do
     -- subpixel antialiasing, which renders noticeably bolder than a native
     -- terminal; grayscale (antialiased) matches the lighter native rendering.
     ".xterm" ? ("-webkit-font-smoothing" -: "antialiased")
+    -- The pane box reserves a uniform inset around the grid (terminalPanePad),
+    -- and row quantisation leaves a little vertical slack; both areas show the
+    -- pane's OWN background.  xterm paints its background on .xterm-viewport
+    -- (inline, from its theme) which is --leksah-terminal-bg, so match the pane
+    -- to that var — otherwise the inset frames the terminal in the editor-area
+    -- colour instead of the terminal's.  (The var is theme-synced for
+    -- light/dark; the literal is just the pre-JS fallback.)
+    ".terminal-cc-pane" ? ("background" -: "var(--leksah-terminal-bg, rgb(16,16,16))")
     -- The pane box reserves a uniform inset around the grid (see
     -- 'terminalPanePad'); the whole cell grid, being quantised to whole rows,
     -- is a little shorter than the pane's content box, so centre it vertically
@@ -183,11 +195,11 @@ terminalCss = do
     ".terminal-cc-divider.vert" ? ("cursor" -: "col-resize")
     ".terminal-cc-divider.horiz" ? ("cursor" -: "row-resize")
     ".terminal-cc-divider .divider-line" ?
-        ("background" -: "rgb(128,128,128)")
+        ("background" -: "var(--leksah-border-line)")
     ".terminal-cc-divider:hover .divider-line" ?
-        ("background" -: "rgba(190,190,190,0.9)")
+        ("background" -: "var(--leksah-border-line-hi)")
     ".terminal-cc-divider.dragging .divider-line" ?
-        ("background" -: "rgba(190,190,190,0.9)")
+        ("background" -: "var(--leksah-border-line-hi)")
     -- The active pane's position marker: an invisible box exactly over the pane
     -- (shown/hidden by applyPaneHighlight).  It carries no shadow itself — it is
     -- clipped inside the terminal.  Instead 'leksahUpdatePaneHl' copies the
@@ -207,7 +219,7 @@ terminalCss = do
     ".leksah-pane-hl" ? do
         "position" -: "absolute"
         "pointer-events" -: "none"
-        "box-shadow" -: "0 0 64px rgba(128,128,128,0.9)"
+        "box-shadow" -: "0 0 64px var(--leksah-shadow-glow)"
     -- A pane owned by a jsaddle-terminal app (see TerminalCC's tunnel): the
     -- iframe overlays the pane and the xterm underneath is hidden (it keeps
     -- consuming any non-frame output, so it is current again the moment the
@@ -220,7 +232,7 @@ terminalCss = do
         "width" -: "100%"
         "height" -: "100%"
         "border" -: "0"
-        "background" -: "rgb(16,16,16)"
+        "background" -: "var(--leksah-terminal-bg, rgb(16,16,16))"
         "z-index" -: "5"
     -- A pane backing a leksah view (an editor / git log converted to a pane by
     -- ⌘D — see paneOverlays): the leksah widget overlays the pane, the xterm
@@ -233,8 +245,67 @@ terminalCss = do
         "width" -: "100%"
         "height" -: "100%"
         "overflow" -: "hidden"
-        "background" -: "rgb(16,16,16)"
+        "background" -: "var(--leksah-terminal-bg, rgb(16,16,16))"
         "z-index" -: "5"
+    -- The ⌘W terminal pane close menu (Kill / Hide / Move / Cancel).  It renders
+    -- INSIDE its target pane; this overlay covers the pane and CSS-centres the menu
+    -- box (grid place-items) — no JS geometry.  All interaction is reflex.
+    ".pane-close-overlay" ? do
+        "position" -: "absolute"
+        "inset" -: "0"
+        "display" -: "grid"
+        "place-items" -: "center"
+        "z-index" -: "6"
+    ".pane-close-menu" ? do
+        "min-width" -: "180px"
+        "padding" -: "6px"
+        "border-radius" -: "8px"
+        "background" -: "var(--leksah-surface)"
+        "color" -: "var(--leksah-fg-muted)"
+        "border" -: "1px solid var(--leksah-border-control)"
+        "box-shadow" -: "0 0 64px var(--leksah-shadow-glow)"
+        "display" -: "flex"
+        "flex-direction" -: "column"
+        "outline" -: "none"
+    ".pane-close-opt" ? do
+        "display" -: "block"
+        "width" -: "100%"
+        "text-align" -: "left"
+        "padding" -: "6px 12px"
+        "border" -: "0"
+        "background" -: "transparent"
+        "color" -: "inherit"
+        "border-radius" -: "5px"
+        "cursor" -: "pointer"
+        "font" -: "inherit"
+        "white-space" -: "nowrap"
+    ".pane-close-opt.selected" ? do
+        "background" -: "var(--leksah-selection)"
+        "color" -: "var(--leksah-fg)"
+    -- The "save changes before closing?" prompt (⌘W / File ▸ Close on a dirty
+    -- editor).  Same box + option styling as the pane close menu, but a fixed
+    -- full-screen overlay (an editor tab isn't a tmux pane to nest inside).
+    ".save-close-overlay" ? do
+        "position" -: "fixed"
+        "inset" -: "0"
+        "z-index" -: "1000"
+        "display" -: "grid"
+        "place-items" -: "center"
+        "background" -: "var(--leksah-scrim)"
+    ".save-close-menu" ? do
+        "min-width" -: "260px"
+        "padding" -: "12px"
+        "border-radius" -: "8px"
+        "background" -: "var(--leksah-surface)"
+        "color" -: "var(--leksah-fg-muted)"
+        "border" -: "1px solid var(--leksah-border-control)"
+        "box-shadow" -: "0 0 64px var(--leksah-shadow-glow)"
+        "display" -: "flex"
+        "flex-direction" -: "column"
+        "outline" -: "none"
+    ".save-close-menu p" ? do
+        "margin" -: "0 0 8px 0"
+        "padding" -: "0 4px"
 
 -- | A terminal pane.  The 'Int' is the terminal's id; it maps to a tmux
 -- session named @leksah-N@ so the shell survives a leksah restart (see
@@ -839,6 +910,11 @@ data TmuxPane = TmuxPane
                        --   located in the editor-area DOM (@.terminal-cc-pane@).
   , tpLabel  :: Text
   , tpActive :: Bool
+  , tpRunKey :: Text   -- ^ this pane's own @\@leksah_run@ tag (@""@ = none).
+                       --   Per-PANE (not window) so a hidden editor/git-log
+                       --   backing twin can be told apart from a user's own
+                       --   pane sharing the same window — see the backing-twin
+                       --   filter in 'IDE.Web.Widget.TerminalCC'.
   } deriving (Eq, Show)
 
 -- | A tmux window within a session: its index, a display label (its index and
@@ -873,7 +949,7 @@ listTerminalTree = do
     ts <- demoTerminals
     return $ M.fromListWith (\_ old -> old)
         [ (sid, (name, [ TmuxWindow 0 name True False False False "" Nothing
-                             [ TmuxPane 0 ("%" <> sid) name True ] ]))
+                             [ TmuxPane 0 ("%" <> sid) name True "" ] ]))
         | (sid, name) <- ts ]
 #else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
@@ -1096,10 +1172,10 @@ parsePaneTree out = M.map toSession grouped
       , Just pidx <- [readMaybe (T.unpack piT)]
       , let title    = T.intercalate "\t" rest
             paneName = if T.null title then cmd else title ]
-    -- session id -> (name, window index -> (name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id)))
-    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text)))
+    -- session id -> (name, window index -> (name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id, @leksah_run)))
+    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text, Text)))
     grouped = M.fromListWith mergeSess
-      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid))))
+      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid, runkey))))
       | (sid, sname, wi, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, paneName) <- rows ]
     mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
     -- The run key is a *pane* option (rows differ within a window — e.g. a
@@ -1111,8 +1187,8 @@ parsePaneTree out = M.map toSession grouped
     toSession (sname, wm) =
       ( sname
       , [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk Nothing
-            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) pa
-            | (pidx, (paneName, pa, pid)) <- M.toAscList ps ]
+            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) pa prk
+            | (pidx, (paneName, pa, pid, prk)) <- M.toAscList ps ]
         | (wi, (wn, wa, wb, wac, ws, rk, ps)) <- M.toAscList wm ] )
 
 -- | Make window @w@ of session @s@ (a tmux session id) the current window.
@@ -1154,6 +1230,51 @@ zoomTmuxPane s w p =
 breakTmuxPane :: Text -> Int -> Int -> IO ()
 breakTmuxPane s w p =
     tmuxCmd ["break-pane", "-t", T.unpack s <> ":" <> show w <> "." <> show p]
+
+-- | Kill the pane with tmux id @pid@ (e.g. @%5@) directly — targeting by pane
+-- id (not session:window.index) is unambiguous even mid-relayout.  tmux closes
+-- the window/session if it was the last pane.  Used by the ⌘W close menu's
+-- "Kill Pane".
+killTmuxPaneId :: Text -> IO ()
+killTmuxPaneId pid = tmuxCmd ["kill-pane", "-t", T.unpack pid]
+
+-- | Break pane @pid@ (e.g. @%5@) out into its own new window but do NOT switch
+-- to it (@-d@), so the pane leaves the current tiling yet stays alive.  Returns
+-- the NEW window's index (so the ⌘W close menu's "Move Pane to Hidden Window"
+-- can add it to 'hiddenWindows'); 'Nothing' on any error / no tmux.
+breakTmuxPaneId :: Text -> IO (Maybe Int)
+breakTmuxPaneId pid = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return Nothing
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "break-pane", "-d", "-P", "-F", "#{window_index}", "-s", T.unpack pid] ""
+            return $ readMaybe . T.unpack
+                =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+
+-- | The window index of pane @pid@ (e.g. @%5@) — used by the ⌘W close menu's
+-- "Hide Window" to add that window to 'hiddenWindows'.  'Nothing' on error.
+windowIndexOfPane :: Text -> IO (Maybe Int)
+windowIndexOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return Nothing
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "display-message", "-p", "-t", T.unpack pid, "#{window_index}"] ""
+            return $ readMaybe . T.unpack
+                =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+
+-- | Number of panes in session @n@'s CURRENT window (the tiling shown in wide0)
+-- — 0 on any error / no tmux.  The ⌘W close menu uses @> 1@ to decide the
+-- multi-pane vs single-pane form.
+paneCountOfSession :: Text -> IO Int
+paneCountOfSession n = (`catch` \(_ :: SomeException) -> return 0) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return 0
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "list-panes", "-t", T.unpack n, "-F", "#{pane_id}"] ""
+            return $ length (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
 
 -- | Move pane @srcPaneId@ (a tmux pane id like @%5@) into window @dstW@ of
 -- session @dstS@, splitting the target window.  Targeting by pane id keeps the

@@ -30,7 +30,7 @@ import qualified Text.Regex.TDFA as RE
 import Text.Regex.TDFA.Text (compile, execute)
 
 import Clay
-       (flexGrow, flex, display, middle, fontSize, white,
+       (flexGrow, flex, display, middle, fontSize,
         color, borderStyle, textDecoration, vGradient, backgroundImage,
         borderRadius, padding, hover, (#), background, margin, px, width,
         height, (?), Css, Color(..), None(..), VerticalAlign(..))
@@ -46,14 +46,16 @@ import Reflex.Dom.Core
         Event, attributes, domEvent, EventName(..), blank,
         _textInput_value, _textInput_keypress)
 
-import IDE.Web.Theme (selectionColor)
+import IDE.Web.Theme
+       (selectionColor, fgColor, accentHoverColor,
+        barTopColor, barBottomColor, inputTopColor, inputBottomColor)
 import IDE.Web.Events (FindbarEvents(..), TabKey(..))
 
 findbarCss :: Css
 findbarCss = do
     ".findbar" ? do
         display flex
-        backgroundImage (vGradient (Rgba 32 32 32 1.0) (Rgba 16 16 16 1.0))
+        backgroundImage (vGradient barTopColor barBottomColor)
     ".findbar button" ? do
         verticalAlign middle
         borderRadius (px 3) (px 3) (px 3) (px 3)
@@ -63,15 +65,15 @@ findbarCss = do
         borderStyle none
         fontSize (px 13)
         background (Rgba 0 0 0 0.0)
-        color white
+        color fgColor
     ".findbar button" # hover ?
-        background (Rgba 61 96 150 1.0)
+        background accentHoverColor
     ".findbar button.selected" ?
         background selectionColor
     ".findbar input" ? do
         verticalAlign middle
-        backgroundImage (vGradient (Rgba 40 40 40 1.0) (Rgba 24 24 24 1.0))
-        color white
+        backgroundImage (vGradient inputTopColor inputBottomColor)
+        color fgColor
         margin (px 0) (px 10) (px 0) (px 10)
         padding (px 2) (px 2) (px 2) (px 2)
         borderStyle none
@@ -91,7 +93,7 @@ findbarCss = do
         padding (px 2) (px 10) (px 2) (px 10)
         margin (px 0) (px 0) (px 0) (px 0)
     ".findbar-button" # hover ?
-        background (Rgba 61 96 150 1.0)
+        background accentHoverColor
     ".findbar-button.selected" ?
         background selectionColor
 

@@ -15,6 +15,8 @@
 module IDE.Web.Widget.Changes
   ( changesCss
   , changesWidget
+  , gitChanges
+  , FileChange(..)
   ) where
 
 import Control.Concurrent (forkIO)
@@ -33,9 +35,11 @@ import Data.Maybe (listToMaybe)
 import qualified Data.Text as T (pack, unpack)
 
 import Clay
-       (overflow, auto, height, pct, whiteSpace, nowrap, grey, color,
+       (overflow, auto, height, pct, whiteSpace, nowrap, color,
         padding, paddingLeft, fontWeight, bold, px, rgb, background, (?), Css,
         Cursor(..), cursorDefault)
+
+import IDE.Web.Theme (selectionColor, dimColor)
 
 import System.Exit (ExitCode(..))
 import System.Log.Logger (debugM)
@@ -81,7 +85,7 @@ changesCss = do
         cursor cursorDefault
         padding (px 1) (px 4) (px 1) (px 4)
     ".changes .change-item.selected" ?
-        background (rgb 0x1e 0x58 0xd1)
+        background selectionColor
     ".changes .change-badge" ? do
         paddingLeft (px 0)
         fontWeight bold
@@ -89,7 +93,7 @@ changesCss = do
     ".changes .change-added"   ? color (rgb 0x73 0xc9 0x91)
     ".changes .change-deleted" ? color (rgb 0xc7 0x4e 0x39)
     ".changes .changes-hint" ? do
-        color grey
+        color dimColor
         padding (px 8) (px 8) (px 8) (px 8)
     ".changes .changes-header" ?
         padding (px 2) (px 4) (px 2) (px 4)
@@ -189,9 +193,10 @@ changeRow wsDirD findSelD path cD = do
     elDynClass "span" (("git-name " <>) . gitClass <$> st) . dynText $
       (\wsDir c -> T.pack (makeRelative wsDir (changePath c))) <$> wsDirD <*> cD
     elClass "span" "change-counts" $ do
-      elClass "span" "change-added"   . dynText $ maybe "" (\n -> "+" <> T.pack (show n)) . changeAdded   <$> cD
+      -- Omit a zero count entirely (a new file has no -0, a deleted file no +0).
+      elClass "span" "change-added"   . dynText $ maybe "" (\n -> if n == 0 then "" else "+" <> T.pack (show n)) . changeAdded   <$> cD
       text " "
-      elClass "span" "change-deleted" . dynText $ maybe "" (\n -> "\x2212" <> T.pack (show n)) . changeDeleted <$> cD
+      elClass "span" "change-deleted" . dynText $ maybe "" (\n -> if n == 0 then "" else "\x2212" <> T.pack (show n)) . changeDeleted <$> cD
   -- Scroll this row into view when find selects it.
   pb <- getPostBuild
   scrollIntoViewNearest (ffilter id $ leftmost [updated isSelD, tag (current isSelD) pb]) e

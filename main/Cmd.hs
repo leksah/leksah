@@ -9,7 +9,7 @@
 --   leksah-cmd restart [--no-rebuild] [--wait]  relaunch via the wrapper
 --   leksah-cmd rebuild-self [--no-restart] [--use-cabal]  rebuild in place
 --   leksah-cmd wait-ready [SECONDS]    block until the UI answers (default 180)
---   leksah-cmd cm open FILE...         open files in the editor (CodeMirror)
+--   leksah-cmd editor open FILE...     open files in the editor (alias: cm)
 --   leksah-cmd project open FILE...    add project files to the workspace
 --   leksah-cmd js eval CODE            evaluate JS in the running leksah
 --   leksah-cmd js eval -f FILE         evaluate JS read from FILE
@@ -85,7 +85,7 @@ usage = T.unlines
   , "                                     rebuild via the IDE build system (errors in the UI);"
   , "                                     --use-cabal = failsafe: direct cabal, output streamed"
   , "  leksah-cmd wait-ready [SECONDS]    block until the UI answers a ping (default 180)"
-  , "  leksah-cmd cm open FILE...         open files in the editor (CodeMirror)"
+  , "  leksah-cmd editor open FILE...     open files in the editor (alias: cm)"
   , "  leksah-cmd project open FILE...    add project files to the workspace"
   , "  leksah-cmd cc-connect HOST         terminal tab on HOST's tmux (ssh, control mode)"
   , "  leksah-cmd open-browser URL        open the default browser snapped to this pane"
