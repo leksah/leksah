@@ -18,7 +18,7 @@ packages:
 source-repository-package
   type: git
   location: https://github.com/leksah/leksah-server
-  tag: 0b24e1705d3caef0bf7b7552724cf514554d8a13
+  tag: cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd
 
 source-repository-package
   type: git
@@ -60,13 +60,17 @@ source-repository-package
 -- buildable only on their own platforms (guards in their .cabal files).
 -- For nix the location+tag is resolved to a flake input via inputMap in
 -- flake.nix (no network fetch during pure eval).
--- The hkm/wkwebview-objc-callbacks branch adds registered ObjC↔Haskell
--- callbacks + the objc-in-library flag that leksah.sh --ghci needs (GHCi's RTS
--- linker can't register ObjC classes, so the ObjC is preloaded as dylibs).
+-- The hkm/wkwebview-teardown branch (on top of hkm/wkwebview-objc-callbacks)
+-- adds: registered ObjC↔Haskell callbacks + the objc-in-library flag that
+-- leksah.sh --ghci needs (GHCi's RTS linker can't register ObjC classes, so the
+-- ObjC is preloaded as dylibs); jsaddleWebViewInvalidate, which lets leksah
+-- detach a jsaddle context so a released webview's WebContent process can exit
+-- (a reload leak in ghci mode); a TChan for batch results (an unbounded
+-- blocked-thread leak); and three ObjC over-retain fixes.
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: 8ea768493731d3b3483e303e8592d3fc8163c9b0
+  tag: fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63
   subdir: jsaddle
           jsaddle-wkwebview
           jsaddle-terminal

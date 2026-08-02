@@ -28,7 +28,7 @@
   # jsaddle-webview2 live in the jsaddle monorepo; wire it so the haskell.nix
   # planner resolves the source-repository-package in cabal.project without a
   # network fetch (pure eval).
-  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/8ea768493731d3b3483e303e8592d3fc8163c9b0";
+  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63";
   inputs.jsaddle-terminal-src.flake = false;
   # ffcabal lives in its own repo now; same wiring as above.
   inputs.ffcabal-src.url = "github:leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed";
@@ -43,7 +43,7 @@
   # cabal.project.  Wire each to a flake input (same as ffcabal/jsaddle) so the
   # haskell.nix planner resolves them without a network fetch (pure eval) and a
   # plain `nix develop .#` works — no ?submodules=1 needed.
-  inputs.leksah-server-src.url = "github:leksah/leksah-server/0b24e1705d3caef0bf7b7552724cf514554d8a13";
+  inputs.leksah-server-src.url = "github:leksah/leksah-server/cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd";
   inputs.leksah-server-src.flake = false;
   inputs.ltk-src.url = "github:leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f";
   inputs.ltk-src.flake = false;
@@ -79,9 +79,9 @@
                   "https://github.com/leksah/haddock/ghc-9.10" = inputs.haddock-ghc910;
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
-                  "https://github.com/ghcjs/jsaddle/8ea768493731d3b3483e303e8592d3fc8163c9b0" = inputs.jsaddle-terminal-src;
+                  "https://github.com/ghcjs/jsaddle/fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed" = inputs.ffcabal-src;
-                  "https://github.com/leksah/leksah-server/0b24e1705d3caef0bf7b7552724cf514554d8a13" = inputs.leksah-server-src;
+                  "https://github.com/leksah/leksah-server/cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd" = inputs.leksah-server-src;
                   "https://github.com/leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f" = inputs.ltk-src;
                   "https://github.com/leksah/haskellVCSWrapper/b77a455d4250223a6bde047aa0901df72dfb9c7f" = inputs.haskellvcswrapper-src;
                   "https://github.com/leksah/haskellVCSGUI/fbdd7bfaefb49b35a956b79e2958a826e6e86f66" = inputs.haskellvcsgui-src;

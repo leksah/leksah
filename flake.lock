@@ -685,34 +685,34 @@
     "jsaddle-terminal-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1784334160,
-        "narHash": "sha256-MBy5UhZ7sKCZvAI42y832MEp57vH3gccrGMFsOv7Hl8=",
+        "lastModified": 1785670753,
+        "narHash": "sha256-IxX8A4r+rSZvsW7/BG62A98yVOI9lT4sePnjGYYX0Ss=",
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "8ea768493731d3b3483e303e8592d3fc8163c9b0",
+        "rev": "fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63",
         "type": "github"
       },
       "original": {
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "8ea768493731d3b3483e303e8592d3fc8163c9b0",
+        "rev": "fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63",
         "type": "github"
       }
     },
     "leksah-server-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1783836098,
-        "narHash": "sha256-kKBpmf+vaTcApvEx+NNC9a2M0waCnixXzboV8CU5mWA=",
+        "lastModified": 1785671420,
+        "narHash": "sha256-pihsa+u0K4hdzNBchPd2MwDwCCUhoQF/4rC+qsx4w48=",
         "owner": "leksah",
         "repo": "leksah-server",
-        "rev": "0b24e1705d3caef0bf7b7552724cf514554d8a13",
+        "rev": "cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd",
         "type": "github"
       },
       "original": {
         "owner": "leksah",
         "repo": "leksah-server",
-        "rev": "0b24e1705d3caef0bf7b7552724cf514554d8a13",
+        "rev": "cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd",
         "type": "github"
       }
     },
