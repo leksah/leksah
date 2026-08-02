@@ -34,6 +34,7 @@ module Language.LSP.Client.Session
     , defaultClientConfig
     , start
     , stop
+    , alive
     , request
     , notify
     ) where
@@ -47,11 +48,11 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import           Data.Int (Int32)
 import qualified Data.Map.Strict as Map
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (fromMaybe, isNothing)
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           System.IO (hGetLine, hIsEOF)
-import           System.Process (terminateProcess)
+import           System.Process (terminateProcess, getProcessExitCode)
 
 import           Language.LSP.Protocol.Message
 
@@ -112,6 +113,11 @@ stop :: Client -> IO ()
 stop client = do
     terminateProcess (shProc (clientHandles client))
     failAllPending client "lsp-client: session stopped"
+
+-- | Is the server process still running?  'False' once it has exited (crashed,
+-- was killed, or 'stop'ped), so callers can reap and respawn a dead session.
+alive :: Client -> IO Bool
+alive client = isNothing <$> getProcessExitCode (shProc (clientHandles client))
 
 -- | Send a request and register a callback for its response.  Non-blocking:
 -- returns the assigned request id immediately.  The result 'Value' from the

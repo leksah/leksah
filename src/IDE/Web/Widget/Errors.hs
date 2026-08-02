@@ -7,7 +7,7 @@ module IDE.Web.Widget.Errors
   , errorsWidget
   ) where
 
-import Control.Lens (view, (^?))
+import Control.Lens ((^?))
 import Data.Bool (bool)
 import Data.Char (isSpace)
 import Data.Dependent.Map (DMap)
@@ -23,7 +23,7 @@ import qualified Data.Text as T
 
 import Clay
        (overflowX, px, width, cursorDefault,
-        nowrap, whiteSpace, pct, height, (?),
+        nowrap, whiteSpace, pct, height, (?), (-:),
         Css, Cursor(..), Auto(..), Background(..))
 
 import Reflex
@@ -40,7 +40,7 @@ import IDE.Web.Widget.ResizeObserver (resizeObserver)
 
 import IDE.Web.Theme (selectionColor)
 import IDE.Core.State
-       (logRefFilePath, IDE, allLogRefs, LogRef(..), LogRefType(..))
+       (logRefFilePath, IDE, activeProjectLogRefs, LogRef(..), LogRefType(..))
 import IDE.Web.Command (_CommandNextError, _CommandPreviousError)
 import IDE.Web.Events
        (IDEWidget(..), ErrorsEvents(..), FindbarEvents, _KeymapCommand)
@@ -58,6 +58,12 @@ errorsCss = do
   ".errors .error-item" ? do
     whiteSpace nowrap
     cursor cursorDefault
+  -- The severity SVGs carry only a viewBox (no intrinsic px size), so pin them
+  -- to the row height explicitly — otherwise they render at the default size.
+  ".errors .error-item img" ? do
+    height (px 14)
+    width (px 14)
+    "vertical-align" -: "text-bottom"
   ".errors .error-item.selected" ?
     background selectionColor
 
@@ -75,7 +81,7 @@ errorsWidget ide allEvents findE moveE activateE = do
       -- Next-error command and arrow-down move the selection the same way.
       nextError = leftmost [() <$ commandE _CommandNextError, () <$ ffilter id moveE]
       prevError = leftmost [() <$ commandE _CommandPreviousError, () <$ ffilter not moveE]
-  allRefs <- holdUniqDyn (view allLogRefs <$> ide)
+  allRefs <- holdUniqDyn (activeProjectLogRefs <$> ide)
   numberOfRefsD <- holdUniqDyn $ length <$> allRefs
   -- Find selects an error: matching index drives the selection (and scroll).
   findSelD <- findSelection findE (zip [0..] . map errorLine . toList <$> allRefs)
@@ -113,10 +119,9 @@ errorsWidget ide allEvents findE moveE activateE = do
           v <- holdDyn iv u
           (e, _) <- elDynClass' "div" (("error-item" <>) . bool "" " selected" . (==k) <$> selectionIndexD) $ do
             let imgSrc l = case logRefType <$> l of
-                  Just LintRef -> "/pics/ide_suggestion.png"
-                  Just WarningRef -> "/pics/ide_warning.png"
-                  Just TestFailureRef -> "/pics/tango/status/software-update-urgent.svg"
-                  _ -> "/pics/ide_error.png"
+                  Just LintRef -> "/pics/sev-hint.svg"
+                  Just WarningRef -> "/pics/sev-warning.svg"
+                  _ -> "/pics/sev-error.svg"
             elDynAttr "img" (("src" =:) . imgSrc <$> v) $ return ()
             text " "
             dynText $ maybe "" errorLine <$> v

@@ -27,6 +27,7 @@ module IDE.LSP
     , requestCompletion
     , requestDefinition
     , requestReferences
+    , shutdownServers
     ) where
 
 import           Control.Applicative ((<|>))
@@ -60,7 +61,7 @@ import           Language.LSP.Protocol.Message
 import           Language.LSP.Protocol.Types (InitializeParams, filePathToUri, uriToFilePath)
 
 import           Language.LSP.Client (Client, ClientConfig(..), defaultClientConfig,
-                                       notify, request, start)
+                                       notify, request, start, stop, alive)
 
 import           IDE.Core.CTypes (SrcSpan(..))
 import           IDE.Core.Types (Log(..), LogRef(..), LogRefType(..), allLogRefs)
@@ -585,6 +586,22 @@ readSourceLines f
 -- Server lifecycle
 --------------------------------------------------------------------------------
 
+-- | Terminate every running language server and empty the registry.  Called
+-- on shutdown, and registered as a ghci-mode cleanup so a @:reload@ + fresh
+-- @:main@ tears down this run's servers first — otherwise each rebuild spawned
+-- a new HLS per root and orphaned the old ones under the long-lived ghci
+-- process (they piled up because nothing ever killed them).  Safe to call
+-- repeatedly and when nothing is running.
+shutdownServers :: IO ()
+shutdownServers = do
+    old <- modifyMVar registry (\m -> return (Map.empty, m))
+    mapM_ reap (Map.toList old)
+  where
+    reap ((root, _), Just ss) = do
+        void (try (stop (ssClient ss)) :: IO (Either SomeException ()))
+        debugM "leksah" ("IDE.LSP: stopped language server in " <> root)
+    reap (_, Nothing) = return ()
+
 -- | Look up an already-running server for a file's project (never spawns).
 withServer :: FilePath -> (ServerState -> IO ()) -> IO ()
 withServer file act = case languageOf file of
@@ -624,31 +641,48 @@ ensureServer root lc = do
                     debugM "leksah" ("IDE.LSP: deferring remote server in " <> root
                                      <> " (workspace settings not loaded yet)")
                     return Nothing
-                Just prefix -> modifyMVar registry $ \m -> case Map.lookup key m of
-                    Just entry -> return (m, entry)
-                    Nothing -> do
-                        cmdArgs@(cmd, _) <- serverCommandFor root cmdPref lc
-                        -- A local server whose binary is not on PATH is simply
-                        -- unavailable: cache the miss (per root) and stay quiet
-                        -- rather than fail a spawn on every new root.
-                        -- With a command prefix (remote ssh, or a local
-                        -- @nix develop -c@) the server binary lives in THAT
-                        -- environment, not on the ambient PATH — so skip the
-                        -- local PATH probe (a nix-develop wrap resolves it).
-                        available <- if isRemotePath root || isJust prefix
-                                        then return True
-                                        else isJust <$> findExecutable cmd
-                        if not available
-                            then do
-                                debugM "leksah" ("IDE.LSP: " <> cmd
-                                                 <> " not on PATH; no language server for " <> root)
-                                return (Map.insert key Nothing m, Nothing)
-                            else try (spawnAndInit root prefix cmdArgs) >>= \case
-                                Right ss -> return (Map.insert key (Just ss) m, Just ss)
-                                Left (e :: SomeException) -> do
-                                    debugM "leksah" ("IDE.LSP: could not start language server in "
-                                                     <> root <> ": " <> show e)
+                Just prefix -> do
+                    -- (Re-)spawn into the registry.  Factored out so a cached
+                    -- entry whose process has since died can be reaped and
+                    -- replaced through the same path as a first-time spawn.
+                    let spawn m = do
+                            cmdArgs@(cmd, _) <- serverCommandFor root cmdPref lc
+                            -- A local server whose binary is not on PATH is simply
+                            -- unavailable: cache the miss (per root) and stay quiet
+                            -- rather than fail a spawn on every new root.
+                            -- With a command prefix (remote ssh, or a local
+                            -- @nix develop -c@) the server binary lives in THAT
+                            -- environment, not on the ambient PATH — so skip the
+                            -- local PATH probe (a nix-develop wrap resolves it).
+                            available <- if isRemotePath root || isJust prefix
+                                            then return True
+                                            else isJust <$> findExecutable cmd
+                            if not available
+                                then do
+                                    debugM "leksah" ("IDE.LSP: " <> cmd
+                                                     <> " not on PATH; no language server for " <> root)
                                     return (Map.insert key Nothing m, Nothing)
+                                else try (spawnAndInit root prefix cmdArgs) >>= \case
+                                    Right ss -> return (Map.insert key (Just ss) m, Just ss)
+                                    Left (e :: SomeException) -> do
+                                        debugM "leksah" ("IDE.LSP: could not start language server in "
+                                                         <> root <> ": " <> show e)
+                                        return (Map.insert key Nothing m, Nothing)
+                    modifyMVar registry $ \m -> case Map.lookup key m of
+                        -- Known-unavailable (binary missing / start failed): stay
+                        -- quiet, don't retry the spawn on every keystroke.
+                        Just Nothing   -> return (m, Nothing)
+                        -- A cached server — reuse only if its process is still
+                        -- alive; otherwise reap the dead handles/threads and
+                        -- respawn (covers an HLS that crashed or was killed).
+                        Just (Just ss) -> alive (ssClient ss) >>= \case
+                            True  -> return (m, Just ss)
+                            False -> do
+                                debugM "leksah" ("IDE.LSP: language server in " <> root
+                                                 <> " had exited; respawning")
+                                void (try (stop (ssClient ss)) :: IO (Either SomeException ()))
+                                spawn m
+                        Nothing        -> spawn m
   where key = (root, serverKey lc)
 
 spawnAndInit :: FilePath -> Maybe Text -> (FilePath, [String]) -> IO ServerState

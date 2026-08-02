@@ -34,6 +34,7 @@ module IDE.Core.Types (
 ,   activeProject
 ,   activePack
 ,   activeComponent
+,   activeProjectLogRefs
 ,   nixEnv
 ,   IDEState(..)
 ,   IDERef
@@ -228,7 +229,7 @@ import Distribution.Package
 import Distribution.PackageDescription (BuildInfo)
 import Data.Map (Map)
 import Data.Set (Set)
-import Data.List (find, nubBy)
+import Data.List (find, nubBy, isPrefixOf)
 import Data.Maybe (fromMaybe)
 import IDE.Utils.RemotePath
        (isRemotePath, parseRemotePath, remoteMakeRelative, renderRemotePath)
@@ -239,7 +240,8 @@ import IDE.Utils.Tool (ToolState(..), ProcessHandle)
 import Data.IORef (IORef)
 import Numeric (showHex)
 import System.FilePath
-       (dropFileName, (</>), isAbsolute, makeRelative)
+       (dropFileName, (</>), isAbsolute, makeRelative, equalFilePath,
+        addTrailingPathSeparator)
 import IDE.Core.CTypes
 import System.IO (Handle)
 import Control.Monad.Trans.Class (lift)
@@ -258,6 +260,7 @@ import Language.Haskell.HLint (Idea(..))
 import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq (filter)
 import Control.Monad ((>=>))
 #if !defined(ghcjs_HOST_OS)
 import System.FSNotify (StopListening, WatchManager)
@@ -1255,6 +1258,21 @@ activePack = workspace . to (>>= view wsActivePackage)
 
 activeComponent :: Getter IDE (Maybe Text)
 activeComponent = workspace . to (>>= view wsActiveComponent)
+
+-- | Log refs (errors/warnings/hints) that belong to the active project: those
+-- whose root path is the active project's directory, or a package directory
+-- under it.  With no active project, all refs.  Scopes the Errors pane and the
+-- status-bar counts to the project you are working on, so another workspace
+-- project's diagnostics — e.g. leksah's own Haskell LSP errors while you build
+-- a Rust crate — don't pollute the count.
+activeProjectLogRefs :: IDE -> Seq LogRef
+activeProjectLogRefs ide = case ide ^. activeProject of
+    Nothing   -> ide ^. allLogRefs
+    Just proj -> Seq.filter (underRoot (pjDir (pjKey proj)) . logRefRootPath)
+                            (ide ^. allLogRefs)
+  where
+    underRoot dir p =
+        equalFilePath dir p || addTrailingPathSeparator dir `isPrefixOf` p
 
 nixEnv :: ProjectKey -> Text -> IDE -> Maybe (Map String String)
 nixEnv project compiler ide = M.lookup (pjDir project, compiler) $ ide ^. nixCache

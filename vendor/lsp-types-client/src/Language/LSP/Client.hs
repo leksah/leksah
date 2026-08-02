@@ -27,6 +27,7 @@ module Language.LSP.Client
     , defaultClientConfig
     , start
     , stop
+    , alive
     , request
     , notify
       -- * Transport (for callers that manage the process themselves)
