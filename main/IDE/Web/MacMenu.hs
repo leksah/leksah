@@ -18,13 +18,14 @@ module IDE.Web.MacMenu
   , setupMacTitlebar
   ) where
 
+import Control.Concurrent (forkIO)
 import Control.Lens ((^.), (?~), to)
 import Control.Monad (void, when)
 
-import Data.IORef (IORef, newIORef, writeIORef, readIORef)
+import Data.IORef (IORef, newIORef, writeIORef, readIORef, atomicModifyIORef')
 import Data.List (intercalate)
 import Data.Text (Text)
-import qualified Data.Text as T (unpack, pack)
+import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 
 import Foreign.C.String (withCString)
@@ -33,20 +34,26 @@ import System.Exit (ExitCode(..))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (exitImmediately)
 
-import Language.Javascript.JSaddle.WKWebView (WKWebView(..), jsaddleMainHTMLWithBaseURL)
+import Language.Javascript.JSaddle.WKWebView
+       (WKWebView(..), jsaddleMainHTMLWithBaseURL, jsaddleWebViewInvalidate)
 
 import IDE.Core.State (reflectIDE, modifyIDE_, readIDE)
 import IDE.Core.Types (WindowId(..), activeWindow)
 import IDE.Gtk.Workspaces (workspaceTry)
 import IDE.Workspaces (projectOpenPath)
+import IDE.Web.Claude (showLiveSession)
+import IDE.Web.ClaudeStatus
+       (ClaudeStatus(..), ClaudeStatusRow(..), registerClaudeStatusPush)
 import IDE.Web.Command (Command(..), commandAction, commandGetToggleState)
 import IDE.Web.GhciMode
-       (ghciMode, registerGhciCleanup, setGhciStop, stopForGhci)
+       (ghciMode, registerGhciCleanupNamed, registerGhciQuiesceNamed, setGhciStop,
+        stopForGhci, phaseLog)
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.MacGlue
 import IDE.Web.Main (jsMain, indexHtml, mintWindowId)
 import IDE.Web.MenuModel (menus, MenuItem(..))
+import IDE.Web.NativeBrowser (NativeBrowserOps(..), setNativeBrowserOps)
 import IDE.Web.NewWindowRequest
        (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
@@ -58,6 +65,8 @@ import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.ShortcutsRequest (requestShowShortcuts)
+import IDE.Web.BrowserRequest (requestOpenBrowser)
+import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.WindowBridge (closeWindowMerge)
 import IDE.Web.ScreenshotRequest
@@ -80,17 +89,47 @@ macOpenProject fp = getGlobalIDERef >>= \case
 -- new reflex network ('jsMain') renders leksah's UI into that webview.  The
 -- 'WebWindow' for 'wid' was already seeded by 'mintWindowId'; 'jsMain' adopts it.
 macAttachWindow :: Int -> Ptr () -> IO ()
-macAttachWindow widInt pWebView = getGlobalIDERef >>= \case
-  Nothing   -> return ()
-  Just ideR ->
-    -- Flags match the first window's (main/WKWebView.hs: newIDE False True):
-    -- hide the web menubar, use the native title bar.
-    jsaddleMainHTMLWithBaseURL indexHtml baseURL
-      (jsMain False True (Just (WindowId widInt)) ideR)
-      (WKWebView (castPtr pWebView))
-  -- Same port the first window's jsaddle server bound (see 'IDE.Web.Instance');
-  -- a second instance on a different LEKSAH_PORT points its webviews at its own.
-  where baseURL = encodeUtf8 (T.pack ("http://127.0.0.1:" <> show leksahPort))
+macAttachWindow widInt pWebView = do
+  phaseLog $ "boot: macAttachWindow wid=" <> show widInt
+             <> " webview=" <> show pWebView
+  getGlobalIDERef >>= \case
+    Nothing   -> phaseLog "boot: macAttachWindow: no global IDE ref!"
+    Just ideR -> do
+      -- Remember the webview so the ghci teardown can invalidate its jsaddle
+      -- context before the native side releases it (see 'installMacMenu').
+      atomicModifyIORef' attachedWebViews (\ws -> (castPtr pWebView : ws, ()))
+      -- Flags match the first window's (main/WKWebView.hs: newIDE False True):
+      -- hide the web menubar, use the native title bar.
+      jsaddleMainHTMLWithBaseURL indexHtml baseURL
+        (jsMain False True (Just (WindowId widInt)) ideR)
+        (WKWebView (castPtr pWebView))
+      phaseLog $ "boot: macAttachWindow wid=" <> show widInt
+                 <> " attach call returned"
+  where
+    -- Same port the first window's jsaddle server bound (see 'IDE.Web.Instance');
+    -- a second instance on a different LEKSAH_PORT points its webviews at its own.
+    baseURL = encodeUtf8 (T.pack ("http://127.0.0.1:" <> show leksahPort))
+
+-- | Raw webview pointers handed to 'macAttachWindow' by this instance —
+-- exactly the ones carrying leksah_new_window's extra retain.  Drained by
+-- 'invalidateAttachedWebViews' at ghci teardown.  (Interpreted-module CAF:
+-- a :reload gives the next instance a fresh, empty list — which is right,
+-- each instance invalidates only its own webviews.)
+{-# NOINLINE attachedWebViews #-}
+attachedWebViews :: IORef [Ptr ()]
+attachedWebViews = unsafePerformIO (newIORef [])
+
+-- | Invalidate the jsaddle context of every webview this instance attached:
+-- after this no jsaddle thread touches those pointers, so the native teardown
+-- (leksah_close_all_windows) can safely release them — which lets each
+-- webview's WebContent XPC renderer exit instead of leaking one per restart.
+-- MUST run before 'closeAllWindows' dispatches its teardown block.
+invalidateAttachedWebViews :: IO ()
+invalidateAttachedWebViews = do
+    ws <- atomicModifyIORef' attachedWebViews (\ws' -> ([], ws'))
+    phaseLog $ "boot: invalidating " <> show (length ws)
+               <> " jsaddle webview context(s) before teardown"
+    mapM_ (jsaddleWebViewInvalidate . WKWebView . castPtr) ws
 
 -- | A window became key (frontmost): record it as the active window, so the
 -- process-wide bridges (close/save/find/…) and the flipper's in-place actions
@@ -159,11 +198,16 @@ macMenuAction tag = do
     (CommandFind:_)        -> requestToggleFindbar
     -- Edit ▸ Keyboard Shortcuts opens the reflex cheat-sheet pane; bridge it.
     (CommandShowShortcuts:_) -> requestShowShortcuts
-    (cmd:_) -> getGlobalIDERef >>= \case
-      Just ideR -> case cmd ^. commandAction of
-        Just act -> void $ reflectIDE act ideR
-        Nothing  -> return ()  -- special commands (Save/…) have no IDEAction
-      Nothing -> return ()
+    -- View ▸ New Browser Pane opens a reflex browser pane; bridge it too.
+    (CommandOpenBrowser:_)   -> requestOpenBrowser
+    (cmd:_) -> case cmd ^. commandAction of
+      -- No IDEAction: the command is handled inside the reflex network by
+      -- matching the keymap event stream (flipper, next/previous error,
+      -- focus-alert, …) — inject it there via the bridge.
+      Nothing  -> requestKeymapCommand cmd
+      Just act -> getGlobalIDERef >>= \case
+        Just ideR -> void $ reflectIDE act ideR
+        Nothing   -> return ()
     [] -> return ()
 
 -- | Report a menu item's live toggle state to the native validateMenuItem (so
@@ -179,6 +223,32 @@ macToggleState tag = do
         Just ideR -> (\on -> if on then 1 else 0) <$> reflectIDE (readIDE (to f)) ideR
         Nothing   -> return (-1)
     _ -> return (-1)
+
+-- | Push a 'ClaudeStatus' into the menu-bar status item: the aggregate state
+-- (which shape\/colour the icon draws), the summary line for its tooltip, and one
+-- menu row per session as @state \\t title \\t tooltip \\t session id@ — tooltip
+-- newlines escaped as @\\n@, since a raw one would end the row.
+--
+-- Called only when the status CHANGES (see 'registerClaudeStatusPush'), so the
+-- native menu is rebuilt on real state changes rather than 20 times a minute.
+pushClaudeStatusToMenuBar :: ClaudeStatus -> IO ()
+pushClaudeStatusToMenuBar st =
+    withCString (T.unpack (csState st)) $ \s ->
+      withCString (T.unpack (csSummary st)) $ \t ->
+        withCString (T.unpack (T.unlines (map row (csRows st)))) (c_setClaudeStatus s t)
+  where
+    -- The directory tells two sessions of one project apart (worktrees are named
+    -- for their task), so it rides along in the row's title.
+    row r = T.intercalate "\t"
+      [ csrState r
+      , ellipsize 60 (csrTitle r)
+          <> (if T.null (csrDir r) then "" else "  ·  " <> baseName (csrDir r))
+      , T.intercalate "\\n" [ csrDir r, csrDetail r, csrSession r ]
+      , csrSession r
+      ]
+    ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
+                  | otherwise      = t
+    baseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')
 
 -- | Build and install the native menu bar.  Safe to call before the app's run
 -- loop starts; the actual menu-bar install is scheduled onto the main thread.
@@ -197,6 +267,10 @@ installMacMenu = do
     , cbWindowClosing   = macWindowClosing
     , cbColorPicked     = colorPicked . T.pack
     , cbToggleState     = macToggleState
+      -- A session chosen from the menu-bar status item: show its terminal.  Off
+      -- the main thread — it runs tmux/ps, and Cocoa is waiting for the menu
+      -- action to return.
+    , cbClaudeActivate  = \sid -> void . forkIO . void $ showLiveSession (T.pack sid)
     }
   when ghciMode $ do
     -- Returning to the ghci prompt = stopping the Cocoa run loop; and Cocoa
@@ -205,10 +279,34 @@ installMacMenu = do
     disableAutoTerminate
     -- Full teardown (stopForGhci) closes the windows so the old reflex
     -- networks die before :reload'd code starts a fresh :main.  Registered
-    -- first = run last (LIFO), after the listeners are gone.
-    registerGhciCleanup closeAllWindows
+    -- first = run last (LIFO), after the listeners are gone.  Invalidate the
+    -- attached webviews' jsaddle contexts FIRST (synchronously, before
+    -- closeAllWindows dispatches its async teardown block): only then may the
+    -- native side balance leksah_new_window's extra retain and let each old
+    -- webview — and its WebContent renderer process — actually die.
+    -- Invalidating the jsaddle contexts is a QUIESCE, not a cleanup: it must
+    -- happen before any thread is reaped, or the still-live pages keep
+    -- delivering results and jsaddle keeps forking threads for them (each of
+    -- which then escapes the reap — see 'IDE.Web.GhciMode.quiescesRef').
+    registerGhciQuiesceNamed "jsaddle-webview-contexts" invalidateAttachedWebViews
+    registerGhciCleanupNamed "native-windows" closeAllWindows
+  -- Browser panes get REAL per-pane native WKWebViews on this front end (an
+  -- iframe can't show X-Frame-Options sites); the widget drives them through
+  -- these ops, and the JS rect reporter (browserNativeReporterJs) does the
+  -- geometry/lifecycle directly against the native glue.
+  setNativeBrowserOps NativeBrowserOps
+    { nbLoad    = \bid url -> withCString (T.unpack url) (c_browserLoad (fromIntegral bid))
+    , nbBack    = c_browserBack . fromIntegral
+    , nbForward = c_browserForward . fromIntegral
+    , nbReload  = c_browserReload . fromIntegral
+    }
   -- Recent files are shown in the native "Open Recent" submenu.
   setRecentFilesHandler $ \fps -> withCString (intercalate "\n" fps) c_setRecentFiles
+  -- The menu-bar status item follows the live Claude sessions (the shared poll in
+  -- IDE.Web.ClaudeStatus, which the in-page traffic light reads too — one poll,
+  -- and the two surfaces can't disagree).  The handler fires once on registration
+  -- with the current status, so the item starts in sync.
+  registerClaudeStatusPush pushClaudeStatusToMenuBar
   -- Keep the native menu told whether a terminal tab is on screen, so the
   -- Terminal menu's key equivalents only fire then.
   setActiveTerminalNotifier $ \on -> c_setTerminalActive (if on then 1 else 0)

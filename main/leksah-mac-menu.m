@@ -6,7 +6,10 @@
 // Haskell via the exported `leksah_menu_action` with the item's tag, which
 // runs the corresponding Command in the IDE.
 //
-// Menu objects live for the lifetime of the app (no explicit release).
+// Manual retain/release (no ARC): every alloc'd menu/item is released once its
+// parent owns it, and leksah_menu_begin releases the previous tree — in ghci
+// mode the whole menu is rebuilt on every :main, so an unbalanced alloc here
+// leaks one menu tree per reload.
 
 #import <Cocoa/Cocoa.h>
 #import <ApplicationServices/ApplicationServices.h>   // accessibility (AXUIElement) for window snapping
@@ -40,9 +43,50 @@ typedef struct {
     // A menu item's toggle state, by tag: -1 = not a toggle (leave unchanged),
     // 0 = off, 1 = on.  Queried in validateMenuItem to show a checkmark.
     int  (*toggle_state)(int tag);
+    // A live Claude session chosen from the menu-bar status item's menu: show
+    // its terminal (by session id).
+    void (*claude_activate)(const char *session_id);
 } leksah_haskell_callbacks;
 
 static leksah_haskell_callbacks gHs;   // zero-initialised
+
+// The FunPtrs the PREVIOUS registration installed, kept so the Haskell side can
+// free them (see MacGlue.setMacCallbacks): each one pins its closure, which
+// captures that instance's IDERef — i.e. a whole IDE, reflex network included —
+// so a ghci session that never freed them grew by an entire instance per
+// reload.  Statics in this dylib, not a Haskell CAF: a :reload resets
+// leksah-mac-glue's CAFs (it is a home-package object module) but never reloads
+// this dylib, the same reason leksah_take_first_launch lives here.
+#define LEKSAH_N_CALLBACKS 11
+static void *gPrevCbs[LEKSAH_N_CALLBACKS];
+static int   gPrevCbCount = 0;
+
+// Snapshot whatever is currently installed, before it is overwritten.
+static void leksah_remember_previous_callbacks(void)
+{
+    int n = 0;
+    void *cur[LEKSAH_N_CALLBACKS] = {
+        (void *)gHs.menu_action,      (void *)gHs.open_file,
+        (void *)gHs.open_project,     (void *)gHs.unsnap,
+        (void *)gHs.open_settings,    (void *)gHs.attach_window,
+        (void *)gHs.window_activated, (void *)gHs.window_closing,
+        (void *)gHs.color_picked,     (void *)gHs.toggle_state,
+        (void *)gHs.claude_activate };
+    for (int i = 0; i < LEKSAH_N_CALLBACKS; i++)
+        if (cur[i]) gPrevCbs[n++] = cur[i];
+    gPrevCbCount = n;
+}
+
+// Hand the snapshot to Haskell (which owns freeing it — hs_free_fun_ptr is an
+// RTS entry point this dylib cannot link against under ghci) and forget it, so
+// each set is freed at most once.  Returns how many were written.
+int leksah_take_previous_callbacks(void **out, int max)
+{
+    int n = gPrevCbCount < max ? gPrevCbCount : max;
+    for (int i = 0; i < n; i++) out[i] = gPrevCbs[i];
+    gPrevCbCount = 0;
+    return n;
+}
 
 void leksah_set_haskell_callbacks(
     void (*menu_action)(int),
@@ -55,6 +99,7 @@ void leksah_set_haskell_callbacks(
     void (*window_closing)(int),
     void (*color_picked)(const char *))
 {
+    leksah_remember_previous_callbacks();
     gHs.menu_action      = menu_action;
     gHs.open_file        = open_file;
     gHs.open_project     = open_project;
@@ -71,6 +116,15 @@ void leksah_set_haskell_callbacks(
 void leksah_set_toggle_state_callback(int (*toggle_state)(int))
 {
     gHs.toggle_state = toggle_state;
+}
+
+// Likewise additive: shows the Claude session chosen from the menu-bar status
+// item.  Registered AFTER leksah_set_haskell_callbacks, whose
+// leksah_remember_previous_callbacks call snapshots the previous set of all
+// three registrations for Haskell to free.
+void leksah_set_claude_activate_callback(void (*claude_activate)(const char *))
+{
+    gHs.claude_activate = claude_activate;
 }
 
 // The title bar is transparent and the WKWebView fills the whole window, so the
@@ -182,12 +236,19 @@ static NSMenu *gRecentMenu = nil;
 
 void leksah_menu_begin(void) {
     if (gTarget == nil) gTarget = [[LeksahMenuTarget alloc] init];
+    // Rebuild (ghci :main): drop our ref to the old tree (NSApp keeps it alive
+    // until leksah_menu_install swaps it) and forget the cached submenus that
+    // point into it — they are recreated during this rebuild.
+    [gRecentMenu release]; gRecentMenu = nil;
+    gUnsnapMenu = nil;
+    [gMainMenu release];
     gMainMenu = [[NSMenu alloc] init];
     gMenuDepth = 0;
 
     // The application (apple-name) menu, so Quit etc. exist.
     NSMenuItem *appItem = [[NSMenuItem alloc] init];
     [gMainMenu addItem:appItem];
+    [appItem release];
     NSMenu *appMenu = [[NSMenu alloc] init];
     // Name the About/Quit items from the bundle's CFBundleName (the single
     // source of truth — see Leksah.app in leksah-nix.sh); fall back to the
@@ -210,6 +271,7 @@ void leksah_menu_begin(void) {
                        action:@selector(terminate:)
                 keyEquivalent:@"q"];
     [appItem setSubmenu:appMenu];
+    [appMenu release];
 }
 
 void leksah_menu_add_menu(const char *title) {
@@ -217,8 +279,10 @@ void leksah_menu_add_menu(const char *title) {
     NSString *t = [NSString stringWithUTF8String:title];
     NSMenuItem *item = [[NSMenuItem alloc] init];
     [gMainMenu addItem:item];
+    [item release];
     NSMenu *sub = [[NSMenu alloc] initWithTitle:t];
     [item setSubmenu:sub];
+    [sub release];
     // Start a fresh top-level menu as the (only) open menu.
     gMenuStack[0] = sub;
     gMenuDepth = 1;
@@ -252,6 +316,7 @@ void leksah_menu_add_item(const char *title, int tag) {
     [item setTarget:gTarget];
     [item setTag:tag];
     [gMenuStack[gMenuDepth - 1] addItem:item];
+    [item release];
 }
 
 // Like add_item, but renders `shortcut` in the native key-equivalent column
@@ -280,8 +345,12 @@ void leksah_menu_add_item_kv(const char *desc, const char *shortcut, int tag) {
         [at addAttribute:NSForegroundColorAttributeName value:[NSColor grayColor]
                     range:NSMakeRange([d length] + 1, [s length])];
         [item setAttributedTitle:at];
+        [at release];
+        [tab release];
+        [ps release];
     }
     [gMenuStack[gMenuDepth - 1] addItem:item];
+    [item release];
 }
 
 // Like add_item, but with a REAL key equivalent parsed from a spec like
@@ -326,6 +395,7 @@ static void leksah_menu_add_item_key_repr(const char *title, const char *spec,
     [item setTag:tag];
     [item setRepresentedObject:repr];
     [gMenuStack[gMenuDepth - 1] addItem:item];
+    [item release];
 }
 
 void leksah_menu_add_item_key(const char *title, const char *spec, int tag) {
@@ -374,6 +444,7 @@ void leksah_menu_add_item_key_global(const char *title, const char *spec, int ta
     [item setTarget:gTarget];
     [item setTag:tag];
     [gMenuStack[gMenuDepth - 1] addItem:item];
+    [item release];
 }
 
 // A separator line in the current menu.
@@ -391,6 +462,8 @@ void leksah_menu_push_submenu(const char *title) {
     NSMenu *sub = [[NSMenu alloc] initWithTitle:t];
     [item setSubmenu:sub];
     [gMenuStack[gMenuDepth - 1] addItem:item];
+    [item release];
+    [sub release];
     gMenuStack[gMenuDepth++] = sub;
     // The Underlay ▸ Unsnap submenu is populated dynamically from the snapped
     // windows; cache it and seed it with the current (empty) list.
@@ -567,6 +640,35 @@ static void leksah_install_beep_suppression(void) {
         gOrigNoResponderFor = (void (*)(id, SEL, SEL))method_getImplementation(m);
         method_setImplementation(m, (IMP)leksah_noResponderFor);
     }
+}
+
+// Tell the page whether the Command key is held (flags-changed local monitor).
+// The DOM's own Meta keydown/keyup handling (badgesJs) covers keys typed into
+// the page, but a CROSS-ORIGIN iframe (a browser pane) swallows key events
+// before the parent document can see them — so the ⌘-held navigation hints
+// never showed while the embedded page had focus.  AppKit sees every
+// flags-changed event regardless of which frame WebKit routed focus to; mirror
+// it into the key window's page via leksahCmdHeld (idempotent with the DOM
+// path).  WebKit isn't imported: evaluateJavaScript is reached dynamically,
+// like the snapshot code above.
+static void leksah_install_cmdheld_monitor(void) {
+    static BOOL installed = NO;
+    if (installed) return;
+    installed = YES;
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+        handler:^NSEvent *(NSEvent *e) {
+            BOOL held = ([e modifierFlags] & NSEventModifierFlagCommand) != 0;
+            NSWindow *w = [NSApp keyWindow];
+            if (w == nil || gWindows == nil
+                || ![[gWindows allValues] containsObject:w]) return e;
+            id web = leksah_find_webview([w contentView]);
+            if (web == nil) return e;
+            NSString *js = held ? @"window.leksahCmdHeld&&window.leksahCmdHeld(true)"
+                                : @"window.leksahCmdHeld&&window.leksahCmdHeld(false)";
+            SEL sel = @selector(evaluateJavaScript:completionHandler:);
+            ((void (*)(id, SEL, id, id))objc_msgSend)(web, sel, js, nil);
+            return e;
+        }];
 }
 
 // Install a left-mouse-down monitor that drags the window from the title bar.
@@ -807,6 +909,7 @@ static void leksah_rebuild_unsnap_menu(void) {
         [it setTarget:gUnsnapTarget];
         [it setRepresentedObject:gSnaps[i].key];
         [gUnsnapMenu addItem:it];
+        [it release];
         if (title != NULL) CFRelease(title);
     }
     if (gSnapCount == 0) {
@@ -814,6 +917,7 @@ static void leksah_rebuild_unsnap_menu(void) {
                                                     action:NULL keyEquivalent:@""];
         [it setEnabled:NO];
         [gUnsnapMenu addItem:it];
+        [it release];
     }
 }
 
@@ -1114,16 +1218,637 @@ static void leksah_read_holes(void) {
 }
 @end
 
-// Register the "leksahBeep" / "leksahSpeak" handlers on a webview's content
-// controller (once per webview; each window has its own).  Called from
-// leksah_configure_window so it covers window 0 (created by jsaddle's
-// AppDelegate) and every leksah_new_window alike.  Coexists with jsaddle's own
-// handlers (different names).
+// ---------------------------------------------------------------------------
+// Native browser panes: a browser pane in the web UI is a REAL WKWebView
+// overlaid on the pane's DOM rect (a placeholder div, class .browser-native),
+// not an iframe — big sites (X-Frame-Options / CSP frame-ancestors) refuse
+// to render in an iframe, but nothing can refuse a real web view.
+//
+// Geometry/lifecycle is driven from JS: a per-window reporter (Main.hs,
+// browserNativeReporterJs) posts {wid, dark, panes:[{bid,x,y,w,h,vis}]} snapshots
+// of every .browser-native element to the "leksahBrowserFrame" script
+// message handler every ~250ms, and leksah_browser_reconcile creates views
+// on first sight (as SUBVIEWS of the window's main webview — CSS px map 1:1
+// onto its points), tracks rect/visibility, MOVES a view whose pane element
+// shows up in another window (tab dragged across OS windows — the page
+// survives), and destroys views whose bid has been absent for a while (the
+// pane element left the DOM: tab/leaf closed).  Loads/back/forward/reload
+// come from Haskell over leksah_browser_* (IDE.Web.NativeBrowser ops); page
+// state flows back by evaluating window.__lkNb[bid]={u,b,f,t} in the host
+// window's MAIN webview, where the reflex widget polls it.
+// ---------------------------------------------------------------------------
+static NSMutableDictionary *gBrowserViews   = nil;  // @(bid) -> WKWebView
+static NSMutableDictionary *gBrowserPending = nil;  // @(bid) -> NSString url (load before creation)
+static NSMutableDictionary *gBrowserWid     = nil;  // @(bid) -> @(wid) last reporting window
+static NSMutableDictionary *gBrowserMiss    = nil;  // @(bid) -> @(consecutive absences)
+
+static void leksah_browser_ensure_dicts(void) {
+    if (gBrowserViews   == nil) gBrowserViews   = [[NSMutableDictionary alloc] init];
+    if (gBrowserPending == nil) gBrowserPending = [[NSMutableDictionary alloc] init];
+    if (gBrowserWid     == nil) gBrowserWid     = [[NSMutableDictionary alloc] init];
+    if (gBrowserMiss    == nil) gBrowserMiss    = [[NSMutableDictionary alloc] init];
+}
+
+// Push a view's navigation state into its host window's MAIN webview (the
+// view's superview), where the widget's poll reads it.
+static void leksah_browser_push_state(id web) {
+    if (web == nil) return;
+    NSNumber *bid = nil;
+    for (NSNumber *k in gBrowserViews)
+        if ([gBrowserViews objectForKey:k] == web) { bid = k; break; }
+    if (bid == nil) return;
+    NSString *url = @"";
+    @try { url = [[web valueForKey:@"URL"] absoluteString] ?: @""; } @catch (...) {}
+    NSString *title = @"";
+    @try { title = [web valueForKey:@"title"] ?: @""; } @catch (...) {}
+    BOOL back = NO, fwd = NO;
+    @try { back = [[web valueForKey:@"canGoBack"] boolValue]; } @catch (...) {}
+    @try { fwd  = [[web valueForKey:@"canGoForward"] boolValue]; } @catch (...) {}
+    NSDictionary *d = @{ @"u": url, @"b": @(back), @"f": @(fwd), @"t": title };
+    NSData *j = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
+    if (j == nil) return;
+    NSString *json = [[[NSString alloc] initWithData:j encoding:NSUTF8StringEncoding] autorelease];
+    NSView *host = [(NSView *)web superview];
+    leksah_eval_js(host,
+        [NSString stringWithFormat:@"window.__lkNb=window.__lkNb||{};window.__lkNb[%@]=%@;",
+                  bid, json]);
+}
+
+// The light/dark mode the reporter last told us about (see
+// leksah_browser_reconcile).  Read when building the colour-scheme client
+// hint, which — unlike the NSAppearance — has to be attached per navigation.
+static BOOL gBrowserDark = YES;
+
+#define LEKSAH_SCHEME_HINT_HEADER @"Sec-CH-Prefers-Color-Scheme"
+
+// Stamp the colour-scheme client hint on a request we are about to load.
+//
+// The NSAppearance only reaches a page through the @c prefers-color-scheme
+// media query; the big sites that theme SERVER-side — Google above all —
+// switch on this hint instead.  Measured on www.google.com: identical URL and
+// UA, the body background variable comes back @c --xhUGwc:#fff without the
+// header and @c #22242a with it.  WebKit ships no UA client hints of its own,
+// so a browser pane (like Safari) is served the light page unless we say so.
+//
+// NB the WebKit SPI route — @c _WKCustomHeaderFields on
+// @c WKWebpagePreferences, which WebKit re-applies to every request to the
+// main document's registrable domain — does NOT work for this header, and the
+// failure is silent.  Verified against a header-dumping server: a plain
+// @c X-… field set that way arrives on both the document and its subresources,
+// while @c Sec-CH-Prefers-Color-Scheme set the same way is dropped (WebKit
+// refuses to let an app forge @c Sec-* headers).  Only headers we put on the
+// NSURLRequest ourselves survive — hence the reissue in decidePolicy below.
+static NSURLRequest *leksah_with_scheme_hint(NSURLRequest *req) {
+    if (req == nil) return req;
+    NSMutableURLRequest *m = [[req mutableCopy] autorelease];
+    [m setValue:(gBrowserDark ? @"dark" : @"light")
+        forHTTPHeaderField:LEKSAH_SCHEME_HINT_HEADER];
+    return m;
+}
+
+// Should this navigation be cancelled and reissued carrying the hint?  Only
+// http(s) GETs of the main frame that don't already have it: a request we
+// reissue comes back through here WITH the header, which is what stops the
+// recursion.  Back/forward (2) and reload (3) are left alone — reissuing them
+// would push a new history entry instead of moving within history, and WebKit
+// already replays the original request (headers included) for both.  POSTs are
+// left alone too: WKWebView strips the body from a navigation action, so a
+// reissue would send an empty form.
+static BOOL leksah_should_reissue(id action) {
+    @try {
+        NSNumber *type = [action valueForKey:@"navigationType"];
+        if (type != nil && ([type intValue] == 2 || [type intValue] == 3)) return NO;
+        id target = [action valueForKey:@"targetFrame"];
+        if (target == nil) return NO;                       // new window/frameless
+        NSNumber *isMain = [target valueForKey:@"isMainFrame"];
+        if (isMain != nil && ![isMain boolValue]) return NO;
+        NSURLRequest *req = [action valueForKey:@"request"];
+        if (req == nil) return NO;
+        if ([req valueForHTTPHeaderField:LEKSAH_SCHEME_HINT_HEADER] != nil) return NO;
+        NSString *method = [req HTTPMethod];
+        if (method != nil && ![method isEqualToString:@"GET"]) return NO;
+        NSString *scheme = [[[req URL] scheme] lowercaseString];
+        return [scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"];
+    } @catch (...) { return NO; }
+}
+
+// Navigation + UI delegate for the browser views (OURS — never the main
+// webview's, whose UIDelegate belongs to jsaddle).  WebKit calls these via
+// respondsToSelector, so no formal protocol/headers are needed.
+@interface LeksahBrowserDelegate : NSObject
+@end
+@implementation LeksahBrowserDelegate
+// Carry the colour-scheme hint into navigations the PAGE starts (a link, a
+// search box, location=…), not just the ones leksah loads — otherwise a
+// server-themed site is dark on the URL we open and light from the first click
+// on.  Since only headers on our own NSURLRequest survive (see above), the
+// navigation is cancelled and reissued with the header stamped on; the reissued
+// one already has it, so it is allowed straight through.  The hint is built
+// from gBrowserDark at reissue time, so a mode flip takes effect from the next
+// navigation (loaded pages keep their server-rendered theme until reloaded —
+// their media-query side still flips instantly with the NSAppearance).
+//
+// Policies: 0 = WKNavigationActionPolicyCancel, 1 = …Allow (WebKit headers
+// aren't imported here — this file reaches WebKit only through
+// NSClassFromString/objc_msgSend).
+- (void)webView:(id)web decidePolicyForNavigationAction:(id)action
+                                           preferences:(id)prefs
+                                       decisionHandler:(void (^)(NSInteger, id))decisionHandler {
+    if (leksah_should_reissue(action)) {
+        @try {
+            NSURLRequest *req = leksah_with_scheme_hint([action valueForKey:@"request"]);
+            decisionHandler(0, prefs);
+            ((void (*)(id, SEL, id))objc_msgSend)(web, @selector(loadRequest:), req);
+            return;
+        } @catch (...) { /* fall through to a plain allow */ }
+    }
+    decisionHandler(1, prefs);
+}
+- (void)webView:(id)web didCommitNavigation:(id)nav {
+    (void)nav; leksah_browser_push_state(web);
+}
+- (void)webView:(id)web didFinishNavigation:(id)nav {
+    (void)nav; leksah_browser_push_state(web);
+}
+// target=_blank / window.open: load in the SAME view instead of a new window.
+- (id)webView:(id)web createWebViewWithConfiguration:(id)cfg
+        forNavigationAction:(id)action windowFeatures:(id)feat {
+    (void)cfg; (void)feat;
+    @try {
+        id req = [action valueForKey:@"request"];
+        if (req != nil)
+            ((void (*)(id, SEL, id))objc_msgSend)(web, @selector(loadRequest:), req);
+    } @catch (...) {}
+    return nil;
+}
+@end
+
+static LeksahBrowserDelegate *leksah_browser_delegate(void) {
+    static LeksahBrowserDelegate *d = nil;
+    if (d == nil) d = [[LeksahBrowserDelegate alloc] init];
+    return d;
+}
+
+// The tail WebKit appends to its base user agent.  A bare WKWebView sends
+// "…AppleWebKit/605.1.15 (KHTML, like Gecko)" with NOTHING after it, and sites
+// that sniff for Safari read that as an unknown/ancient browser: google.com
+// answers a browser pane with its no-JS BASIC page (gbv=2), which among other
+// things has no dark styling at all.  Claiming the installed Safari's version
+// (read at runtime so it ages with the OS; major.minor, as Safari reports it)
+// gets the same markup a real Safari would.
+static NSString *leksah_browser_ua_suffix(void) {
+    static NSString *cached = nil;
+    if (cached != nil) return cached;
+    NSString *v = nil;
+    @try {
+        v = [[[NSBundle bundleWithPath:@"/Applications/Safari.app"] infoDictionary]
+                objectForKey:@"CFBundleShortVersionString"];
+    } @catch (...) {}
+    if (![v isKindOfClass:[NSString class]] || [v length] == 0) v = @"18.0";
+    NSArray *parts = [v componentsSeparatedByString:@"."];
+    if ([parts count] >= 2)
+        v = [NSString stringWithFormat:@"%@.%@", [parts objectAtIndex:0], [parts objectAtIndex:1]];
+    cached = [[NSString stringWithFormat:@"Version/%@ Safari/605.1.15", v] retain];
+    return cached;
+}
+
+static void leksah_browser_load_url(id web, NSString *url) {
+    if (web == nil || url == nil || [url length] == 0) return;
+    NSURL *u = [NSURL URLWithString:url];
+    if (u == nil) return;
+    ((void (*)(id, SEL, id))objc_msgSend)(web, @selector(loadRequest:),
+        leksah_with_scheme_hint([NSURLRequest requestWithURL:u]));
+}
+
+// Give a browser view the light/dark appearance leksah itself is rendering in
+// (the reporter forwards the page's prefers-color-scheme with every snapshot).
+// Without an EXPLICIT appearance a view merely inherits the system one, so a
+// page would report a different colour scheme than the surrounding UI whenever
+// the two disagree; setting it also darkens WebKit's own chrome (scrollbars,
+// form controls, the pre-load background).  Idempotent — re-applied only when
+// the name actually differs, so the 250ms tick doesn't churn the view.
+static void leksah_browser_apply_appearance(id web, BOOL dark) {
+    if (web == nil) return;
+    NSString *want = dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua;
+    @try {
+        NSAppearance *cur = [(NSView *)web appearance];
+        if (cur == nil || ![[cur name] isEqualToString:want])
+            [(NSView *)web setAppearance:[NSAppearance appearanceNamed:want]];
+    } @catch (...) {}
+}
+
+// One snapshot from one window's reporter: reconcile that window's views.
+static void leksah_browser_reconcile(int wid, NSArray *panes, BOOL dark) {
+    leksah_browser_ensure_dicts();
+    NSWindow *win = (gWindows != nil) ? [gWindows objectForKey:@(wid)] : nil;
+    NSView *host = (win != nil) ? [win contentView] : nil;   // the main webview
+    if (host == nil) return;
+    gBrowserDark = dark;   // for the per-navigation colour-scheme client hint
+    NSMutableSet *seen = [NSMutableSet set];
+    for (NSDictionary *p in panes) {
+        NSNumber *bid = [p objectForKey:@"bid"];
+        if (bid == nil) continue;
+        [seen addObject:bid];
+        [gBrowserMiss removeObjectForKey:bid];
+        [gBrowserWid setObject:@(wid) forKey:bid];
+        id web = [gBrowserViews objectForKey:bid];
+        if (web == nil) {
+            Class cfgClass = NSClassFromString(@"WKWebViewConfiguration");
+            Class wkClass  = NSClassFromString(@"WKWebView");
+            if (cfgClass == Nil || wkClass == Nil) continue;
+            id cfg = [[[cfgClass alloc] init] autorelease];
+            @try { [[cfg valueForKey:@"preferences"] setValue:@YES forKey:@"developerExtrasEnabled"]; }
+            @catch (...) {}
+            @try { [cfg setValue:leksah_browser_ua_suffix() forKey:@"applicationNameForUserAgent"]; }
+            @catch (...) {}
+            web = [((id (*)(id, SEL, NSRect, id))objc_msgSend)(
+                      [wkClass alloc], @selector(initWithFrame:configuration:),
+                      NSMakeRect(0, 0, 100, 100), cfg) autorelease];
+            @try { [web setValue:leksah_browser_delegate() forKey:@"navigationDelegate"]; } @catch (...) {}
+            @try { [web setValue:leksah_browser_delegate() forKey:@"UIDelegate"]; } @catch (...) {}
+            [(NSView *)web setAutoresizingMask:0];
+            [gBrowserViews setObject:web forKey:bid];
+            NSString *pending = [gBrowserPending objectForKey:bid];
+            if (pending != nil) {
+                leksah_browser_load_url(web, pending);
+                [gBrowserPending removeObjectForKey:bid];
+            }
+        }
+        leksah_browser_apply_appearance(web, dark);
+        if ([(NSView *)web superview] != host) {
+            [(NSView *)web removeFromSuperview];
+            [host addSubview:(NSView *)web];
+        }
+        CGFloat x = [[p objectForKey:@"x"] doubleValue], y = [[p objectForKey:@"y"] doubleValue];
+        CGFloat w = [[p objectForKey:@"w"] doubleValue], h = [[p objectForKey:@"h"] doubleValue];
+        CGFloat H = [host bounds].size.height;
+        NSRect fr = [host isFlipped] ? NSMakeRect(x, y, w, h)
+                                     : NSMakeRect(x, H - y - h, w, h);
+        [(NSView *)web setFrame:fr];
+        [(NSView *)web setHidden:![[p objectForKey:@"vis"] boolValue]];
+    }
+    // Panes this window last owned but which no longer report: after ~3s of
+    // absence the element has really left the DOM (closed) — destroy.  A tab
+    // merely hidden still reports (vis:false); a cross-window drag re-reports
+    // from the new window well inside the grace period.
+    for (NSNumber *bid in [gBrowserViews allKeys]) {
+        if ([seen containsObject:bid]) continue;
+        if (![[gBrowserWid objectForKey:bid] isEqual:@(wid)]) continue;
+        int miss = [[gBrowserMiss objectForKey:bid] intValue] + 1;
+        if (miss > 12) {
+            id web = [gBrowserViews objectForKey:bid];
+            [(NSView *)web removeFromSuperview];
+            [gBrowserViews removeObjectForKey:bid];
+            [gBrowserWid removeObjectForKey:bid];
+            [gBrowserMiss removeObjectForKey:bid];
+        } else
+            [gBrowserMiss setObject:@(miss) forKey:bid];
+    }
+}
+
+// Teardown (ghci :reload): drop every browser view before the windows close,
+// so nothing keeps their WebContent renderers alive across :main restarts.
+static void leksah_browser_teardown(void) {
+    if (gBrowserViews == nil) return;
+    for (NSNumber *bid in [gBrowserViews allKeys])
+        [(NSView *)[gBrowserViews objectForKey:bid] removeFromSuperview];
+    [gBrowserViews removeAllObjects];
+    [gBrowserPending removeAllObjects];
+    [gBrowserWid removeAllObjects];
+    [gBrowserMiss removeAllObjects];
+}
+
+@interface LeksahBrowserFrameHandler : NSObject
+@end
+@implementation LeksahBrowserFrameHandler
+- (void)userContentController:(id)ucc didReceiveScriptMessage:(id)message {
+    (void)ucc;
+    id body = [message valueForKey:@"body"];
+    if (![body isKindOfClass:[NSDictionary class]]) return;
+    int wid = [[body objectForKey:@"wid"] intValue];
+    NSArray *panes = [body objectForKey:@"panes"];
+    if (![panes isKindOfClass:[NSArray class]]) return;
+    id darkVal = [body objectForKey:@"dark"];
+    BOOL dark = (darkVal == nil) ? YES : [darkVal boolValue];   // dark is leksah's default
+    dispatch_async(dispatch_get_main_queue(), ^{ leksah_browser_reconcile(wid, panes, dark); });
+}
+@end
+
+// The Haskell-facing ops (IDE.Web.NativeBrowser): drive pane bid's view.
+void leksah_browser_load(int bid, const char *curl) {
+    NSString *url = (curl != NULL) ? [NSString stringWithUTF8String:curl] : nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        leksah_browser_ensure_dicts();
+        id web = [gBrowserViews objectForKey:@(bid)];
+        if (web != nil) leksah_browser_load_url(web, url);
+        else if (url != nil) [gBrowserPending setObject:url forKey:@(bid)];
+    });
+}
+
+static void leksah_browser_send(int bid, SEL sel) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        leksah_browser_ensure_dicts();
+        id web = [gBrowserViews objectForKey:@(bid)];
+        if (web == nil) return;
+        @try { ((void (*)(id, SEL))objc_msgSend)(web, sel); } @catch (...) {}
+        leksah_browser_push_state(web);
+    });
+}
+void leksah_browser_back(int bid)    { leksah_browser_send(bid, @selector(goBack)); }
+void leksah_browser_forward(int bid) { leksah_browser_send(bid, @selector(goForward)); }
+void leksah_browser_reload(int bid)  { leksah_browser_send(bid, @selector(reload)); }
+
+// ---------------------------------------------------------------------------
+// Menu-bar status item: the state of the Claude Code sessions running RIGHT NOW,
+// visible even when leksah is hidden or another app is frontmost — and a menu
+// listing those sessions, so one can be brought up from anywhere.
+//
+// The ICON is the worst state among the live sessions, pushed from Haskell
+// (leksah_set_claude_status, from IDE.Web.MacMenu's poll of
+// IDE.Web.Claude.claudeLiveBySession).  Same colours as the workspace tree's
+// badges, and — for colour-blind accessibility, as with the in-page traffic
+// light — a distinct SHAPE per state:
+//   red triangle   a session is blocked on an approval prompt (it needs you)
+//   amber diamond  a session is working (the agent, or a shell command)
+//   green circle   every session is idle, ready for input
+//   hollow ring    nothing running (a template image, so AppKit tints it for
+//                  the current menu bar rather than shouting in either)
+// CLICKING opens the session menu; choosing a session selects its tmux pane and
+// brings up its terminal tab (gHs.claude_activate → Claude.showLiveSession).
+//
+// The in-page coordination traffic light (statusLightJs, posted as
+// "leksahStatusItem") no longer drives the icon — this item is about the
+// sessions themselves.  It survives as the menu's status line and in the
+// tooltip, so "Claude is testing — hands off" is still readable from the menu
+// bar while the icon says what the sessions are doing.
+//
+// Statics live in the dylib, so in ghci mode the item and its last state
+// survive :reload.
+static NSStatusItem *gStatusItem = nil;
+static NSString *gClaudeState = @"none";  // aggregate live-session state
+static NSString *gClaudeTip   = nil;      // one-line summary for the tooltip
+static NSArray  *gClaudeRows  = nil;      // @[@[state, title, tooltip, session id], …]
+static NSString *gCoordState  = @"green"; // the in-page coordination light
+
+@interface LeksahStatusItemTarget : NSObject
+- (void)showLeksah:(id)sender;
+- (void)claudeSession:(id)sender;
+@end
+static LeksahStatusItemTarget *gStatusTarget = nil;
+@implementation LeksahStatusItemTarget
+- (void)showLeksah:(id)sender {
+    (void)sender;
+    [NSApp activateIgnoringOtherApps:YES];
+    if (gLeksahWindow != nil) [gLeksahWindow makeKeyAndOrderFront:nil];
+}
+- (void)claudeSession:(id)sender {
+    // Choosing a session both fronts leksah and shows that session's terminal:
+    // the Haskell side selects the tmux pane and opens its tab, which is only
+    // useful with the window in front.
+    [self showLeksah:sender];
+    NSString *sid = [(NSMenuItem *)sender representedObject];
+    if (sid != nil && gHs.claude_activate) gHs.claude_activate([sid UTF8String]);
+}
+@end
+
+// Draw one state's shape at px×px, inset by @o, optionally with the
+// agent-coordination ring around it.  flipped:YES so the point lists read in the
+// same top-origin coordinates as the in-page clip-path polygons.  "ring" (as a
+// shape) is stroked rather than filled, and marked template — but only when
+// there is no coordination ring, since a template image would tint that too and
+// its colour IS its meaning.
+static NSImage *leksah_shape_image(NSString *shape, NSColor *color, CGFloat px,
+                                   CGFloat o, NSColor *coordRing) {
+    NSImage *img = [NSImage imageWithSize:NSMakeSize(px, px) flipped:YES
+                    drawingHandler:^BOOL(NSRect dst) {
+        (void)dst;
+        CGFloat s = px - 2 * o;
+        if (coordRing != nil) {
+            // A circle just inside the image edge, around whatever shape follows.
+            CGFloat rw = px / 12.0;
+            NSBezierPath *r = [NSBezierPath bezierPathWithOvalInRect:
+                                  NSMakeRect(rw/2, rw/2, px - rw, px - rw)];
+            [coordRing setStroke];
+            [r setLineWidth:rw];
+            [r stroke];
+        }
+        NSBezierPath *p;
+        if ([shape isEqualToString:@"triangle"]) {                // apex up
+            p = [NSBezierPath bezierPath];
+            [p moveToPoint:NSMakePoint(o + 0.50*s, o + 0.02*s)];
+            [p lineToPoint:NSMakePoint(o + 0.98*s, o + 0.96*s)];
+            [p lineToPoint:NSMakePoint(o + 0.02*s, o + 0.96*s)];
+            [p closePath];
+        } else if ([shape isEqualToString:@"diamond"]) {
+            p = [NSBezierPath bezierPath];
+            [p moveToPoint:NSMakePoint(o + 0.50*s, o)];
+            [p lineToPoint:NSMakePoint(o + s,      o + 0.50*s)];
+            [p lineToPoint:NSMakePoint(o + 0.50*s, o + s)];
+            [p lineToPoint:NSMakePoint(o,          o + 0.50*s)];
+            [p closePath];
+        } else if ([shape isEqualToString:@"ring"]) {
+            // Inset by half the line width, or the stroke would be clipped by
+            // the image edge.
+            CGFloat lw = px / 9.0;
+            p = [NSBezierPath bezierPathWithOvalInRect:
+                    NSMakeRect(o + lw/2, o + lw/2, s - lw, s - lw)];
+            [color setStroke];
+            [p setLineWidth:lw];
+            [p stroke];
+            return YES;
+        } else {                                                  // circle
+            p = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(o, o, s, s)];
+        }
+        [color setFill];
+        [p fill];
+        // Hairline dark edge so the light shapes read on a light menu bar.
+        [[NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:0.35] setStroke];
+        [p setLineWidth:0.5];
+        [p stroke];
+        return YES;
+    }];
+    if ([shape isEqualToString:@"ring"] && coordRing == nil) [img setTemplate:YES];
+    return img;
+}
+
+// A Claude state's shape+colour: the same colours as the workspace tree's
+// session badges (#f85149 / #d29922 / #3fb950), so the menu bar and the tree
+// never disagree about what a session is doing.  @coordRing is the
+// agent-coordination ring to draw around it (nil for none).
+static NSImage *leksah_claude_image(NSString *state, CGFloat px, CGFloat o,
+                                    NSColor *coordRing) {
+    if ([state isEqualToString:@"waiting"])
+        return leksah_shape_image(@"triangle",
+            [NSColor colorWithSRGBRed:0.973 green:0.318 blue:0.286 alpha:1], px, o, coordRing);
+    if ([state isEqualToString:@"busy"])
+        return leksah_shape_image(@"diamond",
+            [NSColor colorWithSRGBRed:0.824 green:0.600 blue:0.133 alpha:1], px, o, coordRing);
+    if ([state isEqualToString:@"idle"])
+        return leksah_shape_image(@"circle",
+            [NSColor colorWithSRGBRed:0.247 green:0.725 blue:0.314 alpha:1], px, o, coordRing);
+    // Nothing running: a hollow disc, tinted by AppKit unless it carries a ring.
+    return leksah_shape_image(@"ring",
+        coordRing != nil ? [NSColor colorWithWhite:0.55 alpha:1] : [NSColor labelColor],
+        px, o, coordRing);
+}
+
+// The agent-coordination ring's colour: an agent has claimed the UI.  nil while
+// it's safe — the ring appearing at all is the signal.  Same colours as the
+// in-page dot's ring (statusLightJs).
+static NSColor *leksah_coord_ring_color(NSString *st) {
+    if ([st isEqualToString:@"orange"])
+        return [NSColor colorWithSRGBRed:1.000 green:0.584 blue:0.000 alpha:1];
+    if ([st isEqualToString:@"red"])
+        return [NSColor colorWithSRGBRed:1.000 green:0.231 blue:0.188 alpha:1];
+    if ([st isEqualToString:@"blue"])
+        return [NSColor colorWithSRGBRed:0.039 green:0.518 blue:1.000 alpha:1];
+    return nil;
+}
+
+static NSString *leksah_coord_line(NSString *st) {
+    if ([st isEqualToString:@"orange"]) return @"Leksah: Claude needs it shortly";
+    if ([st isEqualToString:@"red"])    return @"Leksah: Claude is testing — hands off";
+    if ([st isEqualToString:@"blue"])   return @"Leksah: Claude is rebuilding/restarting";
+    return @"Leksah: safe to use";
+}
+
+// Rebuild the item's menu from the pushed rows.  Cheap and only run when the
+// payload actually changed (the Haskell poll pushes on change only), so there
+// is no need for a menuNeedsUpdate: delegate calling back into Haskell from
+// inside the menu-tracking run loop.  MAIN THREAD.
+static void leksah_status_rebuild_menu(void) {
+    if (gStatusItem == nil) return;
+    NSMenu *menu = [[NSMenu alloc] init];
+    [menu setAutoenablesItems:NO];      // the informational rows stay disabled
+    if ([gClaudeRows count] == 0) {
+        NSMenuItem *none = [[NSMenuItem alloc] initWithTitle:@"No Claude sessions running"
+                                                     action:NULL keyEquivalent:@""];
+        [none setEnabled:NO];
+        [menu addItem:none];
+        [none release];
+    } else {
+        for (NSArray *row in gClaudeRows) {
+            NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:[row objectAtIndex:1]
+                                  action:@selector(claudeSession:) keyEquivalent:@""];
+            [mi setTarget:gStatusTarget];
+            [mi setRepresentedObject:[row objectAtIndex:3]];
+            [mi setToolTip:[row objectAtIndex:2]];
+            [mi setImage:leksah_claude_image([row objectAtIndex:0], 14, 14 * (2.0/18.0), nil)];
+            [menu addItem:mi];
+            [mi release];
+        }
+    }
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *coord = [[NSMenuItem alloc] initWithTitle:leksah_coord_line(gCoordState)
+                                                  action:NULL keyEquivalent:@""];
+    [coord setEnabled:NO];
+    [menu addItem:coord];
+    [coord release];
+    NSMenuItem *show = [[NSMenuItem alloc] initWithTitle:@"Show Leksah"
+                            action:@selector(showLeksah:) keyEquivalent:@""];
+    [show setTarget:gStatusTarget];
+    [menu addItem:show];
+    [show release];
+    [gStatusItem setMenu:menu];         // a menu, so a click opens it
+    [menu release];
+}
+
+// Create the item on first use.  MAIN THREAD.
+static void leksah_status_item_ensure(void) {
+    if (gStatusItem != nil) return;
+    if (gStatusTarget == nil) gStatusTarget = [[LeksahStatusItemTarget alloc] init];
+    gStatusItem = [[[NSStatusBar systemStatusBar]
+                      statusItemWithLength:NSSquareStatusItemLength] retain];
+}
+
+// Push the current state into the item: icon, tooltip and menu.  MAIN THREAD.
+static void leksah_status_refresh(void) {
+    if (gStatusItem == nil) return;
+    // The session shape is drawn at 12 in the 18×18 button image (not 14) so the
+    // coordination ring has clearance when it appears — a shape that changed size
+    // with the ring would read as two different icons.
+    [[gStatusItem button] setImage:
+        leksah_claude_image(gClaudeState, 18, 3, leksah_coord_ring_color(gCoordState))];
+    NSString *claude = (gClaudeTip != nil && [gClaudeTip length] > 0)
+                         ? gClaudeTip : @"Claude: no sessions running";
+    [[gStatusItem button] setToolTip:
+        [NSString stringWithFormat:@"%@\n%@", claude, leksah_coord_line(gCoordState)]];
+    leksah_status_rebuild_menu();
+}
+
+// The in-page coordination traffic light changed ("leksahStatusItem").
+static void leksah_status_item_set(NSString *state) {
+    NSString *st = [((state != nil && [state length] > 0) ? state : @"green") copy];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [gCoordState release];
+        gCoordState = st;               // takes the copy's reference
+        leksah_status_item_ensure();
+        leksah_status_refresh();
+    });
+}
+
+// The live Claude sessions changed (pushed by Haskell's poll, on change only).
+// @state is the aggregate ("waiting" / "busy" / "idle" / "none"), @tip a
+// one-line summary, and @rows one session per line as
+// state \t title \t tooltip \t session-id (the tooltip's own newlines escaped
+// as \n by the sender, since they'd otherwise end the row).
+void leksah_set_claude_status(const char *state, const char *tip, const char *rows) {
+    NSString *st = [[NSString stringWithUTF8String:(state != NULL ? state : "none")] copy];
+    NSString *tp = [[NSString stringWithUTF8String:(tip   != NULL ? tip   : "")] copy];
+    NSString *rw = [NSString stringWithUTF8String:(rows  != NULL ? rows  : "")];
+    NSMutableArray *parsed = [[NSMutableArray alloc] init];
+    for (NSString *line in [rw componentsSeparatedByString:@"\n"]) {
+        if ([line length] == 0) continue;
+        NSArray *f = [line componentsSeparatedByString:@"\t"];
+        if ([f count] < 4) continue;
+        [parsed addObject:@[ [f objectAtIndex:0], [f objectAtIndex:1],
+                             [[f objectAtIndex:2] stringByReplacingOccurrencesOfString:@"\\n"
+                                                                           withString:@"\n"],
+                             [f objectAtIndex:3] ]];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [gClaudeState release]; gClaudeState = st;   // each takes its copy's ref
+        [gClaudeTip   release]; gClaudeTip   = tp;
+        [gClaudeRows  release]; gClaudeRows  = parsed;
+        leksah_status_item_ensure();
+        leksah_status_refresh();
+    });
+}
+
+@interface LeksahStatusHandler : NSObject
+@end
+@implementation LeksahStatusHandler
+- (void)userContentController:(id)ucc didReceiveScriptMessage:(id)message {
+    (void)ucc;
+    id body = [message valueForKey:@"body"];          // WKScriptMessage.body (via KVC)
+    NSString *state = [body isKindOfClass:[NSString class]]
+                        ? (NSString *)body : [body description];
+    leksah_status_item_set(state);
+}
+@end
+
+// Register the "leksahBeep" / "leksahSpeak" / "leksahStatusItem" handlers on a
+// webview's content controller (once per webview; each window has its own).
+// Called from leksah_configure_window so it covers window 0 (created by
+// jsaddle's AppDelegate) and every leksah_new_window alike.  Coexists with
+// jsaddle's own handlers (different names).
 static void leksah_install_beep_handler(id webview) {
     static LeksahBeepHandler *beepHandler = nil;
     static LeksahSpeakHandler *speakHandler = nil;
+    static LeksahStatusHandler *statusHandler = nil;
+    static LeksahBrowserFrameHandler *browserHandler = nil;
     if (beepHandler == nil)  beepHandler  = [[LeksahBeepHandler alloc] init];
     if (speakHandler == nil) speakHandler = [[LeksahSpeakHandler alloc] init];
+    if (statusHandler == nil) statusHandler = [[LeksahStatusHandler alloc] init];
+    if (browserHandler == nil) browserHandler = [[LeksahBrowserFrameHandler alloc] init];
+    // Show the item (green) as soon as the first window is wired: the JS's
+    // initial post can race this handler's install and be swallowed by its
+    // try/catch, which would leave the menu bar empty until the first state
+    // change.  Seed ONLY while the item doesn't exist yet — a later window
+    // install (File ▸ New Window mid-test) must not reset a live red/blue.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gStatusItem == nil) leksah_status_item_set(@"green");
+    });
     if (webview == nil) return;
     @try {
         id cfg = [webview valueForKey:@"configuration"];
@@ -1131,6 +1856,8 @@ static void leksah_install_beep_handler(id webview) {
         SEL add = @selector(addScriptMessageHandler:name:);
         ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, beepHandler,  @"leksahBeep");
         ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, speakHandler, @"leksahSpeak");
+        ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, statusHandler, @"leksahStatusItem");
+        ((void (*)(id, SEL, id, id))objc_msgSend)(ucc, add, browserHandler, @"leksahBrowserFrame");
     } @catch (...) {}   // (...): see the ghci reloc note above
 }
 
@@ -1156,7 +1883,25 @@ static BOOL leksah_configure_window(NSWindow *win, int wid) {
     // wid 0 keeps the historical name so existing saved geometry is preserved.
     NSString *autosave = (wid == 0) ? @"LeksahMainWindow"
                                     : [NSString stringWithFormat:@"LeksahWindow%d", wid];
+    // setFrameAutosaveName is a SILENT no-op if another window still owns the
+    // name — on a ghci reload the previous generation's window can linger just
+    // long enough to steal it, leaving THIS window's moves/resizes unsaved
+    // forever.  Evict any foreign owner first (it is a husk on its way out;
+    // teardown also clears the name, this is the belt to that brace).
+    for (NSWindow *o in [NSApp windows])
+        if (o != win && [[o frameAutosaveName] isEqualToString:autosave])
+            [o setFrameAutosaveName:@""];
     BOOL restored = [win setFrameUsingName:autosave];
+    // A dying window whose content view was torn down can collapse to its
+    // minimal frame (~64×64) and autosave that husk.  Never restore such a
+    // frame: fall back to a sensible default and report "not restored" so the
+    // caller centres the window.
+    if (restored && (NSWidth([win frame]) < 400.0 || NSHeight([win frame]) < 300.0)) {
+        NSLog(@"leksah: ignoring implausible saved frame for %@ (%.0fx%.0f)",
+              autosave, NSWidth([win frame]), NSHeight([win frame]));
+        [win setFrame:NSMakeRect(0.0, 500.0, 1200.0, 800.0) display:NO];
+        restored = NO;
+    }
     [win setFrameAutosaveName:autosave];
     // Frontmost window → active window (routes the bridges + flipper in-place).
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeKeyNotification
@@ -1180,6 +1925,11 @@ static BOOL leksah_configure_window(NSWindow *win, int wid) {
 // webview to Haskell (leksah_attach_window) so it can attach a jsaddle context.
 // WebKit isn't linked into this file, so the WKWebView classes are reached
 // dynamically (as elsewhere in this file).
+// Webviews created by leksah_new_window carrying its deliberate extra retain
+// (see the note there); leksah_close_all_windows releases exactly these.
+// Non-retaining (opaque-pointer) hash table — membership only.
+static NSHashTable *gOverRetainedWebViews = nil;
+
 void leksah_new_window(int wid) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSRect contentSize = NSMakeRect(0.0, 500.0, 1000.0, 700.0);
@@ -1216,6 +1966,32 @@ void leksah_new_window(int wid) {
         // is already active, so this is a harmless no-op there.
         [NSApp activateIgnoringOtherApps:YES];
         if (gHs.attach_window) gHs.attach_window(wid, (void *)web);
+        // MRC (this file is compiled without -fobjc-arc).  WKWebView keeps its own
+        // copy of the configuration, so that +1 is ours to drop.
+        [cfg release];
+        // The webview's +1 from alloc/init is deliberately NOT balanced here:
+        // it is what keeps the webview alive after its window goes away.
+        //
+        // gHs.attach_window hands the raw pointer to jsaddle-wkwebview, which
+        // stores it and keeps calling -evaluateJavaScript: from its own threads.
+        // While that holds, releasing the webview (letting the window's ref be
+        // the last one) turns the next evaluateJavaScript into a use-after-free:
+        // SIGSEGV in objc_retain under _Block_copy while the dispatch_async
+        // block retains the freed webview.  Observed killing the whole ghci
+        // process mid-:reload, since teardown races the reflex frame threads
+        // still driving JS.
+        //
+        // So the +1 is balanced at TEARDOWN instead: leksah_close_all_windows
+        // releases exactly the webviews recorded here — and it only runs after
+        // the Haskell side has invalidated their jsaddle contexts
+        // (jsaddleWebViewInvalidate, see IDE.Web.MacMenu's ghci cleanup), so no
+        // jsaddle thread touches the pointer again.  That lets the webview
+        // dealloc and its WebContent XPC renderer exit — previously one leaked
+        // per :main restart.
+        if (gOverRetainedWebViews == nil)
+            gOverRetainedWebViews = [[NSHashTable hashTableWithOptions:
+                NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality] retain];
+        [gOverRetainedWebViews addObject:web];
     });
 }
 
@@ -1269,6 +2045,7 @@ void leksah_run_app(void) {
 void leksah_close_all_windows(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         gTeardownInProgress = 1;
+        leksah_browser_teardown();
         // The tracked windows, PLUS a defensive sweep: any leksah window (one
         // hosting a WKWebView) still in [NSApp windows] that gWindows never
         // recorded.  Such orphans arise only from abnormal recovery paths (e.g.
@@ -1282,7 +2059,70 @@ void leksah_close_all_windows(void) {
         if (gWindows != nil) [toClose addObjectsFromArray:[gWindows allValues]];
         for (NSWindow *w in [NSApp windows])
             if (leksah_find_webview([w contentView]) != nil) [toClose addObject:w];
-        for (NSWindow *w in toClose) [w close];
+        for (NSWindow *w in toClose) {
+            id web = leksah_find_webview([w contentView]);
+            if (web != nil) {
+                // Remove the script message handlers.
+                // -addScriptMessageHandler: makes WebKit keep an internal strong
+                // reference that pins the WKWebView (and thus its WebContent XPC
+                // process) alive even after the window closes — the classic
+                // WKWebView leak.  We add three (jsaddle / leksahBeep /
+                // leksahSpeak), so leaving them on would pin the webview even
+                // once its other refs are gone.  Necessary but NOT sufficient:
+                // the webview is also deliberately over-retained in
+                // leksah_new_window because jsaddle keeps using it — see the long
+                // note there for why releasing it crashes the repl.  WebKit is
+                // reached dynamically (id).
+                @try {
+                    id cfg = [web valueForKey:@"configuration"];
+                    id ucc = [cfg valueForKey:@"userContentController"];
+                    SEL removeAll = @selector(removeAllScriptMessageHandlers);
+                    if ([ucc respondsToSelector:removeAll]) {          // macOS 11+
+                        ((void (*)(id, SEL))objc_msgSend)(ucc, removeAll);
+                    } else {
+                        SEL rm = @selector(removeScriptMessageHandlerForName:);
+                        for (NSString *nm in @[@"jsaddle", @"leksahBeep", @"leksahSpeak", @"leksahStatusItem", @"leksahBrowserFrame"])
+                            ((void (*)(id, SEL, id))objc_msgSend)(ucc, rm, nm);
+                    }
+                } @catch (...) {}
+                @try { ((void (*)(id, SEL))objc_msgSend)(web, @selector(stopLoading)); } @catch (...) {}
+                // NB: do NOT nil navigationDelegate / UIDelegate here.  Both are
+                // *weak* properties on WKWebView, so clearing them does nothing
+                // for the refcount — and jsaddle-wkwebview owns the UIDelegate
+                // for its synchronous JS↔Haskell bridge; poking it mid-teardown
+                // can wedge jsaddle (a hung reload/teardown).
+                //
+                // Balance leksah_new_window's deliberate extra retain, for
+                // exactly the webviews that carry it (the first-launch window's
+                // webview does not — jsaddle's AppDelegate owns that one).  Safe
+                // ONLY because the Haskell side invalidated every attached
+                // jsaddle context (jsaddleWebViewInvalidate) BEFORE dispatching
+                // this teardown block, so no jsaddle thread dereferences the
+                // pointer again; any batch already queued on this (main) queue
+                // holds its own block-copy retain and stays valid.  This is
+                // what lets the webview dealloc and its WebContent XPC renderer
+                // exit instead of leaking one per :main restart.
+                if (gOverRetainedWebViews != nil
+                        && [gOverRetainedWebViews containsObject:web]) {
+                    [gOverRetainedWebViews removeObject:web];
+                    [web release];
+                }
+            }
+            // Persist the window's LAST GOOD frame, then detach it from frame
+            // autosave before closing.  A closing window whose content view
+            // dies can collapse to a ~64×64 husk and autosave THAT — and a
+            // closed-but-not-yet-deallocated window still owns its autosave
+            // name, making the next generation's setFrameAutosaveName a silent
+            // no-op.  Saving explicitly (only a plausible frame) and clearing
+            // the name closes both holes.
+            NSString *nm = [w frameAutosaveName];
+            if ([nm length] > 0) {
+                if (NSWidth([w frame]) >= 400.0 && NSHeight([w frame]) >= 300.0)
+                    [w saveFrameUsingName:nm];
+                [w setFrameAutosaveName:@""];
+            }
+            [w close];
+        }
         [gWindows removeAllObjects];
         gLeksahWindow = nil;
         gTeardownInProgress = 0;
@@ -1314,17 +2154,30 @@ void leksah_disable_auto_terminate(void) {
 }
 
 static void leksah_configure_titlebar(void) {
-    NSWindow *win = [[NSApp windows] firstObject];
-    if (win == nil || [win contentView] == nil) {
+    // Find leksah's window: the first one hosting a WKWebView.  [NSApp windows]
+    // can also hold panels and husks from a previous ghci generation —
+    // firstObject once stamped one of those as window 0.
+    NSWindow *win = nil;
+    for (NSWindow *w in [NSApp windows])
+        if ([w contentView] != nil && leksah_find_webview([w contentView]) != nil) {
+            win = w;
+            break;
+        }
+    if (win == nil) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ leksah_configure_titlebar(); });
         return;
     }
-    // Per-window title-bar + autosave + become-key/will-close observers (wid 0).
-    leksah_configure_window(win, 0);
+    // Per-window title-bar + autosave + become-key/will-close observers (wid 0)
+    // — unless leksah_new_window already configured this window (the ghci
+    // reload path): configuring twice would duplicate the become-key and
+    // will-close observers.
+    if (gWindows == nil || ![[gWindows allValues] containsObject:win])
+        leksah_configure_window(win, 0);
     leksah_install_relaunch_signal();
     leksah_install_titlebar_drag();
     leksah_install_beep_suppression();
+    leksah_install_cmdheld_monitor();
     leksah_install_clickthrough_monitors();
     // Re-apply the snap immediately when leksah itself moves or resizes (these
     // fire continuously during a drag), so the bound window tracks it smoothly
@@ -1359,6 +2212,7 @@ static void leksah_ensure_recent_menu(void) {
                                                         action:NULL keyEquivalent:@""];
     [recentItem setSubmenu:gRecentMenu];
     [[fileItem submenu] addItem:recentItem];
+    [recentItem release];
 }
 
 // Replace the Open Recent submenu with the given newline-separated paths (most
@@ -1378,6 +2232,7 @@ void leksah_set_recent_files(const char *paths) {
             [mi setRepresentedObject:p];
             [mi setToolTip:p];
             [gRecentMenu addItem:mi];
+            [mi release];
         }
     });
 }

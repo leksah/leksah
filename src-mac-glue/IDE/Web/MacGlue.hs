@@ -50,9 +50,15 @@ module IDE.Web.MacGlue
   , c_showOpenProjectPanel
   , c_showOpenFolderPanel
   , c_setRecentFiles
+  , c_setClaudeStatus
   , c_screenshot
   , c_snapshotRect
   , c_pickColor
+    -- * Native browser panes (real per-pane WKWebViews)
+  , c_browserLoad
+  , c_browserBack
+  , c_browserForward
+  , c_browserReload
   ) where
 
 import Foreign.C.String (CString)
@@ -60,7 +66,8 @@ import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr)
 #ifdef darwin_HOST_OS
 import Foreign.C.String (peekCString)
-import Foreign.Ptr (FunPtr)
+import Foreign.Marshal.Array (allocaArray, peekArray)
+import Foreign.Ptr (FunPtr, castPtrToFunPtr, freeHaskellFunPtr)
 #else
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import System.IO.Unsafe (unsafePerformIO)
@@ -106,6 +113,9 @@ data MacCallbacks = MacCallbacks
   , cbColorPicked     :: String -> IO ()       -- ^ NSColorPanel change ("#rrggbb")
   , cbToggleState     :: Int -> IO Int         -- ^ a menu item's toggle state by
                                                --   tag: -1 not a toggle, 0 off, 1 on
+  , cbClaudeActivate  :: String -> IO ()       -- ^ a live Claude session chosen
+                                               --   from the menu-bar status
+                                               --   item's menu (session id)
   }
 
 #ifdef darwin_HOST_OS
@@ -149,12 +159,23 @@ foreign import ccall "leksah_show_open_project_panel" c_showOpenProjectPanel :: 
 foreign import ccall "leksah_show_open_folder_panel" c_showOpenFolderPanel :: IO ()
 -- Populate the native "Open Recent" submenu (newline-separated paths).
 foreign import ccall "leksah_set_recent_files" c_setRecentFiles :: CString -> IO ()
+-- The menu-bar status item: the live Claude sessions' aggregate state
+-- ("waiting"/"busy"/"idle"/"none"), a one-line tooltip summary, and one row per
+-- session (@state \\t title \\t tooltip \\t session id@, newline-separated).
+foreign import ccall "leksah_set_claude_status" c_setClaudeStatus
+  :: CString -> CString -> CString -> IO ()
 -- Snapshot the WKWebView content to a PNG at the given path; returns 1 on success.
 foreign import ccall "leksah_screenshot" c_screenshot :: CString -> IO CInt
 -- Snapshot just a rectangle (x,y,w,h in CSS px) of the WKWebView content.
 foreign import ccall "leksah_snapshot_rect" c_snapshotRect
   :: CString -> CInt -> CInt -> CInt -> CInt -> IO CInt
 foreign import ccall "leksah_pick_color" c_pickColor :: CString -> IO ()
+-- Native browser panes: drive pane <bid>'s overlaid WKWebView (created by the
+-- JS rect reporter's first snapshot — a load before creation is kept pending).
+foreign import ccall "leksah_browser_load"    c_browserLoad    :: CInt -> CString -> IO ()
+foreign import ccall "leksah_browser_back"    c_browserBack    :: CInt -> IO ()
+foreign import ccall "leksah_browser_forward" c_browserForward :: CInt -> IO ()
+foreign import ccall "leksah_browser_reload"  c_browserReload  :: CInt -> IO ()
 -- ghci-mode lifecycle (see the matching definitions in leksah-mac-menu.m).
 foreign import ccall "leksah_take_first_launch" c_takeFirstLaunch :: IO CInt
 foreign import ccall "leksah_stop_app" c_stopApp :: IO ()
@@ -179,6 +200,10 @@ foreign import ccall "wrapper" mkIntRetCb
 -- toggle state to validateMenuItem.
 foreign import ccall "leksah_set_toggle_state_callback" c_setToggleStateCallback
   :: FunPtr (CInt -> IO CInt) -> IO ()
+-- Also additive: shows the live Claude session chosen from the menu-bar status
+-- item's menu.
+foreign import ccall "leksah_set_claude_activate_callback" c_setClaudeActivateCallback
+  :: FunPtr (CString -> IO ()) -> IO ()
 foreign import ccall "leksah_set_haskell_callbacks" c_setHaskellCallbacks
   :: FunPtr (CInt -> IO ())           -- menu_action
   -> FunPtr (CString -> IO ())        -- open_file
@@ -190,12 +215,29 @@ foreign import ccall "leksah_set_haskell_callbacks" c_setHaskellCallbacks
   -> FunPtr (CInt -> IO ())           -- window_closing
   -> FunPtr (CString -> IO ())        -- color_picked
   -> IO ()
+-- Takes (and clears) the snapshot leksah_set_haskell_callbacks made of the
+-- previously installed FunPtrs, for 'setMacCallbacks' to free.  Returns how
+-- many pointers were written into the buffer.
+foreign import ccall "leksah_take_previous_callbacks" c_takePreviousCallbacks
+  :: Ptr (Ptr ()) -> CInt -> IO CInt
+
+-- | Size of the FunPtr set 'setMacCallbacks' installs — the buffer bound for
+-- 'c_takePreviousCallbacks' (LEKSAH_N_CALLBACKS in leksah-mac-menu.m).
+nMacCallbacks :: Int
+nMacCallbacks = 11
 
 -- | Register the callbacks with the native side.  Call before anything can
 -- trigger a native callback (in practice: at the top of @installMacMenu@,
--- from @main@).  The FunPtrs live for the life of the process (one set leaks
--- per ghci-mode @:main@ — deliberate).  Marshalling to Haskell types happens
--- here so the handlers in MacMenu.hs stay plain Haskell.
+-- from @main@).  Marshalling to Haskell types happens here so the handlers in
+-- MacMenu.hs stay plain Haskell.
+--
+-- Each @:main@ builds a fresh set of FunPtrs, and every FunPtr PINS its
+-- closure — which captures this instance's @IDERef@, so the whole IDE state
+-- and reflex network with it.  Left unfreed (as they were), a ghci session grew
+-- by an entire instance per reload.  So the PREVIOUS set is freed here, from
+-- the snapshot the native side takes before the swap
+-- (@leksah_take_previous_callbacks@).  Safe at this point: @:main@ sets up with
+-- the run loop stopped, so no callback can be executing.
 setMacCallbacks :: MacCallbacks -> IO ()
 setMacCallbacks cb = do
   menuAction   <- mkIntCb $ \tag -> cbMenuAction cb (fromIntegral tag)
@@ -208,9 +250,17 @@ setMacCallbacks cb = do
   closing      <- mkIntCb $ \wid -> cbWindowClosing cb (fromIntegral wid)
   colorPicked  <- mkStringCb $ \cs -> peekCString cs >>= cbColorPicked cb
   toggleState  <- mkIntRetCb $ \tag -> fromIntegral <$> cbToggleState cb (fromIntegral tag)
+  claudeAct    <- mkStringCb $ \cs -> peekCString cs >>= cbClaudeActivate cb
   c_setHaskellCallbacks menuAction openFile openProject unsnap openSettings
                         attachWindow activated closing colorPicked
   c_setToggleStateCallback toggleState
+  c_setClaudeActivateCallback claudeAct
+  -- All three setters have run, so the snapshot the first of them took is the
+  -- complete previous set and nothing native points at it any more.
+  allocaArray nMacCallbacks $ \buf -> do
+    n <- c_takePreviousCallbacks buf (fromIntegral nMacCallbacks)
+    stale <- peekArray (fromIntegral n) buf
+    mapM_ (\p -> freeHaskellFunPtr (castPtrToFunPtr p :: FunPtr ())) stale
 
 -- | Make @[NSApp run]@ return (posts a stop + wake event on the main queue).
 -- Windows and app state survive; 'resumeApp' re-enters the run loop.
@@ -287,11 +337,19 @@ c_showOpenFolderPanel :: IO ()
 c_showOpenFolderPanel = return ()
 c_setRecentFiles :: CString -> IO ()
 c_setRecentFiles _ = return ()
+c_setClaudeStatus :: CString -> CString -> CString -> IO ()
+c_setClaudeStatus _ _ _ = return ()
 c_screenshot :: CString -> IO CInt
 c_screenshot _ = return 0
 c_snapshotRect :: CString -> CInt -> CInt -> CInt -> CInt -> IO CInt
 c_snapshotRect _ _ _ _ _ = return 0
 c_pickColor :: CString -> IO ()
 c_pickColor _ = return ()
+c_browserLoad :: CInt -> CString -> IO ()
+c_browserLoad _ _ = return ()
+c_browserBack, c_browserForward, c_browserReload :: CInt -> IO ()
+c_browserBack _ = return ()
+c_browserForward _ = return ()
+c_browserReload _ = return ()
 
 #endif
