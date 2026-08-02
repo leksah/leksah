@@ -24,6 +24,8 @@ module IDE.Package (
     projectRefreshNix
 ,   projectRefreshNix'
 ,   buildPackage
+,   buildCustomProject
+,   customBuildCommand
 
 ,   packageDoc
 ,   packageDoc'
@@ -164,7 +166,8 @@ import IDE.Utils.FileUtils
        (getPackageDBs', cabalProjectBuildDir, cabalBuildDir, loadNixCache, saveNixCache,
         getConfigDir, nixShellFile, getConfigFilePathForLoad)
 import IDE.LogRef
-       (logIdleOutput, logOutputForBuild, logOutputDefault, logOutput)
+       (logIdleOutput, logOutputForBuild, logOutputForCargoBuild,
+        logOutputDefault, logOutput)
 import Distribution.ModuleName (ModuleName)
 import Data.List
        (intercalate, nub, nubBy, delete)
@@ -371,17 +374,35 @@ updateNixCache project compilers continuation = do
                 let logOut = C.getZipSink $ const
                               <$> C.ZipSink CL.consume
                               <*> C.ZipSink (logOutputForBuild project (LogProject (pjDir $ pjKey project)) False False)
-                runExternalTool' (__ "Hix")
-                                 "hix"
+                    -- Capture a dev shell's environment (PATH etc.) by running its
+                    -- `develop` sub-command and dumping the resulting shell vars.
+                    runDevEnv toolLabel toolExe =
+                        runExternalTool' toolLabel toolExe
                                  ["develop", "--command", "bash", "-c", "( set -o posix ; set )"]
                                  dir Nothing $ do
-                    out <- logOut
-                    when (take 1 (reverse out) == [ToolExit ExitSuccess]) $ do
-                        _ <- saveNixCache (pjKey project) compiler out
-                        newCache <- loadNixCache
-                        lift $ do
-                            modifyIDE_ $ nixCache .~ newCache
-                            loop rest
+                            out <- logOut
+                            when (take 1 (reverse out) == [ToolExit ExitSuccess]) $ do
+                                _ <- saveNixCache (pjKey project) compiler out
+                                newCache <- loadNixCache
+                                lift $ do
+                                    modifyIDE_ $ nixCache .~ newCache
+                                    loop rest
+                -- Pick the dev-shell tool: a flake (any language) uses plain
+                -- `nix develop`; otherwise `hix` is only for a Haskell (cabal)
+                -- project with no flake.  A non-Haskell project with no nix files
+                -- has no environment to load, so skip it — running `hix` on e.g. a
+                -- Rust project is wrong, and a missing `hix` used to throw on the
+                -- reflex frame thread and freeze the whole window.
+                liftIO (doesFileExist (dir </> "flake.nix")) >>= \case
+                    True  -> runDevEnv (__ "Nix") "nix"
+                    False -> case pjKey project of
+                        CabalTool {} -> liftIO (findExecutable "hix") >>= \case
+                            Just _  -> runDevEnv (__ "Hix") "hix"
+                            Nothing -> do
+                                liftIO $ debugM "leksah"
+                                    "hix not on PATH; skipping nix env load"
+                                loop rest
+                        _ -> loop rest
 
 projectFileArguments :: MonadIO m => Project -> FilePath -> m [Text]
 projectFileArguments project dir =
@@ -787,6 +808,50 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
                     Just uri -> postSyncIDE . loadOutputUri $ T.unpack uri
                     Nothing  -> return ()
                 compile compilers
+
+-- | Guess a build command for a plain-directory ('CustomTool') project that
+-- has no explicit build command configured, from marker files in its root.
+-- A Rust crate (@Cargo.toml@) builds with @cargo build@.  'Nothing' means we
+-- don't know how to build the directory.  An explicitly configured
+-- 'pjCustomGhcBuild' always wins.
+customBuildCommand :: Project -> IO (Maybe (FilePath, [Text]))
+customBuildCommand project = case pjKey project of
+    CustomTool p
+        | Just cmd <- pjCustomGhcBuild p -> return (Just cmd)
+        | otherwise -> do
+            let dir = pjCustomDir p
+            cargo <- doesFileExist (dir </> "Cargo.toml")
+            return $ if cargo then Just ("cargo", ["build"]) else Nothing
+    _ -> return Nothing
+
+-- | Build a plain-directory ('CustomTool') project that carries no Haskell
+-- packages — e.g. a Rust crate added via \"Open Folder\".  Uses the command
+-- guessed by 'customBuildCommand', run through the project's nix env (so
+-- @cargo@ comes from the flake dev shell) like the other tools; output goes to
+-- the build log.  This is the fallback the toolbar/menu Build takes when there
+-- is no active Haskell package.
+buildCustomProject :: ProjectAction
+buildCustomProject = interruptSaveAndRun $ do
+    project <- ask
+    liftIDE $ do
+        let dir = pjDir $ pjKey project
+        liftIO (customBuildCommand project) >>= \case
+            Nothing -> ideMessage Normal $
+                __ "Don't know how to build " <> T.pack dir
+            Just (cmd, args) ->
+                (`catchIDE` (\(e :: SomeException) -> ideMessage High . T.pack $ show e)) $ do
+                    showDefaultLogLaunch'
+                    -- cargo/rustc need their own diagnostic parser; the GHC one
+                    -- mis-tags rustup/progress output and inflates the count.
+                    let logParser =
+                            if takeFileName cmd == "cargo"
+                                then void $ logOutputForCargoBuild project (LogProject dir) False
+                                else void $ logOutputForBuild project (LogProject dir) False False
+                    withToolCommand project GHC (Just (cmd, args)) $ \(cmd', args', nixEnv') ->
+                        runExternalTool' (__ "Building") cmd' args' dir (M.toList <$> nixEnv') $
+                            void . C.getZipSink $ const
+                                <$> C.ZipSink sinkLast
+                                <*> C.ZipSink logParser
 
 #if defined(MIN_VERSION_unix) && !defined(ghcjs_HOST_OS)
 killProcess :: ProcessHandle -> IO ()

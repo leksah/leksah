@@ -37,6 +37,7 @@ module IDE.LogRef (
 ,   logOutputPane
 ,   logIdleOutput
 ,   logOutputForBuild
+,   logOutputForCargoBuild
 ,   logOutputForBreakpoints
 ,   logOutputForSetBreakpoint
 ,   logOutputForSetBreakpointDefault
@@ -392,6 +393,37 @@ buildErrorParser = try (do
         endOfInput
         return (OtherLine text))
     <?> "buildLineParser"
+
+-- | A rustc/cargo diagnostic header at column 0: @error[E0432]: …@,
+-- @error: …@ or @warning: …@.  Returns the ref type and the (re-labelled)
+-- message.  Summary lines like @error: could not compile …@ also match here,
+-- but 'logOutputForCargoBuild' only records a ref once a @-->@ location line
+-- follows, and summaries have none — so they never inflate the count.
+cargoHeaderParser :: Parser (LogRefType, Text)
+cargoHeaderParser = try (do
+        _ <- symbol "error"
+        _ <- option "" (do
+                _ <- char '['
+                code <- AP.takeWhile (/= ']')
+                _ <- char ']'
+                return code)
+        _ <- symbol ": "
+        msg <- takeText
+        return (ErrorRef, "error: " <> msg))
+    <|> try (do
+        _ <- symbol "warning: "
+        msg <- takeText
+        return (WarningRef, "warning: " <> msg))
+    <?> "cargoHeaderParser"
+
+-- | A rustc/cargo location line: @  --> src/main.rs:12:9@.
+cargoLocationParser :: Parser SrcSpan
+cargoLocationParser = do
+        whiteSpace
+        _ <- symbol "-->"
+        whiteSpace
+        srcSpanParser
+    <?> "cargoLocationParser"
 
 data BreakpointDescription = BreakpointDescription Int SrcSpan
 
@@ -867,6 +899,76 @@ logOutputForBuild' project logSource backgroundBuild _jumpToWarnings log' = do
                                 Nothing (Just (logLn,logLn)) TestFailureRef : testFails
                          }
         _ -> traceTimeTaken "altFunction" altFunction
+
+-- | Build-output consumer for cargo/rustc (Rust projects added via \"Open
+-- Folder\").  The GHC/stack parser in 'logOutputForBuild' mis-reads cargo and
+-- rustup output — tagging plain @info:@/progress lines as errors and inflating
+-- the Errors count.  This parser instead records an error/warning ref ONLY for
+-- a rustc diagnostic that has a real source location (a @-->@ line following an
+-- @error…:@ / @warning:@ header), so the status-bar count matches the number
+-- of clickable diagnostics.  Everything else — rustup toolchain downloads,
+-- @Compiling …@ progress, the final @could not compile … due to N errors@
+-- summary — is logged plainly and not counted.
+logOutputForCargoBuild :: Project
+                       -> Log
+                       -> Bool
+                       -> ConduitT ToolOutput Void IDEM [LogRef]
+logOutputForCargoBuild project logSource backgroundBuild = do
+    logLaunch <- lift Log.getDefaultLogLaunch
+    log' <- lift getLog
+    -- NB: do NOT clear .rs refs here — for a Rust project rust-analyzer owns
+    -- the live .rs diagnostics in the same store, and wiping them on every
+    -- build would fight the LSP.  cargo's own build errors are added on top.
+    (_pending, refs) <- CL.foldM (step logLaunch log') (Nothing, [])
+    lift $ postSyncIDE $ do
+        let errorNum = length (filter isError refs)
+            warnNum  = length refs - errorNum
+        triggerEventIDE_ (Sensitivity [(SensitivityError, not (null refs))])
+        triggerEventIDE_ (StatusbarChanged [CompartmentState
+            (T.pack $ show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
+        return ()
+    return refs
+  where
+    tagFor rt = if rt == ErrorRef then ErrorTag else LogTag
+    step :: LogLaunch -> IDELog -> (Maybe (LogRefType, Text), [LogRef]) -> ToolOutput
+         -> IDEM (Maybe (LogRefType, Text), [LogRef])
+    step logLaunch log' st output = do
+        liftIO . evaluate $ rnf output
+        liftIDE . postSyncIDE $ case output of
+            ToolInput line -> do
+                _ <- Log.appendLog log' logLaunch (line <> "\n") InputTag
+                return st
+            ToolPrompt _ -> finish logLaunch log' st output
+            ToolExit _   -> finish logLaunch log' st output
+            ToolOutput line -> processLine logLaunch log' st line
+            ToolError  line -> processLine logLaunch log' st line
+    -- cargo/rustc/rustup interleave on stdout and stderr, so both channels go
+    -- through the same diagnostic parsing.
+    processLine logLaunch log' (pending, refs) line =
+        case (pending, parseOnly cargoLocationParser line) of
+            (Just (rt, msg), Right span') -> do
+                lineNr <- Log.appendLog log' logLaunch (line <> "\n") (tagFor rt)
+                foundLog <- liftIO $ findLog project logSource (srcSpanFilename span')
+                let ref = LogRef (remoteNormalizeSpan foundLog span') foundLog msg
+                                 Nothing (Just (lineNr, lineNr)) rt
+                addLogRef False backgroundBuild ref
+                return (Nothing, ref : refs)
+            _ -> case parseOnly cargoHeaderParser line of
+                Right hdr@(rt, _) -> do
+                    _ <- Log.appendLog log' logLaunch (line <> "\n") (tagFor rt)
+                    return (Just hdr, refs)
+                _ -> do
+                    _ <- Log.appendLog log' logLaunch (line <> "\n") LogTag
+                    return (pending, refs)
+    finish logLaunch log' st@(_pending, refs) output = do
+        let errorNum = length (filter isError refs)
+            warnNum  = length refs - errorNum
+        _ <- case refs of
+            [] -> defaultLineLogger log' logLaunch output
+            _  -> Log.appendLog log' logLaunch
+                    (T.pack $ "----- " ++ show errorNum ++ " errors -- "
+                                       ++ show warnNum ++ " warnings -----\n") FrameTag
+        return st
 
 --logOutputLines :: Text -- ^ logLaunch
 --               -> (LogLaunch -> ToolOutput -> IDEM a)

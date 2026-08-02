@@ -36,7 +36,7 @@ import IDE.Gtk.Package
         makeDocsToggled, javaScriptToggled, nativeToggled,
         backgroundBuildToggled, packageRunJavaScript, packageRun)
 import IDE.Metainfo.Provider (updateWorkspaceInfo)
-import IDE.Package (packageClean, projectRefreshNix)
+import IDE.Package (packageClean, projectRefreshNix, buildCustomProject)
 import IDE.Gtk.Workspaces
        (projectTry, packageTry, workspaceTry, makePackage)
 
@@ -125,10 +125,20 @@ commandPackageClean = CommandPackageAction
   (__ "Cleans the package")
   packageClean
 
-commandPackageBuild = CommandPackageAction
+commandPackageBuild = CommandIDEAction
   "/pics/build.svg"
   (__ "Builds the package")
-  makePackage
+  buildActiveTarget
+
+-- | Build the active target: the active Haskell package if there is one,
+-- otherwise fall back to a package-less project's custom build (e.g. a Rust
+-- crate added via \"Open Folder\" builds with @cargo build@).  Routing on
+-- 'activePack' keeps Haskell projects on the usual 'makePackage' path — they
+-- always have an active package once opened.
+buildActiveTarget :: IDEAction
+buildActiveTarget = readIDE activePack >>= \case
+    Just _  -> packageTry makePackage
+    Nothing -> projectTry buildCustomProject
 
 commandPackageRun = CommandPackageAction
   "/pics/run.svg"

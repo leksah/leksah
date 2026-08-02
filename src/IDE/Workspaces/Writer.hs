@@ -26,6 +26,7 @@ module IDE.Workspaces.Writer (
     ,WorkspaceFile(..)
     ,emptyWorkspaceFile
     ,setWorkspace
+    ,resolveDeferredProjects
     ,workspaceVersion
 ) where
 
@@ -38,13 +39,14 @@ import IDE.Package
        (activatePackage, deactivatePackage, ideProjectFromKey)
 import IDE.Utils.FileUtils(myCanonicalizePath)
 import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.GhciMode (phaseSince)
 
 import Data.Maybe
 import Data.Function ((&))
 import Control.Applicative ((<|>))
 import Control.Monad (void, when)
 import Control.Monad.Trans (liftIO, MonadIO)
-import Control.Lens ((^.), (.~))
+import Control.Lens ((^.), (.~), (%~))
 import System.Time (getClockTime)
 import System.FilePath
        (takeFileName, (</>), isAbsolute, dropFileName, makeRelative)
@@ -60,6 +62,7 @@ import IDE.Web.LocalRefresh (requestLocalRefresh)
 #endif
 import Control.Monad.Reader (MonadReader(..))
 import Data.Traversable (forM)
+import Data.Time.Clock (getCurrentTime)
 import qualified Data.Map as Map (empty)
 import Data.Text (Text)
 import Data.Map (Map)
@@ -73,14 +76,14 @@ import Data.Aeson.Types
        (Options, genericParseJSON, genericToEncoding, genericToJSON,
         defaultOptions, fieldLabelModifier)
 import Data.Aeson.Encode.Pretty (encodePretty)
-import Data.List (isPrefixOf, stripPrefix)
+import Data.List (isPrefixOf, stripPrefix, partition)
 import Data.Char (toLower)
 import IDE.Pane.SourceBuffer (setModifiedOnDisk)
 import Control.Concurrent (putMVar, takeMVar, tryPutMVar)
 import qualified Data.Set as S (fromList, insert, member)
 import Control.Exception (evaluate)
 import qualified Data.Map as M
-       (partitionWithKey, fromList, member, toList)
+       (partitionWithKey, fromList, member, toList, lookup)
 import Data.List (find)
 import Data.Foldable (forM_)
 
@@ -122,15 +125,46 @@ writeWorkspace ws = do
     newWs' <- liftIO $ makePathsRelative newWs (ws ^. wsFile)
     liftIO . fsWriteFileLazy (ws ^. wsFile) $ encodePretty newWs'
 
-readWorkspace :: FilePath -> IDEM (Either String Workspace)
+-- | Read the workspace file.  Local projects are resolved here (globbing their
+-- @packages:@ dirs and parsing each .cabal costs a few ms each); REMOTE
+-- (@ssh://@) projects are NOT — they come back as package-less placeholders,
+-- with their keys in the second component, for 'resolveDeferredProjects' to
+-- fill in off the critical path.  Resolving a remote project needs ssh round
+-- trips (measured: 12.5s for a 15-package project), and this function runs
+-- before the UI is built — so doing it here made every start and every
+-- ghci-mode reload wait on the network.
+readWorkspace :: FilePath -> IDEM (Either String (Workspace, [ProjectKey]))
 readWorkspace fp = do
     liftIO $ debugM "leksah" "readWorkspace"
     liftIO (eitherDecode <$> fsReadFileLazy fp) >>= \case
         Left pe -> error $ "Error reading file " ++ show fp ++ " " ++ show pe
         Right ws -> do
-            ws' <- makePathsAbsolute ws fp
+            r <- makePathsAbsolute ws fp
             --TODO set package vcs here
-            return $ Right ws'
+            return $ Right r
+
+-- | Resolve the projects 'readWorkspace' deferred, one thread each, patching
+-- the LIVE workspace as each arrives (the user may have activated a different
+-- package while we waited, so never write back a snapshot).  Going through
+-- 'setWorkspace' means the file watchers, package activation and the
+-- @WorkspaceChanged@ event all catch up exactly as they would have at boot; the
+-- web UI's project tree is derived from IDE state, so rows fill in by
+-- themselves.
+resolveDeferredProjects :: [ProjectKey] -> IDEAction
+resolveDeferredProjects keys = forM_ keys $ \k -> forkIDE $ do
+    t0 <- liftIO getCurrentTime
+    mbProject <- ideProjectFromKey k
+    liftIO . phaseSince t0 $ "workspace: deferred project " <> pjFileOrDir k
+        <> " (" <> show (maybe 0 (length . pjPackages) mbProject) <> " pkgs)"
+    case mbProject of
+        Nothing -> ideMessage Normal $
+            "Unable to load project : " <> T.pack (show k)
+        Just project -> readIDE workspace >>= \case
+            -- Still in the workspace (not closed/removed while we waited)?
+            Just ws | any ((== k) . pjKey) (ws ^. wsProjects) ->
+                setWorkspace . Just $ ws & wsProjects %~
+                    map (\p -> if pjKey p == k then project else p)
+            _ -> return ()
 
 makeAbsolute :: MonadIO m => FilePath -> FilePath -> m FilePath
 makeAbsolute basePath relativePath
@@ -156,7 +190,10 @@ makeProjectKeyAbsolute wsFile' (NixTool (NixProject f)) =
 makeProjectKeyAbsolute wsFile' (MakeTool (MakeProject f)) =
     MakeTool . MakeProject <$> makeAbsolute (dropFileName wsFile') f
 
-makePathsAbsolute :: WorkspaceFile -> FilePath -> IDEM Workspace
+-- | The workspace with every path absolutized, plus the keys of the projects
+-- whose contents were NOT loaded (see 'readWorkspace') and which
+-- 'resolveDeferredProjects' must still fill in.
+makePathsAbsolute :: WorkspaceFile -> FilePath -> IDEM (Workspace, [ProjectKey])
 makePathsAbsolute ws bp = do
     wsFile'           <-  liftIO $ myCanonicalizePath bp
     wsActiveProjectKey' <- mapM (makeProjectKeyAbsolute wsFile') $
@@ -168,7 +205,28 @@ makePathsAbsolute ws bp = do
                                     return (Just fp')
     let keys = fromMaybe (mapMaybe filePathToProjectKey (wsfProjectFiles ws)) $ wsfProjectKeys ws
     projectKeys      <- mapM (makeProjectKeyAbsolute wsFile') keys
-    projects          <- catMaybes <$> mapM ideProjectFromKey projectKeys
+    -- Local projects load here (a few ms each); remote ones are deferred to
+    -- 'resolveDeferredProjects' — they need ssh round trips and this runs
+    -- before the UI exists.  A deferred project is still IN the workspace,
+    -- as a package-less placeholder, so it keeps its place in the project
+    -- tree (and its per-project settings) while its packages are on the way.
+    -- Per-project timing is logged either way: this used to be ~14s of an
+    -- ~18s ghci reload, essentially all of it the two remote projects.
+    let (deferredKeys, localKeys) = partition (isRemotePath . pjFileOrDir) projectKeys
+    localProjects     <- fmap catMaybes . forM localKeys $ \k -> do
+        t0 <- liftIO getCurrentTime
+        r <- ideProjectFromKey k
+        liftIO . phaseSince t0 $ "boot: project " <> pjFileOrDir k
+            <> " (" <> show (maybe 0 (length . pjPackages) r) <> " pkgs)"
+        return r
+    -- Keep the file's project order, with placeholders where deferred.  A local
+    -- project that failed to load is dropped, as before.
+    let byKey    = M.fromList [ (pjKey p, p) | p <- localProjects ]
+        projects = concat [ case M.lookup k byKey of
+                              Just p                          -> [p]
+                              Nothing | k `elem` deferredKeys  -> [Project k mempty]
+                                      | otherwise             -> []
+                          | k <- projectKeys ]
     -- Re-associate persisted per-project settings with the absolutized keys
     -- (the stored key is the relativized pjFileOrDir; remote ones verbatim).
     projectSettings  <- case wsfProjectSettings ws of
@@ -176,7 +234,7 @@ makePathsAbsolute ws bp = do
         Just m  -> fmap (M.fromList . catMaybes) . forM (M.toList m) $ \(k, s) -> do
             ak <- makeAbsolute (dropFileName wsFile') k
             return $ (, s) <$> find ((== ak) . pjFileOrDir) projectKeys
-    return Workspace
+    let workspace' = Workspace
                 { _wsFile             = wsFile'
                 , _wsVersion          = wsfVersion ws
                 , _wsSaveTime         = wsfSaveTime ws
@@ -188,6 +246,7 @@ makePathsAbsolute ws bp = do
                 , _wsActiveComponent  = wsfActiveComponent ws
                 , _packageVcsConf     = wsfPackageVcsConf ws
                 }
+    return (workspace', deferredKeys)
 
 --emptyWorkspace :: Workspace
 --emptyWorkspace =  Workspace {
@@ -313,7 +372,9 @@ setWorkspace mbWs = do
                                 (`reflectIDE` ideR) $ postAsyncIDE $
                                     readWorkspace (ws ^. wsFile) >>= \case
                                         Left _ -> return ()
-                                        Right ws' -> setWorkspace (Just ws')
+                                        Right (ws', deferred) -> do
+                                            setWorkspace (Just ws')
+                                            resolveDeferredProjects deferred
                     -- Also watch the repo's git metadata (index/HEAD/refs) so
                     -- external commits/checkouts/staging refresh Changes.
                     stopGit <- watchGitMeta fsn (pjDir $ pjKey project)

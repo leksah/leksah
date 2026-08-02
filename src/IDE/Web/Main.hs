@@ -554,16 +554,22 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 #else
       let filePath = "/Users/hamish/leksah.lkshw"
 #endif
+      metaLog ("boot: reading workspace " <> filePath)
       liftIO $ (`reflectIDE` ideR) $
           catchIDE (
               Writer.readWorkspace filePath >>= \case
                   Left errorMsg -> liftIO $ putStrLn $ "Could not open " <> filePath <> ". " <> errorMsg
-                  Right ws -> do
+                  Right (ws, deferred) -> do
                         modifyIDE_ (workspace ?~ ws)
                         Writer.setWorkspace (Just $ ws & wsFile .~ filePath)
+                        -- Remote (ssh://) projects are placeholders at this
+                        -- point; fill them in behind the UI instead of making
+                        -- startup (and every ghci reload) wait on ssh.
+                        Writer.resolveDeferredProjects deferred
                       )
              (\ (e :: SomeException) ->
                   liftIO $ putStrLn $ printf (T.unpack $ __ "Can't load workspace file %s\n%s") filePath (show e))
+      metaLog "boot: workspace read"
       _ <- liftIO . forkIO . forever $ do
             takeMVar triggerBuildVar
             reflectIDE (do
