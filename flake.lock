@@ -685,17 +685,17 @@
     "jsaddle-terminal-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1785670753,
-        "narHash": "sha256-IxX8A4r+rSZvsW7/BG62A98yVOI9lT4sePnjGYYX0Ss=",
+        "lastModified": 1785711580,
+        "narHash": "sha256-tofuTDDwXbMejkeV60pHv9a/8ZvDdjsONEe8YPgwROM=",
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63",
+        "rev": "d9873936e47050361899414e4f640931779c3110",
         "type": "github"
       },
       "original": {
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63",
+        "rev": "d9873936e47050361899414e4f640931779c3110",
         "type": "github"
       }
     },

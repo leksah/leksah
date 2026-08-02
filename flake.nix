@@ -28,7 +28,7 @@
   # jsaddle-webview2 live in the jsaddle monorepo; wire it so the haskell.nix
   # planner resolves the source-repository-package in cabal.project without a
   # network fetch (pure eval).
-  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63";
+  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/d9873936e47050361899414e4f640931779c3110";
   inputs.jsaddle-terminal-src.flake = false;
   # ffcabal lives in its own repo now; same wiring as above.
   inputs.ffcabal-src.url = "github:leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed";
@@ -79,7 +79,7 @@
                   "https://github.com/leksah/haddock/ghc-9.10" = inputs.haddock-ghc910;
                   "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
                   "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
-                  "https://github.com/ghcjs/jsaddle/fad5f96e5cfb5f9828eced3fb82f945b1f2d5f63" = inputs.jsaddle-terminal-src;
+                  "https://github.com/ghcjs/jsaddle/d9873936e47050361899414e4f640931779c3110" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed" = inputs.ffcabal-src;
                   "https://github.com/leksah/leksah-server/cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd" = inputs.leksah-server-src;
                   "https://github.com/leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f" = inputs.ltk-src;
