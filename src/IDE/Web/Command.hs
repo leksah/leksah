@@ -17,16 +17,24 @@ import IDE.Web.AIContextRequest
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.NewWindowRequest (requestNewWindow)
+import IDE.Web.NewLwRequest (requestFontConvert)
+import IDE.Web.ReplTmux (paneCountOfWindow)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.TerminalInput
        (sendToActiveTerminal, tmuxCommandActiveTerminal, splitActiveTerminal)
 import IDE.Web.TransparencyRequest (requestToggleTransparency)
 import IDE.Web.SnapRequest (requestSnapWindow)
 
+import Data.Map (Map)
+import qualified Data.Map as M (adjust, lookup)
+import Data.Maybe (fromMaybe)
+
 import IDE.Core.State
        (readIDE, modifyIDE_, Prefs(..), prefs, PackageAction, ProjectAction,
         WorkspaceAction, IDEAction, __, IDE, TallVisibility(..),
-        webWindows, activeWindow, wwTall, wwWide1, activeProject, pjDir, pjKey)
+        webWindows, activeWindow, wwTall, wwWide1, wwActive, activeProject,
+        activePack, pjDir, pjKey, TabKey(..), leksahWindows,
+        LeksahWindow(..), PaneContent(..), PaneKind(..))
 import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
 import IDE.Debug
        (debugContinue, debugStepModule, debugStepLocal, debugStep,
@@ -353,6 +361,62 @@ commandClaudeContinue = CommandIDEAction
   ""
   (__ "Continue the most recent Claude Code session in the active project")
   (readIDE activeProject >>= mapM_ (liftIO . runClaudeCmd . ClaudeContinue . pjDir . pjKey))
+
+-- | View ▸ Bigger/Smaller/Reset Font (⌘+/⌘−/⌘0): adjust the FOCUSED pane's
+-- font size in the active leksah window.  Per-pane fonts are the point of
+-- the native split system: a pane shows a whole tmux window, so two tmux
+-- panes with different font sizes can never share a window.  A no-op when
+-- the active tab isn't a leksah window (or nothing is focused).
+commandFontBigger, commandFontSmaller, commandFontReset :: Command
+commandFontBigger = CommandIDEAction
+  ""
+  (__ "Increase the focused split's font size")
+  (leafFontAdjust (\eff -> Just (eff + 1)))
+
+commandFontSmaller = CommandIDEAction
+  ""
+  (__ "Decrease the focused split's font size")
+  (leafFontAdjust (\eff -> Just (eff - 1)))
+
+commandFontReset = CommandIDEAction
+  ""
+  (__ "Reset the focused split's font size to the preference")
+  (leafFontAdjust (const Nothing))
+
+-- | Apply a font-size edit to the focused pane of the active OS window's
+-- active leksah window.  @f@ maps the current EFFECTIVE size (override, else
+-- the global monospace pref) to the new override; 'Nothing' = follow the
+-- pref.  A tmux pane in a MULTI-pane window is isolated first (per-pane
+-- fonts can't share a tmux window) via the font-convert queue — Main's
+-- driver runs the minimal-path conversion and then applies @f@.
+leafFontAdjust :: (Int -> Maybe Int) -> IDEAction
+leafFontAdjust f = do
+  aw  <- readIDE activeWindow
+  wws <- readIDE webWindows
+  lws <- readIDE leksahWindows
+  let mbTarget = do
+        a  <- aw
+        ww <- M.lookup a wws
+        k  <- ww ^. wwActive
+        n  <- case k of LeksahWinKey n' -> Just n'; _ -> Nothing
+        lw <- M.lookup n lws
+        l  <- lwFocused lw
+        pc <- M.lookup l (lwPanes lw)
+        return (n, l, pc)
+  case mbTarget of
+    Nothing -> return ()
+    Just (n, l, PaneContent kind cur) -> do
+      multi <- case kind of
+        PaneTmux w -> (> 1) <$> liftIO (paneCountOfWindow w)
+        _          -> return False
+      case kind of
+        PaneTmux w | multi -> liftIO (requestFontConvert (n, w, f))
+        _ -> modifyIDE_ $ \i ->
+          let eff = fromMaybe (monospaceFontSize (i ^. prefs)) cur
+              new = fmap (max 6 . min 72) (f eff)
+              setFont lw = lw { lwPanes =
+                  M.adjust (\pc -> pc { pcFontSize = new }) l (lwPanes lw) }
+          in i & leksahWindows %~ M.adjust setFont n
 
 -- | A menu command that sends the tmux prefix (@C-b@, byte 0x02) followed by
 -- @keys@ to the active terminal — exactly as if the shortcut had been typed

@@ -325,6 +325,8 @@ library
         IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
         IDE.Web.ShortcutsRequest
+        IDE.Web.BrowserRequest
+        IDE.Web.KeymapRequest
         IDE.Web.WindowBridge
         IDE.Web.RegionCapture
         IDE.Web.RegionGrabRequest
@@ -336,6 +338,7 @@ library
         IDE.Web.FS
         IDE.Web.RemoteRefresh
         IDE.Web.LocalRefresh
+        IDE.Web.GitInfo
         IDE.Web.TerminalRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
@@ -348,10 +351,15 @@ library
         IDE.Web.ConvertRequest
         IDE.Web.SplitOpenRequest
         IDE.Web.GitLogRequest
+        IDE.Web.Worktree
+        IDE.Web.ClaudeQueue
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
         IDE.Web.RemoteTermRequest
+        IDE.Web.NativeBrowser
+        IDE.Web.NewLwRequest
+        IDE.Web.TmuxLayout
         IDE.Web.ReplTmux
         IDE.Web.Theme
         IDE.Web.ColorPick
@@ -360,16 +368,24 @@ library
         IDE.Web.GhciMode
         IDE.Web.ThreadPriority
         IDE.Web.Claude
+        IDE.Web.ClaudeStatus
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
         IDE.Web.Session
+        IDE.Web.SplitLayout
         IDE.Web.Widget.Changes
         IDE.Web.Widget.GitLog
+        IDE.Web.Widget.Review
+        IDE.Web.Widget.NewWorktree
+        IDE.Web.Widget.Tasks
+        IDE.Web.Widget.Plan
+        IDE.Web.Widget.Compare
         IDE.Web.Widget.ContextMenu
         IDE.Web.Widget.Preferences
         IDE.Web.Widget.Shortcuts
+        IDE.Web.Widget.Browser
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
         IDE.Web.Widget.ResizeObserver
@@ -603,6 +619,8 @@ library leksah-nogtk
         IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
         IDE.Web.ShortcutsRequest
+        IDE.Web.BrowserRequest
+        IDE.Web.KeymapRequest
         IDE.Web.WindowBridge
         IDE.Web.RegionCapture
         IDE.Web.RegionGrabRequest
@@ -614,6 +632,7 @@ library leksah-nogtk
         IDE.Web.FS
         IDE.Web.RemoteRefresh
         IDE.Web.LocalRefresh
+        IDE.Web.GitInfo
         IDE.Web.TerminalRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
@@ -626,10 +645,15 @@ library leksah-nogtk
         IDE.Web.ConvertRequest
         IDE.Web.SplitOpenRequest
         IDE.Web.GitLogRequest
+        IDE.Web.Worktree
+        IDE.Web.ClaudeQueue
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
         IDE.Web.RemoteTermRequest
+        IDE.Web.NativeBrowser
+        IDE.Web.NewLwRequest
+        IDE.Web.TmuxLayout
         IDE.Web.ReplTmux
         IDE.Web.Theme
         IDE.Web.ColorPick
@@ -638,16 +662,24 @@ library leksah-nogtk
         IDE.Web.GhciMode
         IDE.Web.ThreadPriority
         IDE.Web.Claude
+        IDE.Web.ClaudeStatus
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
         IDE.Web.Session
+        IDE.Web.SplitLayout
         IDE.Web.Widget.Changes
         IDE.Web.Widget.GitLog
+        IDE.Web.Widget.Review
+        IDE.Web.Widget.NewWorktree
+        IDE.Web.Widget.Tasks
+        IDE.Web.Widget.Plan
+        IDE.Web.Widget.Compare
         IDE.Web.Widget.ContextMenu
         IDE.Web.Widget.Preferences
         IDE.Web.Widget.Shortcuts
+        IDE.Web.Widget.Browser
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
         IDE.Web.Widget.ResizeObserver

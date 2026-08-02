@@ -107,9 +107,20 @@ menuSplit
   :: MonadWidget t m
   => [Dynamic t (Text, (Maybe SplitTarget, IO ()))]
   -> m (Event t (IO ()))
-menuSplit = fmap (fmap decide) . menuMods
+menuSplit = menuSplitWith (curry requestSplitOpen)
+
+-- | 'menuSplit' for menus whose items yield a VALUE (e.g. a workspace-tree
+-- command) rather than an 'IO' action: ⌥-clicking an item with a
+-- 'SplitTarget' yields @wrap target shift@ — the caller embeds the
+-- 'requestSplitOpen' call in its own item type.
+menuSplitWith
+  :: MonadWidget t m
+  => (SplitTarget -> Bool -> a)
+  -> [Dynamic t (Text, (Maybe SplitTarget, a))]
+  -> m (Event t a)
+menuSplitWith wrap = fmap (fmap decide) . menuMods
   where decide ((alt, sh), (mt, normal)) = case (alt, mt) of
-          (True, Just t) -> requestSplitOpen (t, sh)
+          (True, Just t) -> wrap t sh
           _              -> normal
 
 -- | Render a (possibly nested) list of 'MenuItem's as a dropdown, returning the

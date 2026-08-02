@@ -236,13 +236,27 @@ editorWidget
                                                 --   Main gates external-editor opens
                                                 --   and drives backing shell panes)
     , Event t [GrepResult]                      -- ^ LSP find-references results (→ Grep pane)
-    , FilePath -> Event t () -> Dynamic t (Maybe ()) -> m (Event t ()))
+    , Event t FilePath                          -- ^ a requested save SETTLED for this
+                                                --   file (written, or failed and
+                                                --   reported) — what save-then-act
+                                                --   sequencing waits on
+    , FilePath -> Event t () -> Dynamic t Bool -> m (Event t ()))
+      -- ^ 'makeEditor' file focusPulseE focusOnCreateD: build one editor.
+      --   @focusPulseE@ = \"take keyboard focus now\" (a tab's select pulse,
+      --   or a view leaf's reconciler pulse); @focusOnCreateD@ gates the
+      --   grab-focus-when-created behaviour — 'True' for tabs (opening a
+      --   file focuses it), and \"is this the leksah window's focused leaf\"
+      --   for view leaves, so a restored background leaf can't steal the
+      --   keyboard at build time.
 editorWidget ide allEvents saveFileE = do
   -- LSP navigation bridges (fired from an editor's F12/Shift-F12 handler on the
   -- LSP client thread): go-to-definition feeds the unified 'gotoSpanE' below;
   -- find-references is returned for the Grep pane.
   (defGotoE, fireDefGoto) <- newTriggerEvent
   (refsE, fireRefs)       <- newTriggerEvent
+  -- Save-settled pulses from every editor instance (see the saveThisE
+  -- handler in 'makeEditor').
+  (savedE, fireSaved)     <- newTriggerEvent
   let tabEvents = select (fan allEvents) TabWidget
       workspaceEvents = select (fan (select (fanMap tabEvents) (Const2 WorkspaceKey))) WorkspaceTab
       -- Files opened from the Changes pane (existence is checked below).
@@ -268,10 +282,10 @@ editorWidget ide allEvents saveFileE = do
       grepGotoE :: Event t SrcSpan = fmapMaybe listToMaybe $ (^.. _GrepGoto) <$>
         select (fan (select (fanMap tabEvents) (Const2 GrepKey))) GrepTab
       -- Ctrl+click on a project-file path in any terminal's output.  Terminals
-      -- are keyed dynamically (TerminalKey n), so collect from the raw tab map
-      -- rather than a fixed Const2 key.
+      -- are keyed dynamically (LeksahWinKey / remote TerminalKey), so collect
+      -- from the raw tab map rather than a fixed Const2 key.
       terminalGotoE :: Event t SrcSpan = fmapMaybe
-        (\m -> listToMaybe [ sp | (TerminalKey _, dm) <- M.toList m
+        (\m -> listToMaybe [ sp | (_, dm) <- M.toList m
                                 , Just (Identity (TerminalGoto sp)) <- [DM.lookup TerminalTab dm] ])
         tabEvents
       -- Unified "go to a source span"; the span's filename is the file to open.
@@ -301,7 +315,8 @@ editorWidget ide allEvents saveFileE = do
     ( gate (not <$> extActiveB) ((=:("wide0", Just())) <$> fileE)
     , fileWithLineE
     , refsE
-    , \file selectedE _ -> do
+    , savedE
+    , \file selectedE focusOnCreateD -> do
       (changeE, triggerChangeE) <- newTriggerEvent
       -- Editor backend, decided when the tab is created (like the terminals'
       -- control-mode pref): existing tabs keep their editor until reopened.
@@ -414,11 +429,14 @@ editorWidget ide allEvents saveFileE = do
                           liftIO $ LSP.requestReferences file (round ln) (round ch) $ \rs ->
                               fireRefs [ GrepResult f l c | (f, l, c) <- rs ]
                       _ -> return ())
-          -- Focus the editor when it's created and whenever its tab is selected,
-          -- so opening/flipping to a file puts the cursor in it (and the find
-          -- bar then targets it).  Via requestAnimationFrame so the tab's
-          -- visibility is applied first — focusing a hidden element is a no-op.
-          focusE <- delay 0 $ leftmost [ () <$ editorE, selectedE ]
+          -- Focus the editor on its focus pulse (a tab select / a view leaf's
+          -- reconciler pulse), and when it's created — the latter gated by
+          -- focusOnCreateD so only the pane that SHOULD own the keyboard
+          -- grabs it at build time (a restored background view leaf must
+          -- not).  Via requestAnimationFrame so the tab's visibility is
+          -- applied first — focusing a hidden element is a no-op.
+          focusE <- delay 0 $ leftmost
+              [ gate (current focusOnCreateD) (() <$ editorE), selectedE ]
           performEvent_ $ ffor (attach (current editorD) focusE) $ \case
             (Just editorView, ()) -> liftJSM . void $
                 jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
@@ -449,6 +467,10 @@ editorWidget ide allEvents saveFileE = do
                           -- Remote panes refresh on events, not timers.
                           when (isRemotePath file) $
                               requestRemoteRefresh (RefreshSaved file)
+                  -- The write SETTLED (either way): everything sequenced on
+                  -- this save — a waiting 'requestSaveActiveFileWait', a
+                  -- dirty-editor close/convert — may proceed now.
+                  liftIO $ fireSaved file
               _ -> return ()
           -- Gutter context menu (rendered in Reflex; the chosen action calls
           -- the CM6 diff toggles in the bundle).

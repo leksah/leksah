@@ -18,12 +18,21 @@ module IDE.Web.ReplTmux
   , findRunPane
   , liveRunKeys
   , liveRunPanes
+  , livePanePids
   , isBackingRunKey
   , selectTmuxWindowById
   , ensureCommandWindow
+  , newSessionWindow
+  , newWindowInSession
+  , activePaneIdOfWindow
   , ensureRemoteWindow
   , openTerminalInDir
+  , shellCommandForDir
+  , freshSessionName
+  , tmuxOut
+  , paneCountOfWindow
   , runInTerminal
+  , prefixedCmdLine
   , cmdPrefixForDir
   , buildSplitWindowCommand
   , getLoginShell
@@ -36,7 +45,7 @@ module IDE.Web.ReplTmux
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
 import Control.Lens ((^.))
-import Control.Monad (void, mfilter)
+import Control.Monad (void, mfilter, forM_)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.List (find, isPrefixOf, sortOn)
 import Data.Maybe (fromMaybe, listToMaybe)
@@ -64,6 +73,7 @@ import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
+import IDE.Web.NewLwRequest (requestNewLw)
 
 -- | The private tmux server socket leksah's terminals live on (so they don't
 -- mix with the user's own tmux sessions, and so its options don't touch their
@@ -98,6 +108,42 @@ tmuxCmd args = (`catch` \(_ :: SomeException) -> return ()) $
 -- unreliable here (empty for detached / CC-client sessions), so scan
 -- 'list-panes' and pick the active one.  Used by the split-open pipeline to
 -- find the pane to split against.
+-- | Run a tmux command on leksah's server and return its (stripped) first
+-- output line, 'Nothing' when empty / tmux absent / any failure.
+tmuxOut :: [String] -> IO (Maybe Text)
+tmuxOut args = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                (["-L", tmuxSocket] ++ args) ""
+            return $ listToMaybe
+                [ l | l <- map T.strip (T.lines (T.pack out)), not (T.null l) ]
+
+-- | How many tmux panes window @\@N@ holds (0 on failure).
+paneCountOfWindow :: Text -> IO Int
+paneCountOfWindow w = (`catch` \(_ :: SomeException) -> return 0) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return 0
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "list-panes", "-t", T.unpack w
+                , "-F", "#{pane_id}"] ""
+            return (length (filter (not . T.null) (map T.strip (T.lines (T.pack out)))))
+
+-- | The active pane of a specific tmux WINDOW (@\@N@) — the split target
+-- when a leksah window's focused pane is that tmux window.
+activePaneIdOfWindow :: Text -> IO (Maybe Text)
+activePaneIdOfWindow w = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "display-message", "-p", "-t", T.unpack w
+                , "#{pane_id}" ] ""
+            return $ listToMaybe
+                [ p | p <- map T.strip (T.lines (T.pack out)), not (T.null p) ]
+
 activePaneIdOfSession :: Text -> IO (Maybe Text)
 activePaneIdOfSession sess = (`catch` \(_ :: SomeException) -> return Nothing) $
     findExecutable "tmux" >>= \case
@@ -217,6 +263,26 @@ liveRunPanes = (`catch` \(_ :: SomeException) -> return []) $
                 , let key = T.intercalate "\t" k
                 , not (T.null key)
                 , Just act <- [readMaybe (T.unpack actT) :: Maybe Integer] ]
+
+-- | Every live pane with the pid of the process running in it:
+-- @(session id, window id, pane id, pane pid)@.  Lets a caller that knows a
+-- process identify the pane it runs in, however deeply it is wrapped — the pane
+-- pid is the shell, so the caller matches against the process's ANCESTRY (see
+-- 'IDE.Web.Claude.claudeLiveOwners', which keys sessions by every pid they run
+-- under).  Unlike 'liveRunPanes' this covers panes with no @\@leksah_run@ key
+-- too.  Empty on any failure / no tmux.
+livePanePids :: IO [(Text, Text, Text, Int)]
+livePanePids = (`catch` \(_ :: SomeException) -> return []) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return []
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
+                , "#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_pid}" ] ""
+            return [ (sid, wid, pid, ppid)
+                   | l <- T.lines (T.pack out)
+                   , [sid, wid, pid, ppidT] <- [T.splitOn "\t" l]
+                   , Just ppid <- [readMaybe (T.unpack ppidT) :: Maybe Int] ]
 
 -- | Select a tmux window by its unique window id (@\@N@) — repl window names
 -- contain ':' (@pkg:lib:name@), so id targeting is the only unambiguous form.
@@ -425,14 +491,35 @@ openTerminalInDir dir0 = liftIO . void . forkIO $ do
             let rdir = dropTrailingPathSeparator rdir0
             _ <- ensureRemoteWindow host rdir (winName rdir) (shellUnder <$> mbPrefix)
             requestRemoteTerm (host <> "#leksah")
-        Nothing ->
-            ensureCommandWindow True (T.pack dir <> "#shell") dir (winName dir)
-                (maybe "true" shellUnder mbPrefix)
-                >>= mapM_ requestLocalTerm
+        Nothing -> do
+            -- A NEW session per open (never a window in some existing
+            -- session): the leksah-window model gives every plain open its
+            -- own tab, via the requestNewLw seam.
+            name <- freshSessionName (winName dir)
+            newSessionWindow name dir (Just (T.pack dir <> "#shell"))
+                (maybe "true" shellUnder mbPrefix) True
+                >>= mapM_ (\(sid, wid, _) -> requestNewLw (sid, wid))
   where
     winName p = case T.pack (takeFileName p) of
                   "" -> "shell"
                   n  -> n
+
+-- | A session name not yet in use: @base@, else @base-2@, @base-3@, …
+-- (tmux session names must be unique; dots and colons are not allowed).
+freshSessionName :: Text -> IO Text
+freshSessionName base0 = (`catch` \(_ :: SomeException) -> return base) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return base
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "list-sessions", "-F", "#{session_name}"] ""
+            let taken = T.lines (T.pack out)
+            return . head $
+                [ nm | nm <- base : [ base <> "-" <> T.pack (show n)
+                                    | n <- [2 :: Int ..] ]
+                     , nm `notElem` taken ]
+  where
+    base = T.map (\c -> if c `elem` (".:" :: String) then '-' else c) base0
 
 -- | Open (or focus) a terminal in @dir@ (local or @ssh:\/\/@) that runs @cmd@
 -- inside the owning project's command prefix.  One reusable window per
@@ -446,8 +533,7 @@ openTerminalInDir dir0 = liftIO . void . forkIO $ do
 runInTerminal :: MonadIO m => Bool -> FilePath -> Text -> Text -> Text -> m ()
 runInTerminal keepOpen dir0 keySuffix name cmd = liftIO . void . forkIO $ do
     let dir = dropTrailingPathSeparator dir0
-    mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir dir
-    let full = maybe cmd (\p -> p <> " " <> cmd) mbPrefix
+    full <- prefixedCmdLine dir cmd
     case parseRemotePath dir of
         Just (host, rdir0) -> do
             -- ensureRemoteWindow wraps a non-empty command as
@@ -460,6 +546,15 @@ runInTerminal keepOpen dir0 keySuffix name cmd = liftIO . void . forkIO $ do
         Nothing ->
             ensureCommandWindow keepOpen (T.pack dir <> "#" <> keySuffix) dir name full
                 >>= mapM_ requestLocalTerm
+
+-- | @cmd@ wrapped in the command prefix (@psCmdPrefix@, e.g. @nix develop -c@)
+-- of the project owning @dir@, if any — how 'runInTerminal' builds its window
+-- command; shared with the ⌥-split pipeline (which runs the same line in a
+-- split of the active pane instead of a reusable window).
+prefixedCmdLine :: FilePath -> Text -> IO Text
+prefixedCmdLine dir cmd = do
+    mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir dir
+    return $ maybe cmd (\p -> p <> " " <> cmd) mbPrefix
 
 -- | The stored command prefix (@psCmdPrefix@) of the workspace project that
 -- contains @dir@, read from the live IDE — 'Nothing' when there's no IDE yet,
@@ -494,11 +589,16 @@ cmdPrefixForDir dir = getGlobalIDERef >>= \case
 -- repl, a run\/test\/bench window, a nix window, or one with no marker) just
 -- inherits the directory with a plain shell — \"just set the directory\".
 -- Falls back to a plain @split-window@ when the pane can't be inspected.
-buildSplitWindowCommand :: Bool     -- ^ horizontal split (Split Right)?
-                        -> Text     -- ^ the active (local) tmux session id
+buildSplitWindowCommand :: Bool       -- ^ horizontal split (Split Right)?
+                        -> Text       -- ^ the active (local) tmux session id
+                        -> Maybe Text -- ^ explicit target pane (@%N@) — the
+                                      --   focused leksah pane's window's
+                                      --   active pane; 'Nothing' = the
+                                      --   session's current pane (remote /
+                                      --   no-layout fallback)
                         -> IO Text
-buildSplitWindowCommand horizontal session = do
-    (path, runKey) <- queryActivePane session
+buildSplitWindowCommand horizontal session mtarget = do
+    (path, runKey) <- queryActivePane (fromMaybe session mtarget)
     result <-
       if null path
         then return bare
@@ -529,6 +629,7 @@ buildSplitWindowCommand horizontal session = do
     return result
   where
     bare = "split-window " <> (if horizontal then "-h" else "-v")
+        <> maybe "" (\t -> " -t " <> t) mtarget
     -- The active pane's current directory and its window's @leksah_run marker,
     -- in one round trip on leksah's private tmux server.
     queryActivePane sess = (`catch` \(_ :: SomeException) -> return ("", "")) $
@@ -545,6 +646,71 @@ buildSplitWindowCommand horizontal session = do
     -- concatenates adjacent quotes, like the shell): keeps @${SHELL}@ out of
     -- tmux's own format expansion, passing it through to the pane's /bin/sh.
     shq t = "'" <> T.replace "'" "'\\''" t <> "'"
+
+-- | Create a fresh DETACHED tmux session named @name@ in @dir@, its single
+-- window/pane running @cmd@ (falling back to the login shell — kept after the
+-- command exits when @keepShell@, else only on failure), optionally tagging
+-- the pane with a @\@leksah_run@ key.  The session-based sibling of
+-- 'ensureCommandWindow' for the leksah-window model, where every plain open
+-- gets its OWN session.  Returns @(session id, window id, pane id)@.
+newSessionWindow :: Text -> FilePath -> Maybe Text -> Text -> Bool
+                 -> IO (Maybe (Text, Text, Text))
+newSessionWindow name dir mkey cmd keepShell =
+  (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            shell <- getLoginShell
+            conf  <- writeTmuxConf shell
+            let run as = readProcessWithExitCode tmux
+                             (["-L", tmuxSocket, "-f", conf] ++ as) ""
+            (_, out, _) <- run
+                [ "new-session", "-d", "-s", T.unpack name
+                , "-c", dir, "-P", "-F"
+                , "#{session_id}\t#{window_id}\t#{pane_id}"
+                , T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell ]
+            case T.splitOn "\t" (T.strip (T.pack out)) of
+              (sid : wid : pid : _) | not (T.null pid) -> do
+                forM_ mkey $ \key ->
+                    run ["set-option", "-p", "-t", T.unpack pid
+                        , "@leksah_run", T.unpack key]
+                return (Just (sid, wid, pid))
+              _ -> return Nothing
+
+-- | A fresh DETACHED window in session @sid@, in @dir@ running @cmd@ (login
+-- shell fallback as in 'newSessionWindow'), optionally run-key tagged;
+-- returns the new window's id.  Used when a terminal splits a leksah
+-- window's native VIEW pane: the terminal needs its own tmux window there.
+newWindowInSession :: Text -> FilePath -> Maybe Text -> Text -> Bool
+                   -> IO (Maybe Text)
+newWindowInSession sid dir mkey cmd keepShell =
+  (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> do
+            shell <- getLoginShell
+            let run as = readProcessWithExitCode tmux
+                             (["-L", tmuxSocket] ++ as) ""
+            (_, out, _) <- run
+                [ "new-window", "-d", "-t", T.unpack sid
+                , "-c", dir, "-P", "-F", "#{window_id}\t#{pane_id}"
+                , T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell ]
+            case T.splitOn "\t" (T.strip (T.pack out)) of
+              (wid : pid : _) | not (T.null pid) -> do
+                forM_ mkey $ \key ->
+                    run ["set-option", "-p", "-t", T.unpack pid
+                        , "@leksah_run", T.unpack key]
+                return (Just wid)
+              _ -> return Nothing
+
+-- | The command a plain terminal in @dir@ runs: the owning project's command
+-- prefix wrapping the login shell (so e.g. a nix dev-shell terminal), or a
+-- no-op straight into the shell.  (Factored from 'openTerminalInDir' for the
+-- session-per-open path.)
+shellCommandForDir :: FilePath -> IO Text
+shellCommandForDir dir = do
+    mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir dir
+    return $ maybe "true" (\p -> "exec " <> p <> " \"${SHELL:-bash}\" -l") mbPrefix
 
 ensureCommandWindow :: Bool -> Text -> FilePath -> Text -> Text -> IO (Maybe Text)
 ensureCommandWindow keepShell key dir name cmd = (`catch` \(_ :: SomeException) -> return Nothing) $

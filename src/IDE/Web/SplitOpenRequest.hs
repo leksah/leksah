@@ -30,6 +30,15 @@ data SplitTarget
   | STClaudeNew FilePath         -- ^ @claude@ in the project dir
   | STClaudeContinue FilePath    -- ^ @claude -c@
   | STClaudeResume FilePath Text -- ^ @claude --resume <id>@ (dir, session id)
+  | STClaudeFork FilePath Text   -- ^ @claude --resume <id> --fork-session@
+  | STClaudeAsk FilePath         -- ^ @claude "<explain this file>"@ (the file)
+  | STBrowser Int                -- ^ a browser pane by its (pre-minted) id —
+                                 --   the URL is already in the pane registry
+                                 --   ('IDE.Web.Widget.Browser.rememberUrl')
+  | STRunCmd Bool FilePath Text Text Text
+      -- ^ a command in a terminal — keep-shell-after?, dir, run-key suffix,
+      --   window name, command line (the 'IDE.Web.ReplTmux.runInTerminal'
+      --   arguments; e.g. a git action from the workspace git menus)
   deriving (Eq, Show)
 
 {-# NOINLINE splitOpenChan #-}

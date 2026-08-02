@@ -21,7 +21,8 @@ import IDE.Web.Command
         commandToggleRunBenchmarks, commandToggleMakeDependents,
         commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
         commandDebugStepModule, commandDebugContinue, commandFileClose,
-        commandNewWindow, commandAddServer, commandToggleTmuxIntercept, tmuxKey,
+        commandNewWindow, commandAddServer, commandToggleTmuxIntercept,
+        commandFontBigger, commandFontSmaller, commandFontReset, tmuxKey,
         paneCmd, splitCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
         commandSendSelection, commandSendFileRef, commandSendError,
         commandFocusAITerminal, commandClaudeNew, commandClaudeContinue)
@@ -134,8 +135,26 @@ menus =
       , item "Make Dependents"  commandToggleMakeDependents
       ])
   , ("Errors",
-      [ item "Next Error"     CommandNextError
-      , item "Previous Error" CommandPreviousError
+      [ MenuGlobalKey "Next Error"     "ctrl+j"       CommandNextError
+      , MenuGlobalKey "Previous Error" "ctrl+shift+j" CommandPreviousError
+      ])
+  -- Per-leaf font size in the native split layouts: acts on the FOCUSED leaf
+  -- of the active session tab (terminal stacks and editor leaves alike).
+  , ("View",
+      -- The tab flipper.  ⌘` steps it; the flip commits when ⌘ is released
+      -- (the keymap's flip-done).  The menu equivalents matter for the
+      -- cross-origin-iframe case above; Main.hs pulls focus out of the iframe
+      -- on the first step so the commit keyup reaches the page.
+      [ MenuGlobalKey "Next Tab"     "cmd+`"       CommandFlipDown
+      , MenuGlobalKey "Previous Tab" "cmd+shift+`" CommandFlipUp
+      , MenuSep
+      , MenuGlobalKey "Bigger Font"  "cmd+=" commandFontBigger
+      , MenuGlobalKey "Smaller Font" "cmd+-" commandFontSmaller
+      , MenuGlobalKey "Reset Font"   "cmd+0" commandFontReset
+      , MenuSep
+      -- An embedded web page with minimal chrome (address bar, back/forward);
+      -- devtools for it via right-click ▸ Inspect Element inside the page.
+      , MenuGlobalKey "New Browser Pane" "cmd+ctrl+b" CommandOpenBrowser
       ])
   , ("Terminal", terminalMenu)
   , ("AI",

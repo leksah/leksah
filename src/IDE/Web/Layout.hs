@@ -4,7 +4,8 @@ module IDE.Web.Layout where
 import qualified Data.Text as T (unwords)
 
 import Clay
-       (vh, height, (-:), grid, position, relative, none, (?), (#), after, Css)
+       (vh, height, (-:), grid, position, relative, none, (?), (#), after,
+        before, Css)
 import qualified Clay (display)
 
 layoutCss :: Css
@@ -108,14 +109,18 @@ layoutCss = do
         -- property so the drag-to-resize handle (see resizeBarsJs) can set it live
         -- on this element, and the collapse states override just the column track.
         "--tall-col" -: "300px"
-        "grid-template-rows" -: "20px 28px 1fr var(--wide1-row) var(--bar-row) 20px"
+        -- The find bar ("bar") row sits between the editor area and the bottom
+        -- bar, in the editor column only (the side pane keeps its full height —
+        -- a grid area must be rectangular, so a full-width bar there would cut
+        -- the tall column in two).
+        "grid-template-rows" -: "20px 28px 1fr var(--bar-row) var(--wide1-row) 20px"
         "grid-template-columns" -: "var(--tall-col) 1fr"
         "grid-template-areas" -: T.unwords
           [ "\"menubar   menubar\""
           , "\"toolbar   toolbar\""
           , "\"tall      wide0\""
+          , "\"tall      bar\""
           , "\"tall      wide1\""
-          , "\"bar       bar\""
           , "\"statusbar statusbar\""
           ]
         height (vh 100)
@@ -166,16 +171,18 @@ layoutCss = do
     -- the divider section below), not on a divider overlay.  It sits inside the
     -- border-box left of the 3px pad, so it stays a constant width in every
     -- side-pane state and never reflows the editor/terminal.
+    -- NO border-left here: the tall↔editor boundary line is drawn by the
+    -- .tall-divider overlay (::before below) so it paints ABOVE pane
+    -- content, exactly like every other divider line — one owner per
+    -- boundary, and the pane boxes/rings can sit flush on the line's pixel.
     ".area-wide0" ? do
         "padding-left" -: "3px"
         "padding-top" -: "3px"
         "box-sizing" -: "border-box"
-        "border-left" -: "1px solid var(--leksah-border-line)"
     ".area-wide1" ? do
         "padding-left" -: "3px"
         "padding-top" -: "3px"
         "box-sizing" -: "border-box"
-        "border-left" -: "1px solid var(--leksah-border-line)"
     -- The 3px top pad above is for the editor/terminal BODY (the terminal pulls
     -- it back with a -3px margin); on the tab STRIP it just dropped the tab
     -- buttons 3px below the side-bar (tall) tabs.  Zero it on the strips so the
@@ -191,12 +198,12 @@ layoutCss = do
     -- When the web menu bar is hidden (native menu present), drop its row so
     -- the toolbar sits at the top with no empty strip.
     ".leksah.no-menubar" ? do
-        "grid-template-rows" -: "28px 1fr var(--wide1-row) var(--bar-row) 20px"
+        "grid-template-rows" -: "28px 1fr var(--bar-row) var(--wide1-row) 20px"
         "grid-template-areas" -: T.unwords
           [ "\"toolbar   toolbar\""
           , "\"tall      wide0\""
+          , "\"tall      bar\""
           , "\"tall      wide1\""
-          , "\"bar       bar\""
           , "\"statusbar statusbar\""
           ]
     ".menubar" ? do
@@ -210,13 +217,21 @@ layoutCss = do
         ("padding-left" -: "78px")
     ".findbar" ? do
         "grid-area" -: "bar"
+        -- In the editor column (above the bottom bar) it shares the editor
+        -- area's left edge (its left boundary line comes from the
+        -- .tall-divider overlay, which spans all three editor-column rows);
+        -- the top line marks the editor ↔ find-bar boundary (the bottom
+        -- boundary is the wide1 divider's border-top).
+        "padding-left" -: "3px"
+        "box-sizing" -: "border-box"
+        "border-top" -: "1px solid var(--leksah-border-line)"
     -- The find bar is hidden by default and toggled by Edit ▸ Find (toolbar /
     -- menu).  When hidden we also collapse its grid row to 0 so it takes no
     -- space; `:has` lets the find bar's own class drive the grid container.
     ".findbar.hidden" ?
         Clay.display none
-    -- 0px, not 0: the value is also used inside calc() (--wide0-slide-h),
-    -- where a unitless zero makes the whole expression invalid.
+    -- 0px, not 0: a custom property used inside calc() elsewhere must carry a
+    -- unit — a unitless zero makes the whole expression invalid.
     ".leksah:has(.findbar.hidden)" ?
         ("--bar-row" -: "0px")
     -- Bottom ("wide1") pane visibility (the toolbar button cycles these classes
@@ -283,6 +298,41 @@ layoutCss = do
         ("transition" -: "transform 0.15s ease")
     ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide0 > *" ?
         ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
+    -- The find bar sits in its own grid row directly above the (0-height) wide1
+    -- area, i.e. exactly where the auto-hide bar's overlay slides up to — so it
+    -- must ride up with the editor content or the revealed bar covers it.  Same
+    -- transform, same timing, so the three (editor bottom / find bar / revealed
+    -- bar top) tile seamlessly throughout the animation.
+    ".leksah.wide1-auto .findbar" ?
+        ("transition" -: "transform 0.15s ease")
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .findbar" ?
+        ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
+    -- The active-pane glow/ring overlays (terminalCss .leksah-pane-glow) are
+    -- position:fixed and CSS-anchored to LAYOUT geometry, which transforms do
+    -- not move — so through the bar's transform-only reveal they must ride
+    -- the very same transforms as the content their anchors live in: the
+    -- wide0-anchored overlay slides up with the editor content, the
+    -- wide1-anchored one is parked off-screen and revealed with the bar, and
+    -- the tall one never moves (side-pane content doesn't slide).  Same
+    -- transition, same suppress and drag-resize overrides as the content.
+    ".leksah.wide1-auto .leksah-pane-glow" ?
+        ("transition" -: "transform 0.15s ease")
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow:not(.glow-tall):not(.glow-wide1)" ?
+        ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
+    ".leksah.wide1-auto .leksah-pane-glow.glow-wide1" ?
+        ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1" ?
+        ("transform" -: "translateY(0)")
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow:not(.glow-tall):not(.glow-wide1)" ?
+        ("transform" -: "translateY(0)")
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1" ?
+        ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
+    ".leksah.wide1-auto.leksah-resizing-wide1 .leksah-pane-glow:not(.glow-tall):not(.glow-wide1)" ? do
+        "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
+        "transition" -: "none"
+    ".leksah.wide1-auto.leksah-resizing-wide1 .leksah-pane-glow.glow-wide1" ? do
+        "transform" -: "translateY(0)"
+        "transition" -: "none"
     -- Force-collapse override (bottom bar): '.wide1-suppress' slides the bar back
     -- off-screen and un-shifts the editor content even while hovered, so a
     -- selection that activated a file/terminal snaps the bar shut with the cursor
@@ -292,6 +342,8 @@ layoutCss = do
     ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide1" ?
         ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
     ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide0 > *" ?
+        ("transform" -: "translateY(0)")
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .findbar" ?
         ("transform" -: "translateY(0)")
     ".statusbar" ? do
         "grid-area" -: "statusbar"
@@ -313,8 +365,8 @@ layoutCss = do
     -- carries a 1px border on the edge next to the editor area; the tall (side)
     -- divider no longer draws its own line — that separator now lives on the
     -- editor column's own left edge (.area-wide0/.area-wide1 border-left, gated
-    -- below).  The active-pane drop shadow is a separate overlay
-    -- (.leksah-pane-hl), not this box.
+    -- below).  The active-pane ring is per-pane chrome (see terminalCss), not
+    -- this box.
     ".tall-divider" ? do
         "grid-area" -: "tall"
         "pointer-events" -: "none"
@@ -353,6 +405,67 @@ layoutCss = do
         "cursor" -: "row-resize"
         "pointer-events" -: "auto"
         "z-index" -: "21"
+    -- Consistent divider hover: the grab strip lights up with the same blue
+    -- glow as the in-window pane dividers (native leaf / CC tmux gutters), so
+    -- every resizable boundary answers the mouse the same way.  Also lit while
+    -- a drag is live (resizeBarsJs's .leksah-resizing-* classes), so the glow
+    -- can't flicker off when the cursor briefly overshoots the strip mid-drag.
+    ".tall-divider:hover" # after ?
+        ("background" -: "var(--leksah-hover)")
+    ".wide1-divider:hover" # after ?
+        ("background" -: "var(--leksah-hover)")
+    ".leksah.leksah-resizing-tall .tall-divider" # after ?
+        ("background" -: "var(--leksah-hover)")
+    ".leksah.leksah-resizing-wide1 .wide1-divider" # after ?
+        ("background" -: "var(--leksah-hover)")
+    -- The tall↔editor boundary LINE lives here (::before): a 1px overlay just
+    -- right of the tall column — the first pixel of the editor column — that
+    -- paints ABOVE pane content (like every divider line), so pane boxes and
+    -- the active ring can sit flush ON its pixel.  Grey normally; brightens
+    -- on handle hover/drag (over the blue glow strip, like the native pane
+    -- dividers' .divider-line).  It spans all three editor-column rows
+    -- (wide0 / find bar / wide1) since grid-area tall does.
+    ".tall-divider" # before ? do
+        "content" -: "\"\""
+        "position" -: "absolute"
+        "top" -: "0"
+        "bottom" -: "0"
+        "right" -: "-1px"
+        "width" -: "1px"
+        "z-index" -: "22"
+        "pointer-events" -: "none"
+        "background" -: "var(--leksah-border-line)"
+    ".wide1-divider" # before ? do
+        "content" -: "\"\""
+        "position" -: "absolute"
+        "left" -: "0"
+        "right" -: "0"
+        "top" -: "-1px"
+        "height" -: "1px"
+        "z-index" -: "22"
+        "pointer-events" -: "none"
+        "display" -: "none"
+        "background" -: "var(--leksah-border-line-hi)"
+    ".leksah .tall-divider:hover" # before ?
+        ("background" -: "var(--leksah-border-line-hi)")
+    ".wide1-divider:hover" # before ? ("display" -: "block")
+    ".leksah.leksah-resizing-tall .tall-divider" # before ?
+        ("background" -: "var(--leksah-border-line-hi)")
+    ".leksah.leksah-resizing-wide1 .wide1-divider" # before ?
+        ("display" -: "block")
+    -- Gate the line exactly as the old editor-column border-left was gated:
+    -- no line while the side pane is hidden (tall-hide kills the whole
+    -- divider below) or collapsed in auto mode — until the reveal.
+    ".leksah.tall-auto .tall-divider" # before ?
+        ("background" -: "transparent")
+    ".leksah.tall-auto.tall-suppress .tall-divider" # before ?
+        ("background" -: "transparent")
+    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover) .tall-divider" # before ?
+        ("background" -: "var(--leksah-border-line)")
+    ".leksah.tall-auto:has(.tall-divider:hover) .tall-divider" # before ?
+        ("background" -: "var(--leksah-border-line-hi)")
+    ".leksah.tall-auto.leksah-resizing-tall .tall-divider" # before ?
+        ("background" -: "var(--leksah-border-line-hi)")
     -- Hide each divider when its panel is hidden (else a stray 1px line lingers
     -- against a zero-width/height cell).
     ".leksah.tall-hide .tall-divider" ? Clay.display none
@@ -411,6 +524,9 @@ layoutCss = do
     ".leksah.wide1-auto.leksah-resizing-wide1 .tab.area-wide0 > *" ? do
         "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
         "transition" -: "none"
+    ".leksah.wide1-auto.leksah-resizing-wide1 .findbar" ? do
+        "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
+        "transition" -: "none"
     ".leksah.wide1-auto.leksah-resizing-wide1 .wide1-divider" ? do
         "display" -: "block"
         "position" -: "absolute"
@@ -419,30 +535,9 @@ layoutCss = do
         "bottom" -: "0"
         "height" -: "var(--wide1-bar)"
         "z-index" -: "3"
-    -- The tall↔editor separator (the editor columns' border-left, added above):
-    -- show its grey only while the side (tall) pane is actually on-screen; hide
-    -- it (transparent, never zero-width — so nothing reflows) otherwise.
-    --   * tall-hide: side pane gone -> no line.
-    --   * tall-auto: side pane collapsed to 0 -> no line, UNTIL it's revealed by
-    --     hover/focus, when wide0's border reappears (the :has rule).
-    --   * fully-shown mode (neither class): the base grey border stands.
-    ".leksah.tall-hide .area-wide0" ? ("border-left-color" -: "transparent")
-    ".leksah.tall-hide .area-wide1" ? ("border-left-color" -: "transparent")
-    ".leksah.tall-auto .area-wide0" ? ("border-left-color" -: "transparent")
-    ".leksah.tall-auto .area-wide1" ? ("border-left-color" -: "transparent")
-    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover) .area-wide0" ?
-        ("border-left-color" -: "var(--leksah-border-line)")
-    -- The bottom bar in auto mode is a full-width floating overlay (left:0), so a
-    -- left border there would be a stray vertical line at the window edge, not the
-    -- tall boundary — keep it transparent.  (wide1 thus shows its border only when
-    -- docked beside the tall pane in fully-shown mode.)
-    ".leksah.wide1-auto .area-wide1" ? ("border-left-color" -: "transparent")
-    -- (The tall↔editor separator is solely the editor columns' border-left,
-    -- gated above; the .tall-divider draws nothing — it exists only as the
-    -- ::after resize handle.  It used to also paint a 1px ::before line for the
-    -- case where the editor area has no visible tab, but that risked stray
-    -- second lines during the auto-hide animations and isn't worth it: a blank
-    -- editor area just has no separator.)
+    -- (The tall↔editor separator is the .tall-divider's ::before overlay
+    -- line, gated in the divider block above — the editor columns carry no
+    -- borders of their own.)
     -- The auto-hide activation strip: an invisible 3px-wide, full-height grid item
     -- pinned to the left of the (0-width, collapsed) side column, overflowing into
     -- the editor column's 3px left padding.  It exists only in tall-auto; hovering
@@ -457,9 +552,10 @@ layoutCss = do
         Clay.display none
     ".leksah.tall-auto .tall-sensor" ?
         ("display" -: "block")
-    -- (The active-pane shadow for every area — side pane, editor/terminal, bottom
-    -- bar — is drawn by the single '.leksah-pane-hl' overlay, positioned over the
-    -- focused pane; the dividers now carry only the line.)
+    -- (The active-pane highlight for every area is the per-pane chrome ring —
+    -- '.terminal-cc-hl' markers / '.pane-chrome' leaf divs / the
+    -- '.tab.tab-active' outline, all model-driven; the dividers carry only
+    -- the line.)
     -- Keyboard list navigation: the row the arrows have moved to (a
     -- .leksah-nav-item in a focused .leksah-nav pane), highlighted like a
     -- selected/active row.  And don't draw a focus ring around a whole focused

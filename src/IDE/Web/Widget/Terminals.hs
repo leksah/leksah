@@ -28,6 +28,11 @@ module IDE.Web.Widget.Terminals
   , windowAlert
   , windowAlertSrc
   , sessionAlertSrc
+  , windowActivePane
+  , isClaudeWindow
+  , windowIconSrc
+  , windowTabLabel
+  , stripIdxPrefix
   ) where
 
 import Control.Concurrent (forkIO)
@@ -43,7 +48,8 @@ import Data.Set (Set)
 import qualified Data.Set as S (member)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T (breakOn, drop, null, pack, splitOn, unpack)
+import qualified Data.Text as T
+       (breakOn, drop, length, null, pack, splitOn, stripPrefix, take, unpack)
 import Text.Read (readMaybe)
 
 import Clay
@@ -73,7 +79,7 @@ import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
        (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
         killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane, moveTmuxPane,
-        moveRemoteTmuxPane, renameTmuxSession, renameTmuxWindow)
+        moveRemoteTmuxPane, renameTmuxSession, renameTmuxWindow, isClaudePane)
 import IDE.Web.Widget.Tree (treeItem)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
@@ -532,10 +538,18 @@ sessionNode activeD attnD n vD =
 -- output), ○ silence (gone quiet — idle/done).  Empty when there's no alert.
 windowAlert :: TmuxWindow -> Text
 windowAlert w
-  | twBell w     = " \128276"
-  | twActivity w = " \9679"
-  | twSilence w  = " \9675"
-  | otherwise    = ""
+  | windowBlocked w = " \128276"
+  | twBell w        = " \128276"
+  | twActivity w    = " \9679"
+  | twSilence w     = " \9675"
+  | otherwise       = ""
+
+-- | Does the window hold a Claude Code pane blocked on an approval prompt
+-- ('tpClaudeStatus' @waiting@)?  Unlike the bell flag this is NOT cleared by
+-- viewing the window — it stays on until the prompt is answered — so it ranks
+-- above bell everywhere alerts are ordered.
+windowBlocked :: TmuxWindow -> Bool
+windowBlocked = any ((== Just "waiting") . tpClaudeStatus) . twPanes
 
 -- | The leading terminal-window icon whose fill/colour encodes the same alert
 -- state that 'windowAlert' used to append as a text glyph — so the notification
@@ -548,11 +562,55 @@ windowAlert w
 --   * otherwise (seen output)  → grey, bottom-half fill
 windowAlertSrc :: TmuxWindow -> Text
 windowAlertSrc w
-  | twBell w     = "/pics/tree-window-bell.svg"
-  | twActivity w = "/pics/tree-window-activity.svg"
-  | twSilence w  = "/pics/tree-window-silence.svg"
-  | twActive w   = "/pics/tree-window-calm.svg"
-  | otherwise    = "/pics/tree-window-idle.svg"
+  | windowBlocked w = "/pics/tree-window-bell.svg"
+  | twBell w        = "/pics/tree-window-bell.svg"
+  | twActivity w    = "/pics/tree-window-activity.svg"
+  | twSilence w     = "/pics/tree-window-silence.svg"
+  | twActive w      = "/pics/tree-window-calm.svg"
+  | otherwise       = "/pics/tree-window-idle.svg"
+
+-- | The window's ACTIVE pane (falling back to its first) — the pane whose
+-- identity a tab tile and flipper label show.  Reading the tile from the
+-- active pane rather than the window means it tracks the pane set: split, kill
+-- or move panes, or just switch between them, and the tile follows.
+windowActivePane :: TmuxWindow -> Maybe TmuxPane
+windowActivePane w = listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+
+-- | Is the window currently showing a Claude Code session — i.e. is its ACTIVE
+-- pane a Claude pane?  Keyed on the pane, not the window name, so a window
+-- holding a Claude pane beside a shell (or two Claude panes) is "a Claude
+-- window" exactly while you are looking at the Claude one.
+isClaudeWindow :: TmuxWindow -> Bool
+isClaudeWindow = maybe False isClaudePane . windowActivePane
+
+-- | The window's leading icon: the robot for a calm/idle Claude window, but the
+-- bell/activity/silence alert icon otherwise (so "claude wants input" stays
+-- visible on a claude tile).
+windowIconSrc :: TmuxWindow -> Text
+windowIconSrc w
+  | isClaudeWindow w
+  , src `elem` ["/pics/tree-window-calm.svg", "/pics/tree-window-idle.svg"]
+      = "/pics/tree-claude.svg"
+  | otherwise = src
+  where src = windowAlertSrc w
+
+-- | The tile/flipper text for a tmux window: the title of the Claude session in
+-- its active pane ('tpClaudeTitle' — the session's @/rename@ name, else the
+-- transcript's first prompt) instead of the bare window name "claude";
+-- everything else shows the window name with the leading "idx: " prefix stripped.
+windowTabLabel :: TmuxWindow -> Text
+windowTabLabel w = case windowActivePane w >>= tpClaudeTitle of
+  Just t | not (T.null t) -> ellipsize 32 t
+  _ | isClaudeWindow w    -> "claude"
+    | otherwise           -> stripIdxPrefix (twIndex w) (twLabel w)
+  where
+    ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
+                  | otherwise      = t
+
+-- | Drop a window/pane label's leading @"idx: "@ prefix — tiles show the name
+-- alone (the index is conveyed by the ⌘-shortcut badge instead).
+stripIdxPrefix :: Int -> Text -> Text
+stripIdxPrefix i lbl = fromMaybe lbl (T.stripPrefix (T.pack (show i) <> ": ") lbl)
 
 -- | Render the state-carrying window icon for a tree row (dynamic in the
 -- window's alert flags).  'term-alert-icon' keeps its own colour — it is
@@ -564,10 +622,11 @@ termWinIcon wD = void $ elDynAttr' "img"
 -- | The strongest alert among a session's windows (for the session row badge).
 sessionAlert :: [TmuxWindow] -> Text
 sessionAlert ws
-  | any twBell ws     = " \128276"
-  | any twActivity ws = " \9679"
-  | any twSilence ws  = " \9675"
-  | otherwise         = ""
+  | any windowBlocked ws = " \128276"
+  | any twBell ws        = " \128276"
+  | any twActivity ws    = " \9679"
+  | any twSilence ws     = " \9675"
+  | otherwise            = ""
 
 -- | The session-glyph counterpart of 'windowAlertSrc': the same fill/colour
 -- state language on the @>_@ session icon, from the strongest alert among the
@@ -575,10 +634,11 @@ sessionAlert ws
 -- the grey bottom-fill 'idle'.)
 sessionAlertSrc :: [TmuxWindow] -> Text
 sessionAlertSrc ws
-  | any twBell ws     = "/pics/tree-session-bell.svg"
-  | any twActivity ws = "/pics/tree-session-activity.svg"
-  | any twSilence ws  = "/pics/tree-session-silence.svg"
-  | otherwise         = "/pics/tree-session-idle.svg"
+  | any windowBlocked ws = "/pics/tree-session-bell.svg"
+  | any twBell ws        = "/pics/tree-session-bell.svg"
+  | any twActivity ws    = "/pics/tree-session-activity.svg"
+  | any twSilence ws     = "/pics/tree-session-silence.svg"
+  | otherwise            = "/pics/tree-session-idle.svg"
 
 -- | Render the state-carrying session icon (dynamic in the session's windows);
 -- a leksah-tracked bell (first arg — the viewed-window bell tmux's hook skips)

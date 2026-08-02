@@ -18,6 +18,8 @@ module IDE.Web.NewWindowRequest
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
 import System.IO.Unsafe (unsafePerformIO)
 
+import IDE.Web.GhciMode (phaseLog)
+
 {-# NOINLINE newWindowHandler #-}
 newWindowHandler :: IORef (IO ())
 newWindowHandler = unsafePerformIO (newIORef (return ()))
@@ -42,7 +44,9 @@ setOpenWindowHandler = writeIORef openWindowHandler
 
 -- | Create a native window for the given (already-seeded) window id.
 requestOpenWindow :: Int -> IO ()
-requestOpenWindow n = readIORef openWindowHandler >>= ($ n)
+requestOpenWindow n = do
+  phaseLog ("boot: requestOpenWindow " <> show n)
+  readIORef openWindowHandler >>= ($ n)
 
 {-# NOINLINE raiseWindowHandler #-}
 raiseWindowHandler :: IORef (Int -> IO ())

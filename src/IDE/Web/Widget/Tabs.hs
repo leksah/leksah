@@ -7,7 +7,8 @@ module IDE.Web.Widget.Tabs
   ) where
 
 import Control.Arrow (Arrow(..))
-import Control.Lens ((^..))
+import Control.Lens ((^..), (^.))
+import Control.Monad (void)
 
 import Data.Bool (bool)
 import Data.Foldable (foldr')
@@ -28,13 +29,16 @@ import Clay
         margin, px, height, cursor, cursorDefault, (?), (-:), Css,
         Color(..), VerticalAlign(..), Auto(..), Hidden(..), None(..), Cursor(..))
 
+import Language.Javascript.JSaddle (jsg, js1, liftJSM)
+
 import Reflex
        (foldDyn, holdDyn, holdUniqDyn, listViewWithKey, listWithKey, switchDyn,
-        mergeMap, leftmost, attachWith, current, ffilter, fmapMaybe,
-        constDyn, Dynamic)
+        mergeMap, leftmost, attachWith, attachWithMaybe, current, ffilter,
+        fmapMaybe, constDyn, Dynamic, sample, updated, never, switchHold, ffor,
+        performEvent_)
 import Reflex.Dom.Core
        (elDynAttr', elAttr, blank, MonadWidget, (=:),
-        divClass, Event, domEvent, EventName(..))
+        divClass, Event, domEvent, EventName(..), dyn, _element_raw)
 
 import IDE.Web.Theme (selectionColor, dimColor, dimOpacity, bgColor, accentHoverColor, fgColor, onAccentColor)
 
@@ -140,6 +144,26 @@ tabsCss = do
         marginTop (px 20)
         height auto
         overflow hidden
+    -- Tabs are programmatically focusable (tabindex -1, see tabsWidget) so a
+    -- widget-less panel can hold DOM focus; never draw a focus ring for it —
+    -- the active-pane highlight is the anchored overlay.
+    ".tab:focus" ? ("outline" -: "none")
+    -- The active-pane glow+ring overlay (terminalCss ".leksah-pane-glow")
+    -- anchors to the TAB body itself for tabs without per-pane markers
+    -- (Preferences, Workspace, Tasks, …); LW/CC tabs anchor at their
+    -- internal pane markers / leaf chrome instead.  The tab draws nothing —
+    -- the ring lives on the overlay.
+    ".tab.tab-active:not(:has(.terminal-cc))" ?
+        ("anchor-name" -: "--leksah-active-pane")
+    -- Side (tall) tabs sit on the screen's left edge, where no line may be
+    -- drawn: they anchor the border-left-free overlay variant instead (see
+    -- terminalCss ".leksah-pane-glow.glow-tall").
+    ".tab.area-tall.tab-active:not(:has(.terminal-cc))" ?
+        ("anchor-name" -: "--leksah-active-pane-tall")
+    -- Bottom-bar tabs anchor the wide1 variant, which rides the bar's
+    -- parked/revealed transforms in auto-hide mode (Layout.hs).
+    ".tab.area-wide1.tab-active:not(:has(.terminal-cc))" ?
+        ("anchor-name" -: "--leksah-active-pane-wide1")
 
 tabsWidget
   :: (MonadWidget t m, Ord k, Show k, Eq v)
@@ -265,28 +289,90 @@ tabsWidget initialTabs initialVisibleTabs wide0OrderD openTabE closeTabE selectT
   tabResultsD <- listWithKey tabsD $ \k v -> do
     gridAreaD <- holdUniqDyn $ fst <$> v
     visibleD <- holdUniqDyn $ S.member k <$> allVisibleTabs
+    -- Is this the window's active (most-recently-focused) tab?  Drives the
+    -- 'tab-active' class, which is the per-window gate for the pane chrome's
+    -- active ring (exactly one lit ring per OS window; see terminalCss
+    -- ".terminal-cc-hl" / ".pane-chrome" and the '.tab.tab-active' outline).
+    isActiveD <- holdUniqDyn $ (== Just k) <$> activePane
     -- Fires whenever this tab is explicitly selected/opened (tab button, list,
     -- flipper, or re-select of the already-visible tab) — used to (re)focus.
     let selectedE = () <$ ffilter (k `elem`) (M.elems <$> selectOrOpenTab)
     let attrD = do
             visible <- visibleD
             gridArea <- gridAreaD
+            act <- isActiveD
             return $
                  -- 'tab-hidden' (see 'tabsCss') force-hides editor layers that set
                  -- their own inline visibility, so a hidden tab's Monaco/CM diff
                  -- doesn't paint over the active one.
-                 ("class" =: ("tab area-" <> gridArea <> bool " tab-hidden" "" visible))
+                 ("class" =: ("tab area-" <> gridArea <> bool " tab-hidden" "" visible
+                              <> bool "" " tab-active" act))
               <> ("data-tabkey" =: T.pack (show k))   -- focusin → MRU reorder (see focusTabJs)
+              -- Programmatically focusable: a selected tab whose body grabs no
+              -- focus of its own (Preferences, Review, …) receives DOM focus
+              -- directly (leksahFocusTabBody below), so the active pane / MRU
+              -- / highlight follow the select like any other pane.
+              <> ("tabindex" =: "-1")
               <> bool ("style" =: "visibility:hidden;") mempty visible
-    (el, ev) <- elDynAttr' "div" attrD $
-      mkTab k selectedE (snd <$> v)
+    (el, ev) <- elDynAttr' "div" attrD $ do
+      -- LAZY wide0 bodies: an editor/terminal/browser tab that is not visible
+      -- builds NOTHING until the first time it is shown (then stays built, so
+      -- switching back is instant).  Restoring a session used to mount every
+      -- saved tab's editors/xterms in one giant frame cascade — measured
+      -- 42-50s to first terminal content in ghci mode, ~all of it this.
+      -- Deferred bodies are safe because the state they render lives OUTSIDE
+      -- the widget (leksahWindows / files / tmux); the widgets' own
+      -- create-time paths (postBuild reconciler, focus-on-create,
+      -- requestReplay-at-mount, sticky pending-focus) already handle
+      -- select-then-mount, since that is exactly what ⌘D/open always did.
+      -- The fixed side/bottom-bar tabs stay EAGER: they are few, cheap, and
+      -- some carry side effects that must run from boot (bell announcements,
+      -- error routing).
+      area0 <- sample (current gridAreaD)
+      vis0  <- sample (current visibleD)
+      if area0 /= "wide0" || vis0
+        then mkTab k selectedE (snd <$> v)
+        else do
+          mountedD <- holdUniqDyn =<< foldDyn (||) False (updated visibleD)
+          evE <- dyn $ ffor mountedD $ \m ->
+              if m then mkTab k selectedE (snd <$> v) else return never
+          switchHold never evE
+    -- On every explicit select, hand the tab body DOM focus unless a widget
+    -- inside grabs it itself (see leksahFocusTabBody in Main.hs) — panels
+    -- like Preferences otherwise leave focus (and thus the active pane, MRU
+    -- and highlight) stuck on the previously-focused pane.
+    performEvent_ $ ffor selectedE $ \_ -> liftJSM . void $
+        jsg ("window" :: Text) ^. js1 ("leksahFocusTabBody" :: Text)
+            (_element_raw el)
     return (ev, k <$ domEvent Mousedown el)
   let tabEvents = switchDyn $ mergeMap . fmap fst <$> tabResultsD
       activeE   = switchDyn $ leftmost . map snd . M.elems <$> tabResultsD
-  -- The active pane changes both when a tab *body* is pressed (activeE) and when
-  -- a tab *button* in the bar is clicked (selectTabE') — the latter so clicking a
-  -- side/bottom-bar tab (Terminals, Metadata, …) also focuses it and promotes it
-  -- in the flipper MRU, not just clicking inside its body.
-  activePane <- holdDyn Nothing $ Just <$>
-    leftmost [ activeE, fmapMaybe (listToMaybe . M.elems) selectTabE' ]
+  -- The active pane changes when a tab *body* is pressed (activeE); when a tab
+  -- *button* in the bar is clicked (selectTabE') — so clicking a side/bottom-bar
+  -- tab (Terminals, Metadata, …) also focuses it and promotes it in the flipper
+  -- MRU, not just clicking inside its body; and when focus lands in a tab body by
+  -- ANY route (focusedKeyE) — the programmatic focus a pane takes when opened
+  -- from the workspace (Open Terminal Here, opening a file / Claude session).
+  -- Without the last, a workspace-opened pane had keyboard focus but was not the
+  -- active pane, so ⌘W / Find ignored it until a redundant click (mousedown).
+  -- focusedTabE carries the tab's show-key (focusTabJs, a document focusin
+  -- listener); map it back to the live TabKey.
+  let focusedKeyE = attachWithMaybe
+        (\tabs str -> listToMaybe [ k | (k, _) <- M.toList tabs, T.pack (show k) == str ])
+        (current tabsD) focusedTabE
+  -- holdUniqDyn: focus can report the same pane twice (a synthetic focus, then
+  -- the real focusin it triggers), which would otherwise double the wide0
+  -- activate / resync fan-out on every focus.  Consumers read `current` or act
+  -- idempotently on `updated`, so collapsing identical values is safe.
+  -- selectOrOpenTab (not just the bar clicks): a tab selected by the native
+  -- menu, the flipper, close-succession, or an open request becomes the
+  -- active pane too — it is the tab the user is now looking at, and the
+  -- pane-chrome ring follows 'activePane'.  Only SINGLE-target selects count:
+  -- a multi-area map is a session restore repopulating every area at once,
+  -- not the user turning to a tab (it would crown an arbitrary area's tab).
+  -- Focus-driven arms still win when they fire in the same frame.
+  activePane <- holdUniqDyn =<< holdDyn Nothing (Just <$>
+    leftmost [ activeE, focusedKeyE
+             , fmapMaybe (\m -> case M.elems m of [k] -> Just k; _ -> Nothing)
+                         selectOrOpenTab ])
   return (recentTabs, tabEvents, visibleTabs, activePane, closeBtnE)

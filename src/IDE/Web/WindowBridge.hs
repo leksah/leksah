@@ -49,16 +49,26 @@ import IDE.Web.SaveRequest (nextSaveRequest)
 import IDE.Web.FindRequest (nextFindRequest)
 import IDE.Web.PreferencesRequest (nextPreferencesRequest)
 import IDE.Web.ShortcutsRequest (nextShortcutsRequest)
+import IDE.Web.BrowserRequest (nextBrowserRequest)
+import IDE.Web.KeymapRequest (nextKeymapCommand)
 import IDE.Web.OpenFileRequest (nextOpenedFile)
+import IDE.Web.Command (Command)
 
 -- | One window's set of "act on me" triggers (the per-network reflex fire
 -- functions, already partially applied to their unit argument where relevant).
 data WindowBridge = WindowBridge
   { wbClose      :: IO ()             -- ^ close the active pane in this window
-  , wbSave       :: IO ()             -- ^ save the active editor in this window
+  , wbSave       :: Maybe (MVar ()) -> IO ()
+                                      -- ^ save the active editor in this window
+                                      --   (acking the caller's completion slot
+                                      --   once the write settles, if given)
   , wbFind       :: IO ()             -- ^ toggle the find bar in this window
   , wbPrefs      :: IO ()             -- ^ show the Preferences pane in this window
   , wbShortcuts  :: IO ()             -- ^ show the Shortcuts pane in this window
+  , wbBrowser    :: IO ()             -- ^ open a new browser pane in this window
+  , wbKeymap     :: Command -> IO ()  -- ^ inject a stream-handled command (no
+                                      --   'IDEAction') into this window's
+                                      --   keymap event stream
   , wbOpenedFile :: FilePath -> IO () -- ^ open a natively-chosen file in this window
   }
 
@@ -201,9 +211,13 @@ startWindowBridgeDrains :: IDERef -> IO ()
 startWindowBridgeDrains ideR = do
   let drain name act = forkIO (forever act) >>= (`labelThread` name)
   drain "bridge-drain-close" $ nextCloseRequest       >>  route ideR wbClose
-  drain "bridge-drain-save"  $ nextSaveRequest        >>  route ideR wbSave
+  drain "bridge-drain-save"  $
+    nextSaveRequest >>= \mv -> route ideR (`wbSave` mv)
   drain "bridge-drain-find"  $ nextFindRequest        >>  route ideR wbFind
   drain "bridge-drain-prefs" $ nextPreferencesRequest >>  route ideR wbPrefs
   drain "bridge-drain-shortcuts" $ nextShortcutsRequest >> route ideR wbShortcuts
+  drain "bridge-drain-browser" $ nextBrowserRequest     >>  route ideR wbBrowser
+  drain "bridge-drain-keymap" $
+    nextKeymapCommand >>= \c -> route ideR (`wbKeymap` c)
   drain "bridge-drain-open"  $
     nextOpenedFile >>= \fp -> route ideR (`wbOpenedFile` fp)

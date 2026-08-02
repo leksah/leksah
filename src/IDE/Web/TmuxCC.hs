@@ -57,6 +57,7 @@ module IDE.Web.TmuxCC
   , ccSendBytes
   , ccSendBytesBig
   , ccResize
+  , ccSetWindowManual
   , ccResizeWindow
   , ccClearWindowSize
     -- * Pure helpers (exposed for tests)
@@ -353,9 +354,14 @@ parseEventLine line = case T.words line of
 -- | Decode @%output@ escaping: @\\ooo@ (exactly three octal digits) is a
 -- byte; everything else passes through (modern tmux sends UTF-8 raw — and
 -- possibly INCOMPLETE at the end of a chunk, so this must stay byte-exact;
--- see 'reader').
+-- see 'reader').  The overwhelming majority of chunks contain no backslash
+-- at all, so those return unchanged without the boxed-list round trip — this
+-- runs per %output line on the latency-critical drain path (and in ghci
+-- mode, in bytecode).
 unescapeOctalBS :: BS.ByteString -> BS.ByteString
-unescapeOctalBS = BS.pack . go . BS.unpack
+unescapeOctalBS bs
+  | 92 `BS.notElem` bs = bs
+  | otherwise          = BS.pack (go (BS.unpack bs))
   where
     go :: [Word8] -> [Word8]
     go (92 : a : b : c : rest)          -- 92 = '\\'
@@ -502,12 +508,27 @@ ccSubmit cc pending cmd = do
               Right () -> return True
 
 -- | Send a command line and wait for its correlated reply.
--- @Left@ = @%error@ body (or client death).
+-- @Left@ = @%error@ body (or client death, or the 15s timeout).
+--
+-- ⚠ NEVER call this from a reflex frame thread: the wait is only bounded by
+-- the timeout, and a frame stalled that long is a frozen window (the
+-- pause-after livelock froze BOOT this way — see
+-- docs/development/debugging-web-ui-freezes.md).  Frame handlers either
+-- 'ccSend' (all fire-and-forget commands) or 'forkIO' around this (when the
+-- reply is needed, firing it back in via a trigger).  The timeout is a last
+-- line of defence for the background callers, so a wedged client degrades
+-- into an error instead of a stuck thread; an abandoned reply is still
+-- consumed by the reader in order, so correlation is unharmed.
 ccCommand :: CC -> Text -> IO (Either Text [Text])
 ccCommand cc cmd = do
     v  <- newEmptyMVar
     ok <- ccSubmit cc (PendingVar v) cmd
-    if ok then takeMVar v else return (Left "tmux control client exited")
+    if not ok then return (Left "tmux control client exited") else
+        timeout 15000000 (takeMVar v) >>= \case
+            Just r  -> return r
+            Nothing -> do
+                ccWarn ("command reply timed out: " <> T.unpack cmd)
+                return (Left "tmux control client reply timed out")
 
 -- | Submit a command whose reply comes back as an 'EvReply' with the given
 -- tag, IN STREAM ORDER on the event channel — use when the reply's position
@@ -555,28 +576,44 @@ ccSendBytesChunked n cc pane = mapM_ send1 . chunks
     pad [c] = ['0', c]
     pad s   = s
 
--- | Tell tmux the size of our (virtual) client, in cells.
+-- | Tell tmux the size of our (virtual) client, in cells.  Fire-and-forget
+-- ('ccSend', as are the window-size helpers below): these run from frame
+-- handlers (layout application, divider drags), the reply carries nothing,
+-- and waiting for it under an output burst is how a frame thread wedges.
 ccResize :: CC -> Int -> Int -> IO ()
-ccResize cc w h = void . ccCommand cc $
+ccResize cc w h = ccSend cc $
     "refresh-client -C " <> T.pack (show w) <> "x" <> T.pack (show h)
 
--- | Set this client's size for ONE window (@refresh-client -C \@win:WxH@).
--- Unlike the plain client size, a per-window size is a hard clamp in tmux's
--- window-size calculation no matter which client is \"latest\" — with
--- @window-size latest@ a control client can never become the latest client
--- (only real key input updates it), so this is the only way a control-mode
--- UI stays authoritative over the window it displays while a regular client
--- is also attached (iTerm2 does the same).  It dies with the client, so no
--- cleanup is needed on exit.
-ccResizeWindow :: CC -> WindowId -> Int -> Int -> IO ()
-ccResizeWindow cc win w h = void . ccCommand cc $
-    "refresh-client -C " <> win <> ":" <> T.pack (show w) <> "x" <> T.pack (show h)
+-- | MANUAL window sizing for @win@, not a per-client size (refresh-client
+-- -C win:WxH): with several leksah windows attaching one control client
+-- each to the same session — plus possibly a regular terminal client — the
+-- per-client sizes FIGHT under every window-size policy ("latest" flips
+-- with client activity, "smallest" lets an external attach shrink us),
+-- and each flip redraws at a width the owner's xterm wasn't fitted for
+-- (scrambled terminals).  "manual" pins the size against all clients;
+-- only the owning leksah pane resizes it ('ccResizeWindow').  Callers set
+-- this ONCE per window, not per resize step — a divider drag is a storm of
+-- resizes and the redundant set-option round trips doubled its traffic.
+ccSetWindowManual :: CC -> WindowId -> IO ()
+ccSetWindowManual cc win =
+    ccSend cc $ "set-option -w -t " <> win <> " window-size manual"
 
--- | Drop the per-window size again (@refresh-client -C \@win:*@), e.g. when
--- the widget stops displaying that window.
+-- | Resize window @win@ (its sizing policy already pinned manual — see
+-- 'ccSetWindowManual').  A hard clamp in tmux's window-size calculation no
+-- matter which client is \"latest\", so a control-mode UI stays
+-- authoritative over the window it displays while a regular client is also
+-- attached (iTerm2 does the same).
+ccResizeWindow :: CC -> WindowId -> Int -> Int -> IO ()
+ccResizeWindow cc win w h =
+    ccSend cc $
+        "resize-window -t " <> win
+        <> " -x " <> T.pack (show w) <> " -y " <> T.pack (show h)
+
+-- | Back to the default sizing policy, e.g. when the widget stops
+-- displaying that window.
 ccClearWindowSize :: CC -> WindowId -> IO ()
-ccClearWindowSize cc win = void . ccCommand cc $
-    "refresh-client -C " <> win <> ":*"
+ccClearWindowSize cc win = ccSend cc $
+    "set-option -w -t " <> win <> " -u window-size"
 
 -- | Is the client still running?
 ccAlive :: CC -> IO Bool

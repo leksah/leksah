@@ -24,6 +24,7 @@ module IDE.Web.Widget.Terminal
   , killTerminalSession
   , TmuxWindow(..)
   , TmuxPane(..)
+  , isClaudePane
   , listTerminalTree
   , listRemoteTerminalTree
   , remoteTabTree
@@ -43,8 +44,7 @@ module IDE.Web.Widget.Terminal
   , reapControlClients
   , createTerminalSession
   , openFileInEditor
-  , ensureShellPane
-  , killRunPaneIfIdle
+  , cleanupStaleTwinPanes
   , resolveEditorCmd
   , shellQuoteArg
   , replSessionName
@@ -75,15 +75,16 @@ import Control.Concurrent (forkIO)
 import Control.Exception (try, catch, SomeException)
 import Control.Lens ((^.))
 import Control.Monad (void, forM_, when, unless, mfilter)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64 as B64 (encode)
-import Data.List (find, intercalate)
+import Data.List (find, intercalate, nub)
 import Data.Map (Map)
 import qualified Data.Map as M
-       (empty, singleton, fromListWith, unionWith, toAscList, toList, map)
-import Data.Maybe (fromMaybe, listToMaybe)
+       (empty, singleton, fromList, fromListWith, unionWith, toAscList, toList,
+        map, lookup, findWithDefault)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines,
@@ -135,12 +136,13 @@ import System.Posix.Signals (signalProcess, sigKILL)
 import System.Process (readProcessWithExitCode, createProcess, proc)
 import System.Exit (ExitCode(ExitSuccess))
 
-import IDE.Web.Claude (claudeSessionsFor, ClaudeSession(..))
+import IDE.Web.Claude
+       (claudeSessionsFor, csId, csTitle, claudeLiveOwners, ClaudeLive(..))
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
-        findRunPane, selectTmuxWindowById, getLoginShell, interactiveShellArgs,
-        writeTmuxConf, clipboardCopyCmd)
+        findRunPane, liveRunPanes, isBackingRunKey, selectTmuxWindowById,
+        getLoginShell, interactiveShellArgs, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
@@ -200,26 +202,126 @@ terminalCss = do
         ("background" -: "var(--leksah-border-line-hi)")
     ".terminal-cc-divider.dragging .divider-line" ?
         ("background" -: "var(--leksah-border-line-hi)")
-    -- The active pane's position marker: an invisible box exactly over the pane
-    -- (shown/hidden by applyPaneHighlight).  It carries no shadow itself — it is
-    -- clipped inside the terminal.  Instead 'leksahUpdatePaneHl' copies the
-    -- visible marker's screen rect onto the single top-level '.leksah-pane-hl'
-    -- overlay, which lives at <body> (outside the terminal's overflow) so its
-    -- shadow can spill onto the side/bottom bars, and tracks only the ACTIVE pane
-    -- (so a split shows the shadow on the active half only).
-    -- Clip wrapper: a fixed, overflow:hidden box whose top JS pins to the bottom
-    -- of the tall/wide0 tab-button rows, so the overlay's shadow never rises above
-    -- them (or over the toolbar).  The overlay itself is absolutely positioned
-    -- inside it (viewport coords minus the wrapper's top offset).
-    ".leksah-pane-hl-clip" ? do
+    -- Hovering the grab strip also glows it blue, matching the native-leaf
+    -- dividers (and the side/bottom-bar resize strips) — every draggable pane
+    -- boundary answers the mouse the same way.
+    ".terminal-cc-divider:hover" ?
+        ("background" -: "var(--leksah-hover)")
+    ".terminal-cc-divider.dragging" ?
+        ("background" -: "var(--leksah-hover)")
+    -- Per-pane markers (rendered per pane by 'renderHlSegments'): pure
+    -- geometry — they draw NOTHING.  Boundary lines are owned exclusively by
+    -- the dividers/layout chrome (one line per boundary: CC gutters' mid
+    -- .divider-line, native dividers' boundary line, .area-* border-left,
+    -- .wide1-divider/.findbar border-top), so nothing can double and no line
+    -- appears at the tab-row or screen edges.  The active pane's WHITE ring
+    -- lives on the glow overlay below, not on any pane element.  Which
+    -- marker is `.active` (= carries the glow's anchor) is model/CC state:
+    -- 'applyPaneHighlight' toggles the class per widget, gated by
+    -- `.tab-active` (the per-window 'activePane' Dynamic in Tabs.hs), so
+    -- exactly one anchor exists per OS window.  `.flip-target` /
+    -- `.menu-target` are the flipper hold-preview and ⌘W close-menu
+    -- overrides — transient rings drawn directly on the marker.
+    ".terminal-cc-hl" ? do
+        "box-sizing" -: "border-box"
+        "z-index" -: "5"
+    ".tab-active .terminal-cc-hl.active" ?
+        ("anchor-name" -: "--leksah-active-pane")
+    -- Per-area overrides: each area's actives anchor their own overlay
+    -- variant, because during the bottom bar's transform-only auto-hide
+    -- reveal each area's content moves DIFFERENTLY and the overlays must
+    -- ride the matching transform (see the wide1-auto rules in Layout.hs).
+    -- The tall variant also drops border-left (screen edge).
+    ".tab.area-tall.tab-active .terminal-cc-hl.active" ?
+        ("anchor-name" -: "--leksah-active-pane-tall")
+    ".tab.area-wide1.tab-active .terminal-cc-hl.active" ?
+        ("anchor-name" -: "--leksah-active-pane-wide1")
+    ".terminal-cc-hl.flip-target" ? do
+        "border" -: "1px solid var(--leksah-pane-ring-active)"
+        "z-index" -: "11"
+    ".terminal-cc-hl.menu-target" ? do
+        "border" -: "1px solid var(--leksah-pane-ring-active)"
+        "z-index" -: "11"
+    -- ⌘W "Hide Window": the whole terminal (all its panes) is the target.
+    ".terminal-cc.menu-target" ?
+        ("outline" -: "1px solid var(--leksah-pane-ring-active)")
+    -- The native-split view leaves' markers (see TerminalCC's leaf
+    -- renderers): one per leaf, covering the whole leaf exactly; like the
+    -- tmux markers they draw nothing — `active` (from the model's
+    -- lwFocused) just carries the glow's anchor.
+    ".pane-chrome" ? do
+        "position" -: "absolute"
+        "inset" -: "0"
+        "box-sizing" -: "border-box"
+        "pointer-events" -: "none"
+        "z-index" -: "5"
+    ".tab-active .pane-chrome.active" ?
+        ("anchor-name" -: "--leksah-active-pane")
+    ".tab.area-tall.tab-active .pane-chrome.active" ?
+        ("anchor-name" -: "--leksah-active-pane-tall")
+    ".tab.area-wide1.tab-active .pane-chrome.active" ?
+        ("anchor-name" -: "--leksah-active-pane-wide1")
+    -- The active pane's soft glow (the element renders in Main.hs at the
+    -- .leksah root): CSS anchor positioning ties it to whichever chrome
+    -- element currently declares --leksah-active-pane (the rules above and
+    -- the .tab.tab-active outline in Tabs.hs) — the browser tracks the
+    -- anchor through layout changes, tab switches and resizes with NO JS.
+    -- The fallbacks park it offscreen at zero size when no anchor exists
+    -- (no active pane / the active tab hidden).  pointer-events:none and
+    -- z-index 25 as the old overlay had; the glow spills over the bars,
+    -- which is the point of it being one fixed top-level element.
+    -- CAVEAT: anchor() resolves from LAYOUT geometry — a transform (the
+    -- tall/wide1 auto-hide reveal translates pane content) does not move
+    -- the glow; the ring (in-tree) stays correct, the glow catches up when
+    -- the reveal settles.
+    -- The overlay ALSO carries the active pane's 1px max-contrast ring (the
+    -- white border lives here, never on pane elements).  It is 1px WIDER and
+    -- TALLER than its anchor (border-box): the left/top borders land on the
+    -- pane's own first pixel — the boundary-line position owned by the pane
+    -- to the right/below of a divider — and the right/bottom borders land on
+    -- the first pixel AFTER the pane, i.e. the neighbouring pane's boundary
+    -- line.  Where those pixels hold a grey divider/chrome line, z-index 25
+    -- paints the white over it (still one pixel-wide line); at the screen's
+    -- right/bottom edges the 1px overhang is clipped away (no line drawn at
+    -- screen edges).
+    ".leksah-pane-glow" ? do
         "position" -: "fixed"
-        "overflow" -: "hidden"
+        "top" -: "anchor(--leksah-active-pane top, -10000px)"
+        "left" -: "anchor(--leksah-active-pane left, -10000px)"
+        "width" -: "calc(anchor-size(--leksah-active-pane width, 0px) + 1px)"
+        "height" -: "calc(anchor-size(--leksah-active-pane height, 0px) + 1px)"
+        "box-sizing" -: "border-box"
+        "border" -: "1px solid var(--leksah-pane-ring-active)"
         "pointer-events" -: "none"
         "z-index" -: "25"
-    ".leksah-pane-hl" ? do
-        "position" -: "absolute"
-        "pointer-events" -: "none"
         "box-shadow" -: "0 0 64px var(--leksah-shadow-glow)"
+    -- The tall-area variant (second overlay div; anchors declared by the
+    -- side tabs' rules in Tabs.hs): side tabs sit ON the screen's left edge,
+    -- where no line must be drawn — same glow and ring, minus border-left.
+    ".leksah-pane-glow.glow-tall" ? do
+        "top" -: "anchor(--leksah-active-pane-tall top, -10000px)"
+        "left" -: "anchor(--leksah-active-pane-tall left, -10000px)"
+        "width" -: "calc(anchor-size(--leksah-active-pane-tall width, 0px) + 1px)"
+        "height" -: "calc(anchor-size(--leksah-active-pane-tall height, 0px) + 1px)"
+        "border-left" -: "none"
+    -- The wide1 (bottom bar) variant (third overlay div): the bar is a
+    -- transform-parked overlay in auto-hide mode, so its overlay carries the
+    -- bar's own parked/revealed transforms (Layout.hs wide1-auto rules).
+    ".leksah-pane-glow.glow-wide1" ? do
+        "top" -: "anchor(--leksah-active-pane-wide1 top, -10000px)"
+        "left" -: "anchor(--leksah-active-pane-wide1 left, -10000px)"
+        "width" -: "calc(anchor-size(--leksah-active-pane-wide1 width, 0px) + 1px)"
+        "height" -: "calc(anchor-size(--leksah-active-pane-wide1 height, 0px) + 1px)"
+    -- With the side pane hidden or parked (auto mode, unrevealed) the editor
+    -- column starts AT the screen's left edge — the boundary line is gated
+    -- away there (see the .tall-divider ::before gating in Layout.hs), and
+    -- the ring's left border must vanish with it: no line at screen edges.
+    ".leksah.tall-hide .leksah-pane-glow" ?
+        ("border-left" -: "none")
+    ".leksah.tall-auto:not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)) .leksah-pane-glow" ?
+        ("border-left" -: "none")
+    ".leksah.tall-auto.tall-suppress .leksah-pane-glow" ?
+        ("border-left" -: "none")
     -- A pane owned by a jsaddle-terminal app (see TerminalCC's tunnel): the
     -- iframe overlays the pane and the xterm underneath is hidden (it keeps
     -- consuming any non-frame output, so it is current again the moment the
@@ -246,6 +348,32 @@ terminalCss = do
         "height" -: "100%"
         "overflow" -: "hidden"
         "background" -: "var(--leksah-terminal-bg, rgb(16,16,16))"
+        "z-index" -: "5"
+    -- Native split panes (see IDE.Web.SplitLayout / TerminalCC): each leaf is
+    -- an absolutely positioned box whose body fills it (a whole tmux window's
+    -- panes, or a native view).
+    ".terminal-cc-leaf-body" ? do
+        "position" -: "absolute"
+        "inset" -: "0"
+        "overflow" -: "hidden"
+    -- Draggable gutters BETWEEN native leaves (armed by LeksahNativeDrag).
+    -- Like the CC tmux dividers above they carry a visible 1px mid-grey
+    -- .divider-line centred in the grab strip (geometry inline, per
+    -- orientation — see TerminalCC's divider render), brightened on hover on
+    -- top of the blue strip glow.
+    ".terminal-cc-native-divider .divider-line" ?
+        ("background" -: "var(--leksah-border-line)")
+    ".terminal-cc-native-divider:hover .divider-line" ?
+        ("background" -: "var(--leksah-border-line-hi)")
+    ".terminal-cc-native-divider:hover" ?
+        ("background" -: "var(--leksah-hover, rgba(255,255,255,0.12))")
+    -- A native VIEW pane (editor / git log in the split layout): covers the
+    -- leaf's (empty) terminal chrome, same technique as .terminal-cc-overlay.
+    ".terminal-cc-view-leaf" ? do
+        "position" -: "absolute"
+        "inset" -: "0"
+        "overflow" -: "hidden"
+        "background" -: "var(--leksah-bg, rgb(30,30,30))"
         "z-index" -: "5"
     -- The ⌘W terminal pane close menu (Kill / Hide / Move / Cancel).  It renders
     -- INSIDE its target pane; this overlay covers the pane and CSS-centres the menu
@@ -643,12 +771,13 @@ terminalWidget ide termId selectedE = do
           syncPtySize term fit pty
       _ -> return ()
 
-  -- Re-fit shortly after creation (and whenever the tab is re-shown), so the
-  -- terminal corrects to the pane's final width even if its first fit ran
-  -- before the layout settled.  leksah-wkwebview applies its full-size title bar
-  -- asynchronously at start-up, which relays out the panes after this terminal's
-  -- initial fit — without this the screen stays stuck at that early width.
-  refitE <- delay 0.3 $ leftmost [ () <$ termE, selectedE ]
+  -- Re-fit when the tab is re-shown: the reveal is a visibility flip the
+  -- ResizeObserver above cannot see, so a terminal built hidden re-measures
+  -- here (one frame later, once the visibility write has been applied).
+  -- Size changes after creation — including the wkwebview title bar's
+  -- asynchronous start-up relayout — all reach the observer, so the old
+  -- 0.3s post-creation timer is gone.
+  refitE <- delay 0 selectedE
   performEvent_ $ ffor (attach (current termFitD) refitE) $ \case
       (Just (term, fit), ()) -> liftJSM $ do
           _ <- fit ^. js0 ("fit" :: Text)
@@ -696,10 +825,10 @@ ignorePtyError :: IO () -> IO ()
 ignorePtyError act = act `catch` \(_ :: SomeException) -> return ()
 
 -- | Create a fresh leksah tmux session (detached) named @name@, applying the
--- leksah tmux config, and return its stable tmux session id (e.g. "$3").  The
--- terminal widget then attaches to that id.  'Nothing' if tmux is absent or the
--- command fails.
-createTerminalSession :: Text -> IO (Maybe Text)
+-- leksah tmux config, and return its stable tmux session id (e.g. "$3") plus
+-- its initial window's id (@\@N@ — what the caller's leksah window's pane
+-- references).  'Nothing' if tmux is absent or the command fails.
+createTerminalSession :: Text -> IO (Maybe (Text, Text))
 createTerminalSession name = (`catch` \(_ :: SomeException) -> return Nothing) $
     findExecutable "tmux" >>= \case
         Nothing -> return Nothing
@@ -708,8 +837,11 @@ createTerminalSession name = (`catch` \(_ :: SomeException) -> return Nothing) $
             conf <- writeTmuxConf shell
             (_rc, out, _) <- readProcessWithExitCode tmux
                 [ "-L", tmuxSocket, "-f", conf, "new-session", "-d"
-                , "-s", T.unpack name, "-P", "-F", "#{session_id}" ] ""
-            return . listToMaybe . filter (not . T.null) . map T.strip . T.lines $ T.pack out
+                , "-s", T.unpack name, "-P", "-F", "#{session_id}\t#{window_id}" ] ""
+            return $ listToMaybe
+                [ (sid, wid) | l <- T.lines (T.pack out)
+                , (sid : wid : _) <- [T.splitOn "\t" (T.strip l)]
+                , not (T.null sid), not (T.null wid) ]
 
 -- | Open a file in the external editor: run @argv@ (e.g. @["vim","+12","/f.hs"]@)
 -- as a new *window* in the shared @leksah-editor@ tmux session — created on the
@@ -763,31 +895,10 @@ openFileInEditor file winName argv = (`catch` \(_ :: SomeException) -> return No
 -- Unlike 'openFileInEditor' the dedup path does NOT select the found
 -- window\/pane: this runs in the background on every file open, and yanking
 -- the session's current window would fight an external attacher's navigation.
-ensureShellPane :: Text -> String -> FilePath -> Text -> IO (Maybe (Text, Text, Text))
-ensureShellPane key winName cwd preTyped = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            shell <- getLoginShell
-            conf  <- writeTmuxConf shell
-            let base = ["-L", tmuxSocket, "-f", conf]
-                run as = readProcessWithExitCode tmux (base ++ as) ""
-            findRunPane key >>= \case
-              Just found -> return (Just found)
-              Nothing -> do
-                (hasRc, _, _) <- run ["has-session", "-t", "=leksah-editor"]
-                let mk = if hasRc == ExitSuccess
-                           then ["new-window", "-d", "-t", "=leksah-editor"]
-                           else ["new-session", "-d", "-s", "leksah-editor"]
-                (_rc, out, _) <- run
-                    (mk ++ [ "-c", cwd, "-n", winName, "-P", "-F"
-                           , "#{session_id}\t#{window_id}\t#{pane_id}" ])
-                case T.splitOn "\t" (T.strip (T.pack out)) of
-                  (sid : wid : pid : _) | not (T.null pid) -> do
-                    _ <- run ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack key]
-                    _ <- run ["send-keys", "-t", T.unpack pid, "-l", T.unpack preTyped]
-                    return (Just (sid, wid, pid))
-                  _ -> return Nothing
+-- ('ensureShellPane' — the hidden backing-twin creator — lived here until
+-- the native split layouts replaced the ⌘D pane overlays; see
+-- 'cleanupStaleTwinPanes' for the one-time removal of twins an older build
+-- left behind.)
 
 -- | The editor command to pre-type in a backing pane: the external-editor
 -- preference when set, else @$EDITOR@, else @vi@.
@@ -806,6 +917,19 @@ shellQuoteArg t = "'" <> T.replace "'" "'\\''" t <> "'"
 -- opened (Enter on the pre-typed command), or anything else they started
 -- there, is left alone.  Used when the leksah tab that created the backing
 -- pane is closed by the user.
+-- | One-time cleanup for the native-split-layouts migration: an OLDER build
+-- created hidden backing-twin panes (run keys with the @#edit@ / @#gitlog#@ /
+-- @shortcuts#view@ shapes — 'IDE.Web.ReplTmux.isBackingRunKey'); kill the
+-- IDLE ones — still at the login shell with their command pre-typed, unrun.
+-- A twin whose editor the user actually launched is a real pane now and is
+-- left alone (it shows up as an ordinary window).  An emptied leksah-editor
+-- session dies with its last window.  Delete this (and 'isBackingRunKey') a
+-- release after the migration has had its chance to run everywhere.
+cleanupStaleTwinPanes :: IO ()
+cleanupStaleTwinPanes = (`catch` \(_ :: SomeException) -> return ()) $ do
+    panes <- liveRunPanes
+    mapM_ killRunPaneIfIdle [ key | (key, _, _, _) <- panes, isBackingRunKey key ]
+
 killRunPaneIfIdle :: Text -> IO ()
 killRunPaneIfIdle key = (`catch` \(_ :: SomeException) -> return ()) $
     findRunPane key >>= \case
@@ -909,12 +1033,30 @@ data TmuxPane = TmuxPane
                        --   keys its xterms/highlights by; lets a flip target be
                        --   located in the editor-area DOM (@.terminal-cc-pane@).
   , tpLabel  :: Text
+  , tpPid    :: Int    -- ^ tmux @#{pane_pid}@ — the pid of the pane's own
+                       --   process (its shell).  Used to identify the exact
+                       --   Claude Code session running in a pane; @0@ where the
+                       --   pid isn't known (the browser demo).
   , tpActive :: Bool
   , tpRunKey :: Text   -- ^ this pane's own @\@leksah_run@ tag (@""@ = none).
                        --   Per-PANE (not window) so a hidden editor/git-log
                        --   backing twin can be told apart from a user's own
                        --   pane sharing the same window — see the backing-twin
                        --   filter in 'IDE.Web.Widget.TerminalCC'.
+  , tpClaudeTitle :: Maybe Text
+                     -- ^ for a Claude Code pane, the title of the session running
+                     --   in it — its @/rename@ name, else the transcript's first
+                     --   prompt ('Nothing' for any other pane, and for a session
+                     --   with neither).  PER PANE, so a window holding two Claude
+                     --   panes, or one beside a shell, can label itself by
+                     --   whichever pane is active (see 'enrichClaudeTitles').
+  , tpClaudeStatus :: Maybe Text
+                     -- ^ the semantic state of the Claude session running in this
+                     --   pane (@busy@ / @shell@ / @waiting@ / @idle@ — see
+                     --   'ClaudeLive'), resolved by pid like 'tpClaudeTitle'.
+                     --   @waiting@ means blocked on an approval prompt — surfaced
+                     --   as a persistent needs-input alert and preferred by the
+                     --   jump-to-alert command.
   } deriving (Eq, Show)
 
 -- | A tmux window within a session: its index, a display label (its index and
@@ -923,6 +1065,10 @@ data TmuxPane = TmuxPane
 -- teammate rang the bell, is producing output, or has gone quiet), and its panes.
 data TmuxWindow = TmuxWindow
   { twIndex    :: Int
+  , twId       :: Text        -- ^ tmux @#{window_id}@ (e.g. @\@7@) — stable for
+                              --   the tmux server's lifetime, unlike the index,
+                              --   so it's what leksah windows' tmux panes
+                              --   ('PaneTmux') reference
   , twLabel    :: Text
   , twActive   :: Bool
   , twBell     :: Bool
@@ -930,8 +1076,6 @@ data TmuxWindow = TmuxWindow
   , twSilence  :: Bool
   , twRunKey   :: Text        -- ^ the @\@leksah_run@ marker (@""@ = none), e.g.
                               --   @\<dir\>#claude@ for a Claude Code window
-  , twClaudeTitle :: Maybe Text  -- ^ for a Claude window, its current session's
-                                 --   title (transcript first prompt); else 'Nothing'
   , twPanes    :: [TmuxPane]
   } deriving (Eq, Show)
 
@@ -948,8 +1092,8 @@ listTerminalTree :: IO (Map Text (Text, [TmuxWindow]))
 listTerminalTree = do
     ts <- demoTerminals
     return $ M.fromListWith (\_ old -> old)
-        [ (sid, (name, [ TmuxWindow 0 name True False False False "" Nothing
-                             [ TmuxPane 0 ("%" <> sid) name True "" ] ]))
+        [ (sid, (name, [ TmuxWindow 0 ("@" <> sid) name True False False False ""
+                             [ TmuxPane 0 ("%" <> sid) name 0 True "" Nothing Nothing ] ]))
         | (sid, name) <- ts ]
 #else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
@@ -960,46 +1104,92 @@ listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
                 ["-L", tmuxSocket, "list-panes", "-a", "-F", paneTreeFormat] ""
             enrichClaudeTitles (parsePaneTree out)
 
--- | Fill in 'twClaudeTitle' for every Claude Code window in the tree: read its
--- directory's most-recent session title (transcript first prompt) so the tab and
--- flipper can show what the conversation is about instead of the bare name
--- "claude".  Cheap in practice — Claude windows are few and 'claudeSessionsFor'
--- reads only each transcript's head.  Non-Claude windows are left untouched.
+-- | Fill in 'tpClaudeTitle' for every Claude Code pane in the tree: the title of
+-- the session running in it — the name @/rename@ gave it, else the transcript's
+-- first prompt — so a tab or flipper entry can show what the conversation is
+-- about instead of the bare window name "claude".  Other panes are left
+-- untouched, and with no Claude pane at all this costs nothing.
+--
+-- Resolution is PER PANE and by pid ('claudeLiveOwners'), which is exact even
+-- with two sessions open in one directory (or in one window).  Fallbacks, in
+-- order, for a pane whose process we can't see (its claude exited, @ps@
+-- unavailable, a remote tmux with no pane pid): the session id in the pane's own
+-- run key, then the directory's most recently used transcript.
+--
+-- Two IO reads for the whole tree (the live sessions, and one transcript scan per
+-- distinct directory); the rest is pure.
 enrichClaudeTitles
   :: Map Text (Text, [TmuxWindow]) -> IO (Map Text (Text, [TmuxWindow]))
-enrichClaudeTitles = traverse (\(nm, ws) -> (,) nm <$> traverse fillTitle ws)
+enrichClaudeTitles tree
+  | null claudeDirs = return tree
+  | otherwise = do
+      owners <- claudeLiveOwners
+      byDir  <- M.fromList <$> mapM (\d -> (,) d <$> claudeSessionsFor d) claudeDirs
+      return $ M.map (\(nm, ws) ->
+          (nm, [ w { twPanes = map (fillPane owners byDir) (twPanes w) } | w <- ws ])) tree
   where
-    fillTitle w = case claudeDirOf w of
-      Nothing  -> return w
-      Just dir -> do
-        ss <- claudeSessionsFor dir
-        return w { twClaudeTitle = case csLabel <$> listToMaybe ss of
-                     -- A session with no user prompt yet has no real title.
-                     Just t | t /= "(untitled session)" -> Just t
-                     _                                   -> Nothing }
+    claudeDirs = nub (mapMaybe claudePaneDir
+                       [ p | (_, (_, ws)) <- M.toList tree, w <- ws, p <- twPanes w ])
+    fillPane owners byDir p = case claudePaneDir p of
+      Nothing  -> p
+      Just dir ->
+        let ss    = M.findWithDefault [] dir byDir
+            title = case M.lookup (tpPid p) owners of
+              -- Its own session: prefer the transcript row (same name source,
+              -- plus the first-prompt fallback), else the bare live name.
+              Just l  -> case find ((== clSession l) . csId) ss of
+                           Just s  -> Just (csTitle s)
+                           Nothing -> clName l
+              Nothing -> case claudePaneSession p of
+                           Just sid -> csTitle <$> find ((== sid) . csId) ss
+                           Nothing  -> csTitle <$> listToMaybe ss
+        in p { tpClaudeTitle = case title of
+                 -- An unnamed session with no user prompt yet has no title.
+                 Just t | t /= "(untitled session)" -> Just t
+                 _                                   -> Nothing
+             , tpClaudeStatus = clStatus =<< M.lookup (tpPid p) owners }
+#endif
 
--- | The working directory of a Claude Code window from its @\@leksah_run@ marker
+-- | Is this pane running a Claude Code session — i.e. does its @\@leksah_run@
+-- marker have the Claude shape ('claudePaneDir')?  True even before a title is
+-- known, so the tab row can show the robot icon straight away.
+isClaudePane :: TmuxPane -> Bool
+isClaudePane = isJust . claudePaneDir
+
+-- | The working directory of a Claude Code pane from its @\@leksah_run@ marker
 -- (@\<dir\>#claude@, @…#claude#\<id\>@, @…#claude#ask#\<file\>@, …), or 'Nothing'
--- when the window isn't a Claude one.
-claudeDirOf :: TmuxWindow -> Maybe FilePath
-claudeDirOf w = case T.breakOn "#claude" (twRunKey w) of
+-- when the pane isn't a Claude one.
+claudePaneDir :: TmuxPane -> Maybe FilePath
+claudePaneDir p = case T.breakOn "#claude" (tpRunKey p) of
   (d, rest)
     | not (T.null d)
     , rest == "#claude" || "#claude#" `T.isPrefixOf` rest -> Just (T.unpack d)
   _ -> Nothing
-#endif
+
+-- | The session id a Claude pane's run key names, for the plain resume shape
+-- @\<dir\>#claude#\<id\>@ only.  A @#fork#@ key names the session forked FROM (the
+-- new one has a fresh id), and @#ask#@ carries a filename — neither identifies
+-- the pane's own session, so both give 'Nothing'.
+claudePaneSession :: TmuxPane -> Maybe Text
+claudePaneSession p = do
+  sid <- T.stripPrefix "#claude#" (snd (T.breakOn "#claude#" (tpRunKey p)))
+  if T.null sid || "fork#" `T.isPrefixOf` sid || "ask#" `T.isPrefixOf` sid
+    then Nothing else Just sid
 
 -- | Tab-separated so names / commands / titles (which won't contain tabs) stay
 -- intact: session id/name, window index/name/active, pane
 -- index/active/id/command/title.  pane_title is the per-pane title (what ⌃B w
 -- shows) — used as the pane's display name so panes don't all share the
 -- terminal's (active-pane) OSC title; command is the fallback when it's empty.
+-- pane_title comes LAST because it's the one field that could itself contain a
+-- tab (the parser re-joins any trailing fields into it).
 paneTreeFormat :: String
 paneTreeFormat = intercalate "\t"
-    [ "#{session_id}", "#{session_name}", "#{window_index}", "#{window_name}"
+    [ "#{session_id}", "#{session_name}", "#{window_index}", "#{window_id}"
+    , "#{window_name}"
     , "#{window_active}", "#{window_bell_flag}", "#{window_activity_flag}"
     , "#{window_silence_flag}", "#{@leksah_run}", "#{pane_index}", "#{pane_active}"
-    , "#{pane_id}", "#{pane_current_command}", "#{pane_title}" ]
+    , "#{pane_id}", "#{pane_pid}", "#{pane_current_command}", "#{pane_title}" ]
 
 -- | Run tmux on a remote host over ssh (no PTY, BatchMode — key auth only).
 -- 'Nothing' when ssh or the remote tmux fails (host down, no server, …).
@@ -1162,34 +1352,36 @@ parsePaneTree :: String -> Map Text (Text, [TmuxWindow])
 parsePaneTree out = M.map toSession grouped
   where
     rows =
-      [ (sid, sname, wi, wn, wa == "1", wb == "1", wac == "1", ws == "1", runkey, pidx, pa == "1", pid, paneName)
+      [ (sid, sname, wi, wid, wn, wa == "1", wb == "1", wac == "1", ws == "1", runkey, pidx, pa == "1", pid, ppid, paneName)
       | line <- lines out
-      , (sid:sname:wiT:wn:wa:wb:wac:ws:runkey:piT:pa:pid:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
+      , (sid:sname:wiT:wid:wn:wa:wb:wac:ws:runkey:piT:pa:pid:ppidT:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
       , not (T.null sid)
       -- The control-mode monitor's hidden session is not a real terminal.
       , sname /= monitorSessionName
       , Just wi   <- [readMaybe (T.unpack wiT)]
       , Just pidx <- [readMaybe (T.unpack piT)]
       , let title    = T.intercalate "\t" rest
-            paneName = if T.null title then cmd else title ]
-    -- session id -> (name, window index -> (name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id, @leksah_run)))
-    grouped :: Map Text (Text, Map Int (Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text, Text)))
+            paneName = if T.null title then cmd else title
+            -- An old remote tmux with no #{pane_pid} just yields 0 (unknown).
+            ppid     = maybe 0 id (readMaybe (T.unpack ppidT)) ]
+    -- session id -> (name, window index -> (window id, name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id, pane pid, @leksah_run)))
+    grouped :: Map Text (Text, Map Int (Text, Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text, Int, Text)))
     grouped = M.fromListWith mergeSess
-      [ (sid, (sname, M.singleton wi (wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid, runkey))))
-      | (sid, sname, wi, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, paneName) <- rows ]
+      [ (sid, (sname, M.singleton wi (wid, wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid, ppid, runkey))))
+      | (sid, sname, wi, wid, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, ppid, paneName) <- rows ]
     mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
     -- The run key is a *pane* option (rows differ within a window — e.g. a
     -- claude pane dragged into a window of shell panes), so a window's
     -- 'twRunKey' is any non-empty pane key; legacy window-tagged windows give
     -- every row the same inherited key, so this reduces to the old behaviour.
-    mergeWin (wn, wa, wb, wac, ws, rk1, ps1) (_, _, _, _, _, rk2, ps2) =
-      (wn, wa, wb, wac, ws, if T.null rk1 then rk2 else rk1, ps1 <> ps2)
+    mergeWin (wid, wn, wa, wb, wac, ws, rk1, ps1) (_, _, _, _, _, _, rk2, ps2) =
+      (wid, wn, wa, wb, wac, ws, if T.null rk1 then rk2 else rk1, ps1 <> ps2)
     toSession (sname, wm) =
       ( sname
-      , [ TmuxWindow wi (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk Nothing
-            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) pa prk
-            | (pidx, (paneName, pa, pid, prk)) <- M.toAscList ps ]
-        | (wi, (wn, wa, wb, wac, ws, rk, ps)) <- M.toAscList wm ] )
+      , [ TmuxWindow wi wid (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk
+            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) ppid pa prk Nothing Nothing
+            | (pidx, (paneName, pa, pid, ppid, prk)) <- M.toAscList ps ]
+        | (wi, (wid, wn, wa, wb, wac, ws, rk, ps)) <- M.toAscList wm ] )
 
 -- | Make window @w@ of session @s@ (a tmux session id) the current window.
 selectTmuxWindow :: Text -> Int -> IO ()

@@ -38,6 +38,7 @@
 -- a plain notice instead.
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
+  , sessionlessLwWidget
   ) where
 
 import qualified Data.Map.Strict as M
@@ -47,26 +48,40 @@ import Reflex.Dom.Core (MonadWidget, el, text)
 import IDE.Core.State (IDE, TabKey)
 import IDE.Web.Events (TerminalEvents)
 
-terminalCCWidget
+sessionlessLwWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE
   -> Text
   -> Event t ()
-  -> (TabKey -> Event t () -> m ())
-  -> Dynamic t (M.Map Text Text)
+  -> (TabKey -> Event t () -> Dynamic t Bool -> m ())
+  -> m ()
+sessionlessLwWidget _ _ _ _ =
+    el "div" $ text "Not available in the browser demo."
+
+terminalCCWidget
+  :: forall t m . MonadWidget t m
+  => Dynamic t IDE
+  -> Text
+  -> Text
+  -> Event t ()
+  -> (TabKey -> Event t () -> Dynamic t Bool -> m ())
+  -> Dynamic t (Maybe (Text, Bool))
+  -> (Text -> Bool -> m ())
   -> m (Event t TerminalEvents)
-terminalCCWidget _ _ _ _ _ = do
+terminalCCWidget _ _ _ _ _ _ _ = do
     el "div" $ text "Terminals are not available in the browser demo."
     return never
 
 #else
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
+  , sessionlessLwWidget
   ) where
 
 import Control.Concurrent (forkIO, killThread)
+import Control.Concurrent.MVar (newMVar, withMVar)
 import Control.Exception (try, SomeException)
-import Control.Lens ((^.))
+import Control.Lens ((^.), over)
 import Control.Monad (forM, forM_, forever, unless, when, void)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
@@ -77,32 +92,41 @@ import Data.IORef
         writeIORef)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import Data.Time (UTCTime, getCurrentTime, diffUTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Numeric (showHex)
 import System.Process (createProcess, proc)
 import Text.Read (readMaybe)
 
 import Reflex
-       (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe, foldDyn,
-        delay, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost, never,
-        newTriggerEvent, performEvent, performEvent_, sample, switchHold, tag,
-        updated)
+       (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe,
+        foldDyn, delay, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost,
+        never, newTriggerEvent, performEvent, performEvent_, sample, switchHold,
+        tag, updated)
 import Reflex.Dom.Core
-       (MonadWidget, blank, divClass, domEvent, dyn, dyn_, elAttr, elAttr',
-        elDynAttr, elDynAttr', listWithKey, text, widgetHold, _element_raw,
-        EventName(Click, Keydown), (=:))
+       (MonadWidget, blank, divClass, domEvent, dyn, dyn_, elAttr,
+        elAttr', elDynAttr, elDynAttr', listWithKey, text,
+        widgetHold, _element_raw, EventName(Click, Keydown), (=:))
 import Language.Javascript.JSaddle
        (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, js4, jsg, jss,
         liftJSM, new, obj, valIsNull, valIsUndefined, valToBool, valToNumber,
         valToText)
 
 import IDE.Core.CTypes (SrcSpan(..))
-import IDE.Core.State (IDE, TabKey, focusLog, paneOverlays)
+import IDE.Core.State
+       (IDE, TabKey, focusLog, leksahWindows,
+        LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId,
+        modifyIDE_, readIDE, reflectIDE)
 import IDE.Web.Events (TerminalEvents(..))
-import IDE.Web.ReplTmux (tmuxSocket, isBackingRunKey)
+import IDE.Web.IDERefStore (getGlobalIDERef)
+import IDE.Web.ReplTmux (tmuxSocket)
+import IDE.Web.SplitLayout
+       (leafRects, LeafRect(..), treeDividers, NativeDivider(..), resizeNode,
+        singlePaneWindow, lwWindowIds, paneForWindow)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
        (registerTerminalCC, unregisterTerminalCC, registerCCStop,
@@ -119,29 +143,33 @@ import IDE.Web.Widget.Metadata (lookupIdentLocations)
 import qualified IDE.LSP as LSP
 import qualified Language.Javascript.JSaddle.Terminal.Protocol as P
 
--- | Session-level widget: one control client; the current window's panes at
--- their exact tmux layout rectangles.  Same shape as 'terminalWidget' so
--- Main.hs can swap them.
+-- | Leksah-window widget: renders ONE leksah window (a wide0 tab) — its
+-- native split tree of panes, each pane a whole tmux window (its tmux panes
+-- at their exact layout rectangles) or a native view.  One control client on
+-- the window's backing tmux session (a session backing several leksah
+-- windows gets one client per tab).
 terminalCCWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE
-  -> Text                -- ^ tmux session id (\"$3\") or \"ssh://host[#target]\"
+  -> Text                -- ^ leksah window id (\"lw-3\") — the tab identity
+                         --   and the key into 'leksahWindows'
+  -> Text                -- ^ backing tmux session id (\"$3\") or
+                         --   \"ssh://host[#target]\"
   -> Event t ()          -- ^ fires when this tab is selected
-  -> (TabKey -> Event t () -> m ())
-                         -- ^ builds the leksah view drawn OVER a pane listed in
-                         --   '_paneOverlays' (an editor / git log converted to a
-                         --   pane); the event is \"this pane was selected\"
-  -> Dynamic t (M.Map Text Text)
-                         -- ^ pane id (@%N@) -> its @\@leksah_run@ tag, so a
-                         --   hidden backing twin ('isBackingRunKey') that isn't
-                         --   currently an overlay can be suppressed
+  -> (TabKey -> Event t () -> Dynamic t Bool -> m ())
+                         -- ^ builds a native VIEW PANE ('PaneView' — an editor /
+                         --   git log living directly in the split layout, no
+                         --   tmux pane underneath); the event is \"take keyboard
+                         --   focus now\" (fired by the focus reconciler for the
+                         --   focused leaf only), the Dynamic is \"this leaf is
+                         --   the window's focused leaf\" (gates grab-on-create)
   -> Dynamic t (Maybe (Text, Bool))
                          -- ^ ⌘W close-menu target: (pane %id, multi-pane?), so
                          --   the matching pane renders the menu inside itself
   -> (Text -> Bool -> m ())
                          -- ^ render the close menu for (pane %id, multi-pane?)
   -> m (Event t TerminalEvents)
-terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD renderCloseMenu = do
+terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMenu = do
     pb <- getPostBuild
     (evE, fireEv) <- newTriggerEvent
     (ccStartedE, fireCCStarted) <- newTriggerEvent
@@ -248,6 +276,17 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
     -- Id of this widget's control-client teardown registration (see
     -- registerCCStop), read back by the EvExit cleanup below.
     ccStopIdRef <- liftIO $ newIORef (0 :: Integer)
+    -- Registration ids of this widget's TerminalInput registry entries (CC
+    -- runner / split selector / focus callbacks): id-guarded so this widget's
+    -- EvExit can never unregister a REPLACEMENT widget's entries for the same
+    -- session (several leksah windows can share one session).
+    ccRegIdRef     <- liftIO $ newIORef (0 :: Integer)
+    splitsRegIdRef <- liftIO $ newIORef (0 :: Integer)
+    focusRegIdsRef <- liftIO $ newIORef ([] :: [(Text, Integer)])
+    -- \"Take keyboard focus\" pulses for the native VIEW leaves, fired by the
+    -- focus reconciler below for the focused leaf only (each leaf's widget
+    -- filters by its own id).
+    (viewFocusE, fireViewFocus) <- newTriggerEvent
     let paneCbs = PaneCallbacks
           { pcLink   = triggerLink
           , pcLookup = triggerLookup
@@ -299,11 +338,13 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                  (routeTunnelEv cc sessionId tunnelsRef scansRef closedRef
                                 fireEv fireTunnelEv fireBatchEv)
                  . coalesceOutputs
-        -- Reap any control client left attached to this session by the window
+        -- Reap any control client left for this LEKSAH WINDOW by the OS window
         -- its tab just moved away from (reflex-dom gives this widget no
         -- destructor; see registerCCStop): stop drops the drain thread first so
-        -- the detach can't push a spurious %exit into a dead network.
-        myStopId <- registerCCStop sessionId (killThread drainTid >> stopCC cc)
+        -- the detach can't push a spurious %exit into a dead network.  Keyed by
+        -- leksah window id — several leksah windows on one session each keep
+        -- their own client by design.
+        myStopId <- registerCCStop lwId (killThread drainTid >> stopCC cc)
         writeIORef ccStopIdRef myStopId
         -- NB initialSync runs from the session widget below, NOT here: its
         -- layout events would race the widgetHold swap — the foldDyn that
@@ -317,24 +358,27 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
     tunnelGenD <- foldDyn
         (\(p, mg) m -> maybe (M.delete p m) (\g -> M.insert p g m) mg)
         M.empty tunnelEvE
+    -- Live xterm instances of this widget, keyed by pane id — disposed and
+    -- re-created when the layout re-renders (dyn_ gives no destructors, so
+    -- the previous generation is torn down explicitly).  Also the OWNERSHIP
+    -- map for output routing: with several leksah windows on one session,
+    -- only the widget rendering a pane may act on its %output (see below).
+    termsRef <- liftIO $ newIORef (M.empty :: M.Map PaneId JSVal)
+
     -- Panes carrying a leksah view overlay (an editor / git log converted to
     -- a pane): shared IDE state, so every OS window renders the same overlay.
     -- The IORef mirror is for the focus helpers below (plain JSM, no reflex).
-    overlaysD <- holdUniqDyn ((^. paneOverlays) <$> ide)
-    overlaysRef <- liftIO . newIORef =<< sample (current overlaysD)
-    performEvent_ $ ffor (updated overlaysD) $ liftIO . writeIORef overlaysRef
-    performEvent_ $ ffor batchEvE $ \(pane, json) -> liftJSM . void $
-        jsg ("LeksahJsaddlePane" :: Text) ^. js2 ("runBatch" :: Text)
-            (tunnelUrlKey sessionId pane) json
+    -- Ownership-gated like %output: the tunnel key is global, so a sibling
+    -- leksah window's client would otherwise run every batch a second time.
+    performEvent_ $ ffor batchEvE $ \(pane, json) -> do
+        terms <- liftIO $ readIORef termsRef
+        when (M.member pane terms) . liftJSM . void $
+            jsg ("LeksahJsaddlePane" :: Text) ^. js2 ("runBatch" :: Text)
+                (tunnelUrlKey sessionId pane) json
     -- LSP hover reply -> fill the pane's floating tooltip (this window's context).
     performEvent_ $ ffor hoverRespE $ \(rid, mt) -> liftJSM . void $
         jsg ("LeksahTermLinks" :: Text) ^. js2 ("resolveHover" :: Text)
             (rid :: Int) (fromMaybe "" mt)
-
-    -- Live xterm instances of this widget, keyed by pane id — disposed and
-    -- re-created when the layout re-renders (dyn_ gives no destructors, so
-    -- the previous generation is torn down explicitly).
-    termsRef <- liftIO $ newIORef (M.empty :: M.Map PaneId JSVal)
 
     -- Panes being (re)synced by a capture-based replay: output routing per
     -- pane is Normal (absent), 'PauseDropping' (stale pre-capture output is
@@ -345,7 +389,7 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
     -- we fall >1s behind on (%pause) rather than queueing unbounded output,
     -- and we jump ahead to the current screen instead of replaying the
     -- backlog (what iTerm2 does).
-    pausedRef <- liftIO $ newIORef (M.empty :: M.Map PaneId PauseState)
+    pausedRef <- liftIO $ newIORef (M.empty :: M.Map PaneId (UTCTime, PauseState))
 
     -- The session widget proper appears once the client is up.
     _ <- widgetHold (divClass "terminal-cc-empty" $ text "(connecting…)") $
@@ -355,14 +399,17 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
             -- Register this tab's control channel for the Terminal menu's
             -- pane commands (split/select/resize/…): they run verbatim —
             -- the control client's current window/pane IS the displayed one.
-            liftIO . registerTerminalCC sessionId $ ccSend cc
+            liftIO $ registerTerminalCC sessionId (ccSend cc)
+                       >>= writeIORef ccRegIdRef
             -- A tunnel closed (the app sent BYE or died): the xterm — which
             -- kept consuming non-frame output all along — comes back into
             -- view; refresh it from the pane's current screen.
             performEvent_ $ ffor (fmapMaybe
                     (\(p, mg) -> case mg of Nothing -> Just p; _ -> Nothing)
-                    tunnelEvE) $ \p ->
-                liftIO $ requestReplay cc pausedRef p
+                    tunnelEvE) $ \p -> liftIO $ do
+                terms <- readIORef termsRef
+                when (M.member p terms) $
+                    requestReplay cc pausedRef ReplayScreenOnly p
             -- Initial sync now that this widget (and its foldDyn below) exists
             -- and is subscribed — see the race note above.
             pbSync <- getPostBuild
@@ -431,12 +478,41 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
             -- the per-window size clamps the window to our view regardless.
             lastSizeRef <- liftIO $ newIORef (0 :: Int, 0 :: Int)
             containerRef <- liftIO $ newIORef Nothing
-            curWinRef <- liftIO $ newIORef (Nothing :: Maybe WindowId)
-            let applySize :: Int -> Int -> IO ()
-                applySize cols rows = do
-                    ccResize cc cols rows
-                    mbW <- liftIO $ readIORef curWinRef
-                    forM_ mbW $ \wid -> ccResizeWindow cc wid cols rows
+            -- Per-LEAF window clamps (refresh-client -C @win:WxH): each stack
+            -- leaf clamps exactly its ACTIVE window to the leaf's own grid, so
+            -- different leaves hold different windows at different sizes at
+            -- once.  All clamp traffic is serialised through one lock so
+            -- clear-old/set-new can't interleave; the registry lets a dying
+            -- leaf's clamp be cleared (reflex gives leaves no destructors).
+            leafClampsRef <- liftIO $ newIORef (M.empty :: M.Map LeafId WindowId)
+            clampLock <- liftIO $ newMVar ()
+            -- Windows this client has already pinned to manual sizing: the
+            -- set-option round trip runs once per window, not once per
+            -- resize step (a divider drag is a storm of clamp updates).
+            manualWinsRef <- liftIO $ newIORef (S.empty :: S.Set WindowId)
+            let clampLeaf :: LeafId -> Maybe (WindowId, Int, Int) -> IO ()
+                clampLeaf lid mb = withMVar clampLock $ \_ -> do
+                    old <- atomicModifyIORef' leafClampsRef $ \m ->
+                        ( maybe (M.delete lid m)
+                                (\(w', _, _) -> M.insert lid w' m) mb
+                        , M.lookup lid m )
+                    let clearOld ow = do
+                            ccClearWindowSize cc ow
+                            atomicModifyIORef' manualWinsRef $ \s ->
+                                (S.delete ow s, ())
+                    case (old, mb) of
+                      (Just ow, Just (nw, _, _)) | ow /= nw -> clearOld ow
+                      (Just ow, Nothing)                    -> clearOld ow
+                      _                                     -> return ()
+                    forM_ mb $ \(w', c, r) -> do
+                        fresh <- atomicModifyIORef' manualWinsRef $ \s ->
+                            (S.insert w' s, not (S.member w' s))
+                        when fresh $ ccSetWindowManual cc w'
+                        ccResizeWindow cc w' c r
+                -- The plain client size stays container-sized at the global
+                -- font: a ceiling for windows no leaf currently clamps.
+                applySize :: Int -> Int -> IO ()
+                applySize cols rows = ccResize cc cols rows
                 refit :: JSM ()
                 refit = do
                     mbC <- liftIO $ readIORef containerRef
@@ -468,16 +544,12 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                             rows <- valToNumber =<< term ^. js ("rows" :: Text)
                             void $ term ^. js2 ("refresh" :: Text)
                                 (0 :: Int) (max 0 (round rows - 1) :: Int))
-            -- Keep the per-window clamp on whichever window is displayed:
-            -- move it when the session's current window changes.
-            curWinD <- holdUniqDyn $ csCurrent <$> stD
-            performEvent_ $ ffor (updated curWinD) $ \mbW -> liftIO $ do
-                mbOld <- atomicModifyIORef' curWinRef $ \o -> (mbW, o)
-                void . forkIO $ do
-                    when (mbOld /= mbW) $
-                        forM_ mbOld $ \ow -> ccClearWindowSize cc ow
-                    (c, r) <- liftIO $ readIORef lastSizeRef
-                    when (c > 0) $ forM_ mbW $ \nw -> ccResizeWindow cc nw c r
+            -- (The old displayed-window clamp mover lived here; clamps are
+            -- now per leaf — see 'clampLeaf' above.  The old follow-tmux
+            -- handler — %session-window-changed activating a stack member —
+            -- went with the stacks: every owned tmux window is visible in
+            -- its own pane now, so tmux's "current window" no longer drives
+            -- what this tab displays.)
             -- The window's active tmux pane, highlighted by turning the
             -- divider lines on its perimeter green.  Tracked via
             -- %window-pane-changed (also triggered by our own focus →
@@ -491,14 +563,19 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
             -- it.  While set, the deferred window/pane update focuses regardless;
             -- see 'registerTerminalFocus' below.
             pendingFocusRef <- liftIO $ newIORef False
+            -- A pane the focus reconciler wants the keyboard in whose xterm
+            -- does not exist yet (a fresh ⌘D split): consumed by 'paneWidget'
+            -- the moment that xterm mounts — the deterministic replacement
+            -- for polling until the pane becomes focusable.
+            pendingMountRef <- liftIO $ newIORef (Nothing :: Maybe PaneId)
+            -- The leksah window this tab renders (shared model state); also
+            -- gates output ownership and the focus paths below.
+            lwOwnD <- holdUniqDyn $ M.lookup lwId . (^. leksahWindows) <$> ide
             let applyActive :: JSM ()
                 applyActive = do
                     mbC <- liftIO $ readIORef containerRef
                     mbP <- liftIO $ readIORef activePaneRef
                     forM_ mbC $ \c -> applyPaneHighlight c mbP
-                    -- Reposition the single top-level shadow overlay over the
-                    -- (now-updated) visible active-pane marker.
-                    void $ jsg ("window" :: Text) ^. js0 ("leksahUpdatePaneHl" :: Text)
                 containerHasFocus :: JSM Bool
                 containerHasFocus = do
                     mbC <- liftIO $ readIORef containerRef
@@ -523,8 +600,7 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                       Nothing -> containerHasFocus
                       Just p  -> do
                         tunnels <- liftIO $ readIORef tunnelsRef
-                        overlays <- liftIO $ readIORef overlaysRef
-                        if M.member p tunnels || M.member p overlays
+                        if M.member p tunnels
                           then containerHasFocus
                           else do
                             terms <- liftIO $ readIORef termsRef
@@ -551,23 +627,6 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                         -- holds focus — see leksahJsaddlePaneJs).
                         void $ jsg ("LeksahJsaddlePane" :: Text)
                             ^. js1 ("focus" :: Text) (tunnelUrlKey sessionId p)
-                        -- …and a leksah view overlay ('_paneOverlays'): focus
-                        -- the editor's input surface inside the pane div
-                        -- (CM6 .cm-content / Monaco textarea.inputarea; any
-                        -- focusable fallback).
-                        overlays <- liftIO $ readIORef overlaysRef
-                        when (M.member p overlays) $ do
-                            mbC <- liftIO $ readIORef containerRef
-                            forM_ mbC $ \c -> do
-                                t <- c ^. js1 ("querySelector" :: Text)
-                                        (".terminal-cc-pane[data-pane=\"" <> p
-                                         <> "\"] .terminal-cc-overlay .cm-content, "
-                                         <> ".terminal-cc-pane[data-pane=\"" <> p
-                                         <> "\"] .terminal-cc-overlay textarea.inputarea, "
-                                         <> ".terminal-cc-pane[data-pane=\"" <> p
-                                         <> "\"] .terminal-cc-overlay [tabindex]")
-                                nul <- valIsNull t
-                                unless nul $ void $ t ^. js0 ("focus" :: Text)
                     -- Safety net: if the keyboard still isn't in this terminal (no
                     -- active pane recorded yet, or its xterm wasn't focusable),
                     -- focus the visible container's textarea directly — so
@@ -585,10 +644,8 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                     -- focused it above; focusActivePaneSoon retries on later frames
                     -- if it wasn't laid out yet, so we must NOT fall back here.
                     tunnels <- liftIO $ readIORef tunnelsRef
-                    overlays' <- liftIO $ readIORef overlaysRef
                     let haveActiveTarget =
-                          maybe False (\p -> M.member p terms || M.member p tunnels
-                                          || M.member p overlays') mbP
+                          maybe False (\p -> M.member p terms || M.member p tunnels) mbP
                     inFocus <- containerHasFocus
                     unless (inFocus || haveActiveTarget) $ do
                         mbC <- liftIO $ readIORef containerRef
@@ -671,9 +728,14 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                     focusLog $ "[" <> T.unpack sessionId <> "] winFocusE pane=" <> T.unpack p
                         <> " had=" <> show had <> " activeEl=" <> T.unpack tagName
                         <> " pend=" <> show pend <> " desired=" <> show desired
-                        <> " -> " <> (if want then "focusActivePane" else "no-focus")
+                        <> " -> " <> (if want then "focusActivePaneSoon" else "no-focus")
                     when want $ do
-                        focusActivePane
+                        -- Soon + the mount hook, not the one-shot: the pane's
+                        -- xterm may not be built/visible yet (a remote window
+                        -- arriving, a window switch mid-mount) — the one-shot
+                        -- silently dropped the keyboard on <body> then.
+                        liftIO $ writeIORef pendingMountRef (Just p)
+                        focusActivePaneSoon
                         liftIO $ writeIORef pendingFocusRef False
             -- Explicit focus requests (a workspace repl button launches a repl in
             -- this session): flag it so the imminent window switch focuses the new
@@ -681,7 +743,16 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
             -- current, or the switch already arrived — force a focus a moment later
             -- (the flag is then still set only if nothing consumed it).
             (focusReqE, fireFocusReq) <- newTriggerEvent
-            liftIO $ registerTerminalFocus sessionId (fireFocusReq ())
+            -- Registered under BOTH the session id (repl-into-session paths)
+            -- and the leksah-window id (⌥-open / ⌘D / open-into-leaf paths,
+            -- which know the window, and — with several windows on one
+            -- session — must reach THIS window, not whichever registered the
+            -- session key last).  Requests are sticky (see
+            -- 'IDE.Web.TerminalInput'), so no caller needs retry timers.
+            liftIO $ do
+                i1 <- registerTerminalFocus sessionId (fireFocusReq ())
+                i2 <- registerTerminalFocus lwId (fireFocusReq ())
+                writeIORef focusRegIdsRef [(sessionId, i1), (lwId, i2)]
             performEvent_ $ ffor focusReqE $ \_ ->
                 liftIO $ writeIORef pendingFocusRef True
             -- A fresh connection can take a while to bring its window/panes up —
@@ -722,6 +793,7 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
             performEvent_ $ ffor (updated curPanesD) $ liftIO . writeIORef curPanesRef
             (selSplitE, fireSelSplit) <- newTriggerEvent
             liftIO $ registerTerminalSplits sessionId fireSelSplit
+                       >>= writeIORef splitsRegIdRef
             performEvent_ $ ffor selSplitE $ \n -> do
                 panes <- liftIO $ readIORef curPanesRef
                 case drop (n - 1) panes of
@@ -746,7 +818,9 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
             -- so act only on our own session's — a foreign pane id in
             -- activePaneRef breaks the highlight, and a foreign window id
             -- would be queried/focused wrongly (see 'currentWin').
-            performEvent_ $ ffor (attachWith (,) (current stD) evE) $ \(st, ev) -> case ev of
+            performEvent_ $ ffor (attachWith (\(st, mlw) ev -> (st, mlw, ev))
+                                    ((,) <$> current stD <*> current lwOwnD)
+                                    evE) $ \(st, mlw, ev) -> case ev of
                 EvWindowPaneChanged w p | w `M.member` csLayouts st -> do
                     old <- liftIO $ readIORef activePaneRef
                     focusLog $ "[" <> T.unpack sessionId <> "] EvWindowPaneChanged win="
@@ -763,7 +837,20 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                     liftIO $ fireActiveWinClosed ()
                 EvSessionWindowChanged s w
                   | s == "" || s == sessionId || Just s == csSession st ->
-                    liftIO . void . forkIO $ do
+                    case mlw of
+                      -- A leksah-window tab: the session's current window is
+                      -- MODEL state here — record the owning leaf as focused
+                      -- and let the focus reconciler (below) turn that into
+                      -- DOM focus.  A window some OTHER leksah window owns is
+                      -- none of our business: acting on it wrote a foreign
+                      -- pane into activePaneRef, whose focus fallback then
+                      -- grabbed the FIRST textarea — the mis-focus that seeds
+                      -- the focus↔select-pane oscillation.
+                      Just lw -> forM_ (paneForWindow w lw) $ \l ->
+                          liftIO . void . forkIO $ setFocusedLeaf lwId l
+                      -- Remote tabs (no model): classic follow-the-current-
+                      -- window behaviour.
+                      Nothing -> liftIO . void . forkIO $ do
                         r <- ccCommand cc ("display-message -p -t " <> w
                                            <> " -F '#{pane_id}'")
                         case r of
@@ -776,24 +863,141 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                 -- gets a requestReplay — which resumes — on creation).
                 EvPause p -> liftIO $ do
                     terms <- readIORef termsRef
-                    when (M.member p terms) $ requestReplay cc pausedRef p
+                    when (M.member p terms) $
+                        requestReplay cc pausedRef ReplayScreenOnly p
                 _ -> return ()
-            -- Selecting this tab focuses its active pane (the classic
-            -- widget's behaviour), so typing works without an extra click.
-            -- Also repaint every pane: the tab is revealed by a
-            -- visibility:hidden→visible flip (see Tabs.hs) that no resize
+            -- Selecting this tab: repaint every pane — the tab is revealed by
+            -- a visibility:hidden→visible flip (see Tabs.hs) that no resize
             -- observer sees, so an xterm whose window container was hidden
-            -- when it was last drawn gets a nudge here.
-            performEvent_ $ ffor selectedE $ \_ -> liftJSM $ do
-                focusLog $ "[" <> T.unpack sessionId <> "] tab selectedE -> repaint + focusActivePaneSoon"
+            -- when it was last drawn gets a nudge here.  Keyboard focus is
+            -- the reconciler's job (it has a selected arm and focuses the
+            -- FOCUSED leaf — which may be an editor view, not a pane); only a
+            -- model-less remote tab keeps the classic focus-on-select here.
+            performEvent_ $ ffor (tag (current lwOwnD) selectedE) $ \mlw -> liftJSM $ do
+                focusLog $ "[" <> T.unpack sessionId <> "] tab selectedE -> repaint"
+                    <> (if isNothing mlw then " + focusActivePaneSoon (remote)" else "")
                 terms <- liftIO $ readIORef termsRef
                 forM_ (M.elems terms) repaintTerm
-                focusActivePaneSoon
+                when (isNothing mlw) focusActivePaneSoon
             -- Panes that left the session (kill-pane, window closed): their
             -- keyed widgets are torn down by listWithKey below, but the
             -- xterms are JS objects we own — dispose and unregister them.
             allPanesD <- holdUniqDyn $ ffor stD $ \s -> S.fromList
                 [ p | l <- M.elems (csLayouts s), (p, _, _, _, _) <- layoutPanes l ]
+            -- PER-PANE OUTPUT GATING: tmux sends every pane's %output to ALL
+            -- of a session's control clients, but this widget only displays
+            -- its own leksah window's panes — the rest is dead weight (parsed,
+            -- decoded, then dropped by the ownership filter below).  Tell
+            -- tmux to stop sending them to THIS client (refresh-client -A
+            -- "%p:off" is per-client; the owning window's client still gets
+            -- everything).  'requestReplay' re-enables (":on") whenever a
+            -- widget of ours creates a pane's xterm, so panes gated off here
+            -- recover when ownership changes (stray adoption, conversion
+            -- re-hosts, the remote current-window switch).  Remote tabs have
+            -- no map entry and display tmux's current window — gate to that.
+            let ownedWinsOf s mlw = case mlw of
+                    Just lw -> S.fromList (lwWindowIds lw)
+                    Nothing -> maybe S.empty S.singleton (csCurrent s)
+            foreignPanesD <- holdUniqDyn $
+                (\s mlw -> S.fromList
+                    [ p | (w, l) <- M.toList (csLayouts s)
+                        , not (w `S.member` ownedWinsOf s mlw)
+                        , (p, _, _, _, _) <- layoutPanes l ])
+                  <$> stD <*> lwOwnD
+            performEvent_ $ ffor
+                (attachWith (\old new -> S.toList (S.difference new old))
+                    (current foreignPanesD) (updated foreignPanesD)) $
+                \newlyForeign -> liftIO $ do
+                    -- NEVER gate off a pane whose xterm we render: the
+                    -- foreign set is derived from the shared model, which can
+                    -- lag the tmux events by a frame — an \":off\" landing
+                    -- after the pane's mount-time \":on\" left the pane DEAF
+                    -- (typing echoed nothing until an incidental replay).
+                    -- termsRef is the ground truth of \"we render it\", read
+                    -- at send time on the same frame thread as the mount.
+                    terms <- readIORef termsRef
+                    forM_ (filter (`M.notMember` terms) newlyForeign) $ \p -> do
+                        focusLog $ "[" <> T.unpack sessionId
+                            <> "] output gate OFF pane=" <> T.unpack p
+                        ccSend cc ("refresh-client -A \"" <> p <> ":off\"")
+            -- ══ MODEL-DRIVEN FOCUS RECONCILER ═══════════════════════════════
+            -- 'lwFocused' is the single within-window focus authority: every
+            -- mutation writes it (⌘D/⌥-open splits, flip commits, ⌘W closes,
+            -- the reconcile's neighbour succession, DOM focusin) — and THIS
+            -- is the one place that turns it into DOM keyboard focus.  Runs
+            -- when the model changes, when the tab is selected (one frame
+            -- later, so the visibility flip has landed), when an explicit
+            -- focus request arrives (the sticky registry), and once at build
+            -- for the restored state.  Guarded like 'followActive': only when
+            -- the keyboard was already ours, orphaned on <body>, or
+            -- explicitly requested — a background tab's model change can
+            -- never steal from an editor (and focus() inside a hidden tab is
+            -- a no-op regardless).
+            focusedContentD <- holdUniqDyn $ (\mlw -> do
+                    lw <- mlw
+                    l  <- lwFocused lw
+                    pc <- M.lookup l (lwPanes lw)
+                    pure (l, pcKind pc)) <$> lwOwnD
+            (paneResolvedE, firePaneResolved) <- newTriggerEvent
+            selectedSettledE <- delay 0 selectedE
+            -- One frame after the request, so the pendingFocusRef write (its
+            -- own focusReqE handler above) is in place before we read it.
+            focusReqSettledE <- delay 0 focusReqE
+            -- Selecting the tab is an EXPLICIT navigation: the keyboard
+            -- follows into the focused leaf unconditionally (the classic
+            -- behaviour) — the ours-or-body guard applies only to the model
+            -- and build arms, where a background change must not steal from
+            -- e.g. the workspace tree.
+            let reconcileFocusE = leftmost
+                  [ fmap ((,) False) (fmapMaybe id (updated focusedContentD))
+                  , fmap ((,) True)  (fmapMaybe id
+                      (tag (current focusedContentD) selectedSettledE))
+                  , fmap ((,) False) (fmapMaybe id (tag (current focusedContentD)
+                      (leftmost [focusReqSettledE, pbSync])))
+                  ]
+            performEvent_ $ ffor reconcileFocusE $ \(forced, (lid, kind)) -> do
+                had <- liftJSM containerHasFocus
+                ae <- liftJSM $ jsg ("document" :: Text) ^. js ("activeElement" :: Text)
+                tagName <- liftJSM $ valToText =<< ae ^. js ("tagName" :: Text)
+                pend <- liftIO $ readIORef pendingFocusRef
+                desired <- liftIO $ isActiveTerminal sessionId
+                let want = forced || had || tagName == "BODY" || (pend && desired)
+                focusLog $ "[" <> T.unpack sessionId <> "] reconcileFocus kind="
+                    <> (case kind of PaneView{} -> "view"
+                                     PaneTmux w -> "tmux " <> T.unpack w)
+                    <> " had=" <> show had <> " activeEl=" <> T.unpack tagName
+                    <> " pend=" <> show pend
+                    <> " -> " <> (if want then "focus" else "no-focus")
+                when want $ do
+                  liftIO $ writeIORef pendingFocusRef False
+                  case kind of
+                    PaneView _ -> do
+                        liftIO $ writeIORef pendingMountRef Nothing
+                        liftIO $ fireViewFocus lid
+                    -- Resolve the tmux window's ACTIVE pane on the control
+                    -- channel (off the frame thread); the focus itself runs
+                    -- back on the reflex thread below.
+                    PaneTmux w -> liftIO . void . forkIO $ do
+                        r <- ccCommand cc ("display-message -p -t " <> w
+                                           <> " -F '#{pane_id}'")
+                        case r of
+                          Right (ln : _) | p <- T.strip ln, not (T.null p) ->
+                              firePaneResolved p
+                          _ -> return ()
+            performEvent_ $ ffor paneResolvedE $ \p -> do
+                liftIO $ writeIORef activePaneRef (Just p)
+                -- Deterministic handoff when the pane's xterm isn't built yet
+                -- (a fresh ⌘D split): 'paneWidget' consumes this the moment
+                -- it mounts; 'focusActivePaneSoon' covers the already-built
+                -- case (and the visibility flip of a just-selected tab).  An
+                -- already-mounted pane must NOT arm the mount hook — a later
+                -- rebuild of its xterm (a font change) would steal focus.
+                terms <- liftIO $ readIORef termsRef
+                liftIO $ writeIORef pendingMountRef
+                    (if p `M.member` terms then Nothing else Just p)
+                liftJSM $ do
+                    applyActive
+                    focusActivePaneSoon
             -- The pane set changed (split/kill): poke the IDE's tree poll so the
             -- ⌘-number offset and tab badges track the new pane count at once
             -- (resize leaves the set unchanged, so this stays quiet).
@@ -854,82 +1058,280 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                 -- pane: layout changes only move/resize the existing xterms.
                 dyn_ $ ffor metricsD $ \case
                     Nothing -> divClass "terminal-cc-empty" $ text "(connecting…)"
-                    Just cell -> do
-                        let rawWindowsD = csLayouts <$> stD
-                            currentD    = csCurrent <$> stD
-                            -- Suppress hidden backing twins (see 'isBackingRunKey'):
-                            -- a pane whose run tag marks it a backing twin AND which
-                            -- isn't currently adopted as an overlay.  So a control-
-                            -- mode terminal on the shared 'leksah-editor' session
-                            -- shows only converted overlays and the user's own panes
-                            -- — never the pre-warmed editor twins that would other-
-                            -- wise duplicate an open editor as a bare shell pane.
-                            hiddenPane ov rk p =
-                                  isBackingRunKey (M.findWithDefault "" p rk)
-                                  && not (p `M.member` ov)
-                            -- Drop windows made up ENTIRELY of hidden twins (each
-                            -- twin is its own single-pane window) so they neither
-                            -- render nor take a slot in this session's window list.
-                            windowsD = (\wins ov rk ->
-                                  M.filter (any (\(p, _, _, _, _) -> not (hiddenPane ov rk p))
-                                                . layoutPanes) wins)
-                                <$> rawWindowsD <*> overlaysD <*> paneRunKeysD
-                            -- If tmux's current window was one we dropped, fall back
-                            -- to the first surviving window so the tab isn't blank.
-                            effCurrentD = (\cur wins -> case cur of
-                                  Just c | M.member c wins -> Just c
-                                  _                        -> fst <$> M.lookupMin wins)
-                                <$> currentD <*> windowsD
-                        _ <- listWithKey windowsD $ \wid layD -> do
-                            let visD = (== Just wid) <$> effCurrentD
-                            elDynAttr "div"
-                                ((\v -> "class" =: "terminal-cc-window"
-                                     <> "style" =: ("position:absolute;left:0;top:0;right:0;bottom:0;display:"
-                                                    <> (if v then "block" else "none")))
-                                  <$> visD) $ do
-                                layUniqD <- holdUniqDyn layD
-                                -- Filter hidden twins here too, so a MIXED window
-                                -- (a twin's window a user split into) keeps the
-                                -- user's pane(s) while the twin pane stays hidden.
-                                let panesD = (\l ov rk -> M.fromList
-                                        [ (p, (x, y, w, h))
-                                        | (p, x, y, w, h) <- layoutPanes l
-                                        , not (hiddenPane ov rk p) ])
-                                      <$> layUniqD <*> overlaysD <*> paneRunKeysD
-                                    -- Layout size in cells: a pane at the
-                                    -- layout's right/bottom edge fills to the
-                                    -- container edge (see paneWidget).
-                                    dimsD = (\l -> (lW l, lH l)) <$> layUniqD
-                                _ <- listWithKey panesD $ \pane rectD ->
-                                    paneWidget cc sessionId paneCbs termsRef
-                                               pausedRef tunnelsRef activePaneRef cell pane rectD
-                                               dimsD (M.lookup pane <$> tunnelGenD)
-                                               (M.lookup pane <$> overlaysD)
-                                               overlayW
-                                               (void (ffilter (== pane) paneFocusE))
-                                               closeMenuD renderCloseMenu
-                                -- Repaint this window's panes when it becomes
-                                -- visible: their xterms may have been built
-                                -- hidden (display:none) and so never painted
-                                -- (see 'repaintTerm').  A window switch within
-                                -- the session doesn't resize the container, so
-                                -- the ResizeObserver below won't cover this.
-                                performEvent_ $
-                                    ffor (tag (current layUniqD) (ffilter id (updated visD))) $ \l ->
-                                        liftJSM $ do
-                                            terms <- liftIO $ readIORef termsRef
-                                            forM_ (layoutPanes l) $ \(p, _, _, _, _) ->
-                                                forM_ (M.lookup p terms) repaintTerm
-                                -- Dividers, highlight segments and shortcut
-                                -- badges are plain divs — cheap to rebuild
-                                -- per layout change.
-                                dyn_ $ ffor layUniqD $ \l -> do
-                                    renderDividers cc cell l
-                                    renderHlSegments cell l
-                                    renderShortcutBadges cell l
-                                    pbHl <- getPostBuild
-                                    performEvent_ $ ffor pbHl $ \_ ->
-                                        liftJSM applyActive
+                    -- (The measured GLOBAL cell size gates the build — leaves
+                    -- measure their own per-font cells now, so the value
+                    -- itself is unused here.)
+                    Just _cell -> do
+                        let windowsD = csLayouts <$> stD
+                            currentD = csCurrent <$> stD
+                        -- The leksah window this tab renders, straight from
+                        -- the shared map (Main's reconcile keeps it valid; a
+                        -- pane whose tmux window just died renders empty for
+                        -- the moment until the reconcile collapses it, and a
+                        -- vanished leksah window renders nothing — its tab is
+                        -- about to close).  REMOTE (ssh://) tabs have no map
+                        -- entry: they synthesize a single full-area pane
+                        -- following tmux's current window — the classic
+                        -- one-window-at-a-time view, with zero persistence
+                        -- (layout mutations no-op on the absent map entry).
+                        lwD <- holdUniqDyn $
+                            (\i cur -> case M.lookup lwId (i ^. leksahWindows) of
+                                Just lw -> Just lw
+                                Nothing -> (\c -> singlePaneWindow Nothing
+                                              (PaneContent (PaneTmux c) Nothing))
+                                             <$> cur)
+                              <$> ide <*> currentD
+                        let rectsD = maybe M.empty
+                                       (\lw -> leafRects (lwZoomed lw) (lwTree lw))
+                                     <$> lwD
+                            pct v = T.pack (show (v * (100 :: Double))) <> "%"
+                            leafStyle :: LeafRect -> M.Map Text Text
+                            leafStyle r =
+                                  "class" =: "terminal-cc-leaf"
+                               <> "style" =: ("position:absolute;box-sizing:border-box"
+                                    <> ";left:"   <> pct (lrX r)
+                                    <> ";top:"    <> pct (lrY r)
+                                    <> ";width:"  <> pct (lrW r)
+                                    <> ";height:" <> pct (lrH r)
+                                    <> ";display:" <> (if lrVisible r then "block" else "none"))
+                        -- One keyed widget per PANE (leaf); splits/ratio
+                        -- changes/zooms only restyle existing leaves (xterms
+                        -- survive).
+                        _ <- listWithKey rectsD $ \lid rectD0 -> do
+                            rectD <- holdUniqDyn rectD0
+                            paneD <- holdUniqDyn $
+                                (>>= (M.lookup lid . lwPanes)) <$> lwD
+                            -- The pane's tmux window (Nothing for a view pane).
+                            tmuxD <- holdUniqDyn $
+                                (\case Just (PaneContent (PaneTmux w) _) -> Just w
+                                       _                                 -> Nothing)
+                                  <$> paneD
+                            -- A VIEW pane (an editor / git log living directly
+                            -- in the layout) renders as a covering layer over
+                            -- the (then empty) terminal chrome, so the tmux
+                            -- machinery needs no structural dispatch.
+                            viewD <- holdUniqDyn $
+                                (\case Just (PaneContent (PaneView k) _) -> Just k
+                                       _                                 -> Nothing)
+                                  <$> paneD
+                            -- The pane's font-size override (⌘+/⌘−; Nothing =
+                            -- follow the global monospace pref).
+                            fontD <- holdUniqDyn $ (>>= pcFontSize) <$> paneD
+                            (leafEl, _) <- elDynAttr' "div" (leafStyle <$> rectD) $ do
+                              -- Per-pane FONT: the body below (xterms,
+                              -- geometry, clamps) is built for one cell size,
+                              -- so a font-size change rebuilds it — a rare
+                              -- user action, and requestReplay refills the
+                              -- fresh xterms exactly as when a window moves
+                              -- between panes.  The override's cell size is
+                              -- measured first (the metricsD pattern).
+                              dyn_ $ ffor fontD $ \mbFont -> do
+                                pbFont <- getPostBuild
+                                cellLE <- performEvent $ ffor pbFont $ \_ ->
+                                    liftJSM (getCellMetricsFor mbFont)
+                                cellLD <- holdUniqDyn =<< holdDyn Nothing (Just <$> cellLE)
+                                dyn_ $ ffor cellLD $ \mbCell -> forM_ mbCell $ \cellL -> do
+                                  -- The pane body: its tmux window's panes at
+                                  -- their tmux layout rectangles.  Keyed by
+                                  -- window id so the (rare) case of a leaf
+                                  -- changing windows tears down cleanly.
+                                  (bodyEl, _) <- elAttr' "div" ("class" =: "terminal-cc-leaf-body") $ do
+                                    let winsOfLeafD = (\mbW wins -> maybe M.empty
+                                              (\w -> M.restrictKeys wins (S.fromList [w])) mbW)
+                                            <$> tmuxD <*> windowsD
+                                    _ <- listWithKey winsOfLeafD $ \_wid layD -> do
+                                        -- Visibility follows the LEAF (a
+                                        -- zoomed sibling hides it); the pane
+                                        -- has one window, always shown.
+                                        let visD = lrVisible <$> rectD
+                                        elAttr "div"
+                                            ("class" =: "terminal-cc-window"
+                                             <> "style" =: "position:absolute;left:0;top:0;right:0;bottom:0") $ do
+                                            layUniqD <- holdUniqDyn layD
+                                            let panesD = (\l -> M.fromList
+                                                    [ (p, (x, y, w, h))
+                                                    | (p, x, y, w, h) <- layoutPanes l ])
+                                                  <$> layUniqD
+                                                -- Layout size in cells: a pane at the
+                                                -- layout's right/bottom edge fills to the
+                                                -- container edge (see paneWidget).
+                                                dimsD = (\l -> (lW l, lH l)) <$> layUniqD
+                                            _ <- listWithKey panesD $ \pane rectD' ->
+                                                paneWidget cc sessionId paneCbs termsRef
+                                                           pausedRef tunnelsRef activePaneRef
+                                                           pendingMountRef cellL mbFont pane rectD'
+                                                           dimsD (M.lookup pane <$> tunnelGenD)
+                                                           (void (ffilter (== pane) paneFocusE))
+                                                           closeMenuD renderCloseMenu
+                                            -- Repaint this window's panes when the leaf
+                                            -- comes back into view (un-zoom): their xterms
+                                            -- may have been built hidden (display:none) and
+                                            -- so never painted (see 'repaintTerm').  The
+                                            -- un-hide doesn't resize the container, so the
+                                            -- ResizeObserver below won't cover this.
+                                            performEvent_ $
+                                                ffor (tag (current layUniqD) (ffilter id (updated visD))) $ \l ->
+                                                    liftJSM $ do
+                                                        terms <- liftIO $ readIORef termsRef
+                                                        forM_ (layoutPanes l) $ \(p, _, _, _, _) ->
+                                                            forM_ (M.lookup p terms) repaintTerm
+                                            -- Dividers, highlight segments and shortcut
+                                            -- badges are plain divs — cheap to rebuild
+                                            -- per layout change.
+                                            dyn_ $ ffor layUniqD $ \l -> do
+                                                renderDividers cc cellL l
+                                                renderHlSegments cellL l
+                                                renderShortcutBadges cellL l
+                                                pbHl <- getPostBuild
+                                                performEvent_ $ ffor pbHl $ \_ ->
+                                                    liftJSM applyActive
+                                    return ()
+                                  -- Per-leaf sizing: measure the leaf body (its
+                                  -- own ResizeObserver — the leaf resizes with
+                                  -- divider drags and splits, not just the
+                                  -- container) and clamp the pane's tmux
+                                  -- window to this leaf's grid (see 'clampLeaf').
+                                  (leafSizeE, fireLeafSize) <- newTriggerEvent
+                                  pbLeaf <- getPostBuild
+                                  performEvent_ $ ffor pbLeaf $ \_ -> liftJSM $ do
+                                      let (cw, ch) = cellL
+                                          measure = do
+                                            w <- valToNumber =<< _element_raw bodyEl ^. js ("clientWidth" :: Text)
+                                            h <- valToNumber =<< _element_raw bodyEl ^. js ("clientHeight" :: Text)
+                                            let pad  = terminalPanePad
+                                                cols = max 20 (floor ((w - 2*pad) / cw) :: Int)
+                                                rows = max 5 (floor ((h - 2*pad) / ch) :: Int)
+                                            when (w > 0 && h > 0) . liftIO $
+                                                fireLeafSize (cols, rows)
+                                      measure
+                                      roL <- new (jsg ("ResizeObserver" :: Text))
+                                                 (fun $ \_ _ _ -> measure)
+                                      void $ roL ^. js1 ("observe" :: Text) (_element_raw bodyEl)
+                                  leafSizeD <- holdUniqDyn =<< holdDyn (0, 0) leafSizeE
+                                  clampTargetD <- holdUniqDyn $
+                                      (\mbW (c, r) vis ->
+                                            if vis && c > 0 then (\w -> (w, c, r)) <$> mbW
+                                                            else Nothing)
+                                        <$> tmuxD <*> leafSizeD <*> (lrVisible <$> rectD)
+                                  performEvent_ $ ffor (updated clampTargetD) $ \mb ->
+                                      liftIO . void . forkIO $ clampLeaf lid mb
+                              -- The view leaf's covering layer (see viewD).
+                              -- Its font override rides a CSS-var wrapper
+                              -- (CodeMirror reads --leksah-mono-size live);
+                              -- Monaco snapshots its font at creation, so a
+                              -- change also pokes editors inside via
+                              -- leksahSetLeafFont (0 = back to the global).
+                              -- Focus: the leaf receives ITS OWN pulse from
+                              -- the focus reconciler (never the shared tab
+                              -- select — every view grabbing the keyboard on
+                              -- tab select is how focus became a race), and
+                              -- grabs-on-create only while it IS the focused
+                              -- leaf.
+                              amFocusedD <- holdUniqDyn $
+                                  (\mlw -> (lwFocused =<< mlw) == Just lid) <$> lwD
+                              dyn_ $ ffor viewD $ \case
+                                  Nothing -> return ()
+                                  Just k  -> do
+                                    (vEl, _) <- elDynAttr' "div"
+                                        ((\mf -> "class" =: "terminal-cc-view-leaf"
+                                             <> maybe mempty
+                                                  (\n -> "style" =:
+                                                     ("--leksah-mono-size:"
+                                                      <> T.pack (show n) <> "px")) mf)
+                                          <$> fontD) $ leafViewW k
+                                                (void (ffilter (== lid) viewFocusE))
+                                                amFocusedD
+                                    -- The view leaf's chrome: always-on grey
+                                    -- ring; the focused leaf's ring brightens
+                                    -- (gated by the tab's .tab-active — see
+                                    -- terminalCss ".pane-chrome").  Tmux
+                                    -- leaves get theirs per pane instead
+                                    -- ('renderHlSegments').
+                                    elDynAttr "div"
+                                        ((\f -> "class" =: ("pane-chrome"
+                                            <> (if f then " active" else "")))
+                                          <$> amFocusedD)
+                                        blank
+                                    performEvent_ $ ffor (updated fontD) $ \mf ->
+                                        liftJSM . void $ jsg ("window" :: Text)
+                                            ^. js2 ("leksahSetLeafFont" :: Text)
+                                                (_element_raw vEl)
+                                                (maybe (0 :: Int) id mf)
+                            -- Focus entering this leaf makes it the layout's
+                            -- focused leaf — the target of ⌘S/⌘+/⌘−/splits.
+                            pbFoc <- getPostBuild
+                            performEvent_ $ ffor pbFoc $ \_ -> liftJSM . void $
+                                _element_raw leafEl ^. js2 ("addEventListener" :: Text)
+                                    ("focusin" :: Text)
+                                    (fun $ \_ _ _ -> liftIO . void . forkIO $
+                                        setFocusedLeaf lwId lid)
+                        -- A leaf that left the layout (close/merge) must not
+                        -- leave its window clamped (reflex tears the widget
+                        -- down without a destructor).
+                        performEvent_ $ ffor (updated rectsD) $ \rs ->
+                            liftIO . void . forkIO $ do
+                                m <- readIORef leafClampsRef
+                                forM_ (M.keys m) $ \l ->
+                                    unless (l `M.member` rs) $ clampLeaf l Nothing
+                        -- (Windows shown by OTHER leksah windows need no
+                        -- attention from this client: clamps are MANUAL
+                        -- window sizes now — see 'ccResizeWindow' — pinned
+                        -- by the owning tab against every other client.)
+                        -- Native dividers between leaves: a cheap layer
+                        -- rebuilt per tree-shape change.  Dragging one calls
+                        -- back with the px delta on mouseup (pure JS —
+                        -- jsaddle events are async, so the drag itself never
+                        -- goes through Haskell), converted to a node-relative
+                        -- fraction and folded into the shared layout.
+                        let dividersD = maybe [] (treeDividers . lwTree) <$> lwD
+                        dividersUniqD <- holdUniqDyn dividersD
+                        dyn_ $ ffor dividersUniqD $ mapM_ $ \nd -> do
+                            let styleND =
+                                    "position:absolute;z-index:6"
+                                    <> (if ndVertical nd
+                                          then ";cursor:col-resize;width:7px"
+                                            <> ";left:calc(" <> pct (ndX nd) <> " - 3px)"
+                                            <> ";top:" <> pct (ndY nd)
+                                            <> ";height:" <> pct (ndLen nd)
+                                          else ";cursor:row-resize;height:7px"
+                                            <> ";top:calc(" <> pct (ndY nd) <> " - 3px)"
+                                            <> ";left:" <> pct (ndX nd)
+                                            <> ";width:" <> pct (ndLen nd))
+                                -- The visible 1px mid-grey separator centred
+                                -- in the 7px grab strip (the CC tmux dividers'
+                                -- .divider-line, same technique).
+                                lineStyle
+                                  | ndVertical nd =
+                                      "position:absolute;left:3px;top:0;bottom:0;width:1px"
+                                  | otherwise =
+                                      "position:absolute;top:3px;left:0;right:0;height:1px"
+                            (dEl, _) <- elAttr' "div"
+                                ("class" =: "terminal-cc-native-divider"
+                                 <> "style" =: styleND) $
+                                elAttr "div" ("class" =: "divider-line"
+                                              <> "style" =: lineStyle) blank
+                            pbD <- getPostBuild
+                            performEvent_ $ ffor pbD $ \_ -> liftJSM $ do
+                                let raw = _element_raw dEl
+                                raw ^. jss ("__leksahNativeResize" :: Text)
+                                    (fun $ \_ _ args -> case args of
+                                      (dv : _) -> do
+                                        d <- valToNumber dv
+                                        mbC <- liftIO $ readIORef containerRef
+                                        forM_ mbC $ \c -> do
+                                          rect <- c ^. js0 ("getBoundingClientRect" :: Text)
+                                          ext <- valToNumber =<< rect ^. js
+                                              (if ndVertical nd then "width" :: Text
+                                                                else "height")
+                                          let deltaFrac = d / max 1 (ext * ndAxis nd)
+                                          liftIO . void . forkIO $
+                                              modifyLeksahWindow lwId $ \lw ->
+                                                  lw { lwTree = resizeNode (ndPath nd)
+                                                                 (ndIndex nd) deltaFrac
+                                                                 (lwTree lw) }
+                                      _ -> return ())
+                                void $ jsg ("LeksahNativeDrag" :: Text)
+                                    ^. js2 ("arm" :: Text) raw (ndVertical nd)
                         return ()
             liftIO $ writeIORef containerRef (Just (_element_raw containerEl))
             pb2 <- getPostBuild
@@ -942,31 +1344,58 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
                 ro <- new (jsg ("ResizeObserver" :: Text)) (fun $ \_ _ _ -> do
                         refit
                         terms <- liftIO $ readIORef termsRef
-                        forM_ (M.elems terms) repaintTerm
-                        -- The active pane moved/resized — re-place the shadow overlay.
-                        void $ jsg ("window" :: Text) ^. js0 ("leksahUpdatePaneHl" :: Text))
+                        forM_ (M.elems terms) repaintTerm)
                 void $ ro ^. js1 ("observe" :: Text) (_element_raw containerEl)
 
     -- Route %output to the pane's xterm (via the pause states above), and
     -- assemble capture-based replays from their stream-ordered replies.
+    -- OWNERSHIP FILTER: several leksah windows can show ONE tmux session
+    -- (one control client each), and tmux sends every pane's %output to ALL
+    -- of the session's clients — but the xterm registry is global, so
+    -- without the filter every widget writes every byte and each pane's
+    -- xterm receives its output once PER LEKSAH WINDOW of the session.
+    -- Double-applied output scrambles any TUI whose redraws are
+    -- cursor-relative (ink/Claude Code) and duplicates plain log lines.
+    -- Only the widget whose pane map holds the xterm may write.
     performEvent_ $ ffor evE $ \case
         EvOutput pane dat -> do
-            st <- liftIO $ readIORef pausedRef
-            case M.lookup pane st of
-              Nothing            -> liftJSM $ writePane sessionId pane dat
-              Just PauseDropping -> return ()   -- stale: the capture will include it
-              Just (PauseGotCap cap buf) -> liftIO $
-                  writeIORef pausedRef (M.insert pane (PauseGotCap cap (dat : buf)) st)
+            terms <- liftIO $ readIORef termsRef
+            when (M.member pane terms) $ do
+              st <- liftIO $ readIORef pausedRef
+              case M.lookup pane st of
+                Nothing            -> do
+                    -- Latency trace: the display half of the KEY record above.
+                    focusLog $ "[" <> T.unpack sessionId <> "] ECHO pane="
+                        <> T.unpack pane <> " bytes=" <> show (BS.length dat)
+                    liftJSM $ writePane sessionId pane dat
+                Just (_, PauseDropping) -> return ()   -- stale: the capture will include it
+                Just (t0, PauseGotCap cap buf) -> liftIO $
+                    writeIORef pausedRef (M.insert pane (t0, PauseGotCap cap (dat : buf)) st)
         EvReply rtag res
           | Just p <- T.stripPrefix "cap:" rtag -> liftIO $ case res of
-              Right ls -> modifyIORef' pausedRef (M.insert p (PauseGotCap ls []))
-              Left _   -> modifyIORef' pausedRef (M.delete p)   -- give up: resume raw
+              Right ls -> modifyIORef' pausedRef
+                  -- Keep the replay's START time: the staleness escape hatch in
+                  -- 'requestReplay' measures the whole cap→cur round trip.
+                  (\st -> M.insert p ( maybe (posixSecondsToUTCTime 0) fst (M.lookup p st)
+                                     , PauseGotCap ls [] ) st)
+              Left e   -> do   -- give up: resume raw
+                  focusLog $ "[" <> T.unpack sessionId <> "] replay cap FAILED pane="
+                      <> T.unpack p <> ": " <> T.unpack (T.strip e)
+                  modifyIORef' pausedRef (M.delete p)
           | Just p <- T.stripPrefix "cur:" rtag -> do
               st <- liftIO $ readIORef pausedRef
-              case (M.lookup p st, res) of
-                (Just (PauseGotCap cap buf), Right (stLine : _)) -> do
+              case M.lookup p st of
+                Just (_, PauseGotCap cap buf) -> do
                     liftJSM $ do
-                        writePane sessionId p (buildReplay cap stLine)
+                        case res of
+                          Right (stLine : _) ->
+                              writePane sessionId p (buildReplay cap stLine)
+                          -- No state line: skip the replay (screen keeps
+                          -- whatever it had) — but the BUFFERED live output
+                          -- must still flush, or everything typed since the
+                          -- capture silently vanishes (a deaf pane).
+                          _ -> focusLog $ "[" <> T.unpack sessionId
+                                  <> "] replay cur FAILED pane=" <> T.unpack p
                         forM_ (reverse buf) $ writePane sessionId p
                     liftIO $ writeIORef pausedRef (M.delete p st)
                 _ -> liftIO $ modifyIORef' pausedRef (M.delete p)
@@ -977,13 +1406,14 @@ terminalCCWidget ide sessionId selectedE overlayW paneRunKeysD closeMenuD render
     -- and drop any tunnels (their sync routes must not outlive the client).
     performEvent_ $ ffor evE $ \case
         EvExit _ -> liftIO $ do
-            unregisterTerminalCC sessionId
-            -- Drop this client's teardown (and kill its now-idle drain thread);
-            -- id-guarded so we never reap a newer window's client for the same
-            -- session that has already taken the slot.
+            -- All registry drops are id-guarded, so this widget's teardown
+            -- can never unregister a NEWER widget's entries for the same
+            -- session/window (several leksah windows can share one session).
+            readIORef ccRegIdRef >>= unregisterTerminalCC sessionId
+            -- Drop this client's teardown (and kill its now-idle drain thread).
             readIORef ccStopIdRef >>= unregisterCCStop sessionId
-            unregisterTerminalSplits sessionId
-            unregisterTerminalFocus sessionId
+            readIORef splitsRegIdRef >>= unregisterTerminalSplits sessionId
+            readIORef focusRegIdsRef >>= mapM_ (uncurry unregisterTerminalFocus)
             tunnels <- atomicModifyIORef' tunnelsRef $ \m -> (M.empty, M.keys m)
             forM_ tunnels $ \p -> do
                 unregisterTunnelSync (tunnelUrlKey sessionId p)
@@ -1058,8 +1488,16 @@ formatConnErr reason err =
 -- measured once from the font); a conservative fallback if measurement is
 -- somehow impossible.
 getCellMetrics :: JSM (Double, Double)
-getCellMetrics = do
-    v <- jsg ("LeksahTerm" :: Text) ^. js0 ("cellMetrics" :: Text)
+getCellMetrics = getCellMetricsFor Nothing
+
+-- | Cell size for a specific font-size override ('Nothing' = the global
+-- monospace pref) — per-LEAF fonts in the native split layouts.  Cached per
+-- (family, size) on the JS side.
+getCellMetricsFor :: Maybe Int -> JSM (Double, Double)
+getCellMetricsFor mbSz = do
+    v <- case mbSz of
+      Nothing -> jsg ("LeksahTerm" :: Text) ^. js0 ("cellMetrics" :: Text)
+      Just sz -> jsg ("LeksahTerm" :: Text) ^. js1 ("cellMetrics" :: Text) sz
     nul <- valIsNull v
     und <- valIsUndefined v
     if nul || und
@@ -1217,6 +1655,190 @@ data HelloAction = Ignore | ReAck | Build Int
 tunnelAckPayload :: BS.ByteString
 tunnelAckPayload = "{\"proto\":1,\"caps\":[\"sync\"]}"
 
+-- | Renderer for a SESSIONLESS leksah window (native views only — no tmux
+-- windows yet, so no control client): the same absolutely-positioned leaf
+-- rects, view layers, focus tracking and draggable native dividers as the
+-- full widget.  Main swaps it for 'terminalCCWidget' the moment the window
+-- binds a backing session (⌘D creating a terminal beside the view).
+sessionlessLwWidget
+  :: forall t m . MonadWidget t m
+  => Dynamic t IDE
+  -> Text                            -- ^ leksah window id
+  -> Event t ()                      -- ^ tab selected (refocus pulse)
+  -> (TabKey -> Event t () -> Dynamic t Bool -> m ())
+                                     -- ^ view pane builder (per-leaf focus
+                                     --   pulse + \"is the focused leaf\")
+  -> m ()
+sessionlessLwWidget ide lwId selectedE leafViewW = do
+    lwD <- holdUniqDyn $ (\i -> M.lookup lwId (i ^. leksahWindows)) <$> ide
+    -- \"Take keyboard focus\" pulses for the leaves, fired by the reconciler
+    -- below for the focused leaf only.
+    (viewFocusE, fireViewFocus) <- newTriggerEvent
+    -- Explicit focus requests, via the sticky registry (an ⌥-open/⌘D into
+    -- this window while its tab is still mounting).  The CC widget
+    -- re-registers the same key when the window later binds a session.
+    (focusReqE, fireFocusReq) <- newTriggerEvent
+    pbS <- getPostBuild
+    performEvent_ $ ffor pbS $ \_ ->
+        liftIO . void $ registerTerminalFocus lwId (fireFocusReq ())
+    let rectsD = maybe M.empty (\lw -> leafRects (lwZoomed lw) (lwTree lw))
+                   <$> lwD
+        pct v = T.pack (show (v * (100 :: Double))) <> "%"
+        leafStyle :: LeafRect -> M.Map Text Text
+        leafStyle r =
+              "class" =: "terminal-cc-leaf"
+           <> "style" =: ("position:absolute;box-sizing:border-box"
+                <> ";left:"   <> pct (lrX r)
+                <> ";top:"    <> pct (lrY r)
+                <> ";width:"  <> pct (lrW r)
+                <> ";height:" <> pct (lrH r)
+                <> ";display:" <> (if lrVisible r then "block" else "none"))
+    -- Same -3px pull as the session-backed container: the leaf grid's origin
+    -- sits on the editor column's boundary-line pixel (the tall divider's
+    -- overlay line), so leaf boxes — and the active ring anchored to them —
+    -- reach the line exactly.
+    (containerEl, _) <- elAttr' "div" ("class" =: "terminal terminal-cc"
+                  <> "style" =: ("position:relative;overflow:hidden"
+                                 <> ";margin-left:-3px;margin-top:-3px"
+                                 <> ";width:calc(100% + 3px);height:calc(100% + 3px)")) $ do
+        _ <- listWithKey rectsD $ \lid rectD0 -> do
+            rectD <- holdUniqDyn rectD0
+            paneD <- holdUniqDyn $ (>>= (M.lookup lid . lwPanes)) <$> lwD
+            viewD <- holdUniqDyn $
+                (\case Just (PaneContent (PaneView k) _) -> Just k
+                       _                                 -> Nothing) <$> paneD
+            fontD <- holdUniqDyn $ (>>= pcFontSize) <$> paneD
+            amFocusedD <- holdUniqDyn $
+                (\mlw -> (lwFocused =<< mlw) == Just lid) <$> lwD
+            (leafEl, _) <- elDynAttr' "div" (leafStyle <$> rectD) $
+                dyn_ $ ffor viewD $ \case
+                    Nothing -> return ()
+                    Just k  -> do
+                        (vEl, _) <- elDynAttr' "div"
+                            ((\mf -> "class" =: "terminal-cc-view-leaf"
+                                 <> maybe mempty
+                                      (\n -> "style" =:
+                                         ("--leksah-mono-size:"
+                                          <> T.pack (show n) <> "px")) mf)
+                              <$> fontD) $ leafViewW k
+                                    (void (ffilter (== lid) viewFocusE))
+                                    amFocusedD
+                        -- Leaf chrome — see the session-backed sibling above.
+                        elDynAttr "div"
+                            ((\f -> "class" =: ("pane-chrome"
+                                <> (if f then " active" else "")))
+                              <$> amFocusedD)
+                            blank
+                        performEvent_ $ ffor (updated fontD) $ \mf ->
+                            liftJSM . void $ jsg ("window" :: Text)
+                                ^. js2 ("leksahSetLeafFont" :: Text)
+                                    (_element_raw vEl)
+                                    (maybe (0 :: Int) id mf)
+            pbFoc <- getPostBuild
+            performEvent_ $ ffor pbFoc $ \_ -> liftJSM . void $
+                _element_raw leafEl ^. js2 ("addEventListener" :: Text)
+                    ("focusin" :: Text)
+                    (fun $ \_ _ _ -> liftIO . void . forkIO $
+                        setFocusedLeaf lwId lid)
+        -- Native dividers (the px→fraction conversion measures the
+        -- divider's offsetParent — the positioned container above).
+        dividersUniqD <- holdUniqDyn $ maybe [] (treeDividers . lwTree) <$> lwD
+        dyn_ $ ffor dividersUniqD $ mapM_ $ \nd -> do
+            let styleND =
+                    "position:absolute;z-index:6"
+                    <> (if ndVertical nd
+                          then ";cursor:col-resize;width:7px"
+                            <> ";left:calc(" <> pct (ndX nd) <> " - 3px)"
+                            <> ";top:" <> pct (ndY nd)
+                            <> ";height:" <> pct (ndLen nd)
+                          else ";cursor:row-resize;height:7px"
+                            <> ";top:calc(" <> pct (ndY nd) <> " - 3px)"
+                            <> ";left:" <> pct (ndX nd)
+                            <> ";width:" <> pct (ndLen nd))
+            (dEl, _) <- elAttr' "div"
+                ("class" =: "terminal-cc-native-divider"
+                 <> "style" =: styleND) blank
+            pbD <- getPostBuild
+            performEvent_ $ ffor pbD $ \_ -> liftJSM $ do
+                let raw = _element_raw dEl
+                raw ^. jss ("__leksahNativeResize" :: Text)
+                    (fun $ \_ _ args -> case args of
+                      (dv : _) -> do
+                        d <- valToNumber dv
+                        parent <- raw ^. js ("offsetParent" :: Text)
+                        isNull <- valIsNull parent
+                        unless isNull $ do
+                          rect <- parent ^. js0 ("getBoundingClientRect" :: Text)
+                          ext <- valToNumber =<< rect ^. js
+                              (if ndVertical nd then "width" :: Text
+                                                else "height")
+                          let deltaFrac = d / max 1 (ext * ndAxis nd)
+                          liftIO . void . forkIO $
+                              modifyLeksahWindow lwId $ \lw ->
+                                  lw { lwTree = resizeNode (ndPath nd)
+                                                 (ndIndex nd) deltaFrac
+                                                 (lwTree lw) }
+                      _ -> return ())
+                void $ jsg ("LeksahNativeDrag" :: Text)
+                    ^. js2 ("arm" :: Text) raw (ndVertical nd)
+        return ()
+    -- ══ MODEL-DRIVEN FOCUS RECONCILER (views only — no tmux panes) ══════
+    -- The sessionless sibling of the CC widget's reconciler: turn
+    -- 'lwFocused' into DOM focus on model changes / tab select / explicit
+    -- requests / build, guarded so a hidden or unfocused window never
+    -- steals the keyboard (focus() in a hidden tab is a no-op anyway).
+    focusedViewD <- holdUniqDyn $ (\mlw -> do
+            lw <- mlw
+            l  <- lwFocused lw
+            pc <- M.lookup l (lwPanes lw)
+            case pcKind pc of
+              PaneView _ -> Just l
+              _          -> Nothing) <$> lwD
+    selectedSettledE <- delay 0 selectedE
+    focusReqSettledE <- delay 0 focusReqE
+    forcePendRef <- liftIO $ newIORef False
+    performEvent_ $ ffor focusReqE $ \_ -> liftIO $ writeIORef forcePendRef True
+    let reconcileE = leftmost
+          [ fmap ((,) False) (fmapMaybe id (updated focusedViewD))
+          -- Tab select = explicit navigation: focus unconditionally.
+          , fmap ((,) True)  (fmapMaybe id
+              (tag (current focusedViewD) selectedSettledE))
+          , fmap ((,) False) (fmapMaybe id (tag (current focusedViewD)
+              (leftmost [focusReqSettledE, pbS])))
+          ]
+    performEvent_ $ ffor reconcileE $ \(forced, l) -> do
+        (had, tagName) <- liftJSM $ do
+            ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
+            h  <- valToBool =<< _element_raw containerEl
+                                  ^. js1 ("contains" :: Text) ae
+            t  <- valToText =<< ae ^. js ("tagName" :: Text)
+            return (h, t)
+        pend <- liftIO $ atomicModifyIORef' forcePendRef (\p -> (False, p))
+        focusLog $ "[" <> T.unpack lwId <> "] sessionless reconcileFocus had="
+            <> show had <> " activeEl=" <> T.unpack tagName
+            <> " pend=" <> show pend <> " forced=" <> show forced
+        when (forced || had || tagName == "BODY" || pend) . liftIO $
+            fireViewFocus l
+
+-- | Mutate a leksah window's shared layout through the global IDE ref (the
+-- widget has no reflex path back to Main's mutation stream).  No-op before
+-- the ref exists.
+modifyLeksahWindow :: Text -> (LeksahWindow -> LeksahWindow) -> IO ()
+modifyLeksahWindow i f = getGlobalIDERef >>= mapM_ (\ideR ->
+    (`reflectIDE` ideR) $ modifyIDE_ $ over leksahWindows (M.adjust f i))
+
+-- | Focus entered a native pane: record it as the leksah window's focused
+-- pane (the target of ⌘+/⌘− and future splits).  Pre-checked so a no-op
+-- never bumps the resync version (focusin fires on every click).
+setFocusedLeaf :: Text -> LeafId -> IO ()
+setFocusedLeaf i lid = getGlobalIDERef >>= mapM_ (\ideR ->
+    (`reflectIDE` ideR) $ do
+        lws <- readIDE leksahWindows
+        when (fmap lwFocused (M.lookup i lws) /= Just (Just lid)
+              && maybe False ((lid `M.member`) . lwPanes) (M.lookup i lws)) $
+            modifyIDE_ $ over leksahWindows
+                (M.adjust (\lw -> lw { lwFocused = Just lid }) i))
+
 -- | Uniform padding (CSS px) inset around every pane's terminal grid.  The
 -- whole cell grid is shifted right/down by this and shrunk by twice it (see
 -- 'refit'), so the reserved space becomes an even gap on all sides of every
@@ -1257,23 +1879,25 @@ data PaneCallbacks = PaneCallbacks
 paneWidget
   :: MonadWidget t m
   => CC -> Text -> PaneCallbacks
-  -> IORef (M.Map PaneId JSVal) -> IORef (M.Map PaneId PauseState)
+  -> IORef (M.Map PaneId JSVal) -> IORef (M.Map PaneId (UTCTime, PauseState))
   -> IORef (M.Map PaneId TunnelInfo)
   -> IORef (Maybe PaneId)    -- ^ tmux's current active pane (echo-suppression)
-  -> (Double, Double) -> PaneId -> Dynamic t (Int, Int, Int, Int)
+  -> IORef (Maybe PaneId)    -- ^ focus-on-mount request from the reconciler:
+                             --   the keyboard belongs in this pane as soon as
+                             --   its xterm exists (a fresh ⌘D split)
+  -> (Double, Double)        -- ^ cell size (already measured for mbFont)
+  -> Maybe Int               -- ^ the leaf's font-size override, if any
+  -> PaneId -> Dynamic t (Int, Int, Int, Int)
   -> Dynamic t (Int, Int)    -- ^ layout size in cells (for edge panes)
   -> Dynamic t (Maybe Int)   -- ^ jsaddle-terminal tunnel generation (Just = iframe)
-  -> Dynamic t (Maybe TabKey) -- ^ leksah view overlaid on this pane ('_paneOverlays')
-  -> (TabKey -> Event t () -> m ())  -- ^ overlay view builder
   -> Event t ()              -- ^ this pane was selected (⌘-number split select)
   -> Dynamic t (Maybe (Text, Bool)) -- ^ ⌘W close-menu target: (pane %id, multi-pane?)
   -> (Text -> Bool -> m ())  -- ^ render the close menu for (pane %id, multi-pane?)
   -> m ()
-paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch) pane rectD0 dimsD0 tunnelD0 overlayD0 overlayW overlaySelE closeMenuD renderCloseMenu = do
+paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingMountRef (cw, ch) mbFont pane rectD0 dimsD0 tunnelD0 _overlaySelE closeMenuD renderCloseMenu = do
     rectD <- holdUniqDyn rectD0
     dimsD <- holdUniqDyn dimsD0
     tunnelD <- holdUniqDyn tunnelD0
-    overlayD <- holdUniqDyn overlayD0
     -- The pane box uses the SAME extents as the active-pane shadow marker
     -- ('renderHlSegments'), so the two line up exactly: at the layout's outer
     -- edges it is flush with the container (covering the sub-cell remainder —
@@ -1304,13 +1928,12 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
                <> (if y + h >= lh then ";bottom:0" else ";height:" <> p (bI - tI))
         key = tunnelUrlKey sessionId pane
     (paneEl, _) <- elDynAttr' "div"
-        ((\r d mt mo -> "class" =: ("terminal-cc-pane"
-                               <> maybe "" (const " terminal-cc-pane-tunnel") mt
-                               <> maybe "" (const " terminal-cc-pane-overlay") mo)
+        ((\r d mt -> "class" =: ("terminal-cc-pane"
+                               <> maybe "" (const " terminal-cc-pane-tunnel") mt)
                  -- data-pane = the tmux %id, so a flip target (published by
                  -- reflex as a %id) can be located in the DOM to hang a ⌘` hint.
                  <> "data-pane" =: pane
-                 <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD <*> overlayD) $ do
+                 <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD) $ do
         -- ⌘W close menu, rendered INSIDE this pane so CSS centres it (no JS
         -- geometry) — shown only for the pane the menu currently targets.  The
         -- render function comes from IDE.Web.Main (it owns the menu logic).
@@ -1389,31 +2012,9 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
                                     ccSend cc ("select-pane -t " <> pane)
                             _ -> return ()
                         _ -> return ())
-        -- leksah view overlay ('_paneOverlays'): an editor / git log converted
-        -- to a pane by ⌘D renders here, filling the pane div (so it tracks the
-        -- pane's rectangle through every layout change, like the tunnel
-        -- iframe); the hidden xterm keeps consuming output underneath.
-        dyn_ $ ffor overlayD $ \case
-          Nothing -> return ()
-          Just k -> do
-            (ovEl, _) <- elAttr' "div" ("class" =: "terminal-cc-overlay") $
-                overlayW k overlaySelE
-            -- Focus entering the overlaid view makes its pane tmux's active
-            -- pane — same contract (and echo suppression) as the tunnel
-            -- iframe's "focus" message above.
-            pbO <- getPostBuild
-            performEvent_ $ ffor pbO $ \_ -> liftJSM . void $
-                _element_raw ovEl ^. js2 ("addEventListener" :: Text)
-                    ("focusin" :: Text)
-                    (fun $ \_ _ _ -> liftIO $ do
-                        active <- readIORef activePaneRef
-                        if active == Just pane
-                          then focusLog $ "[" <> T.unpack sessionId <> "] overlay FOCUS pane="
-                                 <> T.unpack pane <> " == active -> skip select-pane (echo)"
-                          else do
-                            focusLog $ "[" <> T.unpack sessionId <> "] overlay FOCUS pane="
-                                <> T.unpack pane <> " -> select-pane"
-                            ccSend cc ("select-pane -t " <> pane))
+        -- (The ⌘D pane-overlay rendering lived here until the native split
+        -- layouts replaced it: an editor is a 'PaneView' pane now, never a
+        -- layer over a tmux pane.)
     pb <- getPostBuild
     performEvent_ $ ffor (tag (current rectD) pb) $ \(_, _, w, h) -> liftJSM $ do
         term <- new (jsg ("Terminal" :: Text)) ()
@@ -1425,7 +2026,11 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
         monoFam <- win ^. js ("__leksahMonoFamily" :: Text)
         monoSz  <- win ^. js ("__leksahMonoSize" :: Text)
         _ <- opts ^. jss ("fontFamily" :: Text) monoFam
-        _ <- opts ^. jss ("fontSize" :: Text) monoSz
+        -- The leaf's font-size override, if any (per-leaf fonts) — must match
+        -- the cell size this widget was built with or rows clip.
+        case mbFont of
+          Just sz -> void $ opts ^. jss ("fontSize" :: Text) sz
+          Nothing -> void $ opts ^. jss ("fontSize" :: Text) monoSz
         -- Line/letter spacing tuned to match a native terminal (see the note in
         -- "IDE.Web.Widget.Terminal"); the cell-metrics probe uses the same values.
         _ <- opts ^. jss ("lineHeight" :: Text) (1.07 :: Double)
@@ -1518,6 +2123,12 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
         _ <- term ^. js1 ("onData" :: Text) (fun $ \_ _ args -> case args of
                 (d : _) -> do
                     s <- valToText d
+                    -- Latency trace (µs-stamped, off unless the focus logger
+                    -- is on): pairs with the ECHO record in the %output
+                    -- write path, so a \"typing is slow\" episode shows
+                    -- exactly which hop eats the time.
+                    focusLog $ "[" <> T.unpack sessionId <> "] KEY pane="
+                        <> T.unpack pane <> " bytes=" <> show (T.length s)
                     liftIO $ ccSendBytes cc pane (encodeUtf8 s)
                 _ -> return ())
         -- Intercept the tmux C-b prefix (when the pref is on).  Crucial for CC
@@ -1555,7 +2166,14 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
             (M.insert pane term m, ())
         -- fill the fresh xterm from the pane's current screen + recent
         -- history (also resumes the pane if flow control paused it)
-        liftIO $ requestReplay cc pausedRef pane
+        liftIO $ requestReplay cc pausedRef ReplayWithHistory pane
+        -- Focus-on-mount: the reconciler wanted the keyboard here before this
+        -- xterm existed (a fresh ⌘D split) — deterministic, no polling.
+        pendM <- liftIO $ readIORef pendingMountRef
+        when (pendM == Just pane) $ do
+            liftIO $ writeIORef pendingMountRef Nothing
+            focusLog $ "[" <> T.unpack sessionId <> "] mount-focus pane=" <> T.unpack pane
+            void $ term ^. js0 ("focus" :: Text)
     -- Layout moved/resized this pane: match the xterm grid to the new
     -- cell rect (the app redraws itself on the SIGWINCH tmux sends it;
     -- xterm reflows its own buffer) — no replay, no re-creation.
@@ -1563,35 +2181,48 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef (cw, ch)
         terms <- liftIO $ readIORef termsRef
         forM_ (M.lookup pane terms) $ \term ->
             void $ term ^. js2 ("resize" :: Text) w h
+    -- (A 0.4s post-resize \"settle\" replay lived here — added against stale
+    -- cells in diff-based TUIs after resize storms, which turned out to be
+    -- the duplicated-output bug (the ownership filter above) all along.  It
+    -- also masked panes left deaf by output-gating races; those are fixed
+    -- deterministically now, so the wall-clock hack is gone.  If stale cells
+    -- ever reappear, the correct re-add is a replay keyed on the LAST resize
+    -- command's stream-ordered reply, never a timer.)
 
--- | The active-pane highlight of one window's layout: every pane gets a
--- (hidden) transparent box exactly over its rectangle whose mid-grey
--- box-shadow (see terminalCss) marks it as active.  'applyPaneHighlight'
--- shows the active pane's box and hides the rest — pure style toggles, no
--- re-render.
+-- | The per-pane position markers of one window's layout: an invisible box
+-- per pane, EXACTLY over the pane's visual box (the same extents as
+-- paneWidget's styleOf, clamps included — the box must be the pane's true
+-- location because the active-pane glow overlay anchors to it via CSS
+-- anchor positioning, and anchor() reads the UNCLIPPED layout box: the old
+-- unclamped −½-cell overhang put the anchored glow's top edge half a cell
+-- above the leaf).  The ACTIVE pane's box holds class @active@, which
+-- carries the anchor-name the glow ties to; 'applyPaneHighlight' moves the
+-- class — pure class toggles, no re-render.
 renderHlSegments :: MonadWidget t m => (Double, Double) -> Layout -> m ()
 renderHlSegments (cw, ch) l =
     forM_ (layoutPanes l) $ \(pane, x, y, w, h) ->
-        -- Half a cell bigger than the pane in every direction, so the box's
-        -- edges sit exactly on the divider lines (which run through the
-        -- middle of the gutter cells); clipped at the container's top/left.
-        -- A pane at the layout's right/bottom edge anchors to the CONTAINER
-        -- edge instead, covering the sub-cell remainder the cell grid leaves
-        -- there.
+        -- Half a cell into the gutters (to the divider-line centres, where
+        -- adjacent pane boxes meet), clamped at the container's left/top;
+        -- flush with the container at the layout's right/bottom edges
+        -- (covering the sub-cell remainder) — styleOf, verbatim.
         let px v = T.pack (show (round v :: Int)) <> "px"
             pad  = terminalPanePad
+            lI   = max 0 (pad + fromIntegral x * cw - cw / 2)
+            tI   = max 0 (pad + fromIntegral y * ch - ch / 2)
+            rI   = pad + fromIntegral (x + w) * cw + cw / 2
+            bI   = pad + fromIntegral (y + h) * ch + ch / 2
         in elAttr "div"
             ("class" =: "terminal-cc-hl"
              <> "data-pane" =: pane
-             <> "style" =: ("position:absolute;display:none;pointer-events:none"
-                            <> ";left:" <> px (pad + fromIntegral x * cw - cw / 2)
-                            <> ";top:"  <> px (pad + fromIntegral y * ch - ch / 2)
+             <> "style" =: ("position:absolute;pointer-events:none"
+                            <> ";left:" <> px lI
+                            <> ";top:"  <> px tI
                             <> (if x + w >= lW l
                                   then ";right:0"
-                                  else ";width:"  <> px (fromIntegral w * cw + cw))
+                                  else ";width:"  <> px (rI - lI))
                             <> (if y + h >= lH l
                                   then ";bottom:0"
-                                  else ";height:" <> px (fromIntegral h * ch + ch))))
+                                  else ";height:" <> px (bI - tI))))
             blank
 
 -- | The ⌘-held navigation badges of one window's layout: pane N (layout /
@@ -1667,8 +2298,9 @@ renderDividers cc (cw, ch) l =
             void $ jsg ("LeksahDividerDrag" :: Text) ^. js3 ("arm" :: Text)
                        raw vert (if vert then cw else ch)
 
--- | Show the highlight box (see 'renderHlSegments') belonging to pane
--- @mbP@ and hide all others — the active pane gets the shadowed outline.
+-- | Mark the chrome box (see 'renderHlSegments') belonging to pane @mbP@ as
+-- @active@ (the max-contrast ring) and unmark all others.  The boxes stay
+-- visible either way — they carry every pane's always-on grey ring.
 applyPaneHighlight :: MakeObject e => e -> Maybe PaneId -> JSM ()
 applyPaneHighlight c mbP = do
     els <- c ^. js1 ("querySelectorAll" :: Text) (".terminal-cc-hl" :: Text)
@@ -1676,9 +2308,8 @@ applyPaneHighlight c mbP = do
     forM_ [0 .. (floor len - 1) :: Int] $ \i -> do
         e <- els ^. js1 ("item" :: Text) i
         pn <- valToText =<< e ^. js1 ("getAttribute" :: Text) ("data-pane" :: Text)
-        st <- e ^. js ("style" :: Text)
-        void $ st ^. jss ("display" :: Text)
-            (if Just pn == mbP then "block" else "none" :: Text)
+        cl <- e ^. js ("classList" :: Text)
+        void $ cl ^. js2 ("toggle" :: Text) ("active" :: Text) (Just pn == mbP)
 
 -- | Initial state sync (an attach replays nothing): current window + layouts.
 -- Pane content is replayed per-pane by 'requestReplay' when its xterm is created.
@@ -1686,7 +2317,10 @@ initialSync :: CC -> (TmuxEvent -> IO ()) -> IO ()
 initialSync cc fire = do
     -- Flow control: rather than queueing unbounded output for a pane we
     -- can't keep up with, tmux pauses it (%pause) once we're >1s behind and
-    -- we jump ahead to its current screen ('requestReplay').
+    -- we jump ahead to its current screen ('requestReplay').  Safe to arm at
+    -- attach time again: pause recovery is now coalesced and screen-only
+    -- (see 'requestReplay'), so a busy pane at attach can no longer livelock
+    -- the boot in a pause→full-replay→pause loop.
     _ <- ccCommand cc "refresh-client -f pause-after=1"
     r <- ccCommand cc "list-windows -F '#{window_id}\t#{window_active}\t#{window_layout}'"
     case r of
@@ -1705,6 +2339,12 @@ initialSync cc fire = do
       Right (ln : _) | [w, p] <- T.splitOn "\t" ln ->
           fire (EvWindowPaneChanged w p)
       _ -> return ()
+
+-- | How much of a pane 'requestReplay' reproduces.
+data ReplayDepth
+  = ReplayWithHistory  -- ^ a fresh xterm: current screen + recent scrollback
+  | ReplayScreenOnly   -- ^ resync/pause recovery of an existing xterm: the
+                       --   current screen alone
 
 -- | Output routing while a pane is being (re)synced — see 'requestReplay'.
 data PauseState
@@ -1726,16 +2366,49 @@ writePane sess pane dat = void $
 -- and applied after the replay is written (see the 'EvReply' handling).
 -- Used both to fill a freshly created xterm and to jump ahead after a
 -- flow-control %pause instead of replaying the backlog.
-requestReplay :: CC -> IORef (M.Map PaneId PauseState) -> PaneId -> IO ()
-requestReplay cc pausedRef p = do
-    modifyIORef' pausedRef (M.insert p PauseDropping)
+requestReplay :: CC -> IORef (M.Map PaneId (UTCTime, PauseState)) -> ReplayDepth -> PaneId -> IO ()
+requestReplay cc pausedRef depth p = do
+  st  <- readIORef pausedRef
+  now <- getCurrentTime
+  -- Coalesce: if a replay is already in flight for this pane, don't issue
+  -- another — the pending capture already includes everything up to now and
+  -- its completion resumes the pane.  Without this, a busy pane + pause-after
+  -- flow control LIVELOCKED fresh boots: each %pause triggered a full
+  -- capture, applying it took long enough for the pane to fall >1s behind
+  -- again, so it re-paused before the previous replay finished — forever
+  -- (presents as the frame thread BlockedOnMVar behind jsaddle and a
+  -- static-skeleton UI; see docs/development/debugging-web-ui-freezes.md).
+  --
+  -- AGE-BOUNDED: a replay whose cap:/cur: reply got lost (client hiccup,
+  -- reload boundary) leaves its entry behind, and an unconditional guard
+  -- then blocks every healing replay forever — a permanently DEAF pane
+  -- (EvOutput dropped/buffered against a capture that never lands; seen
+  -- live within hours of the unconditional version).  An in-flight entry
+  -- older than 10s is treated as lost and replaced; a genuine slow replay
+  -- re-issued at that point just costs one duplicate screen-size capture.
+  let inFlight = case M.lookup p st of
+        Just (t0, _) -> diffUTCTime now t0 < 10
+        Nothing      -> False
+  unless inFlight $ do
+    modifyIORef' pausedRef (M.insert p (now, PauseDropping))
+    -- Re-enable the pane's output for this client first: panes gated off by
+    -- the foreign-pane gating (see terminalCCWidget) come back through here
+    -- when a widget of ours takes ownership and builds their xterm.
+    ccSend cc ("refresh-client -A \"" <> p <> ":on\"")
     ccSend cc ("refresh-client -A \"" <> p <> ":continue\"")
-    -- -S -1000: seed up to 1000 lines of history too — written before the
-    -- visible screen they land in the fresh xterm's scrollback.  A pane on
-    -- the ALTERNATE screen has no history to capture (tmux clamps to the
-    -- screen), so TUIs are unaffected.
+    -- ReplayWithHistory (-S -1000, fresh xterms only): seed up to 1000 lines
+    -- of history too — written before the visible screen they land in the
+    -- fresh xterm's scrollback.  A pane on the ALTERNATE screen has no
+    -- history to capture (tmux clamps to the screen), so TUIs are unaffected.
+    -- Resyncs of an EXISTING xterm must be ReplayScreenOnly: its scrollback
+    -- already holds the history, so a -S -1000 replay would APPEND 1000
+    -- duplicate lines to it (the replay's 2J clears the screen, not the
+    -- scrollback) — and the 40x-smaller capture is what keeps pause recovery
+    -- cheap enough to never fall behind again.
     ccCommandTagged cc ("cap:" <> p)
-        ("capture-pane -t " <> p <> " -p -e -J -S -1000")
+        ("capture-pane -t " <> p <> " -p -e -J"
+         <> case depth of ReplayWithHistory -> " -S -1000"
+                          ReplayScreenOnly  -> "")
     ccCommandTagged cc ("cur:" <> p)
         ("display-message -p -t " <> p <> " -F '"
          <> T.intercalate "\t"

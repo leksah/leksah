@@ -39,10 +39,9 @@ module IDE.Web.TerminalInput
   , getActiveConvertible
   , setActiveTerminalNotifier
   , setActiveConvertible
+  , setActiveViewSplit
+  , setActiveSplitWindow
   , setSplitActiveNotifier
-  , registerBackingPane
-  , lookupBackingPane
-  , unregisterBackingPane
   , sendToActiveTerminal
   , tmuxCommandActiveTerminal
   , splitActiveTerminal
@@ -51,7 +50,7 @@ module IDE.Web.TerminalInput
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, catch)
-import Control.Monad (forM_, void, unless)
+import Control.Monad (forM_, void, unless, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS (cons)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef, writeIORef)
@@ -71,16 +70,43 @@ import System.Posix.Pty (Pty, writePty)
 
 import IDE.Core.Types (TabKey)
 import IDE.Web.ConvertRequest (requestConvert)
-import IDE.Web.ReplTmux (buildSplitWindowCommand)
+import IDE.Web.ReplTmux (buildSplitWindowCommand, activePaneIdOfWindow)
 
 {-# NOINLINE ptyRegistry #-}
 ptyRegistry :: IORef (M.Map Text Pty)
 ptyRegistry = unsafePerformIO (newIORef M.empty)
 
 -- Command runners of the control-mode terminals, by terminal (tab) id.
+-- Entries are tagged with a registration id (see 'registryCounter'): several
+-- leksah windows can share one tmux session, and an old widget's teardown
+-- (its client's EvExit) must never unregister the REPLACEMENT widget's entry
+-- for the same key — the id makes every unregister self-identifying.
 {-# NOINLINE ccRegistry #-}
-ccRegistry :: IORef (M.Map Text (Text -> IO ()))
+ccRegistry :: IORef (M.Map Text (Integer, Text -> IO ()))
 ccRegistry = unsafePerformIO (newIORef M.empty)
+
+-- One counter for all the tagged registries in this module.
+{-# NOINLINE registryCounter #-}
+registryCounter :: IORef Integer
+registryCounter = unsafePerformIO (newIORef 0)
+
+-- | Insert a tagged entry; returns the registration id for 'unregisterKeyed'.
+registerKeyed :: IORef (M.Map Text (Integer, a)) -> Text -> a -> IO Integer
+registerKeyed ref n v = do
+  myId <- atomicModifyIORef' registryCounter $ \i -> (i + 1, i + 1)
+  atomicModifyIORef' ref $ \m -> (M.insert n (myId, v) m, ())
+  return myId
+
+-- | Drop an entry — but only if it is still the one registered under @myId@
+-- (a later widget may already own the slot).
+unregisterKeyed :: IORef (M.Map Text (Integer, a)) -> Text -> Integer -> IO ()
+unregisterKeyed ref n myId = atomicModifyIORef' ref $ \m ->
+  case M.lookup n m of
+    Just (i, _) | i == myId -> (M.delete n m, ())
+    _                       -> (m, ())
+
+lookupKeyed :: IORef (M.Map Text (Integer, a)) -> Text -> IO (Maybe a)
+lookupKeyed ref n = fmap snd . M.lookup n <$> readIORef ref
 
 -- Teardown actions for the *control clients* (the @tmux -C@ processes), keyed
 -- by session id.  A session's wide0 tab lives in exactly one OS window at a
@@ -104,35 +130,30 @@ ccStopCounter = unsafePerformIO (newIORef 0)
 -- id: given N (1-based), select the displayed window's Nth pane in layout
 -- (reading) order — the numbering the ⌘-held badges show.
 {-# NOINLINE splitRegistry #-}
-splitRegistry :: IORef (M.Map Text (Int -> IO ()))
+splitRegistry :: IORef (M.Map Text (Integer, Int -> IO ()))
 splitRegistry = unsafePerformIO (newIORef M.empty)
 
--- Focus callbacks of the control-mode terminals, by terminal (tab) id: bring
--- the session's current window's active pane's xterm to keyboard focus (and the
--- active-pane highlight), used when a repl is launched into the session so it
--- becomes THE active pane even though the launch came from the tree/a button.
+-- Focus callbacks of the terminal / leksah-window widgets, by tmux session id
+-- AND by leksah-window id: bring the widget's focused pane/leaf to keyboard
+-- focus, used when a repl is launched into the session (or an item is opened
+-- into the window) so it becomes THE active pane even though the action came
+-- from the tree/a button.
 {-# NOINLINE focusRegistry #-}
-focusRegistry :: IORef (M.Map Text (IO ()))
+focusRegistry :: IORef (M.Map Text (Integer, IO ()))
 focusRegistry = unsafePerformIO (newIORef M.empty)
 
--- The backing tmux shell panes of editor / git-log tabs, by tab key:
--- @(session id, window id, pane id)@ as returned by
--- 'IDE.Web.Widget.Terminal.ensureShellPane'.  Registered when the tab's
--- background ensure completes; read by the ⌘D convert-to-pane path (which
--- needs the pane to split against) and dropped when the pane dies or the
--- tab is user-closed.
-{-# NOINLINE backingPanesRef #-}
-backingPanesRef :: IORef (M.Map TabKey (Text, Text, Text))
-backingPanesRef = unsafePerformIO (newIORef M.empty)
+-- Focus requests that arrived before their widget registered (the tab is
+-- still mounting — the first repl into a fresh session, a ⌘D that binds a
+-- session and rebuilds the tab).  'registerTerminalFocus' consumes a pending
+-- request for its key at registration, so the request is STICKY instead of
+-- being retried on timers.
+{-# NOINLINE pendingFocusKeys #-}
+pendingFocusKeys :: IORef (M.Map Text ())
+pendingFocusKeys = unsafePerformIO (newIORef M.empty)
 
-registerBackingPane :: TabKey -> (Text, Text, Text) -> IO ()
-registerBackingPane k v = atomicModifyIORef' backingPanesRef $ \m -> (M.insert k v m, ())
-
-lookupBackingPane :: TabKey -> IO (Maybe (Text, Text, Text))
-lookupBackingPane k = M.lookup k <$> readIORef backingPanesRef
-
-unregisterBackingPane :: TabKey -> IO ()
-unregisterBackingPane k = atomicModifyIORef' backingPanesRef $ \m -> (M.delete k m, ())
+-- (The backing-pane registry lived here until the native split layouts
+-- replaced the ⌘D pane overlays — an editor converts to a PaneView now, no
+-- tmux twin needed.)
 
 {-# NOINLINE activeRef #-}
 activeRef :: IORef (Maybe Text)
@@ -146,12 +167,39 @@ notifierRef :: IORef (Bool -> IO ())
 notifierRef = unsafePerformIO (newIORef (const (return ())))
 
 -- The active wide0 tab when it is not a terminal but CAN convert to a tmux
--- pane (an editor / git-log tab with a 'backingPanesRef' entry).  ⌘D on such
--- a tab converts it (see 'splitActiveTerminal'); the paired notifier drives
+-- pane (an editor / git-log tab).  ⌘D on such a tab materializes it into a
+-- leksah window (see 'splitActiveTerminal'); the paired notifier drives
 -- the native Split items' enablement (leksah_set_split_active).
 {-# NOINLINE activeConvertibleRef #-}
 activeConvertibleRef :: IORef (Maybe TabKey)
 activeConvertibleRef = unsafePerformIO (newIORef Nothing)
+
+-- The ⌘D override when the active leksah window's FOCUSED pane is a native
+-- VIEW (an editor / git log in the split): instead of splitting a tmux pane,
+-- run the stored action (Main keeps it current — it opens a terminal in the
+-- view's directory as a new native sibling pane).  The Bool is ⌘D's
+-- horizontal flag.
+{-# NOINLINE activeViewSplitRef #-}
+activeViewSplitRef :: IORef (Maybe (Bool -> IO ()))
+activeViewSplitRef = unsafePerformIO (newIORef Nothing)
+
+-- | Publish (or clear) the view-pane ⌘D action; called from Main whenever
+-- the active tab / focused pane changes.
+setActiveViewSplit :: Maybe (Bool -> IO ()) -> IO ()
+setActiveViewSplit = writeIORef activeViewSplitRef
+
+-- The tmux WINDOW the active leksah window's focused pane shows (when it is
+-- a tmux pane): ⌘D / C-b % target ITS active pane rather than the session's
+-- current one, which — with several windows visible at once — may be a
+-- different window entirely.
+{-# NOINLINE activeSplitWindowRef #-}
+activeSplitWindowRef :: IORef (Maybe Text)
+activeSplitWindowRef = unsafePerformIO (newIORef Nothing)
+
+-- | Publish (or clear) the focused tmux window; paired with
+-- 'setActiveViewSplit' in Main's focused-pane tracking.
+setActiveSplitWindow :: Maybe Text -> IO ()
+setActiveSplitWindow = writeIORef activeSplitWindowRef
 
 {-# NOINLINE splitNotifierRef #-}
 splitNotifierRef :: IORef (Bool -> IO ())
@@ -166,9 +214,15 @@ setActiveConvertible mb = do
   notify (isJust mb) `catch` \(_ :: SomeException) -> return ()
 
 -- | Install the native "split enabled" notifier (the wkwebview front end's
--- 'c_setSplitActive'); mirrors 'setActiveTerminalNotifier'.
+-- 'c_setSplitActive'); mirrors 'setActiveTerminalNotifier'.  Replays the
+-- CURRENT state at once: registration can race the restore-time publications
+-- (they write the ref regardless), so a late-registering notifier syncs
+-- itself here rather than callers delaying their pushes.
 setSplitActiveNotifier :: (Bool -> IO ()) -> IO ()
-setSplitActiveNotifier = writeIORef splitNotifierRef
+setSplitActiveNotifier notify = do
+  writeIORef splitNotifierRef notify
+  mb <- readIORef activeConvertibleRef
+  notify (isJust mb) `catch` \(_ :: SomeException) -> return ()
 
 -- | Record the PTY backing terminal @n@ (its tmux session id; called as the
 -- terminal is created).
@@ -182,12 +236,14 @@ unregisterTerminalPty n = atomicModifyIORef' ptyRegistry $ \m -> (M.delete n m, 
 -- | Record the control-channel command runner of CC terminal @n@.  The runner
 -- gets tmux command text (no target rewriting — the control client's notion of
 -- current window/pane is the displayed one) and must not block the caller.
-registerTerminalCC :: Text -> (Text -> IO ()) -> IO ()
-registerTerminalCC n run = atomicModifyIORef' ccRegistry $ \m -> (M.insert n run m, ())
+-- Returns the registration id for 'unregisterTerminalCC'.
+registerTerminalCC :: Text -> (Text -> IO ()) -> IO Integer
+registerTerminalCC = registerKeyed ccRegistry
 
--- | Forget CC terminal @n@'s runner (its client exited or the tab closed).
-unregisterTerminalCC :: Text -> IO ()
-unregisterTerminalCC n = atomicModifyIORef' ccRegistry $ \m -> (M.delete n m, ())
+-- | Forget CC terminal @n@'s runner (its client exited or the tab closed) —
+-- id-guarded, so a stale teardown never drops a replacement's registration.
+unregisterTerminalCC :: Text -> Integer -> IO ()
+unregisterTerminalCC = unregisterKeyed ccRegistry
 
 -- | Install session @n@'s control-client teardown, first running (on a fresh
 -- thread, so a slow detach never blocks the new client's setup) any prior one
@@ -216,27 +272,36 @@ runStop :: IO () -> IO ()
 runStop s = void . forkIO $ s `catch` \(_ :: SomeException) -> return ()
 
 -- | Record CC terminal @n@'s numbered split selector (see 'splitRegistry').
-registerTerminalSplits :: Text -> (Int -> IO ()) -> IO ()
-registerTerminalSplits n sel = atomicModifyIORef' splitRegistry $ \m -> (M.insert n sel m, ())
+registerTerminalSplits :: Text -> (Int -> IO ()) -> IO Integer
+registerTerminalSplits = registerKeyed splitRegistry
 
-unregisterTerminalSplits :: Text -> IO ()
-unregisterTerminalSplits n = atomicModifyIORef' splitRegistry $ \m -> (M.delete n m, ())
+unregisterTerminalSplits :: Text -> Integer -> IO ()
+unregisterTerminalSplits = unregisterKeyed splitRegistry
 
--- | Record CC terminal @n@'s focus callback (see 'focusRegistry').
-registerTerminalFocus :: Text -> IO () -> IO ()
-registerTerminalFocus n act = atomicModifyIORef' focusRegistry $ \m -> (M.insert n act m, ())
+-- | Record widget @n@'s focus callback (see 'focusRegistry'), consuming any
+-- focus request that arrived before this widget existed ('pendingFocusKeys')
+-- — the sticky-request half of 'focusTerminalPane'.
+registerTerminalFocus :: Text -> IO () -> IO Integer
+registerTerminalFocus n act = do
+  myId <- registerKeyed focusRegistry n act
+  pending <- atomicModifyIORef' pendingFocusKeys $ \m ->
+    (M.delete n m, M.member n m)
+  when pending $ act `catch` \(_ :: SomeException) -> return ()
+  return myId
 
-unregisterTerminalFocus :: Text -> IO ()
-unregisterTerminalFocus n = atomicModifyIORef' focusRegistry $ \m -> (M.delete n m, ())
+unregisterTerminalFocus :: Text -> Integer -> IO ()
+unregisterTerminalFocus = unregisterKeyed focusRegistry
 
--- | Ask CC terminal @n@ to focus its current active pane, if it is registered.
--- A no-op when the session has no CC terminal (not open, or PTY-backed).
+-- | Ask widget @n@ (a tmux session id or a leksah-window id) to focus its
+-- current pane/leaf.  If nothing is registered yet — the tab is still
+-- mounting — the request is remembered and delivered by
+-- 'registerTerminalFocus' when the widget appears, so callers need no
+-- retry timers.
 focusTerminalPane :: Text -> IO ()
-focusTerminalPane n = do
-  reg <- readIORef focusRegistry
-  case M.lookup n reg of
+focusTerminalPane n =
+  lookupKeyed focusRegistry n >>= \case
     Just act -> act `catch` \(_ :: SomeException) -> return ()
-    Nothing  -> return ()
+    Nothing  -> atomicModifyIORef' pendingFocusKeys $ \m -> (M.insert n () m, ())
 
 -- | Select the active terminal's Nth split (1-based, layout order) through
 -- its registered selector.  'False' = the active terminal has none (classic
@@ -246,7 +311,7 @@ selectSplitActiveTerminal :: Int -> IO Bool
 selectSplitActiveTerminal n = do
   mActive <- readIORef activeRef
   reg <- readIORef splitRegistry
-  case (`M.lookup` reg) =<< mActive of
+  case fmap snd . (`M.lookup` reg) =<< mActive of
     Just sel -> do
       sel n `catch` \(_ :: SomeException) -> return ()
       return True
@@ -279,9 +344,13 @@ getActiveConvertible :: IO (Maybe TabKey)
 getActiveConvertible = readIORef activeConvertibleRef
 
 -- | Register the callback told whether a terminal is active (native menu
--- enabling).  Called once at startup by the front end.
+-- enabling).  Called once at startup by the front end.  Replays the current
+-- state at once (see 'setSplitActiveNotifier').
 setActiveTerminalNotifier :: (Bool -> IO ()) -> IO ()
-setActiveTerminalNotifier = writeIORef notifierRef
+setActiveTerminalNotifier notify = do
+  writeIORef notifierRef notify
+  mb <- readIORef activeRef
+  notify (isJust mb) `catch` \(_ :: SomeException) -> return ()
 
 -- | Write @bytes@ to the active terminal's PTY, as if typed.  A no-op (rather
 -- than an error) when no terminal is active or its PTY has gone away.
@@ -301,7 +370,7 @@ tmuxCommandActiveTerminal :: Text -> IO Bool
 tmuxCommandActiveTerminal cmd = do
   mActive <- readIORef activeRef
   reg <- readIORef ccRegistry
-  case (`M.lookup` reg) =<< mActive of
+  case fmap snd . (`M.lookup` reg) =<< mActive of
     Just run -> do
       run cmd `catch` \(_ :: SomeException) -> return ()
       return True
@@ -315,13 +384,24 @@ tmuxCommandActiveTerminal cmd = do
 -- a classic PTY tab (no CC runner) falls back to the @C-b@ chord.
 splitActiveTerminal :: Bool -> ByteString -> IO ()
 splitActiveTerminal horizontal chord = do
+  mViewSplit <- readIORef activeViewSplitRef
   mActive <- readIORef activeRef
   reg <- readIORef ccRegistry
-  case mActive of
-    Just sid | Just run <- M.lookup sid reg -> do
+  case mViewSplit of
+   -- The focused pane is a native VIEW in a leksah window: ⌘D opens a
+   -- terminal beside it (in the view's directory) rather than splitting
+   -- some tmux pane.
+   Just act -> act horizontal
+   Nothing -> case mActive of
+    Just sid | Just (_, run) <- M.lookup sid reg -> do
       cmd <- if "ssh://" `T.isPrefixOf` sid
                then return ("split-window " <> if horizontal then "-h" else "-v")
-               else buildSplitWindowCommand horizontal sid
+               else do
+                 -- Split the FOCUSED leksah pane's window (its active tmux
+                 -- pane), not whatever window happens to be tmux-current.
+                 mw <- readIORef activeSplitWindowRef
+                 mtgt <- maybe (return Nothing) activePaneIdOfWindow mw
+                 buildSplitWindowCommand horizontal sid mtgt
       run cmd `catch` \(_ :: SomeException) -> return ()
     Just _ -> sendToActiveTerminal (BS.cons 2 chord)
     Nothing -> readIORef activeConvertibleRef >>= \case

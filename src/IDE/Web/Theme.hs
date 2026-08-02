@@ -63,6 +63,7 @@ module IDE.Web.Theme
   , inputTopColor, inputBottomColor
   , menuTopColor, menuBottomColor
     -- ** Shadows / scrims
+  , paneRingColor
   , glowColor
   , dropShadowColor
   , scrimColor
@@ -143,9 +144,14 @@ inputBottomColor    = var "input-bottom"
 menuTopColor        = var "menu-top"
 menuBottomColor     = var "menu-bottom"
 
+-- The active pane's 1px ring: maximum contrast against the theme (white on
+-- dark, black on light) — the model-driven per-pane highlight.
+paneRingColor :: Color
+paneRingColor = var "pane-ring-active"
+
 -- Shadows / scrims
 glowColor, dropShadowColor, scrimColor, scrimFaintColor :: Color
-glowColor       = var "shadow-glow"  -- active-pane glow + dialog box-shadow
+glowColor       = var "shadow-glow"  -- dialog box-shadow
 dropShadowColor = var "shadow-drop"  -- menu/flipper/context/tooltip drop shadow
 scrimColor      = var "scrim"         -- modal overlay backdrop
 scrimFaintColor = var "scrim-faint"   -- region-capture overlay
@@ -217,6 +223,7 @@ paletteCss = T.concat
       , "--leksah-input-bottom:rgb(24,24,24);"
       , "--leksah-menu-top:rgb(64,64,64);"
       , "--leksah-menu-bottom:rgb(32,32,32);"
+      , "--leksah-pane-ring-active:#ffffff;"
       , "--leksah-shadow-glow:rgba(128,128,128,0.9);"
       , "--leksah-shadow-drop:rgba(0,0,0,1);"
       , "--leksah-scrim:rgba(0,0,0,0.35);"
@@ -253,6 +260,7 @@ paletteCss = T.concat
       -- see-through).  The flipper has its own solid background.
       , "--leksah-menu-top:#f2f2f2;"
       , "--leksah-menu-bottom:#e8e8e8;"
+      , "--leksah-pane-ring-active:#000000;"
       , "--leksah-shadow-glow:rgba(0,0,0,0.28);"
       , "--leksah-shadow-drop:rgba(0,0,0,0.22);"
       , "--leksah-scrim:rgba(0,0,0,0.28);"
