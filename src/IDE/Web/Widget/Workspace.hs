@@ -13,13 +13,16 @@ import Control.Concurrent (forkIO)
 import Control.Exception (try, SomeException)
 import Control.Lens
        (to, view, preview, _Just)
-import Control.Monad (void, when, forM_)
+import Control.Monad (void, when, unless, forM_)
 import Control.Monad.IO.Class (liftIO)
+import Language.Javascript.JSaddle (liftJSM, eval, valToNumber)
+import qualified System.IO as IO (hPutStrLn, stderr)
 
 import Data.Bool (bool)
 import Data.List (stripPrefix, isPrefixOf, dropWhileEnd, find, nub, sortBy, sortOn)
 import Data.Ord (comparing)
-import qualified Data.Map as M (elems, fromList, fromListWith, keys, toList)
+import qualified Data.Map as M
+       (elems, fromList, fromListWith, keys, toList, null)
 import Data.Maybe (listToMaybe, maybeToList, fromMaybe, isJust)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
@@ -46,6 +49,7 @@ import IDE.Git (runGit)
 import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import IDE.Web.RemoteSettingsRequest (requestRemoteSettings)
 import IDE.Web.GitLogRequest (requestGitLog)
+import IDE.Web.Worktree (requestReview)
 import IDE.Web.ReplTmux (openTerminalInDir, runInTerminal)
 import IDE.Web.FS (fsReadFile, fsDoesFileExist, fsDoesDirectoryExist)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh, requestRemoteRefresh, RefreshReason(..))
@@ -66,7 +70,7 @@ import Clay.Stylesheet (key)
 import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffor,
         current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
-        performEvent_, newTriggerEvent, Dynamic,
+        performEvent_, newTriggerEvent, Dynamic, updated, delay, tag,
         Event, never, fmapMaybe, tagPromptlyDyn, sample)
 import Reflex.Dom.Core
        (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
@@ -92,15 +96,16 @@ import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEv
 import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
         flakeTreeWidget, execButton, openNixWindow, developAttr)
-import IDE.Web.Widget.Menu (menu, menuSplit)
+import IDE.Web.Widget.Menu (menu, menuSplit, menuSplitWith)
 import IDE.Web.Widget.FileTree
        (fileTree, claudeNode, gitClass, gitBadge)
 import IDE.Web.Widget.Changes (gitChanges, FileChange(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.Claude (claudeAvailable, runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.Widget.Tree
-       (treeItemDynAttr', treeSelect, treeSelect', treeItem,
+       (treeItemDynAttr', treeItemDynAttrSet', treeSelect, treeSelect', treeItem,
         treeItem', clickMods, dblclickMods)
+import IDE.Web.GitInfo (prForBranch)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
 import IDE.Workspaces
        (workspaceRemoveProject, workspaceActivatePackage)
@@ -273,6 +278,19 @@ workspaceCss = do
     ".workspace .git-branch-current" ? fontWeight bold
     -- The open PR whose head is the current branch's upstream, bolded too.
     ".workspace .git-pr-current" ? fontWeight bold
+    -- Branch + PR summary on a project row: hidden while expanded (the git
+    -- subtree shows it), inline while the project is collapsed.
+    ".workspace .proj-git-summary" ? do
+        "display" -: "none"
+        color dimColor
+        "font-size" -: "11px"
+    ".workspace .project.tree-collapsed .proj-git-summary" ? ("display" -: "inline")
+    ".workspace .proj-git-summary img" ? do
+        "height" -: "12px"
+        "width" -: "12px"
+        "vertical-align" -: "middle"
+        "margin" -: "0 3px 0 6px"
+        "opacity" -: "0.7"
 
 components :: IDEPackage -> [Text]
 components package =
@@ -354,26 +372,27 @@ shortProjectSuffix dir allDirs =
 -- click to open one in a terminal).  All git reads go through 'runGit', so a
 -- remote (@ssh://@) checkout works too; refreshes ride the
 -- LocalRefresh/RemoteRefresh buses.
-gitTreeNode :: forall t m . MonadWidget t m => FilePath -> m ()
-gitTreeNode dir = do
+gitTreeNode :: forall t m . MonadWidget t m
+            => FilePath
+            -> Dynamic t (Maybe Text)         -- ^ current branch (scanned by the project node)
+            -> Dynamic t (Maybe (Int, Text))  -- ^ open PR (number, url)
+            -> m ()
+gitTreeNode dir brD prD = do
   pb <- getPostBuild
   isGitE <- performEvent $ ffor pb $ \_ -> liftIO (isGitCheckout dir)
   isGitD <- holdUniqDyn =<< holdDyn False isGitE
   void . dyn $ ffor isGitD $ \isGit -> when isGit $ do
-      (brE, fireBr) <- newTriggerEvent
       (abE, fireAb) <- newTriggerEvent
-      let scanBr = void . forkIO $ do
-            gitCurrentBranch dir >>= fireBr
-            gitAheadBehind dir   >>= fireAb
+      let scanAb = void . forkIO $ gitAheadBehind dir >>= fireAb
       bpb <- getPostBuild
-      performEvent_ $ liftIO scanBr <$ bpb
-      liftIO $ registerGitRefresh dir scanBr
-      brD <- holdDyn Nothing brE
+      performEvent_ $ liftIO scanAb <$ bpb
+      liftIO $ registerGitRefresh dir scanAb
       abD <- holdDyn Nothing abE
       void $ treeItem "git" False
-        (do (_, mE) <- treeSelect' "workspace" (gitRootMenu dir brD) $ do
+        (do (_, mE) <- treeSelect' "workspace" (gitRootMenu dir brD prD) $ do
                 gitIcon
-                dynText $ ffor brD $ maybe "git" id
+                -- Branch name, then the open PR number (e.g. "main #1234").
+                dynText $ (\mb mpr -> maybe "git" id mb <> prSuffix mpr) <$> brD <*> prD
                 -- Ahead/behind of the current branch vs its upstream.
                 void . dyn $ ffor abD $ \case
                     Just (a, b) -> abSpan a b
@@ -388,6 +407,28 @@ gitTreeNode dir = do
             gitHubNodes dir
             gitWorktreesNode dir
             return (never :: Event t ()))
+
+-- | Suffix showing the open PR number next to a branch, e.g. @" #1234"@.
+prSuffix :: Maybe (Int, Text) -> Text
+prSuffix = maybe "" (\(n, _) -> " #" <> T.pack (show n))
+
+-- | Scan a checkout's current branch and open PR, refreshing on git changes.
+-- Computed once at the project node so the git subtree, the collapsed-project
+-- summary and the "Open PR" menu items all share a single scan (PR lookups are
+-- additionally cached in 'IDE.Web.GitInfo').  A non-git dir just yields
+-- @(Nothing, Nothing)@.
+gitBranchPr :: forall t m. MonadWidget t m
+            => FilePath -> m (Dynamic t (Maybe Text), Dynamic t (Maybe (Int, Text)))
+gitBranchPr dir = do
+  (brE, fireBr) <- newTriggerEvent
+  (prE, firePr) <- newTriggerEvent
+  let scan = void . forkIO $ do
+        gitCurrentBranch dir >>= fireBr
+        prForBranch dir >>= firePr
+  pb <- getPostBuild
+  performEvent_ $ liftIO scan <$ pb
+  liftIO $ registerGitRefresh dir scan
+  (,) <$> holdDyn Nothing brE <*> holdDyn Nothing prE
 
 -- | A leading git tree-row icon.
 gitIcon :: MonadWidget t m => m ()
@@ -415,8 +456,20 @@ abSpan ahead behind = when (ahead > 0 || behind > 0) $
 -- checkout) is picked up by the @.git@ watcher, which refreshes the tree.
 gitAction :: FilePath -> [Text] -> IO ()
 gitAction dir args =
-    runInTerminal False dir "git" "git" (T.intercalate " " ("git" : map shq args))
+    runInTerminal False dir "git" "git" (gitCmdLine args)
+
+-- | The shell line 'gitAction' runs (each argument single-quoted).
+gitCmdLine :: [Text] -> Text
+gitCmdLine args = T.intercalate " " ("git" : map shq args)
   where shq a = "'" <> T.replace "'" "'\\''" a <> "'"
+
+-- | The ⌥-split target matching @'gitAction' dir args@ — the same command run
+-- in a split of the active pane instead of the reusable git window.  'Nothing'
+-- for remote checkouts (a split runs on the local tmux server).
+gitTarget :: FilePath -> [Text] -> Maybe SplitTarget
+gitTarget dir args
+  | isRemotePath dir = Nothing
+  | otherwise        = Just (STRunCmd False dir "git" "git" (gitCmdLine args))
 
 -- | Ask the git subtree to rescan now (branches, ahead/behind, worktrees, …).
 refreshGit :: FilePath -> IO ()
@@ -426,15 +479,23 @@ refreshGit dir
 
 -- | Right-click menu for the root git row: whole-repo network actions, the
 -- current branch's log, and a manual refresh.
-gitRootMenu :: forall t m. MonadWidget t m => FilePath -> Dynamic t (Maybe Text) -> m (Event t (IO ()))
-gitRootMenu dir curD = menuSplit
-  [ constDyn ("Fetch",   (Nothing, gitAction dir ["fetch", "--all", "--prune"]))
-  , constDyn ("Pull",    (Nothing, gitAction dir ["pull"]))
-  , constDyn ("Push",    (Nothing, gitAction dir ["push"]))
+gitRootMenu :: forall t m. MonadWidget t m
+            => FilePath -> Dynamic t (Maybe Text) -> Dynamic t (Maybe (Int, Text))
+            -> m (Event t (IO ()))
+gitRootMenu dir curD prD = menuSplit $
+  [ constDyn ("Fetch",   (gitTarget dir ["fetch", "--all", "--prune"], gitAction dir ["fetch", "--all", "--prune"]))
+  , constDyn ("Pull",    (gitTarget dir ["pull"], gitAction dir ["pull"]))
+  , constDyn ("Push",    (gitTarget dir ["push"], gitAction dir ["push"]))
   , ffor curD $ \mb ->
       ("Open Log", ( if isRemotePath dir then Nothing else STGitLog dir <$> mb
                    , maybe (return ()) (requestGitLog dir) mb ))
-  , constDyn ("Refresh", (Nothing, refreshGit dir))
+  , ffor prD $ \mpr ->
+      ("Open PR" <> prSuffix mpr, (Nothing, maybe (return ()) (openUrl . snd) mpr))
+  ] <>
+  -- The Review pane diffs against the recorded/derived base branch and reads
+  -- working files directly — local checkouts only.
+  [ constDyn ("Review Changes…", (Nothing, requestReview dir)) | not (isRemotePath dir) ] <>
+  [ constDyn ("Refresh", (Nothing, refreshGit dir))
   ]
 
 -- | Right-click menu for a branch row: its log always; pull/push for the current
@@ -444,10 +505,10 @@ gitBranchMenu dir isCurrent name = menuSplit $
   constDyn ("Open Log", ( if isRemotePath dir then Nothing else Just (STGitLog dir name)
                         , requestGitLog dir name ))
   : if isCurrent
-      then [ constDyn ("Pull", (Nothing, gitAction dir ["pull"]))
-           , constDyn ("Push", (Nothing, gitAction dir ["push"])) ]
-      else [ constDyn ("Checkout",      (Nothing, gitAction dir ["checkout", name]))
-           , constDyn ("Delete Branch", (Nothing, gitAction dir ["branch", "-d", name])) ]
+      then [ constDyn ("Pull", (gitTarget dir ["pull"], gitAction dir ["pull"]))
+           , constDyn ("Push", (gitTarget dir ["push"], gitAction dir ["push"])) ]
+      else [ constDyn ("Checkout",      (gitTarget dir ["checkout", name], gitAction dir ["checkout", name]))
+           , constDyn ("Delete Branch", (gitTarget dir ["branch", "-d", name], gitAction dir ["branch", "-d", name])) ]
 
 -- | Right-click menu for a submodule row.
 gitSubmoduleMenu :: forall t m. MonadWidget t m => FilePath -> Text -> m (Event t (IO ()))
@@ -456,17 +517,20 @@ gitSubmoduleMenu dir path = menuSplit
     in constDyn ("Open Terminal Here",
                  ( if isRemotePath p then Nothing else Just (STTermDir p)
                  , openTerminalInDir p ))
-  , constDyn ("Update Submodule",   (Nothing, gitAction dir ["submodule", "update", "--init", "--", path]))
+  , constDyn ("Update Submodule",   (gitTarget dir ["submodule", "update", "--init", "--", path], gitAction dir ["submodule", "update", "--init", "--", path]))
   ]
 
 -- | Right-click menu for a worktree row.
 gitWorktreeMenu :: forall t m. MonadWidget t m => FilePath -> GitWorktree -> m (Event t (IO ()))
-gitWorktreeMenu dir wt = menuSplit
+gitWorktreeMenu dir wt = menuSplit $
   [ let p = fullWorktreePath dir wt
     in constDyn ("Open Terminal Here",
                  ( if isRemotePath p then Nothing else Just (STTermDir p)
                  , openTerminalInDir p ))
-  , constDyn ("Remove Worktree",    (Nothing, gitAction dir ["worktree", "remove", gwPath wt]))
+  ] <>
+  [ constDyn ("Review Worktree…", (Nothing, requestReview (fullWorktreePath dir wt)))
+  | not (isRemotePath (fullWorktreePath dir wt)) ] <>
+  [ constDyn ("Remove Worktree",    (gitTarget dir ["worktree", "remove", gwPath wt], gitAction dir ["worktree", "remove", gwPath wt]))
   ]
 
 -- | \"Branches\": every local branch, the current one bolded; clicking a branch
@@ -1212,34 +1276,78 @@ workspaceWidget ide activeFileD revealFileD = do
         activeProjectKeyD <- holdUniqDyn $ fmap pjKey . view activeProject <$> ide
         activePackageFileD <- holdUniqDyn $ fmap ipdCabalFile . view activePack <$> ide
         activeComponentD <- holdUniqDyn $ view activeComponent <$> ide
-        listViewWithKey projectsD $ \(_, pKey) projectD -> do
+        -- Self-heal (rare, pathological cold ghci boots): the project rows can
+        -- build exactly once yet never be ATTACHED to the live DOM — frames all
+        -- settle, model and statusbar are current, but `.projects` stays
+        -- childless until some unrelated UI event nudges reflex-dom's deferred
+        -- commit (observed live; any editor-open made the rows appear with NO
+        -- rebuild).  Until that commit stall is root-caused, verify the DOM a
+        -- while after this widget builds, and if the model has projects but
+        -- the DOM has none, log loudly and rebuild the whole row list — the
+        -- rebuild runs in a small, healthy frame and attaches normally.
+        (rebuildE, fireRebuild) <- newTriggerEvent
+        rebuildD <- holdDyn (0 :: Int) rebuildE
+        wsPb <- getPostBuild
+        checkE <- delay 30 wsPb
+        performEvent_ $ ffor (tag (current projectsD) checkE) $ \projs ->
+          unless (M.null projs) $ do
+            n <- liftJSM $ valToNumber =<<
+                   eval ("document.querySelectorAll('.projects > li').length" :: Text)
+            when (n < 1) . liftIO $ do
+              IO.hPutStrLn IO.stderr $
+                "LEKSAH: workspace tree missing from DOM after settle ("
+                  <> show (length (M.keys projs))
+                  <> " projects in the model) — self-heal rebuild"
+              fireRebuild 1
+        (switchHold never =<<) . dyn $ ffor rebuildD $ \_ -> listViewWithKey projectsD $ \(_, pKey) projectD -> do
           let isActiveProjectD = (== Just pKey) <$> activeProjectKeyD
           -- Reveal (expand) the project when the active file is anywhere under it.
           projNodeRevealD <- revealUnder (constDyn (pjDir pKey)) revealFileD
-          treeItemDynAttr' projNodeRevealD (("class" =:) . ("project" <>) <$> (bool "" " active" <$> isActiveProjectD)) True
+          -- Current branch + open PR for this project's checkout, scanned once
+          -- here and shared by the git subtree, the collapsed summary and the
+          -- "Open PR" menu item.
+          (brD, prD) <- gitBranchPr (pjDir pKey)
+          -- Only the active project starts expanded; activating another project
+          -- collapses this one (and expands that one).
+          initActive <- sample (current isActiveProjectD)
+          treeItemDynAttrSet' (updated isActiveProjectD) projNodeRevealD
+            (("class" =:) . ("project" <>) <$> (bool "" " active" <$> isActiveProjectD)) initActive
             (do
               claudeAvail <- liftIO claudeAvailable
-              (projRowEl, rowE) <- treeSelect' "workspace" (menu $
-                [ ("Activate",) . ProjectCommand . CommandWorkspaceAction "Set as Active Project" "" <$>
+              -- ⌥-clicking the terminal/Claude items opens them into a split of
+              -- the active pane (⌥⇧ = the other direction), like the ⌥-open
+              -- tree gestures; wrapSplit embeds the request in the menu's
+              -- command type.  Remote projects can't split (a split runs on the
+              -- local tmux server), so their items carry no target.
+              let wrapSplit t sh = ProjectCommand (CommandWorkspaceAction "" ""
+                                     (liftIO (requestSplitOpen (t, sh))))
+                  localTgt t = if isRemotePath (pjDir pKey) then Nothing else Just t
+                  plain = fmap (fmap (Nothing,))
+              (projRowEl, rowE) <- treeSelect' "workspace" (menuSplitWith wrapSplit $
+                [ plain $ ("Activate",) . ProjectCommand . CommandWorkspaceAction "Set as Active Project" "" <$>
                     (workspaceActivatePackage <$> projectD <*> pure Nothing <*> pure Nothing)
                 ] <> case pjFile pKey of
-                        Just file -> [ constDyn ("Open Project File", ProjectFileEvents . ("" =:) $ OpenFile False file) ]
+                        Just file -> [ constDyn ("Open Project File", (Just (STFile file), ProjectFileEvents . ("" =:) $ OpenFile False file)) ]
                         _ -> []
                   <> case pKey of
                         CabalTool p ->
-                          [ constDyn ("Open Project Configuration File", ProjectFileEvents . ("" =:) . OpenFile True $ pjCabalFile p <.> "local") ]
+                          [ let f = pjCabalFile p <.> "local"
+                            in constDyn ("Open Project Configuration File", (Just (STFile f), ProjectFileEvents . ("" =:) $ OpenFile True f)) ]
                         _ -> []
-                <> [ ("Open Terminal Here",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
+                <> [ ("Open Terminal Here",) . (localTgt (STTermDir (pjDir pKey)),) . ProjectCommand . CommandWorkspaceAction "" "" <$>
                     (runProject projectOpenTerminal <$> projectD)
-                , ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
+                , plain $ ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
                     (runProject projectRefreshNix <$> projectD)
-                , constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (workspaceRemoveProject pKey)))
-                , constDyn ("Project Settings…", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (requestRemoteSettings pKey))))
+                , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (workspaceRemoveProject pKey)))
+                , plain $ constDyn ("Project Settings…", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (requestRemoteSettings pKey))))
+                , plain $ ffor prD $ \mpr ->
+                    ( "Open PR" <> prSuffix mpr
+                    , ProjectCommand (CommandWorkspaceAction "" "" (liftIO (maybe (return ()) (openUrl . snd) mpr))) )
                 ]
                 -- Claude Code (only when the CLI is on PATH): start a fresh
                 -- session or continue the most recent one in the project dir.
-                <> [ constDyn ("New Claude Session", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeNew (pjDir pKey)))))) | claudeAvail ]
-                <> [ constDyn ("Continue Last Claude Session", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeContinue (pjDir pKey)))))) | claudeAvail ]) $ do
+                <> [ constDyn ("New Claude Session", (localTgt (STClaudeNew (pjDir pKey)), ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeNew (pjDir pKey))))))) | claudeAvail ]
+                <> [ constDyn ("Continue Last Claude Session", (localTgt (STClaudeContinue (pjDir pKey)), ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeContinue (pjDir pKey))))))) | claudeAvail ]) $ do
                 elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
                 -- Label = (for a remote project) the server name, then the
                 -- shortest right-anchored path suffix that uniquely identifies
@@ -1253,6 +1361,13 @@ workspaceWidget ide activeFileD revealFileD = do
                 suffixD <- holdUniqDyn $ shortProjectSuffix (pjDir pKey) <$> allProjectDirsD
                 let labelD = maybe id (\h s -> h <> ":" <> s) mbHost <$> suffixD
                 elAttr "span" ("title" =: fullTitle) $ dynText labelD
+                -- Git icon + branch + PR number, shown inline only while the
+                -- project is collapsed (CSS keys off the li's tree-collapsed
+                -- class); rendered only when the checkout has a branch.
+                elClass "span" "proj-git-summary" $
+                    void . dyn $ ffor ((,) <$> brD <*> prD) $ \case
+                        (Nothing, _)   -> return ()
+                        (Just b, mpr)  -> gitIcon >> text (b <> prSuffix mpr)
                 return never
               -- Double-click a project row → open a terminal at its directory.
               -- ⌥ opens it into a split of the active pane instead (local only).
@@ -1265,7 +1380,7 @@ workspaceWidget ide activeFileD revealFileD = do
             el "ul" $ do
               -- Top item: the project's git tree (self-hides unless the project
               -- dir is itself a git checkout).
-              gitTreeNode (pjDir pKey)
+              gitTreeNode (pjDir pKey) brD prD
               -- The project's Claude Code sessions, surfaced right under the
               -- project row (self-hides unless the project dir has sessions) so
               -- it's reachable without drilling into the Files node.
@@ -1288,24 +1403,32 @@ workspaceWidget ide activeFileD revealFileD = do
                     <$> projectD <*> packageD
                 pkgRevealE <- revealUnderExcept pkgDirD nestedPkgDirsD revealFileD
                 let isActivePackageD = (&&) <$> isActiveProjectD <*> ((==) <$> activePackageFileD <*> (Just <$> cabalFileD))
-                    pkgCmd t f = (t,) . PackageCommand . CommandWorkspaceAction "" "" <$> (runProject . runPackage f <$> packageD <*> projectD)
+                    pkgCmd t f = plainPkg $ (t,) . PackageCommand . CommandWorkspaceAction "" "" <$> (runProject . runPackage f <$> packageD <*> projectD)
                     -- A Claude launch item for the package's directory (Dynamic
-                    -- because the package dir is).
-                    pkgClaude t c = (\d -> (t, PackageCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (c d)))))) <$> pkgDirD
+                    -- because the package dir is); @st@ is its ⌥-split target
+                    -- (local dirs only — a split runs on the local tmux server).
+                    pkgClaude t c st = (\d -> (t, ( if isRemotePath d then Nothing else Just (st d)
+                                                  , PackageCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (c d))))))) <$> pkgDirD
+                    -- ⌥-split plumbing for the package menu (see the project
+                    -- menu's wrapSplit/plain above).
+                    wrapSplitPkg t sh = PackageCommand (CommandWorkspaceAction "" ""
+                                          (liftIO (requestSplitOpen (t, sh))))
+                    plainPkg = fmap (fmap ((,) Nothing))
                 -- claudeAvail is the project-level binding above (in scope here).
                 treeItemDynAttr' pkgRevealE (("class" =:) . ("package" <>) <$> (bool "" " active" <$> isActivePackageD)) False
-                  (treeSelect "workspace" (menu $
-                      [ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Package" "" <$>
+                  (treeSelect "workspace" (menuSplitWith wrapSplitPkg $
+                      [ plainPkg $ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Package" "" <$>
                           (workspaceActivatePackage <$> projectD <*> (Just <$> packageD) <*> pure Nothing)
                       , pkgCmd "Build" makePackage
                       , pkgCmd "Run" packageRun
                       , pkgCmd "Test" packageTest
                       , pkgCmd "Benchmark" packageBench
                       , pkgCmd "Clean" packageClean
-                      , ("Open Package File",) . PackageFileEvents . (("" =:) . OpenFile False . ipdCabalFile) <$> packageD
+                      , (\cf -> ("Open Package File", (Just (STFile cf), PackageFileEvents (("" =:) (OpenFile False cf)))))
+                          . ipdCabalFile <$> packageD
                       ]
-                      <> [ pkgClaude "New Claude Session" ClaudeNew | claudeAvail ]
-                      <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue | claudeAvail ]) $ do
+                      <> [ pkgClaude "New Claude Session" ClaudeNew STClaudeNew | claudeAvail ]
+                      <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue STClaudeContinue | claudeAvail ]) $ do
                     let isDebugD = S.member . (pKey,) <$> cabalFileD <*> debugPackagesD
                     elDynAttr "img" (("class" =: "tree-icon" <>) . ("src" =:) . (\f -> "/pics/tree-" <> f <> ".svg") . bool "package" "debug" <$> isDebugD) $ return ()
                     -- The package's cabal-file path (relative to the project)
@@ -1328,8 +1451,9 @@ workspaceWidget ide activeFileD revealFileD = do
                     -- Top item: the package's git tree — only when the package
                     -- is NOT the project root and is itself a git checkout.
                     pkgDir <- sample (current pkgDirD)
-                    when (dropTrailingPathSeparator pkgDir /= dropTrailingPathSeparator (pjDir pKey)) $
-                        gitTreeNode pkgDir
+                    when (dropTrailingPathSeparator pkgDir /= dropTrailingPathSeparator (pjDir pKey)) $ do
+                        (pkgBrD, pkgPrD) <- gitBranchPr pkgDir
+                        gitTreeNode pkgDir pkgBrD pkgPrD
                     componentsE <- treeItem "components" False
                       (treeSelect "workspace" (return never) $ do
                           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()

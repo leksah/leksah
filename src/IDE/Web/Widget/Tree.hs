@@ -10,6 +10,7 @@ module IDE.Web.Widget.Tree
   , treeSelect'
   , treeItemDynAttr
   , treeItemDynAttr'
+  , treeItemDynAttrSet'
   , treeItem
   , treeItem'
   , scrollIntoViewNearest
@@ -26,6 +27,7 @@ import Data.Default (def)
 import Data.Function ((&))
 import qualified Data.List.NonEmpty as NonEmpty (fromList)
 import Data.Map (Map)
+import qualified Data.Map as Map (insertWith)
 import Data.Text (Text)
 
 import Language.Javascript.JSaddle
@@ -152,14 +154,35 @@ treeItemDynAttr'
   -> m (Event t event)
   -> m (Event t event)
   -> m (Event t event)
-treeItemDynAttr' revealD itemClass startExpanded item children = mdo
+treeItemDynAttr' = treeItemDynAttrSet' never
+
+-- | Like 'treeItemDynAttr'' but with an extra @setExpandedE@ event that forces
+-- the node open (on 'True') or closed (on 'False') — e.g. to collapse every
+-- project except the active one, and re-expand the newly-active one.  Manual
+-- clicks and the reveal 'Dynamic' still work in between.  The @li@ also carries
+-- a @tree-expanded@ / @tree-collapsed@ class reflecting the current state, so
+-- CSS can show/hide a collapsed-only summary.
+treeItemDynAttrSet'
+  :: MonadWidget t m
+  => Event t Bool
+  -> Dynamic t Bool
+  -> Dynamic t (Map Text Text)
+  -> Bool
+  -> m (Event t event)
+  -> m (Event t event)
+  -> m (Event t event)
+treeItemDynAttrSet' setExpandedE revealD itemClass startExpanded item children = mdo
   pb <- getPostBuild
   let setOpenE = ffilter id $ leftmost [updated revealD, tag (current revealD) pb]
   expanded <- holdUniqDyn =<< holdDyn startExpanded (leftmost
       [ not <$> tag (current expanded) toggleExpanded
+      , setExpandedE
       , setOpenE ])
 
-  (toggleExpanded, events) <- elDynAttr "li" itemClass $ do
+  let itemClass' = (\ex m -> Map.insertWith (\new old -> old <> " " <> new) "class"
+                              (bool "tree-collapsed" "tree-expanded" ex) m)
+                     <$> expanded <*> itemClass
+  (toggleExpanded, events) <- elDynAttr "li" itemClass' $ do
     (expander, _) <- elClass' "div" "tree-expand" $
       simpleSvgPath (bool triangleRight triangleDown <$> expanded)
     itemE <- item
