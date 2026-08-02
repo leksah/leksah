@@ -47,6 +47,8 @@ import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.ShortcutsRequest (requestShowShortcuts)
+import IDE.Web.BrowserRequest (requestOpenBrowser)
+import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.NewWindowRequest (setNewWindowHandler)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput
@@ -172,11 +174,14 @@ leksah_menu_action tag = do
     (CommandFind:_)            -> requestToggleFindbar
     (CommandShowPreferences:_) -> requestShowPreferences
     (CommandShowShortcuts:_)   -> requestShowShortcuts
-    (cmd:_) -> getGlobalIDERef >>= \case
-      Just ideR -> case cmd ^. commandAction of
-        Just act -> void $ reflectIDE act ideR
-        Nothing  -> return ()
-      Nothing -> return ()
+    (CommandOpenBrowser:_)     -> requestOpenBrowser
+    (cmd:_) -> case cmd ^. commandAction of
+      -- No IDEAction: handled inside the reflex network by matching the keymap
+      -- event stream (flipper, next/previous error, …) — inject via the bridge.
+      Nothing  -> requestKeymapCommand cmd
+      Just act -> getGlobalIDERef >>= \case
+        Just ideR -> void $ reflectIDE act ideR
+        Nothing   -> return ()
     [] -> return ()
 
 -- | Render a key spec (@\"cmd+shift+d\"@) or a mac-symbol hint (@\"⌃B d\"@)

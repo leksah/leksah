@@ -123,8 +123,9 @@ findbarWidget
   => Dynamic t (Maybe TabKey)   -- ^ the active pane (find/replace targets it)
   -> Dynamic t Bool             -- ^ whether the find bar is shown (Edit ▸ Find toggles it)
   -> m (Event t FindbarEvents)
-findbarWidget activePaneD visibleD =
-  elDynAttr "div" (ffor visibleD $ \v -> "class" =: ("findbar" <> bool " hidden" "" v)) $ do
+findbarWidget activePaneD visibleD = do
+  (barEl, innerE) <- elDynAttr' "div"
+      (ffor visibleD $ \v -> "class" =: ("findbar" <> bool " hidden" "" v)) $ do
     -- Whether the active pane is a CodeMirror editor: Replace is shown only for
     -- editors.  (List/tree-pane find is handled in Haskell elsewhere.)
     let isCMD = (\case Just (EditorKey _) -> True; _ -> False) <$> activePaneD
@@ -133,9 +134,10 @@ findbarWidget activePaneD visibleD =
         -- their text, so a DOM search would miss off-screen matches; the JS
         -- dispatch in findSet/findNext/findPrev picks the right one by active
         -- pane.  All other panes (lists/trees) are searched in Haskell.
-        isJSD = (\case Just (EditorKey _)   -> True
-                       Just (TerminalKey _) -> True
-                       _                    -> False) <$> activePaneD
+        isJSD = (\case Just (EditorKey _)    -> True
+                       Just (TerminalKey _)  -> True
+                       Just (LeksahWinKey _) -> True
+                       _                     -> False) <$> activePaneD
 
     caseD  <- toggleButton "Case"
     wordsD <- toggleButton "Words"
@@ -194,6 +196,11 @@ findbarWidget activePaneD visibleD =
         -- Grep is global (not gated on the active pane): it greps the workspace.
         grepE         = (\(s, _, fl) -> FindGrep s fl) <$> tagPromptlyDyn curD (domEvent Click grepBtn)
     return $ leftmost [findUpdateE, findStepE, grepE]
+  -- Escape anywhere in the bar (the inputs' keydowns bubble to the container):
+  -- close the bar and hand the keyboard back to the active pane (Main routes
+  -- 'FindHide' into the visibility fold and a re-select of the active tab).
+  let escE = () <$ ffilter (== 27) (domEvent Keydown barEl)
+  return $ leftmost [innerE, FindHide <$ escE]
   where
     -- Stop the browser "helpfully" rewriting what's typed into the find boxes.
     noCorrect = "autocorrect" =: "off" <> "autocapitalize" =: "off"

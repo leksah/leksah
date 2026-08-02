@@ -265,6 +265,7 @@ import IDE.Web.Command
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TabKey(..), TerminalEvents(..),
         FindbarEvents(..), PreferencesEvents(..), FlipItem(..),
+        KeymapEvents(..),
         _ToolbarCommand, _MenubarCommand, _KeymapCommand, _PackageCommand,
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
         _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane,
@@ -3928,6 +3929,16 @@ main showMenubar macTitlebar wid ide = mdo
     let panelCmdE = leftmost
           [ fmapMaybe (^? _ToolbarCommand) toolbarE
           , fmapMaybe (^? _MenubarCommand) menubarE ]
+        -- Web-menubar clicks of the stream-handled commands (no 'IDEAction';
+        -- see keymapBridgeE above) — without this they would be no-ops on the
+        -- front ends that show the web menubar.
+        menubarStreamE = fmapMaybe (\c -> case c of
+          CommandFlipDown      -> Just c
+          CommandFlipUp        -> Just c
+          CommandNextError     -> Just c
+          CommandPreviousError -> Just c
+          CommandFocusAlert    -> Just c
+          _                    -> Nothing) panelCmdE
     performEvent_ $ ffor panelCmdE $ \case
       CommandFileOpen          -> liftIO runOpenFilePanel
       CommandProjectOpen       -> liftIO runOpenProjectPanel
@@ -6436,13 +6447,18 @@ main showMenubar macTitlebar wid ide = mdo
           , findBridgeE ]
         findShowE = fmapMaybe (\e -> case e ^? _KeymapCommand of
                                        Just CommandFind -> Just (); _ -> Nothing) keymapE
-    findbarVisibleD <- foldDyn ($) False $ leftmost [ not <$ findToggleE, const True <$ findShowE ]
+    findbarVisibleD <- foldDyn ($) False $ leftmost
+        [ not <$ findToggleE, const True <$ findShowE
+        -- Escape in the bar hides it (the keyboard handback is the re-select
+        -- arm in selectTabE above).
+        , const False <$ findHideE ]
     -- Focus the find input whenever the bar newly shows, and on every Cmd+F.
     performEvent_ $ ffor (leftmost
         [ () <$ findShowE
         , fmapMaybe (\v -> if v then Just () else Nothing) (updated findbarVisibleD) ]) $ \_ ->
       liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahFocusFind" :: Text)
     findbarE   <- findbarWidget activePaneD findbarVisibleD
+    let findHideE = fmapMaybe (\case FindHide -> Just (); _ -> Nothing) findbarE
     -- Remote-activity feed for the statusbar: every time a remote (ssh) op
     -- starts/finishes, RemoteExec signals on 'remoteInFlightChanged'; re-read
     -- the per-host in-flight counts and push them in.  Off the frame thread.

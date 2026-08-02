@@ -56,6 +56,8 @@ import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.ShortcutsRequest (requestShowShortcuts)
+import IDE.Web.BrowserRequest (requestOpenBrowser)
+import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput
        (setActiveTerminalNotifier, setSplitActiveNotifier)
@@ -109,11 +111,14 @@ dispatchTag win tag = do
     (CommandProjectAddRemote:_) -> requestAddRemoteProject
     (CommandShowPreferences:_) -> requestShowPreferences
     (CommandShowShortcuts:_)   -> requestShowShortcuts
-    (cmd:_) -> getGlobalIDERef >>= \case
-      Just ideR -> case cmd ^. commandAction of
-        Just act -> void $ reflectIDE act ideR
-        Nothing  -> return ()
-      Nothing -> return ()
+    (CommandOpenBrowser:_)     -> requestOpenBrowser
+    (cmd:_) -> case cmd ^. commandAction of
+      -- No IDEAction: handled inside the reflex network by matching the keymap
+      -- event stream (flipper, next/previous error, …) — inject via the bridge.
+      Nothing  -> requestKeymapCommand cmd
+      Just act -> getGlobalIDERef >>= \case
+        Just ideR -> void $ reflectIDE act ideR
+        Nothing   -> return ()
     [] -> return ()
 
 -- | Native GTK4 open-file dialog; the chosen path goes through the same

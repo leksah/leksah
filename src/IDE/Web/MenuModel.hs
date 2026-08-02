@@ -106,15 +106,21 @@ menus =
       , item "Refresh Nix Environment" commandRefreshNix
       , item "Update Workspace Info"   commandUpdateWorkspaceInfo
       ])
+  -- Real key equivalents (not display hints) wherever a binding exists in the
+  -- JS keymap ('IDE.Web.Widget.Keymap.globalBindings'): the DOM keymap
+  -- listener can't see key events while focus is inside a browser pane's
+  -- cross-origin iframe, so the native menu equivalent is what keeps the
+  -- shortcut working there.  (When the page HAS focus the keymap handles the
+  -- key and preventDefaults it, so the menu equivalent doesn't double-fire.)
   , ("Edit",
-      [ item "Find" CommandFind
-      , item "Keyboard Shortcuts…" CommandShowShortcuts
+      [ MenuGlobalKey "Find" "cmd+f" CommandFind
+      , MenuGlobalKey "Keyboard Shortcuts…" "cmd+/" CommandShowShortcuts
       , item "Preferences…" CommandShowPreferences
       ])
   , ("Package",
       [ item "Add Module"     commandAddModule
       , item "Clean"          commandPackageClean
-      , item "Build"          commandPackageBuild
+      , MenuGlobalKey "Build" "cmd+shift+b" commandPackageBuild
       , item "Run"            commandPackageRun
       , item "Run JavaScript" commandPackageRunJavascript
       ])
@@ -206,13 +212,15 @@ terminalMenu =
   , item "Close Split" (paneCmd "kill-pane" "x")
   , MenuSep
   , Submenu "Underlay"
-      -- ⌘⌥Y / ⌘⌥U are shown as hints; the leksah keymap actually handles them.
-      [ key "Toggle Pane Transparency" "⌘⌥Y" toggleTransparencyCmd
-      , key "Snap Window to Pane"      "⌘⌥U" snapWindowCmd
+      -- Real key equivalents (the keymap also binds them — see the Edit menu
+      -- note; no double-fire).
+      [ MenuGlobalKey "Toggle Pane Transparency" "cmd+alt+y" toggleTransparencyCmd
+      , MenuGlobalKey "Snap Window to Pane"      "cmd+alt+u" snapWindowCmd
       -- Populated natively from the currently-snapped windows (see leksah-mac-menu.m).
       , Submenu "Unsnap" []
       ]
   , MenuSep
+  , MenuGlobalKey "Focus Alerting Terminal" "ctrl+alt+a" CommandFocusAlert
   , item "Intercept Ctrl+B" commandToggleTmuxIntercept
   , Submenu "Tmux" tmuxMenu
   ]

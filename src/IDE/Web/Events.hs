@@ -60,10 +60,13 @@ makePrisms ''ErrorsEvents
 -- directly).  'FindUpdate' carries the query text and the flag bitmask
 -- (1=case, 2=word, 4=regexp); 'FindStep' moves to the next/previous match;
 -- 'FindGrep' (the Grep button) carries the query+flags to grep the workspace.
+-- 'FindHide' (Escape in the bar) asks for the bar to close and the keyboard
+-- to go back to the active pane.
 data FindbarEvents
   = FindUpdate Text Int
   | FindStep Bool
   | FindGrep Text Int
+  | FindHide
 -- | The Grep pane: clicking a result navigates to that file + line.
 newtype GrepEvents = GrepGoto SrcSpan
 type LogEvents = ()

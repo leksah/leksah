@@ -20,7 +20,8 @@ import GHCJS.DOM.KeyboardEvent
 
 import IDE.Web.Events (KeymapEvents(..))
 import IDE.Web.Command
-       (commandPackageBuild, snapWindowCmd, toggleTransparencyCmd, Command(..))
+       (commandPackageBuild, snapWindowCmd, toggleTransparencyCmd,
+        commandFontBigger, commandFontSmaller, commandFontReset, Command(..))
 
 -- | The fixed global keyboard chords, shared by 'keymapWidget' (which turns
 -- them into the live lookup table) and the Shortcuts cheat-sheet pane (which
@@ -39,12 +40,20 @@ globalBindings =
     , ([Command]        , KeyF,      CommandFind)
     , ([Command]        , Comma,     CommandShowPreferences)
     , ([Command]        , ForwardSlash, CommandShowShortcuts)
+    -- ⌃⌘B: a new browser pane (the native menu carries the same equivalent;
+    -- this makes it work in the warp/browser front ends too).
+    , ([Command, Control], KeyB,     CommandOpenBrowser)
     -- Underlay (macOS): ⌘⌥U snap/unsnap a window on the active pane, ⌘⌥Y
     -- toggle the active pane's transparency.  Reuse the menu commands.
     , ([Command, Alt]   , KeyU,      snapWindowCmd)
     , ([Command, Alt]   , KeyY,      toggleTransparencyCmd)
     -- Jump to the next terminal window wanting attention (bell, then activity).
     , ([Control, Alt]   , KeyA,      CommandFocusAlert)
+    -- Per-leaf font size in the native split layouts (the focused leaf of the
+    -- active session tab): ⌘+ / ⌘− step it, ⌘0 back to the preference.
+    , ([Command]        , Equals,    commandFontBigger)
+    , ([Command]        , Subtract,  commandFontSmaller)
+    , ([Command]        , Digit0,    commandFontReset)
     ]
 
 keymapWidget
