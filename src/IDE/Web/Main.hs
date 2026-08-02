@@ -665,6 +665,16 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- triggers via 'registerWindowBridge' and the drain routes to the frontmost.
       liftIO $ startWindowBridgeDrains ideR
 #if !defined(ghcjs_HOST_OS)
+      -- The one poll of the live Claude Code sessions, feeding every status
+      -- surface: the in-page traffic light (each window pulls it on its tick,
+      -- see 'statusLightJs') and, on macOS, the menu-bar status item (pushed —
+      -- IDE.Web.MacMenu registers a handler).  Killed at ghci teardown, or every
+      -- :reload would leave another poll running.
+      liftIO $ do
+        tid <- startClaudeStatusPoll
+        when ghciMode $ registerGhciCleanupNamed "claude-status-poll" (killThread tid)
+#endif
+#if !defined(ghcjs_HOST_OS)
       -- Detach control-mode clients left over from previous runs BEFORE any
       -- terminal attaches: they wedge on leksah exit, stay counted as attached,
       -- and their stale 80x24 sizes clamp every window they're attached to.
@@ -1367,6 +1377,23 @@ jsMain showMenubar macTitlebar mbWid ideR = do
           wlog wid ("alive ideVer=" <> show (cur ^. ideVersion) <> " mvarVer=" <> show (new ^. ideVersion)
                     <> if new ^. ideVersion > cur ^. ideVersion then " STALE(+" <> show (new ^. ideVersion - cur ^. ideVersion) <> ")" else "")
       performEvent_ $ ffor freshPolledE $ \i -> wlog wid ("ideD<-resync ver=" <> show (i ^. ideVersion))
+#if !defined(ghcjs_HOST_OS)
+      -- The top-right traffic light shows what the live Claude sessions are
+      -- doing — the same states the macOS menu-bar status item draws, off the
+      -- same poll ('IDE.Web.ClaudeStatus'), so the two can't disagree.
+      -- PULLED here, per window, on this window's own tick: a background thread
+      -- pushing JS into every window's context is exactly what wedges
+      -- jsaddle-wkwebview, so each network reads the shared value itself.  The
+      -- IORef read is free; only a real change reaches the page.
+      claudeStatusTick <- tickLossyFromPostBuildTime 3
+      claudeStatusE <- performEvent $
+          ffor (leftmost [() <$ pb, () <$ claudeStatusTick]) $ \_ ->
+              liftIO claudeStatusNow
+      claudeStatusD <- holdUniqDyn =<< holdDyn emptyClaudeStatus claudeStatusE
+      performEvent_ $ ffor (updated claudeStatusD) $ \st ->
+          liftJSM . void $ jsg ("window" :: Text)
+            ^. js2 ("leksahClaudeStatus" :: Text) (csState st) (claudeStatusTooltip st)
+#endif
       ideD <- holdDyn newIde $ leftmost [pbIde, freshPolledE]
       return ()
   liftIO $ threadDelay 1000000000
@@ -3535,19 +3562,45 @@ activeEditorSelectionJs = mconcat
   , "var a=v.state.doc.lineAt(s.from).number,b=v.state.doc.lineAt(s.to).number;"
   , "return f+'\\t'+a+'\\t'+b;})()" ]
 
--- bar telling the user whether it's safe to touch leksah while an agent drives
--- it.  Each state has a distinct shape as well as colour (colour-blind
--- accessibility): green circle = safe; orange triangle (+ a beep) = the agent
--- needs it in ~3 s; red octagon = the agent is testing now; blue diamond = the
--- agent is rebuilding/restarting.  Driven from the shell via
--- @leksah-cmd js eval 'leksahTestStart()'@ (orange→beep→red after 3 s),
--- @'leksahTestEnd()'@ (back to green) and @'leksahRestarting()'@ (blue);
--- @leksahStatus('green'|'orange'|'red'|'blue')@ sets a state directly.
--- Default green (normal, un-driven use).
+-- bar showing what the Claude Code sessions running right now are doing — the
+-- same states, shapes and colours as the macOS menu-bar status item, so the two
+-- surfaces never disagree (see 'IDE.Web.ClaudeStatus', the one poll behind
+-- both):
+--
+--   * red triangle — a session is blocked on an approval prompt (needs you)
+--   * amber diamond — a session is working (the agent, or a shell command)
+--   * green circle — every session is idle, ready for input
+--   * grey ring — nothing running
+--
+-- Distinct shape per state, not just colour (colour-blind accessibility).  Each
+-- window's reflex network pushes its own updates through
+-- @leksahClaudeStatus(state, tooltip)@ from the shared poll — never a
+-- cross-window JS broadcast.  Hovering lists the sessions.
+--
+-- The AGENT-COORDINATION state (is it safe to touch leksah while an agent drives
+-- it) is set from the shell — @leksah-cmd js eval 'leksahTestStart()'@ (beep,
+-- then \"testing\" after 3 s), @'leksahTestEnd()'@, @'leksahRestarting()'@, or
+-- @leksahStatus('green'|'orange'|'red'|'blue')@ — and is drawn as a RING AROUND
+-- the dot (orange = needed shortly, red = testing now, blue =
+-- rebuilding\/restarting; nothing at all when it's safe, so the ring only ever
+-- means \"hands off\").  Two independent signals, two independent parts of one
+-- indicator: the shape says what the sessions are doing, the ring says whether
+-- the UI is yours.  Same ring on the menu-bar item (leksah-mac-menu.m), and the
+-- state is spelled out in the last line of the hover text either way.
+--
+-- The ring is why the dot is a WRAPPER with an inner @.shape@ child: a CSS
+-- @clip-path@ clips everything its element paints, pseudo-elements and outline
+-- included, so a triangle would have eaten a ring drawn on the same element.
 statusLightJs :: Text
 statusLightJs = T.unlines
   [ "(function(){"
-  , "  var el = null, state = 'green', timer = null;"
+  -- el = the wrapper (carries the coordination ring), shapeEl = its inner
+  -- .shape child (carries the live-session shape); state = the coordination
+  -- state.
+  , "  var el = null, shapeEl = null, state = 'green', timer = null;"
+  -- The live-session state (what the dot draws) and its hover text, pushed by
+  -- the reflex network; 'none' until the first push, a tick after boot.
+  , "  var claude = 'none', claudeTip = 'Claude: no sessions running';"
   -- Runs BEFORE mainWidgetWithCss rebuilds <body>, which detaches anything we
   -- append now — so (re)create the dot on demand and keep it in whatever <body>
   -- is current, preserving the colour across a rebuild.
@@ -3557,34 +3610,78 @@ statusLightJs = T.unlines
   , "      var css = document.createElement('style');"
   , "      css.id = 'leksah-status-light-css';"
   , "      css.textContent ="
-  , "        '#leksah-status-light{position:fixed;top:5px;right:10px;width:14px;height:14px;'+"
-  , "        'z-index:2147483647;pointer-events:none;opacity:.95;'+"
+  -- The wrapper carries the coordination ring; the inner .shape carries the
+  -- session shape.  Sized so the shape sits exactly where the bare dot used to
+  -- (18px box at top:3/right:8 = the old 14px box at top:5/right:10), with 2px
+  -- of clearance for the ring.
+  -- pointer-events:auto ONLY so the hover text appears (the dot has no click
+  -- action).  It does not steal the title-bar drag: the native drag watches
+  -- NSEvents, not DOM hit-testing (see leksah_configure_titlebar).
+  -- NO transition on the ring: WebKit freezes transitions while the window is
+  -- occluded, so a fading-in ring would still be invisible when you looked at a
+  -- background window — measured (the computed box-shadow sat at the
+  -- transition's transparent start value indefinitely).  A hands-off signal
+  -- appears at once.
+  , "        '#leksah-status-light{position:fixed;top:3px;right:8px;width:18px;height:18px;'+"
+  , "        'z-index:2147483647;pointer-events:auto;border-radius:50%}'+"
+  , "        '#leksah-status-light .shape{position:absolute;left:2px;top:2px;'+"
   -- Own compositor layer so the glow never forces repaints of content beneath.
-  , "        'transform:translateZ(0);transition:background .15s,filter .15s}'+"
-  -- Each state has a distinct SHAPE as well as colour (colour-blind
-  -- accessibility): green=circle safe, orange=triangle needed-soon,
-  -- red=octagon (stop) testing, blue=diamond rebuilding/restarting.  The glow
-  -- uses filter:drop-shadow (not box-shadow) so it follows the clipped shape.
-  , "        '#leksah-status-light.green{background:#2ecc40;border-radius:50%;'+"
-  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 4px #2ecc40)}'+"
-  , "        '#leksah-status-light.orange{background:#ff9500;'+"
+  , "        'width:14px;height:14px;opacity:.95;transform:translateZ(0);'+"
+  , "        'transition:background .15s,filter .15s}'+"
+  -- One shape per state, matching the menu-bar item AND the workspace tree's
+  -- badge colours (#f85149 / #d29922 / #3fb950): triangle=needs you,
+  -- diamond=working, circle=idle, ring=nothing running.  The glow uses
+  -- filter:drop-shadow (not box-shadow) so it follows the clipped shape.
+  , "        '#leksah-status-light .shape.c-waiting{background:#f85149;'+"
   , "        'clip-path:polygon(50% 2%,98% 96%,2% 96%);'+"
-  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 4px #ff9500)}'+"
-  , "        '#leksah-status-light.red{background:#ff3b30;'+"
-  , "        'clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);'+"
-  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 5px #ff3b30)}'+"
-  , "        '#leksah-status-light.blue{background:#0a84ff;'+"
+  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 5px #f85149)}'+"
+  , "        '#leksah-status-light .shape.c-busy{background:#d29922;'+"
   , "        'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);'+"
-  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 5px #0a84ff)}';"
+  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 4px #d29922)}'+"
+  , "        '#leksah-status-light .shape.c-idle{background:#3fb950;border-radius:50%;'+"
+  , "        'filter:drop-shadow(0 0 1px rgba(0,0,0,.55)) drop-shadow(0 0 4px #3fb950)}'+"
+  -- Nothing running: a hollow disc in a grey that reads on either theme, and no
+  -- glow — it must not draw the eye.
+  , "        '#leksah-status-light .shape.c-none{background:transparent;border-radius:50%;'+"
+  , "        'opacity:.6;box-shadow:inset 0 0 0 2px rgba(140,140,140,.9)}'+"
+  -- The coordination ring, drawn around the whole dot: an agent has claimed the
+  -- UI.  No class (and so no ring) while it's safe — the ring appearing at all
+  -- is the signal.  Its own soft glow keeps it legible over toolbar content.
+  , "        '#leksah-status-light.coord-orange{box-shadow:inset 0 0 0 2px #ff9500,'+"
+  , "        '0 0 5px rgba(255,149,0,.75)}'+"
+  , "        '#leksah-status-light.coord-red{box-shadow:inset 0 0 0 2px #ff3b30,'+"
+  , "        '0 0 6px rgba(255,59,48,.8)}'+"
+  , "        '#leksah-status-light.coord-blue{box-shadow:inset 0 0 0 2px #0a84ff,'+"
+  , "        '0 0 6px rgba(10,132,255,.8)}';"
   , "      (document.head || document.documentElement).appendChild(css);"
   , "    }"
   , "    el = document.createElement('div');"
   , "    el.id = 'leksah-status-light';"
-  , "    el.title = 'Green circle: safe to use \\u2022 Orange triangle: Claude needs it shortly \\u2022 Red octagon: Claude is testing \\u2022 Blue diamond: Claude is rebuilding/restarting';"
-  , "    el.className = state;"
+  , "    shapeEl = document.createElement('div');"
+  , "    el.appendChild(shapeEl);"
+  , "    paint();"
   , "    if (document.body) document.body.appendChild(el);"
   , "    return el;"
   , "  }"
+  -- Both halves of the indicator, from both states.  Kept out of ensure() so a
+  -- state change repaints without rebuilding the element.
+  , "  function paint(){"
+  , "    if (!el) return;"
+  , "    el.className = (state === 'green') ? '' : ('coord-' + state);"
+  , "    el.title = tipText();"
+  , "    if (shapeEl) shapeEl.className = 'shape c-' + claude;"
+  , "  }"
+  -- The coordination line, worded exactly as the menu-bar item's menu line
+  -- (leksah_coord_line in leksah-mac-menu.m).
+  , "  function coordText(){"
+  , "    if (state === 'orange') return 'Leksah: Claude needs it shortly';"
+  , "    if (state === 'red')    return 'Leksah: Claude is testing \\u2014 hands off';"
+  , "    if (state === 'blue')   return 'Leksah: Claude is rebuilding/restarting';"
+  , "    return 'Leksah: safe to use';"
+  , "  }"
+  , "  function tipText(){ return claudeTip + '\\n' + coordText(); }"
+  -- Make sure the dot exists, then repaint both halves of it.
+  , "  function apply(){ ensure(); paint(); }"
   -- Beep via a NATIVE macOS system sound (the "leksahBeep" script message
   -- handler, see LeksahBeepHandler in leksah-mac-menu.m).  A system sound mixes
   -- with any audio already playing on the machine and never interrupts it —
@@ -3592,6 +3689,11 @@ statusLightJs = T.unlines
   -- other playback (why the in-page beep had to be disabled).  The handler
   -- exists only on the wkwebview front end; the try/catch no-ops elsewhere.
   , "  function beep(){ try { window.webkit.messageHandlers.leksahBeep.postMessage(1); } catch(e){} }"
+  -- Mirror every state change to the native macOS menu-bar status item (the
+  -- "leksahStatusItem" handler in leksah-mac-menu.m), so the traffic light is
+  -- visible even when leksah is hidden.  try/catch no-ops on the other front
+  -- ends, like beep.
+  , "  function post(s){ try { window.webkit.messageHandlers.leksahStatusItem.postMessage(String(s)); } catch(e){} }"
   -- A terminal bell (Claude Code's "needs input" signal in a window you're not
   -- viewing): ring the ping, then — once it's had time to sound — SPEAK the
   -- belling terminal's location via the native "leksahSpeak" handler
@@ -3599,22 +3701,97 @@ statusLightJs = T.unlines
   -- Called from the reflex bell handler with "window <name>, pane <n>".
   , "  window.leksahSpeak = function(t){ try { window.webkit.messageHandlers.leksahSpeak.postMessage(String(t)); } catch(e){} };"
   , "  window.leksahTermBell = function(t){ beep(); setTimeout(function(){ window.leksahSpeak(t); }, 700); };"
-  , "  function set(s){ if (timer){ clearTimeout(timer); timer = null; } state = s; ensure().className = s; }"
+  , "  function set(s){ if (timer){ clearTimeout(timer); timer = null; } state = s; apply(); post(s); }"
   , "  window.leksahStatus = set;"
   , "  window.leksahTestStart = function(){"
   , "    if (timer) clearTimeout(timer);"
-  , "    state = 'orange'; ensure().className = 'orange'; beep();"
-  , "    timer = setTimeout(function(){ state = 'red'; ensure().className = 'red'; timer = null; }, 3000);"
+  , "    state = 'orange'; apply(); post('orange'); beep();"
+  , "    timer = setTimeout(function(){ state = 'red'; apply(); post('red'); timer = null; }, 3000);"
   , "  };"
   , "  window.leksahTestEnd = function(){ set('green'); };"
   -- Blue (diamond): Claude is rebuilding/restarting leksah — informational,
   -- distinct from red (an active test).  Set before rebuild-self/restart.
   , "  window.leksahRestarting = function(){ set('blue'); };"
+  -- What the dot actually draws: the live Claude sessions, pushed by this
+  -- window's reflex network from the shared poll (IDE.Web.ClaudeStatus).  @tip@
+  -- is the summary line plus one line per session.
+  , "  window.leksahClaudeStatus = function(st, tip){"
+  , "    claude = st || 'none';"
+  , "    if (tip) claudeTip = tip;"
+  , "    apply();"
+  , "  };"
   -- Land the dot in the final <body> (mainWidget replaces an early append) and
   -- keep it there: a MutationObserver re-appends it only when body's children
   -- change (a reflex rebuild detaches it) — no idle timer, silent while idle.
   , "  ensure();"
+  -- Sync the menu-bar item with this window's initial state.  Harmless if the
+  -- native handler isn't installed yet (the native side seeds green itself).
+  , "  post(state);"
   , "  try { new MutationObserver(function(){ ensure(); }).observe(document.body, { childList: true }); } catch(e){}"
+  , "})();"
+  ]
+
+-- | The native-browser rect reporter.  Every ~250ms, snapshot each
+-- @.browser-native@ pane placeholder (rect, CSS px; visibility = attached,
+-- non-trivially sized, and no flipper\/context-menu overlay open — a native
+-- view always paints ABOVE the DOM, so it must yield to overlays) and post it
+-- to the @leksahBrowserFrame@ script-message handler.  The ObjC side
+-- (leksah-mac-menu.m) reconciles: creates a real WKWebView over a pane on
+-- first sight, tracks its rect\/visibility\/window, and destroys it once its
+-- bid stops reporting (the element left the DOM — pane closed).  After the
+-- last pane closes we keep posting empty snapshots for a few seconds so that
+-- absence-GC can run; with no panes (and none recently) the tick is a no-op,
+-- so the loop is dormant on front ends without native browsers.
+--
+-- The snapshot also carries the current light\/dark mode (the same
+-- @matchMedia('(prefers-color-scheme: dark)')@ signal the rest of the UI
+-- themes from, see 'themeSwitchJs'), which the ObjC side turns into an
+-- explicit @NSAppearance@ on each browser view so pages inside a pane report
+-- the same @prefers-color-scheme@ as leksah itself.  Riding the existing
+-- snapshot means new views are born with the right appearance and an OS
+-- appearance flip reaches them within one tick — no extra plumbing.
+browserNativeReporterJs :: Text
+browserNativeReporterJs = T.unlines
+  [ "(function(){"
+  , "  if (!(window.webkit && window.webkit.messageHandlers"
+  , "        && window.webkit.messageHandlers.leksahBrowserFrame)) return;"
+  , "  var emptyLeft = 0;"
+  , "  setInterval(function(){"
+  , "    try {"
+  , "      var els = document.querySelectorAll('.browser-native');"
+  , "      if (els.length === 0 && emptyLeft <= 0) return;"
+  , "      emptyLeft = els.length > 0 ? 20 : (emptyLeft - 1);"
+  , "      var fl = document.querySelector('.flipper');"
+  , "      var overlay = (fl && getComputedStyle(fl).display !== 'none')"
+  , "                    || !!document.querySelector('.context-menu');"
+  , "      var panes = [];"
+  , "      els.forEach(function(el){"
+  , "        var bid = parseInt(el.getAttribute('data-bid'), 10);"
+  , "        if (isNaN(bid)) return;"
+  , "        var r = el.getBoundingClientRect();"
+  -- Hidden wide0 tabs keep display:block and hide via visibility:hidden
+  -- (.tab-hidden), so offsetParent alone misses a tab switch entirely (the
+  -- native view stayed painted over the newly-selected tab).  Check computed
+  -- visibility AND that the pane is actually the topmost thing at its centre
+  -- (elementFromPoint) — which also yields to any DOM stacked above it.
+  , "        var vis = !overlay && el.offsetParent !== null"
+  , "                  && r.width > 4 && r.height > 4"
+  , "                  && getComputedStyle(el).visibility !== 'hidden';"
+  , "        if (vis) {"
+  , "          var hit = document.elementFromPoint(r.left + r.width/2,"
+  , "                                              r.top + r.height/2);"
+  , "          vis = !!(hit && el.contains(hit));"
+  , "        }"
+  , "        panes.push({bid: bid, x: Math.round(r.left), y: Math.round(r.top),"
+  , "                    w: Math.round(r.width), h: Math.round(r.height),"
+  , "                    vis: !!vis});"
+  , "      });"
+  , "      var dark = true;"
+  , "      try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch(e){}"
+  , "      window.webkit.messageHandlers.leksahBrowserFrame.postMessage("
+  , "        {wid: (window.leksahWindowId || 0), dark: !!dark, panes: panes});"
+  , "    } catch(e){}"
+  , "  }, 250);"
   , "})();"
   ]
 
