@@ -94,10 +94,89 @@ monaco.languages.setMonarchTokensProvider("cabal", {
   },
 })
 
+// Nix (monaco ships no nix language) — a Monarch tokenizer in the same spirit as
+// the Haskell one above.  Nix has two string forms ("…" and ''…'') both with
+// ${…} interpolation, and path literals distinguished from division only by the
+// absence of surrounding spaces — exactly how the Nix parser disambiguates.
+monaco.languages.register({ id: "nix", extensions: [".nix"] })
+monaco.languages.setLanguageConfiguration("nix", {
+  comments: { lineComment: "#", blockComment: ["/*", "*/"] },
+  brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
+  autoClosingPairs: [
+    { open: "{", close: "}" }, { open: "[", close: "]" }, { open: "(", close: ")" },
+    { open: "\"", close: "\"", notIn: ["string", "comment"] },
+  ],
+  surroundingPairs: [
+    { open: "{", close: "}" }, { open: "[", close: "]" }, { open: "(", close: ")" },
+    { open: "\"", close: "\"" },
+  ],
+  // Nix identifiers / attr names may contain '-' and trailing primes.
+  wordPattern: /[a-zA-Z_][a-zA-Z0-9_'\-]*/,
+})
+monaco.languages.setMonarchTokensProvider("nix", {
+  defaultToken: "",
+  keywords: ["assert", "else", "if", "in", "inherit", "let", "or", "rec", "then",
+    "with", "true", "false", "null"],
+  builtins: ["import", "builtins", "derivation", "map", "toString", "abort", "throw",
+    "removeAttrs", "baseNameOf", "dirOf", "isNull", "fetchGit", "fetchTarball",
+    "fetchurl", "scopedImport"],
+  tokenizer: {
+    root: [
+      [/#.*$/, "comment"],
+      [/\/\*/, "comment", "@blockComment"],
+      // Two string forms.
+      [/''/, { token: "string", next: "@istring" }],
+      [/"/, { token: "string", next: "@dstring" }],
+      // Search path <nixpkgs>, bare URIs, and path literals (no surrounding
+      // spaces — that is how Nix itself tells a path from division/subtraction).
+      [/<[a-zA-Z0-9._+\-]+(\/[a-zA-Z0-9._+\-]+)*>/, "string"],
+      [/[a-zA-Z][a-zA-Z0-9+.\-]*:\/\/[^\s"'`)}\],;]+/, "string"],
+      [/(\.\.?|~)?\/[a-zA-Z0-9._+\-]+(\/[a-zA-Z0-9._+\-]*)*/, "string"],
+      [/[a-zA-Z0-9._+\-]+(\/[a-zA-Z0-9._+\-]+)+/, "string"],
+      // Numbers.
+      [/\d+\.\d+([eE][+\-]?\d+)?/, "number"],
+      [/\d+/, "number"],
+      // Identifiers / keywords / builtins.
+      [/[a-zA-Z_][a-zA-Z0-9_'\-]*/, { cases: {
+          "@keywords": "keyword",
+          "@builtins": "type.identifier",
+          "@default": "identifier" } }],
+      [/[{}()\[\]]/, "delimiter.bracket"],
+      [/(->|\/\/|\+\+|==|!=|<=|>=|&&|\|\||[=:;,.?@!<>+\-*\/])/, "operator"],
+    ],
+    blockComment: [
+      [/[^\/*]+/, "comment"],
+      [/\*\//, "comment", "@pop"],
+      [/[\/*]/, "comment"],
+    ],
+    dstring: [
+      [/\$\{/, { token: "delimiter.bracket", next: "@interp" }],
+      [/[^"\\$]+/, "string"],
+      [/\\./, "string.escape"],
+      [/\$/, "string"],
+      [/"/, { token: "string", next: "@pop" }],
+    ],
+    istring: [
+      [/\$\{/, { token: "delimiter.bracket", next: "@interp" }],
+      [/''\$/, "string.escape"],
+      [/'''/, "string.escape"],
+      [/''\\./, "string.escape"],
+      [/''/, { token: "string", next: "@pop" }],
+      [/[^'$]+/, "string"],
+      [/['$]/, "string"],
+    ],
+    interp: [
+      [/\{/, { token: "delimiter.bracket", next: "@interp" }],
+      [/\}/, { token: "delimiter.bracket", next: "@pop" }],
+      { include: "root" },
+    ],
+  },
+})
+
 const LANG_BY_EXT = { hs:"haskell", lhs:"haskell", hsc:"haskell", cabal:"cabal",
   js:"javascript", mjs:"javascript", cjs:"javascript", jsx:"javascript",
   ts:"typescript", tsx:"typescript", json:"json", css:"css", scss:"scss", less:"less",
-  yaml:"yaml", yml:"yaml", nix:"plaintext", sh:"shell", bash:"shell", zsh:"shell",
+  yaml:"yaml", yml:"yaml", nix:"nix", sh:"shell", bash:"shell", zsh:"shell",
   py:"python", rb:"ruby", rs:"rust", c:"c", h:"c", cpp:"cpp", hpp:"cpp", m:"objective-c",
   xml:"xml", html:"html", htm:"html", md:"markdown", sql:"sql", lua:"lua", java:"java" }
 function langForFile(path) {
