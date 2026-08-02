@@ -63,6 +63,7 @@ data Command =
   | CommandFind
   | CommandShowPreferences
   | CommandShowShortcuts
+  | CommandOpenBrowser
   | CommandNextError
   | CommandPreviousError
   | CommandFlipDown
@@ -103,6 +104,7 @@ commandImageAndTip CommandFind = ("/pics/find.svg", __ "Show or hide the find ba
 commandImageAndTip CommandNextError = ("/pics/error-next.svg", __ "Go to the next error")
 commandImageAndTip CommandPreviousError = ("/pics/error-prev.svg", __ "Go to the previous error")
 commandImageAndTip CommandShowShortcuts = ("/pics/shortcuts.svg", __ "Show the keyboard shortcut cheat sheet")
+commandImageAndTip CommandOpenBrowser = ("/pics/browser.svg", __ "Open a new web browser pane")
 commandImageAndTip _ = ("", "")
 
 commandGetToggleState :: Command -> Maybe (IDE -> Bool)

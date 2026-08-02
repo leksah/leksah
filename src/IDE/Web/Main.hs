@@ -1232,11 +1232,17 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- leksahTestEnd / leksahStatus, driven over the cmd socket via `js eval`.
   _ <- eval statusLightJs
 
+  -- Native browser panes: report every .browser-native pane's rect+visibility
+  -- to the ObjC glue, which overlays a real WKWebView on each (wkwebview
+  -- front end only; elsewhere no such elements exist and this is dormant).
+  _ <- eval browserNativeReporterJs
+
   -- window.leksahSelectRegion: the permission-free region picker for grab-region.
   _ <- eval regionSelectJs
 
   -- The colour palette (all --leksah-* tokens, dark + light) goes in first, so
   -- every stylesheet below resolves them; see "IDE.Web.Theme".
+  metaLog "boot: helper JS eval'd, entering mainWidgetWithCss"
   mainWidgetWithCss (BS.unlines [xtermCss, encodeUtf8 paletteCss, encodeUtf8 contrastCss, BS.toStrict (LT.encodeUtf8 css)]) $ mdo
       ideActionE <- main showMenubar macTitlebar wid ideD
       performEvent_ $ ffor ideActionE $ \act -> do
@@ -2697,6 +2703,9 @@ terminalLinksJs = T.unlines
   , "  var UM = /Update\\(([^)]+)\\)/g;"
   -- Identifier tokens (optionally module-qualified) for the Ctrl/Cmd lookup mode.
   , "  var ID = /[A-Za-z_][A-Za-z0-9_']*(?:\\.[A-Za-z_][A-Za-z0-9_']*)*/g;"
+  -- Plain-text http(s) URLs (agents print dev-server addresses as plain text,
+  -- not OSC 8): clickable → a leksah browser pane (see __leksahOpenUrl).
+  , "  var URLRE = /https?:\\/\\/[^\\s\"'<>`)\\]]+/g;"
   -- A rendered diff/content line under a Claude edit or a unified diff: an
   -- indent, a right-aligned source line number, then a fixed 4-column field
   -- (\"    \" for context, \" - \"/\" + \" + a space for -/+ lines) and then the
@@ -2805,6 +2814,27 @@ terminalLinksJs = T.unlines
   , "            }"
   , "            if (links.length){ cb(links); return; }"
   , "          }"
+  , "        }"
+  -- URLs first (and marked consumed, so the file-path regex can't re-match
+  -- inside one): click = open in a leksah browser pane; ⌥-click = open it as
+  -- a native split beside this terminal (⌥⇧ = the other direction).
+  , "        URLRE.lastIndex = 0;"
+  , "        var uu;"
+  , "        while ((uu = URLRE.exec(text))){"
+  , "          var utxt = uu[0].replace(/[.,;:!?]+$/, '');"
+  , "          (function(u, sx, ex){"
+  , "            links.push({"
+  , "              range: { start: { x: sx, y: y }, end: { x: ex, y: y } },"
+  , "              text: u,"
+  , "              decorations: { pointerCursor: true, underline: true },"
+  , "              activate: function(ev){"
+  , "                if (ev && ev.preventDefault) ev.preventDefault();"
+  , "                if (window.__leksahOpenUrl)"
+  , "                  window.__leksahOpenUrl(u, !!(ev&&ev.altKey), !!(ev&&ev.shiftKey));"
+  , "              }"
+  , "            });"
+  , "            consumed.push([sx-1, ex]);"
+  , "          })(utxt, uu.index+1, uu.index+utxt.length);"
   , "        }"
   , "        UM.lastIndex = 0;"
   , "        var u;"
@@ -3431,6 +3461,12 @@ badgesJs browserHosted = T.unlines
   , "  window.addEventListener('mousemove', sync, true);"
   , "  window.addEventListener('mousedown', sync, true);"
   , "  window.addEventListener('blur',    function(){ set(false); }, true);"
+  -- The native flags-changed monitor's entry point (see leksah-mac-menu.m's
+  -- leksah_install_cmdheld_monitor): key events inside a cross-origin iframe
+  -- never reach this document, so the DOM listeners above can't track ⌘ while
+  -- a browser pane's page has focus.  Idempotent with them otherwise.
+  , "  window.leksahCmdHeld = function(on){ set(on);"
+  , "    if (on && window.leksahUpdateHints) window.leksahUpdateHints(); };"
   , "})();"
   ]
 
@@ -3721,6 +3757,50 @@ main showMenubar macTitlebar wid ide = mdo
           , fmapMaybe (\e -> case e ^? _KeymapCommand of
                                Just CommandShowShortcuts -> Just (); _ -> Nothing) keymapE
           , shortcutsBridgeE ]
+    -- View ▸ New Browser Pane, ⌃⌘B (keymap), or the native menu item (via the
+    -- bridge): mint a fresh persistent pane id and open its tab.  A terminal
+    -- URL click arrives with the URL to load ('Just'); the menu paths start
+    -- blank ('Nothing').
+    (browserBridgeE, fireBrowserReq) <- newTriggerEvent
+    (browserUrlTabE, fireBrowserUrlTab) <- newTriggerEvent
+    (browserKeyOpenE, fireBrowserKeyOpen) <- newTriggerEvent
+    let openBrowserReqE = leftmost
+          [ Nothing <$ fmapMaybe (\case CommandOpenBrowser -> Just (); _ -> Nothing) panelCmdE
+          , Nothing <$ fmapMaybe (\e -> case e ^? _KeymapCommand of
+                               Just CommandOpenBrowser -> Just (); _ -> Nothing) keymapE
+          , Nothing <$ browserBridgeE
+          , Just <$> browserUrlTabE ]
+    mintedBrowserKeyE <- performEvent $
+        ffor openBrowserReqE $ \mu -> liftIO $ do
+          n <- nextBrowserId
+          mapM_ (rememberUrl n) mu
+          return (BrowserKey n)
+        -- browserKeyOpenE: a PRE-minted pane (its URL already remembered) —
+        -- the ⌥-split fallback path when no split target exists.
+    let newBrowserKeyE = leftmost [mintedBrowserKeyE, browserKeyOpenE]
+    -- Terminal URL links (see URLRE in terminalLinksJs): plain click → a
+    -- browser pane tab on that URL; ⌥-click → mint the pane and route it
+    -- through the split-open pipeline (a native split beside the session).
+    (urlClickE, fireUrlClick) <- newTriggerEvent
+    _ <- liftJSM $ jsg ("window" :: Text) ^. jss ("__leksahOpenUrl" :: Text)
+           (fun $ \_ _ args -> case args of
+              (u : rest) -> do
+                url <- valToText u
+                alt <- case rest of (a : _) -> valToBool a; _ -> pure False
+                sh  <- case rest of (_ : s : _) -> valToBool s; _ -> pure False
+                liftIO $ fireUrlClick (url, alt, sh)
+              _ -> return ())
+    performEvent_ $ ffor urlClickE $ \(url, alt, sh) -> liftIO $
+        if isOwnUrl url
+          -- leksah's own UI must never nest inside itself (recursive jsaddle
+          -- clients wedge the bridge) — view it in the system browser.
+          then openUrl url
+          else if alt
+            then void . forkIO $ do
+                   n <- nextBrowserId
+                   rememberUrl n url
+                   requestSplitOpen (STBrowser n, sh)
+            else fireBrowserUrlTab url
 
     -- AI ▸ Grab Region / `leksah-cmd grab-region`.  Choose the capture path by
     -- whether Screen Recording permission is granted (probed off-thread):
@@ -4137,6 +4217,17 @@ main showMenubar macTitlebar wid ide = mdo
         rawFlipDoneE = fmapMaybe (\e -> case e ^? _KeymapCommand of
                                       Just CommandFlipDone -> Just ()
                                       _                    -> Nothing) keymapE
+    -- A flip step while keyboard focus is inside a browser pane's cross-origin
+    -- iframe (the step arrived via the native menu's ⌘` key equivalent — the
+    -- DOM keymap can't see keys in there): the ⌘ keyup that commits the flip
+    -- would ALSO be invisible, so pull focus back to the page for the duration
+    -- of the flip.  blur() alone does NOT move focus out of a cross-origin
+    -- iframe in WebKit (activeElement stays the iframe) — focus the body
+    -- instead.  The commit refocuses whatever pane it selects.
+    performEvent_ $ ffor rawFlipStepE $ \_ -> liftJSM . void . eval $
+      ("(function(){var a=document.activeElement;"
+       <> "if(a&&a.tagName==='IFRAME'){document.body.tabIndex=-1;"
+       <> "document.body.focus();}})()" :: Text)
     -- Opening the flipper must reflect the *current* active tmux pane, which can
     -- have changed invisibly (⌃B o, clicking a split).  So the first press (while
     -- the flipper is hidden) polls the pane tree, and only once that result is in
@@ -6127,10 +6218,12 @@ main showMenubar macTitlebar wid ide = mdo
     -- (started in 'newIDE') can route each token to the frontmost window.
     liftIO $ registerWindowBridge wid WindowBridge
       { wbClose = fireCloseReq ()
-      , wbSave  = fireSaveReq ()
+      , wbSave  = fireSaveReq
       , wbFind  = fireFindReq ()
       , wbPrefs = firePrefsReq ()
       , wbShortcuts = fireShortcutsReq ()
+      , wbBrowser = fireBrowserReq ()
+      , wbKeymap = fireKeymapCmd
       , wbOpenedFile = fireOpenedFile
       }
     -- Toolbar/menu Find toggles the bar; Cmd+F (keymap) always shows + focuses it.
