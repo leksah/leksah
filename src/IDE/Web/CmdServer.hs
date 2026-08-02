@@ -90,7 +90,7 @@ import System.IO (hSetBinaryMode)
 import System.IO.Unsafe (unsafePerformIO)
 import IDE.Utils.ExitImmediately (exitImmediately)
 import IDE.Web.GhciMode
-       (ghciMode, registerGhciCleanup, stopForGhci, suspendForGhci)
+       (ghciMode, registerGhciCleanupNamed, stopForGhci, suspendForGhci)
 import System.Process
        (createProcess, proc, shell, waitForProcess, CreateProcess(std_out, std_in),
         StdStream(CreatePipe, NoStream))
@@ -177,7 +177,7 @@ startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> ret
       listen sock 5
       -- ghci mode: free the fd at teardown (the fresh :main unlinks + rebinds
       -- the path anyway, this just avoids leaking a listener per reload).
-      when ghciMode $ registerGhciCleanup (close sock)
+      when ghciMode $ registerGhciCleanupNamed "cmd-socket" (close sock)
       forever $ do
         (conn, _) <- accept sock
         void . forkIO $
@@ -340,15 +340,29 @@ handleConn ideR conn = do
         let want = case rest of
               (s : _) | not (T.null s) -> T.unpack s
               _ -> ""   -- default: the freeze-forensics threads
+            -- "-" dumps UNLABELLED threads instead (capped): a thread-spawn
+            -- runaway is invisible to a label filter, since the flood is
+            -- exactly the threads nothing bothered to name.
+            unlabelled = want == "-"
             interesting l
               | null want = any (`isPrefixOf` l)
                               ["resync-notifier", "reflex-frames", "bridge-drain"]
               | otherwise = want `isInfixOf` l
-        ts <- listThreads
+        ts0 <- listThreads
+        ts <- if not unlabelled then return ts0 else
+                take 4 <$> filterM (\t -> do
+                  mlbl <- threadLabel t
+                  st <- (try (threadStatus t) :: IO (Either SomeException ThreadStatus))
+                  let dead = case st of
+                        Right ThreadFinished -> True
+                        Right ThreadDied     -> True
+                        Left _               -> True
+                        _                    -> False
+                  return (isNothing mlbl && not dead)) (reverse ts0)
         lns <- fmap concat $ mapM (\t -> do
-                 mlbl <- threadLabel t
+                 mlbl <- (if unlabelled then const (Just "(unlabelled)") else id) <$> threadLabel t
                  case mlbl of
-                   Just l | interesting l -> do
+                   Just l | unlabelled || interesting l -> do
                      st <- (try (threadStatus t) :: IO (Either SomeException ThreadStatus))
                      entries <- (try (cloneThreadStack t >>= decode)
                                    :: IO (Either SomeException [StackEntry]))

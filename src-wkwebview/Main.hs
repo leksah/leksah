@@ -10,7 +10,7 @@ import IDE.Web.Instance (assetPort)
 import IDE.Web.Main (newIDE, startJSaddle)
 import IDE.Web.MacMenu (installMacMenu, setupMacTitlebar)
 import IDE.Web.MacGlue (takeFirstLaunch, resumeApp)
-import IDE.Web.GhciMode (ghciMode)
+import IDE.Web.GhciMode (ghciMode, phaseLog)
 import IDE.Web.NewWindowRequest (requestOpenWindow)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 
@@ -40,7 +40,12 @@ main = do
   -- wid 0 is reused; the jsm argument is unused on that path.
   newIDE False True dev $ startJSaddle assetPort $ \html url jsm -> do
     first <- takeFirstLaunch
+    phaseLog $ "boot: wkwebview runJs first=" <> show first
     if ghciMode && not first
-      then requestOpenWindow 0 >> resumeApp
+      then do
+        phaseLog "boot: ghci reload path -> requestOpenWindow 0"
+        requestOpenWindow 0
+        phaseLog "boot: requestOpenWindow 0 returned -> resumeApp"
+        resumeApp
+        phaseLog "boot: resumeApp returned (run loop exited)"
       else JSaddleWK.runHTMLWithBaseURL html url def jsm
-

@@ -26,8 +26,11 @@ module IDE.Web.Main
 
 import Control.Concurrent
        (tryPutMVar, takeMVar, putMVar, readMVar, threadDelay, modifyMVar,
-        newMVar, newEmptyMVar, forkIO, killThread, myThreadId)
+        newMVar, newEmptyMVar, forkIO, killThread, myThreadId,
+        rtsSupportsBoundThreads, getNumCapabilities, setNumCapabilities)
+import GHC.Conc (getNumProcessors)
 import Control.Concurrent.Chan (readChan)
+import Control.Concurrent.MVar (MVar, mkWeakMVar)
 import Control.Concurrent.STM (readTVarIO)
 import GHC.Conc.Sync (labelThread)
 import Control.Event (registerEvent)
@@ -309,6 +312,29 @@ withManager f = f NoWatchManager
 -- the IDE, so a wrapper (leksah-nix.sh) can rebuild and relaunch.
 newIDE :: Bool -> Bool -> Bool -> (JSM () -> IO ()) -> IO ()
 newIDE showMenubar macTitlebar developLeksah runJs = do
+  metaLog "boot: newIDE enter"
+#if !defined(ghcjs_HOST_OS)
+  -- Both ways this runs default to ONE capability — ghci (no way to hand the
+  -- repl RTS options; see leksah.sh) and the compiled exe (-with-rtsopts has
+  -- no -N) — so the reflex frame threads, the tmux readers and the boot-time
+  -- metadata scan all time-share a single core: measured 48s from skeleton to
+  -- first terminal content, all of it the (interpreted) metadata scan starving
+  -- the frame thread.  Spread out at runtime instead; skip when -N was given
+  -- explicitly (numCapabilities > 1) so a user override still wins.
+  when rtsSupportsBoundThreads $ do
+    caps <- getNumCapabilities
+    when (caps == 1) $ do
+      n <- getNumProcessors
+      let caps' = min 8 (max 2 n)
+      setNumCapabilities caps'
+      metaLog ("boot: setNumCapabilities " <> show caps'
+               <> " (of " <> show n <> " processors)")
+#endif
+  -- Before anything is forked: remember which threads pre-date this run, so a
+  -- ghci teardown can reap exactly the ones this run creates (and never ghci's
+  -- own).  This is what stops each :reload leaking the previous run's whole IDE
+  -- state — see 'IDE.Web.GhciMode.killAppThreads'.
+  recordPreRunThreads
   -- Browser-hosted (warp / web demo) exactly when the web menu bar shows;
   -- recorded process-globally for deeply nested readers (tab flip hints).
   setBrowserHosted showMenubar
@@ -353,14 +379,17 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     initPrefs       <- readPrefs prefsPath
+    metaLog "boot: prefs read"
     withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
       candyPath   <-  getConfigFilePathForLoad
                           (case sourceCandy initPrefs of
                               (_,name)   ->   T.unpack name <> leksahCandyFileExtension) Nothing dataDir
       candySt     <-  parseCandy candyPath
+      metaLog "boot: fsnotify + yi started, candy parsed"
 
       triggerBuildVar <- newEmptyMVar
       nixCache <- loadNixCache
+      metaLog "boot: nix cache loaded"
 #endif
       externalModified <- newMVar mempty
       watchers <- newMVar (mempty, mempty)
@@ -413,6 +442,20 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- each window's own notifier thread then fires that window's coalesced
       -- resync).  NEVER put reflex trigger fires or JS in this slot.
       ideR <- liftIO $ newMVar (const notifyResync, ide)
+      -- Leak probe (ghci mode): fires once this instance's IDE-state root — and
+      -- so its whole object graph: workspace, panes, log refs, the reflex
+      -- network hanging off them — has become unreachable, which should happen
+      -- during the NEXT reload's teardown.  A reload cycle that never logs a
+      -- @[gc]@ line for the previous boot is RETAINING that instance; that is
+      -- the difference between "teardown frees it" and "the session grows by an
+      -- instance per reload".  Deliberately built from compiled-base pieces
+      -- only (a String and 'IO.hPutStrLn'): a finalizer that called back into an
+      -- interpreted module would run reverted-CAF code after the reload.  The
+      -- finalizer must not mention @ideR@ itself, or it would keep it alive.
+      when ghciMode . liftIO $ do
+        born <- getCurrentTime
+        let msg = "LEK [gc] IDE state born " <> show born <> " collected"
+        void $ mkWeakMVar ideR (IO.hPutStrLn IO.stderr msg)
       liftIO $ setGlobalIDERef ideR  -- so the native macOS menu can run commands
       -- Frontend↔backend bridge (UI-split stage 1, see IDE.Web.Bridge): here
       -- both halves share this RTS, so the seam is a direct in-process pair.
@@ -462,6 +505,13 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- QuitToRestart.  The Gtk front end handles that via its application; the
       -- web front ends have no such hook, so exit with code 2 and let the
       -- wrapper (leksah-nix.sh) rebuild and relaunch.
+      -- Terminate language servers on a rebuild/restart.  In ghci mode this
+      -- runs from 'stopForGhci' before the @:reload@ wipes the registry, so a
+      -- fresh @:main@ no longer orphans the previous run's HLS/nixd processes
+      -- (the pile-up: each rebuild spawned new ones and nothing killed the old,
+      -- all under the long-lived ghci process).  NOT gated on develop mode —
+      -- the ghci session leaks servers regardless of how it was launched.
+      liftIO $ when ghciMode $ registerGhciCleanupNamed "lsp-servers" shutdownServers
       when developLeksah $ do
           liftIO . (`reflectIDE` ideR) . void $
               registerEvent ideR "QuitToRestart" $ \e -> do
@@ -477,7 +527,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                     -- rebuild and stay up until the successor is ready.
                     else liftIO $ if ghciMode then stopForGhci
                                   else if handoffEnabled then requestHandoff True
-                                  else exitImmediately (ExitFailure 2)
+                                  else shutdownServers >> exitImmediately (ExitFailure 2)
                   return e
           -- External relaunch trigger (dev-relaunch.sh): poll for a request
           -- file and exit(2) so leksah-nix.sh's loop rebuilds and relaunches.
@@ -496,7 +546,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                       removeFile trigger `catch` \(_ :: SomeException) -> return ()
                       if ghciMode then stopForGhci
                                   else if handoffEnabled then requestHandoff False
-                                  else exitImmediately (ExitFailure 2)
+                                  else shutdownServers >> exitImmediately (ExitFailure 2)
 #if defined(ghcjs_HOST_OS)
       -- The browser demo's workspace lives in the page-seeded mock tree
       -- (window.leksahDemoFiles → IDE.Web.FS).
@@ -782,6 +832,7 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- Tag this context with its window id, so tooling (leksah-cmd js eval, which
   -- broadcasts to every context) can tell the windows apart.
   _ <- eval ("window.leksahWindowId = " <> T.pack (show (case wid of WindowId n -> n)))
+  metaLog $ "boot: jsMain JS bridge live " <> show wid
 #if defined(ghcjs_HOST_OS)
   -- Split-bridge mode (UI-split stage 1, see IDE.Web.Bridge): the hosting
   -- page set window.leksahSplitBridge, meaning a NATIVE backend shares this
@@ -833,6 +884,7 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- pbcopy can't reach) set the system clipboard.
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-clipboard.js") >>= eval
 #endif
+  metaLog "boot: editor + xterm bundles eval'd"
 
   -- Makes project-file paths in terminal output Ctrl-clickable (window.LeksahTermLinks).
   _ <- eval terminalLinksJs
@@ -1185,7 +1237,8 @@ startJSaddle p runJs jsm = do
                       (LBS.fromStrict batch)
                   Nothing -> W.responseLBS H.status504 [] "no such tunnel"
             _ -> staticApp (defaultWebAppSettings dataDir) req sendResponse)
-  when ghciMode $ registerGhciCleanup (killThread warpTid)
+  when ghciMode $ registerGhciCleanupNamed "jsaddle-warp-server" (killThread warpTid)
+  metaLog $ "boot: startJSaddle server up on port " <> show actualPort <> ", handing to front end"
   runJs indexHtml ("http://127.0.0.1:" <> encodeUtf8 (T.pack $ show actualPort)) jsm
 
 debugJSaddle :: Int -> JSM () -> IO ()

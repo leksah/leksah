@@ -56,6 +56,21 @@ let
   reflexDomCoreJsaddleJs = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isGhcjs ''
     packages: ${patchedHackage "reflex-dom-core" "0.8.1.4" ./patches/reflex-dom-core-js-jsaddle.patch}
   '';
+  # Flags for the ghci multi-repl (leksah.sh --ghci).  The ObjC glue is kept OUT
+  # of the Haskell archives (`-objc-in-library`) and preloaded as dylibs instead:
+  # GHCi's RTS linker loads ObjC .o's but never registers their classes with the
+  # ObjC runtime — only dyld does — so archived ObjC would be dead in the repl.
+  # `+no-hlint` drops the ghc-lib-parser subtractor the interpreter can't handle.
+  # These flags enter cabal's UnitId hash (the reason ghci uses its own builddir,
+  # dist-ghci-<ver>), so the store must be seeded from a plan built with the SAME
+  # flags — that is what the `ghci914` flake variant below is for.  NB: these are
+  # the exact `--constraint`s leksah.sh --ghci passes to `cabal repl`; keep the
+  # two in sync.
+  ghciModeFlags = ''
+    constraints: leksah -objc-in-library
+    constraints: leksah +no-hlint
+    constraints: jsaddle-wkwebview -objc-in-library
+  '';
   # cabal-add (hls-cabal-plugin dep): the fork's Cabal-syntax 3.17
   # runParseResult yields PErrorWithSource, not PError.
   # ghc-exactprint 1.14 targets mainline ghc-9.14's AST; the fork moved
@@ -108,7 +123,7 @@ rec {
     # values"); the override takes priority for both the native and cross evals.
     builderVersion = pkgs.lib.mkForce
       (if pkgs.stdenv.hostPlatform.isWindows then 1 else 2);
-    # Disabled for now (takes too long to plan them all)
+    # GHC-version variants disabled for now (takes too long to plan them all)
     # flake.variants = {
     #   "ghc96".compiler-nix-name = pkgs.lib.mkForce "ghc96";
     #   "ghc98".compiler-nix-name = pkgs.lib.mkForce "ghc98";
@@ -116,6 +131,16 @@ rec {
     #   "ghc912".compiler-nix-name = pkgs.lib.mkForce "ghc912";
     #  "ghc914".compiler-nix-name = pkgs.lib.mkForce "ghc914-sh";
     # };
+    # The ghci multi-repl's store-seeding variant: the base project plus the
+    # ghci-mode cabal flags (see `ghciModeFlags`).  `cabalProjectLocal` has type
+    # `lines`, so this concatenates onto the base — no mkForce needed.  Unlike
+    # the GHC-version variants above it keeps compiler-nix-name, so it re-uses
+    # the default plan for every dependency except the flag-flipped ones
+    # (jsaddle-wkwebview mainly) and plans fast.  leksah.sh --ghci runs
+    # `haskell-nix-cabal-store-sync` inside this variant's dev shell to populate
+    # dist-ghci-<ver>/store with prebuilt slices, so the first `cabal repl` no
+    # longer rebuilds every shared dependency from source.
+    flake.variants.ghci914.cabalProjectLocal = ghciModeFlags;
     name = "leksah";
     # Cross targets exposed as flake packages (NOT pulled into the dev shell —
     # see `shell.crossPlatforms` below, which forces it empty so the native dev

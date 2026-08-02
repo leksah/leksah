@@ -1,16 +1,13 @@
 #!/usr/bin/env bash -e
 
-if [ $# -eq 0 ]
-  then
-    echo "Usage: ./leksah.sh [--nix] [--warp|--classic|--ghci] [GHCVER] [--in-tmux] [LEKSAH_ARGS]"
+# Build-and-relaunch loop for developing leksah with leksah.  Plain cabal in
+# the ambient environment: ghc/cabal/tmux/leksah-server must be on PATH, cabal
+# picks the compiler, and builds land in cabal's default dist-newstyle.
+
+
+usage() {
+    echo "Usage: ./leksah.sh [--warp|--classic|--ghci] [--in-tmux] [LEKSAH_ARGS]"
     echo
-    echo "  --nix     : re-enter the nix dev shell for every build/run command"
-    echo "              (nix develop \".?submodules=1#GHCVER\").  WITHOUT --nix"
-    echo "              (the default) commands run in the AMBIENT environment, so"
-    echo "              you must already be inside a dev shell (or otherwise have"
-    echo "              ghc/cabal/tmux/leksah-server on PATH) — this skips the slow"
-    echo "              per-command nix eval.  leksah-server/leksah-cmd/ffcabal and"
-    echo "              the front end are still built with cabal either way."
     echo "  (default) : the native web front end, exe:leksah (WKWebView on macOS,"
     echo "              WebKitGTK on Linux — one exe, chosen per-OS in the cabal file)."
     echo "  --warp    : the browser front end, exe:leksah-warp (http://127.0.0.1:PORT/)."
@@ -20,23 +17,28 @@ if [ $# -eq 0 ]
     echo "              so 'leksah-cmd rebuild-self' becomes :reload + :main (seconds,"
     echo "              no relink) and 'leksah-cmd hs eval' can poke the live IDE."
     echo "              First load compiles everything to bytecode — slow, once."
-    echo "  GHCVER    : optional, defaults to ghc914 (web front ends); ghc8107 or ghc98 (--classic)"
     echo "  --in-tmux : (web front ends) run leksah inside a tmux session so its own"
     echo "              output shows up as \"Terminal 0\" in leksah's Terminals pane"
+    echo
+    echo "  Commands run in the AMBIENT environment: ghc, cabal, tmux and"
+    echo "  leksah-server must already be on PATH.  cabal picks the compiler and"
+    echo "  the build dir (dist-newstyle)."
     echo
     echo "  Env LEKSAH_PORT=N runs a SECOND instance alongside the default one:"
     echo "  N (default 3367) is the UI port; leksah keys its control socket and"
     echo "  tmux server off it, and this script its run log + \"Terminal 0\" session."
     echo
-    echo "Examples: ./leksah.sh --nix                       # GHCVER defaults to ghc914"
-    echo "          ./leksah.sh --nix ghc914"
-    echo "          ./leksah.sh --nix ghc914 --verbosity=DEBUG"
-    echo "          ./leksah.sh --warp ghc914 --in-tmux    # ambient shell, no nix"
-    echo "          ./leksah.sh --nix --classic ghc98"
-    echo "          LEKSAH_PORT=3368 ./leksah.sh --nix ghc914  # 2nd instance"
+    echo "Examples: ./leksah.sh"
+    echo "          ./leksah.sh --verbosity=DEBUG"
+    echo "          ./leksah.sh --warp --in-tmux"
+    echo "          LEKSAH_PORT=3368 ./leksah.sh   # 2nd instance"
     echo
-    echo "For details of other LEKSAH_ARGS run: ./leksah.sh --nix --classic ghc98 --help"
-    exit 1
+    echo "For details of other LEKSAH_ARGS run: ./leksah.sh --classic --help"
+}
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage
+    exit 0
 fi
 
 # Remember the full invocation before we consume the arguments, so it can be
@@ -44,17 +46,17 @@ fi
 INVOCATION="$0 $*"
 
 # Pull the script's own flags out from anywhere in the argument list; whatever
-# is left is positional (GHCVER, then LEKSAH_ARGS).  There is a single native
-# web exe (exe:leksah, chosen per-OS in the cabal file) — the default; --warp
-# and --classic select the two alternative front ends instead.
-USE_NIX=0
+# is left is positional (LEKSAH_ARGS).  There is a single native web exe
+# (exe:leksah, chosen per-OS in the cabal file) — the default; --warp and
+# --classic select the two alternative front ends instead.
 IN_TMUX=0
 GHCI=0
 UI=leksah
 POS=()
 for a in "$@"; do
     case "$a" in
-        --nix)     USE_NIX=1 ;;
+        --nix)     echo "Note: --nix support has been removed; running in the ambient environment." >&2 ;;
+        ghc[0-9]*) echo "Note: compiler selection has been removed ('$a' ignored); cabal picks the GHC on PATH." >&2 ;;
         --in-tmux) IN_TMUX=1 ;;
         --ghci)    GHCI=1 ;;
         --warp)    UI=warp ;;
@@ -64,39 +66,11 @@ for a in "$@"; do
 done
 set -- "${POS[@]}"
 
-# GHCVER is optional and defaults to ghc914 (the only enabled dev shell).  A
-# leading positional that looks like a GHC version (ghc<digits>) is consumed as
-# GHCVER; otherwise every positional is treated as a LEKSAH_ARG (so e.g.
-# `./leksah.sh --nix --verbosity=DEBUG` runs ghc914 and passes the flag on).
-case "${1:-}" in
-    ghc[0-9]*) GHCARG=$1; shift ;;
-    *)         GHCARG=ghc914 ;;
-esac
-
 # On macOS the default exe:leksah is the WKWebView front end, which we run from a
 # real Leksah.app bundle (correct name in the menu bar / Dock / ⌘-Tab).  --warp
 # and --classic don't; nor does the Linux exe:leksah (WebKitGTK).
 RUN_FROM_APP=0
 if [ "$UI" = "leksah" ] && [ "$(uname)" = "Darwin" ]; then RUN_FROM_APP=1; fi
-
-# How every build/run command is dispatched.  With --nix we re-enter the dev
-# shell per command (slow nix eval, but self-contained); the default runs the
-# command directly in the ambient environment (fast — assumes the toolchain is
-# already on PATH, i.e. you're inside a dev shell).  Used as a command prefix:
-# `"${DEV[@]}" cabal build …` expands to the plain command when DEV is empty.
-# NIX_ARGS is intentionally unquoted so a multi-word override word-splits.
-# NIX_ARGS='--system x86_64-darwin'
-if [ "$USE_NIX" = 1 ]; then
-    # Flake variants are disabled for now (hix.nix flake.variants is commented
-    # out), so there is no `#ghc914` dev shell any more — the DEFAULT shell is
-    # ghc914 (hix.nix compiler-nix-name).  Map ghc914 to it; other GHCVERs
-    # would need their variant re-enabled.
-    SHELL_ATTR=$GHCARG
-    [ "$GHCARG" = "ghc914" ] && SHELL_ATTR=default
-    DEV=(nix $NIX_ARGS develop ".?submodules=1#$SHELL_ATTR" --show-trace --command)
-else
-    DEV=()
-fi
 
 # UI port for this instance — must match IDE.Web.Instance's default; LEKSAH_PORT
 # overrides it.  It's already inherited by the launched binary (which keys its
@@ -125,25 +99,24 @@ RUNLOG="$RUNLOGDIR/leksah-run$LOG_TAG$INSTANCE_TAG.log"
 exec > >(tee "$RUNLOG") 2>&1
 echo "Logging this run to $RUNLOG"
 echo "Invocation: $INVOCATION"
-echo "Parsed: GHCVER=$GHCARG UI=$UI USE_NIX=$USE_NIX IN_TMUX=$IN_TMUX LEKSAH_PORT=$LEKSAH_PORT LEKSAH_ARGS=[$*]"
+echo "Parsed: UI=$UI IN_TMUX=$IN_TMUX LEKSAH_PORT=$LEKSAH_PORT LEKSAH_ARGS=[$*]"
 
-# Match the build dir leksah itself uses (dist-ghc-<version>), so the build this
-# script drives and leksah's own builds/metadata read the same place.  Querying
-# the dev shell's GHC gives the exact version leksah was built with.
-GHCNUMVER=$("${DEV[@]}" ghc --numeric-version 2>/dev/null | tail -1)
-BUILDDIR="dist-ghc-${GHCNUMVER:-$GHCARG}"
-echo "Using build dir: $BUILDDIR"
+# Machine-readable launch state for scripts/agents: one line per phase
+# transition, truncated at every launch, so a monitor can poll THIS FILE
+# instead of scraping the tmux pane (pane scrollback holds the PREVIOUS run's
+# outcome text and the launch command's own echo, both of which false-match
+# naive pattern watches).  The EXIT trap records every way the script can end
+# — including set -e failures like a nix/cabal error — EXCEPT an exec (the
+# ghci arm execs its attach/tail, so it writes its terminal "up" line first).
+STATUS_FILE="$RUNLOGDIR/launch-status$INSTANCE_TAG"
+status() { printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >> "$STATUS_FILE"; }
+: > "$STATUS_FILE"
+status "starting: $INVOCATION"
+trap 'status "exited: code=$?"' EXIT
 
-# The stable-haskell cabal fork keeps a PROJECT-LOCAL store under the build dir
-# (distStoreDirLayout = <builddir>/store), not a shared ~/.cabal/store.  The v2
-# dev-shell's `haskell-nix-cabal-store-sync` seeds that store — it takes the
-# builddir as an argument (default dist-newstyle), so pass "$BUILDDIR" wherever
-# it's invoked below so the deps land in the store `cabal build` actually reads.
-
-# A self-contained rebuild script for `leksah-cmd rebuild-self`.  It runs inside
-# the already-running leksah's dev-shell environment (cabal/ghc are already on
-# PATH), so it calls cabal directly rather than re-entering `nix develop`.  Uses
-# the same build dir + target leksah was launched with.
+# A self-contained rebuild script for `leksah-cmd rebuild-self`.  It runs in
+# the already-running leksah's environment (cabal/ghc are already on PATH), so
+# it calls cabal directly with the same target leksah was launched with.
 # Map the UI selector to its cabal executable target.  The native web front end
 # (WKWebView on macOS, WebKitGTK on Linux, WebView2 on Windows) is a single
 # exe:leksah selected per-OS in the cabal file — the default; --classic is the
@@ -154,15 +127,14 @@ case "$UI" in
     *)       EXE_TARGET="exe:leksah" ;;
 esac
 REBUILD_TARGET="$EXE_TARGET"
-mkdir -p "$HOME/.leksah"
-cat > "$HOME/.leksah/rebuild.sh" <<EOF
+cat > "$RUNLOGDIR/rebuild.sh" <<EOF
 #!/bin/sh
 # Generated by leksah.sh; run by 'leksah-cmd rebuild-self'.  leksah is launched
 # directly (not via 'cabal run'), so its environment is identical to the build
 # environment — calling cabal directly here matches the loop's build config and
-# stays incremental (no slow nested 'nix develop', no full rebuild).
+# stays incremental.
 cd "$(pwd)" || exit 1
-exec cabal build --builddir "$BUILDDIR" $REBUILD_TARGET exe:leksah-cmd exe:ffcabal
+exec cabal build $REBUILD_TARGET exe:leksah-cmd exe:ffcabal
 EOF
 
 # macOS: run the wkwebview front end from a real .app bundle so CFBundleName
@@ -227,6 +199,30 @@ EOF
     LOGFILE="$RUNLOGDIR/leksah$LOG_TAG$INSTANCE_TAG.log"
 fi
 
+# Build the helper exes AND (for the binary arms) the front end with one
+# `cabal build` (one project plan — `cabal install` would resolve a separate
+# plan and rebuild the world), then symlink the helpers onto PATH.  Every
+# cabal step shares the bin/ PATH prefix, and the app is launched DIRECTLY
+# rather than via `cabal run`:
+#   * cabal treats a different PATH as "configuration changed" and rebuilds
+#     everything, so the prefix must be identical across all cabal calls;
+#   * `cabal run` augments the launched app's PATH with build-tool dirs, which
+#     would make an in-app `cabal build` (rebuild-self) see a different config
+#     and rebuild everything.  Launching the binary directly keeps the app's
+#     environment identical to the build environment, so rebuild-self stays
+#     incremental.
+build_and_link() {
+    # $@ = extra cabal targets beyond the helper exes.  Explicit `|| return`:
+    # callers use `build_and_link … || read`, which turns off `set -e` inside
+    # the function — without it a failed build would fall through to the
+    # symlinking below.
+    PATH="$(pwd)/bin:$PATH" cabal build exe:leksah-server exe:leksah-cmd exe:ffcabal "$@" || return 1
+    mkdir -p bin
+    ln -sf "$(PATH="$(pwd)/bin:$PATH" cabal list-bin exe:leksah-server | grep '^/' | tail -1)" bin/leksah-server
+    ln -sf "$(PATH="$(pwd)/bin:$PATH" cabal list-bin exe:leksah-cmd | grep '^/' | tail -1)"    bin/leksah-cmd
+    ln -sf "$(PATH="$(pwd)/bin:$PATH" cabal list-bin exe:ffcabal | grep '^/' | tail -1)"       bin/ffcabal
+}
+
 # --ghci: run the native web front end INTERPRETED in a cabal multi-repl
 # instead of building + launching the binary.  The repl lives in a tmux pane
 # (on leksah's own tmux server) so `leksah-cmd hs eval` and the reload flow
@@ -234,6 +230,10 @@ fi
 # prompt with send-keys; the pane's exact environment — including the PATH
 # invariant every cabal call must share — is captured into a generated script.
 # There is no exit-2/3 relaunch loop here: the ghci session IS the loop.
+#
+# NB the repl flips cabal flags (-objc-in-library, +no-hlint) and shares the
+# default dist-newstyle build dir with the binary arm, so switching between
+# --ghci and binary launches makes cabal reconfigure the flag-flipped packages.
 if [ "$GHCI" = "1" ]; then
   if [ "$UI" != "leksah" ]; then
     echo "--ghci only applies to the native web front end (exe:leksah); ignoring --$UI." >&2
@@ -243,28 +243,9 @@ if [ "$GHCI" = "1" ]; then
   # Same helper prebuild as the binary arm (leksah-server/leksah-cmd/ffcabal
   # must be on PATH for the IDE), same PATH prefix — the repl's dependency
   # builds then share the same plan and stay incremental.
-  PATH=$(pwd)/bin/$GHCARG:$PATH "${DEV[@]}" \
-    bash -c '
-      set -e
-      bd="$1"; gd="$2"
-      if command -v haskell-nix-cabal-project-local-sync >/dev/null 2>&1; then
-        haskell-nix-cabal-project-local-sync --force
-      fi
-      if command -v haskell-nix-cabal-store-sync >/dev/null 2>&1; then
-        haskell-nix-cabal-store-sync --force "$bd"
-      fi
-      cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal
-      mkdir -p "bin/$gd"
-      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server | grep "^/" | tail -1)" "bin/$gd/leksah-server"
-      ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd | grep "^/" | tail -1)"    "bin/$gd/leksah-cmd"
-      ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal | grep "^/" | tail -1)"       "bin/$gd/ffcabal"
-    ' _ "$BUILDDIR" "$GHCARG"
-
-  # ghci uses its OWN builddir: its config differs from the binary loop's
-  # (the -objc-in-library flags below), and sharing a builddir would make
-  # cabal reconfigure + rebuild the whole leksah package on every switch
-  # between the two modes.  Dependencies still come from the shared store.
-  GHCI_BUILDDIR="dist-ghci-${GHCNUMVER:-$GHCARG}"
+  status "ghci: building helper exes"
+  build_and_link
+  status "ghci: compiling native dylibs"
 
   # GHCi's RTS linker can load Objective-C objects but never registers their
   # classes with the ObjC runtime (only dyld does) — so in ghci mode the ObjC
@@ -274,24 +255,23 @@ if [ "$GHCI" = "1" ]; then
   # jsaddle-wkwebview's (from the unpacked source-repository-package).
   GHCI_NATIVE="$RUNLOGDIR/ghci-native"
   mkdir -p "$GHCI_NATIVE"
-  # Both dylibs are OS-native (Cocoa/WebKit/ApplicationServices).  We LINK them
-  # with the SYSTEM toolchain (xcrun clang) rather than the dev-shell cc: some
-  # pinned haskell.nix toolchains drive an old cctools `ld` (ld64-956.6) from
-  # clang-21 + llvm-21's libLTO, which SIGTRAPs (`Trace/BPT trap`) on any
-  # `-dynamiclib` link that pulls in Cocoa.  The system linker isn't affected,
-  # and native dylibs are exactly what it's for.  Only the RTS include dirs and
-  # the unpacked jsaddle source path come from the dev shell (last stdout line).
-  DYLIB_INFO=$("${DEV[@]}" bash -c '
-      js=$(ls -d dist-ghc-*/src/jsaddle-*/jsaddle-wkwebview 2>/dev/null | head -1)
-      inc=""; for d in $(ghc-pkg field rts include-dirs --simple-output); do inc="$inc -I$d"; done
-      printf "%s %s\n" "$js" "$inc"' 2>/dev/null | tail -1)
-  read -r JS_SRC HS_INC <<< "$DYLIB_INFO"
+  # Both dylibs are OS-native (Cocoa/WebKit/ApplicationServices), so LINK them
+  # with the SYSTEM toolchain (xcrun clang).  env -i so that if this shell
+  # carries cc-wrapper vars (e.g. running inside some dev shell) they don't
+  # redirect the system clang to another linker.  Only the RTS include dirs
+  # and the unpacked jsaddle source path come from the ambient ghc/cabal.
+  # jsaddle-wkwebview's source: a LOCAL package path in cabal.project wins
+  # (a development checkout of jsaddle); otherwise the copy cabal unpacked
+  # from the source-repository-package.
+  JS_SRC=$(grep -oE '^[[:space:]]*/[^[:space:]]*/jsaddle-wkwebview[[:space:]]*$' cabal.project 2>/dev/null | tr -d '[:space:]' | head -1)
+  [ -n "$JS_SRC" ] && [ -d "$JS_SRC" ] || \
+    JS_SRC=$(ls -d dist-newstyle/src/jsaddle-*/jsaddle-wkwebview 2>/dev/null | head -1)
+  HS_INC=""
+  for d in $(ghc-pkg field rts include-dirs --simple-output); do HS_INC="$HS_INC -I$d"; done
   if [ -z "$JS_SRC" ]; then
-    echo "jsaddle-wkwebview source not unpacked yet — building dependencies first" >&2
+    echo "jsaddle-wkwebview source not found (no local package in cabal.project, nothing unpacked in dist-newstyle/src)" >&2
     exit 1
   fi
-  # env -i so that when leksah.sh runs inside a dev shell (the no-`--nix` path) the
-  # nix cc-wrapper vars don't redirect the system clang back to the broken linker.
   syscc() { env -i PATH=/usr/bin:/bin HOME="$HOME" /usr/bin/xcrun clang "$@"; }
   syscc -dynamiclib main/leksah-mac-menu.m \
      -framework Cocoa -framework ApplicationServices -framework AVFoundation \
@@ -304,33 +284,43 @@ if [ "$GHCI" = "1" ]; then
   TMUXSOCK="leksah$INSTANCE_TAG"
   GHCI_LOG="$RUNLOGDIR/ghci$INSTANCE_TAG.log"
   GHCI_RUN="$RUNLOGDIR/ghci-run$INSTANCE_TAG.sh"
-  # tmux comes from the dev shell with --nix; resolve it once (polling through
-  # `nix develop` would re-evaluate the flake every 2s).
-  TMUX_BIN=$("${DEV[@]}" bash -c 'command -v tmux')
-  if [ "$USE_NIX" = 1 ]; then
-    DEVSTR="nix $NIX_ARGS develop \".?submodules=1#$SHELL_ATTR\" --show-trace --command"
-  else
-    DEVSTR=""
-  fi
+  TMUX_BIN=$(command -v tmux) || { echo "tmux not found on PATH — required for --ghci." >&2; exit 1; }
+  # Snapshot the FULL launching environment (not just PATH): the repl is
+  # spawned by the tmux SERVER, whose environment is whatever shell started
+  # it — not this one.  A cabal solve/build inside the repl needs the same
+  # toolchain env this shell has (e.g. PKG_CONFIG_PATH, so pkg-config deps
+  # like gi-gtkosxapplication's gtk-mac-integration resolve when leksah.sh is
+  # run inside `nix develop`).  tmux/terminal-specific vars are dropped; the
+  # explicit exports in ghci-run.sh below override the snapshot where needed.
+  ENV_SNAPSHOT="$RUNLOGDIR/ghci-env$INSTANCE_TAG.sh"
+  export -p | grep -v -E '^declare -x (TMUX|TMUX_PANE|TERM|PWD|OLDPWD|SHLVL|_)=' > "$ENV_SNAPSHOT"
   cat > "$GHCI_RUN" <<EOF
 #!/usr/bin/env bash
-# Generated by leksah.sh --ghci; exec'd inside the ghci tmux pane.  Captures
+# Generated by leksah.sh --ghci; exec'd inside the ghci tmux pane.  Restores
 # the launching shell's environment so every cabal call (this repl, the
-# binary-arm builds, rebuild-self) sees the SAME PATH — cabal treats a
-# different PATH as "configuration changed" and rebuilds the world.
+# binary-arm builds, rebuild-self) sees the SAME PATH and toolchain vars —
+# cabal treats a different PATH as "configuration changed" and rebuilds the
+# world, and a fresh solve needs pkg-config et al.
 cd "$(pwd)" || exit 1
+. "$ENV_SNAPSHOT"
 export LEKSAH_PORT=$LEKSAH_PORT
 export LEKSAH_GHCI=1
 export leksah_datadir="$(pwd)"
-export PATH="$(pwd)/bin/$GHCARG:$PATH"
+export PATH="$(pwd)/bin:$PATH"
 # TERM=dumb makes ghci's haskeline drop all cursor/keypad control escapes, so
 # the prompt no longer rewrites its line — echoed input and command output land
 # on separate clean lines.  leksah-cmd (hs eval / rebuild-self) scrapes the pane
 # for its output fences; without this, haskeline glues a command echo to the
 # previous output and the scrape misses (or swallows) results.
 export TERM=dumb
-exec $DEVSTR cabal repl leksah:exe:leksah leksah:lib:leksah-nogtk \\
-  --enable-multi-repl --builddir "$GHCI_BUILDDIR" \\
+# NB do NOT set GHCRTS here to make the RTS return freed blocks sooner (-Fd1):
+# it is inherited by every Haskell program this session spawns, and leksah-cmd is
+# linked with the default -rtsopts=some, so it dies with "Most RTS options are
+# disabled" — including when typed in one of leksah's own terminal panes.  Nor
+# does --repl-options=+RTS work: cabal passes repl options through a @response
+# file, which the RTS never parses.
+exec cabal repl leksah:exe:leksah leksah:lib:leksah-nogtk \\
+  --enable-multi-repl \\
   --constraint="leksah -objc-in-library" \\
   --constraint="leksah +no-hlint" \\
   --constraint="jsaddle-wkwebview -objc-in-library" \\
@@ -360,20 +350,58 @@ EOF
     # lottery (see docs/building.md "ghci mode"), so retry the whole load a few
     # times — a fresh process re-rolls the layout.  (The real fix is in the
     # RTS linker; this keeps the dev loop usable meanwhile.)
+    # Killing the tmux session does NOT stop the repl: cabal's `ghc
+    # --interactive` child is REPARENTED, keeps running leksah, and holds
+    # LEKSAH_PORT and ~/.leksah/cmd.sock — so the next attempt's instance comes
+    # up with no control socket (startCmdServer sees a live listener and declines
+    # to steal it), leaving an app that heartbeats but can't be driven by
+    # leksah-cmd at all, plus an orphan nothing can address.  Kill the pane's
+    # whole process tree, TERM then KILL, before the session goes.
+    proc_tree() {   # print PID and every descendant (pane sh → cabal → ghc)
+      local root=$1 kid
+      echo "$root"
+      for kid in $(ps -o pid=,ppid= -ax | awk -v p="$root" '$2 == p { print $1 }'); do
+        proc_tree "$kid"
+      done
+    }
+    ghci_session_kill() {
+      local pane_pid pids p
+      pane_pid=$("$TMUX_BIN" -L "$TMUXSOCK" display-message -p -t ghci '#{pane_pid}' 2>/dev/null) \
+        || pane_pid=""
+      if [ -n "$pane_pid" ]; then
+        # Snapshot the tree BEFORE signalling anything: TERMing a parent
+        # reparents its children to launchd, so a second walk would no longer
+        # find them — and the process that must not survive (ghc, still running
+        # leksah) is exactly such a grandchild.
+        pids=$(proc_tree "$pane_pid")
+        for p in $pids; do kill -TERM "$p" 2>/dev/null || true; done
+        sleep 2
+        # ghc regularly survives SIGTERM (it sits in the Cocoa run loop).
+        for p in $pids; do kill -KILL "$p" 2>/dev/null || true; done
+      fi
+      "$TMUX_BIN" -L "$TMUXSOCK" kill-session -t ghci 2>/dev/null || true
+    }
+
     ghci_ok=0
     for gattempt in 1 2 3 4 5 6; do
-      "$TMUX_BIN" -L "$TMUXSOCK" kill-session -t ghci 2>/dev/null || true
+      ghci_session_kill
       : > "$GHCI_LOG"
       PANE=$("$TMUX_BIN" -L "$TMUXSOCK" new-session -d -P -F '#{pane_id}' -s ghci "$GHCI_RUN")
       "$TMUX_BIN" -L "$TMUXSOCK" pipe-pane -o -t "$PANE" "cat >> $GHCI_LOG"
       printf '%s %s\n' "$TMUXSOCK" "$PANE" > "$RUNLOGDIR/ghci-pane$INSTANCE_TAG"
+      status "ghci: repl loading (attempt $gattempt)"
       echo "cabal repl starting in tmux (-L $TMUXSOCK, session ghci, pane $PANE; attempt $gattempt)"
       echo "Log: $GHCI_LOG   Pane file: $RUNLOGDIR/ghci-pane$INSTANCE_TAG"
       echo "Waiting for the ghci prompt (the first load compiles/loads everything — slow, once)…"
       prompt=0
       while :; do
         dead=$("$TMUX_BIN" -L "$TMUXSOCK" display-message -p -t "$PANE" '#{pane_dead}' 2>/dev/null) || dead=1
-        if [ "$dead" = "1" ]; then break; fi
+        # Only keep waiting while tmux AFFIRMS the pane is alive.  If the repl
+        # dies early enough that its whole session goes (e.g. cabal fails to
+        # build the library), display-message can exit 0 with EMPTY output — so
+        # testing for "1" waited forever on a pane that no longer exists, and the
+        # retry below never ran.
+        if [ "$dead" != "0" ]; then break; fi
         last=$("$TMUX_BIN" -L "$TMUXSOCK" capture-pane -p -t "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)
         case "$last" in
           *"ghci>"*) prompt=1; break ;;
@@ -381,9 +409,11 @@ EOF
         sleep 2
       done
       if [ "$prompt" != 1 ]; then
+        status "ghci: repl died before the prompt (attempt $gattempt)"
         echo "ghci exited before the prompt (attempt $gattempt) — see $GHCI_LOG; retrying."
         continue
       fi
+      status "ghci: prompt up, sending :main (attempt $gattempt)"
       # The Cocoa run loop (and NSWindow creation) must be on the process main
       # OS thread.  -fno-ghci-sandbox makes GHCi run statements on its own
       # (bound, thread-0) REPL thread instead of a forked worker — but cabal's
@@ -413,8 +443,12 @@ EOF
       echo "Sent :main — waiting for the UI to build (or a linker-lottery crash)…"
       outcome=""
       dom=""
-      LEKSAHCMD="$(pwd)/bin/$GHCARG/leksah-cmd"
-      for _wait in $(seq 1 75); do
+      LEKSAHCMD="$(pwd)/bin/leksah-cmd"
+      # 300s, not 150: the FIRST :main of a session (fresh bytecode, cold
+      # metadata, workspace scans) has been measured past 150s, and the retry
+      # this timeout triggers is destructive — it kills a perfectly good
+      # instance.  Real failures still short-circuit below (pane dead, reloc).
+      for _wait in $(seq 1 150); do
         if grep -q "Relocation out of range" "$GHCI_LOG" 2>/dev/null; then outcome=reloc; break; fi
         dead=$("$TMUX_BIN" -L "$TMUXSOCK" display-message -p -t "$PANE" '#{pane_dead}' 2>/dev/null) || dead=1
         if [ "$dead" = "1" ]; then outcome=dead; break; fi
@@ -432,15 +466,21 @@ EOF
       done
       case "$outcome" in
         up) ghci_ok=1; echo "leksah is up (attempt $gattempt, DOM=$dom)."; break ;;
-        reloc) echo "RTS-linker relocation lottery lost (attempt $gattempt) — retrying with a fresh layout." ;;
-        *) echo "ghci UI did not build (attempt $gattempt, outcome=${outcome:-frozen}) — retrying with a fresh layout." ;;
+        reloc) status "ghci: relocation lottery lost (attempt $gattempt)"
+               echo "RTS-linker relocation lottery lost (attempt $gattempt) — retrying with a fresh layout." ;;
+        *) status "ghci: UI did not build (attempt $gattempt, outcome=${outcome:-frozen})"
+           echo "ghci UI did not build (attempt $gattempt, outcome=${outcome:-frozen}) — retrying with a fresh layout." ;;
       esac
     done
     if [ "$ghci_ok" != 1 ]; then
+      status "failed: gave up starting the ghci session after retries"
       echo "Gave up starting the ghci session after retries — see $GHCI_LOG." >&2
       exit 1
     fi
   fi
+  # Terminal state, written BEFORE the execs below (an exec skips the EXIT
+  # trap): the app is up; the repl keeps running in the ghci tmux session.
+  status "up: ghci instance running (DOM=${dom:-reused})"
   # Interactive: attach to the repl pane (not from inside another tmux —
   # nested attach refuses); in a tmux pane, tail the log instead; headless
   # (scripts/agents), just leave the repl running detached.
@@ -470,9 +510,9 @@ if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "classic" ] && [ "$UI" != "war
   # Same launch recipe as the loop's launch_leksah, duplicated so the default
   # loop stays byte-for-byte unchanged.
   handoff_launch_str='
-    bd="$1"; app="$2"; tgt="$3"; shift 3
+    app="$1"; tgt="$2"; shift 2
     export leksah_datadir="$(pwd)"
-    bin="$(cabal list-bin --builddir "$bd" "$tgt" | grep "^/" | tail -1)"
+    bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
     if [ "$app" = "1" ]; then
       macos="$(pwd)/Leksah.app/Contents/MacOS"
       ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
@@ -482,18 +522,7 @@ if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "classic" ] && [ "$UI" != "war
 
   handoff_build() {
     rm -f .ghc.environment.*
-    PATH="$(pwd)/bin/$GHCARG:$PATH" "${DEV[@]}" \
-      bash -c '
-        set -e
-        bd="$1"; gd="$2"; tgt="$3"
-        command -v haskell-nix-cabal-project-local-sync >/dev/null 2>&1 && haskell-nix-cabal-project-local-sync --force
-        command -v haskell-nix-cabal-store-sync >/dev/null 2>&1 && haskell-nix-cabal-store-sync --force "$bd"
-        cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "$tgt"
-        mkdir -p "bin/$gd"
-        ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server | grep "^/" | tail -1)" "bin/$gd/leksah-server"
-        ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd | grep "^/" | tail -1)"    "bin/$gd/leksah-cmd"
-        ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal | grep "^/" | tail -1)"       "bin/$gd/ffcabal"
-      ' _ "$BUILDDIR" "$GHCARG" "$EXE_TARGET"
+    build_and_link "$EXE_TARGET"
   }
 
   # $1 = "successor" (ephemeral asset port, LEKSAH_SUCCESSOR=1) or "" (primary).
@@ -503,12 +532,12 @@ if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "classic" ] && [ "$UI" != "war
     rm -f .ghc.environment.*
     if [ "$kind" = "successor" ]; then
       LEKSAH_SUCCESSOR=1 LEKSAH_ASSET_PORT=0 \
-        PATH="$(pwd)/bin/$GHCARG:$PATH" "${DEV[@]}" \
-        bash -c "$handoff_launch_str" _ "$BUILDDIR" "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
+        PATH="$(pwd)/bin:$PATH" \
+        bash -c "$handoff_launch_str" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
         >> "$RUNLOG" 2>&1 &
     else
-      PATH="$(pwd)/bin/$GHCARG:$PATH" "${DEV[@]}" \
-        bash -c "$handoff_launch_str" _ "$BUILDDIR" "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
+      PATH="$(pwd)/bin:$PATH" \
+        bash -c "$handoff_launch_str" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
         >> "$RUNLOG" 2>&1 &
     fi
     echo $!
@@ -566,8 +595,8 @@ fi
 LEKSAH_EXIT_CODE=2
 
 # Exit 2 => relaunch after rebuilding (in-IDE / rebuild-self); exit 3 =>
-# `leksah-cmd restart --no-rebuild`: relaunch but skip the cabal build (and its
-# `nix develop`), since rebuild-self already produced the binary.
+# `leksah-cmd restart --no-rebuild`: relaunch but skip the cabal build, since
+# rebuild-self already produced the binary.
 while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   SKIP_REBUILD=0
   [ "$LEKSAH_EXIT_CODE" -eq 3 ] && SKIP_REBUILD=1
@@ -575,11 +604,10 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   mkdir -p bin
 
   if [ "$UI" = "classic" ]; then
-    # Classic Gtk: install the binaries, then launch through the `launch-leksah`
-    # wrapper (which sets up the Gtk runtime environment).
+    # Classic Gtk: install the binaries, then launch directly (the Gtk runtime
+    # environment must already be in place in the ambient shell).
     if [ "$SKIP_REBUILD" != 1 ]; then
-      "${DEV[@]}" \
-        cabal install --builddir "$BUILDDIR" --installdir bin/$GHCARG --overwrite-policy=always \
+      cabal install --installdir bin --overwrite-policy=always \
           exe:leksah-server exe:leksah-classic exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass \
           || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
     else
@@ -588,69 +616,31 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
     rm -f .ghc.environment.*
 
     LEKSAH_EXIT_CODE=0
-    if [ "$USE_NIX" = 1 ]; then
-      # launch-leksah is a nix app that sets up the Gtk runtime environment.
-      PATH=$(pwd)/bin/$GHCARG:$PATH nix $NIX_ARGS run .?submodules=1#launch-leksah -- ./bin/$GHCARG/leksah-classic --develop-leksah "$@" \
-        || LEKSAH_EXIT_CODE=$?
-    else
-      # Ambient: assume the Gtk runtime env is already in place (dev shell).
-      PATH=$(pwd)/bin/$GHCARG:$PATH ./bin/$GHCARG/leksah-classic --develop-leksah "$@" \
-        || LEKSAH_EXIT_CODE=$?
-    fi
+    PATH="$(pwd)/bin:$PATH" ./bin/leksah-classic --develop-leksah "$@" \
+      || LEKSAH_EXIT_CODE=$?
   else
     # Web front ends (default exe:leksah, or --warp): leksah-server must be on
-    # PATH (for metadata) and tmux is needed for persistent terminals — both come
-    # from the dev shell.  With --develop-leksah leksah exits with code 2 when rebuilt
-    # (in-IDE or via `leksah-cmd rebuild-self`), so this loop relaunches it.
-    #
-    # Build the helper exes AND the front end with one `cabal build` (one project
-    # plan — `cabal install` would resolve a separate plan and rebuild the world),
-    # symlink the helpers onto PATH, then launch the built binary DIRECTLY rather
-    # than via `cabal run`.  Two reasons every cabal step shares the bin/$GHCARG
-    # PATH prefix and we avoid `cabal run`:
-    #   * cabal treats a different PATH as "configuration changed" and rebuilds
-    #     everything, so the prefix must be identical across all cabal calls;
-    #   * `cabal run` augments the launched app's PATH with build-tool dirs, which
-    #     would make an in-app `cabal build` (rebuild-self) see a different config
-    #     and rebuild everything.  Launching the binary directly keeps the app's
-    #     environment identical to the build environment, so rebuild-self stays
-    #     incremental.
+    # PATH (for metadata) and tmux is needed for persistent terminals.  With
+    # --develop-leksah leksah exits with code 2 when rebuilt (in-IDE or via
+    # `leksah-cmd rebuild-self`), so this loop relaunches it.
     if [ "$SKIP_REBUILD" != 1 ]; then
-      PATH=$(pwd)/bin/$GHCARG:$PATH "${DEV[@]}" \
-        bash -c '
-          set -e
-          bd="$1"; gd="$2"; tgt="$3"
-          # haskell.nix dev shells ship sync helpers that write
-          # cabal.project.local (mirroring the shell'\''s cabalProjectLocal) and
-          # prime the cabal store for this compiler.  They must run before the
-          # build and in the SAME shell (one nix develop entry); --force
-          # replaces stale state left by a different compiler (e.g. a
-          # ghc914-sh cabal.project.local breaks mainline ghc914 configure).
-          if command -v haskell-nix-cabal-project-local-sync >/dev/null 2>&1; then
-            haskell-nix-cabal-project-local-sync --force
-          fi
-          if command -v haskell-nix-cabal-store-sync >/dev/null 2>&1; then
-            haskell-nix-cabal-store-sync --force "$bd"
-          fi
-          cabal build --builddir "$bd" exe:leksah-server exe:leksah-cmd exe:ffcabal "$tgt"
-          mkdir -p "bin/$gd"
-          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-server | grep "^/" | tail -1)" "bin/$gd/leksah-server"
-          ln -sf "$(cabal list-bin --builddir "$bd" exe:leksah-cmd | grep "^/" | tail -1)"    "bin/$gd/leksah-cmd"
-          ln -sf "$(cabal list-bin --builddir "$bd" exe:ffcabal | grep "^/" | tail -1)"       "bin/$gd/ffcabal"
-        ' _ "$BUILDDIR" "$GHCARG" "$EXE_TARGET" \
-          || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
+      status "building"
+      build_and_link "$EXE_TARGET" \
+          || { status "build failed (offering last built version)"
+               read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."; }
     else
       echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
     fi
     rm -f .ghc.environment.*
+    status "up: launching instance"
 
-    # Launch the freshly-built binary directly, inside the dev shell, with the
-    # data dir `cabal run` would have set (the package root).  `exec` so leksah's
-    # exit code propagates (2 => rebuilt => relaunch).
+    # Launch the freshly-built binary directly, with the data dir `cabal run`
+    # would have set (the package root).  `exec` so leksah's exit code
+    # propagates (2 => rebuilt => relaunch).
     launch_leksah='
-      bd="$1"; app="$2"; tgt="$3"; shift 3
+      app="$1"; tgt="$2"; shift 2
       export leksah_datadir="$(pwd)"
-      bin="$(cabal list-bin --builddir "$bd" "$tgt" | grep "^/" | tail -1)"
+      bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
       if [ "$app" = "1" ]; then
         # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name
         # everywhere).  cabal relinks a new inode each build, so refresh the
@@ -673,15 +663,14 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
       # relaunch), -A would turn this into an attach-session and BLOCK the loop
       # forever; without -A it just fails "duplicate session" and `|| true`
       # no-ops, leaving the existing log tail in place.
-      "${DEV[@]}" \
-        tmux -L "leksah$INSTANCE_TAG" -f "$CONF" new-session -d -s "leksah$INSTANCE_TAG-0" tail -n +1 -F "$LOGFILE" || true
+      tmux -L "leksah$INSTANCE_TAG" -f "$CONF" new-session -d -s "leksah$INSTANCE_TAG-0" tail -n +1 -F "$LOGFILE" || true
       echo "Launching leksah$LOG_TAG; its output appears as \"Terminal 0\" inside leksah (log: $LOGFILE)"
-      PATH=$(pwd)/bin/$GHCARG:$PATH "${DEV[@]}" \
-        bash -c "$launch_leksah" _ "$BUILDDIR" "$RUN_FROM_APP" "$EXE_TARGET" "$@" > "$LOGFILE" 2>&1 \
+      PATH="$(pwd)/bin:$PATH" \
+        bash -c "$launch_leksah" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" > "$LOGFILE" 2>&1 \
         || LEKSAH_EXIT_CODE=$?
     else
-      PATH=$(pwd)/bin/$GHCARG:$PATH "${DEV[@]}" \
-        bash -c "$launch_leksah" _ "$BUILDDIR" "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
+      PATH="$(pwd)/bin:$PATH" \
+        bash -c "$launch_leksah" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
         || LEKSAH_EXIT_CODE=$?
     fi
 
@@ -689,4 +678,5 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
       echo "leksah-warp rebuilt — relaunching (reload http://127.0.0.1:$LEKSAH_PORT/ when ready)"
     fi
   fi
+  status "instance exited: code=$LEKSAH_EXIT_CODE"
 done

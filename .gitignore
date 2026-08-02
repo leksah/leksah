@@ -28,3 +28,9 @@ leksah.lkshw
 # Dev .app wrapper built by leksah-nix.sh (wkwebview naming)
 /Leksah.app/
 /dist-ghci-9.14/
+
+# Claude Code personal (per-machine) settings, hooks and agent worktrees
+.claude/settings.local.json
+.claude/hooks/
+.claude/worktrees/
+.DS_Store
