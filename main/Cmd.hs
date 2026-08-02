@@ -27,7 +27,15 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (IOException, SomeException, catch, try)
 import Control.Monad (unless, when, void)
 
+import Data.Aeson
+       (Value(..), Result(..), object, (.=), encode, eitherDecodeStrict,
+        fromJSON)
+import qualified Data.Aeson.Key as Key (fromText)
+import qualified Data.Aeson.KeyMap as KM (lookup)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8 (getLine)
+import qualified Data.ByteString.Lazy.Char8 as BL8 (putStrLn)
+import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.Char (isSpace, isDigit)
 import Data.List (isPrefixOf, isInfixOf, dropWhileEnd, sortBy, stripPrefix)
 import Data.Maybe (fromMaybe, listToMaybe)
@@ -43,7 +51,10 @@ import System.Directory
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr, stdout, hFlush)
+import System.IO
+       (hPutStrLn, stderr, stdout, hFlush, hSetBuffering,
+        BufferMode(LineBuffering), isEOF)
+import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
 import System.Process (readProcess)
 import Text.Read (readMaybe)
@@ -167,6 +178,12 @@ main = getArgs >>= \case
       ["-"]        -> getContents
       parts        -> return (unwords parts)
     hsEval code
+
+  -- mcp: serve the Model Context Protocol over stdio, proxying each tool call
+  -- to the running leksah's control socket — how Claude Code sessions leksah
+  -- launches get IDE tools (diagnostics, open_file, build, hover, …).  See
+  -- `mcpServe` below; registered via ~/.leksah/mcp.json (written by leksah).
+  ("mcp":_) -> mcpServe
 
   args          -> send args
 
@@ -611,3 +628,166 @@ reloadVerdict lns = case [v | l <- lns, Just v <- [verdictOf (dropWhile isSpace 
   where verdictOf l | "Ok," `isPrefixOf` l && "loaded" `T.isInfixOf` T.pack l     = Just True
                     | "Failed," `isPrefixOf` l && "loaded" `T.isInfixOf` T.pack l = Just False
                     | otherwise                                                   = Nothing
+
+--------------------------------------------------------------------------------
+-- MCP: leksah as a tool surface for Claude Code sessions.
+--
+-- @leksah-cmd mcp@ speaks the Model Context Protocol over stdio (one JSON-RPC
+-- message per line) and proxies each tool call to the running leksah's control
+-- socket — the same one-shot request/reply every other subcommand uses.  It is
+-- registered with @claude@ via @~/.leksah/mcp.json@ (written by leksah when it
+-- launches a session, with @--mcp-config@ pointing here), so agents can ask the
+-- IDE for diagnostics instead of grepping build logs, open files, trigger
+-- builds, read the user's selection, and take UI screenshots.
+
+-- | One tool definition for @tools/list@.
+mcpTool :: Text -> Text -> [(Text, Text, Text)] -> [Text] -> Value
+mcpTool name desc props req = object
+  [ "name" .= name
+  , "description" .= desc
+  , "inputSchema" .= object
+      [ "type" .= ("object" :: Text)
+      , "properties" .= object
+          [ Key.fromText k .= object
+              [ "type" .= ty, "description" .= d ]
+          | (k, ty, d) <- props ]
+      , "required" .= req
+      ]
+  ]
+
+mcpTools :: [Value]
+mcpTools =
+  [ mcpTool "diagnostics"
+      "Current compiler and language-server errors/warnings in the Leksah IDE \
+      \(the Errors pane), scoped to the active project. The IDE's language \
+      \servers keep this current as files are edited and saved — usually much \
+      \faster than running a build yourself."
+      [ ("file", "string", "Only diagnostics for this file (absolute or relative path)")
+      , ("all",  "boolean", "Include every project in the workspace, not just the active one") ] []
+  , mcpTool "open_file"
+      "Open (or reveal) a file in the Leksah editor, so the user is looking at \
+      \what you are talking about."
+      [ ("file", "string", "The file to open (absolute or relative path)") ] ["file"]
+  , mcpTool "active_selection"
+      "The file open in the Leksah editor the user last focused, plus the \
+      \1-based start/end lines of their selection (tab-separated) — what the \
+      \user means by 'this' or 'here'."
+      [] []
+  , mcpTool "build"
+      "Start a build of the IDE's active target (like the user pressing Build). \
+      \Asynchronous: the output lands in the IDE; call the diagnostics tool \
+      \afterwards to see the result."
+      [] []
+  , mcpTool "hover"
+      "Type signature and documentation at a position, from the IDE's live \
+      \language server (plus the file's diagnostics summary) — like hovering \
+      \in the editor."
+      [ ("file", "string", "The file (absolute or relative path)")
+      , ("line", "number", "1-based line")
+      , ("column", "number", "1-based column") ] ["file", "line"]
+  , mcpTool "screenshot"
+      "Capture the Leksah IDE window to a PNG and return its path (read the \
+      \image from that path to see the UI)."
+      [] []
+  ]
+
+-- | Field lookup on an aeson object 'Value'.
+mcpField :: Text -> Value -> Maybe Value
+mcpField k (Object o) = KM.lookup (Key.fromText k) o
+mcpField _ _          = Nothing
+
+mcpText :: Text -> Value -> Maybe Text
+mcpText k v = case mcpField k v of Just (String t) -> Just t; _ -> Nothing
+
+mcpInt :: Text -> Value -> Maybe Int
+mcpInt k v = case fromJSON <$> mcpField k v of Just (Success n) -> Just n; _ -> Nothing
+
+mcpBool :: Text -> Value -> Bool
+mcpBool k v = case mcpField k v of Just (Bool b) -> b; _ -> False
+
+-- | Successive screenshot paths, so parallel tool calls can't clobber each other.
+{-# NOINLINE mcpShotCounter #-}
+mcpShotCounter :: IORef Int
+mcpShotCounter = unsafePerformIO (newIORef 0)
+
+-- | The MCP stdio loop.
+mcpServe :: IO ()
+mcpServe = do
+  hSetBuffering stdout LineBuffering
+  loop
+  where
+    loop = isEOF >>= \eof -> unless eof $ do
+      ln <- BS8.getLine
+      unless (BS.null ln) $
+        case eitherDecodeStrict ln of
+          Left _  -> return ()      -- not JSON: ignore (keep the stream alive)
+          Right v -> handleMsg v
+      loop
+
+    emit o = BL8.putStrLn (encode o) >> hFlush stdout
+
+    handleMsg v = case mcpField "id" v of
+      Nothing  -> return ()         -- a notification; nothing expects a reply
+      Just idv -> do
+        let method = maybe "" id (mcpText "method" v)
+            params = maybe (object []) id (mcpField "params" v)
+        result <- case method of
+          "initialize" -> return . Right $ object
+            [ "protocolVersion" .=
+                maybe ("2024-11-05" :: Text) id (mcpText "protocolVersion" params)
+            , "capabilities" .= object [ "tools" .= object [] ]
+            , "serverInfo" .= object
+                [ "name" .= ("leksah" :: Text)
+                , "version" .= ("0.17.0" :: Text) ]
+            ]
+          "ping"       -> return . Right $ object []
+          "tools/list" -> return . Right $ object [ "tools" .= mcpTools ]
+          "tools/call" -> Right <$> mcpCall params
+          _            -> return (Left ("method not found: " <> method))
+        emit $ case result of
+          Right r -> object
+            [ "jsonrpc" .= ("2.0" :: Text), "id" .= idv, "result" .= r ]
+          Left e  -> object
+            [ "jsonrpc" .= ("2.0" :: Text), "id" .= idv
+            , "error" .= object
+                [ "code" .= (-32601 :: Int), "message" .= e ] ]
+
+-- | Run one tool: build the control-socket argv, send it, wrap the reply as
+-- MCP text content (a missing/most argument errors as tool output, not as a
+-- protocol error, so the model can react).
+mcpCall :: Value -> IO Value
+mcpCall params = do
+    let name = maybe "" id (mcpText "name" params)
+        args = maybe (object []) id (mcpField "arguments" params)
+    r <- case name of
+      "diagnostics" -> sock $ ["diagnostics"]
+                          <> maybe [] ((:[]) . T.unpack) (mcpText "file" args)
+                          <> [ "--all" | mcpBool "all" args ]
+      "open_file" -> case mcpText "file" args of
+        Just f  -> sock ["editor", "open", T.unpack f]
+        Nothing -> return (Left "missing required argument: file")
+      "active_selection" -> sock ["active-selection"]
+      "build" -> sock ["build"]
+      "hover" -> case (mcpText "file" args, mcpInt "line" args) of
+        (Just f, Just ln) -> sock $ ["hover", T.unpack f, show ln]
+                                <> maybe [] ((:[]) . show) (mcpInt "column" args)
+        _ -> return (Left "missing required arguments: file, line")
+      "screenshot" -> do
+        n <- atomicModifyIORef' mcpShotCounter (\i -> (i + 1, i))
+        home <- getHomeDirectory
+        pid <- getProcessID
+        let path = home </> ".leksah"
+                        </> ("mcp-screenshot-" <> show pid <> "-" <> show n <> ".png")
+        sock ["screenshot", path]
+      _ -> return (Left ("unknown tool: " <> name))
+    return $ object
+      [ "content" .=
+          [ object [ "type" .= ("text" :: Text)
+                   , "text" .= either id id r ] ]
+      , "isError" .= either (const True) (const False) r
+      ]
+  where
+    -- One one-shot socket round trip; a missing socket = leksah isn't running.
+    sock args = tryReply args >>= \case
+      Nothing -> return (Left "leksah is not running (no control socket answered)")
+      Just t  -> return (Right t)

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leksah × Claude: Integration Improvement Plan</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1d21; --muted: #5b6470; --accent: #7c3aed;
+    --card: #f6f7f9; --border: #d9dee5; --good: #15803d; --warn: #b45309;
+    --code: #eef0f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --fg: #e6e9ee; --muted: #9aa4b2; --accent: #b08bf8;
+      --card: #1d2127; --border: #333a44; --good: #4ade80; --warn: #fbbf24;
+      --code: #23282f;
+    }
+  }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system,
+         BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         max-width: 62rem; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
+  h1 { font-size: 1.7rem; margin: 0 0 .3rem; }
+  h2 { font-size: 1.25rem; margin: 2.2rem 0 .6rem; border-bottom: 1px solid var(--border);
+       padding-bottom: .3rem; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 .4rem; }
+  .sub { color: var(--muted); margin-bottom: 1.6rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+          padding: .9rem 1.1rem; margin: .8rem 0; }
+  .tools td, .tools th, .gaps td, .gaps th { border: 1px solid var(--border);
+          padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  table { border-collapse: collapse; width: 100%; margin: .6rem 0 1rem; font-size: .92rem; }
+  th { background: var(--card); }
+  code, .k { font-family: ui-monospace, Menlo, monospace; font-size: .88em;
+             background: var(--code); border-radius: 4px; padding: .08em .35em; }
+  a { color: var(--accent); }
+  .pill { display: inline-block; font-size: .75rem; font-weight: 600; border-radius: 999px;
+          padding: .05rem .55rem; border: 1px solid var(--border); margin-left: .4rem;
+          vertical-align: middle; }
+  .S { color: var(--good); } .M { color: var(--warn); } .L { color: #dc2626; }
+  .have { color: var(--good); font-weight: 600; } .gap { color: var(--warn); font-weight: 600; }
+  .top3 { border-left: 4px solid var(--accent); }
+  ol.roadmap > li { margin-bottom: .7rem; }
+  .src { font-size: .85rem; color: var(--muted); }
+  ul { padding-left: 1.3rem; }
+</style>
+</head>
+<body>
+
+<h1>Leksah × Claude: Integration Improvement Plan</h1>
+<p class="sub">What the agent-IDE field (Orca, Herdr, Conductor, Sculptor, Nimbalyst, claude-squad, …)
+offers, where leksah already leads, where it lags, and a staged plan that fits leksah's
+tmux-backed architecture. Drafted July&nbsp;2026.</p>
+
+<h2>Executive summary</h2>
+<div class="card">
+<p>A whole product category ("Agent Development Environments") has formed around exactly what
+leksah already is: a workbench that hosts real terminal agents next to an editor, git views and
+notifications. Leksah's foundations are unusually strong — <em>real tmux panes</em> (herdr's
+headline feature), remote (ssh) projects and terminals (Orca's SSH mode), attention/bell routing
+with spoken alerts, per-session tree nodes, and an embedded browser pane in progress (Orca's
+embedded Chromium). What the field has that leksah lacks clusters into four things:</p>
+<ul>
+  <li><strong>Semantic agent state</strong> — every serious tool shows idle / working /
+      <em>blocked</em> / done per session, at a glance.</li>
+  <li><strong>Worktree-isolated parallel sessions</strong> — the defining feature of Conductor,
+      Orca and Crystal/Nimbalyst: one branch + checkout per agent task, with a review → merge →
+      archive flow.</li>
+  <li><strong>Diff review wired back to the agent</strong> — Orca's inline diff comments that are
+      batch-submitted to the session.</li>
+  <li><strong>The IDE as a tool surface for the agent</strong> — nobody does this well yet;
+      leksah's LSP diagnostics + <code>leksah-cmd</code> socket make it a cheap, differentiating
+      win (an MCP server).</li>
+</ul>
+<p><strong>Recommended top-3:</strong> (1)&nbsp;agent state detection + surfacing,
+(2)&nbsp;worktree-per-session with a review/merge flow, (3)&nbsp;a leksah MCP server so Claude can
+see diagnostics and drive the editor.</p>
+</div>
+
+<h2>Tool-by-tool findings</h2>
+
+<h3>Orca (onorca.dev) — "Agent Development Environment"</h3>
+<ul>
+  <li>Fleet of parallel agents (Claude Code, Codex, OpenCode, 15+), each confined to an
+      <strong>isolated git worktree</strong>; GitHub PRs/issues/Actions linked per worktree.</li>
+  <li><strong>Inline markdown comments on diff lines, batch-submitted back to the agent</strong> —
+      the standout review loop.</li>
+  <li>Ghostty-inspired terminal with infinite splits; VS Code-compatible editor.</li>
+  <li><strong>Embedded Chromium per worktree</strong> with a "Design Mode" (click an element to
+      inspect HTML/CSS) — the same direction as leksah's new browser pane.</li>
+  <li>SSH remote worktrees with auto-reconnect; notifications when an agent finishes or needs
+      attention; account switching with <strong>usage/rate-limit and cost dashboards</strong>;
+      iOS/Android companion mirroring live sessions.</li>
+</ul>
+<p class="src">Sources: <a href="https://www.onorca.dev/">onorca.dev</a>,
+<a href="https://vibecodinghub.org/blog/orca-review">Orca review</a>,
+<a href="https://dev.to/andrew-ooo/orca-review-the-ide-built-for-parallel-coding-agents-15df">dev.to review</a></p>
+
+<h3>Herdr — terminal-native agent multiplexer (Rust)</h3>
+<ul>
+  <li>"tmux, but agent-forward": workspaces → tabs → panes, session persistence,
+      detach/reattach, <code>--remote ssh://…</code> mode.</li>
+  <li><strong>Zero-config agent state detection</strong> (process-name + output heuristics) →
+      sidebar shows each pane's agent as idle / working / <em>blocked</em> / done. A dedicated
+      Claude Code integration adds <strong>semantic state forwarding over a local socket</strong>
+      and session restoration.</li>
+  <li>A <strong>socket API + agent skill</strong> so agents themselves can spawn panes/workspaces
+      and organise their own work.</li>
+</ul>
+<p class="src">Sources: <a href="https://knightli.com/en/2026/07/06/herdr-terminal-agent-multiplexer/">herdr guide</a>,
+<a href="https://www.tecmint.com/herdr-run-ai-coding-agents-in-linux-terminal/">tecmint</a>,
+<a href="https://claudekit.io/en/tools/herdr/">claudekit</a></p>
+
+<h3>The rest of the field, briefly</h3>
+<table class="tools">
+<tr><th>Tool</th><th>Model</th><th>What to learn from it</th></tr>
+<tr><td><a href="https://www.conductor.build/">Conductor</a> (Mac)</td>
+    <td>Worktree per task, desktop app</td>
+    <td>~10s "new workspace" (worktree + branch + setup script), then a guided
+        <em>review diff → open PR → merge → archive</em> lifecycle. Free, uses your Claude login.</td></tr>
+<tr><td><a href="https://github.com/stravu/crystal">Crystal</a> → <a href="https://nimbalyst.com/crystal/">Nimbalyst</a></td>
+    <td>Parallel sessions + kanban</td>
+    <td>Run the <em>same prompt</em> in several worktrees to compare approaches; session board UI.
+        (Crystal MIT-archived Feb 2026; successor is paid.)</td></tr>
+<tr><td>Sculptor (Imbue, open source)</td>
+    <td>Docker container per agent</td>
+    <td>Strongest isolation position: agents can install packages / run services without touching
+        the host. Relevant to leksah's nix story (nix develop shells per session).</td></tr>
+<tr><td><a href="https://github.com/smtg-ai/claude-squad">claude-squad</a> (Go TUI)</td>
+    <td>tmux session + worktree per agent</td>
+    <td>Proof that the tmux-window-per-agent model (leksah's model!) is the lean core everyone
+        rebuilds; adds only a status list + worktrees on top.</td></tr>
+<tr><td>Vibe Kanban (Bloop; shut down Apr 2026)</td>
+    <td>Kanban board for agents</td>
+    <td>Drag a card to "In Progress" → an agent picks it up on its own branch. The queue idea
+        survives in Nimbalyst/AIDEN; AIDEN adds <em>enforced spec approval before coding</em>.</td></tr>
+<tr><td>Claude Code desktop / VS Code ext (official)</td>
+    <td>Single vendor</td>
+    <td>Hooks (Notification/Stop/PreToolUse), plan mode, <code>--resume</code>, transcript JSONL
+        under <code>~/.claude/projects</code>, statusline JSON, OTEL usage metrics — the raw
+        material third-party tools build state/cost features from.</td></tr>
+</table>
+<p class="src">Sources: <a href="https://aidenapp.org/desktop-app-for-coding-agents">2026 desktop-app landscape</a>,
+<a href="https://munderdiffl.in/blog/best-claude-code-multi-agent-tools/">multi-agent tools compared</a>,
+<a href="https://www.conductor.build/docs/guides/parallel-agents/run-multiple-claude-code-sessions">Conductor docs</a></p>
+
+<h2>Gap analysis vs leksah today</h2>
+<table class="gaps">
+<tr><th>Theme</th><th>Leksah today</th><th>Gap</th></tr>
+<tr><td>Real terminal fidelity</td>
+    <td class="have">LEADS — real tmux windows/panes, control-mode rendering, splits, zoom,
+        per-pane fonts</td><td>—</td></tr>
+<tr><td>Remote agents</td>
+    <td class="have">LEADS — ssh:// projects, remote terminals, remote LSP</td><td>—</td></tr>
+<tr><td>Attention routing</td>
+    <td class="have">Strong — tmux bell/activity flags, spoken alerts, ⌃⌥A "focus alert"</td>
+    <td class="gap">Bell ≠ semantics: can't distinguish "waiting for approval" from "done" from
+        "compacting"; no per-session state icon</td></tr>
+<tr><td>Session management</td>
+    <td class="have">Tree nodes per session, running indicator, New/Continue-Last, "Ask Claude
+        about this file"</td>
+    <td class="gap">No browser of past transcripts (resume any by title); all sessions share the
+        project checkout</td></tr>
+<tr><td>Parallel isolation</td>
+    <td>Sessions run in the project dir</td>
+    <td class="gap">No worktree-per-task; two sessions step on each other's files</td></tr>
+<tr><td>Diff review</td>
+    <td class="have">Changes pane, git log pane, PR status nodes</td>
+    <td class="gap">No per-session "what did this agent change" diff; no comment-on-diff →
+        send-to-session loop</td></tr>
+<tr><td>Agent → IDE tools</td>
+    <td class="have"><code>leksah-cmd</code> socket (editor open, js eval, screenshot…)</td>
+    <td class="gap">Not exposed to Claude as MCP; agent can't read LSP diagnostics or the
+        Errors pane</td></tr>
+<tr><td>Cost/usage</td><td>—</td>
+    <td class="gap">No per-session token/cost display (transcript JSONL has it)</td></tr>
+<tr><td>Task queue / plan approval</td><td>—</td>
+    <td class="gap">No queued prompts, no plan-mode review surface</td></tr>
+<tr><td>Embedded preview</td>
+    <td class="have">Browser pane (in progress)</td>
+    <td class="gap">Not yet linked to sessions (e.g. auto-open the dev server an agent started)</td></tr>
+</table>
+
+<h2>Prioritized proposals</h2>
+
+<div class="card top3">
+<h3>1. Semantic session state <span class="pill S">Effort S–M</span></h3>
+<p><strong>What:</strong> per-Claude-session state — <em>working / blocked-on-approval / done /
+idle</em> — shown as coloured badges on the workspace-tree Claude nodes, the Terminals tree, tab
+buttons and the flipper; plus "jump to next blocked session" (extend the existing
+<code>CommandFocusAlert</code> ordering: blocked&nbsp;&gt; bell&nbsp;&gt; activity).</p>
+<p><strong>How it fits:</strong> install Claude Code <em>hooks</em> (Notification, Stop,
+PreToolUse/permission) via a leksah-managed <code>settings.json</code> include that appends one
+JSON line per event to <code>~/.leksah/claude-state/&lt;session&gt;.jsonl</code> (or writes a tmux
+window option — leksah already polls tmux options for <code>@leksah_layout</code>). The pane-tree
+poller picks it up; falls back to today's bell/activity heuristics for non-hooked agents —
+exactly herdr's two-tier design.</p>
+</div>
+
+<div class="card top3">
+<h3>2. Worktree-per-session + review/merge flow <span class="pill M">Effort M</span></h3>
+<p><strong>What:</strong> "New Claude Session in Worktree" (context menu on a project/dir):
+creates <code>.worktrees/&lt;task&gt;</code> + branch, runs the session there; the tree groups the
+worktree under the project with its PR/ahead-behind badges (already built); a per-session
+<em>Review</em> action shows <code>git diff &lt;base&gt;...HEAD</code> for that worktree; buttons for
+merge / PR (<code>gh</code>) / archive (remove worktree, prune branch).</p>
+<p><strong>How it fits:</strong> leksah already has directory projects ("Open Folder…" — a worktree
+is just a directory project), git polling, PR status via <code>gh</code>, and session-per-open tmux
+windows. The review pane can reuse the git-log/diff machinery; "send review comment" types into
+the session's tmux pane via the existing send-to-target plumbing (the same path as Send Error).</p>
+</div>
+
+<div class="card top3">
+<h3>3. Leksah MCP server for Claude <span class="pill M">Effort M</span></h3>
+<p><strong>What:</strong> expose leksah to Claude sessions as MCP tools:
+<code>get_diagnostics</code> (the Errors pane / LSP <code>allLogRefs</code>, scoped to the active
+project), <code>open_file / reveal</code>, <code>active_selection</code>, <code>build</code>
+(rebuild-self / project build with the parsed result), <code>screenshot</code>,
+<code>hover</code> (LSP hover at a position). Register it in the session's
+<code>.mcp.json</code> when leksah launches the session.</p>
+<p><strong>Why:</strong> nobody in the field feeds the agent live IDE state; leksah's LSP layer +
+<code>leksah-cmd</code> socket already have every primitive. Agents stop grepping for errors they
+could just ask for — a genuine differentiator.</p>
+<p><strong>How it fits:</strong> a small stdio-MCP shim binary (or a <code>leksah-cmd mcp</code>
+subcommand) that proxies to <code>~/.leksah/cmd.sock</code>; the CmdServer grows the few missing
+queries (diagnostics dump exists in spirit via the Errors pane model).</p>
+</div>
+
+<div class="card">
+<h3>4. Session browser + resume-any <span class="pill S">Effort S</span></h3>
+Parse <code>~/.claude/projects/&lt;dir&gt;/*.jsonl</code> (first user message = title, mtime, model,
+token totals) into the Claude tree node's children; double-click → <code>claude --resume
+&lt;id&gt;</code> in a new tmux window. Extends "Continue Last" to "continue any".</div>
+
+<div class="card">
+<h3>5. Per-session cost/usage <span class="pill S">Effort S</span></h3>
+Sum usage records from the same transcript JSONL; show tokens/$ in the session node tooltip and
+the status bar for the focused session. (Orca-style dashboards later, if ever.)</div>
+
+<div class="card">
+<h3>6. Diff-comment → session loop <span class="pill M">Effort M</span></h3>
+In the review pane of proposal 2, allow selecting diff lines and typing a note; leksah sends
+<code>@file#L10-L20 &lt;note&gt;</code> into the session (the Send Selection path). Orca's best
+feature, nearly free on leksah's plumbing.</div>
+
+<div class="card">
+<h3>7. Task queue (kanban-lite) <span class="pill L">Effort L</span></h3>
+A pane of queued prompts per project; a queued card starts a worktree session (proposal 2) when a
+slot frees. Do after 1–3; Vibe Kanban's shutdown suggests the board alone isn't the product.</div>
+
+<div class="card">
+<h3>8. Plan-mode review surface <span class="pill M">Effort M–L</span></h3>
+Detect plan-mode output (hooks / transcript) and render the plan markdown in a leksah pane with
+Approve / Revise buttons that type the response into the session. Pairs with AIDEN's
+"spec approval before coding" finding.</div>
+
+<div class="card">
+<h3>9. Browser pane ↔ session links <span class="pill S">Effort S</span></h3>
+When an agent's terminal prints a localhost URL (the terminal-links JS already detects URLs),
+offer "open in browser pane" — ⌥ to open it as a split beside the session. Matches Orca's
+embedded-Chromium-per-worktree without new machinery.</div>
+
+<h2>Suggested roadmap</h2>
+<ol class="roadmap">
+  <li><strong>Stage 1 — see the fleet:</strong> semantic state via hooks (+ fallback heuristics),
+      state badges in trees/tabs/flipper, focus-next-blocked; session browser + resume-any;
+      per-session cost tooltip. <em>(items 1, 4, 5)</em></li>
+  <li><strong>Stage 2 — isolate &amp; review:</strong> worktree-per-session lifecycle
+      (create → review diff → PR/merge → archive) and the diff-comment → session loop.
+      <em>(items 2, 6)</em></li>
+  <li><strong>Stage 3 — arm the agent:</strong> MCP server (diagnostics, editor, build,
+      screenshot); browser-pane ↔ session links. <em>(items 3, 9)</em></li>
+  <li><strong>Stage 4 — orchestrate:</strong> task queue, plan-approval surface, and (if demand)
+      compare-N-approaches à la Crystal. <em>(items 7, 8)</em></li>
+</ol>
+
+<p class="src">Further sources:
+<a href="https://github.com/DALH33/orca-IDE">orca-IDE on GitHub</a> ·
+<a href="https://www.chaseai.io/blog/herdr-terminal-multiplexer-ai-coding-agents">herdr overview</a> ·
+<a href="https://georgetaskos.medium.com/scaling-the-loop-run-5-claude-code-sessions-in-parallel-with-conductor-build-539b52888a81">Conductor in practice</a> ·
+<a href="https://nimbalyst.com/blog/best-agent-management-tools-2026/">agent-management tools 2026</a> ·
+<a href="https://agentsroom.dev/blog/best-multi-agent-coding-tools">multi-agent tools survey</a></p>
+
+</body>
+</html>

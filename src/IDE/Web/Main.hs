@@ -276,9 +276,21 @@ import IDE.Web.Events
 import IDE.Web.Layout (layoutCss)
 import IDE.Web.Widget.Changes (changesCss, changesWidget)
 import IDE.Web.Widget.GitLog (gitLogCss, gitLogWidget, gitLogSplitJs)
+import IDE.Web.Widget.Review (reviewCss, reviewWidget)
+import IDE.Web.Widget.NewWorktree (newWorktreeDialog)
+import IDE.Web.Widget.Tasks (tasksCss, tasksWidget)
+import IDE.Web.Widget.Plan (planCss, planWidget)
+import IDE.Web.Widget.Compare (compareCss, compareWidget)
+import IDE.Web.Worktree (nextNewWorktreeRequest, nextReviewRequest)
+import IDE.Web.ClaudeQueue
+       (nextTaskQueueRequest, nextPlanReviewRequest, nextCompareRequest,
+        armQueueScheduler)
 import IDE.Web.GitLogRequest (nextGitLogRequest, requestGitLog)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
 import IDE.Web.Widget.Shortcuts (shortcutsCss, shortcutsWidget, shortcutsPlainText)
+import IDE.Web.GitInfo (openUrl)
+import IDE.Web.Widget.Browser
+       (browserCss, browserWidget, nextBrowserId, rememberUrl, isOwnUrl)
 import IDE.Web.Widget.Flake (flakeCss)
 import IDE.Web.Widget.ContextMenu (contextMenuCss)
 import IDE.Web.Widget.Editor (editorCss, editorWidget)
@@ -1577,8 +1589,13 @@ css = render $ do
     metadataCss
     changesCss
     gitLogCss
+    reviewCss
+    tasksCss
+    planCss
+    compareCss
     preferencesCss
     shortcutsCss
+    browserCss
     flakeCss
 
 -- Fallback label for a terminal that hasn't reported a window title yet.
@@ -5979,6 +5996,16 @@ main showMenubar macTitlebar wid ide = mdo
     addRemoteCloseE <- switchHold never =<< dyn (ffor addRemoteOpenD $ \case
         False -> return never
         True  -> addRemoteDialog remoteHostsD)
+    -- "New Claude Session in Worktree…" (tree context menus drop the clicked
+    -- dir on the bridge): same modal pattern; the dialog owns the whole flow
+    -- (create worktree → add project → start claude).
+    (newWtReqE, fireNewWtReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextNewWorktreeRequest >>= fireNewWtReq
+    newWtOpenD <- holdDyn Nothing $ leftmost
+        [ Just <$> newWtReqE, Nothing <$ newWtCloseE ]
+    newWtCloseE <- switchHold never =<< dyn (ffor newWtOpenD $ \case
+        Nothing  -> return never
+        Just dir -> newWorktreeDialog dir)
     -- File ▸ Add Server… / the Terminals-tree "Add Server…" row: same bridge
     -- pattern as Add Remote Project above ('commandAddServer' drops a token on
     -- the AddServerRequest bridge from any dispatch route).  The dialog owns

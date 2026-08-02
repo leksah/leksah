@@ -162,8 +162,17 @@ makePrisms ''PreferencesEvents
 
 -- | The git log viewer's diff is shown in-pane, so it reports nothing outward.
 type GitLogEvents = ()
+-- | The review pane acts through IO (send-to-session, git) — nothing outward.
+type ReviewEvents = ()
+-- | The task-queue pane acts through IO (queue ops) — nothing outward.
+type TasksEvents = ()
+-- | The plan-review pane acts through IO (send-keys) — nothing outward.
+type PlanEvents = ()
+type CompareEvents = ()
 -- | The Shortcuts cheat-sheet pane is read-only, so it reports nothing outward.
 type ShortcutsEvents = ()
+-- | The browser pane keeps its navigation state to itself.
+type BrowserEvents = ()
 type StatusbarEvents = ()
 newtype MenubarEvents =
   MenubarCommand Command
@@ -189,8 +198,13 @@ data TabEvents e where
   ChangesTab   :: TabEvents ChangesEvents
   PreferencesTab :: TabEvents PreferencesEvents
   ShortcutsTab :: TabEvents ShortcutsEvents
+  BrowserTab   :: TabEvents BrowserEvents
   WorkspaceTab :: TabEvents ProjectEvents
   GitLogTab    :: TabEvents GitLogEvents
+  ReviewTab    :: TabEvents ReviewEvents
+  TasksTab     :: TabEvents TasksEvents
+  PlanTab      :: TabEvents PlanEvents
+  CompareTab   :: TabEvents CompareEvents
 
 deriveGEq      ''TabEvents
 deriveGCompare ''TabEvents

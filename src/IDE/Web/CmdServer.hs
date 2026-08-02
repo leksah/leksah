@@ -63,17 +63,21 @@ module IDE.Web.CmdServer
   ) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (MVar, newMVar, tryTakeMVar, putMVar)
+import Control.Concurrent.MVar
+       (MVar, newMVar, tryTakeMVar, putMVar, newEmptyMVar, takeMVar)
 import Control.Exception (SomeException, catch, finally, try)
 import GHC.Conc (threadStatus, ThreadStatus(..))
 import GHC.Conc.Sync (listThreads, threadLabel)
 import GHC.Stack.CloneStack (cloneThreadStack, decode, StackEntry(..))
 import Data.List (isPrefixOf, isInfixOf)
 import Control.Lens ((^.))
-import Control.Monad (forever, void, when, (<=<))
+import Control.Monad (filterM, forever, void, when, (<=<))
 
+import Data.Foldable (toList)
 import Data.IORef (IORef, newIORef, writeIORef)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (isNothing, listToMaybe)
+import System.Timeout (timeout)
+import Text.Read (readMaybe)
 
 import qualified Data.ByteString as BS
 import Data.Text (Text)
@@ -107,11 +111,14 @@ import Text.Printf (printf)
 import IDE.Core.State
        (IDERef, reflectIDE, ideJSM, readIDE, workspace, runWorkspace,
         runProject, pjPackages, ipdPackageName, ipdCabalFile, wsProjects,
-        setLoggerLevel)
+        setLoggerLevel, activeProjectLogRefs, allLogRefs, LogRef(..),
+        LogRefType(..), SrcSpan(..), logRefFullFilePath)
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
+import IDE.LSP (requestTerminalHover)
+import IDE.Web.Command (buildActiveTarget)
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.Handoff (handoffEnabled, requestHandoff)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
@@ -495,6 +502,73 @@ handleConn ideR conn = do
       ("log" : loggerName : levelT : _) | not (T.null loggerName) ->
         setLoggerLevel (T.unpack loggerName) (T.unpack levelT) >>= reply
 
+      -- diagnostics [FILE] [--all]: the current compiler/LSP errors and
+      -- warnings (the Errors pane's model), one per line — the backend of the
+      -- MCP `diagnostics` tool, so agents ask instead of grepping build logs.
+      -- Scoped to the active project unless --all; FILE filters to one file.
+      ("diagnostics" : rest) -> do
+        let allScope = "--all" `elem` rest
+            mfile = case filter (/= "--all") rest of
+              (f : _) | not (T.null f) -> Just (resolve cwd f)
+              _                        -> Nothing
+        ide <- reflectIDE (readIDE Prelude.id) ideR
+        let refs = [ lr
+                   | lr <- toList (if allScope then ide ^. allLogRefs
+                                               else activeProjectLogRefs ide)
+                   , logRefType lr `elem`
+                       [ErrorRef, WarningRef, LintRef, TestFailureRef]
+                   , maybe True (logRefFullFilePath lr ==) mfile ]
+            sev lr = case logRefType lr of
+              ErrorRef       -> "error"
+              WarningRef     -> "warning"
+              LintRef        -> "lint"
+              TestFailureRef -> "test-failure"
+              _              -> "note"
+            one lr = let sp = logRefSrcSpan lr in
+              sev lr <> " " <> T.pack (logRefFullFilePath lr)
+                <> ":" <> T.pack (show (srcSpanStartLine sp))
+                <> ":" <> T.pack (show (srcSpanStartColumn sp))
+                -- indent continuation lines so one ref = one visual block
+                <> " " <> T.replace "\n" "\n    " (T.strip (refDescription lr))
+            scope = if allScope then " (all projects)" else " (active project)"
+        reply $ if null refs
+          then "no diagnostics" <> scope <> "\n"
+          else T.pack (show (length refs)) <> " diagnostic(s)" <> scope <> ":\n"
+               <> T.unlines (map one refs)
+
+      -- active-selection: the focused editor's file plus the selection's
+      -- 1-based start/end lines, tab-separated (the MCP `active_selection`
+      -- backend).  Empty everywhere → no editor focused.
+      ("active-selection" : _) -> do
+        r <- evalJs activeSelectionJs
+        reply $ case [ l | l <- T.lines r, not (T.null (T.strip l)) ] of
+          (l : _) -> l <> "\n"
+          []      -> "(no editor focused)\n"
+
+      -- build: kick off the active target's build (Haskell package or custom
+      -- project), exactly like the Build toolbar button.  Asynchronous — the
+      -- output lands in the IDE; agents poll `diagnostics` for the result.
+      ("build" : _) -> do
+        reply ("build started — output lands in the IDE's Errors/Log panes; "
+              <> "poll `diagnostics` for the result.\n")
+        void . forkIO . void $ reflectIDE buildActiveTarget ideR
+
+      -- hover FILE LINE [COL]: the LSP hover (type/docs) at a position, plus
+      -- the file's diagnostics summary — the same lookup the terminal file-link
+      -- tooltips use.  LINE/COL are 1-based.
+      ("hover" : file : lineT : rest)
+        | Just ln <- readMaybe (T.unpack lineT) -> do
+            let mcol = case rest of
+                  (c : _) -> (\n -> max 0 (n - 1)) <$> readMaybe (T.unpack c)
+                  _       -> Nothing
+            v <- newEmptyMVar
+            requestTerminalHover (resolve cwd file) (Just ln) mcol (putMVar v)
+            r <- timeout 20000000 (takeMVar v)
+            reply $ case r of
+              Just (Just t) -> t <> "\n"
+              Just Nothing  -> "no hover information at that position\n"
+              Nothing       -> "hover: timed out (is the language server still starting?)\n"
+
       ("help" : _) -> reply usage
       []            -> reply usage
       other         -> reply $ "leksah-cmd: unknown command: "
@@ -610,9 +684,30 @@ usage = T.unlines
   , "  ping                    reply \"ok\" (liveness check for wait-ready)"
   , "  screenshot FILE         capture the UI to a PNG (wkwebview)"
   , "  grab-region [TARGET]    select a screen region → its path into a terminal pane"
+  , "  diagnostics [FILE|--all] current errors/warnings (active project; --all = every project)"
+  , "  active-selection        focused editor's file + selected line range"
+  , "  build                   build the active target (async; poll diagnostics)"
+  , "  hover FILE LINE [COL]   LSP hover (type/docs) at a 1-based position"
   , "  log LOGGER LEVEL        set an hslogger logger's level live, e.g."
   , "                          `log leksah.focus debug` (→ ~/.leksah/focus-debug.log), `… off`"
   ]
+
+-- | The focused editor's file + 1-based selection start/end lines as
+-- @file\\tstart\\tend@ (empty string when no editor is focused) — a copy of
+-- 'IDE.Web.Main' 'activeEditorSelectionJs' (that module sits above this one).
+activeSelectionJs :: Text
+activeSelectionJs = mconcat
+  [ "(function(){var v=window.LeksahCM&&window.LeksahCM.activeView;if(!v)return '';"
+  , "if(v.__leksahMonaco){"
+  , "var md=v.getDomNode&&v.getDomNode();var me=md&&md.closest&&md.closest('.editor');"
+  , "var mf=me&&me.getAttribute('data-file');if(!mf)return '';"
+  , "var ms=v.getSelection();if(!ms)return '';"
+  , "return mf+'\\t'+ms.startLineNumber+'\\t'+ms.endLineNumber;}"
+  , "var ed=v.dom&&v.dom.closest&&v.dom.closest('.editor');"
+  , "var f=ed&&ed.getAttribute('data-file');if(!f)return '';"
+  , "var s=v.state.selection.main;"
+  , "var a=v.state.doc.lineAt(s.from).number,b=v.state.doc.lineAt(s.to).number;"
+  , "return f+'\\t'+a+'\\t'+b;})()" ]
 
 -- | Held while a 'rebuild-self' build runs, so two clients can't build at once.
 {-# NOINLINE buildLock #-}

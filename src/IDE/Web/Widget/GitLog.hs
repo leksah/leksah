@@ -20,6 +20,13 @@ module IDE.Web.Widget.GitLog
   ( gitLogCss
   , gitLogWidget
   , gitLogSplitJs
+    -- * Shared with the Review pane ("IDE.Web.Widget.Review")
+  , DiffFile(..)
+  , parseNameStatus
+  , parseNumstat
+  , mergeFiles
+  , gitShowFile
+  , gitLogDivider
   ) where
 
 import Control.Concurrent (forkIO)

@@ -22,11 +22,12 @@ import Data.Bool (bool)
 import Data.Char (isSpace)
 import Data.List (isPrefixOf, tails, dropWhileEnd, partition)
 import Data.Map (Map, mapKeys)
-import qualified Data.Map as M (toList, fromList, lookup)
+import qualified Data.Map as M (toList, fromList, lookup, empty, elems)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack)
+import qualified Data.Text as T (pack, unpack, intercalate)
 
 -- File access goes through the IDE.Web.FS seam (real FS natively; the
 -- in-memory demo tree in the browser build; ssh for remote projects).
@@ -42,7 +43,7 @@ import System.FilePath (takeExtension, (</>), dropTrailingPathSeparator)
 import Reflex
        (Dynamic, listViewWithKey, Event, never, ffilter, updated, leftmost,
         tag, current, getPostBuild, performEvent, performEvent_, holdDyn,
-        newTriggerEvent, holdUniqDyn, ffor, constDyn,
+        newTriggerEvent, holdUniqDyn, ffor, constDyn, zipDynWith,
         tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (MonadWidget, elAttr, elDynAttr, (=:), text, el, elClass, elDynClass,
@@ -53,11 +54,14 @@ import IDE.Web.Widget.Tree
        (treeItem, treeItemDynAttr', treeSelect', scrollIntoViewNearest,
         dblclickMods)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
-import IDE.Web.Widget.Menu (menu, menuSplit)
+import IDE.Web.Widget.Menu (menuSplit)
 import IDE.Web.Claude
-       (claudeAvailable, claudeSessionsFor, ClaudeSession(..),
+       (claudeAvailable, claudeSessionsWithUsage, claudeLiveBySession,
+        ClaudeSession(..), csTitle, ClaudeLive(..), ClaudeUsage(..),
         ClaudeCmd(..), runClaudeCmd, claudeRunning, activateMruClaude,
         copySessionId, revealSession, deleteSession)
+import IDE.Web.Worktree (requestNewWorktree)
+import IDE.Web.ClaudeQueue (requestTaskQueue, requestPlanReview)
 
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
 filesAndDirs dir = liftIO $ do
@@ -307,10 +311,13 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
 dirClaudeMenu :: forall t m. MonadWidget t m => Bool -> FilePath -> m (Event t (IO ()))
 dirClaudeMenu avail dir
   | not avail = return never
-  | otherwise = menuSplit
+  | otherwise = menuSplit $
       [ constDyn ("New Claude Session",           (Just (STClaudeNew dir),      runClaudeCmd (ClaudeNew dir)))
       , constDyn ("Continue Last Claude Session", (Just (STClaudeContinue dir), runClaudeCmd (ClaudeContinue dir)))
-      ]
+      ] <>
+      -- Worktrees are created on the local git CLI; remote dirs don't offer it.
+      [ constDyn ("New Claude Session in Worktree…", (Nothing, requestNewWorktree dir))
+      | not (isRemotePath dir) ]
 
 -- | The right-click menu for a file row — currently just "Ask Claude about this
 -- file", which starts a @claude@ session seeded to explain it.  Empty (so the
@@ -318,12 +325,37 @@ dirClaudeMenu avail dir
 fileClaudeMenu :: forall t m. MonadWidget t m => Bool -> FilePath -> m (Event t (IO ()))
 fileClaudeMenu avail f
   | not avail = return never
-  | otherwise = menu
-      [ constDyn ("Ask Claude about this file", runClaudeCmd (ClaudeAsk f)) ]
+  | otherwise = menuSplit
+      [ constDyn ("Ask Claude about this file", ( if isRemotePath f then Nothing else Just (STClaudeAsk f)
+                                                , runClaudeCmd (ClaudeAsk f) )) ]
 
 -- | A leading robot icon for Claude tree rows.
 claudeIcon :: MonadWidget t m => m ()
 claudeIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") (return ())
+
+-- | A little status glyph driven by @(glyph, colour, tooltip)@; hidden when
+-- 'Nothing'.  Shape AND colour differ per state (red ▲ = blocked on approval,
+-- orange ● = working, green ● = running/idle) so the states stay tellable
+-- apart without colour vision.
+statusBadge
+  :: MonadWidget t m => Dynamic t (Maybe (Text, Text, Text)) -> m ()
+statusBadge badgeD = elDynAttr "span"
+    (ffor badgeD $ \case
+       Just (_, col, tit) -> "title" =: tit
+                          <> "style" =: ("color:" <> col <> ";margin-left:5px")
+       Nothing            -> "style" =: "display:none")
+    (dynText $ ffor badgeD $ maybe "" (\(g, _, _) -> g))
+
+-- | Compact human token count: @532@, @4.2k@, @61k@, @1.3M@…
+fmtTok :: Int -> Text
+fmtTok n
+  | n >= 10000000 = T.pack (show (n `div` 1000000)) <> "M"
+  | n >= 1000000  = T.pack (show (n `div` 1000000)) <> "."
+                      <> T.pack (show ((n `mod` 1000000) `div` 100000)) <> "M"
+  | n >= 10000    = T.pack (show (n `div` 1000)) <> "k"
+  | n >= 1000     = T.pack (show (n `div` 1000)) <> "."
+                      <> T.pack (show ((n `mod` 1000) `div` 100)) <> "k"
+  | otherwise     = T.pack (show n)
 
 -- | The synthetic "Claude" node for @dir@, shown only while @dir@ has saved
 -- Claude Code sessions.  Double-click/Enter on the row (robot icon + count)
@@ -332,33 +364,44 @@ claudeIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude
 -- Each child is a
 -- session (MRU order) that resumes on double-click/Enter, with fork/copy/reveal/
 -- delete on right-click.  The list rescans on a slow tick, so new sessions —
--- and freshening "3h ago" ages — appear on their own.
+-- and freshening "3h ago" ages — appear on their own; @/rename@ names ride a
+-- separate fast tick (see 'namesD') so a rename shows up promptly.
 claudeNode :: forall t m. MonadWidget t m => Text -> FilePath -> m ()
 claudeNode treeName dir = do
   pb <- getPostBuild
   (sessE, fireSess) <- newTriggerEvent
   (runE,  fireRun)  <- newTriggerEvent
+  (nameE, fireName) <- newTriggerEvent
   let doScan = void . forkIO $ do
         ok <- claudeAvailable
-        (if ok then claudeSessionsFor dir else return []) >>= fireSess
-        (if ok then claudeRunning dir     else return False) >>= fireRun
+        (if ok then claudeSessionsWithUsage dir else return []) >>= fireSess
+        (if ok then claudeRunning dir           else return False) >>= fireRun
   performEvent_ $ liftIO doScan <$ pb
   tick <- tickLossyFromPostBuildTime 30
   performEvent_ $ liftIO doScan <$ tick
+  -- Renames and status changes are only knowable from the live-session files,
+  -- and produce no other observable change — so poll them on their own, much
+  -- faster than the full rescan.  Cheap: one directory listing plus a few
+  -- hundred bytes per live session (and one @ps@ to drop dead leftovers),
+  -- versus the rescan's head-read of every transcript in the folder.
+  let doNames = void . forkIO $ claudeLiveBySession >>= fireName
+  nameTick <- tickLossyFromPostBuildTime 3
+  performEvent_ $ liftIO doNames <$ leftmost [() <$ pb, () <$ nameTick]
+  liveD <- holdUniqDyn =<< holdDyn M.empty nameE
   sessD <- holdDyn [] sessE
   runD  <- holdUniqDyn =<< holdDyn False runE
   hasD  <- holdUniqDyn (not . null <$> sessD)
+  -- The node's status badge: the "worst" state among the live sessions running
+  -- in THIS directory (waiting > working > idle), falling back to the plain
+  -- green dot while a claude terminal is open here but no live state is
+  -- readable (older CLI).
+  let badgeD = zipDynWith nodeBadge runD liveD
   void . dyn $ ffor hasD $ \has -> when has . void $
     treeItem "claude" False
       (do (rowEl, dmenuE) <- treeSelect' treeName rootMenu $ do
              claudeIcon
              dynText $ ffor sessD $ \ss -> "Claude (" <> T.pack (show (length ss)) <> ")"
-             -- Green "running" dot while a live claude terminal exists here.
-             elDynAttr "span"
-               (ffor runD $ \r -> "title" =: "A Claude session is running here"
-                  <> "style" =: (if r then "color:#3fb950;margin-left:5px"
-                                      else "display:none"))
-               (text "●")
+             statusBadge badgeD
              return (never :: Event t (IO ()))
           -- Double-click / Enter on the Claude node → the most-recently-used
           -- OPEN claude terminal for this directory, if any (activated in
@@ -372,24 +415,43 @@ claudeNode treeName dir = do
           performEvent_ $ liftIO <$> dmenuE
           return (never :: Event t ()))
       (el "ul" $ do
-          void . dyn $ ffor sessD $ mapM_ (sessionRow treeName dir doScan)
+          void . dyn $ ffor sessD $ mapM_ (sessionRow treeName dir doScan liveD)
           return (never :: Event t ()))
   where
-    rootMenu = menuSplit
+    nodeBadge run m
+      | any ((== Just "waiting") . clStatus) here =
+          Just ("▲", "#f85149", "Claude is waiting for approval here")
+      | any ((`elem` [Just "busy", Just "shell"]) . clStatus) here =
+          Just ("●", "#d29922", "Claude is working here")
+      | not (null here) || run =
+          Just ("●", "#3fb950", "A Claude session is running here")
+      | otherwise = Nothing
+      where here = [ l | l <- M.elems m, clDir l == dropTrailingPathSeparator dir ]
+    rootMenu = menuSplit $
       [ constDyn ("New Claude Session",           (Just (STClaudeNew dir),      runClaudeCmd (ClaudeNew dir)))
       , constDyn ("Continue Last Claude Session", (Just (STClaudeContinue dir), runClaudeCmd (ClaudeContinue dir)))
       , constDyn ("Resume Session…",              (Nothing,                     runClaudeCmd (ClaudeResumePicker dir)))
-      ]
+      ] <>
+      [ constDyn ("New Claude Session in Worktree…", (Nothing, requestNewWorktree dir))
+      | not (isRemotePath dir) ] <>
+      [ constDyn ("Claude Task Queue…", (Nothing, requestTaskQueue dir))
+      | not (isRemotePath dir) ]
 
 -- | One session row under a Claude node (@rescan@ refreshes the list, e.g. after
--- a delete).
+-- a delete; @liveD@ is the live-session map, polled by 'claudeNode', so renaming
+-- a running session relabels its row — and its status badge tracks the CLI's
+-- semantic state — without a full rescan).  The row's tooltip carries the
+-- session id and its token usage (from the 30s transcript rescan).
 sessionRow
   :: forall t m. MonadWidget t m
-  => Text -> FilePath -> IO () -> ClaudeSession -> m ()
-sessionRow treeName dir rescan s = el "li" $ do
+  => Text -> FilePath -> IO () -> Dynamic t (Map Text ClaudeLive) -> ClaudeSession -> m ()
+sessionRow treeName dir rescan liveD s = el "li" $ do
   (sEl, actE) <- treeSelect' treeName sessMenu $ do
       claudeIcon
-      elClass "span" "claude-session-label" $ text (csAge s <> " · " <> csLabel s)
+      elAttr "span" ("class" =: "claude-session-label" <> "title" =: usageTitle)
+        . dynText $ ffor liveD $ \m ->
+          csAge s <> " · " <> fromMaybe (csTitle s) (clName =<< M.lookup (csId s) m)
+      statusBadge $ ffor liveD (rowBadge . M.lookup (csId s))
       return (never :: Event t (IO ()))
   -- Double-click / Enter → resume this session.  ⌥ resumes it into a split of
   -- the active pane instead (local dirs only).
@@ -400,9 +462,27 @@ sessionRow treeName dir rescan s = el "li" $ do
       else runClaudeCmd (ClaudeResume dir (csId s))
   performEvent_ $ liftIO <$> actE
   where
-    sessMenu = menu
-      [ constDyn ("Resume in New Session (fork)", runClaudeCmd (ClaudeResumeFork dir (csId s)))
-      , constDyn ("Copy Session Id",              copySessionId (csId s))
-      , constDyn ("Reveal Transcript",            revealSession (csPath s))
-      , constDyn ("Delete Session",               deleteSession (csPath s) >> rescan)
+    usageTitle = T.intercalate "\n" $ csId s : maybe []
+      (\u -> [ "tokens: "
+                 <> fmtTok (cuInput u + cuCacheCreate u + cuCacheRead u) <> " in ("
+                 <> fmtTok (cuCacheRead u) <> " cached) · "
+                 <> fmtTok (cuOutput u) <> " out"
+             , T.pack (show (cuTurns u)) <> " assistant messages" ])
+      (csUsage s)
+    rowBadge Nothing  = Nothing
+    rowBadge (Just l) = case clStatus l of
+      Just "waiting" -> Just ("▲", "#f85149",
+                              "Waiting for approval"
+                                <> maybe "" (": " <>) (clWaitingFor l))
+      Just "busy"    -> Just ("●", "#d29922", "Working")
+      Just "shell"   -> Just ("●", "#d29922", "Running a shell command")
+      Just "idle"    -> Just ("●", "#3fb950", "Idle — ready for input")
+      _              -> Just ("●", "#3fb950", "Running")
+    sessMenu = menuSplit
+      [ constDyn ("Resume in New Session (fork)", ( if isRemotePath dir then Nothing else Just (STClaudeFork dir (csId s))
+                                                  , runClaudeCmd (ClaudeResumeFork dir (csId s)) ))
+      , constDyn ("Review Plan…",                 (Nothing, requestPlanReview (dir, T.pack (csPath s))))
+      , constDyn ("Copy Session Id",              (Nothing, copySessionId (csId s)))
+      , constDyn ("Reveal Transcript",            (Nothing, revealSession (csPath s)))
+      , constDyn ("Delete Session",               (Nothing, deleteSession (csPath s) >> rescan))
       ]
