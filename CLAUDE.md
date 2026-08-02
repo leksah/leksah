@@ -1,12 +1,15 @@
 # Working in this repo
 
 ## Build & run (primary dev loop)
-- Primary front end: **`leksah-wkwebview`** (native macOS WKWebView), GHC **9.14.1**.
+- Primary front end: **exe:leksah** (native macOS WKWebView); plain cabal in
+  the **ambient** environment — cabal picks the GHC from PATH, builds land in
+  cabal's default **`dist-newstyle`**. (leksah.sh no longer has any nix
+  support, compiler selection, or builddir logic.)
 - **If leksah is already running, build with `leksah-cmd rebuild-self
   --use-cabal --no-restart` (agents/scripts) — do NOT run a separate
-  `nix develop … cabal build`.** rebuild-self builds in leksah's own dev-shell
-  env; a `nix develop` build from another shell has a *different* PATH, and
-  alternating the two makes cabal treat it as "configuration changed" and
+  `cabal build` from another shell.** rebuild-self builds with the running
+  loop's exact PATH (the `bin/` prefix); a build from a shell with a
+  *different* PATH makes cabal treat it as "configuration changed" and
   rebuild the world (see the incremental-build invariant below). Use
   `--no-restart` to iterate without relaunching, then `leksah-cmd restart
   --no-rebuild` when ready.
@@ -28,9 +31,13 @@
   relaunches; plain restart exits 2 (loop rebuilds first), `--no-rebuild` exits
   3 (loop skips the build — use after rebuild-self already built). Both replace
   the older `./dev-relaunch.sh`.
-- **ghci mode**: `./leksah.sh --nix --ghci ghc914` runs the app INTERPRETED in
-  a cabal multi-repl (tmux session `ghci` on `-L leksah`; first bytecode load
-  is slow, once). Against a ghci instance (`leksah-cmd mode` → `ghci`),
+- **ghci mode**: `./leksah.sh --ghci` runs the app INTERPRETED in a cabal
+  multi-repl (tmux session `ghci` on `-L leksah`; first bytecode load is slow,
+  once). The repl flips cabal flags (`leksah -objc-in-library +no-hlint`,
+  `jsaddle-wkwebview -objc-in-library`) and shares `dist-newstyle` with the
+  binary arm, so switching between --ghci and binary launches makes cabal
+  reconfigure the flag-flipped packages. Against a ghci instance
+  (`leksah-cmd mode` → `ghci`),
   `rebuild-self`/`restart` become `:reload` + `:main` at the prompt (seconds,
   no relink; `--no-restart`/`--use-cabal` don't apply), and
   `leksah-cmd hs eval 'CODE'` evaluates Haskell in the live process (suspends
@@ -39,33 +46,19 @@
   `leksah-mac-glue` sublib (foreign export is illegal interpreted);
   `IDE.Web.GhciMode` gates the exit sites so "restart" stops `[NSApp run]`
   instead of killing the ghci process. See docs/building.md "ghci mode".
-- **After a `cabal.project`/`flake.nix`/`flake.lock` change, DON'T
-  `rebuild-self` then `restart --no-rebuild`.** `rebuild-self --use-cabal`
-  builds in the **captured `~/.leksah/env.sh`** — a snapshot of the *running*
-  instance's env, i.e. the plan from **before** your change. `restart
-  --no-rebuild` (exit 3) then relaunches that old-env binary under the **new**
-  dev-shell whose haskell.nix v2 slices differ, so the store-sync guard
-  *refuses to overwrite* the changed dylibs and the binary **hangs at
-  `_dyld_start`** (frozen in the dynamic linker before `main`; socket never
-  rebinds, `ping` stays "not responding" though the process is alive — confirm
-  with `sample <pid>`). Instead: after such a change use a **plain `restart`
-  (exit 2, which rebuilds in the new env)**, not `rebuild-self` +
-  `--no-rebuild`. If you're already wedged: kill the instance + loop, `rm
-  ~/.leksah/cmd.sock`, run `nix develop ".?submodules=1#default" --command
-  haskell-nix-cabal-store-sync --force` (the guard prints this exact fix) to
-  reconcile the store to the new slices, then restart the loop.
-- **When NO instance is running**, build with the captured env (config-identical
-  PATH): `sh -c '. ~/.leksah/env.sh; cd <repo>; cabal build --builddir
-  dist-ghc-9.14.1 <targets>'` (`~/.leksah/env.sh` is a snapshot of the running
-  leksah's environment). A bare `nix develop` build only as a last resort.
+- **After a `cabal.project` / dependency change** use a plain `restart` (exit
+  2 — the loop rebuilds against the new plan), not `rebuild-self` +
+  `restart --no-rebuild`.
+- **When NO instance is running**, build with the loop's PATH prefix so the
+  config matches: `cd <repo> && PATH="$(pwd)/bin:$PATH" cabal build <targets>`.
 - **ffcabal** (its own repo, `leksah/ffcabal`; pulled in via a
   `source-repository-package` in `cabal.project`, no longer a `vendor/`
   submodule): fail-fast cabal wrapper — checks
   each local component in cached tmux repls (session `ffcabal`, default server)
   in dep order, then builds in parallel. Leksah's native builds use it when
   **ghci mode (the `debug` pref) is on**; ghci mode off = plain cabal.
-  Tests: `FFCABAL_BIN=$(cabal list-bin --builddir dist-ghc-9.14.1 ffcabal)
-  cabal test --builddir dist-ghc-9.14.1 ffcabal-test --test-show-details=direct`.
+  Tests: `FFCABAL_BIN=$(cabal list-bin ffcabal)
+  cabal test ffcabal-test --test-show-details=direct`.
   `FFCABAL_TMUX_ARGS="-L sock"` redirects its repls to a scratch tmux server.
 - **Run exactly ONE `leksah.sh` loop / one instance.** Each loop relaunches
   its own instance on `exit(2)`, and every instance's `startCmdServer` unlinks and
@@ -77,43 +70,71 @@
   line contains the pattern and counts itself (match the running binary's exact
   argv, or `grep -v` your shell).
 - **Where the loop runs / recovery.** The `leksah.sh` loop runs in the
-  **`launch`** tmux session (`tmux -L leksah capture-pane -p -t launch`), logging
-  to `~/.leksah/leksah-run.log`. It relaunches leksah on `exit(2/3)`;
-  but if the loop *itself* dies — e.g. a `nix` eval error from a
-  `cabal.project`/`flake.nix` edit that doesn't evaluate — **nothing relaunches**,
-  and `leksah-cmd restart --wait` then **hangs forever** waiting for an instance
-  that never comes. Restart the loop by running, in the `launch` session,
-  `cd ~/haskell/leksah && ./leksah.sh --nix ghc914 2>&1 | tee ~/.leksah/leksah-run.log`
-  (the `launch` shell isn't inside a dev shell, so `--nix` is required there; the
-  default front end is exe:leksah — WKWebView on macOS).
-  **Before** pointing `cabal.project`/`flake.nix` at a not-yet-pushed
+  **`launch`** tmux session (`tmux -L leksah capture-pane -p -t launch`); the
+  script tees its own output to `~/.leksah/leksah-run.log`. It relaunches
+  leksah on `exit(2/3)`; but if the loop *itself* dies — e.g. a build error
+  that exits the script — **nothing relaunches**, and `leksah-cmd restart
+  --wait` then **hangs forever** waiting for an instance that never comes.
+  Restart the loop by running, in the `launch` session,
+  `cd ~/haskell/leksah && ./leksah.sh` (ghc/cabal/tmux/leksah-server must be
+  on that shell's PATH; the default front end is exe:leksah — WKWebView on
+  macOS).
+  **Before** pointing `cabal.project` at a not-yet-pushed
   `source-repository-package`, confirm the commit is on its remote
-  (`git ls-remote <url> <rev>`) — an unfetchable ref fails the loop's nix eval and
+  (`git ls-remote <url> <rev>`) — an unfetchable rev fails the loop's build and
   takes leksah down.
+- **Watching a launch (agents): poll `~/.leksah/launch-status`, not the pane.**
+  leksah.sh appends one line per phase transition (`starting:` → `building` /
+  `ghci: repl loading (attempt N)` → `up:` / `failed:` / `exited: code=N`,
+  truncated at every launch, EXIT-trapped so even a set -e death writes a
+  line).  A file has no scrollback and describes exactly one run — the two
+  ways pane-grep watchers went wrong (below) can't happen.  If you must watch
+  a pane anyway, four MUSTs, each one a real incident:
+  1. **Arm-time zero-match check**: run the pattern against the pane once
+     BEFORE arming; if it already matches (previous run's outcome text in
+     scrollback, or your own command echo containing the marker), the pattern
+     is broken — fix it first.
+  2. **A terminal condition for process death** (launcher pid gone / prompt
+     returned / broad `error:`): the failure vocabulary you can enumerate is
+     never complete, and silence looks identical to "still building".
+  3. **On fire, print the matched line**; watcher-says-event while the pane
+     shows nothing IS the finding — resolve it before ending the turn.
+  4. **Never report a watcher as "armed" without checking it is still
+     running** — a completed watcher is not a watcher.
+- **A Stop hook enforces this** (`.claude/hooks/leksah-health.sh`, wired in
+  `.claude/settings.local.json`, gitignored — per-machine): whenever an agent
+  turn ends while an instance is *expected* (ghci session / leksah-wkwebview /
+  leksah.sh alive), it checks the two primary signals — `leksah-cmd ping`
+  answers `ok` (6s timeout) and the `[win N] alive` heartbeat log is <45s old —
+  and **blocks the stop once** with the launch-status tail if either fails.  A
+  blocked stop is not noise: it means the app is down or the frame thread is
+  wedged, so investigate (`~/.leksah/launch-status`, `ghci.log`, the `ghci`
+  pane) before ending the turn, or state plainly that it is intentionally down.
+  Never route health commands (`ping`, `wait-ready`, `rebuild-self`) to
+  `/dev/null` in a loop — capture and assert on their output.
+  Also peek ~2 min after any launch: the fast failure modes (nix eval /
+  cabal solver) all surface in the first minutes; success takes tens of
+  minutes.
 - **git while leksah runs.** leksah sets `GIT_OPTIONAL_LOCKS=0` (see `newIDE`) so
   its Changes/file-tree/workspace `git status`/`diff` pollers skip the
   index-refresh lock; your `git commit`/`add` in a terminal won't contend on
   `.git/index.lock`. (An old instance built before this fix still contends —
   retry the commit, or rebuild+restart to pick up the fix.)
-- Full driver: `./leksah.sh [--nix] [--warp|--classic|--ghci] [GHCVER] [--in-tmux] [ARGS]`
-  (GHCVER ∈ ghc96/ghc98/ghc910/ghc912/ghc914, **optional — defaults to
-  ghc914**; oldest supported GHC is 9.6.7). A bare `./leksah.sh` with no args
-  still prints usage; pass at least one flag (e.g. `./leksah.sh --nix`) to run
-  with the default GHC.
+- Full driver: `./leksah.sh [--warp|--classic|--ghci] [--in-tmux] [ARGS]`
+  (a bare `./leksah.sh` runs the default front end; `--help` prints usage).
   **Front end**: default is the native web exe:leksah (WKWebView on macOS,
   WebKitGTK on Linux — one exe, chosen per-OS in the cabal file); `--warp` is
   exe:leksah-warp (browser), `--classic` is the classic Gtk exe:leksah-classic.
-  **`--nix` re-enters the nix dev shell for every build/run command**; WITHOUT
-  it (the default) commands run in the **ambient** environment, so you must
-  already be inside a dev shell (or have ghc/cabal/tmux/leksah-server on PATH).
-  Either way leksah-server/leksah-cmd/ffcabal + the front end are built with cabal.
-- Build dir convention is `dist-ghc-<numeric-version>` — matches what leksah’s own
-  in-IDE builds use, so don’t use a different `--builddir`.
+  Commands run in the **ambient** environment (ghc/cabal/tmux/leksah-server
+  must be on PATH); leksah-server/leksah-cmd/ffcabal + the front end are built
+  with cabal.
+- Build dir is cabal's default `dist-newstyle` (never pass `--builddir` —
+  leksah's own in-IDE builds use the default too, via `cabalBuildDir`).
 - **Editing `leksah.sh` requires restarting it** — a running `bash` reads the
   whole script at start, so loop edits only take effect on a fresh launch.
 - **Incremental-build invariant (web UIs):** every `cabal` invocation must see the
   *same* `PATH` — cabal treats a different `PATH` as "configuration changed" and
-  rebuilds the world. So `leksah.sh` prefixes `bin/$GHCARG` on PATH for every
+  rebuilds the world. So `leksah.sh` prefixes `bin/` on PATH for every
   cabal call, and — crucially — **launches the built binary directly** (`exec`
   via `cabal list-bin`, with `leksah_datadir="$(pwd)"`) rather than `cabal run`.
   `cabal run` augments the launched app's PATH with build-tool dirs, which would
@@ -160,13 +181,22 @@
     tell process "leksah" to click menu item "NAME" of menu "MENU" of menu bar 1'`
     (needs Accessibility permission; `get name of every menu item of menu "MENU"…`
     reads them without clicking).
-- **Status traffic light** (top-right; each state a distinct colour *and* shape
-  for colour-blind accessibility). Set it so the user knows when to keep hands
-  off: `leksah-cmd js eval 'leksahRestarting()'` (**blue diamond**) around a
-  rebuild/restart, `'leksahStatus("red")'` (**red octagon**) or `'leksahTestStart()'`
-  (orange triangle → beep → red) while interactively testing, and
-  `'leksahTestEnd()'` / `'leksahStatus("green")'` (**green circle**, safe) when
-  done. Use **blue for rebuild/restart**, red only for active tests.
+- **Status light** (top-right dot) **and the macOS menu-bar item** both show what
+  the **live Claude sessions** are doing — red triangle = one is blocked on an
+  approval prompt, amber diamond = one is working, green circle = all idle, grey
+  ring = none running (distinct shape *and* colour, for colour-blind
+  accessibility; same colours as the workspace tree's badges). One poll feeds
+  both (`IDE.Web.ClaudeStatus`), so they can't disagree: the page pulls it per
+  window on its tick, the menu-bar item is pushed. Hovering the dot lists the
+  sessions; clicking the menu-bar item lists them and shows the one you pick.
+- **Agent-coordination state** — "is it safe to touch leksah right now" — is
+  still yours to set, and you should keep setting it:
+  `leksah-cmd js eval 'leksahRestarting()'` around a rebuild/restart,
+  `'leksahStatus("red")'` or `'leksahTestStart()'` (beep, then testing after 3s)
+  while interactively testing, `'leksahTestEnd()'` / `'leksahStatus("green")'`
+  when done. It no longer colours the dot (the sessions do): it is the **last
+  line of the dot's hover text and the menu-bar item's menu line**. So also say
+  in chat when you are about to take the UI — don't rely on the light alone.
 - **Freeze/deadlock debugging.** A wedged window (heartbeat stops in the loop
   log) is almost always one window's reflex *frame thread* blocked on an `MVar`.
   Diagnostics: `leksah-cmd threads` / `stacks [SUBSTR]` / `resync-state`, the
@@ -196,6 +226,19 @@
   Terminal, or its highlight decorations throw.
 
 ## Nix / haskell.nix
+- **The dev loop (leksah.sh) no longer uses nix at all** — the flake remains
+  for packaging/CI and standalone nix builds only.  Running leksah.sh *inside*
+  `nix develop` (as a toolchain provider) works, with one trap:
+- **`nix develop .#` evaluates the WORKING TREE's `cabal.project`**
+  (haskell.nix shellFor → plan-to-nix parses it inside a derivation), so any
+  cabal.project state nix can't reproduce — above all **absolute local
+  `packages:` paths** (a development checkout of a dependency) — fails shell
+  ENTRY itself with "The package location '…' does not exist", before
+  leksah.sh runs.  Workaround while iterating on a local dep: evaluate the
+  shell from the clean HEAD commit instead —
+  `nix develop "git+file://$PWD?rev=$(git rev-parse HEAD)&submodules=1"` —
+  the shell only provides the toolchain; the in-shell cabal then solves the
+  real working-tree project (local packages build from source).
 - The flake reads the **dirty working tree** (uncommitted edits ARE picked up;
   `git add` doesn’t change what nix sees — only file contents do).
 - Uses haskell.nix `builderVersion = 2` (per-component "slice" builds). Each
