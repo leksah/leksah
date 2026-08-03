@@ -371,12 +371,26 @@ nativeBrowserWidget ops bid selectedE focusOnCreateD = elClass "div" "browser" $
   elAttr "div" ("class" =: "browser-native" <> "data-bid" =: T.pack (show bid)) $
     elClass "div" "browser-native-hint" $
       text "This pane is a native web view — it appears once the page loads."
-  -- Selecting the pane focuses an EMPTY address bar (a fresh pane wants a
-  -- URL); a loaded page keeps its native first-responder focus from clicks.
+  -- Selecting the pane puts the keyboard where the pane's state says it
+  -- belongs, and this is the ONLY place that decides it (see the focusin
+  -- listener in 'IDE.Web.Main.browserNativeReporterJs'): a pane showing a page
+  -- hands the keyboard to its native view — the view is a first responder of
+  -- its own, so page-side DOM focus alone would leave the keys wherever they
+  -- were — while a pane with nothing loaded yet wants the caret in its address
+  -- bar.
   focusE <- delay 0.2 (leftmost [selectedE, gate (current focusOnCreateD) pb])
   performEvent_ $ ffor focusE $ \_ -> liftJSM . void . eval $
-      "setTimeout(function(){var i=document.querySelector('.leksah ." <> urlClass
-      <> "'); if(i && !i.value) i.focus();},0)"
+      "setTimeout(function(){"
+      <> " var s=(window.__lkNb||{})[" <> T.pack (show bid) <> "];"
+      <> " var i=document.querySelector('.leksah ." <> urlClass <> "');"
+      -- A page — or an address bar already holding the URL this pane is about
+      -- to show (a restored pane, whose view loads a beat later) — means the
+      -- keyboard belongs to the view.  Asking before the view exists is
+      -- harmless: the reporter's rising edge hands over once it does.
+      <> " if ((s && s.u && s.u !== 'about:blank') || (i && i.value)) {"
+      <> "   if (window.leksahBrowserFocusNative)"
+      <> "     window.leksahBrowserFocusNative(" <> T.pack (show bid) <> ");"
+      <> " } else if (i) i.focus();},0)"
   return never
 
 -- | Parse the poll snapshot: @url \\t canBack \\t canFwd \\t barFocused@.
@@ -515,6 +529,13 @@ browserCss = do
     "flex" -: "1 1 0"
     "min-height" -: "0"
     "position" -: "relative"
+    -- Leave the pane's FIRST pixel column to the DOM.  A native view paints
+    -- above everything in the page, and the active-pane ring's left border
+    -- lands exactly there (see 'IDE.Web.Widget.Terminal.terminalCss') — without
+    -- this inset a focused browser pane simply has no left ring line.  (Its
+    -- right\/bottom lines sit on the pixel AFTER the pane, which is the
+    -- neighbour's, so they are never covered.)
+    "margin-left" -: "1px"
     "display" -: "flex"
     "align-items" -: "center"
     "justify-content" -: "center"

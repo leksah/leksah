@@ -1279,6 +1279,126 @@ static void leksah_browser_push_state(id web) {
 // hint, which — unlike the NSAppearance — has to be attached per navigation.
 static BOOL gBrowserDark = YES;
 
+// ⌘-drag pane move: while a drag is in flight the page needs mousemove over
+// browser panes too, but the native WKWebViews sit ON TOP of the main
+// webview and would swallow them.  leafDragJs posts {drag:true/false} on the
+// leksahBrowserFrame handler; in drag mode every browser view's hitTest:
+// returns nil, so AppKit's hit-testing falls through to the host (main)
+// webview underneath while the pane stays visible.  Views are created as
+// LeksahBrowserView, a runtime subclass of WKWebView carrying just that
+// override (WKWebView is weak-linked via NSClassFromString everywhere here,
+// so the subclass must be built at runtime too).
+static BOOL gBrowserDragMode = NO;
+static Class gBrowserViewSuper = Nil;
+
+// Which pane a view is (reverse lookup — the dictionaries are tiny).
+static NSNumber *leksah_browser_bid_of(id web) {
+    if (web == nil || gBrowserViews == nil) return nil;
+    for (NSNumber *k in gBrowserViews)
+        if ([gBrowserViews objectForKey:k] == web) return k;
+    return nil;
+}
+
+// Does @v — or anything inside it — hold its window's keyboard focus?  (WebKit
+// may park the first responder on an internal subview, so an identity test
+// against the WKWebView alone isn't enough.)
+static BOOL leksah_view_owns_responder(NSView *v) {
+    if (v == nil) return NO;
+    NSWindow *w = [v window];
+    if (w == nil) return NO;
+    id r = [w firstResponder];
+    while ([r isKindOfClass:[NSView class]]) {
+        if (r == v) return YES;
+        r = [(NSView *)r superview];
+    }
+    return NO;
+}
+
+// Hand the keyboard back to the PAGE (the window's main webview) if this
+// browser view is holding it.  A view that is hidden or destroyed must not stay
+// first responder: AppKit would leave the window with no first responder at all
+// and every keystroke would go nowhere — which is what "closing a browser pane
+// doesn't leave an active pane" looked like.
+static void leksah_browser_release_responder(NSView *v) {
+    if (!leksah_view_owns_responder(v)) return;
+    NSWindow *w = [v window];
+    NSView *host = [w contentView];
+    if (host != nil) [w makeFirstResponder:host];
+}
+
+// A browser view just took the keyboard (a click in its page, or AppKit moving
+// the first responder there): tell the page, so the leksah pane holding the
+// view becomes the ACTIVE pane.  Clicks inside a native view never reach the
+// DOM, so without this the pane ring, the ⌘-number/flipper MRU and lwFocused
+// all stayed on whichever pane was active before.  The page turns this into the
+// same synthetic focusin a real click on a pane would have produced
+// (browserNativeReporterJs).  Deduplicated per pane over a short window: both
+// hooks below can fire for one click, and a second activation is wasted work.
+static void leksah_browser_notify_activate(id web) {
+    static NSNumber *lastBid = nil;
+    static CFAbsoluteTime lastAt = 0;
+    NSNumber *bid = leksah_browser_bid_of(web);
+    if (bid == nil) return;
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (lastBid != nil && [lastBid isEqual:bid] && now - lastAt < 0.3) return;
+    [lastBid release];
+    lastBid = [bid retain];
+    lastAt = now;
+    leksah_eval_js([(NSView *)web superview],
+        [NSString stringWithFormat:
+            @"window.leksahBrowserActivate&&window.leksahBrowserActivate(%@);", bid]);
+}
+
+static NSView *leksah_browser_hittest(id self, SEL _cmd, NSPoint point) {
+    if (gBrowserDragMode) return nil;
+    struct objc_super sup = { self, gBrowserViewSuper };
+    NSView *hit = ((NSView *(*)(struct objc_super *, SEL, NSPoint))objc_msgSendSuper)(
+                      &sup, _cmd, point);
+    // Fallback activation hook: a hit-test resolving a mouse-DOWN into a view
+    // that doesn't hold the keyboard yet means this click is about to activate
+    // the pane.  becomeFirstResponder: is the primary hook; this one covers a
+    // WebKit that routes focus through an internal view instead (the dedup in
+    // notify_activate makes the overlap harmless).
+    if (hit != nil && !leksah_view_owns_responder((NSView *)self)) {
+        NSEvent *ev = [NSApp currentEvent];
+        if (ev != nil && [ev type] == NSEventTypeLeftMouseDown)
+            leksah_browser_notify_activate(self);
+    }
+    return hit;
+}
+
+static BOOL leksah_browser_become_first_responder(id self, SEL _cmd) {
+    struct objc_super sup = { self, gBrowserViewSuper };
+    BOOL ok = ((BOOL (*)(struct objc_super *, SEL))objc_msgSendSuper)(&sup, _cmd);
+    if (ok) leksah_browser_notify_activate(self);
+    return ok;
+}
+
+// The browser-pane view class: LeksahBrowserView (registered once; a ghci
+// :reload finds the earlier registration).  Falls back to plain WKWebView —
+// no pass-through, everything else intact — if the subclass can't be built.
+static Class leksah_browser_view_class(void) {
+    static Class cls = Nil;
+    if (cls != Nil) return cls;
+    Class wk = NSClassFromString(@"WKWebView");
+    if (wk == Nil) return Nil;
+    Class c = NSClassFromString(@"LeksahBrowserView");
+    if (c == Nil) {
+        c = objc_allocateClassPair(wk, "LeksahBrowserView", 0);
+        if (c != Nil) {
+            class_addMethod(c, @selector(hitTest:),
+                            (IMP)leksah_browser_hittest, "@@:{CGPoint=dd}");
+            class_addMethod(c, @selector(becomeFirstResponder),
+                            (IMP)leksah_browser_become_first_responder, "c@:");
+            objc_registerClassPair(c);
+        }
+    }
+    if (c == Nil) return wk;
+    gBrowserViewSuper = class_getSuperclass(c);
+    cls = c;
+    return cls;
+}
+
 #define LEKSAH_SCHEME_HINT_HEADER @"Sec-CH-Prefers-Color-Scheme"
 
 // Stamp the colour-scheme client hint on a request we are about to load.
@@ -1454,7 +1574,7 @@ static void leksah_browser_reconcile(int wid, NSArray *panes, BOOL dark) {
         id web = [gBrowserViews objectForKey:bid];
         if (web == nil) {
             Class cfgClass = NSClassFromString(@"WKWebViewConfiguration");
-            Class wkClass  = NSClassFromString(@"WKWebView");
+            Class wkClass  = leksah_browser_view_class();   // WKWebView subclass
             if (cfgClass == Nil || wkClass == Nil) continue;
             id cfg = [[[cfgClass alloc] init] autorelease];
             @try { [[cfg valueForKey:@"preferences"] setValue:@YES forKey:@"developerExtrasEnabled"]; }
@@ -1485,7 +1605,15 @@ static void leksah_browser_reconcile(int wid, NSArray *panes, BOOL dark) {
         NSRect fr = [host isFlipped] ? NSMakeRect(x, y, w, h)
                                      : NSMakeRect(x, H - y - h, w, h);
         [(NSView *)web setFrame:fr];
-        [(NSView *)web setHidden:![[p objectForKey:@"vis"] boolValue]];
+        BOOL vis = [[p objectForKey:@"vis"] boolValue];
+        [(NSView *)web setHidden:!vis];
+        // A pane you cannot see must not hold the keyboard: the tab was
+        // switched away, or an overlay (the flipper!) is up and needs the keys
+        // itself.  Model-driven, so it covers every route into that state —
+        // DOM focus events can't, since the page often focuses an element that
+        // ALREADY had focus and no focusin is fired at all.  Coming back into
+        // view re-takes the keyboard from the page side (see the reporter).
+        if (!vis) leksah_browser_release_responder((NSView *)web);
     }
     // Panes this window last owned but which no longer report: after ~3s of
     // absence the element has really left the DOM (closed) — destroy.  A tab
@@ -1495,8 +1623,21 @@ static void leksah_browser_reconcile(int wid, NSArray *panes, BOOL dark) {
         if ([seen containsObject:bid]) continue;
         if (![[gBrowserWid objectForKey:bid] isEqual:@(wid)]) continue;
         int miss = [[gBrowserMiss objectForKey:bid] intValue] + 1;
+        // The FIRST absence hides the view (and gives the keyboard back) at
+        // once, while the destroy below still waits out the grace period: a
+        // closed pane whose view keeps painting — over whatever pane took its
+        // place — for the whole three seconds is what "closing a browser pane
+        // is slow" looked like.  A view that reappears is unhidden by the
+        // vis: flag above, so a transient absence (a widget rebuild) only
+        // blinks.
+        if (miss == 1) {
+            id gone = [gBrowserViews objectForKey:bid];
+            [(NSView *)gone setHidden:YES];
+            leksah_browser_release_responder((NSView *)gone);
+        }
         if (miss > 12) {
             id web = [gBrowserViews objectForKey:bid];
+            leksah_browser_release_responder((NSView *)web);
             [(NSView *)web removeFromSuperview];
             [gBrowserViews removeObjectForKey:bid];
             [gBrowserWid removeObjectForKey:bid];
@@ -1506,12 +1647,45 @@ static void leksah_browser_reconcile(int wid, NSArray *panes, BOOL dark) {
     }
 }
 
+// The page made a browser pane the active pane by a route that ISN'T a click in
+// its view (a tab select, the flipper, ⌥-open): give that view the keyboard, or
+// the keystrokes would keep going wherever they went before.  Hidden views are
+// skipped — a background pane must never take the keyboard.
+static void leksah_browser_focus_pane(int bid) {
+    leksah_browser_ensure_dicts();
+    NSView *web = [gBrowserViews objectForKey:@(bid)];
+    if (web == nil || [web isHidden]) return;
+    NSWindow *w = [web window];
+    if (w != nil && !leksah_view_owns_responder(web)) [w makeFirstResponder:web];
+}
+
+// Keyboard focus landed on real DOM in window @wid's page (any pane but a
+// browser one): take the first responder back from whichever browser view of
+// that window holds it.  Only ever steals from OUR OWN views, so a stray
+// release can't disturb the page's own focus.
+static void leksah_browser_release_window(int wid) {
+    if (gBrowserViews == nil) return;
+    NSWindow *win = (gWindows != nil) ? [gWindows objectForKey:@(wid)] : nil;
+    NSView *host = (win != nil) ? [win contentView] : nil;
+    if (host == nil) return;
+    for (NSNumber *bid in gBrowserViews) {
+        NSView *v = [gBrowserViews objectForKey:bid];
+        if ([v window] == win && leksah_view_owns_responder(v)) {
+            [win makeFirstResponder:host];
+            return;
+        }
+    }
+}
+
 // Teardown (ghci :reload): drop every browser view before the windows close,
 // so nothing keeps their WebContent renderers alive across :main restarts.
 static void leksah_browser_teardown(void) {
     if (gBrowserViews == nil) return;
-    for (NSNumber *bid in [gBrowserViews allKeys])
+    for (NSNumber *bid in [gBrowserViews allKeys]) {
+        leksah_browser_release_responder(
+            (NSView *)[gBrowserViews objectForKey:bid]);
         [(NSView *)[gBrowserViews objectForKey:bid] removeFromSuperview];
+    }
     [gBrowserViews removeAllObjects];
     [gBrowserPending removeAllObjects];
     [gBrowserWid removeAllObjects];
@@ -1525,6 +1699,31 @@ static void leksah_browser_teardown(void) {
     (void)ucc;
     id body = [message valueForKey:@"body"];
     if (![body isKindOfClass:[NSDictionary class]]) return;
+    // ⌘-drag pane move: {drag:bool} toggles browser-view hit-test
+    // pass-through for the duration of the gesture (see gBrowserDragMode).
+    id dragVal = [body objectForKey:@"drag"];
+    if (dragVal != nil) {
+        BOOL on = [dragVal boolValue];
+        dispatch_async(dispatch_get_main_queue(), ^{ gBrowserDragMode = on; });
+        return;
+    }
+    // Keyboard hand-over between the page and the native views (the page
+    // decides; see the focusin listener in browserNativeReporterJs).
+    // {focus:bid} — pane bid is the active pane now, give its view the
+    // keyboard; {release:wid} — focus went to real DOM in window wid, take it
+    // back from that window's browser views.
+    id focusVal = [body objectForKey:@"focus"];
+    if (focusVal != nil) {
+        int fbid = [focusVal intValue];
+        dispatch_async(dispatch_get_main_queue(), ^{ leksah_browser_focus_pane(fbid); });
+        return;
+    }
+    id relVal = [body objectForKey:@"release"];
+    if (relVal != nil) {
+        int rwid = [relVal intValue];
+        dispatch_async(dispatch_get_main_queue(), ^{ leksah_browser_release_window(rwid); });
+        return;
+    }
     int wid = [[body objectForKey:@"wid"] intValue];
     NSArray *panes = [body objectForKey:@"panes"];
     if (![panes isKindOfClass:[NSArray class]]) return;

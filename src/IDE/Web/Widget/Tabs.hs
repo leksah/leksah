@@ -33,9 +33,9 @@ import Language.Javascript.JSaddle (jsg, js1, liftJSM)
 
 import Reflex
        (foldDyn, holdDyn, holdUniqDyn, listViewWithKey, listWithKey, switchDyn,
-        mergeMap, leftmost, attachWith, attachWithMaybe, current, ffilter,
-        fmapMaybe, constDyn, Dynamic, sample, updated, never, switchHold, ffor,
-        performEvent_)
+        mergeMap, mergeWith, leftmost, attachWith, attachWithMaybe, current,
+        ffilter, fmapMaybe, constDyn, Dynamic, sample, updated, never,
+        switchHold, ffor, performEvent_)
 import Reflex.Dom.Core
        (elDynAttr', elAttr, blank, MonadWidget, (=:),
         divClass, Event, domEvent, EventName(..), dyn, _element_raw)
@@ -94,6 +94,9 @@ tabsCss = do
     -- The flipper's live selection tints its tab button with the hover colour
     -- (set by leksahSetFlipSel while the flipper is open).
     ".tab-buttons .tab-wrap.leksah-flip-sel" ?
+        background accentHoverColor
+    -- The ⌘-drag pane move's hovered (peeked) tab button (leafDragJs).
+    ".tab-buttons .tab-wrap.leksah-drag-peek" ?
         background accentHoverColor
     ".tab-buttons button" ? do
         verticalAlign middle
@@ -180,6 +183,12 @@ tabsWidget
   -> Event t (Map Text k)
   -> Event t [k]                  -- ^ restore the recent (MRU/flipper) order
   -> Event t Text                 -- ^ @show@-key of a tab that just received focus (moved to MRU front)
+  -- | PEEK a tab: make it the visible tab of its area WITHOUT activating it —
+  -- no 'activePane' change, no MRU promotion, no @selectedE@ pulse (which
+  -- would steal DOM focus).  Used by the ⌘-drag pane move to show the
+  -- hovered tab's window as a drop target; the drop/cancel always ends in a
+  -- real select, which puts visibility back under normal control.
+  -> Event t (Map Text k)
   -- | Render the button(s) for one tab key in the bar, given: its grid area, the
   -- key, its value, whether it is the visible tab in its area, and its (wide0) MRU
   -- slot index (@Nothing@ off the wide0 row, where no CSS @order@ is applied).
@@ -193,7 +202,7 @@ tabsWidget
   -> m ( Dynamic t [(Text, k)], Event t (Map k e), Dynamic t (Map Text k)
        , Dynamic t (Maybe k)    -- ^ the most-recently focused pane (active pane)
        , Event t [k])           -- ^ close (×) button clicks
-tabsWidget initialTabs initialVisibleTabs wide0OrderD openTabE closeTabE selectTabE setRecentE focusedTabE mkButtons mkTab = mdo
+tabsWidget initialTabs initialVisibleTabs wide0OrderD openTabE closeTabE selectTabE setRecentE focusedTabE peekTabE mkButtons mkTab = mdo
   let selectOrOpenTab = selectTabE' <> selectTabE <> reselectE
                           <> (M.fromList . map (swap . second fst) . M.toList <$> openTabE)
       -- When a *visible* tab is closed, point its area at a sibling tab (if any)
@@ -215,7 +224,10 @@ tabsWidget initialTabs initialVisibleTabs wide0OrderD openTabE closeTabE selectT
   -- wide0 membership + order come from the injected shared per-window state.
   let wide0MapD  = M.fromList . map (\(k, v) -> (k, ("wide0", v))) <$> wide0OrderD
       wide0KeysD = map fst <$> wide0OrderD
-  visibleTabs <- foldDyn (<>) initialVisibleTabs selectOrOpenTab
+  -- peekTabE joins the visibility fold ONLY — never selectOrOpenTab (that
+  -- would drive activePane / the MRU / each tab's selectedE focus pulse).
+  visibleTabs <- foldDyn (<>) initialVisibleTabs
+                   (mergeWith (<>) [selectOrOpenTab, peekTabE])
   -- The fixed side/bottom-bar tabs (open/close carry only these now); wide0 is
   -- unioned in from the injected shared state.
   barTabsD <- foldDyn ($) initialTabs $ leftmost

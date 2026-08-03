@@ -16,6 +16,8 @@ module IDE.Web.TmuxLayout
   , cellPanes
   , cellSize
   , rerootCell
+  , fitCell
+  , combineCells
   ) where
 
 import Data.Bits (shiftR, shiftL, (.&.))
@@ -101,6 +103,69 @@ parseWindowLayout t0 = do
           Just (k : ks, s3)
         Just (c, s2) | c == close -> Just ([k], s2)
         _ -> Nothing
+
+-- | Re-fit a cell tree to exactly the given rectangle: children resized
+-- proportionally to their current extents (each at least 1 cell, the 1-cell
+-- gutters between siblings preserved, exact total) and every cell's
+-- absolute x/y updated.
+fitCell :: Int -> Int -> Int -> Int -> TmuxCell -> TmuxCell
+fitCell x y w h c = case c of
+    TCPane {} -> c { tcW = w, tcH = h, tcX = x, tcY = y }
+    TCRow _ _ _ _ ks ->
+        let ws = apportion (max (length ks) (w - (length ks - 1)))
+                           (map (fromIntegral . tcW) ks)
+            xs = scanl (\a wi -> a + wi + 1) x ws
+        in TCRow w h x y [ fitCell xi y wi h k | (k, wi, xi) <- zip3 ks ws xs ]
+    TCCol _ _ _ _ ks ->
+        let hs = apportion (max (length ks) (h - (length ks - 1)))
+                           (map (fromIntegral . tcH) ks)
+            ys = scanl (\a hi -> a + hi + 1) y hs
+        in TCCol w h x y [ fitCell x yi w hi k | (k, hi, yi) <- zip3 ks hs ys ]
+
+-- | Split @total@ cells into parts proportional to @weights@: each part at
+-- least 1 and the parts summing to exactly @total@ (cumulative rounding,
+-- reserving a cell for every remaining part so the tail can't be starved).
+apportion :: Int -> [Double] -> [Int]
+apportion total weights = go 0 0 (length weights) weights
+  where
+    s = max 1e-9 (sum (map (max 0) weights))
+    go _ _ _ [] = []
+    go accW accC k (wt : rest) =
+        let accW'  = accW + max 0 wt
+            target = round (fromIntegral total * accW' / s) :: Int
+            c      = max 1 (min (total - accC - (k - 1)) (target - accC))
+        in c : go accW' (accC + c) (k - 1) rest
+
+-- | Combine sibling cell trees along one axis (@True@ = left-to-right) into
+-- one cell, sized from the children (sum along the axis plus 1-cell
+-- gutters, maximum across it), each child re-fitted to its SHARE of the
+-- axis.  Same-direction children are flattened into the new cell — their
+-- kids keep absolute coordinates, so geometry is unchanged and tmux never
+-- sees a nested same-direction cell.
+combineCells :: Bool -> [(Double, TmuxCell)] -> TmuxCell
+combineCells _ [] = TCRow 1 1 0 0 []
+combineCells _ [(_, c)] = fitCell 0 0 (tcW c) (tcH c) c
+combineCells row kids
+  | row =
+      let h  = maximum (map (tcH . snd) kids)
+          w  = sum (map (tcW . snd) kids) + (length kids - 1)
+          ws = apportion (max (length kids) (w - (length kids - 1)))
+                         (map fst kids)
+          xs = scanl (\a wi -> a + wi + 1) 0 ws
+      in TCRow w h 0 0 (concatMap flat
+           [ fitCell xi 0 wi h k | ((_, k), wi, xi) <- zip3 kids ws xs ])
+  | otherwise =
+      let w  = maximum (map (tcW . snd) kids)
+          h  = sum (map (tcH . snd) kids) + (length kids - 1)
+          hs = apportion (max (length kids) (h - (length kids - 1)))
+                         (map fst kids)
+          ys = scanl (\a hi -> a + hi + 1) 0 hs
+      in TCCol w h 0 0 (concatMap flat
+           [ fitCell 0 yi w hi k | ((_, k), hi, yi) <- zip3 kids hs ys ])
+  where
+    flat k | row, TCRow { tcKids = ks } <- k = ks
+           | not row, TCCol { tcKids = ks } <- k = ks
+           | otherwise = [k]
 
 -- | Render a cell as a full layout string, checksum prefix included —
 -- directly usable as @select-layout '<result>'@.

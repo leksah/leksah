@@ -315,19 +315,21 @@ layoutCss = do
     -- wide1-anchored one is parked off-screen and revealed with the bar, and
     -- the tall one never moves (side-pane content doesn't slide).  Same
     -- transition, same suppress and drag-resize overrides as the content.
-    ".leksah.wide1-auto .leksah-pane-glow" ?
+    -- (.leksah-pane-left-line is wide0-anchored like the base glow, so it
+    -- rides the base glow's transforms wherever they apply.)
+    ".leksah.wide1-auto .leksah-pane-glow, .leksah.wide1-auto .leksah-pane-left-line" ?
         ("transition" -: "transform 0.15s ease")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow:not(.glow-tall):not(.glow-wide1)" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ?
         ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
     ".leksah.wide1-auto .leksah-pane-glow.glow-wide1" ?
         ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
     ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1" ?
         ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow:not(.glow-tall):not(.glow-wide1)" ?
+    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ?
         ("transform" -: "translateY(0)")
     ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1" ?
         ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
-    ".leksah.wide1-auto.leksah-resizing-wide1 .leksah-pane-glow:not(.glow-tall):not(.glow-wide1)" ? do
+    ".leksah.wide1-auto.leksah-resizing-wide1 :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ? do
         "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
         "transition" -: "none"
     ".leksah.wide1-auto.leksah-resizing-wide1 .leksah-pane-glow.glow-wide1" ? do

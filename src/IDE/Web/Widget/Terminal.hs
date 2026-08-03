@@ -63,6 +63,16 @@ module IDE.Web.Widget.Terminal
   , windowIndexOfPane
   , paneCountOfSession
   , moveTmuxPane
+  , moveTmuxWindow
+  , selectTmuxWindowId
+  , selectTmuxPaneId
+  , panesOfWindow
+  , joinTmuxPaneFull
+  , breakTmuxPaneTo
+  , windowLayoutString
+  , movePaneToPane
+  , selectWindowLayout
+  , swapTmuxPanes
   , renameTmuxSession
   , renameTmuxWindow
   , activePaneId
@@ -322,6 +332,63 @@ terminalCss = do
         ("border-left" -: "none")
     ".leksah.tall-auto.tall-suppress .leksah-pane-glow" ?
         ("border-left" -: "none")
+    -- …but ONLY a pane actually sitting on that edge loses the line: an
+    -- active pane whose left edge is an interior divider keeps its white
+    -- ring (unconditional suppression left the divider's grey showing).
+    -- Flush-left is the edge-left class, stamped from model geometry
+    -- (TerminalCC leafStyle / renderHlSegments).  An anchor provably NOT
+    -- flush-left (its leaf, or its own layout column, is off the edge)
+    -- additionally declares --leksah-active-left-line, and a dedicated 1px
+    -- overlay (.leksah-pane-left-line, rendered beside the glow divs in
+    -- Main.hs) anchors to it — parked offscreen by the fallbacks whenever no
+    -- non-flush anchor exists (flush pane, plain tab body, no active pane).
+    -- anchor-name is not additive, so these higher-specificity rules must
+    -- re-declare the base name the overridden rules above set.
+    -- TWO cautionary tales live here, learned 2026-08-03:
+    --   * `:has()` cannot nest inside `:has()` — WebKit silently DROPS the
+    --     whole rule (so "suppress when flush", whose plain-tab case needs
+    --     `:not(:has(.terminal-cc))` inside an outer `:has()`, can't work).
+    --   * NEVER gate on a class-argument `:has()` at the `.leksah` root: it
+    --     re-evaluates on subtree mutations, and xterm/CodeMirror mutate on
+    --     EVERY keystroke — the resulting style-invalidation storm pegged
+    --     WebContent at 100% and made typing take ~1s/char.  The existing
+    --     root `:has()` rules are `:hover`/`:focus-within`-argument only
+    --     (pseudo-state invalidation — cheap); keep it that way.
+    ".tab.tab-active:not(.area-tall):not(.area-wide1) .terminal-cc-leaf:not(.edge-left) .terminal-cc-hl.active, .tab.tab-active:not(.area-tall):not(.area-wide1) .terminal-cc-hl.active:not(.edge-left), .tab.tab-active:not(.area-tall):not(.area-wide1) .terminal-cc-leaf:not(.edge-left) .pane-chrome.active" ?
+        ("anchor-name" -: "--leksah-active-pane, --leksah-active-left-line")
+    ".leksah-pane-left-line" ? do
+        "position" -: "fixed"
+        "top" -: "anchor(--leksah-active-left-line top, -10000px)"
+        "left" -: "anchor(--leksah-active-left-line left, -10000px)"
+        "width" -: "1px"
+        "height" -: "calc(anchor-size(--leksah-active-left-line height, 0px) + 1px)"
+        "background" -: "var(--leksah-pane-ring-active)"
+        "pointer-events" -: "none"
+        "z-index" -: "25"
+    -- The ⌘-drag pane move's preview (leafDragJs): the ring+glow look of the
+    -- active-pane overlay, but positioned by JS and free to animate between
+    -- arbitrary rects (drop candidates, tab buttons, the parked-on-source
+    -- no-op state).
+    ".leksah-drag-shadow" ? do
+        "position" -: "fixed"
+        "box-sizing" -: "border-box"
+        "border" -: "1px solid var(--leksah-pane-ring-active)"
+        "box-shadow" -: "0 0 64px var(--leksah-shadow-glow)"
+        "pointer-events" -: "none"
+        "z-index" -: "26"
+        "transition" -: "top .12s ease-out, left .12s ease-out, width .12s ease-out, height .12s ease-out"
+    -- While dragging: the real ring would fight the preview — hide it; the
+    -- whole page shows a grabbing cursor and never starts a text selection.
+    ".leksah.leksah-pane-dragging .leksah-pane-glow, .leksah.leksah-pane-dragging .leksah-pane-left-line" ?
+        ("display" -: "none")
+    ".leksah.leksah-pane-dragging" ? do
+        "cursor" -: "grabbing"
+        "user-select" -: "none"
+        "-webkit-user-select" -: "none"
+    ".leksah.leksah-pane-dragging *" ? do
+        "cursor" -: "grabbing !important"
+        "user-select" -: "none !important"
+        "-webkit-user-select" -: "none !important"
     -- A pane owned by a jsaddle-terminal app (see TerminalCC's tunnel): the
     -- iframe overlays the pane and the xterm underneath is hidden (it keeps
     -- consuming any non-frame output, so it is current again the moment the
@@ -1476,6 +1543,96 @@ moveTmuxPane :: Text -> Text -> Int -> IO ()
 moveTmuxPane srcPaneId dstS dstW =
     tmuxCmd ["move-pane", "-s", T.unpack srcPaneId,
              "-t", T.unpack dstS <> ":" <> show dstW]
+
+-- | Move a whole tmux WINDOW (@\@N@ — server-global, so no source session is
+-- needed) to the end of session @dstS@, detached (@-d@: the destination's
+-- current window stays current).  Used by the ⌘-drag pane move when a pane's
+-- tmux window crosses to a leksah window backed by a different session — the
+-- reconciler's 'keepPane' requires every pane's window to live in its leksah
+-- window's own session.
+moveTmuxWindow :: Text -> Text -> IO ()
+moveTmuxWindow w dstS =
+    tmuxCmd ["move-window", "-d", "-s", T.unpack w,
+             "-t", T.unpack dstS <> ":"]
+
+-- | Select window @w@ (@\@N@ — server-global) in whatever session holds it,
+-- making it the session's current window.  The ⌘-drag pane move runs this
+-- after landing a tmux pane so the CC widget's focus-follow settles on the
+-- moved pane rather than snapping back to the destination's current window.
+selectTmuxWindowId :: Text -> IO ()
+selectTmuxWindowId w = tmuxCmd ["select-window", "-t", T.unpack w]
+
+-- | Make pane @p@ (@%N@ — server-global) the active pane of its window AND
+-- that window its session's current window (a pane id resolves both).
+selectTmuxPaneId :: Text -> IO ()
+selectTmuxPaneId p = do
+    tmuxCmd ["select-window", "-t", T.unpack p]
+    tmuxCmd ["select-pane", "-t", T.unpack p]
+
+-- | The pane ids of window @w@ (@\@N@ — server-global), in tmux order.
+panesOfWindow :: Text -> IO [Text]
+panesOfWindow w = (`catch` \(_ :: SomeException) -> return []) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return []
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "list-panes", "-t", T.unpack w, "-F", "#{pane_id}"] ""
+            return $ filter (not . T.null) (map T.strip (T.lines (T.pack out)))
+
+-- | Join pane @p@ into @dst@'s window as a FULL-SIZE split on the given side
+-- (@horiz@ = side-by-side, @before@ = left/top), detached.  The ⌘-drag pane
+-- move uses this when a dragged tmux pane lands on a leaf whose window shares
+-- its font — the pane joins that window as a real tmux split.
+joinTmuxPaneFull :: Text -> Text -> Bool -> Bool -> IO ()
+joinTmuxPaneFull p dst horiz before =
+    tmuxCmd (["move-pane", "-d", "-f"]
+             <> ["-h" | horiz] <> ["-b" | before]
+             <> ["-s", T.unpack p, "-t", T.unpack dst])
+
+-- | The current layout string of window @w@ (@\@N@), checksum-prefixed
+-- (tmux's @#{window_layout}@ — what 'IDE.Web.TmuxCC.parseLayout' reads).
+windowLayoutString :: Text -> IO (Maybe Text)
+windowLayoutString w = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return Nothing
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "display-message", "-p", "-t", T.unpack w,
+                 "-F", "#{window_layout}"] ""
+            return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+
+-- | Move pane @p@ into @dst@'s window (plain split beside @dst@, detached);
+-- callers re-lay the window out afterwards ('selectWindowLayout').
+movePaneToPane :: Text -> Text -> IO ()
+movePaneToPane p dst =
+    tmuxCmd ["move-pane", "-d", "-s", T.unpack p, "-t", T.unpack dst]
+
+-- | Apply a full (checksum-prefixed) layout string to window @w@.
+selectWindowLayout :: Text -> Text -> IO ()
+selectWindowLayout w lay =
+    tmuxCmd ["select-layout", "-t", T.unpack w, T.unpack lay]
+
+-- | Swap two panes (@%N@ — server-global): their positions AND their spots
+-- in the window's pane order, which is what a custom @select-layout@
+-- assigns cells by.
+swapTmuxPanes :: Text -> Text -> IO ()
+swapTmuxPanes a b =
+    tmuxCmd ["swap-pane", "-d", "-s", T.unpack a, "-t", T.unpack b]
+
+-- | Break pane @p@ out into a fresh window at the end of session @dstS@
+-- (cross-session works — pane ids are server-global), detached; returns the
+-- NEW window's id (@\@N@).  The ⌘-drag pane move uses this when a dragged
+-- tmux pane must become its own leksah pane (node/root target, view-leaf
+-- target, or font mismatch).
+breakTmuxPaneTo :: Text -> Text -> IO (Maybe Text)
+breakTmuxPaneTo p dstS = (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return Nothing
+        Just tmux -> do
+            (_rc, out, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "break-pane", "-d", "-P", "-F", "#{window_id}",
+                 "-s", T.unpack p, "-t", T.unpack dstS <> ":"] ""
+            return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
 
 -- | Rename session @s@ (a session id) to @name@.
 renameTmuxSession :: Text -> Text -> IO ()

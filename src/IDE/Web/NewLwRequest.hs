@@ -17,9 +17,13 @@ module IDE.Web.NewLwRequest
   , conversionActive
   , requestFontConvert
   , nextFontConvert
+  , requestConsolidate
+  , nextConsolidate
+  , consolidateLock
   ) where
 
 import Control.Concurrent.Chan (Chan, newChan, writeChan, readChan)
+import Control.Concurrent.MVar (MVar, newMVar)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
@@ -64,3 +68,23 @@ requestFontConvert = writeChan fontConvertChan
 
 nextFontConvert :: IO (Text, Text, Int -> Maybe Int)
 nextFontConvert = readChan fontConvertChan
+
+-- | "Consolidate this leksah window" requests (see Main's @consolidateLw@:
+-- merge adjacent same-font tmux windows into one).  Queued by the command
+-- layer after a leaf font change — the same import-cycle seam as the font
+-- converts above.
+{-# NOINLINE consolidateChan #-}
+consolidateChan :: Chan Text
+consolidateChan = unsafePerformIO newChan
+
+requestConsolidate :: Text -> IO ()
+requestConsolidate = writeChan consolidateChan
+
+nextConsolidate :: IO Text
+nextConsolidate = readChan consolidateChan
+
+-- | Serializes consolidation passes (drop handlers, font changes and the
+-- restore sweep can otherwise interleave tmux surgery on one window).
+{-# NOINLINE consolidateLock #-}
+consolidateLock :: MVar ()
+consolidateLock = unsafePerformIO (newMVar ())

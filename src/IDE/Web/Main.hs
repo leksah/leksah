@@ -30,7 +30,7 @@ import Control.Concurrent
         rtsSupportsBoundThreads, getNumCapabilities, setNumCapabilities)
 import GHC.Conc (getNumProcessors)
 import Control.Concurrent.Chan (readChan)
-import Control.Concurrent.MVar (MVar, mkWeakMVar)
+import Control.Concurrent.MVar (MVar, mkWeakMVar, withMVar)
 import Control.Concurrent.STM (readTVarIO)
 import GHC.Conc.Sync (labelThread)
 import Control.Event (registerEvent)
@@ -45,7 +45,8 @@ import qualified System.IO as IO
 import qualified System.IO as IO (hPutStrLn, stderr, hSetBuffering, BufferMode(..))
 #endif
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), (<&>), _Just)
-import Control.Monad (forever, forM, forM_, unless, when, void)
+import Control.Applicative ((<|>))
+import Control.Monad (forever, forM, forM_, guard, unless, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.ByteString (ByteString)
@@ -73,7 +74,7 @@ import qualified Data.Set as S
        (Set, fromList, delete, null, singleton, empty, insert, member, intersection, toList)
 import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, take, length)
+import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, take, length, replace)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
@@ -84,8 +85,9 @@ import System.Directory
        (doesFileExist, doesDirectoryExist, getDirectoryContents, removeFile,
         getHomeDirectory, getTemporaryDirectory, makeRelativeToCurrentDirectory)
 import System.Process (readProcessWithExitCode)
-import Data.Aeson (Value, decodeStrict', encode)
+import Data.Aeson (Value, decodeStrict', encode, withObject, (.:))
 import qualified Data.Aeson as A
+import qualified Data.Aeson.Types as AT (parseMaybe)
 import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex, findIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing)
 import System.Exit (ExitCode(..))
@@ -160,7 +162,7 @@ import IDE.Core.State
         WindowId(..), WebWindow(..), webWindows, activeWindow, nextWindowId,
         leksahWindows, nextLeksahWin, hiddenWindows,
         LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..),
-        SplitOrientation(..),
+        SplitOrientation(..), SplitTree(..),
         flipMirror, flipMru, ideVersion, focusLog, metaLog)
 import IDE.Metainfo.Provider (initInfo)
 import IDE.Web.IDERefStore (setGlobalIDERef, getGlobalIDERef)
@@ -207,7 +209,10 @@ import IDE.Web.SplitLayout
        (readLeksahWindows, saveSessionLayouts, reconcileWindows,
         encodeLayoutOption, splitLeaf, closeLeaf, treeLeafIds,
         viewLeafAllowed, singlePaneWindow, lwIdText, lwIdNum, lwWindowIds,
-        ConvertedPath(..), spliceConverted, setPaneFont)
+        ConvertedPath(..), spliceConverted, setPaneFont,
+        DropSpec(..), detachLeaf, insertLeafAt, moveLeafInWindow,
+        pickDropTarget, successorLeaf, windowOwner, subtreeRects,
+        MergeGroup(..), consolidateGroups, collapseGroup)
 import IDE.Web.SplitOpenRequest
        (SplitTarget(..), nextSplitOpenRequest, requestSplitOpen)
 import IDE.Web.RecentFiles (updateRecentFiles)
@@ -229,10 +234,10 @@ import IDE.Web.ClaudeStatus
 #endif
 import IDE.Web.NewLwRequest
        (nextNewLwRequest, beginConversion, endConversion, conversionActive,
-        nextFontConvert)
+        nextFontConvert, nextConsolidate, consolidateLock)
 import IDE.Web.TmuxLayout
        (TmuxCell(..), parseWindowLayout, printWindowLayout, cellPanes,
-        rerootCell)
+        rerootCell, combineCells)
 import IDE.Web.TerminalInput
        (setActiveTerminal, setActiveConvertible, setActiveViewSplit,
         setActiveSplitWindow, tmuxCommandActiveTerminal,
@@ -315,6 +320,9 @@ import IDE.Web.Widget.Terminal
         listTerminalTree, createTerminalSession, openFileInEditor, notifyTerminalBell,
         cleanupStaleTwinPanes, resolveEditorCmd, shellQuoteArg,
         killTmuxPaneId, breakTmuxPaneId, windowIndexOfPane, paneCountOfSession,
+        moveTmuxWindow, selectTmuxWindowId, selectTmuxPaneId,
+        panesOfWindow, joinTmuxPaneFull, breakTmuxPaneTo,
+        windowLayoutString, movePaneToPane, selectWindowLayout, swapTmuxPanes,
         createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
         killRemoteTmuxSession, killRemoteTmuxWindow, killRemoteTmuxPane,
         newRemoteTmuxWindow, zoomRemoteTmuxPane, breakRemoteTmuxPane,
@@ -325,7 +333,8 @@ import IDE.Web.Widget.Terminals
        (terminalsCss, terminalsWidget, sessionAlert, windowAlertSrc,
         windowActivePane, isClaudeWindow, windowIconSrc, windowTabLabel,
         stripIdxPrefix)
-import IDE.Web.Widget.TerminalCC (terminalCCWidget, sessionlessLwWidget)
+import IDE.Web.Widget.TerminalCC
+       (terminalCCWidget, sessionlessLwWidget, setFocusedLeaf)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import qualified IDE.Workspaces.Writer as Writer
@@ -477,6 +486,228 @@ mintLeksahWindow msess pc = getGlobalIDERef >>= \case
       in ( i & nextLeksahWin .~ (n + 1)
              & leksahWindows %~ M.insert lwi (singlePaneWindow msess pc)
          , lwi )
+
+-- | Keep every OS window's tab list consistent with the leksah-window map:
+-- prune tabs whose window is gone (falling the active tab back to the next
+-- one), and append a tab for any window in the map that no OS window shows.
+-- Runs at the end of 'applyReconcile' and after every cross-window pane move
+-- (which can dissolve an emptied source window with no tmux change to wake
+-- the reconcile).
+syncLwTabs :: IDE -> IDE
+syncLwTabs i =
+  let lws = i ^. leksahWindows
+      liveTab k = case k of LeksahWinKey n -> n `M.member` lws
+                            _              -> True
+      pruneWin ww =
+        let w0 = filter liveTab (_wwWide0 ww)
+            act = case _wwActive ww of
+              Just a | liveTab a -> Just a
+              Just _             -> listToMaybe w0
+              Nothing            -> Nothing
+        in ww { _wwWide0 = w0, _wwActive = act }
+      pruned = fmap pruneWin (i ^. webWindows)
+      placed = S.fromList
+        [ n | ww <- M.elems pruned, LeksahWinKey n <- _wwWide0 ww ]
+      -- First OS window (id order) showing each session.
+      sessionHome = M.fromListWith (\_ old -> old)
+        [ (s, osW)
+        | (osW, ww) <- M.toAscList pruned
+        , LeksahWinKey n <- _wwWide0 ww
+        , Just s <- [M.lookup n lws >>= lwSession] ]
+      targetFor lw = case lwSession lw >>= (`M.lookup` sessionHome) of
+        Just osW -> Just osW
+        Nothing  -> case i ^. activeWindow of
+          Just osW | osW `M.member` pruned -> Just osW
+          _ -> listToMaybe (M.keys pruned)
+      place ws (n, lw) = case targetFor lw of
+        Nothing  -> ws
+        Just osW -> M.adjust (\ww -> ww
+          { _wwWide0  = _wwWide0 ww <> [LeksahWinKey n]
+          , _wwActive = case _wwActive ww of
+              Nothing -> Just (LeksahWinKey n)
+              a       -> a
+          }) osW ws
+      final = foldl' place pruned
+        [ (n, lw) | (n, lw) <- M.toAscList lws
+        , not (n `S.member` placed) ]
+  in i & webWindows .~ final
+
+-- | The ⌘-drag pane move's payload (leafDragJs delivers it as one JSON blob
+-- on release or Escape): what was dragged, and where it was let go.
+data LeafDragSrc = LDPane Text Int   -- ^ pane @leaf@ of leksah window @lw@
+                 | LDTmuxPane Text Int Text
+                     -- ^ ONE tmux pane (@%N@) of a multi-pane window living
+                     -- in pane @leaf@ of leksah window @lw@ — joined into a
+                     -- same-font destination window with tmux, broken out
+                     -- into a fresh window + leaf otherwise
+                 | LDTab Text        -- ^ a plain wide0 tab (its @show@-key)
+  deriving (Eq, Show)
+data LeafDragDst
+  = LDDstPane Text (Double, Double) (Double, Double)
+      -- ^ inside leksah window @lw@: pointer px, container (w, h) px — the
+      -- drop target is RECOMPUTED from these against the live tree
+  | LDDstTab Text                    -- ^ on a tab button (its @show@-key)
+  | LDDstNone                        -- ^ nowhere / cancelled
+  deriving (Eq, Show)
+
+parseLeafDrop :: Value -> Maybe (LeafDragSrc, LeafDragDst)
+parseLeafDrop = AT.parseMaybe $ withObject "leafDrop" $ \o -> do
+    src <- o .: "src" >>= withObject "src" (\s ->
+             -- pane-carrying sources also have lw/leaf keys: try first
+             (LDTmuxPane <$> s .: "lw" <*> s .: "leaf" <*> s .: "pane")
+             <|> (LDPane <$> s .: "lw" <*> s .: "leaf")
+             <|> (LDTab <$> s .: "tab"))
+    dst <- o .: "dst" >>= withObject "dst" (\d -> d .: "kind" >>= \k ->
+             case k :: Text of
+               "pane" -> LDDstPane <$> d .: "lw"
+                           <*> ((,) <$> d .: "px" <*> d .: "py")
+                           <*> ((,) <$> d .: "cw" <*> d .: "ch")
+               "tab"  -> LDDstTab <$> d .: "tab"
+               _      -> pure LDDstNone)
+    return (src, dst)
+
+-- | The cross-window pane move — ONE pure step, so no intermediate state (an
+-- unowned tmux window ripe for stray adoption, an emptied source window) is
+-- ever observed by the reconcile or the persistence debounce.  The moved
+-- pane's id is REMINTED in the destination ('LeafId's are per-window) and its
+-- flip-MRU entry follows; a tmux pane landing in a SESSIONLESS destination
+-- binds it to the source's session (when the sessions genuinely differ the
+-- caller has already run 'moveTmuxWindow' under the conversion guard).  The
+-- destination un-zooms so the arrival is visible; source focus falls to the
+-- leaf absorbing the space.  Returns @i@ unchanged whenever a piece vanished
+-- under the drag.  Callers compose 'syncLwTabs' after it.
+moveLeafAcross :: Text -> LeafId -> Text -> DropSpec -> IDE -> IDE
+moveLeafAcross srcLwId srcLeaf dstLwId spec i = fromMaybe i $ do
+    guard (srcLwId /= dstLwId)
+    slw <- M.lookup srcLwId lws
+    dlw <- M.lookup dstLwId lws
+    pc  <- M.lookup srcLeaf (lwPanes slw)
+    let newId   = LeafId (lwNext dlw)
+        dstTree = insertLeafAt spec newId (lwTree dlw)
+    guard (newId `elem` treeLeafIds dstTree)
+    let dlw' = dlw
+          { lwTree    = dstTree
+          , lwPanes   = M.insert newId pc (lwPanes dlw)
+          , lwFocused = Just newId
+          , lwZoomed  = Nothing
+          , lwNext    = lwNext dlw + 1
+          , lwSession = case pcKind pc of
+              PaneTmux _ | isNothing (lwSession dlw) -> lwSession slw
+              _                                      -> lwSession dlw
+          }
+        -- The source without the leaf; Nothing = it was the last pane and
+        -- the whole window dissolves (syncLwTabs prunes its tab).
+        srcRes = detachLeaf srcLeaf (lwTree slw) <&> \t' -> slw
+          { lwTree    = t'
+          , lwPanes   = M.delete srcLeaf (lwPanes slw)
+          , lwFocused = if lwFocused slw == Just srcLeaf
+              then successorLeaf (/= srcLeaf) srcLeaf (lwTree slw)
+                     <|> listToMaybe (treeLeafIds t')
+              else lwFocused slw
+          , lwZoomed  = if lwZoomed slw == Just srcLeaf then Nothing
+                        else lwZoomed slw
+          }
+        lws' = M.insert dstLwId dlw' $
+          maybe (M.delete srcLwId lws) (\s -> M.insert srcLwId s lws) srcRes
+        moveFlip fi = case (fi, newId) of
+          (FlipView n l, LeafId newN)
+            | n == srcLwId, LeafId l == srcLeaf -> FlipView dstLwId newN
+          _ -> fi
+    return $ i & leksahWindows .~ lws'
+               & flipMru %~ map moveFlip
+  where lws = i ^. leksahWindows
+
+-- | Merge every run of adjacent same-font tmux windows in one leksah
+-- window's split tree into single tmux windows ('consolidateGroups'): the
+-- first window of each run survives, the others' panes are moved into it,
+-- and the combined tmux layout — each old window's internal layout re-fitted
+-- to its leaf's share — is applied in one 'selectWindowLayout'.  Runs after
+-- ⌘-drag drops, after leaf font changes (the complement of the font
+-- convert's isolate-first step), and once over every window at session
+-- restore, upholding the invariant: leksah splits exist only at font
+-- boundaries and around view panes.  Serialized by 'consolidateLock'
+-- (drop handlers, font changes and the restore sweep would otherwise
+-- interleave surgery on one window); the tmux moves + the model edit run
+-- under the conversion guard so the reconcile never sees the half-moved
+-- state (a drained window dies with its last pane).  Skipped while zoomed —
+-- restructuring under a zoom would yank the zoomed pane around.
+consolidateLw :: Text -> IO ()
+consolidateLw lwId = withMVar consolidateLock $ \_ ->
+  getGlobalIDERef >>= mapM_ (\ideR -> do
+    lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+    defFont <- monospaceFontSize <$> (`reflectIDE` ideR) (readIDE prefs)
+    case M.lookup lwId lws0 of
+      Just lw | Nothing <- lwZoomed lw ->
+        forM_ (consolidateGroups defFont (lwPanes lw) (lwTree lw)) $ \g ->
+          case mgLeaves g of
+            allLs@((survivorLeaf, survivorWin) : rest@(_ : _)) -> do
+              mlays <- forM allLs $ \(l, w) ->
+                  fmap ((,) l) . (parseWindowLayout =<<)
+                    <$> windowLayoutString w
+              case buildCombined . M.fromList =<< sequence mlays of
+                Nothing -> return ()   -- a window vanished under the pass
+                Just combined -> do
+                  -- Where the keyboard is (the session's active pane):
+                  -- re-selected below so focus can't drift.
+                  mact <- maybe (return Nothing) activePaneId (lwSession lw)
+                  beginConversion
+                  forM_ rest $ \(_, w) ->
+                      panesOfWindow w >>= mapM_ (`movePaneToPane` survivorWin)
+                  -- A custom select-layout assigns its cells to the window's
+                  -- panes by INDEX ORDER — the pane ids in the string are
+                  -- informational — and move-pane splices arrivals next to
+                  -- the target's active pane, so first force the pane order
+                  -- to the combined layout's leaf order or every pane lands
+                  -- in some other pane's cell.
+                  actual <- panesOfWindow survivorWin
+                  let sortSwaps _ [] = []
+                      sortSwaps [] _ = []
+                      sortSwaps (cur : acts) (want : wants)
+                        | cur == want = sortSwaps acts wants
+                        | otherwise   = (cur, want) : sortSwaps
+                            (map (\p -> if p == want then cur else p) acts)
+                            wants
+                  forM_ (sortSwaps actual (cellPanes combined))
+                        (uncurry swapTmuxPanes)
+                  selectWindowLayout survivorWin (printWindowLayout combined)
+                  -- Land tmux focus BEFORE the model edit: the focus
+                  -- reconciler resolves the window's active pane when
+                  -- lwFocused changes, and must already see the user's pane
+                  -- active (selecting afterwards raced it, and losing that
+                  -- race dropped the keyboard on the wrong pane).
+                  forM_ mact selectTmuxPaneId
+                  (`reflectIDE` ideR) $ modifyIDE_ $ leksahWindows %~
+                    M.adjust (\lw' -> lw'
+                      { lwTree    = collapseGroup (map fst allLs) (lwTree lw')
+                      , lwPanes   = foldr (M.delete . fst) (lwPanes lw') rest
+                      , lwFocused = case lwFocused lw' of
+                          Just f | f `elem` map fst rest -> Just survivorLeaf
+                          x -> x }) lwId
+                  endConversion
+                  -- The moved panes' xterms REBUILD under the survivor's
+                  -- widget; the reconciler's bounded retry can expire
+                  -- against the OLD (still-registered) xterm and drop the
+                  -- keyboard on <body>.  The sticky focus request's ladder
+                  -- (0.15–5s, gated on this being the on-screen terminal)
+                  -- keeps trying until the keyboard actually lands.
+                  focusTerminalPane lwId
+              where
+                buildCombined lays = build (mgTree g)
+                  where
+                    build (SplitLeaf l)    = M.lookup l lays
+                    build (SplitNode o cs) = do
+                        ks <- mapM (\(s, c) -> (,) s <$> build c) cs
+                        pure (combineCells (o == SplitH) ks)
+            _ -> return ()
+      _ -> return ())
+
+-- | Run 'consolidateLw' over every leksah window (a drop or restore can
+-- create same-font adjacency anywhere, and the pass is idempotent and free
+-- when nothing matches).
+consolidateAll :: IO ()
+consolidateAll = getGlobalIDERef >>= mapM_ (\ideR -> do
+    lws <- (`reflectIDE` ideR) (readIDE leksahWindows)
+    mapM_ consolidateLw (M.keys lws))
 
 
 #if defined(ghcjs_HOST_OS)
@@ -1050,6 +1281,15 @@ paneOwnerLw lws tree s widx = do
                     , lwSession lw == Just s
                     , wid' `elem` lwWindowIds lw ]
 
+-- | The (leksah window, leaf) holding a 'FlipPane' target's tmux window: the
+-- flip's window INDEX resolved to a window id in the tree, then to the leaf
+-- that owns it.  Used by the flip commit to write 'lwFocused' up front.
+flipPaneLeaf :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> Text -> Int -> Maybe (Text, LeafId)
+flipPaneLeaf lws tree s widx = do
+    (_, wins) <- M.lookup s tree
+    wid' <- twId <$> find ((== widx) . twIndex) wins
+    windowOwner wid' lws
+
 -- | The lw's focused tmux window (or its first one, when the focused leaf is
 -- a view pane), resolved in the tree.  What a leksah-window tab's icon and
 -- ⌘1…P pane numbering key on.
@@ -1196,6 +1436,10 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- row to move the pane there (the DnD gesture runs in JS — jsaddle can't do
   -- the synchronous dragover preventDefault a drop needs; see IDE.Web.Widget.Terminals).
   _ <- eval paneDragJs
+
+  -- The ⌘-drag pane move: gesture + drop-target preview live in JS (60fps
+  -- mousemove can't round-trip jsaddle); Haskell hears one leksahLeafDrop.
+  _ <- eval leafDragJs
 
   -- Defines window.leksahSetHoles/leksahClearHoles: clips transparent tmux panes
   -- out of the page root so the window shows through (macOS click-through holes).
@@ -3215,6 +3459,226 @@ paneDragJs = T.unlines
   , "} };"
   ]
 
+-- | The ⌘-drag pane move (Ctrl off-mac).  A ⌘+mousedown on a split-tree pane
+-- (@.terminal-cc-leaf[data-leaf]@) or a draggable plain wide0 tab body arms a
+-- gesture that ENGAGES after 5px of movement — a stationary ⌘-click keeps its
+-- existing meaning (OSC links, editor go-to).  Engaged, a fixed
+-- @.leksah-drag-shadow@ previews the drop: over an LW container it animates to
+-- the candidate split (the same algorithm as 'pickDropTarget' in
+-- IDE.Web.SplitLayout — the commit RECOMPUTES there from the raw pointer, this
+-- copy is preview-only); over the wide0 tab row it peeks the hovered tab
+-- (shown, not activated — @leksahLeafPeek@); over the dragged pane itself or
+-- anywhere invalid it parks on the SOURCE pane ("release here and nothing
+-- changes" — and static, so no transition lag on every mousemove).  All
+-- tracking is pure JS (jsaddle dispatches async — a 60fps loop can never
+-- round-trip); Haskell hears ONE call, @leksahLeafDrop(json)@, on release or
+-- Escape.  Geometry comes from @window.__leksahLwGeom@ (published per window
+-- by TerminalCC) and @window.__leksahLeafDragTabs@ (the draggable plain-tab
+-- show-keys).  Native browser panes are made click-through for the duration
+-- via a @{drag:bool}@ post on the leksahBrowserFrame message handler.
+leafDragJs :: Text
+leafDragJs = T.unlines
+  [ "(function(){"
+  , "  var MOD = (navigator.platform||'').toUpperCase().indexOf('MAC') >= 0 ? 'metaKey' : 'ctrlKey';"
+  , "  var st = null;"
+  , "  function shadowTo(x,y,w,h){ var s = st.shadow.style;"
+  , "    s.left = x+'px'; s.top = y+'px'; s.width = w+'px'; s.height = h+'px'; }"
+  -- "Nothing will change if released here": park the shadow ON the source
+  -- pane (static — a mouse-following box restarts its transition every move
+  -- and lags).  A detached source element measures 0×0: leave the shadow be.
+  , "  function srcBox(){"
+  , "    var r = st.srcEl && st.srcEl.getBoundingClientRect();"
+  , "    if (r && (r.width > 2 || r.height > 2)) shadowTo(r.left, r.top, r.width, r.height); }"
+  , "  function clearPeekHl(){ if (!st) return;"
+  , "    if (st.peekTimer){ clearTimeout(st.peekTimer); st.peekTimer = null; }"
+  , "    if (st.peekEl){ st.peekEl.classList.remove('leksah-drag-peek'); st.peekEl = null; } }"
+  , "  function dist(px,py,mx,my){ var dx=px-mx, dy=py-my; return dx*dx+dy*dy; }"
+  -- Deterministic tie order: lexicographic (path, orient==V, after), matching
+  -- pickDropTarget's specKey.
+  , "  function cmpSpec(a,b){"
+  , "    for (var i=0; i<Math.max(a.p.length,b.p.length); i++){"
+  , "      var av = i<a.p.length ? a.p[i] : -1, bv = i<b.p.length ? b.p[i] : -1;"
+  , "      if (av!==bv) return av-bv; }"
+  , "    if (a.v!==b.v) return a.v?1:-1;"
+  , "    if (a.after!==b.after) return a.after?1:-1;"
+  , "    return 0; }"
+  , "  function pickTarget(subs, cw, ch, px, py, excl){"
+  , "    var containing = [];"
+  , "    for (var i=0; i<subs.length; i++){ var s=subs[i];"
+  , "      var x=s.x*cw, y=s.y*ch, w=s.w*cw, h=s.h*ch;"
+  , "      if (px>=x && px<=x+w && py>=y && py<=y+h){"
+  , "        if (excl!==null && s.leaf!==null && s.leaf===excl) return null;"
+  , "        containing.push({p:s.p, x:x, y:y, w:w, h:h}); } }"
+  , "    if (!containing.length) return null;"
+  , "    var cands = [];"
+  -- Score = distance to the CENTRE of the half the pane would occupy
+  -- (mirrors pickDropTarget).
+  , "    containing.forEach(function(c){"
+  , "      [ {v:false, after:false, rect:[c.x,c.y,c.w/2,c.h]}"
+  , "      , {v:false, after:true,  rect:[c.x+c.w/2,c.y,c.w/2,c.h]}"
+  , "      , {v:true,  after:false, rect:[c.x,c.y,c.w,c.h/2]}"
+  , "      , {v:true,  after:true,  rect:[c.x,c.y+c.h/2,c.w,c.h/2]}"
+  , "      ].forEach(function(k){"
+  , "        cands.push({d:dist(px,py,k.rect[0]+k.rect[2]/2,k.rect[1]+k.rect[3]/2),"
+  , "                    p:c.p, v:k.v, after:k.after, rect:k.rect});"
+  , "      });"
+  , "    });"
+  , "    var best = Infinity;"
+  , "    cands.forEach(function(c){ if (c.d < best) best = c.d; });"
+  , "    var ties = cands.filter(function(c){ return Math.sqrt(c.d) <= Math.sqrt(best)+0.5; });"
+  , "    ties.sort(cmpSpec);"
+  , "    return ties[Math.abs(Math.floor(px)+Math.floor(py)) % ties.length]; }"
+  , "  function setBrowserDrag(on){"
+  , "    try { if (window.webkit && window.webkit.messageHandlers"
+  , "              && window.webkit.messageHandlers.leksahBrowserFrame)"
+  , "      window.webkit.messageHandlers.leksahBrowserFrame.postMessage({drag:on}); } catch(_){} }"
+  , "  function swallow(e){ e.preventDefault(); e.stopPropagation(); }"
+  , "  function engage(e){"
+  , "    st.engaged = true;"
+  , "    var root = document.querySelector('.leksah');"
+  , "    if (root) root.classList.add('leksah-pane-dragging');"
+  , "    st.iframes = Array.prototype.slice.call(document.querySelectorAll('.terminal-cc-iframe'));"
+  , "    st.iframes.forEach(function(f){ f.style.pointerEvents = 'none'; });"
+  , "    setBrowserDrag(true);"
+  , "    try { window.getSelection && window.getSelection().removeAllRanges(); } catch(_){}"
+  , "    var sh = document.createElement('div');"
+  , "    sh.className = 'leksah-drag-shadow';"
+  , "    st.shadow = sh;"
+  -- First paint highlights the pane being dragged; the transitions animate
+  -- away from it on the next tracked move.
+  , "    var r = st.srcEl.getBoundingClientRect();"
+  , "    shadowTo(r.left, r.top, r.width, r.height);"
+  , "    document.body.appendChild(sh);"
+  , "    document.addEventListener('click', swallow, true);"
+  , "    if (window.leksahLeafDragStart) window.leksahLeafDragStart();"
+  , "  }"
+  , "  function track(e){"
+  , "    var t = e.target;"
+  , "    if (!t || !t.closest) { srcBox(); st.lastDst = {kind:'none'}; return; }"
+  -- The wide0 tab row: peek the hovered tab (dwell 150ms) so the user can
+  -- drag on into its body.
+  , "    var tw = t.closest('.tab-buttons.area-wide0 .tab-wrap[data-tabkey]');"
+  , "    if (tw){"
+  , "      if (st.peekEl !== tw){ clearPeekHl();"
+  , "        st.peekEl = tw; tw.classList.add('leksah-drag-peek');"
+  , "        var key = tw.getAttribute('data-tabkey');"
+  , "        st.peekTimer = setTimeout(function(){"
+  , "          if (window.leksahLeafPeek) window.leksahLeafPeek(key); }, 150);"
+  , "      }"
+  , "      var r = tw.getBoundingClientRect();"
+  , "      shadowTo(r.left, r.top, r.width, r.height);"
+  , "      st.lastDst = {kind:'tab', tab: tw.getAttribute('data-tabkey')};"
+  , "      return; }"
+  , "    clearPeekHl();"
+  -- Inside a leksah-window container: the candidate-split preview.
+  , "    var cc = t.closest('.terminal-cc[data-lw]');"
+  , "    if (cc){"
+  , "      var lw = cc.getAttribute('data-lw');"
+  , "      var geom = (window.__leksahLwGeom||{})[lw];"
+  , "      if (geom && geom.subs){"
+  , "        var cr = cc.getBoundingClientRect();"
+  , "        var px = e.clientX - cr.left, py = e.clientY - cr.top;"
+  , "        var excl = (st.srcKind==='pane' && lw===st.srcLw) ? st.srcLeaf : null;"
+  , "        var pick = pickTarget(geom.subs, cr.width, cr.height, px, py, excl);"
+  , "        if (pick){"
+  , "          shadowTo(cr.left+pick.rect[0], cr.top+pick.rect[1], pick.rect[2], pick.rect[3]);"
+  , "          st.lastDst = {kind:'pane', lw:lw, px:px, py:py, cw:cr.width, ch:cr.height};"
+  , "          return; } }"
+  , "      srcBox(); st.lastDst = {kind:'none'}; return; }"
+  -- A draggable plain tab's visible body: land beside it (right half).
+  , "    var tb = t.closest('.tab.area-wide0[data-tabkey]');"
+  , "    if (tb){ var k = tb.getAttribute('data-tabkey');"
+  , "      if (window.__leksahLeafDragTabs && window.__leksahLeafDragTabs[k]"
+  , "          && !(st.srcKind==='tab' && k===st.srcTab)){"
+  , "        var r2 = tb.getBoundingClientRect();"
+  , "        shadowTo(r2.left+r2.width/2, r2.top, r2.width/2, r2.height);"
+  , "        st.lastDst = {kind:'tab', tab:k};"
+  , "        return; } }"
+  , "    srcBox(); st.lastDst = {kind:'none'};"
+  , "  }"
+  , "  function unlisten(){"
+  , "    document.removeEventListener('mousemove', mv, true);"
+  , "    document.removeEventListener('mouseup', up, true);"
+  , "    document.removeEventListener('keydown', kd, true); }"
+  , "  function finish(dst){"
+  , "    var root = document.querySelector('.leksah');"
+  , "    if (root) root.classList.remove('leksah-pane-dragging');"
+  , "    (st.iframes||[]).forEach(function(f){ f.style.pointerEvents = ''; });"
+  , "    setBrowserDrag(false);"
+  , "    clearPeekHl();"
+  , "    if (st.shadow && st.shadow.parentNode) st.shadow.parentNode.removeChild(st.shadow);"
+  -- The trailing click (dispatched between mouseup and this timeout) is
+  -- swallowed; then the guard goes away so the NEXT click is real.
+  , "    setTimeout(function(){ document.removeEventListener('click', swallow, true); }, 0);"
+  , "    var payload = { src: (st.srcKind==='tmux') ? {lw:st.srcLw, leaf:st.srcLeaf, pane:st.srcPane}"
+  , "                       : (st.srcKind==='pane') ? {lw:st.srcLw, leaf:st.srcLeaf}"
+  , "                       : {tab:st.srcTab},"
+  , "                    dst: dst || {kind:'none'} };"
+  , "    st = null;"
+  , "    if (window.leksahLeafDrop) window.leksahLeafDrop(JSON.stringify(payload));"
+  , "  }"
+  , "  function mv(e){"
+  , "    if (!st) return;"
+  , "    if (!st.engaged){"
+  , "      if (Math.abs(e.clientX-st.sx) + Math.abs(e.clientY-st.sy) < 5) return;"
+  , "      engage(e); }"
+  , "    e.preventDefault(); e.stopPropagation();"
+  , "    track(e);"
+  , "  }"
+  , "  function up(e){"
+  , "    unlisten();"
+  , "    if (!st) return;"
+  , "    if (!st.engaged){ st = null; return; }"   -- plain ⌘-click: untouched
+  , "    e.preventDefault(); e.stopPropagation();"
+  , "    track(e);"
+  , "    finish(st.lastDst);"
+  , "  }"
+  , "  function kd(e){"
+  , "    if (e.key !== 'Escape' || !st) return;"
+  , "    e.preventDefault(); e.stopPropagation();"
+  , "    unlisten();"
+  , "    if (st.engaged) finish({kind:'none'}); else st = null;"
+  , "  }"
+  , "  document.addEventListener('mousedown', function(e){"
+  , "    if (e.button !== 0 || !e[MOD] || st) return;"
+  , "    if (!e.target || !e.target.closest) return;"
+  -- A divider owns its own drag; never contest it.
+  , "    if (e.target.closest('.terminal-cc-divider, .terminal-cc-native-divider, .tall-divider, .wide1-divider')) return;"
+  , "    var src = null;"
+  , "    var leaf = e.target.closest('.terminal-cc-leaf[data-leaf]');"
+  , "    var cc = leaf && leaf.closest('.terminal-cc[data-lw]');"
+  , "    if (leaf && cc && (window.__leksahLwGeom||{})[cc.getAttribute('data-lw')]){"
+  , "      src = {kind:'pane', lw: cc.getAttribute('data-lw'),"
+  , "             leaf: parseInt(leaf.getAttribute('data-leaf'),10), el: leaf};"
+  -- A multi-pane tmux window: the drag picks up the ONE tmux pane under the
+  -- pointer (its hl marker box), not the whole window.
+  , "      var hls = leaf.querySelectorAll('.terminal-cc-hl[data-pane]');"
+  , "      if (hls.length > 1){"
+  , "        for (var hi=0; hi<hls.length; hi++){"
+  , "          var hr = hls[hi].getBoundingClientRect();"
+  , "          if (e.clientX>=hr.left && e.clientX<=hr.right"
+  , "              && e.clientY>=hr.top && e.clientY<=hr.bottom){"
+  , "            src.kind='tmux'; src.pane=hls[hi].getAttribute('data-pane');"
+  , "            src.el=hls[hi]; break; } } }"
+  , "    } else {"
+  , "      var tb = e.target.closest('.tab.area-wide0[data-tabkey]');"
+  , "      var k = tb && tb.getAttribute('data-tabkey');"
+  , "      if (k && window.__leksahLeafDragTabs && window.__leksahLeafDragTabs[k])"
+  , "        src = {kind:'tab', tab:k, el:tb};"
+  , "    }"
+  , "    if (!src) return;"
+  -- No preventDefault here: below the threshold this must stay an ordinary
+  -- ⌘-click for whatever the pane content does with it.
+  , "    st = { srcKind:src.kind, srcLw:src.lw, srcLeaf:src.leaf, srcTab:src.tab,"
+  , "           srcPane:src.pane, srcEl:src.el, sx:e.clientX, sy:e.clientY,"
+  , "           engaged:false, peekEl:null, peekTimer:null, lastDst:{kind:'none'} };"
+  , "    document.addEventListener('mousemove', mv, true);"
+  , "    document.addEventListener('mouseup', up, true);"
+  , "    document.addEventListener('keydown', kd, true);"
+  , "  }, true);"
+  , "})();"
+  ]
+
 -- | Defines @window.leksahSetHoles@ / @leksahClearHoles@, which punch
 -- see-through holes into the window where a transparent tmux pane is (macOS; see
 -- the native side in @main/leksah-mac-menu.m@).  Given the holed panes' cell
@@ -3782,15 +4246,107 @@ statusLightJs = T.unlines
 -- the same @prefers-color-scheme@ as leksah itself.  Riding the existing
 -- snapshot means new views are born with the right appearance and an OS
 -- appearance flip reaches them within one tick — no extra plumbing.
+--
+-- The same message handler also carries the KEYBOARD HAND-OVER, in both
+-- directions, because a native view and the page are two separate first
+-- responders and only one of them can have the keys:
+--
+--   * native → page: a click in a browser view can't reach the DOM, so the
+--     native side calls @leksahBrowserActivate(bid)@, which replays it as the
+--     bubbling @focusin@ a click on any other pane produces — so the tab float,
+--     @lwFocused@ and the pane ring all move exactly as they normally do.
+--   * page → native: a trusted @focusin@ on a pane container that holds a
+--     browser placeholder posts @{focus: bid}@ (the view takes the first
+--     responder); any other trusted @focusin@ posts @{release: wid}@ (the main
+--     webview takes it back from that window's browser views).  Without the
+--     release, flipping from a browser pane to a terminal moved the ring but
+--     left the keystrokes going to the web page.
 browserNativeReporterJs :: Text
 browserNativeReporterJs = T.unlines
   [ "(function(){"
   , "  if (!(window.webkit && window.webkit.messageHandlers"
   , "        && window.webkit.messageHandlers.leksahBrowserFrame)) return;"
+  , "  var H = window.webkit.messageHandlers.leksahBrowserFrame;"
+  -- ── Keyboard hand-over between the page and the native views ──────────
+  -- A click inside a native view never reaches the DOM, so the native side
+  -- reports it here (leksah_browser_notify_activate) and we replay it as the
+  -- synthetic focusin a real click on the pane would have bubbled: the
+  -- document listener floats the tab (focusTabJs) and the leaf listener sets
+  -- lwFocused (TerminalCC) — one dispatch, and every activation consumer
+  -- behaves exactly as it does for every other kind of pane.
+  , "  window.leksahBrowserActivate = function(bid){"
+  , "    var el = document.querySelector('.browser-native[data-bid=\"' + bid + '\"]');"
+  , "    if (!el) return;"
+  -- The keys are in the page now, so a caret left in this pane's own address
+  -- bar is a lie — and it would also read as \"the chrome wants the keyboard\"
+  -- to the visibility self-heal below.
+  , "    var ae = document.activeElement;"
+  , "    if (ae && ae.blur && ae.closest"
+  , "        && ae.closest('.browser') === el.closest('.browser')) ae.blur();"
+  , "    try { el.dispatchEvent(new FocusEvent('focusin', {bubbles: true})); } catch(e){}"
+  , "  };"
+  , "  window.leksahBrowserFocusNative = function(bid){"
+  , "    try { H.postMessage({focus: bid}); } catch(e){}"
+  , "  };"
+  -- \"the page needs the keyboard NOW\" — for keyboard UI that can't wait for
+  -- the reporter tick to notice it (the flipper: see 'flipperVisibleD').
+  , "  window.leksahBrowserRelease = function(){"
+  , "    try { H.postMessage({release: (window.leksahWindowId || 0)}); } catch(e){}"
+  , "  };"
+  -- The other direction: DOM focus moving is how the page says the keyboard is
+  -- ITS again, so take the first responder back from whichever browser view
+  -- holds it.  Who gives it TO a view is decided in one place only — the pane
+  -- widget's focus pulse ('IDE.Web.Widget.Browser'), which knows whether the
+  -- pane wants its page or its (empty) address bar; a rule here would race it,
+  -- since the tab-body focus below lands 0.2s BEFORE the widget's pulse and a
+  -- fresh pane would lose its address bar to its blank page.
+  --
+  -- Two exemptions: focus on a pane CONTAINER that holds a browser placeholder
+  -- (the tab body a select focuses, a view leaf) is the pane itself being
+  -- activated, not the page asking for the keyboard — releasing there would
+  -- yank it straight back out of the view; and !isTrusted skips our own
+  -- dispatch above, so a click in a native view doesn't bounce the keyboard
+  -- into the page.  __lkNbAny keeps the listener idle until a pane exists.
+  , "  document.addEventListener('focusin', function(e){"
+  , "    if (!e.isTrusted || !window.__lkNbAny) return;"
+  , "    var t = e.target;"
+  , "    if (!(t && t.matches && t.querySelector)) return;"
+  , "    var isPaneBox = t.matches('.tab[data-tabkey]')"
+  , "                    || t.matches('.terminal-cc-leaf[data-leaf]');"
+  , "    if (isPaneBox && t.querySelector('.browser-native')) return;"
+  , "    try { H.postMessage({release: (window.leksahWindowId || 0)}); } catch(e){}"
+  , "  }, true);"
+  -- Should this pane's view hold the keyboard?  Read straight off the classes
+  -- the model drives: the enclosing tab is the selected one and the enclosing
+  -- split leaf (if any) is the focused one — plus two abstentions.  DOM focus
+  -- in this pane's own chrome means the address bar wants the keys; DOM focus
+  -- in ANY text control means the page is being typed into (a terminal's xterm
+  -- textarea, an editor, a filter box), and taking the keyboard out of a live
+  -- caret is never worth it — the pane's own click or select pulse will hand
+  -- the keys over when the user actually goes there.
+  , "  function isActiveBrowserPane(el){"
+  , "    var tab = el.closest('.tab');"
+  , "    if (tab && !tab.classList.contains('tab-active')) return false;"
+  , "    var leaf = el.closest('.terminal-cc-leaf');"
+  , "    if (leaf && !leaf.querySelector('.pane-chrome.active')) return false;"
+  , "    var ae = document.activeElement;"
+  , "    if (ae && ae.closest && ae.closest('.browser') === el.closest('.browser'))"
+  , "      return false;"
+  , "    if (ae && ae.matches"
+  , "        && ae.matches('input, textarea, select, [contenteditable=\"true\"]'))"
+  , "      return false;"
+  , "    return true;"
+  , "  }"
+  , "  function hasPage(bid){"
+  , "    var s = (window.__lkNb || {})[bid];"
+  , "    return !!(s && s.u && s.u !== 'about:blank');"
+  , "  }"
+  , "  var wanted = {};"
   , "  var emptyLeft = 0;"
   , "  setInterval(function(){"
   , "    try {"
   , "      var els = document.querySelectorAll('.browser-native');"
+  , "      window.__lkNbAny = els.length > 0;"
   , "      if (els.length === 0 && emptyLeft <= 0) return;"
   , "      emptyLeft = els.length > 0 ? 20 : (emptyLeft - 1);"
   , "      var fl = document.querySelector('.flipper');"
@@ -3817,6 +4373,16 @@ browserNativeReporterJs = T.unlines
   , "        panes.push({bid: bid, x: Math.round(r.left), y: Math.round(r.top),"
   , "                    w: Math.round(r.width), h: Math.round(r.height),"
   , "                    vis: !!vis});"
+  -- Hand the keyboard to the view on the RISING EDGE of \"this pane should have
+  -- it\" — never on every tick, so a wrong answer can't fight the page for the
+  -- keys, it can only lose them once.  The edge covers what the widget's select
+  -- pulse can't: a page that finishes loading in the already-active pane (at
+  -- restore the view is recreated and its page commits AFTER the pulse), and a
+  -- flipper that hid every pane and then landed back on the pane it started
+  -- from (no select pulse at all).
+  , "        var want = vis && isActiveBrowserPane(el) && hasPage(bid);"
+  , "        if (want && !wanted[bid]) window.leksahBrowserFocusNative(bid);"
+  , "        wanted[bid] = want;"
   , "      });"
   , "      var dark = true;"
   , "      try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch(e){}"
@@ -3930,6 +4496,13 @@ main showMenubar macTitlebar wid ide = mdo
     -- area's content by DIFFERENT transforms, which CSS anchors ignore.
     elAttr "div" ("class" =: "leksah-pane-glow glow-tall") blank
     elAttr "div" ("class" =: "leksah-pane-glow glow-wide1") blank
+    -- The active pane's 1px left ring line, as its own anchored overlay
+    -- (--leksah-active-left-line, declared only by active markers provably
+    -- NOT flush with the area's left edge): the glow's own border-left is
+    -- suppressed whenever the side column is hidden (no line at screen
+    -- edges), and this element supplies the line for the interior-edge
+    -- actives that must keep it.  See terminalCss ".leksah-pane-left-line".
+    elAttr "div" ("class" =: "leksah-pane-left-line") blank
     keymapDomE <- keymapWidget showMenubar top
     -- Commands with no 'IDEAction' are handled by matching the keymap event
     -- stream (flipper, next/previous error, focus-alert, …).  The DOM listener
@@ -4151,9 +4724,12 @@ main showMenubar macTitlebar wid ide = mdo
                 -> m (Event t (Map Text TabKey, [TabKey]))
       tabButton area flipKey k selectedD orderStyleD badgeD mbTitle mbCloseTip labelW onSel =
         elDynAttr "span"
-            -- data-flipkey lets the ⌘` flip-target hint (hintsJs) find this button.
+            -- data-flipkey lets the ⌘` flip-target hint (hintsJs) find this
+            -- button; data-tabkey lets the ⌘-drag pane move (leafDragJs)
+            -- report tab-button hovers/drops (resolved back by show-key).
             ((\sel ost -> "class" =: ("tab-wrap" <> if sel then " selected" else "")
-                          <> "data-flipkey" =: flipKey <> ost)
+                          <> "data-flipkey" =: flipKey
+                          <> "data-tabkey" =: T.pack (show k) <> ost)
                <$> selectedD <*> orderStyleD) $ do
           closeE <- case mbCloseTip of
             Just tip -> do
@@ -4386,18 +4962,37 @@ main showMenubar macTitlebar wid ide = mdo
     _ <- liftIO . forkIO . forever $ nextFontConvert >>= fireFontConv
     performEvent_ $ ffor fontConvE $ \(lwi, w, f) ->
         liftIO . void . forkIO $ do
-            ok <- convertWindowMinimal lwi w
-            when ok $ getGlobalIDERef >>= mapM_ (\r' -> (`reflectIDE` r') $ do
-                ps <- readIDE prefs
-                modifyIDE_ $ \i ->
-                  case M.lookup lwi (i ^. leksahWindows)
-                         >>= \lw -> (,) lw <$> lwFocused lw of
-                    Just (lw, l)
-                      | Just (PaneContent _ cur) <- M.lookup l (lwPanes lw) ->
-                        let eff = fromMaybe (monospaceFontSize ps) cur
-                        in i & leksahWindows
-                               %~ M.adjust (setPaneFont l (f eff)) lwi
-                    _ -> i)
+            -- Serialized under the consolidate lock: a second font key
+            -- arriving while the first conversion's tmux work is in flight
+            -- used to start a CONCURRENT conversion (leafFontAdjust's
+            -- pane-count check still saw the old window) — the interleaved
+            -- conversions duplicated leaves and corrupted the tree.  Inside
+            -- the lock the pane count is re-checked: by the time a queued
+            -- request runs, the window may already be single-pane (the
+            -- previous conversion isolated it) and needs no conversion.
+            ok <- withMVar consolidateLock $ \_ -> do
+                n  <- paneCountOfWindow w
+                ok <- if n > 1 then convertWindowMinimal lwi w else pure True
+                when ok $ getGlobalIDERef >>= mapM_ (\r' -> (`reflectIDE` r') $ do
+                    ps <- readIDE prefs
+                    modifyIDE_ $ \i ->
+                      case M.lookup lwi (i ^. leksahWindows)
+                             >>= \lw -> (,) lw <$> lwFocused lw of
+                        Just (lw, l)
+                          | Just (PaneContent _ cur) <- M.lookup l (lwPanes lw) ->
+                            let eff = fromMaybe (monospaceFontSize ps) cur
+                            in i & leksahWindows
+                                   %~ M.adjust (setPaneFont l (f eff)) lwi
+                        _ -> i)
+                pure ok
+            -- The isolated pane's new size may now match a neighbour.
+            when ok $ consolidateLw lwi
+    -- Consolidation requests from the command layer (a direct leaf font
+    -- change, see leafFontAdjust) — same Chan seam as the font converts.
+    (consolidateReqE, fireConsolidateReq) <- newTriggerEvent
+    _ <- liftIO . forkIO . forever $ nextConsolidate >>= fireConsolidateReq
+    performEvent_ $ ffor consolidateReqE $ \lwi ->
+        liftIO . void . forkIO $ consolidateLw lwi
     -- Git log viewer requested from the workspace git tree (a branch click drops
     -- (repo dir, branch) on the GitLogRequest queue); open it as a center tab.
     (gitLogReqE, fireGitLogReq) <- newTriggerEvent
@@ -4853,6 +5448,16 @@ main showMenubar macTitlebar wid ide = mdo
         flipMirrorHideE = fmapMaybe (\(v, _, _) -> if v then Nothing else Just ())
                                     (updated flipMirrorStateD)
     performEvent_ $ ffor (updated flipperVisibleD) $ \v -> wlog wid ("flipper visible=" <> show v)
+    -- The flipper is keyboard-only, and a native browser pane may be holding
+    -- the keyboard (its WKWebView is a first responder of its own).  ⌘\` itself
+    -- arrives as a menu key equivalent and opens this, but the ⌘ KEYUP that
+    -- commits the flip goes to the first responder — so hand the keyboard back
+    -- to the page the instant the flipper opens, rather than waiting for the
+    -- reporter's next tick to notice the overlay (a lost keyup left the flipper
+    -- stuck open).
+    performEvent_ $ ffor (ffilter id (updated flipperVisibleD)) $ \_ ->
+        liftJSM . void $ eval
+            ("window.leksahBrowserRelease && window.leksahBrowserRelease();" :: Text)
     performEvent_ $ ffor (updated flipSelIndexD) $ \i -> wlog wid ("flipper selIndex=" <> show i)
     performEvent_ $ ffor flipMirrorShowE $ \(is, i) -> wlog wid ("flipMirror write show idx=" <> show i <> " nItems=" <> show (length is) <> " (shared state)")
     performEvent_ $ ffor flipMirrorHideE $ \() -> wlog wid "flipMirror write hide (shared state)"
@@ -4906,8 +5511,17 @@ main showMenubar macTitlebar wid ide = mdo
                         _            -> Nothing) localFlipE
         flipPaneE = fmapMaybe (\(_, fi) -> case fi of FlipPane s w p -> Just (s, w, p); _ -> Nothing) localFlipE
         flipViewE = fmapMaybe (\(_, fi) -> case fi of FlipView n l -> Just (n, l); _ -> Nothing) localFlipE
-    performEvent_ $ ffor flipPaneE $ \(s, w, p) -> do
+    performEvent_ $ ffor (attachWith (,) ((,) <$> lwsB <*> current allTreeD) flipPaneE) $
+      \((lws, tree), (s, w, p)) -> do
         wlog wid ("ENTER flipPaneE selectTmuxPane " <> show (s, w, p))
+        -- Commit the flip target into the MODEL first: the leaf owning the
+        -- target window becomes its lw's focused pane, so the tab-select
+        -- focus reconciler lands the keyboard there directly.  Leaving this
+        -- to the CC client's %session-window-changed round trip let the
+        -- reconciler focus the PREVIOUSLY focused leaf first — whose async
+        -- focusin then raced (and sometimes overwrote) the late model
+        -- write, leaving the flipper "landed" on the old pane.
+        liftIO $ forM_ (flipPaneLeaf lws tree s w) $ \(lwi, l) -> setFocusedLeaf lwi l
         liftIO $ case remoteTabHostTarget s of
           -- remote pane: select over ssh (off the reflex thread); the tab's
           -- control client hears %session-window-changed and re-renders
@@ -4919,13 +5533,17 @@ main showMenubar macTitlebar wid ide = mdo
     -- Cross-window flip: raise the owning OS window and make the selected tab
     -- active there; for a terminal pane, also switch tmux to that pane.  The tab
     -- stays where it is (no move) — the flipper only navigates.
-    performEvent_ $ ffor crossFlipE $ \(WindowId n, fi) -> do
+    performEvent_ $ ffor (attachWith (,) ((,) <$> lwsB <*> current allTreeD) crossFlipE) $
+      \((lws, tree), (WindowId n, fi)) -> do
         wlog wid ("crossFlip commit -> raise window " <> show n)
         liftIO $ requestRaiseWindow n
         liftIO $ case fi of
-          FlipPane s w p -> case remoteTabHostTarget s of
-            Just (host, target) -> void . forkIO $ selectRemoteTmuxPane host target w p >> fireRemotePoke ()
-            Nothing             -> selectTmuxPane s w p
+          FlipPane s w p -> do
+            -- Same up-front model commit as the local flip above.
+            forM_ (flipPaneLeaf lws tree s w) $ \(lwi, l) -> setFocusedLeaf lwi l
+            case remoteTabHostTarget s of
+              Just (host, target) -> void . forkIO $ selectRemoteTmuxPane host target w p >> fireRemotePoke ()
+              Nothing             -> selectTmuxPane s w p
           _ -> return ()
     -- Jump-to-teammate (⌃⌥A): pick the next attention-flagged window from the
     -- current pane tree, switch tmux to it (clears the flag), and bring its
@@ -5129,6 +5747,14 @@ main showMenubar macTitlebar wid ide = mdo
                   r <- liftIO $ (,) <$> readWebSession <*> listTerminalSessions
                   wlog wid "EXIT restore"
                   return r
+    -- Session-restore normalization: one consolidation sweep once the
+    -- restored windows and the first reconcile have settled, so layouts
+    -- from before the invariant (adjacent same-font tmux windows) converge
+    -- to it.  Idempotent + globally locked: several OS windows firing this
+    -- is harmless.
+    consolidateRestoreE <- delay 5 restorePb
+    performEvent_ $ ffor consolidateRestoreE $ \_ ->
+        liftIO . void . forkIO $ consolidateAll
     let existingIdsE = snd <$> restoreE
         -- Editor keys of THIS window's seeded wide0 seed openFileKeysD so the
         -- editor event routing knows about the restored files (they don't flow
@@ -6041,6 +6667,243 @@ main showMenubar macTitlebar wid ide = mdo
                         (Just (T.pack dir <> "#" <> ks))
     -- ⌘D moved the tab into a session layout as a native view leaf: close it.
     let convertCloseE = leafConvertDoneE
+    -- ══ ⌘-DRAG PANE MOVE (leafDragJs is the gesture; see its comment) ═════
+    -- Three per-window callbacks land here: leaf-peek (show a hovered tab
+    -- without activating it — tabsWidget's peekTabE input), and the ONE
+    -- drop/cancel call, dispatched in a forked thread with every model edit
+    -- a single atomic modifyIDE_ (the modifyLeksahWindow pattern — the
+    -- reconcile recomputes from the live IDE, so an atomic edit can't be
+    -- clobbered; cross-session tmux surgery additionally holds the
+    -- conversion guard so no reconcile runs between move-window and the
+    -- model edit).
+    (leafPeekReqE, fireLeafPeekReq) <- newTriggerEvent
+    (leafSelectReqE, fireLeafSelectReq) <- newTriggerEvent
+    (leafDropRawE, fireLeafDrop) <- newTriggerEvent
+    let resolveWide0Key order str = listToMaybe
+          [ k | (k, _) <- order, T.pack (show k) == str ]
+        leafPeekE = attachWithMaybe
+          (\order str -> ("wide0" =:) <$> resolveWide0Key order str)
+          (current wide0OrderD) leafPeekReqE
+        -- Cancel with a plain-tab source: a REAL select of that tab (flips
+        -- any peek back and refocuses the tab body).
+        leafSelectTabE = attachWithMaybe
+          (\order str -> ("wide0" =:) <$> resolveWide0Key order str)
+          (current wide0OrderD) leafSelectReqE
+    -- The draggable plain wide0 tabs (viewLeafAllowed — what materialize can
+    -- host), published for leafDragJs's source/destination checks.
+    dragTabsPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [ updated wide0OrderD
+                                   , tag (current wide0OrderD) dragTabsPb ]) $
+      \order -> liftJSM . void . eval $
+        let esc = T.replace "'" "\\'" . T.replace "\\" "\\\\"
+        in "window.__leksahLeafDragTabs = {"
+           <> T.intercalate ","
+                [ "'" <> esc (T.pack (show k)) <> "':1"
+                | (k, _) <- order, viewLeafAllowed k ]
+           <> "};"
+    performEvent_ $ ffor leafDropRawE $ \json ->
+      liftIO . void . forkIO $ getGlobalIDERef >>= mapM_ (\ideR -> do
+        let parsed = parseLeafDrop =<< decodeStrict' (encodeUtf8 json)
+            -- "Nothing happened": activate the dragged pane — its window
+            -- flips back visible (the drag can only start in the visible
+            -- tab) and the pane takes the focus, exactly as if clicked.
+            activateSrc src = case src of
+              LDPane slwId slInt -> do
+                (`reflectIDE` ideR) $ modifyIDE_ $ leksahWindows %~
+                  M.adjust (\lw -> if LeafId slInt `M.member` lwPanes lw
+                                     then lw { lwFocused = Just (LeafId slInt) }
+                                     else lw) slwId
+                requestLocalTerm slwId
+              LDTmuxPane slwId slInt p -> do
+                activateSrc (LDPane slwId slInt)
+                selectTmuxPaneId p
+              LDTab kStr -> fireLeafSelectReq kStr
+            -- Land the source beside/at `spec` in leksah window dlwId.
+            dropInto src dlwId spec = case src of
+              LDPane slwId slInt -> do
+                let sl = LeafId slInt
+                if slwId == dlwId
+                  then do   -- same window: pure move, LeafId preserved
+                    lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                    (`reflectIDE` ideR) $ modifyIDE_ $ leksahWindows %~
+                      M.adjust (moveLeafInWindow sl spec) slwId
+                    -- Focus-follow: a moved tmux pane's window becomes the
+                    -- session's current window (see the cross-window case).
+                    case M.lookup slwId lws0 >>= (M.lookup sl . lwPanes) of
+                      Just (PaneContent (PaneTmux w) _) -> selectTmuxWindowId w
+                      _ -> return ()
+                    requestLocalTerm dlwId
+                  else do
+                    lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                    case (M.lookup slwId lws0, M.lookup dlwId lws0
+                         ,M.lookup slwId lws0 >>= (M.lookup sl . lwPanes)) of
+                      (Just slw0, Just dlw0, Just pc) -> do
+                        -- A tmux pane crossing to a DIFFERENT session must
+                        -- reparent its window first (keepPane prunes
+                        -- wrong-session panes), under the conversion guard.
+                        case (pcKind pc, lwSession slw0, lwSession dlw0) of
+                          (PaneTmux w, Just ss, Just ds) | ss /= ds -> do
+                            beginConversion
+                            moveTmuxWindow w ds
+                            (`reflectIDE` ideR) $ modifyIDE_ $
+                              syncLwTabs . moveLeafAcross slwId sl dlwId spec
+                            endConversion
+                          _ ->
+                            (`reflectIDE` ideR) $ modifyIDE_ $
+                              syncLwTabs . moveLeafAcross slwId sl dlwId spec
+                        -- Land the focus ON the moved pane: make its window
+                        -- current in the (possibly new) session, or the CC
+                        -- widget's focus-follow snaps back to the
+                        -- destination's current window.
+                        case pcKind pc of
+                          PaneTmux w -> selectTmuxWindowId w
+                          _          -> return ()
+                        requestLocalTerm dlwId
+                      _ -> activateSrc src
+              -- ONE tmux pane of a multi-pane window: landing on a leaf whose
+              -- tmux window has the SAME font joins it there as a real tmux
+              -- split (full-size, on the dropped edge — including rearranging
+              -- within its own window); any other target (node/root split,
+              -- view leaf, font mismatch) breaks it out into a fresh tmux
+              -- window + leaf inheriting the source leaf's font.
+              LDTmuxPane slwId slInt p -> do
+                lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                defFont <- monospaceFontSize
+                             <$> (`reflectIDE` ideR) (readIDE prefs)
+                case ( M.lookup dlwId lws0
+                     , M.lookup slwId lws0 >>= (M.lookup (LeafId slInt) . lwPanes)
+                     , M.lookup slwId lws0 >>= lwSession ) of
+                  (Just dlw0, Just (PaneContent (PaneTmux ws) sfont), mss) -> do
+                    srcPanes <- panesOfWindow ws
+                    let joinTarget = do
+                          l <- listToMaybe [ l' | (pth, Just l', _)
+                                                    <- subtreeRects (lwTree dlw0)
+                                                , pth == dsPath spec ]
+                          PaneContent (PaneTmux wd) dfont <- M.lookup l (lwPanes dlw0)
+                          -- effective sizes: Nothing = the global pref
+                          guard (fromMaybe defFont dfont == fromMaybe defFont sfont)
+                          pure (l, wd)
+                    if p `notElem` srcPanes
+                      then activateSrc src
+                      else if length srcPanes <= 1
+                        -- the pane IS its window: the whole-leaf move
+                        then dropInto (LDPane slwId slInt) dlwId spec
+                        else case joinTarget of
+                          Just (l, wd) -> do
+                            -- -t must not resolve to the moved pane itself
+                            -- (own-window rearrange): aim at another pane.
+                            tgt <- fromMaybe wd . listToMaybe . filter (/= p)
+                                     <$> panesOfWindow wd
+                            joinTmuxPaneFull p tgt (dsOrient spec == SplitH)
+                                                   (not (dsAfter spec))
+                            setFocusedLeaf dlwId l
+                            selectTmuxPaneId p
+                            requestLocalTerm dlwId
+                          Nothing -> case lwSession dlw0 <|> mss of
+                            Nothing -> activateSrc src
+                            Just ds -> do
+                              -- The new window (strayable) + the leaf insert
+                              -- must be atomic wrt the reconcile, exactly
+                              -- like moveLeafAcross's cross-session arm.
+                              beginConversion
+                              mW <- breakTmuxPaneTo p ds
+                              case mW of
+                                Nothing -> do
+                                  endConversion
+                                  activateSrc src
+                                Just newW -> do
+                                  (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
+                                    case M.lookup dlwId (i ^. leksahWindows) of
+                                      Nothing -> i
+                                      Just dlw ->
+                                        let newId = LeafId (lwNext dlw)
+                                            t'    = insertLeafAt spec newId (lwTree dlw)
+                                        in if newId `elem` treeLeafIds t'
+                                             then i & leksahWindows %~ M.insert dlwId dlw
+                                               { lwTree    = t'
+                                               , lwPanes   = M.insert newId
+                                                   (PaneContent (PaneTmux newW) sfont)
+                                                   (lwPanes dlw)
+                                               , lwFocused = Just newId
+                                               , lwZoomed  = Nothing
+                                               , lwNext    = lwNext dlw + 1
+                                               , lwSession = lwSession dlw <|> Just ds }
+                                             else i
+                                  endConversion
+                                  selectTmuxWindowId newW
+                                  requestLocalTerm dlwId
+                  _ -> activateSrc src
+              LDTab kStr -> do
+                wws <- (`reflectIDE` ideR) (readIDE webWindows)
+                case [ k | ww <- M.elems wws, k <- _wwWide0 ww
+                         , T.pack (show k) == kStr ] of
+                  (k:_) | viewLeafAllowed k -> do
+                    -- The dragged plain tab is the active one (the drag
+                    -- started on its visible body): settle a dirty editor
+                    -- exactly like the ⌘D pipeline, then it becomes a fresh
+                    -- view leaf and its tab closes.
+                    requestSaveActiveFileWait
+                    (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
+                      case M.lookup dlwId (i ^. leksahWindows) of
+                        Nothing -> i
+                        Just dlw ->
+                          let newId = LeafId (lwNext dlw)
+                              t'    = insertLeafAt spec newId (lwTree dlw)
+                          in if newId `elem` treeLeafIds t'
+                               then i & leksahWindows %~ M.insert dlwId dlw
+                                 { lwTree    = t'
+                                 , lwPanes   = M.insert newId
+                                     (PaneContent (PaneView k) Nothing)
+                                     (lwPanes dlw)
+                                 , lwFocused = Just newId
+                                 , lwZoomed  = Nothing
+                                 , lwNext    = lwNext dlw + 1 }
+                               else i
+                    fireLeafConvertDone [k]
+                    requestLocalTerm dlwId
+                  _ -> activateSrc src
+        forM_ parsed $ \(src, dst) -> case dst of
+          LDDstNone -> activateSrc src
+          LDDstPane dlwId ptr box -> do
+            lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+            case M.lookup dlwId lws0 of
+              Nothing -> activateSrc src
+              Just dlw0 -> do
+                let excl = case src of
+                      LDPane slwId slInt | slwId == dlwId -> Just (LeafId slInt)
+                      _ -> Nothing
+                case pickDropTarget ptr box excl (lwZoomed dlw0)
+                                    (lwTree dlw0) of
+                  Nothing   -> activateSrc src
+                  Just spec -> dropInto src dlwId spec
+          LDDstTab tstr
+            -- dropping a plain tab onto its own button: nothing to do
+            | LDTab s <- src, s == tstr -> activateSrc src
+            | otherwise -> do
+                lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                case [ n | n <- M.keys lws0
+                         , T.pack (show (LeksahWinKey n)) == tstr ] of
+                  -- An LW tab button: land at the right edge of its tree.
+                  (n:_) -> dropInto src n (DropSpec [] SplitH True)
+                  []    -> do
+                    -- A draggable plain tab's button: MATERIALIZE it, then
+                    -- land beside the fresh view leaf.
+                    wws <- (`reflectIDE` ideR) (readIDE webWindows)
+                    case [ k | ww <- M.elems wws, k <- _wwWide0 ww
+                             , T.pack (show k) == tstr ] of
+                      (k':_) | viewLeafAllowed k' ->
+                        mintLeksahWindow Nothing
+                            (PaneContent (PaneView k') Nothing) >>= \case
+                          Nothing  -> activateSrc src
+                          Just lwi -> do
+                            fireLeafConvertDone [k']
+                            dropInto src lwi (DropSpec [] SplitH True)
+                      _ -> activateSrc src
+        -- A drop can create same-font adjacency anywhere (the destination,
+        -- the source's survivors, a freshly minted window): normalize —
+        -- adjacent same-font tmux windows merge into one ('consolidateLw';
+        -- idempotent and free where nothing matches).
+        forM_ parsed $ \_ -> consolidateAll)
     -- Prompt to save a dirty editor before closing it (⌘W / File ▸ Close).  Same
     -- look and interaction as the terminal pane close menu (renderCloseMenu): a
     -- centred keyboard-navigable menu.  Save (default) writes then closes one
@@ -6299,6 +7162,9 @@ main showMenubar macTitlebar wid ide = mdo
           , ("tall" =: TerminalsKey) <$ activateTerminalsE ]
         selectTabE = leftmost [flipTabE, restoreVisibleE, ("wide1" =: GrepKey) <$ grepReqE
                               , ("wide1" =: GrepKey) <$ lspRefsE
+                              -- ⌘-drag cancel with a plain-tab source: a real
+                              -- select of that tab (flips any peek back).
+                              , leafSelectTabE
                               -- A flipped/alerted pane opens its OWNING leksah
                               -- window's tab (not the session's first lw).
                               , attachWith (\(lws, tree) (s, w, _) ->
@@ -6381,6 +7247,7 @@ main showMenubar macTitlebar wid ide = mdo
       selectTabE
       setRecentE
       focusTabE
+      leafPeekE   -- ⌘-drag pane move: peek a hovered tab (visible, not active)
       mkTabButtons
       (\k selectedE _v -> do
         let toDM x = fmap (DM.singleton x . Identity)
@@ -6544,6 +7411,15 @@ main showMenubar macTitlebar wid ide = mdo
                     liftIO (fireFocusTab k)
                 _ -> return ())
         _ <- w ^. jss ("leksahTermActivity" :: Text) (fun $ \_ _ _ -> liftIO (fireTermActivity ()))
+        -- ⌘-drag pane move (leafDragJs): peek a hovered wide0 tab / the one
+        -- drop-or-cancel payload.  Per-window globals — the gesture happens
+        -- entirely inside one OS window.
+        _ <- w ^. jss ("leksahLeafPeek" :: Text) (fun $ \_ _ args -> case args of
+                (kV:_) -> valToText kV >>= liftIO . fireLeafPeekReq
+                _ -> return ())
+        _ <- w ^. jss ("leksahLeafDrop" :: Text) (fun $ \_ _ args -> case args of
+                (jV:_) -> valToText jV >>= liftIO . fireLeafDrop
+                _ -> return ())
         _ <- w ^. jss ("leksahPaneFocus" :: Text) (fun $ \_ _ args -> case args of
                 (pV:_) -> do
                     pid <- valToText pV
@@ -6764,47 +7640,9 @@ main showMenubar macTitlebar wid ide = mdo
               (lws', next') = reconcileWindows liveBySession hiddenIds mempty
                                 (i ^. nextLeksahWin) (i ^. leksahWindows)
           in syncLwTabs (i & leksahWindows .~ lws' & nextLeksahWin .~ next')
-        -- Keep every OS window's tab list consistent with the leksah-window
-        -- map: prune tabs whose window is gone (falling the active tab back
-        -- to the next one), and append a tab for any window in the map that
-        -- no OS window shows.
-        syncLwTabs i =
-          let lws = i ^. leksahWindows
-              liveTab k = case k of LeksahWinKey n -> n `M.member` lws
-                                    _              -> True
-              pruneWin ww =
-                let w0 = filter liveTab (_wwWide0 ww)
-                    act = case _wwActive ww of
-                      Just a | liveTab a -> Just a
-                      Just _             -> listToMaybe w0
-                      Nothing            -> Nothing
-                in ww { _wwWide0 = w0, _wwActive = act }
-              pruned = fmap pruneWin (i ^. webWindows)
-              placed = S.fromList
-                [ n | ww <- M.elems pruned, LeksahWinKey n <- _wwWide0 ww ]
-              -- First OS window (id order) showing each session.
-              sessionHome = M.fromListWith (\_ old -> old)
-                [ (s, osW)
-                | (osW, ww) <- M.toAscList pruned
-                , LeksahWinKey n <- _wwWide0 ww
-                , Just s <- [M.lookup n lws >>= lwSession] ]
-              targetFor lw = case lwSession lw >>= (`M.lookup` sessionHome) of
-                Just osW -> Just osW
-                Nothing  -> case i ^. activeWindow of
-                  Just osW | osW `M.member` pruned -> Just osW
-                  _ -> listToMaybe (M.keys pruned)
-              place ws (n, lw) = case targetFor lw of
-                Nothing  -> ws
-                Just osW -> M.adjust (\ww -> ww
-                  { _wwWide0  = _wwWide0 ww <> [LeksahWinKey n]
-                  , _wwActive = case _wwActive ww of
-                      Nothing -> Just (LeksahWinKey n)
-                      a       -> a
-                  }) osW ws
-              final = foldl' place pruned
-                [ (n, lw) | (n, lw) <- M.toAscList lws
-                , not (n `S.member` placed) ]
-          in i & webWindows .~ final
+        -- (syncLwTabs — the tab-list/window-map consistency pass — is a
+        -- top-level function now: the ⌘-drag cross-window move composes it
+        -- after 'moveLeafAcross' too.)
         needsReconcileE = attachWithMaybe
           (\i tree ->
               let i' = applyReconcile tree i

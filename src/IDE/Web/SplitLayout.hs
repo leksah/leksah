@@ -54,6 +54,17 @@ module IDE.Web.SplitLayout
   , resizeNode
   , ConvertedPath(..)
   , spliceConverted
+    -- * Drag-and-drop moves
+  , DropSpec(..)
+  , detachLeaf
+  , insertLeafAt
+  , moveLeafInWindow
+  , subtreeRects
+  , pickDropTarget
+    -- * Consolidation
+  , MergeGroup(..)
+  , consolidateGroups
+  , collapseGroup
     -- * tmux persistence
   , saveSessionLayouts
   , readLeksahWindows
@@ -69,7 +80,7 @@ import qualified Data.Aeson as Aeson (encode)
 import Data.Aeson.Types (Parser, parseMaybe)
 import qualified Data.ByteString.Base64 as B64 (encode, decode)
 import qualified Data.ByteString.Lazy as LBS (toStrict)
-import Data.List (foldl')
+import Data.List (foldl', sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
        (adjust, delete, empty, fromList, insert, keysSet, lookup, member,
@@ -239,6 +250,76 @@ migrateV1 sid v1 = mainWindow <> extraWindows
 treeLeafIds :: SplitTree -> [LeafId]
 treeLeafIds (SplitLeaf l)     = [l]
 treeLeafIds (SplitNode _ ks)  = concatMap (treeLeafIds . snd) ks
+
+-- | One set of tmux windows to merge into a single window: a maximal run of
+-- consecutive siblings whose subtrees consist ENTIRELY of tmux panes with
+-- one equal font.  The first leaf's window survives; the run's structure
+-- (with its shares) says how the merged window's internal tmux layout is
+-- assembled.
+data MergeGroup = MergeGroup
+  { mgLeaves :: [(LeafId, Text)]  -- ^ leaves + their tmux windows, tree order
+  , mgTree   :: SplitTree         -- ^ the run as a subtree (shares relative)
+  } deriving (Eq, Show)
+
+-- | Find every merge group in a window's tree (see 'MergeGroup').  A fully
+-- qualifying child NODE counts as one unit in its parent's run, so a whole
+-- same-font subtree collapses in a single group; one that can't join a
+-- parent-level run still merges internally when it has several leaves.
+-- Fonts are compared EFFECTIVELY (@defFont@ resolves a 'Nothing' override):
+-- a ⌘−/⌘+ round trip stores @Just default@ where its neighbours have
+-- @Nothing@, and those must merge back.
+consolidateGroups :: Int -> Map LeafId PaneContent -> SplitTree -> [MergeGroup]
+consolidateGroups defFont panes = go
+  where
+    -- Just effective font when EVERY leaf below is a tmux pane at that size.
+    fontOf :: SplitTree -> Maybe Int
+    fontOf (SplitLeaf l) = case M.lookup l panes of
+        Just (PaneContent (PaneTmux _) f) -> Just (fromMaybe defFont f)
+        _                                 -> Nothing
+    fontOf (SplitNode _ cs) = case traverse (fontOf . snd) cs of
+        Just (f : fs) | all (== f) fs -> Just f
+        _                             -> Nothing
+    -- consecutive elements grouped by an equality key, Nothing keys single
+    runsBy :: Eq k => (a -> Maybe k) -> [a] -> [(Maybe k, [a])]
+    runsBy _ [] = []
+    runsBy f (x : xs) = case f x of
+        Nothing -> (Nothing, [x]) : runsBy f xs
+        Just k  -> let (same, rest) = span ((== Just k) . f) xs
+                   in (Just k, x : same) : runsBy f rest
+    winsOf t = [ (l, w)
+               | l <- treeLeafIds t
+               , Just (PaneContent (PaneTmux w) _) <- [M.lookup l panes] ]
+    group o run = MergeGroup (concatMap (winsOf . snd) run) (SplitNode o run)
+    go (SplitLeaf _) = []
+    go t@(SplitNode o cs) = case fontOf t of
+        Just _ | length (treeLeafIds t) >= 2 -> [group o cs]
+        _ -> concatMap segment (runsBy (fontOf . snd) cs)
+      where
+        segment (Just _, run@(_ : _ : _)) = [group o run]
+        -- a lone qualifying node in a parent run: merge it whole
+        segment (Just _, [(_, SplitNode o' cs')])
+          | length (concatMap (treeLeafIds . snd) cs') >= 2 = [group o' cs']
+        segment (_, run) = concatMap (go . snd) run
+
+-- | Replace a merge group's leaves with its single surviving leaf (the
+-- first one), the run's combined share on it.  Children untouched by the
+-- group are preserved; a node reduced to one child unwraps.
+collapseGroup :: [LeafId] -> SplitTree -> SplitTree
+collapseGroup []            tree = tree
+collapseGroup ls@(survivor : _) tree = go tree
+  where
+    covered t = all (`elem` ls) (treeLeafIds t)
+    go t | covered t = SplitLeaf survivor
+    go (SplitNode o cs) = case mergeRun cs of
+        [(_, t')] -> t'
+        cs'       -> SplitNode o cs'
+    go t = t
+    mergeRun [] = []
+    mergeRun ((s, c) : rest)
+      | covered c =
+          let (run, rest') = span (covered . snd) rest
+          in (s + sum (map fst run), SplitLeaf survivor) : mergeRun rest'
+      | otherwise = (s, go c) : mergeRun rest
 
 -- | The focus successor of a closing leaf: the pane that visually absorbs
 -- its space — the nearest @alive@ sibling in the closed leaf's own split
@@ -476,6 +557,157 @@ setPaneFont :: LeafId -> Maybe Int -> LeksahWindow -> LeksahWindow
 setPaneFont l mf lw = lw
   { lwPanes = M.adjust (\pc -> pc { pcFontSize = fmap (max 6 . min 72) mf })
                        l (lwPanes lw) }
+
+--
+-- Drag-and-drop moves (⌘-drag a pane to a new split location).
+--
+-- A drop destination addresses a SUBTREE (the leaf under the pointer or one
+-- of its ancestors) and one of its four edges; the moved pane takes the half
+-- of that subtree adjacent to the edge.  Crucially the spec addresses the
+-- tree WITH the dragged pane still in place — the preview the user saw never
+-- accounted for the source's removal — so 'moveLeafInWindow' inserts a
+-- placeholder first and only then detaches the source.
+--
+
+-- | Where a dragged pane would land: the subtree at @dsPath@ (child indexes
+-- from the root; @[]@ = the whole tree) is split along @dsOrient@, the moved
+-- pane taking the half selected by @dsAfter@ (left\/top = 'False').
+data DropSpec = DropSpec
+  { dsPath   :: [Int]
+  , dsOrient :: SplitOrientation
+  , dsAfter  :: Bool
+  } deriving (Eq, Show)
+
+-- | Remove one leaf from the tree (content is the caller's business),
+-- collapsing and renormalising.  'Nothing' when it was the last leaf.
+detachLeaf :: LeafId -> SplitTree -> Maybe SplitTree
+detachLeaf l = removeLeaves (S.fromList [l])
+
+-- | Insert an EXISTING leaf id beside the subtree a 'DropSpec' addresses.
+-- Splitting a leaf whose parent already has the wanted orientation joins as
+-- one more sibling on half the target's share (mirroring 'splitLeaf');
+-- splitting a whole node of the wanted orientation compresses its children
+-- into one half; anything else wraps in a fresh 50\/50 node.  An out-of-range
+-- path leaves the tree unchanged (callers should treat that as a failed
+-- insert — see 'moveLeafInWindow').
+insertLeafAt :: DropSpec -> LeafId -> SplitTree -> SplitTree
+insertLeafAt (DropSpec path0 o after) newId = go path0
+  where
+    pair r a b = if after then [ (r, a), (r, b) ] else [ (r, b), (r, a) ]
+    -- Split the addressed subtree itself along the edge.
+    here (SplitNode o' ks) | o' == o =
+      let scaled = [ (r / 2, t) | (r, t) <- ks ]
+          new    = (sum (map fst scaled), SplitLeaf newId)   -- = half of S
+      in SplitNode o' (if after then scaled <> [new] else new : scaled)
+    here s = SplitNode o (pair 0.5 s (SplitLeaf newId))
+    go [] t = here t
+    go [p] (SplitNode o' ks)
+      | o' == o, p >= 0, p < length ks =
+          -- The parent already runs in this orientation: join as a sibling
+          -- beside child p (half its share), exactly like 'splitLeaf'.
+          SplitNode o' (concat
+            [ if j == p then pair (r / 2) t (SplitLeaf newId) else [(r, t)]
+            | (j, (r, t)) <- zip [0 ..] ks ])
+    go (p : ps) (SplitNode o' ks)
+      | p >= 0, p < length ks =
+          SplitNode o' [ if j == p then (r, go ps t) else (r, t)
+                       | (j, (r, t)) <- zip [0 ..] ks ]
+    go _ t = t   -- out of range: unchanged
+
+-- | Rename one leaf in place (tree only).
+renameLeaf :: LeafId -> LeafId -> SplitTree -> SplitTree
+renameLeaf from to = go
+  where
+    go t@(SplitLeaf l) | l == from  = SplitLeaf to
+                       | otherwise  = t
+    go (SplitNode o ks) = SplitNode o [ (r, go t) | (r, t) <- ks ]
+
+-- | Move a pane within its window, PRESERVING its 'LeafId' so the keyed
+-- widget (and any xterm inside) survives.  The 'DropSpec' addresses the tree
+-- with the source still present, so: insert a placeholder (a fresh id that
+-- never renders — this is all one pure edit), detach the source, rename the
+-- placeholder to the source id.  No-op when the source is missing or the
+-- spec's path doesn't resolve.
+moveLeafInWindow :: LeafId -> DropSpec -> LeksahWindow -> LeksahWindow
+moveLeafInWindow src spec lw
+  | src `M.member` lwPanes lw
+  , placeholder `elem` treeLeafIds inserted   -- the insert actually happened
+  , Just detached <- detachLeaf src inserted
+  = lw { lwTree    = renameLeaf placeholder src detached
+       , lwFocused = Just src
+       , lwZoomed  = if lwZoomed lw == Just src then Nothing else lwZoomed lw
+       }
+  | otherwise = lw
+  where
+    placeholder = LeafId (lwNext lw)   -- renamed away again; no lwNext bump
+    inserted    = insertLeafAt spec placeholder (lwTree lw)
+
+-- | Every subtree's rect — nodes AND leaves, container fractions 0..1 — with
+-- its path from the root and (for leaves) the 'LeafId'.  The candidate
+-- universe for drop targeting, and the geometry exported to the front end.
+subtreeRects :: SplitTree -> [([Int], Maybe LeafId, (Double, Double, Double, Double))]
+subtreeRects = go [] 0 0 1 1
+  where
+    go path x y w h t = (path, leafOf t, (x, y, w, h)) : case t of
+      SplitLeaf _ -> []
+      SplitNode o ks ->
+        let total = max 1e-9 (sum (map fst ks))
+            offs  = scanl (+) 0 [ r / total | (r, _) <- ks ]
+        in concat
+             [ case o of
+                 SplitH -> go (path <> [i]) (x + off * w) y (r / total * w) h t'
+                 SplitV -> go (path <> [i]) x (y + off * h) w (r / total * h) t'
+             | (i, (off, (r, t'))) <- zip [0 ..] (zip offs ks) ]
+    leafOf (SplitLeaf l) = Just l
+    leafOf SplitNode{}   = Nothing
+
+-- | The commit-side drop-target pick; the front end's preview implements the
+-- SAME algorithm (leafDragJs), but the commit always recomputes here from
+-- the raw pointer, so the JS copy is preview-only.  Candidates: for every
+-- subtree whose rect contains the pointer (the leaf under it plus its
+-- ancestors — rects nest), each of its four edges; distances measured from
+-- the pointer to the CENTRE of the half the moved pane would occupy, IN
+-- PIXELS (fractions would distort under aspect ratio; centres beat edge
+-- midpoints for control — deep in a pane's left half you get that pane's
+-- left split, not whatever edge happens to be nearest).  Ties (e.g. three
+-- panes in a row, equal outer shares: "below the row" and "below the middle
+-- pane" have coincident target centres) break deterministically from the
+-- pointer position so mouse motion flicks between the options.
+-- 'Nothing' = no-op: pointer over the dragged pane itself, or nothing under
+-- it.  A zoomed window offers only "beside the whole tree".
+pickDropTarget
+  :: (Double, Double)   -- ^ pointer, px within the container
+  -> (Double, Double)   -- ^ container (w, h) px
+  -> Maybe LeafId       -- ^ the dragged pane, when it lives in THIS window
+  -> Maybe LeafId       -- ^ 'lwZoomed'
+  -> SplitTree -> Maybe DropSpec
+pickDropTarget (px, py) (cw, ch) excluded zoomed tree
+  | any (\(_, ml, _) -> ml == excluded && ml /= Nothing) containing = Nothing
+  | null cands = Nothing
+  | otherwise  = Just (pick (sortOn specKey ties))
+  where
+    universe = case zoomed of
+      Just z | z `elem` treeLeafIds tree -> [ ([], Just z, (0, 0, 1, 1)) ]
+      _ -> subtreeRects tree
+    inPx (p, ml, (x, y, w, h)) = (p, ml, (x * cw, y * ch, w * cw, h * ch))
+    containing =
+      [ e | e@(_, _, (x, y, w, h)) <- map inPx universe
+          , px >= x, px <= x + w, py >= y, py <= y + h ]
+    cands =
+      [ (dist cx cy, DropSpec p o after)
+      | (p, _, (x, y, w, h)) <- containing
+      , (o, after, cx, cy) <-
+          [ (SplitH, False, x + w / 4,     y + h / 2)
+          , (SplitH, True,  x + 3 * w / 4, y + h / 2)
+          , (SplitV, False, x + w / 2,     y + h / 4)
+          , (SplitV, True,  x + w / 2,     y + 3 * h / 4) ] ]
+    dist mx my = (px - mx) * (px - mx) + (py - my) * (py - my)
+    best = minimum (map fst cands)
+    -- Group near-equal distances (0.5px slack on the squared distance is
+    -- too tight; compare the roots).
+    ties = [ s | (d, s) <- cands, sqrt d <= sqrt best + 0.5 ]
+    specKey (DropSpec p o after) = (p, o == SplitV, after)
+    pick ss = ss !! ((abs (floor px + floor py) :: Int) `mod` length ss)
 
 --
 -- Validation / defaulting

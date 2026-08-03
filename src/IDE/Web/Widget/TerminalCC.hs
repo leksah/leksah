@@ -76,6 +76,7 @@ terminalCCWidget _ _ _ _ _ _ _ = do
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   , sessionlessLwWidget
+  , setFocusedLeaf
   ) where
 
 import Control.Concurrent (forkIO, killThread)
@@ -112,21 +113,22 @@ import Reflex.Dom.Core
         elAttr', elDynAttr, elDynAttr', listWithKey, text,
         widgetHold, _element_raw, EventName(Click, Keydown), (=:))
 import Language.Javascript.JSaddle
-       (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, js4, jsg, jss,
-        liftJSM, new, obj, valIsNull, valIsUndefined, valToBool, valToNumber,
-        valToText)
+       (JSM, JSVal, MakeObject, eval, fun, js, js0, js1, js2, js3, js4, jsg,
+        jss, liftJSM, new, obj, valIsNull, valIsUndefined, valToBool,
+        valToNumber, valToText)
 
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State
-       (IDE, TabKey, focusLog, leksahWindows,
-        LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId,
-        modifyIDE_, readIDE, reflectIDE)
+       (IDE, TabKey, focusLog, leksahWindows, flipMru, FlipItem(..),
+        LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..),
+        SplitTree, modifyIDE_, readIDE, reflectIDE)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.ReplTmux (tmuxSocket)
 import IDE.Web.SplitLayout
        (leafRects, LeafRect(..), treeDividers, NativeDivider(..), resizeNode,
-        singlePaneWindow, lwWindowIds, paneForWindow)
+        singlePaneWindow, lwWindowIds, paneForWindow, subtreeRects,
+        treeLeafIds)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
        (registerTerminalCC, unregisterTerminalCC, registerCCStop,
@@ -568,6 +570,15 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- the moment that xterm mounts — the deterministic replacement
             -- for polling until the pane becomes focusable.
             pendingMountRef <- liftIO $ newIORef (Nothing :: Maybe PaneId)
+            -- Is the window's focused leaf a VIEW leaf (browser \/ editor \/ git
+            -- log) rather than a tmux one?  Then the active-pane ring belongs to
+            -- that leaf's own '.pane-chrome' and NO tmux pane may draw one.
+            -- tmux's active pane is a property of the SESSION: it doesn't move
+            -- when leksah focus goes to a view leaf, so its ring stayed lit and
+            -- the window showed TWO active panes — with the terminal's crisp
+            -- full ring reading as the active one, clicking a browser pane (or
+            -- its address bar) looked like it did nothing at all.
+            viewFocusedRef <- liftIO $ newIORef False
             -- The leksah window this tab renders (shared model state); also
             -- gates output ownership and the focus paths below.
             lwOwnD <- holdUniqDyn $ M.lookup lwId . (^. leksahWindows) <$> ide
@@ -575,7 +586,9 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 applyActive = do
                     mbC <- liftIO $ readIORef containerRef
                     mbP <- liftIO $ readIORef activePaneRef
-                    forM_ mbC $ \c -> applyPaneHighlight c mbP
+                    viewFoc <- liftIO $ readIORef viewFocusedRef
+                    forM_ mbC $ \c ->
+                        applyPaneHighlight c (if viewFoc then Nothing else mbP)
                 containerHasFocus :: JSM Bool
                 containerHasFocus = do
                     mbC <- liftIO $ readIORef containerRef
@@ -938,6 +951,17 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                     l  <- lwFocused lw
                     pc <- M.lookup l (lwPanes lw)
                     pure (l, pcKind pc)) <$> lwOwnD
+            -- Keep 'viewFocusedRef' (which gates the tmux ring, above) in step
+            -- with the focused leaf's KIND, and re-apply the highlight — this is
+            -- what turns the terminal's ring off when a view leaf takes focus,
+            -- and back on when a tmux leaf does.
+            performEvent_ $ ffor
+                (leftmost [updated focusedContentD, tag (current focusedContentD) pbSync]) $
+                \mc -> do
+                    liftIO . writeIORef viewFocusedRef $ case mc of
+                        Just (_, PaneView{}) -> True
+                        _                    -> False
+                    liftJSM applyActive
             (paneResolvedE, firePaneResolved) <- newTriggerEvent
             selectedSettledE <- delay 0 selectedE
             -- One frame after the request, so the pendingFocusRef write (its
@@ -948,14 +972,30 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- behaviour) — the ours-or-body guard applies only to the model
             -- and build arms, where a background change must not steal from
             -- e.g. the workspace tree.
-            let reconcileFocusE = leftmost
-                  [ fmap ((,) False) (fmapMaybe id (updated focusedContentD))
-                  , fmap ((,) True)  (fmapMaybe id
-                      (tag (current focusedContentD) selectedSettledE))
-                  , fmap ((,) False) (fmapMaybe id (tag (current focusedContentD)
-                      (leftmost [focusReqSettledE, pbSync])))
+            -- The pulse arms (tab select, focus request, build) carry no
+            -- content: the handler reads 'lwFocused' from the shared model
+            -- AT EXECUTION TIME rather than tagging a frame-start sample —
+            -- a flip commit writes lwFocused and selects the tab in the
+            -- same frame, and the stale sample made this focus the OLD
+            -- leaf, whose async focusin then raced (and sometimes beat)
+            -- the flip's write: the flipper landed on the previous pane.
+            let readFocusedContent = getGlobalIDERef >>= \case
+                    Nothing   -> pure Nothing
+                    Just ideR -> (`reflectIDE` ideR) $ do
+                        lws <- readIDE leksahWindows
+                        pure $ do
+                            lw <- M.lookup lwId lws
+                            l  <- lwFocused lw
+                            pc <- M.lookup l (lwPanes lw)
+                            pure (l, pcKind pc)
+                reconcileFocusE = leftmost
+                  [ fmap ((,) False . Just) (fmapMaybe id (updated focusedContentD))
+                  , (True, Nothing)  <$ selectedSettledE
+                  , (False, Nothing) <$ leftmost [focusReqSettledE, pbSync]
                   ]
-            performEvent_ $ ffor reconcileFocusE $ \(forced, (lid, kind)) -> do
+            performEvent_ $ ffor reconcileFocusE $ \(forced, mgiven) -> do
+              mcontent <- maybe (liftIO readFocusedContent) (pure . Just) mgiven
+              forM_ mcontent $ \(lid, kind) -> do
                 had <- liftJSM containerHasFocus
                 ae <- liftJSM $ jsg ("document" :: Text) ^. js ("activeElement" :: Text)
                 tagName <- liftJSM $ valToText =<< ae ^. js ("tagName" :: Text)
@@ -1039,6 +1079,16 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                         liveTerms <- liftIO $ readIORef termsRef
                         let liveActive = maybe False (`M.member` liveTerms) mbP
                         when (tagName == "BODY" && liveActive) focusActivePane
+            -- Split-tree geometry for the ⌘-drag pane-move preview.  Straight
+            -- from the shared map (NOT lwD): a remote tab's synthesized
+            -- window must publish null, not a fake single-pane universe.
+            geomD <- holdUniqDyn $
+                (\i -> (\lw -> (lwTree lw, lwZoomed lw))
+                         <$> M.lookup lwId (i ^. leksahWindows)) <$> ide
+            pbGeom <- getPostBuild
+            performEvent_ $
+                ffor (leftmost [updated geomD, tag (current geomD) pbGeom]) $
+                    liftJSM . publishLwGeom lwId
             (containerEl, _) <- elAttr' "div"
                 -- Pull back over the .area-wide{0,1} 3px left/top padding
                 -- (negative margins + matching size bump) so this container —
@@ -1048,6 +1098,7 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 -- 'styleOf' (padding-left/top on the char-0/row-0 panes) so the
                 -- boxes still reach the line while the text stays clear of it.
                 ("class" =: "terminal terminal-cc"
+                 <> "data-lw" =: lwId
                  <> "style" =: ("position:relative;overflow:hidden"
                                 <> ";margin-left:-3px;margin-top:-3px"
                                 <> ";width:calc(100% + 3px);height:calc(100% + 3px)")) $
@@ -1085,9 +1136,14 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                        (\lw -> leafRects (lwZoomed lw) (lwTree lw))
                                      <$> lwD
                             pct v = T.pack (show (v * (100 :: Double))) <> "%"
-                            leafStyle :: LeafRect -> M.Map Text Text
-                            leafStyle r =
-                                  "class" =: "terminal-cc-leaf"
+                            leafStyle :: LeafId -> LeafRect -> M.Map Text Text
+                            leafStyle (LeafId n) r =
+                                  -- edge-left marks a leaf flush with the
+                                  -- container's left edge; the glow overlay's
+                                  -- border-left gating keys on it (terminalCss).
+                                  "class" =: ("terminal-cc-leaf"
+                                              <> (if lrX r == 0 then " edge-left" else ""))
+                               <> "data-leaf" =: T.pack (show n)
                                <> "style" =: ("position:absolute;box-sizing:border-box"
                                     <> ";left:"   <> pct (lrX r)
                                     <> ";top:"    <> pct (lrY r)
@@ -1117,7 +1173,7 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                             -- The pane's font-size override (⌘+/⌘−; Nothing =
                             -- follow the global monospace pref).
                             fontD <- holdUniqDyn $ (>>= pcFontSize) <$> paneD
-                            (leafEl, _) <- elDynAttr' "div" (leafStyle <$> rectD) $ do
+                            (leafEl, _) <- elDynAttr' "div" (leafStyle lid <$> rectD) $ do
                               -- Per-pane FONT: the body below (xterms,
                               -- geometry, clamps) is built for one cell size,
                               -- so a font-size change rebuilds it — a rare
@@ -1259,12 +1315,23 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                                 (maybe (0 :: Int) id mf)
                             -- Focus entering this leaf makes it the layout's
                             -- focused leaf — the target of ⌘S/⌘+/⌘−/splits.
+                            -- A mouse-DOWN counts too, because a click does not
+                            -- always MOVE DOM focus: while a native browser view
+                            -- holds the keyboard the page's activeElement stays
+                            -- on whatever it was (typically the neighbouring
+                            -- terminal's textarea), so clicking back into that
+                            -- terminal re-focuses an element that never lost
+                            -- focus — WebKit fires nothing and the focused leaf
+                            -- stayed on the browser pane.
                             pbFoc <- getPostBuild
-                            performEvent_ $ ffor pbFoc $ \_ -> liftJSM . void $
-                                _element_raw leafEl ^. js2 ("addEventListener" :: Text)
-                                    ("focusin" :: Text)
-                                    (fun $ \_ _ _ -> liftIO . void . forkIO $
-                                        setFocusedLeaf lwId lid)
+                            performEvent_ $ ffor pbFoc $ \_ -> liftJSM $ do
+                                let el  = _element_raw leafEl
+                                    hit = fun $ \_ _ _ -> liftIO . void . forkIO $
+                                              setFocusedLeaf lwId lid
+                                void $ el ^. js2 ("addEventListener" :: Text)
+                                    ("focusin" :: Text) hit
+                                void $ el ^. js2 ("addEventListener" :: Text)
+                                    ("mousedown" :: Text) hit
                         -- A leaf that left the layout (close/merge) must not
                         -- leave its window clamped (reflex tears the widget
                         -- down without a destructor).
@@ -1681,12 +1748,23 @@ sessionlessLwWidget ide lwId selectedE leafViewW = do
     pbS <- getPostBuild
     performEvent_ $ ffor pbS $ \_ ->
         liftIO . void $ registerTerminalFocus lwId (fireFocusReq ())
+    -- Split-tree geometry for the ⌘-drag pane-move preview (see the
+    -- session-backed sibling above).
+    geomD <- holdUniqDyn $
+        (fmap (\lw -> (lwTree lw, lwZoomed lw))) <$> lwD
+    pbGeom <- getPostBuild
+    performEvent_ $
+        ffor (leftmost [updated geomD, tag (current geomD) pbGeom]) $
+            liftJSM . publishLwGeom lwId
     let rectsD = maybe M.empty (\lw -> leafRects (lwZoomed lw) (lwTree lw))
                    <$> lwD
         pct v = T.pack (show (v * (100 :: Double))) <> "%"
-        leafStyle :: LeafRect -> M.Map Text Text
-        leafStyle r =
-              "class" =: "terminal-cc-leaf"
+        leafStyle :: LeafId -> LeafRect -> M.Map Text Text
+        leafStyle (LeafId n) r =
+              -- edge-left: see the session-backed sibling above.
+              "class" =: ("terminal-cc-leaf"
+                          <> (if lrX r == 0 then " edge-left" else ""))
+           <> "data-leaf" =: T.pack (show n)
            <> "style" =: ("position:absolute;box-sizing:border-box"
                 <> ";left:"   <> pct (lrX r)
                 <> ";top:"    <> pct (lrY r)
@@ -1698,6 +1776,7 @@ sessionlessLwWidget ide lwId selectedE leafViewW = do
     -- overlay line), so leaf boxes — and the active ring anchored to them —
     -- reach the line exactly.
     (containerEl, _) <- elAttr' "div" ("class" =: "terminal terminal-cc"
+                  <> "data-lw" =: lwId
                   <> "style" =: ("position:relative;overflow:hidden"
                                  <> ";margin-left:-3px;margin-top:-3px"
                                  <> ";width:calc(100% + 3px);height:calc(100% + 3px)")) $ do
@@ -1710,7 +1789,7 @@ sessionlessLwWidget ide lwId selectedE leafViewW = do
             fontD <- holdUniqDyn $ (>>= pcFontSize) <$> paneD
             amFocusedD <- holdUniqDyn $
                 (\mlw -> (lwFocused =<< mlw) == Just lid) <$> lwD
-            (leafEl, _) <- elDynAttr' "div" (leafStyle <$> rectD) $
+            (leafEl, _) <- elDynAttr' "div" (leafStyle lid <$> rectD) $
                 dyn_ $ ffor viewD $ \case
                     Nothing -> return ()
                     Just k  -> do
@@ -1734,12 +1813,15 @@ sessionlessLwWidget ide lwId selectedE leafViewW = do
                                 ^. js2 ("leksahSetLeafFont" :: Text)
                                     (_element_raw vEl)
                                     (maybe (0 :: Int) id mf)
+            -- focusin AND mousedown, for the reason spelled out at the other
+            -- leaf renderer: a click need not move DOM focus at all.
             pbFoc <- getPostBuild
-            performEvent_ $ ffor pbFoc $ \_ -> liftJSM . void $
-                _element_raw leafEl ^. js2 ("addEventListener" :: Text)
-                    ("focusin" :: Text)
-                    (fun $ \_ _ _ -> liftIO . void . forkIO $
-                        setFocusedLeaf lwId lid)
+            performEvent_ $ ffor pbFoc $ \_ -> liftJSM $ do
+                let el  = _element_raw leafEl
+                    hit = fun $ \_ _ _ -> liftIO . void . forkIO $
+                              setFocusedLeaf lwId lid
+                void $ el ^. js2 ("addEventListener" :: Text) ("focusin" :: Text) hit
+                void $ el ^. js2 ("addEventListener" :: Text) ("mousedown" :: Text) hit
         -- Native dividers (the px→fraction conversion measures the
         -- divider's offsetParent — the positioned container above).
         dividersUniqD <- holdUniqDyn $ maybe [] (treeDividers . lwTree) <$> lwD
@@ -1820,6 +1902,32 @@ sessionlessLwWidget ide lwId selectedE leafViewW = do
         when (forced || had || tagName == "BODY" || pend) . liftIO $
             fireViewFocus l
 
+-- | Publish a leksah window's split-tree geometry to the front end, for the
+-- ⌘-drag pane-move preview (leafDragJs reads @window.__leksahLwGeom[lwId]@ on
+-- every mousemove — the tracking loop must never round-trip through jsaddle).
+-- The candidate universe mirrors 'IDE.Web.SplitLayout.pickDropTarget'
+-- exactly: every subtree's fraction rect, or — zoomed — just the zoomed leaf
+-- covering the whole container.  @Nothing@ (window gone / remote tab)
+-- publishes @null@ so the drag shows its no-op state there.
+publishLwGeom :: Text -> Maybe (SplitTree, Maybe LeafId) -> JSM ()
+publishLwGeom i mb = void . eval $
+    "(window.__leksahLwGeom = window.__leksahLwGeom || {})['" <> i <> "'] = "
+    <> payload <> ";"
+  where
+    payload = case mb of
+      Nothing -> "null"
+      Just (tree, zoomed) ->
+        "{subs:[" <> T.intercalate "," (map sub (universe tree zoomed)) <> "]}"
+    universe tree zoomed = case zoomed of
+      Just z | z `elem` treeLeafIds tree -> [ ([], Just z, (0, 0, 1, 1)) ]
+      _ -> subtreeRects tree
+    sub (p, ml, (x, y, w, h)) =
+      "{p:[" <> T.intercalate "," (map (T.pack . show) p) <> "]"
+      <> ",leaf:" <> maybe "null" (\(LeafId n) -> T.pack (show n)) ml
+      <> ",x:" <> num x <> ",y:" <> num y
+      <> ",w:" <> num w <> ",h:" <> num h <> "}"
+    num = T.pack . show
+
 -- | Mutate a leksah window's shared layout through the global IDE ref (the
 -- widget has no reflex path back to Main's mutation stream).  No-op before
 -- the ref exists.
@@ -1828,16 +1936,38 @@ modifyLeksahWindow i f = getGlobalIDERef >>= mapM_ (\ideR ->
     (`reflectIDE` ideR) $ modifyIDE_ $ over leksahWindows (M.adjust f i))
 
 -- | Focus entered a native pane: record it as the leksah window's focused
--- pane (the target of ⌘+/⌘− and future splits).  Pre-checked so a no-op
--- never bumps the resync version (focusin fires on every click).
+-- pane (the target of ⌘+/⌘− and future splits) and, for a VIEW pane, float its
+-- flipper entry.  Pre-checked so a no-op never bumps the resync version
+-- (focusin fires on every click).
+--
+-- The 'FlipView' float is this function's job because a view pane has no other
+-- recency signal: a tmux pane click publishes its pane id (@leksahPaneFocus@,
+-- termActivityJs) and a tab click promotes through @lwTabFlipE@, but focus
+-- landing in a browser \/ editor \/ git-log LEAF — by click, by ⌥-open, or from
+-- a click inside a native browser view (@leksahBrowserActivate@) — only ever
+-- reached 'lwFocused', so the pane took the active ring without moving to the
+-- front of the flipper.
 setFocusedLeaf :: Text -> LeafId -> IO ()
-setFocusedLeaf i lid = getGlobalIDERef >>= mapM_ (\ideR ->
+setFocusedLeaf i lid@(LeafId l) = getGlobalIDERef >>= mapM_ (\ideR ->
     (`reflectIDE` ideR) $ do
         lws <- readIDE leksahWindows
-        when (fmap lwFocused (M.lookup i lws) /= Just (Just lid)
-              && maybe False ((lid `M.member`) . lwPanes) (M.lookup i lws)) $
-            modifyIDE_ $ over leksahWindows
-                (M.adjust (\lw -> lw { lwFocused = Just lid }) i))
+        mru <- readIDE flipMru
+        let mlw       = M.lookup i lws
+            present   = maybe False ((lid `M.member`) . lwPanes) mlw
+            needFocus = fmap lwFocused mlw /= Just (Just lid)
+            isView    = case pcKind <$> (M.lookup lid . lwPanes =<< mlw) of
+                          Just PaneView{} -> True
+                          _               -> False
+            item      = FlipView i l
+            needFloat = isView && take 1 mru /= [item]
+        when (present && (needFocus || needFloat)) . modifyIDE_ $
+              (if needFocus
+                 then over leksahWindows
+                        (M.adjust (\lw -> lw { lwFocused = Just lid }) i)
+                 else id)
+            . (if needFloat
+                 then over flipMru ((item :) . filter (/= item))
+                 else id))
 
 -- | Uniform padding (CSS px) inset around every pane's terminal grid.  The
 -- whole cell grid is shifted right/down by this and shrunk by twice it (see
@@ -2212,7 +2342,12 @@ renderHlSegments (cw, ch) l =
             rI   = pad + fromIntegral (x + w) * cw + cw / 2
             bI   = pad + fromIntegral (y + h) * ch + ch / 2
         in elAttr "div"
-            ("class" =: "terminal-cc-hl"
+            -- edge-left marks a pane flush with the window's left edge (layout
+            -- column 0); the glow overlay's border-left gating keys on it — a
+            -- pane whose left edge is an interior divider must keep the white
+            -- ring line (terminalCss).
+            ("class" =: ("terminal-cc-hl"
+                         <> (if x == 0 then " edge-left" else ""))
              <> "data-pane" =: pane
              <> "style" =: ("position:absolute;pointer-events:none"
                             <> ";left:" <> px lI

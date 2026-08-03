@@ -17,7 +17,7 @@ import IDE.Web.AIContextRequest
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.NewWindowRequest (requestNewWindow)
-import IDE.Web.NewLwRequest (requestFontConvert)
+import IDE.Web.NewLwRequest (requestFontConvert, requestConsolidate)
 import IDE.Web.ReplTmux (paneCountOfWindow)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.TerminalInput
@@ -413,12 +413,16 @@ leafFontAdjust f = do
         _          -> return False
       case kind of
         PaneTmux w | multi -> liftIO (requestFontConvert (n, w, f))
-        _ -> modifyIDE_ $ \i ->
-          let eff = fromMaybe (monospaceFontSize (i ^. prefs)) cur
-              new = fmap (max 6 . min 72) (f eff)
-              setFont lw = lw { lwPanes =
-                  M.adjust (\pc -> pc { pcFontSize = new }) l (lwPanes lw) }
-          in i & leksahWindows %~ M.adjust setFont n
+        _ -> do
+          modifyIDE_ $ \i ->
+            let eff = fromMaybe (monospaceFontSize (i ^. prefs)) cur
+                new = fmap (max 6 . min 72) (f eff)
+                setFont lw = lw { lwPanes =
+                    M.adjust (\pc -> pc { pcFontSize = new }) l (lwPanes lw) }
+            in i & leksahWindows %~ M.adjust setFont n
+          -- The new size may match a neighbouring tmux window's — merge
+          -- them (Main's consolidateLw drains this).
+          liftIO (requestConsolidate n)
 
 -- | A menu command that sends the tmux prefix (@C-b@, byte 0x02) followed by
 -- @keys@ to the active terminal — exactly as if the shortcut had been typed
