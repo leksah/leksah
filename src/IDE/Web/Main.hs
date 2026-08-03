@@ -1393,7 +1393,8 @@ jsMain showMenubar macTitlebar mbWid ideR = do
       claudeStatusD <- holdUniqDyn =<< holdDyn emptyClaudeStatus claudeStatusE
       performEvent_ $ ffor (updated claudeStatusD) $ \st ->
           liftJSM . void $ jsg ("window" :: Text)
-            ^. js2 ("leksahClaudeStatus" :: Text) (csState st) (claudeStatusTooltip st)
+            ^. js3 ("leksahClaudeStatus" :: Text) (csState st) (claudeStatusTooltip st)
+                  (csCount st)
 #endif
       ideD <- holdDyn newIde $ leftmost [pbIde, freshPolledE]
       return ()
@@ -3573,9 +3574,14 @@ activeEditorSelectionJs = mconcat
 --   * green circle — every session is idle, ready for input
 --   * grey ring — nothing running
 --
--- Distinct shape per state, not just colour (colour-blind accessibility).  Each
--- window's reflex network pushes its own updates through
--- @leksahClaudeStatus(state, tooltip)@ from the shared poll — never a
+-- Distinct shape per state, not just colour (colour-blind accessibility).  The
+-- two states that want you also carry HOW MANY sessions are in them, just left of
+-- the dot — the glyph says what, the number says how much of it.  Green and grey
+-- carry no number: there is no quantity worth reading when everything is idle or
+-- nothing is running.  Same pairing on the menu-bar item.
+--
+-- Each window's reflex network pushes its own updates through
+-- @leksahClaudeStatus(state, tooltip, count)@ from the shared poll — never a
 -- cross-window JS broadcast.  Hovering lists the sessions.
 --
 -- The AGENT-COORDINATION state (is it safe to touch leksah while an agent drives
@@ -3598,10 +3604,10 @@ statusLightJs = T.unlines
   -- el = the wrapper (carries the coordination ring), shapeEl = its inner
   -- .shape child (carries the live-session shape); state = the coordination
   -- state.
-  , "  var el = null, shapeEl = null, state = 'green', timer = null;"
+  , "  var el = null, shapeEl = null, countEl = null, state = 'green', timer = null;"
   -- The live-session state (what the dot draws) and its hover text, pushed by
   -- the reflex network; 'none' until the first push, a tick after boot.
-  , "  var claude = 'none', claudeTip = 'Claude: no sessions running';"
+  , "  var claude = 'none', claudeTip = 'Claude: no sessions running', claudeCount = 0;"
   -- Runs BEFORE mainWidgetWithCss rebuilds <body>, which detaches anything we
   -- append now — so (re)create the dot on demand and keep it in whatever <body>
   -- is current, preserving the colour across a rebuild.
@@ -3653,13 +3659,28 @@ statusLightJs = T.unlines
   , "        '#leksah-status-light.coord-red{box-shadow:inset 0 0 0 2px #ff3b30,'+"
   , "        '0 0 6px rgba(255,59,48,.8)}'+"
   , "        '#leksah-status-light.coord-blue{box-shadow:inset 0 0 0 2px #0a84ff,'+"
-  , "        '0 0 6px rgba(10,132,255,.8)}';"
+  , "        '0 0 6px rgba(10,132,255,.8)}'+"
+  -- How many sessions are in the state the shape is showing, to the LEFT of the
+  -- dot (its right side is the window edge).  Anchored by `right`, with no width,
+  -- so it grows leftwards into empty toolbar as the count gets wider.  A SIBLING
+  -- of .shape, never the same element: .shape's clip-path clips everything that
+  -- element paints, text included.  pointer-events:none so the dot keeps the
+  -- hover text (and nothing steals the title-bar drag).  Only the non-green
+  -- states get a class, so idle/none simply have nothing to draw.
+  , "        '#leksah-status-light .count{position:absolute;right:20px;top:0;'+"
+  , "        'height:18px;line-height:18px;font-size:11px;font-weight:600;'+"
+  , "        'font-variant-numeric:tabular-nums;pointer-events:none;'+"
+  , "        'white-space:nowrap;text-shadow:0 0 2px rgba(0,0,0,.55)}'+"
+  , "        '#leksah-status-light .count.c-waiting{color:#f85149}'+"
+  , "        '#leksah-status-light .count.c-busy{color:#d29922}';"
   , "      (document.head || document.documentElement).appendChild(css);"
   , "    }"
   , "    el = document.createElement('div');"
   , "    el.id = 'leksah-status-light';"
   , "    shapeEl = document.createElement('div');"
   , "    el.appendChild(shapeEl);"
+  , "    countEl = document.createElement('div');"
+  , "    el.appendChild(countEl);"
   , "    paint();"
   , "    if (document.body) document.body.appendChild(el);"
   , "    return el;"
@@ -3671,6 +3692,12 @@ statusLightJs = T.unlines
   , "    el.className = (state === 'green') ? '' : ('coord-' + state);"
   , "    el.title = tipText();"
   , "    if (shapeEl) shapeEl.className = 'shape c-' + claude;"
+  -- The count only exists for the states that want you; Haskell already sends 0
+  -- for idle/none (csCount), so an empty string is all idle/none needs.
+  , "    if (countEl) {"
+  , "      countEl.className = 'count' + (claudeCount > 0 ? ' c-' + claude : '');"
+  , "      countEl.textContent = claudeCount > 0 ? String(claudeCount) : '';"
+  , "    }"
   , "  }"
   -- The coordination line, worded exactly as the menu-bar item's menu line
   -- (leksah_coord_line in leksah-mac-menu.m).
@@ -3715,10 +3742,12 @@ statusLightJs = T.unlines
   , "  window.leksahRestarting = function(){ set('blue'); };"
   -- What the dot actually draws: the live Claude sessions, pushed by this
   -- window's reflex network from the shared poll (IDE.Web.ClaudeStatus).  @tip@
-  -- is the summary line plus one line per session.
-  , "  window.leksahClaudeStatus = function(st, tip){"
+  -- is the summary line plus one line per session, @n@ how many sessions are in
+  -- state @st@ (0 for idle\/none — the states that get no number).
+  , "  window.leksahClaudeStatus = function(st, tip, n){"
   , "    claude = st || 'none';"
   , "    if (tip) claudeTip = tip;"
+  , "    claudeCount = (typeof n === 'number' && n > 0) ? n : 0;"
   , "    apply();"
   , "  };"
   -- Land the dot in the final <body> (mainWidget replaces an early append) and

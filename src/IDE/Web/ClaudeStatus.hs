@@ -58,12 +58,17 @@ data ClaudeStatusRow = ClaudeStatusRow
 data ClaudeStatus = ClaudeStatus
   { csState   :: Text              -- ^ worst of the rows: @waiting@ \/ @busy@ \/
                                    --   @idle@, or @none@ with nothing running
+  , csCount   :: Int               -- ^ how many sessions are in 'csState' — what
+                                   --   the status surfaces draw beside the glyph.
+                                   --   0 unless the state needs you (@waiting@ \/
+                                   --   @busy@): all-idle and nothing-running are
+                                   --   not situations to put a number on.
   , csSummary :: Text              -- ^ one line, e.g. @"Claude: 3 sessions — 1 waiting"@
   , csRows    :: [ClaudeStatusRow] -- ^ attention first, then working, then idle
   } deriving (Eq, Show)
 
 emptyClaudeStatus :: ClaudeStatus
-emptyClaudeStatus = ClaudeStatus "none" "Claude: no sessions running" []
+emptyClaudeStatus = ClaudeStatus "none" 0 "Claude: no sessions running" []
 
 -- The latest poll result, and the push handlers to notify when it changes.
 -- (Interpreted-module CAFs: a ghci :reload gives the next instance empty ones,
@@ -124,6 +129,10 @@ summarize labels ls = ClaudeStatus
   { csState   = if null ls then "none"
                 else if nWaiting > 0 then "waiting"
                 else if nWorking > 0 then "busy" else "idle"
+    -- The count belongs to whichever state won above, so it always answers "how
+    -- many of THAT?" — and falls out as 0 for idle/none, which is what the
+    -- surfaces want (no number on green or grey).
+  , csCount   = if nWaiting > 0 then nWaiting else nWorking
   , csSummary = summary
   , csRows    = map row (sortOn (\l -> (rank l, T.toLower (title l))) ls)
   }

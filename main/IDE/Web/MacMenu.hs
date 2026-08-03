@@ -225,7 +225,8 @@ macToggleState tag = do
     _ -> return (-1)
 
 -- | Push a 'ClaudeStatus' into the menu-bar status item: the aggregate state
--- (which shape\/colour the icon draws), the summary line for its tooltip, and one
+-- (which shape\/colour the icon draws), how many sessions are in that state (drawn
+-- beside the icon when it isn't green), the summary line for its tooltip, and one
 -- menu row per session as @state \\t title \\t tooltip \\t session id@ — tooltip
 -- newlines escaped as @\\n@, since a raw one would end the row.
 --
@@ -235,7 +236,8 @@ pushClaudeStatusToMenuBar :: ClaudeStatus -> IO ()
 pushClaudeStatusToMenuBar st =
     withCString (T.unpack (csState st)) $ \s ->
       withCString (T.unpack (csSummary st)) $ \t ->
-        withCString (T.unpack (T.unlines (map row (csRows st)))) (c_setClaudeStatus s t)
+        withCString (T.unpack (T.unlines (map row (csRows st))))
+                    (c_setClaudeStatus s (fromIntegral (csCount st)) t)
   where
     -- The directory tells two sessions of one project apart (worktrees are named
     -- for their task), so it rides along in the row's title.

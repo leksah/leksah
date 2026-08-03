@@ -1573,6 +1573,10 @@ void leksah_browser_reload(int bid)  { leksah_browser_send(bid, @selector(reload
 //   green circle   every session is idle, ready for input
 //   hollow ring    nothing running (a template image, so AppKit tints it for
 //                  the current menu bar rather than shouting in either)
+// Beside the icon, for the two states that want you, is HOW MANY sessions are in
+// it ("3" next to the triangle = three are blocked): the glyph says what, the
+// number says how much of it.  Green and grey carry no number — there is no
+// quantity worth reading when everything is idle or nothing is running.
 // CLICKING opens the session menu; choosing a session selects its tmux pane and
 // brings up its terminal tab (gHs.claude_activate → Claude.showLiveSession).
 //
@@ -1586,6 +1590,7 @@ void leksah_browser_reload(int bid)  { leksah_browser_send(bid, @selector(reload
 // survive :reload.
 static NSStatusItem *gStatusItem = nil;
 static NSString *gClaudeState = @"none";  // aggregate live-session state
+static int       gClaudeCount = 0;        // sessions IN that state; 0 = draw no number
 static NSString *gClaudeTip   = nil;      // one-line summary for the tooltip
 static NSArray  *gClaudeRows  = nil;      // @[@[state, title, tooltip, session id], …]
 static NSString *gCoordState  = @"green"; // the in-page coordination light
@@ -1754,14 +1759,20 @@ static void leksah_status_rebuild_menu(void) {
 }
 
 // Create the item on first use.  MAIN THREAD.
+//
+// VARIABLE length, not square: the button grows a count beside the icon whenever
+// sessions need attention (see leksah_status_refresh), and a square item would
+// clip it.  With no count the button is its image plus AppKit's own padding, so
+// it still reads as the square icon it was.
 static void leksah_status_item_ensure(void) {
     if (gStatusItem != nil) return;
     if (gStatusTarget == nil) gStatusTarget = [[LeksahStatusItemTarget alloc] init];
     gStatusItem = [[[NSStatusBar systemStatusBar]
-                      statusItemWithLength:NSSquareStatusItemLength] retain];
+                      statusItemWithLength:NSVariableStatusItemLength] retain];
 }
 
-// Push the current state into the item: icon, tooltip and menu.  MAIN THREAD.
+// Push the current state into the item: icon, count, tooltip and menu.  MAIN
+// THREAD.
 static void leksah_status_refresh(void) {
     if (gStatusItem == nil) return;
     // The session shape is drawn at 12 in the 18×18 button image (not 14) so the
@@ -1769,6 +1780,19 @@ static void leksah_status_refresh(void) {
     // with the ring would read as two different icons.
     [[gStatusItem button] setImage:
         leksah_claude_image(gClaudeState, 18, 3, leksah_coord_ring_color(gCoordState))];
+    // HOW MANY are in that state, right of the icon — "3 sessions want you" is
+    // the thing you can't read off a single glyph.  Only when the state isn't
+    // green: Haskell sends 0 for all-idle and for nothing-running (csCount), so
+    // the quiet states stay a bare icon.  A PLAIN title (not attributed) so
+    // AppKit keeps colouring it for the current menu bar — light text on a dark
+    // one — while setFont still gives us tabular digits that don't jitter as the
+    // count changes.
+    [[gStatusItem button] setFont:
+        [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightSemibold]];
+    [[gStatusItem button] setImagePosition:
+        gClaudeCount > 0 ? NSImageLeft : NSImageOnly];
+    [[gStatusItem button] setTitle:
+        gClaudeCount > 0 ? [NSString stringWithFormat:@"%d", gClaudeCount] : @""];
     NSString *claude = (gClaudeTip != nil && [gClaudeTip length] > 0)
                          ? gClaudeTip : @"Claude: no sessions running";
     [[gStatusItem button] setToolTip:
@@ -1788,11 +1812,13 @@ static void leksah_status_item_set(NSString *state) {
 }
 
 // The live Claude sessions changed (pushed by Haskell's poll, on change only).
-// @state is the aggregate ("waiting" / "busy" / "idle" / "none"), @tip a
+// @state is the aggregate ("waiting" / "busy" / "idle" / "none"), @count how many
+// sessions are in that state (0 = draw no number: idle/none), @tip a
 // one-line summary, and @rows one session per line as
 // state \t title \t tooltip \t session-id (the tooltip's own newlines escaped
 // as \n by the sender, since they'd otherwise end the row).
-void leksah_set_claude_status(const char *state, const char *tip, const char *rows) {
+void leksah_set_claude_status(const char *state, int count, const char *tip,
+                             const char *rows) {
     NSString *st = [[NSString stringWithUTF8String:(state != NULL ? state : "none")] copy];
     NSString *tp = [[NSString stringWithUTF8String:(tip   != NULL ? tip   : "")] copy];
     NSString *rw = [NSString stringWithUTF8String:(rows  != NULL ? rows  : "")];
@@ -1810,6 +1836,7 @@ void leksah_set_claude_status(const char *state, const char *tip, const char *ro
         [gClaudeState release]; gClaudeState = st;   // each takes its copy's ref
         [gClaudeTip   release]; gClaudeTip   = tp;
         [gClaudeRows  release]; gClaudeRows  = parsed;
+        gClaudeCount = count;
         leksah_status_item_ensure();
         leksah_status_refresh();
     });

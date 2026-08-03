@@ -160,10 +160,12 @@ foreign import ccall "leksah_show_open_folder_panel" c_showOpenFolderPanel :: IO
 -- Populate the native "Open Recent" submenu (newline-separated paths).
 foreign import ccall "leksah_set_recent_files" c_setRecentFiles :: CString -> IO ()
 -- The menu-bar status item: the live Claude sessions' aggregate state
--- ("waiting"/"busy"/"idle"/"none"), a one-line tooltip summary, and one row per
--- session (@state \\t title \\t tooltip \\t session id@, newline-separated).
+-- ("waiting"/"busy"/"idle"/"none"), how many sessions are IN that state (drawn
+-- beside the icon; 0 for idle/none = no number), a one-line tooltip summary, and
+-- one row per session (@state \\t title \\t tooltip \\t session id@,
+-- newline-separated).
 foreign import ccall "leksah_set_claude_status" c_setClaudeStatus
-  :: CString -> CString -> CString -> IO ()
+  :: CString -> CInt -> CString -> CString -> IO ()
 -- Snapshot the WKWebView content to a PNG at the given path; returns 1 on success.
 foreign import ccall "leksah_screenshot" c_screenshot :: CString -> IO CInt
 -- Snapshot just a rectangle (x,y,w,h in CSS px) of the WKWebView content.
@@ -337,8 +339,8 @@ c_showOpenFolderPanel :: IO ()
 c_showOpenFolderPanel = return ()
 c_setRecentFiles :: CString -> IO ()
 c_setRecentFiles _ = return ()
-c_setClaudeStatus :: CString -> CString -> CString -> IO ()
-c_setClaudeStatus _ _ _ = return ()
+c_setClaudeStatus :: CString -> CInt -> CString -> CString -> IO ()
+c_setClaudeStatus _ _ _ _ = return ()
 c_screenshot :: CString -> IO CInt
 c_screenshot _ = return 0
 c_snapshotRect :: CString -> CInt -> CInt -> CInt -> CInt -> IO CInt
