@@ -195,8 +195,11 @@
   `'leksahStatus("red")'` or `'leksahTestStart()'` (beep, then testing after 3s)
   while interactively testing, `'leksahTestEnd()'` / `'leksahStatus("green")'`
   when done. It no longer colours the dot (the sessions do): it is the **last
-  line of the dot's hover text and the menu-bar item's menu line**. So also say
-  in chat when you are about to take the UI — don't rely on the light alone.
+  line of the dot's hover text and the menu-bar item's menu line** — and it
+  appears **only when it is NOT safe**, so green shows nothing at all (a line
+  saying "safe to use" only confuses people who aren't modifying leksah). So
+  also say in chat when you are about to take the UI — the absence of a warning
+  is not a signal you can point at.
 - **Freeze/deadlock debugging.** A wedged window (heartbeat stops in the loop
   log) is almost always one window's reflex *frame thread* blocked on an `MVar`.
   Diagnostics: `leksah-cmd threads` / `stacks [SUBSTR]` / `resync-state`, the

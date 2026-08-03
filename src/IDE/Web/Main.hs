@@ -3700,14 +3700,16 @@ statusLightJs = T.unlines
   , "    }"
   , "  }"
   -- The coordination line, worded exactly as the menu-bar item's menu line
-  -- (leksah_coord_line in leksah-mac-menu.m).
+  -- (leksah_coord_line in leksah-mac-menu.m) — and, like it, EMPTY while it's
+  -- safe: the line exists only to say hands off, so the hover text is otherwise
+  -- purely about the sessions.
   , "  function coordText(){"
   , "    if (state === 'orange') return 'Leksah: Claude needs it shortly';"
   , "    if (state === 'red')    return 'Leksah: Claude is testing \\u2014 hands off';"
   , "    if (state === 'blue')   return 'Leksah: Claude is rebuilding/restarting';"
-  , "    return 'Leksah: safe to use';"
+  , "    return '';"
   , "  }"
-  , "  function tipText(){ return claudeTip + '\\n' + coordText(); }"
+  , "  function tipText(){ var c = coordText(); return claudeTip + (c ? '\\n' + c : ''); }"
   -- Make sure the dot exists, then repaint both halves of it.
   , "  function apply(){ ensure(); paint(); }"
   -- Beep via a NATIVE macOS system sound (the "leksahBeep" script message

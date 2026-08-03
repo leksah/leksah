@@ -1710,11 +1710,14 @@ static NSColor *leksah_coord_ring_color(NSString *st) {
     return nil;
 }
 
+// nil while it is safe — the line, like the ring, exists only to say HANDS OFF.
+// Announcing "safe to use" told everyone who isn't modifying leksah something
+// they never needed to know, and read as a warning at a glance.
 static NSString *leksah_coord_line(NSString *st) {
     if ([st isEqualToString:@"orange"]) return @"Leksah: Claude needs it shortly";
     if ([st isEqualToString:@"red"])    return @"Leksah: Claude is testing — hands off";
     if ([st isEqualToString:@"blue"])   return @"Leksah: Claude is rebuilding/restarting";
-    return @"Leksah: safe to use";
+    return nil;
 }
 
 // Rebuild the item's menu from the pushed rows.  Cheap and only run when the
@@ -1744,11 +1747,15 @@ static void leksah_status_rebuild_menu(void) {
         }
     }
     [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *coord = [[NSMenuItem alloc] initWithTitle:leksah_coord_line(gCoordState)
-                                                  action:NULL keyEquivalent:@""];
-    [coord setEnabled:NO];
-    [menu addItem:coord];
-    [coord release];
+    // Only when an agent has claimed the UI; nothing at all while it's safe.
+    NSString *coordLine = leksah_coord_line(gCoordState);
+    if (coordLine != nil) {
+        NSMenuItem *coord = [[NSMenuItem alloc] initWithTitle:coordLine
+                                                      action:NULL keyEquivalent:@""];
+        [coord setEnabled:NO];
+        [menu addItem:coord];
+        [coord release];
+    }
     NSMenuItem *show = [[NSMenuItem alloc] initWithTitle:@"Show Leksah"
                             action:@selector(showLeksah:) keyEquivalent:@""];
     [show setTarget:gStatusTarget];
@@ -1795,8 +1802,12 @@ static void leksah_status_refresh(void) {
         gClaudeCount > 0 ? [NSString stringWithFormat:@"%d", gClaudeCount] : @""];
     NSString *claude = (gClaudeTip != nil && [gClaudeTip length] > 0)
                          ? gClaudeTip : @"Claude: no sessions running";
+    // The coordination line only when it is NOT safe (nil = safe): the tooltip is
+    // then purely about the sessions.
+    NSString *coordLine = leksah_coord_line(gCoordState);
     [[gStatusItem button] setToolTip:
-        [NSString stringWithFormat:@"%@\n%@", claude, leksah_coord_line(gCoordState)]];
+        coordLine != nil ? [NSString stringWithFormat:@"%@\n%@", claude, coordLine]
+                         : claude];
     leksah_status_rebuild_menu();
 }
 
