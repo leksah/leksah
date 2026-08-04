@@ -38,6 +38,11 @@ module IDE.Web.Claude
   , claudeTranscriptPath
   , activateMruClaude
   , showLiveSession
+  , paneForSession
+  , sessionForPaneId
+  , sessionOwningPid
+  , sendToSession
+  , paneCurrentPath
   , claudeSessionLabel
   , copySessionId
   , revealSession
@@ -45,7 +50,7 @@ module IDE.Web.Claude
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (catch, SomeException)
+import Control.Exception (catch, try, SomeException)
 import Control.Monad (void, forM, mfilter, when)
 
 import Data.Char (isAlphaNum)
@@ -84,13 +89,14 @@ import System.IO
 
 import IDE.Utils.RemotePath (isRemotePath)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (createProcess, proc, readProcess)
+import System.Exit (ExitCode(..))
+import System.Process (createProcess, proc, readProcess, readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
-        liveRunPanes, livePanePids, tmuxCmd, findRunPane, newSessionWindow,
-        freshSessionName)
+        liveRunPanes, livePanePids, tmuxCmd, sendKeysTo, findRunPane,
+        newSessionWindow, freshSessionName)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.NewLwRequest (requestNewLw)
 
@@ -668,19 +674,80 @@ activateMruClaude dir = do
 -- pane can't be identified (no @ps@; a session running on a remote host or in a
 -- terminal outside leksah), and returns 'False' when there is nothing to show.
 showLiveSession :: Text -> IO Bool
-showLiveSession sid = do
-  owners <- claudeLiveOwners
-  panes  <- livePanePids
-  case [ (s, w, p) | (s, w, p, ppid) <- panes
-                   , Just l <- [M.lookup ppid owners], clSession l == sid ] of
-    ((s, w, p) : _) -> do
+showLiveSession sid = paneForSession sid >>= \case
+    Just (s, w, p) -> do
       tmuxCmd ["select-window", "-t", T.unpack w]
       tmuxCmd ["select-pane", "-t", T.unpack p]
       requestLocalTerm s
       return True
-    [] -> claudeLiveBySession >>= \live -> case M.lookup sid live of
+    Nothing -> claudeLiveBySession >>= \live -> case M.lookup sid live of
       Just l | not (null (clDir l)) -> activateMruClaude (clDir l)
       _                             -> return False
+
+-- | The tmux @(session id, window id, pane id)@ whose process tree owns LIVE
+-- session @sid@ — the exact identification 'showLiveSession' documents, factored
+-- out so senders can aim at a session without also navigating to it.
+-- 'Nothing' when the session isn't running in a pane of leksah's tmux server
+-- (not running at all, on a remote host, or in a terminal outside leksah).
+paneForSession :: Text -> IO (Maybe (Text, Text, Text))
+paneForSession sid = do
+  owners <- claudeLiveOwners
+  panes  <- livePanePids
+  return $ listToMaybe
+    [ (s, w, p) | (s, w, p, ppid) <- panes
+                , Just l <- [M.lookup ppid owners], clSession l == sid ]
+
+-- | The live session running in tmux pane @pid@ (@%7@), if any — the reverse of
+-- 'paneForSession', for asking "is THIS pane a Claude session?".  A pane whose
+-- own session is the obvious AI target needs no stored binding.
+sessionForPaneId :: Text -> IO (Maybe Text)
+sessionForPaneId pid = do
+  owners <- claudeLiveOwners
+  panes  <- livePanePids
+  return $ listToMaybe
+    [ clSession l | (_, _, p, ppid) <- panes, p == pid
+                  , Just l <- [M.lookup ppid owners] ]
+
+-- | The live session that process @pid@ is running UNDER — walk up its parents
+-- until one of them is a @claude@ process we know.  Note the direction:
+-- 'claudeLiveOwners' indexes a session by its own ANCESTORS, whereas here the
+-- caller is a DESCENDANT (leksah-cmd, or the @leksah-cmd mcp@ server, invoked by
+-- a session), so this is the other lookup.  Lets a pane opened by a Claude
+-- session be bound to it.
+sessionOwningPid :: Int -> IO (Maybe Text)
+sessionOwningPid pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  ls <- claudeLiveSessions
+  if null ls then return Nothing else do
+    parents <- readParentPids
+    let byPid = M.fromList [ (clPid l, l) | l <- ls ]
+        -- Bounded like 'claudeLiveOwners'' walk, so a garbled table can't spin.
+        go :: Int -> Int -> Maybe Text
+        go 0 _ = Nothing
+        go n p = case M.lookup p byPid of
+          Just l -> Just (clSession l)
+          Nothing -> case M.lookup p parents of
+            Just q | q > 1 -> go (n - 1) q
+            _              -> Nothing
+    return (go (12 :: Int) pid)
+
+-- | A tmux pane's current working directory — which project a plain shell pane
+-- belongs to, so it can inherit that project's AI session.  'Nothing' if the
+-- pane is gone or tmux failed.
+paneCurrentPath :: Text -> IO (Maybe FilePath)
+paneCurrentPath pane = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  (ec, out, _) <- readProcessWithExitCode "tmux"
+    ["-L", "leksah", "display-message", "-p", "-t", T.unpack pane
+    , "-F", "#{pane_current_path}"] ""
+  let p = T.strip (T.pack out)
+  return $ if ec /= ExitSuccess || T.null p then Nothing else Just (T.unpack p)
+
+-- | Type literal @txt@ into LIVE session @sid@'s pane (no Enter, so it lands
+-- unsubmitted in the session's composer).  'False' when the session isn't in a
+-- pane we can reach — the caller should offer to resume it.
+sendToSession :: Text -> Text -> IO Bool
+sendToSession sid txt = paneForSession sid >>= \case
+  Nothing           -> return False
+  Just (_, _, pane) -> sendKeysTo pane ["-l", T.unpack txt]
 
 -- | A label for session @sid@ in @dir@: the first user prompt of its
 -- transcript.  One head-read of that ONE file, where 'claudeSessionsFor' scans

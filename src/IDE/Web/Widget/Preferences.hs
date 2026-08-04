@@ -121,7 +121,10 @@ preferencesWidget ide = do
             terminalControlMode (\v p -> p { terminalControlMode = v })
         , linesField p0 "Remote hosts in the Terminals tree (ssh, one per line)"
             (map T.unpack . remoteHosts) (\v p -> p { remoteHosts = map T.pack v })
-        , txt "AI target pane (session/window/pane)"
+          -- The AI tools ask which session to use (the active pane's default
+          -- first); this is only the explicit target for
+          -- `leksah-cmd grab-region TARGET`, which names a pane itself.
+        , txt "Fallback AI target pane (session/window/pane)"
             regionCaptureTarget (\v p -> p { regionCaptureTarget = v })
         ]
     , section "Build"

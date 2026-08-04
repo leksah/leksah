@@ -104,27 +104,41 @@ flipperCss = do
     verticalAlign middle
     margin (px 0) (px 6) (px 2) (px 0)
 
+-- | The flipper overlay, also used for the AI-session picker (hence the
+-- caller-supplied item type, label renderer and @openAt0@ input).
+--
+-- Two ways in.  A 'flipStep' opens it ALREADY ADVANCED — ⌘\` means "the previous
+-- tab", so the first press must land on entry 1, not 0.  @openAt0@ opens it
+-- sitting on entry 0 instead, for a list whose first entry is the one you
+-- usually want (the active pane's default AI session); stepping from there
+-- walks down as usual.
 flipperWidget
   :: (MonadWidget t m, Ord k, Show k)
   => Dynamic t [(Text, k)]
   -> Event t Bool   -- ^ flip step: True = forward (⌘`), False = back (⌘⇧`); opens if hidden
   -> Event t ()     -- ^ commit (Command released)
   -> Dynamic t Bool -- ^ highlighted item is owned by this window (thick border)
+  -> Event t ()     -- ^ open highlighting entry 0 (no step); ignored when already up
+  -> Event t ()     -- ^ dismiss WITHOUT committing (Escape); 'never' for the flipper
   -> (Dynamic t k -> m ())
   -> m ( Dynamic t Bool                -- ^ overlay visible?
        , Dynamic t (Maybe (Text, k))   -- ^ the item currently highlighted in the flipper
        , Dynamic t Int                 -- ^ the highlighted item's index (for the mirror)
        , Event t (Map Text k) )        -- ^ committed tab selection
-flipperWidget recentTabs flipStep flipdone selfSelD label = do
+flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE label = do
   let flipdown = () <$ ffilter id  flipStep
       flipup   = () <$ ffilter not flipStep
 
   numberOfTabsD <- holdUniqDyn $ length <$> recentTabs
-  visibleD <- holdUniqDyn =<< holdDyn False (leftmost [ True <$ flipdown, True <$ flipup, False <$ flipdone ])
+  visibleD <- holdUniqDyn =<< holdDyn False
+    (leftmost [ True <$ flipdown, True <$ flipup, True <$ openAt0
+              , False <$ flipdone, False <$ cancelE ])
   selectionIndexD <- foldDyn ($) (0::Int) $ leftmost
-    [ (\n x -> let x' = succ x in if x' >= n then 0 else x') <$> tag (current numberOfTabsD) flipdown
-    , (\n x -> let x' = pred x in if x' < 0 then n - 1 else x')  <$> tag (current numberOfTabsD) flipup
+    [ (\n x -> let n' = max 1 n; x' = succ x in if x' >= n' then 0 else x') <$> tag (current numberOfTabsD) flipdown
+    , (\n x -> let n' = max 1 n; x' = pred x in if x' < 0 then n' - 1 else x')  <$> tag (current numberOfTabsD) flipup
     , const 0 <$ flipdone
+    , const 0 <$ openAt0
+    , const 0 <$ cancelE
     ]
   let selectionD = listToMaybe <$> (drop <$> selectionIndexD <*> recentTabs)
   clickE <- fmap (fmap (mconcat . (^.. traverse))) $

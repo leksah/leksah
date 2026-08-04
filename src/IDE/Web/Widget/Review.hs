@@ -62,7 +62,7 @@ import IDE.Web.Claude (claudeKeyFor)
 import IDE.Web.Events (ReviewEvents)
 import IDE.Web.GitInfo (openUrl)
 import IDE.Web.IDERefStore (getGlobalIDERef)
-import IDE.Web.ReplTmux (liveRunPanes)
+import IDE.Web.ReplTmux (liveRunPanes, sendKeysTo)
 import IDE.Web.Widget.Editor (ensureMonacoLoaded)
 import IDE.Web.Widget.FileTree (GitStatus(..), gitClass, gitBadge)
 import IDE.Web.Widget.GitLog
@@ -271,12 +271,9 @@ sendToClaude root txt = do
   case panes of
     [] -> return "no Claude session is running in this checkout — start one from its Claude node"
     ((_, _, _, pid) : _) -> do
-      r <- try (readProcessWithExitCode "tmux"
-                  ["-L", "leksah", "send-keys", "-t", T.unpack pid, "-l", T.unpack txt] "")
-             :: IO (Either SomeException (ExitCode, String, String))
-      return $ case r of
-        Right (ExitSuccess, _, _) -> "sent to the Claude session"
-        _                         -> "send failed (tmux send-keys)"
+      ok <- sendKeysTo pid ["-l", T.unpack txt]
+      return $ if ok then "sent to the Claude session"
+                     else "send failed (tmux send-keys)"
 
 -- | @window.LeksahReview.selLines(diffEl)@ → @\"a b\"@ (1-based start\/end lines
 -- of the selection on the NEW side of the mounted diff) or @\"\"@.  Handles both

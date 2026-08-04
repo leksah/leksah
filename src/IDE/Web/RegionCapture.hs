@@ -19,6 +19,7 @@
 -- session) gets it in its prompt.
 module IDE.Web.RegionCapture
   ( grabRegionToTarget
+  , grabRegionToFile
   , regionTmuxTarget
   , screenCaptureAllowed
   , nextRegionFile
@@ -37,6 +38,8 @@ import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
+
+import IDE.Web.ReplTmux (sendKeysTo)
 
 -- | Monotonic counter for temp filenames, so successive captures don't
 -- overwrite each other before their paths are used.
@@ -92,11 +95,7 @@ sendPathToTarget target file = sendTextToTarget target (T.pack file <> " ")
 sendTextToTarget :: Text -> Text -> IO Bool
 sendTextToTarget target txt = case regionTmuxTarget target of
   Nothing  -> return False
-  Just tgt -> do
-    r <- try (readProcessWithExitCode "tmux"
-                ["-L", "leksah", "send-keys", "-t", T.unpack tgt, "-l", T.unpack txt] "")
-           :: IO (Either SomeException (ExitCode, String, String))
-    return $ case r of Right (ExitSuccess, _, _) -> True; _ -> False
+  Just tgt -> sendKeysTo tgt ["-l", T.unpack txt]
 
 -- | Resolve a tmux session @name@ (or id) to its canonical @$N@ session id on
 -- the @leksah@ server — leksah keys its terminal tabs by that id, so this maps
@@ -113,8 +112,28 @@ resolveTmuxSessionId sess = do
       let s = T.strip (T.pack out) in if T.null s then Nothing else Just s
     _ -> Nothing
 
+-- | The screencapture-crosshair path, capture only: drag a region and return its
+-- PNG path.  @Left@ carries the message to show when nothing was captured
+-- (cancelled, or the permission was refused after all).  Separate from
+-- 'grabRegionToTarget' because the destination is now chosen *after* the capture
+-- — the AI-session picker only appears once there is something to send.
+grabRegionToFile :: IO (Either Text FilePath)
+grabRegionToFile = do
+  file <- nextRegionFile
+  -- -i interactive (drag a region; Esc cancels), -o no window shadow.
+  (_ec, _out, err) <- readProcessWithExitCode "screencapture" ["-i", "-o", file] ""
+  exists <- doesFileExist file
+  return $ if exists then Right file
+    else Left $ if blocked err
+      then "grab-region: the screen capture was blocked.  Grant Leksah \
+           \Screen Recording permission (System Settings → Privacy & \
+           \Security → Screen Recording), then relaunch leksah.\n"
+      else "grab-region: cancelled (no region selected).\n"
+
 -- | The screencapture-crosshair path (used when permission IS granted):
--- interactively grab a region and send its PNG path to @target@'s pane.
+-- interactively grab a region and send its PNG path to @target@'s pane.  Still
+-- used by @leksah-cmd grab-region TARGET@, where the caller named an explicit
+-- tmux target and so wants no picker.
 grabRegionToTarget :: Text -> IO Text
 grabRegionToTarget target = case regionTmuxTarget target of
   Nothing -> return $ "grab-region: unsupported target " <> target

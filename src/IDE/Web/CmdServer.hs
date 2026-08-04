@@ -70,8 +70,8 @@ import GHC.Conc (threadStatus, ThreadStatus(..))
 import GHC.Conc.Sync (listThreads, threadLabel)
 import GHC.Stack.CloneStack (cloneThreadStack, decode, StackEntry(..))
 import Data.List (isPrefixOf, isInfixOf)
-import Control.Lens ((^.))
-import Control.Monad (filterM, forever, void, when, (<=<))
+import Control.Lens ((^.), (%~))
+import Control.Monad (filterM, forM_, forever, void, when, (<=<))
 
 import Data.Foldable (toList)
 import Data.IORef (IORef, newIORef, writeIORef)
@@ -80,6 +80,7 @@ import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
 import qualified Data.ByteString as BS
+import qualified Data.Map as M (insert)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8, decodeUtf8With)
@@ -109,15 +110,17 @@ import Language.Javascript.JSaddle (eval, valToText)
 import Text.Printf (printf)
 
 import IDE.Core.State
-       (IDERef, reflectIDE, ideJSM, readIDE, workspace, runWorkspace,
-        runProject, pjPackages, ipdPackageName, ipdCabalFile, wsProjects,
-        setLoggerLevel, activeProjectLogRefs, allLogRefs, LogRef(..),
-        LogRefType(..), SrcSpan(..), logRefFullFilePath)
+       (IDERef, reflectIDE, ideJSM, readIDE, modifyIDE_, workspace,
+        runWorkspace, runProject, pjPackages, ipdPackageName, ipdCabalFile,
+        wsProjects, setLoggerLevel, activeProjectLogRefs, allLogRefs,
+        LogRef(..), LogRefType(..), SrcSpan(..), logRefFullFilePath,
+        AIPaneRef(..), paneAISession, TabKey(..))
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
+import IDE.Web.Claude (sessionOwningPid)
 import IDE.Web.Command (buildActiveTarget)
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.Handoff (handoffEnabled, requestHandoff)
@@ -210,7 +213,15 @@ handleConn ideR conn = do
   raw <- recvAll conn
   let fields = map (decodeUtf8With lenientDecode) (BS.split 0 raw)
   case fields of
-    (cwdT : argsT) -> dispatch (T.unpack cwdT) argsT
+    -- The client's pid arrives as a tagged @pid=N@ field after the cwd (see
+    -- 'payloadFor' in main/Cmd.hs).  Optional: a leksah-cmd built before it
+    -- exists simply sends the verb here, and no verb is ever @pid=…@.
+    (cwdT : rest) ->
+      let (mpid, argsT) = case rest of
+            (f : more) | Just n <- T.stripPrefix "pid=" f
+                       , Just p <- readMaybe (T.unpack n) -> (Just (p :: Int), more)
+            _                                             -> (Nothing, rest)
+      in dispatch mpid (T.unpack cwdT) argsT
     []             -> reply "leksah-cmd: empty request\n"
   where
     reply = sendAll conn . encodeUtf8
@@ -226,7 +237,18 @@ handleConn ideR conn = do
         Left err -> return (Left (err <> "\n"))
         Right fp -> return (Right fp)
 
-    dispatch cwd = \case
+    -- | Bind each opened file's editor tab to the Claude session that asked for
+    -- it, when the request came from one.  The pane reference is derivable from
+    -- the path alone ('PRTab' of its 'EditorKey'), so this needs no hook into
+    -- pane creation — and because it goes into '_paneAISession' it is persisted
+    -- like any explicit choice.  A request from a human shell binds nothing.
+    bindOpenedTo mpid files = forM_ mpid $ \pid ->
+        sessionOwningPid pid >>= \case
+          Nothing  -> return ()
+          Just sid -> (`reflectIDE` ideR) . modifyIDE_ $ paneAISession %~ \m ->
+              foldr (\fp -> M.insert (PRTab (EditorKey fp)) sid) m files
+
+    dispatch mpid cwd = \case
       ("restart" : args) -> do
         -- @--no-rebuild@ exits 3 instead of 2; leksah-nix.sh's loop treats 3 as
         -- "relaunch but skip the cabal build" (safe after rebuild-self already
@@ -259,7 +281,11 @@ handleConn ideR conn = do
       -- silent back-compat alias.
       (verb : "open" : files) | verb `elem` ["editor", "cm"], not (null files) -> do
         results <- mapM (resolveInput cwd) files
-        mapM_ deliverOpenedFile [ fp | Right fp <- results ]
+        let opened = [ fp | Right fp <- results ]
+        mapM_ deliverOpenedFile opened
+        -- Opened BY a Claude session (its MCP server or its shell)?  Then its
+        -- pane belongs to that session.
+        bindOpenedTo mpid opened
         reply $ case [ e | Left e <- results ] of
           []   -> "Opened " <> T.pack (show (length files)) <> " file(s) in the editor.\n"
           errs -> mconcat errs

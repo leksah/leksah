@@ -84,10 +84,18 @@ run on the remote host; the UI stays local.
 
 ## AI assistant *(experimental)*
 
-Run your AI tool (e.g. Claude Code) in a terminal pane and mark it as the
-AI target. The **AI** menu then sends context to it: the current selection
-(cmd+ctrl+s), a `file#L10-20` reference (cmd+ctrl+r), the current error
-(cmd+ctrl+e), or a screenshot region (cmd+ctrl+g).
+Run your AI tool (Claude Code) in a terminal pane, and the **AI** menu sends
+context to it: the current selection (cmd+ctrl+s), a `file#L10-20` reference
+(cmd+ctrl+r), the current error (cmd+ctrl+e), or a screenshot region
+(cmd+ctrl+g). cmd+ctrl+j just goes to the session.
+
+**Every pane has a default AI session**, so those commands aim somewhere
+sensible without being configured: a pane running a session targets itself, a
+file's pane targets its project's most recent session, and a pane a session
+opened for you targets that session. Each command shows the live sessions with
+that default on top — tap the chord and let go to use it, or hold the modifier
+and press again (or use the arrow keys) to pick another, which then becomes
+that pane's default. A session you pick that has since exited is resumed.
 
 ## Multiple windows
 

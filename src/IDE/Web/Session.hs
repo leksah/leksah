@@ -40,8 +40,9 @@ import qualified Data.Text as T (unpack)
 import GHC.Generics (Generic)
 
 import IDE.Core.Types
-       (TallVisibility(..), FlipItem(..), LeafId(..), LeksahWindow(..),
-        PaneContent(..), PaneKind(..), SplitOrientation(..), SplitTree(..))
+       (AIPaneRef(..), TallVisibility(..), FlipItem(..), LeafId(..),
+        LeksahWindow(..), PaneContent(..), PaneKind(..), SplitOrientation(..),
+        SplitTree(..))
 import IDE.Utils.FileUtils (getConfigFilePathForSave)
 import IDE.Web.Events (TabKey(..))
 
@@ -86,6 +87,12 @@ data WebSession = WebSession
       --   in older files → restored empty); entries whose tab/pane no longer
       --   exist are filtered out on rebuild, so a stale list is harmless.  Saved
       --   so a restart / zero-downtime handoff keeps the flip order.
+  , wsPaneAI :: Maybe [(AIPaneRef, Text)]
+      -- ^ each pane's EXPLICITLY chosen default AI session ('_paneAISession'),
+      --   as @(pane, Claude session id)@.  Optional, so files written before it
+      --   existed still decode (→ restored empty) — no version bump needed.
+      --   Session ids of long-gone sessions are kept deliberately: a closed
+      --   default is resumed on next use, not forgotten.
   } deriving (Eq, Show, Generic)
 
 instance ToJSON WebWindowSession
@@ -94,6 +101,10 @@ instance ToJSON WebSession
 instance FromJSON WebSession
 instance ToJSON FlipItem
 instance FromJSON FlipItem
+-- Generic (tagged-object) instances, like 'FlipItem''s above: 'wsPaneAI' stores
+-- these as a list of pairs, so no 'ToJSONKey' is involved.
+instance ToJSON AIPaneRef
+instance FromJSON AIPaneRef
 
 -- TabKey is defined in IDE.Web.Events and TallVisibility in IDE.Core.Types; we
 -- serialize them here (orphan instances, internal use only).  An absent
@@ -190,7 +201,8 @@ instance FromJSON LeksahWindow where
       }
 
 emptyWebSession :: WebSession
-emptyWebSession = WebSession webSessionVersion [] [] Nothing Nothing Nothing
+emptyWebSession =
+    WebSession webSessionVersion [] [] Nothing Nothing Nothing Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = getConfigFilePathForSave "web-session.json"

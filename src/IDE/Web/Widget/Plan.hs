@@ -43,6 +43,7 @@ import Reflex.Dom.Core
 import Data.Default (def)
 
 import IDE.Web.Claude (claudeLatestPlan, mruClaudePane)
+import IDE.Web.ReplTmux (sendKeysTo)
 import IDE.Web.Events (PlanEvents)
 
 planWidget
@@ -131,11 +132,7 @@ planWidget dir transcript selectE = divClass "plan" $ do
                           <> ")"
                      else "send failed (tmux send-keys)"
     where
-      keysTo pid args = do
-        r <- try (readProcessWithExitCode "tmux"
-                    (["-L", "leksah", "send-keys", "-t", T.unpack pid] <> args) "")
-               :: IO (Either SomeException (ExitCode, String, String))
-        return $ case r of Right (ExitSuccess, _, _) -> True; _ -> False
+      keysTo = sendKeysTo
 
 -- | Does the plan text already look like an HTML document?  Then it goes to
 -- the (sandboxed) iframe as-is rather than through the markdown converter.

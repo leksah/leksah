@@ -207,6 +207,8 @@ module IDE.Core.Types (
 ,   flipMirror
 ,   FlipItem(..)
 ,   flipMru
+,   AIPaneRef(..)
+,   paneAISession
 ,   ideVersion
 
 -- Workspace
@@ -377,6 +379,16 @@ data IDE            =  IDE {
                                                     --   'modifyIDE_' on focus/click/open/flip-commit and
                                                     --   when a window becomes key; each window reads it
                                                     --   through its polled 'ideD'.
+,   _paneAISession       :: Map AIPaneRef Text      -- ^ each pane's default AI session, as a Claude
+                                                    --   session id (the only durable handle — pids and
+                                                    --   tmux panes come and go).  Only EXPLICIT bindings
+                                                    --   live here; the rest is derived on demand (a
+                                                    --   Claude pane targets itself, a file's pane its
+                                                    --   project's most recent session — see
+                                                    --   'IDE.Web.Main.paneDefaultSession').  Entries are
+                                                    --   dropped when the PANE goes, never when the
+                                                    --   session exits: a closed default is resumed, so
+                                                    --   it has to survive.  Persisted as @wsPaneAI@.
 ,   _ideVersion          :: Int                    -- ^ bumped on every 'modifyIDEM'; lets each web-UI
                                                     --   window poll the shared MVar and refresh its
                                                     --   'ideD' when the cross-window trigger fan-out
@@ -820,6 +832,23 @@ data WebWindow = WebWindow
 data FlipItem = FlipTab TabKey | FlipPane Text Int Int | FlipView Text Int
   deriving (Eq, Ord, Show, Generic)
 
+-- | Identifies one pane for the purpose of remembering its default AI session
+-- ('paneAISession').  Deliberately NOT 'FlipItem': that carries tmux window\/
+-- pane *indexes*, which shift when a neighbour closes — harmless for an MRU
+-- list, but it would silently re-aim a send at the wrong pane.  Each
+-- constructor holds an identifier that is stable for the pane's whole life:
+--
+--   * 'PRTmux' — tmux's @#{pane_id}@ (@%7@), stable for the tmux server's
+--     lifetime (which outlives leksah), and it travels with the pane through
+--     move-pane\/join-pane.
+--   * 'PRLeaf' — a native VIEW leaf as @(leksah window id, 'LeafId')@; leaf
+--     ids are minted monotonically per window and never reused.
+--   * 'PRTab'  — a plain wide0 tab (an editor opened as its own tab rather
+--     than as a split leaf).  This is where AI ▸ Send Selection usually fires
+--     from, which is why the association can't live on 'PaneContent'.
+data AIPaneRef = PRTmux Text | PRLeaf Text Int | PRTab TabKey
+  deriving (Eq, Ord, Show, Generic)
+
 -- | Stable id of one pane within a leksah window's native split layout.
 -- Minted monotonically per window ('lwNext') and never reused, so reflex
 -- keyed widgets can never confuse two panes.  Lives here (like 'TabKey')
@@ -983,9 +1012,14 @@ data Prefs = Prefs {
                                       --   navigation shortcut as a badge
     ,   colorfulIcons       ::   Bool -- ^ use the coloured icon set (pics/color)
                                       --   instead of the monochrome default
-    ,   regionCaptureTarget ::   Text -- ^ default terminal for `leksah-cmd
-                                      --   grab-region`, as a @session/window/pane@
-                                      --   path (e.g. @claude/leksah/0@)
+    ,   regionCaptureTarget ::   Text -- ^ the terminal `leksah-cmd grab-region`
+                                      --   types into when the caller names no
+                                      --   TARGET itself, as a
+                                      --   @session/window/pane@ path (e.g.
+                                      --   @claude/leksah/0@).  A FALLBACK only:
+                                      --   the AI tools normally aim at the active
+                                      --   pane's default AI session and let you
+                                      --   pick (see "IDE.Web.AISession")
     ,   lspEnabled          ::   Bool -- ^ run a Language Server (HLS) per project
                                       --   for diagnostics/hover/completion/nav
     ,   lspServerCommand    ::   Text -- ^ override the LSP server command line

@@ -192,12 +192,20 @@ listToMaybeStr :: [String] -> Maybe String
 listToMaybeStr (x:_) = Just x
 listToMaybeStr []    = Nothing
 
--- | @cwd@ + argv, NUL-separated — the request wire format.
+-- | @cwd@ + @pid=N@ + argv, NUL-separated — the request wire format.
+--
+-- The pid field lets leksah work out WHICH Claude session is talking to it: when
+-- this process (or the @leksah-cmd mcp@ server, which a session launches) is a
+-- descendant of a @claude@ process, a pane it asks leksah to open belongs to that
+-- session.  It is tagged rather than positional so an older leksah — which reads
+-- the second field as the verb — is the only mismatch that matters, and a newer
+-- leksah still accepts an older client's untagged request unchanged.
 payloadFor :: [String] -> IO BS.ByteString
 payloadFor args = do
   cwd <- getCurrentDirectory
+  pid <- getProcessID
   return $ BS.intercalate (BS.singleton 0)
-             (map (encodeUtf8 . T.pack) (cwd : args))
+             (map (encodeUtf8 . T.pack) (cwd : ("pid=" <> show pid) : args))
 
 -- | Send a command whose argv fields are already exactly as intended (no extra
 -- packing), streaming the reply to stdout.  Used for @js eval@ where the code is

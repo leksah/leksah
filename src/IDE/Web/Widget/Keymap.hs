@@ -21,7 +21,9 @@ import GHCJS.DOM.KeyboardEvent
 import IDE.Web.Events (KeymapEvents(..))
 import IDE.Web.Command
        (commandPackageBuild, snapWindowCmd, toggleTransparencyCmd,
-        commandFontBigger, commandFontSmaller, commandFontReset, Command(..))
+        commandFontBigger, commandFontSmaller, commandFontReset,
+        commandSendSelection, commandSendFileRef, commandSendError,
+        commandFocusAITerminal, commandGrabRegion, Command(..))
 
 -- | The fixed global keyboard chords, shared by 'keymapWidget' (which turns
 -- them into the live lookup table) and the Shortcuts cheat-sheet pane (which
@@ -49,6 +51,16 @@ globalBindings =
     , ([Command, Alt]   , KeyY,      toggleTransparencyCmd)
     -- Jump to the next terminal window wanting attention (bell, then activity).
     , ([Control, Alt]   , KeyA,      CommandFocusAlert)
+    -- The AI tools.  The native menu carries the same key equivalents (and on
+    -- macOS wins the keyDOWN, exactly as with ⌃⌘B above); these make them work
+    -- in the warp/browser front ends, and put them in the Shortcuts cheat sheet.
+    -- The picker they open commits on the modifier's keyUP, which the page sees
+    -- either way — see the AI-session picker in "IDE.Web.Main".
+    , ([Command, Control], KeyS,     commandSendSelection)
+    , ([Command, Control], KeyR,     commandSendFileRef)
+    , ([Command, Control], KeyE,     commandSendError)
+    , ([Command, Control], KeyJ,     commandFocusAITerminal)
+    , ([Command, Control], KeyG,     commandGrabRegion)
     -- Per-leaf font size in the native split layouts (the focused leaf of the
     -- active session tab): ⌘+ / ⌘− step it, ⌘0 back to the preference.
     , ([Command]        , Equals,    commandFontBigger)

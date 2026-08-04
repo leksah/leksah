@@ -9,6 +9,7 @@
 -- can use it without an import cycle.
 module IDE.Web.ReplTmux
   ( tmuxSocket
+  , sendKeysTo
   , tmuxCmd
   , activePaneIdOfSession
   , splitPane
@@ -43,7 +44,7 @@ module IDE.Web.ReplTmux
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (catch, SomeException)
+import Control.Exception (catch, try, SomeException)
 import Control.Lens ((^.))
 import Control.Monad (void, mfilter, forM_)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -102,6 +103,23 @@ tmuxCmd args = (`catch` \(_ :: SomeException) -> return ()) $
     findExecutable "tmux" >>= \case
         Nothing -> return ()
         Just tmux -> void $ readProcessWithExitCode tmux (["-L", tmuxSocket] <> args) ""
+
+-- | @tmux send-keys@ on leksah's server — the ONE copy, shared by everything
+-- that types into a pane (the AI tools, the Review pane's comment sender, the
+-- Plan pane's approve/revise keys).  @target@ is any tmux target: a @%7@ pane
+-- id, or a @session:window.pane@ path.  @args@ is the rest of the send-keys
+-- arguments — @[\"-l\", text]@ for literal text (no Enter, so it lands
+-- unsubmitted in the program's prompt), @[\"Enter\"]@ or @[\"2\"]@ for a key.
+-- 'False' when tmux is missing or the send failed.
+sendKeysTo :: Text -> [String] -> IO Bool
+sendKeysTo target args = fmap (either (const False) id) . try' $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return False
+        Just tmux -> do
+            (ec, _, _) <- readProcessWithExitCode tmux
+                (["-L", tmuxSocket, "send-keys", "-t", T.unpack target] <> args) ""
+            return (ec == ExitSuccess)
+  where try' a = try a :: IO (Either SomeException Bool)
 
 -- | The active pane of @sess@'s current window (the one shown in that session's
 -- terminal tab), or 'Nothing'.  'display-message -t \<session\>' proved
