@@ -10,6 +10,7 @@
 module IDE.Web.ReplTmux
   ( tmuxSocket
   , sendKeysTo
+  , pasteTo
   , tmuxCmd
   , activePaneIdOfSession
   , splitPane
@@ -119,6 +120,29 @@ sendKeysTo target args = fmap (either (const False) id) . try' $
             (ec, _, _) <- readProcessWithExitCode tmux
                 (["-L", tmuxSocket, "send-keys", "-t", T.unpack target] <> args) ""
             return (ec == ExitSuccess)
+  where try' a = try a :: IO (Either SomeException Bool)
+
+-- | Deliver @txt@ to a pane as a PASTE (bracketed, so the program reads it as
+-- one block) rather than as typing: @load-buffer@ then @paste-buffer -p@.
+--
+-- This is how multi-line text has to arrive at a REPL-ish program — an agent's
+-- report to another agent, say.  @send-keys -l@ types the newlines, and each one
+-- submits what has been typed so far, so one report becomes several truncated
+-- turns.  No Enter is sent either way: the caller adds it.  'False' when tmux is
+-- missing or either step failed.
+pasteTo :: Text -> Text -> IO Bool
+pasteTo target txt = fmap (either (const False) id) . try' $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return False
+        Just tmux -> do
+            let buf = "leksah-paste"
+            (ec, _, _) <- readProcessWithExitCode tmux
+                ["-L", tmuxSocket, "load-buffer", "-b", buf, "-"] (T.unpack txt)
+            if ec /= ExitSuccess then return False else do
+              (ec', _, _) <- readProcessWithExitCode tmux
+                  [ "-L", tmuxSocket, "paste-buffer", "-d", "-p", "-b", buf
+                  , "-t", T.unpack target ] ""
+              return (ec' == ExitSuccess)
   where try' a = try a :: IO (Either SomeException Bool)
 
 -- | The active pane of @sess@'s current window (the one shown in that session's

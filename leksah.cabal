@@ -370,6 +370,7 @@ library
         IDE.Web.Claude
         IDE.Web.ClaudeStatus
         IDE.Web.AISession
+        IDE.Web.Agent
         IDE.Web.Widget.AIPicker
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC
@@ -666,6 +667,7 @@ library leksah-nogtk
         IDE.Web.Claude
         IDE.Web.ClaudeStatus
         IDE.Web.AISession
+        IDE.Web.Agent
         IDE.Web.Widget.AIPicker
         IDE.Web.JsaddleTunnel
         IDE.Web.Widget.TerminalCC

@@ -111,6 +111,19 @@ usage = T.unlines
   , "  leksah-cmd grab-region [TARGET]    select a screen region; type its PNG path into"
   , "                                     a terminal pane (default: regionCaptureTarget pref;"
   , "                                     TARGET is a session/window/pane path)"
+  , "  leksah-cmd agent fork [OPTS] [PROMPT]"
+  , "                                     start another Claude agent in a pane beside you,"
+  , "                                     forked from your conversation (so it has your"
+  , "                                     context).  --below/--tab place it elsewhere,"
+  , "                                     --fresh gives it no context, --dir DIR (with"
+  , "                                     --fresh) picks its directory"
+  , "  leksah-cmd agent list              live Claude sessions: id, state, pane, dir, title"
+  , "  leksah-cmd agent wait SID [--timeout S]"
+  , "                                     block until that agent is idle (or needs a human)"
+  , "  leksah-cmd agent read SID [--last N]   what it last said"
+  , "  leksah-cmd agent send SID [--submit] TEXT   type TEXT into another session"
+  , "  leksah-cmd agent show SID          bring that session's pane to the front"
+  , "  leksah-cmd agent                   the full agent help (also: me, status)"
   , "  leksah-cmd help                    show this help"
   ]
 
@@ -178,6 +191,14 @@ main = getArgs >>= \case
       ["-"]        -> getContents
       parts        -> return (unwords parts)
     hsEval code
+
+  -- agent wait SID: the one agent verb the CLIENT implements, because it is a
+  -- POLL — a blocking handler would hold a server thread for however long the
+  -- child works (and `agent status` is answered from leksah's 3s status cache,
+  -- so polling it is nearly free).  Everything else under `agent` falls through
+  -- to the catch-all below and is handled by leksah.
+  ("agent":"wait":sid:rest) -> agentWait (T.pack sid)
+      (maybe 900 id (intArg ["--timeout", "-t"] rest))
 
   -- mcp: serve the Model Context Protocol over stdio, proxying each tool call
   -- to the running leksah's control socket — how Claude Code sessions leksah
@@ -263,6 +284,64 @@ tryReply args = do
       out <- go []
       close sock
       return out
+
+-- | The value of the first of @names@ present in @args@, as an @Int@.
+intArg :: [String] -> [String] -> Maybe Int
+intArg names args = listToMaybe
+  [ n | (f, v) <- zip args (drop 1 args), f `elem` names, Just n <- [readMaybe v] ]
+
+-- | Block until forked agent @sid@ stops working, then print its status.
+--
+-- What "stops working" means, in the order the states are believed:
+-- @waiting@ (blocked on an approval prompt) ends the wait at once — only a human
+-- can clear that, and the caller needs telling; @gone@ means it has exited;
+-- @idle@ means it finished its turn.  An @idle@/@gone@ reading in the first ~30s
+-- is NOT taken as "finished", because a child that has only just been launched
+-- has not written its session file yet, and one that has written it may not have
+-- picked up its prompt — waiting on a not-yet-started agent would otherwise
+-- return instantly with nothing done.
+agentWait :: Text -> Int -> IO ()
+agentWait sid secs = go (max 3 (secs `div` 2)) (0 :: Int) False
+  where
+    grace = 15  -- polls (≈30s) before a quiet agent counts as finished
+
+    go 0 _ _ = do
+      T.putStrLn $ "agent wait: still working after " <> T.pack (show secs)
+                   <> "s — giving up on waiting (it keeps going)."
+      statusOut
+      exitFailure
+    go n quiet started = do
+      st <- state
+      case st of
+        "unreachable" -> do
+          T.putStrLn "agent wait: leksah is not answering."
+          exitFailure
+        "waiting" -> finish "It is blocked on an approval prompt — it needs a human."
+        "busy"    -> tick 0 True
+        "shell"   -> tick 0 True
+        "gone" | started  -> finish "It has exited."
+        -- "starting" means its pane is up but the CLI never registered the
+        -- session; waiting longer won't fix that (see `agent status`).
+        "starting" | quiet > grace -> finish "It has not started."
+        _ | started       -> finish "It has finished its turn."
+          | quiet > grace -> finish ("It never started working (state " <> st <> ").")
+          | otherwise     -> tick (quiet + 1) started
+      where
+        tick q s = threadDelay 2000000 >> go (n - 1) q s
+
+    finish msg = T.putStrLn msg >> statusOut
+
+    -- The state word, or "unreachable" when leksah didn't answer.
+    state = maybe "unreachable" (firstField . firstLine) <$> tryReply args
+    args = ["agent", "status", T.unpack sid]
+    firstLine  = T.takeWhile (/= '\n')
+    firstField = T.strip . T.takeWhile (/= '\t')
+
+    statusOut = do
+      tryReply args >>= mapM_ (T.putStr . ensureNl)
+      T.putStrLn $ "Read what it said with: leksah-cmd agent read " <> sid
+    ensureNl t | "\n" `T.isSuffixOf` t = t
+               | otherwise             = t <> "\n"
 
 -- | Is the UI up right now?  (A @ping@ that returns "ok".)
 pingOnce :: IO Bool
@@ -697,6 +776,41 @@ mcpTools =
       "Capture the Leksah IDE window to a PNG and return its path (read the \
       \image from that path to see the UI)."
       [] []
+  , mcpTool "fork_agent"
+      "Start ANOTHER Claude Code agent in a terminal pane beside your own, in \
+      \this IDE, and return its session id. By default it is a fork of your \
+      \conversation, so it starts already knowing everything you know — no \
+      \briefing needed. Unlike your own Task subagents it is a real session: \
+      \visible to the user, able to ask them things, and it outlives your turn. \
+      \It reports back by sending you a message when it finishes; you can also \
+      \poll it with read_agent, or `leksah-cmd agent wait <id>` from Bash. Use \
+      \it for work worth doing in parallel or worth keeping out of your own \
+      \context — and tell the user you have started it."
+      [ ("prompt", "string", "What it should do — its first message. Say it as you would to a colleague who has just read everything you have.")
+      , ("fresh",  "boolean", "Do NOT inherit your conversation: a clean agent that knows only this prompt (and the project's CLAUDE.md)")
+      , ("dir",    "string", "Working directory — only with fresh (a forked conversation stays in its own directory)")
+      , ("place",  "string", "beside (default), below, or tab") ] ["prompt"]
+  , mcpTool "list_agents"
+      "The Claude Code sessions running in this IDE right now — id, state \
+      \(waiting/busy/idle), pane, directory, title — with your own row marked. \
+      \How to find the agents you forked, or a peer to hand something to."
+      [] []
+  , mcpTool "send_to_agent"
+      "Send text to another Claude Code session in this IDE (one you forked, or \
+      \a peer from list_agents). Submitted as a turn by default, so it will act \
+      \on it — including waking it if it had gone idle. Its reply comes back to \
+      \you the same way, as a message, so do not block waiting for it."
+      [ ("session", "string", "Target session id")
+      , ("text",    "string", "What to say. Self-contained: it cannot see your context.")
+      , ("submit",  "boolean", "Press Enter (default true). False leaves it in the composer for the user to edit.") ]
+      ["session", "text"]
+  , mcpTool "read_agent"
+      "What another session last SAID (its final assistant messages), plus \
+      \whether it is still working. Use it to collect a forked agent's answer, \
+      \or to catch up on one you were told about."
+      [ ("session", "string", "Session id")
+      , ("last",    "number", "How many of its answers to return (default 1)") ]
+      ["session"]
   ]
 
 -- | Field lookup on an aeson object 'Value'.
@@ -711,7 +825,12 @@ mcpInt :: Text -> Value -> Maybe Int
 mcpInt k v = case fromJSON <$> mcpField k v of Just (Success n) -> Just n; _ -> Nothing
 
 mcpBool :: Text -> Value -> Bool
-mcpBool k v = case mcpField k v of Just (Bool b) -> b; _ -> False
+mcpBool k v = maybe False id (mcpBoolMaybe k v)
+
+-- | A boolean argument that distinguishes "absent" from "false" (for a flag
+-- whose default is true).
+mcpBoolMaybe :: Text -> Value -> Maybe Bool
+mcpBoolMaybe k v = case mcpField k v of Just (Bool b) -> Just b; _ -> Nothing
 
 -- | Successive screenshot paths, so parallel tool calls can't clobber each other.
 {-# NOINLINE mcpShotCounter #-}
@@ -780,6 +899,29 @@ mcpCall params = do
         (Just f, Just ln) -> sock $ ["hover", T.unpack f, show ln]
                                 <> maybe [] ((:[]) . show) (mcpInt "column" args)
         _ -> return (Left "missing required arguments: file, line")
+      -- The agent tools proxy to the `agent` verbs; the caller is identified by
+      -- OUR pid (this mcp server is a child of the session), which the wire
+      -- format already carries — so "fork me, beside me" needs no arguments.
+      "fork_agent" -> case mcpText "prompt" args of
+        Nothing -> return (Left "missing required argument: prompt")
+        Just p  -> sock $ ["agent", "fork"]
+                       <> [ "--fresh" | mcpBool "fresh" args ]
+                       <> maybe [] (\d -> ["--dir", T.unpack d]) (mcpText "dir" args)
+                       <> case mcpText "place" args of
+                            Just "below" -> ["--below"]
+                            Just "tab"   -> ["--tab"]
+                            _            -> []
+                       <> ["--", T.unpack p]
+      "list_agents" -> sock ["agent", "list"]
+      "send_to_agent" -> case (mcpText "session" args, mcpText "text" args) of
+        (Just s, Just t) -> sock $ ["agent", "send", T.unpack s]
+                                <> [ "--submit" | maybe True id (mcpBoolMaybe "submit" args) ]
+                                <> [T.unpack t]
+        _ -> return (Left "missing required arguments: session, text")
+      "read_agent" -> case mcpText "session" args of
+        Just s  -> sock $ ["agent", "read", T.unpack s]
+                       <> maybe [] (\n -> ["--last", show n]) (mcpInt "last" args)
+        Nothing -> return (Left "missing required argument: session")
       "screenshot" -> do
         n <- atomicModifyIORef' mcpShotCounter (\i -> (i + 1, i))
         home <- getHomeDirectory

@@ -169,6 +169,25 @@
   - `leksah-cmd screenshot FILE` — capture the UI to a PNG (wkwebview only).
   - `leksah-cmd grab-region [TARGET]` — select a screen region; types its PNG path
     into the AI-target pane (`aiTarget`/`regionCaptureTarget` pref).
+- **`leksah-cmd agent …` — you can put ANOTHER agent in a pane beside you**
+  (`src/IDE/Web/Agent.hs`; the same thing is exposed to a session as the
+  `fork_agent` MCP tool). `agent fork [--below|--tab] [--fresh] [--dir D]
+  'PROMPT'` splits your own pane and starts a `claude` there, **forked from your
+  conversation by default** (`--session-id` pins the child's id, so the reply is
+  a handle you can use at once) — it starts knowing what you know, with no
+  briefing. Unlike a Task subagent it is a real session: visible, interruptible,
+  it can ask the user things, and it outlives your turn. Then `agent list`
+  (id/state/pane/dir/title, yours marked), `agent read SID [--last N]` (what it
+  said), `agent wait SID` (blocks — client-side polling), `agent send SID
+  [--submit] TEXT` (multi-line goes through a bracketed paste), `agent show SID`,
+  `agent me`. A forked child is told to report back with `agent send`, and is
+  allow-listed for exactly that one command (not `agent fork` — no silent
+  fan-out). Two things to know: a **forked conversation can't change directory**
+  (`--resume` only finds a session in its own project folder, so `--dir` needs
+  `--fresh`), and a fork into a **directory claude hasn't seen** stops on the
+  folder-trust question — `agent status` then says `starting`, and someone has to
+  press a key in that pane. There are **no worktrees** here: children share the
+  parent's checkout, so give them non-overlapping work or use the Tasks queue.
 - **Recipes for verifying/driving a running leksah:**
   - *Inspect the live DOM* — `leksah-cmd js eval '<JS returning a value>'` (element
     `getBoundingClientRect`, counts, `getComputedStyle`). Fastest way to check a

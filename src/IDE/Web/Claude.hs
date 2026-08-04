@@ -29,6 +29,7 @@ module IDE.Web.Claude
   , ClaudeUsage(..)
   , claudeSessionUsage
   , ClaudeCmd(..)
+  , AgentSpec(..)
   , runClaudeCmd
   , claudeCommandLine
   , claudeRunning
@@ -453,6 +454,26 @@ data ClaudeCmd
   | ClaudePrompt       FilePath Text   -- ^ @claude "<prompt>"@ — new session in
                                        --   the dir seeded with a free-form task
                                        --   prompt (the Stage-4 task queue)
+  | ClaudeAgent        AgentSpec       -- ^ one agent forking another — see
+                                       --   "IDE.Web.Agent"
+
+-- | A child agent an agent asked for: what to run, and who asked.
+--
+-- The child's session id is minted by leksah BEFORE launch and pinned with
+-- @--session-id@, so @leksah-cmd agent fork@ can answer with a handle the
+-- parent can immediately send to, wait on and read — no polling for the id to
+-- appear.  (Verified: @--session-id@ composes with @--resume … --fork-session@,
+-- which would otherwise mint its own.)
+data AgentSpec = AgentSpec
+  { asDir     :: FilePath   -- ^ the child's working directory
+  , asSession :: Text       -- ^ its pre-minted session id ('newAgentSessionId')
+  , asFrom    :: Maybe Text -- ^ session to fork: the child starts with that
+                            --   conversation's full context ('Nothing' = a
+                            --   fresh agent, which knows only its prompt)
+  , asPrompt  :: Maybe Text -- ^ seeded first prompt (submitted at launch)
+  , asParent  :: Maybe Text -- ^ the session that asked, if one did — told to
+                            --   the child so it can report back
+  } deriving (Eq, Show)
 
 -- | Open (or focus) a terminal in the right directory running the command.
 -- An existing pane for the same conversation (its @\@leksah_run@ key) is
@@ -490,10 +511,25 @@ claudeCommandLine cmd = do
   -- build, hover, screenshot…) — see `leksah-cmd mcp`.  The config file points
   -- at a local binary, so remote (ssh://) dirs skip it.
   mcpFlag <- if isRemotePath d then return "" else claudeMcpFlag
-  let flags = mcpFlag <> planHtmlFlag
+  let flags = mcpFlag <> allowFlag <> appendSystemPrompt (planHtmlNote : notes)
       line' = maybe line (\p -> p <> " " <> line) mbPrefix <> flags
   return (d, key, line')
   where
+    -- Extra system-prompt notes this command needs, joined into the ONE
+    -- @--append-system-prompt@ 'appendSystemPrompt' emits.
+    notes = case cmd of
+      ClaudeAgent s -> [ agentNote p (asSession s) | Just p <- [asParent s] ]
+      _             -> []
+    -- A child agent may report back to its parent without stopping to ask
+    -- (`agent send` and nothing else — NOT `agent fork`, so children can't
+    -- quietly fan out).  Without this the loop stalls on an approval prompt the
+    -- parent can't answer.  Note the placement: @--allowedTools@ is variadic, so
+    -- it must be followed by another flag — never by the positional prompt,
+    -- which it would swallow ('flags' always ends with --append-system-prompt).
+    allowFlag = case cmd of
+      ClaudeAgent s | Just _ <- asParent s ->
+          " --allowedTools " <> shq "Bash(leksah-cmd agent send:*)"
+      _ -> ""
     (dir, keyTag, line) = case cmd of
       ClaudeNew d          -> (d, "claude",            "claude")
       ClaudeContinue d     -> (d, "claude",            "claude -c")
@@ -508,6 +544,14 @@ claudeCommandLine cmd = do
       -- The queue's worktree dir is unique per task, so the shared "claude"
       -- key keeps it addressable by the worktree flows (Review's send etc.).
       ClaudePrompt d p     -> (d, "claude", "claude " <> shq p)
+      -- A child agent: its own pinned session id makes the run key unique, so
+      -- every fork gets a NEW pane (findRunPane can still bring it back).
+      ClaudeAgent s        ->
+        ( asDir s
+        , "claude#" <> asSession s
+        , T.unwords $ [ "claude", "--session-id", asSession s ]
+                   <> maybe [] (\f -> ["--resume", f, "--fork-session"]) (asFrom s)
+                   <> maybe [] ((:[]) . shq) (asPrompt s) )
     key = T.pack (dropTrailingPathSeparator dir) <> "#" <> keyTag
 
 -- | Single-quote for the shell tmux runs the window command through, so a
@@ -516,12 +560,42 @@ claudeCommandLine cmd = do
 shq :: Text -> Text
 shq t = "'" <> T.replace "'" "'\\''" t <> "'"
 
+-- | ONE @--append-system-prompt@ carrying every note a launch wants to add
+-- (blank-line separated).  One flag rather than several because the CLI keeps
+-- only the last occurrence — two flags silently lose the first note.
+appendSystemPrompt :: [Text] -> Text
+appendSystemPrompt notes
+  | null notes' = ""
+  | otherwise   = " --append-system-prompt " <> shq (T.intercalate "\n\n" notes')
+  where notes' = filter (not . T.null) notes
+
+-- | Tell a child agent who forked it and how to report back, so the parent can
+-- dispatch work and be woken by the answer instead of blocking on it (see
+-- "IDE.Web.Agent").  @--submit@ presses Enter, so the report becomes a real
+-- turn in the parent's conversation even if it had gone idle.
+agentNote :: Text -> Text -> Text
+agentNote parent me = T.unlines
+  [ "You are a Claude Code agent in a Leksah IDE terminal pane, started by \
+    \another agent (Claude Code session " <> parent <> ") that is working \
+    \alongside you."
+  , ""
+  , "When you finish — or if you get stuck, or need a decision only it can \
+    \make — report back to it by running:"
+  , ""
+  , "    leksah-cmd agent send " <> parent <> " --submit '<your report>'"
+  , ""
+  , "Keep the report self-contained (what you did, what you found, which files \
+    \changed): that session cannot see your screen. Your own session id is "
+    <> me <> ", which it can use to read your transcript or send you more \
+    \work. Do not fork further agents unless you are asked to."
+  ]
+
 -- | Ask every leksah-launched session to keep an HTML rendering of its plan
 -- next to the markdown one — leksah's plan-review pane shows the HTML version
 -- as a full document when it is current (see 'claudeLatestPlan').  Appended
 -- to the CLI's system prompt at launch, like the MCP registration.
-planHtmlFlag :: Text
-planHtmlFlag = " --append-system-prompt " <> shq
+planHtmlNote :: Text
+planHtmlNote =
   "When you write or update a plan file in plan mode, also save an HTML \
   \rendering of the same plan next to it: same directory and base name with \
   \a .html extension. Make it a complete self-contained document (starts \
@@ -613,7 +687,7 @@ claudeLatestPlan path = (`catch` \(_ :: SomeException) -> return Nothing) $ do
   where
     readUtf8 f = decodeUtf8With lenientDecode <$> BS.readFile f
     -- Sessions leksah launches keep an HTML rendering next to the markdown
-    -- plan (see 'planHtmlFlag'); show that when it is at least as fresh as
+    -- plan (see 'planHtmlNote'); show that when it is at least as fresh as
     -- the .md (a stale sibling from an earlier plan round loses).
     preferHtml f
       | takeExtension f == ".html" = return f

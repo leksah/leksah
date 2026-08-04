@@ -75,7 +75,7 @@ import Control.Monad (filterM, forM_, forever, void, when, (<=<))
 
 import Data.Foldable (toList)
 import Data.IORef (IORef, newIORef, writeIORef)
-import Data.Maybe (isNothing, listToMaybe)
+import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
@@ -120,7 +120,10 @@ import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
-import IDE.Web.Claude (sessionOwningPid)
+import IDE.Web.Agent
+       (ForkPlace(..), ForkRequest(..), agentList, agentRead, agentSend,
+        agentStatus, emptyForkRequest, forkAgent)
+import IDE.Web.Claude (sessionOwningPid, showLiveSession)
 import IDE.Web.Command (buildActiveTarget)
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.Handoff (handoffEnabled, requestHandoff)
@@ -595,10 +598,95 @@ handleConn ideR conn = do
               Just Nothing  -> "no hover information at that position\n"
               Nothing       -> "hover: timed out (is the language server still starting?)\n"
 
+      -- agent …: one Claude session driving another (see IDE.Web.Agent).  The
+      -- caller identifies itself by pid, so `agent fork` needs no arguments —
+      -- "fork me, beside me" is the whole common case.
+      ("agent" : rest) -> agentVerb mpid cwd rest
+
       ("help" : _) -> reply usage
       []            -> reply usage
       other         -> reply $ "leksah-cmd: unknown command: "
                                   <> T.unwords other <> "\n\n" <> usage
+
+    -- One @agent@ verb.  Every one of them starts by asking WHO is calling:
+    -- the client's pid walked up to the @claude@ process above it, if any.  That
+    -- is what lets `agent fork` take no arguments (fork me, beside me), `agent
+    -- list` mark "(you)", and a child's report reach the right parent.
+    agentVerb mpid cwd args = do
+      me <- maybe (return Nothing) sessionOwningPid mpid
+      case args of
+        ("fork" : rest) -> case parseFork cwd me rest of
+          Left err -> reply ("agent fork: " <> err <> "\n\n" <> agentUsage)
+          Right fr -> forkAgent fr >>= \case
+            Left err       -> reply ("agent fork: " <> err <> "\n")
+            Right (_, msg) -> reply msg
+        ("list" : _)  -> agentList me >>= reply
+        ("me" : _)    -> reply $ case me of
+            Just sid -> sid <> "\n"
+            Nothing  -> "not called from a Claude Code session\n"
+        ("status" : sid : _) | not (T.null sid) -> agentStatus sid >>= reply
+        ("send" : sid : rest)
+          | not (T.null sid), (submit, ps) <- sendFlags rest, not (null ps) ->
+              agentSend sid submit (T.intercalate " " ps) >>= reply
+        ("read" : sid : rest) | not (T.null sid) ->
+            agentRead sid (fromMaybe 1 (intFlag ["--last", "-n"] rest)) >>= reply
+        ("show" : sid : _) | not (T.null sid) -> showLiveSession sid >>= \ok ->
+            reply $ if ok then "Showing " <> sid <> ".\n"
+                          else "Could not find a pane for " <> sid <> ".\n"
+        _ -> reply agentUsage
+      where
+        -- Only leading flags are flags, so a message that starts with a dash
+        -- still arrives intact.
+        sendFlags = goSend False
+        goSend _ ("--submit" : as)    = goSend True as
+        goSend _ ("--no-submit" : as) = goSend False as
+        goSend s as                   = (s, as)
+        intFlag names as = listToMaybe
+          [ n | (f, v) <- zip as (drop 1 as)
+              , T.unpack f `elem` names
+              , Just n <- [readMaybe (T.unpack v)] ]
+
+    -- @agent fork@'s flags; anything left over is the child's first prompt (its
+    -- fields joined, so both `fork 'a b'` and `fork a b` work).
+    parseFork cwd me = go (emptyForkRequest cwd) { frParent = me }
+      where
+        go fr [] = Right fr
+        go fr (a : as) = case a of
+          "--beside"   -> go fr { frPlace = PlaceBeside } as
+          "--below"    -> go fr { frPlace = PlaceBelow  } as
+          "--vertical" -> go fr { frPlace = PlaceBelow  } as
+          "--tab"      -> go fr { frPlace = PlaceTab    } as
+          "--window"   -> go fr { frPlace = PlaceTab    } as
+          "--fresh"    -> go fr { frFresh = True } as
+          "--from"     -> arg as $ \v as' -> go fr { frFrom = Just v } as'
+          "--dir"      -> arg as $ \v as' -> go fr { frDir = Just (resolve cwd v) } as'
+          "--"         -> Right (withPrompt fr as)
+          _ | "-" `T.isPrefixOf` a, T.length a > 1 ->
+                Left ("unknown option " <> a)
+            | otherwise -> Right (withPrompt fr (a : as))
+        arg (v : as) k | not ("-" `T.isPrefixOf` v) = k v as
+        arg _ _ = Left "missing value for an option"
+        withPrompt fr ps =
+          let p = T.strip (T.intercalate " " ps)
+          in fr { frPrompt = if T.null p then Nothing else Just p }
+
+    agentUsage = T.unlines
+      [ "leksah-cmd agent — Claude sessions starting and driving each other:"
+      , "  fork [OPTS] [PROMPT]  start an agent in a pane beside you, forked from"
+      , "                        your conversation (so it has your context)"
+      , "      --below           split top/bottom instead of side by side"
+      , "      --tab             give it its own leksah tab instead"
+      , "      --fresh           no inherited context: it knows only PROMPT"
+      , "      --from SID        fork that session instead of the calling one"
+      , "      --dir DIR         work here (only with --fresh: see `agent fork`)"
+      , "  list                  live sessions: id, state, pane, dir, title"
+      , "  me                    the session id of the caller"
+      , "  status SID            one line: state, detail, pane, dir"
+      , "  wait SID [--timeout S]  block until SID is idle/waiting (client-side)"
+      , "  read SID [--last N]   SID's last N answers, newest last"
+      , "  send SID [--submit] TEXT   type TEXT into SID (--submit presses Enter)"
+      , "  show SID              bring SID's pane to the front in the UI"
+      ]
 
     -- The workspace's leksah package (project, package), if it's open.
     findLeksahPackage = (`reflectIDE` ideR) $
@@ -714,6 +802,8 @@ usage = T.unlines
   , "  active-selection        focused editor's file + selected line range"
   , "  build                   build the active target (async; poll diagnostics)"
   , "  hover FILE LINE [COL]   LSP hover (type/docs) at a 1-based position"
+  , "  agent SUBCOMMAND        Claude sessions starting/driving each other"
+  , "                          (fork/list/status/wait/read/send/show — `agent` for details)"
   , "  log LOGGER LEVEL        set an hslogger logger's level live, e.g."
   , "                          `log leksah.focus debug` (→ ~/.leksah/focus-debug.log), `… off`"
   ]

@@ -97,6 +97,15 @@ that default on top — tap the chord and let go to use it, or hold the modifier
 and press again (or use the arrow keys) to pick another, which then becomes
 that pane's default. A session you pick that has since exited is resumed.
 
+**Agents can start agents.** A session running here can put a second one in a
+pane beside it with `leksah-cmd agent fork 'do this'` (or its `fork_agent` IDE
+tool) — by default a *fork* of its own conversation, so the new agent starts
+already knowing what the first one knew. Unlike an in-process subagent it is a
+real session: you can watch it, talk to it and approve its tools, and it
+outlives the turn that made it. The two then talk over `leksah-cmd agent
+send/read/wait/list`, and a forked agent is told how to report back when it
+finishes. Both are yours to interrupt: they are just panes.
+
 ## Multiple windows
 
 **Workspace ▸ New Window** opens additional OS windows onto the same IDE
