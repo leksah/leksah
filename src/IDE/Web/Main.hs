@@ -291,6 +291,7 @@ import IDE.Web.Widget.GitLog (gitLogCss, gitLogWidget, gitLogSplitJs)
 import IDE.Web.Widget.Review (reviewCss, reviewWidget)
 import IDE.Web.Widget.NewWorktree (newWorktreeDialog)
 import IDE.Web.Widget.Tasks (tasksCss, tasksWidget)
+import IDE.Web.Widget.Agents (agentsCss, agentsWidget, agentLinksJs)
 import IDE.Web.Widget.Plan (planCss, planWidget)
 import IDE.Web.Widget.Compare (compareCss, compareWidget)
 import IDE.Web.Worktree (nextNewWorktreeRequest, nextReviewRequest)
@@ -1410,6 +1411,8 @@ jsMain showMenubar macTitlebar mbWid ideR = do
 
   -- Makes project-file paths in terminal output Ctrl-clickable (window.LeksahTermLinks).
   _ <- eval terminalLinksJs
+  -- Routes clicks on the links in an Agents-pane description (window.LeksahAgentLinks).
+  _ <- eval agentLinksJs
   _ <- eval (badgesJs showMenubar)
 
   -- Defines window.LeksahTmux: the tmux C-b prefix interceptor attached to each
@@ -1873,6 +1876,7 @@ css = render $ do
     terminalCss
     terminalsCss
     metadataCss
+    agentsCss
     changesCss
     gitLogCss
     reviewCss
@@ -1894,11 +1898,14 @@ tabLabelText k names = case k of
   ErrorsKey      -> "Errors"
   LogKey         -> "Log"
   GrepKey        -> "Grep"
-  TerminalsKey   -> "Terminals"
+  -- The pane is the tmux hierarchy (sessions ▸ windows ▸ panes), and the label
+  -- says so: "Tmux", not "Terminals" — which read as a list of terminal tabs.
+  TerminalsKey   -> "Tmux"
   TerminalKey n  -> M.findWithDefault n n names
   LeksahWinKey n -> n   -- tab buttons label leksah windows themselves
                         -- (session name / first view); this is a fallback
   MetadataKey    -> "Metadata"
+  AgentsKey      -> "Agents"
   ChangesKey     -> "Changes"
   PreferencesKey -> "Preferences"
   ShortcutsKey   -> "Shortcuts"
@@ -1917,6 +1924,7 @@ tabIconSrc k = case k of
   WorkspaceKey   -> Just "/pics/workspace.svg"
   TerminalsKey   -> Just "/pics/terminals.svg"
   MetadataKey    -> Just "/pics/metadata.svg"
+  AgentsKey      -> Just "/pics/tree-claude.svg"
   ErrorsKey      -> Just "/pics/errors.svg"
   LogKey         -> Just "/pics/log.svg"
   GrepKey        -> Just "/pics/grep.svg"
@@ -2060,7 +2068,7 @@ orderStyle = maybe mempty (\n -> "style" =: ("order:" <> T.pack (show n)))
 -- | The side- and bottom-bar panes in their strips' order: the Nth entry is
 -- what ⌥⌘N / ⌃⌘N navigates to, and what its ⌘-held badge shows.
 numberedTallTabs, numberedWide1Tabs :: [TabKey]
-numberedTallTabs  = [WorkspaceKey, TerminalsKey, MetadataKey]
+numberedTallTabs  = [WorkspaceKey, AgentsKey, TerminalsKey, MetadataKey]
 numberedWide1Tabs = [ErrorsKey, LogKey, GrepKey, ChangesKey]
 
 -- | The ⌘-held navigation badge for a side-/bottom-bar tab button (hidden
@@ -2122,6 +2130,7 @@ tabFlipKey k = "tab:" <> case k of
     GrepKey        -> "grep"
     TerminalsKey   -> "terminals"
     MetadataKey    -> "metadata"
+    AgentsKey      -> "agents"
     ChangesKey     -> "changes"
     PreferencesKey -> "preferences"
     ShortcutsKey   -> "shortcuts"
@@ -4630,6 +4639,29 @@ main showMenubar macTitlebar wid ide = mdo
                    requestSplitOpen (STBrowser n, sh)
             else fireBrowserUrlTab url
 
+    -- Links in an Agents-pane description (see 'agentLinksJs').  Same two
+    -- destinations as a terminal link, opposite default: these are PRs, CI
+    -- builds and issues — pages you go and deal with — so a plain click hands
+    -- them to the real browser, and ⌥ (⌥⇧ for the other direction) is how you
+    -- keep one inside leksah, in a split beside what you were reading.
+    (extUrlClickE, fireExtUrlClick) <- newTriggerEvent
+    _ <- liftJSM $ jsg ("window" :: Text) ^. jss ("__leksahOpenExtUrl" :: Text)
+           (fun $ \_ _ args -> case args of
+              (u : rest) -> do
+                url <- valToText u
+                alt <- case rest of (a : _) -> valToBool a; _ -> pure False
+                sh  <- case rest of (_ : s : _) -> valToBool s; _ -> pure False
+                liftIO $ fireExtUrlClick (url, alt, sh)
+              _ -> return ())
+    performEvent_ $ ffor extUrlClickE $ \(url, alt, sh) -> liftIO $
+        -- isOwnUrl wins over ⌥: leksah's own UI must never nest inside itself.
+        if alt && not (isOwnUrl url)
+          then void . forkIO $ do
+                 n <- nextBrowserId
+                 rememberUrl n url
+                 requestSplitOpen (STBrowser n, sh)
+          else openUrl url
+
     -- AI ▸ Grab Region / `leksah-cmd grab-region`.  Choose the capture path by
     -- whether Screen Recording permission is granted (probed off-thread):
     -- granted → the system crosshair (screencapture, real screen — transparent/
@@ -4877,6 +4909,7 @@ main showMenubar macTitlebar wid ide = mdo
             <> ChangesKey   =: ("wide1", Just ())
             <> TerminalsKey =: ("tall", Just ())
             <> MetadataKey  =: ("tall", Just ())
+            <> AgentsKey    =: ("tall", Just ())
         initialVisibleTabs =
                "tall" =: WorkspaceKey
             <> "wide1" =: LogKey
@@ -7483,6 +7516,7 @@ main showMenubar macTitlebar wid ide = mdo
                          closeMenuD renderCloseMenu
                 else terminalWidget ide n selectedE
           MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
+          AgentsKey      -> toDM AgentsTab <$> agentsWidget
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
           ShortcutsKey   -> toDM ShortcutsTab <$> withConvertHint (shortcutsWidget ide)
@@ -7735,6 +7769,7 @@ main showMenubar macTitlebar wid ide = mdo
             WorkspaceKey -> Just ("tall"  :: Text, ".workspace" :: Text)
             MetadataKey  -> Just ("tall",  ".metadata")
             TerminalsKey -> Just ("tall",  ".terminals")
+            AgentsKey    -> Just ("tall",  ".agents")
             ErrorsKey    -> Just ("wide1", ".errors")
             LogKey       -> Just ("wide1", ".log")
             GrepKey      -> Just ("wide1", ".grep")

@@ -25,7 +25,7 @@ cd leksah
   front end also builds with older compilers (e.g. `ghc98`). The libraries
   support GHC 9.6.7 through 9.14.
 * `--in-tmux` runs leksah inside a tmux session so its own output shows up
-  as "Terminal 0" in the Terminals pane.
+  as "Terminal 0" in the Tmux pane.
 * `LEKSAH_PORT=N ./leksah.sh …` runs a second instance side by side.
 
 Builds use the `dist-ghc-<version>` build directory (e.g.

@@ -171,6 +171,9 @@ type ReviewEvents = ()
 type TasksEvents = ()
 -- | The plan-review pane acts through IO (send-keys) — nothing outward.
 type PlanEvents = ()
+-- | The Agents pane acts through IO (show/resume a session, send it the refresh
+-- prompt, forget an exited one) — nothing outward.
+type AgentsEvents = ()
 type CompareEvents = ()
 -- | The Shortcuts cheat-sheet pane is read-only, so it reports nothing outward.
 type ShortcutsEvents = ()
@@ -198,6 +201,7 @@ data TabEvents e where
   TerminalTab  :: TabEvents TerminalEvents
   TerminalsTab :: TabEvents TerminalsEvents
   MetadataTab  :: TabEvents MetadataEvents
+  AgentsTab    :: TabEvents AgentsEvents
   ChangesTab   :: TabEvents ChangesEvents
   PreferencesTab :: TabEvents PreferencesEvents
   ShortcutsTab :: TabEvents ShortcutsEvents

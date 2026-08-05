@@ -182,7 +182,15 @@
   [--submit] TEXT` (multi-line goes through a bracketed paste), `agent show SID`,
   `agent me`. A forked child is told to report back with `agent send`, and is
   allow-listed for exactly that one command (not `agent fork` — no silent
-  fan-out). Two things to know: a **forked conversation can't change directory**
+  fan-out).
+  `agent describe [SID] --title T --html H` (also the `describe_agent` MCP tool)
+  is how a session says what it is doing for the **Agents pane** (side bar,
+  ⌥⌘2): the tree of sessions by who forked whom, each row expandable to the
+  description it wrote about itself. Its ⟳ button sends you the request; the
+  HTML is sanitized on the way in (whitelist tags, `href` → `data-href`), so
+  keep it to ~4 rendered lines and put real links to PRs/CI in it — the user
+  opens them from there. Every leksah-launched session is allow-listed for
+  `agent describe` (it writes only `~/.leksah-0.17/agents.json`). Two things to know: a **forked conversation can't change directory**
   (`--resume` only finds a session in its own project folder, so `--dir` needs
   `--fresh`), and a fork into a **directory claude hasn't seen** stops on the
   folder-trust question — `agent status` then says `starting`, and someone has to

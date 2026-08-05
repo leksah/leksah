@@ -28,6 +28,11 @@
 --   * @--session-id@ pins the child's id before it starts, so the reply is a
 --     handle the parent can use immediately.
 --
+-- The lineage a fork establishes is recorded by "IDE.Web.AgentInfo"
+-- ('recordAgentFork'), which is what lets the Agents pane show the sessions as a
+-- tree; @agent describe@ (there too) is the other half — how an agent says what
+-- it is doing.
+--
 -- Deliberately NOT here: git worktrees.  A fork lands in the parent's checkout
 -- (see 'forkAgent' on why a forked conversation can't change directory), so
 -- children editing the same files will collide — for isolated parallel work the
@@ -43,6 +48,7 @@ module IDE.Web.Agent
   , agentSend
   , agentRead
   , newAgentSessionId
+  , showAgentPane
   ) where
 
 import Control.Exception (catch, SomeException)
@@ -69,10 +75,12 @@ import System.IO
        (withFile, IOMode(ReadMode), hSeek, SeekMode(SeekFromEnd), hFileSize)
 
 import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.AgentInfo (recordAgentFork)
 import IDE.Web.Claude
        (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
         claudeCommandLine, claudeLiveBySession, claudeLiveOwners,
-        claudeSessionLabel, claudeTranscriptPath, paneForSession)
+        claudeSessionLabel, claudeTranscriptPath, paneForSession,
+        showLiveSession)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
@@ -165,6 +173,11 @@ forkAgent fr = (`catch` \(e :: SomeException) ->
 
     -- Beside the parent when we can find its pane; its own tab otherwise.
     place live spec key line = do
+      -- Write the lineage down NOW: the Agents pane's tree is built from it, and
+      -- after this moment nothing on disk relates a child to its parent (nor
+      -- says what the child was asked to do — its forked transcript starts with
+      -- the PARENT's first prompt).
+      recordAgentFork (asParent spec) (asSession spec) (asDir spec) (asPrompt spec)
       mPane <- case (frPlace fr, asParent spec `orElse` asFrom spec) of
         (PlaceTab, _)     -> return Nothing
         (_, Just p)       -> paneForSession p
@@ -268,6 +281,23 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
       Just "busy"  -> "working"
       Just "shell" -> "running a shell command"
       _            -> "ready for input"
+
+-- | Bring an agent's pane to the front — whether or not its session has
+-- registered yet.  A fork parked on a first-run question ('agentStatus'\'s
+-- @starting@) has a pane but no session for 'showLiveSession' to find, and that
+-- pane is exactly where someone needs to look.
+showAgentPane :: Text -> IO Bool
+showAgentPane sid = showLiveSession sid >>= \case
+  True  -> return True
+  False -> do
+    panes <- liveRunPanes
+    case [ (s, w, p) | (k, s, w, p) <- panes, ("#claude#" <> sid) `T.isSuffixOf` k ] of
+      ((s, w, p) : _) -> do
+        tmuxCmd ["select-window", "-t", T.unpack w]
+        tmuxCmd ["select-pane", "-t", T.unpack p]
+        requestLocalTerm s
+        return True
+      [] -> return False
 
 -- | Type @txt@ into a live session's composer, optionally pressing Enter to
 -- submit it as a turn.

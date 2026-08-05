@@ -123,6 +123,7 @@ import IDE.LSP (requestTerminalHover)
 import IDE.Web.Agent
        (ForkPlace(..), ForkRequest(..), agentList, agentRead, agentSend,
         agentStatus, emptyForkRequest, forkAgent)
+import IDE.Web.AgentInfo (describeAgent)
 import IDE.Web.Claude (sessionOwningPid, showLiveSession)
 import IDE.Web.Command (buildActiveTarget)
 import IDE.Web.Instance (cmdSocketFileName)
@@ -633,6 +634,12 @@ handleConn ideR conn = do
         ("show" : sid : _) | not (T.null sid) -> showLiveSession sid >>= \ok ->
             reply $ if ok then "Showing " <> sid <> ".\n"
                           else "Could not find a pane for " <> sid <> ".\n"
+        -- How an agent says what it is doing, for the Agents pane: a title and
+        -- a small HTML description.  The session defaults to the CALLER, so the
+        -- usual call names no session at all.
+        ("describe" : rest) -> case parseDescribe me rest of
+          Left err          -> reply ("agent describe: " <> err <> "\n\n" <> agentUsage)
+          Right (sid, t, h) -> describeAgent sid t h >>= reply
         _ -> reply agentUsage
       where
         -- Only leading flags are flags, so a message that starts with a dash
@@ -670,6 +677,31 @@ handleConn ideR conn = do
           let p = T.strip (T.intercalate " " ps)
           in fr { frPrompt = if T.null p then Nothing else Just p }
 
+    -- @agent describe@'s arguments: an optional leading session id (default:
+    -- the caller), then --title / --html.  Values are taken verbatim — an HTML
+    -- fragment is full of punctuation, so nothing in it may be read as a flag.
+    parseDescribe me = go Nothing Nothing Nothing
+      where
+        go msid t h [] = case msid `orElse` me of
+          -- (This module is compiled with CPP, which splices backslash-continued
+          -- lines — so long strings here are concatenated, never string gaps.)
+          Nothing  -> Left ("no session: run this from a Claude session, or name"
+                              <> " one — `agent describe SID --title …`")
+          Just sid
+            | t == Nothing && h == Nothing ->
+                Left "nothing to record: pass --title and/or --html"
+            | otherwise -> Right (sid, t, h)
+        go msid t h (a : as) = case a of
+          "--title" -> val as $ \v as' -> go msid (Just v) h as'
+          "--html"  -> val as $ \v as' -> go msid t (Just v) as'
+          "--desc"  -> val as $ \v as' -> go msid t (Just v) as'
+          _ | "-" `T.isPrefixOf` a -> Left ("unknown option " <> a)
+            | msid == Nothing      -> go (Just a) t h as
+            | otherwise            -> Left ("unexpected argument " <> a)
+        val (v : as) k = k v as
+        val []       _ = Left "missing value for an option"
+        orElse x y = maybe y Just x
+
     agentUsage = T.unlines
       [ "leksah-cmd agent — Claude sessions starting and driving each other:"
       , "  fork [OPTS] [PROMPT]  start an agent in a pane beside you, forked from"
@@ -686,6 +718,8 @@ handleConn ideR conn = do
       , "  read SID [--last N]   SID's last N answers, newest last"
       , "  send SID [--submit] TEXT   type TEXT into SID (--submit presses Enter)"
       , "  show SID              bring SID's pane to the front in the UI"
+      , "  describe [SID] --title T --html H   how you appear in the Agents pane"
+      , "                        (SID defaults to the calling session)"
       ]
 
     -- The workspace's leksah package (project, package), if it's open.

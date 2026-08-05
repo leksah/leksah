@@ -227,7 +227,7 @@ commandToggleShowHidden = CommandIDEToggleAction
 -- (@window.LeksahTmux@); this flips the pref that each window mirrors into it.
 commandToggleTmuxIntercept = CommandIDEToggleAction
   ""  -- menu-only: no toolbar icon
-  (__ "Intercept the tmux Ctrl+B prefix in terminals (C-b w shows the Terminals pane)")
+  (__ "Intercept the tmux Ctrl+B prefix in terminals (C-b w shows the Tmux pane)")
   (modifyIDE_ (prefs %~ \p -> p { tmuxInterceptPrefix = not (tmuxInterceptPrefix p) }))
   (view $ prefs . to tmuxInterceptPrefix)
 

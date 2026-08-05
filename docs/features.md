@@ -106,6 +106,16 @@ outlives the turn that made it. The two then talk over `leksah-cmd agent
 send/read/wait/list`, and a forked agent is told how to report back when it
 finishes. Both are yours to interrupt: they are just panes.
 
+**The Agents pane** (side bar, ⌥⌘2) is where you watch them: one row per
+session, each nested under the agent that forked it, with a status glyph —
+▲ needs you, ◆ working, ● idle, ○ exited. Expand a row and it shows what that
+agent says it is doing: a short description it wrote itself, with links to its
+pull requests, CI/Hydra builds and issues. **⟳** asks it to refresh that (a real
+turn in its conversation); links open in your browser, or hold ⌥ (⌥⇧) to open
+one in a leksah browser pane beside what you were reading. Clicking a row brings
+that agent's pane to the front — or, if it has finished, resumes it where it left
+off; exited agents stay listed for a day, dimmed, until you ✕ them.
+
 ## Multiple windows
 
 **Workspace ▸ New Window** opens additional OS windows onto the same IDE

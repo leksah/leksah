@@ -123,6 +123,9 @@ usage = T.unlines
   , "  leksah-cmd agent read SID [--last N]   what it last said"
   , "  leksah-cmd agent send SID [--submit] TEXT   type TEXT into another session"
   , "  leksah-cmd agent show SID          bring that session's pane to the front"
+  , "  leksah-cmd agent describe [SID] --title T --html H"
+  , "                                     set how an agent appears in the Agents pane"
+  , "                                     (SID defaults to the calling session)"
   , "  leksah-cmd agent                   the full agent help (also: me, status)"
   , "  leksah-cmd help                    show this help"
   ]
@@ -811,6 +814,18 @@ mcpTools =
       [ ("session", "string", "Session id")
       , ("last",    "number", "How many of its answers to return (default 1)") ]
       ["session"]
+  , mcpTool "describe_agent"
+      "Set how YOU (or another agent) appear in Leksah's Agents pane: a short \
+      \title and a small HTML description the user reads at a glance. Call it \
+      \when the IDE asks you to refresh your entry, and whenever what you are \
+      \doing changes materially — after opening a PR, or when a build starts. \
+      \The description renders in about four lines of a narrow side pane, so \
+      \keep it terse, and put <a href=\"…\">links</a> in it for any pull \
+      \request, CI/Hydra build or issue: the user opens them from the pane."
+      [ ("title",   "string", "A few words naming what you are working on")
+      , ("html",    "string", "HTML fragment, ~4 rendered lines. Allowed tags: p, br, a, code, b, strong, i, em, ul, li, span.")
+      , ("session", "string", "Whose entry to set (default: your own)") ]
+      []
   ]
 
 -- | Field lookup on an aeson object 'Value'.
@@ -922,6 +937,14 @@ mcpCall params = do
         Just s  -> sock $ ["agent", "read", T.unpack s]
                        <> maybe [] (\n -> ["--last", show n]) (mcpInt "last" args)
         Nothing -> return (Left "missing required argument: session")
+      -- describe_agent: the session argument is optional because the wire format
+      -- already says who is calling, so the usual call is title + html only.
+      "describe_agent" -> case (mcpText "title" args, mcpText "html" args) of
+        (Nothing, Nothing) -> return (Left "pass a title and/or html")
+        (mt, mh) -> sock $ ["agent", "describe"]
+                        <> maybe [] ((:[]) . T.unpack) (mcpText "session" args)
+                        <> maybe [] (\t -> ["--title", T.unpack t]) mt
+                        <> maybe [] (\h -> ["--html",  T.unpack h]) mh
       "screenshot" -> do
         n <- atomicModifyIORef' mcpShotCounter (\i -> (i + 1, i))
         home <- getHomeDirectory

@@ -770,6 +770,10 @@ data TabKey
   | ErrorsKey
   | LogKey
   | GrepKey
+  -- | The side-pane tree of Claude Code agents (by who forked whom), each with
+  -- the title and description it gives itself.  Its position here sets its place
+  -- in the side bar's tab strip (those buttons render in constructor order).
+  | AgentsKey
   | TerminalsKey
   -- | RETIRED (read-only migration alias): pre-v6 web sessions keyed terminal
   -- tabs by tmux session id.  Nothing writes it; reads map it to the

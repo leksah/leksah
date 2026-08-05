@@ -520,16 +520,25 @@ claudeCommandLine cmd = do
     notes = case cmd of
       ClaudeAgent s -> [ agentNote p (asSession s) | Just p <- [asParent s] ]
       _             -> []
-    -- A child agent may report back to its parent without stopping to ask
-    -- (`agent send` and nothing else — NOT `agent fork`, so children can't
-    -- quietly fan out).  Without this the loop stalls on an approval prompt the
-    -- parent can't answer.  Note the placement: @--allowedTools@ is variadic, so
-    -- it must be followed by another flag — never by the positional prompt,
-    -- which it would swallow ('flags' always ends with --append-system-prompt).
-    allowFlag = case cmd of
-      ClaudeAgent s | Just _ <- asParent s ->
-          " --allowedTools " <> shq "Bash(leksah-cmd agent send:*)"
-      _ -> ""
+    -- Two things a leksah-launched session may do without stopping to ask,
+    -- because in both cases the thing asking is leksah itself:
+    --
+    --   * @agent describe@ — answer the Agents pane's ⟳ button (it writes a
+    --     title and a description into a sidecar, and nothing else).  Granted to
+    --     every session, since any of them can be asked.
+    --   * @agent send@ — a child agent reporting back to the parent that forked
+    --     it.  Without it that loop stalls on a prompt the parent can't answer.
+    --
+    -- And nothing else: NOT `agent fork`, so children can't quietly fan out.
+    -- Note the placement: @--allowedTools@ is variadic, so it must be followed
+    -- by another flag — never by the positional prompt, which it would swallow
+    -- ('flags' always ends with --append-system-prompt).
+    allowFlag = " --allowedTools " <> T.unwords (map shq allowed)
+      where
+        allowed = "Bash(leksah-cmd agent describe:*)" :
+          case cmd of
+            ClaudeAgent s | Just _ <- asParent s -> ["Bash(leksah-cmd agent send:*)"]
+            _                                    -> []
     (dir, keyTag, line) = case cmd of
       ClaudeNew d          -> (d, "claude",            "claude")
       ClaudeContinue d     -> (d, "claude",            "claude -c")
