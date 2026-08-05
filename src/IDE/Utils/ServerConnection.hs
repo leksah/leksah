@@ -40,8 +40,8 @@ import Prelude.Compat
 import IDE.Core.State
        (ServerCommand, ServerAnswer, IDEM, IDEAction, Prefs,
         readIDE, serverQueue, modifyIDE_, reflectIDE, server,
-        prefs, serverIP, serverPort, throwIDE, triggerEventIDE_,
-        IDEEvent(..), StatusbarCompartment(..))
+        prefs, serverIP, serverPort, metadataEnabled, throwIDE,
+        triggerEventIDE_, IDEEvent(..), StatusbarCompartment(..))
 import IDE.Gtk.State (postAsyncIDE)
 import Network.Socket
        (close, socket, connect, AddrInfo(..), defaultHints,
@@ -59,22 +59,33 @@ import qualified Data.Text as T (pack, unpack)
 import Control.Lens ((.~), (?~))
 
 doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEAction
-doServerCommand command cont = do
-    q <- readIDE serverQueue >>= \case
-        Just q -> return q
-        Nothing -> do
-            q <- liftIO newEmptyMVar
-            modifyIDE_ $ serverQueue ?~ q
-            ideR <- ask
-            void . liftIO . forkIO . forever $ do
-                debugM "leksah" "Ready for command"
-                (command', cont') <- takeMVar q
-                reflectIDE (doServerCommand' command' cont') ideR
-            return q
-    liftIO $ do
-        _ <- tryTakeMVar q
-        debugM "leksah" $ "Queue new command " ++ show command
-        putMVar q (command, cont)
+doServerCommand command cont = readIDE prefs >>= \prefs0 ->
+  -- The ONE door to the leksah-server process: it connects, and starts the
+  -- process when nothing answers.  So this is where "metadata disabled" has to
+  -- mean "no leksah-server, ever" -- every command that comes through here
+  -- collects or queries metadata, including the import tool's header parse
+  -- (whose candidates come from the metadata scopes anyway, which are empty).
+  -- The continuation is simply never run: callers of a server command already
+  -- do nothing until an answer arrives.
+  if not (metadataEnabled prefs0)
+    then liftIO . debugM "leksah" $
+           "metadata disabled; not starting leksah-server for " <> show command
+    else do
+      q <- readIDE serverQueue >>= \case
+          Just q -> return q
+          Nothing -> do
+              q <- liftIO newEmptyMVar
+              modifyIDE_ $ serverQueue ?~ q
+              ideR <- ask
+              void . liftIO . forkIO . forever $ do
+                  debugM "leksah" "Ready for command"
+                  (command', cont') <- takeMVar q
+                  reflectIDE (doServerCommand' command' cont') ideR
+              return q
+      liftIO $ do
+          _ <- tryTakeMVar q
+          debugM "leksah" $ "Queue new command " ++ show command
+          putMVar q (command, cont)
 
 connectTo :: Prefs -> IO Handle
 connectTo prefs' = do

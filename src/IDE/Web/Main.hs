@@ -1608,13 +1608,15 @@ jsMain showMenubar macTitlebar mbWid ideR = do
           -- 500MB+; re-enabled here — flip back to False if the heap regresses.
 #if defined(ghcjs_HOST_OS)
           -- No leksah-server, no config dir, no packagedb in the browser demo.
-          let metadataEnabled = False
+          let metaOn = False
 #else
-          let metadataEnabled = True
+          -- The 'metadataEnabled' pref, off by default: leksah's own metadata is
+          -- a second index of your code that a language server already covers.
+          metaOn <- metadataEnabled <$> readIDE prefs
 #endif
           metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun
-                  <> " metadataEnabled=" <> show metadataEnabled
-          if metadataEnabled && firstToRun
+                  <> " metadataEnabled=" <> show metaOn
+          if metaOn && firstToRun
             then do metaLog $ "post-build " <> show wid <> " -> initInfo"
                     initInfo (return ())
                     metaLog $ "post-build " <> show wid <> " initInfo returned (load forked)"
@@ -6081,11 +6083,17 @@ main showMenubar macTitlebar wid ide = mdo
           (tag (current myWinD) restorePb)
         -- Which shared side/bottom tab is visible (the wide0 shown tab is the
         -- per-window '_wwActive', seeded separately).
-        restoreVisibleE = fmapMaybe
-          (\(ms, _) -> case ms of
-             Just s | not (null (wsVisible s)) -> Just (M.fromList (wsVisible s))
+        -- A saved selection of a tab that is no longer there would leave its area
+        -- blank, so Metadata is dropped from it while the pref is off (a session
+        -- saved with it selected is the normal case for anyone who had it open
+        -- before the pref existed).
+        restoreVisibleE = attachWithMaybe
+          (\metaOn (ms, _) -> case ms of
+             Just s | vis <- [ av | av@(_, k) <- wsVisible s
+                                  , metaOn || k /= MetadataKey ]
+                    , not (null vis) -> Just (M.fromList vis)
              _ -> Nothing)
-          restoreE
+          (current metaOnD) restoreE
         -- The saved recent-files list (for the Open Recent menu).
         restoreRecentFilesE = fmapMaybe (\(ms, _) -> ms >>= wsRecentFiles) restoreE
         -- The flipper MRU seeds from this window's wide0 order (Step 6 makes the
@@ -7558,8 +7566,15 @@ main showMenubar macTitlebar wid ide = mdo
         -- what the ⌘-held badges show).
         pickNth ks n = if n >= 1 && n <= length ks then Just (ks !! (n - 1)) else Nothing
         numSelTabE = leftmost
-          [ fmapMaybe (fmap ("tall" =:)  . pickNth numberedTallTabs)
-                      (numKeyE _CommandSelectSidePane)
+          -- ⌥⌘4 must not select a Metadata tab that metadataEnabled hid: its
+          -- area would go blank.  (Metadata is LAST in the strip, so no other
+          -- pane's number moves when it goes.)
+          [ attachWithMaybe
+                (\metaOn n -> do
+                    k <- pickNth numberedTallTabs n
+                    guard (metaOn || k /= MetadataKey)
+                    pure ("tall" =: k))
+                (current metaOnD) (numKeyE _CommandSelectSidePane)
           , fmapMaybe (fmap ("wide1" =:) . pickNth numberedWide1Tabs)
                       (numKeyE _CommandSelectBottomPane)
           -- C-b w (tmux prefix interceptor): show + focus the Terminals pane,
@@ -7643,12 +7658,23 @@ main showMenubar macTitlebar wid ide = mdo
     -- Showing the seeded tab runs activateWide0, so _wwActive self-heals on save.
     wide0ActiveD <- holdUniqDyn
         ((\ww -> maybe (listToMaybe (_wwWide0 ww)) Just (_wwActive ww)) <$> myWinD)
+    -- The Metadata tree follows the 'metadataEnabled' pref, and follows it LIVE:
+    -- switched off, its tab is closed (tabsWidget points the side bar at a
+    -- sibling by itself, and the body — the only reader of the metadata scopes —
+    -- is then never built); switched on, it opens.  Fired at post-build as well
+    -- as on change, because 'updated' skips the initial value and the pref is
+    -- off by default, so the tab that 'initialTabs' carries has to go.
+    metaOnD <- holdUniqDyn ((metadataEnabled . view prefs) <$> ide)
+    metaPb  <- getPostBuild
+    let metaOnE    = leftmost [ updated metaOnD, tag (current metaOnD) metaPb ]
+        metaOpenE  = (MetadataKey =: ("tall", Just ())) <$ ffilter id  metaOnE
+        metaCloseE = [MetadataKey]                      <$ ffilter not metaOnE
     (recentTabs, tabE, visibleTabsD, activePaneD, tabCloseBtnE) <- tabsWidget
       initialTabs
       initialVisibleTabs
       wide0OrderD
-      never   -- wide0 opens go through the shared state (moveTabTo), not here
-      never   -- wide0 closes go through the shared state (closeWide0), not here
+      metaOpenE   -- wide0 opens go through the shared state (moveTabTo), not here
+      metaCloseE  -- wide0 closes go through the shared state (closeWide0), not here
       selectTabE
       setRecentE
       focusTabE

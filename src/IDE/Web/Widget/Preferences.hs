@@ -149,7 +149,11 @@ preferencesWidget ide = do
         , b "Print binding results in GHCi" printBindResult (\v p -> p { printBindResult = v })
         ]
     , section "Metadata"
-        [ linesField p0 "Source directories (one per line)"
+        -- First, because it gates everything else in this section: off, leksah
+        -- starts no leksah-server, reads no metadata file and hides the tree.
+        [ b "Enable Leksah metadata (leksah-server, the Metadata tree)"
+            metadataEnabled (\v p -> p { metadataEnabled = v })
+        , linesField p0 "Source directories (one per line)"
             sourceDirectories (\v p -> p { sourceDirectories = v })
         , maybeTextField p0 "Unpack cabal package source to"
             unpackDirectory (\v p -> p { unpackDirectory = v })
@@ -233,6 +237,7 @@ wiredLabels =
   , "Single build without linking", "Don't install the last package"
   , "Source directories (one per line)", "Unpack cabal package source to"
   , "URL for prebuilt metadata", "Metadata download strategy"
+  , "Enable Leksah metadata (leksah-server, the Metadata tree)"
   , "Update metadata at startup", "leksah-server IP address", "leksah-server port"
   , "Stop leksah-server when leksah disconnects"
   , "Packages excluded from the modules pane (one per line, e.g. base or base >=4)"

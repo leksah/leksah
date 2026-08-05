@@ -87,7 +87,7 @@ import IDE.Core.State
         ipdMain, ipdModules, ipdPackageId, activePack, modifyIDE_,
         wsAllPackages, workspace, currentState,
         triggerEventIDE, forkIDE, MessageLevel(..),
-        ideMessage, collectAtStart, prefs, readIDE, metaLog,
+        ideMessage, collectAtStart, metadataEnabled, prefs, readIDE, metaLog,
         ModuleDescrCache, workspInfoCache, IDEPackage, packageInfo,
         workspaceInfo, systemInfo, IDEM, IDEAction, wsProjectKeys,
         Project, pjKey, pjDir, wsProjectAndPackages, systemInfo)
@@ -128,8 +128,22 @@ import IDE.Utils.GHCUtils (viewDependency, mkDependency, LibraryName(..))
 --
 -- | Update and initialize metadata for the world -- Called at startup
 --
+-- | Is leksah's own metadata switched on ('metadataEnabled')?  Off is the
+-- default and means exactly what it says: nothing here starts
+-- @leksah-server@, reads a @.lkshm@ file or fills the scopes — so every
+-- entry point below is a no-op, the readers keep answering from the empty
+-- state they start in, and the Metadata tree is not shown at all.
+metadataOn :: IDEM Bool
+metadataOn = metadataEnabled <$> readIDE prefs
+
 initInfo :: IDEAction -> IDEAction
-initInfo continuation = do
+initInfo continuation = metadataOn >>= \case
+  False -> do
+    metaLog "initInfo SKIPPED (metadata disabled)"
+    -- The continuation carries the boot chain (it leaves IsStartingUp), so it
+    -- runs whether or not there is anything to load.
+    continuation
+  True -> do
     prefs'  <- readIDE prefs
     metaLog $ "initInfo START collectAtStart=" <> show (collectAtStart prefs')
     if collectAtStart prefs'
@@ -159,8 +173,7 @@ initInfo continuation = do
                         metaLog "initInfo continuation DONE"
 
 updateSystemInfo :: IDEAction
-updateSystemInfo     = do
-    liftIO $ infoM "leksah" "update sys info called"
+updateSystemInfo     = whenMetadata "update sys info" $ do
     currentState' <- readIDE currentState
     case currentState' of
         IsStartingUp -> return ()
@@ -169,15 +182,13 @@ updateSystemInfo     = do
                 updateWorkspaceInfo' False $ \ _ -> void (triggerEventIDE (InfoChanged False))
 
 rebuildSystemInfo :: IDEAction
-rebuildSystemInfo    = do
-    liftIO $ infoM "leksah" "rebuild sys info called"
+rebuildSystemInfo    = whenMetadata "rebuild sys info" $
     updateSystemInfo' True $ \ _ ->
         updateWorkspaceInfo' True $ \ _ ->
             void (triggerEventIDE (InfoChanged False))
 
 updateWorkspaceInfo :: IDEAction
-updateWorkspaceInfo = do
-    liftIO $ infoM "leksah" "update workspace info called"
+updateWorkspaceInfo = whenMetadata "update workspace info" $ do
     currentState' <- readIDE currentState
     case currentState' of
         IsStartingUp -> return ()
@@ -186,10 +197,19 @@ updateWorkspaceInfo = do
                 void (triggerEventIDE (InfoChanged False))
 
 rebuildWorkspaceInfo :: IDEAction
-rebuildWorkspaceInfo = do
-    liftIO $ infoM "leksah" "rebuild workspace info called"
+rebuildWorkspaceInfo = whenMetadata "rebuild workspace info" $
     updateWorkspaceInfo' True $ \ _ ->
         void (triggerEventIDE (InfoChanged False))
+
+-- | Run a metadata action, or say in the log why it did nothing.  Wraps the
+-- commands the menu can reach (Update\/Rebuild Metadata), which are the only
+-- other way into the collectors and the @.lkshm@ readers.
+whenMetadata :: String -> IDEAction -> IDEAction
+whenMetadata what act = metadataOn >>= \case
+    True  -> liftIO (infoM "leksah" (what <> " called")) >> act
+    False -> do
+        liftIO $ infoM "leksah" (what <> " called, but metadata is disabled")
+        metaLog $ what <> " SKIPPED (metadata disabled)"
 
 getAllPackages :: IDEM [(UnitId, Maybe ProjectKey)]
 getAllPackages = do

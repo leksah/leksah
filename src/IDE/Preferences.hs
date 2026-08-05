@@ -117,6 +117,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Trace","LogCategory")
                                 ,   ("*Variables","LogCategory")
                                 ,   ("*Workspace","ExplorerCategory")]
+    ,   metadataEnabled     =   False
     ,   collectAtStart      =   True
     ,   unpackDirectory     =   Just ("~" </> configDirName </> "packageSources")
     ,   retrieveURL         =   "http://leksah.github.io"
@@ -210,6 +211,7 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , pathForCategory = fromMaybe pathForCategory pathForCategory_
   , defaultPath = fromMaybe defaultPath defaultPath_
   , categoryForPane = fromMaybe categoryForPane categoryForPane_
+  , metadataEnabled = fromMaybe metadataEnabled metadataEnabled_
   , collectAtStart = fromMaybe collectAtStart collectAtStart_
   , unpackDirectory = fromMaybe unpackDirectory unpackDirectory_
   , retrieveURL = fromMaybe retrieveURL retrieveURL_
@@ -325,6 +327,7 @@ toPrefsFile p@Prefs{..} = PrefsFile
   , pathForCategory_ = Just pathForCategory
   , defaultPath_ = Just defaultPath
   , categoryForPane_ = Just categoryForPane
+  , metadataEnabled_ = Just metadataEnabled
   , collectAtStart_ = Just collectAtStart
   , unpackDirectory_ = Just unpackDirectory
   , retrieveURL_ = Just retrieveURL

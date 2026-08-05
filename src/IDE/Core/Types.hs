@@ -953,6 +953,17 @@ data Prefs = Prefs {
     ,   defaultPath         ::   PanePath
     ,   categoryForPane     ::   [(Text, Text)]
     ,   packageBlacklist    ::   [Dependency]
+    ,   metadataEnabled     ::   Bool -- ^ leksah's OWN metadata (the Metadata
+                                      --   tree, its @.lkshm@ files and the
+                                      --   @leksah-server@ process that collects
+                                      --   them).  Off by default: a language
+                                      --   server gives the same answers about
+                                      --   live code, so this is a heavy second
+                                      --   index most projects don't need.  Off
+                                      --   means no server process is started, no
+                                      --   metadata file is read, and the tree is
+                                      --   not shown; every field below it here
+                                      --   is inert.
     ,   collectAtStart      ::   Bool
     ,   useCtrlTabFlipping  ::   Bool
     ,   docuSearchURL       ::   Text
@@ -1076,6 +1087,7 @@ data PrefsFile = PrefsFile {
   , defaultPath_         :: Maybe PanePath
   , categoryForPane_     :: Maybe [(Text, Text)]
   , packageBlacklist_    :: Maybe [Text]
+  , metadataEnabled_     :: Maybe Bool
   , collectAtStart_      :: Maybe Bool
   , useCtrlTabFlipping_  :: Maybe Bool
   , docuSearchURL_       :: Maybe Text
