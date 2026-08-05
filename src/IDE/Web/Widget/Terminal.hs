@@ -67,6 +67,7 @@ module IDE.Web.Widget.Terminal
   , selectTmuxWindowId
   , selectTmuxPaneId
   , panesOfWindow
+  , joinTmuxPane
   , joinTmuxPaneFull
   , breakTmuxPaneTo
   , windowLayoutString
@@ -1579,15 +1580,22 @@ panesOfWindow w = (`catch` \(_ :: SomeException) -> return []) $
                 ["-L", tmuxSocket, "list-panes", "-t", T.unpack w, "-F", "#{pane_id}"] ""
             return $ filter (not . T.null) (map T.strip (T.lines (T.pack out)))
 
--- | Join pane @p@ into @dst@'s window as a FULL-SIZE split on the given side
--- (@horiz@ = side-by-side, @before@ = left/top), detached.  The ⌘-drag pane
--- move uses this when a dragged tmux pane lands on a leaf whose window shares
--- its font — the pane joins that window as a real tmux split.
-joinTmuxPaneFull :: Text -> Text -> Bool -> Bool -> IO ()
-joinTmuxPaneFull p dst horiz before =
-    tmuxCmd (["move-pane", "-d", "-f"]
+-- | Join pane @p@ into @dst@'s window as a split on the given side (@horiz@ =
+-- side-by-side, @before@ = left/top), detached.  @full@ (@-f@) makes the split
+-- span the whole window; without it the split takes @dst@'s OWN cell and every
+-- other pane keeps its size — the difference between the ⌘-drag pane move
+-- landing on a leaf's outer edge and landing on ONE tmux pane inside it.
+joinTmuxPane :: Text -> Text -> Bool -> Bool -> Bool -> IO ()
+joinTmuxPane p dst horiz before full =
+    tmuxCmd (["move-pane", "-d"] <> ["-f" | full]
              <> ["-h" | horiz] <> ["-b" | before]
              <> ["-s", T.unpack p, "-t", T.unpack dst])
+
+-- | 'joinTmuxPane' full-size: a dragged tmux pane landing on a leaf whose
+-- window shares its font joins that window as a real tmux split, across the
+-- whole window on the dropped edge.
+joinTmuxPaneFull :: Text -> Text -> Bool -> Bool -> IO ()
+joinTmuxPaneFull p dst horiz before = joinTmuxPane p dst horiz before True
 
 -- | The current layout string of window @w@ (@\@N@), checksum-prefixed
 -- (tmux's @#{window_layout}@ — what 'IDE.Web.TmuxCC.parseLayout' reads).

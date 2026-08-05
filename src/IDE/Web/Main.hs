@@ -45,7 +45,7 @@ import qualified System.IO as IO
 import qualified System.IO as IO (hPutStrLn, stderr, hSetBuffering, BufferMode(..))
 #endif
 import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), (<&>), _Just)
-import Control.Applicative ((<|>))
+import Control.Applicative ((<|>), optional)
 import Control.Monad (forever, forM, forM_, guard, unless, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
@@ -329,7 +329,7 @@ import IDE.Web.Widget.Terminal
         cleanupStaleTwinPanes, resolveEditorCmd, shellQuoteArg,
         killTmuxPaneId, breakTmuxPaneId, windowIndexOfPane, paneCountOfSession,
         moveTmuxWindow, selectTmuxWindowId, selectTmuxPaneId,
-        panesOfWindow, joinTmuxPaneFull, breakTmuxPaneTo,
+        panesOfWindow, joinTmuxPane, joinTmuxPaneFull, breakTmuxPaneTo,
         windowLayoutString, movePaneToPane, selectWindowLayout, swapTmuxPanes,
         createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
         killRemoteTmuxSession, killRemoteTmuxWindow, killRemoteTmuxPane,
@@ -351,7 +351,14 @@ import IDE.Workspaces (backgroundMake)
 
 -- > :fork 1 IDE.Web.Main.develMain
 
--- | Minimal-ancestor-path conversion: isolate tmux window @w@'s ACTIVE pane
+-- | 'convertWindowPane' aimed at tmux window @w@'s ACTIVE pane — what the font
+-- convert and ⌥-open want, since both act on where the keyboard is.
+convertWindowMinimal :: Text -> Text -> IO Bool
+convertWindowMinimal lwi w =
+    tmuxOut ["display-message", "-p", "-t", T.unpack w, "#{pane_id}"]
+      >>= maybe (return False) (convertWindowPane lwi w)
+
+-- | Minimal-ancestor-path conversion: isolate pane @p@ of tmux window @w@
 -- by re-hosting every sibling subtree on the root→pane path into its own
 -- fresh detached window (single panes via @break-pane@; multi-pane subtrees
 -- via break + @join-pane@ + @select-layout@ with the subtree's own geometry,
@@ -361,8 +368,13 @@ import IDE.Workspaces (backgroundMake)
 -- keep their internal tmux layouts).  Stray adoption is suppressed while
 -- the tmux surgery is in flight.  False when there was nothing to convert
 -- (single-pane window) or any step failed.
-convertWindowMinimal :: Text -> Text -> IO Bool
-convertWindowMinimal lwi w = do
+--
+-- Because the mirrored splits carry tmux's own cell proportions, the isolated
+-- pane ends up exactly where it was on screen — which is why the ⌘-drag pane
+-- move can use this to land a pane that CANNOT live inside a tmux window (an
+-- editor, a differently-sized terminal) at one tmux pane's edge.
+convertWindowPane :: Text -> Text -> Text -> IO Bool
+convertWindowPane lwi w actP = do
     beginConversion
     r <- doIt `catch` \(_ :: SomeException) -> return False
     endConversion
@@ -372,12 +384,11 @@ convertWindowMinimal lwi w = do
       mtree <- (>>= parseWindowLayout)
                  <$> tmuxOut ["display-message", "-p", "-t", T.unpack w
                              , "#{window_layout}"]
-      mact  <- tmuxOut ["display-message", "-p", "-t", T.unpack w, "#{pane_id}"]
       msid  <- tmuxOut ["display-message", "-p", "-t", T.unpack w
                        , "#{session_id}"]
-      case (,,) <$> mtree <*> mact <*> msid of
-        Just (tree, actP, sid) | length (cellPanes tree) > 1
-                               , Just pre <- prePath actP tree -> do
+      case (,) <$> mtree <*> msid of
+        Just (tree, sid) | length (cellPanes tree) > 1
+                         , Just pre <- prePath actP tree -> do
             mcp <- realize sid pre
             case mcp of
               Nothing -> return False
@@ -550,10 +561,26 @@ data LeafDragSrc = LDPane Text Int   -- ^ pane @leaf@ of leksah window @lw@
                      -- into a fresh window + leaf otherwise
                  | LDTab Text        -- ^ a plain wide0 tab (its @show@-key)
   deriving (Eq, Show)
+
+-- | One tmux PANE of a multi-pane window as the drop target — the thing a
+-- 'DropSpec' cannot say, since a leksah leaf is a whole tmux window.  Picked in
+-- the DOM by 'leafDragJs' (from the pane marker boxes, whose geometry is tmux's,
+-- not the split tree's) and only ever trusted after the commit side has checked
+-- that leaf @ttLeaf@ still holds a tmux window and that @ttPane@ is still one of
+-- its panes; the pointer travels with it, so a stale pick degrades to the
+-- ordinary leaf-level recompute.
+data TmuxTarget = TmuxTarget
+  { ttLeaf   :: Int
+  , ttPane   :: Text                 -- ^ @%N@ — server-global
+  , ttOrient :: SplitOrientation     -- ^ side-by-side or above/below
+  , ttAfter  :: Bool                 -- ^ right\/below it, rather than left\/above
+  } deriving (Eq, Show)
+
 data LeafDragDst
-  = LDDstPane Text (Double, Double) (Double, Double)
+  = LDDstPane Text (Double, Double) (Double, Double) (Maybe TmuxTarget)
       -- ^ inside leksah window @lw@: pointer px, container (w, h) px — the
-      -- drop target is RECOMPUTED from these against the live tree
+      -- drop target is RECOMPUTED from these against the live tree — plus the
+      -- tmux pane the pointer was aimed at, when it was aimed at one
   | LDDstTab Text                    -- ^ on a tab button (its @show@-key)
   | LDDstNone                        -- ^ nowhere / cancelled
   deriving (Eq, Show)
@@ -570,6 +597,11 @@ parseLeafDrop = AT.parseMaybe $ withObject "leafDrop" $ \o -> do
                "pane" -> LDDstPane <$> d .: "lw"
                            <*> ((,) <$> d .: "px" <*> d .: "py")
                            <*> ((,) <$> d .: "cw" <*> d .: "ch")
+                           <*> optional (TmuxTarget
+                                 <$> d .: "tleaf" <*> d .: "tpane"
+                                 <*> ((\v -> if v then SplitV else SplitH)
+                                        <$> d .: "tv")
+                                 <*> d .: "tafter")
                "tab"  -> LDDstTab <$> d .: "tab"
                _      -> pure LDDstNone)
     return (src, dst)
@@ -603,18 +635,7 @@ moveLeafAcross srcLwId srcLeaf dstLwId spec i = fromMaybe i $ do
               PaneTmux _ | isNothing (lwSession dlw) -> lwSession slw
               _                                      -> lwSession dlw
           }
-        -- The source without the leaf; Nothing = it was the last pane and
-        -- the whole window dissolves (syncLwTabs prunes its tab).
-        srcRes = detachLeaf srcLeaf (lwTree slw) <&> \t' -> slw
-          { lwTree    = t'
-          , lwPanes   = M.delete srcLeaf (lwPanes slw)
-          , lwFocused = if lwFocused slw == Just srcLeaf
-              then successorLeaf (/= srcLeaf) srcLeaf (lwTree slw)
-                     <|> listToMaybe (treeLeafIds t')
-              else lwFocused slw
-          , lwZoomed  = if lwZoomed slw == Just srcLeaf then Nothing
-                        else lwZoomed slw
-          }
+        srcRes = withoutLeaf srcLeaf slw
         lws' = M.insert dstLwId dlw' $
           maybe (M.delete srcLwId lws) (\s -> M.insert srcLwId s lws) srcRes
         moveFlip fi = case (fi, newId) of
@@ -624,6 +645,21 @@ moveLeafAcross srcLwId srcLeaf dstLwId spec i = fromMaybe i $ do
     return $ i & leksahWindows .~ lws'
                & flipMru %~ map moveFlip
   where lws = i ^. leksahWindows
+
+-- | One leksah window without leaf @l@: focus falls to the leaf absorbing its
+-- space, and 'Nothing' means that was the last pane, so the whole leksah window
+-- dissolves (compose 'syncLwTabs' to prune its tab).  The source half of
+-- 'moveLeafAcross' — also what a drop that empties a tmux window needs, since
+-- tmux deletes the window under us and the leaf has nothing left to show.
+withoutLeaf :: LeafId -> LeksahWindow -> Maybe LeksahWindow
+withoutLeaf l lw = detachLeaf l (lwTree lw) <&> \t' -> lw
+  { lwTree    = t'
+  , lwPanes   = M.delete l (lwPanes lw)
+  , lwFocused = if lwFocused lw == Just l
+      then successorLeaf (/= l) l (lwTree lw) <|> listToMaybe (treeLeafIds t')
+      else lwFocused lw
+  , lwZoomed  = if lwZoomed lw == Just l then Nothing else lwZoomed lw
+  }
 
 -- | Merge every run of adjacent same-font tmux windows in one leksah
 -- window's split tree into single tmux windows ('consolidateGroups'): the
@@ -3498,6 +3534,16 @@ paneDragJs = T.unlines
 -- by TerminalCC) and @window.__leksahLeafDragTabs@ (the draggable plain-tab
 -- show-keys).  Native browser panes are made click-through for the duration
 -- via a @{drag:bool}@ post on the leksahBrowserFrame message handler.
+--
+-- One kind of target the pointer alone cannot express: the individual tmux
+-- panes of a multi-pane window ('tmuxCands').  A leksah leaf is one whole tmux
+-- window, so 'pickDropTarget' can only ever name the leaf; the panes inside it
+-- are found here from their @.terminal-cc-hl[data-pane]@ marker boxes and, when
+-- one wins, ride along in the payload as @tleaf@/@tpane@/@tv@/@tafter@ — a
+-- 'TmuxTarget' the commit side VALIDATES against the live model and otherwise
+-- ignores, falling back to the leaf-level recompute.  The leaf's own four edges
+-- stay in the pool, so the full-size join is still reachable, and the shadow is
+-- the honest description of which of the two the release will do.
 leafDragJs :: Text
 leafDragJs = T.unlines
   [ "(function(){"
@@ -3524,25 +3570,55 @@ leafDragJs = T.unlines
   , "    if (a.v!==b.v) return a.v?1:-1;"
   , "    if (a.after!==b.after) return a.after?1:-1;"
   , "    return 0; }"
-  , "  function pickTarget(subs, cw, ch, px, py, excl){"
+  , "  function halves(c){"
+  , "    return [ {v:false, after:false, rect:[c.x,c.y,c.w/2,c.h]}"
+  , "           , {v:false, after:true,  rect:[c.x+c.w/2,c.y,c.w/2,c.h]}"
+  , "           , {v:true,  after:false, rect:[c.x,c.y,c.w,c.h/2]}"
+  , "           , {v:true,  after:true,  rect:[c.x,c.y+c.h/2,c.w,c.h/2]} ]; }"
+  , "  function leafPathOf(subs, lid){"
+  , "    for (var i=0; i<subs.length; i++) if (subs[i].leaf===lid) return subs[i].p;"
+  , "    return null; }"
+  -- The tmux panes of the multi-pane window under the pointer, as EXTRA
+  -- candidate rects (container-relative): each is a target in its own right,
+  -- alongside its leaf's four edges and its ancestors'.  Their marker boxes
+  -- are the pane's true visual box (renderHlSegments) — the same geometry the
+  -- mousedown hit-test picks the dragged pane out of.  A pane's OWN halves are
+  -- never offered to itself; a whole-leaf drag never reaches here for its own
+  -- leaf (pickTarget bails on the excluded leaf before extras are added).
+  , "  function tmuxCands(el, subs, cr, px, py){"
+  , "    var leaf = el && el.closest && el.closest('.terminal-cc-leaf[data-leaf]');"
+  , "    if (!leaf) return [];"
+  , "    var hls = leaf.querySelectorAll('.terminal-cc-hl[data-pane]');"
+  , "    if (hls.length < 2) return [];"
+  , "    var lid = parseInt(leaf.getAttribute('data-leaf'),10);"
+  , "    var lp = leafPathOf(subs, lid);"
+  , "    if (lp === null) return [];"
+  , "    var out = [];"
+  , "    for (var i=0; i<hls.length; i++){"
+  , "      var pid = hls[i].getAttribute('data-pane');"
+  , "      if (st.srcKind==='tmux' && pid===st.srcPane) continue;"
+  , "      var r = hls[i].getBoundingClientRect();"
+  , "      var x = r.left-cr.left, y = r.top-cr.top;"
+  , "      if (px<x || px>x+r.width || py<y || py>y+r.height) continue;"
+  , "      out.push({p:lp.concat([i]), tp:{leaf:lid, pane:pid},"
+  , "                x:x, y:y, w:r.width, h:r.height}); }"
+  , "    return out; }"
+  , "  function pickTarget(subs, cw, ch, px, py, excl, extra){"
   , "    var containing = [];"
   , "    for (var i=0; i<subs.length; i++){ var s=subs[i];"
   , "      var x=s.x*cw, y=s.y*ch, w=s.w*cw, h=s.h*ch;"
   , "      if (px>=x && px<=x+w && py>=y && py<=y+h){"
   , "        if (excl!==null && s.leaf!==null && s.leaf===excl) return null;"
-  , "        containing.push({p:s.p, x:x, y:y, w:w, h:h}); } }"
+  , "        containing.push({p:s.p, x:x, y:y, w:w, h:h, tp:null}); } }"
   , "    if (!containing.length) return null;"
+  , "    (extra||[]).forEach(function(c){ containing.push(c); });"
   , "    var cands = [];"
   -- Score = distance to the CENTRE of the half the pane would occupy
   -- (mirrors pickDropTarget).
   , "    containing.forEach(function(c){"
-  , "      [ {v:false, after:false, rect:[c.x,c.y,c.w/2,c.h]}"
-  , "      , {v:false, after:true,  rect:[c.x+c.w/2,c.y,c.w/2,c.h]}"
-  , "      , {v:true,  after:false, rect:[c.x,c.y,c.w,c.h/2]}"
-  , "      , {v:true,  after:true,  rect:[c.x,c.y+c.h/2,c.w,c.h/2]}"
-  , "      ].forEach(function(k){"
+  , "      halves(c).forEach(function(k){"
   , "        cands.push({d:dist(px,py,k.rect[0]+k.rect[2]/2,k.rect[1]+k.rect[3]/2),"
-  , "                    p:c.p, v:k.v, after:k.after, rect:k.rect});"
+  , "                    p:c.p, v:k.v, after:k.after, rect:k.rect, tp:c.tp});"
   , "      });"
   , "    });"
   , "    var best = Infinity;"
@@ -3601,10 +3677,16 @@ leafDragJs = T.unlines
   , "        var cr = cc.getBoundingClientRect();"
   , "        var px = e.clientX - cr.left, py = e.clientY - cr.top;"
   , "        var excl = (st.srcKind==='pane' && lw===st.srcLw) ? st.srcLeaf : null;"
-  , "        var pick = pickTarget(geom.subs, cr.width, cr.height, px, py, excl);"
+  , "        var pick = pickTarget(geom.subs, cr.width, cr.height, px, py, excl,"
+  , "                              tmuxCands(t, geom.subs, cr, px, py));"
   , "        if (pick){"
   , "          shadowTo(cr.left+pick.rect[0], cr.top+pick.rect[1], pick.rect[2], pick.rect[3]);"
   , "          st.lastDst = {kind:'pane', lw:lw, px:px, py:py, cw:cr.width, ch:cr.height};"
+  -- A tmux pane won: the pointer alone can't express it, so the pick rides
+  -- along (Haskell VALIDATES it and falls back to the pointer recompute).
+  , "          if (pick.tp){ st.lastDst.tleaf = pick.tp.leaf;"
+  , "                        st.lastDst.tpane = pick.tp.pane;"
+  , "                        st.lastDst.tv = pick.v; st.lastDst.tafter = pick.after; }"
   , "          return; } }"
   , "      srcBox(); st.lastDst = {kind:'none'}; return; }"
   -- A draggable plain tab's visible body: land beside it (right half).
@@ -7092,20 +7174,110 @@ main showMenubar macTitlebar wid ide = mdo
                     fireLeafConvertDone [k]
                     requestLocalTerm dlwId
                   _ -> activateSrc src
+            -- The target is ONE tmux pane of a multi-pane window: leaf @l@ of
+            -- @dlwId@ holds its window @wd@ (the caller has checked both, and
+            -- that @ttPane@ is still one of that window's panes).  A dragged
+            -- tmux pane of the same effective font joins that pane's own cell
+            -- with tmux — no leksah split at all, and no @-f@, so the window's
+            -- other panes keep their sizes.  Anything else CANNOT live inside a
+            -- tmux window (a view, a plain tab, a whole multi-pane window, a
+            -- differently-sized terminal), so the aimed-at pane is first
+            -- isolated into a leaf of its own ('convertWindowPane') and the
+            -- ordinary leaf-level drop finishes the job — landing where the
+            -- shadow promised, because the conversion mirrors tmux's own cell
+            -- proportions.
+            dropOntoTmuxPane src dlwId l wd tt = do
+              lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+              defFont <- monospaceFontSize
+                           <$> (`reflectIDE` ideR) (readIDE prefs)
+              let fontOf lwId lf = fromMaybe Nothing $
+                    fmap pcFontSize (M.lookup lwId lws0
+                                       >>= M.lookup lf . lwPanes)
+                  sameFont slwId sl =
+                    fromMaybe defFont (fontOf slwId sl)
+                      == fromMaybe defFont (fontOf dlwId l)
+                  srcLeaf = case src of
+                    LDTmuxPane slwId slInt p -> Just (slwId, LeafId slInt, Just p)
+                    LDPane slwId slInt       -> Just (slwId, LeafId slInt, Nothing)
+                    LDTab _                  -> Nothing
+              -- The pane a tmux-level join would move: the dragged pane itself,
+              -- or the lone pane of a dragged terminal leaf (that pane IS its
+              -- window, so it can join like any other).  Nothing = the drag has
+              -- to become a leksah split instead.
+              joinable <- case srcLeaf of
+                Just (slwId, sl, mp)
+                  | sameFont slwId sl
+                  , Just (PaneTmux ws) <- fmap pcKind (M.lookup slwId lws0
+                                            >>= M.lookup sl . lwPanes) -> do
+                      sps <- panesOfWindow ws
+                      return $ case mp of
+                        Nothing -> case sps of
+                          [only] -> Just (slwId, sl, only, True)
+                          _      -> Nothing
+                        Just p
+                          | p `elem` sps -> Just (slwId, sl, p, length sps <= 1)
+                          | otherwise    -> Nothing
+                _ -> return Nothing
+              case joinable of
+                Just (slwId, sl, ps, lastPane)
+                  | ps /= ttPane tt -> do
+                      -- The source window dying (its last pane left) and the
+                      -- leaf going with it must be one step, like
+                      -- moveLeafAcross: no emptied window is ever observed.
+                      beginConversion
+                      joinTmuxPane ps (ttPane tt) (ttOrient tt == SplitH)
+                                                  (not (ttAfter tt)) False
+                      when lastPane $ (`reflectIDE` ideR) $ modifyIDE_ $
+                        syncLwTabs . (leksahWindows %~ \lws ->
+                          case M.lookup slwId lws >>= withoutLeaf sl of
+                            Just slw' -> M.insert slwId slw' lws
+                            Nothing   -> M.delete slwId lws)
+                      endConversion
+                      setFocusedLeaf dlwId l
+                      selectTmuxPaneId ps
+                      requestLocalTerm dlwId
+                  | otherwise -> activateSrc src   -- onto itself: nothing to do
+                Nothing -> do
+                  -- Isolate the target pane, then re-find its leaf: the tree
+                  -- has changed under us but the pane KEPT its leaf id.
+                  _ <- convertWindowPane dlwId wd (ttPane tt)
+                  lws1 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                  case [ pth | Just dlw <- [M.lookup dlwId lws1]
+                             , (pth, Just l', _) <- subtreeRects (lwTree dlw)
+                             , l' == l ] of
+                    (pth:_) -> dropInto src dlwId
+                                 (DropSpec pth (ttOrient tt) (ttAfter tt))
+                    []      -> activateSrc src
         forM_ parsed $ \(src, dst) -> case dst of
           LDDstNone -> activateSrc src
-          LDDstPane dlwId ptr box -> do
+          LDDstPane dlwId ptr box mtt -> do
             lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
             case M.lookup dlwId lws0 of
               Nothing -> activateSrc src
               Just dlw0 -> do
-                let excl = case src of
-                      LDPane slwId slInt | slwId == dlwId -> Just (LeafId slInt)
-                      _ -> Nothing
-                case pickDropTarget ptr box excl (lwZoomed dlw0)
-                                    (lwTree dlw0) of
-                  Nothing   -> activateSrc src
-                  Just spec -> dropInto src dlwId spec
+                -- A tmux pane the JS aimed at counts only while the model still
+                -- agrees it exists: leaf still there, still a tmux window, pane
+                -- still one of its own.  Otherwise the pointer decides, exactly
+                -- as before.
+                tmuxTgt <- case mtt of
+                  Nothing -> return Nothing
+                  Just tt -> case M.lookup (LeafId (ttLeaf tt)) (lwPanes dlw0) of
+                    Just (PaneContent (PaneTmux wd) _) -> do
+                      ps <- panesOfWindow wd
+                      return $ if ttPane tt `elem` ps
+                                 then Just (LeafId (ttLeaf tt), wd, tt)
+                                 else Nothing
+                    _ -> return Nothing
+                case tmuxTgt of
+                  Just (l, wd, tt) -> dropOntoTmuxPane src dlwId l wd tt
+                  Nothing -> do
+                    let excl = case src of
+                          LDPane slwId slInt | slwId == dlwId -> Just (LeafId slInt)
+                          _ -> Nothing
+                    case pickDropTarget ptr box excl (lwZoomed dlw0)
+                                        (lwTree dlw0) of
+                      Nothing   -> activateSrc src
+                      Just spec -> dropInto src dlwId spec
           LDDstTab tstr
             -- dropping a plain tab onto its own button: nothing to do
             | LDTab s <- src, s == tstr -> activateSrc src
