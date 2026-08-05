@@ -237,6 +237,7 @@ import IDE.Web.AISession
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
         claudeStatusTooltip, startClaudeStatusPoll)
+import IDE.Web.AgentInfo (agentTitles)
 #endif
 import IDE.Web.NewLwRequest
        (nextNewLwRequest, beginConversion, endConversion, conversionActive,
@@ -945,10 +946,12 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- The one poll of the live Claude Code sessions, feeding every status
       -- surface: the in-page traffic light (each window pulls it on its tick,
       -- see 'statusLightJs') and, on macOS, the menu-bar status item (pushed —
-      -- IDE.Web.MacMenu registers a handler).  Killed at ghci teardown, or every
-      -- :reload would leave another poll running.
+      -- IDE.Web.MacMenu registers a handler).  Titles come from 'agentTitles',
+      -- so those two and the Agents pane all name a session the way the agent
+      -- named itself.  Killed at ghci teardown, or every :reload would leave
+      -- another poll running.
       liftIO $ do
-        tid <- startClaudeStatusPoll
+        tid <- startClaudeStatusPoll agentTitles
         when ghciMode $ registerGhciCleanupNamed "claude-status-poll" (killThread tid)
 #endif
 #if !defined(ghcjs_HOST_OS)

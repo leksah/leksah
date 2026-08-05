@@ -27,6 +27,7 @@ module IDE.Web.ClaudeStatus
   , claudeStatusGlyph
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
 import Control.Exception (catch, SomeException)
 import Control.Monad (foldM, when)
@@ -48,7 +49,8 @@ import IDE.Web.Claude
 data ClaudeStatusRow = ClaudeStatusRow
   { csrState   :: Text  -- ^ @waiting@ (blocked on an approval prompt) \/ @busy@
                         --   (the agent or a shell command is working) \/ @idle@
-  , csrTitle   :: Text  -- ^ the name @\/rename@ gave it, else its first prompt
+  , csrTitle   :: Text  -- ^ what the agent calls itself (@agent describe@), else
+                        --   the name @\/rename@ gave it, else its first prompt
   , csrDir     :: Text  -- ^ its working directory (absolute)
   , csrDetail  :: Text  -- ^ what it is doing, spelled out
   , csrSession :: Text  -- ^ session id — the handle for showing this session
@@ -101,8 +103,13 @@ registerClaudeStatusPush h = do
 --
 -- Session labels are read once each and cached: the first prompt of a
 -- transcript can't change (a @\/rename@ name can, and comes free with the poll).
-startClaudeStatusPoll :: IO ThreadId
-startClaudeStatusPoll = forkIO (loop emptyClaudeStatus M.empty)
+--
+-- @titlesIO@ supplies the names agents gave THEMSELVES
+-- ('IDE.Web.AgentInfo.agentTitles' — passed in rather than imported, since that
+-- module reads this one's rows).  It is read every cycle, so a session that
+-- describes itself is renamed in every status surface within a tick.
+startClaudeStatusPoll :: IO (Map Text Text) -> IO ThreadId
+startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
   where
     loop prev labels = do
       (st, labels') <- (`catch` \(_ :: SomeException) -> return (prev, labels)) $ do
@@ -111,7 +118,8 @@ startClaudeStatusPoll = forkIO (loop emptyClaudeStatus M.empty)
         labels' <- foldM addLabel labels
           [ l | l <- M.elems live, clName l == Nothing
               , not (clSession l `M.member` labels) ]
-        return (summarize labels' (M.elems live), labels')
+        titles <- titlesIO
+        return (summarize titles labels' (M.elems live), labels')
       when (st /= prev) $ do
         atomicWriteIORef statusRef st
         readIORef pushRef >>= mapM_ (\h ->
@@ -123,9 +131,10 @@ startClaudeStatusPoll = forkIO (loop emptyClaudeStatus M.empty)
       Nothing  -> return m
 
 -- | Fold the live sessions into a 'ClaudeStatus': attention first (blocked on an
--- approval prompt), then working, then idle, each group by title.
-summarize :: Map Text Text -> [ClaudeLive] -> ClaudeStatus
-summarize labels ls = ClaudeStatus
+-- approval prompt), then working, then idle, each group by title.  Takes the
+-- agent-written titles (session → title) and the cached first-prompt labels.
+summarize :: Map Text Text -> Map Text Text -> [ClaudeLive] -> ClaudeStatus
+summarize titles labels ls = ClaudeStatus
   { csState   = if null ls then "none"
                 else if nWaiting > 0 then "waiting"
                 else if nWorking > 0 then "busy" else "idle"
@@ -153,9 +162,16 @@ summarize labels ls = ClaudeStatus
               [] -> ""
               ds -> " — " <> T.intercalate ", " ds
     num n = T.pack (show n)
-    -- The name /rename gave it, else its cached first prompt, else the bare id.
-    title l = fromMaybe (M.findWithDefault (T.take 8 (clSession l)) (clSession l) labels)
-                        (clName l)
+    -- What the agent calls ITSELF wins ('IDE.Web.AgentInfo.describeAgent' — the
+    -- Agents pane's title): it says what the session is FOR, where a /rename
+    -- name says what it was called and a first prompt says how it opened.  So
+    -- every surface that lists sessions reads the same, and an agent renames
+    -- itself everywhere at once.  Then the name, the cached first prompt, the
+    -- bare id.
+    title l = fromMaybe (T.take 8 (clSession l)) $
+      M.lookup (clSession l) titles
+        <|> clName l
+        <|> M.lookup (clSession l) labels
     row l = ClaudeStatusRow
       { csrState   = case rank l of
           0 -> "waiting"

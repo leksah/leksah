@@ -27,6 +27,7 @@ module IDE.Web.AgentInfo
   , describeAgent
   , dismissAgent
   , agentForest
+  , agentTitles
   , agentRefreshPrompt
   , sanitizeAgentHtml
   ) where
@@ -146,6 +147,25 @@ withInfos f = modifyMVar infoVar $ \m0 -> do
 
 readInfos :: IO (Map Text AgentInfo)
 readInfos = withInfos (\m -> (m, m))
+
+-- | The store WITHOUT writing it back ('withInfos' saves on every call, which is
+-- the wrong price to pay on a poll that only looks).  Every writer goes through
+-- the same 'MVar' in this process, so the cached map is current.
+peekInfos :: IO (Map Text AgentInfo)
+peekInfos = modifyMVar infoVar $ \m0 -> do
+  m <- maybe loadInfos return m0
+  return (Just m, m)
+
+-- | What each agent calls ITSELF (session → title), for the surfaces that list
+-- sessions.  The name a session gives itself through @agent describe@ says what
+-- it is FOR, so the traffic light's hover text, the macOS menu-bar item and the
+-- Agents pane can all say the same thing — see 'IDE.Web.ClaudeStatus.summarize',
+-- which is handed this and prefers it over a @\/rename@ name or a first prompt.
+agentTitles :: IO (Map Text Text)
+agentTitles = M.mapMaybe title <$> peekInfos
+  where title i = case T.strip <$> aiTitle i of
+          Just t | not (T.null t) -> Just t
+          _                       -> Nothing
 
 -- | Remember that @parent@ forked @child@ (in @dir@) with this first prompt —
 -- called by 'IDE.Web.Agent.forkAgent' the moment the child's pane exists, since

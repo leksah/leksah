@@ -216,6 +216,10 @@
   both (`IDE.Web.ClaudeStatus`), so they can't disagree: the page pulls it per
   window on its tick, the menu-bar item is pushed. Hovering the dot lists the
   sessions; clicking the menu-bar item lists them and shows the one you pick.
+  A session is named by **what it called itself** (`agent describe` →
+  `agentTitles`, handed to the poll), falling back to its `/rename` name then its
+  first prompt — so the dot, the menu-bar item, the AI picker and the Agents pane
+  all print the same title, and describing yourself renames you everywhere.
 - **Agent-coordination state** — "is it safe to touch leksah right now" — is
   still yours to set, and you should keep setting it:
   `leksah-cmd js eval 'leksahRestarting()'` around a rebuild/restart,
