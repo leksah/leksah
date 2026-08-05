@@ -93,7 +93,10 @@ agentsWidget = do
         "A Claude session in a terminal here can start one with \
         \`leksah-cmd agent fork 'do this'`, and the Tasks pane starts one per \
         \queued task."
-    void . el "ul" $ agentLevel refresh (byKey <$> forestD)
+    -- Top-level agents come up EXPANDED: a root is usually the session you are
+    -- talking to, and what it says about itself is the reason to look here.
+    -- Anything it forked stays collapsed, so a deep tree still opens small.
+    void . el "ul" $ agentLevel True refresh (byKey <$> forestD)
   -- Arm the description links on THIS pane's root element.  The handle, never
   -- document.querySelector: at postBuild the div isn't attached in wkwebview's
   -- batched DOM, and setting a property on null aborts the build batch (which
@@ -109,18 +112,23 @@ byKey :: [AgentNode] -> Map Text AgentNode
 byKey ns = M.fromList [ (anSession n, n) | n <- ns ]
 
 -- | One level of the tree: a keyed list, so rows persist across polls (an
--- unkeyed rebuild would collapse whatever the user had expanded).
+-- unkeyed rebuild would collapse whatever the user had expanded).  @open@ is
+-- how a row of this level STARTS (see 'agentsWidget'); a row created later by
+-- the poll starts the same way, and a collapse the user made survives, because
+-- the keyed list never rebuilds the rows it already has.
 agentLevel
-  :: MonadWidget t m => IO () -> Dynamic t (Map Text AgentNode) -> m (Event t ())
-agentLevel refresh mD = do
-  e <- listViewWithKey mD (\_ nD -> agentNodeW refresh nD)
+  :: MonadWidget t m
+  => Bool -> IO () -> Dynamic t (Map Text AgentNode) -> m (Event t ())
+agentLevel open refresh mD = do
+  e <- listViewWithKey mD (\_ nD -> agentNodeW open refresh nD)
   return (() <$ e)
 
 -- | One agent: its row, and — only while expanded, which is the point — its
 -- description and the agents it forked.
 agentNodeW
-  :: forall t m . MonadWidget t m => IO () -> Dynamic t AgentNode -> m (Event t ())
-agentNodeW refresh nD = treeItem "agents-node" False item children
+  :: forall t m . MonadWidget t m
+  => Bool -> IO () -> Dynamic t AgentNode -> m (Event t ())
+agentNodeW open refresh nD = treeItem "agents-node" open item children
   where
     item = do
       (lbl, _) <- elDynAttr' "span" (rowAttrs <$> nD) $ do
@@ -166,7 +174,7 @@ agentNodeW refresh nD = treeItem "agents-node" False item children
         elDynAttr "a" (prAttrs <$> nD) . dynText $
           ffor nD $ \n -> maybe "" (\(k, _) -> "PR #" <> T.pack (show k)) (anPr n)
         dynText $ ffor nD $ maybe "" ("  ·  " <>) . anBranch
-      el "ul" $ agentLevel refresh (byKey . anChildren <$> nD)
+      el "ul" $ agentLevel False refresh (byKey . anChildren <$> nD)
 
     -- Signatures because '=:' is polymorphic in its container: without them the
     -- inferred type is an over-general 'At' constraint that won't generalize.
