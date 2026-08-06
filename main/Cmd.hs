@@ -370,8 +370,29 @@ waitUp secs = go (max 1 (secs * 2))
 waitUiReady :: Int -> IO Bool
 waitUiReady secs = do
   up <- waitUp secs
-  if not up then return False else domReady (max 1 (secs * 2))
+  if not up then return False else do
+    dom <- domReady (max 1 (secs * 2))
+    -- …and then require a LIVE heartbeat.  A wedged frame thread still
+    -- answers the socket and still evaluates JS against an already-built DOM,
+    -- so without this a hung instance reports itself ready (and every later
+    -- command then hangs instead).  `ping` reports the age of the last
+    -- frame-thread beat; anything under 20s means the event network is running.
+    if not dom then return False else beatFresh (max 1 (secs * 2))
   where
+    beatFresh :: Int -> IO Bool
+    beatFresh 0 = beatOk
+    beatFresh n = beatOk >>= \case
+      True  -> return True
+      False -> threadDelay 500000 >> beatFresh (n - 1)
+    beatOk = do
+      r <- tryReply ["ping"]
+      return $ case r of
+        Nothing -> False
+        Just t  -> case T.stripPrefix "beat=" (snd (T.breakOn "beat=" (T.strip t))) of
+          Nothing   -> False   -- "ok building": no frame thread has run yet
+          Just rest -> case readMaybe (T.unpack (T.takeWhile isDigit rest)) of
+            Just (age :: Int) -> age < 20
+            Nothing           -> False
     domReady :: Int -> IO Bool
     domReady 0 = domOk
     domReady n = domOk >>= \case

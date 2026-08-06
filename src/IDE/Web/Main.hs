@@ -218,6 +218,7 @@ import IDE.Web.SplitLayout
 import IDE.Web.SplitOpenRequest
        (SplitTarget(..), nextSplitOpenRequest, requestSplitOpen)
 import IDE.Web.RecentFiles (updateRecentFiles)
+import IDE.Web.Heartbeat (beat)
 import IDE.Web.GhciMode
        (ghciMode, recordPreRunThreads, registerGhciCleanupNamed, stopForGhci)
 import IDE.LSP (shutdownServers)
@@ -1688,6 +1689,10 @@ jsMain showMenubar macTitlebar mbWid ideR = do
           liftIO $ do
               myThreadId >>= (`labelThread` ("reflex-frames-" <> show wid))
               raiseCurrentThreadPriority Interactive
+          -- Stamp the shared heartbeat too: `leksah-cmd ping` reports its age,
+          -- so a wedged frame thread is visible from outside (the socket
+          -- answering proves only that ITS thread is alive).
+          liftIO beat
           wlog wid ("alive ideVer=" <> show (cur ^. ideVersion) <> " mvarVer=" <> show (new ^. ideVersion)
                     <> if new ^. ideVersion > cur ^. ideVersion then " STALE(+" <> show (new ^. ideVersion - cur ^. ideVersion) <> ")" else "")
       performEvent_ $ ffor freshPolledE $ \i -> wlog wid ("ideD<-resync ver=" <> show (i ^. ideVersion))

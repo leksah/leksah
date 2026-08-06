@@ -132,6 +132,7 @@ import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.ScreenshotRequest (requestScreenshot)
+import IDE.Web.Heartbeat (lastBeatAge)
 import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Project.WorkspaceFile
@@ -337,7 +338,14 @@ handleConn ideR conn = do
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point
       -- the relaunched UI is back.
-      ("ping" : _) -> reply "ok\n"
+      -- The age of the last frame-thread heartbeat comes with it: the socket
+      -- answering only proves the SERVER thread is alive, and a wedged UI
+      -- answers just as promptly.  `wait-ready` requires a fresh beat.
+      ("ping" : _) -> do
+        age <- lastBeatAge
+        reply $ case age of
+            Nothing -> "ok building\n"
+            Just a  -> "ok beat=" <> T.pack (show (round a :: Int)) <> "s\n"
 
       -- How this instance runs: "ghci" (leksah.sh --ghci, a cabal repl) or
       -- "binary".  leksah-cmd picks its rebuild/restart behaviour off this.

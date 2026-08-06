@@ -197,6 +197,7 @@ library leksah-nogtk
         IDE.Web.TerminalInput
         IDE.Web.TmuxCC
         IDE.Web.GhciMode
+        IDE.Web.Heartbeat
         IDE.Web.ThreadPriority
         IDE.Web.Claude
         IDE.Web.ClaudeStatus
