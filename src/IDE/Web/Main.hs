@@ -165,9 +165,6 @@ import IDE.Core.State
         SplitOrientation(..), SplitTree(..),
         flipMirror, flipMru, AIPaneRef(..), paneAISession,
         ideVersion, focusLog, metaLog)
-#ifdef LEKSAH_METADATA
-import IDE.Metainfo.Provider (initInfo)
-#endif
 import IDE.Web.IDERefStore (setGlobalIDERef, getGlobalIDERef)
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
 import IDE.Web.Bridge
@@ -320,9 +317,6 @@ import IDE.Web.Widget.Keymap (keymapWidget)
 import IDE.Web.Widget.Log (logCss, logWidget)
 import IDE.Web.Widget.Menu (menuCss)
 import IDE.Web.Widget.Menubar (menubarCss, menubarWidget)
-#ifdef LEKSAH_METADATA
-import IDE.Web.Widget.Metadata (metadataCss, metadataWidget)
-#endif
 import IDE.Web.Widget.Statusbar (statusbarCss, statusbarWidget)
 import IDE.Web.Widget.Tabs (tabsWidget, tabsCss)
 import IDE.Web.Widget.Terminal
@@ -1618,16 +1612,7 @@ jsMain showMenubar macTitlebar mbWid ideR = do
           firstToRun <- modifyIDE $ \i ->
               ( i & currentState .~ IsRunning
               , case i ^. currentState of IsStartingUp -> True; _ -> False )
-#ifdef LEKSAH_METADATA
-          if firstToRun
-            then do metaLog $ "post-build " <> show wid <> " -> initInfo"
-                    initInfo (return ())
-                    metaLog $ "post-build " <> show wid <> " initInfo returned (load forked)"
-            else return ()
-#else
-          metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun
-#endif
-          )
+          metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun)
         wlog wid "EXIT pb-initInfo"
       pbIde <- performEvent $ pb $> liftIO (snd <$> readMVar ideR)
       -- Cross-window updates, event-driven but COALESCED and SERIALIZED:
@@ -1923,9 +1908,6 @@ css = render $ do
     aiPickerCss
     terminalCss
     terminalsCss
-#ifdef LEKSAH_METADATA
-    metadataCss
-#endif
     agentsCss
     changesCss
     gitLogCss
@@ -6664,8 +6646,6 @@ main showMenubar macTitlebar wid ide = mdo
                          ^. js2 ("leksahOccurrenceVisible" :: Text) (T.pack f) (sel :: Text)
                 return $ if vis then Nothing else Just f)
     revealFileE <- mkRevealE ".workspace"
-    revealMetaE <- mkRevealE ".metadata"
-    revealMetaD <- holdDyn Nothing revealMetaE
     -- Workspace-tree find (in Haskell): enumerate all workspace files; on find
     -- next/prev select+reveal the matching file in the tree by feeding it as the
     -- tree's highlight + reveal target (so we reuse the tree's own select/scroll
@@ -7831,14 +7811,10 @@ main showMenubar macTitlebar wid ide = mdo
                 then terminalCCWidget ide n n selectedE leafViewW
                          closeMenuD renderCloseMenu
                 else terminalWidget ide n selectedE
-          MetadataKey    ->
-#ifdef LEKSAH_METADATA
-            toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
-#else
-            -- Tombstone: MetadataKey stays parseable in old sessions but the
-            -- pane is soft-deleted (metadata cabal flag); renders nothing.
-            toDM MetadataTab <$> (never <$ blank)
-#endif
+          -- Tombstone: MetadataKey stays parseable in old sessions (the
+          -- metadata feature is deleted); renders nothing and the post-build
+          -- close event prunes any restored tab.
+          MetadataKey    -> toDM MetadataTab <$> (never <$ blank)
           AgentsKey      -> toDM AgentsTab <$> agentsWidget
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
