@@ -2210,9 +2210,12 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         -- sits in — see onFocusPane in the cm6 bundle).
         termRoot <- term ^. js ("element" :: Text)
         _ <- jsg ("LeksahCM" :: Text) ^. js2 ("loadTerminalSearch" :: Text) term termRoot
-        -- Inline images (SIXEL / iTerm2 OSC 1337) — tmux forwards them via
-        -- allow-passthrough.  storageLimit caps the per-terminal image cache
-        -- (MB); CC layouts have many panes, so keep it modest.
+        -- Inline images: SIXEL, iTerm2 OSC 1337 and the kitty graphics
+        -- protocol.  A program in a tmux pane wraps these in tmux's DCS
+        -- passthrough, which reaches a control-mode client verbatim —
+        -- IDE.Web.KittyGraphics unwraps it before xterm sees it.  storageLimit
+        -- caps the per-terminal image cache (MB); CC layouts have many panes, so
+        -- keep it modest.
         imgOpts <- obj
         _ <- imgOpts ^. jss ("storageLimit" :: Text) (32 :: Int)
         img <- new (jsg ("ImageAddon" :: Text) ^. js ("ImageAddon" :: Text)) [imgOpts]

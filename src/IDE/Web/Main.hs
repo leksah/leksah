@@ -287,6 +287,7 @@ import IDE.Web.Events
         _RenameRemoteTerminalSession, _RenameRemoteTerminalWindow,
         _ZoomRemoteTerminalPane, _BreakRemoteTerminalPane, _KillRemoteTerminalPane)
 import IDE.Web.Layout (layoutCss)
+import IDE.Web.KittyGraphics (kittyGraphicsJs, installImageBytesBridge)
 import IDE.Web.Widget.Changes (changesCss, changesWidget)
 import IDE.Web.Widget.GitLog (gitLogCss, gitLogWidget, gitLogSplitJs)
 import IDE.Web.Widget.Review (reviewCss, reviewWidget)
@@ -1438,9 +1439,12 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- squeeze into one cell and misalign everything after them.
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-unicode11.js") >>= eval
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-search.js") >>= eval
-  -- Inline images (SIXEL + iTerm2 OSC 1337) rendered into the scrollback —
-  -- img2sixel/chafa/imgcat etc. just work (tmux passes them through via
-  -- allow-passthrough, see ReplTmux.writeTmuxConf).
+  -- Inline images rendered into the scrollback — SIXEL, iTerm2 OSC 1337 and the
+  -- kitty graphics protocol, so img2sixel/chafa/imgcat/icat just work.  A
+  -- program in a tmux pane wraps them in tmux's DCS passthrough
+  -- (allow-passthrough, see ReplTmux.writeTmuxConf), which IDE.Web.KittyGraphics
+  -- unwraps on the way in — that module also serves the transmission media the
+  -- addon can't (kitty's t=s shared memory, t=f files).
   _ <- liftIO (readFile $ dataDir </> "xterm/addon-image.js") >>= eval
   -- OSC 52: programs in a terminal (vim/tmux copy-mode, incl. over ssh where
   -- pbcopy can't reach) set the system clipboard.
@@ -1470,6 +1474,16 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- printable ASCII, so jsaddle doesn't have to escape the control bytes that
   -- pervade terminal output.
   _ <- eval terminalWriteJs
+
+  -- Defines window.LeksahKitty, the filter LeksahTerm.write feeds terminal
+  -- output through: it unwraps tmux's DCS passthrough (which a control-mode
+  -- pane receives verbatim, so xterm would drop it) and serves the kitty
+  -- transmission media the image addon can't (data passed by reference).
+  _ <- eval kittyGraphicsJs
+  -- ... plus window.LeksahImageBytes, how that filter gets at data a program
+  -- passed BY REFERENCE (kitty's t=s shared memory / t=f file transmission),
+  -- which is nothing a browser engine can read for itself.
+  installImageBytesBridge
 
   -- Defines window.LeksahJsaddlePane: the per-pane iframe registry of the
   -- jsaddle-terminal tunnels (see IDE.Web.Widget.TerminalCC) — batches go INTO
@@ -3293,13 +3307,18 @@ terminalWriteJs = T.unlines
   , "  window.__leksahMonoSize = window.__leksahMonoSize || 13;"
   , "  function register(id, term){ byId[id] = term;"
   , "    try { if (window.__leksahXtermActive) term.options.theme = window.__leksahXtermActive; } catch (e) {} }"
-  , "  function unregister(id){ delete byId[id]; }"
+  , "  function unregister(id){ delete byId[id];"
+  , "    try { window.LeksahKitty.drop(id); } catch (e) {} }"
   , "  function write(id, b64){"
   , "    var term = byId[id];"
   , "    if (!term) return;"
   , "    var bin = atob(b64), n = bin.length, a = new Uint8Array(n);"
   , "    for (var i=0;i<n;i++) a[i] = bin.charCodeAt(i);"
-  , "    term.write(a);"
+  -- Output goes through the passthrough/kitty filter (IDE.Web.KittyGraphics);
+  -- everything it does not intercept it hands to term.write unchanged, in one
+  -- write per chunk.
+  , "    if (window.LeksahKitty) window.LeksahKitty.feed(id, term, a);"
+  , "    else term.write(a);"
   , "  }"
   -- The terminal cell size (CSS px) for leksah's font settings — measured
   -- ONCE from a throwaway offscreen xterm (the browser equivalent of reading

@@ -711,8 +711,9 @@ terminalWidget ide termId selectedE = do
       -- can search this pane (terminals render to a canvas, so no DOM find).
       _ <- jsg ("LeksahCM" :: Text) ^. js2 ("loadTerminalSearch" :: Text) term rawEl
 
-      -- Inline images (SIXEL / iTerm2 OSC 1337).  storageLimit caps the image
-      -- cache per terminal (MB) — the default 128 is a lot across many panes.
+      -- Inline images: SIXEL, iTerm2 OSC 1337 and the kitty graphics protocol.
+      -- storageLimit caps the image cache per terminal (MB) — the default 128
+      -- is a lot across many panes.
       imgOpts <- obj
       _ <- imgOpts ^. jss ("storageLimit" :: Text) (32 :: Int)
       img <- new (jsg ("ImageAddon" :: Text) ^. js ("ImageAddon" :: Text)) [imgOpts]

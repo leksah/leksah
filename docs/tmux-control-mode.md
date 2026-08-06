@@ -111,6 +111,17 @@ base64→Uint8Array path — xterm does its own stateful UTF-8 decode, so a
 UTF-8 sequence split across two `%output` lines is fine).  Older tmux
 versions escape ≥0x7F as octal too; the same decoder covers both.
 
+Note what this implies about **tmux's DCS passthrough** (`allow-passthrough`,
+how a program in a pane smuggles a sequence tmux doesn't understand out to the
+real terminal — OSC 52, inline images): for a control-mode client the wrapper
+is *not* stripped.  The bytes arrive as the program wrote them,
+`ESC P tmux ; <body, every ESC doubled> ESC \`, and it is the client that has
+to unwrap them, because in control mode the client IS the terminal and tmux is
+only a multiplexer.  Leksah does that in `IDE.Web.KittyGraphics`
+(`window.LeksahKitty`, in front of `LeksahTerm.write`), which is also where
+kitty graphics transmissions naming shared memory or a file get their data
+read for them.
+
 ### 2.5 Sending input
 
 * Robust path (used by the client): `send-keys -t %P -H 68 69 0d` — one hex

@@ -58,6 +58,22 @@ running processes are still there. Terminals are searchable (same find bar
 as everything else) and file references in output (`src/Foo.hs:12`,
 git-diff headers, etc.) are clickable links with hover tooltips.
 
+**Inline images** work in terminal panes in all three protocols: SIXEL, the
+iTerm2 protocol (`imgcat`) and the **kitty graphics protocol** (`chafa -f
+kitty`, `timg -pk`, …). Because a program inside tmux has to send images
+through tmux's DCS passthrough — which tmux hands to Leksah verbatim — Leksah
+unwraps that itself; nothing needs configuring. It also serves the kitty
+transmission media a browser engine cannot read on its own — `t=s` (POSIX
+shared memory) and `t=f`/`t=t` (a file, deleted afterwards for `t=t`) — which
+is what lets something streaming frames, like an RDP viewer, skip base64-ing
+every frame through the pty. Those are read on Leksah's own host, so a pane on
+a remote machine has to send its pixels inline.
+
+Two consequences of tmux not being able to see inside a passthrough: tmux
+reserves no rows for the image (a program should send kitty's `C=1` and move
+the cursor itself), and anything that repaints a pane from tmux's own screen
+(a resize, a re-attach) drops the images.
+
 ## Git
 
 * **Changes pane** — live `git status` of the workspace with staged /

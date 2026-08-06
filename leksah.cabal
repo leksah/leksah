@@ -342,6 +342,7 @@ library
         IDE.Web.TerminalRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
+        IDE.Web.KittyGraphics
         IDE.Web.Main
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
@@ -641,6 +642,7 @@ library leksah-nogtk
         IDE.Web.TerminalRefresh
         IDE.Web.HostFlags
         IDE.Web.Layout
+        IDE.Web.KittyGraphics
         IDE.Web.Main
         IDE.Web.MenuModel
         IDE.Web.IDERefStore
