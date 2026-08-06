@@ -36,7 +36,7 @@ import Reflex.Dom.Core
         newTriggerEvent, domEvent, EventName(Click), elClass', elClass,
         elAttr, (=:), text)
 
-import IDE.Core.CTypes (packageIdentifierToString)
+import IDE.Core.Location (packageIdentifierToString)
 import IDE.Core.State
        (IDE, IDEState(..), currentState, activeProject, activePack,
         activeComponent, activeProjectLogRefs, logRefType, LogRefType(..),

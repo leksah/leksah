@@ -86,15 +86,20 @@ These are classic-only and `git mv` to `leksah-classic/`; no rewrite needed.
 
 ### Vendored GPL code compiled into the main package (Stage 2 drops)
 
-| source | used surface | replacement |
+All done (step C, 2026-08-07).  What actually happened:
+
+| source | used surface | outcome |
 |---|---|---|
-| `ltk` `Control.Event` (Juergen + Hamish) | event bus (`registerEvent`, `EventSelector`) | fresh `IDE.Core.EventBus` |
-| `leksah-server` `IDE.Core.CTypes` | `SrcSpan`/`Location` + identifiers | fresh `IDE.Core.Location` + `IDE.Utils.CabalIdent`, then `IDE.Diagnostics` |
-| `leksah-server` `IDE.Utils.FileUtils` / `Tool` / `Utils` | file + process utilities | fresh `IDE.Utils.Files` / `IDE.Utils.Process` |
-| `leksah-server` `IDE.Utils.Project` | `ProjectKey` | fresh `IDE.Project.Key`, then the Stage-6 model |
-| `leksah-server` `IDE.Utils.CabalProject` / `GHCUtils` / `VersionUtils` | small cabal helpers | fresh `IDE.Utils.CabalTool` |
-| `leksah-server` `IDE.Utils.CabalPlan` (Herbert Valerio Riedel) | one function, metadata-only | dies with metadata |
+| `ltk` `Control.Event` (Juergen + Hamish) | event bus (`registerEvent`, `EventSelector`) | **deleted, not replaced** — an audit found exactly one live listener (`QuitToRestart`); it became the tiny `IDE.Web.RestartRequest` bridge module and every other fire was dead classic-era code |
+| `leksah-server` `IDE.Core.CTypes` | `SrcSpan`/`Location` + package identifiers | fresh `IDE.Core.Location` (identifier helpers included; superseded by `IDE.Diagnostics` at step D) |
+| `leksah-server` `IDE.Utils.FileUtils` / `Tool` / `Utils` | file + process utilities | fresh `IDE.Utils.Files` / `IDE.Utils.Process` (batch-only — the interactive-ghci half of `Tool` died with `IDE.Debug`; automatic doctest running and its plan-scoped `PackageDBs` machinery were dropped rather than rewritten) |
+| `leksah-server` `IDE.Utils.Project` | `ProjectKey` | **moved verbatim** — git history is Hamish-only, so the module was copied into the main package unchanged (`Show`/aeson encodings untouched); still to be superseded by the Stage-6 model |
+| `leksah-server` `IDE.Utils.CabalProject` / `GHCUtils` / `VersionUtils` | small cabal helpers | `cabalProjectBuildDir`/`findCabalProjectRoot` re-expressed fresh in `IDE.Utils.Files` (`CabalProject`'s header credits Juergen despite Hamish-only commits, so treated as foreign); `GHCUtils` promoted from the Hamish-authored ghcjs stub; `VersionUtils` had no remaining users |
+| `leksah-server` `IDE.Utils.CabalPlan` (Herbert Valerio Riedel) | one function, metadata-only | died with metadata (step A) |
 | `vcswrapper` `VCSWrapper.Common` types | `VCSConf` in `.lkshw` | field dropped (web UI uses `IDE.Git` directly) |
+
+Both vendor submodules (`vendor/ltk`, `vendor/leksah-server`) are deleted;
+the packages remain as source-repository-packages for `leksah-classic` only.
 
 ### False positives
 
@@ -107,7 +112,6 @@ This is the gate for the license flip; delete rows as stages land.
 
 | file | blocked on |
 |---|---|
-| vendored `Control.Event` + `leksah-server` modules | fresh replacements (step C) |
 | `src/IDE/Preferences.hs` | new JSON prefs (step B) |
 | `src/IDE/LogRef.hs` | `IDE.Diagnostics` (step D) |
 | `src/IDE/Package.hs` | project model (step E) |
@@ -119,7 +123,9 @@ This is the gate for the license flip; delete rows as stages land.
 
 Deleted so far: `Metainfo/Provider.hs`, `Utils/ServerConnection.hs`,
 `SourceCandy.hs`, `Debug.hs`, `PackageFlags.hs`, `TextEditor/Yi/Config.hs`,
-`Utils/CabalUtils.hs`, `Web/Widget/Metadata.hs` (Stage 2, step A).
+`Utils/CabalUtils.hs`, `Web/Widget/Metadata.hs` (Stage 2, step A); the
+vendored `Control.Event` + `leksah-server` modules and both vendor
+submodules (step C — see the vendored-code table above).
 Interim edits to the files still listed above are **severance only** (cutting
 imports of deleted modules) — never feature work; they are replaced as whole
 files at their step.

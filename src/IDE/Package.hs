@@ -135,9 +135,9 @@ import IDE.Core.State
         Prefs, PackageAction, IDEM, IDEAction, IDEPackage(..), Project(..),
         MonadIDE, __, prefs, saveAllBeforeBuild, triggerBuild, native,
         packageIdentifierToString, leksahTemplateFileExtension,
-        leksahFlagFileExtension, Log(..),
+        Log(..),
         MonadIDE(..),
-        ProjectKey(..), autoURI, pDBsPaths, errorRefs, reflectIDE,
+        ProjectKey(..), autoURI, errorRefs, reflectIDE,
         StackProject(..), CabalProject(..), pjKey, pjIsCabal, pjIsStack,
         pjFileOrDir, CustomProject(..), ProjectSettings(..),
         defaultProjectSettings, wsSettingsFor)
@@ -150,8 +150,8 @@ import IDE.Pane.Log
         showDefaultLogLaunch', getDefaultLogLaunch)
 import IDE.Pane.SourceBuffer
        (removeTestLogRefs, fileSaveAll, belongsToWorkspace')
-import IDE.Utils.FileUtils
-       (getPackageDBs', cabalProjectBuildDir, cabalBuildDir, loadNixCache, saveNixCache,
+import IDE.Utils.Files
+       (cabalProjectBuildDir, cabalBuildDir, loadNixCache, saveNixCache,
         getConfigDir, nixShellFile, getConfigFilePathForLoad)
 import IDE.LogRef
        (logIdleOutput, logOutputForBuild, logOutputForCargoBuild,
@@ -159,7 +159,7 @@ import IDE.LogRef
 import Distribution.ModuleName (ModuleName)
 import Data.List
        (intercalate, nub, nubBy, delete, dropWhileEnd)
-import IDE.Utils.Tool (ToolOutput(..), ProcessHandle)
+import IDE.Utils.Process (ToolOutput(..), ProcessHandle)
 import IDE.Pane.WebKit.Documentation
        (showDocumentationPane, loadDoc, reloadDoc)
 import IDE.Pane.WebKit.Output
@@ -179,9 +179,7 @@ import Data.Text (Text)
 import qualified Data.Text.IO as T (readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
-import IDE.Utils.VersionUtils (getDefaultGhcVersion)
-import IDE.Utils.CabalProject
-       (findProjectRoot)
+import IDE.Utils.Files (findCabalProjectRoot)
 import System.Environment (getEnvironment)
 import Distribution.Simple.LocalBuildInfo
        (Component(..))
@@ -200,7 +198,7 @@ import System.Posix (sigKILL, signalProcessGroup, getProcessGroupIDOf)
 import System.Process.Internals
        (withProcessHandle, ProcessHandle__(..))
 #else
-import IDE.Utils.Tool (terminateProcess)
+import IDE.Utils.Process (terminateProcess)
 #endif
 #if MIN_VERSION_Cabal(3,8,0)
 import Distribution.Simple.PackageDescription
@@ -379,7 +377,7 @@ updateNixCache project compilers continuation = do
 projectFileArguments :: MonadIO m => Project -> FilePath -> m [Text]
 projectFileArguments project dir =
     case pjKey project of
-        -- Remote: no local findProjectRoot walk — same semantics, no IO.
+        -- Remote: no local findCabalProjectRoot walk — same semantics, no IO.
         CabalTool (CabalProject file) | isRemotePath dir -> do
             let projectFile = remoteMakeRelative dir file
             return $ if projectFile /= "cabal.project"
@@ -387,7 +385,7 @@ projectFileArguments project dir =
                                 else []
         CabalTool (CabalProject file) -> do
             let projectFile = T.pack $ makeRelative dir file
-            defaultProjectRoot <- liftIO $ findProjectRoot dir
+            defaultProjectRoot <- liftIO $ findCabalProjectRoot dir
             return $ if file /= defaultProjectRoot </> "cabal.project"
                                 then [ "--project-file", projectFile ]
                                 else []
@@ -999,8 +997,7 @@ packageTest' backgroundBuild jumpToWarnings (project, package:rest) continuation
     if "--enable-tests" `elem` ipdConfigFlags package
         then do
             removeTestLogRefs (LogCabal $ ipdCabalFile package)
-            packageRunDocTests backgroundBuild jumpToWarnings (project, package) $ \ok ->
-                when ok $ do
+            do
                     pd <- readAndFlattenPackageDescription package
                     runTests $ testSuites pd
           `catchIDE`
@@ -1012,38 +1009,6 @@ packageTest' backgroundBuild jumpToWarnings (project, package:rest) continuation
     runTests (test:tests) =
         packageRunComponent (CTest test) backgroundBuild jumpToWarnings (project, package) (\ok ->
             when ok $ runTests tests)
-
-packageRunDocTests :: Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
-packageRunDocTests backgroundBuild jumpToWarnings (project, package) continuation =
-    case pjKey project of
-        StackTool {} -> do
-            ideMessage Normal "Skipping automatic doctests (not implemented for stack yet)."
-            continuation True
-        CabalTool {} -> do
-            let dir = ipdPackageDir package
-            showDefaultLogLaunch'
-            catchIDE (do
-                ghcVersion <- liftIO getDefaultGhcVersion
-                packageDBs <- liftIO $ getPackageDBs' ghcVersion (Just $ pjKey project)
-                let pkgId = packageIdentifierToString $ ipdPackageId package
-                (buildDir, _, _cabalVer) <- liftIO $ cabalProjectBuildDir (pjDir $ pjKey project) (cabalBuildDir Nothing)
-                let args = [ "act-as-setup"
-                           , "--"
-                           , "doctest"
-                           , T.pack ("--builddir=" <> (buildDir </> T.unpack pkgId))]
-                withToolCommand project GHC (Just ("cabal", args ++ ipdTestFlags package)) $ \(cmd, args', nixEnv') ->
-                    runExternalTool' (__ "Doctest")
-                            cmd args' dir (Just $ [("GHC_PACKAGE_PATH", intercalate [searchPathSeparator] (pDBsPaths packageDBs))] <> maybe [] M.toList nixEnv') $ do
-                            (mbLastOutput, _) <- C.getZipSink $ (,)
-                                <$> C.ZipSink sinkLast
-                                <*> (C.ZipSink $ logOutputForBuild project (LogCabal $ ipdCabalFile package) backgroundBuild jumpToWarnings)
-                            lift $ do
-                                _errs <- readIDE errorRefs
-                                when (mbLastOutput == Just (ToolExit ExitSuccess)) $ continuation True)
-                    (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
-        _ -> do
-            ideMessage Normal "Skipping automatic doctests (not implemented for custom projects yet)."
-            continuation True
 
 packageRunComponent :: Component -> Bool -> Bool -> (Project, IDEPackage) -> (Bool -> IDEAction) -> IDEAction
 packageRunComponent (CLib _) _ _ _ _ = error "packageRunComponent"

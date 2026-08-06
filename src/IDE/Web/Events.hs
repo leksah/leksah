@@ -13,7 +13,7 @@ import Data.Text (Text)
 
 import Distribution.Types.PackageId (PackageIdentifier(..))
 
-import IDE.Core.CTypes (SrcSpan)
+import IDE.Core.Location (SrcSpan)
 import IDE.Core.Types (LogRef(..), Prefs(..), TabKey(..), FlipItem(..))
 import IDE.Utils.Project (ProjectKey)
 import IDE.Web.Command (Command(..))

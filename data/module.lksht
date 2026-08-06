@@ -1,0 +1,20 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  @ModuleName@
+-- Copyright   :  @Copyright@
+-- License     :  @License@
+--
+-- Maintainer  :  @Maintainer@
+-- Stability   :  @Stability@
+-- Portability :  @Portability@
+--
+-- |
+--
+-----------------------------------------------------------------------------
+
+module @ModuleName@ (
+@ModuleExports@
+) where
+
+@ModuleBody@
+

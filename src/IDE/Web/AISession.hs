@@ -48,7 +48,7 @@ import IDE.Core.Types
         PaneContent(..), PaneKind(..), TabKey(..), WebWindow(..),
         activeWindow, flipMru, leksahWindows, paneAISession, pjDir, pjKey,
         webWindows, workspace, wsProjects)
-import IDE.Utils.FileUtils (isSubPath)
+import IDE.Utils.Files (isSubPath)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeSession(..), claudeLiveBySession,
         claudeLiveOwners, claudeSessionLabel, claudeSessionsFor,

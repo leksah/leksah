@@ -39,7 +39,7 @@ import Reflex.Dom.Core
         domEvent, EventName(..), (=:))
 
 import IDE.Web.Theme (selectionColor, dimColor)
-import IDE.Core.CTypes (SrcSpan(..))
+import IDE.Core.Location (SrcSpan(..))
 import IDE.Web.Events (GrepEvents(..), FindbarEvents)
 import IDE.Web.Widget.Findbar (findSelection)
 

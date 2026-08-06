@@ -64,7 +64,7 @@ import System.Directory (doesFileExist, getModificationTime)
 import System.FilePath (dropTrailingPathSeparator)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Utils.FileUtils (getConfigFilePathForSave)
+import IDE.Utils.Files (getConfigFilePathForSave)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.Claude
        (ClaudeLive(..), claudeLiveBySession, claudeSessionLabel,

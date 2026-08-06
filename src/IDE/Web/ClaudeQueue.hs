@@ -58,7 +58,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
 
 import IDE.Core.State (reflectIDE)
-import IDE.Utils.FileUtils (getConfigFilePathForSave)
+import IDE.Utils.Files (getConfigFilePathForSave)
 import IDE.Web.Claude
        (ClaudeCmd(..), runClaudeCmd, claudeRunning, claudeLiveBySession,
         ClaudeLive(..), mruClaudePane, claudeTranscriptPath)

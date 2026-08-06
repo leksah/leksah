@@ -111,7 +111,7 @@ import Language.Javascript.JSaddle
         valToNumber, valToBool, liftJSM)
 import GHCJS.DOM.Types (pToJSVal)
 
-import IDE.Core.CTypes (SrcSpan(..))
+import IDE.Core.Location (SrcSpan(..))
 import IDE.Core.State (IDE, focusLog)
 import IDE.Web.Widget.Menu (menu)
 import qualified IDE.LSP as LSP

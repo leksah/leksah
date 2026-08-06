@@ -24,7 +24,7 @@ module IDE.Utils.ExternalTool (
 
 import Prelude ()
 import Prelude.Compat
-import IDE.Utils.Tool
+import IDE.Utils.Process
        (interruptProcessGroupOf, getProcessExitCode, runTool,
         ProcessHandle, ToolOutput(..))
 import IDE.Core.State
@@ -32,7 +32,7 @@ import IDE.Core.State
         reifyIDE, prefs, readIDE,
         IDEM, MonadIDE(..), workspace, wsProjects, wsSettingsFor,
         ProjectSettings(..), pjKey, pjDir, Project)
-import IDE.Utils.FileUtils (isSubPath)
+import IDE.Utils.Files (isSubPath)
 import IDE.Utils.RemoteExec
        (interruptRemoteRun, newRunNonce, remoteRunScript, remoteSshArgs)
 import IDE.Utils.RemotePath (parseRemotePath)

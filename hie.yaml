@@ -32,7 +32,5 @@ cradle:
     - path: "./src-nogtk"
       component: "leksah:lib:leksah-nogtk"
     # Vendored sibling packages (their own single-component packages).
-    - path: "./vendor/leksah-server"
-      component: "leksah-server:lib:leksah-server"
     - path: "./vendor/lsp-types-client"
       component: "lsp-types-client:lib:lsp-types-client"

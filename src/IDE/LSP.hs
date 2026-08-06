@@ -63,13 +63,13 @@ import           Language.LSP.Protocol.Types (InitializeParams, filePathToUri, u
 import           Language.LSP.Client (Client, ClientConfig(..), defaultClientConfig,
                                        notify, request, start, stop, alive)
 
-import           IDE.Core.CTypes (SrcSpan(..))
+import           IDE.Core.Location (SrcSpan(..))
 import           IDE.Core.Types (Log(..), LogRef(..), LogRefType(..), allLogRefs)
 import           IDE.Core.State (IDEAction, modifyIDE_, reflectIDE, readIDE, prefs,
                                  lspEnabled, lspServerCommand,
                                  workspace, wsProjects, wsSettingsFor,
                                  ProjectSettings(..), pjKey, pjDir)
-import           IDE.Utils.FileUtils (isSubPath)
+import           IDE.Utils.Files (isSubPath)
 import           IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import           IDE.Web.FS (fsReadFile, fsDoesFileExist)
 import           IDE.Web.IDERefStore (getGlobalIDERef)

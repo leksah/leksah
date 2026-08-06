@@ -114,7 +114,7 @@ import Language.Javascript.JSaddle
         jss, liftJSM, new, obj, valIsNull, valIsUndefined, valToBool,
         valToNumber, valToText)
 
-import IDE.Core.CTypes (SrcSpan(..))
+import IDE.Core.Location (SrcSpan(..))
 import IDE.Core.State
        (IDE, TabKey, focusLog, leksahWindows,
         LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..),

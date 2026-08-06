@@ -79,7 +79,7 @@ import Reflex.Dom.Core
 import IDE.Web.Theme
        (selectionColor, hoverColor, dimColor, dimOpacity, fgColor,
         btnTopColor, btnBottomColor, btnHoverTopColor, btnHoverBottomColor)
-import IDE.Core.CTypes (packageIdentifierToString)
+import IDE.Core.Location (packageIdentifierToString)
 import IDE.Core.State
        (activeComponent, ipdPackageDir,
         ipdLib, pjDir, IDEPackage(..), runPackage, runProject,

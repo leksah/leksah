@@ -91,7 +91,7 @@ import IDE.Pane.Log (showDefaultLogLaunch')
 import IDE.Pane.SourceBuffer
        (IDEBuffer(..), fileOpenThis, fileCheckAll)
 import qualified IDE.Workspaces.Writer as Writer
-import IDE.Utils.FileUtils (myCanonicalizePath)
+import IDE.Utils.Files (myCanonicalizePath)
 import Distribution.Utils.Path (getSymbolicPath)
 import System.Directory (doesDirectoryExist)
 

@@ -1,8 +1,6 @@
--- | Browser stub of leksah-server's IDE.Utils.GHCUtils (GHC JavaScript
--- backend only; picked over @vendor/leksah-server/src@ by hs-source-dirs
--- order).  The real module wraps the GHC API (unavailable on the JS target);
--- the only pieces the web UI's modules use are these pure Cabal-type
--- helpers, copied verbatim from the real module.
+-- | Pure Cabal-type helpers (Dependency and LibraryName views).  This began
+-- as the browser stub of leksah-server's GHC-API-wrapping module of the same
+-- name; the GHC-API half is gone, so the stub IS the module now.
 module IDE.Utils.GHCUtils (
     mkDependency
 ,   viewDependency

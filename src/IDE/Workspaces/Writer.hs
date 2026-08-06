@@ -37,7 +37,7 @@ import IDE.Core.State
 import IDE.Gtk.State
 import IDE.Package
        (activatePackage, deactivatePackage, ideProjectFromKey)
-import IDE.Utils.FileUtils(myCanonicalizePath)
+import IDE.Utils.Files (myCanonicalizePath)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.GhciMode (phaseSince)
 

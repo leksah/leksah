@@ -118,8 +118,8 @@ import IDE.Pane.SourceBuffer
 import IDE.Pane.WebKit.Output(setOutput)
 --import IDE.TextEditor
 import IDE.Utils.DebugUtils (traceTimeTaken)
-import IDE.Utils.FileUtils(myCanonicalizePath)
-import IDE.Utils.Tool
+import IDE.Utils.Files (myCanonicalizePath)
+import IDE.Utils.Process
 
 showSourceSpan :: LogRef -> Text
 showSourceSpan = T.pack . displaySrcSpan . logRefSrcSpan

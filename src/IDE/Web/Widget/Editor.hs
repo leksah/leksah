@@ -56,7 +56,7 @@ import Reflex
 import Reflex.Dom.Core
        ((=:), MonadWidget, elAttr, elAttr', dyn, _element_raw, blank)
 
-import IDE.Core.CTypes
+import IDE.Core.Location
        (SrcSpan(..), srcSpanEndColumn, srcSpanEndLine, srcSpanStartColumn,
         srcSpanStartLine)
 import IDE.Core.State

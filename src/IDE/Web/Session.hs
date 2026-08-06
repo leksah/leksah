@@ -43,7 +43,7 @@ import IDE.Core.Types
        (AIPaneRef(..), TallVisibility(..), FlipItem(..), LeafId(..),
         LeksahWindow(..), PaneContent(..), PaneKind(..), SplitOrientation(..),
         SplitTree(..))
-import IDE.Utils.FileUtils (getConfigFilePathForSave)
+import IDE.Utils.Files (getConfigFilePathForSave)
 import IDE.Web.Events (TabKey(..))
 
 -- | The current on-disk format version.  Bump when the shape changes so an old

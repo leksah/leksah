@@ -99,12 +99,12 @@ import System.IO
 import Data.Maybe (isJust)
 import System.FilePath
        (takeExtension, takeDirectory, (</>), takeFileName)
-import IDE.Core.CTypes as Reexported
+import IDE.Core.Location as Reexported
 import Control.Concurrent
        (MVar, modifyMVar, modifyMVar_, newMVar, readMVar, forkIO)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.Time.Clock (getCurrentTime)
-import IDE.Utils.Utils as Reexported
+import IDE.Utils.Files as Reexported
 import Data.List (sortOn, nub)
 import Data.Map (Map)
 import qualified Data.Map as M (insert, fromListWith, lookup, size)
@@ -144,7 +144,6 @@ import System.Log.Formatter (simpleLogFormatter)
 import Data.Char (toUpper)
 import Text.Read (readMaybe)
 import Data.Ord (Down(..))
-import IDE.Utils.FileUtils (isSubPath)
 
 data MessageLevel = Silent | Normal | High
     deriving (Eq,Ord,Show)

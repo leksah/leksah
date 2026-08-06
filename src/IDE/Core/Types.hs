@@ -217,13 +217,13 @@ import IDE.Utils.RemotePath
 import Control.Concurrent (MVar)
 import Distribution.ModuleName (ModuleName)
 import Distribution.Simple (Extension(..))
-import IDE.Utils.Tool (ProcessHandle)
+import IDE.Utils.Process (ProcessHandle)
 import Data.IORef (IORef)
 import Numeric (showHex)
 import System.FilePath
        (dropFileName, (</>), isAbsolute, makeRelative, equalFilePath,
         addTrailingPathSeparator)
-import IDE.Core.CTypes
+import IDE.Core.Location
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))

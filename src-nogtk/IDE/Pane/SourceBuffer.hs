@@ -12,7 +12,7 @@ import IDE.Core.Types
 import IDE.Core.State
        (Location(..), addLogRef', removeBuildLogRefs', removeFileExtLogRefs',
         removeTestLogRefs')
-import IDE.Core.CTypes (PackModule)
+import IDE.Core.Location (PackModule)
 
 newtype IDEBuffer = IDEBuffer {
     fileName        ::  Maybe FilePath

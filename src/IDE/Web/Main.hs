@@ -263,10 +263,9 @@ import IDE.Preferences (defaultPrefs, writePrefs)
 #else
 import IDE.Preferences (readPrefs, writePrefs)
 #endif
-import IDE.Utils.FileUtils
-       (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave)
-import IDE.Utils.Utils
-       (standardPreferencesFilename)
+import IDE.Utils.Files
+       (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave,
+        standardPreferencesFilename)
 import IDE.Web.Command
        (commandAction, Command(..), _CommandSelectSplit,
         _CommandSelectSidePane, _CommandSelectBottomPane)

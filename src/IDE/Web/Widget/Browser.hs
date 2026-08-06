@@ -74,7 +74,7 @@ import Reflex.Dom.Core
         _textInputConfig_initialValue, _textInputConfig_setValue,
         _textInputConfig_attributes, getPostBuild)
 
-import IDE.Utils.FileUtils (getConfigFilePathForSave)
+import IDE.Utils.Files (getConfigFilePathForSave)
 import IDE.Web.Events (BrowserEvents)
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), getNativeBrowserOps)
 

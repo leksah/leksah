@@ -27,6 +27,7 @@ data-files:
     data/prefs.lkshp
     data/prefscoll.lkshp
     data/LICENSE
+    data/module.lksht
     data/welcome.txt
     data/leksah-welcome/cabal.project
     data/leksah-welcome/Setup.lhs
@@ -133,6 +134,7 @@ flag no-hlint
 library leksah-nogtk
     exposed-modules:
         IDE.Build
+        IDE.Core.Location
         IDE.Core.State
         IDE.Core.Types
         IDE.Gtk.Package
@@ -150,6 +152,10 @@ library leksah-nogtk
         IDE.Utils.DirectoryUtils
         IDE.Utils.ExitImmediately
         IDE.Utils.ExternalTool
+        IDE.Utils.Files
+        IDE.Utils.GHCUtils
+        IDE.Utils.Process
+        IDE.Utils.Project
         IDE.Git
         IDE.Utils.RemoteExec
         IDE.Utils.RemotePath
@@ -280,7 +286,6 @@ library leksah-nogtk
         base-compat >=0.9.0 && <0.16,
         base64-bytestring >=1.0 && <1.3,
         binary >=0.5.0.0 && <0.9,
-        binary-shared >=0.8.2 && <0.9,
         blaze-html,
         bytestring >=0.9.0.1 && <0.13,
         clay >=0.13.1 && <0.16,
@@ -372,30 +377,12 @@ library leksah-nogtk
             Win32 >=2.2.0.0 && <2.15
     elif impl(ghcjs) || arch(javascript)
         -- No PTYs in a browser (posix-pty doesn't even compile for JS);
-        -- IDE.Web.NoPty is the same surface with graceful failures.
-        --
-        -- leksah-server is not a dependency here (its cabal predates the JS
-        -- backend and its collector needs the GHC API), but many web-UI
-        -- modules import its pure metadata/utility modules — so, exactly like
-        -- vendor/ltk/src above, those are compiled straight from
-        -- vendor/leksah-server/src.  src-ghcjs-stub comes FIRST so its
-        -- browser stand-ins shadow the server versions that cannot build for
-        -- JS (IDE.Utils.Tool needs conduit-extra→network; IDE.Utils.GHCUtils
-        -- needs the GHC API).
-        hs-source-dirs: src-ghcjs-stub vendor/leksah-server/src
+        -- IDE.Web.NoPty is the same surface with graceful failures, and
+        -- src-ghcjs-stub's IDE.Utils.Process shadows the real one (no
+        -- System.Process in a browser).
+        hs-source-dirs: src-ghcjs-stub
         other-modules:
             IDE.Web.NoPty
-            IDE.Core.CTypes
-            IDE.Core.Serializable
-            IDE.StrippedPrefs
-            IDE.Utils.CabalPlan
-            IDE.Utils.CabalProject
-            IDE.Utils.FileUtils
-            IDE.Utils.GHCUtils
-            IDE.Utils.Project
-            IDE.Utils.Tool
-            IDE.Utils.Utils
-            IDE.Utils.VersionUtils
         build-depends:
             -- GHCJS.Marshal etc. come from jsaddle's compat modules natively,
             -- but from the real ghcjs-base under the JS backend.
@@ -423,14 +410,9 @@ library leksah-nogtk
             build-depends:
                 network >=2.2 && <2.6
 
-    if !(impl(ghcjs) || arch(javascript))
+    if !(impl(ghcjs) || arch(javascript)) && impl(ghc >=9.2)
         build-depends:
-            ghc >=6.10.1 && <9.15,
-            haskell-src-exts >=1.13.5 && <1.24,
-            leksah-server >=0.17.0.0 && <0.18
-        if impl(ghc >=9.2)
-            build-depends:
-                ghc-lib-parser
+            ghc-lib-parser
 
 -- The compiled home of the macOS native glue: leksah-mac-menu.m plus the
 -- foreign-export shims Objective-C calls back into (dispatching through
