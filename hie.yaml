@@ -29,8 +29,6 @@ cradle:
     # The web-UI library.
     - path: "./src"
       component: "leksah:lib:leksah-nogtk"
-    - path: "./src-nogtk"
-      component: "leksah:lib:leksah-nogtk"
     # Vendored sibling packages (their own single-component packages).
     - path: "./vendor/lsp-types-client"
       component: "lsp-types-client:lib:lsp-types-client"

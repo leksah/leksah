@@ -33,7 +33,7 @@
   the older `./dev-relaunch.sh`.
 - **ghci mode**: `./leksah.sh --ghci` runs the app INTERPRETED in a cabal
   multi-repl (tmux session `ghci` on `-L leksah`; first bytecode load is slow,
-  once). The repl flips cabal flags (`leksah -objc-in-library +no-hlint`,
+  once). The repl flips cabal flags (`leksah -objc-in-library`,
   `jsaddle-wkwebview -objc-in-library`) and shares `dist-newstyle` with the
   binary arm, so switching between --ghci and binary launches makes cabal
   reconfigure the flag-flipped packages. Against a ghci instance

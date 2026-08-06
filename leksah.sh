@@ -231,7 +231,7 @@ build_and_link() {
 # invariant every cabal call must share — is captured into a generated script.
 # There is no exit-2/3 relaunch loop here: the ghci session IS the loop.
 #
-# NB the repl flips cabal flags (-objc-in-library, +no-hlint) and shares the
+# NB the repl flips cabal flags (-objc-in-library) and shares the
 # default dist-newstyle build dir with the binary arm, so switching between
 # --ghci and binary launches makes cabal reconfigure the flag-flipped packages.
 if [ "$GHCI" = "1" ]; then
@@ -322,7 +322,6 @@ export TERM=dumb
 exec cabal repl leksah:exe:leksah leksah:lib:leksah-nogtk \\
   --enable-multi-repl \\
   --constraint="leksah -objc-in-library" \\
-  --constraint="leksah +no-hlint" \\
   --constraint="jsaddle-wkwebview -objc-in-library" \\
   --repl-options=-fno-ghci-sandbox \\
   --repl-options=-L"$GHCI_NATIVE" \\

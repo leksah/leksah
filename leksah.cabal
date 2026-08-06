@@ -91,48 +91,11 @@ flag objc-in-library
     default: True
     manual: True
 
-flag no-hlint
-    description:
-        Drop the hlint dependency (and thus ghc-lib-parser) from the
-        leksah-nogtk library, using the tiny Idea stand-in in IDE.Core.Types
-        instead (the same one the JS backend uses).  leksah.sh --ghci switches
-        this on: GHCi's RTS linker cannot load ghc-lib-parser's ~125 MB static
-        archive (its info-table SUBTRACTOR relocations fall out of range).  The
-        native web UI never calls hlint — it only carries the Idea type — so
-        the interpreted dev loop loses nothing.
-    default: False
-    manual: True
-
 library leksah-nogtk
     exposed-modules:
-        IDE.Core.Location
-        IDE.Core.State
-        IDE.Core.Types
-        IDE.Gtk.Package
-        IDE.Gtk.State
-        IDE.Gtk.Types
-        IDE.Gtk.Workspaces
-        IDE.Diagnostics
-        IDE.Diagnostics.Model
-        IDE.Pane.Log
-        IDE.Pane.SourceBuffer
-        IDE.Pane.WebKit.Documentation
-        IDE.Pane.WebKit.Output
-        IDE.Project
-        IDE.Project.Build
-        IDE.Project.Commands
-        IDE.Project.Nix
-        IDE.Project.Run
-        IDE.Project.WorkspaceFile
-        IDE.Settings
         IDE.Utils.DebugUtils
-        IDE.Utils.DirectoryUtils
         IDE.Utils.ExitImmediately
-        IDE.Utils.ExternalTool
-        IDE.Utils.Files
         IDE.Utils.GHCUtils
-        IDE.Utils.Process
-        IDE.Utils.Project
         IDE.Git
         IDE.Utils.RemoteExec
         IDE.Utils.RemotePath
@@ -246,7 +209,7 @@ library leksah-nogtk
         IDE.Web.Widget.Tree
         IDE.Web.Widget.Toolbar
         IDE.Web.Widget.Workspace
-    hs-source-dirs: src src-nogtk
+    hs-source-dirs: src
     other-modules:
         Paths_leksah
     default-language: Haskell2010
@@ -314,12 +277,9 @@ library leksah-nogtk
         utf8-string >=0.3.1.1 && <1.1
 
     -- Deps that do NOT compile with the GHC JavaScript backend, and are only
-    -- used by code that is CPP'd out / stubbed there:
-    --   * warp/wai-* pull auto-update, whose GHC.Event timer imports don't
-    --     exist under JS — only the (guarded) jsaddle-warp server plumbing in
-    --     IDE.Web.Main uses them;
-    --   * hlint pulls ghc-lib-parser, whose RTS-internals hsc fails — the JS
-    --     build carries a tiny Idea stand-in in IDE.Core.Types instead.
+    -- used by code that is CPP'd out / stubbed there: warp/wai-* pull
+    -- auto-update, whose GHC.Event timer imports don't exist under JS — only
+    -- the (guarded) jsaddle-warp server plumbing in IDE.Web.Main uses them.
     if !(impl(ghcjs) || arch(javascript))
         build-depends:
             HTTP >=4000.3.3,
@@ -331,17 +291,6 @@ library leksah-nogtk
             wai-extra >=3.0.24.3 && <3.2,
             warp >=3.2.25 && <3.5,
             websockets >=0.12.5.2 && <0.14
-
-    -- hlint pulls ghc-lib-parser.  It is unavailable on the JS backend (its
-    -- RTS-internals hsc doesn't compile) and is deliberately dropped by the
-    -- no-hlint flag for leksah.sh --ghci (the RTS linker can't load
-    -- ghc-lib-parser's static archive).  In both cases IDE.Core.Types'
-    -- Idea stand-in takes over; the native web UI only carries the type.
-    if !(impl(ghcjs) || arch(javascript) || flag(no-hlint))
-        build-depends:
-            hlint >=3.2 && <3.11
-    if flag(no-hlint)
-        cpp-options: -DLEKSAH_NO_HLINT
 
     if os(windows)
         -- Windows terminals use the Win32 Pseudoconsole (ConPTY) instead of

@@ -99,11 +99,10 @@ this had to clear — ghci RTS-links every dependency archive):
   (`~/.leksah/ghci-native/*.dylib`, `-L/-l` in the repl) — dyld loads them and
   registers the classes. ObjC→Haskell calls go through FunPtr-registered
   callbacks (a jsaddle-wkwebview patch), not extern foreign-export symbols.
-- **`no-hlint` flag.** hlint drags in ghc-lib-parser, whose ~125 MB static
-  archive the RTS linker can't relocate (`SUBTRACTOR` out of range). The native
-  web UI only carries hlint's `Idea` *type*, so ghci mode drops the dep
-  (`--constraint="leksah +no-hlint"`) and uses the same `Idea` stand-in the JS
-  backend uses.
+- **No hlint dependency.** leksah no longer links hlint-the-library at all
+  (ghc-lib-parser's ~125 MB static archive was unloadable in ghci anyway —
+  `SUBTRACTOR` relocations out of range); linting is an external tool whose
+  output is parsed like any other build tool's.
 - **Main thread.** Cocoa must build its window on OS thread 0.
   `-fno-ghci-sandbox` puts repl evaluation on the bound REPL thread — but cabal
   `--enable-multi-repl` doesn't forward `--repl-options`, so leksah.sh types

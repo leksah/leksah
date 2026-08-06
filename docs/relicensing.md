@@ -149,3 +149,44 @@ files at their step.
 Sign-off from the original authors can strike any row early if a rewrite
 turns out to be wasteful — record who agreed, when, and how, next to the row
 it strikes.
+
+## Round 2 (2026-08-07) — derivative remnants purged
+
+Review of the finished stages found that several "rewritten" modules were
+still built by carrying hunks and shapes out of the old GPL files.  A
+per-file `git log` showing only one author is not sufficient when the file's
+*content* was derived from a GPL original — so the criterion tightens from
+"file history" to "provenance of the text itself".
+
+Deleted outright (to be replaced by genuinely new designs — no compat
+shims, no carried hunks; large pieces written clean-room by agents that
+never saw the old code):
+
+- `IDE/Core/Types.hs`, `IDE/Core/State.hs` — the monolithic `IDE` type
+  itself is retired with them (replaced by observable cells + services,
+  `docs/plans/reflex-core.md`).
+- `IDE/Core/Location.hs` — old `SrcSpan` shape.
+- `IDE/Diagnostics.hs`, `IDE/Diagnostics/Model.hs` — carried the LogRef
+  model and parser structure.
+- `IDE/Settings.hs` — flat `Prefs` mirrored the old record.
+- `IDE/Project.hs` + `IDE/Project/{Build,Commands,Nix,Run,WorkspaceFile}.hs`
+  — `IDEPackage` compat accessors, carried command builders, and the old
+  `.lkshw` codec.
+
+Also deleted in the same sweep:
+
+- `IDE/Utils/ExternalTool.hs`, `IDE/Utils/DirectoryUtils.hs` — both still
+  carried literal GPL headers naming Juergen (a straight round-1 miss).
+- `IDE/Utils/Files.hs`, `IDE/Utils/Process.hs` — API mirrors of
+  leksah-server's `FileUtils`/`Tool`.
+- `IDE/Utils/Project.hs` — a verbatim move (legally clean, Hamish-only
+  history) but the old `ProjectKey` design; dies with the new project model.
+- the whole `src-nogtk/` shim tree (`IDE.Gtk.*`, `IDE.Pane.*`) — dual-compile
+  vestiges with no importers once the old core is gone.
+- the `hlint` library dependency, the `no-hlint` flag and the `Idea`
+  stand-ins: nothing links ghc-lib-parser any more; linting becomes an
+  external tool whose output is parsed like any other build tool's.  (ghci
+  mode now flips only the objc flags.)
+
+The `license: Apache-2.0` field stays: the suspect content is deleted in
+the same commit that records this list.
