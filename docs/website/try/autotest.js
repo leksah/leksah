@@ -218,8 +218,15 @@
         }
         if (/just a demo/.test(txt)) {
           clearInterval(timer);
+          // Selected, not merely created: "+" must bring its terminal to the
+          // front.  (Reaching here without clickedTab already implies it — a
+          // hidden tab body never mounts an xterm — but say so out loud.)
+          var sel = document.querySelector('.area-wide0 .tab-wrap.selected button');
           log('new terminal ' + fresh[i] + ' explains the demo: '
               + JSON.stringify(txt.replace(/\s+/g, ' ').trim().slice(0, 100)));
+          log('new terminal tab selected: ' + (sel ? sel.textContent.trim() : '(none)')
+              + (clickedTab ? ' — but only after the test clicked it (BUG)'
+                            : ' — by "+" itself'));
           done();
           return;
         }
