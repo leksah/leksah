@@ -93,6 +93,7 @@ flag objc-in-library
 
 library leksah-nogtk
     exposed-modules:
+        IDE.Problems.Parse
         IDE.Problems.Types
         IDE.Reactive
         IDE.Utils.DebugUtils
