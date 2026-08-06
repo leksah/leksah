@@ -41,6 +41,7 @@ import Control.Lens ((^.))
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import qualified Data.Conduit as C
 import Data.Conduit (ConduitT, Void)
+import qualified Data.Conduit.List as CL
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
 import qualified Data.Set as S
@@ -79,7 +80,7 @@ import IDE.Utils.ExternalTool
        (interruptBuild, isRunning, runExternalTool, runExternalTool',
         sinkLast)
 import IDE.Utils.Files (cabalBuildDir, cabalProjectBuildDir)
-import IDE.Utils.Process (ProcessHandle, ToolOutput(..))
+import IDE.Utils.Process (ProcessHandle, ToolOutput(..), toolline)
 import IDE.Utils.Project
        (CustomProject(..), ProjectKey(..), pjCustomDir, pjCustomGhcBuild,
         pjIsCabal, pjIsStack)
@@ -260,11 +261,12 @@ runCabalBuild _compiler background jump project packages continuation = do
                     then liftIO (findExecutable "ffcabal")
                     else return Nothing
     let builddir = ["--builddir=" <> T.pack (cabalBuildDir Nothing)]
+        plainCabalCmd = ("cabal", ["build"] <> pjFileArgs <> builddir
+                          <> activeComponent' <> targets)
         cabalCmd = case mbFFCabal of
             Just _  -> ("ffcabal", ["build"] <> pjFileArgs <> builddir
                           <> ["--repl-only" | background] <> activeComponent' <> targets)
-            Nothing -> ("cabal", ["build"] <> pjFileArgs <> builddir
-                          <> activeComponent' <> targets)
+            Nothing -> plainCabalCmd
         mbCmdAndArgs = case pjKey project of
             StackTool {} -> Just ("stack", ["build"] <> pjFileArgs <> activeComponent' <> targets)
             CabalTool {} -> Just cabalCmd
@@ -273,19 +275,38 @@ runCabalBuild _compiler background jump project packages continuation = do
             -- A Makefile project builds with make (through the nix env when
             -- the project has one, like the other tools).
             MakeTool {}  -> Just ("make", [])
-    withToolCommand project "ghc" mbCmdAndArgs $ \(cmd, args', nixEnv') -> do
-        let mbEnv = M.toList <$> nixEnv'
-        -- ffcabal drives tmux repls: pin them to leksah's own tmux server so
-        -- the workspace repl buttons / terminal tabs can reach the windows.
-        mbEnv' <- if isJust mbFFCabal
-            then Just . addFFCabalTmuxEnv <$> maybe (liftIO getEnvironment) return mbEnv
-            else return mbEnv
-        runExternalTool' (__ "Building") (T.unpack cmd) args' dir mbEnv' $ do
-            (mbLastOutput, _) <- C.getZipSink $ (,)
-                <$> C.ZipSink sinkLast
-                <*> C.ZipSink (logOutputForBuild project (LogProject dir) background jump)
-            lift $ continuation (mbLastOutput == Just (ToolExit ExitSuccess))
+    let runWith useFFCabal mbCmd retry =
+          withToolCommand project "ghc" mbCmd $ \(cmd, args', nixEnv') -> do
+            let mbEnv = M.toList <$> nixEnv'
+            -- ffcabal drives tmux repls: pin them to leksah's own tmux server so
+            -- the workspace repl buttons / terminal tabs can reach the windows.
+            mbEnv' <- if useFFCabal
+                then Just . addFFCabalTmuxEnv <$> maybe (liftIO getEnvironment) return mbEnv
+                else return mbEnv
+            runExternalTool' (__ "Building") (T.unpack cmd) args' dir mbEnv' $ do
+                (mbLastOutput, rejected, _) <- C.getZipSink $ (,,)
+                    <$> C.ZipSink sinkLast
+                    <*> C.ZipSink (if useFFCabal then sinkFFCabalReject else pure False)
+                    <*> C.ZipSink (logOutputForBuild project (LogProject dir) background jump)
+                let ok = mbLastOutput == Just (ToolExit ExitSuccess)
+                lift $ if not ok && rejected then retry else continuation ok
+    -- ffcabal only knows the components of a project it can enumerate; for
+    -- others it rejects every target ("matches no local component").  That is
+    -- not the build failing — so fall back to plain cabal instead of leaving
+    -- the user stuck because ghci mode is on.
+    runWith (isJust mbFFCabal) mbCmdAndArgs $ case pjKey project of
+        CabalTool {} -> runWith False (Just plainCabalCmd) (continuation False)
+        _            -> continuation False
   `catchIDE` (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
+
+-- | Did ffcabal refuse the targets (rather than the build failing)?  Its two
+-- refusals both name local components; a compile error never does.
+sinkFFCabalReject :: Monad m => ConduitT ToolOutput o m Bool
+sinkFFCabalReject = CL.fold (\seen o -> seen || isReject (toolline o)) False
+  where
+    isReject l =
+           "matches no local component" `T.isInfixOf` l
+        || "no local components selected" `T.isInfixOf` l
 
 -- | Re-read a local package's components from its @.cabal@ (fresh test and
 -- benchmark names for the build targets).
