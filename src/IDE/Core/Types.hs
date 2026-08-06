@@ -1,32 +1,26 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
------------------------------------------------------------------------------
---
--- Module      :  IDE.Core.Data
--- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
--- License     :  GNU-GPL
---
--- Maintainer  :  <maintainer at leksah.org>
--- Stability   :  provisional
--- Portability :  portable
---
--- | The core state of ide. This module is imported from every other module,
--- | and all data structures of the state are declared here, to avoid circular
--- | module dependencies.
---
--------------------------------------------------------------------------------
 
+-- | The IDE's state and the monad it runs in.
+--
+-- One 'IDE' record holds everything the whole application shares — the
+-- preferences, the open workspace, the diagnostics, the per-OS-window UI
+-- state — behind an 'MVar' ('IDERef') that every thread reads and mutates
+-- through 'IDEM'.  The domain models it composes live in their own modules
+-- ('IDE.Settings', 'IDE.Project', 'IDE.Web.Model',
+-- 'IDE.Diagnostics.Model'); this module re-exports them so a consumer needs
+-- one import.
 module IDE.Core.Types (
     IDE(..)
 ,   IDEGtk
@@ -202,14 +196,15 @@ import IDE.Utils.Project
 import Distribution.Pretty (prettyShow)
 
 -- ---------------------------------------------------------------------
--- IDE State
---
+-- The state
+-- ---------------------------------------------------------------------
 
---
--- | The IDE state
---
-
-data IDE            =  IDE {
+-- | Everything the application shares.  Fields are grouped by what owns
+-- them: the front-end handles, the user's configuration and workspace, the
+-- diagnostics, the running tool, the file watchers, and the web UI's window
+-- state.  Lenses (below) are how it is read and written — never the fields
+-- directly, so a change bumps '_ideVersion' and the windows notice.
+data IDE = IDE {
     _ideGtk              :: Maybe (IDEGtk IDEM IDERef)
 ,   _exitCode            :: IORef ExitCode
 ,   _prefs               :: Prefs                   -- ^ configuration preferences
@@ -281,23 +276,23 @@ data IDE            =  IDE {
                                                     --   drops a fire to a background window
 } -- deriving Show
 
---
--- | A mutable reference to the IDE state
---
+-- ---------------------------------------------------------------------
+-- The monad
+-- ---------------------------------------------------------------------
+
+-- | The shared state, plus the notification callback a mutation runs (that
+-- is what makes every window redraw).
 type IDERef = MVar (IDE -> IO (), IDE)
 
---
--- | The IDE Monad
---
+-- | Anything that can touch the IDE runs here.
 type IDEM = ReaderT IDERef IO
 
---
--- | A shorthand for a reader monad for a mutable reference to the IDE state
---   which does not return a value
---
+-- | An 'IDEM' that returns nothing — most of the IDE's actions.
 type IDEAction = IDEM ()
 
 
+-- | A monad an 'IDEM' action can be run in: the tower below, and the
+-- front ends' event monads.  'liftIDE' is the only thing it promises.
 class (Applicative m, Monad m, MonadIO m) => MonadIDE m where
     liftIDE :: IDEM a -> m a
 
@@ -307,16 +302,14 @@ instance MonadIDE IDEM where
 instance MonadIDE WorkspaceM where
     liftIDE = lift
 
+-- | Run the continuation only when the action produced something.
 (?>>=) :: Monad m => m (Maybe a) -> (a -> m ()) -> m ()
-a ?>>= b = do
-    mA <- a
-    case mA of
-        Just v -> b v
-        Nothing -> return ()
+a ?>>= b = a >>= \case
+    Just v  -> b v
+    Nothing -> return ()
 
--- ---------------------------------------------------------------------
--- Monad for Gtk events (use onIDE instead of on)
---
+-- | A widget-event handler that can also reach the IDE (the front ends'
+-- @onIDE@ wraps a raw event handler in this).
 type IDEEventM t = ReaderT IDERef (ReaderT t IO)
 
 instance MonadIDE (IDEEventM t) where
@@ -325,17 +318,17 @@ instance MonadIDE (IDEEventM t) where
         liftIO $ runReaderT f ideR
 
 -- ---------------------------------------------------------------------
--- Monad for functions that need an open workspace
---
+-- Ambient context: an action that needs an open workspace, a project
+-- within it, or one of that project's packages, reads it from the
+-- environment instead of taking it as an argument.
+-- ---------------------------------------------------------------------
+
 type WorkspaceM = ReaderT Workspace IDEM
 type WorkspaceAction = WorkspaceM ()
 
 runWorkspace :: WorkspaceM a -> Workspace -> IDEM a
 runWorkspace = runReaderT
 
--- ---------------------------------------------------------------------
--- Monad for functions that need an active package
---
 type ProjectM = ReaderT Project WorkspaceM
 type ProjectAction = ProjectM ()
 
@@ -345,55 +338,22 @@ instance MonadIDE ProjectM where
 runProject :: ProjectM a -> Project -> WorkspaceM a
 runProject = runReaderT
 
--- ---------------------------------------------------------------------
--- Monad for functions that need an active package
---
-type PackageM = ReaderT IDEPackage ProjectM
+type PackageM = ReaderT Package ProjectM
 type PackageAction = PackageM ()
 
 instance MonadIDE PackageM where
     liftIDE = lift . lift . lift
 
-runPackage :: PackageM a -> IDEPackage -> ProjectM a
+runPackage :: PackageM a -> Package -> ProjectM a
 runPackage = runReaderT
 
 -- ---------------------------------------------------------------------
+-- Small shared vocabulary
 -- ---------------------------------------------------------------------
--- Events which can be signalled and handled
---
 
-
--- ---------------------------------------------------------------------
--- Project
---
---newtype CabalProject = CabalProject
---  { pjCabalFile :: FilePath
---  } deriving (Show, Eq)
---newtype StackProject = StackProject
---  { pjStackFile :: FilePath
---  } deriving (Show, Eq)
---data CustomProject = CustomProject
---  { pjCustomDir        :: FilePath
---  , pjCustomNixShell   :: [Text]
---  , pjCustomGhcBuild   :: [Text]
---  , pjCustomGhcjsBuild :: [Text]
---  , pjCustomRepl       :: [Text]
---  } deriving (Show, Eq)
---
---data ProjectKey =
---    CabalTool CabalProject
---  | StackTool StackProject
---  | CustomTool CustomProject
---  deriving (Show, Eq)
-
+-- | Which way (and from what) a find should search next.
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
-
--- Version-Control-System Configuration
-
---
--- | Other types
---
 
 #if defined(ghcjs_HOST_OS)
 -- | Stand-ins for fsnotify's types: fsnotify (via unix-compat) doesn't build
@@ -404,12 +364,19 @@ data WatchManager = NoWatchManager
 type StopListening = IO ()
 #endif
 
-newtype KeymapI         =   KM  (Map ActionString
-                                [(Maybe (Either KeyString (KeyString,KeyString)), Maybe Text)])
+-- | A classic-era keymap: per action, the chord (or two-chord sequence)
+-- bound to it and an optional display override.  The web UI's own
+-- keybindings live in "IDE.Web.Keybindings".
+newtype KeymapI = KM
+    (Map ActionString [(Maybe (Either KeyString (KeyString, KeyString)), Maybe Text)])
 
-data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
-                | Regex {caseSense :: Bool}
-    deriving (Eq,Ord,Read,Show,Generic)
+-- | How a find matches: literally, as a prefix, or as a regex — each
+-- either case-sensitively or not.
+data SearchMode
+    = Exact  { caseSense :: Bool }
+    | Prefix { caseSense :: Bool }
+    | Regex  { caseSense :: Bool }
+    deriving (Eq, Ord, Read, Show, Generic)
 
 instance ToJSON SearchMode
 instance FromJSON SearchMode
@@ -417,10 +384,16 @@ instance FromJSON SearchMode
 
 makeLenses ''IDE
 
+-- ---------------------------------------------------------------------
+-- Derived views of the state
+-- ---------------------------------------------------------------------
+
+-- | The active project, package and component: what the workspace says,
+-- resolved through the open workspace (nothing without one).
 activeProject :: Getter IDE (Maybe Project)
 activeProject = workspace . to (>>= view wsActiveProject)
 
-activePack :: Getter IDE (Maybe IDEPackage)
+activePack :: Getter IDE (Maybe Package)
 activePack = workspace . to (>>= view wsActivePackage)
 
 activeComponent :: Getter IDE (Maybe Text)
@@ -441,21 +414,17 @@ activeProjectLogRefs ide = case ide ^. activeProject of
     underRoot dir p =
         equalFilePath dir p || addTrailingPathSeparator dir `isPrefixOf` p
 
+-- | A project's captured nix-shell environment for a compiler, if one has
+-- been captured (see "IDE.Project.Nix").
 nixEnv :: ProjectKey -> Text -> IDE -> Maybe (Map String String)
 nixEnv project compiler ide = M.lookup (pjDir project, compiler) $ ide ^. nixCache
 
+-- | Mark a user-visible string for translation.  Real gettext lookup when
+-- built with the @LOCALIZATION@ flag; the identity otherwise.
+__ :: Text -> Text
 #ifdef LOCALIZATION
-
--- | For i18n using hgettext
-__ :: Text -> Text
 __ = T.pack . unsafePerformIO . getText . T.unpack
-
-
 #else
-
--- | For i18n support. Not included in this build.
-__ :: Text -> Text
 __ = id
-
 #endif
 
