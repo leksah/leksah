@@ -38,7 +38,9 @@ import IDE.Gtk.Workspaces (workspaceTry)
 import IDE.Workspaces (projectOpenPath)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.IDERefStore (getGlobalIDERef)
-import IDE.Web.MenuModel (menus, MenuItem(..))
+import IDE.Web.Commands (allCommands)
+import IDE.Web.Keybindings (currentKeymap, loadKeybindings)
+import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel
        (setOpenFilePanelHandler, setOpenProjectPanelHandler,
@@ -228,6 +230,12 @@ installWin32Menu wv = do
   setNewWindowHandler $ hPutStrLn stderr
     "leksah: New Window is not yet supported on Windows (needs jsaddle-webview2 \
     \multi-window support; see IDE.Web.Win32Menu)."
+  -- Rendered from the keybindings table at build time (user rebinds apply
+  -- on the next start; the macOS front end rebuilds live).  Load the table
+  -- here if boot ordering got us here before newIDE resolved it.
+  km0 <- currentKeymap
+  menus <- renderedMenus <$>
+      (if null km0 then fst <$> loadKeybindings allCommands else return km0)
   let winMenus = stripMacOnly menus
   -- Tags index this list; it must be the leaf commands in the same
   -- depth-first order that 'addItems' emits them.

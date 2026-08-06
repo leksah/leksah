@@ -2,22 +2,20 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
--- | The Shortcuts pane: a read-only keyboard cheat sheet for the web UI.
+-- | The Shortcuts pane: a read-only keyboard cheat sheet for the web UI,
+-- generated from the LIVE keybindings table ('IDE.Web.Keybindings') plus the
+-- rendered menus — so user rules in @keybindings.json@ show here exactly as
+-- they bind, and the sheet can't drift from reality:
 --
--- It lists the shortcuts that are actually live in the front end, drawn from
--- the two places the web UI defines them so the sheet can't drift out of date:
+--   * \"Global\" — every always-available binding (the DOM keydown table);
+--   * \"Window & Pane Navigation\" — the @nav.*@ numbered chords, compressed
+--     to their ranges (⌘1–9);
+--   * one group per menu that carries shortcuts (Terminal, AI, tmux hints…).
 --
---   * 'IDE.Web.Widget.Keymap.globalBindings' — the fixed global chords the
---     document key handler listens for (⇧⌘B build, ⌃J next error, ⌘F find, …),
---     plus the flipper and numbered-navigation chords that 'keymapWidget' adds
---     at runtime (represented here as an explicit \"Navigation\" block);
---   * 'IDE.Web.MenuModel.menus' — every menu item that carries a key
---     equivalent / shortcut hint (File, Terminal, AI, …), grouped by its menu.
---
--- Descriptions come from 'commandImageAndTip'.  The layout is a CSS multi-column
--- flow: each group stays intact ('break-inside: avoid') and the groups reflow
--- into as many columns as the pane is wide enough for, so it reads well as a
--- narrow side pane, a short wide bottom bar, or a large centre tab.
+-- The layout is a CSS multi-column flow: each group stays intact
+-- ('break-inside: avoid') and the groups reflow into as many columns as the
+-- pane is wide enough for, so it reads well as a narrow side pane, a short
+-- wide bottom bar, or a large centre tab.
 --
 -- The pane is ⌘D-convertible like an editor / git-log tab (see
 -- 'IDE.Web.Main'); its backing tmux \"twin\" pages 'shortcutsPlainText'.
@@ -27,20 +25,26 @@ module IDE.Web.Widget.Shortcuts
   , shortcutsPlainText
   ) where
 
+import Control.Monad.IO.Class (liftIO)
+import Data.List (groupBy)
+import Data.Function (on)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Clay ((?), (-:), Css)
 
-import Reflex (Dynamic, Event, never)
-import Reflex.Dom.Core
-       (MonadWidget, Key(..), elClass, text)
+import Reflex (Dynamic, Event, holdDyn, never, newTriggerEvent)
+import Reflex.Dom.Core (MonadWidget, dyn, elClass, text)
 
 import IDE.Core.State (IDE)
+import IDE.Web.Chord (toGlyphs)
+import IDE.Web.Command (commandImageAndTip)
 import IDE.Web.Events (ShortcutsEvents)
-import IDE.Web.Command (Command(..), commandImageAndTip)
-import IDE.Web.MenuModel (MenuItem(..), menus, prettyKeySpec)
-import IDE.Web.Widget.Keymap (globalBindings)
+import IDE.Web.Keybindings
+       (Binding(..), CommandSpec(..), Keymap, When(..),
+        registerKeymapListener)
+import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec, renderedMenus)
 
 -- | One line of a group: a shortcut chord (already rendered to display glyphs)
 -- and what it does; or a sub-heading dividing a group (nested menus).
@@ -52,33 +56,46 @@ data Line
 -- block).
 type Group = (Text, [Line])
 
--- | The whole cheat sheet.
-shortcutSections :: [Group]
-shortcutSections = globalGroup : navGroup : menuGroups
+-- | The whole cheat sheet, from the resolved keymap.
+shortcutSections :: Keymap -> [Group]
+shortcutSections km = globalGroup km : navGroup km : menuGroups km
 
--- | The fixed global chords, straight from the shared 'globalBindings'.
-globalGroup :: Group
-globalGroup =
-  ("Global", [ Chord (chordGlyphs mods key) (describeCommand cmd)
-             | (mods, key, cmd) <- globalBindings ])
+isNav :: Binding -> Bool
+isNav b = "nav." `T.isPrefixOf` csId (bSpec b)
 
--- | The flipper + numbered-navigation chords.  These are assembled inside
--- 'keymapWidget' (the flipper's modifier is host-dependent, and the numbered
--- chords are generated 1-9), so they aren't in 'globalBindings'; spell them out.
-navGroup :: Group
-navGroup =
+-- | Every always-available binding except the numbered navigation.
+globalGroup :: Keymap -> Group
+globalGroup km =
+  ("Global",
+    [ Chord (toGlyphs (bChord b)) (describeBinding b)
+    | b <- km, csWhen (bSpec b) == WhenAlways, not (isNav b) ])
+
+-- | The @nav.*@ chords, one row per (command, modifier set) with the digit
+-- range compressed (⌘1–9); plus the flipper-commit note.
+navGroup :: Keymap -> Group
+navGroup km =
   ("Window & Pane Navigation",
-    [ Chord "⌘`"    "Flip to the next tab / pane (hold ⌘, release to commit)"
-    , Chord "⇧⌘`"   "Flip to the previous tab / pane"
-    , Chord "⌘1–9"  "Select the Nth split of the active terminal"
-    , Chord "⌥⌘1–9" "Select the Nth side-bar pane"
-    , Chord "⌃⌘1–9" "Select the Nth bottom-bar pane"
-    ])
+    [ row grp
+    | grp <- groupBy ((==) `on` navKey) [ b | b <- km, isNav b ] ]
+    <> [ Chord "" "Hold the flip modifier, release to commit the tab flip" ])
+  where
+    navKey b = (csId (bSpec b), T.dropEnd 1 (toGlyphs (bChord b)))
+    row grp@(b0:_) =
+        let glyphs0 = toGlyphs (bChord b0)
+            mods    = T.dropEnd 1 glyphs0
+            range   = case map (T.takeEnd 1 . toGlyphs . bChord) grp of
+                        []       -> ""
+                        [d]      -> d
+                        (d : ds) -> d <> "–" <> last ds
+        in Chord (mods <> range) (describeBinding b0)
+    row [] = Chord "" ""
 
 -- | Every menu that defines at least one shortcut, grouped by menu name.
-menuGroups :: [Group]
-menuGroups =
-  [ (name, ls) | (name, items) <- menus, let ls = concatMap menuLines items, not (null ls) ]
+menuGroups :: Keymap -> [Group]
+menuGroups km =
+  [ (name, ls)
+  | (name, items) <- renderedMenus km
+  , let ls = concatMap menuLines items, not (null ls) ]
 
 -- | The shortcut lines a menu item contributes.  'MenuShortcut' (the display
 -- \"hint\") already holds rendered glyphs; the real key equivalents
@@ -95,48 +112,31 @@ menuLines = \case
                                   ls -> Sub title : ls
   _                          -> []
 
--- | Render a global binding's modifier set + trigger key to display glyphs
--- (macOS order ⌃⌥⇧⌘, matching 'prettyKeySpec').
-chordGlyphs :: [Key] -> Key -> Text
-chordGlyphs mods key = modGlyphs mods <> keyGlyph key
+-- | A human description for a binding: its command's tooltip when it has
+-- one, else the command's menu title.
+describeBinding :: Binding -> Text
+describeBinding b = fromMaybe (csTitle (bSpec b)) $ do
+    cmd <- csMake (bSpec b) (bArgs b)
+    case snd (commandImageAndTip cmd) of
+        t | T.null t  -> Nothing
+          | otherwise -> Just t
 
-modGlyphs :: [Key] -> Text
-modGlyphs mods = T.concat [ g | (m, g) <- order, m `elem` mods ]
-  where order = [ (Control, "⌃"), (Alt, "⌥"), (Shift, "⇧"), (Command, "⌘") ]
-
--- | A trigger 'Key' as its printed glyph.  Covers the keys 'globalBindings'
--- actually uses, with a best-effort fallback (@KeyB@ → \"B\", @Digit1@ → \"1\").
-keyGlyph :: Key -> Text
-keyGlyph = \case
-  Comma        -> ","
-  ForwardSlash -> "/"
-  Period       -> "."
-  Backquote -> "`"
-  k -> let s = T.pack (show k)
-       in maybe (maybe s id (T.stripPrefix "Digit" s)) id (T.stripPrefix "Key" s)
-
--- | A human description for a bound command: its tooltip when it has one, else
--- a hand-written fallback for the plain display commands that carry none.
-describeCommand :: Command -> Text
-describeCommand cmd = case snd (commandImageAndTip cmd) of
-  t | not (T.null t) -> t
-  _ -> case cmd of
-    CommandShowPreferences -> "Open the Preferences pane"
-    CommandFocusAlert      -> "Jump to the next terminal wanting attention"
-    _                      -> ""
-
--- The pane widget: static, read-only, emits nothing.  The IDE 'Dynamic' is
--- accepted (and ignored) to match the tab dispatch and leave room for a future
--- editable/customisable version.
+-- The pane widget: read-only; re-renders when the keybindings table reloads.
 shortcutsWidget
   :: forall t m. MonadWidget t m
   => Dynamic t IDE
   -> m (Event t ShortcutsEvents)
-shortcutsWidget _ide = elClass "div" "shortcuts" $ do
-  elClass "div" "sc-cols" $
-    mapM_ renderGroup shortcutSections
+shortcutsWidget _ide = do
+  (kmE, fireKm) <- newTriggerEvent
+  -- Fires immediately with the current table, then on every reload.
+  liftIO (registerKeymapListener fireKm)
+  kmD <- holdDyn [] kmE
+  _ <- dyn (renderSheet <$> kmD)
   return never
   where
+    renderSheet km = elClass "div" "shortcuts" $
+      elClass "div" "sc-cols" $
+        mapM_ renderGroup (shortcutSections km)
     -- Each group is split into break-inside-avoid "chunks" (its leading rows,
     -- then one per sub-heading), so a big group like Terminal/tmux flows across
     -- columns at chunk boundaries instead of running down a single column.  The
@@ -169,10 +169,11 @@ isRow (Sub _)     = False
 
 -- | The cheat sheet as aligned plain text — the content of the backing tmux
 -- pane's pager (the ⌘D \"twin\" of the HTML view).
-shortcutsPlainText :: Text
-shortcutsPlainText = T.intercalate "\n" (concatMap group shortcutSections) <> "\n"
+shortcutsPlainText :: Keymap -> Text
+shortcutsPlainText km =
+    T.intercalate "\n" (concatMap grp (shortcutSections km)) <> "\n"
   where
-    group (title, ls) = ["", "== " <> title <> " =="] ++ map line ls
+    grp (title, ls) = ["", "== " <> title <> " =="] ++ map line ls
     line (Sub s)       = "  -- " <> s
     line (Chord g d)   = "  " <> pad 8 g <> "  " <> d
     pad n t = t <> T.replicate (max 0 (n - T.length t)) " "

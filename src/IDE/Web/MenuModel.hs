@@ -1,220 +1,209 @@
 {-# LANGUAGE OverloadedStrings #-}
--- | The menu model: top-level menus, each a tree of items.  An item is either a
--- labelled 'Command' or a labelled 'Submenu' of further items (arbitrary depth).
--- This is the single source of truth shared by the web menubar
--- (`IDE.Web.Widget.Menubar`) and the native macOS menu (`IDE.Web.MacMenu`), so
--- they stay in sync.
+-- | The menu model: top-level menus, each a tree of items.  The SOURCE model
+-- ('menuModel') names commands by their registry id (\"package.build\"), so a
+-- menu item's key equivalent comes from the live keybindings table — a user
+-- rebind in @keybindings.json@ shows up in the native menus and the web
+-- menubar alike.  'renderedMenus' resolves the source model against a
+-- 'Keymap' into the 'MenuItem' shape the consumers eat (the web menubar
+-- `IDE.Web.Widget.Menubar`, the native macOS/Gtk/Win32 menus, and the
+-- Shortcuts pane), so they stay in sync by construction.
+--
+-- The tmux submenu's @⌃B x@ chords are DISPLAY hints, not key equivalents
+-- (a two-chord sequence can't be an @NSMenuItem@ equivalent): those items
+-- keep an explicit label + hint + 'Command' and bypass the registry.
 module IDE.Web.MenuModel
   ( MenuItem(..)
-  , menus
+  , MenuEntry(..)
+  , menuModel
+  , renderedMenus
   , prettyKeySpec
   ) where
 
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T
 
+import IDE.Web.Chord (parseChord, toGlyphs, toNativeSpec)
 import IDE.Web.Command
-       (Command(..), commandAddModule, commandRefreshNix, commandPackageClean,
-        commandPackageBuild, commandPackageRun, commandPackageRunJavascript,
-        commandToggleBackgroundBuild, commandToggleNative, commandToggleJavaScript,
-        commandToggleDebug, commandToggleMakeDocs, commandToggleTest,
-        commandToggleRunBenchmarks, commandToggleMakeDependents,
-        commandFileClose,
-        commandNewWindow, commandAddServer, commandToggleTmuxIntercept,
-        commandFontBigger, commandFontSmaller, commandFontReset, tmuxKey,
-        paneCmd, splitCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
-        commandSendSelection, commandSendFileRef, commandSendError,
-        commandFocusAITerminal, commandClaudeNew, commandClaudeContinue)
+       (Command(..), paneCmd, tmuxKey)
+import IDE.Web.Commands (lookupCommand)
+import IDE.Web.Keybindings
+       (Binding(..), CommandSpec(..), Keymap, When(..), bindingFor)
 
--- | One entry in a menu: a clickable command (optionally with a shortcut hint
--- shown the macOS way — right-aligned and greyed), or a nested submenu.
+-- | One entry of the source model.
+data MenuEntry
+  = MCmd Text                 -- ^ a registry command id; label = its title,
+                              --   key equivalent = its (re)binding
+  | MHint Text Text Command   -- ^ label, display-only shortcut hint, command
+                              --   (the tmux ⌃B chords)
+  | MSepE
+  | MSubE Text [MenuEntry]
+
+-- | One RENDERED entry (unchanged shape — the native menu builders and the
+-- web menubar consume this).
 data MenuItem
-  = MenuItem Text Command            -- ^ label, command
-  | MenuShortcut Text Text Command   -- ^ label, shortcut hint, command
-  | MenuKey Text Text Command        -- ^ label, REAL key equivalent (a spec
-                                     --   like @\"cmd+shift+d\"@ or
-                                     --   @\"cmd+alt+Up\"@ — parsed natively
-                                     --   into an NSMenuItem key equivalent,
+  = MenuItem Text Command            -- ^ label, command (no shortcut)
+  | MenuShortcut Text Text Command   -- ^ label, display hint, command
+  | MenuKey Text Text Command        -- ^ label, real key equivalent spec,
                                      --   enabled only while a terminal is
-                                     --   active), command
-  | MenuGlobalKey Text Text Command  -- ^ like 'MenuKey' but NOT gated to a
-                                     --   terminal — an always-available real
-                                     --   key equivalent (label, spec, command)
+                                     --   active, command
+  | MenuGlobalKey Text Text Command  -- ^ like 'MenuKey' but always enabled
   | MenuSplitKey Text Text Command   -- ^ like 'MenuKey' but enabled while a
-                                     --   terminal OR a convertible tab (an
-                                     --   editor/git-log with a backing tmux
-                                     --   pane) is active — the Split items,
-                                     --   so ⌘D on an editor converts it
-  | MenuSep                          -- ^ a separator line
-  | Submenu  Text [MenuItem]         -- ^ a labelled nested menu
+                                     --   terminal OR a convertible tab is
+                                     --   active (the Split items)
+  | MenuSep
+  | Submenu  Text [MenuItem]
 
--- | Convenience: a plain @(label, command)@ leaf.
-item :: Text -> Command -> MenuItem
-item = MenuItem
-
--- | A leaf whose shortcut is displayed in the native key-equivalent column.
--- The shortcut is display-only — tmux chords (@C-b X@) aren't single-chord macOS
--- key equivalents, so they can't be real 'NSMenuItem' key equivalents.
-key :: Text -> Text -> Command -> MenuItem
-key = MenuShortcut
-
--- | Render a 'MenuKey' spec (@\"cmd+shift+d\"@) the way macOS displays
--- shortcuts (@⇧⌘D@) — for the web menubar, which shows the hint as text.
+-- | Render a chord spec (@\"cmd+shift+d\"@) the way macOS displays shortcuts
+-- (@⇧⌘D@) — for the web menubar, which shows the hint as text.
 prettyKeySpec :: Text -> Text
-prettyKeySpec spec =
-    let parts = T.splitOn "+" spec
-        -- "cmd+ctrl+=": a trailing empty part means the key itself is '+';
-        -- treat empties as literal "+" if last, drop otherwise.
-        (mods, keys) = span (`elem` ["cmd", "super", "shift", "alt", "opt", "ctrl"]) parts
-        modSym m = case m of
-            "ctrl"  -> "⌃"
-            "alt"   -> "⌥"
-            "opt"   -> "⌥"
-            "shift" -> "⇧"
-            _       -> "⌘"   -- cmd/super
-        -- macOS convention orders modifiers ⌃⌥⇧⌘.
-        order = ["ctrl", "alt", "opt", "shift", "cmd", "super"]
-        sortedMods = [ modSym o | o <- order, o `elem` mods ]
-        keySym k = case k of
-            "Up"    -> "↑"
-            "Down"  -> "↓"
-            "Left"  -> "←"
-            "Right" -> "→"
-            "Enter" -> "⏎"
-            _       -> T.toUpper k
-    in T.concat (sortedMods <> map keySym (filter (not . T.null) keys))
+prettyKeySpec spec = maybe spec toGlyphs (parseChord spec)
 
-menus :: [(Text, [MenuItem])]
-menus =
+-- | Resolve the source model against the keybindings table.
+renderedMenus :: Keymap -> [(Text, [MenuItem])]
+renderedMenus km = [ (title, mapMaybe render items) | (title, items) <- menuModel ]
+  where
+    render (MHint l h c) = Just (MenuShortcut l h c)
+    render MSepE         = Just MenuSep
+    render (MSubE t es)  = Just (Submenu t (mapMaybe render es))
+    render (MCmd cid)    = do
+        spec <- lookupCommand cid
+        cmd  <- csMake spec Nothing
+        return $ case bindingFor km cid of
+            Nothing -> MenuItem (csTitle spec) cmd
+            Just b  ->
+                let ks = toNativeSpec (bChord b)
+                in case csWhen spec of
+                    WhenAlways                -> MenuGlobalKey (csTitle spec) ks cmd
+                    WhenTerminal              -> MenuKey       (csTitle spec) ks cmd
+                    WhenTerminalOrConvertible -> MenuSplitKey  (csTitle spec) ks cmd
+
+-- | A display-hint leaf (the tmux chords).
+key :: Text -> Text -> Command -> MenuEntry
+key = MHint
+
+menuModel :: [(Text, [MenuEntry])]
+menuModel =
   -- "Workspace" is the app's File menu (first after the app menu): the
   -- file/project items plus what used to be a separate Workspace menu.
   -- NB the native front ends hang OS furniture off this menu BY TITLE
   -- (Open Recent in leksah-mac-menu.m leksah_ensure_recent_menu, Open
   -- Recent + Quit in GtkMenu.hs addTop) — keep the title in sync there.
   [ ("Workspace",
-      [ MenuGlobalKey "New Window" "cmd+n" commandNewWindow
-      , MenuSep
-      , item "Open File…"    CommandFileOpen
-      , item "Open Project…" CommandProjectOpen
-      , item "Open Folder…"  CommandProjectOpenFolder
-      , item "Add Remote Project…" CommandProjectAddRemote
-      , item "Add Server…"   commandAddServer
-      , item "Save File"     CommandFileSave
-      , MenuGlobalKey "Close File" "cmd+w" commandFileClose
-      , MenuSep
-      , item "Refresh Nix Environment" commandRefreshNix
+      [ MCmd "workspace.newWindow"
+      , MSepE
+      , MCmd "workspace.openFile"
+      , MCmd "workspace.openProject"
+      , MCmd "workspace.openFolder"
+      , MCmd "workspace.addRemoteProject"
+      , MCmd "workspace.addServer"
+      , MCmd "workspace.saveFile"
+      , MCmd "workspace.closeFile"
+      , MSepE
+      , MCmd "workspace.refreshNix"
       ])
-  -- Real key equivalents (not display hints) wherever a binding exists in the
-  -- JS keymap ('IDE.Web.Widget.Keymap.globalBindings'): the DOM keymap
-  -- listener can't see key events while focus is inside a browser pane's
-  -- cross-origin iframe, so the native menu equivalent is what keeps the
-  -- shortcut working there.  (When the page HAS focus the keymap handles the
-  -- key and preventDefaults it, so the menu equivalent doesn't double-fire.)
   , ("Edit",
-      [ MenuGlobalKey "Find" "cmd+f" CommandFind
-      , MenuGlobalKey "Keyboard Shortcuts…" "cmd+/" CommandShowShortcuts
-      , item "Preferences…" CommandShowPreferences
+      [ MCmd "edit.find"
+      , MCmd "edit.showShortcuts"
+      , MCmd "edit.reloadKeybindings"
+      , MCmd "edit.showPreferences"
       ])
   , ("Package",
-      [ item "Add Module"     commandAddModule
-      , item "Clean"          commandPackageClean
-      , MenuGlobalKey "Build" "cmd+shift+b" commandPackageBuild
-      , item "Run"            commandPackageRun
-      , item "Run JavaScript" commandPackageRunJavascript
+      [ MCmd "package.addModule"
+      , MCmd "package.clean"
+      , MCmd "package.build"
+      , MCmd "package.run"
+      , MCmd "package.runJavaScript"
       ])
   , ("Build",
-      [ item "Background Build" commandToggleBackgroundBuild
-      , item "Native"           commandToggleNative
-      , item "JavaScript"       commandToggleJavaScript
-      , item "Debug"            commandToggleDebug
-      , item "Make Docs"        commandToggleMakeDocs
-      , item "Run Tests"        commandToggleTest
-      , item "Run Benchmarks"   commandToggleRunBenchmarks
-      , item "Make Dependents"  commandToggleMakeDependents
+      [ MCmd "build.toggleBackground"
+      , MCmd "build.toggleNative"
+      , MCmd "build.toggleJavaScript"
+      , MCmd "build.toggleGhci"
+      , MCmd "build.toggleDocs"
+      , MCmd "build.toggleTests"
+      , MCmd "build.toggleBenchmarks"
+      , MCmd "build.toggleDependents"
       ])
   , ("Errors",
-      [ MenuGlobalKey "Next Error"     "ctrl+j"       CommandNextError
-      , MenuGlobalKey "Previous Error" "ctrl+shift+j" CommandPreviousError
+      [ MCmd "errors.next"
+      , MCmd "errors.previous"
       ])
-  -- Per-leaf font size in the native split layouts: acts on the FOCUSED leaf
-  -- of the active session tab (terminal stacks and editor leaves alike).
   , ("View",
-      -- The tab flipper.  ⌘` steps it; the flip commits when ⌘ is released
-      -- (the keymap's flip-done).  The menu equivalents matter for the
-      -- cross-origin-iframe case above; Main.hs pulls focus out of the iframe
-      -- on the first step so the commit keyup reaches the page.
-      [ MenuGlobalKey "Next Tab"     "cmd+`"       CommandFlipDown
-      , MenuGlobalKey "Previous Tab" "cmd+shift+`" CommandFlipUp
-      , MenuSep
-      , MenuGlobalKey "Bigger Font"  "cmd+=" commandFontBigger
-      , MenuGlobalKey "Smaller Font" "cmd+-" commandFontSmaller
-      , MenuGlobalKey "Reset Font"   "cmd+0" commandFontReset
-      , MenuSep
+      -- The tab flipper.  mod+` steps it; the flip commits when the modifier
+      -- is released (the keymap's flip-done).  The menu equivalents matter
+      -- when focus is inside a cross-origin iframe (the DOM keymap can't see
+      -- keys there); Main.hs pulls focus out of the iframe on the first step
+      -- so the commit keyup reaches the page.
+      [ MCmd "view.nextTab"
+      , MCmd "view.previousTab"
+      , MSepE
+      , MCmd "view.fontBigger"
+      , MCmd "view.fontSmaller"
+      , MCmd "view.fontReset"
+      , MSepE
       -- An embedded web page with minimal chrome (address bar, back/forward);
       -- devtools for it via right-click ▸ Inspect Element inside the page.
-      , MenuGlobalKey "New Browser Pane" "cmd+ctrl+b" CommandOpenBrowser
+      , MCmd "view.newBrowserPane"
       ])
   , ("Terminal", terminalMenu)
   , ("AI",
-      [ MenuGlobalKey "Send Selection"      "cmd+ctrl+s" commandSendSelection
-      , MenuGlobalKey "Send File Reference" "cmd+ctrl+r" commandSendFileRef
-      , MenuGlobalKey "Send Error"          "cmd+ctrl+e" commandSendError
-      , MenuGlobalKey "Focus AI Terminal"   "cmd+ctrl+j" commandFocusAITerminal
-      , MenuGlobalKey "Grab Region"         "cmd+ctrl+g" commandGrabRegion
-      , MenuSep
-      , MenuGlobalKey "New Claude Session"       "cmd+ctrl+c" commandClaudeNew
-      , MenuGlobalKey "Continue Claude Session"  "cmd+ctrl+k" commandClaudeContinue
+      [ MCmd "ai.sendSelection"
+      , MCmd "ai.sendFileRef"
+      , MCmd "ai.sendError"
+      , MCmd "ai.focusTerminal"
+      , MCmd "ai.grabRegion"
+      , MSepE
+      , MCmd "ai.newClaudeSession"
+      , MCmd "ai.continueClaudeSession"
       ])
   ]
 
 -- | The Terminal menu: iTerm2's \"Shell\" grouping (everything terminal-ish in
 -- one menu) with Ghostty's item names and default shortcuts.  The split/pane
--- items are 'paneCmd's, so they work on BOTH kinds of terminal tab — real
--- commands over the control channel for CC (⊞) tabs, the @C-b@ chord typed
--- into the PTY for classic (▭) tabs.  Their ⌘ key equivalents are real but
--- native-menu-gated: enabled only while a terminal tab is on screen, so ⌘D,
--- ⌘[/⌘], ⌘⌥arrows etc. still reach the editor otherwise.
-terminalMenu :: [MenuItem]
+-- commands work on BOTH kinds of terminal tab — real commands over the
+-- control channel for CC (⊞) tabs, the @C-b@ chord typed into the PTY for
+-- classic (▭) tabs.  Their ⌘ key equivalents are real but native-menu-gated
+-- (the commands' when-context), so ⌘D, ⌘[/⌘], ⌘⌥arrows etc. still reach the
+-- editor otherwise.
+terminalMenu :: [MenuEntry]
 terminalMenu =
-  [ MenuKey "New Window"      "cmd+shift+t" (paneCmd "new-window" "c")
-  , MenuKey "Previous Window" "cmd+shift+[" (paneCmd "previous-window" "p")
-  , MenuKey "Next Window"     "cmd+shift+]" (paneCmd "next-window" "n")
-  , MenuSep
-  , MenuSplitKey "Split Right" "cmd+d"       (splitCmd True  "%")
-  , MenuSplitKey "Split Down"  "cmd+shift+d" (splitCmd False "\"")
-  , MenuSep
-  , Submenu "Select Split"
-      [ MenuKey "Select Split Above" "cmd+alt+Up"    (paneCmd "select-pane -U" "\ESC[A")
-      , MenuKey "Select Split Below" "cmd+alt+Down"  (paneCmd "select-pane -D" "\ESC[B")
-      , MenuKey "Select Split Left"  "cmd+alt+Left"  (paneCmd "select-pane -L" "\ESC[D")
-      , MenuKey "Select Split Right" "cmd+alt+Right" (paneCmd "select-pane -R" "\ESC[C")
-      , MenuSep
-      , MenuKey "Select Previous Split" "cmd+[" (paneCmd "select-pane -t :.-" ";")
-      , MenuKey "Select Next Split"     "cmd+]" (paneCmd "select-pane -t :.+" "o")
+  [ MCmd "terminal.newWindow"
+  , MCmd "terminal.previousWindow"
+  , MCmd "terminal.nextWindow"
+  , MSepE
+  , MCmd "terminal.splitRight"
+  , MCmd "terminal.splitDown"
+  , MSepE
+  , MSubE "Select Split"
+      [ MCmd "terminal.selectSplitAbove"
+      , MCmd "terminal.selectSplitBelow"
+      , MCmd "terminal.selectSplitLeft"
+      , MCmd "terminal.selectSplitRight"
+      , MSepE
+      , MCmd "terminal.selectPreviousSplit"
+      , MCmd "terminal.selectNextSplit"
       ]
-  , Submenu "Resize Split"
-      [ MenuKey "Equalize Splits"    "cmd+ctrl+="     (paneCmd "select-layout -E" "E")
-      , MenuSep
-      , MenuKey "Move Divider Up"    "cmd+ctrl+Up"    (paneCmd "resize-pane -U 5" "K")
-      , MenuKey "Move Divider Down"  "cmd+ctrl+Down"  (paneCmd "resize-pane -D 5" "J")
-      , MenuKey "Move Divider Left"  "cmd+ctrl+Left"  (paneCmd "resize-pane -L 5" "H")
-      , MenuKey "Move Divider Right" "cmd+ctrl+Right" (paneCmd "resize-pane -R 5" "L")
+  , MSubE "Resize Split"
+      [ MCmd "terminal.equalizeSplits"
+      , MSepE
+      , MCmd "terminal.moveDividerUp"
+      , MCmd "terminal.moveDividerDown"
+      , MCmd "terminal.moveDividerLeft"
+      , MCmd "terminal.moveDividerRight"
       ]
-  , MenuKey "Zoom Split" "cmd+shift+Enter" (paneCmd "resize-pane -Z" "z")
-  , item "Close Split" (paneCmd "kill-pane" "x")
-  , MenuSep
-  , Submenu "Underlay"
-      -- Real key equivalents (the keymap also binds them — see the Edit menu
-      -- note; no double-fire).
-      [ MenuGlobalKey "Toggle Pane Transparency" "cmd+alt+y" toggleTransparencyCmd
-      , MenuGlobalKey "Snap Window to Pane"      "cmd+alt+u" snapWindowCmd
+  , MCmd "terminal.zoomSplit"
+  , MCmd "terminal.closeSplit"
+  , MSepE
+  , MSubE "Underlay"
+      [ MCmd "terminal.togglePaneTransparency"
+      , MCmd "terminal.snapWindowToPane"
       -- Populated natively from the currently-snapped windows (see leksah-mac-menu.m).
-      , Submenu "Unsnap" []
+      , MSubE "Unsnap" []
       ]
-  , MenuSep
-  , MenuGlobalKey "Focus Alerting Terminal" "ctrl+alt+a" CommandFocusAlert
-  , item "Intercept Ctrl+B" commandToggleTmuxIntercept
-  , Submenu "Tmux" tmuxMenu
+  , MSepE
+  , MCmd "terminal.focusAlerting"
+  , MCmd "terminal.toggleTmuxIntercept"
+  , MSubE "Tmux" tmuxMenu
   ]
 
 -- | Every default @tmux@ prefix (@C-b@) key binding, grouped into submenus.
@@ -229,9 +218,9 @@ terminalMenu =
 -- they stay 'tmuxKey' (chord-only, i.e. PTY tabs).  For 'paneCmd' the second
 -- argument is the same chord byte the 'tmuxKey' used, so the PTY behaviour is
 -- unchanged; only CC tabs gain the action.
-tmuxMenu :: [MenuItem]
+tmuxMenu :: [MenuEntry]
 tmuxMenu =
-  [ Submenu "Sessions"
+  [ MSubE "Sessions"
       -- Session-level bindings steer the *client's* session and are either
       -- interactive or would repoint/detach leksah's per-tab control client, so
       -- they stay chord-only (PTY tabs).
@@ -243,7 +232,7 @@ tmuxMenu =
       -- ⌃B L is rebound to resize-pane-right (vim HJKL), so last-session moves to ⇧Tab.
       , key "Last session"     "⌃B ⇧Tab" (tmuxKey "\ESC[Z")
       ]
-  , Submenu "Windows"
+  , MSubE "Windows"
       [ key "New window"       "⌃B c" (paneCmd "new-window" "c")
       , key "Rename window"    "⌃B ," (tmuxKey ",")           -- prompt
       , key "Kill window"      "⌃B &" (paneCmd "kill-window" "&")
@@ -255,7 +244,7 @@ tmuxMenu =
       , key "Find window"      "⌃B f" (tmuxKey "f")           -- prompt
       , key "Select by index"  "⌃B '" (tmuxKey "'")           -- prompt
       , key "Move window"      "⌃B ." (tmuxKey ".")           -- prompt
-      , Submenu "Select window"
+      , MSubE "Select window"
           [ key "Window 0" "⌃B 0" (paneCmd "select-window -t :0" "0")
           , key "Window 1" "⌃B 1" (paneCmd "select-window -t :1" "1")
           , key "Window 2" "⌃B 2" (paneCmd "select-window -t :2" "2")
@@ -268,7 +257,7 @@ tmuxMenu =
           , key "Window 9" "⌃B 9" (paneCmd "select-window -t :9" "9")
           ]
       ]
-  , Submenu "Panes"
+  , MSubE "Panes"
       [ key "Split left/right"     "⌃B %"  (paneCmd "split-window -h" "%")
       , key "Split top/bottom"     "⌃B \"" (paneCmd "split-window -v" "\"")
       , key "Next pane"            "⌃B o"  (paneCmd "select-pane -t :.+" "o")
@@ -282,13 +271,13 @@ tmuxMenu =
       , key "Show pane numbers"    "⌃B q"  (tmuxKey "q")      -- transient overlay
       , key "Mark pane"            "⌃B m"  (paneCmd "select-pane -m" "m")
       , key "Clear marked pane"    "⌃B M"  (paneCmd "select-pane -M" "M")
-      , Submenu "Select pane"
+      , MSubE "Select pane"
           [ key "Above" "⌃B ↑ / k" (paneCmd "select-pane -U" "\ESC[A")
           , key "Below" "⌃B ↓ / j" (paneCmd "select-pane -D" "\ESC[B")
           , key "Right" "⌃B → / l" (paneCmd "select-pane -R" "\ESC[C")
           , key "Left"  "⌃B ← / h" (paneCmd "select-pane -L" "\ESC[D")
           ]
-      , Submenu "Resize pane"
+      , MSubE "Resize pane"
           [ key "Up (5)"    "⌃B K"  (paneCmd "resize-pane -U 5" "K")
           , key "Down (5)"  "⌃B J"  (paneCmd "resize-pane -D 5" "J")
           , key "Right (5)" "⌃B L"  (paneCmd "resize-pane -R 5" "L")
@@ -299,7 +288,7 @@ tmuxMenu =
           , key "Left (1)"  "⌃B ⌃h" (paneCmd "resize-pane -L 1" "\b")
           ]
       ]
-  , Submenu "Layout"
+  , MSubE "Layout"
       [ key "Next layout"     "⌃B Space" (paneCmd "next-layout" " ")
       , key "Even horizontal" "⌃B ⌥1"    (paneCmd "select-layout even-horizontal" "\ESC1")
       , key "Even vertical"   "⌃B ⌥2"    (paneCmd "select-layout even-vertical" "\ESC2")
@@ -307,13 +296,13 @@ tmuxMenu =
       , key "Main vertical"   "⌃B ⌥4"    (paneCmd "select-layout main-vertical" "\ESC4")
       , key "Tiled"           "⌃B ⌥5"    (paneCmd "select-layout tiled" "\ESC5")
       ]
-  , Submenu "Copy & Buffers"
+  , MSubE "Copy & Buffers"
       [ key "Copy (scroll) mode" "⌃B [" (paneCmd "copy-mode" "[")
       , key "Paste buffer"       "⌃B ]" (paneCmd "paste-buffer" "]")
       , key "Choose buffer"      "⌃B =" (tmuxKey "=")         -- chooser overlay
       , key "List paste buffers" "⌃B #" (tmuxKey "#")         -- list overlay
       ]
-  , Submenu "Misc"
+  , MSubE "Misc"
       [ key "Command prompt"    "⌃B :" (tmuxKey ":")          -- prompt
       , key "List key bindings" "⌃B ?" (tmuxKey "?")          -- list overlay
       , key "Clock"             "⌃B t" (tmuxKey "t")          -- clock mode

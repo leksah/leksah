@@ -27,7 +27,7 @@ module IDE.Settings
 
 import Control.Exception (SomeException, try)
 import Data.Aeson
-       ((.=), (.:?), (.!=), FromJSON(..), ToJSON(..), Value(..), object,
+       ((.=), (.:?), (.!=), FromJSON(..), ToJSON(..), object,
         withObject, eitherDecodeStrict')
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM

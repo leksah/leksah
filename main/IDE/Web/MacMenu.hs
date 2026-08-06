@@ -52,7 +52,8 @@ import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.MacGlue
 import IDE.Web.Main (jsMain, indexHtml, mintWindowId)
-import IDE.Web.MenuModel (menus, MenuItem(..))
+import IDE.Web.Keybindings (registerKeymapListener)
+import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), setNativeBrowserOps)
 import IDE.Web.NewWindowRequest
        (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler)
@@ -341,9 +342,18 @@ installMacMenu = do
   registerScreenshotRegionHandler $ \path (x, y, w, h) ->
     withCString (T.unpack path) $ \p -> (/= 0) <$>
       c_snapshotRect p (fromIntegral x) (fromIntegral y) (fromIntegral w) (fromIntegral h)
+  -- Build the menu bar from the LIVE keybindings table, and rebuild it when
+  -- the table reloads (keybindings.json edit / edit.reloadKeybindings) so a
+  -- user rebind shows up as the item's key equivalent.  The listener fires
+  -- immediately with the current table — this is the initial build.
+  registerKeymapListener $ \km -> buildMacMenuBar (renderedMenus km)
+
+-- | (Re)build and install the menu bar from a rendered menu model.
+buildMacMenuBar :: [(Text, [MenuItem])] -> IO ()
+buildMacMenuBar rendered = do
   -- Settings… is added natively to the app menu, so drop it from the shared
   -- model here (both the tag table and the item build use this filtered list).
-  let macMenus = stripPreferences menus
+  let macMenus = stripPreferences rendered
   -- Tags index this list; it must be the leaf commands in the same depth-first
   -- order that 'addItems' emits them (so a chosen item's tag finds its command).
   writeIORef commandsRef (concatMap (flattenCmds . snd) macMenus)

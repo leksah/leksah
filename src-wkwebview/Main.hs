@@ -6,7 +6,9 @@ import System.Environment (getArgs)
 
 import Language.Javascript.JSaddle.WKWebView as JSaddleWK (runHTMLWithBaseURL)
 
+import IDE.Web.Commands (allCommands)
 import IDE.Web.Instance (assetPort)
+import IDE.Web.Keybindings (loadKeybindings)
 import IDE.Web.Main (newIDE, startJSaddle)
 import IDE.Web.MacMenu (installMacMenu, setupMacTitlebar)
 import IDE.Web.MacGlue (takeFirstLaunch, resumeApp)
@@ -20,6 +22,9 @@ main = do
   -- drives its JS bridge here too; raise it so the UI keeps CPU when background
   -- compilations saturate the machine.
   raiseCurrentThreadPriority Interactive
+  -- Resolve keybindings.json before anything renders a menu from it (newIDE
+  -- re-loads it too, and logs any problems to the Log pane).
+  _ <- loadKeybindings allCommands
   -- Build the native macOS menu bar (its install is scheduled onto the main
   -- thread, so calling it before the app's run loop starts is fine).
   installMacMenu

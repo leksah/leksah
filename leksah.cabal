@@ -160,7 +160,10 @@ library leksah-nogtk
         IDE.Utils.RemoteExec
         IDE.Utils.RemotePath
         IDE.LSP
+        IDE.Web.Chord
         IDE.Web.Command
+        IDE.Web.Commands
+        IDE.Web.Keybindings
         IDE.Web.CmdServer
         IDE.Web.CloseRequest
         IDE.Web.DemoHovers

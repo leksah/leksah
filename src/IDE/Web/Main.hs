@@ -34,7 +34,7 @@ import Control.Concurrent.MVar (MVar, mkWeakMVar, withMVar)
 import Control.Concurrent.STM (readTVarIO)
 import GHC.Conc.Sync (labelThread)
 import IDE.Web.RestartRequest (setRestartHandler)
-import Control.Exception (SomeException, catch)
+import Control.Exception (SomeException, catch, try)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import GHC.Stats
        (getRTSStats, getRTSStatsEnabled, RTSStats(..), GCDetails(..))
@@ -82,7 +82,8 @@ import Text.Printf (printf)
 import Text.Read (readMaybe)
 
 import System.Directory
-       (doesFileExist, doesDirectoryExist, getDirectoryContents, removeFile,
+       (createDirectoryIfMissing, doesFileExist, doesDirectoryExist,
+        getDirectoryContents, removeFile,
         getHomeDirectory, getTemporaryDirectory, makeRelativeToCurrentDirectory)
 import System.Process (readProcessWithExitCode)
 import Data.Aeson (Value, decodeStrict', encode, withObject, (.:))
@@ -97,7 +98,7 @@ import System.FilePath
 import System.Environment (getArgs, setEnv)
 import IDE.Utils.ExitImmediately (exitImmediately)
 #if !defined(ghcjs_HOST_OS)
-import System.FSNotify (withManager)
+import System.FSNotify (eventPath, watchDir, withManager)
 #endif
 
 #if !defined(ghcjs_HOST_OS)
@@ -263,6 +264,8 @@ import IDE.Settings (defaultPrefs, writeSettings)
 #else
 import IDE.Settings (readSettings, writeSettings)
 #endif
+import IDE.Web.Commands (allCommands, duplicateCommandIds)
+import IDE.Web.Keybindings (keybindingsFilePath, loadKeybindings)
 import IDE.Utils.Files
        (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave)
 import IDE.Web.Command
@@ -296,7 +299,7 @@ import IDE.Web.ClaudeQueue
         armQueueScheduler)
 import IDE.Web.GitLogRequest (nextGitLogRequest, requestGitLog)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
-import IDE.Web.Widget.Shortcuts (shortcutsCss, shortcutsWidget, shortcutsPlainText)
+import IDE.Web.Widget.Shortcuts (shortcutsCss, shortcutsWidget)
 import IDE.Web.GitInfo (openUrl)
 import IDE.Web.Widget.Browser
        (browserCss, browserWidget, nextBrowserId, rememberUrl, isOwnUrl)
@@ -830,6 +833,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
     -- and there is no settings file to turn them on).
     let initPrefs = defaultPrefs { showShortcutBadges = True }
         settingsErr = Nothing :: Maybe Text
+    (_, kbWarns) <- loadKeybindings allCommands
     withManager $ \fsnotify -> do
       triggerBuildVar <- newEmptyMVar
       let nixCache = mempty
@@ -838,8 +842,22 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 
     (initPrefs, settingsErr) <- readSettings
     metaLog "boot: settings read"
+    -- Resolve keybindings.json against the command registry; problems land in
+    -- the Log pane below (the logLineMap seed).
+    (_, kbWarns) <- loadKeybindings allCommands
+    metaLog "boot: keybindings read"
     withManager $ \fsnotify -> do
       metaLog "boot: fsnotify started"
+      -- Saving keybindings.json applies it live (the DOM keymap, the menus
+      -- and the Shortcuts pane all follow the table).  Warnings from THESE
+      -- reloads go nowhere visible - Edit > Reload Keybindings logs them.
+      _ <- liftIO . try $ do
+          kbPath <- keybindingsFilePath
+          createDirectoryIfMissing True (takeDirectory kbPath)
+          void $ watchDir fsnotify (takeDirectory kbPath)
+              ((== kbPath) . eventPath)
+              (const . void $ loadKeybindings allCommands)
+        :: IO (Either SomeException ())
 
       triggerBuildVar <- newEmptyMVar
       nixCache <- loadNixCache
@@ -871,12 +889,17 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             ,   _nixCache          =   nixCache
             ,   _externalModified  =   externalModified
             ,   _jsContexts        =   []
-            ,   _logLineMap        =   case settingsErr of
-                    -- Broken settings file: boot on defaults, but say so.
-                    Nothing  -> mempty
-                    Just err -> M.fromList
-                        [(0, ("Error reading settings (using defaults): "
-                              <> err <> "\n", ErrorTag))]
+            ,   _logLineMap        =   M.fromList $ zip [0 ..]
+                    -- Config problems noticed at boot: broken settings file,
+                    -- keybindings issues, duplicate registry ids.
+                    [ (msg <> "\n", ErrorTag)
+                    | msg <- maybe [] (\e ->
+                            ["Error reading settings (using defaults): " <> e])
+                            settingsErr
+                        <> kbWarns
+                        <> [ "Duplicate command ids in the registry: "
+                             <> T.intercalate ", " duplicateCommandIds
+                           | not (null duplicateCommandIds) ] ]
             ,   _webWindows        =   mempty
             ,   _leksahWindows     =   mempty
             ,   _nextLeksahWin     =   0

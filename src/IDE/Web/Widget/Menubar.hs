@@ -29,8 +29,10 @@ import qualified GHCJS.DOM.Event as Event (getTargetUnchecked)
 import GHCJS.DOM.EventM (event, onSync)
 import GHCJS.DOM.GlobalEventHandlers (mouseDown)
 
+import Control.Monad.IO.Class (liftIO)
 import Reflex
-       (ffor, foldDyn, leftmost, never, switchHold, Event)
+       (ffor, foldDyn, holdDyn, leftmost, never, newTriggerEvent,
+        switchHold, Event)
 import Reflex.Dom.Core
        (text, el, el', elAttr', dyn, wrapDomEventMaybe, _element_raw,
         MonadWidget, (=:), domEvent, EventName(..))
@@ -39,7 +41,8 @@ import IDE.Web.Theme
        (selectionColor, barTopColor, barBottomColor,
         menuTopColor, menuBottomColor, dropShadowColor)
 import IDE.Web.Events (MenubarEvents(..))
-import IDE.Web.MenuModel (menus)
+import IDE.Web.Keybindings (registerKeymapListener)
+import IDE.Web.MenuModel (MenuItem, renderedMenus)
 import IDE.Web.Widget.Menu (menuItems)
 
 menubarCss :: Css
@@ -75,10 +78,22 @@ menubarCss = do
     ".menubar ul li" # hover ?
         background selectionColor
 
+-- | Rebuilt whenever the keybindings table changes, so a rebind's new key
+-- equivalent shows in the dropdown hints immediately.
 menubarWidget
   :: MonadWidget t m
   => m (Event t MenubarEvents)
-menubarWidget = mdo
+menubarWidget = do
+  (kmE, fireKm) <- newTriggerEvent
+  -- Fires immediately with the current table, then on every reload.
+  liftIO (registerKeymapListener fireKm)
+  kmD <- holdDyn [] kmE
+  switchHold never =<< dyn (menubarFor . renderedMenus <$> kmD)
+
+menubarFor
+  :: MonadWidget t m
+  => [(Text, [MenuItem])] -> m (Event t MenubarEvents)
+menubarFor menus = mdo
   (bar, (clicksE, hoversE, cmdE)) <-
     elAttr' "div" ("class" =: "menubar") $
       el "ul" $ do

@@ -46,7 +46,9 @@ import IDE.Gtk.Workspaces (workspaceTry)
 import IDE.Workspaces (projectOpenPath)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.IDERefStore (getGlobalIDERef)
-import IDE.Web.MenuModel (menus, MenuItem(..))
+import IDE.Web.Commands (allCommands)
+import IDE.Web.Keybindings (currentKeymap, loadKeybindings)
+import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel
        (setOpenFilePanelHandler, setOpenProjectPanelHandler,
@@ -189,6 +191,12 @@ keySpecToGtkAccel spec =
 -- Called on the GTK main thread (from the application activate handler).
 installGtkMenu :: Gtk.Application -> Gtk.ApplicationWindow -> IO ()
 installGtkMenu app win = do
+  -- Rendered from the keybindings table at build time (user rebinds apply
+  -- on the next start; the macOS front end rebuilds live).  Load the table
+  -- here if boot ordering got us here before newIDE resolved it.
+  km0 <- currentKeymap
+  menus <- renderedMenus <$>
+      (if null km0 then fst <$> loadKeybindings allCommands else return km0)
   let gtkMenus = stripMacOnly menus
   -- Tags index this list; it must be the leaf commands in the same
   -- depth-first order that the menu build emits them.
