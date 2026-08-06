@@ -95,6 +95,8 @@ library leksah-nogtk
     exposed-modules:
         IDE.BuildLog
         IDE.Config
+        IDE.DebugLog
+        IDE.Paths
         IDE.Problems
         IDE.Problems.Parse
         IDE.Problems.Types
