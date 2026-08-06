@@ -41,8 +41,7 @@ import Reflex.Dom.Core
         _textAreaElement_value, textAreaElementConfig_initialValue,
         textAreaElementConfig_elementConfig, dropdown, _dropdown_value)
 
-import IDE.Core.State
-       (IDE, Prefs(..), prefs, TallVisibility(..), EditorChoice(..))
+import IDE.Core.State (IDE, Prefs(..), prefs, EditorChoice(..))
 import IDE.Web.ColorPick (hasColorPickImpl, requestColorPick)
 import IDE.Web.Events (PreferencesEvents(..))
 
@@ -54,91 +53,84 @@ preferencesWidget ide = do
   ide0 <- sample (current ide)
   let p0     = view prefs ide0
       prefsD = view prefs <$> ide
-      b   = boolField prefsD
-      i   = intField p0
-      txt = textField p0
+      b w = boolField w prefsD
+      i w = intField w p0
+      txt w = textField w p0
   fmap (fmap PrefsUpdate . leftmost) . elClass "div" "preferences" . elClass "div" "pref-cols" . fmap concat $ sequence
     [ section "Editor"
-        [ b "Show line numbers" showLineNumbers (\v p -> p { showLineNumbers = v })
-        , boolIntField prefsD p0 "Right margin (show / column)"
-            rightMargin (\v p -> p { rightMargin = v })
-        , i "Tab width" tabWidth (\v p -> p { tabWidth = v })
-        , b "Wrap lines" wrapLines (\v p -> p { wrapLines = v })
-        , b "Use standard line ends even on Windows" forceLineEnds (\v p -> p { forceLineEnds = v })
-        , b "Remove trailing blanks when saving" removeTBlanks (\v p -> p { removeTBlanks = v })
-        , b "Automatically load files modified outside Leksah" autoLoad (\v p -> p { autoLoad = v })
-        , enumField p0 "Editor" editorOptions editorChoice (\v p -> p { editorChoice = v })
+        [ b todo "Show line numbers" showLineNumbers (\v p -> p { showLineNumbers = v })
+        , i todo "Right margin column (0 = off)" rightMargin (\v p -> p { rightMargin = v })
+        , i todo "Tab width" tabWidth (\v p -> p { tabWidth = v })
+        , b todo "Wrap lines" wrapLines (\v p -> p { wrapLines = v })
+        , b todo "Use standard line ends even on Windows" forceLineEnds (\v p -> p { forceLineEnds = v })
+        , b todo "Remove trailing blanks when saving" removeTBlanks (\v p -> p { removeTBlanks = v })
+        , b todo "Automatically load files modified outside Leksah" autoLoad (\v p -> p { autoLoad = v })
+        , enumField wired p0 "Editor" editorOptions editorChoice (\v p -> p { editorChoice = v })
         ]
     , section "Fonts"
-        [ txt "Monospace font family (editor, terminals, log)"
+        [ txt wired "Monospace font family (editor, terminals, log)"
             monospaceFont (\v p -> p { monospaceFont = v })
-        , i "Monospace font size (px)"
+        , i wired "Monospace font size (px)"
             monospaceFontSize (\v p -> p { monospaceFontSize = v })
         ]
     , section "Themes (auto-switch with the OS light/dark setting)"
-        [ enumField p0 "Monaco editor theme — dark" monacoThemeOpts
+        [ enumField wired p0 "Monaco editor theme — dark" monacoThemeOpts
             monacoThemeDark (\v p -> p { monacoThemeDark = v })
-        , enumField p0 "Monaco editor theme — light" monacoThemeOpts
+        , enumField wired p0 "Monaco editor theme — light" monacoThemeOpts
             monacoThemeLight (\v p -> p { monacoThemeLight = v })
-        , enumField p0 "CodeMirror editor theme — dark" cmThemeOpts
+        , enumField wired p0 "CodeMirror editor theme — dark" cmThemeOpts
             codeMirrorThemeDark (\v p -> p { codeMirrorThemeDark = v })
-        , enumField p0 "CodeMirror editor theme — light" cmThemeOpts
+        , enumField wired p0 "CodeMirror editor theme — light" cmThemeOpts
             codeMirrorThemeLight (\v p -> p { codeMirrorThemeLight = v })
-        , enumField p0 "Terminal (xterm.js) theme — dark" xtermThemeOpts
+        , enumField wired p0 "Terminal (xterm.js) theme — dark" xtermThemeOpts
             xtermThemeDark (\v p -> p { xtermThemeDark = v })
-        , enumField p0 "Terminal (xterm.js) theme — light" xtermThemeOpts
+        , enumField wired p0 "Terminal (xterm.js) theme — light" xtermThemeOpts
             xtermThemeLight (\v p -> p { xtermThemeLight = v })
         ]
     , section "Language Server (LSP)"
-        [ b "Enable language server (diagnostics, hover, completion, F12 navigation)"
+        [ b wired "Enable language server (diagnostics, hover, completion, F12 navigation)"
             lspEnabled (\v p -> p { lspEnabled = v })
-        , txt "Server command (blank = haskell-language-server --lsp)"
+        , txt wired "Server command (blank = haskell-language-server --lsp)"
             lspServerCommand (\v p -> p { lspServerCommand = v })
         ]
     , section "User Interface"
-        [ b "Show hidden files in the workspace" showHiddenFiles (\v p -> p { showHiddenFiles = v })
-        , b "Show ignored files in the workspace" showIgnoredFiles (\v p -> p { showIgnoredFiles = v })
-        , b "Show icons in the Workspace pane" showWorkspaceIcons (\v p -> p { showWorkspaceIcons = v })
-        , b "Collapse errors in the Errors pane by default" collapseErrors (\v p -> p { collapseErrors = v })
-        , b "Use Ctrl-Tab for the flipper" useCtrlTabFlipping (\v p -> p { useCtrlTabFlipping = v })
-        , b "Save the session before closing a workspace" saveSessionOnClose (\v p -> p { saveSessionOnClose = v })
-        , enumField p0 "Side bar visibility" tallVisOptions tallVisibility (\v p -> p { tallVisibility = v })
-        , enumField p0 "Bottom bar visibility" tallVisOptions wide1Visibility (\v p -> p { wide1Visibility = v })
-        , colorField prefsD p0 "Selection highlight colour" uiSelectionColor (\v p -> p { uiSelectionColor = v })
-        , colorField prefsD p0 "Run-button hover row colour" uiHoverColor (\v p -> p { uiHoverColor = v })
-        , b "Show navigation shortcut badges while Cmd is held" showShortcutBadges (\v p -> p { showShortcutBadges = v })
-        , b "Colourful icons" colorfulIcons (\v p -> p { colorfulIcons = v })
+        [ b wired "Show hidden files in the workspace" showHiddenFiles (\v p -> p { showHiddenFiles = v })
+        , b wired "Show ignored files in the workspace" showIgnoredFiles (\v p -> p { showIgnoredFiles = v })
+        , b todo "Show icons in the Workspace pane" showWorkspaceIcons (\v p -> p { showWorkspaceIcons = v })
+        , b todo "Collapse errors in the Errors pane by default" collapseErrors (\v p -> p { collapseErrors = v })
+        , b todo "Save the session before closing a workspace" saveSessionOnClose (\v p -> p { saveSessionOnClose = v })
+        , colorField wired prefsD p0 "Selection highlight colour" uiSelectionColor (\v p -> p { uiSelectionColor = v })
+        , colorField wired prefsD p0 "Run-button hover row colour" uiHoverColor (\v p -> p { uiHoverColor = v })
+        , b wired "Show navigation shortcut badges while Cmd is held" showShortcutBadges (\v p -> p { showShortcutBadges = v })
+        , b wired "Colourful icons" colorfulIcons (\v p -> p { colorfulIcons = v })
         ]
     , section "Terminal"
-        [ b "Clickable file paths and identifiers in terminal output"
+        [ b wired "Clickable file paths and identifiers in terminal output"
             terminalFileLinks (\v p -> p { terminalFileLinks = v })
-        , b "Use tmux control mode (-CC): native pane splits (new terminals)"
+        , b wired "Use tmux control mode (-CC): native pane splits (new terminals)"
             terminalControlMode (\v p -> p { terminalControlMode = v })
-        , linesField p0 "Remote hosts in the Terminals tree (ssh, one per line)"
+        , b wired "Intercept the tmux prefix (C-b) in terminals"
+            tmuxInterceptPrefix (\v p -> p { tmuxInterceptPrefix = v })
+        , linesField wired p0 "Remote hosts in the Terminals tree (ssh, one per line)"
             (map T.unpack . remoteHosts) (\v p -> p { remoteHosts = map T.pack v })
           -- The AI tools ask which session to use (the active pane's default
           -- first); this is only the explicit target for
           -- `leksah-cmd grab-region TARGET`, which names a pane itself.
-        , txt "Fallback AI target pane (session/window/pane)"
+        , txt wired "Fallback AI target pane (session/window/pane)"
             regionCaptureTarget (\v p -> p { regionCaptureTarget = v })
         ]
     , section "Build"
-        [ b "Save all files before building" saveAllBeforeBuild (\v p -> p { saveAllBeforeBuild = v })
-        , b "Run HLint when saving a source file" hlintOnSave (\v p -> p { hlintOnSave = v })
-        , b "Select first warning if built without errors" jumpToWarnings (\v p -> p { jumpToWarnings = v })
-        , b "Background build" backgroundBuild (\v p -> p { backgroundBuild = v })
-        , b "Native" native (\v p -> p { native = v })
-        , b "JavaScript" javaScript (\v p -> p { javaScript = v })
-        , b "Debug" debug (\v p -> p { debug = v })
-        , b "Make documentation when building" makeDocs (\v p -> p { makeDocs = v })
-        , b "Run unit tests when building" runUnitTests (\v p -> p { runUnitTests = v })
-        , b "Run benchmarks when building" runBenchmarks (\v p -> p { runBenchmarks = v })
-        , b "Make mode" makeMode (\v p -> p { makeMode = v })
-        , b "Single build without linking" singleBuildWithoutLinking (\v p -> p { singleBuildWithoutLinking = v })
-        , b "Don't install the last package" dontInstallLast (\v p -> p { dontInstallLast = v })
-        ]
-    , section "Help"
-        [ txt "Browser" browser (\v p -> p { browser = v })
+        [ b wired "Save all files before building" saveAllBeforeBuild (\v p -> p { saveAllBeforeBuild = v })
+        , b wired "Run HLint when saving a source file" hlintOnSave (\v p -> p { hlintOnSave = v })
+        , b wired "Select first warning if built without errors" jumpToWarnings (\v p -> p { jumpToWarnings = v })
+        , b wired "Background build" backgroundBuild (\v p -> p { backgroundBuild = v })
+        , b wired "Native" native (\v p -> p { native = v })
+        , b wired "JavaScript" javaScript (\v p -> p { javaScript = v })
+        , b wired "Interpreted (ghci) mode: build through cached repls" debug (\v p -> p { debug = v })
+        , b wired "Make documentation when building" makeDocs (\v p -> p { makeDocs = v })
+        , b wired "Run unit tests when building" runUnitTests (\v p -> p { runUnitTests = v })
+        , b wired "Run benchmarks when building" runBenchmarks (\v p -> p { runBenchmarks = v })
+        , b wired "Make mode" makeMode (\v p -> p { makeMode = v })
         ]
     ]
   where
@@ -147,7 +139,6 @@ preferencesWidget ide = do
       elClass "div" "pref-section-title" $ text title
       elClass "div" "pref-section" $ sequence fields
 
-    tallVisOptions = [ ("Show", TallShow), ("Auto-hide", TallAutoHide), ("Hide", TallHide) ]
     -- Applies to tabs opened from now on (like the terminals' control-mode
     -- pref); nano/vim/emacs open files in the file's backing tmux pane.
     editorOptions =
@@ -176,85 +167,50 @@ preferencesWidget ide = do
       , ("Solarized Dark",  "solarized-dark")
       , ("Solarized Light", "solarized-light") ] :: [(Text, Text)]
 
--- | A labelled row: label on the left, control on the right.  Prefs the web UI
--- doesn't act on yet get a grey "(TODO)" after the label.
-prefRow :: MonadWidget t m => Text -> m a -> m a
-prefRow lbl inner = elClass "div" "pref-row" $ do
+-- | Is a pref actually honoured by the web UI yet?  'todo' rows are stored
+-- and written to the settings file but not yet acted on, and get a grey
+-- "(TODO)" after the label.
+type Wired = Bool
+
+wired, todo :: Wired
+wired = True
+todo  = False
+
+-- | A labelled row: label on the left, control on the right.
+prefRow :: MonadWidget t m => Wired -> Text -> m a -> m a
+prefRow w lbl inner = elClass "div" "pref-row" $ do
   elClass "label" "pref-label" $ do
     text lbl
-    if lbl `elem` wiredLabels
+    if w
       then blank
       else elClass "span" "pref-todo" $ text " (TODO)"
   elClass "div" "pref-control" inner
 
--- | The prefs the web UI currently honours (file filters, layout visibility, the
--- build flags, metadata/leksah-server settings, the package blacklist).  Anything
--- not listed here is stored but not yet acted on, and is flagged "(TODO)".
-wiredLabels :: [Text]
-wiredLabels =
-  [ "Show hidden files in the workspace", "Show ignored files in the workspace"
-  , "Side bar visibility", "Bottom bar visibility"
-  , "Save all files before building", "Run HLint when saving a source file"
-  , "Select first warning if built without errors", "Background build"
-  , "Native", "JavaScript", "Debug", "Make documentation when building"
-  , "Run unit tests when building", "Run benchmarks when building", "Make mode"
-  , "Single build without linking", "Don't install the last package"
-  , "Clickable file paths and identifiers in terminal output"
-  , "Editor"
-  , "Monospace font family (editor, terminals, log)"
-  , "Monospace font size (px)"
-  , "Use tmux control mode (-CC): native pane splits (new terminals)"
-  , "Remote hosts in the Terminals tree (ssh, one per line)"
-  , "Selection highlight colour"
-  , "Run-button hover row colour"
-  , "Show navigation shortcut badges while Cmd is held"
-  , "Enable language server (diagnostics, hover, completion, F12 navigation)"
-  , "Server command (blank = haskell-language-server --lsp)"
-  , "Monaco editor theme — dark", "Monaco editor theme — light"
-  , "CodeMirror editor theme — dark", "CodeMirror editor theme — light"
-  , "Terminal (xterm.js) theme — dark", "Terminal (xterm.js) theme — light"
-  , "Colourful icons"
-  ]
-
 -- | A checkbox driven by the live prefs (stays in sync with toolbar toggles).
 boolField
   :: MonadWidget t m
-  => Dynamic t Prefs -> Text -> (Prefs -> Bool) -> (Bool -> Prefs -> Prefs)
+  => Wired -> Dynamic t Prefs -> Text -> (Prefs -> Bool) -> (Bool -> Prefs -> Prefs)
   -> m (Event t (Prefs -> Prefs))
-boolField prefsD lbl get set = prefRow lbl $ do
+boolField w prefsD lbl get set = prefRow w lbl $ do
   let stD = get <$> prefsD
   (e, _) <- elDynAttr' "span" (ffor stD $ \v -> "class" =: ("pref-check" <> bool "" " on" v)) blank
   return $ ffor (tag (current stD) (domEvent Click e)) $ \cur -> set (not cur)
 
--- | A checkbox + integer, for a @(Bool, Int)@ pref like the right margin.
-boolIntField
-  :: MonadWidget t m
-  => Dynamic t Prefs -> Prefs -> Text -> (Prefs -> (Bool, Int)) -> ((Bool, Int) -> Prefs -> Prefs)
-  -> m (Event t (Prefs -> Prefs))
-boolIntField prefsD p0 lbl get set = prefRow lbl $ do
-  let stD = (fst . get) <$> prefsD
-  (e, _) <- elDynAttr' "span" (ffor stD $ \v -> "class" =: ("pref-check" <> bool "" " on" v)) blank
-  let boolE = ffor (tag (current stD) (domEvent Click e)) $ \cur p -> set (not cur, snd (get p)) p
-  inp <- numberInput (show (snd (get p0)))
-  let intE = fmapMaybe (\t -> (\n p -> set (fst (get p), n) p) <$> readMaybe (T.unpack t))
-                       (updated (_inputElement_value inp))
-  return $ leftmost [boolE, intE]
-
 -- | An integer field.
 intField
   :: MonadWidget t m
-  => Prefs -> Text -> (Prefs -> Int) -> (Int -> Prefs -> Prefs)
+  => Wired -> Prefs -> Text -> (Prefs -> Int) -> (Int -> Prefs -> Prefs)
   -> m (Event t (Prefs -> Prefs))
-intField p0 lbl get set = prefRow lbl $ do
+intField w p0 lbl get set = prefRow w lbl $ do
   inp <- numberInput (show (get p0))
   return $ fmapMaybe (fmap set . readMaybe . T.unpack) (updated (_inputElement_value inp))
 
 -- | A text field.
 textField
   :: MonadWidget t m
-  => Prefs -> Text -> (Prefs -> Text) -> (Text -> Prefs -> Prefs)
+  => Wired -> Prefs -> Text -> (Prefs -> Text) -> (Text -> Prefs -> Prefs)
   -> m (Event t (Prefs -> Prefs))
-textField p0 lbl get set = prefRow lbl $ do
+textField w p0 lbl get set = prefRow w lbl $ do
   inp <- textInputAttrs (get p0) ("type" =: "text" <> "class" =: "pref-input")
   return $ set <$> updated (_inputElement_value inp)
 
@@ -267,9 +223,9 @@ textField p0 lbl get set = prefRow lbl $ do
 -- @\<input type="color"\>@.
 colorField
   :: MonadWidget t m
-  => Dynamic t Prefs -> Prefs -> Text -> (Prefs -> Text) -> (Text -> Prefs -> Prefs)
+  => Wired -> Dynamic t Prefs -> Prefs -> Text -> (Prefs -> Text) -> (Text -> Prefs -> Prefs)
   -> m (Event t (Prefs -> Prefs))
-colorField prefsD p0 lbl get set = prefRow lbl $ do
+colorField w prefsD p0 lbl get set = prefRow w lbl $ do
   useNative <- liftIO hasColorPickImpl
   if useNative
     then do
@@ -289,9 +245,9 @@ colorField prefsD p0 lbl get set = prefRow lbl $ do
 -- | A multi-line list of paths, one per line.
 linesField
   :: MonadWidget t m
-  => Prefs -> Text -> (Prefs -> [FilePath]) -> ([FilePath] -> Prefs -> Prefs)
+  => Wired -> Prefs -> Text -> (Prefs -> [FilePath]) -> ([FilePath] -> Prefs -> Prefs)
   -> m (Event t (Prefs -> Prefs))
-linesField p0 lbl get set = prefRow lbl $ do
+linesField w p0 lbl get set = prefRow w lbl $ do
   ta <- textArea (T.unlines (map T.pack (get p0)))
   return $ ffor (updated (_textAreaElement_value ta)) $ \t ->
     set [ T.unpack l | l <- map T.strip (T.lines t), not (T.null l) ]
@@ -299,9 +255,9 @@ linesField p0 lbl get set = prefRow lbl $ do
 -- | A dropdown over a labelled option list, seeded from the current value.
 enumField
   :: forall t m a. (MonadWidget t m, Eq a)
-  => Prefs -> Text -> [(Text, a)] -> (Prefs -> a) -> (a -> Prefs -> Prefs)
+  => Wired -> Prefs -> Text -> [(Text, a)] -> (Prefs -> a) -> (a -> Prefs -> Prefs)
   -> m (Event t (Prefs -> Prefs))
-enumField p0 lbl opts get set = prefRow lbl $ do
+enumField w p0 lbl opts get set = prefRow w lbl $ do
   let vals = map snd opts
       i0   = fromMaybe 0 (elemIndex (get p0) vals)
       om   = M.fromList (zip [0 :: Int ..] (map fst opts)) :: Map Int Text

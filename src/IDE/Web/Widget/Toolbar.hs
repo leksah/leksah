@@ -23,7 +23,7 @@ import Reflex.Dom.Core
         Event, domEvent, EventName(..))
 
 import IDE.Web.Theme (selectionColor, selectionColorFaint, dimOpacity, surfaceHiColor, accentHoverColor)
-import IDE.Core.State (IDE, prefs, tallVisibility, wide1Visibility, TallVisibility(..))
+import IDE.Core.State (IDE, TallVisibility(..))
 import IDE.Web.Events (ToolbarEvents(..))
 import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
   , commandToggleWide1Pane, Command(..)

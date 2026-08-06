@@ -92,12 +92,7 @@ module IDE.Core.Types (
 ,   ActionString
 ,   KeyString
 
-,   Prefs(..)
-,   EditorChoice(..)
-,   editorChoiceToText
-,   editorChoiceFromText
-,   externalEditor
-,   monacoEditor
+,   module IDE.Settings
 ,   TallVisibility(..)
 ,   TabKey(..)
 ,   WindowId(..)
@@ -107,9 +102,6 @@ module IDE.Core.Types (
 ,   wwTall
 ,   wwWide1
 ,   wwFrame
-,   PrefsFile(..)
-,   EditorStyle(..)
-,   editorStyle
 
 ,   LogRefType(..)
 ,   Log(..)
@@ -224,6 +216,7 @@ import System.FilePath
        (dropFileName, (</>), isAbsolute, makeRelative, equalFilePath,
         addTrailingPathSeparator)
 import IDE.Core.Location
+import IDE.Settings
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
@@ -564,34 +557,6 @@ data Workspace = Workspace {
 data TallVisibility = TallShow | TallAutoHide | TallHide
     deriving (Eq, Show, Read, Enum, Bounded, Generic)
 
--- | Which editor opens files: one of the two in-app controls (Monaco /
--- CodeMirror 6), or a terminal editor (nano\/vim\/emacs) run in the file's
--- backing tmux pane.  One selection replaces the old @externalEditor@ command
--- + @monacoEditor@ boolean pair.
-data EditorChoice
-    = EditorMonaco      -- ^ the Monaco (VS Code) editor control (default)
-    | EditorCodeMirror  -- ^ the CodeMirror 6 editor control
-    | EditorNano
-    | EditorVim
-    | EditorEmacs
-    deriving (Eq, Show, Read, Enum, Bounded, Generic)
-
--- | Stable names used in the prefs file (see 'PrefsFile').
-editorChoiceToText :: EditorChoice -> Text
-editorChoiceToText EditorMonaco     = "monaco"
-editorChoiceToText EditorCodeMirror = "codemirror"
-editorChoiceToText EditorNano       = "nano"
-editorChoiceToText EditorVim        = "vim"
-editorChoiceToText EditorEmacs      = "emacs"
-
-editorChoiceFromText :: Text -> Maybe EditorChoice
-editorChoiceFromText "monaco"     = Just EditorMonaco
-editorChoiceFromText "codemirror" = Just EditorCodeMirror
-editorChoiceFromText "nano"       = Just EditorNano
-editorChoiceFromText "vim"        = Just EditorVim
-editorChoiceFromText "emacs"      = Just EditorEmacs
-editorChoiceFromText _            = Nothing
-
 -- | Identifies one open tab/pane in the web UI.  Lives here (rather than in
 -- @IDE.Web.Events@, which re-exports it) because 'WebWindow' below references
 -- it and @IDE.Core@ must not depend on @IDE.Web@.
@@ -742,240 +707,6 @@ data LeksahWindow = LeksahWindow
   , lwZoomed  :: Maybe LeafId    -- ^ zoomed pane fills the tab
   , lwNext    :: Int             -- ^ 'LeafId' minter (monotonic, never reused)
   } deriving (Eq, Show, Generic)
-
---
--- | Preferences is a data structure to hold configuration data
---
-data Prefs = Prefs {
-        prefsFormat         ::   Int
-    ,   prefsSaveTime       ::   Text
-    ,   showLineNumbers     ::   Bool
-    ,   rightMargin         ::   (Bool, Int)
-    ,   tabWidth            ::   Int
-    ,   wrapLines           ::   Bool
-    ,   darkUserInterface   ::   Bool
-    ,   saveSessionOnClose  ::   Bool
-    ,   keymapName          ::   Text
-    ,   forceLineEnds       ::   Bool
-    ,   removeTBlanks       ::   Bool
-    ,   textviewFont        ::   Maybe Text
-    ,   workspaceFont       ::   (Bool, Maybe Text)
-    ,   monospaceFont       ::   Text   -- ^ CSS font-family for the web UI's monospace surfaces (editor, terminals, log)
-    ,   monospaceFontSize   ::   Int    -- ^ …and its size in px
-    ,   sourceStyle         ::   (Bool, Text)
-    ,   foundBackgroundLight      ::   Color
-    ,   matchBackgroundLight      ::   Color
-    ,   contextBackgroundLight    ::   Color
-    ,   breakpointBackgroundLight ::   Color
-    ,   lintBackgroundLight       ::   Color
-    ,   foundBackgroundDark       ::   Color
-    ,   matchBackgroundDark       ::   Color
-    ,   contextBackgroundDark     ::   Color
-    ,   breakpointBackgroundDark  ::   Color
-    ,   lintBackgroundDark        ::   Color
-    ,   autoLoad            ::   Bool
-    ,   textEditorType      ::   Text
-    ,   logviewFont         ::   (Bool, Maybe Text)
-    ,   defaultSize         ::   (Int,Int)
-    ,   browser             ::   Text
-    ,   pathForCategory     ::   [(Text, PanePath)]
-    ,   defaultPath         ::   PanePath
-    ,   categoryForPane     ::   [(Text, Text)]
-    ,   useCtrlTabFlipping  ::   Bool
-    ,   saveAllBeforeBuild  ::   Bool
-    ,   jumpToWarnings      ::   Bool
-    ,   useVado             ::   Bool
-    ,   backgroundBuild     ::   Bool
-    ,   native              ::   Bool
-    ,   javaScript          ::   Bool
-    ,   debug               ::   Bool
-    ,   makeDocs            ::   Bool -- ^ Make documentation on build
-    ,   runUnitTests        ::   Bool -- ^ Run unit tests on build?
-    ,   runBenchmarks       ::   Bool -- ^ Run benchmarks on build?
-    ,   makeMode            ::   Bool
-    ,   singleBuildWithoutLinking :: Bool
-    ,   dontInstallLast     ::   Bool
-    ,   showHiddenFiles     ::   Bool
-    ,   showIgnoredFiles    ::   Bool
-    ,   tallVisibility      ::   TallVisibility
-    ,   wide1Visibility     ::   TallVisibility
-    ,   showWorkspaceIcons  ::   Bool
-    ,   hlintOnSave         ::   Bool
-    ,   collapseErrors      ::   Bool
-    ,   terminalFileLinks   ::   Bool -- ^ recognise file paths / identifiers in
-                                      --   terminal output (the custom xterm link
-                                      --   provider); off lets OSC 8 links through
-                                      --   unobstructed
-    ,   editorChoice        ::   EditorChoice
-                                      -- ^ the editor files open in, applied to
-                                      --   tabs opened from now on: Monaco
-                                      --   (default) / CodeMirror in-app, or
-                                      --   nano\/vim\/emacs in the file's tmux
-                                      --   pane (see 'externalEditor')
-    ,   terminalControlMode ::   Bool -- ^ render terminals via tmux control mode
-                                      --   (-CC): one xterm per pane, native splits;
-                                      --   off = classic whole-session PTY attach
-    ,   tmuxInterceptPrefix ::   Bool -- ^ intercept the tmux @C-b@ prefix in
-                                      --   terminals: @C-b w@ activates the
-                                      --   Terminals pane, other prefix keys run
-                                      --   the tmux command (works in CC tabs too)
-    ,   remoteHosts         ::   [Text] -- ^ ssh hosts shown as top-level nodes in
-                                        --   the Terminals tree (sessions open as
-                                        --   control-mode tabs)
-    ,   uiSelectionColor    ::   Text -- ^ selection/active highlight colour
-                                      --   (#rrggbb; bound to --leksah-selection)
-    ,   uiHoverColor        ::   Text -- ^ run-button hover row colour
-                                      --   (#rrggbb; bound to --leksah-hover)
-    ,   monacoThemeDark     ::   Text -- ^ Monaco editor theme names, applied per
-    ,   monacoThemeLight    ::   Text --   OS appearance (dark vs light); values
-    ,   codeMirrorThemeDark ::   Text --   are the theme ids the bundles know
-    ,   codeMirrorThemeLight::   Text --   (Monaco: leksah-github-dark\/-light,
-    ,   xtermThemeDark      ::   Text --   vs\/vs-dark\/hc-*; CM: github-dark\/-light;
-    ,   xtermThemeLight     ::   Text --   xterm: leksah-dark\/-light, solarized-*)
-    ,   showShortcutBadges  ::   Bool -- ^ holding Cmd overlays each pane's
-                                      --   navigation shortcut as a badge
-    ,   colorfulIcons       ::   Bool -- ^ use the coloured icon set (pics/color)
-                                      --   instead of the monochrome default
-    ,   regionCaptureTarget ::   Text -- ^ the terminal `leksah-cmd grab-region`
-                                      --   types into when the caller names no
-                                      --   TARGET itself, as a
-                                      --   @session/window/pane@ path (e.g.
-                                      --   @claude/leksah/0@).  A FALLBACK only:
-                                      --   the AI tools normally aim at the active
-                                      --   pane's default AI session and let you
-                                      --   pick (see "IDE.Web.AISession")
-    ,   lspEnabled          ::   Bool -- ^ run a Language Server (HLS) per project
-                                      --   for diagnostics/hover/completion/nav
-    ,   lspServerCommand    ::   Text -- ^ override the LSP server command line
-                                      --   (blank = @haskell-language-server --lsp@;
-                                      --   a project's @.leksah-lsp@ file, if present,
-                                      --   overrides even this)
-} deriving(Eq, Show, Generic)
-
-data PrefsFile = PrefsFile {
-    prefsFormat_         :: Maybe Int
-  , prefsSaveTime_       :: Maybe Text
-  , showLineNumbers_     :: Maybe Bool
-  , rightMargin_         :: Maybe (Bool, Int)
-  , tabWidth_            :: Maybe Int
-  , wrapLines_           :: Maybe Bool
-  , darkUserInterface_   :: Maybe Bool
-  , saveSessionOnClose_  :: Maybe Bool
-  , keymapName_          :: Maybe Text
-  , forceLineEnds_       :: Maybe Bool
-  , removeTBlanks_       :: Maybe Bool
-  , textviewFont_        :: Maybe (Maybe Text)
-  , workspaceFont_       :: Maybe (Bool, Maybe Text)
-  , monospaceFont_       :: Maybe Text
-  , monospaceFontSize_   :: Maybe Int
-  , sourceStyle_         :: Maybe (Bool, Text)
-  , foundBackgroundLight_      :: Maybe Color
-  , matchBackgroundLight_      :: Maybe Color
-  , contextBackgroundLight_    :: Maybe Color
-  , breakpointBackgroundLight_ :: Maybe Color
-  , lintBackgroundLight_       :: Maybe Color
-  , foundBackgroundDark_       :: Maybe Color
-  , matchBackgroundDark_       :: Maybe Color
-  , contextBackgroundDark_     :: Maybe Color
-  , breakpointBackgroundDark_  :: Maybe Color
-  , lintBackgroundDark_        :: Maybe Color
-  , autoLoad_            :: Maybe Bool
-  , textEditorType_      :: Maybe Text
-  , logviewFont_         :: Maybe (Bool, Maybe Text)
-  , defaultSize_         :: Maybe (Int,Int)
-  , browser_             :: Maybe Text
-  , pathForCategory_     :: Maybe [(Text, PanePath)]
-  , defaultPath_         :: Maybe PanePath
-  , categoryForPane_     :: Maybe [(Text, Text)]
-  , useCtrlTabFlipping_  :: Maybe Bool
-  , saveAllBeforeBuild_  :: Maybe Bool
-  , jumpToWarnings_      :: Maybe Bool
-  , useVado_             :: Maybe Bool
-  , backgroundBuild_     :: Maybe Bool
-  , native_              :: Maybe Bool
-  , javaScript_          :: Maybe Bool
-  , debug_               :: Maybe Bool
-  , makeDocs_            :: Maybe Bool -- ^ Make documentation on build
-  , runUnitTests_        :: Maybe Bool -- ^ Run unit tests on build?
-  , runBenchmarks_        :: Maybe Bool -- ^ Run benchmarks on build?
-  , makeMode_            :: Maybe Bool
-  , singleBuildWithoutLinking_ :: Maybe Bool
-  , dontInstallLast_     :: Maybe Bool
-  , showHiddenFiles_     :: Maybe Bool
-  , showIgnoredFiles_    :: Maybe Bool
-  , showWorkspaceIcons_  :: Maybe Bool
-  , hlintOnSave_         :: Maybe Bool
-  , collapseErrors_      :: Maybe Bool
-  , terminalFileLinks_   :: Maybe Bool
-  , externalEditor_      :: Maybe Text -- ^ legacy (pre-13); also written as a
-                                       --   mirror of 'editorChoice' for older
-                                       --   leksahs reading a new prefs file
-  , monacoEditor_        :: Maybe Bool -- ^ legacy (pre-13); mirror, as above
-  , editorChoice_        :: Maybe Text
-  , terminalControlMode_ :: Maybe Bool
-  , tmuxInterceptPrefix_ :: Maybe Bool
-  , remoteHosts_         :: Maybe [Text]
-  , uiSelectionColor_    :: Maybe Text
-  , uiHoverColor_        :: Maybe Text
-  , monacoThemeDark_     :: Maybe Text
-  , monacoThemeLight_    :: Maybe Text
-  , codeMirrorThemeDark_ :: Maybe Text
-  , codeMirrorThemeLight_:: Maybe Text
-  , xtermThemeDark_      :: Maybe Text
-  , xtermThemeLight_     :: Maybe Text
-  , showShortcutBadges_  :: Maybe Bool
-  , colorfulIcons_       :: Maybe Bool
-  , regionCaptureTarget_ :: Maybe Text
-  , lspEnabled_          :: Maybe Bool
-  , lspServerCommand_    :: Maybe Text
-} deriving(Eq, Show, Generic)
-
-prefsAesonOptions :: Options
-prefsAesonOptions = defaultOptions
-    { fieldLabelModifier = init
-    }
-
-instance ToJSON PrefsFile where
-    toJSON     = genericToJSON prefsAesonOptions
-    toEncoding = genericToEncoding prefsAesonOptions
-instance FromJSON PrefsFile where
-    parseJSON = genericParseJSON prefsAesonOptions
-
--- | Legacy view of 'editorChoice': the external-editor command, blank when an
--- in-app editor is selected.  Kept as a function with the old field's name and
--- type so its call sites (backing-pane pre-typed commands, external opens)
--- read the enum unchanged.
-externalEditor :: Prefs -> Text
-externalEditor p = case editorChoice p of
-    EditorNano  -> "nano"
-    EditorVim   -> "vim"
-    EditorEmacs -> "emacs"
-    _           -> ""
-
--- | Legacy view of 'editorChoice': whether in-app editors use Monaco.
-monacoEditor :: Prefs -> Bool
-monacoEditor = (== EditorMonaco) . editorChoice
-
-data EditorStyle = EditorStyle { styleName    :: Maybe Text
-                               , preferDark   :: Bool
-                               , foundBG      :: (Color, Color)
-                               , matchBG      :: (Color, Color)
-                               , contextBG    :: (Color, Color)
-                               , breakpointBG :: (Color, Color)
-                               , lintBG       :: (Color, Color)
-                               }
-
-editorStyle :: Bool -> Prefs -> EditorStyle
-editorStyle preferDark prefs = EditorStyle { styleName = case sourceStyle prefs of
-                                                        (False,_) -> Nothing
-                                                        (True,v)  -> Just v
-                                           , preferDark = preferDark
-                                           , foundBG      = (foundBackgroundDark      prefs, foundBackgroundLight      prefs)
-                                           , matchBG      = (matchBackgroundDark      prefs, matchBackgroundLight      prefs)
-                                           , contextBG    = (contextBackgroundDark    prefs, contextBackgroundLight    prefs)
-                                           , breakpointBG = (breakpointBackgroundDark prefs, breakpointBackgroundLight prefs)
-                                           , lintBG       = (lintBackgroundDark       prefs, lintBackgroundLight       prefs)
-                                           }
 
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)

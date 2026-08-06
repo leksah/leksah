@@ -147,7 +147,7 @@ library leksah-nogtk
         IDE.Pane.SourceBuffer
         IDE.Pane.WebKit.Documentation
         IDE.Pane.WebKit.Output
-        IDE.Preferences
+        IDE.Settings
         IDE.Utils.DebugUtils
         IDE.Utils.DirectoryUtils
         IDE.Utils.ExitImmediately
@@ -346,7 +346,6 @@ library leksah-nogtk
             criterion-measurement >=0.1.1.0 && <0.3,
             fsnotify >=0.3.0.1 && <0.5,
             jsaddle-terminal >=0.1 && <0.2,
-            vado >=0.0.1 && <0.1,
             wai >=3.2.1.2 && <3.3,
             wai-app-static >=3.1.6.2 && <3.2,
             wai-extra >=3.0.24.3 && <3.2,

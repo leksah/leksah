@@ -75,7 +75,7 @@ These are classic-only and `git mv` to `leksah-classic/`; no rewrite needed.
 
 | file | other authors (commits) | replaced in |
 |---|---|---|
-| `src/IDE/Preferences.hs` | Jacco Krijnen (29), Juergen (30), Stephan Fortelny (4), others | step B (JSON prefs) |
+| `src/IDE/Preferences.hs` | Jacco Krijnen (29), Juergen (30), Stephan Fortelny (4), others | **done** — step B (2026-08-07): fresh `IDE.Settings` (flat `Prefs`, sectioned `~/.config/leksah/settings.json`, only non-default keys written); the `Prefs`/`PrefsFile`/`EditorStyle` blocks left `Core/Types` with it; 21 dead GTK-era fields (incl. the 10 unread highlight colours, vado, `.lkshp`) dropped |
 | `src/IDE/LogRef.hs` | Juergen (13), Stephan Fortelny (4), others | step D (`IDE.Diagnostics`) |
 | `src/IDE/Package.hs` | Juergen (45), JP Moresmau (8), Stephan Fortelny (7), others | step E (project model) |
 | `src/IDE/Workspaces.hs` | Juergen (26), Stephan Fortelny (12), Jacco Krijnen (6), others | step E |
@@ -112,7 +112,6 @@ This is the gate for the license flip; delete rows as stages land.
 
 | file | blocked on |
 |---|---|
-| `src/IDE/Preferences.hs` | new JSON prefs (step B) |
 | `src/IDE/LogRef.hs` | `IDE.Diagnostics` (step D) |
 | `src/IDE/Package.hs` | project model (step E) |
 | `src/IDE/Workspaces.hs` | project model (step E) |

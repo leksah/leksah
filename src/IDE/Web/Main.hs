@@ -154,7 +154,7 @@ import Reflex.Dom.Core
 import IDE.Core.State
        (triggerBuild, readIDE, IDEAction, wsFile, jsContexts, workspace,
         IDEState(..), Prefs(..), TallVisibility(..), IDE(..), IDERef, __,
-        externalEditor, monacoEditor,
+        externalEditor, monacoEditor, LogTag(..),
         reflectIDE, getDataDir, catchIDE, modifyIDE_, modifyIDE, prefs, currentState,
         wsProjects, pjPackages, ipdCabalFile, ipdPackageDir, wsActivePackFile,
         currentError, logRefFullFilePath, refDescription, logRefSrcSpan,
@@ -256,16 +256,15 @@ import IDE.Web.Session
 import IDE.Web.NewWindowRequest (requestOpenWindow, requestRaiseWindow)
 #if defined(ghcjs_HOST_OS)
 -- Browser: no config dir or data files — 'newIDE' bakes in the defaults
--- instead of loading prefs from disk.  WatchManager is Core.Types'
+-- instead of loading settings from disk.  WatchManager is Core.Types'
 -- fsnotify stand-in (see the withManager shim below).
 import IDE.Core.Types (WatchManager(..))
-import IDE.Preferences (defaultPrefs, writePrefs)
+import IDE.Settings (defaultPrefs, writeSettings)
 #else
-import IDE.Preferences (readPrefs, writePrefs)
+import IDE.Settings (readSettings, writeSettings)
 #endif
 import IDE.Utils.Files
-       (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave,
-        standardPreferencesFilename)
+       (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave)
 import IDE.Web.Command
        (commandAction, Command(..), _CommandSelectSplit,
         _CommandSelectSidePane, _CommandSelectBottomPane)
@@ -828,17 +827,17 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
     -- Browser: no config dir and no data files to read — bake in the
     -- defaults (prefs, an empty candy table, an empty nix cache), tweaked
     -- for the demo: ⌘-held shortcut badges on (defaultPrefs has them off,
-    -- and there is no prefs file to turn them on).
+    -- and there is no settings file to turn them on).
     let initPrefs = defaultPrefs { showShortcutBadges = True }
+        settingsErr = Nothing :: Maybe Text
     withManager $ \fsnotify -> do
       triggerBuildVar <- newEmptyMVar
       let nixCache = mempty
 #else
     dataDir         <- getDataDir
 
-    prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
-    initPrefs       <- readPrefs prefsPath
-    metaLog "boot: prefs read"
+    (initPrefs, settingsErr) <- readSettings
+    metaLog "boot: settings read"
     withManager $ \fsnotify -> do
       metaLog "boot: fsnotify started"
 
@@ -872,7 +871,12 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             ,   _nixCache          =   nixCache
             ,   _externalModified  =   externalModified
             ,   _jsContexts        =   []
-            ,   _logLineMap        =   mempty
+            ,   _logLineMap        =   case settingsErr of
+                    -- Broken settings file: boot on defaults, but say so.
+                    Nothing  -> mempty
+                    Just err -> M.fromList
+                        [(0, ("Error reading settings (using defaults): "
+                              <> err <> "\n", ErrorTag))]
             ,   _webWindows        =   mempty
             ,   _leksahWindows     =   mempty
             ,   _nextLeksahWin     =   0
@@ -1119,11 +1123,9 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             -- it focuses this tab rather than opening a duplicate editor.
             demoTabs = map LeksahWinKey (M.keys lws0)
             dfltWin  = WebWindowSession demoTabs (listToMaybe demoTabs)
-                                        (tallVisibility initPrefs)
-                                        (wide1Visibility initPrefs)
+                                        TallShow TallShow
 #else
-            dfltWin  = WebWindowSession [] Nothing (tallVisibility initPrefs)
-                                        (wide1Visibility initPrefs)
+            dfltWin  = WebWindowSession [] Nothing TallShow TallShow
 #endif
             wwsList  = case mbSession of
                          Just s | not (null (wsWindows s)) -> wsWindows s
@@ -1233,12 +1235,12 @@ exposeBackendProofEndpoints beBr = do
     _ -> ioError (userError "fsReadFile: expected one path argument")
 
 -- | The default per-window state a freshly-minted (or adopted-but-unseeded)
--- window inherits: no wide0 tabs, and side/bottom pane visibility taken from the
--- global prefs (which stay the shared default; see 'IDE.Core.Types.WebWindow').
+-- window inherits: no wide0 tabs, and side/bottom panes shown (visibility is
+-- per-window session state; see 'IDE.Core.Types.WebWindow').
 defaultWebWindow :: Prefs -> WebWindow
-defaultWebWindow p = WebWindow
+defaultWebWindow _p = WebWindow
   { _wwWide0 = [], _wwActive = Nothing
-  , _wwTall = tallVisibility p, _wwWide1 = wide1Visibility p, _wwFrame = Nothing }
+  , _wwTall = TallShow, _wwWide1 = TallShow, _wwFrame = Nothing }
 
 -- | Allocate a fresh 'WindowId', seed a default 'WebWindow' for it, and make it
 -- the active window if none is yet.  Runs the shared trigger so any already-open
@@ -8209,12 +8211,12 @@ main showMenubar macTitlebar wid ide = mdo
 
     -- Persist preference toggles (toolbar buttons: show hidden/ignored files,
     -- build flags, ...) so they survive a restart.  They already load at startup
-    -- via readPrefs; here we write them back on change.  (Side-pane visibility is
+    -- via readSettings; here we write them back on change.  (Side-pane visibility is
     -- session-only and lives in the web session, not the prefs file.)
     prefsD <- holdUniqDyn $ view prefs <$> ide
     prefsSaveE <- debounce (1 :: NominalDiffTime) (updated prefsD)
     performEvent_ $ ffor prefsSaveE $ \p -> liftIO $
-      getConfigFilePathForSave standardPreferencesFilename >>= \path -> writePrefs path p
+      writeSettings p
     -- The colour prefs bind the CSS variables the stylesheets reference
     -- (--leksah-selection / --leksah-hover; see "IDE.Web.Theme") in a live
     -- style element, so the Preferences colour pickers apply immediately.

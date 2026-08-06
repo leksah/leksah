@@ -15,7 +15,6 @@ module IDE.Utils.Files
   , getConfigFilePathForLoad
   , mbGetConfigFilePathForLoad
     -- * Filename conventions
-  , standardPreferencesFilename
   , leksahTemplateFileExtension
     -- * Path helpers
   , myCanonicalizePath
@@ -95,9 +94,6 @@ mbGetConfigFilePathForLoad fn mbDir dataDir = do
     firstExisting (c:cs) = doesFileExist c >>= \case
         True  -> return (Just c)
         False -> firstExisting cs
-
-standardPreferencesFilename :: FilePath
-standardPreferencesFilename = "prefs.lkshp"
 
 leksahTemplateFileExtension :: FilePath
 leksahTemplateFileExtension = ".lksht"

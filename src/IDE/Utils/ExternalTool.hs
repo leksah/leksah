@@ -28,8 +28,8 @@ import IDE.Utils.Process
        (interruptProcessGroupOf, getProcessExitCode, runTool,
         ProcessHandle, ToolOutput(..))
 import IDE.Core.State
-       (runningTool, modifyIDE_, reflectIDE, useVado,
-        reifyIDE, prefs, readIDE,
+       (runningTool, modifyIDE_, reflectIDE,
+        reifyIDE, readIDE,
         IDEM, MonadIDE(..), workspace, wsProjects, wsSettingsFor,
         ProjectSettings(..), pjKey, pjDir, Project)
 import IDE.Utils.Files (isSubPath)
@@ -42,11 +42,6 @@ import Control.Exception (catch, SomeException(..))
 import Control.Lens ((?~), (^.))
 import Data.List (find)
 import Control.Concurrent (forkIO)
-#if !defined(ghcjs_HOST_OS)
--- vado (run-build-on-the-machine-hosting-the-mount, over ssh) pulls
--- monad-logger→fast-logger, which doesn't build on the JS backend.
-import System.Process.Vado (vado, readSettings, getMountPoint)
-#endif
 import Data.Conduit ((.|), runConduit, ConduitT)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Maybe (isNothing)
@@ -98,7 +93,6 @@ runExternalTool :: MonadIDE m
                 -> ConduitT ToolOutput Void IDEM ()
                 -> m ()
 runExternalTool runGuard pidHandler _description executable args dir mbEnv handleOutput  = do
-    prefs' <- readIDE prefs
     run <- runGuard
     when run $
       case parseRemotePath dir of
@@ -135,23 +129,8 @@ runExternalTool runGuard pidHandler _description executable args dir mbEnv handl
                 -- events; a finished remote run is the main one.
                 requestRemoteRefresh RefreshBuildDone
         Nothing -> do
-          -- If vado is enabled then look up the mount point and transform
-          -- the execuatble to "ssh" and the arguments
-#if defined(ghcjs_HOST_OS)
-          -- No vado in the browser (and no ssh to exec anyway).
-          let _unusedUseVado = useVado prefs'
-          (executable', args') <- return (executable, args)
-#else
-          mountPoint <- if useVado prefs' then liftIO $ getMountPoint dir else return $ Right ""
-          (executable', args') <- case mountPoint of
-                                      Left mp -> do
-                                          s <- liftIO readSettings
-                                          a <- liftIO $ vado mp s dir [] executable (map T.unpack args)
-                                          return ("ssh", map T.pack a)
-                                      _ -> return (executable, args)
-#endif
           -- Run the tool
-          (output, pid) <- liftIO $ runTool executable' args' (Just dir) mbEnv
+          (output, pid) <- liftIO $ runTool executable args (Just dir) mbEnv
           -- The stored interrupt action can race the tool exiting on its own:
           -- interruptProcessGroupOf (getProcessGroupIDOf inside it) then throws
           -- "does not exist" — benign (it's already gone), but uncaught it kills

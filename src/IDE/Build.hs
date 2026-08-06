@@ -78,14 +78,14 @@ data MakeSettings = MakeSettings {
 defaultMakeSettings :: Prefs -> MakeSettings
 defaultMakeSettings Prefs{..} = MakeSettings  {
     msMakeMode                       = makeMode,
-    msSingleBuildWithoutLinking      = singleBuildWithoutLinking,
+    msSingleBuildWithoutLinking      = False,
     msSaveAllBeforeBuild             = saveAllBeforeBuild,
     msBackgroundBuild                = backgroundBuild,
     msMakeDocs                       = makeDocs,
     msRunUnitTests                   = runUnitTests,
     msRunBenchmarks                  = runBenchmarks,
     msJumpToWarnings                 = jumpToWarnings,
-    msDontInstallLast                = dontInstallLast,
+    msDontInstallLast                = False,
     msSuccessAction                  = return ()}
 
 -- | a make operation

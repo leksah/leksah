@@ -103,7 +103,6 @@ import System.Directory
         canonicalizePath, setCurrentDirectory, doesFileExist,
         doesDirectoryExist, findExecutable)
 import qualified Data.Set as S (fromList)
-import Data.Either (isRight)
 import Data.Map (Map)
 import System.Exit (ExitCode(..))
 import qualified Data.Conduit as C (ZipSink(..), getZipSink)
@@ -126,7 +125,7 @@ import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.State
        (pjPackages, changePackage,
         ipdPackageDir, PackageM, runProject, runWorkspace, debug,
-        isError, runningTool, nixEnv, useVado,
+        isError, runningTool, nixEnv,
         nixCache, modifyIDE_, pjDir, javaScript, ProjectAction,
         ipdPackageName, mkPackageMap, reflectIDEI,
         sysMessage, getDataDir,
@@ -167,7 +166,6 @@ import IDE.Pane.WebKit.Output
 import System.Log.Logger (debugM)
 #if !defined(ghcjs_HOST_OS)
 -- vado pulls monad-logger→fast-logger, which doesn't build on the JS backend.
-import System.Process.Vado (getMountPoint)
 #endif
 import qualified Data.Text as T
        (unlines, reverse, null, dropWhile, lines, isPrefixOf,
@@ -419,7 +417,7 @@ withToolCommand project compiler (Just (cmd, args)) continuation = do
 #if defined(ghcjs_HOST_OS)
     let enableNixCache = True  -- no vado (or nix) in the browser
 #else
-    enableNixCache <- if useVado prefs' then liftIO $ isRight <$> getMountPoint (pjDir $ pjKey project) else return True
+    let enableNixCache = True  -- vado support was dropped with the old prefs
 #endif
     nixShellFile (pjKey project) >>= \case
         _ | enableNixCache -> do
