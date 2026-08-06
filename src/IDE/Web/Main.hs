@@ -194,7 +194,7 @@ import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel, runOpenFolderPa
 import IDE.Web.Theme (themeVarsCss, paletteCss, contrastCss, bgColor, fgColor)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
-        registerResync, notifyResync)
+        registerResync, notifyResync, setFocusedLeaf)
 import IDE.Web.RegionGrabRequest (nextRegionGrab)
 import IDE.Web.AddRemoteRequest (nextAddRemoteRequest)
 import IDE.Web.AddServerRequest (nextAddServerRequest)
@@ -343,7 +343,7 @@ import IDE.Web.Widget.Terminals
         windowActivePane, isClaudeWindow, windowIconSrc, windowTabLabel,
         stripIdxPrefix)
 import IDE.Web.Widget.TerminalCC
-       (terminalCCWidget, sessionlessLwWidget, setFocusedLeaf)
+       (terminalCCWidget, sessionlessLwWidget)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import qualified IDE.Workspaces.Writer as Writer
@@ -6106,13 +6106,26 @@ main showMenubar macTitlebar wid ide = mdo
       [ const . maxLeksahNum <$> existingIdsE
       , (\() k -> k + 1) <$> newTermClickE ]
     let newNameE = attachWith (\k () -> "leksah-" <> T.pack (show (k + 1))) (current nameCounterD) newTermClickE
-    newTermIdE <- performEvent $ ffor newNameE $ \nm -> liftIO $ do
+    newTermE <- performEvent $ ffor newNameE $ \nm -> liftIO $ do
       mids <- createTerminalSession nm
       -- Mint the leksah window EAGERLY so the tab (via termTabKey) opens at
-      -- once rather than waiting for the reconcile's stray adoption.
-      forM_ mids $ \(sid, wid') ->
-        void $ mintLeksahWindow (Just sid) (PaneContent (PaneTmux wid') Nothing)
-      return (maybe nm fst mids)
+      -- once rather than waiting for the reconcile's stray adoption.  KEEP its
+      -- id: the tab has to be opened and activated by THAT key, because
+      -- resolving the session id through 'leksahWindowsD'' (what 'openInWide0'
+      -- does) still answers Nothing here — this very mint has not reached that
+      -- Dynamic yet, since it travels via the shared MVar and a resync.  That
+      -- is why a new terminal used to appear (put there later by the
+      -- reconcile's tab sync) without ever becoming the active pane.
+      mlw <- case mids of
+        Just (sid, wid') ->
+          mintLeksahWindow (Just sid) (PaneContent (PaneTmux wid') Nothing)
+        Nothing -> return Nothing
+      return (maybe nm fst mids, mlw)
+    let newTermIdE = fst <$> newTermE
+        -- The freshly minted leksah window, when there is one: opened (and so
+        -- activated) by its own key in 'openTabsE', and handed the keyboard
+        -- below.
+        newTermLwE = fmapMaybe snd newTermE
     -- External-editor opens (when the "External editor command" pref is set):
     -- run e.g. `vim +<line> <file>` as a window in the shared @leksah-editor@
     -- session (file per window-tab); returns that session's id.  Routed exactly
@@ -6129,6 +6142,12 @@ main showMenubar macTitlebar wid ide = mdo
       fireNewTermPolled
         (tree, maybe (FlipTab (TerminalKey sid))
                      (\(w, p) -> FlipPane sid w p) (activePaneOfSession sid tree))
+    -- …and hand it the keyboard, so it is the ACTIVE pane and not merely the
+    -- shown tab.  Keyed by the leksah window (as the tree-launched repl below
+    -- explains: with several windows on one session the lw key reaches THIS
+    -- one), and sticky — the widget is still mounting, and picks the request up
+    -- when it registers its focus callback.
+    performEvent_ $ ffor newTermLwE $ liftIO . focusTerminalPane
     -- A repl launched from the workspace tree (termRequestE) has already selected
     -- its window in tmux; treat it exactly like a freshly-created terminal so its
     -- (now-current) active pane floats to the MRU front and the pane takes keyboard
@@ -7529,7 +7548,18 @@ main showMenubar macTitlebar wid ide = mdo
         lwsB = current leksahWindowsD'
         openTabsE = leftmost
           [ openFileE'   -- carries native opens too (see openFileSplitE)
-          , attachWith openInWide0 lwsB newOrEditTermE
+          -- A new terminal opens by the key of the leksah window just minted
+          -- for it, falling back to resolving the session id.  It must be ONE
+          -- entry, not two: both fire in the same frame, and 'leftmost' would
+          -- take whichever came first — the session-id one, which answers an
+          -- empty map here (its snapshot predates the mint) and so silently
+          -- cancelled the activation.
+          , attachWith (\lws (sid, mlw) ->
+                maybe (openInWide0 lws sid)
+                      (\lw -> LeksahWinKey lw =: ("wide0", Just ()))
+                      mlw)
+              lwsB newTermE
+          , attachWith openInWide0 lwsB editTermSidE
           , attachWith openInWide0 lwsB termRequestE
           , attachWith openInWide0 lwsB remoteOpenKeyE
           , attachWith openInWide0 lwsB selectAnyTermE

@@ -138,7 +138,9 @@ import IDE.Web.ConPty
 #elif defined(ghcjs_HOST_OS)
 import IDE.Web.NoPty
        (dummyPty, writePty, resizePty)
-import IDE.Web.DemoTerminals (demoTerminals, demoTerminalB64)
+import IDE.Web.DemoTerminals
+       (demoTerminals, demoTerminalB64, demoCreateSession, demoCreatedSessions,
+        demoKillSession)
 #else
 import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
@@ -786,8 +788,11 @@ terminalWidget ide termId selectedE = do
       -- The page blob is already base64 — exactly what LeksahTerm.write takes —
       -- and the terminal registered with LeksahTerm above, so this synchronous
       -- write inside the build action cannot race the output gate below.
-      liftIO (demoTerminalB64 termId) >>= mapM_ (\b64 ->
-          void $ jsg ("LeksahTerm" :: Text) ^. js2 ("write" :: Text) termId b64)
+      -- A terminal the visitor just created has no dump (there is no shell to
+      -- record): say so, rather than leaving a black rectangle that looks like
+      -- a terminal that failed to start.
+      b64 <- liftIO $ fromMaybe demoNoticeB64 <$> demoTerminalB64 termId
+      void $ jsg ("LeksahTerm" :: Text) ^. js2 ("write" :: Text) termId b64
 #else
       -- shell -> screen: blocking reads on their own thread.  Each chunk is
       -- handed to xterm as raw bytes (see the output write below) rather than
@@ -884,6 +889,37 @@ terminalWidget ide termId selectedE = do
         rows <- valToNumber =<< term ^. js ("rows" :: Text)
         liftIO $ ignorePtyError (resizePty pty (round cols, round rows))
 
+#if defined(ghcjs_HOST_OS)
+-- | What a terminal the visitor creates in the browser demo shows instead of a
+-- shell prompt: there is no operating system under this page, so the honest
+-- thing is to say so and point at the terminals that DO have content (the
+-- recorded ones from 'IDE.Web.DemoTerminals').
+--
+-- CRLF, not LF: xterm is a real terminal emulator, so a bare LF moves down
+-- without returning to column 0 and the text staircases (the same fix
+-- @gen-demo-terminals.hs@ applies to the recorded dumps).  Lines are separate
+-- literals because CPP eats Haskell string gaps.
+demoNoticeB64 :: Text
+demoNoticeB64 = decodeUtf8 (B64.encode (encodeUtf8 notice))
+  where
+    notice = T.intercalate "\r\n"
+      [ ""
+      , "  \ESC[1;33m\9888  This is just a demo \8212 there is no shell here.\ESC[0m"
+      , ""
+      , "  leksah itself is running in your browser, compiled to JavaScript by"
+      , "  GHC's JS backend.  What is missing is everything underneath it: no"
+      , "  processes, no tmux, no operating system \8212 so a new terminal has"
+      , "  nothing to talk to."
+      , ""
+      , "  The \ESC[36mclaude\ESC[0m and \ESC[36mbuild\ESC[0m tabs are \ESC[1mrecordings\ESC[0m of real terminals,"
+      , "  captured from a real session, so you can see how they look and hover"
+      , "  the code in them."
+      , ""
+      , "  \ESC[32mRun leksah on your own machine to get terminals that run things.\ESC[0m"
+      , ""
+      ]
+#endif
+
 -- | Run a PTY write/resize, swallowing errors.  Once a terminal's shell exits
 -- (e.g. the user typed @exit@) its tmux session/window can be gone and the PTY
 -- dead, so a write/resize raises @fdWriteBuf: Input/output error@.  That's just
@@ -897,6 +933,13 @@ ignorePtyError act = act `catch` \(_ :: SomeException) -> return ()
 -- its initial window's id (@\@N@ — what the caller's leksah window's pane
 -- references).  'Nothing' if tmux is absent or the command fails.
 createTerminalSession :: Text -> IO (Maybe (Text, Text))
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: no tmux to create anything in, but the session must still come
+-- into being — the caller mints its leksah window (and so its tab) from these
+-- ids, and returning 'Nothing' is why "+" used to do nothing at all.  The tab
+-- then shows the demo notice, having no recorded output.
+createTerminalSession name = Just <$> demoCreateSession name
+#else
 createTerminalSession name = (`catch` \(_ :: SomeException) -> return Nothing) $
     findExecutable "tmux" >>= \case
         Nothing -> return Nothing
@@ -910,6 +953,7 @@ createTerminalSession name = (`catch` \(_ :: SomeException) -> return Nothing) $
                 [ (sid, wid) | l <- T.lines (T.pack out)
                 , (sid : wid : _) <- [T.splitOn "\t" (T.strip l)]
                 , not (T.null sid), not (T.null wid) ]
+#endif
 
 -- | Open a file in the external editor: run @argv@ (e.g. @["vim","+12","/f.hs"]@)
 -- as a new *window* in the shared @leksah-editor@ tmux session — created on the
@@ -1154,15 +1198,18 @@ data TmuxWindow = TmuxWindow
 -- all sessions, not only leksah's own.  Empty if tmux is absent / no server.
 listTerminalTree :: IO (Map Text (Text, [TmuxWindow]))
 #if defined(ghcjs_HOST_OS)
--- Browser demo: one window with one pane per canned session, so the
--- Terminals pane and the wide0 tab labels populate.  Select/kill actions
--- fall into the catch-everything tmux helpers, which no-op in the browser.
+-- Browser demo: one window with one pane per session, so the Terminals pane and
+-- the wide0 tab labels populate.  Select/kill actions fall into the
+-- catch-everything tmux helpers, which no-op in the browser.  Both the canned
+-- sessions and the ones the visitor created are listed — the latter must appear
+-- here or the reconcile would prune the leksah window their tab lives in.
 listTerminalTree = do
-    ts <- demoTerminals
+    ts      <- demoTerminals
+    created <- demoCreatedSessions
     return $ M.fromListWith (\_ old -> old)
         [ (sid, (name, [ TmuxWindow 0 ("@" <> sid) name True False False False ""
                              [ TmuxPane 0 ("%" <> sid) name 0 True "" Nothing Nothing ] ]))
-        | (sid, name) <- ts ]
+        | (sid, name) <- ts ++ created ]
 #else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
     findExecutable "tmux" >>= \case
@@ -1496,7 +1543,14 @@ breakTmuxPane s w p =
 -- the window/session if it was the last pane.  Used by the ⌘W close menu's
 -- "Kill Pane".
 killTmuxPaneId :: Text -> IO ()
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: forget the visitor-created session instead (its pane id is
+-- derived from the session id), so ⌘W ▸ Kill actually closes the tab rather
+-- than the next tree poll putting it straight back.  Canned sessions ignore it.
+killTmuxPaneId = demoKillSession
+#else
 killTmuxPaneId pid = tmuxCmd ["kill-pane", "-t", T.unpack pid]
+#endif
 
 -- | Break pane @pid@ (e.g. @%5@) out into its own new window but do NOT switch
 -- to it (@-d@), so the pane leaves the current tiling yet stays alive.  Returns

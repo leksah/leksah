@@ -25,6 +25,7 @@ module IDE.Web.WindowBridge
   , notifyResync
   , resyncStates
   , closeWindowMerge
+  , setFocusedLeaf
   ) where
 
 import Control.Applicative ((<|>))
@@ -32,16 +33,20 @@ import Control.Concurrent (forkIO, killThread, ThreadId)
 import GHC.Conc.Sync (labelThread)
 import Control.Concurrent.MVar
        (MVar, readMVar, newMVar, newEmptyMVar, takeMVar, tryPutMVar, tryReadMVar, withMVar)
-import Control.Lens ((^.), (.~), (%~), (&))
-import Control.Monad (forever, void)
+import Control.Lens ((^.), (.~), (%~), (&), over)
+import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Core.State (reflectIDE, readIDE, modifyIDE_)
-import IDE.Core.Types (IDERef, WindowId, activeWindow, webWindows, wwWide0, wwActive)
+import IDE.Core.Types
+       (IDERef, WindowId, activeWindow, webWindows, wwWide0, wwActive,
+        leksahWindows, flipMru, FlipItem(..), LeksahWindow(..),
+        PaneContent(..), PaneKind(..), LeafId(..))
 import IDE.Web.IDERefStore (getGlobalIDERef)
 
 import IDE.Web.CloseRequest (nextCloseRequest)
@@ -221,3 +226,41 @@ startWindowBridgeDrains ideR = do
     nextKeymapCommand >>= \c -> route ideR (`wbKeymap` c)
   drain "bridge-drain-open"  $
     nextOpenedFile >>= \fp -> route ideR (`wbOpenedFile` fp)
+
+-- Moved here from IDE.Web.Widget.TerminalCC: it is pure IDE-state logic (no
+-- tmux, no processes), and TerminalCC is stubbed out wholesale for the GHC JS
+-- backend, which left the browser build unable to import it at all.  Window
+-- focus state belongs with the rest of the window bridge anyway.
+-- | Focus entered a native pane: record it as the leksah window's focused
+-- pane (the target of ⌘+/⌘− and future splits) and, for a VIEW pane, float its
+-- flipper entry.  Pre-checked so a no-op never bumps the resync version
+-- (focusin fires on every click).
+--
+-- The 'FlipView' float is this function's job because a view pane has no other
+-- recency signal: a tmux pane click publishes its pane id (@leksahPaneFocus@,
+-- termActivityJs) and a tab click promotes through @lwTabFlipE@, but focus
+-- landing in a browser \/ editor \/ git-log LEAF — by click, by ⌥-open, or from
+-- a click inside a native browser view (@leksahBrowserActivate@) — only ever
+-- reached 'lwFocused', so the pane took the active ring without moving to the
+-- front of the flipper.
+setFocusedLeaf :: Text -> LeafId -> IO ()
+setFocusedLeaf i lid@(LeafId l) = getGlobalIDERef >>= mapM_ (\ideR ->
+    (`reflectIDE` ideR) $ do
+        lws <- readIDE leksahWindows
+        mru <- readIDE flipMru
+        let mlw       = M.lookup i lws
+            present   = maybe False ((lid `M.member`) . lwPanes) mlw
+            needFocus = fmap lwFocused mlw /= Just (Just lid)
+            isView    = case pcKind <$> (M.lookup lid . lwPanes =<< mlw) of
+                          Just PaneView{} -> True
+                          _               -> False
+            item      = FlipView i l
+            needFloat = isView && take 1 mru /= [item]
+        when (present && (needFocus || needFloat)) . modifyIDE_ $
+              (if needFocus
+                 then over leksahWindows
+                        (M.adjust (\lw -> lw { lwFocused = Just lid }) i)
+                 else id)
+            . (if needFloat
+                 then over flipMru ((item :) . filter (/= item))
+                 else id))

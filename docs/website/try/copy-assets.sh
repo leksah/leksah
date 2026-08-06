@@ -27,17 +27,23 @@ cp -R "$REPO"/fonts/. "$SITE"/fonts/
 
 # The generators are runghc scripts (boot libraries only) — run this from a
 # dev shell (or anywhere ghc/runghc is on PATH).
+#
+# runghc is invoked as `runghc -f <ghc>`: the ghc914-sh toolchain's runghc is a
+# shim that looks for a `ghc-stage2` beside itself and dies with
+# "ghc-stage2: executeFile: does not exist" when it isn't there.  -f names the
+# ghc to compile with, which is on PATH by definition here.
+RUNGHC="runghc -f $(command -v ghc)"
 
 # xterm.css as page-seeded TEXT (window.leksahXtermCss): the app injects it
 # via mainWidgetWithCss exactly as it does natively.  A plain <link> would be
 # lost — mainWidgetWithCss rebuilds <head>, removing page stylesheet links.
-runghc gen-xterm-css.hs "$SITE/xterm/xterm.css"
+$RUNGHC gen-xterm-css.hs "$SITE/xterm/xterm.css"
 
 # The demo project tree (window.leksahDemoFiles), next to the page.
-runghc gen-demo-files.hs
+$RUNGHC gen-demo-files.hs
 
 # The canned terminal tabs (window.leksahDemoTerminals) from terminals/*.ans.
-runghc gen-demo-terminals.hs
+$RUNGHC gen-demo-terminals.hs
 
 # Precomputed hover tooltips (window.leksahDemoHovers).  Off the critical
 # path when hovers are already generated: querying haskell-language-server
@@ -73,6 +79,6 @@ else
 fi
 
 # Give the browser build an environment (HOME etc.) — see patch-rts.hs.
-runghc patch-rts.hs leksah.js
+$RUNGHC patch-rts.hs leksah.js
 
 echo "Done.  Serve with ./serve.sh and open http://127.0.0.1:8000/try/"

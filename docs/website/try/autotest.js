@@ -98,7 +98,10 @@
   // Genuine round-trip through the Haskell LSP stand-in: call the hover
   // callback the terminal registered (debugHover), intercept the reply that
   // comes back through LeksahTermLinks.resolveHover, and check we got the
-  // precomputed HLS text for unsafePerformIO (fixture line 35, col 18).
+  // precomputed HLS text for unsafePerformIO, at line 36 column 18 of the
+  // fixture.  The line is 1-BASED, like the source line numbers a diff prints
+  // (that is where the real hover path reads it from, and
+  // LSP.requestTerminalHover subtracts the 1); the column is 0-based.
   function checkHover() {
     var L = window.LeksahTermLinks;
     if (!L || !L.debugHover) { log('HOVER: no debugHover seam'); flipCheck(); return; }
@@ -107,7 +110,7 @@
       if (rid === 424242) { got = text; L.resolveHover = orig; return; }
       return orig(rid, text);
     };
-    L.debugHover(FILE_HS, 35, 18, 424242);
+    L.debugHover(FILE_HS, 36, 18, 424242);
     var t0 = Date.now();
     var timer3 = setInterval(function () {
       if (got !== null) {
@@ -145,9 +148,89 @@
         log('Ctrl+` flip: "' + before + '" -> "' + selectedTab() + '"'
             + (selectedTab() === before ? ' (UNCHANGED)' : ''));
         rendererCheck();
-        log('ALL CHECKS DONE');
+        menubarCheck(function () {
+          newTerminalCheck(function () { log('ALL CHECKS DONE'); });
+        });
       }, 600);
     }, 300);
+  }
+
+  // A menu-bar dropdown must be OPAQUE.  It is a popup over content, so a
+  // dropped background declaration shows as see-through text soup — which is
+  // exactly what Clay's legacy `linear-gradient(top, …)` used to cause (modern
+  // engines reject that syntax outright).  Assert the painted colour, not the
+  // rule: a rejected declaration still reads back as rgba(0, 0, 0, 0) here.
+  // The dropdown is built by `dyn`, i.e. one reflex frame after the click, so
+  // poll for it rather than reading straight after dispatching.
+  function menubarCheck(done) {
+    var li = document.querySelector('.menubar ul li');
+    if (!li) { log('MENUBAR: no menu bar in this build'); done(); return; }
+    li.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      var menu = document.querySelector('.menubar .menu');
+      if (menu) {
+        clearInterval(timer);
+        var cs = getComputedStyle(menu);
+        var transparent = /rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor)
+                          && cs.backgroundImage === 'none';
+        log('menubar dropdown background: ' + cs.backgroundColor
+            + ' image=' + cs.backgroundImage.slice(0, 40)
+            + (transparent ? ' — TRANSPARENT (bug)' : ' — opaque'));
+        li.dispatchEvent(new MouseEvent('click', { bubbles: true }));  // close
+        done();
+      } else if (Date.now() - t0 > 5000) {
+        clearInterval(timer);
+        log('MENUBAR: dropdown did not open');
+        done();
+      }
+    }, 250);
+  }
+
+  // A terminal the visitor CREATES has no recording behind it (and no shell in
+  // the browser), so it must explain the demo rather than sit there black.
+  // Click the Terminals tree's "+" and wait for a terminal whose buffer says so.
+  function newTerminalCheck(done) {
+    var btn = document.querySelector('button[title="New local session"]');
+    if (!btn) { log('NEWTERM: no "New local session" button'); done(); return; }
+    function ids() { return Object.keys((window.LeksahTerm || {}).byId || {}); }
+    var before = ids();
+    btn.click();
+    var t0 = Date.now(), clickedTab = false;
+    var timer = setInterval(function () {
+      // wide0 tab bodies mount on first visibility, so if the new tab did not
+      // become the selected one, select it — otherwise there is no xterm to read.
+      if (!clickedTab && Date.now() - t0 > 3000) {
+        clickedTab = true;
+        var tab = Array.prototype.slice.call(
+              document.querySelectorAll('.area-wide0 .tab-wrap button'))
+            .filter(function (b) { return /^leksah-/.test(b.textContent.trim()); })[0];
+        log('NEWTERM selecting new tab: ' + (tab ? tab.textContent.trim() : 'NOT FOUND'));
+        if (tab) tab.click();
+      }
+      var reg = (window.LeksahTerm || {}).byId || {};
+      var fresh = ids().filter(function (id) { return before.indexOf(id) === -1; });
+      for (var i = 0; i < fresh.length; i++) {
+        var buf = reg[fresh[i]].buffer && reg[fresh[i]].buffer.active, txt = '';
+        for (var j = 0; buf && j < Math.min(buf.length, 60); j++) {
+          var l = buf.getLine(j);
+          if (l) txt += l.translateToString(true) + '\n';
+        }
+        if (/just a demo/.test(txt)) {
+          clearInterval(timer);
+          log('new terminal ' + fresh[i] + ' explains the demo: '
+              + JSON.stringify(txt.replace(/\s+/g, ' ').trim().slice(0, 100)));
+          done();
+          return;
+        }
+      }
+      if (Date.now() - t0 > 20000) {
+        clearInterval(timer);
+        log('NEWTERM TIMEOUT — new ids: ' + (fresh.join(',') || 'none')
+            + '; all: ' + ids().join(','));
+        done();
+      }
+    }, 500);
   }
 
   // The terminal must actually PAINT, not just hold a buffer: with xterm.css

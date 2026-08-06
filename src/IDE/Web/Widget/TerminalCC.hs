@@ -34,20 +34,30 @@
 -- bell.  Still to come: underlay holes.
 #if defined(ghcjs_HOST_OS)
 
--- Browser build: control-mode terminals need a tmux process; the tab renders
--- a plain notice instead.
+-- Browser build: there is no tmux, so no control client and no live pane
+-- layout to render — but the demo's leksah windows are exactly ONE canned
+-- session each ('listTerminalTree' synthesizes one window with one pane per
+-- entry of @window.leksahDemoTerminals@, and the reconcile wraps each in its
+-- own leksah window).  The split tree therefore collapses to a single pane,
+-- and that pane is what the classic widget already draws in the browser: an
+-- xterm seeded from the canned dump keyed by the session id
+-- ('IDE.Web.DemoTerminals').  So the leksah-window tab delegates to it,
+-- keeping the demo's terminals — links, hover and all — rather than a notice.
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   , sessionlessLwWidget
   ) where
 
-import qualified Data.Map.Strict as M
 import Data.Text (Text)
-import Reflex (Dynamic, Event, never)
+import Reflex (Dynamic, Event)
 import Reflex.Dom.Core (MonadWidget, el, text)
 import IDE.Core.State (IDE, TabKey)
 import IDE.Web.Events (TerminalEvents)
+import IDE.Web.Widget.Terminal (terminalWidget)
 
+-- | A leksah window with no backing session is pure native views (⌘D
+-- conversions of editor tabs) — the demo never makes one, as every window it
+-- has wraps a canned session.
 sessionlessLwWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE
@@ -58,25 +68,25 @@ sessionlessLwWidget
 sessionlessLwWidget _ _ _ _ =
     el "div" $ text "Not available in the browser demo."
 
+-- | The demo's single-pane stand-in for the control-mode window renderer:
+-- the session's canned dump, drawn by the classic terminal widget.
 terminalCCWidget
   :: forall t m . MonadWidget t m
   => Dynamic t IDE
-  -> Text
-  -> Text
+  -> Text                -- ^ leksah window id — unused: one window, one pane
+  -> Text                -- ^ session id, which is also the canned dump's key
   -> Event t ()
   -> (TabKey -> Event t () -> Dynamic t Bool -> m ())
   -> Dynamic t (Maybe (Text, Bool))
   -> (Text -> Bool -> m ())
   -> m (Event t TerminalEvents)
-terminalCCWidget _ _ _ _ _ _ _ = do
-    el "div" $ text "Terminals are not available in the browser demo."
-    return never
+terminalCCWidget ide _lwId sessionId selectedE _leafViewW _closeMenuD _renderCloseMenu =
+    terminalWidget ide sessionId selectedE
 
 #else
 module IDE.Web.Widget.TerminalCC
   ( terminalCCWidget
   , sessionlessLwWidget
-  , setFocusedLeaf
   ) where
 
 import Control.Concurrent (forkIO, killThread)
@@ -106,7 +116,7 @@ import Text.Read (readMaybe)
 import Reflex
        (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe,
         foldDyn, delay, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost,
-        never, newTriggerEvent, performEvent, performEvent_, sample, switchHold,
+        never, newTriggerEvent, performEvent, performEvent_, switchHold,
         tag, updated)
 import Reflex.Dom.Core
        (MonadWidget, blank, divClass, domEvent, dyn, dyn_, elAttr,
@@ -119,11 +129,12 @@ import Language.Javascript.JSaddle
 
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State
-       (IDE, TabKey, focusLog, leksahWindows, flipMru, FlipItem(..),
+       (IDE, TabKey, focusLog, leksahWindows,
         LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..),
         SplitTree, modifyIDE_, readIDE, reflectIDE)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.IDERefStore (getGlobalIDERef)
+import IDE.Web.WindowBridge (setFocusedLeaf)
 import IDE.Web.ReplTmux (tmuxSocket)
 import IDE.Web.SplitLayout
        (leafRects, LeafRect(..), treeDividers, NativeDivider(..), resizeNode,
@@ -1935,39 +1946,6 @@ modifyLeksahWindow :: Text -> (LeksahWindow -> LeksahWindow) -> IO ()
 modifyLeksahWindow i f = getGlobalIDERef >>= mapM_ (\ideR ->
     (`reflectIDE` ideR) $ modifyIDE_ $ over leksahWindows (M.adjust f i))
 
--- | Focus entered a native pane: record it as the leksah window's focused
--- pane (the target of ⌘+/⌘− and future splits) and, for a VIEW pane, float its
--- flipper entry.  Pre-checked so a no-op never bumps the resync version
--- (focusin fires on every click).
---
--- The 'FlipView' float is this function's job because a view pane has no other
--- recency signal: a tmux pane click publishes its pane id (@leksahPaneFocus@,
--- termActivityJs) and a tab click promotes through @lwTabFlipE@, but focus
--- landing in a browser \/ editor \/ git-log LEAF — by click, by ⌥-open, or from
--- a click inside a native browser view (@leksahBrowserActivate@) — only ever
--- reached 'lwFocused', so the pane took the active ring without moving to the
--- front of the flipper.
-setFocusedLeaf :: Text -> LeafId -> IO ()
-setFocusedLeaf i lid@(LeafId l) = getGlobalIDERef >>= mapM_ (\ideR ->
-    (`reflectIDE` ideR) $ do
-        lws <- readIDE leksahWindows
-        mru <- readIDE flipMru
-        let mlw       = M.lookup i lws
-            present   = maybe False ((lid `M.member`) . lwPanes) mlw
-            needFocus = fmap lwFocused mlw /= Just (Just lid)
-            isView    = case pcKind <$> (M.lookup lid . lwPanes =<< mlw) of
-                          Just PaneView{} -> True
-                          _               -> False
-            item      = FlipView i l
-            needFloat = isView && take 1 mru /= [item]
-        when (present && (needFocus || needFloat)) . modifyIDE_ $
-              (if needFocus
-                 then over leksahWindows
-                        (M.adjust (\lw -> lw { lwFocused = Just lid }) i)
-                 else id)
-            . (if needFloat
-                 then over flipMru ((item :) . filter (/= item))
-                 else id))
 
 -- | Uniform padding (CSS px) inset around every pane's terminal grid.  The
 -- whole cell grid is shifted right/down by this and shrunk by twice it (see

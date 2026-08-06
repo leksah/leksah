@@ -65,7 +65,10 @@ menuCss = do
     left (pct 100)
     top nil
     Clay.display Clay.none
-    backgroundImage (vGradient menuTopColor menuBottomColor)
+    -- Flat, for the reason spelled out in 'IDE.Web.Widget.Menubar': the Clay
+    -- gradient helper emits syntax browsers reject, leaving the flyout
+    -- see-through.
+    background menuTopColor
     borderRadius (px 5) (px 5) (px 5) (px 5)
     boxShadow (pure $ bsColor dropShadowColor $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
     zIndex 1001

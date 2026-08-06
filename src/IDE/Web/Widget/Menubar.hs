@@ -54,7 +54,11 @@ menubarCss = do
             top (pct 100)
             left nil
             zIndex 1000
-            backgroundImage (vGradient menuTopColor menuBottomColor)
+            -- Flat colour, like the context menu and the flipper: Clay's
+            -- 'vGradient' emits the legacy @linear-gradient(top, …)@ syntax,
+            -- which modern WebKit/Blink reject outright — and a dropped
+            -- background declaration on a popup means a SEE-THROUGH menu.
+            background menuTopColor
             borderRadius (px 5) (px 5) (px 5) (px 5)
             boxShadow (pure $ bsColor dropShadowColor $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
         -- The menubar's own li are laid out horizontally; dropdown items must
