@@ -152,8 +152,8 @@ import IDE.Pane.SourceBuffer
 import IDE.Utils.Files
        (cabalProjectBuildDir, cabalBuildDir, loadNixCache, saveNixCache,
         getConfigDir, nixShellFile, getConfigFilePathForLoad)
-import IDE.LogRef
-       (logIdleOutput, logOutputForBuild, logOutputForCargoBuild,
+import IDE.Diagnostics
+       (logOutputForBuild, logOutputForCargoBuild,
         logOutputDefault, logOutput)
 import Distribution.ModuleName (ModuleName)
 import Data.List

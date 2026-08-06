@@ -141,7 +141,7 @@ library leksah-nogtk
         IDE.Gtk.State
         IDE.Gtk.Types
         IDE.Gtk.Workspaces
-        IDE.LogRef
+        IDE.Diagnostics
         IDE.Package
         IDE.Pane.Log
         IDE.Pane.SourceBuffer

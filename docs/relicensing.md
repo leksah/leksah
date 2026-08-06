@@ -76,7 +76,7 @@ These are classic-only and `git mv` to `leksah-classic/`; no rewrite needed.
 | file | other authors (commits) | replaced in |
 |---|---|---|
 | `src/IDE/Preferences.hs` | Jacco Krijnen (29), Juergen (30), Stephan Fortelny (4), others | **done** — step B (2026-08-07): fresh `IDE.Settings` (flat `Prefs`, sectioned `~/.config/leksah/settings.json`, only non-default keys written); the `Prefs`/`PrefsFile`/`EditorStyle` blocks left `Core/Types` with it; 21 dead GTK-era fields (incl. the 10 unread highlight colours, vado, `.lkshp`) dropped |
-| `src/IDE/LogRef.hs` | Juergen (13), Stephan Fortelny (4), others | step D (`IDE.Diagnostics`) |
+| `src/IDE/LogRef.hs` | Juergen (13), Stephan Fortelny (4), others | **done** — step D (2026-08-07): fresh `IDE.Diagnostics` (GHC/stack/nix state machine re-expressed from the output formats; the cargo parser and remote-root span handling carried over from Hamish's recent work).  Dropped with it: elm support, doctest-failure parsing, ghci breakpoint/context sinks and the error-navigation half (the web UI navigates its own `allLogRefs`) |
 | `src/IDE/Package.hs` | Juergen (45), JP Moresmau (8), Stephan Fortelny (7), others | step E (project model) |
 | `src/IDE/Workspaces.hs` | Juergen (26), Stephan Fortelny (12), Jacco Krijnen (6), others | step E |
 | `src/IDE/Workspaces/Writer.hs` | Stephan Fortelny (1 — the 2011 module split; content originally Juergen's) | step E |
@@ -91,7 +91,7 @@ All done (step C, 2026-08-07).  What actually happened:
 | source | used surface | outcome |
 |---|---|---|
 | `ltk` `Control.Event` (Juergen + Hamish) | event bus (`registerEvent`, `EventSelector`) | **deleted, not replaced** — an audit found exactly one live listener (`QuitToRestart`); it became the tiny `IDE.Web.RestartRequest` bridge module and every other fire was dead classic-era code |
-| `leksah-server` `IDE.Core.CTypes` | `SrcSpan`/`Location` + package identifiers | fresh `IDE.Core.Location` (identifier helpers included; superseded by `IDE.Diagnostics` at step D) |
+| `leksah-server` `IDE.Core.CTypes` | `SrcSpan`/`Location` + package identifiers | fresh `IDE.Core.Location` (identifier helpers included; retires with the step-F core rewrite) |
 | `leksah-server` `IDE.Utils.FileUtils` / `Tool` / `Utils` | file + process utilities | fresh `IDE.Utils.Files` / `IDE.Utils.Process` (batch-only — the interactive-ghci half of `Tool` died with `IDE.Debug`; automatic doctest running and its plan-scoped `PackageDBs` machinery were dropped rather than rewritten) |
 | `leksah-server` `IDE.Utils.Project` | `ProjectKey` | **moved verbatim** — git history is Hamish-only, so the module was copied into the main package unchanged (`Show`/aeson encodings untouched); still to be superseded by the Stage-6 model |
 | `leksah-server` `IDE.Utils.CabalProject` / `GHCUtils` / `VersionUtils` | small cabal helpers | `cabalProjectBuildDir`/`findCabalProjectRoot` re-expressed fresh in `IDE.Utils.Files` (`CabalProject`'s header credits Juergen despite Hamish-only commits, so treated as foreign); `GHCUtils` promoted from the Hamish-authored ghcjs stub; `VersionUtils` had no remaining users |
@@ -112,7 +112,6 @@ This is the gate for the license flip; delete rows as stages land.
 
 | file | blocked on |
 |---|---|
-| `src/IDE/LogRef.hs` | `IDE.Diagnostics` (step D) |
 | `src/IDE/Package.hs` | project model (step E) |
 | `src/IDE/Workspaces.hs` | project model (step E) |
 | `src/IDE/Workspaces/Writer.hs` | project model (step E) |
