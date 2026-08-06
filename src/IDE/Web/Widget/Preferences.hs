@@ -137,12 +137,6 @@ preferencesWidget ide = do
         , b "Single build without linking" singleBuildWithoutLinking (\v p -> p { singleBuildWithoutLinking = v })
         , b "Don't install the last package" dontInstallLast (\v p -> p { dontInstallLast = v })
         ]
-    , section "Debug"
-        [ b "Enable Show instances in :print" printEvldWithShow (\v p -> p { printEvldWithShow = v })
-        , b "Break on any exception thrown" breakOnException (\v p -> p { breakOnException = v })
-        , b "Break on uncaught exceptions and errors" breakOnError (\v p -> p { breakOnError = v })
-        , b "Print binding results in GHCi" printBindResult (\v p -> p { printBindResult = v })
-        ]
     , section "Help"
         [ txt "Browser" browser (\v p -> p { browser = v })
         ]

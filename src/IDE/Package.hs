@@ -52,16 +52,6 @@ module IDE.Package (
 ,   addModuleToPackageDescr
 ,   delModuleFromPackageDescr
 
-,   debugStart
-,   printBindResultFlag
-,   breakOnErrorFlag
-,   breakOnExceptionFlag
-
-,   printEvldWithShowFlag
-,   tryDebug'
-,   tryDebugQuiet
-,   executeDebugCommand
-
 ,   idePackageFromPath'
 ,   ideProjectFromKey
 ,   writeGenericPackageDescription'
@@ -74,8 +64,6 @@ module IDE.Package (
 ,   projectFileArguments
 ,   exeToRun
 ,   printf
-,   interactiveFlags
-,   ghciFork
 ,   interruptSaveAndRun
 
 ) where
@@ -136,20 +124,19 @@ import IDE.Web.ReplTmux
         ensureCommandWindow, ensureRemoteWindow, openTerminalInDir)
 import qualified IDE.Core.State as State (runPackage)
 import IDE.Core.State
-       (packageDebugState, debugState, pjPackages, changePackage,
+       (pjPackages, changePackage,
         ipdPackageDir, PackageM, runProject, runWorkspace, debug,
-        autoCommand, isError, runningTool, nixEnv, useVado,
+        isError, runningTool, nixEnv, useVado,
         nixCache, modifyIDE_, pjDir, javaScript, ProjectAction,
         ipdPackageName, mkPackageMap, reflectIDEI,
-        runDebug, lookupDebugState, printBindResult, breakOnError,
-        breakOnException, printEvldWithShow, sysMessage, getDataDir,
+        sysMessage, getDataDir,
         catchIDE, MessageLevel(..), ideMessage, activeComponent,
-        activeProject, wsName, workspace, activePack, readIDE, DebugAction,
+        activeProject, wsName, workspace, activePack, readIDE,
         Prefs, PackageAction, IDEM, IDEAction, IDEPackage(..), Project(..),
         MonadIDE, __, prefs, saveAllBeforeBuild, triggerBuild, native,
         packageIdentifierToString, leksahTemplateFileExtension,
         leksahFlagFileExtension, Log(..),
-        MonadIDE(..), DebugState(..),
+        MonadIDE(..),
         ProjectKey(..), autoURI, pDBsPaths, errorRefs, reflectIDE,
         StackProject(..), CabalProject(..), pjKey, pjIsCabal, pjIsStack,
         pjFileOrDir, CustomProject(..), ProjectSettings(..),
@@ -172,10 +159,7 @@ import IDE.LogRef
 import Distribution.ModuleName (ModuleName)
 import Data.List
        (intercalate, nub, nubBy, delete, dropWhileEnd)
-import IDE.Utils.Tool
-       (toolProcess, ToolOutput(..), newGhci, ToolState(..),
-        ProcessHandle, executeGhciCommand, interruptTool,
-        isToolPrompt)
+import IDE.Utils.Tool (ToolOutput(..), ProcessHandle)
 import IDE.Pane.WebKit.Documentation
        (showDocumentationPane, loadDoc, reloadDoc)
 import IDE.Pane.WebKit.Output
@@ -727,65 +711,11 @@ buildPackage backgroundBuild jumpToWarnings withoutLinking (project, packages) c
             when (saveAllBeforeBuild prefs') . void $ fileSaveAll belongsToWorkspace'
             doBuild
   where
-    doBuild = catchIDE (reloadDebug False packages)
+    doBuild = catchIDE compile'
         (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
-    reloadDebug _ [] = do
+    compile' = do
         prefs' <- readIDE prefs
-        let compile' = compile [GHC | native prefs' || (javaScript prefs' && pjIsCabal (pjKey project))]
-        compile'
-    reloadDebug restart (package:rest) = do
-        ideR  <- liftIDE ask
-        lookupDebugState (pjKey project, ipdCabalFile package) >>= \case
-            Just debug | restart ->
-                (`runDebug` debug) . executeDebugCommand ":quit" $ do
-                    logOutputDefault
-                    lift $ reloadDebug restart (package:rest)
-            Just debug@DebugState{..} -> do
-                proc <- liftIO $ toolProcess dsToolState
-                reloadComplete <- liftIO $ newMVar ReloadRunning
-                let interruptReload =
-                        void . modifyMVar_ reloadComplete $ \case
-                            ReloadComplete -> return ReloadComplete
-                            ReloadInterrupting -> do
-                                interruptTool dsToolState
-                                return ReloadInterrupting
-                            ReloadRunning -> do
-                                interruptTool dsToolState
-                                _ <- forkIO $ do
-                                    threadDelay 5000000
-                                    void . modifyMVar_ reloadComplete $ \case
-                                        ReloadComplete -> return ReloadComplete
-                                        _ -> (`reflectIDE` ideR) $ do
-                                            stillRunning <- liftIO $ isNothing <$> getProcessExitCode proc
-                                            when stillRunning $ do
-                                                ideMessage High (__ "Interrupting :reload took too long. Terminating ghci.")
-                                                liftIO $ killProcess proc
-                                            return ReloadComplete
-                                return ReloadInterrupting
-                modifyIDE_ $ runningTool ?~ (proc, interruptReload)
-                (`runDebug` debug) . executeDebugCommand ":reload" $ do
-                    (lastOutput, errs) <- C.getZipSink $ (,)
-                        <$> C.ZipSink sinkLast
-                        <*> C.ZipSink (logOutputForBuild project (LogProject dsBasePath) backgroundBuild jumpToWarnings)
-                    -- If the tool has exited we should not clear the runningTool.  The isRunning function will
-                    -- already be returning False and the next process may have already srtarted.
-                    case lastOutput of
-                        Just (ToolExit _) -> return ()
-                        _ -> lift $ modifyIDE_ $ runningTool .~ Nothing
-                    lift . postAsyncIDE $ do
-                        liftIO $ debugM "leksah" "Reload done"
-                        wasInterrupted <- liftIO . modifyMVar reloadComplete $ \s ->
-                            return (ReloadComplete, s /= ReloadRunning)
-                        unless (any isError errs || wasInterrupted || not (maybe False isToolPrompt lastOutput)) $ do
-                            readIDE autoCommand >>= mapM_ (\(autoPack, cmd) ->
-                                when (autoPack == (pjKey project, ipdCabalFile package)) cmd)
-                            reloadDebug True $ filter (\p -> ipdCabalFile p `notElem` map ipdCabalFile dsPackages) rest
-            -- No debug session for this package: don't auto-start leksah's
-            -- internal ghci for builds any more.  With ghci mode on, the
-            -- compile step (ffcabal) does the cached-repl checking — in tmux,
-            -- where the user can reach the sessions.  Explicitly started
-            -- debug sessions (above) still :reload for the debugger.
-            Nothing -> reloadDebug True rest
+        compile [GHC | native prefs' || (javaScript prefs' && pjIsCabal (pjKey project))]
     compile :: [CompilerFlavor] -> IDEAction
     compile [] = continuation True
     compile (compiler:compilers) =
@@ -962,8 +892,7 @@ packageRun' removeGhcjsFlagIfPresent = do
                 logName' = fromMaybe defaultLogName . listToMaybe $ map (T.pack . unUnqualComponentName . exeName) exe
             (logLaunch,logName) <- buildLogLaunchByName logName'
             showLog
-            lookupDebugState (pjKey project, ipdCabalFile package) >>= \case
-                Nothing -> do
+            do
                     let dir = ipdPackageDir package
                     case pjKey project of
                         StackTool {} -> IDE.Package.runPackage (addLogLaunchData logName logLaunch)
@@ -1001,17 +930,7 @@ packageRun' removeGhcjsFlagIfPresent = do
                             return ()
                         _ -> do
                             ideMessage High "Unable to run package in this project type"
-                            return ()
-                Just debug ->
-                    -- TODO check debug package matches active package
-                    runDebug (do
-                        case exe of
-                            [Executable {exeName = _name, modulePath = mainFilePath}] ->
-                                executeDebugCommand (":module *" <> T.pack (map (\c -> if c == '/' then '.' else c) (takeWhile (/= '.') (mainPath mainFilePath))))
-                                                    (logOutput logLaunch)
-                            _ -> return ()
-                        executeDebugCommand (":main " <> T.unwords (ipdExeFlags package)) (logOutput logLaunch))
-                        debug)
+                            return ())
             (\(e :: SomeException) -> ideMessage High (T.pack $ show e))
 
 -- | Is the given executable the active one?
@@ -1398,120 +1317,6 @@ isExposedModule :: ModuleName -> Maybe (CondTreeCV Library)  -> Bool
 isExposedModule _ Nothing                              = False
 isExposedModule mn (Just CondNode{condTreeData = lib}) = mn `elem` exposedModules lib
 
--- ---------------------------------------------------------------------
--- | * Debug code that needs to use the package
---
-
-interactiveFlag :: Text -> Bool -> Text
-interactiveFlag name f = (if f then "-f" else "-fno-") <> name
-
-printEvldWithShowFlag :: Bool -> Text
-printEvldWithShowFlag = interactiveFlag "print-evld-with-show"
-
-breakOnExceptionFlag :: Bool -> Text
-breakOnExceptionFlag = interactiveFlag "break-on-exception"
-
-breakOnErrorFlag :: Bool -> Text
-breakOnErrorFlag = interactiveFlag "break-on-error"
-
-printBindResultFlag :: Bool -> Text
-printBindResultFlag = interactiveFlag "print-bind-result"
-
-interactiveFlags :: Prefs -> [Text]
-interactiveFlags prefs' =
-    printEvldWithShowFlag (printEvldWithShow prefs')
-  : breakOnExceptionFlag (breakOnException prefs')
-  : breakOnErrorFlag (breakOnError prefs')
-  : [printBindResultFlag $ printBindResult prefs']
-
-debugStart :: PackageAction -> PackageAction
-debugStart continue = do
-    liftIO $ debugM "leksah" "debugStart"
-    project <- lift ask
-    package <- ask
-    let projectAndPackage = (pjKey project, ipdCabalFile package)
-    -- newGhci would createProcess with an ssh:// cwd; remote debug sessions
-    -- (ghci over ssh with a custom interrupt) are a planned follow-up.
-    if isRemotePath (pjDir (pjKey project))
-      then ideMessage Normal (__ "Debugging is not yet supported for remote projects")
-      else liftIDE $ catchIDE (do
-        ideRef     <- ask
-        prefs'     <- readIDE prefs
-        lookupDebugState projectAndPackage >>= \case
-            Nothing -> do
-                let obeliskPackageFiles = map (\s -> pjDir (pjKey project) </> s </> s <> ".cabal") ["common", "backend", "frontend"]
-                    obeliskPackages = filter (\p -> ipdCabalFile p `elem` obeliskPackageFiles) $ pjPackages project
-                isObelisk <- (&& (ipdCabalFile package `elem` obeliskPackageFiles)) <$>
-                    liftIO (doesDirectoryExist (pjDir (pjKey project) </> ".obelisk"))
-                let debugPackages = if isObelisk then obeliskPackages else [package]
-                    basePath = if isObelisk then pjDir (pjKey project) else ipdPackageDir package
-                mbActiveComponent <- getActiveComponent project package
-                let dir  = ipdPackageDir  package
-                    name = ipdPackageName package
-                pjFileArgs <- projectFileArguments project dir
-                liftIO $ debugM "leksah" "debugStart withToolCommand"
-                withToolCommand project GHC (
-                        case pjKey project of
-                            _ | isObelisk -> Just ("ob", ["repl"])
-                            CabalTool {} -> Just ("cabal", [ "new-repl" ]
-                                                <> pjFileArgs
-                                                <> [ fromMaybe (name <> ":lib:" <> name) mbActiveComponent | ipdHasLib package || isJust mbActiveComponent ]
-                                                <> ipdBuildFlags package)
-                            StackTool {} -> Just ("stack", [ "repl" ]
-                                                <> pjFileArgs
-                                                <> [ name <> maybe ":lib" (":" <>) mbActiveComponent ])
-                            _ -> Nothing) $ \(tool, args, nixEnv') -> do
-                    let logOut = reflectIDEI (void (logOutputForBuild project (LogProject basePath) True False)) ideRef
-                        logIdle = reflectIDEI (C.getZipSink $ const <$> C.ZipSink (logIdleOutput project package) <*> C.ZipSink logOutputDefault) ideRef
-                    ghci <- liftIO $ (if isObelisk then newGhci tool args (pjDir $ pjKey project) Nothing else newGhci tool args dir nixEnv') ("+c":"-ferror-spans":interactiveFlags prefs') logOut logIdle
-                    liftIO $ do
-                        executeGhciCommand ghci ghciFork logOut
-                        executeGhciCommand ghci ":reload" logOut
-                    modifyIDE_ $ debugState %~ (DebugState (pjKey project) debugPackages basePath ghci :)
-                    -- Fork a thread to wait for the output from the process to close
-                    _ <- liftIO $ forkIO $ do
-                        _ <- readMVar (outputClosed ghci)
-                        (`reflectIDE` ideRef) . postSyncIDE $
-                            forM_ debugPackages $ \_package -> do
-                                modifyIDE_ $ debugState %~ filter ((/= toolProcessMVar ghci) . toolProcessMVar . dsToolState)
-                                return ()
-                    readIDE workspace >>= mapM_ (runWorkspace $ runProject (State.runPackage continue package) project)
-            _ -> do
-                sysMessage Normal (__ "Debugger already running")
-                readIDE workspace >>= mapM_ (runWorkspace $ runProject (State.runPackage continue package) project))
-            (\(e :: SomeException) -> ideMessage High . T.pack $ show e)
-
-tryDebug' :: PackageM Bool -> DebugAction -> PackageAction
-tryDebug' promptUser f = do
-    prefs' <- readIDE prefs
-    packageDebugState >>= \case
-        Just d -> liftIDE $ runDebug f d
-        _ | debug prefs' ->
-                debugStart $
-                    packageDebugState >>=
-                        mapM_ (liftIDE . postAsyncIDE . runDebug f)
-          | otherwise ->
-            promptUser >>= \case
-                True ->
-                    debugStart $
-                        packageDebugState >>=
-                            mapM_ (liftIDE . postAsyncIDE . runDebug f)
-                False  -> return ()
-
-tryDebugQuiet :: DebugAction -> PackageAction
-tryDebugQuiet f = do
-    project <- lift ask
-    package <- ask
-    lookupDebugState (pjKey project, ipdCabalFile package) >>=
-        mapM_ (liftIDE . runDebug f)
-
-executeDebugCommand :: Text -> ConduitT ToolOutput Void IDEM () -> DebugAction
-executeDebugCommand command handler = do
-    DebugState{dsToolState = ghci} <- ask
-    lift $ do
-        ideR <- ask
-        liftIO . executeGhciCommand ghci command $
-            reflectIDEI handler ideR
 
 -- Includes non buildable
 allBuildInfo' :: PackageDescription -> [BuildInfo]
@@ -1720,41 +1525,3 @@ ideProjectFromKey key = do
 --                postAsyncIDE $ ideMessage Normal (__ "Can't read package file")
 --                return Nothing
 
-ghciFork :: Text
-ghciFork = T.unlines
-  [ ":def! fork (\\s ->"
-  , "  let (slot, code) = Data.List.span (\\c -> case c of"
-  , "          '_' -> Data.Bool.True"
-  , "          ' ' -> Data.Bool.False"
-  , "          '\\n' -> Data.Bool.False"
-  , "          _ -> if Data.Char.isAlphaNum c"
-  , "                  then Data.Bool.True"
-  , "                  else GHC.Base.error \" Slot name must contain alpha, numbers and '_' only. Usage :fork slotName putStrLn \\\" Hello World\\\"\") s"
-  , "  in Control.Monad.return (Data.String.unlines"
-  , "    [\" :{\" "
-  , "    ,\" System.Environment.lookupEnv \\\" GHCI_FORK_\"  Data.Monoid.<> slot Data.Monoid.<> \" \\\"  Control.Monad.>>=\" "
-  , "    ,\" (\\\\s ->\" "
-  , "    ,\"   ( case s Control.Monad.>>= Text.Read.readMaybe of\" "
-  , "    ,\"       Just n ->\" "
-  , "    ,\"         let sPtr = Foreign.StablePtr.castPtrToStablePtr (Foreign.Ptr.wordPtrToPtr n)\" "
-  , "    ,\"         in  Foreign.StablePtr.deRefStablePtr sPtr Control.Monad.>>=\" "
-  , "    ,\"             (\\\\(t, running) -> Control.Concurrent.killThread t Control.Monad.>>\" "
-  , "    ,\"             Foreign.StablePtr.freeStablePtr sPtr Control.Monad.>>\" "
-  , "    ,\"             Control.Monad.return running)\" "
-  , "    ,\"       Data.Maybe.Nothing -> Control.Concurrent.newEmptyMVar\" "
-  , "    ,\"   ) Control.Monad.>>=\" "
-  , "    ,\" (\\\\running -> Control.Concurrent.newEmptyMVar Control.Monad.>>=\" "
-  , "    ,\" (\\\\sPtrSet -> Control.Concurrent.forkFinally\" "
-  , "    ,\"   ( Control.Concurrent.takeMVar sPtrSet Control.Monad.>>\" "
-  , "    ,\"     Control.Concurrent.putMVar running () Control.Monad.>>\" "
-  , "    ,\"     (\" "
-  , "    ,     Data.List.drop 1 code"
-  , "    ,\"     )\" "
-  , "    ,\"   ) (\\\\_ -> Control.Concurrent.takeMVar running) Control.Monad.>>=\" "
-  , "    ,\" (\\\\t -> Foreign.StablePtr.newStablePtr (t, running) Control.Monad.>>=\" "
-  , "    ,\" (\\\\sPtr -> System.Environment.setEnv \\\" GHCI_FORK_\"  Data.Monoid.<> slot Data.Monoid.<> \" \\\"  (GHC.Show.show\" "
-  , "    ,\"   (Foreign.Ptr.ptrToWordPtr (Foreign.StablePtr.castStablePtrToPtr sPtr))) Control.Monad.>>\" "
-  , "    ,\" Control.Concurrent.putMVar sPtrSet ())))))\" "
-  , "    ,\" :}\" "
-  , "    ]))"
-  ]

@@ -50,7 +50,6 @@ data Command =
   | CommandWorkspaceAction Text Text WorkspaceAction
   | CommandProjectAction Text Text ProjectAction
   | CommandPackageAction Text Text PackageAction
-  | CommandDebugAction Text Text IDEAction
   | CommandFileOpen
   | CommandProjectOpen
   | CommandProjectOpenFolder
@@ -84,7 +83,6 @@ commandAction = to $ \case
   (CommandWorkspaceAction _ _ a)   -> Just (workspaceTry a)
   (CommandProjectAction   _ _ a)   -> Just (projectTry a)
   (CommandPackageAction   _ _ a)   -> Just (packageTry a)
-  (CommandDebugAction     _ _ a)   -> Just a
   _ -> Nothing
 
 commandImageAndTip :: Command -> (Text, Text)
@@ -93,7 +91,6 @@ commandImageAndTip (CommandIDEToggleAction img tip _ _) = (img, tip)
 commandImageAndTip (CommandWorkspaceAction img tip _) = (img, tip)
 commandImageAndTip (CommandProjectAction img tip _) = (img, tip)
 commandImageAndTip (CommandPackageAction img tip _) = (img, tip)
-commandImageAndTip (CommandDebugAction img tip _) = (img, tip)
 commandImageAndTip CommandFileOpen = ("/pics/file-open.svg", __ "Opens an existing file")
 commandImageAndTip CommandFileSave = ("/pics/file-save.svg", __ "Saves the current buffer")
 commandImageAndTip CommandFind = ("/pics/find.svg", __ "Show or hide the find bar")

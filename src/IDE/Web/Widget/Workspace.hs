@@ -81,10 +81,10 @@ import IDE.Web.Theme
         btnTopColor, btnBottomColor, btnHoverTopColor, btnHoverBottomColor)
 import IDE.Core.CTypes (packageIdentifierToString)
 import IDE.Core.State
-       (DebugState(..), activeComponent, ipdPackageDir,
+       (activeComponent, ipdPackageDir,
         ipdLib, pjDir, IDEPackage(..), runPackage, runProject,
         pjPackages, Project(..), workspace, wsProjects, IDE,
-        activeProject, activePack, debugState, pjFile, pjFileOrDir,
+        activeProject, activePack, pjFile, pjFileOrDir,
         ProjectKey(..), pjCabalFile, prefs, showHiddenFiles, showIgnoredFiles)
 import IDE.Gtk.Package (packageRun)
 import IDE.Gtk.Workspaces (makePackage)
@@ -1258,8 +1258,6 @@ workspaceWidget
                                   --   Nothing when an occurrence is already shown
   -> m (Event t ProjectEvents)
 workspaceWidget ide activeFileD revealFileD = do
-  debugPackagesD <- holdUniqDyn $ S.fromList .
-      (>>= (\DebugState{..} -> map ((dsProjectKey,) . ipdCabalFile) dsPackages)) . view debugState <$> ide
   showHiddenD  <- holdUniqDyn $ view (prefs . to showHiddenFiles)  <$> ide
   showIgnoredD <- holdUniqDyn $ view (prefs . to showIgnoredFiles) <$> ide
   divClass "workspace leksah-nav" $
@@ -1429,8 +1427,7 @@ workspaceWidget ide activeFileD revealFileD = do
                       ]
                       <> [ pkgClaude "New Claude Session" ClaudeNew STClaudeNew | claudeAvail ]
                       <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue STClaudeContinue | claudeAvail ]) $ do
-                    let isDebugD = S.member . (pKey,) <$> cabalFileD <*> debugPackagesD
-                    elDynAttr "img" (("class" =: "tree-icon" <>) . ("src" =:) . (\f -> "/pics/tree-" <> f <> ".svg") . bool "package" "debug" <$> isDebugD) $ return ()
+                    elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-package.svg") $ return ()
                     -- The package's cabal-file path (relative to the project)
                     -- is a tooltip, not an inline label — it was crowding the
                     -- row.

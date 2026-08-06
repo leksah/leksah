@@ -862,7 +862,6 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             ,   _recentFiles       =   []
             ,   _recentWorkspaces  =   []
             ,   _runningTool       =   Nothing
-            ,   _debugState        =   []
             ,   _hlintQueue        =   Nothing
             ,   _logLaunches       =   mempty
             ,   _autoCommand       =   Nothing

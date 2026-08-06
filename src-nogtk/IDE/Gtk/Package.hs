@@ -2,10 +2,9 @@ module IDE.Gtk.Package where
 
 import Control.Lens ((%~))
 import IDE.Core.State
-       (modifyIDE_, prefs, Prefs(..), IDEAction, PackageAction, DebugAction)
+       (modifyIDE_, prefs, Prefs(..), IDEAction, PackageAction)
 import IDE.Package
-       (packageRunJavaScript', packageRun', interruptSaveAndRun,
-        tryDebug')
+       (packageRunJavaScript', packageRun', interruptSaveAndRun)
 
 packageRun :: PackageAction
 packageRun = interruptSaveAndRun $ packageRun' $ Just $
@@ -14,9 +13,6 @@ packageRun = interruptSaveAndRun $ packageRun' $ Just $
 packageRunJavaScript :: PackageAction
 packageRunJavaScript = interruptSaveAndRun $ packageRunJavaScript' $ Just $
     return False
-
-tryDebug :: DebugAction -> PackageAction
-tryDebug = tryDebug' (return False)
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled =

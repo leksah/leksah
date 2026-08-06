@@ -30,7 +30,6 @@
 module IDE.Core.Types (
     IDE(..)
 ,   IDEGtk
-,   DebugState(..)
 ,   activeProject
 ,   activePack
 ,   activeComponent
@@ -57,9 +56,6 @@ module IDE.Core.Types (
 ,   PackageAction
 ,   runPackage
 
-,   DebugM
-,   DebugAction
-,   runDebug
 
 ,   IDEPackage(..)
 ,   mkPackageMap
@@ -159,7 +155,6 @@ module IDE.Core.Types (
 ,   recentFiles
 ,   recentWorkspaces
 ,   runningTool
-,   debugState
 ,   hlintQueue
 ,   logLaunches
 ,   autoCommand
@@ -222,7 +217,7 @@ import IDE.Utils.RemotePath
 import Control.Concurrent (MVar)
 import Distribution.ModuleName (ModuleName)
 import Distribution.Simple (Extension(..))
-import IDE.Utils.Tool (ToolState(..), ProcessHandle)
+import IDE.Utils.Tool (ProcessHandle)
 import Data.IORef (IORef)
 import Numeric (showHex)
 import System.FilePath
@@ -297,7 +292,6 @@ data IDE            =  IDE {
 ,   _recentFiles         :: [FilePath]
 ,   _recentWorkspaces    :: [FilePath]
 ,   _runningTool         :: Maybe (ProcessHandle, IO ())
-,   _debugState          :: [DebugState]
 ,   _hlintQueue          :: Maybe (TVar [Either FilePath FilePath])
 ,   _logLaunches         :: Map.Map Text LogLaunchData
 ,   _autoCommand         :: Maybe ((ProjectKey, FilePath), IDEAction)
@@ -356,13 +350,6 @@ data IDE            =  IDE {
                                                     --   'ideD' when the cross-window trigger fan-out
                                                     --   drops a fire to a background window
 } -- deriving Show
-
-data DebugState = DebugState
-    { dsProjectKey  :: ProjectKey
-    , dsPackages    :: [IDEPackage]
-    , dsBasePath    :: FilePath
-    , dsToolState   :: ToolState
-    }
 
 --
 -- | A mutable reference to the IDE state
@@ -441,14 +428,6 @@ runPackage :: PackageM a -> IDEPackage -> ProjectM a
 runPackage = runReaderT
 
 -- ---------------------------------------------------------------------
--- Monad for functions that need to use the GHCi debugger
---
-type DebugM = ReaderT DebugState IDEM
-type DebugAction = DebugM ()
-
-runDebug :: DebugM a -> DebugState -> IDEM a
-runDebug = runReaderT
-
 -- ---------------------------------------------------------------------
 -- Events which can be signalled and handled
 --
@@ -816,10 +795,6 @@ data Prefs = Prefs {
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
     ,   dontInstallLast     ::   Bool
-    ,   printEvldWithShow   ::   Bool
-    ,   breakOnException    ::   Bool
-    ,   breakOnError        ::   Bool
-    ,   printBindResult     ::   Bool
     ,   showHiddenFiles     ::   Bool
     ,   showIgnoredFiles    ::   Bool
     ,   tallVisibility      ::   TallVisibility
@@ -926,10 +901,6 @@ data PrefsFile = PrefsFile {
   , makeMode_            :: Maybe Bool
   , singleBuildWithoutLinking_ :: Maybe Bool
   , dontInstallLast_     :: Maybe Bool
-  , printEvldWithShow_   :: Maybe Bool
-  , breakOnException_    :: Maybe Bool
-  , breakOnError_        :: Maybe Bool
-  , printBindResult_     :: Maybe Bool
   , showHiddenFiles_     :: Maybe Bool
   , showIgnoredFiles_    :: Maybe Bool
   , showWorkspaceIcons_  :: Maybe Bool

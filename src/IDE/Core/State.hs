@@ -35,8 +35,6 @@ module IDE.Core.State (
 ,   setCurrentError
 ,   setCurrentBreak
 ,   setCurrentContext
-,   lookupDebugState
-,   isInterpreting
 
 
 -- * Convenience methods for accesing the IDE State
@@ -51,7 +49,6 @@ module IDE.Core.State (
 ,   withIDE
 ,   getIDE
 ,   throwIDE
-,   packageDebugState
 
 ,   reifyIDE
 ,   reflectIDE
@@ -99,7 +96,7 @@ import Control.Exception (Exception, throw, catch, SomeException)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import IDE.Core.Types as Reexported
 import System.IO
-import Data.Maybe (listToMaybe, isJust)
+import Data.Maybe (isJust)
 import System.FilePath
        (takeExtension, takeDirectory, (</>), takeFileName)
 import IDE.Core.CTypes as Reexported
@@ -203,13 +200,6 @@ setCurrentError, setCurrentBreak, setCurrentContext :: MonadIDE m => Maybe LogRe
 setCurrentError e = modifyIDE_ $ currentError .~ e
 setCurrentBreak b = modifyIDE_ $ currentBreak .~ b
 setCurrentContext c = modifyIDE_ $ currentContext .~ c
-
-lookupDebugState :: MonadIDE m => (ProjectKey, FilePath) -> m (Maybe DebugState)
-lookupDebugState (project, package) =
-    listToMaybe . filter (\DebugState{..} -> dsProjectKey == project && any ((== package) . ipdCabalFile) dsPackages) <$> readIDE debugState
-
-isInterpreting :: MonadIDE m => (ProjectKey, FilePath) -> m Bool
-isInterpreting = fmap isJust . lookupDebugState
 
 --
 -- | A reader monad for a mutable reference to the IDE state
@@ -367,13 +357,6 @@ withIDE f = do
 
 getIDE :: MonadIDE m => m IDE
 getIDE = liftIDE ask >>= (fmap snd . liftIO . readMVar)
-
-packageDebugState :: PackageM (Maybe DebugState)
-packageDebugState = do
-    project <- lift ask
-    package <- ask
-    lookupDebugState (pjKey project, ipdCabalFile package)
-
 
 -- | Replaces an 'IDEPackage' in the workspace by the given 'IDEPackage' and
 -- replaces the current package if it matches.
