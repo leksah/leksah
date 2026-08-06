@@ -103,6 +103,15 @@ library leksah-nogtk
         IDE.Utils.DebugUtils
         IDE.Utils.ExitImmediately
         IDE.Utils.GHCUtils
+        IDE.Ws.Cabal
+        IDE.Ws.Cargo
+        IDE.Ws.Dir
+        IDE.Ws.File
+        IDE.Ws.Make
+        IDE.Ws.NixFlake
+        IDE.Ws.Registry
+        IDE.Ws.Stack
+        IDE.Ws.Types
         IDE.Git
         IDE.Utils.RemoteExec
         IDE.Utils.RemotePath
