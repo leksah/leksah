@@ -66,7 +66,9 @@ import Data.Typeable (Typeable)
 import Data.Void (Void)
 
 import Distribution.Compiler (CompilerFlavor(..)
-#if MIN_VERSION_Cabal(3,0,0)
+#if MIN_VERSION_Cabal(3,0,0) && !MIN_VERSION_Cabal(3,17,0)
+-- Cabal 3.17 (stable-haskell fork) flattened per-compiler options to [String]
+-- and dropped PerCompilerFlavor (and with it the GHCJS arm).
        , PerCompilerFlavor(..)
 #endif
         )
@@ -96,7 +98,16 @@ import Distribution.Types.UnqualComponentName
        (UnqualComponentName, mkUnqualComponentName,
         unUnqualComponentName)
 import Distribution.Utils.ShortText (toShortText, fromShortText)
-import Distribution.Verbosity
+-- Only 'normal' (+ the 3.17 constructor helpers): the open import clashes
+-- with IDE.Core.State's MessageLevel constructors now that Cabal 3.17 exports
+-- Verbosity's constructors.
+#if MIN_VERSION_Cabal(3,17,0)
+-- (ExtraSourcePkg / extraSourceFile come via the open
+-- Distribution.PackageDescription import below.)
+import Distribution.Verbosity (normal, mkVerbosity, defaultVerbosityHandles)
+#else
+import Distribution.Verbosity (normal)
+#endif
 import Distribution.Version
        (versionNumbers, mkVersion, orLaterVersion)
 
@@ -211,7 +222,9 @@ toGenericPackageDescription pd =
     buildCondTreeLibrary lib =
         CondNode {
             condTreeData = lib { libBuildInfo = (libBuildInfo lib) { targetBuildDepends = allBuildDepends pd } },
+#if !MIN_VERSION_Cabal(3,17,0)
             condTreeConstraints = [],
+#endif
             condTreeComponents = []}
     buildCondTreeExe exe =
         (exeName exe, CondNode {
@@ -221,22 +234,30 @@ toGenericPackageDescription pd =
                 exeScope = ExecutablePublic,
 #endif
                 buildInfo = (buildInfo exe) { targetBuildDepends = allBuildDepends pd } },
+#if !MIN_VERSION_Cabal(3,17,0)
             condTreeConstraints = [],
+#endif
             condTreeComponents = []})
     buildCondTreeTest test =
         (testName test, CondNode {
             condTreeData = test { testBuildInfo = (testBuildInfo test) { targetBuildDepends = allBuildDepends pd } },
+#if !MIN_VERSION_Cabal(3,17,0)
             condTreeConstraints = [],
+#endif
             condTreeComponents = []})
     buildCondTreeBenchmark bm =
         (benchmarkName bm, CondNode {
             condTreeData = bm { benchmarkBuildInfo = (benchmarkBuildInfo bm) { targetBuildDepends = allBuildDepends pd } },
+#if !MIN_VERSION_Cabal(3,17,0)
             condTreeConstraints = [],
+#endif
             condTreeComponents = []})
     buildCondTreeForeignLib fl =
         (foreignLibName fl, CondNode {
             condTreeData = fl { foreignLibBuildInfo = (foreignLibBuildInfo fl) { targetBuildDepends = allBuildDepends pd } },
+#if !MIN_VERSION_Cabal(3,17,0)
             condTreeConstraints = [],
+#endif
             condTreeComponents = []})
 #if MIN_VERSION_Cabal(3,0,0)
     buildCondTreeSubLibraries Library{libName = LMainLibName} = []
@@ -247,7 +268,9 @@ toGenericPackageDescription pd =
 #endif
         (ln, CondNode {
             condTreeData = sl { libBuildInfo = (libBuildInfo sl) { targetBuildDepends = allBuildDepends pd } },
+#if !MIN_VERSION_Cabal(3,17,0)
             condTreeConstraints = [],
+#endif
             condTreeComponents = []})]
 
 -- ---------------------------------------------------------------------
@@ -268,7 +291,7 @@ packageEdit = do
     liftIDE $ do
         let dirName = ipdPackageDir idePackage
         modules <- liftIO $ allModules dirName
-        package <- liftIO $ readGPD normal (ipdCabalFile idePackage)
+        package <- liftIO $ readGPD normalV (ipdCabalFile idePackage)
         if hasConfigs package
             then do
                 liftIDE $ ideMessage High
@@ -465,7 +488,9 @@ packageNew' workspaceDir projects log' activateAction = do
                               , buildInfo  = emptyBuildInfo {
                                     hsSourceDirs       = [unsafeMakeSymbolicPath "src"]
                                   , targetBuildDepends = [mkDependency (mkPackageName "base") anyVersion (S.singleton LMainLibName)]
-#if MIN_VERSION_Cabal(3,0,0)
+#if MIN_VERSION_Cabal(3,17,0)
+                                  , options            = ["-ferror-spans"]
+#elif MIN_VERSION_Cabal(3,0,0)
                                   , options            = PerCompilerFlavor ["-ferror-spans"] []
 #else
                                   , options            = [(GHC, ["-ferror-spans"])]
@@ -480,7 +505,9 @@ packageNew' workspaceDir projects log' activateAction = do
                                             mkDependency (mkPackageName "base") anyVersion (S.singleton LMainLibName)
                                           , mkDependency (mkPackageName "QuickCheck") anyVersion (S.singleton LMainLibName)
                                           , mkDependency (mkPackageName "doctest") anyVersion (S.singleton LMainLibName)]
-#if MIN_VERSION_Cabal(3,0,0)
+#if MIN_VERSION_Cabal(3,17,0)
+                                      , options            = ["-ferror-spans"]
+#elif MIN_VERSION_Cabal(3,0,0)
                                       , options            = PerCompilerFlavor ["-ferror-spans"] []
 #else
                                       , options            = [(GHC, ["-ferror-spans"])]
@@ -630,6 +657,14 @@ data PackageDescriptionEd = PDE {
 
 -- Cabal 3.14 made exe main-is / data-files RelativePaths and added a
 -- working-directory argument to readGenericPackageDescription.
+-- Cabal 3.17 (stable-haskell fork) split Verbosity: 'normal' is now
+-- VerbosityFlags and readGenericPackageDescription wants a full Verbosity.
+#if MIN_VERSION_Cabal(3,17,0)
+normalV = mkVerbosity defaultVerbosityHandles normal
+#else
+normalV = normal
+#endif
+
 #if MIN_VERSION_Cabal(3,14,0)
 readGPD v f = readGenericPackageDescription v Nothing (makeSymbolicPath f)
 toRelPath x = makeRelativePathEx x
@@ -1147,7 +1182,7 @@ update bis index func =
                         else bi)
         (zip bis [0..length bis - 1])
 
-#if MIN_VERSION_Cabal(3,0,0)
+#if MIN_VERSION_Cabal(3,0,0) && !MIN_VERSION_Cabal(3,17,0)
 perGhc, perGhcjs :: PerCompilerFlavor a -> a
 perGhc (PerCompilerFlavor ghc _) = ghc
 perGhcjs (PerCompilerFlavor _ ghcjs) = ghcjs
@@ -1188,7 +1223,26 @@ buildInfoD fp modules i = [
             (modulesEditor modules)
     ]),
     (T.pack $ printf (__ "%s Compiler ") (show (i + 1)), VFD emptyParams [
-#if MIN_VERSION_Cabal(3,0,0)
+#if MIN_VERSION_Cabal(3,17,0)
+        mkField
+            (paraName <<<- ParaName (__ "Options for GHC")
+           $ emptyParams)
+            (options . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{options = a})})
+            optsEditor
+     ,  mkField
+            (paraName <<<- ParaName (__ "Additional options for GHC when built with profiling")
+           $ emptyParams)
+            (profOptions . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{profOptions = a})})
+            optsEditor
+     ,  mkField
+            (paraName <<<- ParaName (__ "Additional options for GHC when the package is built as shared library")
+           $ emptyParams)
+            (sharedOptions . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{sharedOptions = a})})
+            optsEditor
+#elif MIN_VERSION_Cabal(3,0,0)
         mkField
             (paraName <<<- ParaName (__ "Options for GHC")
            $ emptyParams)
@@ -1331,8 +1385,15 @@ buildInfoD fp modules i = [
                 (__ "A list of C source files to be compiled,linked with the Haskell files.")
                 $ paraMinSize <<<- ParaMinSize (-1,150)
                     $ paraOrientation <<<- ParaOrientation OrientationVertical $ emptyParams)
+#if MIN_VERSION_Cabal(3,17,0)
+            -- cSources is [ExtraSource Pkg] now (path + per-file options; the
+            -- editor only round-trips the path, options survive as []).
+            (map (fromSymPath . extraSourceFile) . cSources . (!! i) . bis)
+            (\ a b -> b{bis = update (bis b) i (\bi -> bi{cSources = map (\p -> ExtraSourcePkg (toSymPath p) []) a})})
+#else
             (map fromSymPath . cSources . (!! i) . bis)
             (\ a b -> b{bis = update (bis b) i (\bi -> bi{cSources = map toSymPath a})})
+#endif
             (filesEditor fp FileChooserActionOpen (__ "Select file"))
     ]),
     (T.pack $ printf (__ "%s Opts Libs ") (show (i + 1)), VFD emptyParams [
@@ -1487,7 +1548,11 @@ compilerFlavorEditor para noti = do
                 Just (Left other) -> return (Just other)
     return (wid,cfinj,cfext)
         where
+#if MIN_VERSION_Cabal(3,17,0)
+        flavors = [GHC, MHS]
+#else
         flavors = [GHC, NHC, Hugs, HBC, Helium, JHC]
+#endif
 
 buildTypeEditor :: Editor BuildType
 buildTypeEditor para noti = do

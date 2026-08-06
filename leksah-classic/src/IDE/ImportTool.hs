@@ -282,6 +282,23 @@ addPackages errors = do
     return . not $ null packs
   where
     addDepToLib _ Nothing = Nothing
+#if MIN_VERSION_Cabal(3,17,0)
+    -- Cabal(-syntax) 3.17 (stable-haskell fork) dropped CondTree's
+    -- aggregated-constraints field; the targetBuildDepends update inside
+    -- condTreeData is the real data on both APIs.
+    addDepToLib d (Just cn@CondNode{
+        condTreeData        = lib@Library{libBuildInfo = bi}}) = Just (cn{
+            condTreeData        = lib {libBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+    addDepToExe d (str,cn@CondNode{
+        condTreeData        = exe@Executable{buildInfo = bi}}) = (str,cn{
+                condTreeData        = exe { buildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+    addDepToTest d (str,cn@CondNode{
+        condTreeData        = test@TestSuite{testBuildInfo = bi}}) = (str,cn{
+                condTreeData        = test { testBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+    addDepToBenchmark d (str,cn@CondNode{
+        condTreeData        = bm@Benchmark{benchmarkBuildInfo = bi}}) = (str,cn{
+                condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+#else
     addDepToLib d (Just cn@CondNode{
         condTreeConstraints = deps,
         condTreeData        = lib@Library{libBuildInfo = bi}}) = Just (cn{
@@ -302,6 +319,7 @@ addPackages errors = do
         condTreeData        = bm@Benchmark{benchmarkBuildInfo = bi}}) = (str,cn{
                 condTreeConstraints = deps <> [d],
                 condTreeData        = bm { benchmarkBuildInfo = bi {targetBuildDepends = targetBuildDepends bi <> [d]}}})
+#endif
     -- Empty version is probably only going to happen for ghc-prim
     dep p | null . versionNumbers $ packageVersion p = mkDependency (packageName p) anyVersion (S.singleton LMainLibName)
     dep p = mkDependency (packageName p) (

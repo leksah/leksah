@@ -164,6 +164,23 @@ allow-newer:
 
 constraints: monoidal-containers >=0.6.2.0, any.haskell-gi-overloading ==0.0, any.happy ==2.1.7, extra >=1.8, semialign <1.4
 
+-- The gi-* custom Setups (leksah-classic's gtk stack) link haskell-gi, whose
+-- build-store compile resolves Cabal from the toolchain's global db
+-- (Cabal-3.17.0.1) even though the plan records build:Cabal-3.16.1.0 — the
+-- setup exe link then fails with undefined Cabal-3.17.* symbols.  Pinning the
+-- gi setups to the installed Cabal makes the link line match what the compile
+-- actually used.  (Fork-cabal build/host store issue; drop these when fixed.)
+constraints:
+  gi-atk:setup.Cabal ==3.17.0.1, gi-cairo:setup.Cabal ==3.17.0.1,
+  gi-freetype2:setup.Cabal ==3.17.0.1, gi-gdk:setup.Cabal ==3.17.0.1,
+  gi-gdk3:setup.Cabal ==3.17.0.1, gi-gdkpixbuf:setup.Cabal ==3.17.0.1,
+  gi-gio:setup.Cabal ==3.17.0.1, gi-glib:setup.Cabal ==3.17.0.1,
+  gi-gmodule:setup.Cabal ==3.17.0.1, gi-gobject:setup.Cabal ==3.17.0.1,
+  gi-gtk:setup.Cabal ==3.17.0.1, gi-gtk3:setup.Cabal ==3.17.0.1,
+  gi-gtkosxapplication:setup.Cabal ==3.17.0.1,
+  gi-gtksource:setup.Cabal ==3.17.0.1, gi-gtksource3:setup.Cabal ==3.17.0.1,
+  gi-harfbuzz:setup.Cabal ==3.17.0.1, gi-pango:setup.Cabal ==3.17.0.1
+
 -- The GHC JS backend build (docs/website/try demo) must use ghcjs-dom's
 -- JSADDLE flavor, not the direct-FFI one: `jsffi` is a manual flag with no
 -- `default:` line (cabal defaults it True), and on arch(javascript) that

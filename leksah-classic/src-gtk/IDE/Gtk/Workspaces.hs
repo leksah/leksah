@@ -280,7 +280,10 @@ workspaceOpenThis askForSession filePath = do
             catchIDE (
                 Writer.readWorkspace filePath >>= \case
                     Left errorMsg -> showDialog (Just mainWindow) (T.pack $ "Could not open " <> filePath <> ". " <> errorMsg) MessageTypeError
-                    Right ws -> do
+                    -- readWorkspace also returns the remote (ssh://) projects
+                    -- it deferred; remote projects are a web-UI feature, so
+                    -- the classic front end ignores them.
+                    Right (ws, _deferred) -> do
                         Writer.setWorkspace (Just $ ws & wsFile .~ filePath)
                         VCSWS.onWorkspaceOpen ws)
                    (\ (e :: SomeException) ->
