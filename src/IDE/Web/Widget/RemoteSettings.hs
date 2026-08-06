@@ -43,7 +43,7 @@ import IDE.Core.Types
         ProjectSettings(..))
 import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.IDERefStore (getGlobalIDERef)
-import IDE.Workspaces (setProjectSettings, workspaceTryQuiet)
+import IDE.Project.WorkspaceFile (setProjectSettings)
 
 -- | Render the modal for a project.  Reads the project's current command
 -- prefix, lets the user edit it, and on Save persists it (empty clears it).
@@ -93,7 +93,7 @@ savePrefix pk raw =
             let pre = T.strip raw
                 settings = ProjectSettings
                     { psCmdPrefix = if T.null pre then Nothing else Just pre }
-            void $ reflectIDE (workspaceTryQuiet (setProjectSettings pk settings)) ideR
+            void $ reflectIDE (setProjectSettings pk settings) ideR
 
 overlayStyle, dialogStyle, fieldStyle, btnStyle, primaryBtnStyle :: Text
 overlayStyle =

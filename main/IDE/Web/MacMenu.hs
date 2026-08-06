@@ -39,8 +39,7 @@ import Language.Javascript.JSaddle.WKWebView
 
 import IDE.Core.State (reflectIDE, modifyIDE_, readIDE)
 import IDE.Core.Types (WindowId(..), activeWindow)
-import IDE.Gtk.Workspaces (workspaceTry)
-import IDE.Workspaces (projectOpenPath)
+import IDE.Project.WorkspaceFile (projectOpenPath)
 import IDE.Web.Claude (showLiveSession)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), registerClaudeStatusPush)
@@ -82,7 +81,7 @@ import IDE.Web.TerminalInput (setActiveTerminalNotifier, setSplitActiveNotifier)
 -- plain-directory project, a file is a project file (cabal.project / …).
 macOpenProject :: FilePath -> IO ()
 macOpenProject fp = getGlobalIDERef >>= \case
-  Just ideR -> void $ reflectIDE (workspaceTry (projectOpenPath fp)) ideR
+  Just ideR -> void $ reflectIDE (projectOpenPath fp) ideR
   Nothing   -> return ()
 
 -- | Called (via the glue) once 'c_newWindow' (or the restore path) has

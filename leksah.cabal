@@ -133,7 +133,6 @@ flag no-hlint
 
 library leksah-nogtk
     exposed-modules:
-        IDE.Build
         IDE.Core.Location
         IDE.Core.State
         IDE.Core.Types
@@ -142,11 +141,16 @@ library leksah-nogtk
         IDE.Gtk.Types
         IDE.Gtk.Workspaces
         IDE.Diagnostics
-        IDE.Package
         IDE.Pane.Log
         IDE.Pane.SourceBuffer
         IDE.Pane.WebKit.Documentation
         IDE.Pane.WebKit.Output
+        IDE.Project
+        IDE.Project.Build
+        IDE.Project.Commands
+        IDE.Project.Nix
+        IDE.Project.Run
+        IDE.Project.WorkspaceFile
         IDE.Settings
         IDE.Utils.DebugUtils
         IDE.Utils.DirectoryUtils
@@ -266,8 +270,6 @@ library leksah-nogtk
         IDE.Web.Widget.Tree
         IDE.Web.Widget.Toolbar
         IDE.Web.Widget.Workspace
-        IDE.Workspaces
-        IDE.Workspaces.Writer
     hs-source-dirs: src src-nogtk
     other-modules:
         Paths_leksah

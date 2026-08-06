@@ -1,18 +1,22 @@
 module IDE.Gtk.Package where
 
 import Control.Lens ((%~))
+import Control.Monad.Reader (ask, lift)
 import IDE.Core.State
-       (modifyIDE_, prefs, Prefs(..), IDEAction, PackageAction)
-import IDE.Package
-       (packageRunJavaScript', packageRun', interruptSaveAndRun)
+       (modifyIDE_, prefs, Prefs(..), IDEAction, PackageAction, liftIDE)
+import qualified IDE.Project.Build as Build
 
 packageRun :: PackageAction
-packageRun = interruptSaveAndRun $ packageRun' $ Just $
-    return False
+packageRun = do
+    package <- ask
+    project <- lift ask
+    liftIDE (Build.packageRun project package)
 
 packageRunJavaScript :: PackageAction
-packageRunJavaScript = interruptSaveAndRun $ packageRunJavaScript' $ Just $
-    return False
+packageRunJavaScript = do
+    package <- ask
+    project <- lift ask
+    liftIDE (Build.packageRunJavaScript project package)
 
 backgroundBuildToggled :: IDEAction
 backgroundBuildToggled =

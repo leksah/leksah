@@ -125,7 +125,7 @@ import IDE.Web.Agent
         agentStatus, emptyForkRequest, forkAgent)
 import IDE.Web.AgentInfo (describeAgent)
 import IDE.Web.Claude (sessionOwningPid, showLiveSession)
-import IDE.Web.Command (buildActiveTarget)
+
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.Handoff (handoffEnabled, requestHandoff)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
@@ -134,9 +134,10 @@ import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.ScreenshotRequest (requestScreenshot)
 import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
-import IDE.Workspaces
+import IDE.Project.WorkspaceFile
        (projectOpenThis, projectOpenPath, dirProjectKey, setProjectSettings,
-        workspaceActivatePackage, workspaceTryQuiet, makePackage')
+        workspaceActivatePackage)
+import IDE.Project.Build (buildActiveTarget, buildTarget)
 
 -- | The control socket both sides agree on: @~/.leksah/cmd.sock@ for the
 -- default instance, @~/.leksah/cmd-\<port\>.sock@ under a non-default
@@ -312,8 +313,8 @@ handleConn ideR conn = do
                      , p <- pjPackages project
                      , ipdCabalFile p == fp ] of
                   ((project, package):_) -> do
-                    void $ reflectIDE (workspaceTryQuiet
-                        (workspaceActivatePackage project (Just package) Nothing)) ideR
+                    void $ reflectIDE
+                        (workspaceActivatePackage project (Just package) Nothing) ideR
                     reply $ "Activated " <> T.pack fp <> "\n"
                   [] -> reply $ "No package with cabal file " <> T.pack fp <> " in the workspace\n"
 
@@ -329,7 +330,7 @@ handleConn ideR conn = do
               let prefix = T.strip (T.unwords prefixParts)
                   settings = ProjectSettings
                     { psCmdPrefix = if T.null prefix then Nothing else Just prefix }
-              void $ reflectIDE (workspaceTryQuiet (setProjectSettings pk settings)) ideR
+              void $ reflectIDE (setProjectSettings pk settings) ideR
               reply $ "Command prefix for " <> T.pack fp <> ": "
                       <> (if T.null prefix then "(cleared)" else prefix) <> "\n"
 
@@ -495,10 +496,8 @@ handleConn ideR conn = do
                        then "; the app stays up (--no-restart).\n"
                        else "; on success it restarts.\n")
                  <> "(Failsafe if the IDE build is broken: rebuild-self --use-cabal)\n"
-            void . forkIO . void $ reflectIDE
-                (readIDE workspace >>=
-                   mapM_ (runWorkspace $ runProject (State.runPackage makePackage' package) project))
-                ideR
+            void . forkIO . void $
+                reflectIDE (buildTarget project package) ideR
 
       -- Fired by tmux's after-select-window / after-select-pane hooks: poke the
       -- reflex network (reusing the JS trigger the ⌃B/mousedown listener uses) so
@@ -738,7 +737,7 @@ handleConn ideR conn = do
     -- the Open Project / Open Folder panels — so Cargo.toml / pyproject.toml /
     -- setup.py (Rust/Python) are recognised here too.
     openProject fp = do
-      void $ reflectIDE (workspaceTryQuiet (projectOpenPath fp)) ideR
+      void $ reflectIDE (projectOpenPath fp) ideR
       return $ "Opened in workspace: " <> T.pack fp
 
     -- The user's CODE is evaluated inside a JS-side try/catch: a throwing

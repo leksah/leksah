@@ -343,9 +343,9 @@ import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.LwView (sessionlessLwWidget)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
-import qualified IDE.Workspaces.Writer as Writer
-       (setWorkspace, readWorkspace, resolveDeferredProjects)
-import IDE.Workspaces (backgroundMake)
+import qualified IDE.Project.WorkspaceFile as Writer
+       (installWorkspace, readWorkspace, resolveDeferredProjects)
+import qualified IDE.Project.Build as Build
 
 -- > :fork 1 IDE.Web.Main.develMain
 
@@ -1045,7 +1045,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                   Left errorMsg -> liftIO $ putStrLn $ "Could not open " <> filePath <> ". " <> errorMsg
                   Right (ws, deferred) -> do
                         modifyIDE_ (workspace ?~ ws)
-                        Writer.setWorkspace (Just $ ws & wsFile .~ filePath)
+                        Writer.installWorkspace (Just $ ws & wsFile .~ filePath)
                         -- Remote (ssh://) projects are placeholders at this
                         -- point; fill them in behind the UI instead of making
                         -- startup (and every ghci reload) wait on ssh.
@@ -1064,7 +1064,8 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 --                    False -> do
 --                        _ <- liftIO $ tryTakeMVar triggerBuild
                         currentPrefs <- readIDE prefs
-                        when (backgroundBuild currentPrefs) backgroundMake) ideR
+                        when (backgroundBuild currentPrefs)
+                             Build.runBackgroundBuild) ideR
       -- Multi-window restore: read the saved session and SEED every saved
       -- window's per-window state (wide0 tabs — terminals filtered to still-live
       -- tmux sessions — plus its side/bottom visibility) into the shared MVar

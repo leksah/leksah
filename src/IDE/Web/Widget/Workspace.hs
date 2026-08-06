@@ -81,16 +81,18 @@ import IDE.Web.Theme
         btnTopColor, btnBottomColor, btnHoverTopColor, btnHoverBottomColor)
 import IDE.Core.Location (packageIdentifierToString)
 import IDE.Core.State
-       (activeComponent, ipdPackageDir,
-        ipdLib, pjDir, IDEPackage(..), runPackage, runProject,
+       (activeComponent, ipdPackageDir, Package, componentTarget,
+        pkgComponents, ipdSrcDirs, ipdCabalFile, ipdPackageId, liftIDE,
+        ipdLib, pjDir, IDEPackage, runPackage, runProject,
         pjPackages, Project(..), workspace, wsProjects, IDE,
         activeProject, activePack, pjFile, pjFileOrDir,
         ProjectKey(..), pjCabalFile, prefs, showHiddenFiles, showIgnoredFiles)
 import IDE.Gtk.Package (packageRun)
 import IDE.Gtk.Workspaces (makePackage)
-import IDE.Package
-       (packageClean, packageBench, packageTest, projectRefreshNix,
-        packageOpenRepl, packageRunComponentTerm, projectOpenTerminal)
+import IDE.Project.Build (packageBench, packageClean, packageTest)
+import IDE.Project.Nix (projectRefreshNix)
+import IDE.Project.Run
+       (packageOpenRepl, packageRunComponentTerm, projectOpenTerminal)
 import IDE.Web.Command (Command(..))
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
 import IDE.Web.Widget.Flake
@@ -107,7 +109,7 @@ import IDE.Web.Widget.Tree
         treeItem', clickMods, dblclickMods)
 import IDE.Web.GitInfo (prForBranch)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
-import IDE.Workspaces
+import IDE.Project.WorkspaceFile
        (workspaceRemoveProject, workspaceActivatePackage)
 
 workspaceCss :: Css
@@ -292,13 +294,10 @@ workspaceCss = do
         "margin" -: "0 3px 0 6px"
         "opacity" -: "0.7"
 
-components :: IDEPackage -> [Text]
-components package =
-     map ("lib:"<>) (maybeToList (ipdLib package))
-  ++ map ("lib:"<>) (ipdSubLibraries package)
-  ++ map ("exe:"<>) (ipdExes package)
-  ++ map ("test:"<>) (ipdTests package)
-  ++ map ("bench:"<>) (ipdBenchmarks package)
+-- | The package's components as build-target strings (@lib:foo@, @exe:bar@…),
+-- the vocabulary the rows, the activation and the tools all share.
+components :: Package -> [Text]
+components = map componentTarget . pkgComponents
 
 absolutSourceDirs :: IDEPackage -> Set FilePath
 absolutSourceDirs p =
@@ -1323,7 +1322,7 @@ workspaceWidget ide activeFileD revealFileD = do
                   plain = fmap (fmap (Nothing,))
               (projRowEl, rowE) <- treeSelect' "workspace" (menuSplitWith wrapSplit $
                 [ plain $ ("Activate",) . ProjectCommand . CommandWorkspaceAction "Set as Active Project" "" <$>
-                    (workspaceActivatePackage <$> projectD <*> pure Nothing <*> pure Nothing)
+                    ((\p -> liftIDE (workspaceActivatePackage p Nothing Nothing)) <$> projectD)
                 ] <> case pjFile pKey of
                         Just file -> [ constDyn ("Open Project File", (Just (STFile file), ProjectFileEvents . ("" =:) $ OpenFile False file)) ]
                         _ -> []
@@ -1333,10 +1332,10 @@ workspaceWidget ide activeFileD revealFileD = do
                             in constDyn ("Open Project Configuration File", (Just (STFile f), ProjectFileEvents . ("" =:) $ OpenFile True f)) ]
                         _ -> []
                 <> [ ("Open Terminal Here",) . (localTgt (STTermDir (pjDir pKey)),) . ProjectCommand . CommandWorkspaceAction "" "" <$>
-                    (runProject projectOpenTerminal <$> projectD)
+                    ((liftIDE . projectOpenTerminal) <$> projectD)
                 , plain $ ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
-                    (runProject projectRefreshNix <$> projectD)
-                , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (workspaceRemoveProject pKey)))
+                    ((liftIDE . projectRefreshNix) <$> projectD)
+                , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (liftIDE (workspaceRemoveProject pKey))))
                 , plain $ constDyn ("Project Settings…", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (requestRemoteSettings pKey))))
                 , plain $ ffor prD $ \mpr ->
                     ( "Open PR" <> prSuffix mpr
@@ -1402,6 +1401,10 @@ workspaceWidget ide activeFileD revealFileD = do
                 pkgRevealE <- revealUnderExcept pkgDirD nestedPkgDirsD revealFileD
                 let isActivePackageD = (&&) <$> isActiveProjectD <*> ((==) <$> activePackageFileD <*> (Just <$> cabalFileD))
                     pkgCmd t f = plainPkg $ (t,) . PackageCommand . CommandWorkspaceAction "" "" <$> (runProject . runPackage f <$> packageD <*> projectD)
+                    -- The project-model commands take (project, package)
+                    -- directly; liftIDE lifts them into the command's slot.
+                    pkgCmd' t f = plainPkg $ (t,) . PackageCommand . CommandWorkspaceAction "" "" <$>
+                        ((\pkg proj -> liftIDE (f proj pkg)) <$> packageD <*> projectD)
                     -- A Claude launch item for the package's directory (Dynamic
                     -- because the package dir is); @st@ is its ⌥-split target
                     -- (local dirs only — a split runs on the local tmux server).
@@ -1416,12 +1419,12 @@ workspaceWidget ide activeFileD revealFileD = do
                 treeItemDynAttr' pkgRevealE (("class" =:) . ("package" <>) <$> (bool "" " active" <$> isActivePackageD)) False
                   (treeSelect "workspace" (menuSplitWith wrapSplitPkg $
                       [ plainPkg $ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Package" "" <$>
-                          (workspaceActivatePackage <$> projectD <*> (Just <$> packageD) <*> pure Nothing)
+                          ((\proj pkg -> liftIDE (workspaceActivatePackage proj (Just pkg) Nothing)) <$> projectD <*> packageD)
                       , pkgCmd "Build" makePackage
                       , pkgCmd "Run" packageRun
-                      , pkgCmd "Test" packageTest
-                      , pkgCmd "Benchmark" packageBench
-                      , pkgCmd "Clean" packageClean
+                      , pkgCmd' "Test" packageTest
+                      , pkgCmd' "Benchmark" packageBench
+                      , pkgCmd' "Clean" packageClean
                       , (\cf -> ("Open Package File", (Just (STFile cf), PackageFileEvents (("" =:) (OpenFile False cf)))))
                           . ipdCabalFile <$> packageD
                       ]
@@ -1462,11 +1465,12 @@ workspaceWidget ide activeFileD revealFileD = do
                           elDynClass "li" (("component" <>) <$> (bool "" " active" <$> isActiveComponentD)) $ do
                             let mkActD f = (\proj pkg comp ->
                                     PackageCommand . CommandWorkspaceAction "" "" $
-                                      runProject (runPackage (f comp) pkg) proj)
+                                      liftIDE (f proj pkg comp))
                                   <$> projectD <*> packageD <*> componentD
                             (rowEl, rowE) <- treeSelect' "workspace" (menu
                               [ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Component" "" <$>
-                                  (workspaceActivatePackage <$> projectD <*> (Just <$> packageD) <*> (Just <$> componentD))
+                                  ((\proj pkg comp -> liftIDE (workspaceActivatePackage proj (Just pkg) (Just comp)))
+                                     <$> projectD <*> packageD <*> componentD)
                               ]) $ do
                               elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
                               dynText componentD

@@ -42,8 +42,7 @@ import qualified GI.Gtk as Gtk
         fileDialogSelectFolder, fileDialogSelectFolderFinish)
 
 import IDE.Core.State (reflectIDE)
-import IDE.Gtk.Workspaces (workspaceTry)
-import IDE.Workspaces (projectOpenPath)
+import IDE.Project.WorkspaceFile (projectOpenPath)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Commands (allCommands)
@@ -161,7 +160,7 @@ openFolderPanel win = postGUIAsync $ do
 -- decides which.  Shared by the open-project and open-folder dialogs.
 addToWorkspace :: FilePath -> IO ()
 addToWorkspace fp = getGlobalIDERef >>= \case
-  Just ideR -> void $ reflectIDE (workspaceTry (projectOpenPath fp)) ideR
+  Just ideR -> void $ reflectIDE (projectOpenPath fp) ideR
   Nothing   -> return ()
 
 -- | Translate a key spec like @\"cmd+ctrl+s\"@ to a GTK accelerator string.

@@ -37,7 +37,7 @@ import IDE.Core.State (reflectIDE)
 import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Worktree (newClaudeWorktree, slugify)
-import IDE.Workspaces (projectOpenPath, workspaceTryQuiet)
+import IDE.Project.WorkspaceFile (projectOpenPath)
 
 -- | Render the modal for starting a Claude session in a fresh worktree of the
 -- repo containing @dir@.  Returns an 'Event' that fires (once) when the caller
@@ -86,7 +86,7 @@ createIO dir name fire =
           getGlobalIDERef >>= \case
             Nothing   -> return ()   -- no IDE yet: the session still starts
             Just ideR -> void $
-                reflectIDE (workspaceTryQuiet (projectOpenPath wtPath)) ideR
+                reflectIDE (projectOpenPath wtPath) ideR
           runClaudeCmd (ClaudeNew wtPath)
           fire (Right ())
 

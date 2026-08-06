@@ -57,20 +57,13 @@ module IDE.Core.Types (
 ,   runPackage
 
 
-,   IDEPackage(..)
-,   mkPackageMap
-,   ipdPackageDir
-,   ipdLib
-,   ipdPackageName
+,   module IDE.Project
 ,   ProjectKey(..)
-,   Project(..)
 ,   CabalProject(..)
 ,   StackProject(..)
 ,   CustomProject(..)
 ,   NixProject(..)
 ,   MakeProject(..)
-,   pjPackages
-,   pjLookupPackage
 ,   pjDir
 ,   pjFile
 ,   pjFileOrDir
@@ -78,15 +71,6 @@ module IDE.Core.Types (
 ,   pjIsStack
 ,   pjIsNix
 ,   filePathToProjectKey
---,   pjToolCommand'
-,   Workspace(..)
-,   wsProjectKeys
-,   wsLookupProject
-,   wsActiveProject
-,   wsActivePackage
-,   wsPackages
-,   wsProjectAndPackages
-,   wsAllPackages
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -178,20 +162,6 @@ module IDE.Core.Types (
 ,   paneAISession
 ,   ideVersion
 
--- Workspace
-,   wsVersion
-,   wsSaveTime
-,   wsName
-,   wsFile
-,   wsProjects
-,   wsProjectSettings
-,   wsActiveProjectKey
-,   wsActivePackFile
-,   wsActiveComponent
-,   ProjectSettings(..)
-,   defaultProjectSettings
-,   wsSettingsFor
-
 ,   __
 ) where
 
@@ -217,6 +187,7 @@ import System.FilePath
         addTrailingPathSeparator)
 import IDE.Core.Location
 import IDE.Settings
+import IDE.Project
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
@@ -448,110 +419,6 @@ runPackage = runReaderT
 --  | StackTool StackProject
 --  | CustomTool CustomProject
 --  deriving (Show, Eq)
-
-data Project = Project
-  { pjKey        :: ProjectKey
-  , pjPackageMap :: Map FilePath IDEPackage
-  } deriving (Show, Eq)
-
-pjPackages :: Project -> [IDEPackage]
-pjPackages = M.elems . pjPackageMap
-
-pjLookupPackage :: FilePath -> Project -> Maybe IDEPackage
-pjLookupPackage f = M.lookup f . pjPackageMap
-
---pjToolCommand' :: Project -> FilePath
---pjToolCommand' project = case pjTool project of
---                            StackTool   -> "stack"
---                            CabalTool   -> "cabal"
-
--- ---------------------------------------------------------------------
--- IDEPackages
---
-data IDEPackage     =   IDEPackage {
-    ipdPackageId       ::   PackageIdentifier
-,   ipdCabalFile       ::   FilePath
-,   ipdDepends         ::   [Dependency]
-,   ipdModules         ::   Map ModuleName BuildInfo
-,   ipdHasLib          ::   Bool
-,   ipdSubLibraries    ::   [Text]
-,   ipdExes            ::   [Text]
-,   ipdTests           ::   [Text]
-,   ipdBenchmarks      ::   [Text]
-,   ipdMain            ::   [(FilePath, BuildInfo, Bool)]
-,   ipdExtraSrcs       ::   Set FilePath
-,   ipdSrcDirs         ::   [FilePath] -- ^ Relative paths to the source directories
-,   ipdExtensions      ::   [Extension]
-,   ipdConfigFlags     ::   [Text] -- ^ Flag for configure
-,   ipdBuildFlags      ::   [Text] -- ^ Flags for building
-,   ipdTestFlags       ::   [Text]  -- ^ Flags for test runs
-,   ipdBenchmarkFlags  ::   [Text] -- ^ flags for benchmark runs
-,   ipdHaddockFlags    ::   [Text] -- ^ Flags for haddock generation
-,   ipdExeFlags        ::   [Text] -- ^ Flags for executable runs
-,   ipdInstallFlags    ::   [Text] -- ^ Flags for install
-,   ipdRegisterFlags   ::   [Text] -- ^ Flags for register
-,   ipdUnregisterFlags ::   [Text] -- ^ Flags for unregister
-,   ipdSdistFlags      ::   [Text]
-}
-    deriving (Eq)
-
-instance Show IDEPackage where
-    show p = "IDEPackage for " ++ prettyShow (ipdPackageId p)
-
--- | The directory of the cabal file
-ipdPackageDir :: IDEPackage -> FilePath
-ipdPackageDir = dropFileName . ipdCabalFile
-
--- | Gets the package name
-ipdPackageName :: IDEPackage -> Text
-ipdPackageName = T.pack . unPackageName . pkgName . ipdPackageId
-
--- | Gets the library name if the package has a library component
-ipdLib :: IDEPackage -> Maybe Text
-ipdLib pkg = if ipdHasLib pkg then Just (ipdPackageName pkg) else Nothing
-
-mkPackageMap :: [IDEPackage] -> Map FilePath IDEPackage
-mkPackageMap = M.fromList . map (\p -> (ipdCabalFile p, p))
-
--- ---------------------------------------------------------------------
--- Workspace
---
-
--- | Per-project user settings persisted in the workspace file (they must
--- survive 'Project' being rebuilt from disk, so they live beside the
--- project list keyed by 'ProjectKey', not inside 'Project').
-data ProjectSettings = ProjectSettings {
-    -- | Shell fragment prefixed to tool commands run for this project on
-    -- its remote host (e.g. @nix develop -c@).  Spliced verbatim into the
-    -- remote command line — it may carry flags and shell syntax.
-    psCmdPrefix :: Maybe Text
-} deriving (Show, Eq, Generic)
-
-defaultProjectSettings :: ProjectSettings
-defaultProjectSettings = ProjectSettings {
-    psCmdPrefix = Nothing
-}
-
-instance ToJSON ProjectSettings where
-    toJSON = genericToJSON projectSettingsAesonOptions
-    toEncoding = genericToEncoding projectSettingsAesonOptions
-instance FromJSON ProjectSettings where
-    parseJSON = genericParseJSON projectSettingsAesonOptions
-
-projectSettingsAesonOptions :: Options
-projectSettingsAesonOptions = defaultOptions { omitNothingFields = True }
-
-data Workspace = Workspace {
-    _wsVersion           ::   Int
-,   _wsSaveTime          ::   Text
-,   _wsName              ::   Text
-,   _wsFile              ::   FilePath
-,   _wsProjects          ::   [Project]
-,   _wsProjectSettings   ::   Map ProjectKey ProjectSettings
-,   _wsActiveProjectKey  ::   Maybe ProjectKey
-,   _wsActivePackFile    ::   Maybe FilePath
-,   _wsActiveComponent   ::   Maybe Text
-} deriving Show
 
 -- | Visibility of the side ("tall") pane, cycled by the toolbar button.
 data TallVisibility = TallShow | TallAutoHide | TallHide
@@ -836,48 +703,7 @@ instance FromJSON SearchMode
 
 
 makeLenses ''IDE
-makeLenses ''Workspace
 makeLenses ''WebWindow
-
-wsProjectKeys :: Getter Workspace [ProjectKey]
-wsProjectKeys = wsProjects . to (map pjKey)
-
-wsLookupProject :: ProjectKey -> Workspace -> Maybe Project
-wsLookupProject f = find ((==f) . pjKey) . _wsProjects
-
-_wsActiveProject :: Workspace -> Maybe Project
-_wsActiveProject w = (w ^. wsActiveProjectKey) >>= (`wsLookupProject` w)
-
-wsActiveProject :: Getter Workspace (Maybe Project)
-wsActiveProject = to _wsActiveProject
-
-_wsActivePackage :: Workspace -> Maybe IDEPackage
-_wsActivePackage w = do
-    project <- _wsActiveProject w
-    _wsActivePackFile w >>= (`pjLookupPackage` project)
-
-wsActivePackage :: Getter Workspace (Maybe IDEPackage)
-wsActivePackage = to _wsActivePackage
-
-wsPackages :: Getter Workspace [IDEPackage]
-wsPackages = to (_wsProjects >=> pjPackages)
-
-_wsProjectAndPackages :: Workspace -> [(Project, IDEPackage)]
-_wsProjectAndPackages = _wsProjects >=> (\project -> (project,) <$> pjPackages project)
-
-wsProjectAndPackages :: Getter Workspace [(Project, IDEPackage)]
-wsProjectAndPackages = to _wsProjectAndPackages
-
--- | Includes sandbox sources
-_wsAllPackages :: Workspace -> [IDEPackage]
-_wsAllPackages w = nubBy ((==) `on` ipdCabalFile) $ w ^. wsPackages
-
-wsAllPackages :: Getter Workspace [IDEPackage]
-wsAllPackages = to _wsAllPackages
-
--- | The (total, defaulting) per-project settings for a project key.
-wsSettingsFor :: ProjectKey -> Workspace -> ProjectSettings
-wsSettingsFor pk = fromMaybe defaultProjectSettings . M.lookup pk . _wsProjectSettings
 
 activeProject :: Getter IDE (Maybe Project)
 activeProject = workspace . to (>>= view wsActiveProject)

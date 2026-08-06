@@ -16,6 +16,7 @@
 -----------------------------------------------------------------------------
 
 module IDE.Utils.ExternalTool (
+    sinkLast,
     runExternalTool'
   , runExternalTool
   , isRunning
@@ -49,6 +50,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (unpack, pack, null)
 import System.Log.Logger (debugM)
 import Data.Void (Void)
+import qualified Data.Conduit.List as CL (fold)
 
 {-
 #if !defined(mingw32_HOST_OS) && !defined(__MINGW32__)
@@ -62,6 +64,10 @@ showSignalMask = ("mask INT "<>) . show . (sigINT `inSignalSet`) <$> getSignalMa
 showSignalMask = return ""
 #endif
 -}
+
+-- | The last item a conduit yields (the tool's exit, for the build sinks).
+sinkLast :: Monad m => ConduitT a o m (Maybe a)
+sinkLast = CL.fold (\_ a -> Just a) Nothing
 
 runExternalTool' :: MonadIDE m
                 => Text

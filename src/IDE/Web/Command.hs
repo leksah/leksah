@@ -6,6 +6,7 @@ module IDE.Web.Command where
 import Control.Lens
        (Getter, to, makePrisms, view, (%~), (^.), (&), ix)
 import Control.Monad (unless)
+import Control.Monad.Reader (ask, lift)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
@@ -34,13 +35,14 @@ import IDE.Core.State
         WorkspaceAction, IDEAction, __, IDE, TallVisibility(..),
         webWindows, activeWindow, wwTall, wwWide1, wwActive, activeProject,
         activePack, pjDir, pjKey, TabKey(..), leksahWindows,
-        LeksahWindow(..), PaneContent(..), PaneKind(..))
+        LeksahWindow(..), PaneContent(..), PaneKind(..), liftIDE)
 import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
 import IDE.Gtk.Package
        (makeModeToggled, runBenchmarksToggled, runUnitTestsToggled,
         makeDocsToggled, javaScriptToggled, nativeToggled,
         backgroundBuildToggled, packageRunJavaScript, packageRun)
-import IDE.Package (packageClean, projectRefreshNix, buildCustomProject)
+import IDE.Project.Build (buildActiveTarget, packageClean)
+import IDE.Project.Nix (projectRefreshNix)
 import IDE.Gtk.Workspaces
        (projectTry, packageTry, workspaceTry, makePackage)
 
@@ -120,27 +122,19 @@ commandAddModule = CommandPackageAction
 commandRefreshNix = CommandProjectAction
   "/pics/nix.svg"
   (__ "Refresh Leksah's cached nix environment variables for the active project")
-  projectRefreshNix
+  (ask >>= liftIDE . projectRefreshNix)
 
 commandPackageClean = CommandPackageAction
   "/pics/clean.svg"
   (__ "Cleans the package")
-  packageClean
+  (do package <- ask
+      project <- lift ask
+      liftIDE (packageClean project package))
 
 commandPackageBuild = CommandIDEAction
   "/pics/build.svg"
   (__ "Builds the package")
   buildActiveTarget
-
--- | Build the active target: the active Haskell package if there is one,
--- otherwise fall back to a package-less project's custom build (e.g. a Rust
--- crate added via \"Open Folder\" builds with @cargo build@).  Routing on
--- 'activePack' keeps Haskell projects on the usual 'makePackage' path — they
--- always have an active package once opened.
-buildActiveTarget :: IDEAction
-buildActiveTarget = readIDE activePack >>= \case
-    Just _  -> packageTry makePackage
-    Nothing -> projectTry buildCustomProject
 
 commandPackageRun = CommandPackageAction
   "/pics/run.svg"

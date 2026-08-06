@@ -64,7 +64,7 @@ import IDE.Web.Claude
         ClaudeLive(..), mruClaudePane, claudeTranscriptPath)
 import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Worktree (newClaudeWorktreeUnique)
-import IDE.Workspaces (projectOpenPath, workspaceTryQuiet)
+import IDE.Project.WorkspaceFile (projectOpenPath)
 
 -- | How many queue-started sessions may run at once.  A small fixed number
 -- for now (agents saturate a machine quickly); a preference if demand shows.
@@ -178,7 +178,7 @@ startTask t = do
         (patch q (qtId t) (\x -> x { qtStatus = "error", qtNote = err }), ())
       Right (wt, _branch) -> do
         getGlobalIDERef >>= mapM_
-          (reflectIDE (workspaceTryQuiet (projectOpenPath wt)))
+          (reflectIDE (projectOpenPath wt))
         runClaudeCmd (ClaudePrompt wt (qtPrompt t))
         void . withQueue $ \q ->
           (patch q (qtId t) (\x ->

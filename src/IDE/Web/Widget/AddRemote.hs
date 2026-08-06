@@ -42,7 +42,7 @@ import IDE.Core.State (reflectIDE)
 import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Web.IDERefStore (getGlobalIDERef)
-import IDE.Workspaces (projectOpenThis, setProjectSettings, workspaceTryQuiet)
+import IDE.Project.WorkspaceFile (projectOpenThis, setProjectSettings)
 
 -- | Render the modal.  Returns an 'Event' that fires (once) when the caller
 -- should tear the modal down: on Cancel, or after a project is successfully
@@ -96,10 +96,9 @@ addRemoteIO host path prefix fire =
             Just pk -> getGlobalIDERef >>= \case
               Nothing   -> fire (Left "IDE is not ready yet.")
               Just ideR -> do
-                void $ reflectIDE (workspaceTryQuiet (projectOpenThis pk)) ideR
+                void $ reflectIDE (projectOpenThis pk) ideR
                 unless (T.null pre) . void $ reflectIDE
-                    (workspaceTryQuiet
-                        (setProjectSettings pk ProjectSettings { psCmdPrefix = Just pre })) ideR
+                    (setProjectSettings pk ProjectSettings { psCmdPrefix = Just pre }) ideR
                 fire (Right ())
 
 overlayStyle, dialogStyle, fieldStyle, btnStyle, primaryBtnStyle :: Text

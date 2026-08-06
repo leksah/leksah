@@ -77,10 +77,10 @@ These are classic-only and `git mv` to `leksah-classic/`; no rewrite needed.
 |---|---|---|
 | `src/IDE/Preferences.hs` | Jacco Krijnen (29), Juergen (30), Stephan Fortelny (4), others | **done** — step B (2026-08-07): fresh `IDE.Settings` (flat `Prefs`, sectioned `~/.config/leksah/settings.json`, only non-default keys written); the `Prefs`/`PrefsFile`/`EditorStyle` blocks left `Core/Types` with it; 21 dead GTK-era fields (incl. the 10 unread highlight colours, vado, `.lkshp`) dropped |
 | `src/IDE/LogRef.hs` | Juergen (13), Stephan Fortelny (4), others | **done** — step D (2026-08-07): fresh `IDE.Diagnostics` (GHC/stack/nix state machine re-expressed from the output formats; the cargo parser and remote-root span handling carried over from Hamish's recent work).  Dropped with it: elm support, doctest-failure parsing, ghci breakpoint/context sinks and the error-navigation half (the web UI navigates its own `allLogRefs`) |
-| `src/IDE/Package.hs` | Juergen (45), JP Moresmau (8), Stephan Fortelny (7), others | step E (project model) |
-| `src/IDE/Workspaces.hs` | Juergen (26), Stephan Fortelny (12), Jacco Krijnen (6), others | step E |
-| `src/IDE/Workspaces/Writer.hs` | Stephan Fortelny (1 — the 2011 module split; content originally Juergen's) | step E |
-| `src/IDE/Build.hs` | Juergen (6), Sanny Sanoff (1), JP Moresmau (1) | step E (`IDE.Project.Build`) |
+| `src/IDE/Package.hs` | Juergen (45), JP Moresmau (8), Stephan Fortelny (7), others | **done** — step E (2026-08-07): split into fresh `IDE.Project.{Commands,Nix,Run,Build}`.  Hamish-authored recent code (nix env cache, `withToolCommand`, ffcabal/repl/component-terminal runners, remote snapshot enumeration) carried per-hunk against `git blame`; the Juergen-era parts (package-list scraping, `idePackageFromGPD`, the run/test/clean command shapes) re-expressed fresh |
+| `src/IDE/Workspaces.hs` | Juergen (26), Stephan Fortelny (12), Jacco Krijnen (6), others | **done** — step E: mutations (activate/open/remove/settings) now in `IDE.Project.WorkspaceFile`, taking explicit arguments instead of the reader-monad tower; the uncalled entry points (workspaceClean/Make, projectNewHere, projectAddPackage', constructAndOpenMainModules) dropped |
+| `src/IDE/Workspaces/Writer.hs` | Stephan Fortelny (1 — the 2011 module split; content originally Juergen's) | **done** — step E: the JSON codec, deferred remote resolution and fsnotify watchers (all Hamish's, 434/478 lines) carried into `IDE.Project.WorkspaceFile`; the few foreign lines re-expressed.  The `.lkshw` format is unchanged (v4), so existing workspaces keep loading |
+| `src/IDE/Build.hs` | Juergen (6), Sanny Sanoff (1), JP Moresmau (1) | **done** — step E: the make-chain machinery (foreign in design) replaced by a flat sequential engine in `IDE.Project.Build`.  Fixes two real bugs: a single-package project resolved to an empty chain and silently did nothing, and the target list asked for a `lib:<pkg>` that no longer exists |
 | `src/IDE/Core/State.hs` | Juergen (39), Jacco Krijnen (4) | step F (barrel module deleted) |
 | `src/IDE/Core/Types.hs` | Juergen (44), Jacco Krijnen (15), Stephan Fortelny (5), others | step F (new `IDE.Core`) |
 
@@ -112,10 +112,6 @@ This is the gate for the license flip; delete rows as stages land.
 
 | file | blocked on |
 |---|---|
-| `src/IDE/Package.hs` | project model (step E) |
-| `src/IDE/Workspaces.hs` | project model (step E) |
-| `src/IDE/Workspaces/Writer.hs` | project model (step E) |
-| `src/IDE/Build.hs` | project model (step E) |
 | `src/IDE/Core/State.hs` | new `IDE.Core` (step F) |
 | `src/IDE/Core/Types.hs` | new `IDE.Core` (step F) |
 

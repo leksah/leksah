@@ -71,7 +71,7 @@ import IDE.Web.Widget.GitLog
 import IDE.Web.Worktree
        (ReviewInfo(..), scanReview, worktreeMerge, worktreePushPR,
         worktreeArchive)
-import IDE.Workspaces (workspaceRemoveProject, workspaceTryQuiet, dirProjectKey)
+import IDE.Project.WorkspaceFile (workspaceRemoveProject, dirProjectKey)
 
 --------------------------------------------------------------------------------
 -- Widget
@@ -147,8 +147,7 @@ reviewWidget useMonaco dir = divClass "gitlog review" $ do
                       -- Drop the (now deleted) worktree project from the
                       -- workspace; the tab itself closes with ⌘W.
                       getGlobalIDERef >>= mapM_ (reflectIDE
-                        (workspaceTryQuiet (workspaceRemoveProject
-                           (dirProjectKey (riRoot ri')))))
+                        (workspaceRemoveProject (dirProjectKey (riRoot ri'))))
                       fireStatus "archived — worktree removed; close this tab"
               _ -> return ()
         _ -> return ()
