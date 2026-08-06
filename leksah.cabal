@@ -93,9 +93,13 @@ flag objc-in-library
 
 library leksah-nogtk
     exposed-modules:
+        IDE.BuildLog
+        IDE.Problems
         IDE.Problems.Parse
         IDE.Problems.Types
         IDE.Reactive
+        IDE.Reactive.Dyn
+        IDE.Run
         IDE.Utils.DebugUtils
         IDE.Utils.ExitImmediately
         IDE.Utils.GHCUtils

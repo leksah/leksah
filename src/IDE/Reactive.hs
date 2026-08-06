@@ -4,8 +4,10 @@
 -- | The one primitive bridging services and reflex widgets: an observable
 -- state cell.  Services own cells and write them from any thread; each
 -- window's widgets lift the cells they show into 'Reflex.Dynamic's with
--- 'cellDyn'.  Nothing else crosses the boundary — there is no shared
--- mutable record and no whole-state resync.
+-- @cellDyn@ (in "IDE.Reactive.Dyn" — this module deliberately has no
+-- reflex dependency, so every service typechecks with a bare ghc).
+-- Nothing else crosses the boundary — there is no shared mutable record
+-- and no whole-state resync.
 --
 -- Concurrency contract:
 --
@@ -27,8 +29,6 @@ module IDE.Reactive
   , modifyCell
   , watchCell
   , watchCellCurrent
-  , cellDyn
-  , cellDynUniq
   ) where
 
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
@@ -37,10 +37,6 @@ import Data.IORef
        (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IM
-
-import Reflex
-       (Dynamic, MonadHold, Reflex, TriggerEvent, holdDyn, holdUniqDyn,
-        newTriggerEvent)
 
 -- | An observable state cell.
 data Cell a = Cell
@@ -85,22 +81,3 @@ watchCellCurrent c k = withMVar (cellLock c) $ \() -> do
     unsub <- watchCell c k
     a <- readIORef (cellValue c)
     return (a, unsub)
-
--- | Lift a cell into the current reflex host.  The subscription lives as
--- long as the host does (there is no per-widget teardown hook in
--- 'TriggerEvent'); create window-lived dynamics near the window root and
--- pass them down, rather than calling this in short-lived widgets.
-cellDyn
-    :: (Reflex t, MonadHold t m, TriggerEvent t m, MonadIO m)
-    => Cell a -> m (Dynamic t a)
-cellDyn c = do
-    (ev, fire) <- newTriggerEvent
-    (a0, _unsub) <- liftIO $ watchCellCurrent c fire
-    holdDyn a0 ev
-
--- | 'cellDyn' deduplicated with 'holdUniqDyn' — the usual choice when the
--- cell holds a record and widgets select pieces of it.
-cellDynUniq
-    :: (Reflex t, MonadHold t m, TriggerEvent t m, MonadIO m, Eq a)
-    => Cell a -> m (Dynamic t a)
-cellDynUniq c = cellDyn c >>= holdUniqDyn
