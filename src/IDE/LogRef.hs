@@ -104,14 +104,13 @@ import IDE.Core.State
         IDEPackage(..), Log(..), logRefSrcSpan, LogRef(..),
         displaySrcSpan, logRefFullFilePath, readIDE, allLogRefs,
         errorRefs, contextRefs, modifyIDE_, setCurrentBreak,
-        triggerEventIDE_, IDEEvent(..), setCurrentError,
+        setCurrentError,
         currentError, breakpointRefs, currentBreak, setCurrentContext,
-        LogTag(..), StatusbarCompartment(..), autoURI, liftIDE,
+        LogTag(..), autoURI, liftIDE,
         Location(..), logRootPath, PackModule(..),
         packageIdentifierFromString, ipdPackageDir,
-        pjPackages, SensitivityMask(..), isError, sysMessage,
-        MessageLevel(..), logRefRootPath, logRefFilePath,
-        triggerEventIDE)
+        pjPackages, isError, sysMessage,
+        MessageLevel(..), logRefRootPath, logRefFilePath)
 import IDE.Gtk.State (LogLaunch, postSyncIDE, bringPaneToFront)
 import IDE.Pane.Log (getDefaultLogLaunch, IDELog(..), getLog)
 import qualified IDE.Pane.Log as Log
@@ -162,7 +161,6 @@ setBreakpointList breaks = do
     modifyIDE_ $ allLogRefs .~ errs <> breaks <> contexts
     setCurrentBreak Nothing
     markLogRefs
-    triggerEventIDE_ BreakpointChanged
 
 addLogRefs :: Seq LogRef -> IDEAction
 addLogRefs refs = do
@@ -170,9 +168,6 @@ addLogRefs refs = do
     modifyIDE_ $ allLogRefs %~ (<> refs)
     setCurrentError Nothing
     markLogRefs
-    triggerEventIDE_ (ErrorChanged False)
-    triggerEventIDE_ BreakpointChanged
-    triggerEventIDE_ TraceChanged
 
 next :: Getting (Seq LogRef) IDE (Seq LogRef)
      -> Getting (Maybe LogRef) IDE (Maybe LogRef)
@@ -498,7 +493,6 @@ foldOutputLines :: LogLaunch -- ^ logLaunch
 foldOutputLines logLaunch lineLogger a = do
     log' :: Log.IDELog <- lift $ postSyncIDE Log.getLog
     results <- CL.foldM (\x y -> postSyncIDE $ lineLogger log' logLaunch x y) a
-    lift . postSyncIDE $ triggerEventIDE_ (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
 logOutputLines :: LogLaunch -- ^ logLaunch
@@ -507,7 +501,6 @@ logOutputLines :: LogLaunch -- ^ logLaunch
 logOutputLines logLaunch lineLogger = do
     log' :: Log.IDELog <- lift $ postSyncIDE Log.getLog
     results <- CL.mapM (postSyncIDE . lineLogger log' logLaunch) .| CL.consume
-    lift . postSyncIDE $ triggerEventIDE_ (StatusbarChanged [CompartmentState "", CompartmentBuild False])
     return results
 
 logOutputLines_ :: LogLaunch
@@ -699,14 +692,7 @@ logOutputForBuild' project logSource backgroundBuild _jumpToWarnings log' = do
     lift $ postSyncIDE $ removeFileExtLogRefs logSource ".elm" [ErrorRef, WarningRef]
     lift $ postSyncIDE $ removeFileExtLogRefs logSource ".nix" [ErrorRef, WarningRef]
     BuildOutputState {..} <- CL.foldM (readAndShow logLaunch) initialState
-    lift $ postSyncIDE $ do
-        allErrorLikeRefs <- readIDE errorRefs
-        triggerEventIDE_ (Sensitivity [(SensitivityError,not (Seq.null allErrorLikeRefs))])
-        let errorNum    =   length (filter isError errs)
-        let warnNum     =   length errs - errorNum
-        triggerEventIDE_ (StatusbarChanged [CompartmentState
-            (T.pack $ show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
-        return errs
+    lift $ postSyncIDE $ return errs
   where
     readAndShow :: LogLaunch -> BuildOutputState -> ToolOutput -> IDEM BuildOutputState
     readAndShow logLaunch state@BuildOutputState {..} output = do
@@ -870,8 +856,6 @@ logOutputForBuild' project logSource backgroundBuild _jumpToWarnings log' = do
       case parseOnly buildOutputParser line of
         (Right (BuildProgress n total file)) -> do
             _logLn <- traceTimeTaken "appendLog" $ Log.appendLog log' logLaunch (line <> "\n") LogTag
-            _ <- traceTimeTaken "StatusbarChanged" $ triggerEventIDE (StatusbarChanged [CompartmentState
-                (T.pack $ "Compiling " ++ show n ++ " of " ++ show total), CompartmentBuild False])
             f <- if isAbsolute file && not (isRemotePath (logRootPath logSource))
                     then return file
                     else traceTimeTaken "findLog" $ liftIO $ do
@@ -920,13 +904,7 @@ logOutputForCargoBuild project logSource backgroundBuild = do
     -- the live .rs diagnostics in the same store, and wiping them on every
     -- build would fight the LSP.  cargo's own build errors are added on top.
     (_pending, refs) <- CL.foldM (step logLaunch log') (Nothing, [])
-    lift $ postSyncIDE $ do
-        let errorNum = length (filter isError refs)
-            warnNum  = length refs - errorNum
-        triggerEventIDE_ (Sensitivity [(SensitivityError, not (null refs))])
-        triggerEventIDE_ (StatusbarChanged [CompartmentState
-            (T.pack $ show errorNum ++ " Errors, " ++ show warnNum ++ " Warnings"), CompartmentBuild False])
-        return ()
+    lift $ postSyncIDE $ return ()
     return refs
   where
     tagFor rt = if rt == ErrorRef then ErrorTag else LogTag

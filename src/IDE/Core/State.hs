@@ -38,8 +38,6 @@ module IDE.Core.State (
 ,   lookupDebugState
 ,   isInterpreting
 
-,   triggerEventIDE
-,   triggerEventIDE_
 
 -- * Convenience methods for accesing the IDE State
 ,   readIDE
@@ -100,7 +98,6 @@ import Prelude.Compat
 import Control.Exception (Exception, throw, catch, SomeException)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import IDE.Core.Types as Reexported
-import Control.Event
 import System.IO
 import Data.Maybe (listToMaybe, isJust)
 import System.FilePath
@@ -113,7 +110,7 @@ import Data.Time.Clock (getCurrentTime)
 import IDE.Utils.Utils as Reexported
 import Data.List (sortOn, nub)
 import Data.Map (Map)
-import qualified Data.Map as M (insert, fromListWith, lookup)
+import qualified Data.Map as M (insert, fromListWith, lookup, size)
 import Data.Conduit (ConduitT)
 import qualified Data.Conduit as C
        (transPipe)
@@ -132,7 +129,7 @@ import System.Environment (getEnv)
 import Data.Void (Void)
 import Language.Javascript.JSaddle (runJSM, JSM)
 import Control.Lens
-       ((^.), view, over, (.~), _Just, Getter, to, _1, _2, _3,
+       ((^.), view, over, (.~), (%~), _Just, Getter, to, _1, _2, _3,
         Getting, Lens')
 import qualified Data.Foldable as F (Foldable(..))
 #if !defined(ghcjs_HOST_OS) && !defined(LEKSAH_NO_HLINT)
@@ -165,12 +162,13 @@ sysMessage _ml str = liftIO $ do
 ideMessage :: MonadIDE m => MessageLevel -> Text -> m ()
 ideMessage level str = do
     liftIO $ sysMessage level str
-    triggerEventIDE_ (LogMessage (str <> "\n") LogTag)
+    logMessage str LogTag
 
+-- | Append a line to the Log pane (its widget renders 'logLineMap' from the
+-- shared state; there is no event in between).
 logMessage :: MonadIDE m => Text -> LogTag -> m ()
 logMessage str tag =
-    triggerEventIDE_ (LogMessage (str <> "\n") tag)
--- with hslogger
+    modifyIDE_ $ logLineMap %~ \l -> M.insert (M.size l) (str <> "\n", tag) l
 
 ---- ---------------------------------------------------------------------
 ---- Exception handling
@@ -202,12 +200,8 @@ currentBreak     = currentEBC . _2
 currentContext   = currentEBC . _3
 
 setCurrentError, setCurrentBreak, setCurrentContext :: MonadIDE m => Maybe LogRef -> m ()
-setCurrentError e = do
-    modifyIDE_ $ currentError .~ e
-    triggerEventIDE_ (CurrentErrorChanged e)
-setCurrentBreak b = do
-    modifyIDE_ $ currentBreak .~ b
-    triggerEventIDE_ (CurrentBreakChanged b)
+setCurrentError e = modifyIDE_ $ currentError .~ e
+setCurrentBreak b = modifyIDE_ $ currentBreak .~ b
 setCurrentContext c = modifyIDE_ $ currentContext .~ c
 
 lookupDebugState :: MonadIDE m => (ProjectKey, FilePath) -> m (Maybe DebugState)
@@ -216,12 +210,6 @@ lookupDebugState (project, package) =
 
 isInterpreting :: MonadIDE m => (ProjectKey, FilePath) -> m Bool
 isInterpreting = fmap isJust . lookupDebugState
-
-triggerEventIDE :: MonadIDE m => IDEEvent -> m IDEEvent
-triggerEventIDE e = liftIDE $ ask >>= \ideR -> triggerEvent ideR e
-
-triggerEventIDE_ :: MonadIDE m => IDEEvent -> m ()
-triggerEventIDE_ = void . triggerEventIDE
 
 --
 -- | A reader monad for a mutable reference to the IDE state
@@ -501,10 +489,6 @@ addLogRef' hlintFileScope backgroundBuild ref markInBuffers = unless (srcSpanFil
 
     markInBuffers
 
-    triggerEventIDE_ $ ErrorAdded
-        (not backgroundBuild && Seq.null moreImportant) (Seq.length moreImportant) ref
-    return ()
-
 removeLogRefs' :: (Log -> FilePath -> Bool) -> [LogRefType] -> (Map FilePath [LogRefType] -> IDEAction) -> IDEAction
 removeLogRefs' toRemove' types removeFromBuffers = do
     (remove, keep) <- Seq.partition toRemove <$> readIDE allLogRefs
@@ -516,14 +500,6 @@ removeLogRefs' toRemove' types removeFromBuffers = do
     modifyIDE_ $ allLogRefs .~ keep
 
     removeFromBuffers removeDetails
---    buffers <- allBuffers
---    let matchingBufs = filter (maybe False (`M.member` removeDetails) . fileName) buffers
---    F.forM_ matchingBufs $ \ IDEBuffer {..} -> do
---        buf <- getBuffer sourceView
---        F.forM_ (maybe [] (fromMaybe [] . (`M.lookup` removeDetails)) fileName) $
---            removeTagByName buf . T.pack . show
-
-    triggerEventIDE_ (ErrorsRemoved False toRemove)
   where
     toRemove ref = toRemove' (logRefLog ref) (logRefFilePath ref)
                 && logRefType ref `elem` types

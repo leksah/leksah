@@ -4,7 +4,6 @@
 # implicit cradle (a bare `cabal v2-repl <file>`) fails with
 # "Cabal-7132: Ambiguous target" and NO GHC session loads — hover, go-to-def
 # and live diagnostics then silently do nothing for the whole project:
-#   * vendor/ltk/src/ -> lib:ltk AND lib:leksah-nogtk (compiled in, not linked)
 #   * main/           -> three executables (leksah, -warp, -cmd)
 # Pin each shared tree to one component.  hie-bios matches by longest path
 # prefix, so more specific entries (e.g. main/Cmd.hs) must come before the
@@ -31,8 +30,6 @@ cradle:
     - path: "./src"
       component: "leksah:lib:leksah-nogtk"
     - path: "./src-nogtk"
-      component: "leksah:lib:leksah-nogtk"
-    - path: "./vendor/ltk/src"
       component: "leksah:lib:leksah-nogtk"
     # Vendored sibling packages (their own single-component packages).
     - path: "./vendor/leksah-server"

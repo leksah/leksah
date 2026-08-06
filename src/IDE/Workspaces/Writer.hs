@@ -315,18 +315,6 @@ setWorkspace mbWs = do
                         _ -> void (activatePackage Nothing (Just project) Nothing Nothing)
                 _ -> deactivatePackage
         _ -> deactivatePackage
-    mbPack <- readIDE activePack
-    mbComponent <- readIDE activeComponent
-    let wsStr = case mbWs of
-                    Nothing -> ""
-                    Just ws -> ws ^. wsName
-    let txt = wsStr <> " "
-                 <> (case mbPack of
-                            Nothing  -> ""
-                            Just p   -> packageIdentifierToString (ipdPackageId p))
-                 <> (case mbComponent of
-                            Nothing  -> ""
-                            Just component -> " " <> component)
     case mbWs of
         Just ws -> do
 #if !defined(ghcjs_HOST_OS)
@@ -412,8 +400,7 @@ setWorkspace mbWs = do
                 forM_ discardPackageWatches id
                 putMVar watchersMVar (keepProjectWatchers <> M.fromList newProjectWatchers, keepPackageWatchers <> M.fromList newPackageWatchers)
         Nothing -> return ()
-    triggerEventIDE_ (StatusbarChanged [CompartmentPackage txt])
-    triggerEventIDE_ (WorkspaceChanged True True)
+    return ()
   where
     isSourceIn srcDir f =
         case stripPrefix srcDir f of

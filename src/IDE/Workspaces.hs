@@ -62,6 +62,7 @@ import System.FilePath
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import IDE.Utils.RemotePath (isRemotePath, remoteMakeRelative)
 import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
+import IDE.Web.RestartRequest (requestRestart)
 import IDE.Web.FS
        (fsCreateDirectoryIfMissing, fsDoesFileExist, fsReadFile, fsWriteFile)
 import System.Log.Logger (debugM)
@@ -73,9 +74,9 @@ import IDE.Core.State
        (IDEPackage, IDEAction, readIDE, prefs, liftIDE, WorkspaceAction,
         ProjectAction, PackageAction, ProjectM, Project(..), ProjectKey(..),
         pjPackageMap, Project, ideMessage, MessageLevel(..), workspace,
-        runWorkspace, activeProject, runProject, catchIDE, IDEEvent(..),
+        runWorkspace, activeProject, runProject, catchIDE,
         wsProjects, wsActiveProjectKey, wsActivePackFile, ipdCabalFile,
-        pjPackages, wsActiveComponent, triggerEventIDE_, pjKey, pjDir, ipdMain,
+        pjPackages, wsActiveComponent, pjKey, pjDir, ipdMain,
         ipdPackageDir, activePack, runPackage, saveAllBeforeBuild,
         __, externalModified, forkIDE, sysMessage, ipdPackageName, native,
         developLeksah, belongsToPackage, pjStackFile, pjCabalFile, wsFile,
@@ -342,7 +343,7 @@ makePackage' = do
             , msSuccessAction = when (ipdPackageName p == "leksah" && native prefs') $
                 readIDE developLeksah >>= \case
                     False -> return ()
-                    True -> triggerEventIDE_ QuitToRestart }
+                    True -> liftIO requestRestart }
     let steps = buildSteps settings
     if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
         then makePackages settings [(project, [p])] (MoComposed steps) (MoComposed []) moNoOp

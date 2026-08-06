@@ -199,6 +199,7 @@ library leksah-nogtk
         IDE.Web.OpenPanel
         IDE.Web.RecentFiles
         IDE.Web.RemoteTermRequest
+        IDE.Web.RestartRequest
         IDE.Web.NativeBrowser
         IDE.Web.NewLwRequest
         IDE.Web.TmuxLayout
@@ -258,9 +259,8 @@ library leksah-nogtk
         IDE.Web.Widget.Workspace
         IDE.Workspaces
         IDE.Workspaces.Writer
-    hs-source-dirs: src src-nogtk vendor/ltk/src
+    hs-source-dirs: src src-nogtk
     other-modules:
-        Control.Event
         Paths_leksah
     default-language: Haskell2010
     default-extensions: ViewPatterns
@@ -360,11 +360,6 @@ library leksah-nogtk
     if flag(no-hlint)
         cpp-options: -DLEKSAH_NO_HLINT
 
-    -- NOTE: no `ltk` package dep here — the modules leksah-nogtk needs
-    -- (Control.Event) are compiled straight from vendor/ltk/src via
-    -- hs-source-dirs.  The package dep would link ltk's gi-gtk (GTK3) libs
-    -- into the web front ends, which is fatal for leksah-webkitgtk (GTK 3
-    -- and 4 cannot share a process).
     if os(windows)
         -- Windows terminals use the Win32 Pseudoconsole (ConPTY) instead of
         -- posix-pty; the C shim does the STARTUPINFOEX/attribute-list dance.

@@ -140,7 +140,7 @@ import IDE.Core.State
         ipdPackageDir, PackageM, runProject, runWorkspace, debug,
         autoCommand, isError, runningTool, nixEnv, useVado,
         nixCache, modifyIDE_, pjDir, javaScript, ProjectAction,
-        ipdPackageName, triggerEventIDE_, mkPackageMap, reflectIDEI,
+        ipdPackageName, mkPackageMap, reflectIDEI,
         runDebug, lookupDebugState, printBindResult, breakOnError,
         breakOnException, printEvldWithShow, sysMessage, getDataDir,
         catchIDE, MessageLevel(..), ideMessage, activeComponent,
@@ -148,8 +148,8 @@ import IDE.Core.State
         Prefs, PackageAction, IDEM, IDEAction, IDEPackage(..), Project(..),
         MonadIDE, __, prefs, saveAllBeforeBuild, triggerBuild, native,
         packageIdentifierToString, leksahTemplateFileExtension,
-        leksahFlagFileExtension, Log(..), StatusbarCompartment(..),
-        MonadIDE(..), IDEEvent(..), SensitivityMask(..), DebugState(..),
+        leksahFlagFileExtension, Log(..),
+        MonadIDE(..), DebugState(..),
         ProjectKey(..), autoURI, pDBsPaths, errorRefs, reflectIDE,
         StackProject(..), CabalProject(..), pjKey, pjIsCabal, pjIsStack,
         pjFileOrDir, CustomProject(..), ProjectSettings(..),
@@ -265,23 +265,11 @@ myBenchmarkModules pd = concatMap (moduleInfo benchmarkBuildInfo (otherModules .
 activatePackage :: MonadIDE m => Maybe FilePath -> Maybe Project -> Maybe IDEPackage -> Maybe Text -> m ()
 activatePackage mbPath mbProject mbPack mbComponent = do
     liftIO $ debugM "leksah" $ "activatePackage " <> show (mbPath, pjKey <$> mbProject, ipdCabalFile <$> mbPack, mbComponent)
-    oldActivePack <- readIDE activePack
     case mbPath of
         -- A remote package's directory doesn't exist locally; leave the
         -- process cwd alone (remote runs cd on the far side).
         Just p | not (isRemotePath p) -> liftIO $ setCurrentDirectory (dropFileName p)
         _ -> return ()
-    when (isJust mbPack || isJust oldActivePack) $
-        triggerEventIDE_ (Sensitivity [(SensitivityProjectActive,isJust mbPack)])
-    wsStr <- readIDE (workspace . _Just . wsName)
---    let wsStr = case mbWs of
---                    Nothing -> ""
---                    Just ws -> ws ^. wsName
-    let txt = case (mbPath, mbPack) of
-                    (_, Just pack) -> wsStr <> " > " <> packageIdentifierToString (ipdPackageId pack)
-                    (Just path, _) -> wsStr <> " > " <> T.pack (takeFileName path)
-                    _ -> wsStr <> ":"
-    triggerEventIDE_ (StatusbarChanged [CompartmentPackage txt])
 
 deactivatePackage :: IDEAction
 deactivatePackage = activatePackage Nothing Nothing Nothing Nothing
@@ -1480,16 +1468,12 @@ debugStart continue = do
                         executeGhciCommand ghci ghciFork logOut
                         executeGhciCommand ghci ":reload" logOut
                     modifyIDE_ $ debugState %~ (DebugState (pjKey project) debugPackages basePath ghci :)
-                    triggerEventIDE_ (Sensitivity [(SensitivityInterpreting, True)])
-                    triggerEventIDE_ (DebugStart projectAndPackage)
                     -- Fork a thread to wait for the output from the process to close
                     _ <- liftIO $ forkIO $ do
                         _ <- readMVar (outputClosed ghci)
                         (`reflectIDE` ideRef) . postSyncIDE $
                             forM_ debugPackages $ \_package -> do
                                 modifyIDE_ $ debugState %~ filter ((/= toolProcessMVar ghci) . toolProcessMVar . dsToolState)
-                                triggerEventIDE_ (Sensitivity [(SensitivityInterpreting, False)])
-                                triggerEventIDE_ (DebugStop projectAndPackage)
                                 return ()
                     readIDE workspace >>= mapM_ (runWorkspace $ runProject (State.runPackage continue package) project)
             _ -> do
@@ -1526,13 +1510,8 @@ executeDebugCommand command handler = do
     DebugState{dsToolState = ghci} <- ask
     lift $ do
         ideR <- ask
-        postAsyncIDE $
-            triggerEventIDE_ (StatusbarChanged [CompartmentState command, CompartmentBuild True])
         liftIO . executeGhciCommand ghci command $
-            reflectIDEI (do
-                lift . postSyncIDE $
-                   triggerEventIDE_ (StatusbarChanged [CompartmentState "", CompartmentBuild False])
-                handler) ideR
+            reflectIDEI handler ideR
 
 -- Includes non buildable
 allBuildInfo' :: PackageDescription -> [BuildInfo]
@@ -1736,7 +1715,6 @@ ideProjectFromKey key = do
 --        case mbUpdatedPack of
 --            Just updatedPack -> do
 --                changePackage updatedPack
---                triggerEventIDE $ WorkspaceChanged False True
 --                return mbUpdatedPack
 --            Nothing -> do
 --                postAsyncIDE $ ideMessage Normal (__ "Can't read package file")

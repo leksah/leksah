@@ -29,7 +29,7 @@ module IDE.Build (
 import Prelude ()
 import Prelude.Compat
 import IDE.Core.State
-       (triggerEventIDE_, IDEAction, Project(..), ipdPackageId,
+       (IDEAction, Project(..), ipdPackageId,
         ipdDepends, IDEPackage(..))
 import IDE.Gtk.State (postAsyncIDE)
 import qualified Data.Map as Map
@@ -45,7 +45,7 @@ import IDE.Package
        (packageClean', buildPackage,
         packageTest', packageDoc', packageBench', packageInstall')
 import IDE.Core.Types
-       (ipdPackageName, pjPackages, IDEEvent(..), Prefs(..))
+       (ipdPackageName, pjPackages, Prefs(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Arrow ((***))
 import Data.Text (Text)

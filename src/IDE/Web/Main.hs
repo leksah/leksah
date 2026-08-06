@@ -33,7 +33,7 @@ import Control.Concurrent.Chan (readChan)
 import Control.Concurrent.MVar (MVar, mkWeakMVar, withMVar)
 import Control.Concurrent.STM (readTVarIO)
 import GHC.Conc.Sync (labelThread)
-import Control.Event (registerEvent)
+import IDE.Web.RestartRequest (setRestartHandler)
 import Control.Exception (SomeException, catch)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import GHC.Stats
@@ -858,7 +858,6 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             ,   _allLogRefs        =   mempty
             ,   _currentHist       =   0
             ,   _currentEBC        =   (Nothing, Nothing, Nothing)
-            ,   _handlers          =   mempty
             ,   _currentState      =   IsStartingUp
             ,   _recentFiles       =   []
             ,   _recentWorkspaces  =   []
@@ -975,22 +974,20 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- the ghci session leaks servers regardless of how it was launched.
       liftIO $ when ghciMode $ registerGhciCleanupNamed "lsp-servers" shutdownServers
       when developLeksah $ do
-          liftIO . (`reflectIDE` ideR) . void $
-              registerEvent ideR "QuitToRestart" $ \e -> do
-                  -- `leksah-cmd rebuild-self --no-restart` (IDE-build path) arms
-                  -- this so a successful self-build lands on disk without the
-                  -- restart; the next QuitToRestart behaves normally.
-                  suppress <- liftIO $ atomicModifyIORef' suppressNextRestart (\s -> (False, s))
-                  if suppress
-                    then liftIO $ putStrLn "leksah: QuitToRestart suppressed (rebuild-self --no-restart)"
-                    -- ghci mode: never exit the process (it IS the ghci
-                    -- session) — tear down and return to the prompt instead.
-                    -- Handoff: the in-IDE build already ran, so hand off with no
-                    -- rebuild and stay up until the successor is ready.
-                    else liftIO $ if ghciMode then stopForGhci
-                                  else if handoffEnabled then requestHandoff True
-                                  else shutdownServers >> exitImmediately (ExitFailure 2)
-                  return e
+          liftIO . setRestartHandler $ do
+              -- `leksah-cmd rebuild-self --no-restart` (IDE-build path) arms
+              -- this so a successful self-build lands on disk without the
+              -- restart; the next restart request behaves normally.
+              suppress <- atomicModifyIORef' suppressNextRestart (\s -> (False, s))
+              if suppress
+                then putStrLn "leksah: restart suppressed (rebuild-self --no-restart)"
+                -- ghci mode: never exit the process (it IS the ghci
+                -- session) — tear down and return to the prompt instead.
+                -- Handoff: the in-IDE build already ran, so hand off with no
+                -- rebuild and stay up until the successor is ready.
+                else if ghciMode then stopForGhci
+                     else if handoffEnabled then requestHandoff True
+                     else shutdownServers >> exitImmediately (ExitFailure 2)
           -- External relaunch trigger (dev-relaunch.sh): poll for a request
           -- file and exit(2) so leksah-nix.sh's loop rebuilds and relaunches.
           -- We poll rather than catch a signal because the native run loop makes

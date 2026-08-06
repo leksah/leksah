@@ -29,7 +29,7 @@ import IDE.Utils.Tool
         ProcessHandle, ToolOutput(..))
 import IDE.Core.State
        (runningTool, modifyIDE_, reflectIDE, useVado,
-        reifyIDE, triggerEventIDE, prefs, readIDE,
+        reifyIDE, prefs, readIDE,
         IDEM, MonadIDE(..), workspace, wsProjects, wsSettingsFor,
         ProjectSettings(..), pjKey, pjDir, Project)
 import IDE.Utils.FileUtils (isSubPath)
@@ -41,7 +41,6 @@ import Control.Monad (void, unless, when)
 import Control.Exception (catch, SomeException(..))
 import Control.Lens ((?~), (^.))
 import Data.List (find)
-import IDE.Core.Types (StatusbarCompartment(..), IDEEvent(..))
 import Control.Concurrent (forkIO)
 #if !defined(ghcjs_HOST_OS)
 -- vado (run-build-on-the-machine-hosting-the-mount, over ssh) pulls
@@ -98,7 +97,7 @@ runExternalTool :: MonadIDE m
                 -> Maybe [(String,String)]
                 -> ConduitT ToolOutput Void IDEM ()
                 -> m ()
-runExternalTool runGuard pidHandler description executable args dir mbEnv handleOutput  = do
+runExternalTool runGuard pidHandler _description executable args dir mbEnv handleOutput  = do
     prefs' <- readIDE prefs
     run <- runGuard
     when run $
@@ -111,8 +110,6 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
         -- The per-project command prefix (e.g. "nix develop -c") replaces
         -- the local nix wrapping that 'withToolCommand' skips for remote.
         Just (host, rdir) -> do
-            unless (T.null description) . void $
-                triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
             mbWs <- readIDE workspace
             let prefix = do
                     ws <- mbWs
@@ -138,8 +135,6 @@ runExternalTool runGuard pidHandler description executable args dir mbEnv handle
                 -- events; a finished remote run is the main one.
                 requestRemoteRefresh RefreshBuildDone
         Nothing -> do
-          unless (T.null description) . void $
-              triggerEventIDE (StatusbarChanged [CompartmentState description, CompartmentBuild True])
           -- If vado is enabled then look up the mount point and transform
           -- the execuatble to "ssh" and the arguments
 #if defined(ghcjs_HOST_OS)

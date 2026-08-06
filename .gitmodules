@@ -7,9 +7,6 @@
 [submodule "vendor/leksah-server"]
 	path = vendor/leksah-server
 	url = https://github.com/leksah/leksah-server.git
-[submodule "vendor/ltk"]
-	path = vendor/ltk
-	url = https://github.com/leksah/ltk.git
 [submodule "vendor/reflex-dom"]
 	path = vendor/reflex-dom
 	url = git@github.com:reflex-frp/reflex-dom.git

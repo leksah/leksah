@@ -41,7 +41,6 @@ module IDE.Core.Types (
 ,   IDEM
 ,   IDEEventM
 ,   IDEAction
-,   IDEEvent(..)
 ,   MonadIDE
 ,   liftIDE
 ,   (?>>=)
@@ -146,9 +145,7 @@ module IDE.Core.Types (
 
 ,   LogLaunchData(..)
 ,   LogTag(..)
-,   SensitivityMask(..)
 ,   SearchMode(..)
-,   StatusbarCompartment(..)
 
 -- IDE
 ,   ideGtk
@@ -159,7 +156,6 @@ module IDE.Core.Types (
 ,   allLogRefs
 ,   currentEBC
 ,   currentHist
-,   handlers
 ,   currentState
 ,   recentFiles
 ,   recentWorkspaces
@@ -216,7 +212,6 @@ module IDE.Core.Types (
 
 import Prelude ()
 import Prelude.Compat
-import Data.Unique (newUnique, Unique)
 import Distribution.Package
        (unPackageName, PackageIdentifier(..), Dependency(..))
 import Distribution.PackageDescription (BuildInfo)
@@ -226,7 +221,7 @@ import Data.List (find, nubBy, isPrefixOf)
 import Data.Maybe (fromMaybe)
 import IDE.Utils.RemotePath
        (isRemotePath, parseRemotePath, remoteMakeRelative, renderRemotePath)
-import Control.Concurrent (modifyMVar_, readMVar, MVar)
+import Control.Concurrent (MVar)
 import Distribution.ModuleName (ModuleName)
 import Distribution.Simple (Extension(..))
 import IDE.Utils.Tool (ToolState(..), ProcessHandle)
@@ -265,11 +260,9 @@ import Data.Aeson.Types
         defaultOptions, fieldLabelModifier, omitNothingFields, Options)
 import Language.Javascript.JSaddle (JSContextRef)
 import Control.Lens (makeLenses, (^.), Getter, to, view)
-import Control.Event
-       (EventSelector, EventSource(..), Event(..))
 import IDE.Gtk.Types
-       (IDEState(..), IDEGtk, IDEGtkEvent, Color(..), PanePath,
-       MergeTool, LogLaunchData(..), getGtkEventSelector,
+       (IDEState(..), IDEGtk, Color(..), PanePath,
+       MergeTool, LogLaunchData(..),
        ActionString, KeyString, ActionDescr(..))
 
 #ifdef LOCALIZATION
@@ -303,7 +296,6 @@ data IDE            =  IDE {
 ,   _allLogRefs          :: Seq LogRef
 ,   _currentEBC          :: (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   _currentHist         :: Int
-,   _handlers            :: Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   _currentState        :: IDEState
 ,   _recentFiles         :: [FilePath]
 ,   _recentWorkspaces    :: [FilePath]
@@ -464,90 +456,6 @@ runDebug = runReaderT
 -- Events which can be signalled and handled
 --
 
-data IDEEvent  =
-        LogMessage Text LogTag
-    |   Sensitivity [(SensitivityMask,Bool)]
-    |   StartFindInitial
-    |   LoadSession FilePath
-    |   SaveSession FilePath
-    |   UpdateRecent
-    |   VariablesChanged
-    |   ErrorChanged Bool
-    |   ErrorAdded Bool Int LogRef
-    |   ErrorsRemoved Bool (LogRef -> Bool)
-    |   CurrentErrorChanged (Maybe LogRef)
-    |   BreakpointChanged
-    |   CurrentBreakChanged (Maybe LogRef)
-    |   TraceChanged
-    |   StatusbarChanged [StatusbarCompartment]
-    |   WorkspaceChanged Bool Bool -- ^ showPane updateFileCache
-    |   SelectSrcSpan (Maybe SrcSpan)
-    |   SavedFile FilePath
-    |   DebugStart (ProjectKey, FilePath)
-    |   DebugStop (ProjectKey, FilePath)
-    |   QuitToRestart
-    |   GtkEvent (IDEGtkEvent IDERef)
-
-instance EventSelector Text
-
-instance Event IDEEvent Text where
-    getSelector (LogMessage _ _)        =   "LogMessage"
-    getSelector (Sensitivity _)         =   "Sensitivity"
-    getSelector StartFindInitial        =   "StartFindInitial"
-    getSelector (LoadSession _)         =   "LoadSession"
-    getSelector (SaveSession _)         =   "SaveSession"
-    getSelector UpdateRecent            =   "UpdateRecent"
-    getSelector VariablesChanged        =   "VariablesChanged"
-    getSelector (ErrorChanged _)        =   "ErrorChanged"
-    getSelector ErrorAdded{}            =   "ErrorAdded"
-    getSelector (ErrorsRemoved _ _)     =   "ErrorsRemoved"
-    getSelector (CurrentErrorChanged _) =   "CurrentErrorChanged"
-    getSelector BreakpointChanged       =   "BreakpointChanged"
-    getSelector (CurrentBreakChanged _) =   "CurrentBreakChanged"
-    getSelector TraceChanged            =   "TraceChanged"
-    getSelector (StatusbarChanged _)    =   "StatusbarChanged"
-    getSelector (WorkspaceChanged _ _)  =   "WorkspaceChanged"
-    getSelector (SelectSrcSpan _)       =   "SelectSrcSpan"
-    getSelector (SavedFile _)           =   "SavedFile"
-    getSelector (DebugStart _)          =   "DebugStart"
-    getSelector (DebugStop _)           =   "DebugStop"
-    getSelector QuitToRestart           =   "QuitToRestart"
-    getSelector (GtkEvent e)            =   getGtkEventSelector e
-
-instance EventSource IDERef IDEEvent IDEM Text where
-    canTriggerEvent _ "LogMessage"          = True
-    canTriggerEvent _ "RecordHistory"       = True
-    canTriggerEvent _ "Sensitivity"         = True
-    canTriggerEvent _ "DescrChoice"         = True
-    canTriggerEvent _ "StartFindInitial"    = True
-    canTriggerEvent _ "SearchSymbolDialog"  = True
-    canTriggerEvent _ "LoadSession"         = True
-    canTriggerEvent _ "SaveSession"         = True
-    canTriggerEvent _ "UpdateRecent"        = True
-    canTriggerEvent _ "VariablesChanged"    = True
-    canTriggerEvent _ "ErrorChanged"        = True
-    canTriggerEvent _ "ErrorAdded"          = True
-    canTriggerEvent _ "ErrorsRemoved"       = True
-    canTriggerEvent _ "CurrentErrorChanged" = True
-    canTriggerEvent _ "BreakpointChanged"   = True
-    canTriggerEvent _ "CurrentBreakChanged" = True
-    canTriggerEvent _ "TraceChanged"        = True
-    canTriggerEvent _ "GetTextPopup"        = True
-    canTriggerEvent _ "StatusbarChanged"    = True
-    canTriggerEvent _ "WorkspaceChanged"    = True
-    canTriggerEvent _ "SelectSrcSpan"       = True
-    canTriggerEvent _ "SavedFile"           = True
-    canTriggerEvent _ "DebugStart"          = True
-    canTriggerEvent _ "DebugStop"           = True
-    canTriggerEvent _ "QuitToRestart"       = True
-    canTriggerEvent _ _                   = False
-    getHandlers ideRef =
-        liftIO $ _handlers . snd <$> readMVar ideRef
-    setHandlers ideRef nh =
-        liftIO $ modifyMVar_ ideRef (\(a, ide) ->
-            return (a, ide {_handlers= nh}))
-    myUnique _ =
-        liftIO newUnique
 
 -- ---------------------------------------------------------------------
 -- Project
@@ -1222,33 +1130,12 @@ newtype KeymapI         =   KM  (Map ActionString
 
 data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag deriving(Eq, Ord, Show)
 
-data SensitivityMask =
-        SensitivityForwardHist
-    |   SensitivityBackwardHist
-    |   SensitivityProjectActive
-    |   SensitivityWorkspaceOpen
-    |   SensitivityError
-    |   SensitivityEditor
-    |   SensitivityInterpreting
-
-   deriving (Eq, Ord, Show)
-
 data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
                 | Regex {caseSense :: Bool}
     deriving (Eq,Ord,Read,Show,Generic)
 
 instance ToJSON SearchMode
 instance FromJSON SearchMode
-
-data StatusbarCompartment =
-        CompartmentCommand Text
-    |   CompartmentPane Text
-    |   CompartmentPackage Text
-    |   CompartmentState Text
-    |   CompartmentOverlay Bool
-    |   CompartmentBufferPos (Int,Int)
-    |   CompartmentBuild Bool
-    |   CompartmentCollect Bool
 
 
 makeLenses ''IDE
