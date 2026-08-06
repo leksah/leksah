@@ -1,31 +1,27 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
------------------------------------------------------------------------------
---
--- Module      :  IDE.Core.State
--- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
--- License     :  GNU-GPL
---
--- Maintainer  :  <maintainer at leksah.org>
--- Stability   :  provisional
--- Portability :  portable
---
--- | The core state of ide. This module is imported from every other module,
--- | and all data structures of the state are declared here, to avoid circular
--- | module dependencies.
---
--------------------------------------------------------------------------------
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
+-- | Working with the IDE state: read it, change it, run an action in it from
+-- another thread, and report to the user.
+--
+-- Everything here is about the 'IDE.Core.Types.IDERef' 'MVar': 'readIDE' and
+-- 'modifyIDE' for the state itself, 'reifyIDE' \/ 'reflectIDE' to cross a
+-- thread boundary (the front ends' callbacks, background builds, the control
+-- socket), 'catchIDE' \/ 'throwIDE' for failures, and the message helpers
+-- that put a line in front of the user.  The module also re-exports the
+-- state and the domain models, so most of the IDE imports only this.
 module IDE.Core.State (
+    -- * Diagnostics in the state
     errorRefs
 ,   breakpointRefs
 ,   contextRefs
@@ -36,8 +32,7 @@ module IDE.Core.State (
 ,   setCurrentBreak
 ,   setCurrentContext
 
-
--- * Convenience methods for accesing the IDE State
+    -- * Reading and changing the state
 ,   readIDE
 ,   modifyIDE
 ,   modifyIDE_
@@ -145,16 +140,19 @@ import Data.Char (toUpper)
 import Text.Read (readMaybe)
 import Data.Ord (Down(..))
 
+-- | How loudly to report something.  (Only the message helpers below read
+-- it; nothing filters on it yet.)
 data MessageLevel = Silent | Normal | High
-    deriving (Eq,Ord,Show)
+    deriving (Eq, Ord, Show)
 
-
--- Shall be replaced
-sysMessage :: MonadIO m =>  MessageLevel -> Text -> m ()
+-- | Report to the terminal leksah was started from — for things that happen
+-- before (or instead of) the UI existing.
+sysMessage :: MonadIO m => MessageLevel -> Text -> m ()
 sysMessage _ml str = liftIO $ do
     putStrLn $ T.unpack str
     hFlush stdout
 
+-- | Report to the user: the terminal AND the Log pane.
 ideMessage :: MonadIDE m => MessageLevel -> Text -> m ()
 ideMessage level str = do
     liftIO $ sysMessage level str
@@ -166,10 +164,11 @@ logMessage :: MonadIDE m => Text -> LogTag -> m ()
 logMessage str tag =
     modifyIDE_ $ logLineMap %~ \l -> M.insert (M.size l) (str <> "\n", tag) l
 
----- ---------------------------------------------------------------------
----- Exception handling
-----
+-- ---------------------------------------------------------------------
+-- Failing
+-- ---------------------------------------------------------------------
 
+-- | An IDE-level failure carrying a message for the user.
 newtype IDEException = IDEException Text
 
 instance Show IDEException where
@@ -181,6 +180,12 @@ throwIDE :: Text -> a
 throwIDE str = throw (IDEException str)
 
 
+-- ---------------------------------------------------------------------
+-- Diagnostics held in the state
+-- ---------------------------------------------------------------------
+
+-- | The diagnostics worth navigating: errors, warnings, lint hints and test
+-- failures (breakpoints and trace context are their own streams below).
 errorRefs :: Getter IDE (Seq LogRef)
 errorRefs = allLogRefs . to (Seq.filter ((`elem` [ErrorRef, WarningRef, LintRef, TestFailureRef]) . logRefType))
 
@@ -190,6 +195,8 @@ breakpointRefs = allLogRefs . to (Seq.filter ((== BreakpointRef) . logRefType))
 contextRefs :: Getter IDE (Seq LogRef)
 contextRefs = allLogRefs . to (Seq.filter ((== ContextRef) . logRefType))
 
+-- | The selected error, breakpoint and trace context — what ⌃J\/⌃⇧J step
+-- through and the gutter highlights.
 currentError, currentBreak, currentContext :: Lens' IDE (Maybe LogRef)
 currentError     = currentEBC . _1
 currentBreak     = currentEBC . _2

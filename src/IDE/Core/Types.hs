@@ -75,8 +75,6 @@ module IDE.Core.Types (
 
 ,   module IDE.Diagnostics.Model
 
-,   SearchHint(..)
-,   KeymapI(..)
 #if defined(ghcjs_HOST_OS)
     -- Stand-ins for packages that don't build on the JS backend (see their
     -- definitions below); natively the real ones come from fsnotify.
@@ -86,7 +84,6 @@ module IDE.Core.Types (
 
 
 ,   LogLaunchData(..)
-,   SearchMode(..)
 
 -- IDE
 ,   ideGtk
@@ -347,13 +344,6 @@ instance MonadIDE PackageM where
 runPackage :: PackageM a -> Package -> ProjectM a
 runPackage = runReaderT
 
--- ---------------------------------------------------------------------
--- Small shared vocabulary
--- ---------------------------------------------------------------------
-
--- | Which way (and from what) a find should search next.
-data SearchHint = Forward | Backward | Insert | Delete | Initial
-    deriving (Eq)
 
 #if defined(ghcjs_HOST_OS)
 -- | Stand-ins for fsnotify's types: fsnotify (via unix-compat) doesn't build
@@ -364,22 +354,7 @@ data WatchManager = NoWatchManager
 type StopListening = IO ()
 #endif
 
--- | A classic-era keymap: per action, the chord (or two-chord sequence)
--- bound to it and an optional display override.  The web UI's own
--- keybindings live in "IDE.Web.Keybindings".
-newtype KeymapI = KM
-    (Map ActionString [(Maybe (Either KeyString (KeyString, KeyString)), Maybe Text)])
 
--- | How a find matches: literally, as a prefix, or as a regex — each
--- either case-sensitively or not.
-data SearchMode
-    = Exact  { caseSense :: Bool }
-    | Prefix { caseSense :: Bool }
-    | Regex  { caseSense :: Bool }
-    deriving (Eq, Ord, Read, Show, Generic)
-
-instance ToJSON SearchMode
-instance FromJSON SearchMode
 
 
 makeLenses ''IDE
