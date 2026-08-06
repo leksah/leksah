@@ -1,0 +1,15 @@
+{
+    "active": {
+        "package": "leksah.cabal",
+        "project": "."
+    },
+    "name": "leksah",
+    "projects": [
+        {
+            "file": "cabal.project",
+            "root": ".",
+            "type": "cabal"
+        }
+    ],
+    "version": 1
+}

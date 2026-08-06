@@ -67,6 +67,9 @@ data WsProject = WsProject
   , wpRoot      :: FilePath
   , wpFile      :: Maybe FilePath
   , wpOverrides :: Map Verb ToolOverride
+  , wpCmdPrefix :: Maybe Text
+    -- ^ words prepended to every command run for this project (e.g. an
+    -- @ssh host@ prefix for a remote root, or a @nix develop -c@ wrapper)
   } deriving (Eq, Show)
 
 -- | What is currently \"active\" in the UI: a project (by its root), and
@@ -113,6 +116,7 @@ parseProject base = withObject "project" $ \o -> WsProject
   <*> (resolve base <$> o .: "root")
   <*> (fmap (resolve base) <$> o .:? "file")
   <*> (o .:? "commandOverrides" .!= KM.empty >>= parseOverrides)
+  <*> o .:? "commandPrefix"
  where
   parseOverrides km = Map.fromList . catMaybes
     <$> mapM parseOne (KM.toList km)
@@ -157,6 +161,7 @@ projectValue base p = obj $
   , ("root", relPath base (wpRoot p))
   ] ++
   [ ("file", relPath base f) | Just f <- [wpFile p] ] ++
+  [ ("commandPrefix", String pre) | Just pre <- [wpCmdPrefix p] ] ++
   [ ("commandOverrides", overridesValue (wpOverrides p))
   | not (Map.null (wpOverrides p)) ]
  where

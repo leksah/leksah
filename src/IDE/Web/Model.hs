@@ -32,12 +32,26 @@ module IDE.Web.Model
   , PaneKind(..)
   , PaneContent(..)
   , LeksahWindow(..)
+    -- * The whole UI model (one cell)
+  , WebUi(..)
+  , newWebUi
+  , webWindows
+  , leksahWindows
+  , nextLeksahWin
+  , hiddenWindows
+  , activeWindow
+  , nextWindowId
+  , flipMirror
+  , flipMru
+  , paneAISession
   ) where
 
 import Control.Lens (makeLenses)
 import Data.Aeson (FromJSON(..), ToJSON(..))
 import Data.Map (Map)
 import qualified Data.Map as Map (Map)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
@@ -196,5 +210,41 @@ data LeksahWindow = LeksahWindow
   , lwNext    :: Int             -- ^ 'LeafId' minter (monotonic, never reused)
   } deriving (Eq, Show, Generic)
 
+-- | Everything the web UI remembers about its own windows, tabs, splits
+-- and pane→AI-session associations.  ONE observable cell holds a 'WebUi'
+-- (see 'IDE.App'): keeping the fields together keeps multi-field edits
+-- (close a pane + fix the flip MRU + move focus) atomic, while widgets
+-- still subscribe to slices via @holdUniqDyn@ over these lenses.
+data WebUi = WebUi
+  { _webWindows    :: Map WindowId WebWindow
+    -- ^ per-OS-window tab/visibility state
+  , _leksahWindows :: Map.Map Text LeksahWindow
+    -- ^ split-tree tabs, keyed by leksah-window id
+  , _nextLeksahWin :: Int              -- ^ leksah-window id minter
+  , _hiddenWindows :: Set (Text, Int)  -- ^ (lw id, leaf) hidden while a
+                                       --   pane visits another OS window
+  , _activeWindow  :: Maybe WindowId   -- ^ which OS window has focus
+  , _nextWindowId  :: Int              -- ^ OS-window id minter
+  , _flipMirror    :: Maybe (Int, [(Text, Int, Text)], Int)
+    -- ^ ctrl-tab flipper overlay state while flipping
+  , _flipMru       :: [FlipItem]       -- ^ flip order, most recent first
+  , _paneAISession :: Map.Map AIPaneRef Text
+    -- ^ which AI session a pane's \"send to AI\" targets
+  } deriving (Eq, Show)
+
+-- | The state of a UI with no windows yet (boot).
+newWebUi :: WebUi
+newWebUi = WebUi
+  { _webWindows    = mempty
+  , _leksahWindows = mempty
+  , _nextLeksahWin = 1
+  , _hiddenWindows = Set.empty
+  , _activeWindow  = Nothing
+  , _nextWindowId  = 1
+  , _flipMirror    = Nothing
+  , _flipMru       = []
+  , _paneAISession = mempty
+  }
 
 makeLenses ''WebWindow
+makeLenses ''WebUi

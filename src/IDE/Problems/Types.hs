@@ -12,8 +12,10 @@ module IDE.Problems.Types
   ( Pos(..)
   , Range(..)
   , pointRange
+  , Loc(..)
   , Severity(..)
   , Problem(..)
+  , problemLoc
   , problemsByPath
   ) where
 
@@ -37,6 +39,13 @@ data Range = Range
 pointRange :: Pos -> Range
 pointRange p = Range p p
 
+-- | A place in a file — what a jump-to-source event carries (a grep hit,
+-- a terminal file link, an error's target).
+data Loc = Loc
+    { locPath  :: !FilePath
+    , locRange :: !Range
+    } deriving (Eq, Ord, Show)
+
 -- | How bad it is.  Ordered worst-first so sorting a list of problems
 -- surfaces errors.
 data Severity = SevError | SevWarning | SevHint | SevInfo
@@ -54,6 +63,10 @@ data Problem = Problem
     , pMessage  :: !Text          -- ^ full message body, newlines preserved
     , pTool     :: !Text          -- ^ producer tag: @ghc@, @cargo@, @lsp@, …
     } deriving (Eq, Show)
+
+-- | Where a problem points (its path is as-printed; resolve before use).
+problemLoc :: Problem -> Loc
+problemLoc p = Loc (pPath p) (pRange p)
 
 -- | Group problems for per-file consumers (editor gutters).
 problemsByPath :: [Problem] -> Map FilePath [Problem]

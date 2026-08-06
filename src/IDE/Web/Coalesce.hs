@@ -19,11 +19,10 @@ module IDE.Web.Coalesce
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
-       (MVar, modifyMVar, modifyMVar_, newMVar)
+       (modifyMVar, modifyMVar_, newMVar)
 import Control.Exception (SomeException, try)
 import Control.Monad (void)
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
-import Data.Map (Map)
+import Data.IORef (atomicModifyIORef', newIORef, readIORef)
 import qualified Data.Map as M
 
 -- | What a coalescer is doing.

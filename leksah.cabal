@@ -93,7 +93,9 @@ flag objc-in-library
 
 library leksah-nogtk
     exposed-modules:
+        IDE.App
         IDE.BuildLog
+        IDE.Builder
         IDE.Config
         IDE.DebugLog
         IDE.Paths
@@ -106,6 +108,8 @@ library leksah-nogtk
         IDE.Utils.DebugUtils
         IDE.Utils.ExitImmediately
         IDE.Utils.GHCUtils
+        IDE.Watch
+        IDE.Workspace
         IDE.Ws.Cabal
         IDE.Ws.Cargo
         IDE.Ws.Dir
@@ -123,6 +127,7 @@ library leksah-nogtk
         IDE.Web.Coalesce
         IDE.Web.Command
         IDE.Web.Commands
+        IDE.Web.Ctx
         IDE.Web.Keybindings
         IDE.Web.CmdServer
         IDE.Web.CloseRequest
