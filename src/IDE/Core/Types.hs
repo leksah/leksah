@@ -87,25 +87,10 @@ module IDE.Core.Types (
 ,   wwWide1
 ,   wwFrame
 
-,   LogRefType(..)
-,   Log(..)
-,   logRootPath
-,   LogRef(..)
-,   logRefRootPath
-,   logRefFilePath
-,   logRefFullFilePath
-,   isError
-,   isBreakpoint
-,   displaySrcSpan
-,   colorHexString
+,   module IDE.Diagnostics.Model
 
 ,   SearchHint(..)
 ,   KeymapI(..)
-#if defined(ghcjs_HOST_OS) || defined(LEKSAH_NO_HLINT)
-    -- Idea stand-in (see below); natively the real one comes from hlint,
-    -- unless the no-hlint flag drops it (leksah.sh --ghci).
-,   Idea(..)
-#endif
 #if defined(ghcjs_HOST_OS)
     -- Stand-ins for packages that don't build on the JS backend (see their
     -- definitions below); natively the real ones come from fsnotify.
@@ -115,7 +100,6 @@ module IDE.Core.Types (
 
 
 ,   LogLaunchData(..)
-,   LogTag(..)
 ,   SearchMode(..)
 
 -- IDE
@@ -181,11 +165,11 @@ import Distribution.ModuleName (ModuleName)
 import Distribution.Simple (Extension(..))
 import IDE.Utils.Process (ProcessHandle)
 import Data.IORef (IORef)
-import Numeric (showHex)
 import System.FilePath
        (dropFileName, (</>), isAbsolute, makeRelative, equalFilePath,
         addTrailingPathSeparator)
 import IDE.Core.Location
+import IDE.Diagnostics.Model
 import IDE.Settings
 import IDE.Project
 import Control.Monad.Trans.Class (lift)
@@ -196,9 +180,6 @@ import qualified Data.Map as Map (Map)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack)
-#if !defined(ghcjs_HOST_OS) && !defined(LEKSAH_NO_HLINT)
-import Language.Haskell.HLint (Idea(..))
-#endif
 import Data.Function (on)
 import Control.Concurrent.STM.TVar (TVar)
 import Data.Sequence (Seq)
@@ -584,115 +565,17 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
 -- | Other types
 --
 
--- Order determines priority of the icons in the gutter
-data LogRefType = ContextRef | BreakpointRef | ErrorRef | TestFailureRef | WarningRef | LintRef
-    deriving (Eq, Ord, Show, Enum, Bounded)
-
-data Log =
-    LogProject {logBasePath :: FilePath}
-  | LogCabal {logCabalFile :: FilePath}
-  | LogNix {logNixFile :: FilePath, logNixAttribute :: Text}
-  deriving(Eq, Show)
-
-logRootPath :: Log -> FilePath
-logRootPath LogProject{..} = logBasePath
-logRootPath LogCabal{..} = dropFileName logCabalFile
-logRootPath LogNix{..} = dropFileName logNixFile
-
-#if defined(ghcjs_HOST_OS) || defined(LEKSAH_NO_HLINT)
--- | Stand-in for hlint's 'Language.Haskell.HLint.Idea': hlint (via
--- ghc-lib-parser, whose RTS-internals hsc doesn't compile) is unavailable on
--- the JS backend, and is dropped by the no-hlint flag (leksah.sh --ghci, where
--- the RTS linker can't load ghc-lib-parser's static archive).  'LogRef' stores
--- one and 'IDE.Core.State.canResolve' reads 'ideaHint' / 'ideaTo'; nothing
--- more of the real record is used here.
-data Idea = Idea { ideaHint :: String, ideaTo :: Maybe String }
-    deriving (Eq, Show)
-#endif
-
 #if defined(ghcjs_HOST_OS)
 -- | Stand-ins for fsnotify's types: fsnotify (via unix-compat) doesn't build
 -- on the JS backend, and there is no file watching in a browser anyway.  The
 -- '_fsnotify' / '_watchers' fields still exist; the JS branch of
--- 'IDE.Workspaces.Writer' registers only no-op watchers.
+-- 'IDE.Project.WorkspaceFile' registers only no-op watchers.
 data WatchManager = NoWatchManager
 type StopListening = IO ()
 #endif
 
--- | Represents a message about a part of the source code
-data LogRef = LogRef {
-    logRefSrcSpan       ::   SrcSpan
-,   logRefLog           ::   Log
-,   refDescription      ::   Text
-,   logRefIdea          ::   Maybe (Text, Idea)
-,   logLines            ::   Maybe (Int, Int)
-,   logRefType          ::   LogRefType
-} deriving(Eq)
-
-instance Show LogRef where
-    show lr = T.unpack (refDescription lr) ++ displaySrcSpan (logRefSrcSpan lr)
-
-displaySrcSpan :: SrcSpan -> String
-displaySrcSpan s = srcSpanFilename s ++ ":" ++
-    if srcSpanStartLine s == srcSpanEndLine s
-        then show (srcSpanStartLine s) ++ ":" ++
-            if srcSpanStartColumn s == srcSpanEndColumn s
-                then show (srcSpanStartColumn s)
-                else show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
-        else show (srcSpanStartLine s) ++ ":" ++
-            show (srcSpanStartColumn s) ++ "-" ++ show (srcSpanEndColumn s)
-
--- | The root folder of the package the message references
-logRefRootPath :: LogRef -> FilePath
-logRefRootPath = logRootPath . logRefLog
-
--- | The file path the message references, relative to the root path
-logRefFilePath :: LogRef -> FilePath
-logRefFilePath lr = let
-    f = srcSpanFilename $ logRefSrcSpan lr
-    in if isRemotePath f
-            -- Stored ssh:// span (an out-of-root remote file): show it
-            -- relative to the (remote) root when possible.
-            then remoteMakeRelative (logRefRootPath lr) f
-       else if isAbsolute f -- can happen, at least when building with stack a source file that is present in several components (ie library and test)
-            then makeRelative (logRefRootPath lr) f
-            else f
-
--- | The absolute file path the message references
-logRefFullFilePath :: LogRef -- ^ The log ref
-    -> FilePath -- ^ the result
-logRefFullFilePath lr = let
-    f = srcSpanFilename $ logRefSrcSpan lr
-    root = logRefRootPath lr
-    in if isRemotePath f
-            then f
-       else if isAbsolute f
-            -- An absolute (host-local) filename under a remote root came
-            -- from the remote compiler — re-attach the host.
-            then maybe f (\(host, _) -> renderRemotePath host f) (parseRemotePath root)
-            else root </> f
-
-isError :: LogRef -> Bool
-isError = (== ErrorRef) . logRefType
-
-isBreakpoint :: LogRef -> Bool
-isBreakpoint = (== BreakpointRef) . logRefType
-
---isContext :: LogRef -> Bool
---isContext = (== ContextRef) . logRefType
-
--- This should probably be in Gtk2Hs allong with a suitable parser
-colorHexString :: Color -> String
-colorHexString (Color r g b) = '#' : pad (showHex r "")
-                                  ++ pad (showHex g "")
-                                  ++ pad (showHex b "")
-    where pad s = replicate (4 - length s) '0' ++ s
-
-
 newtype KeymapI         =   KM  (Map ActionString
                                 [(Maybe (Either KeyString (KeyString,KeyString)), Maybe Text)])
-
-data LogTag = LogTag | ErrorTag | FrameTag | InputTag | InfoTag deriving(Eq, Ord, Show)
 
 data SearchMode = Exact {caseSense :: Bool} | Prefix {caseSense :: Bool}
                 | Regex {caseSense :: Bool}

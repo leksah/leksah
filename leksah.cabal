@@ -141,6 +141,7 @@ library leksah-nogtk
         IDE.Gtk.Types
         IDE.Gtk.Workspaces
         IDE.Diagnostics
+        IDE.Diagnostics.Model
         IDE.Pane.Log
         IDE.Pane.SourceBuffer
         IDE.Pane.WebKit.Documentation
