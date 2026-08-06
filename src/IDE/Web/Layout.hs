@@ -46,7 +46,9 @@ layoutCss = do
     -- Command-held navigation hint chips (⌘`, ⌘D, ⌘⇧D): a fixed overlay whose
     -- chips are positioned from live rects by leksahUpdateHints, shown only while
     -- the badges are revealed.  translate(-50%,-50%) centres each chip on its
-    -- anchor point.
+    -- anchor point.  Both this layer and the tab badges above sit at 200 — the
+    -- flipper deliberately outranks them at 300 ('flipperCss'), since ⌘ is held
+    -- for the whole flip and the hints would otherwise cover the overlay.
     ".leksah-hints" ? do
         "position" -: "fixed"
         "left" -: "0"

@@ -37,7 +37,13 @@ flipperCss :: Css
 flipperCss = do
   ".flipper" ? do
     position absolute
-    zIndex 100
+    -- Above the ⌘-held shortcut layer (badges and hint chips, z-index 200 in
+    -- 'IDE.Web.Layout'): the flipper is driven by ⌘\`, so ⌘ is *always* down
+    -- while it is open and those hints are always showing — at 100 the yellow
+    -- chips punched through the overlay.  Still below the menus/dialogs (1000+).
+    -- The cross-window mirror and the AI picker reuse this class, so they move
+    -- with it.
+    zIndex 300
     top (pct 5)
     height (pct 90)
     width (pct 100)
