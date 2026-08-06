@@ -97,7 +97,6 @@ data WorkspaceFile = WorkspaceFile {
 ,   wsfActiveProjectKey  ::   Maybe ProjectKey
 ,   wsfActivePackFile    ::   Maybe FilePath
 ,   wsfActiveComponent   ::   Maybe Text
-,   wsfPackageVcsConf    ::   Map FilePath VCSConf
     -- | Per-project settings keyed by the (relativized; remote verbatim)
     -- project file-or-dir.  Maybe so old workspace files still parse.
 ,   wsfProjectSettings   ::   Maybe (Map FilePath ProjectSettings)
@@ -244,7 +243,6 @@ makePathsAbsolute ws bp = do
                 , _wsActiveProjectKey = wsActiveProjectKey'
                 , _wsActivePackFile   = wsActivePackFile'
                 , _wsActiveComponent  = wsfActiveComponent ws
-                , _packageVcsConf     = wsfPackageVcsConf ws
                 }
     return (workspace', deferredKeys)
 
@@ -258,7 +256,6 @@ makePathsAbsolute ws bp = do
 --,   _wsActiveProjectFile  =   Nothing
 --,   _wsActivePackFile     =   Nothing
 --,   _wsActiveComponent    =   Nothing
---,   _packageVcsConf       =   Map.empty
 --}
 
 emptyWorkspaceFile :: WorkspaceFile
@@ -272,7 +269,6 @@ emptyWorkspaceFile =  WorkspaceFile {
 ,   wsfActiveProjectFile =   Nothing
 ,   wsfActivePackFile    =   Nothing
 ,   wsfActiveComponent   =   Nothing
-,   wsfPackageVcsConf    =   Map.empty
 ,   wsfProjectSettings   =   Nothing
 }
 
@@ -475,7 +471,6 @@ makePathsRelative ws wsFile' = do
                 , wsfActiveProjectFile = wsActiveProjectKey' >>= pjFile
                 , wsfActivePackFile    = wsActivePackFile'
                 , wsfActiveComponent   = ws ^. wsActiveComponent
-                , wsfPackageVcsConf    = ws ^. packageVcsConf
                 , wsfProjectSettings   = if null wsProjectSettings'
                                             then Nothing
                                             else Just (M.fromList wsProjectSettings')

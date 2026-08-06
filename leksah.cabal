@@ -326,8 +326,7 @@ library leksah-nogtk
         time >=0.1 && <1.13,
         transformers >=0.2.2.0 && <0.7,
         unliftio-core >=0.1 && < 0.3,
-        utf8-string >=0.3.1.1 && <1.1,
-        vcswrapper >=0.2.0 && <0.3
+        utf8-string >=0.3.1.1 && <1.1
 
     -- Deps that do NOT compile with the GHC JavaScript backend, and are only
     -- used by code that is CPP'd out / stubbed there:

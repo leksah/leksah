@@ -11,7 +11,6 @@ module IDE.Gtk.Types (
   , PanePath
   , PanePathElement(..)
   , PaneDirection(..)
-  , MergeTool(..)
   , ActionString
   , KeyString
   , ActionDescr(..)
@@ -65,12 +64,6 @@ data PaneDirection  =   TopP | BottomP | LeftP | RightP
 instance ToJSON PaneDirection
 instance FromJSON PaneDirection
 
-newtype MergeTool = MergeTool {
-    fullPath :: FilePath
-    } deriving (Show, Read, Generic)
-
-instance ToJSON MergeTool
-instance FromJSON MergeTool
 
 -- ---------------------------------------------------------------------
 -- Other data structures which are used in the state

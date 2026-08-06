@@ -91,7 +91,6 @@ module IDE.Core.Types (
 ,   wsPackages
 ,   wsProjectAndPackages
 ,   wsAllPackages
-,   VCSConf
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -202,7 +201,6 @@ module IDE.Core.Types (
 ,   wsActiveProjectKey
 ,   wsActivePackFile
 ,   wsActiveComponent
-,   packageVcsConf
 ,   ProjectSettings(..)
 ,   defaultProjectSettings
 ,   wsSettingsFor
@@ -235,7 +233,6 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
 
-import qualified VCSWrapper.Common as VCS
 import qualified Data.Map as Map (Map)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Data.Text (Text)
@@ -262,7 +259,7 @@ import Language.Javascript.JSaddle (JSContextRef)
 import Control.Lens (makeLenses, (^.), Getter, to, view)
 import IDE.Gtk.Types
        (IDEState(..), IDEGtk, Color(..), PanePath,
-       MergeTool, LogLaunchData(..),
+       LogLaunchData(..),
        ActionString, KeyString, ActionDescr(..))
 
 #ifdef LOCALIZATION
@@ -582,7 +579,6 @@ data Workspace = Workspace {
 ,   _wsActiveProjectKey  ::   Maybe ProjectKey
 ,   _wsActivePackFile    ::   Maybe FilePath
 ,   _wsActiveComponent   ::   Maybe Text
-,   _packageVcsConf      ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
 
 -- | Visibility of the side ("tall") pane, cycled by the toolbar button.
@@ -1014,7 +1010,6 @@ data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
 -- Version-Control-System Configuration
-type VCSConf = (VCS.VCSType, VCS.Config, Maybe MergeTool)
 
 --
 -- | Other types
