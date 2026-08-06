@@ -125,6 +125,18 @@
         # the webview2 exe is cross-compiled to mingw).  Only meaningful where
         # crossPlatforms yields ucrt64, i.e. x86_64-linux (see nix/hix.nix).
         packages = flake.packages
+          // {
+          # The leksah.org site root: homepage + the in-browser demo (the
+          # ghcjs cross builds of leksah and the sandpit breakout game),
+          # assembled by a Haskell program compiled inside the derivation
+          # (see nix/website.nix).  Mirror the output to leksah.github.io.
+          leksah-website = import ./nix/website.nix {
+            inherit pkgs;
+            src = ./.;
+            leksah-js = flake.packages."javascript-unknown-ghcjs:leksah:exe:leksah";
+            breakout-js = flake.packages."javascript-unknown-ghcjs:breakout:exe:breakout";
+          };
+        }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
           leksah-windows-installer = import ./nix/windows-installer.nix {
             inherit pkgs;

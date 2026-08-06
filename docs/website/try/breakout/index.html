@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- The sandpit breakout game (sandpit/breakout), compiled with the GHC JS
+     backend and staged beside this page as breakout.js (see
+     nix/website.nix / try/assemble-site.hs).  The in-browser leksah demo
+     plays it in a browser pane via the same-origin URL /try/breakout/;
+     it also works opened directly.  Keyboard: ← → or A/D, Space to
+     launch — click the page (or the pane) first so it has focus. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Breakout — Haskell, compiled to JavaScript</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0b0f; }
+  </style>
+  <script>
+    // Minimal env for the patched RTS (see try/patch-rts.hs): breakout
+    // barely reads env, but HOME/LANG cost nothing and keep getpwuid-style
+    // fallbacks off the exotic paths.
+    globalThis.leksahDemoEnv = {
+      HOME: '/home/breakout', USER: 'breakout', LANG: 'en_US.UTF-8',
+      PATH: '/usr/bin:/bin', TMPDIR: '/tmp'
+    };
+  </script>
+</head>
+<body>
+  <script src="breakout.js"></script>
+</body>
+</html>

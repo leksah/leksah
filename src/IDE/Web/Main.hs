@@ -343,8 +343,8 @@ import IDE.Web.Widget.Terminals
        (terminalsCss, terminalsWidget, sessionAlert, windowAlertSrc,
         windowActivePane, isClaudeWindow, windowIconSrc, windowTabLabel,
         stripIdxPrefix)
-import IDE.Web.Widget.TerminalCC
-       (terminalCCWidget, sessionlessLwWidget)
+import IDE.Web.Widget.TerminalCC (terminalCCWidget)
+import IDE.Web.Widget.LwView (sessionlessLwWidget)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import qualified IDE.Workspaces.Writer as Writer
@@ -1073,10 +1073,31 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         mbSession <- readWebSession
 #if defined(ghcjs_HOST_OS)
         -- Browser demo: the canned sessions from the page (see
-        -- IDE.Web.DemoTerminals) stand in for live tmux sessions.
+        -- IDE.Web.DemoTerminals) stand in for live tmux sessions.  Seed the
+        -- leksah windows directly: a SESSIONLESS showcase window (the game's
+        -- editor beside a browser pane running the compiled game — rendered
+        -- by the shared 'sessionlessLwWidget', draggable with ⌘-drag), plus
+        -- one single-pane window per canned session.  Owning the canned
+        -- sessions here also keeps the reconcile's stray-adoption pass from
+        -- minting a SECOND window (and tab) for each of them.
         liveTerms <- demoTerminals
-        let lws0     = M.empty :: M.Map Text LeksahWindow
-            nextSeed = 0 :: Int
+        let showcase = LeksahWindow
+              { lwSession = Nothing
+              , lwTree    = SplitNode SplitH
+                              [ (0.55, SplitLeaf (LeafId 0))
+                              , (0.45, SplitLeaf (LeafId 1)) ]
+              , lwPanes   = M.fromList
+                  [ (LeafId 0, PaneContent
+                      (PaneView (EditorKey "/demo/breakout/app/Main.hs")) Nothing)
+                  , (LeafId 1, PaneContent (PaneView (BrowserKey 1)) Nothing) ]
+              , lwFocused = Just (LeafId 0)
+              , lwZoomed  = Nothing
+              , lwNext    = 2 }
+            termLws  = [ (lwIdText (i + 1), singlePaneWindow (Just sid)
+                            (PaneContent (PaneTmux ("@" <> sid)) Nothing))
+                       | (i, (sid, _)) <- zip [0 ..] liveTerms ]
+            lws0     = M.fromList ((lwIdText 0, showcase) : termLws)
+            nextSeed = 1 + length liveTerms
 #else
         -- Leksah windows live ON their backing tmux sessions
         -- (@leksah_layout v2, one option per session); read them all in one
@@ -1116,12 +1137,12 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
               CompareKey{}   -> []   -- transient, never restore
               _              -> [k]
 #if defined(ghcjs_HOST_OS)
-            -- Seed a tab per canned session so the demo shows its terminals at
-            -- first boot (there is no saved web session in the browser); the
-            -- page's auto-opened editor tab lands on top of these.  The demo
-            -- keeps the plain TerminalKey tabs (its terminal widget is a
-            -- static notice; there are no leksah windows to key).
-            demoTabs = map (TerminalKey . fst) liveTerms
+            -- One tab per seeded leksah window, the showcase window first and
+            -- active (there is no saved web session in the browser).  The
+            -- page's auto-open of the game's Main.hs resolves to the showcase
+            -- window's editor leaf (the file-lives-as-a-leaf intercept), so
+            -- it focuses this tab rather than opening a duplicate editor.
+            demoTabs = map LeksahWinKey (M.keys lws0)
             dfltWin  = WebWindowSession demoTabs (listToMaybe demoTabs)
                                         (tallVisibility initPrefs)
                                         (wide1Visibility initPrefs)
@@ -3464,7 +3485,7 @@ dividerDragJs = T.unlines
   -- adjacent panes — and a tunnel iframe would swallow those events (they go
   -- to ITS document, not ours), freezing the drag.  Make every iframe
   -- click-through for the duration; restored on mouseup.
-  , "    var iframes = document.querySelectorAll('.terminal-cc-iframe');"
+  , "    var iframes = document.querySelectorAll('.terminal-cc-iframe, .browser-frame');"
   , "    iframes.forEach(function(f){ f.style.pointerEvents = 'none'; });"
   , "    function mv(e2){"
   , "      var d = (vert ? e2.clientX : e2.clientY) - start;"
@@ -3542,7 +3563,8 @@ paneDragJs = T.unlines
   ]
 
 -- | The ⌘-drag pane move (Ctrl off-mac).  A ⌘+mousedown on a split-tree pane
--- (@.terminal-cc-leaf[data-leaf]@) or a draggable plain wide0 tab body arms a
+-- (@.terminal-cc-leaf[data-leaf]@), a draggable plain wide0 tab's BODY, or that
+-- tab's BUTTON in the row (the handle for a tab whose body is off screen) arms a
 -- gesture that ENGAGES after 5px of movement — a stationary ⌘-click keeps its
 -- existing meaning (OSC links, editor go-to).  Engaged, a fixed
 -- @.leksah-drag-shadow@ previews the drop: over an LW container it animates to
@@ -3568,6 +3590,19 @@ paneDragJs = T.unlines
 -- ignores, falling back to the leaf-level recompute.  The leaf's own four edges
 -- stay in the pool, so the full-size join is still reachable, and the shadow is
 -- the honest description of which of the two the release will do.
+--
+-- Two things a mouse gesture built on mousemove/mouseup has to defend itself
+-- against, both of which cost the user the gesture ENTIRELY and were how the
+-- editor panes came to look undraggable, along with the retargeting 'track'
+-- defends against.  A native HTML5 drag (an editor with
+-- text drag-and-drop on, any selection under the pointer) takes the mouse away:
+-- no more mousemove, never a mouseup.  So a tracked move calls
+-- @preventDefault@ from the very first pixel — before the engage threshold,
+-- which is precisely the window WebKit would start its drag in — and a
+-- @dragstart@ that gets through anyway is refused.  And whenever the mouseup
+-- goes missing regardless, the arming state must not survive: a leftover @st@
+-- made every LATER ⌘-drag a silent no-op, so window blur and the next
+-- ⌘+mousedown both 'cancel' it.
 leafDragJs :: Text
 leafDragJs = T.unlines
   [ "(function(){"
@@ -3659,7 +3694,9 @@ leafDragJs = T.unlines
   , "    st.engaged = true;"
   , "    var root = document.querySelector('.leksah');"
   , "    if (root) root.classList.add('leksah-pane-dragging');"
-  , "    st.iframes = Array.prototype.slice.call(document.querySelectorAll('.terminal-cc-iframe'));"
+  -- Browser-pane iframes too: the showcase drag crosses them, and an iframe
+  -- eats mousemove for its own document, freezing the tracking loop.
+  , "    st.iframes = Array.prototype.slice.call(document.querySelectorAll('.terminal-cc-iframe, .browser-frame'));"
   , "    st.iframes.forEach(function(f){ f.style.pointerEvents = 'none'; });"
   , "    setBrowserDrag(true);"
   , "    try { window.getSelection && window.getSelection().removeAllRanges(); } catch(_){}"
@@ -3675,12 +3712,23 @@ leafDragJs = T.unlines
   , "    if (window.leksahLeafDragStart) window.leksahLeafDragStart();"
   , "  }"
   , "  function track(e){"
-  , "    var t = e.target;"
+  -- What is under the POINTER, not what the event calls its target.  An editor
+  -- runs its own pointer monitor for drag-select and takes pointer capture with
+  -- it, which retargets every mousemove of the drag back to the editor: e.target
+  -- then swears the pointer never left the source pane, so the tab row never
+  -- peeked and no other window was reachable — while dropping INSIDE the source
+  -- window still worked, because that lookup lands on the same container either
+  -- way.  Terminals never do this, which is why only editor panes were stuck.
+  -- The shadow is pointer-events:none, so the hit test can never return it.
+  , "    var t = document.elementFromPoint(e.clientX, e.clientY) || e.target;"
   , "    if (!t || !t.closest) { srcBox(); st.lastDst = {kind:'none'}; return; }"
   -- The wide0 tab row: peek the hovered tab (dwell 150ms) so the user can
   -- drag on into its body.
   , "    var tw = t.closest('.tab-buttons.area-wide0 .tab-wrap[data-tabkey]');"
   , "    if (tw){"
+  -- Back over the button the drag STARTED from: park, don't peek at ourselves.
+  , "      if (st.srcKind==='tab' && tw.getAttribute('data-tabkey')===st.srcTab){"
+  , "        clearPeekHl(); srcBox(); st.lastDst = {kind:'none'}; return; }"
   , "      if (st.peekEl !== tw){ clearPeekHl();"
   , "        st.peekEl = tw; tw.classList.add('leksah-drag-peek');"
   , "        var key = tw.getAttribute('data-tabkey');"
@@ -3724,10 +3772,26 @@ leafDragJs = T.unlines
   , "        return; } }"
   , "    srcBox(); st.lastDst = {kind:'none'};"
   , "  }"
+  -- Pointer events are a separate stream from the mouse events this gesture is
+  -- built on, and the editor's drag-select monitor listens on THAT one — hence
+  -- the selection creeping along under the drag, which no amount of
+  -- preventDefault on mousemove can stop (the editor sets it programmatically).
+  -- While a gesture is armed the stream is swallowed outright, so nothing else
+  -- can act on the drag: stopImmediatePropagation, because the monitor sits on
+  -- document too and mere stopPropagation would not reach it.
+  , "  function pm(e){ if (!st) return;"
+  , "    e.preventDefault(); e.stopImmediatePropagation(); }"
   , "  function unlisten(){"
   , "    document.removeEventListener('mousemove', mv, true);"
+  , "    document.removeEventListener('pointermove', pm, true);"
   , "    document.removeEventListener('mouseup', up, true);"
   , "    document.removeEventListener('keydown', kd, true); }"
+  -- Give up without moving anything.  An engaged gesture goes out through
+  -- 'finish' so the shadow and the dragging chrome are torn down exactly once
+  -- (dst 'none' → the commit side only reactivates the source pane, as Escape
+  -- does); armed-but-not-engaged just forgets the arming.
+  , "  function cancel(){ if (!st) return; unlisten();"
+  , "    if (st.engaged) finish({kind:'none'}); else st = null; }"
   , "  function finish(dst){"
   , "    var root = document.querySelector('.leksah');"
   , "    if (root) root.classList.remove('leksah-pane-dragging');"
@@ -3747,10 +3811,19 @@ leafDragJs = T.unlines
   , "  }"
   , "  function mv(e){"
   , "    if (!st) return;"
+  -- preventDefault from the FIRST tracked move, BEFORE the 5px threshold: this is
+  -- what stops the pane content starting a native (HTML5) drag out from under the
+  -- gesture — a Monaco/CodeMirror text drag, or any selection under the pointer.
+  -- WebKit's own drag threshold is smaller than ours, so the arming window is
+  -- exactly where a native drag wins, and a native drag is fatal: it swallows
+  -- every further mousemove and the mouseup, so the gesture can neither engage
+  -- nor clean up.  stopPropagation still waits for engagement, so a
+  -- below-threshold ⌘-click reaches the content with its meaning intact.
+  , "    e.preventDefault();"
   , "    if (!st.engaged){"
   , "      if (Math.abs(e.clientX-st.sx) + Math.abs(e.clientY-st.sy) < 5) return;"
   , "      engage(e); }"
-  , "    e.preventDefault(); e.stopPropagation();"
+  , "    e.stopPropagation();"
   , "    track(e);"
   , "  }"
   , "  function up(e){"
@@ -3764,11 +3837,22 @@ leafDragJs = T.unlines
   , "  function kd(e){"
   , "    if (e.key !== 'Escape' || !st) return;"
   , "    e.preventDefault(); e.stopPropagation();"
-  , "    unlisten();"
-  , "    if (st.engaged) finish({kind:'none'}); else st = null;"
+  , "    cancel();"
   , "  }"
+  -- Belt to the mousemove braces: a dragstart that gets through anyway is
+  -- refused outright, so the gesture keeps its mousemove/mouseup stream.  Only
+  -- while OUR gesture is armed — the Terminals tree's HTML5 pane drag
+  -- ('paneDragJs') never arms one, so it is untouched.
+  , "  document.addEventListener('dragstart', function(e){"
+  , "    if (st){ e.preventDefault(); e.stopPropagation(); } }, true);"
+  -- Losing the window mid-gesture means the mouseup is never coming; forget it
+  -- rather than stay armed (an armed gesture makes the NEXT ⌘-drag a no-op).
+  , "  window.addEventListener('blur', function(){ cancel(); });"
   , "  document.addEventListener('mousedown', function(e){"
-  , "    if (e.button !== 0 || !e[MOD] || st) return;"
+  , "    if (e.button !== 0 || !e[MOD]) return;"
+  -- Arming state that outlived its gesture (a native drag that slipped past
+  -- both guards, a missed mouseup) must not deafen every later drag.
+  , "    if (st) cancel();"
   , "    if (!e.target || !e.target.closest) return;"
   -- A divider owns its own drag; never contest it.
   , "    if (e.target.closest('.terminal-cc-divider, .terminal-cc-native-divider, .tall-divider, .wide1-divider')) return;"
@@ -3789,10 +3873,20 @@ leafDragJs = T.unlines
   , "            src.kind='tmux'; src.pane=hls[hi].getAttribute('data-pane');"
   , "            src.el=hls[hi]; break; } } }"
   , "    } else {"
-  , "      var tb = e.target.closest('.tab.area-wide0[data-tabkey]');"
-  , "      var k = tb && tb.getAttribute('data-tabkey');"
-  , "      if (k && window.__leksahLeafDragTabs && window.__leksahLeafDragTabs[k])"
-  , "        src = {kind:'tab', tab:k, el:tb};"
+  -- The tab ROW first: a plain tab's BUTTON is the obvious handle to pick its
+  -- pane up by — for an editor sharing the area with other tabs it is the only
+  -- part of it you can be sure is on screen.  Same 'tab' source as its body, and
+  -- gated on the same registry, so only the tabs materialize can host arm; an LW
+  -- tab button never does (the payload has no way to name a whole window).
+  , "      var twb = e.target.closest('.tab-buttons.area-wide0 .tab-wrap[data-tabkey]');"
+  , "      var kb = twb && twb.getAttribute('data-tabkey');"
+  , "      if (kb && window.__leksahLeafDragTabs && window.__leksahLeafDragTabs[kb]){"
+  , "        src = {kind:'tab', tab:kb, el:twb};"
+  , "      } else {"
+  , "        var tb = e.target.closest('.tab.area-wide0[data-tabkey]');"
+  , "        var k = tb && tb.getAttribute('data-tabkey');"
+  , "        if (k && window.__leksahLeafDragTabs && window.__leksahLeafDragTabs[k])"
+  , "          src = {kind:'tab', tab:k, el:tb}; }"
   , "    }"
   , "    if (!src) return;"
   -- No preventDefault here: below the threshold this must stay an ordinary
@@ -3801,6 +3895,7 @@ leafDragJs = T.unlines
   , "           srcPane:src.pane, srcEl:src.el, sx:e.clientX, sy:e.clientY,"
   , "           engaged:false, peekEl:null, peekTimer:null, lastDst:{kind:'none'} };"
   , "    document.addEventListener('mousemove', mv, true);"
+  , "    document.addEventListener('pointermove', pm, true);"
   , "    document.addEventListener('mouseup', up, true);"
   , "    document.addEventListener('keydown', kd, true);"
   , "  }, true);"

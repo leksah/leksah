@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -39,6 +40,12 @@ import Control.Monad (forM)
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
         encode, decode')
+#if defined(ghcjs_HOST_OS)
+import Data.Aeson (eitherDecodeStrict)
+import Data.IORef (atomicWriteIORef)
+import Data.Text.Encoding (encodeUtf8)
+import Language.Javascript.JSaddle (eval, valToText)
+#endif
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isAlphaNum, isSpace)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
@@ -278,6 +285,61 @@ agentGit now dir
 -- 'getModificationTime' per exited candidate, and a 'claudeSessionLabel' for any
 -- that never titled itself.
 agentForest :: IO [AgentNode]
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: no Claude CLI and no sidecar, so the hosting page seeds a
+-- canned forest via @window.leksahDemoAgents@ (same page-seeded pattern as
+-- "IDE.Web.DemoTerminals").  Rows should be @live: true@ with states
+-- @busy@\/@waiting@\/@idle@ — a @gone@ row's click path tries to spawn a
+-- resume, while a live row's click\/⟳ find no pane and return silently.
+-- Descriptions pass through 'sanitizeAgentHtml' at decode, so the pane's
+-- innerHTML trust invariant holds for page-seeded data too.
+agentForest = readIORef demoForestRef >>= \case
+  Just ns -> return ns
+  Nothing -> do
+    txt <- valToText
+        =<< eval ("JSON.stringify(window.leksahDemoAgents || [])" :: Text)
+    ns <- case eitherDecodeStrict (encodeUtf8 txt) of
+      Left err -> [] <$ putStrLn ("leksahDemoAgents did not decode: " <> err)
+      Right ds -> return (map demoNode ds)
+    atomicWriteIORef demoForestRef (Just ns)
+    return ns
+
+{-# NOINLINE demoForestRef #-}
+demoForestRef :: IORef (Maybe [AgentNode])
+demoForestRef = unsafePerformIO (newIORef Nothing)
+
+-- | One page-seeded row (children nest the same shape).
+data DemoAgent = DemoAgent Text Text Text Text FilePath (Maybe Text) Text
+                           (Maybe Text) (Maybe (Int, Text)) [DemoAgent]
+
+instance FromJSON DemoAgent where
+  parseJSON = withObject "DemoAgent" $ \o -> DemoAgent
+    <$> o .:  "session"
+    <*> o .:  "title"
+    <*> o .:  "state"
+    <*> (fromMaybe "" <$> o .:? "detail")
+    <*> (fromMaybe "" <$> o .:? "dir")
+    <*> o .:? "desc"
+    <*> (fromMaybe "" <$> o .:? "age")
+    <*> o .:? "branch"
+    <*> o .:? "pr"
+    <*> (fromMaybe [] <$> o .:? "children")
+
+demoNode :: DemoAgent -> AgentNode
+demoNode (DemoAgent s title state detail dir desc age br pr kids) = AgentNode
+  { anSession  = s
+  , anTitle    = title
+  , anState    = state
+  , anDetail   = detail
+  , anDir      = dir
+  , anDesc     = sanitizeAgentHtml <$> desc
+  , anAge      = age
+  , anLive     = state /= "gone"
+  , anBranch   = br
+  , anPr       = pr
+  , anChildren = map demoNode kids
+  }
+#else
 agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   st    <- claudeStatusNow
   infos <- readInfos
@@ -354,8 +416,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anTitle   = firstNonEmpty [ maybe "" T.strip (aiTitle i)
                                       , T.take 8 (aiSession i) ]
           , anState   = "starting"
-          , anDetail  = "Starting — if it stays like this, look at its pane: it \
-                        \is probably waiting at a first-run prompt"
+          , anDetail  = "Starting — if it stays like this, look at its pane: it "
+                        <> "is probably waiting at a first-run prompt"
           , anDir     = aiDir i
           , anDesc    = aiDesc i
           , anAge     = "starting…"
@@ -391,6 +453,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       _ -> Nothing
 
     firstNonEmpty xs = fromMaybe "" (listToMaybe (filter (not . T.null) xs))
+#endif
 
 humanAge :: UTCTime -> UTCTime -> Text
 humanAge now t
@@ -408,18 +471,19 @@ humanAge now t
 -- | What the pane's ⟳ button sends to an agent (submitted, so it lands as a
 -- real turn and wakes an idle one).  Spells out the shape wanted, because the
 -- reader is a model and the pane is four lines wide.
+-- (Concatenation, not string gaps: CPP strips the backslash-newline gaps.)
 agentRefreshPrompt :: Text
 agentRefreshPrompt = T.intercalate "\n"
-  [ "Leksah's Agents pane is asking you to refresh how you appear in it. Do \
-    \just this, then stop: call the describe_agent tool (or run `leksah-cmd \
-    \agent describe --title '…' --html '…'`)."
+  [ "Leksah's Agents pane is asking you to refresh how you appear in it. Do "
+    <> "just this, then stop: call the describe_agent tool (or run `leksah-cmd "
+    <> "agent describe --title '…' --html '…'`)."
   , ""
-  , "The title is a few words naming what you are working on. The description \
-    \is an HTML fragment that renders in about FOUR LINES in a narrow side \
-    \pane, so keep it terse and avoid long unbreakable strings: say what state \
-    \the work is in, and include <a href=\"…\">links</a> to any pull request, \
-    \CI/Hydra build or issue involved. Allowed tags: p, br, a, code, b, \
-    \strong, i, em, ul, li, span."
+  , "The title is a few words naming what you are working on. The description "
+    <> "is an HTML fragment that renders in about FOUR LINES in a narrow side "
+    <> "pane, so keep it terse and avoid long unbreakable strings: say what state "
+    <> "the work is in, and include <a href=\"…\">links</a> to any pull request, "
+    <> "CI/Hydra build or issue involved. Allowed tags: p, br, a, code, b, "
+    <> "strong, i, em, ul, li, span."
   ]
 
 --------------------------------------------------------------------------------

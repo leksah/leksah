@@ -51,6 +51,17 @@
        haskell-language-server responses captured by gen-demo-hovers.hs;
        IDE.LSP serves them in place of a live server. -->
   <script src="demo-hovers.js"></script>
+
+  <!-- Canned agents for the Agents pane (window.leksahDemoAgents). -->
+  <script src="demo-agents.js"></script>
+
+  <!-- Browser-pane registry seed (IDE.Web.Widget.Browser's ghcjs loadPanes):
+       pane 1 is the showcase window's breakout game — the real game, compiled
+       with the GHC JS backend, in a same-origin iframe.  next=2 keeps a
+       visitor-opened pane from colliding with it. -->
+  <script>
+    window.leksahDemoBrowserPanes = { next: 2, urls: { "1": "/try/breakout/" } };
+  </script>
 </head>
 <body>
   <!-- Shims for C functions the JS RTS never implemented (see shims.js) —

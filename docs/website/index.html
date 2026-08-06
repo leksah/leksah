@@ -3,8 +3,10 @@
      (the site root) and mirrored to the leksah/leksah.github.io repo for
      GitHub Pages.  Self-contained: inline CSS/JS, assets by root-absolute
      path (/pics, /media) matching the deployed layout; the live demo at
-     /try/ is embedded on demand (click) so visitors don't download its
-     ~58 MB leksah.js unless they ask for it. -->
+     /try/ auto-embeds when its frame scrolls into view (a screencast is the
+     instant placeholder until then — leksah.js is large, though GitHub
+     Pages serves it compressed), with a full-screen button in the frame's
+     chrome bar. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -45,7 +47,6 @@
     header.site nav a:hover { color: var(--text); text-decoration: none; }
 
     .hero { text-align: center; padding: 72px 0 40px; }
-    .hero img.logo { width: 96px; height: 96px; margin-bottom: 20px; }
     .hero h1 {
       font-size: clamp(34px, 6vw, 56px); line-height: 1.15;
       letter-spacing: -0.02em; font-weight: 800;
@@ -75,20 +76,31 @@
       box-shadow: 0 24px 80px rgba(0,0,0,.55);
     }
     .demo video { display: block; width: 100%; }
-    .demo .overlay {
-      position: absolute; inset: 0; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 10px;
-      background: linear-gradient(rgba(13,17,23,.15), rgba(13,17,23,.55));
-      cursor: pointer; border: 0; width: 100%; color: var(--text);
+    /* A slim chrome bar above the demo, so the DEMO badge and the
+       full-screen button never cover the IDE's own menu bar. */
+    .demo .demobar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      background: var(--panel); font-size: 13px; color: var(--muted);
     }
-    .demo .overlay .play {
-      padding: 14px 26px; border-radius: 10px; background: var(--accent);
-      color: #fff; font-weight: 700; font-size: 17px;
-      box-shadow: 0 8px 30px rgba(163,113,247,.45);
+    .demo .demobar .badge {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      color: var(--bg); background: var(--accent); border-radius: 4px;
+      padding: 2px 8px;
     }
-    .demo .overlay:hover .play { filter: brightness(1.1); }
-    .demo .overlay .hint { font-size: 13px; color: #c9d1d9; text-shadow: 0 1px 4px #000; }
+    .demo .demobar .fsbtn {
+      margin-left: auto; cursor: pointer; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--bg); color: var(--text);
+      padding: 4px 12px; font: inherit; font-size: 13px; white-space: nowrap;
+    }
+    .demo .demobar .fsbtn:hover { border-color: var(--muted); }
     .demo iframe { display: block; width: 100%; height: min(78vh, 760px); border: 0; background: var(--bg); }
+    .demo .frame:fullscreen { display: flex; flex-direction: column; }
+    .demo .frame:fullscreen iframe,
+    .demo .frame:fullscreen video { flex: 1; height: auto; min-height: 0; object-fit: contain; }
+    .demo .frame:-webkit-full-screen { display: flex; flex-direction: column; }
+    .demo .frame:-webkit-full-screen iframe,
+    .demo .frame:-webkit-full-screen video { flex: 1; height: auto; min-height: 0; }
     .demo .below { text-align: center; margin-top: 12px; color: var(--muted); font-size: 14px; }
 
     section { padding: 56px 0 8px; }
@@ -155,7 +167,6 @@
   </header>
 
   <div class="hero">
-    <img class="logo" src="/pics/leksah.png" alt="Leksah logo">
     <h1>An IDE <em>written in Haskell</em></h1>
     <p class="sub">
       One functional-reactive codebase that runs as a native app on macOS,
@@ -163,25 +174,28 @@
       JavaScript to run entirely in this page.
     </p>
     <div class="cta">
-      <a class="btn primary" href="/try/">▶&nbsp; Try it in your browser</a>
+      <a class="btn primary" href="/try/">▶&nbsp; Try the demo</a>
       <a class="btn ghost" href="https://github.com/leksah/leksah">View on GitHub</a>
     </div>
   </div>
 
   <div class="demo">
     <div class="frame" id="demoFrame">
+      <div class="demobar">
+        <span class="badge">DEMO</span>
+        <span>The real IDE compiled to JavaScript — a canned sample, not a full IDE in your browser</span>
+        <button class="fsbtn" id="demoFullscreen" type="button" title="Full screen">⛶ Full screen</button>
+      </div>
       <video autoplay muted loop playsinline poster="" aria-label="Screencast of Leksah editing a Haskell game project">
         <source src="/media/breakout-demo.webm" type="video/webm">
         <source src="/media/breakout-demo.mp4" type="video/mp4">
       </video>
-      <button class="overlay" id="launchDemo" type="button">
-        <span class="play">▶&nbsp; Launch the live demo</span>
-        <span class="hint">the real IDE, compiled to JavaScript — a few&nbsp;MB download, no install</span>
-      </button>
     </div>
     <div class="below">
-      The demo is Leksah itself, built with GHC's JavaScript backend, editing a
-      small game project. Prefer a full window? <a href="/try/">Open it full-page&nbsp;↗</a>
+      This is a <b>canned demo</b>: Leksah itself, built with GHC's JavaScript
+      backend, pre-loaded with a small game project, recorded terminal sessions
+      and precomputed tooltips — nothing compiles or runs natively in this page.
+      Prefer a full window? <a href="/try/">Open it full-page&nbsp;↗</a>
     </div>
   </div>
 
@@ -300,15 +314,35 @@
 </div>
 
 <script>
-  // Swap the screencast for the live in-browser IDE on demand (its leksah.js
-  // is ~58 MB after compression tricks; never auto-load it).
-  document.getElementById('launchDemo').addEventListener('click', function () {
+  // Auto-embed the live in-browser IDE when its frame scrolls into view: the
+  // screencast is the instant placeholder until then, so first paint never
+  // waits on leksah.js (large; GitHub Pages serves it compressed).
+  (function () {
     var frame = document.getElementById('demoFrame');
-    var iframe = document.createElement('iframe');
-    iframe.src = '/try/';
-    iframe.title = 'Leksah running in your browser';
-    frame.replaceChildren(iframe);
-  });
+    function embed() {
+      var video = frame.querySelector('video');
+      if (!video) return;   // already embedded
+      var iframe = document.createElement('iframe');
+      iframe.src = '/try/';
+      iframe.title = 'Leksah running in your browser';
+      video.replaceWith(iframe);
+    }
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries, obs) {
+        if (entries.some(function (e) { return e.isIntersecting; })) {
+          obs.disconnect();
+          embed();
+        }
+      }, { rootMargin: '200px' }).observe(frame);
+    } else {
+      embed();
+    }
+    document.getElementById('demoFullscreen').addEventListener('click', function () {
+      embed();
+      var req = frame.requestFullscreen || frame.webkitRequestFullscreen;
+      if (req) req.call(frame);
+    });
+  })();
 </script>
 
 </body>

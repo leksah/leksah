@@ -3,6 +3,11 @@ packages:
 -- vendor/gi-gobject/
  vendor/gi-gtkosxapplication/
  vendor/lsp-types-client/
+ -- The sandpit's breakout game is in the root plan so the JS cross plan
+ -- builds it for the website demo's browser pane
+ -- (javascript-unknown-ghcjs:breakout:exe:breakout); sandpit/cabal.project
+ -- stays standalone for opening the sandpit as its own leksah workspace.
+ sandpit/breakout/
 
 -- leksah-server, ltk and the Haskell VCS libraries (vcswrapper/vcsgui) used to
 -- be git submodules under vendor/ listed as local packages, which forced every

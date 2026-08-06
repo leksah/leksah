@@ -402,14 +402,14 @@ window.leksahDemoHovers = {
   ]
  },
  "/demo/breakout/app/Main.hs": {
-  "12": [
+  "13": [
    [
     9,
     21,
-    "```haskell\nlistWithKey\n```\n\n*Defined in \u2018Reflex.Collection\u2019* *(reflex-0.9.4.0)*"
+    "```haskell\nlistWithKey :: forall t k v (m :: Type -> Type) a. (Ord k, Adjustable t m, PostBuild t m, MonadFix m, MonadHold t m, Eq v) => Dynamic t (Map k v) -> (k -> Dynamic t v -> m a) -> m (Dynamic t (Map k a))\n```\n\n*Defined in \u2018Reflex.Collection\u2019* *(reflex-0.9.4.1)*"
    ]
   ],
-  "16": [
+  "17": [
    [
     7,
     11,
@@ -418,10 +418,10 @@ window.leksahDemoHovers = {
    [
     13,
     17,
-    "```haskell\nmain\n```\n\n*Defined at /demo/breakout/app/Main.hs:39:1*"
+    "```haskell\nmain :: IO ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:1*"
    ]
   ],
-  "18": [
+  "19": [
    [
     7,
     20,
@@ -430,10 +430,10 @@ window.leksahDemoHovers = {
    [
     22,
     26,
-    "```haskell\nwhen\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*"
+    "```haskell\nwhen :: forall (f :: Type -> Type). Applicative f => Bool -> f () -> f ()\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
-  "19": [
+  "20": [
    [
     7,
     15,
@@ -442,10 +442,10 @@ window.leksahDemoHovers = {
    [
     17,
     20,
-    "```haskell\nMap\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
+    "```haskell\nMap :: Type -> Type -> Type\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
    ]
   ],
-  "20": [
+  "21": [
    [
     17,
     25,
@@ -457,7 +457,7 @@ window.leksahDemoHovers = {
     "M"
    ]
   ],
-  "21": [
+  "22": [
    [
     7,
     17,
@@ -466,10 +466,10 @@ window.leksahDemoHovers = {
    [
     19,
     30,
-    "```haskell\nlistToMaybe\n```\n\n*Defined in \u2018GHC.Internal.Data.Maybe\u2019* *(ghc-internal-9.1401.0)*"
+    "```haskell\nlistToMaybe :: forall a. [a] -> Maybe a\n```\n\n*Defined in \u2018GHC.Internal.Data.Maybe\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
-  "22": [
+  "23": [
    [
     7,
     15,
@@ -478,10 +478,10 @@ window.leksahDemoHovers = {
    [
     17,
     20,
-    "```haskell\nSet\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*"
+    "```haskell\nSet :: Type -> Type\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*"
    ]
   ],
-  "23": [
+  "24": [
    [
     17,
     25,
@@ -493,7 +493,7 @@ window.leksahDemoHovers = {
     "S"
    ]
   ],
-  "24": [
+  "25": [
    [
     7,
     16,
@@ -502,10 +502,10 @@ window.leksahDemoHovers = {
    [
     18,
     22,
-    "```haskell\nText\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
    ]
   ],
-  "25": [
+  "26": [
    [
     17,
     26,
@@ -517,14 +517,14 @@ window.leksahDemoHovers = {
     "T"
    ]
   ],
-  "27": [
+  "28": [
    [
     7,
     22,
     "Reflex.Dom.Core\n\nreflex-dom-core-0.8.1.4"
    ]
   ],
-  "29": [
+  "30": [
    [
     7,
     16,
@@ -533,10 +533,10 @@ window.leksahDemoHovers = {
    [
     18,
     42,
-    "```haskell\ncurrentDocumentUnchecked\n```\n\n*Defined in \u2018JSDOM\u2019* *(jsaddle-dom-0.9.9.3)*"
+    "```haskell\ncurrentDocumentUnchecked :: forall (m :: Type -> Type). MonadDOM m => m Document\n```\n\n*Defined in \u2018JSDOM\u2019* *(jsaddle-dom-0.9.9.3)*"
    ]
   ],
-  "30": [
+  "31": [
    [
     7,
     23,
@@ -545,15 +545,15 @@ window.leksahDemoHovers = {
    [
     25,
     30,
-    "```haskell\nevent\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*"
+    "```haskell\nevent :: forall t e. EventM t e e\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*"
    ],
    [
     32,
     38,
-    "```haskell\nonSync\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*"
+    "```haskell\nonSync :: forall t e. (IsEventTarget t, IsEvent e) => t -> EventName t e -> EventM t e () -> DOM (DOM ())\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*"
    ]
   ],
-  "31": [
+  "32": [
    [
     17,
     33,
@@ -567,10 +567,10 @@ window.leksahDemoHovers = {
    [
     45,
     59,
-    "```haskell\npreventDefault\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*"
+    "```haskell\npreventDefault :: forall e t. IsEvent e => EventM t e ()\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*"
    ]
   ],
-  "32": [
+  "33": [
    [
     7,
     36,
@@ -579,15 +579,15 @@ window.leksahDemoHovers = {
    [
     38,
     45,
-    "```haskell\nkeyDown\n```\n\n*Defined in \u2018JSDOM.Generated.GlobalEventHandlers\u2019* *(jsaddle-dom-0.9.9.3)*"
+    "```haskell\nkeyDown :: forall self. (IsGlobalEventHandlers self, IsEventTarget self) => EventName self KeyboardEvent\n```\n\n*Defined in \u2018JSDOM.Generated.GlobalEventHandlers\u2019* *(jsaddle-dom-0.9.9.3)*"
    ],
    [
     47,
     52,
-    "```haskell\nkeyUp\n```\n\n*Defined in \u2018JSDOM.Generated.GlobalEventHandlers\u2019* *(jsaddle-dom-0.9.9.3)*"
+    "```haskell\nkeyUp :: forall self. (IsGlobalEventHandlers self, IsEventTarget self) => EventName self KeyboardEvent\n```\n\n*Defined in \u2018JSDOM.Generated.GlobalEventHandlers\u2019* *(jsaddle-dom-0.9.9.3)*"
    ]
   ],
-  "33": [
+  "34": [
    [
     7,
     30,
@@ -596,10 +596,10 @@ window.leksahDemoHovers = {
    [
     32,
     38,
-    "```haskell\ngetKey\n```\n\n*Defined in \u2018JSDOM.Generated.KeyboardEvent\u2019* *(jsaddle-dom-0.9.9.3)*"
+    "```haskell\ngetKey :: forall (m :: Type -> Type) result. (MonadDOM m, FromJSString result) => KeyboardEvent -> m result\n```\n\n*Defined in \u2018JSDOM.Generated.KeyboardEvent\u2019* *(jsaddle-dom-0.9.9.3)*"
    ]
   ],
-  "35": [
+  "39": [
    [
     17,
     53,
@@ -611,23 +611,23 @@ window.leksahDemoHovers = {
     "JT"
    ]
   ],
-  "37": [
+  "42": [
    [
     0,
     4,
-    "```haskell\nmain\n```\n\n*Defined at /demo/breakout/app/Main.hs:39:1*"
+    "```haskell\nmain :: IO ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:1*"
    ],
    [
     8,
     10,
-    "```haskell\nIO\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    "```haskell\nIO :: Type -> Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
-  "38": [
+  "49": [
    [
     0,
     4,
-    "```haskell\nmain :: IO ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:39:1*"
+    "```haskell\nmain :: IO ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:1*"
    ],
    [
     7,
@@ -642,1729 +642,1729 @@ window.leksahDemoHovers = {
    [
     26,
     30,
-    "```haskell\ngame :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:159:1*\n\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall (a :: Constraint) (b :: Constraint)\n                               (c :: Constraint) (d :: Constraint) (e :: Constraint)\n                               (f :: Constraint) (g :: Constraint) (h :: Constraint)\n                               (i :: Constraint) (j :: Constraint) (k :: Constraint).\n                        (a, b, c, d, e, f, g, h, i, j, k) =>\n                        (a, b, c, d, e, f, g, h, i, j, k)`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `forall (a :: Constraint) (b :: Constraint)\n                               (c :: Constraint) (d :: Constraint) (e :: Constraint)\n                               (f :: Constraint) (g :: Constraint) (h :: Constraint)\n                               (i :: Constraint) (j :: Constraint) (k :: Constraint)\n                               (l :: Constraint) (m :: Constraint) (n :: Constraint)\n                               (o :: Constraint) (p :: Constraint) (q :: Constraint)\n                               (r :: Constraint).\n                        (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n                        (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadWidgetConstraints t m =>\n                        MonadWidget t m`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Old\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        SupportsHydrationDomBuilder t m =>\n                        DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k (s :: k) t (m :: Type -> Type).\n                        MonadFix m =>\n                        MonadFix (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        MonadHold t m =>\n                        MonadHold t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        MonadSample t m =>\n                        MonadSample t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `MonadWidget\n                          DomTimeline\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadWidgetConstraints t m =>\n     MonadWidget t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        MonadReflexCreateTrigger t m =>\n                        MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `(DomBuilder\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         GhcjsDomSpace ~ GhcjsDomSpace,\n                         MonadFix\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadHold\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadSample\n                           DomTimeline (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadReflexCreateTrigger\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PostBuild\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PerformEvent\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadJSM\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         TriggerEvent\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         HasDocument\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadRef\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         IORef ~ IORef,\n                         MonadRef (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         IORef ~ IORef)`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `(DomBuilder\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         GhcjsDomSpace ~ GhcjsDomSpace,\n                         MonadFix\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadHold\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadSample\n                           DomTimeline (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadReflexCreateTrigger\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PostBuild\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PerformEvent\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadJSM\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         TriggerEvent\n                           DomTimeline\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         HasDocument\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadRef\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         IORef ~ IORef,\n                         MonadRef (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         IORef ~ IORef)`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `DomBuilder\n                          DomTimeline\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadFix\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          DomTimeline\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadSample\n                          DomTimeline (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          DomTimeline\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PostBuild\n                          DomTimeline\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PerformEvent\n                          DomTimeline\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `TriggerEvent\n                          DomTimeline\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `HasDocument\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        PostBuild t m =>\n                        PostBuild t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `(Reflex DomTimeline,\n                         MonadJSM (DomCoreWidget x),\n                         MonadHold DomTimeline (DomCoreWidget x),\n                         MonadFix (DomCoreWidget x),\n                         MonadReflexCreateTrigger DomTimeline (DomCoreWidget x),\n                         MonadRef (DomCoreWidget x), IORef ~ IORef,\n                         Adjustable DomTimeline (DomCoreWidget x),\n                         PrimMonad (DomCoreWidget x),\n                         PerformEvent DomTimeline (DomCoreWidget x),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)))`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        PerformEvent t m =>\n                        PerformEvent t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `MonadFix (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (s :: k) t (m :: Type -> Type).\n                        MonadIO m =>\n                        MonadIO (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `MonadHold DomTimeline (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x (m :: Type -> Type).\n                        MonadIO m =>\n                        MonadIO (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall k (m :: Type -> Type) (s :: k) t.\n                        MonadJSM m =>\n                        MonadJSM (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `MonadSample\n                          DomTimeline (SpiderHostFrame Global)`\n  constructed using:\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          DomTimeline (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PostBuild DomTimeline (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (m :: Type -> Type) t (s :: k).\n                        (Monad m, MonadRef m, Ref m ~ Ref IO,\n                         MonadReflexCreateTrigger t m) =>\n                        TriggerEvent t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `PerformEvent DomTimeline (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k (s :: k) t (m :: Type -> Type).\n                        (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n                         ~ Document,\n                         Monad m) =>\n                        HasDocument (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `MonadIO (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (m :: Type -> Type) (s :: k) t.\n                        MonadRef m =>\n                        MonadRef (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall x. MonadIO (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        MonadRef m =>\n                        MonadRef (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `MonadJSM (DomCoreWidget x)`\n  constructed using:\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        Reflex (SpiderTimeline x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Monad (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadRef (DomCoreWidget x)`\n  constructed using:\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) t.\n                        MonadJSM m =>\n                        MonadJSM (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadHold t m =>\n                        MonadHold t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadFix m =>\n                        MonadFix (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall x. MonadRef (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `(Reflex DomTimeline,\n                         MonadJSM (DomCoreWidget x),\n                         MonadHold DomTimeline (DomCoreWidget x),\n                         MonadFix (DomCoreWidget x),\n                         MonadReflexCreateTrigger DomTimeline (DomCoreWidget x),\n                         MonadRef (DomCoreWidget x), IORef ~ IORef,\n                         Adjustable DomTimeline (DomCoreWidget x),\n                         PrimMonad (DomCoreWidget x),\n                         PerformEvent DomTimeline (DomCoreWidget x),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)))`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Reflex DomTimeline`\n  constructed using:\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `Adjustable DomTimeline (DomCoreWidget x)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `PrimMonad (DomCoreWidget x)`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (ReflexHost t, MonadReflexCreateTrigger t m) =>\n                        MonadReflexCreateTrigger t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `HasSpiderTimeline Global`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) t.\n                        MonadRef m =>\n                        MonadRef (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n                         PerformEvent t m) =>\n                        Adjustable t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          DomTimeline\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        PrimMonad m =>\n                        PrimMonad (PostBuildT x m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `MonadFix\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        PerformEvent t m =>\n                        PerformEvent t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `ReflexHost DomTimeline`\n  constructed using:\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          DomTimeline\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        MonadIO m =>\n                        MonadJSM (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `HasSpiderTimeline Global`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Adjustable\n                          DomTimeline\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PerformEvent\n                          DomTimeline\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        (ReflexHost t, MonadIO (HostFrame t)) =>\n                        MonadIO (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `PrimMonad\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        ReflexHost (SpiderTimeline x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. MonadIO (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        MonadHold t m =>\n                        MonadHold t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (ReflexHost t, MonadHold t m) =>\n                        MonadHold t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall x. MonadIO (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        MonadHold (SpiderTimeline x) (SpiderHost x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x (m :: Type -> Type).\n                        MonadFix m =>\n                        MonadFix (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        MonadFix (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          DomTimeline (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        MonadReflexCreateTrigger t m =>\n                        MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `MonadHold DomTimeline DomHost`\n  constructed using:\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        MonadReflexCreateTrigger t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        (MonadRef (HostFrame t), ReflexHost t) =>\n                        MonadRef (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `MonadFix\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. MonadRef (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        Adjustable t m =>\n                        Adjustable t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          DomTimeline (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        PerformEvent t m =>\n                        PerformEvent t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        Adjustable t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall x. MonadRef (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n                        PerformEvent t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall x. Monad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Adjustable\n                          DomTimeline (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        PrimMonad m =>\n                        PrimMonad (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `PerformEvent\n                          DomTimeline (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        (PrimMonad (HostFrame t), ReflexHost t) =>\n                        PrimMonad (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall x. PrimMonad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. Monad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall x. Monad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (Reflex t, Monad m) =>\n                        PostBuild t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `PrimMonad\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x (m :: Type -> Type).\n                        Monad m =>\n                        Monad (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall x. PrimMonad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. PrimMonad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        Monad (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadIO m =>\n                        MonadIO (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        Monad m =>\n                        Monad (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `Monad\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Monad (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\n\n```haskell\n_ :: HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x) ()\n```\n* * *\n\n```haskell\n_ :: forall x. Widget x ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```"
-   ]
-  ],
-  "41": [
-   [
-    0,
-    6,
-    "```haskell\nboardW\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
-   ],
-   [
-    8,
-    14,
-    "```haskell\nboardH\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:15*"
-   ],
-   [
-    16,
-    21,
-    "```haskell\nballR\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
-   ],
-   [
-    23,
-    30,
-    "```haskell\npaddleW\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
-   ],
-   [
-    32,
-    39,
-    "```haskell\npaddleH\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:15*"
-   ],
-   [
-    41,
-    48,
-    "```haskell\npaddleY\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
-   ],
-   [
-    52,
-    58,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ]
-  ],
-  "42": [
-   [
-    0,
-    6,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
-   ],
-   [
-    14,
-    20,
-    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:15*"
-   ],
-   [
-    28,
-    33,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
-   ]
-  ],
-  "43": [
-   [
-    0,
-    7,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
-   ],
-   [
-    14,
-    21,
-    "```haskell\npaddleH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:15*"
-   ],
-   [
-    28,
-    35,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
-   ],
-   [
-    38,
-    44,
-    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:15*"
-   ]
-  ],
-  "45": [
-   [
-    0,
-    4,
-    "```haskell\ncols\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:1*"
-   ],
-   [
-    6,
-    10,
-    "```haskell\nrows\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:11*"
-   ],
-   [
-    14,
-    17,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ]
-  ],
-  "46": [
-   [
-    0,
-    4,
-    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:1*"
-   ],
-   [
-    10,
-    14,
-    "```haskell\nrows :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:11*"
-   ]
-  ],
-  "48": [
-   [
-    0,
-    7,
-    "```haskell\nmarginX\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:1*"
-   ],
-   [
-    9,
-    18,
-    "```haskell\nmarginTop\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:15*"
-   ],
-   [
-    20,
-    23,
-    "```haskell\ngap\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:31*"
-   ],
-   [
-    25,
-    31,
-    "```haskell\nbrickH\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:40*"
-   ],
-   [
-    33,
-    39,
-    "```haskell\nbrickW\n```\n\n*Defined at /demo/breakout/app/Main.hs:51:1*"
-   ],
-   [
-    41,
-    52,
-    "```haskell\npaddleSpeed\n```\n\n*Defined at /demo/breakout/app/Main.hs:52:1*"
-   ],
-   [
-    56,
-    62,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ]
-  ],
-  "49": [
-   [
-    0,
-    7,
-    "```haskell\nmarginX :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:1*"
-   ],
-   [
-    14,
-    23,
-    "```haskell\nmarginTop :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:15*"
-   ],
-   [
-    30,
-    33,
-    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:31*"
-   ],
-   [
-    39,
-    45,
-    "```haskell\nbrickH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:40*"
-   ]
-  ],
-  "50": [
-   [
-    0,
-    6,
-    "```haskell\nbrickW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:51:1*"
-   ],
-   [
-    10,
-    16,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
-   ],
-   [
-    21,
-    28,
-    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```"
-   ],
-   [
-    31,
-    43,
-    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
-   ],
-   [
-    45,
-    49,
-    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:1*"
-   ],
-   [
-    55,
-    58,
-    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:31*"
-   ],
-   [
-    62,
-    74,
-    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
-   ],
-   [
-    75,
-    79,
-    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:1*"
-   ]
-  ],
-  "51": [
-   [
-    0,
-    11,
-    "```haskell\npaddleSpeed :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:52:1*"
+    "```haskell\ngame :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:171:1*\n\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadWidget\n                          (SpiderTimeline Global)\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadWidgetConstraints t m =>\n     MonadWidget t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `(DomBuilder\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         GhcjsDomSpace ~ GhcjsDomSpace,\n                         MonadFix\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadHold\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadSample\n                           (SpiderTimeline Global)\n                           (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadReflexCreateTrigger\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PostBuild\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PerformEvent\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadJSM\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         TriggerEvent\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         HasDocument\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadRef\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         IORef ~ IORef,\n                         MonadRef (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         IORef ~ IORef)`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `(DomBuilder\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         GhcjsDomSpace ~ GhcjsDomSpace,\n                         MonadFix\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadHold\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadSample\n                           (SpiderTimeline Global)\n                           (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadReflexCreateTrigger\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PostBuild\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         PerformEvent\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadIO (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         MonadJSM\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         TriggerEvent\n                           (SpiderTimeline Global)\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         HasDocument\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         MonadRef\n                           (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x)),\n                         IORef ~ IORef,\n                         MonadRef (WithJSContextSingleton x (SpiderHostFrame Global)),\n                         IORef ~ IORef)`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `DomBuilder\n                          (SpiderTimeline Global)\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     SupportsHydrationDomBuilder t m =>\n     DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadFix\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          (SpiderTimeline Global)\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadHold t m =>\n     MonadHold t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadSample\n                          (SpiderTimeline Global)\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     MonadSample t m =>\n     MonadSample t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          (SpiderTimeline Global)\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PostBuild\n                          (SpiderTimeline Global)\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PostBuild t m =>\n     PostBuild t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PerformEvent\n                          (SpiderTimeline Global)\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k t (m :: Type -> Type) (s :: k).\n     PerformEvent t m =>\n     PerformEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (s :: k) t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadJSM m =>\n     MonadJSM (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `TriggerEvent\n                          (SpiderTimeline Global)\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (m :: Type -> Type) t (s :: k).\n     (Monad m, MonadRef m, Ref m ~ Ref IO,\n      MonadReflexCreateTrigger t m) =>\n     TriggerEvent t (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `HasDocument\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (s :: k) t (m :: Type -> Type).\n     (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n      ~ Document,\n      Monad m) =>\n     HasDocument (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x))`\n  constructed using:\n  - `forall k (m :: Type -> Type) (s :: k) t.\n     MonadRef m =>\n     MonadRef (HydrationDomBuilderT s t m)`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `(Reflex (SpiderTimeline Global),\n                         MonadJSM\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadHold\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadFix\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadReflexCreateTrigger\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadRef\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         IORef ~ IORef,\n                         Adjustable\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         PrimMonad\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         PerformEvent\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)))`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `(Reflex (SpiderTimeline Global),\n                         MonadJSM\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadHold\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadFix\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadReflexCreateTrigger\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadRef\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         IORef ~ IORef,\n                         Adjustable\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         PrimMonad\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         PerformEvent\n                           (SpiderTimeline Global)\n                           (PostBuildT\n                              DomTimeline\n                              (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))),\n                         MonadJSM (WithJSContextSingleton x (SpiderHostFrame Global)))`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k) =>\n     (a, b, c, d, e, f, g, h, i, j, k)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Reflex (SpiderTimeline Global)`\n  constructed using:\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall (m :: Type -> Type) t.\n     MonadJSM m =>\n     MonadJSM (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          (SpiderTimeline Global)\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadHold t m =>\n     MonadHold t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadFix\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          (SpiderTimeline Global)\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadReflexCreateTrigger t m) =>\n     MonadReflexCreateTrigger t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall (m :: Type -> Type) t.\n     MonadRef m =>\n     MonadRef (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `Adjustable\n                          (SpiderTimeline Global)\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n      PerformEvent t m) =>\n     Adjustable t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `PrimMonad\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (PostBuildT x m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PerformEvent\n                          (SpiderTimeline Global)\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     PerformEvent t m =>\n     PerformEvent t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (WithJSContextSingleton x (SpiderHostFrame Global))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `HasSpiderTimeline Global`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadJSM\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadIO m =>\n     MonadJSM (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `ReflexHost (SpiderTimeline Global)`\n  constructed using:\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. MonadIO (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. MonadIO (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          (SpiderTimeline Global)\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     MonadHold t m =>\n     MonadHold t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          (SpiderTimeline Global) (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (ReflexHost t, MonadHold t m) =>\n     MonadHold t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadHold\n                          (SpiderTimeline Global) (SpiderHost Global)`\n  constructed using:\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadHold (SpiderTimeline x) (SpiderHost x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadFix\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     MonadFix m =>\n     MonadFix (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadFix\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadFix (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          (SpiderTimeline Global)\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     MonadReflexCreateTrigger t m =>\n     MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadReflexCreateTrigger\n                          (SpiderTimeline Global) (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     MonadReflexCreateTrigger t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     MonadRef m =>\n     MonadRef (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadRef\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     (MonadRef (HostFrame t), ReflexHost t) =>\n     MonadRef (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. MonadRef (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. MonadRef (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. MonadRef (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Adjustable\n                          (SpiderTimeline Global)\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     Adjustable t m =>\n     Adjustable t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PerformEvent\n                          (SpiderTimeline Global)\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall t (m :: Type -> Type) x.\n     PerformEvent t m =>\n     PerformEvent t (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `Adjustable\n                          (SpiderTimeline Global) (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     ReflexHost t =>\n     Adjustable t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PerformEvent\n                          (SpiderTimeline Global) (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n     PerformEvent t (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. Monad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall k (a :: k) (b :: k). (a ~ b) => a ~ b`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall x. Monad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall x. Monad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PrimMonad\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall (m :: Type -> Type) x.\n     PrimMonad m =>\n     PrimMonad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PrimMonad\n                          (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k).\n     (PrimMonad (HostFrame t), ReflexHost t) =>\n     PrimMonad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. PrimMonad (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. PrimMonad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. PrimMonad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadSample\n                          (SpiderTimeline Global) (SpiderHostFrame Global)`\n  constructed using:\n  - `forall x.\n     HasSpiderTimeline x =>\n     MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `PostBuild\n                          (SpiderTimeline Global)\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     (Reflex t, Monad m) =>\n     PostBuild t (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x. HasSpiderTimeline x => Reflex (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Monad\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Monad (PerformEventT DomTimeline DomHost)`\n  constructed using:\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `MonadIO\n                          (WithJSContextSingleton x (PerformEventT DomTimeline DomHost))`\n  constructed using:\n  - `forall x (m :: Type -> Type).\n     MonadIO m =>\n     MonadIO (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k).\n     (ReflexHost t, MonadIO (HostFrame t)) =>\n     MonadIO (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `forall x. MonadIO (SpiderHostFrame x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `Monad\n                          (PostBuildT\n                             DomTimeline\n                             (WithJSContextSingleton x (PerformEventT DomTimeline DomHost)))`\n  constructed using:\n  - `forall t (m :: Type -> Type). Monad m => Monad (PostBuildT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PostBuild.Base\u2019*\n  - `forall x (m :: Type -> Type).\n     Monad m =>\n     Monad (WithJSContextSingleton x m)`\n    using an external instance\n    *Defined in \u2018Foreign.JavaScript.TH\u2019*\n  - `forall k t (m :: k). ReflexHost t => Monad (PerformEventT t m)`\n    using an external instance\n    *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n  - `forall x. HasSpiderTimeline x => ReflexHost (SpiderTimeline x)`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n  - `HasSpiderTimeline Global`\n    using an external instance\n    *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall k (a :: k) (b :: k).\n                        (a ~ b) =>\n                        a ~ b`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Types\u2019*\n* * *\nEvidence of constraint `forall (a :: Constraint) (b :: Constraint)\n                               (c :: Constraint) (d :: Constraint) (e :: Constraint)\n                               (f :: Constraint) (g :: Constraint) (h :: Constraint)\n                               (i :: Constraint) (j :: Constraint) (k :: Constraint).\n                        (a, b, c, d, e, f, g, h, i, j, k) =>\n                        (a, b, c, d, e, f, g, h, i, j, k)`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `forall (a :: Constraint) (b :: Constraint)\n                               (c :: Constraint) (d :: Constraint) (e :: Constraint)\n                               (f :: Constraint) (g :: Constraint) (h :: Constraint)\n                               (i :: Constraint) (j :: Constraint) (k :: Constraint)\n                               (l :: Constraint) (m :: Constraint) (n :: Constraint)\n                               (o :: Constraint) (p :: Constraint) (q :: Constraint)\n                               (r :: Constraint).\n                        (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n                        (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        (ReflexHost t, MonadIO (HostFrame t)) =>\n                        MonadIO (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) t.\n                        MonadJSM m =>\n                        MonadJSM (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.Orphans\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadIO m =>\n                        MonadIO (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadWidgetConstraints t m =>\n                        MonadWidget t m`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Old\u2019*\n* * *\nEvidence of constraint `forall x. Monad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) t.\n                        MonadRef m =>\n                        MonadRef (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (ReflexHost t, MonadReflexCreateTrigger t m) =>\n                        MonadReflexCreateTrigger t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        PerformEvent t m =>\n                        PerformEvent t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadFix m =>\n                        MonadFix (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall x. MonadRef (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x (m :: Type -> Type).\n                        MonadFix m =>\n                        MonadFix (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall x (m :: Type -> Type).\n                        MonadIO m =>\n                        MonadIO (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        MonadIO m =>\n                        MonadJSM (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        Monad m =>\n                        Monad (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        MonadRef m =>\n                        MonadRef (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        MonadReflexCreateTrigger t m =>\n                        MonadReflexCreateTrigger t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        MonadSample (SpiderTimeline x) (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x (m :: Type -> Type).\n                        Monad m =>\n                        Monad (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        PerformEvent t m =>\n                        PerformEvent t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        ReflexHost (SpiderTimeline x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        Reflex (SpiderTimeline x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        SupportsHydrationDomBuilder t m =>\n                        DomBuilder t (HydrationDomBuilderT GhcjsDomSpace t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k (s :: k) t (m :: Type -> Type).\n                        MonadFix m =>\n                        MonadFix (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        MonadHold t m =>\n                        MonadHold t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k (m :: Type -> Type) (s :: k) t.\n                        MonadJSM m =>\n                        MonadJSM (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k (s :: k) t (m :: Type -> Type).\n                        (RawDocument (DomBuilderSpace (HydrationDomBuilderT s t m))\n                         ~ Document,\n                         Monad m) =>\n                        HasDocument (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k (s :: k) t (m :: Type -> Type).\n                        MonadIO m =>\n                        MonadIO (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k (m :: Type -> Type) (s :: k) t.\n                        MonadRef m =>\n                        MonadRef (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        MonadReflexCreateTrigger t m =>\n                        MonadReflexCreateTrigger t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        PerformEvent t m =>\n                        PerformEvent t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k t (m :: Type -> Type) (s :: k).\n                        PostBuild t m =>\n                        PostBuild t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall k (m :: Type -> Type) t (s :: k).\n                        (Monad m, MonadRef m, Ref m ~ Ref IO,\n                         MonadReflexCreateTrigger t m) =>\n                        TriggerEvent t (HydrationDomBuilderT s t m)`\n  using an external instance\n  *Defined in \u2018Reflex.Dom.Builder.Immediate\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        Adjustable t m =>\n                        Adjustable t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall x.\n                        HasSpiderTimeline x =>\n                        MonadHold (SpiderTimeline x) (SpiderHost x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        MonadHold t m =>\n                        MonadHold t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type) x.\n                        MonadSample t m =>\n                        MonadSample t (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (Reflex t, MonadHold t m, MonadFix m, Adjustable t m,\n                         PerformEvent t m) =>\n                        Adjustable t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        Monad (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `HasSpiderTimeline Global`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. MonadIO (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall x. PrimMonad (SpiderHostFrame x)`\n  using an external instance\n  *Defined in \u2018Reflex.Spider.Internal\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        MonadHold t m =>\n                        MonadHold t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (Reflex t, Monad m) =>\n                        PostBuild t (PostBuildT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        PrimMonad m =>\n                        PrimMonad (PostBuildT x m)`\n  using an external instance\n  *Defined in \u2018Reflex.PostBuild.Base\u2019*\n* * *\nEvidence of constraint `forall (m :: Type -> Type) x.\n                        PrimMonad m =>\n                        PrimMonad (WithJSContextSingleton x m)`\n  using an external instance\n  *Defined in \u2018Foreign.JavaScript.TH\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        Adjustable t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        (MonadRef (HostFrame t), ReflexHost t) =>\n                        MonadRef (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        MonadFix (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (ReflexHost t, MonadHold t m) =>\n                        MonadHold t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        ReflexHost t =>\n                        MonadReflexCreateTrigger t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall t (m :: Type -> Type).\n                        (Monad (HostFrame t), ReflexHost t, Ref m ~ Ref IO) =>\n                        PerformEvent t (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\nEvidence of constraint `forall k t (m :: k).\n                        (PrimMonad (HostFrame t), ReflexHost t) =>\n                        PrimMonad (PerformEventT t m)`\n  using an external instance\n  *Defined in \u2018Reflex.PerformEvent.Base\u2019*\n* * *\n\n```haskell\n_ :: HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x) ()\n```\n* * *\n\n```haskell\n_ :: forall {x}. HydrationDomBuilderT GhcjsDomSpace DomTimeline (DomCoreWidget x) ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```"
    ]
   ],
   "53": [
    [
-    5,
-    10,
-    "```haskell\nPhase\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:1*"
+    0,
+    6,
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
    ],
    [
-    13,
-    18,
-    "```haskell\nReady\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:14*"
+    8,
+    14,
+    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:15*"
    ],
    [
+    16,
     21,
-    28,
-    "```haskell\nPlaying\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:22*"
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
    ],
    [
-    31,
-    35,
-    "```haskell\nOver\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:32*"
+    23,
+    30,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
    ],
    [
-    36,
-    40,
-    "```haskell\nBool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    32,
+    39,
+    "```haskell\npaddleH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:15*"
+   ],
+   [
+    41,
+    48,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    52,
+    58,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "54": [
    [
-    11,
-    13,
-    "```haskell\n==\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\n\n```haskell\nEq\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\n\n```haskell\nC:Eq\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\n\n```haskell\n$c== :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:55:12*\n\n* * *\n\n```haskell\n== :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:55:12*\n\n* * *\n\n```haskell\n$dDataToTag :: DataToTag Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n* * *\n\n```haskell\n$dEq :: Eq Bool\n```\n\n* * *\n\n```haskell\n$c/= :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:55:12*\n\n* * *\n\n```haskell\n/= :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:55:12*\n\n* * *\n\n```haskell\n$dEq :: Eq Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n* * *\nEvidence of constraint `forall a. (a -> Int#) -> DataToTag a`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Magic\u2019*\n* * *\nEvidence of constraint `Eq Bool`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `Eq Phase`\n  bound by an instance of class Eq\n  at [Main.hs:55](file:///demo/breakout/app/Main.hs#L55,12-L55,14)\n  *Defined at /demo/breakout/app/Main.hs:55:12*\n* * *\nEvidence of constraint `forall a. (a -> Int#) -> DataToTag a`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Magic\u2019*\n* * *\n\n```haskell\n_ :: Phase -> Phase -> Bool\n```\n* * *\n\n```haskell\n_ :: (Phase -> Phase -> Bool) -> (Phase -> Phase -> Bool) -> Eq Phase\n```\n* * *\n\n```haskell\n_ :: forall a. (a -> a -> Bool) -> (a -> a -> Bool) -> Eq a\n```"
-   ]
-  ],
-  "56": [
-   [
-    5,
-    7,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
+    0,
+    6,
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
    ],
    [
-    10,
-    12,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*"
+    14,
+    20,
+    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:15*"
+   ],
+   [
+    28,
+    33,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
+   ]
+  ],
+  "55": [
+   [
+    0,
+    7,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ],
+   [
+    14,
+    21,
+    "```haskell\npaddleH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:15*"
+   ],
+   [
+    28,
+    35,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    38,
+    44,
+    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:15*"
    ]
   ],
   "57": [
    [
+    0,
     4,
+    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:1*"
+   ],
+   [
     6,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\ncx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:5*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
-   ],
-   [
-    8,
     10,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:9*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
+    "```haskell\nrows :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:11*"
    ],
    [
-    12,
     14,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:13*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
-   ],
-   [
-    16,
-    18,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:17*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
-   ],
-   [
-    22,
-    28,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    17,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "58": [
    [
+    0,
     4,
-    7,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
+    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:1*"
    ],
    [
-    22,
-    28,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ]
-  ],
-  "59": [
-   [
-    4,
     10,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:60:5*\n\n* * *\n\n```haskell\n_ :: Map (Int, Int) ()\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Map (Int, Int) ()\n```"
-   ],
-   [
-    22,
-    25,
-    "```haskell\nMap\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
-   ],
-   [
-    27,
-    30,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    32,
-    35,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    14,
+    "```haskell\nrows :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:11*"
    ]
   ],
   "60": [
    [
-    4,
+    0,
+    7,
+    "```haskell\nmarginX :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:1*"
+   ],
+   [
     9,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:5*\n\n* * *\n\n```haskell\n_ :: Int\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Int\n```"
+    18,
+    "```haskell\nmarginTop :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:15*"
    ],
    [
-    11,
-    16,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:12*\n\n* * *\n\n```haskell\n_ :: Int\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Int\n```"
+    20,
+    23,
+    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:31*"
    ],
    [
-    22,
     25,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    31,
+    "```haskell\nbrickH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:40*"
+   ],
+   [
+    33,
+    39,
+    "```haskell\nbrickW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:63:1*"
+   ],
+   [
+    41,
+    52,
+    "```haskell\npaddleSpeed :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:64:1*"
+   ],
+   [
+    56,
+    62,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "61": [
    [
-    4,
-    9,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*\n\n* * *\n\n```haskell\nphase :: St -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54) | [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:62:5*\n\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: Phase\n```\n* * *\n\n```haskell\n_ :: St -> Phase\n```"
+    0,
+    7,
+    "```haskell\nmarginX :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:1*"
    ],
    [
-    22,
-    27,
-    "```haskell\nPhase\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:1*"
+    14,
+    23,
+    "```haskell\nmarginTop :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:15*"
+   ],
+   [
+    30,
+    33,
+    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:31*"
+   ],
+   [
+    39,
+    45,
+    "```haskell\nbrickH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:40*"
    ]
   ],
-  "64": [
+  "62": [
    [
     0,
-    9,
-    "```haskell\nallBricks\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:1*"
+    6,
+    "```haskell\nbrickW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:63:1*"
    ],
    [
-    13,
+    10,
     16,
-    "```haskell\nMap\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
    ],
    [
-    18,
     21,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    28,
+    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
    ],
    [
-    23,
-    26,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    31,
+    43,
+    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
+   ],
+   [
+    45,
+    49,
+    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:1*"
+   ],
+   [
+    55,
+    58,
+    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:31*"
+   ],
+   [
+    62,
+    74,
+    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
+   ],
+   [
+    75,
+    79,
+    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:1*"
+   ]
+  ],
+  "63": [
+   [
+    0,
+    11,
+    "```haskell\npaddleSpeed :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:64:1*"
    ]
   ],
   "65": [
    [
-    0,
-    9,
-    "```haskell\nallBricks :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:1*"
+    5,
+    10,
+    "```haskell\nPhase :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:1*"
    ],
    [
-    12,
-    22,
-    "```haskell\nfromList :: forall k a. Ord k => [(k, a)] -> Map k a\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n* * *\nEvidence of constraint `Ord (Int, Int)`\n  constructed using:\n  - `forall a b. (Ord a, Ord b) => Ord (a, b)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: [((Int, Int), ())] -> Map (Int, Int) ()\n```\n* * *\n\n```haskell\n_ :: forall k a. Ord k => [(k, a)] -> Map k a\n```"
+    13,
+    18,
+    "```haskell\nReady :: Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:14*"
    ],
    [
-    27,
+    21,
     28,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:41*"
+    "```haskell\nPlaying :: Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:22*"
    ],
    [
-    30,
     31,
-    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:61*"
+    35,
+    "```haskell\nOver :: Bool -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:32*"
    ],
    [
+    36,
     40,
-    41,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:41*"
-   ],
-   [
-    51,
-    55,
-    "```haskell\nrows :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:11*"
-   ],
-   [
-    60,
-    61,
-    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:61*"
-   ],
-   [
-    71,
-    75,
-    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:47:1*"
+    "```haskell\nBool :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
-  "67": [
+  "66": [
    [
-    0,
-    6,
-    "```haskell\ninitSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
-   ],
-   [
-    10,
-    12,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
+    11,
+    13,
+    "```haskell\n== :: forall a. Eq a => a -> a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\n\n```haskell\nEq :: Type -> Constraint\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\n\n```haskell\n$c== :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:67:12*\n\n* * *\n\n```haskell\n== :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:67:12*\n\n* * *\n\n```haskell\n$dDataToTag :: DataToTag Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n* * *\n\n```haskell\n$dEq :: Eq Bool\n```\n\n* * *\n\n```haskell\n$c/= :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:67:12*\n\n* * *\n\n```haskell\n/= :: Phase -> Phase -> Bool\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:67:12*\n\n* * *\n\n```haskell\n$dEq :: Eq Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n* * *\n\n```haskell\nC:Eq :: forall a. (a -> a -> Bool) -=> (a -> a -> Bool) -=> Eq a\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `forall a. (a -> Int#) -=> DataToTag a`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Magic\u2019*\n* * *\nEvidence of constraint `Eq Bool`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `Eq Phase`\n  bound by an instance of class Eq\n  at [Main.hs:67](file:///demo/breakout/app/Main.hs#L67,12-L67,14)\n  *Defined at /demo/breakout/app/Main.hs:67:12*\n* * *\nEvidence of constraint `forall a. (a -> Int#) -=> DataToTag a`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Magic\u2019*\n* * *\n\n```haskell\n_ :: Phase -> Phase -> Bool\n```\n* * *\n\n```haskell\n_ :: (Phase -> Phase -> Bool) -=> (Phase -> Phase -> Bool) -=> Eq Phase\n```\n* * *\n\n```haskell\n_ :: forall a. (a -> a -> Bool) -=> (a -> a -> Bool) -=> Eq a\n```"
    ]
   ],
   "68": [
    [
-    0,
-    6,
-    "```haskell\ninitSt :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+    5,
+    7,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
    ],
    [
-    9,
-    11,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:11*"
+    10,
+    12,
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:11*"
    ]
   ],
   "69": [
    [
     4,
     6,
-    "```haskell\ncx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:5*"
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\ncx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:5*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
    ],
    [
-    9,
-    15,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
+    8,
+    10,
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:9*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
    ],
    [
-    19,
-    21,
-    "```haskell\ncy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
+    12,
+    14,
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:13*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
    ],
    [
-    24,
-    31,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
+    16,
+    18,
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:17*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
    ],
    [
-    34,
-    39,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
-   ],
-   [
-    41,
-    43,
-    "```haskell\nvx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
-   ],
-   [
-    49,
-    51,
-    "```haskell\nvy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:17*"
+    22,
+    28,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "70": [
    [
     4,
     7,
-    "```haskell\npcx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*\n\n* * *\n\n```haskell\n_ :: Double\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Double\n```"
    ],
    [
+    22,
+    28,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ]
+  ],
+  "71": [
+   [
+    4,
     10,
-    16,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:72:5*\n\n* * *\n\n```haskell\n_ :: Map (Int, Int) ()\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Map (Int, Int) ()\n```"
    ],
    [
-    20,
-    26,
-    "```haskell\nbricks :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:60:5*"
+    22,
+    25,
+    "```haskell\nMap :: Type -> Type -> Type\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
    ],
    [
-    29,
-    38,
-    "```haskell\nallBricks :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:1*"
+    27,
+    30,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
-    40,
-    45,
-    "```haskell\nscore :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:61:5*"
-   ],
-   [
-    51,
-    56,
-    "```haskell\nlives :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:61:12*"
-   ],
-   [
-    62,
-    67,
-    "```haskell\nphase :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
-   ],
-   [
-    70,
-    75,
-    "```haskell\nReady\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:14*"
+    32,
+    35,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "72": [
    [
-    5,
-    7,
-    "```haskell\nEv\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:1*"
-   ],
-   [
-    10,
-    14,
-    "```haskell\nTick\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:11*"
-   ],
-   [
-    16,
-    19,
-    "```haskell\nSet\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*"
-   ],
-   [
-    20,
-    24,
-    "```haskell\nText\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
-   ],
-   [
-    28,
-    34,
-    "```haskell\nLaunch\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:29*"
-   ]
-  ],
-  "74": [
-   [
-    0,
-    6,
-    "```haskell\nclampD\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:1*"
-   ],
-   [
-    10,
-    16,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    20,
-    26,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    30,
-    36,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    40,
-    46,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ]
-  ],
-  "75": [
-   [
-    0,
-    6,
-    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:1*"
-   ],
-   [
-    7,
+    4,
     9,
-    "```haskell\nlo :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:8*"
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:5*\n\n* * *\n\n```haskell\n_ :: Int\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Int\n```"
    ],
    [
-    10,
-    12,
-    "```haskell\nhi :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:11*"
+    11,
+    16,
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:12*\n\n* * *\n\n```haskell\n_ :: Int\n```\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: St -> Int\n```"
    ],
    [
-    15,
-    18,
-    "```haskell\nmax :: forall a. Ord a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Ord Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> a -> a\n```"
+    22,
+    25,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ]
+  ],
+  "73": [
+   [
+    4,
+    9,
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69) | [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:69:11*\n\n* * *\n\n```haskell\nphase :: St -> Phase\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69) | [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:74:5*\n\n* * *\n\n```haskell\n_ :: St\n```\n* * *\n\n```haskell\n_ :: Phase\n```\n* * *\n\n```haskell\n_ :: St -> Phase\n```"
    ],
    [
-    19,
-    21,
-    "```haskell\nlo :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:8*"
-   ],
-   [
-    24,
+    22,
     27,
-    "```haskell\nmin :: forall a. Ord a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Ord Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> a -> a\n```"
+    "```haskell\nPhase :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:1*"
+   ]
+  ],
+  "76": [
+   [
+    0,
+    9,
+    "```haskell\nallBricks :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:78:1*"
    ],
    [
-    28,
-    30,
-    "```haskell\nhi :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:11*"
+    13,
+    16,
+    "```haskell\nMap :: Type -> Type -> Type\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
+   ],
+   [
+    18,
+    21,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    23,
+    26,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "77": [
    [
     0,
     9,
-    "```haskell\nbrickRect\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:1*"
+    "```haskell\nallBricks :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:78:1*"
    ],
    [
-    14,
-    17,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    19,
-    22,
-    "```haskell\nInt\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    28,
-    34,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    36,
-    42,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    44,
-    50,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    52,
-    58,
-    "```haskell\nDouble\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
-   ]
-  ],
-  "78": [
-   [
-    0,
-    9,
-    "```haskell\nbrickRect :: (Int, Int) -> (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:1*"
-   ],
-   [
-    11,
     12,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:12*"
-   ],
-   [
-    14,
-    15,
-    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:15*"
-   ]
-  ],
-  "79": [
-   [
-    4,
-    11,
-    "```haskell\nmarginX :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:1*"
-   ],
-   [
-    14,
-    26,
-    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
+    22,
+    "```haskell\nfromList :: forall k a. Ord k => [(k, a)] -> Map k a\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n* * *\nEvidence of constraint `Ord (Int, Int)`\n  constructed using:\n  - `forall a b. (Ord a, Ord b) => Ord (a, b)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: [((Int, Int), ())] -> Map (Int, Int) ()\n```\n* * *\n\n```haskell\n_ :: forall k a. Ord k => [(k, a)] -> Map k a\n```"
    ],
    [
     27,
     28,
-    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:15*"
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:78:41*"
    ],
    [
-    32,
-    38,
-    "```haskell\nbrickW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:51:1*"
+    30,
+    31,
+    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:78:61*"
    ],
    [
+    40,
     41,
-    44,
-    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:31*"
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:78:41*"
+   ],
+   [
+    51,
+    55,
+    "```haskell\nrows :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:11*"
+   ],
+   [
+    60,
+    61,
+    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:78:61*"
+   ],
+   [
+    71,
+    75,
+    "```haskell\ncols :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:1*"
+   ]
+  ],
+  "79": [
+   [
+    0,
+    6,
+    "```haskell\ninitSt :: St\n```\n\n*Defined at /demo/breakout/app/Main.hs:81:1*"
+   ],
+   [
+    10,
+    12,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
    ]
   ],
   "80": [
    [
-    4,
-    13,
-    "```haskell\nmarginTop :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:15*"
+    0,
+    6,
+    "```haskell\ninitSt :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:81:1*"
    ],
    [
-    16,
-    28,
-    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
-   ],
-   [
-    29,
-    30,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:12*"
-   ],
-   [
-    34,
-    40,
-    "```haskell\nbrickH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:40*"
-   ],
-   [
-    43,
-    46,
-    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:31*"
+    9,
+    11,
+    "```haskell\nSt :: Double -> Double -> Double -> Double -> Double -> Map (Int, Int) () -> Int -> Int -> Phase -> St\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:11*"
    ]
   ],
   "81": [
    [
     4,
-    10,
-    "```haskell\nbrickW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:51:1*"
+    6,
+    "```haskell\ncx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:5*"
    ],
    [
-    12,
-    18,
-    "```haskell\nbrickH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:50:40*"
+    9,
+    15,
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
+   ],
+   [
+    19,
+    21,
+    "```haskell\ncy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
+   ],
+   [
+    24,
+    31,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    34,
+    39,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
+   ],
+   [
+    41,
+    43,
+    "```haskell\nvx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
+    49,
+    51,
+    "```haskell\nvy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:17*"
    ]
   ],
-  "83": [
+  "82": [
    [
-    0,
-    8,
-    "```haskell\nleftHeld\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:1*"
+    4,
+    7,
+    "```haskell\npcx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
    ],
    [
     10,
-    19,
-    "```haskell\nrightHeld\n```\n\n*Defined at /demo/breakout/app/Main.hs:86:1*"
+    16,
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
    ],
    [
-    23,
+    20,
     26,
-    "```haskell\nSet\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*"
+    "```haskell\nbricks :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:72:5*"
    ],
    [
-    27,
-    31,
-    "```haskell\nText\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+    29,
+    38,
+    "```haskell\nallBricks :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:78:1*"
    ],
    [
-    35,
-    39,
-    "```haskell\nBool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*"
+    40,
+    45,
+    "```haskell\nscore :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:5*"
+   ],
+   [
+    51,
+    56,
+    "```haskell\nlives :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:12*"
+   ],
+   [
+    62,
+    67,
+    "```haskell\nphase :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
+   ],
+   [
+    70,
+    75,
+    "```haskell\nReady :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:14*"
    ]
   ],
   "84": [
    [
-    0,
-    8,
-    "```haskell\nleftHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:1*"
+    5,
+    7,
+    "```haskell\nEv :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:1*"
    ],
    [
     10,
-    11,
-    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:11*"
+    14,
+    "```haskell\nTick :: Set Text -> Ev\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:11*"
    ],
    [
-    14,
-    17,
-    "```haskell\nany :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```"
+    16,
+    19,
+    "```haskell\nSet :: Type -> Type\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*"
    ],
    [
     20,
+    24,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ],
+   [
     28,
-    "```haskell\nmember :: forall a. Ord a => a -> Set a -> Bool\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Bool\n```"
-   ],
-   [
-    30,
-    31,
-    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:11*"
-   ],
-   [
-    35,
-    44,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    49,
-    50,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    54,
-    55,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    34,
+    "```haskell\nLaunch :: Ev\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:29*"
    ]
   ],
-  "85": [
+  "86": [
    [
     0,
-    9,
-    "```haskell\nrightHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:86:1*"
+    6,
+    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:1*"
    ],
    [
     10,
-    11,
-    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:86:11*"
-   ],
-   [
-    14,
-    17,
-    "```haskell\nany :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```"
+    16,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
     20,
-    28,
-    "```haskell\nmember :: forall a. Ord a => a -> Set a -> Bool\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Bool\n```"
+    26,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
     30,
-    31,
-    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:86:11*"
+    36,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
-    35,
-    45,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    49,
-    50,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    54,
-    55,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    40,
+    46,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "87": [
    [
     0,
-    4,
-    "```haskell\nstep\n```\n\n*Defined at /demo/breakout/app/Main.hs:89:1*"
+    6,
+    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:1*"
    ],
    [
-    8,
+    7,
+    9,
+    "```haskell\nlo :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:8*"
+   ],
+   [
     10,
-    "```haskell\nEv\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:1*"
-   ],
-   [
-    14,
-    16,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
-   ],
-   [
-    20,
-    22,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
-   ]
-  ],
-  "88": [
-   [
-    0,
-    4,
-    "```haskell\nstep :: Ev -> St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57) | [Ev](file:///demo/breakout/app/Main.hs#L73)\n\n*Defined at /demo/breakout/app/Main.hs:89:1*"
-   ],
-   [
-    5,
-    11,
-    "```haskell\nLaunch\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:29*"
-   ],
-   [
     12,
-    14,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:89:13*"
+    "```haskell\nhi :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:11*"
    ],
    [
-    22,
+    15,
+    18,
+    "```haskell\nmax :: forall a. Ord a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Ord Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> a -> a\n```"
+   ],
+   [
+    19,
+    21,
+    "```haskell\nlo :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:8*"
+   ],
+   [
+    24,
     27,
-    "```haskell\nphase :: St -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54) | [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
+    "```haskell\nmin :: forall a. Ord a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Classes\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Ord Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> a -> a\n```"
    ],
    [
     28,
     30,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:89:13*"
+    "```haskell\nhi :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:11*"
    ]
   ],
   "89": [
    [
-    2,
-    7,
-    "```haskell\nReady\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:14*"
+    0,
+    9,
+    "```haskell\nbrickRect :: (Int, Int) -> (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:1*"
    ],
    [
-    12,
     14,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:89:13*"
-   ],
-   [
     17,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    19,
     22,
-    "```haskell\nphase\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
-    25,
-    32,
-    "```haskell\nPlaying\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:22*"
-   ],
-   [
+    28,
     34,
-    36,
-    "```haskell\nvx\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
+    36,
     42,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
     44,
-    "```haskell\nvy\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:17*"
+    50,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    52,
+    58,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "90": [
    [
-    17,
-    19,
-    "```haskell\ncx\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:5*"
+    0,
+    9,
+    "```haskell\nbrickRect :: (Int, Int) -> (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:1*"
    ],
    [
-    22,
-    25,
-    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
+    11,
+    12,
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:12*"
    ],
    [
-    26,
-    28,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:89:13*"
-   ],
-   [
-    30,
-    32,
-    "```haskell\ncy\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
-   ],
-   [
-    35,
-    42,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
-   ],
-   [
-    45,
-    50,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
+    14,
+    15,
+    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:15*"
    ]
   ],
   "91": [
    [
-    2,
-    6,
-    "```haskell\nOver\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:32*"
+    4,
+    11,
+    "```haskell\nmarginX :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:1*"
    ],
    [
-    7,
-    8,
-    "```haskell\n_ :: Bool\n```"
+    14,
+    26,
+    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
    ],
    [
-    12,
-    18,
-    "```haskell\ninitSt :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+    27,
+    28,
+    "```haskell\nc :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:15*"
+   ],
+   [
+    32,
+    38,
+    "```haskell\nbrickW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:63:1*"
+   ],
+   [
+    41,
+    44,
+    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:31*"
    ]
   ],
   "92": [
    [
-    2,
-    9,
-    "```haskell\nPlaying\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:22*"
+    4,
+    13,
+    "```haskell\nmarginTop :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:15*"
    ],
    [
-    13,
-    15,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:89:13*"
+    16,
+    28,
+    "```haskell\nfromIntegral :: forall a b. (Integral a, Num b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Int -> Double\n```\n* * *\n\n```haskell\n_ :: forall a b. (Integral a, Num b) => a -> b\n```"
+   ],
+   [
+    29,
+    30,
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:12*"
+   ],
+   [
+    34,
+    40,
+    "```haskell\nbrickH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:40*"
+   ],
+   [
+    43,
+    46,
+    "```haskell\ngap :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:31*"
    ]
   ],
   "93": [
    [
-    0,
     4,
-    "```haskell\nstep\n```\n\n*Defined at /demo/breakout/app/Main.hs:89:1*"
-   ],
-   [
-    6,
     10,
-    "```haskell\nTick\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:11*"
+    "```haskell\nbrickW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:63:1*"
    ],
    [
-    11,
-    15,
-    "```haskell\nheld :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:94:12*"
-   ],
-   [
-    17,
-    19,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:94:18*"
-   ]
-  ],
-  "94": [
-   [
-    6,
-    9,
-    "```haskell\ndir :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:95:7*"
-   ],
-   [
-    17,
-    26,
-    "```haskell\nrightHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:86:1*"
-   ],
-   [
-    27,
-    31,
-    "```haskell\nheld :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:94:12*"
-   ],
-   [
-    53,
-    61,
-    "```haskell\nleftHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:1*"
-   ],
-   [
-    62,
-    66,
-    "```haskell\nheld :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:94:12*"
+    12,
+    18,
+    "```haskell\nbrickH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:40*"
    ]
   ],
   "95": [
    [
-    6,
+    0,
+    8,
+    "```haskell\nleftHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:97:1*"
+   ],
+   [
     10,
-    "```haskell\npcx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:96:7*"
-   ],
-   [
-    13,
     19,
-    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:1*"
+    "```haskell\nrightHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:98:1*"
    ],
    [
-    21,
-    28,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
+    23,
+    26,
+    "```haskell\nSet :: Type -> Type\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*"
    ],
    [
-    33,
+    27,
+    31,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ],
+   [
+    35,
     39,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
-   ],
-   [
-    42,
-    49,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
-   ],
-   [
-    54,
-    57,
-    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
-   ],
-   [
-    58,
-    60,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:94:18*"
-   ],
-   [
-    63,
-    66,
-    "```haskell\ndir :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:95:7*"
-   ],
-   [
-    69,
-    80,
-    "```haskell\npaddleSpeed :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:52:1*"
+    "```haskell\nBool :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "96": [
    [
-    6,
-    9,
-    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:97:7*"
+    0,
+    8,
+    "```haskell\nleftHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:97:1*"
    ],
    [
-    13,
-    15,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:94:18*"
+    10,
+    11,
+    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:97:11*"
    ],
    [
-    18,
-    21,
-    "```haskell\npcx\n```\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
+    14,
+    17,
+    "```haskell\nany :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```"
    ],
    [
-    24,
+    20,
     28,
-    "```haskell\npcx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:96:7*"
+    "```haskell\nmember :: forall a. Ord a => a -> Set a -> Bool\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Bool\n```"
+   ],
+   [
+    30,
+    31,
+    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:97:11*"
+   ],
+   [
+    35,
+    44,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    49,
+    50,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    54,
+    55,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "97": [
    [
+    0,
+    9,
+    "```haskell\nrightHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:98:1*"
+   ],
+   [
     10,
-    15,
-    "```haskell\nphase :: St -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54) | [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
+    11,
+    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:98:11*"
    ],
    [
-    16,
-    18,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:94:18*"
-   ]
-  ],
-  "98": [
-   [
-    7,
     14,
-    "```haskell\nPlaying\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:22*"
+    17,
+    "```haskell\nany :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. Foldable t => (a -> Bool) -> t a -> Bool\n```"
    ],
    [
-    18,
-    25,
-    "```haskell\nphysics :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:1*"
+    20,
+    28,
+    "```haskell\nmember :: forall a. Ord a => a -> Set a -> Bool\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Bool\n```"
    ],
    [
-    26,
-    29,
-    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:97:7*"
+    30,
+    31,
+    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:98:11*"
+   ],
+   [
+    35,
+    45,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    49,
+    50,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    54,
+    55,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "99": [
    [
-    7,
-    12,
-    "```haskell\nReady\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:14*"
-   ],
-   [
-    18,
-    21,
-    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:97:7*"
-   ],
-   [
-    24,
-    26,
-    "```haskell\ncx\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:5*"
-   ],
-   [
-    29,
-    33,
-    "```haskell\npcx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:96:7*"
-   ],
-   [
-    35,
-    37,
-    "```haskell\ncy\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
-   ],
-   [
-    40,
-    47,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
-   ],
-   [
-    50,
-    55,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
-   ]
-  ],
-  "100": [
-   [
-    7,
-    11,
-    "```haskell\nOver\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:32*"
-   ],
-   [
-    12,
-    13,
-    "```haskell\n_ :: Bool\n```"
-   ],
-   [
-    18,
-    21,
-    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:97:7*"
-   ]
-  ],
-  "102": [
-   [
     0,
-    7,
-    "```haskell\nphysics\n```\n\n*Defined at /demo/breakout/app/Main.hs:104:1*"
-   ],
-   [
-    11,
-    13,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
-   ],
-   [
-    17,
-    19,
-    "```haskell\nSt\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
-   ]
-  ],
-  "103": [
-   [
-    0,
-    7,
-    "```haskell\nphysics :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:1*"
+    4,
+    "```haskell\nstep :: Ev -> St -> St\n```\n\n*Defined at /demo/breakout/app/Main.hs:101:1*"
    ],
    [
     8,
     10,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ]
-  ],
-  "104": [
-   [
-    6,
-    7,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
-   ],
-   [
-    10,
-    15,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
-   ]
-  ],
-  "105": [
-   [
-    6,
-    11,
-    "```haskell\noldcy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:106:7*"
+    "```haskell\nEv :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:1*"
    ],
    [
     14,
     16,
-    "```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+   ],
+   [
+    20,
+    22,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+   ]
+  ],
+  "100": [
+   [
+    0,
+    4,
+    "```haskell\nstep :: Ev -> St -> St\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L85) | [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:101:1*"
+   ],
+   [
+    5,
+    11,
+    "```haskell\nLaunch :: Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L85)\n\n*Defined at /demo/breakout/app/Main.hs:85:29*"
+   ],
+   [
+    12,
+    14,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:101:13*"
+   ],
+   [
+    22,
+    27,
+    "```haskell\nphase :: St -> Phase\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69) | [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
+   ],
+   [
+    28,
+    30,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:101:13*"
+   ]
+  ],
+  "101": [
+   [
+    2,
+    7,
+    "```haskell\nReady :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:14*"
+   ],
+   [
+    12,
+    14,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:101:13*"
+   ],
+   [
+    17,
+    22,
+    "```haskell\nphase :: St -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
+   ],
+   [
+    25,
+    32,
+    "```haskell\nPlaying :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:22*"
+   ],
+   [
+    34,
+    36,
+    "```haskell\nvx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
+    42,
+    44,
+    "```haskell\nvy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:17*"
+   ]
+  ],
+  "102": [
+   [
+    17,
+    19,
+    "```haskell\ncx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:5*"
+   ],
+   [
+    22,
+    25,
+    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
+   ],
+   [
+    26,
+    28,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:101:13*"
+   ],
+   [
+    30,
+    32,
+    "```haskell\ncy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
+   ],
+   [
+    35,
+    42,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    45,
+    50,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
+   ]
+  ],
+  "103": [
+   [
+    2,
+    6,
+    "```haskell\nOver :: Bool -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:32*"
+   ],
+   [
+    7,
+    8,
+    "```haskell\n_ :: Bool\n```"
+   ],
+   [
+    12,
+    18,
+    "```haskell\ninitSt :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:81:1*"
+   ]
+  ],
+  "104": [
+   [
+    2,
+    9,
+    "```haskell\nPlaying :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:22*"
+   ],
+   [
+    13,
+    15,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:101:13*"
+   ]
+  ],
+  "105": [
+   [
+    0,
+    4,
+    "```haskell\nstep :: Ev -> St -> St\n```\n\n*Defined at /demo/breakout/app/Main.hs:101:1*"
+   ],
+   [
+    6,
+    10,
+    "```haskell\nTick :: Set Text -> Ev\n```\n\n*Defined at /demo/breakout/app/Main.hs:85:11*"
+   ],
+   [
+    11,
+    15,
+    "```haskell\nheld :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:106:12*"
    ],
    [
     17,
     19,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:106:18*"
    ]
   ],
   "106": [
    [
     6,
     9,
-    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:107:7*"
+    "```haskell\ndir :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:107:7*"
    ],
    [
-    12,
-    14,
-    "```haskell\ncx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:5*"
-   ],
-   [
-    15,
     17,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    26,
+    "```haskell\nrightHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:98:1*"
    ],
    [
-    20,
-    22,
-    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
+    27,
+    31,
+    "```haskell\nheld :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:106:12*"
    ],
    [
-    23,
-    25,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    53,
+    61,
+    "```haskell\nleftHeld :: Set Text -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:97:1*"
+   ],
+   [
+    62,
+    66,
+    "```haskell\nheld :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:106:12*"
    ]
   ],
   "107": [
    [
     6,
+    10,
+    "```haskell\npcx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:108:7*"
+   ],
+   [
+    13,
+    19,
+    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:1*"
+   ],
+   [
+    21,
+    28,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ],
+   [
+    33,
+    39,
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
+   ],
+   [
+    42,
+    49,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ],
+   [
+    54,
+    57,
+    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
+   ],
+   [
+    58,
+    60,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:106:18*"
+   ],
+   [
+    63,
+    66,
+    "```haskell\ndir :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:107:7*"
+   ],
+   [
+    69,
+    80,
+    "```haskell\npaddleSpeed :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:64:1*"
+   ]
+  ],
+  "108": [
+   [
+    6,
     9,
-    "```haskell\ncy1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:108:7*"
+    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:109:7*"
    ],
    [
-    12,
-    14,
-    "```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
-   ],
-   [
+    13,
     15,
-    17,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:106:18*"
    ],
    [
-    20,
-    22,
-    "```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:17*"
+    18,
+    21,
+    "```haskell\npcx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
    ],
    [
-    23,
-    25,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    24,
+    28,
+    "```haskell\npcx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:108:7*"
    ]
   ],
   "109": [
    [
-    7,
     10,
-    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:8*"
+    15,
+    "```haskell\nphase :: St -> Phase\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69) | [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
    ],
    [
-    12,
-    15,
-    "```haskell\nvx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:13*"
+    16,
+    18,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:106:18*"
    ]
   ],
   "110": [
    [
-    10,
-    13,
-    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:107:7*"
+    7,
+    14,
+    "```haskell\nPlaying :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:22*"
    ],
    [
-    16,
-    17,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
+    18,
+    25,
+    "```haskell\nphysics :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:1*"
    ],
    [
-    31,
-    32,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
-   ],
-   [
-    43,
-    46,
-    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
-   ],
-   [
-    48,
-    50,
-    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
-   ],
-   [
-    51,
-    53,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    26,
+    29,
+    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:109:7*"
    ]
   ],
   "111": [
    [
-    10,
-    13,
-    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:107:7*"
+    7,
+    12,
+    "```haskell\nReady :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:14*"
    ],
    [
-    16,
-    17,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
+    18,
+    21,
+    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:109:7*"
    ],
    [
-    20,
+    24,
     26,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
+    "```haskell\ncx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:5*"
    ],
    [
-    31,
+    29,
+    33,
+    "```haskell\npcx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:108:7*"
+   ],
+   [
+    35,
     37,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
+    "```haskell\ncy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
    ],
    [
     40,
-    41,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
+    47,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
    ],
    [
-    43,
-    49,
-    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
-   ],
-   [
-    51,
-    54,
-    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
-   ],
-   [
-    56,
-    58,
-    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
-   ],
-   [
-    59,
-    61,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    50,
+    55,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
    ]
   ],
   "112": [
    [
-    10,
-    19,
-    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*"
-   ],
-   [
-    31,
-    34,
-    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:107:7*"
-   ],
-   [
-    43,
-    45,
-    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
-   ],
-   [
-    46,
-    48,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ]
-  ],
-  "113": [
-   [
     7,
-    10,
-    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:8*"
+    11,
+    "```haskell\nOver :: Bool -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:32*"
    ],
    [
     12,
-    15,
-    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:13*"
+    13,
+    "```haskell\n_ :: Bool\n```"
+   ],
+   [
+    18,
+    21,
+    "```haskell\nst' :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:109:7*"
    ]
   ],
   "114": [
    [
-    10,
+    0,
+    7,
+    "```haskell\nphysics :: St -> St\n```\n\n*Defined at /demo/breakout/app/Main.hs:116:1*"
+   ],
+   [
+    11,
     13,
-    "```haskell\ncy1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:108:7*"
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
    ],
    [
-    16,
     17,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
-   ],
-   [
-    31,
-    32,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
-   ],
-   [
-    43,
-    46,
-    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
-   ],
-   [
-    48,
-    50,
-    "```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:17*"
-   ],
-   [
-    51,
-    53,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    19,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
    ]
   ],
   "115": [
    [
+    0,
+    7,
+    "```haskell\nphysics :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:1*"
+   ],
+   [
+    8,
     10,
-    19,
-    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*"
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ]
+  ],
+  "116": [
+   [
+    6,
+    7,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
    ],
    [
-    31,
-    34,
-    "```haskell\ncy1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:108:7*"
-   ],
-   [
-    43,
-    45,
-    "```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:17*"
-   ],
-   [
-    46,
-    48,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    10,
+    15,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
    ]
   ],
   "117": [
    [
     6,
-    8,
-    "```haskell\npl :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:118:7*"
-   ],
-   [
     11,
+    "```haskell\noldcy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:118:7*"
+   ],
+   [
     14,
-    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
+    16,
+    "```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
    ],
    [
-    15,
     17,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ],
-   [
-    20,
-    27,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
+    19,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ]
   ],
   "118": [
    [
     6,
-    8,
-    "```haskell\npr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:119:7*"
+    9,
+    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:119:7*"
    ],
    [
-    11,
+    12,
     14,
-    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
+    "```haskell\ncx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:5*"
    ],
    [
     15,
     17,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ],
    [
     20,
-    27,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
+    22,
+    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
+    23,
+    25,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ]
   ],
   "119": [
    [
     6,
+    9,
+    "```haskell\ncy1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:120:7*"
+   ],
+   [
+    12,
+    14,
+    "```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
+   ],
+   [
     15,
-    "```haskell\nhitPaddle :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:120:7*"
+    17,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ],
    [
-    18,
-    21,
-    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:13*"
+    20,
+    22,
+    "```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:17*"
    ],
    [
-    29,
-    32,
-    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:8*"
-   ],
-   [
-    35,
-    36,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
-   ],
-   [
-    40,
-    47,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
-   ],
-   [
-    51,
-    54,
-    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:8*"
-   ],
-   [
-    57,
-    58,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
-   ],
-   [
-    62,
-    69,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
-   ],
-   [
-    72,
-    79,
-    "```haskell\npaddleH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:15*"
-   ]
-  ],
-  "120": [
-   [
-    29,
-    32,
-    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:8*"
-   ],
-   [
-    36,
-    38,
-    "```haskell\npl :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:118:7*"
-   ],
-   [
-    42,
-    45,
-    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:8*"
-   ],
-   [
-    49,
-    51,
-    "```haskell\npr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:119:7*"
+    23,
+    25,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ]
   ],
   "121": [
    [
     7,
     10,
-    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
+    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
    ],
    [
     12,
     15,
-    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:13*"
-   ],
-   [
-    17,
-    20,
-    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:18*"
+    "```haskell\nvx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:13*"
    ]
   ],
   "122": [
    [
     10,
-    19,
-    "```haskell\nhitPaddle :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:120:7*"
+    13,
+    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:119:7*"
    ],
    [
-    26,
-    29,
-    "```haskell\nrel :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:123:27*"
+    16,
+    17,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
    ],
    [
+    31,
     32,
-    38,
-    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:1*"
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    43,
+    46,
+    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
    ],
    [
     48,
+    50,
+    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
     51,
-    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:8*"
-   ],
-   [
-    54,
-    57,
-    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
-   ],
-   [
-    58,
-    60,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ],
-   [
-    65,
-    72,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
+    53,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ]
   ],
   "123": [
    [
+    10,
+    13,
+    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:119:7*"
+   ],
+   [
+    16,
+    17,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    20,
     26,
-    33,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
    ],
    [
-    36,
+    31,
     37,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
    ],
    [
-    39,
-    45,
-    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
+    40,
+    41,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
    ],
    [
-    47,
-    50,
-    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
+    43,
+    49,
+    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
    ],
    [
     51,
     54,
-    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:13*"
+    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
    ],
    [
-    57,
-    60,
-    "```haskell\nrel :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:123:27*"
+    56,
+    58,
+    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
+    59,
+    61,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ]
   ],
   "124": [
    [
     10,
     19,
-    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*"
+    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
-    23,
-    26,
-    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:8*"
-   ],
-   [
-    28,
     31,
-    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:114:13*"
+    34,
+    "```haskell\ncx1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:119:7*"
    ],
    [
-    33,
-    36,
-    "```haskell\nvx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:13*"
+    43,
+    45,
+    "```haskell\nvx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
+    46,
+    48,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ]
+  ],
+  "125": [
+   [
+    7,
+    10,
+    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:8*"
+   ],
+   [
+    12,
+    15,
+    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:13*"
    ]
   ],
   "126": [
    [
-    6,
-    9,
-    "```haskell\nhit :: Maybe ((Int, Int), (Double, Double, Double, Double))\n```\n\n*Defined at /demo/breakout/app/Main.hs:127:7*"
+    10,
+    13,
+    "```haskell\ncy1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:120:7*"
    ],
    [
-    12,
-    23,
-    "```haskell\nlistToMaybe :: forall a. [a] -> Maybe a\n```\n\n*Defined in \u2018GHC.Internal.Data.Maybe\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nThe  `listToMaybe`  function returns  `Nothing`  on an empty list\n or  `Just  a`  where  `a`  is the first element of the list. #### **Examples** \n\nBasic usage: \n```haskell\n>>> listToMaybe []\nNothing\n\n\n```\n \n```haskell\n>>> listToMaybe [9]\nJust 9\n\n\n```\n \n```haskell\n>>> listToMaybe [1,2,3]\nJust 1\n\n\n```\n \n\nComposing  `maybeToList`  with  `listToMaybe`  should be the identity\n on singleton/empty lists: \n```haskell\n>>> maybeToList $ listToMaybe [5]\n[5]\n\n>>> maybeToList $ listToMaybe []\n[]\n\n\n```\n \n\nBut not on lists with more than one element: \n```haskell\n>>> maybeToList $ listToMaybe [1,2,3]\n[1]\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-Maybe.html#v:listToMaybe)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.Maybe.html#listToMaybe)\n\n\n* * *\n\n```haskell\n_ :: [((Int, Int), (Double, Double, Double, Double))] -> Maybe ((Int, Int), (Double, Double, Double, Double))\n```"
+    16,
+    17,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    31,
+    32,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    43,
+    46,
+    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
+   ],
+   [
+    48,
+    50,
+    "```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:17*"
+   ],
+   [
+    51,
+    53,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ]
   ],
   "127": [
    [
+    10,
+    19,
+    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    31,
+    34,
+    "```haskell\ncy1 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:120:7*"
+   ],
+   [
+    43,
+    45,
+    "```haskell\nvy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:17*"
+   ],
+   [
+    46,
+    48,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ]
+  ],
+  "129": [
+   [
+    6,
+    8,
+    "```haskell\npl :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:7*"
+   ],
+   [
+    11,
+    14,
+    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
+   ],
+   [
+    15,
+    17,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ],
+   [
+    20,
+    27,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ]
+  ],
+  "130": [
+   [
+    6,
+    8,
+    "```haskell\npr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:131:7*"
+   ],
+   [
+    11,
+    14,
+    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
+   ],
+   [
+    15,
+    17,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ],
+   [
+    20,
+    27,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ]
+  ],
+  "131": [
+   [
+    6,
+    15,
+    "```haskell\nhitPaddle :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:7*"
+   ],
+   [
+    18,
+    21,
+    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:13*"
+   ],
+   [
+    29,
+    32,
+    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:8*"
+   ],
+   [
+    35,
+    36,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    40,
+    47,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    51,
+    54,
+    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:8*"
+   ],
+   [
+    57,
+    58,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    62,
+    69,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    72,
+    79,
+    "```haskell\npaddleH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:15*"
+   ]
+  ],
+  "132": [
+   [
+    29,
+    32,
+    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
+   ],
+   [
+    36,
+    38,
+    "```haskell\npl :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:7*"
+   ],
+   [
+    42,
+    45,
+    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
+   ],
+   [
+    49,
+    51,
+    "```haskell\npr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:131:7*"
+   ]
+  ],
+  "133": [
+   [
+    7,
+    10,
+    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:8*"
+   ],
+   [
+    12,
+    15,
+    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:13*"
+   ],
+   [
+    17,
+    20,
+    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:18*"
+   ]
+  ],
+  "134": [
+   [
+    10,
+    19,
+    "```haskell\nhitPaddle :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:7*"
+   ],
+   [
+    26,
+    29,
+    "```haskell\nrel :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:135:27*"
+   ],
+   [
+    32,
+    38,
+    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:1*"
+   ],
+   [
+    48,
+    51,
+    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
+   ],
+   [
+    54,
+    57,
+    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
+   ],
+   [
+    58,
+    60,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ],
+   [
+    65,
+    72,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ]
+  ],
+  "135": [
+   [
+    26,
+    33,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    36,
+    37,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    39,
+    45,
+    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
+   ],
+   [
+    47,
+    50,
+    "```haskell\nabs :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
+   ],
+   [
+    51,
+    54,
+    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:13*"
+   ],
+   [
+    57,
+    60,
+    "```haskell\nrel :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:135:27*"
+   ]
+  ],
+  "136": [
+   [
+    10,
+    19,
+    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    23,
+    26,
+    "```haskell\ncy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:8*"
+   ],
+   [
+    28,
+    31,
+    "```haskell\nvy2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:126:13*"
+   ],
+   [
+    33,
+    36,
+    "```haskell\nvx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:13*"
+   ]
+  ],
+  "138": [
+   [
+    6,
+    9,
+    "```haskell\nhit :: Maybe ((Int, Int), (Double, Double, Double, Double))\n```\n\n*Defined at /demo/breakout/app/Main.hs:139:7*"
+   ],
+   [
+    12,
+    23,
+    "```haskell\nlistToMaybe :: forall a. [a] -> Maybe a\n```\n\n*Defined in \u2018GHC.Internal.Data.Maybe\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\n\n```haskell\n_ :: [((Int, Int), (Double, Double, Double, Double))] -> Maybe ((Int, Int), (Double, Double, Double, Double))\n```"
+   ]
+  ],
+  "139": [
+   [
     11,
     12,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:128:24*"
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:140:24*"
    ],
    [
     14,
     18,
-    "```haskell\nrect :: (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:129:27*"
+    "```haskell\nrect :: (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:141:27*"
    ],
    [
     23,
     24,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:128:24*"
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:140:24*"
    ],
    [
     26,
@@ -2374,782 +2374,782 @@ window.leksahDemoHovers = {
    [
     32,
     40,
-    "```haskell\ntoList :: forall k a. Map k a -> [(k, a)]\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n\n`O(n)` . Convert the map to a list of key/value pairs. Subject to list fusion. \n```haskell\ntoList (fromList [(5,\"a\"), (3,\"b\")]) == [(3,\"b\"), (5,\"a\")]\ntoList empty == []\n```\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Map-Internal.html#v:toList)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Map.Internal.html#toList)\n\n\n* * *\n\n```haskell\n_ :: Map (Int, Int) () -> [((Int, Int), ())]\n```"
+    "```haskell\ntoList :: forall k a. Map k a -> [(k, a)]\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n* * *\n\n```haskell\n_ :: Map (Int, Int) () -> [((Int, Int), ())]\n```"
    ],
    [
     42,
     48,
-    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:60:5*"
+    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:72:5*"
    ],
    [
     49,
     51,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ]
-  ],
-  "128": [
-   [
-    26,
-    30,
-    "```haskell\nrect :: (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:129:27*"
-   ],
-   [
-    33,
-    42,
-    "```haskell\nbrickRect :: (Int, Int) -> (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:1*"
-   ],
-   [
-    43,
-    44,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:128:24*"
-   ],
-   [
-    46,
-    54,
-    "```haskell\noverlaps :: Double -> Double -> Double -> (Double, Double, Double, Double) -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:1*"
-   ],
-   [
-    55,
-    58,
-    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:8*"
-   ],
-   [
-    59,
-    62,
-    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
-   ],
-   [
-    63,
-    64,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
-   ],
-   [
-    65,
-    69,
-    "```haskell\nrect :: (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:129:27*"
-   ]
-  ],
-  "129": [
-   [
-    7,
-    14,
-    "```haskell\nbricks' :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:8*"
-   ],
-   [
-    16,
-    22,
-    "```haskell\nscore' :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:17*"
-   ],
-   [
-    24,
-    27,
-    "```haskell\nvx4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:25*"
-   ],
-   [
-    29,
-    32,
-    "```haskell\nvy4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:30*"
-   ],
-   [
-    41,
-    44,
-    "```haskell\nhit :: Maybe ((Int, Int), (Double, Double, Double, Double))\n```\n\n*Defined at /demo/breakout/app/Main.hs:127:7*"
-   ]
-  ],
-  "130": [
-   [
-    8,
-    15,
-    "```haskell\nNothing :: forall a. Maybe a\n```\n\n*Defined in \u2018GHC.Internal.Maybe\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Maybe.html#v:Nothing)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Maybe.html#Nothing)"
-   ],
-   [
-    20,
-    26,
-    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:60:5*"
-   ],
-   [
-    27,
-    29,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ],
-   [
-    31,
-    36,
-    "```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:5*"
-   ],
-   [
-    37,
-    39,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ],
-   [
-    41,
-    44,
-    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:18*"
-   ],
-   [
-    46,
-    49,
-    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:13*"
-   ]
-  ],
-  "131": [
-   [
-    8,
-    12,
-    "```haskell\nJust :: forall a. a -> Maybe a\n```\n\n*Defined in \u2018GHC.Internal.Maybe\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Maybe.html#v:Just)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Maybe.html#Just)"
-   ],
-   [
-    14,
-    15,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:15*"
-   ],
-   [
-    18,
-    19,
-    "```haskell\n_ :: Double\n```"
-   ],
-   [
-    21,
-    23,
-    "```haskell\nby :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:22*"
-   ],
-   [
-    25,
-    26,
-    "```haskell\n_ :: Double\n```"
-   ],
-   [
-    28,
-    30,
-    "```haskell\nbh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:29*"
-   ]
-  ],
-  "133": [
-   [
-    14,
-    22,
-    "```haskell\nvertical :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:15*"
-   ],
-   [
-    25,
-    30,
-    "```haskell\noldcy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:106:7*"
-   ],
-   [
-    34,
-    36,
-    "```haskell\nby :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:22*"
-   ],
-   [
-    40,
-    45,
-    "```haskell\noldcy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:106:7*"
-   ],
-   [
-    49,
-    51,
-    "```haskell\nby :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:22*"
-   ],
-   [
-    54,
-    56,
-    "```haskell\nbh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:29*"
-   ]
-  ],
-  "134": [
-   [
-    15,
-    23,
-    "```haskell\ndelete :: forall k a. Ord k => k -> Map k a -> Map k a\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n\n`O(\\log n)` . Delete a key and its value from the map. When the key is not\n a member of the map, the original map is returned. \n```haskell\ndelete 5 (fromList [(5,\"a\"), (3,\"b\")]) == singleton 3 \"b\"\ndelete 7 (fromList [(5,\"a\"), (3,\"b\")]) == fromList [(3, \"b\"), (5, \"a\")]\ndelete 5 empty                         == empty\n```\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Map-Internal.html#v:delete)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Map.Internal.html#delete)\n\n\n* * *\nEvidence of constraint `Ord (Int, Int)`\n  constructed using:\n  - `forall a b. (Ord a, Ord b) => Ord (a, b)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: (Int, Int) -> Map (Int, Int) () -> Map (Int, Int) ()\n```\n* * *\n\n```haskell\n_ :: forall k a. Ord k => k -> Map k a -> Map k a\n```"
-   ],
-   [
-    24,
-    25,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:132:15*"
-   ],
-   [
-    27,
-    33,
-    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:60:5*"
-   ],
-   [
-    34,
-    36,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ],
-   [
-    39,
-    44,
-    "```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:5*"
-   ],
-   [
-    45,
-    47,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ]
-  ],
-  "135": [
-   [
-    18,
-    26,
-    "```haskell\nvertical :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:15*"
-   ],
-   [
-    32,
-    35,
-    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:18*"
-   ],
-   [
-    41,
-    47,
-    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nUnary negation.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:negate)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#negate)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
-   ],
-   [
-    48,
-    51,
-    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:18*"
-   ]
-  ],
-  "136": [
-   [
-    18,
-    26,
-    "```haskell\nvertical :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:15*"
-   ],
-   [
-    32,
-    38,
-    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nUnary negation.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:negate)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#negate)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
-   ],
-   [
-    39,
-    42,
-    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:13*"
-   ],
-   [
-    48,
-    51,
-    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:13*"
-   ]
-  ],
-  "137": [
-   [
-    6,
-    9,
-    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:138:7*"
-   ],
-   [
-    12,
-    14,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:104:9*"
-   ],
-   [
-    17,
-    19,
-    "```haskell\ncx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:5*"
-   ],
-   [
-    22,
-    25,
-    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:110:8*"
-   ],
-   [
-    27,
-    29,
-    "```haskell\ncy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
-   ],
-   [
-    32,
-    35,
-    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
-   ],
-   [
-    37,
-    39,
-    "```haskell\nvx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
-   ],
-   [
-    42,
-    45,
-    "```haskell\nvx4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:25*"
-   ],
-   [
-    47,
-    49,
-    "```haskell\nvy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:17*"
-   ],
-   [
-    52,
-    55,
-    "```haskell\nvy4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:30*"
-   ]
-  ],
-  "138": [
-   [
-    17,
-    23,
-    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:60:5*"
-   ],
-   [
-    26,
-    33,
-    "```haskell\nbricks' :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:8*"
-   ],
-   [
-    35,
-    40,
-    "```haskell\nscore :: St -> Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:61:5*"
-   ],
-   [
-    43,
-    49,
-    "```haskell\nscore' :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:17*"
-   ]
-  ],
-  "139": [
-   [
-    8,
-    14,
-    "```haskell\nnull :: forall k a. Map k a -> Bool\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n\n`O(1)` . Is the map empty? \n```haskell\nData.Map.null (empty)           == True\nData.Map.null (singleton 1 'a') == False\n```\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Map-Internal.html#v:null)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Map.Internal.html#null)\n\n\n* * *\n\n```haskell\n_ :: Map (Int, Int) () -> Bool\n```"
-   ],
-   [
-    15,
-    22,
-    "```haskell\nbricks' :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:130:8*"
-   ],
-   [
-    37,
-    40,
-    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:138:7*"
-   ],
-   [
-    43,
-    48,
-    "```haskell\nphase :: St -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
-   ],
-   [
-    51,
-    55,
-    "```haskell\nOver :: Bool -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:54:32*"
-   ],
-   [
-    56,
-    60,
-    "```haskell\nTrue :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#v:True)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#True)"
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ]
   ],
   "140": [
    [
-    13,
-    16,
-    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
+    26,
+    30,
+    "```haskell\nrect :: (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:141:27*"
    ],
    [
-    19,
-    20,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:105:7*"
+    33,
+    42,
+    "```haskell\nbrickRect :: (Int, Int) -> (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:1*"
    ],
    [
-    23,
-    29,
-    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:15*"
-   ],
-   [
-    37,
-    45,
-    "```haskell\nloseLife :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:1*"
+    43,
+    44,
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:140:24*"
    ],
    [
     46,
-    49,
-    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:138:7*"
+    54,
+    "```haskell\noverlaps :: Double -> Double -> Double -> (Double, Double, Double, Double) -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:1*"
+   ],
+   [
+    55,
+    58,
+    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
+   ],
+   [
+    59,
+    62,
+    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:8*"
+   ],
+   [
+    63,
+    64,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
+   ],
+   [
+    65,
+    69,
+    "```haskell\nrect :: (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:141:27*"
    ]
   ],
   "141": [
    [
-    10,
-    13,
-    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:138:7*"
+    7,
+    14,
+    "```haskell\nbricks' :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:8*"
+   ],
+   [
+    16,
+    22,
+    "```haskell\nscore' :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:17*"
+   ],
+   [
+    24,
+    27,
+    "```haskell\nvx4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:25*"
+   ],
+   [
+    29,
+    32,
+    "```haskell\nvy4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:30*"
+   ],
+   [
+    41,
+    44,
+    "```haskell\nhit :: Maybe ((Int, Int), (Double, Double, Double, Double))\n```\n\n*Defined at /demo/breakout/app/Main.hs:139:7*"
+   ]
+  ],
+  "142": [
+   [
+    8,
+    15,
+    "```haskell\nNothing :: forall a. Maybe a\n```\n\n*Defined in \u2018GHC.Internal.Maybe\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    20,
+    26,
+    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:72:5*"
+   ],
+   [
+    27,
+    29,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ],
+   [
+    31,
+    36,
+    "```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:5*"
+   ],
+   [
+    37,
+    39,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ],
+   [
+    41,
+    44,
+    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:18*"
+   ],
+   [
+    46,
+    49,
+    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:13*"
    ]
   ],
   "143": [
    [
-    0,
     8,
-    "```haskell\nloseLife :: St -> St\n```\n\n*Defined at /demo/breakout/app/Main.hs:145:1*"
+    12,
+    "```haskell\nJust :: forall a. a -> Maybe a\n```\n\n*Defined in \u2018GHC.Internal.Maybe\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
-    12,
     14,
-    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
+    15,
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:144:15*"
    ],
    [
     18,
-    20,
-    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
-   ]
-  ],
-  "144": [
-   [
-    0,
-    8,
-    "```haskell\nloseLife :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:1*"
+    19,
+    "```haskell\n_ :: Double\n```"
    ],
    [
-    9,
-    11,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:10*"
+    21,
+    23,
+    "```haskell\nby :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:144:22*"
+   ],
+   [
+    25,
+    26,
+    "```haskell\n_ :: Double\n```"
+   ],
+   [
+    28,
+    30,
+    "```haskell\nbh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:144:29*"
    ]
   ],
   "145": [
    [
-    4,
-    9,
-    "```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:12*"
-   ],
-   [
-    10,
-    12,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:10*"
-   ],
-   [
-    20,
+    14,
     22,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:10*"
+    "```haskell\nvertical :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:146:15*"
    ],
    [
     25,
     30,
-    "```haskell\nlives :: St -> Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:61:12*"
+    "```haskell\noldcy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:118:7*"
    ],
    [
+    34,
     36,
-    41,
-    "```haskell\nphase :: St -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
+    "```haskell\nby :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:144:22*"
    ],
    [
-    44,
-    48,
-    "```haskell\nOver :: Bool -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:54:32*"
+    40,
+    45,
+    "```haskell\noldcy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:118:7*"
    ],
    [
     49,
+    51,
+    "```haskell\nby :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:144:22*"
+   ],
+   [
     54,
-    "```haskell\nFalse :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#v:False)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#False)"
+    56,
+    "```haskell\nbh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:144:29*"
    ]
   ],
   "146": [
    [
-    4,
-    13,
-    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*\n\n\n\n`otherwise`  is defined as the value  `True` .  It helps to make\n guards more readable.  eg. \n```haskell\n f x | x < 0     = ...\n     | otherwise = ...\n```\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Base.html#v:otherwise)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Base.html#otherwise)"
+    15,
+    23,
+    "```haskell\ndelete :: forall k a. Ord k => k -> Map k a -> Map k a\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n* * *\nEvidence of constraint `Ord (Int, Int)`\n  constructed using:\n  - `forall a b. (Ord a, Ord b) => Ord (a, b)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: (Int, Int) -> Map (Int, Int) () -> Map (Int, Int) ()\n```\n* * *\n\n```haskell\n_ :: forall k a. Ord k => k -> Map k a -> Map k a\n```"
    ],
    [
-    20,
-    22,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:10*"
-   ],
-   [
+    24,
     25,
-    30,
-    "```haskell\nlives :: St -> Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:61:12*"
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:144:15*"
    ],
    [
-    33,
-    38,
-    "```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:12*"
-   ],
-   [
-    39,
-    41,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:10*"
-   ],
-   [
-    47,
-    52,
-    "```haskell\nphase :: St -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
-   ],
-   [
-    55,
-    60,
-    "```haskell\nReady :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:54:14*"
-   ]
-  ],
-  "147": [
-   [
-    25,
     27,
-    "```haskell\ncx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:5*"
-   ],
-   [
-    30,
     33,
-    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
+    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:72:5*"
    ],
    [
     34,
     36,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:145:10*"
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ],
    [
+    39,
+    44,
+    "```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:5*"
+   ],
+   [
+    45,
+    47,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
+   ]
+  ],
+  "147": [
+   [
+    18,
+    26,
+    "```haskell\nvertical :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:146:15*"
+   ],
+   [
+    32,
+    35,
+    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:18*"
+   ],
+   [
+    41,
+    47,
+    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
+   ],
+   [
+    48,
+    51,
+    "```haskell\nvx3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:18*"
+   ]
+  ],
+  "148": [
+   [
+    18,
+    26,
+    "```haskell\nvertical :: Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:146:15*"
+   ],
+   [
+    32,
     38,
-    40,
-    "```haskell\ncy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
+    "```haskell\nnegate :: forall a. Num a => a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a\n```"
    ],
    [
-    43,
-    50,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
+    39,
+    42,
+    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:13*"
    ],
    [
-    53,
-    58,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
+    48,
+    51,
+    "```haskell\nvy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:13*"
+   ]
+  ],
+  "149": [
+   [
+    6,
+    9,
+    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:150:7*"
    ],
    [
-    60,
-    62,
-    "```haskell\nvx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:13*"
+    12,
+    14,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:116:9*"
    ],
    [
-    68,
-    70,
-    "```haskell\nvy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:58:17*"
+    17,
+    19,
+    "```haskell\ncx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:5*"
+   ],
+   [
+    22,
+    25,
+    "```haskell\ncx2 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:122:8*"
+   ],
+   [
+    27,
+    29,
+    "```haskell\ncy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
+   ],
+   [
+    32,
+    35,
+    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:8*"
+   ],
+   [
+    37,
+    39,
+    "```haskell\nvx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
+    42,
+    45,
+    "```haskell\nvx4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:25*"
+   ],
+   [
+    47,
+    49,
+    "```haskell\nvy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:17*"
+   ],
+   [
+    52,
+    55,
+    "```haskell\nvy4 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:30*"
    ]
   ],
   "150": [
    [
-    0,
-    8,
-    "```haskell\noverlaps :: Double -> Double -> Double -> (Double, Double, Double, Double) -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:1*"
+    17,
+    23,
+    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:72:5*"
    ],
    [
-    12,
-    18,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
+    26,
+    33,
+    "```haskell\nbricks' :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:8*"
    ],
    [
-    22,
-    28,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
-   ],
-   [
-    32,
-    38,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
+    35,
+    40,
+    "```haskell\nscore :: St -> Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:5*"
    ],
    [
     43,
     49,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
-   ],
-   [
-    51,
-    57,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
-   ],
-   [
-    59,
-    65,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
-   ],
-   [
-    67,
-    73,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
-   ],
-   [
-    78,
-    82,
-    "```haskell\nBool :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Bool)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Bool)"
+    "```haskell\nscore' :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:17*"
    ]
   ],
   "151": [
    [
-    0,
     8,
-    "```haskell\noverlaps :: Double -> Double -> Double -> (Double, Double, Double, Double) -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:1*"
+    14,
+    "```haskell\nnull :: forall k a. Map k a -> Bool\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n* * *\n\n```haskell\n_ :: Map (Int, Int) () -> Bool\n```"
    ],
    [
-    9,
-    12,
-    "```haskell\ncx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:10*"
+    15,
+    22,
+    "```haskell\nbricks' :: Map (Int, Int) ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:142:8*"
    ],
    [
-    13,
-    16,
-    "```haskell\ncy' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:14*"
+    37,
+    40,
+    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:150:7*"
    ],
    [
-    17,
-    18,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:18*"
+    43,
+    48,
+    "```haskell\nphase :: St -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
    ],
    [
-    20,
-    21,
-    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:21*"
+    51,
+    55,
+    "```haskell\nOver :: Bool -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:32*"
    ],
    [
-    23,
-    24,
-    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:24*"
-   ],
-   [
-    26,
-    27,
-    "```haskell\nw :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:27*"
-   ],
-   [
-    29,
-    30,
-    "```haskell\nh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:30*"
+    56,
+    60,
+    "```haskell\nTrue :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ]
   ],
   "152": [
    [
-    6,
-    8,
-    "```haskell\nnx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:153:7*"
+    13,
+    16,
+    "```haskell\ncy3 :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:134:8*"
    ],
    [
-    11,
-    17,
-    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:1*"
-   ],
-   [
-    18,
     19,
-    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:21*"
-   ],
-   [
-    21,
-    22,
-    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:21*"
+    20,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:117:7*"
    ],
    [
     23,
-    24,
-    "```haskell\n+ :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:+)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#+)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 6 `+`"
+    29,
+    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:15*"
    ],
    [
-    26,
-    29,
-    "```haskell\ncx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:10*"
+    37,
+    45,
+    "```haskell\nloseLife :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:1*"
+   ],
+   [
+    46,
+    49,
+    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:150:7*"
    ]
   ],
   "153": [
    [
-    6,
-    8,
-    "```haskell\nny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:154:7*"
-   ],
-   [
-    11,
-    17,
-    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:76:1*"
-   ],
-   [
-    18,
-    19,
-    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:24*"
-   ],
-   [
-    21,
-    22,
-    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:24*"
-   ],
-   [
-    23,
-    24,
-    "```haskell\n+ :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:+)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#+)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 6 `+`"
-   ],
-   [
-    26,
-    29,
-    "```haskell\ncy' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:14*"
-   ]
-  ],
-  "154": [
-   [
-    6,
-    8,
-    "```haskell\ndx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:155:7*"
-   ],
-   [
-    11,
-    14,
-    "```haskell\ncx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:10*"
-   ],
-   [
-    17,
-    19,
-    "```haskell\nnx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:153:7*"
-   ],
-   [
-    21,
-    23,
-    "```haskell\ndy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:155:22*"
-   ],
-   [
-    26,
-    29,
-    "```haskell\ncy' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:14*"
-   ],
-   [
-    32,
-    34,
-    "```haskell\nny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:154:7*"
+    10,
+    13,
+    "```haskell\nst1 :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:150:7*"
    ]
   ],
   "155": [
    [
-    5,
-    7,
-    "```haskell\ndx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:155:7*"
-   ],
-   [
+    0,
     8,
-    10,
-    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:*)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#*)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+    "```haskell\nloseLife :: St -> St\n```\n\n*Defined at /demo/breakout/app/Main.hs:157:1*"
    ],
    [
-    13,
-    15,
-    "```haskell\ndy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:155:22*"
+    12,
+    14,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
    ],
    [
-    16,
     18,
-    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:*)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#*)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+    20,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+   ]
+  ],
+  "156": [
+   [
+    0,
+    8,
+    "```haskell\nloseLife :: St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:1*"
    ],
    [
-    22,
-    23,
-    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:152:18*"
-   ],
-   [
-    24,
-    25,
-    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:*)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#*)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+    9,
+    11,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:10*"
    ]
   ],
   "157": [
    [
-    0,
     4,
-    "```haskell\ngame :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:159:1*"
+    9,
+    "```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:12*"
    ],
    [
-    15,
+    10,
+    12,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:10*"
+   ],
+   [
+    20,
+    22,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:10*"
+   ],
+   [
+    25,
+    30,
+    "```haskell\nlives :: St -> Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:12*"
+   ],
+   [
+    36,
+    41,
+    "```haskell\nphase :: St -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
+   ],
+   [
+    44,
+    48,
+    "```haskell\nOver :: Bool -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:32*"
+   ],
+   [
+    49,
+    54,
+    "```haskell\nFalse :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ]
+  ],
+  "158": [
+   [
+    4,
+    13,
+    "```haskell\notherwise :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    20,
+    22,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:10*"
+   ],
+   [
+    25,
+    30,
+    "```haskell\nlives :: St -> Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:73:12*"
+   ],
+   [
+    33,
+    38,
+    "```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:12*"
+   ],
+   [
+    39,
+    41,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:10*"
+   ],
+   [
+    47,
+    52,
+    "```haskell\nphase :: St -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
+   ],
+   [
+    55,
+    60,
+    "```haskell\nReady :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:14*"
+   ]
+  ],
+  "159": [
+   [
+    25,
+    27,
+    "```haskell\ncx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:5*"
+   ],
+   [
+    30,
+    33,
+    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
+   ],
+   [
+    34,
+    36,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:157:10*"
+   ],
+   [
+    38,
+    40,
+    "```haskell\ncy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
+   ],
+   [
+    43,
+    50,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ],
+   [
+    53,
+    58,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
+   ],
+   [
+    60,
+    62,
+    "```haskell\nvx :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:13*"
+   ],
+   [
+    68,
+    70,
+    "```haskell\nvy :: St -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:70:17*"
+   ]
+  ],
+  "162": [
+   [
+    0,
+    8,
+    "```haskell\noverlaps :: Double -> Double -> Double -> (Double, Double, Double, Double) -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:1*"
+   ],
+   [
+    12,
+    18,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    22,
+    28,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    32,
+    38,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    43,
+    49,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    51,
+    57,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    59,
+    65,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    67,
+    73,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    78,
+    82,
+    "```haskell\nBool :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ]
+  ],
+  "163": [
+   [
+    0,
+    8,
+    "```haskell\noverlaps :: Double -> Double -> Double -> (Double, Double, Double, Double) -> Bool\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:1*"
+   ],
+   [
+    9,
+    12,
+    "```haskell\ncx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:10*"
+   ],
+   [
+    13,
     16,
-    "```haskell\nt\n```\n\n*Defined at /demo/breakout/app/Main.hs:158:16*"
+    "```haskell\ncy' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:14*"
    ],
    [
     17,
     18,
-    "```haskell\nm\n```\n\n*Defined at /demo/breakout/app/Main.hs:158:18*"
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:18*"
+   ],
+   [
+    20,
+    21,
+    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:21*"
+   ],
+   [
+    23,
+    24,
+    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:24*"
+   ],
+   [
+    26,
+    27,
+    "```haskell\nw :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:27*"
+   ],
+   [
+    29,
+    30,
+    "```haskell\nh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:30*"
+   ]
+  ],
+  "164": [
+   [
+    6,
+    8,
+    "```haskell\nnx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:165:7*"
+   ],
+   [
+    11,
+    17,
+    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:1*"
+   ],
+   [
+    18,
+    19,
+    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:21*"
+   ],
+   [
+    21,
+    22,
+    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:21*"
+   ],
+   [
+    23,
+    24,
+    "```haskell\n+ :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 6 `+`"
+   ],
+   [
+    26,
+    29,
+    "```haskell\ncx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:10*"
+   ]
+  ],
+  "165": [
+   [
+    6,
+    8,
+    "```haskell\nny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:166:7*"
+   ],
+   [
+    11,
+    17,
+    "```haskell\nclampD :: Double -> Double -> Double -> Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:88:1*"
+   ],
+   [
+    18,
+    19,
+    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:24*"
+   ],
+   [
+    21,
+    22,
+    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:24*"
+   ],
+   [
+    23,
+    24,
+    "```haskell\n+ :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 6 `+`"
+   ],
+   [
+    26,
+    29,
+    "```haskell\ncy' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:14*"
+   ]
+  ],
+  "166": [
+   [
+    6,
+    8,
+    "```haskell\ndx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:167:7*"
+   ],
+   [
+    11,
+    14,
+    "```haskell\ncx' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:10*"
+   ],
+   [
+    17,
+    19,
+    "```haskell\nnx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:165:7*"
+   ],
+   [
+    21,
+    23,
+    "```haskell\ndy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:167:22*"
+   ],
+   [
+    26,
+    29,
+    "```haskell\ncy' :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:14*"
+   ],
+   [
+    32,
+    34,
+    "```haskell\nny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:166:7*"
+   ]
+  ],
+  "167": [
+   [
+    5,
+    7,
+    "```haskell\ndx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:167:7*"
+   ],
+   [
+    8,
+    10,
+    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+   ],
+   [
+    13,
+    15,
+    "```haskell\ndy :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:167:22*"
+   ],
+   [
+    16,
+    18,
+    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+   ],
+   [
+    22,
+    23,
+    "```haskell\nr :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:18*"
+   ],
+   [
+    24,
+    25,
+    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+   ]
+  ],
+  "169": [
+   [
+    0,
+    4,
+    "```haskell\ngame :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:171:1*"
+   ],
+   [
+    15,
+    16,
+    "```haskell\nt\n```\n\n*Defined at /demo/breakout/app/Main.hs:170:16*"
+   ],
+   [
+    17,
+    18,
+    "```haskell\nm\n```\n\n*Defined at /demo/breakout/app/Main.hs:170:18*"
    ],
    [
     20,
@@ -3159,87 +3159,87 @@ window.leksahDemoHovers = {
    [
     32,
     33,
-    "```haskell\nt\n```\n\n*Defined at /demo/breakout/app/Main.hs:158:16*"
+    "```haskell\nt\n```\n\n*Defined at /demo/breakout/app/Main.hs:170:16*"
    ],
    [
     34,
     35,
-    "```haskell\nm\n```\n\n*Defined at /demo/breakout/app/Main.hs:158:18*"
+    "```haskell\nm\n```\n\n*Defined at /demo/breakout/app/Main.hs:170:18*"
    ],
    [
     39,
     40,
-    "```haskell\nm\n```\n\n*Defined at /demo/breakout/app/Main.hs:158:18*"
+    "```haskell\nm\n```\n\n*Defined at /demo/breakout/app/Main.hs:170:18*"
    ]
   ],
-  "158": [
+  "170": [
    [
     0,
     4,
-    "```haskell\ngame :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:159:1*"
+    "```haskell\ngame :: forall t (m :: Type -> Type). MonadWidget t m => m ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:171:1*"
    ]
   ],
-  "159": [
+  "171": [
    [
     2,
     5,
-    "```haskell\ndoc :: Document\n```\n\n*Defined at /demo/breakout/app/Main.hs:160:3*"
+    "```haskell\ndoc :: Document\n```\n\n*Defined at /demo/breakout/app/Main.hs:172:3*"
    ],
    [
     9,
     33,
-    "```haskell\ncurrentDocumentUnchecked :: forall (m :: Type -> Type). MonadDOM m => m Document\n```\n\n*Defined in \u2018JSDOM\u2019* *(jsaddle-dom-0.9.9.3)*\n\n\n* * *\nEvidence of constraint `MonadJSM m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     k`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: m Document\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). MonadDOM m => m Document\n```"
+    "```haskell\ncurrentDocumentUnchecked :: forall (m :: Type -> Type). MonadDOM m => m Document\n```\n\n*Defined in \u2018JSDOM\u2019* *(jsaddle-dom-0.9.9.3)*\n\n\n* * *\nEvidence of constraint `MonadJSM m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     k`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: m Document\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). MonadDOM m => m Document\n```"
    ]
   ],
-  "160": [
+  "172": [
    [
     6,
     14,
-    "```haskell\ngameKeys :: [Text]\n```\n\n*Defined at /demo/breakout/app/Main.hs:161:7*"
+    "```haskell\ngameKeys :: [Text]\n```\n\n*Defined at /demo/breakout/app/Main.hs:173:7*"
    ],
    [
     19,
     28,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     31,
     41,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     44,
     45,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     48,
     49,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     52,
     53,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     56,
     57,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
-  "161": [
+  "173": [
    [
     6,
     10,
-    "```haskell\nkeyH :: ReaderT KeyboardEvent DOM Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:162:7*"
+    "```haskell\nkeyH :: ReaderT KeyboardEvent DOM Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:174:7*"
    ]
   ],
-  "162": [
+  "174": [
    [
     8,
     10,
-    "```haskell\nke :: KeyboardEvent\n```\n\n*Defined at /demo/breakout/app/Main.hs:163:9*"
+    "```haskell\nke :: KeyboardEvent\n```\n\n*Defined at /demo/breakout/app/Main.hs:175:9*"
    ],
    [
     14,
@@ -3247,11 +3247,11 @@ window.leksahDemoHovers = {
     "```haskell\nevent :: forall t e. EventM t e e\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*\n\n\n* * *\n\n```haskell\n_ :: EventM (ZonkAny 0) KeyboardEvent KeyboardEvent\n```"
    ]
   ],
-  "163": [
+  "175": [
    [
     8,
     9,
-    "```haskell\nk :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:9*"
+    "```haskell\nk :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:176:9*"
    ],
    [
     14,
@@ -3261,29 +3261,29 @@ window.leksahDemoHovers = {
    [
     21,
     23,
-    "```haskell\nke :: KeyboardEvent\n```\n\n*Defined at /demo/breakout/app/Main.hs:163:9*"
+    "```haskell\nke :: KeyboardEvent\n```\n\n*Defined at /demo/breakout/app/Main.hs:175:9*"
    ]
   ],
-  "164": [
+  "176": [
    [
     8,
     12,
-    "```haskell\nwhen :: forall (f :: Type -> Type). Applicative f => Bool -> f () -> f ()\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nConditional execution of  `Applicative`  expressions. For example, #### **Examples** \n```haskell\nwhen debug (putStrLn \"Debugging\")\n```\n \n\nwill output the string  `Debugging`  if the Boolean value  `debug` \n is  `True` , and otherwise do nothing. \n```haskell\n>>> putStr \"pi:\" >> when False (print 3.14159)\npi:\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Base.html#v:when)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Base.html#when)\n\n\n* * *\nEvidence of constraint `Applicative (ReaderT KeyboardEvent DOM)`\n  constructed using:\n  - `forall (m :: Type -> Type) r.\n     Applicative m =>\n     Applicative (ReaderT r m)`\n    using an external instance\n    *Defined in \u2018Control.Monad.Trans.Reader\u2019*\n  - `Applicative JSM`\n    using an external instance\n    *Defined in \u2018Language.Javascript.JSaddle.Types\u2019*\n* * *\n\n```haskell\n_ :: Bool -> ReaderT KeyboardEvent DOM () -> ReaderT KeyboardEvent DOM ()\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type). Applicative f => Bool -> f () -> f ()\n```"
+    "```haskell\nwhen :: forall (f :: Type -> Type). Applicative f => Bool -> f () -> f ()\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Applicative (ReaderT KeyboardEvent DOM)`\n  constructed using:\n  - `forall (m :: Type -> Type) r.\n     Applicative m =>\n     Applicative (ReaderT r m)`\n    using an external instance\n    *Defined in \u2018Control.Monad.Trans.Reader\u2019*\n  - `Applicative JSM`\n    using an external instance\n    *Defined in \u2018Language.Javascript.JSaddle.Types\u2019*\n* * *\n\n```haskell\n_ :: Bool -> ReaderT KeyboardEvent DOM () -> ReaderT KeyboardEvent DOM ()\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type). Applicative f => Bool -> f () -> f ()\n```"
    ],
    [
     14,
     15,
-    "```haskell\nk :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:9*"
+    "```haskell\nk :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:176:9*"
    ],
    [
     17,
     21,
-    "```haskell\nelem :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDoes the element occur in the structure? \n\nNote:  `elem`  is often used in infix form. #### **Examples** \n\nBasic usage: \n```haskell\n>>> 3 `elem` []\nFalse\n\n\n```\n \n```haskell\n>>> 3 `elem` [1,2]\nFalse\n\n\n```\n \n```haskell\n>>> 3 `elem` [1,2,3,4,5]\nTrue\n\n\n```\n \n\nFor infinite structures, the default implementation of  `elem` \n terminates if the sought-after value exists at a finite distance\n from the left side of the structure: \n```haskell\n>>> 3 `elem` [1..]\nTrue\n\n\n```\n \n```haskell\n>>> 3 `elem` ([4..] ++ [3])\n* Hangs forever *\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-Foldable.html#v:elem)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.Foldable.html#elem)\n\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\nEvidence of constraint `Eq Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Eq a => a -> [a] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```\n  \n* * *  \ninfix 4 `elem`"
+    "```haskell\nelem :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\nEvidence of constraint `Eq Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Eq a => a -> [a] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```\n  \n* * *  \ninfix 4 `elem`"
    ],
    [
     23,
     31,
-    "```haskell\ngameKeys :: [Text]\n```\n\n*Defined at /demo/breakout/app/Main.hs:161:7*"
+    "```haskell\ngameKeys :: [Text]\n```\n\n*Defined at /demo/breakout/app/Main.hs:173:7*"
    ],
    [
     33,
@@ -3291,38 +3291,38 @@ window.leksahDemoHovers = {
     "```haskell\npreventDefault :: forall e t. IsEvent e => EventM t e ()\n```\n\n*Defined in \u2018JSDOM.EventM\u2019* *(jsaddle-dom-0.9.9.3)*\n\n\n* * *\nEvidence of constraint `IsEvent KeyboardEvent`\n  using an external instance\n  *Defined in \u2018JSDOM.Types\u2019*\n* * *\n\n```haskell\n_ :: EventM (ZonkAny 1) KeyboardEvent ()\n```\n* * *\n\n```haskell\n_ :: forall e t. IsEvent e => EventM t e ()\n```"
    ]
   ],
-  "165": [
+  "177": [
    [
     8,
     14,
-    "```haskell\nreturn :: forall (m :: Type -> Type) a. Monad m => a -> m a\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nInject a value into the monadic type.\n This function should  *not*  be different from its default implementation\n as  `pure` . The justification for the existence of this function is\n merely historic.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Base.html#v:return)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Base.html#return)\n\n\n* * *\nEvidence of constraint `Monad (ReaderT KeyboardEvent DOM)`\n  constructed using:\n  - `forall (m :: Type -> Type) r. Monad m => Monad (ReaderT r m)`\n    using an external instance\n    *Defined in \u2018Control.Monad.Trans.Reader\u2019*\n  - `Monad JSM`\n    using an external instance\n    *Defined in \u2018Language.Javascript.JSaddle.Types\u2019*\n* * *\n\n```haskell\n_ :: Text -> ReaderT KeyboardEvent DOM Text\n```\n* * *\n\n```haskell\n_ :: forall a. a -> ReaderT KeyboardEvent DOM a\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type) a. Monad m => a -> m a\n```"
+    "```haskell\nreturn :: forall (m :: Type -> Type) a. Monad m => a -> m a\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Monad (ReaderT KeyboardEvent DOM)`\n  constructed using:\n  - `forall (m :: Type -> Type) r. Monad m => Monad (ReaderT r m)`\n    using an external instance\n    *Defined in \u2018Control.Monad.Trans.Reader\u2019*\n  - `Monad JSM`\n    using an external instance\n    *Defined in \u2018Language.Javascript.JSaddle.Types\u2019*\n* * *\n\n```haskell\n_ :: Text -> ReaderT KeyboardEvent DOM Text\n```\n* * *\n\n```haskell\n_ :: forall a. a -> ReaderT KeyboardEvent DOM a\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type) a. Monad m => a -> m a\n```"
    ],
    [
     16,
     17,
-    "```haskell\nk :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:164:9*"
+    "```haskell\nk :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:176:9*"
    ],
    [
     21,
     25,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
    ]
   ],
-  "166": [
+  "178": [
    [
     2,
     10,
-    "```haskell\nkeydownE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:167:3*"
+    "```haskell\nkeydownE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:179:3*"
    ],
    [
     14,
     26,
-    "```haskell\nwrapDomEvent :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```\n\n*Defined in \u2018Reflex.Dom.Builder.Immediate\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `TriggerEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     m`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadJSM m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     k`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Document -> (Document -> EventM Document KeyboardEvent () -> JSM (JSM ())) -> EventM Document KeyboardEvent Text -> m (Event t Text)\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```"
+    "```haskell\nwrapDomEvent :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```\n\n*Defined in \u2018Reflex.Dom.Builder.Immediate\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `TriggerEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     m`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadJSM m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     k`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Document -> (Document -> EventM Document KeyboardEvent () -> JSM (JSM ())) -> EventM Document KeyboardEvent Text -> m (Event t Text)\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```"
    ],
    [
     27,
     30,
-    "```haskell\ndoc :: Document\n```\n\n*Defined at /demo/breakout/app/Main.hs:160:3*"
+    "```haskell\ndoc :: Document\n```\n\n*Defined at /demo/breakout/app/Main.hs:172:3*"
    ],
    [
     33,
@@ -3337,24 +3337,24 @@ window.leksahDemoHovers = {
    [
     50,
     54,
-    "```haskell\nkeyH :: ReaderT KeyboardEvent DOM Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:162:7*"
+    "```haskell\nkeyH :: ReaderT KeyboardEvent DOM Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:174:7*"
    ]
   ],
-  "167": [
+  "179": [
    [
     2,
     8,
-    "```haskell\nkeyupE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:168:3*"
+    "```haskell\nkeyupE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:180:3*"
    ],
    [
     14,
     26,
-    "```haskell\nwrapDomEvent :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```\n\n*Defined in \u2018Reflex.Dom.Builder.Immediate\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `TriggerEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     m`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadJSM m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     k`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Document -> (Document -> EventM Document KeyboardEvent () -> JSM (JSM ())) -> EventM Document KeyboardEvent Text -> m (Event t Text)\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```"
+    "```haskell\nwrapDomEvent :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```\n\n*Defined in \u2018Reflex.Dom.Builder.Immediate\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `TriggerEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     m`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadJSM m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     k`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Document -> (Document -> EventM Document KeyboardEvent () -> JSM (JSM ())) -> EventM Document KeyboardEvent Text -> m (Event t Text)\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) e event a. (TriggerEvent t m, MonadJSM m) => e -> (e -> EventM e event () -> JSM (JSM ())) -> EventM e event a -> m (Event t a)\n```"
    ],
    [
     27,
     30,
-    "```haskell\ndoc :: Document\n```\n\n*Defined at /demo/breakout/app/Main.hs:160:3*"
+    "```haskell\ndoc :: Document\n```\n\n*Defined at /demo/breakout/app/Main.hs:172:3*"
    ],
    [
     33,
@@ -3369,156 +3369,156 @@ window.leksahDemoHovers = {
    [
     50,
     54,
-    "```haskell\nkeyH :: ReaderT KeyboardEvent DOM Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:162:7*"
+    "```haskell\nkeyH :: ReaderT KeyboardEvent DOM Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:174:7*"
    ]
   ],
-  "168": [
+  "180": [
    [
     2,
     7,
-    "```haskell\nheldD :: Dynamic t (Set Text)\n```\n\n*Defined at /demo/breakout/app/Main.hs:169:3*"
+    "```haskell\nheldD :: Dynamic t (Set Text)\n```\n\n*Defined at /demo/breakout/app/Main.hs:181:3*"
    ],
    [
     11,
     18,
-    "```haskell\nfoldDyn :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```\n\n*Defined in \u2018Reflex.Dynamic\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadHold t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     d`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: ((Set Text -> Set Text) -> Set Text -> Set Text) -> Set Text -> Event t (Set Text -> Set Text) -> m (Dynamic t (Set Text))\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```"
+    "```haskell\nfoldDyn :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```\n\n*Defined in \u2018Reflex.Dynamic\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadHold t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     d`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: ((Set Text -> Set Text) -> Set Text -> Set Text) -> Set Text -> Event t (Set Text -> Set Text) -> m (Dynamic t (Set Text))\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```"
    ],
    [
     23,
     30,
-    "```haskell\nempty :: forall a. Set a\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n\n`O(1)` . The empty set.\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Set-Internal.html#v:empty)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Set.Internal.html#empty)\n\n\n* * *\n\n```haskell\n_ :: Set Text\n```"
+    "```haskell\nempty :: forall a. Set a\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n* * *\n\n```haskell\n_ :: Set Text\n```"
    ],
    [
     33,
     41,
-    "```haskell\nleftmost :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: [Event t (Set Text -> Set Text)] -> Event t (Set Text -> Set Text)\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```"
+    "```haskell\nleftmost :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: [Event t (Set Text -> Set Text)] -> Event t (Set Text -> Set Text)\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```"
    ]
   ],
-  "169": [
+  "181": [
    [
     6,
     14,
-    "```haskell\ninsert :: forall a. Ord a => a -> Set a -> Set a\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n\n`O(\\log n)` . Insert an element in a set.\n If the set already contains an element equal to the given value,\n it is replaced with the new value.\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Set-Internal.html#v:insert)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Set.Internal.html#insert)\n\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Set Text\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Set a\n```"
+    "```haskell\ninsert :: forall a. Ord a => a -> Set a -> Set a\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Set Text\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Set a\n```"
    ],
    [
     19,
     26,
-    "```haskell\nffilter :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Filterable (Event t)`\n  constructed using:\n  - `forall k (t :: k). Reflex t => Filterable (Event t)`\n    using an external instance\n    *Defined in \u2018Reflex.Class\u2019*\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> Event t Text -> Event t Text\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```"
+    "```haskell\nffilter :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Filterable (Event t)`\n  constructed using:\n  - `forall k (t :: k). Reflex t => Filterable (Event t)`\n    using an external instance\n    *Defined in \u2018Reflex.Class\u2019*\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> Event t Text -> Event t Text\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```"
    ],
    [
     29,
     33,
-    "```haskell\nelem :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDoes the element occur in the structure? \n\nNote:  `elem`  is often used in infix form. #### **Examples** \n\nBasic usage: \n```haskell\n>>> 3 `elem` []\nFalse\n\n\n```\n \n```haskell\n>>> 3 `elem` [1,2]\nFalse\n\n\n```\n \n```haskell\n>>> 3 `elem` [1,2,3,4,5]\nTrue\n\n\n```\n \n\nFor infinite structures, the default implementation of  `elem` \n terminates if the sought-after value exists at a finite distance\n from the left side of the structure: \n```haskell\n>>> 3 `elem` [1..]\nTrue\n\n\n```\n \n```haskell\n>>> 3 `elem` ([4..] ++ [3])\n* Hangs forever *\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-Foldable.html#v:elem)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.Foldable.html#elem)\n\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\nEvidence of constraint `Eq Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Eq a => a -> [a] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```"
+    "```haskell\nelem :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```\n\n*Defined in \u2018GHC.Internal.Data.Foldable\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Foldable []`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Data.Foldable\u2019*\n* * *\nEvidence of constraint `Eq Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> [Text] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall a. Eq a => a -> [a] -> Bool\n```\n* * *\n\n```haskell\n_ :: forall (t :: Type -> Type) a. (Foldable t, Eq a) => a -> t a -> Bool\n```"
    ],
    [
     37,
     46,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     49,
     59,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     62,
     63,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     66,
     67,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     70,
     71,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     74,
     75,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     79,
     87,
-    "```haskell\nkeydownE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:167:3*"
+    "```haskell\nkeydownE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:179:3*"
    ]
   ],
-  "170": [
+  "182": [
    [
     6,
     14,
-    "```haskell\ndelete :: forall a. Ord a => a -> Set a -> Set a\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n\n`O(\\log n)` . Delete an element from a set.\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Set-Internal.html#v:delete)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Set.Internal.html#delete)\n\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Set Text\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Set a\n```"
+    "```haskell\ndelete :: forall a. Ord a => a -> Set a -> Set a\n```\n\n*Defined in \u2018Data.Set.Internal\u2019* *(containers-0.8)*\n\n\n* * *\nEvidence of constraint `Ord Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: Text -> Set Text -> Set Text\n```\n* * *\n\n```haskell\n_ :: forall a. Ord a => a -> Set a -> Set a\n```"
    ],
    [
     19,
     25,
-    "```haskell\nkeyupE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:168:3*"
+    "```haskell\nkeyupE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:180:3*"
    ]
   ],
-  "171": [
+  "183": [
    [
     2,
     7,
-    "```haskell\ntickE :: Event t TickInfo\n```\n\n*Defined at /demo/breakout/app/Main.hs:172:3*"
+    "```haskell\ntickE :: Event t TickInfo\n```\n\n*Defined at /demo/breakout/app/Main.hs:184:3*"
    ],
    [
     11,
     37,
-    "```haskell\ntickLossyFromPostBuildTime :: forall t (m :: Type -> Type). (PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), MonadFix m) => NominalDiffTime -> m (Event t TickInfo)\n```\n\n*Defined in \u2018Reflex.Time\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `PerformEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     h`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `TriggerEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     m`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadIO (Performable m)`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     j`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: NominalDiffTime -> m (Event t TickInfo)\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). (PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), MonadFix m) => NominalDiffTime -> m (Event t TickInfo)\n```"
+    "```haskell\ntickLossyFromPostBuildTime :: forall t (m :: Type -> Type). (PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), MonadFix m) => NominalDiffTime -> m (Event t TickInfo)\n```\n\n*Defined in \u2018Reflex.Time\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `PerformEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     h`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `TriggerEvent t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     m`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadIO (Performable m)`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     j`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: NominalDiffTime -> m (Event t TickInfo)\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). (PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), MonadFix m) => NominalDiffTime -> m (Event t TickInfo)\n```"
    ]
   ],
-  "172": [
+  "184": [
    [
     6,
     13,
-    "```haskell\nlaunchE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:173:7*"
+    "```haskell\nlaunchE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:185:7*"
    ],
    [
     16,
     24,
-    "```haskell\nleftmost :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: [Event t ()] -> Event t ()\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```"
+    "```haskell\nleftmost :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: [Event t ()] -> Event t ()\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```"
    ],
    [
     33,
     40,
-    "```haskell\nffilter :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Filterable (Event t)`\n  constructed using:\n  - `forall k (t :: k). Reflex t => Filterable (Event t)`\n    using an external instance\n    *Defined in \u2018Reflex.Class\u2019*\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> Event t Text -> Event t Text\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```"
+    "```haskell\nffilter :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Filterable (Event t)`\n  constructed using:\n  - `forall k (t :: k). Reflex t => Filterable (Event t)`\n    using an external instance\n    *Defined in \u2018Reflex.Class\u2019*\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: (Text -> Bool) -> Event t Text -> Event t Text\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Filterable f => (a -> Bool) -> f a -> f a\n```"
    ],
    [
     50,
     58,
-    "```haskell\nkeydownE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:167:3*"
+    "```haskell\nkeydownE :: Event t Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:179:3*"
    ],
    [
     66,
     72,
-    "```haskell\nclickE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:179:3*"
+    "```haskell\nclickE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:191:3*"
    ]
   ],
-  "173": [
+  "185": [
    [
     6,
     9,
-    "```haskell\nevE :: Event t Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L73)\n\n*Defined at /demo/breakout/app/Main.hs:174:7*"
+    "```haskell\nevE :: Event t Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L85)\n\n*Defined at /demo/breakout/app/Main.hs:186:7*"
    ],
    [
     12,
     20,
-    "```haskell\nleftmost :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: [Event t Ev] -> Event t Ev\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```"
+    "```haskell\nleftmost :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: [Event t Ev] -> Event t Ev\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => [Event t a] -> Event t a\n```"
    ]
   ],
-  "174": [
+  "186": [
    [
     10,
     20,
-    "```haskell\nattachWith :: forall {k} (t :: k) a b c. Reflex t => (a -> b -> c) -> Behavior t a -> Event t b -> Event t c\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: (Set Text -> TickInfo -> Ev) -> Behavior t (Set Text) -> Event t TickInfo -> Event t Ev\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a b c. Reflex t => (a -> b -> c) -> Behavior t a -> Event t b -> Event t c\n```"
+    "```haskell\nattachWith :: forall {k} (t :: k) a b c. Reflex t => (a -> b -> c) -> Behavior t a -> Event t b -> Event t c\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: (Set Text -> TickInfo -> Ev) -> Behavior t (Set Text) -> Event t TickInfo -> Event t Ev\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a b c. Reflex t => (a -> b -> c) -> Behavior t a -> Event t b -> Event t c\n```"
    ],
    [
     23,
     24,
-    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:175:24*"
+    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:187:24*"
    ],
    [
     25,
@@ -3528,137 +3528,137 @@ window.leksahDemoHovers = {
    [
     30,
     34,
-    "```haskell\nTick :: Set Text -> Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L73)\n\n*Defined at /demo/breakout/app/Main.hs:73:11*"
+    "```haskell\nTick :: Set Text -> Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L85)\n\n*Defined at /demo/breakout/app/Main.hs:85:11*"
    ],
    [
     35,
     36,
-    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:175:24*"
+    "```haskell\nh :: Set Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:187:24*"
    ],
    [
     39,
     46,
-    "```haskell\ncurrent :: forall {k} (t :: k) a. Reflex t => Dynamic t a -> Behavior t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Dynamic t (Set Text) -> Behavior t (Set Text)\n```\n* * *\n\n```haskell\n_ :: forall a. Dynamic t a -> Behavior t a\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => Dynamic t a -> Behavior t a\n```"
+    "```haskell\ncurrent :: forall {k} (t :: k) a. Reflex t => Dynamic t a -> Behavior t a\n```\n\n*Defined in \u2018Reflex.Class\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Dynamic t (Set Text) -> Behavior t (Set Text)\n```\n* * *\n\n```haskell\n_ :: forall a. Dynamic t a -> Behavior t a\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) a. Reflex t => Dynamic t a -> Behavior t a\n```"
    ],
    [
     47,
     52,
-    "```haskell\nheldD :: Dynamic t (Set Text)\n```\n\n*Defined at /demo/breakout/app/Main.hs:169:3*"
+    "```haskell\nheldD :: Dynamic t (Set Text)\n```\n\n*Defined at /demo/breakout/app/Main.hs:181:3*"
    ],
    [
     54,
     59,
-    "```haskell\ntickE :: Event t TickInfo\n```\n\n*Defined at /demo/breakout/app/Main.hs:172:3*"
+    "```haskell\ntickE :: Event t TickInfo\n```\n\n*Defined at /demo/breakout/app/Main.hs:184:3*"
    ]
   ],
-  "175": [
+  "187": [
    [
     10,
     16,
-    "```haskell\nLaunch :: Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L73)\n\n*Defined at /demo/breakout/app/Main.hs:73:29*"
+    "```haskell\nLaunch :: Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L85)\n\n*Defined at /demo/breakout/app/Main.hs:85:29*"
    ],
    [
     20,
     27,
-    "```haskell\nlaunchE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:173:7*"
+    "```haskell\nlaunchE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:185:7*"
    ]
   ],
-  "176": [
+  "188": [
    [
     2,
     5,
-    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:177:3*"
+    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:189:3*"
    ],
    [
     9,
     16,
-    "```haskell\nfoldDyn :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```\n\n*Defined in \u2018Reflex.Dynamic\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadHold t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     d`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: (Ev -> St -> St) -> St -> Event t Ev -> m (Dynamic t St)\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```"
+    "```haskell\nfoldDyn :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```\n\n*Defined in \u2018Reflex.Dynamic\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Reflex t`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadHold t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     d`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: (Ev -> St -> St) -> St -> Event t Ev -> m (Dynamic t St)\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) (m :: Type -> Type) a b. (Reflex t, MonadHold t m, MonadFix m) => (a -> b -> b) -> b -> Event t a -> m (Dynamic t b)\n```"
    ],
    [
     17,
     21,
-    "```haskell\nstep :: Ev -> St -> St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57) | [Ev](file:///demo/breakout/app/Main.hs#L73)\n\n*Defined at /demo/breakout/app/Main.hs:89:1*"
+    "```haskell\nstep :: Ev -> St -> St\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L85) | [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:101:1*"
    ],
    [
     22,
     28,
-    "```haskell\ninitSt :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+    "```haskell\ninitSt :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:81:1*"
    ],
    [
     29,
     32,
-    "```haskell\nevE :: Event t Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L73)\n\n*Defined at /demo/breakout/app/Main.hs:174:7*"
+    "```haskell\nevE :: Event t Ev\n```\n\nGo to [Ev](file:///demo/breakout/app/Main.hs#L85)\n\n*Defined at /demo/breakout/app/Main.hs:186:7*"
    ]
   ],
-  "178": [
+  "190": [
    [
     2,
     8,
-    "```haskell\nclickE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:179:3*"
+    "```haskell\nclickE :: Event t ()\n```\n\n*Defined at /demo/breakout/app/Main.hs:191:3*"
    ],
    [
     12,
     18,
-    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m (Event t ()) -> m (Event t ())\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
+    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m (Event t ()) -> m (Event t ())\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
    ],
    [
     20,
     23,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     27,
     32,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     37,
     46,
-    "```haskell\nwrapStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:196:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
+    "```haskell\nwrapStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:209:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
    ]
   ],
-  "179": [
+  "191": [
    [
     4,
     10,
-    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
+    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
    ],
    [
     12,
     15,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     19,
     24,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     29,
     37,
-    "```haskell\nhudStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:198:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
+    "```haskell\nhudStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:211:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
    ],
    [
     41,
     48,
-    "```haskell\ndynText :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Dynamic t Text -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```"
+    "```haskell\ndynText :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Dynamic t Text -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```"
    ],
    [
     50,
     57,
-    "```haskell\nhudText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:207:1*"
+    "```haskell\nhudText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:220:1*"
    ],
    [
     62,
     65,
-    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:177:3*"
+    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:189:3*"
    ]
   ],
-  "180": [
+  "192": [
    [
     5,
     12,
-    "```haskell\nboardEl :: Element EventResult GhcjsDomSpace t\n```\n\n*Defined at /demo/breakout/app/Main.hs:181:6*"
+    "```haskell\nboardEl :: Element EventResult GhcjsDomSpace t\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:6*"
    ],
    [
     14,
@@ -3668,25 +3668,25 @@ window.leksahDemoHovers = {
    [
     20,
     27,
-    "```haskell\nelAttr' :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m (Element EventResult (DomBuilderSpace m) t, a)\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m (Element EventResult (DomBuilderSpace m) t, ())\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m (Element EventResult (DomBuilderSpace m) t, a)\n```"
+    "```haskell\nelAttr' :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m (Element EventResult (DomBuilderSpace m) t, a)\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m (Element EventResult (DomBuilderSpace m) t, ())\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m (Element EventResult (DomBuilderSpace m) t, a)\n```"
    ],
    [
     29,
     32,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     36,
     41,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     46,
     56,
-    "```haskell\nboardStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:199:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
+    "```haskell\nboardStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:212:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
    ]
   ],
-  "181": [
+  "193": [
    [
     6,
     7,
@@ -3695,22 +3695,22 @@ window.leksahDemoHovers = {
    [
     11,
     22,
-    "```haskell\nlistWithKey :: forall t k v (m :: Type -> Type) a. (Ord k, Adjustable t m, PostBuild t m, MonadFix m, MonadHold t m, Eq v) => Dynamic t (Map k v) -> (k -> Dynamic t v -> m a) -> m (Dynamic t (Map k a))\n```\n\n*Defined in \u2018Reflex.Collection\u2019* *(reflex-0.9.4.0)*\n\n\n* * *\nEvidence of constraint `Ord (Int, Int)`\n  constructed using:\n  - `forall a b. (Ord a, Ord b) => Ord (a, b)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `Adjustable t m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Adjustable t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `MonadHold t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     d`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `Eq ()`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: Dynamic t (Map (Int, Int) ()) -> ((Int, Int) -> Dynamic t () -> m ()) -> m (Dynamic t (Map (Int, Int) ()))\n```\n* * *\n\n```haskell\n_ :: forall t k v (m :: Type -> Type) a. (Ord k, Adjustable t m, PostBuild t m, MonadFix m, MonadHold t m, Eq v) => Dynamic t (Map k v) -> (k -> Dynamic t v -> m a) -> m (Dynamic t (Map k a))\n```"
+    "```haskell\nlistWithKey :: forall t k v (m :: Type -> Type) a. (Ord k, Adjustable t m, PostBuild t m, MonadFix m, MonadHold t m, Eq v) => Dynamic t (Map k v) -> (k -> Dynamic t v -> m a) -> m (Dynamic t (Map k a))\n```\n\n*Defined in \u2018Reflex.Collection\u2019* *(reflex-0.9.4.1)*\n\n\n* * *\nEvidence of constraint `Ord (Int, Int)`\n  constructed using:\n  - `forall a b. (Ord a, Ord b) => Ord (a, b)`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `Ord Int`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\nEvidence of constraint `Adjustable t m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Adjustable t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadFix m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     c`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `MonadHold t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     d`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `Eq ()`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Classes\u2019*\n* * *\n\n```haskell\n_ :: Dynamic t (Map (Int, Int) ()) -> ((Int, Int) -> Dynamic t () -> m ()) -> m (Dynamic t (Map (Int, Int) ()))\n```\n* * *\n\n```haskell\n_ :: forall t k v (m :: Type -> Type) a. (Ord k, Adjustable t m, PostBuild t m, MonadFix m, MonadHold t m, Eq v) => Dynamic t (Map k v) -> (k -> Dynamic t v -> m a) -> m (Dynamic t (Map k a))\n```"
    ],
    [
     24,
     30,
-    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:60:5*"
+    "```haskell\nbricks :: St -> Map (Int, Int) ()\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:72:5*"
    ],
    [
     35,
     38,
-    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:177:3*"
+    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:189:3*"
    ],
    [
     43,
     44,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:182:44*"
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:194:44*"
    ],
    [
     45,
@@ -3718,139 +3718,139 @@ window.leksahDemoHovers = {
     "```haskell\n_ :: Dynamic t ()\n```"
    ]
   ],
-  "182": [
+  "194": [
    [
     13,
     19,
-    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
+    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
    ],
    [
     21,
     24,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     28,
     33,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     38,
     48,
-    "```haskell\nbrickStyle :: (Int, Int) -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:219:1*"
+    "```haskell\nbrickStyle :: (Int, Int) -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:232:1*"
    ],
    [
     49,
     50,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:182:44*"
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:194:44*"
    ],
    [
     52,
     57,
-    "```haskell\nblank :: forall (m :: Type -> Type). Monad m => m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `Monad m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Monad m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: m ()\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). Monad m => m ()\n```"
+    "```haskell\nblank :: forall (m :: Type -> Type). Monad m => m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `Monad m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Monad m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: m ()\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). Monad m => m ()\n```"
    ]
   ],
-  "183": [
+  "195": [
    [
     6,
     15,
-    "```haskell\nelDynAttr :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Text -> Dynamic t (Map Text Text) -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```"
+    "```haskell\nelDynAttr :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Text -> Dynamic t (Map Text Text) -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```"
    ],
    [
     17,
     20,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     23,
     31,
-    "```haskell\nballAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:229:1*"
+    "```haskell\nballAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:242:1*"
    ],
    [
     38,
     41,
-    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:177:3*"
+    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:189:3*"
    ],
    [
     43,
     48,
-    "```haskell\nblank :: forall (m :: Type -> Type). Monad m => m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `Monad m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Monad m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: m ()\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). Monad m => m ()\n```"
+    "```haskell\nblank :: forall (m :: Type -> Type). Monad m => m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `Monad m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Monad m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: m ()\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). Monad m => m ()\n```"
    ]
   ],
-  "184": [
+  "196": [
    [
     6,
     15,
-    "```haskell\nelDynAttr :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Text -> Dynamic t (Map Text Text) -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```"
+    "```haskell\nelDynAttr :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Text -> Dynamic t (Map Text Text) -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. (DomBuilder t m, PostBuild t m) => Text -> Dynamic t (Map Text Text) -> m a -> m a\n```"
    ],
    [
     17,
     20,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     23,
     33,
-    "```haskell\npaddleAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:235:1*"
+    "```haskell\npaddleAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:248:1*"
    ],
    [
     38,
     41,
-    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:177:3*"
+    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:189:3*"
    ],
    [
     43,
     48,
-    "```haskell\nblank :: forall (m :: Type -> Type). Monad m => m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `Monad m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Monad m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: m ()\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). Monad m => m ()\n```"
+    "```haskell\nblank :: forall (m :: Type -> Type). Monad m => m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `Monad m`\n  constructed using:\n  - `forall t (m :: Type -> Type). DomBuilder t m => Monad m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: m ()\n```\n* * *\n\n```haskell\n_ :: forall (m :: Type -> Type). Monad m => m ()\n```"
    ]
   ],
-  "185": [
+  "197": [
    [
     6,
     12,
-    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
+    "```haskell\nelAttr :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Text -> Map Text Text -> m () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type) a. DomBuilder t m => Text -> Map Text Text -> m a -> m a\n```"
    ],
    [
     14,
     17,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     21,
     26,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     31,
     43,
-    "```haskell\noverlayStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:202:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
+    "```haskell\noverlayStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:215:1*\n\n* * *\n\n```haskell\n_ :: Text\n```"
    ],
    [
     47,
     54,
-    "```haskell\ndynText :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Dynamic t Text -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```"
+    "```haskell\ndynText :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```\n\n*Defined in \u2018Reflex.Dom.Widget.Basic\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `PostBuild t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     g`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\nEvidence of constraint `DomBuilder t m`\n  constructed using:\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Dynamic t Text -> m ()\n```\n* * *\n\n```haskell\n_ :: forall t (m :: Type -> Type). (PostBuild t m, DomBuilder t m) => Dynamic t Text -> m ()\n```"
    ],
    [
     56,
     67,
-    "```haskell\noverlayText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:212:1*"
+    "```haskell\noverlayText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:225:1*"
    ],
    [
     72,
     75,
-    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:177:3*"
+    "```haskell\nstD :: Dynamic t St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:189:3*"
    ]
   ],
-  "186": [
+  "198": [
    [
     4,
     8,
-    "```haskell\npure :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nLift a value into the Structure. #### **Examples** \n```haskell\n>>> pure 1 :: Maybe Int\nJust 1\n\n\n```\n \n```haskell\n>>> pure 'z' :: [Char]\n\"z\"\n\n\n```\n \n```haskell\n>>> pure (pure \":D\") :: Maybe [String]\nJust [\":D\"]\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Base.html#v:pure)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Base.html#pure)\n\n\n* * *\nEvidence of constraint `Applicative m`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadReflexCreateTrigger t m =>\n     Applicative m`\n    using an external instance\n    *Defined in \u2018Reflex.Host.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     f`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: Event t () -> m (Event t ())\n```\n* * *\n\n```haskell\n_ :: forall a. a -> m a\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```"
+    "```haskell\npure :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Applicative m`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadReflexCreateTrigger t m =>\n     Applicative m`\n    using an external instance\n    *Defined in \u2018Reflex.Host.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     f`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: Event t () -> m (Event t ())\n```\n* * *\n\n```haskell\n_ :: forall a. a -> m a\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```"
    ],
    [
     10,
     18,
-    "```haskell\ndomEvent :: forall {k} (t :: k) target (eventName :: EventTag). HasDomEvent t target eventName => EventName eventName -> target -> Event t (DomEventType target eventName)\n```\n\n*Defined in \u2018Reflex.Dom.Builder.Class\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `HasDomEvent\n                          t (Element EventResult GhcjsDomSpace t) 'ClickTag`\n  constructed using:\n  - `forall k1 k2 (t :: k1) (d :: k2) (en :: EventTag).\n     Reflex t =>\n     HasDomEvent t (Element EventResult d t) en`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: EventName 'ClickTag -> Element EventResult GhcjsDomSpace t -> Event t (DomEventType (Element EventResult GhcjsDomSpace t) 'ClickTag)\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) target (eventName :: EventTag). HasDomEvent t target eventName => EventName eventName -> target -> Event t (DomEventType target eventName)\n```"
+    "```haskell\ndomEvent :: forall {k} (t :: k) target (eventName :: EventTag). HasDomEvent t target eventName => EventName eventName -> target -> Event t (DomEventType target eventName)\n```\n\n*Defined in \u2018Reflex.Dom.Builder.Class\u2019* *(reflex-dom-core-0.8.1.4)*\n\n\n* * *\nEvidence of constraint `HasDomEvent\n                          t (Element EventResult GhcjsDomSpace t) 'ClickTag`\n  constructed using:\n  - `forall k1 k2 (t :: k1) (d :: k2) (en :: EventTag).\n     Reflex t =>\n     HasDomEvent t (Element EventResult d t) en`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall t (m :: Type -> Type). DomBuilder t m => Reflex t`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Builder.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     a`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: EventName 'ClickTag -> Element EventResult GhcjsDomSpace t -> Event t (DomEventType (Element EventResult GhcjsDomSpace t) 'ClickTag)\n```\n* * *\n\n```haskell\n_ :: forall {k} (t :: k) target (eventName :: EventTag). HasDomEvent t target eventName => EventName eventName -> target -> Event t (DomEventType target eventName)\n```"
    ],
    [
     19,
@@ -3860,822 +3860,822 @@ window.leksahDemoHovers = {
    [
     25,
     32,
-    "```haskell\nboardEl :: Element EventResult GhcjsDomSpace t\n```\n\n*Defined at /demo/breakout/app/Main.hs:181:6*"
-   ]
-  ],
-  "187": [
-   [
-    2,
-    6,
-    "```haskell\npure :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nLift a value into the Structure. #### **Examples** \n```haskell\n>>> pure 1 :: Maybe Int\nJust 1\n\n\n```\n \n```haskell\n>>> pure 'z' :: [Char]\n\"z\"\n\n\n```\n \n```haskell\n>>> pure (pure \":D\") :: Maybe [String]\nJust [\":D\"]\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Base.html#v:pure)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Base.html#pure)\n\n\n* * *\nEvidence of constraint `Applicative m`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadReflexCreateTrigger t m =>\n     Applicative m`\n    using an external instance\n    *Defined in \u2018Reflex.Host.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     f`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:159](file:///demo/breakout/app/Main.hs#L159,1-L188,10)\n* * *\n\n```haskell\n_ :: () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall a. a -> m a\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```"
-   ]
-  ],
-  "191": [
-   [
-    0,
-    2,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    6,
-    12,
-    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nDouble-precision floating point numbers.\n It is desirable that this type be at least equal in range and precision\n to the IEEE double-precision type.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Double)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Double)"
-   ],
-   [
-    16,
-    20,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
-   ]
-  ],
-  "192": [
-   [
-    0,
-    2,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    3,
-    4,
-    "```haskell\nd :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:4*"
-   ],
-   [
-    7,
-    13,
-    "```haskell\npack :: String -> Text\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\n*O(n)*  Convert a  `String`  into a  `Text` .\n Performs replacement on invalid scalar values, so  `Data.Text.unpack  .  pack`  is not  `id` : \n```haskell\n>>> Data.Text.unpack (pack \"\\55555\")\n\"\\65533\"\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#v:pack)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#pack)"
-   ],
-   [
-    15,
-    19,
-    "```haskell\nshow :: forall a. Show a => a -> String\n```\n\n*Defined in \u2018GHC.Internal.Show\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nA specialised variant of  `showsPrec` , using precedence context\n zero, and returning an ordinary  `String` .\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Show.html#v:show)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Show.html#show)\n\n\n* * *\nEvidence of constraint `Show Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Show\u2019*\n* * *\n\n```haskell\n_ :: Int -> String\n```\n* * *\n\n```haskell\n_ :: forall a. Show a => a -> String\n```"
-   ],
-   [
-    21,
-    26,
-    "```haskell\nround :: forall a b. (RealFrac a, Integral b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1401.0)*\n\n\n\n`round  x`  returns the nearest integer to  `x` ;\n   the even integer if  `x`  is equidistant between two integers\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Real.html#v:round)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Real.html#round)\n\n\n* * *\nEvidence of constraint `RealFrac Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\n\n```haskell\n_ :: Double -> Int\n```\n* * *\n\n```haskell\n_ :: forall b. Integral b => Double -> b\n```\n* * *\n\n```haskell\n_ :: forall a b. (RealFrac a, Integral b) => a -> b\n```"
-   ],
-   [
-    27,
-    28,
-    "```haskell\nd :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:4*"
-   ],
-   [
-    32,
-    35,
-    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nA fixed-precision integer type with at least the range  `[-2^29 .. 2^29-1]` .\n The exact range for a given implementation can be determined by using\n  `Prelude.minBound`  and  `Prelude.maxBound`  from the  `Prelude.Bounded`  class.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Int)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Int)"
-   ],
-   [
-    42,
-    44,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "194": [
-   [
-    0,
-    9,
-    "```haskell\nwrapStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:196:1*"
-   ],
-   [
-    11,
-    19,
-    "```haskell\nhudStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:198:1*"
-   ],
-   [
-    21,
-    31,
-    "```haskell\nboardStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:199:1*"
-   ],
-   [
-    33,
-    45,
-    "```haskell\noverlayStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:202:1*"
-   ],
-   [
-    49,
-    53,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
-   ]
-  ],
-  "195": [
-   [
-    0,
-    9,
-    "```haskell\nwrapStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:196:1*"
-   ],
-   [
-    13,
-    17,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    18,
-    23,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    24,
-    30,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    31,
-    35,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    44,
-    49,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    50,
-    56,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    57,
-    75,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "196": [
-   [
-    13,
-    18,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    19,
-    21,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    22,
-    26,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    27,
-    32,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    33,
-    38,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    40,
-    43,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    44,
-    51,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    52,
-    55,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    58,
-    60,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    61,
-    65,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    66,
-    72,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    73,
-    77,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "197": [
-   [
-    0,
-    8,
-    "```haskell\nhudStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:198:1*"
-   ],
-   [
-    13,
-    17,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    18,
-    22,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    25,
-    27,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    28,
-    34,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    35,
-    41,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    43,
-    45,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    46,
-    52,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    53,
-    60,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    64,
-    66,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "198": [
-   [
-    0,
-    10,
-    "```haskell\nboardStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:199:1*"
-   ],
-   [
-    14,
-    22,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    23,
-    31,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    32,
-    38,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    41,
-    45,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    46,
-    54,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    55,
-    61,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nboardEl :: Element EventResult GhcjsDomSpace t\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:6*"
    ]
   ],
   "199": [
    [
-    14,
-    24,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    27,
-    32,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    33,
-    39,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    41,
-    43,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    44,
-    49,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    55,
-    61,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    62,
-    68,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    70,
-    72,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "200": [
-   [
-    17,
-    22,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    28,
-    30,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    31,
-    37,
-    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:1*"
-   ],
-   [
-    43,
-    49,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    55,
-    57,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    58,
-    64,
-    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:15*"
-   ]
-  ],
-  "201": [
-   [
-    0,
-    12,
-    "```haskell\noverlayStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:202:1*"
-   ],
-   [
-    16,
-    24,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    25,
-    33,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    34,
-    39,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    42,
-    49,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    50,
-    54,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    55,
-    60,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    61,
-    66,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    67,
-    73,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "202": [
-   [
-    16,
-    23,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    24,
-    31,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    32,
-    38,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    39,
-    43,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    44,
-    48,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    51,
-    53,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    54,
-    59,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    61,
-    64,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    2,
+    6,
+    "```haskell\npure :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```\n\n*Defined in \u2018GHC.Internal.Base\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Applicative m`\n  constructed using:\n  - `forall t (m :: Type -> Type).\n     MonadReflexCreateTrigger t m =>\n     Applicative m`\n    using an external instance\n    *Defined in \u2018Reflex.Host.Class\u2019*\n  - `forall (a :: Constraint) (b :: Constraint) (c :: Constraint)\n            (d :: Constraint) (e :: Constraint) (f :: Constraint)\n            (g :: Constraint) (h :: Constraint) (i :: Constraint)\n            (j :: Constraint) (k :: Constraint) (l :: Constraint)\n            (m :: Constraint) (n :: Constraint) (o :: Constraint)\n            (p :: Constraint) (q :: Constraint) (r :: Constraint).\n     (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r) =>\n     f`\n    using an external instance\n    *Defined in \u2018GHC.Internal.Classes\u2019*\n  - `forall t (m :: Type -> Type).\n     MonadWidget t m =>\n     MonadWidgetConstraints t m`\n    using an external instance\n    *Defined in \u2018Reflex.Dom.Old\u2019*\n  - `MonadWidget t m`\n    bound by type signature or pattern\n    at [Main.hs:171](file:///demo/breakout/app/Main.hs#L171,1-L200,10)\n* * *\n\n```haskell\n_ :: () -> m ()\n```\n* * *\n\n```haskell\n_ :: forall a. a -> m a\n```\n* * *\n\n```haskell\n_ :: forall (f :: Type -> Type) a. Applicative f => a -> f a\n```"
    ]
   ],
   "203": [
    [
+    0,
+    2,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    6,
+    12,
+    "```haskell\nDouble :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
     16,
     20,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    21,
-    27,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    31,
-    33,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    35,
-    37,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    43,
-    50,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    51,
-    57,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    58,
-    62,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    63,
-    67,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    68,
-    73,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    74,
-    80,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
    ]
   ],
-  "205": [
+  "204": [
    [
     0,
-    7,
-    "```haskell\nhudText :: St -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:207:1*"
+    2,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
    ],
    [
-    11,
+    3,
+    4,
+    "```haskell\nd :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:4*"
+   ],
+   [
+    7,
     13,
-    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
+    "```haskell\npack :: String -> Text\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
    ],
    [
-    17,
-    21,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
-   ]
-  ],
-  "206": [
-   [
-    0,
-    7,
-    "```haskell\nhudText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:207:1*"
-   ],
-   [
-    8,
-    10,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:207:9*"
-   ],
-   [
-    14,
+    15,
     19,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nshow :: forall a. Show a => a -> String\n```\n\n*Defined in \u2018GHC.Internal.Show\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Show Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Show\u2019*\n* * *\n\n```haskell\n_ :: Int -> String\n```\n* * *\n\n```haskell\n_ :: forall a. Show a => a -> String\n```"
    ],
    [
-    25,
-    31,
-    "```haskell\npack :: String -> Text\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\n*O(n)*  Convert a  `String`  into a  `Text` .\n Performs replacement on invalid scalar values, so  `Data.Text.unpack  .  pack`  is not  `id` : \n```haskell\n>>> Data.Text.unpack (pack \"\\55555\")\n\"\\65533\"\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#v:pack)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#pack)"
+    21,
+    26,
+    "```haskell\nround :: forall a b. (RealFrac a, Integral b) => a -> b\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `RealFrac Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\n\n```haskell\n_ :: Double -> Int\n```\n* * *\n\n```haskell\n_ :: forall b. Integral b => Double -> b\n```\n* * *\n\n```haskell\n_ :: forall a b. (RealFrac a, Integral b) => a -> b\n```"
    ],
    [
-    33,
-    37,
-    "```haskell\nshow :: forall a. Show a => a -> String\n```\n\n*Defined in \u2018GHC.Internal.Show\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nA specialised variant of  `showsPrec` , using precedence context\n zero, and returning an ordinary  `String` .\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Show.html#v:show)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Show.html#show)\n\n\n* * *\nEvidence of constraint `Show Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Show\u2019*\n* * *\n\n```haskell\n_ :: Int -> String\n```\n* * *\n\n```haskell\n_ :: forall a. Show a => a -> String\n```"
+    27,
+    28,
+    "```haskell\nd :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:4*"
    ],
    [
-    39,
+    32,
+    35,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    42,
     44,
-    "```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:5*"
-   ],
-   [
-    45,
-    47,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:207:9*"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "207": [
    [
-    25,
-    30,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    0,
+    9,
+    "```haskell\nwrapStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:209:1*"
    ],
    [
-    36,
-    42,
-    "```haskell\npack :: String -> Text\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\n*O(n)*  Convert a  `String`  into a  `Text` .\n Performs replacement on invalid scalar values, so  `Data.Text.unpack  .  pack`  is not  `id` : \n```haskell\n>>> Data.Text.unpack (pack \"\\55555\")\n\"\\65533\"\n\n\n```\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#v:pack)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#pack)"
+    11,
+    19,
+    "```haskell\nhudStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:211:1*"
    ],
    [
-    44,
-    48,
-    "```haskell\nshow :: forall a. Show a => a -> String\n```\n\n*Defined in \u2018GHC.Internal.Show\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nA specialised variant of  `showsPrec` , using precedence context\n zero, and returning an ordinary  `String` .\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Show.html#v:show)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Show.html#show)\n\n\n* * *\nEvidence of constraint `Show Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Show\u2019*\n* * *\n\n```haskell\n_ :: Int -> String\n```\n* * *\n\n```haskell\n_ :: forall a. Show a => a -> String\n```"
+    21,
+    31,
+    "```haskell\nboardStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:212:1*"
    ],
    [
-    50,
-    55,
-    "```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:61:12*"
+    33,
+    45,
+    "```haskell\noverlayStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:215:1*"
    ],
    [
-    56,
-    58,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:207:9*"
+    49,
+    53,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
    ]
   ],
   "208": [
    [
-    37,
-    39,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    0,
+    9,
+    "```haskell\nwrapStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:209:1*"
    ],
    [
-    40,
-    41,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    13,
+    17,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    42,
-    43,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    18,
+    23,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    24,
+    30,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    31,
+    35,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     44,
+    49,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    50,
+    56,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    57,
+    75,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "209": [
+   [
+    16,
+    21,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    22,
+    24,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    25,
+    29,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    30,
+    35,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    36,
+    41,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    43,
     46,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     47,
-    51,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    54,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    55,
+    58,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    61,
+    63,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    64,
+    68,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    69,
+    75,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    76,
+    80,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "210": [
    [
     0,
-    11,
-    "```haskell\noverlayText :: St -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:212:1*"
+    8,
+    "```haskell\nhudStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:211:1*"
    ],
    [
-    15,
+    13,
     17,
-    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    21,
+    18,
+    22,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
     25,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
+    27,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    28,
+    34,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    35,
+    41,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    43,
+    45,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    46,
+    52,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    53,
+    60,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    64,
+    66,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "211": [
    [
     0,
-    11,
-    "```haskell\noverlayText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:212:1*"
+    10,
+    "```haskell\nboardStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:212:1*"
    ],
    [
-    12,
     14,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:212:13*"
-   ],
-   [
     22,
-    27,
-    "```haskell\nphase :: St -> Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54) | [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:62:5*"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    28,
-    30,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:212:13*"
+    23,
+    31,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    32,
+    38,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    41,
+    45,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    46,
+    54,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    55,
+    61,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "212": [
    [
-    2,
-    9,
-    "```haskell\nPlaying :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:54:22*"
+    17,
+    27,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    30,
+    35,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    36,
+    42,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    44,
+    46,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    47,
+    52,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    58,
+    64,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    65,
+    71,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    73,
+    75,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "213": [
    [
-    2,
-    7,
-    "```haskell\nReady :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L54)\n\n*Defined at /demo/breakout/app/Main.hs:54:14*"
-   ],
-   [
-    15,
-    20,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    21,
-    26,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    17,
+    22,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     28,
     30,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
    ],
    [
     31,
-    36,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    37,
+    "```haskell\nboardW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:1*"
    ],
    [
-    38,
-    40,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    43,
+    49,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    41,
-    47,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    55,
+    57,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    58,
+    64,
+    "```haskell\nboardH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:15*"
    ]
   ],
   "214": [
    [
-    2,
-    6,
-    "```haskell\nOver :: Bool -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:32*"
+    0,
+    12,
+    "```haskell\noverlayStyle :: Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:215:1*"
    ],
    [
-    7,
-    11,
-    "```haskell\nTrue :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#v:True)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#True)"
-   ],
-   [
-    17,
-    20,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    21,
+    16,
     24,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    25,
+    33,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     34,
     39,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    40,
     42,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    49,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    43,
-    47,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    50,
+    54,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    48,
-    53,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    55,
+    60,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    61,
+    66,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    67,
+    73,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "215": [
    [
-    2,
-    6,
-    "```haskell\nOver :: Bool -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:54:32*"
-   ],
-   [
-    7,
-    12,
-    "```haskell\nFalse :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#v:False)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#False)"
-   ],
-   [
-    17,
-    21,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    22,
+    19,
     26,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    27,
+    34,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     35,
-    40,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
     41,
-    43,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    44,
-    48,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    42,
+    46,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    49,
+    47,
+    51,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
     54,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    56,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    57,
+    62,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    64,
+    67,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
-  "217": [
+  "216": [
    [
-    0,
-    10,
-    "```haskell\nbrickStyle :: (Int, Int) -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:219:1*"
-   ],
-   [
-    15,
-    18,
-    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nA fixed-precision integer type with at least the range  `[-2^29 .. 2^29-1]` .\n The exact range for a given implementation can be determined by using\n  `Prelude.minBound`  and  `Prelude.maxBound`  from the  `Prelude.Bounded`  class.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Int)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Int)"
-   ],
-   [
-    20,
+    19,
     23,
-    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nA fixed-precision integer type with at least the range  `[-2^29 .. 2^29-1]` .\n The exact range for a given implementation can be determined by using\n  `Prelude.minBound`  and  `Prelude.maxBound`  from the  `Prelude.Bounded`  class.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Int)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Int)"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    28,
-    32,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
+    24,
+    30,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    34,
+    36,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    38,
+    40,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    46,
+    53,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    54,
+    60,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    61,
+    65,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    66,
+    70,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    71,
+    76,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    77,
+    83,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ]
   ],
   "218": [
    [
     0,
+    7,
+    "```haskell\nhudText :: St -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:1*"
+   ],
+   [
+    11,
+    13,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+   ],
+   [
+    17,
+    21,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ]
+  ],
+  "219": [
+   [
+    0,
+    7,
+    "```haskell\nhudText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:220:1*"
+   ],
+   [
+    8,
     10,
-    "```haskell\nbrickStyle :: (Int, Int) -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:219:1*"
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:220:9*"
+   ],
+   [
+    14,
+    19,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    25,
+    31,
+    "```haskell\npack :: String -> Text\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ],
+   [
+    33,
+    37,
+    "```haskell\nshow :: forall a. Show a => a -> String\n```\n\n*Defined in \u2018GHC.Internal.Show\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Show Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Show\u2019*\n* * *\n\n```haskell\n_ :: Int -> String\n```\n* * *\n\n```haskell\n_ :: forall a. Show a => a -> String\n```"
+   ],
+   [
+    39,
+    44,
+    "```haskell\nscore :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:5*"
+   ],
+   [
+    45,
+    47,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:220:9*"
+   ]
+  ],
+  "220": [
+   [
+    25,
+    30,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    36,
+    42,
+    "```haskell\npack :: String -> Text\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ],
+   [
+    44,
+    48,
+    "```haskell\nshow :: forall a. Show a => a -> String\n```\n\n*Defined in \u2018GHC.Internal.Show\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Show Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Show\u2019*\n* * *\n\n```haskell\n_ :: Int -> String\n```\n* * *\n\n```haskell\n_ :: forall a. Show a => a -> String\n```"
+   ],
+   [
+    50,
+    55,
+    "```haskell\nlives :: St -> Int\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:73:12*"
+   ],
+   [
+    56,
+    58,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:220:9*"
+   ]
+  ],
+  "221": [
+   [
+    37,
+    39,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    40,
+    41,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    42,
+    43,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    44,
+    46,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    47,
+    51,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "223": [
+   [
+    0,
+    11,
+    "```haskell\noverlayText :: St -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:225:1*"
+   ],
+   [
+    15,
+    17,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+   ],
+   [
+    21,
+    25,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ]
+  ],
+  "224": [
+   [
+    0,
+    11,
+    "```haskell\noverlayText :: St -> Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:225:1*"
+   ],
+   [
+    12,
+    14,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:225:13*"
+   ],
+   [
+    22,
+    27,
+    "```haskell\nphase :: St -> Phase\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69) | [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:74:5*"
+   ],
+   [
+    28,
+    30,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:225:13*"
+   ]
+  ],
+  "225": [
+   [
+    2,
+    9,
+    "```haskell\nPlaying :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:22*"
+   ]
+  ],
+  "226": [
+   [
+    2,
+    7,
+    "```haskell\nReady :: Phase\n```\n\nGo to [Phase](file:///demo/breakout/app/Main.hs#L66)\n\n*Defined at /demo/breakout/app/Main.hs:66:14*"
+   ],
+   [
+    15,
+    20,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    21,
+    26,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    28,
+    30,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    31,
+    36,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    38,
+    40,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    41,
+    47,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "227": [
+   [
+    2,
+    6,
+    "```haskell\nOver :: Bool -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:32*"
+   ],
+   [
+    7,
+    11,
+    "```haskell\nTrue :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    17,
+    20,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    21,
+    24,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    34,
+    39,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    40,
+    42,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    43,
+    47,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    48,
+    53,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "228": [
+   [
+    2,
+    6,
+    "```haskell\nOver :: Bool -> Phase\n```\n\n*Defined at /demo/breakout/app/Main.hs:66:32*"
+   ],
+   [
+    7,
+    12,
+    "```haskell\nFalse :: Bool\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    17,
+    21,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    22,
+    26,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    35,
+    40,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    41,
+    43,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    44,
+    48,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    49,
+    54,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "230": [
+   [
+    0,
+    10,
+    "```haskell\nbrickStyle :: (Int, Int) -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:232:1*"
+   ],
+   [
+    15,
+    18,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    20,
+    23,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
+   ],
+   [
+    28,
+    32,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ]
+  ],
+  "231": [
+   [
+    0,
+    10,
+    "```haskell\nbrickStyle :: (Int, Int) -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:232:1*"
    ],
    [
     11,
     12,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:219:12*"
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:232:12*"
    ],
    [
     14,
     15,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:219:15*"
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:232:15*"
    ],
    [
     17,
@@ -4683,566 +4683,566 @@ window.leksahDemoHovers = {
     "```haskell\n_ :: Int\n```"
    ]
   ],
-  "219": [
+  "232": [
    [
     7,
     8,
-    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:8*"
+    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:8*"
    ],
    [
     10,
     11,
-    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:11*"
+    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:11*"
    ],
    [
     13,
     14,
-    "```haskell\nw :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:14*"
+    "```haskell\nw :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:14*"
    ],
    [
     16,
     17,
-    "```haskell\nh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:17*"
+    "```haskell\nh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:17*"
    ],
    [
     21,
     30,
-    "```haskell\nbrickRect :: (Int, Int) -> (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:79:1*"
+    "```haskell\nbrickRect :: (Int, Int) -> (Double, Double, Double, Double)\n```\n\n*Defined at /demo/breakout/app/Main.hs:91:1*"
    ],
    [
     31,
     32,
-    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:219:12*"
-   ]
-  ],
-  "220": [
-   [
-    6,
-    14,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    15,
-    23,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    24,
-    31,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    32,
-    38,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    39,
-    43,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    44,
-    50,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    51,
-    57,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    59,
-    61,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    62,
-    66,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    72,
-    74,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    75,
-    76,
-    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:8*"
-   ]
-  ],
-  "221": [
-   [
-    10,
-    13,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    19,
-    21,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    22,
-    23,
-    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:11*"
-   ],
-   [
-    29,
-    34,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    40,
-    42,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    43,
-    44,
-    "```haskell\nw :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:14*"
-   ],
-   [
-    50,
-    56,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    62,
-    64,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    65,
-    66,
-    "```haskell\nh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:220:17*"
-   ]
-  ],
-  "222": [
-   [
-    10,
-    20,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    26,
-    34,
-    "```haskell\nrowColor :: Int -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:226:1*"
-   ],
-   [
-    35,
-    36,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:219:15*"
-   ]
-  ],
-  "224": [
-   [
-    0,
-    8,
-    "```haskell\nrowColor :: Int -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:226:1*"
-   ],
-   [
-    12,
-    15,
-    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nA fixed-precision integer type with at least the range  `[-2^29 .. 2^29-1]` .\n The exact range for a given implementation can be determined by using\n  `Prelude.minBound`  and  `Prelude.maxBound`  from the  `Prelude.Bounded`  class.\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Types.html#t:Int)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Types.html#Int)"
-   ],
-   [
-    19,
-    23,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
-   ]
-  ],
-  "225": [
-   [
-    0,
-    8,
-    "```haskell\nrowColor :: Int -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:226:1*"
-   ],
-   [
-    9,
-    10,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:226:10*"
-   ],
-   [
-    16,
-    22,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    26,
-    32,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    36,
-    42,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    48,
-    52,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    57,
-    62,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    69,
-    70,
-    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:226:10*"
-   ],
-   [
-    72,
-    75,
-    "```haskell\nmod :: forall a. Integral a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1401.0)*\n\n\n\nInteger modulus, satisfying \n```haskell\n(x \\`div\\` y)*y + (x \\`mod\\` y) == x\n```\n \n\nWARNING: This function is partial (because it throws when 0 is passed as\n the divisor) for all the integer types in  `base` .\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Real.html#v:mod)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Real.html#mod)\n\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\n\n```haskell\n_ :: Int -> Int -> Int\n```\n* * *\n\n```haskell\n_ :: forall a. Integral a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `mod`"
-   ]
-  ],
-  "227": [
-   [
-    0,
-    8,
-    "```haskell\nballAttr :: St -> Map Text Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:229:1*"
-   ],
-   [
-    12,
-    14,
-    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
-   ],
-   [
-    18,
-    21,
-    "```haskell\nMap :: Type -> Type -> Type\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n\nA Map from keys  `k`  to values  `a` .\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Map-Internal.html#t:Map)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Map.Internal.html#Map)"
-   ],
-   [
-    22,
-    26,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
-   ],
-   [
-    27,
-    31,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
-   ]
-  ],
-  "228": [
-   [
-    0,
-    8,
-    "```haskell\nballAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:229:1*"
-   ],
-   [
-    9,
-    11,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:229:10*"
-   ],
-   [
-    15,
-    20,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "229": [
-   [
-    5,
-    13,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    14,
-    22,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    23,
-    30,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    31,
-    37,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    38,
-    42,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    43,
-    49,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    50,
-    56,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    61,
-    71,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    73,
-    79,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "230": [
-   [
-    8,
-    12,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    18,
-    20,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    22,
-    24,
-    "```haskell\ncx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:5*"
-   ],
-   [
-    25,
-    27,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:229:10*"
-   ],
-   [
-    30,
-    35,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
-   ],
-   [
-    42,
-    45,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    51,
-    53,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    55,
-    57,
-    "```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:58:9*"
-   ],
-   [
-    58,
-    60,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:229:10*"
-   ],
-   [
-    63,
-    68,
-    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:43:29*"
-   ]
-  ],
-  "231": [
-   [
-    9,
-    14,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    20,
-    22,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    26,
-    31,
-    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:*)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#*)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
-   ],
-   [
-    38,
-    44,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    50,
-    52,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    56,
-    61,
-    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Num.html#v:*)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Num.html#*)\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+    "```haskell\nk :: (Int, Int)\n```\n\n*Defined at /demo/breakout/app/Main.hs:232:12*"
    ]
   ],
   "233": [
    [
-    0,
-    10,
-    "```haskell\npaddleAttr :: St -> Map Text Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:235:1*"
-   ],
-   [
+    6,
     14,
-    16,
-    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:57:1*"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    20,
+    15,
     23,
-    "```haskell\nMap :: Type -> Type -> Type\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*\n\n\n\nA Map from keys  `k`  to values  `a` .\n\n[Documentation](https://hackage.haskell.org/package/containers-0.8/docs/Data-Map-Internal.html#t:Map)\n\n[Source](https://hackage.haskell.org/package/containers-0.8/docs/src/Data.Map.Internal.html#Map)"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     24,
-    28,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
+    31,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    29,
-    33,
-    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*\n\n\n\nA space efficient, packed, unboxed Unicode text type.\n\n[Documentation](https://hackage.haskell.org/package/text-2.1.3/docs/Data-Text-Internal.html#t:Text)\n\n[Source](https://hackage.haskell.org/package/text-2.1.3/docs/src/Data.Text.Internal.html#Text)"
+    32,
+    38,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    39,
+    43,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    44,
+    50,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    51,
+    57,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    59,
+    61,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    62,
+    66,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    72,
+    74,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    75,
+    76,
+    "```haskell\nx :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:8*"
    ]
   ],
   "234": [
    [
-    0,
     10,
-    "```haskell\npaddleAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:235:1*"
-   ],
-   [
-    11,
     13,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:235:12*"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
-    17,
+    19,
+    21,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
     22,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    23,
+    "```haskell\ny :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:11*"
+   ],
+   [
+    29,
+    34,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    40,
+    42,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    43,
+    44,
+    "```haskell\nw :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:14*"
+   ],
+   [
+    50,
+    56,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    62,
+    64,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    65,
+    66,
+    "```haskell\nh :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:233:17*"
    ]
   ],
   "235": [
    [
-    5,
-    13,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    14,
-    22,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    23,
-    30,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    31,
-    37,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    38,
-    42,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    43,
-    49,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    50,
-    56,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    58,
-    60,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    61,
-    71,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    74,
-    79,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ]
-  ],
-  "236": [
-   [
-    8,
-    12,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    18,
+    10,
     20,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    22,
-    25,
-    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:59:5*"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     26,
-    28,
-    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L57)\n\n*Defined at /demo/breakout/app/Main.hs:235:12*"
+    34,
+    "```haskell\nrowColor :: Int -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:239:1*"
    ],
    [
-    31,
-    38,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
-   ],
-   [
-    47,
-    50,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
-   ],
-   [
-    56,
-    58,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
-   ],
-   [
-    59,
-    66,
-    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:29*"
+    35,
+    36,
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:232:15*"
    ]
   ],
   "237": [
    [
-    9,
-    14,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    0,
+    8,
+    "```haskell\nrowColor :: Int -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:239:1*"
    ],
    [
-    20,
-    22,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
+    12,
+    15,
+    "```haskell\nInt :: Type\n```\n\n*Defined in \u2018GHC.Internal.Types\u2019* *(ghc-internal-9.1400.0)*"
    ],
    [
+    19,
     23,
-    30,
-    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:1*"
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ]
+  ],
+  "238": [
+   [
+    0,
+    8,
+    "```haskell\nrowColor :: Int -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:239:1*"
+   ],
+   [
+    9,
+    10,
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:239:10*"
+   ],
+   [
+    16,
+    22,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    26,
+    32,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     36,
     42,
-    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1401.0)*\n\n[Documentation](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/GHC-Internal-Data-String.html#v:fromString)\n\n[Source](https://hackage.haskell.org/package/ghc-internal-9.1401.0/docs/src/GHC.Internal.Data.String.html#fromString)\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    48,
+    52,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    57,
+    62,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    69,
+    70,
+    "```haskell\nr :: Int\n```\n\n*Defined at /demo/breakout/app/Main.hs:239:10*"
+   ],
+   [
+    72,
+    75,
+    "```haskell\nmod :: forall a. Integral a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Real\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Integral Int`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Real\u2019*\n* * *\n\n```haskell\n_ :: Int -> Int -> Int\n```\n* * *\n\n```haskell\n_ :: forall a. Integral a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `mod`"
+   ]
+  ],
+  "240": [
+   [
+    0,
+    8,
+    "```haskell\nballAttr :: St -> Map Text Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:242:1*"
+   ],
+   [
+    12,
+    14,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+   ],
+   [
+    18,
+    21,
+    "```haskell\nMap :: Type -> Type -> Type\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
+   ],
+   [
+    22,
+    26,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ],
+   [
+    27,
+    31,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ]
+  ],
+  "241": [
+   [
+    0,
+    8,
+    "```haskell\nballAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:242:1*"
+   ],
+   [
+    9,
+    11,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:242:10*"
+   ],
+   [
+    15,
+    20,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "242": [
+   [
+    5,
+    13,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    14,
+    22,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    23,
+    30,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    31,
+    37,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    38,
+    42,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    43,
+    49,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    50,
+    56,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    61,
+    71,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    73,
+    79,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "243": [
+   [
+    8,
+    12,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    18,
+    20,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    22,
+    24,
+    "```haskell\ncx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:5*"
+   ],
+   [
+    25,
+    27,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:242:10*"
+   ],
+   [
+    30,
+    35,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
+   ],
+   [
+    42,
+    45,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    51,
+    53,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    55,
+    57,
+    "```haskell\ncy :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:70:9*"
+   ],
+   [
+    58,
+    60,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:242:10*"
+   ],
+   [
+    63,
+    68,
+    "```haskell\nballR :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:55:29*"
+   ]
+  ],
+  "244": [
+   [
+    9,
+    14,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    20,
+    22,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    26,
+    31,
+    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+   ],
+   [
+    38,
+    44,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    50,
+    52,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    56,
+    61,
+    "```haskell\n* :: forall a. Num a => a -> a -> a\n```\n\n*Defined in \u2018GHC.Internal.Num\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `Num Double`\n  using an external instance\n  *Defined in \u2018GHC.Internal.Float\u2019*\n* * *\n\n```haskell\n_ :: Double -> Double -> Double\n```\n* * *\n\n```haskell\n_ :: forall a. Num a => a -> a -> a\n```\n  \n* * *  \ninfixl 7 `*`"
+   ]
+  ],
+  "246": [
+   [
+    0,
+    10,
+    "```haskell\npaddleAttr :: St -> Map Text Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:248:1*"
+   ],
+   [
+    14,
+    16,
+    "```haskell\nSt :: Type\n```\n\n*Defined at /demo/breakout/app/Main.hs:69:1*"
+   ],
+   [
+    20,
+    23,
+    "```haskell\nMap :: Type -> Type -> Type\n```\n\n*Defined in \u2018Data.Map.Internal\u2019* *(containers-0.8)*"
+   ],
+   [
+    24,
+    28,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ],
+   [
+    29,
+    33,
+    "```haskell\nText :: Type\n```\n\n*Defined in \u2018Data.Text.Internal\u2019* *(text-2.1.3)*"
+   ]
+  ],
+  "247": [
+   [
+    0,
+    10,
+    "```haskell\npaddleAttr :: St -> Map Text Text\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:248:1*"
+   ],
+   [
+    11,
+    13,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:248:12*"
+   ],
+   [
+    17,
+    22,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: Index (Map Text Text)\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "248": [
+   [
+    5,
+    13,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    14,
+    22,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    23,
+    30,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    31,
+    37,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    38,
+    42,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    43,
+    49,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    50,
+    56,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    58,
+    60,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    61,
+    71,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    74,
+    79,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ]
+  ],
+  "249": [
+   [
+    8,
+    12,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    18,
+    20,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    22,
+    25,
+    "```haskell\npcx :: St -> Double\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:71:5*"
+   ],
+   [
+    26,
+    28,
+    "```haskell\nst :: St\n```\n\nGo to [St](file:///demo/breakout/app/Main.hs#L69)\n\n*Defined at /demo/breakout/app/Main.hs:248:12*"
+   ],
+   [
+    31,
+    38,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ],
+   [
+    47,
+    50,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    56,
+    58,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    59,
+    66,
+    "```haskell\npaddleY :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:29*"
+   ]
+  ],
+  "250": [
+   [
+    9,
+    14,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
+   ],
+   [
+    20,
+    22,
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
+   ],
+   [
+    23,
+    30,
+    "```haskell\npaddleW :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:1*"
+   ],
+   [
+    36,
+    42,
+    "```haskell\nfromString :: forall a. IsString a => String -> a\n```\n\n*Defined in \u2018GHC.Internal.Data.String\u2019* *(ghc-internal-9.1400.0)*\n\n\n* * *\nEvidence of constraint `IsString Text`\n  using an external instance\n  *Defined in \u2018Data.Text\u2019*\n* * *\n\n```haskell\n_ :: String\n```\n* * *\n\n```haskell\n_ :: Text\n```\n* * *\n\n```haskell\n_ :: String -> Text\n```\n* * *\n\n```haskell\n_ :: forall a. IsString a => String -> a\n```"
    ],
    [
     48,
     50,
-    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:193:1*"
+    "```haskell\npx :: Double -> Text\n```\n\n*Defined at /demo/breakout/app/Main.hs:205:1*"
    ],
    [
     51,
     58,
-    "```haskell\npaddleH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:44:15*"
+    "```haskell\npaddleH :: Double\n```\n\n*Defined at /demo/breakout/app/Main.hs:56:15*"
    ]
   ]
  }

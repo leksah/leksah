@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MonoLocalBinds #-}
@@ -33,10 +34,21 @@ import qualified GHCJS.DOM.EventM as EventM (preventDefault)
 import GHCJS.DOM.GlobalEventHandlers (keyDown, keyUp)
 import GHCJS.DOM.KeyboardEvent (getKey)
 
+#if defined(ghcjs_HOST_OS)
+import qualified Language.Javascript.JSaddle.Warp as JW
+#else
 import qualified Language.Javascript.JSaddle.Terminal as JT
+#endif
 
 main :: IO ()
+#if defined(ghcjs_HOST_OS)
+-- GHC JS backend: jsaddle-warp's run is an in-browser runner here (the port
+-- is ignored) — the same trick as leksah's own browserMain.  This compiled
+-- build is what the website demo's browser pane plays at /try/breakout/.
+main = JW.run 3711 (mainWidget game)
+#else
 main = JT.run (mainWidget game)
+#endif
 
 -- Board / entity geometry (logical px).
 boardW, boardH, ballR, paddleW, paddleH, paddleY :: Double
@@ -192,16 +204,17 @@ game = mdo
 px :: Double -> Text
 px d = T.pack (show (round d :: Int)) <> "px"
 
+-- (Concatenation, not string gaps: CPP strips the backslash-newline gaps.)
 wrapStyle, hudStyle, boardStyle, overlayStyle :: Text
-wrapStyle = "text-align:center;font-family:-apple-system,BlinkMacSystemFont,\
-            \Segoe UI,sans-serif;color:#ddd;padding-top:10px;user-select:none"
+wrapStyle = "text-align:center;font-family:-apple-system,BlinkMacSystemFont,"
+            <> "Segoe UI,sans-serif;color:#ddd;padding-top:10px;user-select:none"
 hudStyle  = "font-size:14px;margin-bottom:8px;letter-spacing:0.3px"
-boardStyle = "position:relative;margin:0 auto;overflow:hidden;\
-             \background:#0b0b0f;border:2px solid #333;border-radius:4px;"
+boardStyle = "position:relative;margin:0 auto;overflow:hidden;"
+             <> "background:#0b0b0f;border:2px solid #333;border-radius:4px;"
              <> "width:" <> px boardW <> ";height:" <> px boardH
-overlayStyle = "position:absolute;inset:0;display:flex;align-items:center;\
-               \justify-content:center;font-size:20px;color:#fff;\
-               \text-shadow:0 1px 3px #000;pointer-events:none;text-align:center"
+overlayStyle = "position:absolute;inset:0;display:flex;align-items:center;"
+               <> "justify-content:center;font-size:20px;color:#fff;"
+               <> "text-shadow:0 1px 3px #000;pointer-events:none;text-align:center"
 
 hudText :: St -> Text
 hudText st = "Score " <> T.pack (show (score st))

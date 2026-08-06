@@ -149,7 +149,15 @@
             + (selectedTab() === before ? ' (UNCHANGED)' : ''));
         rendererCheck();
         menubarCheck(function () {
-          newTerminalCheck(function () { log('ALL CHECKS DONE'); });
+          newTerminalCheck(function () {
+            showcaseCheck(function () {
+              dragCheck(function () {
+                breakoutCheck(function () {
+                  agentsCheck(function () { log('ALL CHECKS DONE'); });
+                });
+              });
+            });
+          });
         });
       }, 600);
     }, 300);
@@ -247,6 +255,148 @@
   // So assert: css applied (screen position:relative), render service not
   // paused, screen inside its host, and visible painted output (DOM-renderer
   // row text, or a sized canvas under WebGL).
+  // --- The showcase leksah window (multi-pane split) ---------------------
+  // The demo boots with a sessionless leksah window "lw-0": the game's editor
+  // beside a browser pane running the compiled game, rendered by the shared
+  // sessionlessLwWidget.  Assert the split actually materialized (two leaf
+  // rects at different x), that its leaves hold the expected views, and that
+  // the ⌘-drag registries the gesture depends on are armed.
+  function showcaseCheck(done) {
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      var lw = document.querySelector('.terminal-cc[data-lw="lw-0"]');
+      var leaves = lw ? lw.querySelectorAll('.terminal-cc-leaf') : [];
+      if (leaves.length >= 2) {
+        clearInterval(timer);
+        var lefts = Array.prototype.map.call(leaves, function (l) {
+          return l.style.left;
+        });
+        var split = lefts[0] !== lefts[1];
+        var hasEditor = !!lw.querySelector('.cm-editor');
+        var hasBrowser = !!lw.querySelector('.browser');
+        log('showcase window: ' + leaves.length + ' leaves at ' + lefts.join('/')
+            + (split ? '' : ' (NOT SPLIT)')
+            + ' editor=' + hasEditor + ' browser=' + hasBrowser
+            + ((split && hasEditor && hasBrowser) ? ' — OK' : ' — BROKEN'));
+        var geom = (window.__leksahLwGeom || {})['lw-0'];
+        log('drag registries: lwGeom subs='
+            + (geom && geom.subs ? geom.subs.length : 'MISSING')
+            + ' leafDragTabs=' + typeof window.__leksahLeafDragTabs);
+        done();
+      } else if (Date.now() - t0 > 15000) {
+        clearInterval(timer);
+        log('SHOWCASE TIMEOUT — .terminal-cc[data-lw=lw-0] '
+            + (lw ? 'has ' + leaves.length + ' leaves' : 'not in DOM'));
+        done();
+      }
+    }, 400);
+  }
+
+  // Best-effort synthetic ⌘/Ctrl-drag of the showcase's first leaf onto the
+  // second (the real gesture: modifier+mousedown, 5px threshold, mouseup).
+  // Synthetic-event trust varies, so an unengaged drag logs DRAG-SKIPPED
+  // rather than failing; a committed one changes the published geometry.
+  function dragCheck(done) {
+    var lw = document.querySelector('.terminal-cc[data-lw="lw-0"]');
+    var leaves = lw ? lw.querySelectorAll('.terminal-cc-leaf') : [];
+    if (leaves.length < 2) { log('DRAG-SKIPPED — no showcase leaves'); done(); return; }
+    var before = JSON.stringify((window.__leksahLwGeom || {})['lw-0']);
+    var r0 = leaves[0].getBoundingClientRect();
+    var r1 = leaves[1].getBoundingClientRect();
+    function ev(type, x, y) {
+      return new MouseEvent(type, { bubbles: true, cancelable: true,
+        clientX: x, clientY: y, metaKey: true, ctrlKey: true, button: 0 });
+    }
+    var sx = r0.left + r0.width / 2, sy = r0.top + r0.height / 2;
+    var tx = r1.left + r1.width / 2, ty = r1.top + r1.height * 0.85;
+    document.elementFromPoint(sx, sy).dispatchEvent(ev('mousedown', sx, sy));
+    var steps = 6, i = 0;
+    var mover = setInterval(function () {
+      i++;
+      var x = sx + (tx - sx) * i / steps, y = sy + (ty - sy) * i / steps;
+      document.dispatchEvent(ev('mousemove', x, y));
+      if (i >= steps) {
+        clearInterval(mover);
+        var engaged = document.querySelector('.leksah')
+          && document.querySelector('.leksah').classList.contains('leksah-pane-dragging');
+        document.dispatchEvent(ev('mouseup', tx, ty));
+        if (!engaged) { log('DRAG-SKIPPED — gesture did not engage'); done(); return; }
+        var t0 = Date.now();
+        var timer = setInterval(function () {
+          var after = JSON.stringify((window.__leksahLwGeom || {})['lw-0']);
+          if (after !== before) {
+            clearInterval(timer);
+            log('synthetic drag committed — lw-0 geometry changed');
+            done();
+          } else if (Date.now() - t0 > 5000) {
+            clearInterval(timer);
+            log('DRAG engaged but geometry unchanged (drop may have parked)');
+            done();
+          }
+        }, 300);
+      }
+    }, 60);
+  }
+
+  // --- The breakout game in the showcase's browser pane ------------------
+  // Same-origin static page (/try/breakout/), so its document is inspectable.
+  // SKIP (not fail) when the page 404s: the app side is testable before the
+  // compiled game has been staged next to this page.
+  function breakoutCheck(done) {
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      var f = document.querySelector('.browser .browser-frame');
+      var src = f && (f.getAttribute('src') || '');
+      if (f && /\/try\/breakout/.test(src)) {
+        var body = null;
+        try { body = f.contentDocument && f.contentDocument.body; } catch (e) {}
+        if (body && body.children.length > 0) {
+          clearInterval(timer);
+          log('breakout iframe loaded: src=' + src + ' body children='
+              + body.children.length);
+          done();
+          return;
+        }
+      }
+      if (Date.now() - t0 > 10000) {
+        clearInterval(timer);
+        log(f ? ('BREAKOUT SKIP — iframe src=' + (src || '(unset)')
+                 + ' (page missing or empty)')
+              : 'BREAKOUT SKIP — no .browser-frame in DOM');
+        done();
+      }
+    }, 400);
+  }
+
+  // --- The Agents pane (canned demo forest) ------------------------------
+  function agentsCheck(done) {
+    var tab = Array.prototype.slice.call(
+          document.querySelectorAll('.tab-buttons .tab-wrap'))
+        .filter(function (w) { return /^Agents/.test(w.textContent.trim()); })[0];
+    var btn = tab && tab.querySelector('button');
+    if (!btn) { log('AGENTS: no Agents side tab'); done(); return; }
+    btn.click();
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      var rows = document.querySelectorAll('.agents .agents-node');
+      if (rows.length > 0) {
+        clearInterval(timer);
+        var first = rows[0].querySelector('.agents-title');
+        var badges = document.querySelectorAll('.agents .agents-badge').length;
+        log('agents pane: ' + rows.length + ' rows, ' + badges + ' badges, first="'
+            + (first ? first.textContent.trim() : '?') + '"');
+        done();
+      } else if (Date.now() - t0 > 8000) {
+        clearInterval(timer);
+        var pane = document.querySelector('.agents');
+        log('AGENTS TIMEOUT — pane ' + (pane
+            ? 'present, text: ' + pane.textContent.trim().slice(0, 60)
+            : 'not in DOM'));
+        done();
+      }
+    }, 400);
+  }
+
   function rendererCheck() {
     Object.keys((window.LeksahTerm || {}).byId || {}).forEach(function (id) {
       try {

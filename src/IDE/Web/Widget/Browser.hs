@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE LambdaCase #-}
@@ -38,6 +39,10 @@ import Control.Exception (SomeException, catch, try)
 import Control.Monad (void, unless, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (encode, decode')
+#if defined(ghcjs_HOST_OS)
+import Data.Aeson (FromJSON(..), withObject, (.:))
+import Data.Text.Encoding (encodeUtf8)
+#endif
 import Data.Bool (bool)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
@@ -80,6 +85,15 @@ import IDE.Web.NativeBrowser (NativeBrowserOps(..), getNativeBrowserOps)
 
 data BrowserPanes = BrowserPanes { bpNext :: Int, bpUrls :: Map Int Text }
 
+#if defined(ghcjs_HOST_OS)
+-- | The page-seeded shape of the demo's registry (see 'loadPanes').
+data DemoBrowserPanes = DemoBrowserPanes Int (Map Int Text)
+
+instance FromJSON DemoBrowserPanes where
+  parseJSON = withObject "DemoBrowserPanes" $ \o ->
+    DemoBrowserPanes <$> o .: "next" <*> o .: "urls"
+#endif
+
 -- | @Nothing@ = not loaded from disk yet (also the state after a ghci
 -- @:reload@ re-initialises the CAF — the next access reloads the file).
 {-# NOINLINE browserPanesRef #-}
@@ -90,12 +104,26 @@ panesPath :: IO FilePath
 panesPath = getConfigFilePathForSave "web-browser-panes.json"
 
 loadPanes :: IO BrowserPanes
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: no config dir to read, so the hosting page seeds the registry
+-- via @window.leksahDemoBrowserPanes@ (@{"next":2,"urls":{"1":"/try/breakout/"}}@
+-- — pane 1 is the showcase window's game; @next@ keeps visitor-opened panes
+-- from colliding with it).  Same page-seeded pattern as "IDE.Web.DemoTerminals";
+-- JSM is in-process under the JS backend, so the eval is safe from plain IO.
+loadPanes = (`catch` \(_ :: SomeException) -> return (BrowserPanes 1 M.empty)) $ do
+    txt <- valToText
+        =<< eval ("JSON.stringify(window.leksahDemoBrowserPanes || null)" :: Text)
+    case decode' (LBS.fromStrict (encodeUtf8 txt)) of
+      Just (DemoBrowserPanes nxt urls) -> return (BrowserPanes nxt urls)
+      Nothing                          -> return (BrowserPanes 1 M.empty)
+#else
 loadPanes = (`catch` \(_ :: SomeException) -> return (BrowserPanes 1 M.empty)) $ do
     path <- panesPath
     bytes <- LBS.readFile path
     case decode' bytes of
       Just (nxt, urls) -> return (BrowserPanes nxt (M.fromList urls))
       Nothing          -> return (BrowserPanes 1 M.empty)
+#endif
 
 savePanes :: BrowserPanes -> IO ()
 savePanes bp = (`catch` \(_ :: SomeException) -> return ()) $ do
@@ -166,14 +194,15 @@ isOwnUrl u0 =
       | otherwise  = (T.dropEnd 1 pre, readMaybe (T.unpack post))
 
 -- | What the iframe shows instead when 'isOwnUrl' refuses a page.
+-- (Concatenation, not string gaps: CPP strips the backslash-newline gaps.)
 ownUrlBlockedPage :: Text
 ownUrlBlockedPage =
-  "data:text/html;charset=utf-8,<body style=\"margin:0;height:100vh;display:flex;\
-  \align-items:center;justify-content:center;background:%23181b20;\
-  \color:%23848d97;font:13px -apple-system,sans-serif;text-align:center\">\
-  \<div>This is leksah's own UI \x2014 it won't load inside itself.<br>\
-  \Use <b>leksah-cmd open-browser URL</b> (or the system browser) to view it.\
-  \</div></body>"
+  "data:text/html;charset=utf-8,<body style=\"margin:0;height:100vh;display:flex;"
+  <> "align-items:center;justify-content:center;background:%23181b20;"
+  <> "color:%23848d97;font:13px -apple-system,sans-serif;text-align:center\">"
+  <> "<div>This is leksah's own UI \x2014 it won't load inside itself.<br>"
+  <> "Use <b>leksah-cmd open-browser URL</b> (or the system browser) to view it."
+  <> "</div></body>"
 
 -- | Does the site refuse to be embedded in a frame?  Big sites (google.com,
 -- github.com, …) send @X-Frame-Options@ / CSP @frame-ancestors@, and WebKit
@@ -219,12 +248,12 @@ embedBlockReason u = do
 -- name are interpolated into the data: URL.
 frameBlockedPage :: Text -> Text -> Text
 frameBlockedPage u reason =
-  "data:text/html;charset=utf-8,<body style=\"margin:0;height:100vh;display:flex;\
-  \align-items:center;justify-content:center;background:%23181b20;\
-  \color:%23848d97;font:13px -apple-system,sans-serif;text-align:center\">\
-  \<div><b>" <> sanitize host <> "</b> refuses to be shown inside another page<br>\
-  \(" <> sanitize reason <> "),<br>so it cannot render in this pane.<br><br>\
-  \Use the \x2197 toolbar button to open it in your browser.</div></body>"
+  "data:text/html;charset=utf-8,<body style=\"margin:0;height:100vh;display:flex;"
+  <> "align-items:center;justify-content:center;background:%23181b20;"
+  <> "color:%23848d97;font:13px -apple-system,sans-serif;text-align:center\">"
+  <> "<div><b>" <> sanitize host <> "</b> refuses to be shown inside another page<br>"
+  <> "(" <> sanitize reason <> "),<br>so it cannot render in this pane.<br><br>"
+  <> "Use the \x2197 toolbar button to open it in your browser.</div></body>"
   where
     host = T.takeWhile (`notElem` ("/?#" :: String))
          . fromMaybe u $ case T.stripPrefix "http://" u of

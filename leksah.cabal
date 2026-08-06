@@ -376,6 +376,7 @@ library
         IDE.Web.Widget.Agents
         IDE.Web.Widget.AIPicker
         IDE.Web.JsaddleTunnel
+        IDE.Web.Widget.LwView
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
@@ -676,6 +677,7 @@ library leksah-nogtk
         IDE.Web.Widget.Agents
         IDE.Web.Widget.AIPicker
         IDE.Web.JsaddleTunnel
+        IDE.Web.Widget.LwView
         IDE.Web.Widget.TerminalCC
         IDE.Web.TransparencyRequest
         IDE.Web.SnapRequest
