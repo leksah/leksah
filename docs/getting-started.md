@@ -69,4 +69,24 @@ Open **Preferences** from the menu. A few highlights:
 * **Terminal** — tmux control-mode terminals (recommended; keeps terminal
   state across restarts).
 
-Preferences persist in `~/.leksah-0.17/prefs.lkshp`.
+Preferences persist in `~/.config/leksah/settings.json` — sectioned JSON
+(`editor` / `font` / `theme` / `ui` / `build` / `terminal` / `lsp` / `ai`),
+and only the keys you changed from the defaults are written, so the file
+stays a readable list of your customisations.
+
+## Keyboard shortcuts
+
+**Edit ▸ Keyboard Shortcuts…** (mod+/) shows every binding.  Rebind keys in
+`~/.config/leksah/keybindings.json`, VS Code style — rules append to the
+defaults, a later rule wins its chord, and a leading `-` on the command
+removes a default binding:
+
+```json
+[ { "key": "cmd+shift+m", "command": "package.build" },
+  { "key": "ctrl+shift+b", "command": "-package.build" },
+  { "key": "cmd+8", "command": "nav.split", "args": 8 } ]
+```
+
+Saving the file applies it immediately (menus, the shortcut sheet and the
+key handler all follow), as does **Edit ▸ Reload Keybindings**.  Command ids
+are listed in the Shortcuts pane's source registry (`IDE.Web.Commands`).
