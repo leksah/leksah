@@ -155,13 +155,14 @@ import IDE.Core.State
         pjFileOrDir, CustomProject(..), ProjectSettings(..),
         defaultProjectSettings, wsSettingsFor)
 import IDE.Gtk.State (postSyncIDE, postAsyncIDE, delayedBy)
-import IDE.Utils.CabalUtils (writeGenericPackageDescription')
+import Distribution.Simple.Utils (writeUTF8File)
+import Distribution.PackageDescription.PrettyPrint
+       (showGenericPackageDescription)
 import IDE.Pane.Log
        (addLogLaunchData, showLog, buildLogLaunchByName,
         showDefaultLogLaunch', getDefaultLogLaunch)
 import IDE.Pane.SourceBuffer
        (removeTestLogRefs, fileSaveAll, belongsToWorkspace')
-import IDE.PackageFlags (writeFlags, readFlags, readFlagsFromBytes)
 import IDE.Utils.FileUtils
        (getPackageDBs', cabalProjectBuildDir, cabalBuildDir, loadNixCache, saveNixCache,
         getConfigDir, nixShellFile, getConfigFilePathForLoad)
@@ -170,7 +171,7 @@ import IDE.LogRef
         logOutputDefault, logOutput)
 import Distribution.ModuleName (ModuleName)
 import Data.List
-       (intercalate, nub, nubBy, delete)
+       (intercalate, nub, nubBy, delete, dropWhileEnd)
 import IDE.Utils.Tool
        (toolProcess, ToolOutput(..), newGhci, ToolState(..),
         ProcessHandle, executeGhciCommand, interruptTool,
@@ -194,7 +195,6 @@ import Data.Text (Text)
 import qualified Data.Text.IO as T (readFile)
 import qualified Text.Printf as S (printf)
 import Text.Printf (PrintfType)
-import IDE.Metainfo.Provider (updateSystemInfo)
 import IDE.Utils.VersionUtils (getDefaultGhcVersion)
 import IDE.Utils.CabalProject
        (findProjectRoot)
@@ -322,7 +322,7 @@ updateNixCache project compilers continuation = do
     loop compilers
   where
     loop :: MonadIDE m => [Text] -> m ()
-    loop [] = liftIDE (updateSystemInfo >> continuation)
+    loop [] = liftIDE continuation
     loop (compiler:rest) = do
         showDefaultLogLaunch'
 
@@ -964,7 +964,6 @@ packageRun' removeGhcjsFlagIfPresent = do
                 True -> do
                     let packWithNewFlags = package { ipdConfigFlags = filter (/="--ghcjs") $ ipdConfigFlags package }
                     liftIDE $ changePackage packWithNewFlags
-                    liftIO $ writeFlags (dropExtension (ipdCabalFile packWithNewFlags) ++ leksahFlagFileExtension) packWithNewFlags
                     lift $ State.runPackage (packageRun' Nothing) packWithNewFlags
                 False -> return ()
         _ -> liftIDE $ catchIDE (do
@@ -1556,14 +1555,12 @@ idePackageFromPath' cabalFile = do
                 return Nothing)
     case mbGPD of
         Nothing  -> return Nothing
-        Just gpd -> idePackageFromGPD cabalFile gpd Nothing
+        Just gpd -> idePackageFromGPD cabalFile gpd
 
 -- | Build the 'IDEPackage' from an already-parsed .cabal ('ideProjectFromKey'
 -- parses remote packages from snapshot bytes — no per-package file reads).
--- @mbFlagBytes@ is the .lkshf contents when the caller already has them;
--- 'Nothing' checks for the flag file next to the .cabal via the FS seam.
-idePackageFromGPD :: FilePath -> GenericPackageDescription -> Maybe LBS.ByteString -> IDEM (Maybe IDEPackage)
-idePackageFromGPD ipdCabalFile gpd mbFlagBytes = do
+idePackageFromGPD :: FilePath -> GenericPackageDescription -> IDEM (Maybe IDEPackage)
+idePackageFromGPD ipdCabalFile gpd = do
         let packageD = flattenPackageDescription gpd
         do
             let ipdModules          = M.fromList $ myLibModules packageD ++ myExeModules packageD
@@ -1594,15 +1591,15 @@ idePackageFromGPD ipdCabalFile gpd mbFlagBytes = do
                 ipdUnregisterFlags  = []
                 ipdSdistFlags       = []
                 packp               = IDEPackage {..}
-                pfile               = dropExtension ipdCabalFile
-            pack <- case mbFlagBytes of
-                Just bytes -> liftIO $ readFlagsFromBytes bytes packp
-                Nothing -> do
-                    flagFileExists <- liftIO $ fsDoesFileExist (pfile ++ leksahFlagFileExtension)
-                    if flagFileExists
-                        then liftIO $ readFlags (pfile ++ leksahFlagFileExtension) packp
-                        else return packp
-            return (Just pack)
+            return (Just packp)
+
+-- | Write a GenericPackageDescription, stripping the trailing spaces
+-- Cabal's pretty-printer leaves at line ends (noise in diffs).
+writeGenericPackageDescription' :: FilePath -> GenericPackageDescription -> IO ()
+writeGenericPackageDescription' fp =
+    writeUTF8File fp
+        . unlines . map (dropWhileEnd (== ' ')) . lines
+        . showGenericPackageDescription
 
 extractStackPackageList :: Text -> [String]
 extractStackPackageList = (\x -> if null x then ["."] else x) .
@@ -1696,25 +1693,18 @@ ideProjectFromKey key = do
                 if null pkgDirs then return [] else do
                     entries <- nubBy ((==) `on` seLocalPath)
                         <$> liftIO (remoteCabalSnapshot host rdir pkgDirs)
-                    let flagMap = M.fromList
-                            [ (seLocalPath e, seBytes e)
-                            | e <- entries
-                            , takeExtension (seLocalPath e) == leksahFlagFileExtension ]
-                        cabalEntries =
+                    let cabalEntries =
                             [ e | e <- entries
                             , takeExtension (seLocalPath e) == ".cabal" ]
                     fmap catMaybes . forM cabalEntries $ \e -> do
                         let cabalFile = renderRemotePath host (seLocalPath e)
-                            mbFlags = LBS.fromStrict <$> M.lookup
-                                (dropExtension (seLocalPath e) ++ leksahFlagFileExtension)
-                                flagMap
                         mbGpd <- catchIDE (liftIO $ Just <$> gpdFromBytes cabalFile (seBytes e))
                             (\(e' :: SomeException) -> do
                                 ideMessage Normal (__ "Can't activate package " <> T.pack (show e'))
                                 return Nothing)
                         case mbGpd of
                             Nothing  -> return Nothing
-                            Just gpd -> idePackageFromGPD cabalFile gpd mbFlags
+                            Just gpd -> idePackageFromGPD cabalFile gpd
               Nothing -> do
                 patterns <- liftIO $ map (Glob.compile . (</> "*.cabal")) <$>
                     case key of

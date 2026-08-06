@@ -414,7 +414,6 @@ setWorkspace mbWs = do
         Nothing -> return ()
     triggerEventIDE_ (StatusbarChanged [CompartmentPackage txt])
     triggerEventIDE_ (WorkspaceChanged True True)
-    triggerEventIDE_ $ UpdateWorkspaceInfo True
   where
     isSourceIn srcDir f =
         case stripPrefix srcDir f of

@@ -57,28 +57,32 @@ These are classic-only and `git mv` to `leksah-classic/`; no rewrite needed.
 `src/IDE/TextEditor/Yi/Config.hs`, `main/Main.hs`
 (also all of `src-gtk/`, which was classic-only already).
 
-### Removed with the metadata soft-delete (Stage 2)
+### Deleted outright in Stage 2 (no soft-delete flag — classic keeps its
+### copies, and git history preserves everything)
 
 | file | note |
 |---|---|
-| `src/IDE/Metainfo/Provider.hs` | excluded by the `metadata` flag; classic keeps its copy |
-| `src/IDE/Utils/ServerConnection.hs` | excluded by the `metadata` flag |
+| `src/IDE/Metainfo/Provider.hs` | metadata subsystem removed |
+| `src/IDE/Utils/ServerConnection.hs` | metadata subsystem removed |
+| `src/IDE/SourceCandy.hs` | feature dropped (fonts provide ligatures) |
+| `src/IDE/Debug.hs` | feature dropped (ghci terminal panes; DAP later) |
+| `src/IDE/PackageFlags.hs` | `.lkshf` feature dropped |
+| `src/IDE/TextEditor/Yi/Config.hs` | yi support dropped from the new leksah |
+| `src/IDE/Utils/CabalUtils.hs` | git-history Hamish-only but header credits the old authors; its one 10-line utility was re-expressed fresh in Package.hs |
+| `src/IDE/Web/Widget/Metadata.hs` | (Hamish-authored) metadata UI, dies with the feature |
 
 ### Replaced by new code, stage by stage
 
 | file | other authors (commits) | replaced in |
 |---|---|---|
-| `src/IDE/Preferences.hs` | Jacco Krijnen (29), Juergen (30), Stephan Fortelny (4), others | Stage 3 (JSON prefs) |
-| `src/IDE/SourceCandy.hs` | Juergen (11) | Stage 3 (feature dropped) |
-| `src/IDE/LogRef.hs` | Juergen (13), Stephan Fortelny (4), others | Stage 5 (`IDE.Diagnostics`) |
-| `src/IDE/Package.hs` | Juergen (45), JP Moresmau (8), Stephan Fortelny (7), others | Stage 6 (project model) |
-| `src/IDE/Workspaces.hs` | Juergen (26), Stephan Fortelny (12), Jacco Krijnen (6), others | Stage 6 |
-| `src/IDE/Workspaces/Writer.hs` | Stephan Fortelny (1 — the 2011 module split; content originally Juergen's) | Stage 6 |
-| `src/IDE/Build.hs` | Juergen (6), Sanny Sanoff (1), JP Moresmau (1) | Stage 6 (`IDE.Project.Build`) |
-| `src/IDE/PackageFlags.hs` | Juergen (3), info (1) | Stage 6 (feature dropped) |
-| `src/IDE/Debug.hs` | Juergen (16), Stephan Fortelny (2), Mansour (2) | Stage 7 (feature dropped; DAP later) |
-| `src/IDE/Core/State.hs` | Juergen (39), Jacco Krijnen (4) | Stage 7 (barrel module deleted) |
-| `src/IDE/Core/Types.hs` | Juergen (44), Jacco Krijnen (15), Stephan Fortelny (5), others | Stages 3–7 by attrition → new `IDE.Core` |
+| `src/IDE/Preferences.hs` | Jacco Krijnen (29), Juergen (30), Stephan Fortelny (4), others | step B (JSON prefs) |
+| `src/IDE/LogRef.hs` | Juergen (13), Stephan Fortelny (4), others | step D (`IDE.Diagnostics`) |
+| `src/IDE/Package.hs` | Juergen (45), JP Moresmau (8), Stephan Fortelny (7), others | step E (project model) |
+| `src/IDE/Workspaces.hs` | Juergen (26), Stephan Fortelny (12), Jacco Krijnen (6), others | step E |
+| `src/IDE/Workspaces/Writer.hs` | Stephan Fortelny (1 — the 2011 module split; content originally Juergen's) | step E |
+| `src/IDE/Build.hs` | Juergen (6), Sanny Sanoff (1), JP Moresmau (1) | step E (`IDE.Project.Build`) |
+| `src/IDE/Core/State.hs` | Juergen (39), Jacco Krijnen (4) | step F (barrel module deleted) |
+| `src/IDE/Core/Types.hs` | Juergen (44), Jacco Krijnen (15), Stephan Fortelny (5), others | step F (new `IDE.Core`) |
 
 ### Vendored GPL code compiled into the main package (Stage 2 drops)
 
@@ -103,20 +107,22 @@ This is the gate for the license flip; delete rows as stages land.
 
 | file | blocked on |
 |---|---|
-| `src/IDE/Metainfo/Provider.hs` | Stage 2 |
-| `src/IDE/Utils/ServerConnection.hs` | Stage 2 |
-| vendored `Control.Event` + 11 `leksah-server` modules | Stage 2 |
-| `src/IDE/Preferences.hs` | Stage 3 |
-| `src/IDE/SourceCandy.hs` | Stage 3 |
-| `src/IDE/LogRef.hs` | Stage 5 |
-| `src/IDE/Package.hs` | Stage 6 |
-| `src/IDE/Workspaces.hs` | Stage 6 |
-| `src/IDE/Workspaces/Writer.hs` | Stage 6 |
-| `src/IDE/Build.hs` | Stage 6 |
-| `src/IDE/PackageFlags.hs` | Stage 6 |
-| `src/IDE/Debug.hs` | Stage 7 |
-| `src/IDE/Core/State.hs` | Stage 7 |
-| `src/IDE/Core/Types.hs` | Stages 3–7 (attrition) |
+| vendored `Control.Event` + `leksah-server` modules | fresh replacements (step C) |
+| `src/IDE/Preferences.hs` | new JSON prefs (step B) |
+| `src/IDE/LogRef.hs` | `IDE.Diagnostics` (step D) |
+| `src/IDE/Package.hs` | project model (step E) |
+| `src/IDE/Workspaces.hs` | project model (step E) |
+| `src/IDE/Workspaces/Writer.hs` | project model (step E) |
+| `src/IDE/Build.hs` | project model (step E) |
+| `src/IDE/Core/State.hs` | new `IDE.Core` (step F) |
+| `src/IDE/Core/Types.hs` | new `IDE.Core` (step F) |
+
+Deleted so far: `Metainfo/Provider.hs`, `Utils/ServerConnection.hs`,
+`SourceCandy.hs`, `Debug.hs`, `PackageFlags.hs`, `TextEditor/Yi/Config.hs`,
+`Utils/CabalUtils.hs`, `Web/Widget/Metadata.hs` (Stage 2, step A).
+Interim edits to the files still listed above are **severance only** (cutting
+imports of deleted modules) — never feature work; they are replaced as whole
+files at their step.
 
 Sign-off from the original authors can strike any row early if a rewrite
 turns out to be wasteful — record who agreed, when, and how, next to the row

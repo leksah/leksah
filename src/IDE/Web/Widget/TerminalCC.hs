@@ -139,7 +139,6 @@ import IDE.Web.JsaddleTunnel
 import IDE.Web.TmuxCC
 import IDE.Web.ThreadPriority (ThreadPriority(..), forkPriorityThread)
 import IDE.Web.Widget.Menu (menu)
-import IDE.Web.Widget.Metadata (lookupIdentLocations)
 import qualified IDE.LSP as LSP
 import qualified Language.Javascript.JSaddle.Terminal.Protocol as P
 
@@ -1491,7 +1490,7 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
     -- metadata.  No match -> nothing; one match -> jump straight there;
     -- several -> pop up a chooser of module names at the click position and
     -- jump to the picked one.  (Same flow as the classic widget.)
-    let optsE = attachWith (\i (tok, x, y) -> (lookupIdentLocations tok i, x, y))
+    let optsE = attachWith (\_i (_tok, x, y) -> ([], x, y))
                   (current ide) lookupE
         singleGotoE = fmapMaybe (\(opts, _, _) -> case opts of [(_, sp)] -> Just sp; _ -> Nothing) optsE
         multiE      = fmapMaybe (\(opts, x, y) -> if length opts > 1 then Just (x, y, opts) else Nothing) optsE

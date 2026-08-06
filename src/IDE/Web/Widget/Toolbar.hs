@@ -33,8 +33,7 @@ import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
   , commandToggleDebug, commandToggleMakeDocs, commandToggleTest
   , commandToggleRunBenchmarks, commandToggleMakeDependents
   , commandToggleShowIgnored, commandToggleShowHidden
-  , commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal
-  , commandDebugStepModule, commandDebugContinue, commandGetToggleState
+  , commandGetToggleState
   , commandClaudeNew)
 
 toolbarCss :: Css
@@ -191,11 +190,6 @@ toolbarWidget ide tallVisD wide1VisD =
       , commandToggleMakeDependents
       , commandToggleShowIgnored
       , commandToggleShowHidden
-      , commandUpdateWorkspaceInfo
-      , commandDebugStep
-      , commandDebugStepLocal
-      , commandDebugStepModule
-      , commandDebugContinue
       , commandClaudeNew
       ]
     return $ leftmost (tallE : wide1E : rest)

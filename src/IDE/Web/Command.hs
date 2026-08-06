@@ -36,14 +36,10 @@ import IDE.Core.State
         activePack, pjDir, pjKey, TabKey(..), leksahWindows,
         LeksahWindow(..), PaneContent(..), PaneKind(..))
 import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
-import IDE.Debug
-       (debugContinue, debugStepModule, debugStepLocal, debugStep,
-        debugToggled)
 import IDE.Gtk.Package
        (makeModeToggled, runBenchmarksToggled, runUnitTestsToggled,
         makeDocsToggled, javaScriptToggled, nativeToggled,
         backgroundBuildToggled, packageRunJavaScript, packageRun)
-import IDE.Metainfo.Provider (updateWorkspaceInfo)
 import IDE.Package (packageClean, projectRefreshNix, buildCustomProject)
 import IDE.Gtk.Workspaces
        (projectTry, packageTry, workspaceTry, makePackage)
@@ -118,8 +114,7 @@ commandAddModule, commandRefreshNix, commandPackageClean
   , commandToggleRunBenchmarks, commandToggleMakeDependents
   , commandToggleShowIgnored, commandToggleShowHidden, commandToggleTallPane
   , commandToggleWide1Pane, commandToggleTmuxIntercept
-  , commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal
-  , commandDebugStepModule, commandDebugContinue, commandFileClose :: Command
+  , commandFileClose :: Command
 commandAddModule = CommandPackageAction
   "/pics/new-module.svg"
   (__ "Creates a new Haskell module")
@@ -180,8 +175,8 @@ commandToggleJavaScript = CommandIDEToggleAction
 
 commandToggleDebug = CommandIDEToggleAction
   "/pics/debug.svg"
-  (__ "Use GHCi debugger to build and run")
-  (readIDE prefs >>= debugToggled . not . debug)
+  (__ "Build and run in GHCi (ffcabal repls)")
+  (modifyIDE_ $ prefs %~ (\p -> p { debug = not (debug p) }))
   (view $ prefs . to debug)
 
 commandToggleMakeDocs = CommandIDEToggleAction
@@ -256,11 +251,6 @@ commandToggleWide1Pane = CommandIDEAction
 cycleTall :: TallVisibility -> TallVisibility
 cycleTall v = if v == maxBound then minBound else succ v
 
-commandUpdateWorkspaceInfo = CommandIDEAction
-  "/pics/refresh-meta.svg"
-  (__ "Updates data for the current workspace")
-  updateWorkspaceInfo
-
 -- | Close the active editor or terminal tab.  The actual close happens in the
 -- reflex network (it's tab state), so this just signals a request that
 -- 'IDE.Web.Main' picks up; closing a terminal this way detaches from tmux
@@ -327,26 +317,6 @@ commandFocusAITerminal = CommandIDEAction
   ""
   (__ "Focus the AI terminal pane")
   (liftIO (requestAIAction FocusAITerminal))
-
-commandDebugStep = CommandIDEAction
-  "/pics/debug-step.svg"
-  (__ "Single-step after stopping at a breakpoint")
-  debugStep
-
-commandDebugStepLocal = CommandIDEAction
-  "/pics/debug-step-local.svg"
-  (__ "Single-step within the current top-level binding")
-  debugStepLocal
-
-commandDebugStepModule = CommandIDEAction
-  "/pics/debug-step-module.svg"
-  (__ "Single-step restricted to the current module")
-  debugStepModule
-
-commandDebugContinue = CommandIDEAction
-  "/pics/debug-continue.svg"
-  (__ "Resume after a breakpoint")
-  debugContinue
 
 -- | Start a new Claude Code session in the active project's directory (toolbar
 -- + AI menu).  A no-op when no project is active or @claude@ isn't on PATH

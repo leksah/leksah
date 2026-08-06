@@ -114,7 +114,6 @@ import GHCJS.DOM.Types (pToJSVal)
 import IDE.Core.CTypes (SrcSpan(..))
 import IDE.Core.State (IDE, focusLog)
 import IDE.Web.Widget.Menu (menu)
-import IDE.Web.Widget.Metadata (lookupIdentLocations)
 import qualified IDE.LSP as LSP
 
 import Reflex
@@ -868,7 +867,7 @@ terminalWidget ide termId selectedE = do
   -- Navigation from a Ctrl/Cmd-clicked identifier: look it up in the metadata.
   -- No match -> nothing; one match -> jump straight there; several -> pop up a
   -- chooser of module names at the click position and jump to the picked one.
-  let optsE = attachWith (\i (tok, x, y) -> (lookupIdentLocations tok i, x, y))
+  let optsE = attachWith (\_i (_tok, x, y) -> ([], x, y))
                 (current ide) lookupE
       singleGotoE = fmapMaybe (\(opts, _, _) -> case opts of [(_, sp)] -> Just sp; _ -> Nothing) optsE
       multiE      = fmapMaybe (\(opts, x, y) -> if length opts > 1 then Just (x, y, opts) else Nothing) optsE

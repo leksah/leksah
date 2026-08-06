@@ -219,7 +219,8 @@ doBuildChain ms chain@Chain{mcAction = MoInstall} =
 doBuildChain ms chain@Chain{mcAction = MoClean} =
     postAsyncIDE $ packageClean' (mcEle chain) (constrCont ms (mcPos chain) (mcNeg chain))
 doBuildChain _ms Chain{mcAction = MoMetaInfo} =
-    postAsyncIDE $ triggerEventIDE_ (UpdateWorkspaceInfo False)
+    -- Metadata is gone; MoMetaInfo steps are inert.
+    return ()
 doBuildChain ms chain  = doBuildChain ms (mcPos chain)
 
 constrCont

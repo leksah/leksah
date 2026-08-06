@@ -165,7 +165,9 @@ import IDE.Core.State
         SplitOrientation(..), SplitTree(..),
         flipMirror, flipMru, AIPaneRef(..), paneAISession,
         ideVersion, focusLog, metaLog)
+#ifdef LEKSAH_METADATA
 import IDE.Metainfo.Provider (initInfo)
+#endif
 import IDE.Web.IDERefStore (setGlobalIDERef, getGlobalIDERef)
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
 import IDE.Web.Bridge
@@ -255,22 +257,19 @@ import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest (requestOpenWindow, requestRaiseWindow)
-import qualified IDE.TextEditor.Yi.Config as Yi (start)
 #if defined(ghcjs_HOST_OS)
 -- Browser: no config dir or data files — 'newIDE' bakes in the defaults
--- instead of loading prefs/candy from disk.  WatchManager is Core.Types'
+-- instead of loading prefs from disk.  WatchManager is Core.Types'
 -- fsnotify stand-in (see the withManager shim below).
-import IDE.Core.Types (CandyTable(..), WatchManager(..))
+import IDE.Core.Types (WatchManager(..))
 import IDE.Preferences (defaultPrefs, writePrefs)
 #else
 import IDE.Preferences (readPrefs, writePrefs)
-import IDE.SourceCandy (parseCandy)
 #endif
-import IDE.TextEditor.Yi.Config (defaultYiConfig)
 import IDE.Utils.FileUtils
        (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave)
 import IDE.Utils.Utils
-       (leksahCandyFileExtension, standardPreferencesFilename)
+       (standardPreferencesFilename)
 import IDE.Web.Command
        (commandAction, Command(..), _CommandSelectSplit,
         _CommandSelectSidePane, _CommandSelectBottomPane)
@@ -321,7 +320,9 @@ import IDE.Web.Widget.Keymap (keymapWidget)
 import IDE.Web.Widget.Log (logCss, logWidget)
 import IDE.Web.Widget.Menu (menuCss)
 import IDE.Web.Widget.Menubar (menubarCss, menubarWidget)
+#ifdef LEKSAH_METADATA
 import IDE.Web.Widget.Metadata (metadataCss, metadataWidget)
+#endif
 import IDE.Web.Widget.Statusbar (statusbarCss, statusbarWidget)
 import IDE.Web.Widget.Tabs (tabsWidget, tabsCss)
 import IDE.Web.Widget.Terminal
@@ -827,7 +828,6 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
   -- would emit one console line PER CHARACTER).
   IO.hSetBuffering IO.stdout IO.LineBuffering
 #endif
-  let yiConfig = defaultYiConfig
   initializeTime
   exitCode <- newIORef ExitSuccess
   withSocketsDo $ do
@@ -837,9 +837,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
     -- for the demo: ⌘-held shortcut badges on (defaultPrefs has them off,
     -- and there is no prefs file to turn them on).
     let initPrefs = defaultPrefs { showShortcutBadges = True }
-    withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
-      let candySt = CT ([], [])
-
+    withManager $ \fsnotify -> do
       triggerBuildVar <- newEmptyMVar
       let nixCache = mempty
 #else
@@ -848,12 +846,8 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
     prefsPath       <- getConfigFilePathForLoad standardPreferencesFilename Nothing dataDir
     initPrefs       <- readPrefs prefsPath
     metaLog "boot: prefs read"
-    withManager $ \fsnotify -> Yi.start yiConfig $ \yiControl -> do
-      candyPath   <-  getConfigFilePathForLoad
-                          (case sourceCandy initPrefs of
-                              (_,name)   ->   T.unpack name <> leksahCandyFileExtension) Nothing dataDir
-      candySt     <-  parseCandy candyPath
-      metaLog "boot: fsnotify + yi started, candy parsed"
+    withManager $ \fsnotify -> do
+      metaLog "boot: fsnotify started"
 
       triggerBuildVar <- newEmptyMVar
       nixCache <- loadNixCache
@@ -864,26 +858,18 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       let ide = IDE
             {   _ideGtk            =   Nothing
             ,   _exitCode          =   exitCode
-            ,   _candy             =   candySt
             ,   _prefs             =   initPrefs
             ,   _workspace         =   Nothing
             ,   _bufferProjCache   =   mempty
             ,   _allLogRefs        =   mempty
             ,   _currentHist       =   0
             ,   _currentEBC        =   (Nothing, Nothing, Nothing)
-            ,   _systemInfo        =   Nothing
-            ,   _packageInfo       =   Nothing
-            ,   _workspaceInfo     =   Nothing
-            ,   _workspInfoCache   =   mempty
             ,   _handlers          =   mempty
             ,   _currentState      =   IsStartingUp
             ,   _recentFiles       =   []
             ,   _recentWorkspaces  =   []
             ,   _runningTool       =   Nothing
             ,   _debugState        =   []
-            ,   _yiControl         =   yiControl
-            ,   _serverQueue       =   Nothing
-            ,   _server            =   Nothing
             ,   _hlintQueue        =   Nothing
             ,   _logLaunches       =   mempty
             ,   _autoCommand       =   Nothing
@@ -1621,41 +1607,27 @@ jsMain showMenubar macTitlebar mbWid ideR = do
       wlog wid ("network attached; contexts now=" <> show (length (newIde ^. jsContexts))
                 <> " initial ideVer=" <> show (newIde ^. ideVersion))
       pb <- getPostBuild
-      -- Leave the start-up state and load metadata, as the GTK front end does
-      -- (`initInfo` here forks the heavy load via `postAsyncIDE = forkIDE`, so
-      -- this returns promptly).  Without leaving `IsStartingUp`, the metadata
-      -- commands (e.g. Update Workspace Info) silently no-op.
+      -- Leave the start-up state (commands gate on it).  The metadata load that
+      -- used to happen here is soft-deleted behind the `metadata` cabal flag.
       performEvent_ $ ffor pb $ \_ -> do
         wlog wid "ENTER pb-initInfo"
         (liftIO . (`reflectIDE` ideR) $ do
-          -- Load metadata exactly ONCE across all OS windows.  initInfo is called
-          -- from every window's post-build; running it per window forked N full
-          -- metadata loads into the shared state, blowing the heap (79→687MB) and
-          -- freezing a window under GC thrash / OOM.  Atomically flip currentState
-          -- to IsRunning and let only the FIRST window to do so (old state
-          -- IsStartingUp) run initInfo — the result lives in shared state, so one
-          -- load serves every window.
+          -- Only the FIRST window to leave IsStartingUp would have loaded
+          -- metadata; the atomic flip is still how every window agrees the app
+          -- is running.
           firstToRun <- modifyIDE $ \i ->
               ( i & currentState .~ IsRunning
               , case i ^. currentState of IsStartingUp -> True; _ -> False )
-          -- Load-once guard (above) means one metadata load serves every OS
-          -- window.  Historically kept OFF because the load ballooned the heap to
-          -- 500MB+; re-enabled here — flip back to False if the heap regresses.
-#if defined(ghcjs_HOST_OS)
-          -- No leksah-server, no config dir, no packagedb in the browser demo.
-          let metaOn = False
-#else
-          -- The 'metadataEnabled' pref, off by default: leksah's own metadata is
-          -- a second index of your code that a language server already covers.
-          metaOn <- metadataEnabled <$> readIDE prefs
-#endif
-          metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun
-                  <> " metadataEnabled=" <> show metaOn
-          if metaOn && firstToRun
+#ifdef LEKSAH_METADATA
+          if firstToRun
             then do metaLog $ "post-build " <> show wid <> " -> initInfo"
                     initInfo (return ())
                     metaLog $ "post-build " <> show wid <> " initInfo returned (load forked)"
-            else return ())
+            else return ()
+#else
+          metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun
+#endif
+          )
         wlog wid "EXIT pb-initInfo"
       pbIde <- performEvent $ pb $> liftIO (snd <$> readMVar ideR)
       -- Cross-window updates, event-driven but COALESCED and SERIALIZED:
@@ -1951,7 +1923,9 @@ css = render $ do
     aiPickerCss
     terminalCss
     terminalsCss
+#ifdef LEKSAH_METADATA
     metadataCss
+#endif
     agentsCss
     changesCss
     gitLogCss
@@ -2144,7 +2118,7 @@ orderStyle = maybe mempty (\n -> "style" =: ("order:" <> T.pack (show n)))
 -- | The side- and bottom-bar panes in their strips' order: the Nth entry is
 -- what ⌥⌘N / ⌃⌘N navigates to, and what its ⌘-held badge shows.
 numberedTallTabs, numberedWide1Tabs :: [TabKey]
-numberedTallTabs  = [WorkspaceKey, AgentsKey, TerminalsKey, MetadataKey]
+numberedTallTabs  = [WorkspaceKey, AgentsKey, TerminalsKey]
 numberedWide1Tabs = [ErrorsKey, LogKey, GrepKey, ChangesKey]
 
 -- | The ⌘-held navigation badge for a side-/bottom-bar tab button (hidden
@@ -5109,7 +5083,6 @@ main showMenubar macTitlebar wid ide = mdo
             <> GrepKey      =: ("wide1", Just ())
             <> ChangesKey   =: ("wide1", Just ())
             <> TerminalsKey =: ("tall", Just ())
-            <> MetadataKey  =: ("tall", Just ())
             <> AgentsKey    =: ("tall", Just ())
         initialVisibleTabs =
                "tall" =: WorkspaceKey
@@ -7802,13 +7775,11 @@ main showMenubar macTitlebar wid ide = mdo
     -- Showing the seeded tab runs activateWide0, so _wwActive self-heals on save.
     wide0ActiveD <- holdUniqDyn
         ((\ww -> maybe (listToMaybe (_wwWide0 ww)) Just (_wwActive ww)) <$> myWinD)
-    -- The Metadata tree follows the 'metadataEnabled' pref, and follows it LIVE:
-    -- switched off, its tab is closed (tabsWidget points the side bar at a
-    -- sibling by itself, and the body — the only reader of the metadata scopes —
-    -- is then never built); switched on, it opens.  Fired at post-build as well
-    -- as on change, because 'updated' skips the initial value and the pref is
-    -- off by default, so the tab that 'initialTabs' carries has to go.
-    metaOnD <- holdUniqDyn ((metadataEnabled . view prefs) <$> ide)
+    -- The Metadata tree is soft-deleted (the `metadata` cabal flag): the key
+    -- stays parseable in old sessions, but the pane is always off.  The
+    -- post-build close still fires once so a stale tab restored from an old
+    -- session (or carried by 'initialTabs' historically) is cleaned up.
+    let metaOnD = constDyn False :: Dynamic t Bool
     metaPb  <- getPostBuild
     let metaOnE    = leftmost [ updated metaOnD, tag (current metaOnD) metaPb ]
         metaOpenE  = (MetadataKey =: ("tall", Just ())) <$ ffilter id  metaOnE
@@ -7860,7 +7831,14 @@ main showMenubar macTitlebar wid ide = mdo
                 then terminalCCWidget ide n n selectedE leafViewW
                          closeMenuD renderCloseMenu
                 else terminalWidget ide n selectedE
-          MetadataKey    -> toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
+          MetadataKey    ->
+#ifdef LEKSAH_METADATA
+            toDM MetadataTab <$> metadataWidget ide activeFileD revealMetaD (paneFind MetadataKey)
+#else
+            -- Tombstone: MetadataKey stays parseable in old sessions but the
+            -- pane is soft-deleted (metadata cabal flag); renders nothing.
+            toDM MetadataTab <$> (never <$ blank)
+#endif
           AgentsKey      -> toDM AgentsTab <$> agentsWidget
           ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide

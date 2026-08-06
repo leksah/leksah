@@ -36,17 +36,15 @@ import IDE.Core.State
 import IDE.Gtk.State
        (Color(..), PanePathElement(..), PaneDirection(..))
 import System.Time (getClockTime)
-import qualified IDE.StrippedPrefs as SP
 import Control.Exception (SomeException)
 import Data.Maybe (fromMaybe)
 import Control.Monad.IO.Class (MonadIO(..))
-import System.FilePath ((</>), takeFileName)
+import System.FilePath (takeFileName)
 import qualified Data.Text as T (unpack, pack)
 import Distribution.Text (display, simpleParse)
 import qualified Control.Exception as E (catch)
 import qualified Data.ByteString.Lazy as LBS (writeFile, readFile)
 import Data.Aeson (eitherDecode)
-import IDE.Core.CTypes (configDirName)
 import Data.Aeson.Encode.Pretty (encodePretty)
 
 
@@ -63,7 +61,6 @@ defaultPrefs = Prefs {
     ,   rightMargin         =   (True,100)
     ,   tabWidth            =   4
     ,   wrapLines           =   False
-    ,   sourceCandy         =   (False,"candy")
     ,   darkUserInterface   = True
     ,   saveSessionOnClose  = True
     ,   keymapName          =   "keymap"
@@ -89,8 +86,6 @@ defaultPrefs = Prefs {
     ,   workspaceFont       =   (False, Nothing)
     ,   defaultSize         =   (1024,800)
     ,   browser             =   "firefox"
-    ,   sourceDirectories   =   []
-    ,   packageBlacklist    =   []
     ,   pathForCategory     =   [   ("ExplorerCategory",[SplitP LeftP])
                                 ,   ("EditorCategory",[SplitP RightP])
                                 ,   ("ToolCategory",[SplitP RightP,SplitP TopP])
@@ -117,14 +112,7 @@ defaultPrefs = Prefs {
                                 ,   ("*Trace","LogCategory")
                                 ,   ("*Variables","LogCategory")
                                 ,   ("*Workspace","ExplorerCategory")]
-    ,   metadataEnabled     =   False
-    ,   collectAtStart      =   True
-    ,   unpackDirectory     =   Just ("~" </> configDirName </> "packageSources")
-    ,   retrieveURL         =   "http://leksah.github.io"
-    ,   retrieveStrategy    =   SP.RetrieveThenBuild
     ,   useCtrlTabFlipping  =   True
-    ,   docuSearchURL       =   "https://www.haskell.org/hoogle/?q="
-    ,   completeRestricted  =   False
     ,   saveAllBeforeBuild  =   True
     ,   jumpToWarnings      =   True
     ,   useVado             =   False
@@ -142,9 +130,6 @@ defaultPrefs = Prefs {
     ,   breakOnException    =   True
     ,   breakOnError        =   True
     ,   printBindResult     =   False
-    ,   serverPort          =   11111
-    ,   serverIP            =   "127.0.0.1"
-    ,   endWithLastConn     =   True
     ,   showHiddenFiles     =   False
     ,   showIgnoredFiles    =   False
     ,   tallVisibility      =   TallShow
@@ -180,7 +165,6 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , rightMargin = fromMaybe rightMargin rightMargin_
   , tabWidth = fromMaybe tabWidth tabWidth_
   , wrapLines = fromMaybe wrapLines wrapLines_
-  , sourceCandy = fromMaybe sourceCandy sourceCandy_
   , darkUserInterface = fromMaybe darkUserInterface darkUserInterface_
   , saveSessionOnClose = fromMaybe saveSessionOnClose saveSessionOnClose_
   , keymapName = fromMaybe keymapName keymapName_
@@ -206,19 +190,10 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , workspaceFont = fromMaybe workspaceFont workspaceFont_
   , defaultSize = fromMaybe defaultSize defaultSize_
   , browser = fromMaybe browser browser_
-  , sourceDirectories = fromMaybe sourceDirectories sourceDirectories_
-  , packageBlacklist = fromMaybe packageBlacklist (packageBlacklist_ >>= mapM (simpleParse . T.unpack))
   , pathForCategory = fromMaybe pathForCategory pathForCategory_
   , defaultPath = fromMaybe defaultPath defaultPath_
   , categoryForPane = fromMaybe categoryForPane categoryForPane_
-  , metadataEnabled = fromMaybe metadataEnabled metadataEnabled_
-  , collectAtStart = fromMaybe collectAtStart collectAtStart_
-  , unpackDirectory = fromMaybe unpackDirectory unpackDirectory_
-  , retrieveURL = fromMaybe retrieveURL retrieveURL_
-  , retrieveStrategy = fromMaybe retrieveStrategy retrieveStrategy_
   , useCtrlTabFlipping = fromMaybe useCtrlTabFlipping useCtrlTabFlipping_
-  , docuSearchURL = fromMaybe docuSearchURL docuSearchURL_
-  , completeRestricted = fromMaybe completeRestricted completeRestricted_
   , saveAllBeforeBuild = fromMaybe saveAllBeforeBuild saveAllBeforeBuild_
   , jumpToWarnings = fromMaybe jumpToWarnings jumpToWarnings_
   , useVado = fromMaybe useVado useVado_
@@ -236,9 +211,6 @@ mergePrefsFile Prefs{..} PrefsFile{..} = Prefs
   , breakOnException = fromMaybe breakOnException breakOnException_
   , breakOnError = fromMaybe breakOnError breakOnError_
   , printBindResult = fromMaybe printBindResult printBindResult_
-  , serverPort = fromMaybe serverPort serverPort_
-  , serverIP = fromMaybe serverIP serverIP_
-  , endWithLastConn = fromMaybe endWithLastConn endWithLastConn_
   , showHiddenFiles = fromMaybe showHiddenFiles showHiddenFiles_
   , showIgnoredFiles = fromMaybe showIgnoredFiles showIgnoredFiles_
   , tallVisibility = tallVisibility  -- session-only (not persisted)
@@ -296,7 +268,6 @@ toPrefsFile p@Prefs{..} = PrefsFile
   , rightMargin_ = Just rightMargin
   , tabWidth_ = Just tabWidth
   , wrapLines_ = Just wrapLines
-  , sourceCandy_ = Just sourceCandy
   , darkUserInterface_ = Just darkUserInterface
   , saveSessionOnClose_ = Just saveSessionOnClose
   , keymapName_ = Just keymapName
@@ -322,19 +293,10 @@ toPrefsFile p@Prefs{..} = PrefsFile
   , workspaceFont_ = Just workspaceFont
   , defaultSize_ = Just defaultSize
   , browser_ = Just browser
-  , sourceDirectories_ = Just sourceDirectories
-  , packageBlacklist_ = Just (map (T.pack . display) packageBlacklist)
   , pathForCategory_ = Just pathForCategory
   , defaultPath_ = Just defaultPath
   , categoryForPane_ = Just categoryForPane
-  , metadataEnabled_ = Just metadataEnabled
-  , collectAtStart_ = Just collectAtStart
-  , unpackDirectory_ = Just unpackDirectory
-  , retrieveURL_ = Just retrieveURL
-  , retrieveStrategy_ = Just retrieveStrategy
   , useCtrlTabFlipping_ = Just useCtrlTabFlipping
-  , docuSearchURL_ = Just docuSearchURL
-  , completeRestricted_ = Just completeRestricted
   , saveAllBeforeBuild_ = Just saveAllBeforeBuild
   , jumpToWarnings_ = Just jumpToWarnings
   , useVado_ = Just useVado
@@ -352,9 +314,6 @@ toPrefsFile p@Prefs{..} = PrefsFile
   , breakOnException_ = Just breakOnException
   , breakOnError_ = Just breakOnError
   , printBindResult_ = Just printBindResult
-  , serverPort_ = Just serverPort
-  , serverIP_ = Just serverIP
-  , endWithLastConn_ = Just endWithLastConn
   , showHiddenFiles_ = Just showHiddenFiles
   , showIgnoredFiles_ = Just showIgnoredFiles
   , showWorkspaceIcons_ = Just showWorkspaceIcons

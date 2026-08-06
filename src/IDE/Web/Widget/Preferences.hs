@@ -16,16 +16,13 @@ import Control.Lens ((.~), (&), view)
 import Data.Bool (bool)
 import Data.Default (def)
 import Data.List (elemIndex)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Map (Map)
 import qualified Data.Map as M (fromList)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack, lines, unlines, null, strip)
 import Text.Read (readMaybe)
 
-import Distribution.Pretty (prettyShow)
-import Distribution.Parsec (simpleParsec)
-import Distribution.Types.Dependency (Dependency)
 
 import Clay ((?), (-:), Css)
 
@@ -46,7 +43,6 @@ import Reflex.Dom.Core
 
 import IDE.Core.State
        (IDE, Prefs(..), prefs, TallVisibility(..), EditorChoice(..))
-import IDE.Core.CTypes (RetrieveStrategy(..))
 import IDE.Web.ColorPick (hasColorPickImpl, requestColorPick)
 import IDE.Web.Events (PreferencesEvents(..))
 
@@ -105,7 +101,6 @@ preferencesWidget ide = do
         , b "Show icons in the Workspace pane" showWorkspaceIcons (\v p -> p { showWorkspaceIcons = v })
         , b "Collapse errors in the Errors pane by default" collapseErrors (\v p -> p { collapseErrors = v })
         , b "Use Ctrl-Tab for the flipper" useCtrlTabFlipping (\v p -> p { useCtrlTabFlipping = v })
-        , b "Complete only on hotkey" completeRestricted (\v p -> p { completeRestricted = v })
         , b "Save the session before closing a workspace" saveSessionOnClose (\v p -> p { saveSessionOnClose = v })
         , enumField p0 "Side bar visibility" tallVisOptions tallVisibility (\v p -> p { tallVisibility = v })
         , enumField p0 "Bottom bar visibility" tallVisOptions wide1Visibility (\v p -> p { wide1Visibility = v })
@@ -148,29 +143,8 @@ preferencesWidget ide = do
         , b "Break on uncaught exceptions and errors" breakOnError (\v p -> p { breakOnError = v })
         , b "Print binding results in GHCi" printBindResult (\v p -> p { printBindResult = v })
         ]
-    , section "Metadata"
-        -- First, because it gates everything else in this section: off, leksah
-        -- starts no leksah-server, reads no metadata file and hides the tree.
-        [ b "Enable Leksah metadata (leksah-server, the Metadata tree)"
-            metadataEnabled (\v p -> p { metadataEnabled = v })
-        , linesField p0 "Source directories (one per line)"
-            sourceDirectories (\v p -> p { sourceDirectories = v })
-        , maybeTextField p0 "Unpack cabal package source to"
-            unpackDirectory (\v p -> p { unpackDirectory = v })
-        , txt "URL for prebuilt metadata" retrieveURL (\v p -> p { retrieveURL = v })
-        , enumField p0 "Metadata download strategy" retrieveOptions retrieveStrategy (\v p -> p { retrieveStrategy = v })
-        , b "Update metadata at startup" collectAtStart (\v p -> p { collectAtStart = v })
-        , txt "leksah-server IP address" serverIP (\v p -> p { serverIP = v })
-        , i "leksah-server port" serverPort (\v p -> p { serverPort = v })
-        , b "Stop leksah-server when leksah disconnects" endWithLastConn (\v p -> p { endWithLastConn = v })
-        ]
-    , section "Blacklist"
-        [ depsField p0 "Packages excluded from the modules pane (one per line, e.g. base or base >=4)"
-            packageBlacklist (\v p -> p { packageBlacklist = v })
-        ]
     , section "Help"
         [ txt "Browser" browser (\v p -> p { browser = v })
-        , txt "URL for searching documentation" docuSearchURL (\v p -> p { docuSearchURL = v })
         ]
     ]
   where
@@ -207,10 +181,6 @@ preferencesWidget ide = do
       , ("Light",           "leksah-light")
       , ("Solarized Dark",  "solarized-dark")
       , ("Solarized Light", "solarized-light") ] :: [(Text, Text)]
-    retrieveOptions =
-      [ ("Download then build", RetrieveThenBuild)
-      , ("Build then download", BuildThenRetrieve)
-      , ("Never download",      NeverRetrieve) ]
 
 -- | A labelled row: label on the left, control on the right.  Prefs the web UI
 -- doesn't act on yet get a grey "(TODO)" after the label.
@@ -235,12 +205,6 @@ wiredLabels =
   , "Native", "JavaScript", "Debug", "Make documentation when building"
   , "Run unit tests when building", "Run benchmarks when building", "Make mode"
   , "Single build without linking", "Don't install the last package"
-  , "Source directories (one per line)", "Unpack cabal package source to"
-  , "URL for prebuilt metadata", "Metadata download strategy"
-  , "Enable Leksah metadata (leksah-server, the Metadata tree)"
-  , "Update metadata at startup", "leksah-server IP address", "leksah-server port"
-  , "Stop leksah-server when leksah disconnects"
-  , "Packages excluded from the modules pane (one per line, e.g. base or base >=4)"
   , "Clickable file paths and identifiers in terminal output"
   , "Editor"
   , "Monospace font family (editor, terminals, log)"
@@ -328,16 +292,6 @@ colorField prefsD p0 lbl get set = prefRow lbl $ do
       inp <- textInputAttrs (get p0) ("type" =: "color" <> "class" =: "pref-color")
       return $ set <$> updated (_inputElement_value inp)
 
--- | An optional path (blank = 'Nothing').
-maybeTextField
-  :: MonadWidget t m
-  => Prefs -> Text -> (Prefs -> Maybe FilePath) -> (Maybe FilePath -> Prefs -> Prefs)
-  -> m (Event t (Prefs -> Prefs))
-maybeTextField p0 lbl get set = prefRow lbl $ do
-  inp <- textInputAttrs (maybe "" T.pack (get p0)) ("type" =: "text" <> "class" =: "pref-input")
-  return $ ffor (updated (_inputElement_value inp)) $ \t ->
-    set (if T.null (T.strip t) then Nothing else Just (T.unpack t))
-
 -- | A multi-line list of paths, one per line.
 linesField
   :: MonadWidget t m
@@ -347,16 +301,6 @@ linesField p0 lbl get set = prefRow lbl $ do
   ta <- textArea (T.unlines (map T.pack (get p0)))
   return $ ffor (updated (_textAreaElement_value ta)) $ \t ->
     set [ T.unpack l | l <- map T.strip (T.lines t), not (T.null l) ]
-
--- | A package blacklist, one 'Dependency' per line (unparseable lines dropped).
-depsField
-  :: MonadWidget t m
-  => Prefs -> Text -> (Prefs -> [Dependency]) -> ([Dependency] -> Prefs -> Prefs)
-  -> m (Event t (Prefs -> Prefs))
-depsField p0 lbl get set = prefRow lbl $ do
-  ta <- textArea (T.pack (unlines (map prettyShow (get p0))))
-  return $ ffor (updated (_textAreaElement_value ta)) $ \t ->
-    set (mapMaybe (simpleParsec . T.unpack . T.strip) (filter (not . T.null . T.strip) (T.lines t)))
 
 -- | A dropdown over a labelled option list, seeded from the current value.
 enumField

@@ -19,8 +19,7 @@ import IDE.Web.Command
         commandToggleBackgroundBuild, commandToggleNative, commandToggleJavaScript,
         commandToggleDebug, commandToggleMakeDocs, commandToggleTest,
         commandToggleRunBenchmarks, commandToggleMakeDependents,
-        commandUpdateWorkspaceInfo, commandDebugStep, commandDebugStepLocal,
-        commandDebugStepModule, commandDebugContinue, commandFileClose,
+        commandFileClose,
         commandNewWindow, commandAddServer, commandToggleTmuxIntercept,
         commandFontBigger, commandFontSmaller, commandFontReset, tmuxKey,
         paneCmd, splitCmd, toggleTransparencyCmd, snapWindowCmd, commandGrabRegion,
@@ -104,7 +103,6 @@ menus =
       , MenuGlobalKey "Close File" "cmd+w" commandFileClose
       , MenuSep
       , item "Refresh Nix Environment" commandRefreshNix
-      , item "Update Workspace Info"   commandUpdateWorkspaceInfo
       ])
   -- Real key equivalents (not display hints) wherever a binding exists in the
   -- JS keymap ('IDE.Web.Widget.Keymap.globalBindings'): the DOM keymap
@@ -123,12 +121,6 @@ menus =
       , MenuGlobalKey "Build" "cmd+shift+b" commandPackageBuild
       , item "Run"            commandPackageRun
       , item "Run JavaScript" commandPackageRunJavascript
-      ])
-  , ("Debug",
-      [ item "Step"        commandDebugStep
-      , item "Step Local"  commandDebugStepLocal
-      , item "Step Module" commandDebugStepModule
-      , item "Continue"    commandDebugContinue
       ])
   , ("Build",
       [ item "Background Build" commandToggleBackgroundBuild

@@ -42,7 +42,6 @@ module IDE.Core.Types (
 ,   IDEEventM
 ,   IDEAction
 ,   IDEEvent(..)
-,   SymbolEvent(..)
 ,   MonadIDE
 ,   liftIDE
 ,   (?>>=)
@@ -115,7 +114,6 @@ module IDE.Core.Types (
 ,   wwWide1
 ,   wwFrame
 ,   PrefsFile(..)
-,   candyState
 ,   EditorStyle(..)
 ,   editorStyle
 
@@ -132,9 +130,6 @@ module IDE.Core.Types (
 ,   colorHexString
 
 ,   SearchHint(..)
-,   CandyTable(..)
-,   CandyTableForth
-,   CandyTableBack
 ,   KeymapI(..)
 #if defined(ghcjs_HOST_OS) || defined(LEKSAH_NO_HLINT)
     -- Idea stand-in (see below); natively the real one comes from hlint,
@@ -148,8 +143,6 @@ module IDE.Core.Types (
 ,   StopListening
 #endif
 
-,   PackageDescrCache
-,   ModuleDescrCache
 
 ,   LogLaunchData(..)
 ,   LogTag(..)
@@ -160,26 +153,18 @@ module IDE.Core.Types (
 -- IDE
 ,   ideGtk
 ,   exitCode
-,   candy
 ,   prefs
 ,   workspace
 ,   bufferProjCache
 ,   allLogRefs
 ,   currentEBC
 ,   currentHist
-,   systemInfo
-,   packageInfo
-,   workspaceInfo
-,   workspInfoCache
 ,   handlers
 ,   currentState
 ,   recentFiles
 ,   recentWorkspaces
 ,   runningTool
 ,   debugState
-,   yiControl
-,   serverQueue
-,   server
 ,   hlintQueue
 ,   logLaunches
 ,   autoCommand
@@ -231,7 +216,6 @@ module IDE.Core.Types (
 
 import Prelude ()
 import Prelude.Compat
-import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Unique (newUnique, Unique)
 import Distribution.Package
        (unPackageName, PackageIdentifier(..), Dependency(..))
@@ -252,11 +236,9 @@ import System.FilePath
        (dropFileName, (</>), isAbsolute, makeRelative, equalFilePath,
         addTrailingPathSeparator)
 import IDE.Core.CTypes
-import System.IO (Handle)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Reader (ReaderT(..))
-import Data.Time (UTCTime(..))
 
 import qualified VCSWrapper.Common as VCS
 import qualified Data.Map as Map (Map)
@@ -276,7 +258,6 @@ import System.FSNotify (StopListening, WatchManager)
 #endif
 import qualified Data.Map as M (fromList, lookup, elems)
 import System.Exit (ExitCode)
-import Data.Int (Int32)
 import Data.Aeson (FromJSON(..), ToJSON(..))
 import GHC.Generics (Generic)
 import Data.Aeson.Types
@@ -316,26 +297,18 @@ import Distribution.Pretty (prettyShow)
 data IDE            =  IDE {
     _ideGtk              :: Maybe (IDEGtk IDEM IDERef)
 ,   _exitCode            :: IORef ExitCode
-,   _candy               :: CandyTable              -- ^ table for source candy
 ,   _prefs               :: Prefs                   -- ^ configuration preferences
 ,   _workspace           :: Maybe Workspace         -- ^ may be a workspace (set of packages)
 ,   _bufferProjCache     :: Map FilePath [(Project, IDEPackage)] -- ^ cache the associated packages for a file
 ,   _allLogRefs          :: Seq LogRef
 ,   _currentEBC          :: (Maybe LogRef, Maybe LogRef, Maybe LogRef)
 ,   _currentHist         :: Int
-,   _systemInfo          :: Maybe GenScope              -- ^ the system scope
-,   _packageInfo         :: Maybe (GenScope, GenScope) -- ^ the second are the imports
-,   _workspaceInfo       :: Maybe (GenScope, GenScope) -- ^ the second are the imports
-,   _workspInfoCache     :: PackageDescrCache
 ,   _handlers            :: Map Text [(Unique, IDEEvent -> IDEM IDEEvent)] -- ^ event handling table
 ,   _currentState        :: IDEState
 ,   _recentFiles         :: [FilePath]
 ,   _recentWorkspaces    :: [FilePath]
 ,   _runningTool         :: Maybe (ProcessHandle, IO ())
 ,   _debugState          :: [DebugState]
-,   _yiControl           :: Yi.Control
-,   _serverQueue         :: Maybe (MVar (ServerCommand, ServerAnswer -> IDEM ()))
-,   _server              :: Maybe Handle
 ,   _hlintQueue          :: Maybe (TVar [Either FilePath FilePath])
 ,   _logLaunches         :: Map.Map Text LogLaunchData
 ,   _autoCommand         :: Maybe ((ProjectKey, FilePath), IDEAction)
@@ -492,15 +465,9 @@ runDebug = runReaderT
 --
 
 data IDEEvent  =
-        InfoChanged Bool-- is it the initial = True else False
-    |   UpdateWorkspaceInfo Bool
-    |   SelectInfo SymbolEvent
-    |   SelectIdent Descr
-    |   LogMessage Text LogTag
+        LogMessage Text LogTag
     |   Sensitivity [(SensitivityMask,Bool)]
-    |   SearchMeta Text
     |   StartFindInitial
-    |   GotoDefinition Descr
     |   LoadSession FilePath
     |   SaveSession FilePath
     |   UpdateRecent
@@ -521,26 +488,12 @@ data IDEEvent  =
     |   QuitToRestart
     |   GtkEvent (IDEGtkEvent IDERef)
 
-data SymbolEvent = SymbolEvent
-    { selection :: Text
-    , location :: Maybe (FilePath, (Int, Int), (Int, Int))
-    , activatePanes :: Bool
-    , openDefinition :: Bool
-    , typeTipLocation :: (Int32, Int32)
-    } deriving (Show, Eq)
-
 instance EventSelector Text
 
 instance Event IDEEvent Text where
-    getSelector (InfoChanged _)         =   "InfoChanged"
-    getSelector (UpdateWorkspaceInfo _) =   "UpdateWorkspaceInfo"
     getSelector (LogMessage _ _)        =   "LogMessage"
-    getSelector (SelectInfo _)          =   "SelectInfo"
-    getSelector (SelectIdent _)         =   "SelectIdent"
     getSelector (Sensitivity _)         =   "Sensitivity"
-    getSelector (SearchMeta _)          =   "SearchMeta"
     getSelector StartFindInitial        =   "StartFindInitial"
-    getSelector (GotoDefinition _)      =   "GotoDefinition"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
@@ -562,18 +515,12 @@ instance Event IDEEvent Text where
     getSelector (GtkEvent e)            =   getGtkEventSelector e
 
 instance EventSource IDERef IDEEvent IDEM Text where
-    canTriggerEvent _ "InfoChanged"         = True
-    canTriggerEvent _ "UpdateWorkspaceInfo" = True
     canTriggerEvent _ "LogMessage"          = True
-    canTriggerEvent _ "SelectInfo"          = True
-    canTriggerEvent _ "SelectIdent"         = True
     canTriggerEvent _ "RecordHistory"       = True
     canTriggerEvent _ "Sensitivity"         = True
     canTriggerEvent _ "DescrChoice"         = True
-    canTriggerEvent _ "SearchMeta"          = True
     canTriggerEvent _ "StartFindInitial"    = True
     canTriggerEvent _ "SearchSymbolDialog"  = True
-    canTriggerEvent _ "GotoDefinition"      = True
     canTriggerEvent _ "LoadSession"         = True
     canTriggerEvent _ "SaveSession"         = True
     canTriggerEvent _ "UpdateRecent"        = True
@@ -923,7 +870,6 @@ data Prefs = Prefs {
     ,   rightMargin         ::   (Bool, Int)
     ,   tabWidth            ::   Int
     ,   wrapLines           ::   Bool
-    ,   sourceCandy         ::   (Bool,Text)
     ,   darkUserInterface   ::   Bool
     ,   saveSessionOnClose  ::   Bool
     ,   keymapName          ::   Text
@@ -952,22 +898,7 @@ data Prefs = Prefs {
     ,   pathForCategory     ::   [(Text, PanePath)]
     ,   defaultPath         ::   PanePath
     ,   categoryForPane     ::   [(Text, Text)]
-    ,   packageBlacklist    ::   [Dependency]
-    ,   metadataEnabled     ::   Bool -- ^ leksah's OWN metadata (the Metadata
-                                      --   tree, its @.lkshm@ files and the
-                                      --   @leksah-server@ process that collects
-                                      --   them).  Off by default: a language
-                                      --   server gives the same answers about
-                                      --   live code, so this is a heavy second
-                                      --   index most projects don't need.  Off
-                                      --   means no server process is started, no
-                                      --   metadata file is read, and the tree is
-                                      --   not shown; every field below it here
-                                      --   is inert.
-    ,   collectAtStart      ::   Bool
     ,   useCtrlTabFlipping  ::   Bool
-    ,   docuSearchURL       ::   Text
-    ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
     ,   jumpToWarnings      ::   Bool
     ,   useVado             ::   Bool
@@ -985,7 +916,6 @@ data Prefs = Prefs {
     ,   breakOnException    ::   Bool
     ,   breakOnError        ::   Bool
     ,   printBindResult     ::   Bool
-    ,   serverIP            ::   Text
     ,   showHiddenFiles     ::   Bool
     ,   showIgnoredFiles    ::   Bool
     ,   tallVisibility      ::   TallVisibility
@@ -1041,13 +971,6 @@ data Prefs = Prefs {
                                       --   (blank = @haskell-language-server --lsp@;
                                       --   a project's @.leksah-lsp@ file, if present,
                                       --   overrides even this)
-            -- As well used by server
-    ,   serverPort          ::   Int
-    ,   sourceDirectories   ::   [FilePath]
-    ,   unpackDirectory     ::   Maybe FilePath
-    ,   retrieveURL         ::   Text
-    ,   retrieveStrategy    ::   RetrieveStrategy
-    ,   endWithLastConn     ::   Bool
 } deriving(Eq, Show, Generic)
 
 data PrefsFile = PrefsFile {
@@ -1057,7 +980,6 @@ data PrefsFile = PrefsFile {
   , rightMargin_         :: Maybe (Bool, Int)
   , tabWidth_            :: Maybe Int
   , wrapLines_           :: Maybe Bool
-  , sourceCandy_         :: Maybe (Bool,Text)
   , darkUserInterface_   :: Maybe Bool
   , saveSessionOnClose_  :: Maybe Bool
   , keymapName_          :: Maybe Text
@@ -1086,12 +1008,7 @@ data PrefsFile = PrefsFile {
   , pathForCategory_     :: Maybe [(Text, PanePath)]
   , defaultPath_         :: Maybe PanePath
   , categoryForPane_     :: Maybe [(Text, Text)]
-  , packageBlacklist_    :: Maybe [Text]
-  , metadataEnabled_     :: Maybe Bool
-  , collectAtStart_      :: Maybe Bool
   , useCtrlTabFlipping_  :: Maybe Bool
-  , docuSearchURL_       :: Maybe Text
-  , completeRestricted_  :: Maybe Bool
   , saveAllBeforeBuild_  :: Maybe Bool
   , jumpToWarnings_      :: Maybe Bool
   , useVado_             :: Maybe Bool
@@ -1109,7 +1026,6 @@ data PrefsFile = PrefsFile {
   , breakOnException_    :: Maybe Bool
   , breakOnError_        :: Maybe Bool
   , printBindResult_     :: Maybe Bool
-  , serverIP_            :: Maybe Text
   , showHiddenFiles_     :: Maybe Bool
   , showIgnoredFiles_    :: Maybe Bool
   , showWorkspaceIcons_  :: Maybe Bool
@@ -1137,12 +1053,6 @@ data PrefsFile = PrefsFile {
   , regionCaptureTarget_ :: Maybe Text
   , lspEnabled_          :: Maybe Bool
   , lspServerCommand_    :: Maybe Text
-  , serverPort_          :: Maybe Int
-  , sourceDirectories_   :: Maybe [FilePath]
-  , unpackDirectory_     :: Maybe (Maybe FilePath)
-  , retrieveURL_         :: Maybe Text
-  , retrieveStrategy_    :: Maybe RetrieveStrategy
-  , endWithLastConn_     :: Maybe Bool
 } deriving(Eq, Show, Generic)
 
 prefsAesonOptions :: Options
@@ -1155,9 +1065,6 @@ instance ToJSON PrefsFile where
     toEncoding = genericToEncoding prefsAesonOptions
 instance FromJSON PrefsFile where
     parseJSON = genericParseJSON prefsAesonOptions
-
-candyState :: Prefs -> Bool
-candyState = fst . sourceCandy
 
 -- | Legacy view of 'editorChoice': the external-editor command, blank when an
 -- in-app editor is selected.  Kept as a function with the old field's name and
@@ -1310,12 +1217,6 @@ colorHexString (Color r g b) = '#' : pad (showHex r "")
     where pad s = replicate (4 - length s) '0' ++ s
 
 
-newtype CandyTable      =   CT (CandyTableForth,CandyTableBack)
-
-type CandyTableForth    =   [(Bool,Text,Text)]
-
-type CandyTableBack     =   [(Text,Text,Int)]
-
 newtype KeymapI         =   KM  (Map ActionString
                                 [(Maybe (Either KeyString (KeyString,KeyString)), Maybe Text)])
 
@@ -1349,8 +1250,6 @@ data StatusbarCompartment =
     |   CompartmentBuild Bool
     |   CompartmentCollect Bool
 
-type PackageDescrCache = Map PackageIdentifier ModuleDescrCache
-type ModuleDescrCache = Map ModuleKey (UTCTime, Maybe FilePath, ModuleDescr)
 
 makeLenses ''IDE
 makeLenses ''Workspace

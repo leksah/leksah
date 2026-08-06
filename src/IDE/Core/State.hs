@@ -71,9 +71,6 @@ module IDE.Core.State (
 ,   changePackage
 ,   changeProject
 
-,   liftYiControl
-,   liftYi
-
 ,   leksahSubDir
 ,   leksahOrPackageDir
 ,   getDataDir
@@ -117,7 +114,6 @@ import IDE.Utils.Utils as Reexported
 import Data.List (sortOn, nub)
 import Data.Map (Map)
 import qualified Data.Map as M (insert, fromListWith, lookup)
-import qualified IDE.TextEditor.Yi.Config as Yi
 import Data.Conduit (ConduitT)
 import qualified Data.Conduit as C
        (transPipe)
@@ -239,14 +235,6 @@ reflectIDE = runReaderT
 
 reflectIDEI :: ConduitT a Void IDEM () -> IDERef -> ConduitT a Void IO ()
 reflectIDEI c ideR = C.transPipe (`reflectIDE` ideR) c
-
-liftYiControl :: Yi.ControlM a -> IDEM a
-liftYiControl f = do
-    control <- readIDE yiControl
-    liftIO $ Yi.runControl f control
-
-liftYi :: Yi.YiM a -> IDEM a
-liftYi = liftYiControl . Yi.liftYi
 
 catchIDE :: (MonadIDE m, Exception e) => IDEM a -> (e -> IDEM a) -> m a
 catchIDE block handler = reifyIDE (\ideR -> catch (reflectIDE block ideR) (\e -> reflectIDE (handler e) ideR))
