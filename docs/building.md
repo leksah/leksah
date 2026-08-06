@@ -20,7 +20,9 @@ cd leksah
   PATH already.
 * Default front end is the native `exe:leksah` (WKWebView on macOS,
   WebKitGTK on Linux); `--warp` builds/runs the browser front end;
-  `--classic` the Gtk one.
+  `--classic` the Gtk one — now its own package in `leksah-classic/`, a
+  frozen GPLv2 fork with its own copies of the formerly shared core modules
+  (see `docs/relicensing.md`); the main package does not depend on it.
 * `GHCVER`: `ghc914` for the web front ends (the default); the classic
   front end also builds with older compilers (e.g. `ghc98`). The libraries
   support GHC 9.6.7 through 9.14.

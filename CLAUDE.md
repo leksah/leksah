@@ -124,7 +124,10 @@
   (a bare `./leksah.sh` runs the default front end; `--help` prints usage).
   **Front end**: default is the native web exe:leksah (WKWebView on macOS,
   WebKitGTK on Linux — one exe, chosen per-OS in the cabal file); `--warp` is
-  exe:leksah-warp (browser), `--classic` is the classic Gtk exe:leksah-classic.
+  exe:leksah-warp (browser), `--classic` is the classic Gtk exe:leksah-classic
+  — now its own package in **`leksah-classic/`**, a frozen GPLv2 fork with its
+  own copies of the formerly shared core modules (see docs/relicensing.md);
+  the main leksah package does not depend on it.
   Commands run in the **ambient** environment (ghc/cabal/tmux/leksah-server
   must be on PATH); leksah-server/leksah-cmd/ffcabal + the front end are built
   with cabal.

@@ -1,0 +1,420 @@
+cabal-version: 3.4
+name: leksah-classic
+version: 0.17.0.0
+license: GPL-2.0-or-later
+license-file: LICENSE
+copyright: 2007-2026 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
+maintainer: maintainer@leksah.org
+author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
+stability: provisional
+homepage: https://leksah.org
+bug-reports: https://github.com/leksah/leksah/issues
+synopsis: The classic GTK3 leksah IDE
+description:
+    The classic GTK3 front end of the leksah IDE, split out of the main
+    package as a frozen fork so the new web-UI leksah can be relicensed.
+    This package keeps its own GPL copies of the (formerly shared) core
+    modules; it does not track their evolution in the main package.
+category: Development, IDE, Editor
+x-gettext-po-files: po/*.po
+x-gettext-domain-name: leksah
+build-type: Simple
+data-files:
+    LICENSE
+    data/current.lkshs
+    data/candy.lkshc
+    data/candy-hasklig.lkshc
+    data/keymap.lkshk
+    data/leksah.menu
+    data/svn.menu
+    data/git.menu
+    data/prefs.lkshp
+    data/prefscoll.lkshp
+    data/emacs.lkshk
+    data/LICENSE
+    data/main.lksht
+    data/testmain.lksht
+    data/module.lksht
+    data/welcome.txt
+    data/leksah-welcome/cabal.project
+    data/leksah-welcome/Setup.lhs
+    data/leksah-welcome/leksah-welcome.cabal
+    data/leksah-welcome/LICENSE
+    data/leksah-welcome/src/Main.hs
+    data/leksah-welcome/test/Main.hs
+    data/empty.lkshs
+    data/empty-file
+    data/.gtkrc-2.0
+    data/styles/leksah.xml
+    data/styles/leksah-dark.xml
+    language-specs/cabal.lang
+    language-specs/haskell.lang
+    language-specs/haskell-literate.lang
+    language-specs/hamlet.lang
+    language-specs/cassius.lang
+    language-specs/lucius.lang
+    language-specs/julius.lang
+    language-specs/jmacro.lang
+    language-specs/nix.lang
+    pics/ide_folder.png
+    pics/ide_source_folder.png
+    pics/ide_component.png
+    pics/ide_source_dependency.png
+    pics/ide_package.png
+    pics/ide_cabal_file.png
+    pics/ide_class.png
+    pics/ide_configure.png
+    pics/ide_data.png
+    pics/ide_error_next.png
+    pics/ide_error_prev.png
+    pics/ide_function.png
+    pics/ide_git.png
+    pics/ide_instance.png
+    pics/ide_konstructor.png
+    pics/ide_make.png
+    pics/ide_method.png
+    pics/ide_newtype.png
+    pics/ide_other.png
+    pics/ide_reexported.png
+    pics/ide_rule.png
+    pics/ide_run.png
+    pics/ide_slot.png
+    pics/ide_source.png
+    pics/ide_source_local.png
+    pics/ide_type.png
+    pics/leksah.png
+    pics/ide_step.png
+    pics/ide_local.png
+    pics/ide_module.png
+    pics/ide_continue.png
+    pics/ide_debug.png
+    pics/ide_clean.png
+    pics/ide_build.png
+    pics/ide_link.png
+    pics/ide_rebuild_meta.png
+    pics/ide_empty.png
+    pics/ide_js.png
+    pics/ide_error.png
+    pics/ide_warning.png
+    pics/ide_suggestion.png
+    pics/ide_doc_build.png
+    pics/ide_bench_build.png
+    pics/ide_test_build.png
+    pics/ide_target_binary.png
+    pics/ide_target_js.png
+    pics/ide_nix.png
+    osx/osxkeymap.lkshk
+extra-source-files:
+    po/*.pot
+    po/*.po
+
+source-repository head
+    type: git
+    location: https://github.com/leksah/leksah
+    subdir: leksah-classic
+
+flag yi
+    description:
+        Experimental Yi support
+    default: False
+    manual: True
+
+flag codemirror
+    description:
+        Experimental codemirror editor
+    default: False
+
+flag dyre
+    description:
+        Experimental Yi support
+
+flag threaded
+    description:
+        Build with support for multithreaded execution
+
+flag loc
+    description:
+        Experimental localization support
+    default: False
+
+flag network-uri
+    description:
+        Get Network.URI from the network-uri package
+
+flag hare
+    description:
+        Enable HaRe based features.
+    default: False
+
+flag webkitgtk
+    description:
+        Enable the gi-webkit2 panes (needs webkit2gtk-4.x).
+    default: False
+
+library
+    exposed-modules:
+        IDE.BufferMode
+        IDE.Build
+        IDE.Command
+        IDE.Command.Print
+        IDE.Command.VCS
+        IDE.Command.VCS.Common
+        IDE.Command.VCS.Common.GUI
+        IDE.Command.VCS.Common.Helper
+        IDE.Command.VCS.Common.Workspaces
+        IDE.Command.VCS.GIT
+        IDE.Command.VCS.Mercurial
+        IDE.Command.VCS.SVN
+        IDE.Command.VCS.Types
+        IDE.Completion
+        IDE.Core.State
+        IDE.Core.Types
+        IDE.Debug
+        IDE.Find
+        IDE.GUIHistory
+        IDE.Gtk.Package
+        IDE.Gtk.Preferences
+        IDE.Gtk.SourceCandy
+        IDE.Gtk.State
+        IDE.Gtk.Types
+        IDE.Gtk.Workspaces
+        IDE.HLint
+        IDE.HaRe
+        IDE.ImportTool
+        IDE.Keymap
+        IDE.LPaste
+        IDE.Leksah
+        IDE.LogRef
+        IDE.Metainfo.Provider
+        IDE.NotebookFlipper
+        IDE.OSX
+        IDE.Package
+        IDE.PackageFlags
+        IDE.Pane.Breakpoints
+        IDE.Pane.Errors
+        IDE.Pane.Files
+        IDE.Pane.Grep
+        IDE.Pane.HLint
+        IDE.Pane.Info
+        IDE.Pane.Log
+        IDE.Pane.Modules
+        IDE.Pane.PackageEditor
+        IDE.Pane.PackageFlags
+        IDE.Pane.Search
+        IDE.Pane.SourceBuffer
+        IDE.Pane.Trace
+        IDE.Pane.Variables
+        IDE.Pane.WebKit.Documentation
+        IDE.Pane.WebKit.Inspect
+        IDE.Pane.WebKit.Output
+        IDE.Pane.Workspace
+        IDE.PaneGroups
+        IDE.Preferences
+        IDE.Session
+        IDE.SourceCandy
+        IDE.Statusbar
+        IDE.SymbolNavigation
+        IDE.TextEditor
+        IDE.TextEditor.Class
+        IDE.TextEditor.CodeMirror
+        IDE.TextEditor.GtkSourceView
+        IDE.TextEditor.Yi
+        IDE.TextEditor.Yi.Config
+        IDE.TypeTip
+        IDE.Utils.CabalUtils
+        IDE.Utils.DebugUtils
+        IDE.Utils.DirectoryUtils
+        IDE.Utils.ExitImmediately
+        IDE.Utils.ExternalTool
+        IDE.Utils.GUIUtils
+        IDE.Git
+        IDE.Utils.RemoteExec
+        IDE.Utils.RemotePath
+        IDE.Utils.ServerConnection
+        -- The small IDE.Web bridge closure the (formerly shared) core imports:
+        -- process-global token Chans and seams, copied — not stubbed — so
+        -- classic keeps the same tmux-repl/fs behaviour.
+        IDE.Web.FS
+        IDE.Web.GhciMode
+        IDE.Web.IDERefStore
+        IDE.Web.Instance
+        IDE.Web.LocalRefresh
+        IDE.Web.NewLwRequest
+        IDE.Web.RemoteRefresh
+        IDE.Web.RemoteTermRequest
+        IDE.Web.ReplTmux
+        IDE.Workspaces
+        IDE.Workspaces.Writer
+    hs-source-dirs: src src-gtk
+    other-modules:
+        Paths_leksah_classic
+    default-language: Haskell2010
+    default-extensions: ViewPatterns
+    ghc-options: -fwarn-missing-fields -fwarn-incomplete-patterns
+                 -ferror-spans -Wall
+    build-depends:
+        Cabal >=3.2.1.0 && <3.18,
+        Glob >=0.9.2 && <0.11,
+        HTTP >=4000.3.3,
+        QuickCheck >=2.4.2 && <2.19,
+        aeson >=1.1.2.0 && <2.4,
+        aeson-pretty >=0.8.7 && <0.9,
+        array >=0.2.0.0 && <0.6,
+        attoparsec >=0.10.0.3 && <0.15,
+        base >=4.0.0.0 && <4.20,
+        base-compat >=0.9.0 && <0.16,
+        base64-bytestring >=1.0 && <1.3,
+        binary >=0.5.0.0 && <0.9,
+        binary-shared >=0.8.2 && <0.9,
+        blaze-html,
+        bytestring >=0.9.0.1 && <0.13,
+        conduit >=1.0.8 && <1.4,
+        containers >=0.2.0.0 && <0.7,
+        cpphs >=1.19 && <1.21,
+        criterion-measurement >=0.1.1.0 && <0.3,
+        data-default >=0.7.1.1 && <0.9,
+        deepseq >=1.1.0.0 && <1.6,
+        directory >=1.0.0.2 && <1.4,
+        executable-path >=0.0.3 && <0.1,
+        extra >=1.6.12 && <1.9,
+        filepath >=1.1.0.1 && <1.6,
+        fsnotify >=0.3.0.1 && <0.5,
+        generic-deriving >=1.10 && <1.15,
+        ghcjs-codemirror,
+        ghcjs-dom >=0.9.4.0 && <0.10,
+        gi-cairo >=1.0.6 && <1.1,
+        gi-gdk >=3.0.6 && <3.1,
+        gi-gdkpixbuf >=2.0.6 && <2.1,
+        gi-gio >=2.0.6 && <2.1,
+        gi-glib >=2.0.6 && <2.1,
+        gi-gobject >=2.0.6 && <2.1,
+        gi-gtk >=3.0.32 && <3.1,
+        gi-gtk-hs >=0.3.6.2 && <0.4,
+        gi-gtksource >=3.0.6 && <3.1,
+        gi-pango >=1.0.6 && <1.1,
+        haskell-gi-base >=0.25 && <0.27,
+        haskell-gi-overloading ==0.0.*,
+        hlint >=3.2 && <3.11,
+        hslogger >=1.0.7 && <1.4,
+        http-types >=0.12.2 && <0.13,
+        jsaddle >=0.9.4.0 && <0.10,
+        lens >=4.15.4 && <5.4,
+        ltk >=0.16.2.0 && <0.17,
+        mtl >=1.1.0.2 && <2.4,
+        old-time >=1.0.0.1 && <1.2,
+        parsec >=2.1.0.1 && <3.2,
+        pretty >=1.0.1.0 && <1.2,
+        pretty-show >=1.6.3 && <1.11,
+        process >=1.4.3.0 && <1.7,
+        regex-base ==0.94.*,
+        regex-tdfa >=1.3.1 && <1.4,
+        shakespeare >=2.0.0.1 && <2.2,
+        split >=0.2.3.1,
+        stm >=2.4.4 && <2.6,
+        strict >=0.3.2 && <0.6,
+        text >=0.11.1.5 && <2.2,
+        text-replace >=0.1.0.3 && <0.2,
+        time >=0.1 && <1.13,
+        transformers >=0.2.2.0 && <0.7,
+        unliftio-core >=0.1 && < 0.3,
+        utf8-string >=0.3.1.1 && <1.1,
+        vado >=0.0.1 && <0.1,
+        vcsgui >=0.3.0 && <0.4,
+        vcswrapper >=0.2.0 && <0.3
+
+    -- GTK3: no Windows story, and unbuildable for the JS backend.
+    if os(windows) || impl(ghcjs) || arch(javascript)
+        buildable: False
+    else
+        build-depends:
+            unix >=2.3.1.0 && <2.9,
+            posix-pty >=0.2.1 && <0.3
+
+    if os(osx)
+        build-depends:
+            gi-gtkosxapplication >=2.0.17 && <2.1
+        frameworks: Carbon
+
+    if flag(yi)
+        cpp-options: -DLEKSAH_WITH_YI
+        build-depends:
+            yi >=0.12.4 && <0.13,
+            yi-language >=0.2.0 && <0.3,
+            yi-rope >=0.7.0.1 && <0.8
+
+    if (flag(yi) && flag(dyre))
+        cpp-options: -DLEKSAH_WITH_YI_DYRE
+        build-depends:
+            dyre >=0.8.3 && <0.9
+
+    if flag(codemirror)
+        cpp-options: -DLEKSAH_WITH_CODE_MIRROR
+
+    if (flag(loc) && os(linux))
+        cpp-options: -DLOCALIZATION
+        build-depends:
+            hgettext,
+            setlocale
+
+    if flag(network-uri)
+        build-depends:
+            network-uri >=2.6 && <2.7,
+            network >=2.6 && <3.3
+    else
+        build-depends:
+            network >=2.2 && <2.6
+
+    pkgconfig-depends: gobject-2.0 >=2
+
+    if !(impl(ghcjs) || arch(javascript))
+        build-depends:
+            ghc >=6.10.1 && <9.15,
+            haskell-src-exts >=1.13.5 && <1.24,
+            leksah-server >=0.17.0.0 && <0.18
+        if impl(ghc >=9.2)
+            build-depends:
+                ghc-lib-parser
+
+    if flag(hare)
+        build-depends:
+            HaRe >=0.8.4.1 && <0.9,
+            ghc-mod-core >=5.9.0.0 && <5.10,
+            monad-control >=1.0.2.3 && <1.1
+
+    if flag(webkitgtk)
+        build-depends:
+            gi-webkit2 >=4.0.6 && <4.2
+
+executable leksah-classic
+    main-is: Main.hs
+    hs-source-dirs: main
+    default-language: Haskell2010
+    ghc-options: -rtsopts -fwarn-missing-fields
+                 -fwarn-incomplete-patterns -ferror-spans
+    build-depends:
+        leksah-classic,
+        base >=4.0.0.0 && <4.20,
+        gi-gtk-hs >=0.3.1.0 && <0.4,
+        stm >=2.4.4 && <2.6
+
+    if os(windows) || impl(ghcjs) || arch(javascript)
+        buildable: False
+
+    if flag(yi)
+        cpp-options: -DLEKSAH_WITH_YI
+
+    if (flag(yi) && flag(dyre))
+        cpp-options: -DLEKSAH_WITH_DYRE
+
+    if flag(threaded)
+        ghc-options: -threaded
+
+    if (os(linux) && flag(loc))
+        cpp-options: -DLOCALIZATION
+        build-depends:
+            hgettext,
+            setlocale
+
+    if !(impl(ghcjs) || arch(javascript))
+        build-depends:
+            leksah-server

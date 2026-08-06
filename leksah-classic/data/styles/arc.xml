@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+ This file is part of GtkSourceView
+
+ Copyright (C) 2006-2007 GtkSourceView team
+ Authors: Yevgen Muntyan <muntyan@tamu.edu>, Hamish Mackenzie
+
+ GtkSourceView is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+
+ GtkSourceView is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+-->
+<style-scheme id="arc" _name="Arc Dark" version="1.0">
+  <author>Jacco Krijnen</author>
+  <_description>Color scheme that goes well with the dark Arc GTK theme</_description>
+
+  <!-- Palette -->
+  <color name="white"       value="#FFFFFF"/>
+  <color name="magenta"     value="#c6a2f8"/>
+  <color name="violet"      value="#fd7dad"/>
+  <color name="blue"        value="#89d5ff"/>
+  <color name="gray"        value="#454b58"/>
+  <color name="darkgray"    value="#3d424e"/>
+  <color name="darkergray"  value="#343842"/>
+  <color name="black"       value="#3f3f3f"/>
+  <color name="yellow"      value="#fde22f"/>
+  <color name="lightyellow" value="#fff59a"/>
+  <color name="orange"      value="#f8b74b"/>
+  <color name="lime"        value="#def16e"/>
+  <color name="darkgreen"   value="#01600a"/>
+
+  <!-- Global Settings -->
+  <style name="text"                        background="gray" foreground="white"/>
+  <style name="current-line"                background="darkgray"/>
+  <style name="cursor"                      foreground="white" />
+  <style name="line-numbers"                background="darkgray"/>
+  <style name="selection"                   />
+  <style name="selection-unfocused"         />
+  <style name="selection-match"             background="darkergray"/>
+  <style name="bracket-match"               foreground="orange"/>
+  <style name="bracket-mismatch"            />
+  <style name="right-margin"                foreground="white"/>
+  <style name="search-match"                background="yellow" foreground="black"/>
+
+  <!-- General syntax -->
+  <style name="def:comment"                 foreground="#8d99b4"/>
+  <style name="def:shebang"                 foreground="#8d99b4"/>
+  <style name="def:string"                  foreground="magenta" />
+  <style name="def:character"               foreground="orange" />
+  <style name="def:special-char"            foreground="#a467f8" />
+  <style name="def:floating-point"          foreground="orange" />
+  <style name="def:decimal"                 foreground="orange" />
+  <style name="def:base-n-integer"          foreground="orange" />
+  <style name="def:keyword"                 foreground="blue"/>
+  <style name="def:preprocessor"            foreground="violet"/>
+  <style name="def:type"                    foreground="lime"/>
+  <style name="def:statement"               foreground="lightyellow"/>
+  <style name="def:identifier"              foreground="white"/>
+
+  <!-- Language specific -->
+  <style name="diff:added-line"             background="darkgreen"/>
+  <style name="diff:removed-line"           background="#6a0000"/>
+  <style name="diff:changed-line"           background="magenta"/>
+  <style name="diff:special-case"           background="violet"/>
+  <style name="diff:location"               foreground="orange"/>
+  <style name="diff:diff-file"              foreground="white"/>
+
+  <style name="xml:body"                    foreground="white"/>
+  <style name="xml:attribute-value"         foreground="lime"/>
+  <style name="xml:attribute-name"          foreground="magenta"/>
+
+  <style name="markdown:header"             foreground="lightyellow"/>
+  <style name="markdown:list-marker"        foreground="white"/>
+  <style name="markdown:emphasis"           italic="true"/>
+  <style name="markdown:strong-emphasis"    bold="true"/>
+  <style name="markdown:url"                foreground="blue"/>
+  <style name="markdown:link-text"          foreground="white"/>
+</style-scheme>

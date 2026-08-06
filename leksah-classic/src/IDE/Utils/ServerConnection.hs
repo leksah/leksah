@@ -1,0 +1,168 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
+-----------------------------------------------------------------------------
+--
+-- Module      :  IDE.Utils.ServerConnection
+-- Copyright   :  2007-2011 Juergen Nicklisch-Franken, Hamish Mackenzie
+-- License     :  GPL
+--
+-- Maintainer  :  maintainer@leksah.org
+-- Stability   :  provisional
+-- Portability :
+--
+-- | Server functionality
+--
+-----------------------------------------------------------------------------
+
+#if defined(ghcjs_HOST_OS)
+
+-- Browser build: there is no leksah-server process (and no TCP to reach one);
+-- metadata commands are quietly dropped.
+module IDE.Utils.ServerConnection (
+    doServerCommand,
+) where
+
+import IDE.Core.State (ServerCommand, ServerAnswer, IDEM)
+
+doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEM ()
+doServerCommand _ _ = return ()
+
+#else
+module IDE.Utils.ServerConnection (
+    doServerCommand,
+) where
+
+import Prelude ()
+import Prelude.Compat
+import IDE.Core.State
+       (ServerCommand, ServerAnswer, IDEM, IDEAction, Prefs,
+        readIDE, serverQueue, modifyIDE_, reflectIDE, server,
+        prefs, serverIP, serverPort, metadataEnabled, throwIDE,
+        triggerEventIDE_, IDEEvent(..), StatusbarCompartment(..))
+import IDE.Gtk.State (postAsyncIDE)
+import Network.Socket
+       (close, socket, connect, AddrInfo(..), defaultHints,
+        AddrInfoFlag(..), SocketType(..), getAddrInfo, socketToHandle)
+import IDE.Utils.Tool (runProcess)
+import GHC.Conc(threadDelay)
+import System.IO (hGetLine, hFlush, hPrint, hIsOpen, Handle, IOMode(..))
+import Control.Exception (bracketOnError, SomeException(..), catch)
+import Control.Concurrent(forkIO, newEmptyMVar, putMVar, takeMVar, tryTakeMVar)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Reader (ask)
+import System.Log.Logger (getLevel, getRootLogger, debugM)
+import Control.Monad (void, forever)
+import qualified Data.Text as T (pack, unpack)
+import Control.Lens ((.~), (?~))
+
+doServerCommand :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEAction
+doServerCommand command cont = readIDE prefs >>= \prefs0 ->
+  -- The ONE door to the leksah-server process: it connects, and starts the
+  -- process when nothing answers.  So this is where "metadata disabled" has to
+  -- mean "no leksah-server, ever" -- every command that comes through here
+  -- collects or queries metadata, including the import tool's header parse
+  -- (whose candidates come from the metadata scopes anyway, which are empty).
+  -- The continuation is simply never run: callers of a server command already
+  -- do nothing until an answer arrives.
+  if not (metadataEnabled prefs0)
+    then liftIO . debugM "leksah" $
+           "metadata disabled; not starting leksah-server for " <> show command
+    else do
+      q <- readIDE serverQueue >>= \case
+          Just q -> return q
+          Nothing -> do
+              q <- liftIO newEmptyMVar
+              modifyIDE_ $ serverQueue ?~ q
+              ideR <- ask
+              void . liftIO . forkIO . forever $ do
+                  debugM "leksah" "Ready for command"
+                  (command', cont') <- takeMVar q
+                  reflectIDE (doServerCommand' command' cont') ideR
+              return q
+      liftIO $ do
+          _ <- tryTakeMVar q
+          debugM "leksah" $ "Queue new command " ++ show command
+          putMVar q (command, cont)
+
+connectTo :: Prefs -> IO Handle
+connectTo prefs' = do
+  let hints = defaultHints
+        { addrFlags = [AI_ADDRCONFIG]
+        , addrSocketType = Stream }
+  getAddrInfo (Just hints) (Just . T.unpack $ serverIP prefs') (Just . show $ serverPort prefs') >>= \case
+    [] -> throwIDE "Can't connect to leksah-server (getAddrInfo failed)"
+    addr:_ ->
+      bracketOnError
+        (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
+        close
+        (\sock -> do
+          connect sock (addrAddress addr)
+          socketToHandle sock ReadWriteMode
+        )
+
+doServerCommand' :: ServerCommand -> (ServerAnswer -> IDEM ()) -> IDEAction
+doServerCommand' command cont =
+    readIDE server >>= \case
+        Just handle -> do
+            isOpen <- liftIO $ hIsOpen handle
+            if isOpen
+                then void (doCommand handle)
+                else do
+                    modifyIDE_ $ server .~ Nothing
+                    doServerCommand command cont
+        Nothing -> do
+            prefs' <- readIDE prefs
+            handle <- liftIO $
+                catch (connectTo prefs')
+                    (\(_ :: SomeException) -> do
+                        catch (startServer (serverPort prefs'))
+                            (\(exc :: SomeException) -> throwIDE ("Can't start leksah-server" <> T.pack (show exc)))
+                        mbHandle <- waitForServer prefs' 100
+                        case mbHandle of
+                            Just handle ->  return handle
+                            Nothing     ->  throwIDE "Can't connect to leksah-server")
+            modifyIDE_ $ server ?~ handle
+            doCommand handle
+            return ()
+    where
+        doCommand handle = do
+            postAsyncIDE $ triggerEventIDE_ (StatusbarChanged [CompartmentCollect True])
+            resp <- liftIO $ do
+                debugM "leksah" $ "Sending server command " ++ show command
+                hPrint handle command
+                hFlush handle
+                debugM "leksah" $ "Waiting on server command " ++ show command
+                hGetLine handle
+            liftIO . debugM "leksah" $ "Server result " ++ resp
+            postAsyncIDE $ do
+                triggerEventIDE_ (StatusbarChanged [CompartmentCollect False])
+                cont (read resp)
+
+startServer :: Int -> IO ()
+startServer port = do
+    logger <- getRootLogger
+    let verbosity = case getLevel logger of
+                        Just level -> ["--verbosity=" ++ show level]
+                        Nothing    -> []
+    void $ runProcess "leksah-server"
+        (["--server=" ++ show port, "+RTS", "-N2", "-RTS"] ++ verbosity)
+        Nothing Nothing Nothing Nothing Nothing
+
+-- | s is in tenth's of seconds
+waitForServer :: Prefs -> Int -> IO (Maybe Handle)
+waitForServer _ 0 = return Nothing
+waitForServer prefs' s = do
+    threadDelay 100000 -- 0.1 second
+    catch (do
+        handle <- liftIO $ connectTo prefs'
+        return (Just handle))
+        (\(_ :: SomeException) -> waitForServer prefs' (s-1))
+
+
+
+
+
+#endif

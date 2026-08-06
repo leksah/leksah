@@ -604,8 +604,9 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   mkdir -p bin
 
   if [ "$UI" = "classic" ]; then
-    # Classic Gtk: install the binaries, then launch directly (the Gtk runtime
-    # environment must already be in place in the ambient shell).
+    # Classic Gtk (the leksah-classic/ package — a frozen GPLv2 fork): install
+    # the binaries, then launch directly (the Gtk runtime environment must
+    # already be in place in the ambient shell).
     if [ "$SKIP_REBUILD" != 1 ]; then
       cabal install --installdir bin --overwrite-policy=always \
           exe:leksah-server exe:leksah-classic exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass \
@@ -616,7 +617,8 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
     rm -f .ghc.environment.*
 
     LEKSAH_EXIT_CODE=0
-    PATH="$(pwd)/bin:$PATH" ./bin/leksah-classic --develop-leksah "$@" \
+    PATH="$(pwd)/bin:$PATH" leksah_classic_datadir="$(pwd)/leksah-classic" \
+      ./bin/leksah-classic --develop-leksah "$@" \
       || LEKSAH_EXIT_CODE=$?
   else
     # Web front ends (default exe:leksah, or --warp): leksah-server must be on

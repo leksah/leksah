@@ -1,0 +1,349 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+-----------------------------------------------------------------------------
+--
+-- Module      :  IDE.Workspace
+-- Copyright   :  2007-2011 Juergen Nicklisch-Franken, Hamish Mackenzie
+-- License     :  GPL
+--
+-- Maintainer  :  maintainer@leksah.org
+-- Stability   :  provisional
+-- Portability :
+--
+-- | Represents a workspace, a work unit, which can be composed of multiple packages
+--
+-----------------------------------------------------------------------------
+module IDE.Workspaces (
+    projectOpenThis
+,   projectOpenPath
+,   dirProjectKey
+,   setProjectSettings
+,   workspaceClean
+,   workspaceMake
+,   workspaceActivatePackage
+,   projectAddPackage'
+,   workspaceRemoveProject
+,   projectRemovePackage
+,   workspaceTryQuiet
+,   projectNewHere
+,   projectTryQuiet
+,   packageTryQuiet
+
+,   backgroundMake
+,   makePackage'
+,   constructAndOpenMainModules
+) where
+
+import Prelude ()
+import Prelude.Compat
+
+import Control.Concurrent (putMVar, takeMVar)
+import Control.Exception (SomeException)
+import Control.Lens ((^.), (.~), (%~), (?~))
+import Control.Monad (unless, when)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Reader (ask)
+
+import Data.Foldable (forM_)
+import Data.Function ((&))
+import qualified Data.Map as M (delete, insert)
+import Data.Maybe (listToMaybe, catMaybes)
+import qualified Data.Set as S (toList)
+import Data.Text (Text)
+import qualified Data.Text as T
+       (unlines, isPrefixOf, lines, pack)
+
+import Distribution.PackageDescription (hsSourceDirs)
+
+import System.FilePath
+       ((</>), dropFileName, takeExtension, takeFileName, (<.>))
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import IDE.Utils.RemotePath (isRemotePath, remoteMakeRelative)
+import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
+import IDE.Web.FS
+       (fsCreateDirectoryIfMissing, fsDoesFileExist, fsReadFile, fsWriteFile)
+import System.Log.Logger (debugM)
+
+import IDE.Build
+       (moNoOp, makePackages, defaultMakeSettings, MakeOp(..),
+        MakeSettings(..))
+import IDE.Core.State
+       (IDEPackage, IDEAction, readIDE, prefs, liftIDE, WorkspaceAction,
+        ProjectAction, PackageAction, ProjectM, Project(..), ProjectKey(..),
+        pjPackageMap, Project, ideMessage, MessageLevel(..), workspace,
+        runWorkspace, activeProject, runProject, catchIDE, IDEEvent(..),
+        wsProjects, wsActiveProjectKey, wsActivePackFile, ipdCabalFile,
+        pjPackages, wsActiveComponent, triggerEventIDE_, pjKey, pjDir, ipdMain,
+        ipdPackageDir, activePack, runPackage, saveAllBeforeBuild,
+        __, externalModified, forkIDE, sysMessage, ipdPackageName, native,
+        developLeksah, belongsToPackage, pjStackFile, pjCabalFile, wsFile,
+        CabalProject(..), StackProject(..), CustomProject(..),
+        filePathToProjectKey, ProjectSettings(..),
+        defaultProjectSettings, wsProjectSettings)
+import IDE.Package
+       (getModuleTemplate, idePackageFromPath',
+        getPackageDescriptionAndPath, activatePackage,
+        ideProjectFromKey)
+import IDE.Pane.Log (showDefaultLogLaunch')
+import IDE.Pane.SourceBuffer
+       (IDEBuffer(..), fileOpenThis, fileCheckAll)
+import qualified IDE.Workspaces.Writer as Writer
+import IDE.Utils.FileUtils (myCanonicalizePath)
+import Distribution.Utils.Path (getSymbolicPath)
+import System.Directory (doesDirectoryExist)
+
+projectNewHere :: FilePath -> WorkspaceAction
+projectNewHere filePath = do
+    let (filePath', projectKey) = case takeExtension filePath of
+          ".project" -> (filePath, CabalTool (CabalProject filePath))
+          ".yaml" -> (filePath, StackTool (StackProject filePath))
+          _ -> (filePath <.> "project", CabalTool (CabalProject $ filePath <.> "project"))
+    liftIO (fsDoesFileExist filePath') >>= \case
+        True -> ideMessage Normal $ __ "Project already exists : " <> T.pack filePath'
+        False -> do
+            liftIO $ fsWriteFile filePath' (encodeUtf8 "packages:\n")
+            projectOpenThis projectKey
+
+workspaceTryQuiet :: WorkspaceAction -> IDEAction
+workspaceTryQuiet f =
+    readIDE workspace >>= \case
+        Just ws -> runWorkspace f ws
+        Nothing -> ideMessage Normal (__ "No workspace open")
+
+projectTryQuiet :: ProjectAction -> IDEAction
+projectTryQuiet f = workspaceTryQuiet $
+    readIDE activeProject >>= \case
+        Just project -> runProject f project
+        Nothing      -> ideMessage Normal (__ "No project active")
+
+projectOpenThis :: ProjectKey -> WorkspaceAction
+projectOpenThis projectKey = do
+    liftIO . debugM "leksah" $ "projectOpenThis " ++ show projectKey
+--    dir <- liftIO $ myCanonicalizePath $ dropFileName filePath
+--    let cPath = dir </> takeFileName filePath
+    ws <- ask
+    projectKey' <- Writer.makeProjectKeyAbsolute (ws ^. wsFile) projectKey
+--    liftIO (doesFileExist cPath) >>= \case
+--        False -> ideMessage Normal $ __ "Project does not exists : " <> T.pack cPath
+--        True -> do
+    liftIDE (ideProjectFromKey projectKey') >>= \case
+                Nothing -> ideMessage Normal $ __ "Unable to load project : " <> T.pack (show projectKey')
+                Just project -> do
+                    lift $ Writer.writeWorkspace $ ws
+                      & wsProjects %~ (project :)
+                      & wsActiveProjectKey ?~ projectKey'
+                      & wsActivePackFile .~ (ipdCabalFile <$> listToMaybe (pjPackages project))
+                      & wsActiveComponent .~ Nothing
+                    when (isRemotePath (pjDir projectKey')) . liftIO $
+                        requestRemoteRefresh RefreshProjectOpened
+
+-- | The 'ProjectKey' of a plain-directory project: a 'CustomTool' rooted at
+-- @dir@ with no build/repl/doc commands.  Such a project carries no packages;
+-- its files, git checkout and terminals all work from @dir@.  Handy for adding
+-- a folder (e.g. @iohk/infra@) just to edit its contents (@iohk/infra/ops@)
+-- without a cabal.project/stack.yaml/flake.nix.
+dirProjectKey :: FilePath -> ProjectKey
+dirProjectKey dir = CustomTool (CustomProject dir [] Nothing Nothing Nothing Nothing)
+
+-- | Add the project at a path to the workspace.  A directory is added as a
+-- plain-directory project ('dirProjectKey'); anything else is treated as a
+-- project file (cabal.project / stack.yaml / flake.nix / Makefile).  This is the
+-- single entry shared by the Open Project / Open Folder panels and
+-- @leksah-cmd project open@.
+projectOpenPath :: FilePath -> WorkspaceAction
+projectOpenPath fp
+    | isRemotePath fp = openFileKey fp   -- remote: can't stat; treat as a file
+    | otherwise = liftIO (doesDirectoryExist fp) >>= \case
+        True  -> projectOpenThis (dirProjectKey fp)
+        False -> openFileKey fp
+  where
+    -- A Rust/Python project is identified by a marker file the user selects
+    -- (Cargo.toml / pyproject.toml / setup.py); we open its CONTAINING directory
+    -- as a plain-directory (CustomTool) project — the tree introspects the marker
+    -- and the LSP (rust-analyzer / pyright) keys off the file's directory.
+    openFileKey f
+      | takeFileName f `elem` ["Cargo.toml", "pyproject.toml", "setup.py"]
+          = projectOpenThis (dirProjectKey (dropFileName f))
+      | otherwise = case filePathToProjectKey f of
+          Just pk -> projectOpenThis pk
+          Nothing -> ideMessage Normal $
+              __ "Not a project file or folder : " <> T.pack f
+
+-- | Set (and persist) the per-project settings for a project in the
+-- workspace — e.g. the remote command prefix (@nix develop -c@).
+setProjectSettings :: ProjectKey -> ProjectSettings -> WorkspaceAction
+setProjectSettings pk settings = do
+    ws <- ask
+    lift . Writer.writeWorkspace $ ws
+        & wsProjectSettings %~
+            (if settings == defaultProjectSettings
+                then M.delete pk
+                else M.insert pk settings)
+
+constructAndOpenMainModules :: Maybe IDEPackage -> IDEAction
+constructAndOpenMainModules Nothing = return ()
+constructAndOpenMainModules (Just idePackage) =
+    forM_ (ipdMain idePackage) $ \(target, bi, isTest) -> do
+        mbPD <- getPackageDescriptionAndPath
+        case mbPD of
+            Just (pd,_) ->
+                case hsSourceDirs bi of
+                    path':_ -> do
+                        let path = ipdPackageDir idePackage </> getSymbolicPath path'
+                        liftIO $ fsCreateDirectoryIfMissing path
+                        alreadyExists <- liftIO $ fsDoesFileExist (path </> target)
+                        unless alreadyExists $ do
+                            template <- liftIO $ getModuleTemplate (if isTest then "testmain" else "main") pd "Main" "" ""
+                            liftIO $ fsWriteFile (path </> target) (encodeUtf8 template)
+                            fileOpenThis (path </> target)
+                    _ -> return ()
+            Nothing     -> ideMessage Normal (__ "No package description")
+
+projectAddPackage' :: FilePath -> ProjectM (Maybe IDEPackage)
+projectAddPackage' fp = do
+    project <- ask
+    ws <- lift ask
+    let projectKey = pjKey project
+    -- Remote paths are already canonical (host-absolute); canonicalizing
+    -- locally would mangle them.
+    cfp <- if isRemotePath fp then return fp else liftIO (myCanonicalizePath fp)
+    liftIDE (idePackageFromPath' cfp) >>= \case
+      Just pack' ->
+        case (case pjKey project of
+                StackTool p -> Just (pjStackFile p, "- ")
+                CabalTool p -> Just (pjCabalFile p, " ")
+                _ -> Nothing) of
+          Nothing -> do
+            ideMessage Normal (__ "Cannot add packages to custom project")
+            return Nothing
+          Just (projectFile, indent) -> do
+            projectText <- liftIO $ decodeUtf8 <$> fsReadFile projectFile
+            let projectLines = T.lines projectText
+                relativePath = remoteMakeRelative (dropFileName projectFile) (dropFileName cfp)
+            case span (not . ("packages:" `T.isPrefixOf`)) projectLines of
+                (before, packagesLine:rest) ->
+                    case span (indent `T.isPrefixOf`) rest of
+                        (packs, rest') -> liftIO $ fsWriteFile projectFile . encodeUtf8 . T.unlines $
+                            before <> (packagesLine:packs) <> [indent <> T.pack relativePath] <> rest'
+                _ -> return ()
+            unless (cfp `elem` map ipdCabalFile (pjPackages project)) $ liftIDE $
+                Writer.writeWorkspace $ ws
+                  & wsProjects %~ map (\p -> if pjKey p == projectKey
+                                                then p { pjPackageMap = M.insert (ipdCabalFile pack') pack' $ pjPackageMap p }
+                                                else p)
+                  & wsActivePackFile ?~ ipdCabalFile pack'
+                  & wsActiveComponent .~ Nothing
+            return (Just pack')
+      Nothing -> return Nothing
+
+packageTryQuiet :: PackageAction -> IDEAction
+packageTryQuiet f = do
+    maybePackage <- readIDE activePack
+    case maybePackage of
+        Just p  -> projectTryQuiet $ runPackage f p
+        Nothing -> ideMessage Normal (__ "No active package")
+
+
+workspaceRemoveProject :: ProjectKey -> WorkspaceAction
+workspaceRemoveProject projectKey = do
+    ws <- ask
+    when (any ((/= projectKey) . pjKey) $ ws ^. wsProjects) . lift $
+        Writer.writeWorkspace $ ws & wsProjects %~ filter ((/= projectKey) . pjKey)
+
+projectRemovePackage :: IDEPackage -> ProjectAction
+projectRemovePackage _pack =
+--    ws <- ask
+--    when (pack `elem` wsPackages ws) $ lift $
+--        Writer.writeWorkspace ws {wsProjects =  delete pack (wsPackages ws)}
+    ideMessage Normal "projectRemovePackage not implemented"
+
+workspaceActivatePackage :: Project -> Maybe IDEPackage -> Maybe Text -> WorkspaceAction
+workspaceActivatePackage project mbPack exe = do
+    (mbPackFile, mbExe) <- liftIDE $ case mbPack of
+        Just pack' | ipdCabalFile pack' `elem` map ipdCabalFile (pjPackages project) -> do
+            activatePackage (Just (ipdCabalFile pack')) (Just project) (Just pack') exe
+            return (Just (ipdCabalFile pack'), exe)
+        _ -> do
+            activatePackage Nothing (Just project) Nothing Nothing
+            return (Nothing, Nothing)
+    ws <- ask
+    liftIDE $ Writer.writeWorkspace $ ws
+             & wsProjects %~ ((project :) . filter ((/= pjKey project) . pjKey))
+             & wsActiveProjectKey ?~ pjKey project
+             & wsActivePackFile .~ mbPackFile
+             & wsActiveComponent .~ mbExe
+
+------------------------
+-- Workspace make
+
+workspaceClean :: WorkspaceAction
+workspaceClean = do
+    ws <- ask
+    settings <- lift $ do
+        prefs' <- readIDE prefs
+        return (defaultMakeSettings prefs')
+    lift $ makePackages settings (map (\p -> (p, pjPackages p)) $ ws ^. wsProjects) MoClean MoClean moNoOp
+
+buildSteps :: MakeSettings -> [MakeOp]
+buildSteps settings =
+    MoBuild
+         : [MoDocu    | msMakeDocs settings]
+        ++ [MoTest    | msRunUnitTests settings]
+        ++ [MoInstall]
+        ++ [MoBench   | msRunBenchmarks settings]
+
+workspaceMake :: WorkspaceAction
+workspaceMake = do
+    ws <- ask
+    settings <- lift $ do
+        prefs' <- readIDE prefs
+        return ((defaultMakeSettings prefs'){
+                    msMakeMode           = True,
+                    msBackgroundBuild    = False})
+    let build = buildSteps settings
+    lift $ makePackages settings (map (\p -> (p, pjPackages p)) $ ws ^. wsProjects) (MoComposed build) (MoComposed build) MoMetaInfo
+
+backgroundMake :: IDEAction
+backgroundMake = catchIDE (do
+    prefs'       <- readIDE prefs
+    modifiedFiles <- catMaybes <$> if saveAllBeforeBuild prefs'
+                        then fileCheckAll (return . return . fileName)
+                        else return []
+    extModsMVar <- readIDE externalModified
+    extMods <- liftIO $ S.toList <$> takeMVar extModsMVar
+    liftIO $ putMVar extModsMVar mempty
+    workspaceTryQuiet $ do
+        ws <- ask
+        liftIDE . forkIDE $ do
+            let modifiedPacks = filter (not . null . snd) $
+                                  map (\project -> (project, filter (\pack' ->
+                                    any (`belongsToPackage` pack') $ modifiedFiles <> extMods) (pjPackages project))) (ws ^. wsProjects)
+                settings = defaultMakeSettings prefs'
+                steps = buildSteps settings
+            if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+                then makePackages settings modifiedPacks (MoComposed steps) (MoComposed []) moNoOp
+                else makePackages settings modifiedPacks (MoComposed steps)
+                                    (MoComposed steps) MoMetaInfo
+    )
+    (\(e :: SomeException) -> sysMessage Normal (T.pack $ show e))
+
+makePackage' :: PackageAction
+makePackage' = do
+  liftIO $ debugM "leksah" "makePackage'"
+  p <- ask
+  project <- lift ask
+  liftIDE $ do
+    showDefaultLogLaunch'
+    prefs' <- readIDE prefs
+    let settings = (defaultMakeSettings prefs')
+            { msBackgroundBuild = False
+            , msSuccessAction = when (ipdPackageName p == "leksah" && native prefs') $
+                readIDE developLeksah >>= \case
+                    False -> return ()
+                    True -> triggerEventIDE_ QuitToRestart }
+    let steps = buildSteps settings
+    if msSingleBuildWithoutLinking settings && not (msMakeMode settings)
+        then makePackages settings [(project, [p])] (MoComposed steps) (MoComposed []) moNoOp
+        else makePackages settings [(project, [p])] (MoComposed steps) (MoComposed steps) MoMetaInfo

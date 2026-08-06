@@ -193,11 +193,6 @@ rec {
         # (libgcc) symbol the iserv RTS linker can't resolve when loading the
         # unit for TH under wine; the flag drops the cbits.
         packages.bitvec.flags.simd = lib.mkIf isWindows (lib.mkForce false);
-        # Ship the loader DLL next to the exe (it is LoadLibrary'd at startup).
-        packages.leksah.components.exes.leksah-webview2.postInstall =
-          lib.optionalString isWindows ''
-            cp ${webview2-sdk}/runtimes/win-x64/native/WebView2Loader.dll $out/bin/
-          '';
         packages.leksah-server.components.exes.leksah-server.build-tools =
           lib.optionals (!isWindows) [
             pkgs.makeWrapper
@@ -208,25 +203,64 @@ rec {
             --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
             --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin"
         '';
+        # The native web front end (exe:leksah — WKWebView on macOS,
+        # GTK4/WebKitGTK 6.0 on Linux, WebView2 on Windows).  On Linux WebKit
+        # needs the gsettings schemas at runtime, so the wrapper extends
+        # XDG_DATA_DIRS rather than clearing it (wrapGAppsHook4's setup hook
+        # doesn't survive the component builder's phase order, so the wrapper
+        # sets the env explicitly).
         packages.leksah.components.exes.leksah.build-tools =
+          lib.optionals (!isWindows && !isJS) [
+            pkgs.makeWrapper
+          ];
+        packages.leksah.components.exes.leksah.libs =
+          lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+            pkgs.gtk4
+            pkgs.webkitgtk_6_0
+            pkgs.dconf
+            pkgs.adwaita-icon-theme
+            pkgs.gsettings-desktop-schemas
+          ];
+        packages.leksah.components.exes.leksah.postInstall =
+          # Ship the loader DLL next to the exe (it is LoadLibrary'd at startup).
+          lib.optionalString isWindows ''
+            cp ${webview2-sdk}/runtimes/win-x64/native/WebView2Loader.dll $out/bin/
+          '' + lib.optionalString (!isWindows && !isJS) ''
+          ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+            mkdir -p $out/share
+            cp -r ${../linux} $out/share/
+          ''}
+          wrapProgram $out/bin/leksah \
+            --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
+            --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
+            --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin" \
+            --suffix 'PATH' ':' "${hsPkgs.doctest.components.exes.doctest}/bin" \
+            ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+            --prefix 'XDG_DATA_DIRS' ':' "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
+            --prefix 'XDG_DATA_DIRS' ':' "${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}" \
+            --prefix 'XDG_DATA_DIRS' ':' "${pkgs.adwaita-icon-theme}/share" \
+            ''} --argv0 leksah
+        '';
+        # The classic GTK3 IDE (its own frozen package, leksah-classic/).
+        packages.leksah-classic.components.exes.leksah-classic.build-tools =
           lib.optionals (!isWindows && !isJS) [
             pkgs.wrapGAppsHook3
             pkgs.makeWrapper
           ];
-        packages.leksah.components.exes.leksah.libs =
+        packages.leksah-classic.components.exes.leksah-classic.libs =
           lib.optionals (!isWindows && !isJS) [
             pkgs.gtk3
             pkgs.dconf
             pkgs.adwaita-icon-theme
             pkgs.gsettings-desktop-schemas
           ];
-        packages.leksah.components.exes.leksah.postInstall =
+        packages.leksah-classic.components.exes.leksah-classic.postInstall =
           lib.optionalString (!isWindows && !isJS) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
             cp -r ${../linux} $out/share/
           ''}
-          wrapProgram $out/bin/leksah \
+          wrapProgram $out/bin/leksah-classic \
             --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
             --prefix 'PATH' ':' "${hsPkgs.vcsgui.components.exes.vcsgui}/bin" \
             --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
@@ -252,36 +286,6 @@ rec {
             --suffix 'PATH' ':' "${hsPkgs.doctest.components.exes.doctest}/bin" \
             --set 'XDG_DATA_DIRS' ""
         '';
-        # The GTK4/WebKitGTK 6.0 front end (Linux only).  WebKit needs the
-        # gsettings schemas at runtime, so unlike the gtk3 wrappers this one
-        # extends XDG_DATA_DIRS rather than clearing it (wrapGAppsHook4's
-        # setup hook doesn't survive the component builder's phase order, so
-        # the wrapper sets the env explicitly).
-        packages.leksah.components.exes.leksah-webkitgtk.build-tools =
-          lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-            pkgs.makeWrapper
-          ];
-        packages.leksah.components.exes.leksah-webkitgtk.libs =
-          lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-            pkgs.gtk4
-            pkgs.webkitgtk_6_0
-            pkgs.dconf
-            pkgs.adwaita-icon-theme
-            pkgs.gsettings-desktop-schemas
-          ];
-        packages.leksah.components.exes.leksah-webkitgtk.postInstall =
-          lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-          mkdir -p $out/share
-          cp -r ${../linux} $out/share/
-          wrapProgram $out/bin/leksah-webkitgtk \
-            --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
-            --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
-            --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin" \
-            --suffix 'PATH' ':' "${hsPkgs.doctest.components.exes.doctest}/bin" \
-            --prefix 'XDG_DATA_DIRS' ':' "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
-            --prefix 'XDG_DATA_DIRS' ':' "${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}" \
-            --prefix 'XDG_DATA_DIRS' ':' "${pkgs.adwaita-icon-theme}/share"
-        '';
       })
     ];
     shell = {
@@ -294,6 +298,7 @@ rec {
       packages = ps: with ps; [
         leksah-server
         leksah
+        leksah-classic
         ltk
         vcsgui
         vcswrapper

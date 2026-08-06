@@ -4,9 +4,8 @@
 # implicit cradle (a bare `cabal v2-repl <file>`) fails with
 # "Cabal-7132: Ambiguous target" and NO GHC session loads — hover, go-to-def
 # and live diagnostics then silently do nothing for the whole project:
-#   * src/            -> lib:leksah (classic) AND lib:leksah-nogtk (web UI)
 #   * vendor/ltk/src/ -> lib:ltk AND lib:leksah-nogtk (compiled in, not linked)
-#   * main/           -> all four executables (leksah, -classic, -warp, -cmd)
+#   * main/           -> three executables (leksah, -warp, -cmd)
 # Pin each shared tree to one component.  hie-bios matches by longest path
 # prefix, so more specific entries (e.g. main/Cmd.hs) must come before the
 # general one (main/).
@@ -20,10 +19,15 @@ cradle:
       component: "leksah:exe:leksah"
     - path: "./src-wkwebview"
       component: "leksah:exe:leksah"
-    # Classic Gtk-only sources (unambiguous, pinned for explicitness).
-    - path: "./src-gtk"
-      component: "leksah:lib:leksah"
-    # Shared library sources -> the web-UI library (the current dev focus).
+    # The classic GTK3 IDE, split into its own frozen package (its src/ is a
+    # copy of the formerly shared tree; pins come before the generic ./src).
+    - path: "./leksah-classic/main"
+      component: "leksah-classic:exe:leksah-classic"
+    - path: "./leksah-classic/src-gtk"
+      component: "leksah-classic:lib:leksah-classic"
+    - path: "./leksah-classic/src"
+      component: "leksah-classic:lib:leksah-classic"
+    # The web-UI library.
     - path: "./src"
       component: "leksah:lib:leksah-nogtk"
     - path: "./src-nogtk"
