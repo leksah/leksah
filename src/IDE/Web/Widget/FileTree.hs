@@ -35,6 +35,7 @@ import IDE.Git (qualifyPath, runGitBatch)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.FS (fsListDirectory)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.LocalRefresh (registerLocalRefresh)
 import IDE.Web.ReplTmux (openTerminalInDir)
@@ -45,7 +46,7 @@ import Reflex
        (Dynamic, listViewWithKey, Event, never, ffilter, updated, leftmost,
         tag, current, getPostBuild, performEvent, performEvent_, holdDyn,
         newTriggerEvent, holdUniqDyn, ffor, constDyn, zipDynWith,
-        tickLossyFromPostBuildTime)
+        tickLossyFromPostBuildTime, sample)
 import Reflex.Dom.Core
        (MonadWidget, elAttr, elDynAttr, (=:), text, el, elClass, elDynClass,
         dynText, dyn, domEvent, EventName(..))
@@ -119,23 +120,32 @@ classifyStatus = \case
 -- | Run git for the repo containing `dir` and return (status map, ignored set),
 -- both keyed/holding absolute paths.  Empty if `dir` is not in a git repo (or
 -- git is unavailable) — decoration/filtering is then simply absent.
-gitInfo :: MonadIO m => FilePath -> m (Map FilePath GitStatus, Set FilePath)
-gitInfo dir = liftIO $ (`catch` \(_ :: SomeException) -> return (mempty, mempty)) $ do
+--
+-- @wantIgnored@ says whether the ignored set is needed at all.  It is used
+-- ONLY to hide entries, so when the "show ignored files" preference is on
+-- there is nothing to hide and the second git pass — a full working-tree walk
+-- that takes tens of seconds over a populated @dist-newstyle@, plus parsing
+-- its output — is skipped entirely.
+gitInfo :: MonadIO m => Bool -> FilePath -> m (Map FilePath GitStatus, Set FilePath)
+gitInfo wantIgnored dir = liftIO $ (`catch` \(_ :: SomeException) -> return (mempty, mempty)) $ do
   -- One batch = one ssh round trip for a remote dir (IDE.Git routes).
   results <- runGitBatch dir
-    [ ["rev-parse", "--show-toplevel"]
+    ([ ["rev-parse", "--show-toplevel"]
       -- `-uall` lists untracked files individually (so each is decorated).
-    , ["-c", "core.quotePath=false", "status", "--porcelain", "-uall"]
-      -- A second pass with `--ignored` (default `-u`, which collapses fully
-      -- ignored directories like dist-newstyle into one entry rather than
-      -- listing every file).
-    , ["-c", "core.quotePath=false", "status", "--porcelain", "--ignored"]
-    ]
+     , ["-c", "core.quotePath=false", "status", "--porcelain", "-uall"]
+     ] <>
+      -- The ignored pass (default `-u`, which collapses fully ignored
+      -- directories like dist-newstyle into one entry rather than listing
+      -- every file) — only when something will be hidden with it.
+     [ ["-c", "core.quotePath=false", "status", "--porcelain", "--ignored"]
+     | wantIgnored ])
   case results of
-    [(ExitSuccess, root, _), (rc, out, _), (_, iout, _)] -> do
+    ((ExitSuccess, root, _) : (rc, out, _) : rest) -> do
       let root' = qualifyPath dir (dropWhileEnd isSpace (T.unpack root))
       return ( if rc == ExitSuccess then parseStatus root' (T.unpack out) else mempty
-             , parseIgnored root' (T.unpack iout) )
+             , case rest of
+                 ((_, iout, _) : _) -> parseIgnored root' (T.unpack iout)
+                 []                 -> mempty )
     _ -> return (mempty, mempty)
   where
     parseStatus root out = M.fromList
@@ -190,8 +200,16 @@ fileTree treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD
   -- over a big ignored tree (dist-newstyle during a build) takes tens of
   -- seconds — so requests while a scan runs set a flag instead of spawning
   -- another scan, and one more runs when it finishes.
-  rescan <- liftIO . newCoalescer $ gitInfo dir >>= fireInfo
+  -- The ignored set is only needed while ignored files are hidden; keep the
+  -- current answer in an IORef the coalesced scan reads, and rescan when the
+  -- preference changes.
+  wantIgnoredRef <- liftIO . newIORef . not =<< sample (current showIgnoredD)
+  rescan <- liftIO . newCoalescer $
+      readIORef wantIgnoredRef >>= \want -> gitInfo want dir >>= fireInfo
   performEvent_ $ liftIO rescan <$ postBuild
+  performEvent_ $ ffor (updated showIgnoredD) $ \showI -> liftIO $ do
+      writeIORef wantIgnoredRef (not showI)
+      rescan
   when (isRemotePath dir) . void . liftIO $
       registerRemoteRefresh (const rescan)
   -- Local dirs: no polling — rescan when an fsnotify watcher fires a
