@@ -107,6 +107,7 @@ import IDE.Web.Claude (claudeAvailable, runClaudeCmd, ClaudeCmd(..))
 import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeItemDynAttrSet', treeSelect, treeSelect', treeItem,
         treeItem', clickMods, dblclickMods)
+import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.GitInfo (prForBranch)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
 import IDE.Project.WorkspaceFile
@@ -382,7 +383,7 @@ gitTreeNode dir brD prD = do
   isGitD <- holdUniqDyn =<< holdDyn False isGitE
   void . dyn $ ffor isGitD $ \isGit -> when isGit $ do
       (abE, fireAb) <- newTriggerEvent
-      let scanAb = void . forkIO $ gitAheadBehind dir >>= fireAb
+      scanAb <- liftIO . newCoalescer $ gitAheadBehind dir >>= fireAb
       bpb <- getPostBuild
       performEvent_ $ liftIO scanAb <$ bpb
       liftIO $ registerGitRefresh dir scanAb
@@ -421,7 +422,7 @@ gitBranchPr :: forall t m. MonadWidget t m
 gitBranchPr dir = do
   (brE, fireBr) <- newTriggerEvent
   (prE, firePr) <- newTriggerEvent
-  let scan = void . forkIO $ do
+  scan <- liftIO . newCoalescer $ do
         gitCurrentBranch dir >>= fireBr
         prForBranch dir >>= firePr
   pb <- getPostBuild
@@ -540,7 +541,7 @@ gitBranchesNode dir curD = void $ treeItem "git-branches" False
     (el "ul" $ do
         (bsE, fireBs) <- newTriggerEvent
         cpb <- getPostBuild
-        let scan = void . forkIO $ gitBranches dir >>= fireBs
+        scan <- liftIO . newCoalescer $ gitBranches dir >>= fireBs
         performEvent_ $ liftIO scan <$ cpb
         liftIO $ registerGitRefresh dir scan
         bsD <- holdDyn [] bsE
@@ -627,7 +628,7 @@ gitChangesNode :: forall t m . MonadWidget t m => FilePath -> m ()
 gitChangesNode dir = do
     (chE, fireCh) <- newTriggerEvent
     cpb <- getPostBuild
-    let scan = void . forkIO $ (M.elems <$> gitChanges dir) >>= fireCh
+    scan <- liftIO . newCoalescer $ (M.elems <$> gitChanges dir) >>= fireCh
     performEvent_ $ liftIO scan <$ cpb
     liftIO $ registerGitRefresh dir scan
     chD <- holdDyn [] chE
@@ -686,7 +687,7 @@ gitWorktreesNode dir = void $ treeItem "git-worktrees" False
     (el "ul" $ do
         (wtE, fireWt) <- newTriggerEvent
         cpb <- getPostBuild
-        let scan = void . forkIO $ gitWorktrees dir >>= fireWt
+        scan <- liftIO . newCoalescer $ gitWorktrees dir >>= fireWt
         performEvent_ $ liftIO scan <$ cpb
         liftIO $ registerGitRefresh dir scan
         wtD <- holdDyn [] wtE

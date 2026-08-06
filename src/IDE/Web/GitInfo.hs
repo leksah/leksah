@@ -33,7 +33,9 @@ module IDE.Web.GitInfo (
 ,   scanActiveGitInfo
 ) where
 
-import Control.Exception (try, SomeException)
+import Control.Concurrent.MVar
+       (MVar, newEmptyMVar, putMVar, readMVar)
+import Control.Exception (catch, try, SomeException)
 import Control.Monad (void, when)
 import Data.Aeson (FromJSON(..), withObject, (.:), eitherDecodeStrict)
 import Data.List (isPrefixOf, foldl')
@@ -183,25 +185,39 @@ ghPrViaCli (owner, name) br = findExecutable "gh" >>= \case
                     _       -> Nothing
             _ -> Nothing
 
--- A short-TTL cache keyed by (owner, repo, branch); a PR lookup is a network
--- round trip and several widgets ask for the same dir on every refresh.
+-- A short-TTL cache keyed by (owner, repo, branch).  A PR lookup is a network
+-- round trip and several widgets ask for the same repo on every refresh, so
+-- an entry is either a fresh ANSWER or the FETCH that is currently getting
+-- one: callers that arrive while a request is in flight wait for it instead
+-- of firing their own (which used to send four identical GitHub requests in
+-- the same second, for nothing but rate limit).
+data PrEntry
+    = PrFresh POSIXTime (Maybe (Int, Text))
+    | PrFetching (MVar (Maybe (Int, Text)))
+
 {-# NOINLINE prCache #-}
-prCache :: IORef (M.Map (Text, Text, Text) (POSIXTime, Maybe (Int, Text)))
+prCache :: IORef (M.Map (Text, Text, Text) PrEntry)
 prCache = unsafePerformIO (newIORef M.empty)
 
 cachedPr :: (Text, Text) -> Text -> IO (Maybe (Int, Text)) -> IO (Maybe (Int, Text))
 cachedPr (owner, repo) br fetch = do
     now <- getPOSIXTime
+    slot <- newEmptyMVar
     let key = (owner, repo, br)
-    cached <- atomicModifyIORef' prCache $ \m ->
-        case M.lookup key m of
-            Just (t, v) | now - t < ttl -> (m, Just v)
-            _                           -> (m, Nothing)
-    case cached of
-        Just v  -> return v
-        Nothing -> do
-            v <- fetch
-            atomicModifyIORef' prCache $ \m -> (M.insert key (now, v) m, ())
+    -- One atomic decision per caller: use the fresh answer, wait on the
+    -- in-flight fetch, or become the fetcher.
+    action <- atomicModifyIORef' prCache $ \m -> case M.lookup key m of
+        Just (PrFresh t v) | now - t < ttl -> (m, Right v)
+        Just (PrFetching wait)             -> (m, Left (Left wait))
+        _ -> (M.insert key (PrFetching slot) m, Left (Right slot))
+    case action of
+        Right v            -> return v
+        Left (Left wait)   -> readMVar wait
+        Left (Right mine)  -> do
+            v <- fetch `catch` \(_ :: SomeException) -> return Nothing
+            atomicModifyIORef' prCache $ \m -> (M.insert key (PrFresh now v) m, ())
+            -- Release everyone who queued behind this fetch.
+            putMVar mine v
             return v
   where ttl = 30  -- seconds
 

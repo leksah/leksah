@@ -138,6 +138,7 @@ library leksah-nogtk
         IDE.Utils.RemotePath
         IDE.LSP
         IDE.Web.Chord
+        IDE.Web.Coalesce
         IDE.Web.Command
         IDE.Web.Commands
         IDE.Web.Keybindings

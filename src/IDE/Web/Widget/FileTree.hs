@@ -35,6 +35,7 @@ import IDE.Git (qualifyPath, runGitBatch)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.FS (fsListDirectory)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
+import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.LocalRefresh (registerLocalRefresh)
 import IDE.Web.ReplTmux (openTerminalInDir)
 import System.Exit (ExitCode(..))
@@ -185,18 +186,21 @@ fileTree treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD
   -- since they have no watchers or polling.
   postBuild <- getPostBuild
   (infoE, fireInfo) <- newTriggerEvent
-  let scan = liftIO . void . forkIO $ gitInfo dir >>= fireInfo
-  performEvent_ $ scan <$ postBuild
+  -- COALESCED: a watcher fires per changed file, and `git status --ignored`
+  -- over a big ignored tree (dist-newstyle during a build) takes tens of
+  -- seconds — so requests while a scan runs set a flag instead of spawning
+  -- another scan, and one more runs when it finishes.
+  rescan <- liftIO . newCoalescer $ gitInfo dir >>= fireInfo
+  performEvent_ $ liftIO rescan <$ postBuild
   when (isRemotePath dir) . void . liftIO $
-      registerRemoteRefresh (\_ -> void . forkIO $ gitInfo dir >>= fireInfo)
+      registerRemoteRefresh (const rescan)
   -- Local dirs: no polling — rescan when an fsnotify watcher fires a
   -- LocalRefresh for a path inside this tree.
   unless (isRemotePath dir) $ do
       let base = dropTrailingPathSeparator dir
       void . liftIO $
           registerLocalRefresh $ \p ->
-              when (p == base || (base <> "/") `isPrefixOf` p) $
-                  void . forkIO $ gitInfo dir >>= fireInfo
+              when (p == base || (base <> "/") `isPrefixOf` p) rescan
   infoD <- holdDyn (mempty, mempty) infoE
   fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD claudeAtRoot dir
 
