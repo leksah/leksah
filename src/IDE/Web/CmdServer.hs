@@ -43,9 +43,9 @@ module IDE.Web.CmdServer
 
 import Data.IORef (IORef, newIORef)
 import System.IO.Unsafe (unsafePerformIO)
-import IDE.Core.State (IDERef)
+import IDE.App (App)
 
-startCmdServer :: IDERef -> IO ()
+startCmdServer :: App -> IO ()
 startCmdServer _ = return ()
 
 cmdSocketPath :: IO FilePath
@@ -109,14 +109,28 @@ import Network.Socket.ByteString (recv, sendAll)
 import Language.Javascript.JSaddle (eval, valToText)
 import Text.Printf (printf)
 
-import IDE.Core.State
-       (IDERef, reflectIDE, ideJSM, readIDE, modifyIDE_, workspace,
-        runWorkspace, runProject, pjPackages, ipdPackageName, ipdCabalFile,
-        wsProjects, setLoggerLevel, activeProjectLogRefs, allLogRefs,
-        LogRef(..), LogRefType(..), SrcSpan(..), logRefFullFilePath,
-        AIPaneRef(..), paneAISession, TabKey(..))
-import qualified IDE.Core.State as State (runPackage)
-import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
+import Control.Lens (view)
+import qualified Data.Map as Map
+import System.Log.Logger
+       (Priority(..), updateGlobalLogger, setLevel)
+
+import IDE.App
+       (App, appBuilder, appJSMResults, appProblems, appUi, appWorkspace)
+import IDE.Builder (buildActiveTarget, runVerbWait)
+import IDE.Problems (problemsCell)
+import IDE.Problems.Types
+       (Pos(..), Problem(..), Range(..), Severity(..))
+import IDE.Reactive (modifyCell, readCell)
+import IDE.Web.Model
+       (AIPaneRef(..), TabKey(..), paneAISession, webWindows)
+import IDE.Workspace
+       (activeProject, prDir, projectOpenPath, setProjectCmdPrefix,
+        workspaceActivatePackage, wsCell, wsProjectKey, wsProjects, wsSpec)
+import qualified IDE.Ws.File as WF
+import IDE.Ws.Registry (detectProject)
+import IDE.Ws.Types
+       (Package(..), Project(..), ProjectKey(..), Verb(..),
+        defaultEffects)
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
@@ -133,12 +147,7 @@ import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.ScreenshotRequest (requestScreenshot)
 import IDE.Web.Heartbeat (lastBeatAge)
-import IDE.Web.WindowBridge (resyncStates)
 import IDE.Web.SnapRequest (requestSnapPane)
-import IDE.Project.WorkspaceFile
-       (projectOpenThis, projectOpenPath, dirProjectKey, setProjectSettings,
-        workspaceActivatePackage)
-import IDE.Project.Build (buildActiveTarget, buildTarget)
 
 -- | The control socket both sides agree on: @~/.leksah/cmd.sock@ for the
 -- default instance, @~/.leksah/cmd-\<port\>.sock@ under a non-default
@@ -154,8 +163,8 @@ cmdSocketPath = do
 -- mustn't take the IDE down).  On Windows the AF_UNIX socket call fails at
 -- runtime and lands in the same catch — the control server is simply absent
 -- there (leksah-cmd isn't built on Windows either).
-startCmdServer :: IDERef -> IO ()
-startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> return ()
+startCmdServer :: App -> IO ()
+startCmdServer app = void . forkIO $ serve `catch` \(_ :: SomeException) -> return ()
   where
     serve = do
       path <- cmdSocketPath
@@ -197,7 +206,7 @@ startCmdServer ideR = void . forkIO $ serve `catch` \(_ :: SomeException) -> ret
       forever $ do
         (conn, _) <- accept sock
         void . forkIO $
-          (handleConn ideR conn `catch` \(_ :: SomeException) -> return ())
+          (handleConn app conn `catch` \(_ :: SomeException) -> return ())
             `finally` close conn
 
 -- | Is a live listener answering on the AF_UNIX socket at @path@?  We just try
@@ -214,8 +223,8 @@ socketInUse path = (probe `catch` \(_ :: SomeException) -> return False)
 
 -- | Read the whole request (client half-closes after sending), dispatch it and
 -- write the reply.  @restart@ never returns — it exits the process.
-handleConn :: IDERef -> Socket -> IO ()
-handleConn ideR conn = do
+handleConn :: App -> Socket -> IO ()
+handleConn app conn = do
   raw <- recvAll conn
   let fields = map (decodeUtf8With lenientDecode) (BS.split 0 raw)
   case fields of
@@ -251,7 +260,7 @@ handleConn ideR conn = do
     bindOpenedTo mpid files = forM_ mpid $ \pid ->
         sessionOwningPid pid >>= \case
           Nothing  -> return ()
-          Just sid -> (`reflectIDE` ideR) . modifyIDE_ $ paneAISession %~ \m ->
+          Just sid -> modifyCell (appUi app) $ paneAISession %~ \m ->
               foldr (\fp -> M.insert (PRTab (EditorKey fp)) sid) m files
 
     dispatch mpid cwd = \case
@@ -305,19 +314,17 @@ handleConn ideR conn = do
       ("package" : "activate" : file : _) ->
         resolveInput cwd file >>= \case
           Left e -> reply e
-          Right fp ->
-            reflectIDE (readIDE workspace) ideR >>= \case
-              Nothing -> reply "No workspace open\n"
-              Just ws ->
-                case [ (project, p)
-                     | project <- ws ^. wsProjects
-                     , p <- pjPackages project
-                     , ipdCabalFile p == fp ] of
-                  ((project, package):_) -> do
-                    void $ reflectIDE
-                        (workspaceActivatePackage project (Just package) Nothing) ideR
-                    reply $ "Activated " <> T.pack fp <> "\n"
-                  [] -> reply $ "No package with cabal file " <> T.pack fp <> " in the workspace\n"
+          Right fp -> do
+            ws <- readCell (wsCell (appWorkspace app))
+            case [ (project, p)
+                 | project <- wsProjects ws
+                 , p <- prPackages project
+                 , pkgManifest p == fp ] of
+              ((project, package):_) -> do
+                workspaceActivatePackage (appWorkspace app)
+                    (prKey project) (Just (pkgManifest package)) Nothing
+                reply $ "Activated " <> T.pack fp <> "\n"
+              [] -> reply $ "No package with cabal file " <> T.pack fp <> " in the workspace\n"
 
       -- Set (or clear, with no prefix argument) the per-project command
       -- prefix — the shell fragment remote tool runs are wrapped in, e.g.
@@ -325,15 +332,23 @@ handleConn ideR conn = do
       ("project" : "set-prefix" : file : prefixParts) ->
         resolveInput cwd file >>= \case
           Left e -> reply e
-          Right fp -> case filePathToProjectKey fp of
-            Nothing -> reply $ "Not a project file: " <> T.pack fp <> "\n"
-            Just pk -> do
-              let prefix = T.strip (T.unwords prefixParts)
-                  settings = ProjectSettings
-                    { psCmdPrefix = if T.null prefix then Nothing else Just prefix }
-              void $ reflectIDE (setProjectSettings pk settings) ideR
-              reply $ "Command prefix for " <> T.pack fp <> ": "
-                      <> (if T.null prefix then "(cleared)" else prefix) <> "\n"
+          Right fp -> do
+            -- Prefer a project already in the workspace (matched by its
+            -- file or root — works for remote roots too); otherwise detect.
+            ws <- readCell (wsCell (appWorkspace app))
+            let inWs = listToMaybe
+                  [ wsProjectKey p
+                  | p <- WF.wsProjects (view wsSpec ws)
+                  , WF.wpFile p == Just fp || WF.wpRoot p == fp ]
+            mbKey <- maybe (detectProject defaultEffects fp) (return . Just) inWs
+            case mbKey of
+              Nothing -> reply $ "Not a project file: " <> T.pack fp <> "\n"
+              Just pk -> do
+                let prefix = T.strip (T.unwords prefixParts)
+                setProjectCmdPrefix (appWorkspace app) pk
+                    (if T.null prefix then Nothing else Just prefix)
+                reply $ "Command prefix for " <> T.pack fp <> ": "
+                        <> (if T.null prefix then "(cleared)" else prefix) <> "\n"
 
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point
@@ -423,14 +438,19 @@ handleConn ideR conn = do
                    _ -> return []) ts
         reply (T.unlines lns)
 
-      -- resync-state: each window's resync signal/ack MVar occupancy (see
-      -- 'resyncStates') — pinpoints where a frozen window's resync stalled.
+      -- resync-state: the resync machinery is gone (state is push-per-cell
+      -- now); the verb survives as a cell-world summary so old habits and
+      -- scripts still get a useful answer.
       ("resync-state" : _) -> do
-        sts <- resyncStates
+        ui <- readCell (appUi app)
+        ws <- readCell (wsCell (appWorkspace app))
+        probs <- readCell (problemsCell (appProblems app))
         reply . T.unlines $
-          [ T.pack (show wid <> " sig=" <> (if s then "FULL" else "empty")
-                             <> " ack=" <> (if a then "FULL" else "empty"))
-          | (wid, s, a) <- sts ]
+          [ "cells (resync machinery removed: state is push-per-cell)"
+          , T.pack ("windows=" <> show (Map.size (view webWindows ui)))
+          , T.pack ("projects=" <> show (length (wsProjects ws)))
+          , T.pack ("problemSources=" <> show (Map.size probs))
+          ]
 
       -- screenshot FILE: capture the UI to a PNG (native WKWebView snapshot on
       -- macOS).  Relative paths resolve against the client's cwd.
@@ -497,15 +517,26 @@ handleConn ideR conn = do
                       <> "direct cabal build instead.\n")
                 rebuildSelf noRestart
           Just (project, package) -> do
-            when noRestart $ writeIORef suppressNextRestart True
             reply $ "Rebuilding leksah via the IDE build system — output appears in "
                  <> "the IDE (Errors/Log panes)"
                  <> (if noRestart
                        then "; the app stays up (--no-restart).\n"
                        else "; on success it restarts.\n")
                  <> "(Failsafe if the IDE build is broken: rebuild-self --use-cabal)\n"
-            void . forkIO . void $
-                reflectIDE (buildTarget project package) ideR
+            void . forkIO $ do
+                r <- runVerbWait (appBuilder app) (prKey project)
+                        (Just (pkgManifest package)) Nothing VBuild
+                case r of
+                  Just ExitSuccess
+                    | not noRestart ->
+                        -- The self-build restart contract: relaunch into the
+                        -- fresh build (same exits the old QuitToRestart used).
+                        if ghciMode
+                          then stopForGhci
+                          else if handoffEnabled
+                            then requestHandoff True
+                            else exitImmediately (ExitFailure 2)
+                  _ -> return ()
 
       -- Fired by tmux's after-select-window / after-select-pane hooks: poke the
       -- reflex network (reusing the JS trigger the ⌃B/mousedown listener uses) so
@@ -513,7 +544,7 @@ handleConn ideR conn = do
       -- to the flipper/tab MRU front, without waiting for the 2 s poll.
       ("term-activity" : _) -> do
         let poke = "window.leksahTermActivity && window.leksahTermActivity()" :: Text
-        _ <- (try (reflectIDE (ideJSM (void (eval poke))) ideR)
+        _ <- (try (appJSMResults app (void (eval poke)))
                 :: IO (Either SomeException [()]))
         -- No reply: this is fired by a tmux run-shell hook, which would surface
         -- any stdout as an "ok" view on every window/pane select.
@@ -536,8 +567,21 @@ handleConn ideR conn = do
       -- log LOGGER LEVEL: set an hslogger logger's level at runtime (no restart).
       -- e.g. `leksah-cmd log leksah.focus debug` turns on focus/activation
       -- diagnostics (→ ~/.leksah/focus-debug.log); `… off` silences them.
-      ("log" : loggerName : levelT : _) | not (T.null loggerName) ->
-        setLoggerLevel (T.unpack loggerName) (T.unpack levelT) >>= reply
+      ("log" : loggerName : levelT : _) | not (T.null loggerName) -> do
+        let lvl = case T.toLower levelT of
+              "debug"   -> Just DEBUG
+              "info"    -> Just INFO
+              "notice"  -> Just NOTICE
+              "warning" -> Just WARNING
+              "error"   -> Just ERROR
+              "off"     -> Just EMERGENCY
+              _         -> Nothing
+        case lvl of
+          Nothing -> reply $ "unknown level " <> levelT
+                     <> " (debug|info|notice|warning|error|off)\n"
+          Just l -> do
+            updateGlobalLogger (T.unpack loggerName) (setLevel l)
+            reply $ "logger " <> loggerName <> " -> " <> levelT <> "\n"
 
       -- diagnostics [FILE] [--all]: the current compiler/LSP errors and
       -- warnings (the Errors pane's model), one per line — the backend of the
@@ -548,25 +592,36 @@ handleConn ideR conn = do
             mfile = case filter (/= "--all") rest of
               (f : _) | not (T.null f) -> Just (resolve cwd f)
               _                        -> Nothing
-        ide <- reflectIDE (readIDE Prelude.id) ideR
-        let refs = [ lr
-                   | lr <- toList (if allScope then ide ^. allLogRefs
-                                               else activeProjectLogRefs ide)
-                   , logRefType lr `elem`
-                       [ErrorRef, WarningRef, LintRef, TestFailureRef]
-                   , maybe True (logRefFullFilePath lr ==) mfile ]
-            sev lr = case logRefType lr of
-              ErrorRef       -> "error"
-              WarningRef     -> "warning"
-              LintRef        -> "lint"
-              TestFailureRef -> "test-failure"
-              _              -> "note"
-            one lr = let sp = logRefSrcSpan lr in
-              sev lr <> " " <> T.pack (logRefFullFilePath lr)
-                <> ":" <> T.pack (show (srcSpanStartLine sp))
-                <> ":" <> T.pack (show (srcSpanStartColumn sp))
+        probs <- readCell (problemsCell (appProblems app))
+        ws <- readCell (wsCell (appWorkspace app))
+        let activeRoot = prDir <$> activeProject ws
+            inScope src = allScope || case activeRoot of
+              Nothing -> True
+              Just r  -> src == "build:" <> T.pack r
+                      || src == "lsp:" <> T.pack r
+            -- a source key's root resolves its problems' relative paths
+            srcRoot src = T.unpack . fromMaybe src $
+                T.stripPrefix "build:" src `orElseT` T.stripPrefix "lsp:" src
+            orElseT a b = maybe b Just a
+            fullPath src p
+              | isRelative (pPath p) = srcRoot src </> pPath p
+              | otherwise            = pPath p
+            refs = [ (fullPath src p, p)
+                   | (src, ps) <- Map.toList probs
+                   , inScope src
+                   , p <- ps
+                   , maybe True (\f -> fullPath src p == f) mfile ]
+            sev p = case pSeverity p of
+              SevError   -> "error"
+              SevWarning -> "warning"
+              SevHint    -> "lint"
+              SevInfo    -> "note"
+            one (fp, p) = let Pos l c = rFrom (pRange p) in
+              sev p <> " " <> T.pack fp
+                <> ":" <> T.pack (show (l + 1))
+                <> ":" <> T.pack (show (c + 1))
                 -- indent continuation lines so one ref = one visual block
-                <> " " <> T.replace "\n" "\n    " (T.strip (refDescription lr))
+                <> " " <> T.replace "\n" "\n    " (T.strip (pMessage p))
             scope = if allScope then " (all projects)" else " (active project)"
         reply $ if null refs
           then "no diagnostics" <> scope <> "\n"
@@ -588,7 +643,7 @@ handleConn ideR conn = do
       ("build" : _) -> do
         reply ("build started — output lands in the IDE's Errors/Log panes; "
               <> "poll `diagnostics` for the result.\n")
-        void . forkIO . void $ reflectIDE buildActiveTarget ideR
+        buildActiveTarget (appBuilder app)
 
       -- hover FILE LINE [COL]: the LSP hover (type/docs) at a position, plus
       -- the file's diagnostics summary — the same lookup the terminal file-link
@@ -730,14 +785,13 @@ handleConn ideR conn = do
       ]
 
     -- The workspace's leksah package (project, package), if it's open.
-    findLeksahPackage = (`reflectIDE` ideR) $
-        readIDE workspace >>= \case
-            Nothing -> return Nothing
-            Just ws -> return $ listToMaybe
-                [ (project, p)
-                | project <- ws ^. wsProjects
-                , p <- pjPackages project
-                , ipdPackageName p == "leksah" ]
+    findLeksahPackage = do
+        ws <- readCell (wsCell (appWorkspace app))
+        return $ listToMaybe
+            [ (project, p)
+            | project <- wsProjects ws
+            , p <- prPackages project
+            , pkgName p == "leksah" ]
 
     -- A directory becomes a plain-directory project (no build file needed);
     -- otherwise the path is a project file (cabal.project / stack.yaml / …).
@@ -745,7 +799,7 @@ handleConn ideR conn = do
     -- the Open Project / Open Folder panels — so Cargo.toml / pyproject.toml /
     -- setup.py (Rust/Python) are recognised here too.
     openProject fp = do
-      void $ reflectIDE (projectOpenPath fp) ideR
+      projectOpenPath (appWorkspace app) fp
       return $ "Opened in workspace: " <> T.pack fp
 
     -- The user's CODE is evaluated inside a JS-side try/catch: a throwing
@@ -757,7 +811,7 @@ handleConn ideR conn = do
     evalJs code = do
       let wrapped = "(function () { try { return String(eval(" <> jsStringLit code
                     <> ")); } catch (e) { return 'JS error: ' + e; } })()"
-      r <- try $ reflectIDE (ideJSM (eval wrapped >>= valToText)) ideR
+      r <- try $ appJSMResults app (eval wrapped >>= valToText)
       return $ case r of
         Left (e :: SomeException) -> "JS error: " <> T.pack (show e) <> "\n"
         Right []                  -> "(no live JS context — is the page loaded?)\n"

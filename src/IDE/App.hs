@@ -13,6 +13,7 @@ module IDE.App
   , newApp
   , appNote
   , appJSM
+  , appJSMResults
   , registerJsContext
   , unregisterJsContext
     -- * Actions
@@ -101,6 +102,14 @@ appJSM :: App -> JSM () -> IO ()
 appJSM app act = do
     ctxs <- readCell (appJsContexts app)
     mapM_ (\(_, ctx) -> void . forkIO $ runJSM act ctx) ctxs
+
+-- | Run a JSM in every live window and collect the results (the @js eval@
+-- backend).  Sequential; call from a worker thread, never from a window's
+-- own frame.
+appJSMResults :: App -> JSM a -> IO [a]
+appJSMResults app act = do
+    ctxs <- readCell (appJsContexts app)
+    mapM (\(_, ctx) -> runJSM act ctx) ctxs
 
 registerJsContext :: App -> WindowId -> JSContextRef -> IO ()
 registerJsContext app wid ctx =
