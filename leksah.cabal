@@ -1,11 +1,11 @@
 cabal-version: 3.4
 name: leksah
 version: 0.17.0.0
-license: GPL-2.0-or-later
+license: Apache-2.0
 license-file: LICENSE
-copyright: 2007-2026 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
+copyright: 2007-2026 Hamish Mackenzie
 maintainer: maintainer@leksah.org
-author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
+author: Hamish Mackenzie
 stability: provisional
 tested-with: ghc ==9.6.7 ghc ==9.8.4 ghc ==9.10.1 ghc ==9.12.2 ghc ==9.14.1
 homepage: https://leksah.org
@@ -61,35 +61,7 @@ data-files:
     linux/applications/leksah.desktop
     linux/applications/leksah.xml
     linux/icons/hicolor/48x48/apps/leksah_48x48.png
-    linux/specfiles/fedora/12/ghc-binary-shared.spec
-    linux/specfiles/fedora/12/ghc-deepseq.spec
-    linux/specfiles/fedora/12/ghc-hslogger.spec
-    linux/specfiles/fedora/12/ghc-ltk.spec
-    linux/specfiles/fedora/12/ghc-process-leksah.spec
-    linux/specfiles/fedora/12/ghc-regex-base.spec
-    linux/specfiles/fedora/12/ghc-regex-tdfa.spec
-    linux/specfiles/fedora/12/leksah_server.spec
-    linux/specfiles/fedora/12/leksah.spec
-    linux/specfiles/fedora/13/ghc-binary-shared.spec
-    linux/specfiles/fedora/13/ghc-hslogger.spec
-    linux/specfiles/fedora/13/ghc-ltk.spec
-    linux/specfiles/fedora/13/ghc-process-leksah.spec
-    linux/specfiles/fedora/13/ghc-regex-tdfa.spec
-    linux/specfiles/fedora/13/haddock.spec
-    linux/specfiles/fedora/13/leksah-server.spec
-    linux/specfiles/fedora/13/leksah.spec
-    linux/specfiles/fedora/14/ghc-binary-shared.spec
-    linux/specfiles/fedora/14/ghc-haddock.spec
-    linux/specfiles/fedora/14/ghc-ltk.spec
-    linux/specfiles/fedora/14/ghc-process-leksah.spec
-    linux/specfiles/fedora/14/ghc-regex-tdfa.spec
-    linux/specfiles/fedora/14/leksah-server.spec
-    linux/specfiles/fedora/14/leksah.spec
-    linux/specfiles/fedora/14/leksah.spec-darcs-backup0
-    linux/specfiles/fedora/14/leksah.spec-darcs-backup1
 extra-source-files:
-    Setup.lhs
-    SetupLocale.lhs
 
 source-repository head
     type: git
@@ -309,7 +281,6 @@ library leksah-nogtk
         extra >=1.6.12 && <1.9,
         filepath >=1.1.0.1 && <1.6,
         generic-deriving >=1.10 && <1.15,
-        ghcjs-codemirror,
         ghcjs-dom >=0.9.4.0 && <0.10,
         hslogger >=1.0.7 && <1.4,
         http-types >=0.12.2 && <0.13,

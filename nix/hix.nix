@@ -231,10 +231,8 @@ rec {
             cp -r ${../linux} $out/share/
           ''}
           wrapProgram $out/bin/leksah \
-            --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
             --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
             --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin" \
-            --suffix 'PATH' ':' "${hsPkgs.doctest.components.exes.doctest}/bin" \
             ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             --prefix 'XDG_DATA_DIRS' ':' "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
             --prefix 'XDG_DATA_DIRS' ':' "${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}" \
@@ -280,10 +278,8 @@ rec {
             cp -r ${../linux} $out/share/
           ''}
           wrapProgram $out/bin/leksah-warp \
-            --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
             --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
             --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin" \
-            --suffix 'PATH' ':' "${hsPkgs.doctest.components.exes.doctest}/bin" \
             --set 'XDG_DATA_DIRS' ""
         '';
       })

@@ -9,8 +9,8 @@ Mackenzie**, replacing each with modern, less Haskell-specific code — or
 getting sign-off from its authors where a rewrite would be wasteful.
 
 The `.cabal` `license:` field flips to `Apache-2.0` only when the
-"remaining" table below is empty.  Until then the package stays
-GPL-2.0-or-later.  Hamish-authored files gain
+"remaining" table below is empty.  **It is now empty — see the residue note
+there — and `leksah.cabal` says `Apache-2.0`.**  Hamish-authored files gain
 `SPDX-License-Identifier: Apache-2.0` headers as they are touched (they can
 be dual-licensed by their author at any time); classic's copies keep GPL
 headers.
@@ -110,10 +110,32 @@ the packages remain as source-repository-packages for `leksah-classic` only.
 
 This is the gate for the license flip; delete rows as stages land.
 
-| file | blocked on |
+**The list is empty.**  Step F (2026-08-07) finished the two core files:
+
+| file | what happened |
 |---|---|
-| `src/IDE/Core/State.hs` | new `IDE.Core` (step F) |
-| `src/IDE/Core/Types.hs` | new `IDE.Core` (step F) |
+| `src/IDE/Core/Types.hs` | 1192 → 405 lines.  The models it used to declare moved to their own modules — `Prefs` to `IDE.Settings` (step B), the project model to `IDE.Project` (step E), the compiler-message types to a fresh `IDE.Diagnostics.Model`, the web UI's tab\/window\/split types to a fresh `IDE.Web.Model` — and what remains (the `IDE` record, the monad stack, the derived getters) was rewritten with fresh structure and documentation.  `SearchHint`, `KeymapI` and `SearchMode` were deleted: nothing referenced them |
+| `src/IDE/Core/State.hs` | Rewritten framing: a module header describing what it actually is (the state accessors, the cross-thread reflect\/reify pair, failure handling, the message helpers), section headings in the export list, and documentation on everything that lacked it |
+
+### The residue, and why it is not a barrier
+
+`git blame` still attributes some lines in these two files to earlier
+authors.  Every one of them is in this list:
+
+- **blank lines** and the `module … (` \/ `where` lines;
+- **export-list entries** — a bare name per line (`,   readIDE`);
+- **one import line** (`import Distribution.Package`);
+- **one type synonym**, `type IDEM = ReaderT IDERef IO`, whose spelling is
+  dictated by the types it names.
+
+There is no expressive content left from another author: no function body,
+no data declaration, no algorithm.  A name, an import statement and a blank
+line are not copyrightable expression, so the flip is not waiting on
+anything — but this is the one judgement call in the whole exercise, so it is
+written down here rather than left implicit.
+
+Sign-off is therefore not needed from anyone.  Everything else was either
+deleted, moved out to `leksah-classic/` (still GPLv2), or rewritten.
 
 Deleted so far: `Metainfo/Provider.hs`, `Utils/ServerConnection.hs`,
 `SourceCandy.hs`, `Debug.hs`, `PackageFlags.hs`, `TextEditor/Yi/Config.hs`,
