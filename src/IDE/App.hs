@@ -28,8 +28,7 @@ import Control.Monad (void)
 import Data.IORef
        (IORef, newIORef, readIORef, writeIORef)
 import Data.Text (Text)
-import Language.Javascript.JSaddle (JSContextRef, JSM)
-import Language.Javascript.JSaddle.Run (runJSM)
+import Language.Javascript.JSaddle (JSContextRef, JSM, runJSM)
 import System.Exit (ExitCode(..))
 import System.IO.Unsafe (unsafePerformIO)
 

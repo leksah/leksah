@@ -16,7 +16,7 @@ import Data.Text (Text)
 
 import Reflex (Dynamic, MonadHold, Reflex, TriggerEvent)
 
-import IDE.App (App(..))
+import IDE.App (App(..), RunState)
 import IDE.Config (Config, configCell)
 import IDE.Problems (problemsCell)
 import IDE.Problems.Types (Problem)
@@ -31,6 +31,7 @@ data Ctx t = Ctx
     , cWs       :: Dynamic t Ws
     , cCfg      :: Dynamic t Config
     , cProblems :: Dynamic t (Map Text [Problem])
+    , cRunState :: Dynamic t RunState
     }
 
 -- | Lift the app's cells into this window's reflex host.
@@ -42,3 +43,4 @@ newCtx app wid = Ctx app wid
     <*> cellDyn (wsCell (appWorkspace app))
     <*> cellDyn (configCell (appConfig app))
     <*> cellDyn (problemsCell (appProblems app))
+    <*> cellDyn (appRunState app)

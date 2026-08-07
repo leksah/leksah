@@ -27,6 +27,7 @@ module IDE.Reactive
   , readCell
   , writeCell
   , modifyCell
+  , stateCell
   , watchCell
   , watchCellCurrent
   ) where
@@ -64,6 +65,18 @@ modifyCell c f = liftIO . withMVar (cellLock c) $ \() -> do
     writeIORef (cellValue c) a'
     subs <- readIORef (cellSubs c)
     mapM_ ($ a') (IM.elems subs)
+
+-- | 'modifyCell' that also returns a result from the step function —
+-- the @atomicModifyIORef'@ of cells (e.g. an id minter: advance the
+-- counter and hand the minted id back atomically).
+stateCell :: MonadIO m => Cell a -> (a -> (a, b)) -> m b
+stateCell c f = liftIO . withMVar (cellLock c) $ \() -> do
+    a <- readIORef (cellValue c)
+    let (!a', b) = f a
+    writeIORef (cellValue c) a'
+    subs <- readIORef (cellSubs c)
+    mapM_ ($ a') (IM.elems subs)
+    return b
 
 -- | Watch for committed values.  Returns the unsubscribe action.
 watchCell :: Cell a -> (a -> IO ()) -> IO (IO ())

@@ -8,6 +8,7 @@ module IDE.Reactive.Dyn
   , cellDynUniq
   ) where
 
+import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import Reflex
@@ -33,6 +34,6 @@ cellDyn c = do
 -- | 'cellDyn' deduplicated with 'holdUniqDyn' — the usual choice when the
 -- cell holds a record and a widget selects a piece of it.
 cellDynUniq
-    :: (Reflex t, MonadHold t m, TriggerEvent t m, MonadIO m, Eq a)
+    :: (Reflex t, MonadHold t m, MonadFix m, TriggerEvent t m, MonadIO m, Eq a)
     => Cell a -> m (Dynamic t a)
 cellDynUniq c = cellDyn c >>= holdUniqDyn
