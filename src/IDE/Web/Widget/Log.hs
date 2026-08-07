@@ -1,127 +1,125 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE TypeFamilies #-}
+
+-- | The build log pane: a read-only xterm.js fed raw bytes from the
+-- 'IDE.BuildLog' service.  There is no line model — compilers run with
+-- colour forced and the terminal renders whatever they printed.  The
+-- find bar searches it through the same SearchAddon registry as the
+-- shell terminals, and file\/line tokens are clickable via the shared
+-- link handler baked into the xterm bundle.
 module IDE.Web.Widget.Log
   ( logCss
   , logWidget
   ) where
 
-import Control.Lens (view)
-import qualified Data.Map as M (lookup, size, fromList, toList)
+import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
+import Data.ByteString (ByteString)
+import Data.IORef
+       (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Text (Text)
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TE
+import System.IO.Unsafe (unsafePerformIO)
 
-import Clay
-       (lightblue, green, red, color, (-:), overflowX,
-        px, width, cursorDefault, whiteSpace, pct, vGradient,
-        backgroundImage, height, (?), Css, Cursor(..), Auto(..))
-import Clay.Text (pre)
-
+import Clay (height, pct, (?), Css)
+import Control.Lens ((^.))
+import Language.Javascript.JSaddle
+       (js, js1, js2, jsg, jss, liftJSM, new, pToJSVal)
 import Reflex
-       (attachWithMaybe, attachWith, zipDynWith, updated,
-        leftmost, delay, holdUniqDyn, Dynamic, holdDyn, never, current,
-        fmapMaybe, foldDyn, tag, ffilter)
+       (Event, attachPromptlyDyn, ffor, holdDyn, never, newTriggerEvent,
+        performEvent, performEvent_)
 import Reflex.Dom.Core
-       (elDynAttr', virtualList, elAttr, elClass',
-        dynText, MonadWidget, (=:), Event,
-        _element_raw)
+       (MonadWidget, (=:), elAttr', getPostBuild, _element_raw)
 
-import IDE.Web.Theme (selectionColor, dimColor)
-import IDE.Core.State
-       (IDE, logLineMap)
-import IDE.Web.Events (LogEvents, FindbarEvents)
-import IDE.Web.Widget.Findbar (findSelection)
-import IDE.Web.Widget.ResizeObserver (resizeObserver)
-import qualified Data.Text as T (pack)
+import IDE.App (App, appBuildLog)
+import IDE.BuildLog (blAttach)
+import IDE.Web.Ctx (Ctx(..))
+import IDE.Web.Events (FindbarEvents, LogEvents)
+import IDE.Web.Model (WindowId)
+import IDE.Web.Widget.ResizeObserver (resizeObserverWithAttrs)
 
 logCss :: Css
-logCss = do
-    ".log" ? do
-        -- Flat black (via the bottom-bar pane's black background), like the Changes pane.
-        "font-family" -: "var(--leksah-mono, Hasklig, Menlo, monospace)"
-        height (pct 100)
-        overflowX auto
-    ".log-child" ? do
-        width (px 2000)
-        height (pct 100)
-    ".log .log-item" ? do
-        whiteSpace pre
-        cursor cursorDefault
-    ".log .log-item.selected" ?
-        backgroundImage (vGradient selectionColor selectionColor)
-    ".log .ErrorTag" ? do
-        color red
-    ".log .FrameTag" ? do
-        color green
-    ".log .InputTag" ? do
-        color lightblue
-    ".log .InfoTag" ? do
-        color dimColor
+logCss =
+    ".log-term" ? height (pct 100)
+
+-- | One BuildLog subscription per window: a pane rebuild (tab closed and
+-- reopened, layout change) must replace its predecessor's feed, or the
+-- terminal would receive every chunk twice.
+{-# NOINLINE logFeeds #-}
+logFeeds :: IORef (Map WindowId (IO ()))
+logFeeds = unsafePerformIO (newIORef M.empty)
 
 logWidget
   :: forall t m . MonadWidget t m
-  => Dynamic t IDE
-  -> Event t FindbarEvents
-  -> Event t Bool          -- ^ keyboard list move: 'True' = down, 'False' = up
-  -> Event t ()            -- ^ keyboard activate (Enter); a no-op for the log
+  => Ctx t
+  -> Event t FindbarEvents  -- ^ find bar reaches us via the search registry
+  -> Event t Bool           -- ^ old list-move keys; a terminal scrolls itself
+  -> Event t ()
   -> m (Event t LogEvents)
-logWidget ide findE moveE _activateE =
-  elAttr "div" ("class" =: "log leksah-vlist" <> "data-pane" =: "log" <> "tabindex" =: "-1") $ mdo
-    -- The virtual list needs a pixel viewport height; a ResizeObserver on the
-    -- pane feeds it (the scroll-based reflex resize detector is dead in
-    -- wkwebview — see IDE.Web.Widget.ResizeObserver).
-    (childEl, result) <- elClass' "div" "log-child" $ mdo
-        logLines <- -- fmap (M.fromList . zip [0..] . toList) <$>
-          holdUniqDyn (view logLineMap <$> ide)
-        -- Find selects a log line: matching index highlights it and scrolls to it.
-        findSelD <- findSelection findE (map (\(i, (t, _)) -> (i, t)) . M.toList <$> logLines)
-        -- Up/Down arrows and find share one selection index (highlight + scroll).
-        let numD = M.size <$> logLines
-        selectionIndexD <- holdUniqDyn =<< foldDyn ($) (-1::Int) (leftmost
-          [ (\n x -> let x' = succ x in if x' >= n then 0     else x') <$> tag (current numD) (ffilter id moveE)
-          , (\n x -> let x' = pred x in if x' < 0  then n - 1 else x') <$> tag (current numD) (ffilter not moveE)
-          , const <$> fmapMaybe id (updated findSelD)
-          ])
-        heightD <- holdDyn 80 $ round . snd <$> resizeE
-        let expandWindow (idx, num) = (max 0 (idx - 20), num + 40)
-            itemsInWindow = zipDynWith (\(idx,num) is ->
-                M.fromList $ map (\ix -> (ix, M.lookup ix is)) [idx .. idx + num]) (expandWindow <$> windowD) logLines
---        let itemsInWindow = zipDynWith (\(idx,num) refs' ->
---                M.fromList . zip [idx..] . toList . Seq.take num $ Seq.drop idx refs') windowD logLines
-----                M.fromList . zip [idx..idx+num] . (<> repeat Nothing) . fmap Just . toList . Seq.take num $ Seq.drop idx refs') windowD refs
-----        refs <- fmap (M.fromList . zip [0..] . toList) <$> holdUniqDyn (view allLogRefs <$> ide)
-            updateMap old new = (Just <$> new) <> (Nothing <$ old)
-            itemsUpdate = attachWith updateMap (current itemsInWindow) (updated itemsInWindow)
-        let logSize = M.size <$> logLines
-        unlockE <- delay 0.1 $ attachWithMaybe
-              (\((oldIdx, num), l) (newIdx, _) ->
-                if | oldIdx > newIdx && newIdx + num < l -> Just False
-                   | oldIdx < newIdx && newIdx + num + 1 >= l -> Just True
-                   | otherwise -> Nothing) (current $ (,) <$> windowD <*> logSize) (updated windowD)
-        unlockedD <- holdUniqDyn =<< holdDyn True unlockE
-        currentScrollD <- holdUniqDyn $ (,) <$> windowD <*> unlockedD
-        scrollToE <- delay 0.1 $ attachWithMaybe
-              (\((_, num), unlocked) newLength -> if unlocked then Just (newLength - num + 1) else Nothing) (current currentScrollD) (updated logSize)
-        -- elAttr "div" ("style" =: "position: relative;") $ display windowD
-        (windowD, _eventsD) <- virtualList
-          heightD
-          20
-          logSize
-          0
-          (leftmost [scrollToE, fmapMaybe (\i -> if i >= 0 then Just i else Nothing) (updated selectionIndexD)])
-          id
-          mempty
-          itemsUpdate
-          (\k iv u -> do
-            v <- holdDyn iv u
-            (_e, _) <- elDynAttr' "div"
-                  ((\sel v' -> "class" =: ("log-item"
-                        <> (if sel == k then " selected" else "")
-                        <> maybe "" ((" "<>) . T.pack . show . snd) v'))
-                     <$> selectionIndexD <*> v) $
-              dynText $ maybe "" fst <$> v
-            return ()) ---- $ tag (current $ logRefSrcSpan <$> v) (domEvent Dblclick e))
-        return never -- . fmapMaybe (fmap ErrorsGoto . listToMaybe . M.elems) $ switchDyn (mergeMap <$> eventsD)
-    resizeE <- resizeObserver (_element_raw childEl)
-    return result
+logWidget ctx _findE _moveE _activateE = do
+    let app = cApp ctx
+        wid = cWindowId ctx
+    (resizeE, el) <- resizeObserverWithAttrs
+        ("class" =: "log-term" <> "data-pane" =: "log") $
+        fst <$> elAttr' "div" ("class" =: "terminal") (pure ())
+    let rawEl = pToJSVal (_element_raw el)
 
+    -- Live chunks arrive on a service thread; a trigger event carries the
+    -- decoded text into this window's frame without blocking the writer.
+    (chunkE, fireChunk) <- newTriggerEvent
+    postBuild <- getPostBuild
+    termE <- performEvent $ ffor postBuild $ \_ -> liftJSM $ do
+        term <- new (jsg ("Terminal" :: Text)) ()
+        opts <- term ^. js ("options" :: Text)
+        win <- jsg ("window" :: Text)
+        monoFam <- win ^. js ("__leksahMonoFamily" :: Text)
+        monoSz  <- win ^. js ("__leksahMonoSize" :: Text)
+        _ <- opts ^. jss ("fontFamily" :: Text) monoFam
+        _ <- opts ^. jss ("fontSize" :: Text) monoSz
+        -- Read-only: no stdin, and tool output uses bare \n.
+        _ <- opts ^. jss ("disableStdin" :: Text) True
+        _ <- opts ^. jss ("convertEol" :: Text) True
+        -- SearchAddon needs the proposed decorations API.
+        _ <- opts ^. jss ("allowProposedApi" :: Text) True
+        _ <- opts ^. jss ("scrollback" :: Text) (100000 :: Int)
+        fit <- new (jsg ("FitAddon" :: Text) ^. js ("FitAddon" :: Text)) ()
+        _ <- term ^. js1 ("loadAddon" :: Text) fit
+        _ <- term ^. js1 ("open" :: Text) rawEl
+        _ <- fit ^. js1 ("fit" :: Text) ()
+        -- Find-bar search + clickable file tokens, same registry as the
+        -- shell terminals.
+        _ <- jsg ("LeksahCM" :: Text)
+                ^. js2 ("loadTerminalSearch" :: Text) term rawEl
+        -- Attach to the service: replay history, then follow.  A stateful
+        -- UTF-8 decoder spans chunk boundaries (a multi-byte glyph can
+        -- split across two reads).
+        liftIO $ do
+            decodeRef <- newIORef (TE.streamDecodeUtf8With TE.lenientDecode)
+            let deliver bs = do
+                    decode <- readIORef decodeRef
+                    let TE.Some t _ cont = decode bs
+                    writeIORef decodeRef cont
+                    fireChunk t
+            (history, detach) <- blAttach (appBuildLog app) deliver
+            -- Replace any previous pane's feed for this window.
+            old <- atomicModifyIORef' logFeeds $ \m ->
+                (M.insert wid detach m, M.lookup wid m)
+            sequence_ old
+            deliver history
+        return (term, fit)
+    termD <- holdDyn Nothing (Just <$> termE)
+
+    performEvent_ $ ffor (attachPromptlyDyn termD chunkE) $ \(mbTerm, t) ->
+        case mbTerm of
+            Just (term, _) -> liftJSM . void $ term ^. js1 ("write" :: Text) t
+            Nothing        -> return ()
+    performEvent_ $ ffor (attachPromptlyDyn termD resizeE) $ \(mbTerm, _) ->
+        case mbTerm of
+            Just (_, fit) -> liftJSM . void $ fit ^. js1 ("fit" :: Text) ()
+            Nothing       -> return ()
+    return never
