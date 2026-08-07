@@ -91,6 +91,9 @@ import qualified Data.Aeson.Types as AT (parseMaybe)
 import Data.List
        (nub, sort, isPrefixOf, isInfixOf, isSuffixOf, find, elemIndex,
         findIndex)
+-- nubOrd, not nub: the workspace file enumeration is big enough for O(n^2)
+-- to be a boot-time hang (see 'enumerateWorkspaceFiles').
+import Data.List.Extra (nubOrd)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing)
 import System.Exit (ExitCode(..))
 import System.FilePath
@@ -1631,43 +1634,70 @@ indexHtml = BS.unlines
 -- @git ls-files@ (tracked + untracked, respecting .gitignore — matching what
 -- the tree shows) per package directory, falling back to a recursive walk for
 -- non-git directories.
+--
+-- Bounded, deliberately.  With \"show ignored files\" ON, @git ls-files@ drops
+-- @--exclude-standard@ and reports the build output too: 1,055 paths become
+-- 57,811 in this very repo, and 'withDirs' multiplies that again by each
+-- file's directory prefixes.  Two things then went quadratic and ground a
+-- fresh boot to a 100% CPU halt — 'nub' (now an ordered-set dedup) and the
+-- sheer size of the result, which is marshalled into JS wholesale for the
+-- terminal link index.  Hence 'enumFileLimit'.
 enumerateWorkspaceFiles :: Bool -> Bool -> [FilePath] -> IO [FilePath]
 #if defined(ghcjs_HOST_OS)
 -- Browser demo: enumerate the mock tree (window.leksahDemoFiles).  Feeds the
 -- find bar AND LeksahTermLinks.setProjectFiles — the file set terminal
 -- output links/hovers resolve against.
 enumerateWorkspaceFiles _ _ dirs =
-    nub . concat <$> mapM fsListFilesRecursive (nub dirs)
+    capped . nubOrd . concat =<< mapM fsListFilesRecursive (nubOrd dirs)
 #else
 enumerateWorkspaceFiles showHidden showIgnored dirs =
-    nub . concat <$> mapM enumDir (nub dirs)
+    capped . nubOrd . concat =<< mapM enumDir (nubOrd dirs)
   where
     enumDir dir
-      -- Remote project dir: `git ls-files` over ssh (one round trip,
+      -- Remote project dir: `git ls-files` over ssh (one round trip per pass,
       -- respects .gitignore like the local path), falling back to one
       -- `find`.  Errors mean an empty list, not a hang.
       | isRemotePath dir =
-          (do (rc, out, _) <- runGit dir (map T.pack gitArgs)
-              case rc of
-                ExitSuccess -> return $ withDirs dir
-                    [ l | l <- lines (T.unpack out), not (null l), notHidden l ]
+          (do outs <- forM gitPasses $ \args -> do
+                (rc, out, _) <- runGit dir (map T.pack args)
+                return (rc, T.unpack out)
+              case outs of
+                ((ExitSuccess, _) : _) -> return $ concat
+                    [ withDirs dir [ l | l <- lines out, not (null l), notHidden l ]
+                    | (rc, out) <- outs, rc == ExitSuccess ]
                 _ -> filter notHiddenAbs <$> fsListFilesRecursive dir)
             `catch` \(_ :: SomeException) -> return []
       | otherwise = gitFiles dir `catch` \(_ :: SomeException) -> walkFiles dir
     notHiddenAbs p = showHidden || not ("/." `isInfixOf` p)
-    -- Without --exclude-standard, `--others` lists ignored files too.
-    gitArgs = ["ls-files", "--cached", "--others"]
-              ++ ["--exclude-standard" | not showIgnored]
+    -- PRIORITY ORDER, and the reason there can be two passes.  Without
+    -- @--exclude-standard@, @--others@ lists ignored files too — and git sorts
+    -- the combined list, which puts the build output BEFORE the sources
+    -- (@dist-newstyle@ at line 16k of 58k here, @src\/IDE\/Web\/Main.hs@ at
+    -- 57.6k).  Since 'capped' keeps a prefix, one combined pass would have
+    -- capped away every source file and kept object files: a find bar that
+    -- can no longer find what it exists for.  So pass 1 is always the tracked
+    -- tree (exactly what show-ignored=off yields, ~1,000 paths), and only when
+    -- ignored files are shown does pass 2 add the rest — first come, first
+    -- indexed.  Show-ignored off is unchanged at one pass.
+    gitArgsBase = ["ls-files", "--cached", "--others"]
+    gitPasses = (gitArgsBase ++ ["--exclude-standard"])
+              : [ gitArgsBase | showIgnored ]
     gitFiles dir = do
-      (rc, out, _) <- readProcessWithExitCode "git" (["-C", dir] ++ gitArgs) ""
-      case rc of
-        ExitSuccess -> return $ withDirs dir [ l | l <- lines out, not (null l), notHidden l ]
-        _           -> walkFiles dir
+      outs <- forM gitPasses $ \args -> do
+        (rc, out, _) <- readProcessWithExitCode "git" (["-C", dir] ++ args) ""
+        return (rc, out)
+      -- withDirs PER PASS, so the tracked tree's directory entries land in the
+      -- kept prefix too rather than behind 57k ignored files.
+      case outs of
+        ((ExitSuccess, _) : _) -> return $ concat
+            [ withDirs dir [ l | l <- lines out, not (null l), notHidden l ]
+            | (rc, out) <- outs, rc == ExitSuccess ]
+        _ -> walkFiles dir
     -- The tree hides any entry whose name starts with '.', at any depth.
     notHidden rel = showHidden || not ("." `isPrefixOf` rel || "/." `isInfixOf` rel)
     -- Include each file's containing directories (absolute), so a directory can
     -- itself be a find match.
-    withDirs dir rels = nub $
+    withDirs dir rels = nubOrd $
       [ dir </> rel | rel <- rels ] ++ [ dir </> d | rel <- rels, d <- dirPrefixes rel ]
     dirPrefixes rel = case reverse (splitSlash rel) of
       (_file : ds@(_:_)) -> scanl1 (</>) (reverse ds)
@@ -1685,6 +1715,40 @@ enumerateWorkspaceFiles showHidden showIgnored dirs =
             isDir <- doesDirectoryExist p
             if isDir then (p :) <$> walkFiles p else return [p]
 #endif
+
+-- | Every proper ancestor directory of a path, nearest first.  Exactly the
+-- @d@ for which @d ++ \"\/\"@ prefixes the path, found by walking up instead
+-- of by testing every candidate.
+ancestorDirs :: FilePath -> [FilePath]
+ancestorDirs p = case takeDirectory p of
+    d | d == p || null d -> []
+      | otherwise        -> d : ancestorDirs d
+
+-- | How many workspace paths the find index and the terminal link index will
+-- hold.  Comfortably above any real source tree (this repo: ~1,000 with
+-- ignored files hidden), and low enough that the whole list can cross into JS
+-- without stalling the frame thread.
+enumFileLimit :: Int
+enumFileLimit = 50000
+
+-- | Apply 'enumFileLimit', SAYING SO when it bites — a silently truncated
+-- index would just look like a find bar that cannot see some of your files.
+capped :: [FilePath] -> IO [FilePath]
+capped fs
+  | null dropped = return kept
+  | otherwise = do
+      let msg = "Workspace file index truncated at "
+                <> T.pack (show enumFileLimit) <> " paths — find and terminal"
+                <> " links cover only those. Turn off \"show ignored files\""
+                <> " to index just the tracked tree."
+      -- Unconditional, not metaLog: metaLog needs LEKSAH_META_LOG, and a cap
+      -- nobody can see is exactly the silent truncation this avoids.
+      IO.hPutStrLn IO.stderr
+          ("LEK enumerateWorkspaceFiles: truncated at " <> show enumFileLimit)
+      getGlobalApp >>= mapM_ (`appNote` msg)
+      return kept
+  where
+    (kept, dropped) = splitAt enumFileLimit fs
 
 #if !defined(ghcjs_HOST_OS)
 startJSaddle :: Int -> (ByteString -> ByteString -> JSM () -> IO ()) -> JSM () -> IO ()
@@ -6637,7 +6701,12 @@ main showMenubar macTitlebar wid ctx = mdo
             if T.null q then []
             else let match    = findMatcher q fl
                      matching = filter (match . T.pack) items
-                     covered p = any (\d -> d /= p && (d ++ "/") `isPrefixOf` p) matching
+                     -- Ancestor lookup, not a scan of every other match against
+                     -- every match: a broad query over a big index (show-ignored
+                     -- on) makes `matching` five figures, and the pairwise form
+                     -- froze the frame thread on a keystroke.
+                     matchSet  = S.fromList matching
+                     covered p = any (`S.member` matchSet) (ancestorDirs p)
                  in sort (filter (not . covered) matching))
             <$> findQueryD <*> workspaceFilesD
     findIdxD <- foldDyn ($) (0 :: Int) $ leftmost
