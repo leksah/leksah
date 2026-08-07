@@ -65,8 +65,15 @@ import IDE.Web.Claude
 import IDE.Web.Worktree (requestNewWorktree)
 import IDE.Web.ClaudeQueue (requestTaskQueue, requestPlanReview)
 
+-- | Sub-directories and files of a directory, names only.
+--
+-- Total: an unreadable path (gone, no permission, or — the way this used to
+-- take the whole UI down — not a directory at all, when a project ended up
+-- rooted at a file) yields an EMPTY tree, never an exception.  This runs in
+-- a 'performEvent', i.e. on the reflex frame thread, where anything thrown
+-- is fatal to the entire window rather than to this one node.
 filesAndDirs :: MonadIO m => FilePath -> m ([FilePath], [FilePath])
-filesAndDirs dir = liftIO $ do
+filesAndDirs dir = liftIO . (`catch` \(_ :: SomeException) -> return ([], [])) $ do
   -- One fsListDirectory call: names + is-directory flags together, so a
   -- remote directory costs one round trip instead of one per child.
   entries <- filter ((`notElem` [".", ".."]) . fst) <$> fsListDirectory dir

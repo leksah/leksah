@@ -24,9 +24,11 @@ dirProjectType = ProjectType
   , ptCommand = \_ _ -> Nothing
   }
 
+-- The catch-all claims any DIRECTORY.  It must not claim a plain file:
+-- a project rooted at a file breaks every consumer that lists the root.
 detect :: Effects -> FilePath -> IO (Maybe ProjectKey)
 detect eff dir = do
-  has <- eDoesExist eff dir
+  has <- eIsDir eff dir
   pure $ if has then Just (ProjectKey "dir" dir Nothing) else Nothing
 
 enumerate :: Effects -> ProjectKey -> IO (Either Text Project)

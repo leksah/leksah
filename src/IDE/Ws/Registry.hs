@@ -13,6 +13,7 @@ module IDE.Ws.Registry
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
+import System.FilePath (takeDirectory)
 
 import IDE.Ws.Cabal (cabalProjectType)
 import IDE.Ws.Cargo (cargoProjectType)
@@ -35,15 +36,24 @@ projectTypes =
   ]
 
 -- | Try each project type against a directory; first claim wins.
+--
+-- The path is normalised first: every 'ptDetect' is written against a
+-- directory (it looks for marker files /inside/ it), so being handed a
+-- FILE — e.g. the user picking @flake.nix@ rather than its folder — would
+-- otherwise leave the project rooted at that file, and every consumer that
+-- lists the root would then fail.  A non-directory path detects from its
+-- containing directory instead.
 detectProject :: Effects -> FilePath -> IO (Maybe ProjectKey)
-detectProject eff dir = go projectTypes
+detectProject eff path = do
+  isDir <- eIsDir eff path
+  go (if isDir then path else takeDirectory path) projectTypes
  where
-  go [] = pure Nothing
-  go (pt:pts) = do
+  go _ [] = pure Nothing
+  go dir (pt:pts) = do
     m <- ptDetect pt eff dir
     case m of
       Just key -> pure (Just key)
-      Nothing  -> go pts
+      Nothing  -> go dir pts
 
 -- | Look a project type up by its 'ptId'.
 typeById :: Text -> Maybe ProjectType

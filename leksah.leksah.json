@@ -9,6 +9,11 @@
             "file": "cabal.project",
             "root": ".",
             "type": "cabal"
+        },
+        {
+            "file": "../../infra/flake.nix",
+            "root": "../../infra",
+            "type": "nix-flake"
         }
     ],
     "version": 1

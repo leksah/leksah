@@ -32,7 +32,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Text (Text)
 import qualified Data.Text as T
-import System.Directory (doesPathExist, listDirectory)
+import System.Directory (doesDirectoryExist, doesPathExist, listDirectory)
 import System.Exit (ExitCode(..))
 import System.IO (hClose)
 import System.Process
@@ -101,6 +101,9 @@ data Effects = Effects
   , eListDir   :: FilePath -> IO [FilePath]
     -- ^ entry /names/ (not paths); @[]@ if not a listable directory
   , eDoesExist :: FilePath -> IO Bool
+  , eIsDir     :: FilePath -> IO Bool
+    -- ^ exists /and/ is a directory — the distinction 'eDoesExist' cannot
+    -- make, and the one that keeps a project from being rooted at a file
   , eRunTool   :: FilePath -> Text -> [Text] -> IO (Maybe ByteString)
     -- ^ @eRunTool cwd program args@: stdout iff the tool exits 0
   }
@@ -142,6 +145,8 @@ defaultEffects = Effects
       <$> (try (listDirectory fp) :: IO (Either SomeException [FilePath]))
   , eDoesExist = \fp -> either (const False) id
       <$> (try (doesPathExist fp) :: IO (Either SomeException Bool))
+  , eIsDir = \fp -> either (const False) id
+      <$> (try (doesDirectoryExist fp) :: IO (Either SomeException Bool))
   , eRunTool = \cwdDir prog args -> hush <$> try (runTool cwdDir prog args)
   }
  where
