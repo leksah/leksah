@@ -11,12 +11,11 @@ import Data.GADT.Compare.TH (DeriveGEQ(..), DeriveGCompare(..))
 import Data.Map (Map)
 import Data.Text (Text)
 
-import Distribution.Types.PackageId (PackageIdentifier(..))
-
-import IDE.Core.Location (SrcSpan)
-import IDE.Core.Types (LogRef(..), Prefs(..), TabKey(..), FlipItem(..))
-import IDE.Utils.Project (ProjectKey)
+import IDE.Config (Config)
+import IDE.Problems.Types (Loc, Problem)
 import IDE.Web.Command (Command(..))
+import IDE.Web.Model (TabKey(..), FlipItem(..))
+import IDE.Ws.Types (ProjectKey)
 
 data FileEvent
   = OpenFile Bool FilePath
@@ -34,7 +33,9 @@ data PackageEvent
 
 makePrisms ''PackageEvent
 
-type PackageEvents = Map PackageIdentifier PackageEvent
+-- | Keyed by the package's manifest path ('IDE.Ws.Types.pkgManifest') — the
+-- stable identity of a 'Package' in the new workspace model.
+type PackageEvents = Map FilePath PackageEvent
 
 data ProjectEvent
   = ProjectCommand Command
@@ -52,7 +53,7 @@ makePrisms ''KeymapEvents
 
 type EditorEvents = ()
 newtype ErrorsEvents =
-  ErrorsGoto LogRef deriving (Eq, Show)
+  ErrorsGoto Problem deriving (Eq, Show)
 
 makePrisms ''ErrorsEvents
 
@@ -68,7 +69,7 @@ data FindbarEvents
   | FindGrep Text Int
   | FindHide
 -- | The Grep pane: clicking a result navigates to that file + line.
-newtype GrepEvents = GrepGoto SrcSpan
+newtype GrepEvents = GrepGoto Loc
 type LogEvents = ()
 
 makePrisms ''GrepEvents
@@ -82,7 +83,7 @@ makePrisms ''GrepEvents
 -- tmux client exited (the session ended, e.g. the last window's shell exited) —
 -- the tab should close rather than linger showing "[exited]".
 data TerminalEvents
-  = TerminalTitle Text | TerminalGoto SrcSpan | TerminalBell | TerminalExited
+  = TerminalTitle Text | TerminalGoto Loc | TerminalBell | TerminalExited
   -- | A control-mode tab saw a window created/closed: the Terminals tree and
   -- tab row should refresh now, not on the next 2s/10s poll.
   | TerminalTreeChanged
@@ -147,7 +148,7 @@ data TerminalsEvents
 makePrisms ''TerminalsEvents
 
 -- | Navigate to a source location (file + span) chosen in the metadata tree.
-newtype MetadataEvents = MetadataGoto SrcSpan
+newtype MetadataEvents = MetadataGoto Loc
 
 makePrisms ''MetadataEvents
 
@@ -156,10 +157,10 @@ newtype ChangesEvents = ChangesOpen FilePath
 
 makePrisms ''ChangesEvents
 
--- | The Preferences pane edits the IDE 'Prefs'; each change is the update to
--- apply (the reflex layer runs it via @modifyIDE_ (prefs %~ f)@, which the
--- existing debounced writer then persists).
-newtype PreferencesEvents = PrefsUpdate (Prefs -> Prefs)
+-- | The Preferences pane edits the user 'Config'; each change is the update to
+-- apply (the reflex layer applies it to the current config and persists via
+-- @saveConfig@).
+newtype PreferencesEvents = PrefsUpdate (Config -> Config)
 
 makePrisms ''PreferencesEvents
 
@@ -190,8 +191,8 @@ newtype ToolbarEvents =
 
 makePrisms ''ToolbarEvents
 
--- ('FlipItem' — a flipper target — now lives in "IDE.Core.Types", re-exported
--- above, because the shared flip MRU in the IDE record references it.)
+-- ('FlipItem' — a flipper target — now lives in "IDE.Web.Model", re-exported
+-- above, because the shared flip MRU in the UI model references it.)
 
 data TabEvents e where
   EditorTab    :: TabEvents EditorEvents

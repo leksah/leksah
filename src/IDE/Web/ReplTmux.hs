@@ -46,7 +46,6 @@ module IDE.Web.ReplTmux
 
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, try, SomeException)
-import Control.Lens ((^.))
 import Control.Monad (void, mfilter, forM_)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.List (find, isPrefixOf, sortOn)
@@ -67,13 +66,13 @@ import System.Log.Logger (debugM)
 import System.Process (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
-import IDE.Core.State
-       (reflectIDE, readIDE, workspace, wsProjects, wsSettingsFor,
-        ProjectSettings(..), pjKey, pjDir)
+import IDE.App (App(..), getGlobalApp)
+import IDE.Reactive (readCell)
 import IDE.Utils.RemoteExec (runSsh)
 import IDE.Utils.RemotePath (parseRemotePath)
-import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Instance (tmuxServerSocket)
+import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
+import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
 import IDE.Web.NewLwRequest (requestNewLw)
 
@@ -513,7 +512,7 @@ ensureRemoteWindow host rdir name mbCmd = do
 -- dir in leksah's own tmux server keyed by the directory (each directory its
 -- own window).
 --
--- If the project that owns @dir@ has a stored command prefix (@psCmdPrefix@,
+-- If the project that owns @dir@ has a stored command prefix ('wsCmdPrefix',
 -- e.g. @nix develop -c@ / @nix shell … -c@ — for both local and remote
 -- projects), the terminal opens *inside* that environment: the window @exec@s
 -- the prefixed login shell, so the tools the prefix puts on @PATH@ are there,
@@ -523,8 +522,8 @@ ensureRemoteWindow host rdir name mbCmd = do
 -- thread / the calling IDEAction.
 openTerminalInDir :: MonadIO m => FilePath -> m ()
 openTerminalInDir dir0 = liftIO . void . forkIO $ do
-    -- 'pjDir' (and hence @dir0@) usually ends in a path separator, which would
-    -- leave the shell's cwd — and its prompt — with a trailing "//"; strip it.
+    -- A caller's project dir may end in a path separator, which would leave
+    -- the shell's cwd — and its prompt — with a trailing "//"; strip it.
     let dir = dropTrailingPathSeparator dir0
     mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir dir
     let shellUnder p = "exec " <> p <> " \"${SHELL:-bash}\" -l"
@@ -589,7 +588,7 @@ runInTerminal keepOpen dir0 keySuffix name cmd = liftIO . void . forkIO $ do
             ensureCommandWindow keepOpen (T.pack dir <> "#" <> keySuffix) dir name full
                 >>= mapM_ requestLocalTerm
 
--- | @cmd@ wrapped in the command prefix (@psCmdPrefix@, e.g. @nix develop -c@)
+-- | @cmd@ wrapped in the command prefix ('wsCmdPrefix', e.g. @nix develop -c@)
 -- of the project owning @dir@, if any — how 'runInTerminal' builds its window
 -- command; shared with the ⌥-split pipeline (which runs the same line in a
 -- split of the active pane instead of a reusable window).
@@ -598,26 +597,25 @@ prefixedCmdLine dir cmd = do
     mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir dir
     return $ maybe cmd (\p -> p <> " " <> cmd) mbPrefix
 
--- | The stored command prefix (@psCmdPrefix@) of the workspace project that
--- contains @dir@, read from the live IDE — 'Nothing' when there's no IDE yet,
--- no matching project, or no prefix set.  Used to open a project's terminals
--- inside its environment (local or remote).  Mirrors @IDE.LSP.remotePrefixFor@.
+-- | The stored command prefix ('wsCmdPrefix') of the workspace project that
+-- contains @dir@, read from the live workspace cell — 'Nothing' when there's
+-- no app yet, no matching project, or no prefix set.  Used to open a project's
+-- terminals inside its environment (local or remote).  Mirrors
+-- @IDE.LSP.remotePrefixFor@.
 cmdPrefixForDir :: FilePath -> IO (Maybe Text)
-cmdPrefixForDir dir = getGlobalIDERef >>= \case
-    Nothing   -> return Nothing
-    Just ideR -> do
-        mbWs <- reflectIDE (readIDE workspace) ideR
+cmdPrefixForDir dir = getGlobalApp >>= \case
+    Nothing  -> return Nothing
+    Just app -> do
+        ws <- readCell (wsCell (appWorkspace app))
         return $ do
-            ws      <- mbWs
-            project <- find (\p -> pjDir (pjKey p) `dirContains` dir) (ws ^. wsProjects)
-            psCmdPrefix (wsSettingsFor (pjKey project) ws)
+            project <- find (\p -> prDir p `dirContains` dir) (wsProjects ws)
+            wsCmdPrefix (prKey project) ws
   where
     -- Does directory @parent@ contain (or equal) @child@?  A textual test
-    -- rather than 'IDE.Utils.FileUtils.isSubPath', which runs 'normalise' —
-    -- that both mangles @ssh:\/\/@ paths and, via 'splitPath', trips on a
-    -- trailing-slash mismatch between 'pjDir' (keeps one) and a stripped dir.
-    -- Normalising both to exactly one trailing separator keeps the prefix test
-    -- on segment boundaries (so @…/foo@ doesn't match @…/foobar@).
+    -- rather than 'IDE.Paths.isSubPath', which runs 'normalise' — that
+    -- mangles @ssh:\/\/@ paths (collapsing the @\/\/@).  Normalising both to
+    -- exactly one trailing separator keeps the prefix test on segment
+    -- boundaries (so @…/foo@ doesn't match @…/foobar@).
     dirContains parent child =
         let norm p = addTrailingPathSeparator (dropTrailingPathSeparator p)
         in norm parent `isPrefixOf` norm child

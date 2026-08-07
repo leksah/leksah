@@ -17,11 +17,10 @@ module IDE.Web.Commands
   , commandReloadKeybindings
   ) where
 
-import Control.Monad.IO.Class (liftIO)
 import Data.List (find, group, sort)
 import Data.Text (Text)
 
-import IDE.Core.State (MessageLevel(..), ideMessage)
+import IDE.App (appNote)
 import IDE.Web.Command
 import IDE.Web.Keybindings
        (CommandSpec(..), When(..), loadKeybindings, nullarySpec)
@@ -124,9 +123,10 @@ duplicateCommandIds =
     [ g0 | (g0:_:_) <- group (sort (map csId allCommands)) ]
 
 -- | @edit.reloadKeybindings@: re-read @keybindings.json@ and apply it to the
--- DOM keymap, the menus and the Shortcuts pane; problems land in the Log pane.
+-- DOM keymap, the menus and the Shortcuts pane; problems land in the build-log
+-- pane.
 commandReloadKeybindings :: Command
 commandReloadKeybindings = CommandIDEAction
   ""
   "Reload keybindings.json"
-  (liftIO (loadKeybindings allCommands) >>= mapM_ (ideMessage Normal) . snd)
+  (\app -> loadKeybindings allCommands >>= mapM_ (appNote app) . snd)

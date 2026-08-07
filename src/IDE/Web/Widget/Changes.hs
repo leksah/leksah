@@ -21,7 +21,7 @@ module IDE.Web.Widget.Changes
 
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, finally, SomeException)
-import Control.Lens (to, (^..), preview, _Just)
+import Control.Lens (view)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
@@ -60,8 +60,9 @@ import Reflex.Dom.Core
        (MonadWidget, divClass, el, elClass, elClass', elDynAttr', elDynClass,
         dynText, text, dyn, domEvent, EventName(..), (=:))
 
-import IDE.Core.State (IDE, workspace, wsFile, wsProjects, pjDir, pjKey)
+import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Events (ChangesEvents(..), FindbarEvents)
+import IDE.Workspace (prDir, wsPath, wsProjects)
 import IDE.Web.Widget.FileTree (GitStatus(..), gitClass, gitBadge)
 import IDE.Web.Widget.Findbar (findSelection)
 import IDE.Web.Widget.Tree (scrollIntoViewNearest)
@@ -100,10 +101,10 @@ changesCss = do
 
 changesWidget
   :: forall t m . MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Event t FindbarEvents
   -> m (Event t ChangesEvents)
-changesWidget ide findE = divClass "changes leksah-nav" $ do
+changesWidget ctx findE = divClass "changes leksah-nav" $ do
   -- Header: a refresh button — the manual rescan path for remote projects
   -- (which never poll), and a free instant rescan locally.
   refreshClickE <- divClass "changes-header" $ do
@@ -111,9 +112,9 @@ changesWidget ide findE = divClass "changes leksah-nav" $ do
       return (domEvent Click e)
   performEvent_ $ liftIO (requestRemoteRefresh RefreshManual) <$ refreshClickE
   -- The distinct project directories of the open workspace.
-  dirsD <- holdUniqDyn $ nub . (^.. workspace . _Just . wsProjects . traverse . to (pjDir . pjKey)) <$> ide
+  dirsD <- holdUniqDyn $ nub . map prDir . wsProjects <$> cWs ctx
   -- The workspace file's directory; paths are shown relative to it.
-  wsDirD <- holdUniqDyn $ maybe "" dropFileName . preview (workspace . _Just . wsFile) <$> ide
+  wsDirD <- holdUniqDyn $ maybe "" dropFileName . view wsPath <$> cWs ctx
   postBuild <- getPostBuild
   -- No polling: local dirs rescan when an fsnotify watcher fires a
   -- LocalRefresh (a save, a build writing files, an external git op on the

@@ -11,8 +11,7 @@ module IDE.Web.Widget.Workspace (
 
 import Control.Concurrent (forkIO)
 import Control.Exception (try, SomeException)
-import Control.Lens
-       (to, view, preview, _Just)
+import Control.Lens (view)
 import Control.Monad (void, when, unless, forM_)
 import Control.Monad.IO.Class (liftIO)
 import Language.Javascript.JSaddle (liftJSM, eval, valToNumber)
@@ -23,9 +22,9 @@ import Data.List (stripPrefix, isPrefixOf, dropWhileEnd, find, nub, sortBy, sort
 import Data.Ord (comparing)
 import qualified Data.Map as M
        (elems, fromList, fromListWith, keys, toList, null)
-import Data.Maybe (listToMaybe, maybeToList, fromMaybe, isJust)
+import Data.Maybe (listToMaybe, fromMaybe, isJust)
 import Data.Set (Set)
-import qualified Data.Set as S (fromList, member)
+import qualified Data.Set as S (fromList)
 import Data.Aeson (FromJSON(..), withObject, (.:), eitherDecodeStrict)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -40,7 +39,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime, POSIXTime)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.FilePath
-       ((<.>), (</>), dropFileName, dropTrailingPathSeparator, takeFileName,
+       ((<.>), (</>), dropTrailingPathSeparator, takeFileName,
         splitDirectories, joinPath, makeRelative)
 import System.Info (os)
 import System.Process (proc, createProcess, readProcessWithExitCode)
@@ -79,20 +78,22 @@ import Reflex.Dom.Core
 import IDE.Web.Theme
        (selectionColor, hoverColor, dimColor, dimOpacity, fgColor,
         btnTopColor, btnBottomColor, btnHoverTopColor, btnHoverBottomColor)
-import IDE.Core.Location (packageIdentifierToString)
-import IDE.Core.State
-       (activeComponent, ipdPackageDir, Package, componentTarget,
-        pkgComponents, ipdSrcDirs, ipdCabalFile, ipdPackageId, liftIDE,
-        ipdLib, pjDir, IDEPackage, runPackage, runProject,
-        pjPackages, Project(..), workspace, wsProjects, IDE,
-        activeProject, activePack, pjFile, pjFileOrDir,
-        ProjectKey(..), pjCabalFile, prefs, showHiddenFiles, showIgnoredFiles)
-import IDE.Gtk.Package (packageRun)
-import IDE.Gtk.Workspaces (makePackage)
-import IDE.Project.Build (packageBench, packageClean, packageTest)
-import IDE.Project.Nix (projectRefreshNix)
-import IDE.Project.Run
-       (packageOpenRepl, packageRunComponentTerm, projectOpenTerminal)
+import IDE.App (App(..), appNote)
+import IDE.Builder (runVerb)
+import IDE.Config (Config(..), UiC(..))
+import IDE.Reactive (readCell)
+import IDE.Web.Ctx (Ctx(..))
+import IDE.Workspace
+       (Ws, WorkspaceService(..), activeComponent, activePackage,
+        activeProject, packageIdText, prDir, workspaceActivatePackage,
+        workspaceRemoveProject, wsPath, wsProjects, wsSpecFor)
+import IDE.Ws.Cabal (componentTarget)
+import IDE.Ws.File (applyOverrides)
+import IDE.Ws.Registry (typeById)
+import IDE.Ws.Types
+       (Component(..), ComponentKind(..), Package(..), Project(..),
+        ProjectKey(..), ProjectType(..), Scope(..), ToolCmd(..), Verb(..),
+        verbId)
 import IDE.Web.Command (Command(..))
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
 import IDE.Web.Widget.Flake
@@ -110,8 +111,6 @@ import IDE.Web.Widget.Tree
 import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.GitInfo (prForBranch)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
-import IDE.Project.WorkspaceFile
-       (workspaceRemoveProject, workspaceActivatePackage)
 
 workspaceCss :: Css
 workspaceCss = do
@@ -295,23 +294,73 @@ workspaceCss = do
         "margin" -: "0 3px 0 6px"
         "opacity" -: "0.7"
 
--- | The package's components as build-target strings (@lib:foo@, @exe:bar@…),
--- the vocabulary the rows, the activation and the tools all share.
-components :: Package -> [Text]
-components = map componentTarget . pkgComponents
-
-absolutSourceDirs :: IDEPackage -> Set FilePath
+-- | A package's source dirs as absolute paths ('pkgSrcDirs' is relative to
+-- 'pkgDir').
+absolutSourceDirs :: Package -> Set FilePath
 absolutSourceDirs p =
-  S.fromList ((ipdPackageDir p </>) <$> ipdSrcDirs p)
+  S.fromList ((pkgDir p </>) <$> pkgSrcDirs p)
 
 -- | Tooltip for a runnable component's ▶ button — the cabal subcommand it
 -- runs (@run@ for exes, @test@\/@bench@ for the others).
-runComponentTip :: Text -> Text
-runComponentTip comp = "cabal " <> sub <> " " <> comp
-  where sub = case T.takeWhile (/= ':') comp of
-                "test"  -> "test"
-                "bench" -> "bench"
-                _       -> "run"
+runComponentTip :: Package -> Component -> Text
+runComponentTip pkg comp = "cabal " <> sub <> " " <> componentTarget pkg comp
+  where sub = case cKind comp of
+                KTest  -> "test"
+                KBench -> "bench"
+                _      -> "run"
+
+-- | The verb the ▶ button runs for a component (mirrors 'runComponentTip').
+componentRunVerb :: Component -> Verb
+componentRunVerb comp = case cKind comp of
+    KTest  -> VTest
+    KBench -> VBench
+    _      -> VRun
+
+-- | Like 'IDE.Builder.verbCommand' but WITHOUT the project's command prefix:
+-- the terminal plumbing here ('runInTerminal') applies the directory's
+-- prefix itself ('IDE.Web.ReplTmux.prefixedCmdLine'), so feeding it the
+-- prefixed command would wrap the prefix twice.
+verbCommandBase
+    :: Ws -> Project -> Maybe Package -> Maybe Component -> Verb
+    -> Maybe ToolCmd
+verbCommandBase ws pr mbPkg mbComp verb = do
+    pt <- typeById (pkType (prKey pr))
+    let scope = case (mbPkg, mbComp) of
+            (Just p, Just c)  -> ScopeComponent p c
+            (Just p, Nothing) -> ScopePackage p
+            _                 -> ScopeProject
+        base = ptCommand pt verb scope
+    tc <- maybe base (\s -> applyOverrides s verb base) (wsSpecFor (prKey pr) ws)
+    return tc { tcDir = prDir pr </> tcDir tc }
+
+-- | Render a 'ToolCmd' as one shell line (arguments single-quoted, like
+-- 'gitCmdLine').
+toolCmdLine :: ToolCmd -> Text
+toolCmdLine tc = T.intercalate " " (tcProgram tc : map shq (tcArgs tc))
+  where shq a = "'" <> T.replace "'" "'\\''" a <> "'"
+
+-- | Run a component's verb (repl \/ run \/ test \/ bench) in a reusable
+-- terminal window: the command string comes from the project-type registry,
+-- while the terminal mechanics (window reuse, command prefix, remote hosts)
+-- stay with 'runInTerminal'.
+runComponentVerb :: Verb -> Project -> Package -> Component -> App -> IO ()
+runComponentVerb verb pr pkg comp app = do
+    ws <- readCell (wsCell (appWorkspace app))
+    let target = componentTarget pkg comp
+    case verbCommandBase ws pr (Just pkg) (Just comp) verb of
+        Nothing -> appNote app $
+            "no " <> verbId verb <> " command for " <> target
+        Just tc -> runInTerminal True (tcDir tc)
+                       (verbId verb <> ":" <> target) target (toolCmdLine tc)
+
+-- | Open the component's repl in a terminal (the row's double-click).
+packageOpenRepl :: Project -> Package -> Component -> App -> IO ()
+packageOpenRepl = runComponentVerb VRepl
+
+-- | Run the component in a terminal (the row's ▶ button).
+packageRunComponentTerm :: Project -> Package -> Component -> App -> IO ()
+packageRunComponentTerm pr pkg comp =
+    runComponentVerb (componentRunVerb comp) pr pkg comp
 
 -- | Is the focused file somewhere under @dir@?
 fileUnder :: FilePath -> Maybe FilePath -> Bool
@@ -1252,28 +1301,28 @@ allOutputsNode dir = void $ treeItem "flake-node" False
 
 workspaceWidget
   :: MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Dynamic t (Maybe FilePath)   -- ^ the focused file (highlighted in the tree)
   -> Dynamic t (Maybe FilePath)   -- ^ the file to reveal (expand/scroll to), or
                                   --   Nothing when an occurrence is already shown
   -> m (Event t ProjectEvents)
-workspaceWidget ide activeFileD revealFileD = do
-  showHiddenD  <- holdUniqDyn $ view (prefs . to showHiddenFiles)  <$> ide
-  showIgnoredD <- holdUniqDyn $ view (prefs . to showIgnoredFiles) <$> ide
+workspaceWidget ctx activeFileD revealFileD = do
+  showHiddenD  <- holdUniqDyn $ uiShowHiddenFiles  . cfgUi <$> cCfg ctx
+  showIgnoredD <- holdUniqDyn $ uiShowIgnoredFiles . cfgUi <$> cCfg ctx
   divClass "workspace leksah-nav" $
     divClass "workspace-body" $ do
-      workspaceIsOpenD <- holdUniqDyn $ view (workspace . to isJust) <$> ide
+      workspaceIsOpenD <- holdUniqDyn $ isJust . view wsPath <$> cWs ctx
       _ <- elDynAttr "div" (bool mempty ("style" =: "display: none") <$> workspaceIsOpenD) $
         button "Open Workspace (TODO)"
       elClass "ul" "projects" $ do
-        let addFileToKey = map (\(n, p) -> ((n, pjKey p), p))
-            projectsD = M.fromList . addFileToKey . zip [0..] . fromMaybe mempty . preview (workspace . _Just . wsProjects) <$> ide
+        let addFileToKey = map (\(n, p) -> ((n, prKey p), p))
+            projectsD = M.fromList . addFileToKey . zip [0..] . wsProjects <$> cWs ctx
         -- Every project's directory, for computing the shortest label suffix
         -- that uniquely identifies each project (see 'shortProjectSuffix').
-        allProjectDirsD <- holdUniqDyn $ map (pjDir . snd) . M.keys <$> projectsD
-        activeProjectKeyD <- holdUniqDyn $ fmap pjKey . view activeProject <$> ide
-        activePackageFileD <- holdUniqDyn $ fmap ipdCabalFile . view activePack <$> ide
-        activeComponentD <- holdUniqDyn $ view activeComponent <$> ide
+        allProjectDirsD <- holdUniqDyn $ map (pkRoot . snd) . M.keys <$> projectsD
+        activeProjectKeyD <- holdUniqDyn $ fmap prKey . activeProject <$> cWs ctx
+        activePackageFileD <- holdUniqDyn $ fmap pkgManifest . activePackage <$> cWs ctx
+        activeComponentD <- holdUniqDyn $ activeComponent <$> cWs ctx
         -- Self-heal (rare, pathological cold ghci boots): the project rows can
         -- build exactly once yet never be ATTACHED to the live DOM — frames all
         -- settle, model and statusbar are current, but `.projects` stays
@@ -1300,11 +1349,11 @@ workspaceWidget ide activeFileD revealFileD = do
         (switchHold never =<<) . dyn $ ffor rebuildD $ \_ -> listViewWithKey projectsD $ \(_, pKey) projectD -> do
           let isActiveProjectD = (== Just pKey) <$> activeProjectKeyD
           -- Reveal (expand) the project when the active file is anywhere under it.
-          projNodeRevealD <- revealUnder (constDyn (pjDir pKey)) revealFileD
+          projNodeRevealD <- revealUnder (constDyn (pkRoot pKey)) revealFileD
           -- Current branch + open PR for this project's checkout, scanned once
           -- here and shared by the git subtree, the collapsed summary and the
           -- "Open PR" menu item.
-          (brD, prD) <- gitBranchPr (pjDir pKey)
+          (brD, prD) <- gitBranchPr (pkRoot pKey)
           -- Only the active project starts expanded; activating another project
           -- collapses this one (and expands that one).
           initActive <- sample (current isActiveProjectD)
@@ -1317,46 +1366,47 @@ workspaceWidget ide activeFileD revealFileD = do
               -- tree gestures; wrapSplit embeds the request in the menu's
               -- command type.  Remote projects can't split (a split runs on the
               -- local tmux server), so their items carry no target.
-              let wrapSplit t sh = ProjectCommand (CommandWorkspaceAction "" ""
-                                     (liftIO (requestSplitOpen (t, sh))))
-                  localTgt t = if isRemotePath (pjDir pKey) then Nothing else Just t
+              let wrapSplit t sh = ProjectCommand (CommandIDEAction "" ""
+                                     (const (requestSplitOpen (t, sh))))
+                  localTgt t = if isRemotePath (pkRoot pKey) then Nothing else Just t
                   plain = fmap (fmap (Nothing,))
               (projRowEl, rowE) <- treeSelect' "workspace" (menuSplitWith wrapSplit $
-                [ plain $ ("Activate",) . ProjectCommand . CommandWorkspaceAction "Set as Active Project" "" <$>
-                    ((\p -> liftIDE (workspaceActivatePackage p Nothing Nothing)) <$> projectD)
-                ] <> case pjFile pKey of
+                [ plain . constDyn $ ("Activate", ProjectCommand . CommandIDEAction "Set as Active Project" "" $
+                    \app -> workspaceActivatePackage (appWorkspace app) pKey Nothing Nothing)
+                ] <> case pkFile pKey of
                         Just file -> [ constDyn ("Open Project File", (Just (STFile file), ProjectFileEvents . ("" =:) $ OpenFile False file)) ]
                         _ -> []
-                  <> case pKey of
-                        CabalTool p ->
-                          [ let f = pjCabalFile p <.> "local"
+                  <> case pkFile pKey of
+                        Just file | pkType pKey == "cabal" ->
+                          [ let f = file <.> "local"
                             in constDyn ("Open Project Configuration File", (Just (STFile f), ProjectFileEvents . ("" =:) $ OpenFile True f)) ]
                         _ -> []
-                <> [ ("Open Terminal Here",) . (localTgt (STTermDir (pjDir pKey)),) . ProjectCommand . CommandWorkspaceAction "" "" <$>
-                    ((liftIDE . projectOpenTerminal) <$> projectD)
-                , plain $ ("Refresh Nix Environment Varialbes",) . ProjectCommand . CommandWorkspaceAction "" "" <$>
-                    ((liftIDE . projectRefreshNix) <$> projectD)
-                , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandWorkspaceAction "" "" (liftIDE (workspaceRemoveProject pKey))))
-                , plain $ constDyn ("Project Settings…", ProjectCommand (CommandWorkspaceAction "" "" (liftIO (requestRemoteSettings pKey))))
+                <> [ constDyn $ ("Open Terminal Here",) . (localTgt (STTermDir (pkRoot pKey)),) . ProjectCommand . CommandIDEAction "" "" $
+                    const (openTerminalInDir (pkRoot pKey))
+                , plain . constDyn $ ("Refresh Nix Environment Varialbes", ProjectCommand . CommandIDEAction "" "" $
+                    \app -> appNote app "nix env refresh is not reimplemented yet")
+                , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandIDEAction "" "" (\app -> workspaceRemoveProject (appWorkspace app) pKey)))
+                , plain $ constDyn ("Project Settings…", ProjectCommand (CommandIDEAction "" "" (const (requestRemoteSettings pKey))))
                 , plain $ ffor prD $ \mpr ->
                     ( "Open PR" <> prSuffix mpr
-                    , ProjectCommand (CommandWorkspaceAction "" "" (liftIO (maybe (return ()) (openUrl . snd) mpr))) )
+                    , ProjectCommand (CommandIDEAction "" "" (const (maybe (return ()) (openUrl . snd) mpr))) )
                 ]
                 -- Claude Code (only when the CLI is on PATH): start a fresh
                 -- session or continue the most recent one in the project dir.
-                <> [ constDyn ("New Claude Session", (localTgt (STClaudeNew (pjDir pKey)), ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeNew (pjDir pKey))))))) | claudeAvail ]
-                <> [ constDyn ("Continue Last Claude Session", (localTgt (STClaudeContinue (pjDir pKey)), ProjectCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (ClaudeContinue (pjDir pKey))))))) | claudeAvail ]) $ do
+                <> [ constDyn ("New Claude Session", (localTgt (STClaudeNew (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeNew (pkRoot pKey))))))) | claudeAvail ]
+                <> [ constDyn ("Continue Last Claude Session", (localTgt (STClaudeContinue (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeContinue (pkRoot pKey))))))) | claudeAvail ]) $ do
                 elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
                 -- Label = (for a remote project) the server name, then the
                 -- shortest right-anchored path suffix that uniquely identifies
                 -- this project among the workspace; the full path is the
                 -- tooltip.  The server name is plain text, not a highlighted
                 -- pill.
-                let (mbHost, fullLocal) = case parseRemotePath (pjFileOrDir pKey) of
+                let keyFileOrDir = fromMaybe (pkRoot pKey) (pkFile pKey)
+                    (mbHost, fullLocal) = case parseRemotePath keyFileOrDir of
                         Just (host, l) -> (Just host, l)
-                        Nothing        -> (Nothing, pjFileOrDir pKey)
+                        Nothing        -> (Nothing, keyFileOrDir)
                     fullTitle = maybe id (\h t -> h <> ":" <> t) mbHost (T.pack fullLocal)
-                suffixD <- holdUniqDyn $ shortProjectSuffix (pjDir pKey) <$> allProjectDirsD
+                suffixD <- holdUniqDyn $ shortProjectSuffix (pkRoot pKey) <$> allProjectDirsD
                 let labelD = maybe id (\h s -> h <> ":" <> s) mbHost <$> suffixD
                 elAttr "span" ("title" =: fullTitle) $ dynText labelD
                 -- Git icon + branch + PR number, shown inline only while the
@@ -1371,63 +1421,63 @@ workspaceWidget ide activeFileD revealFileD = do
               -- ⌥ opens it into a split of the active pane instead (local only).
               pmE <- dblclickMods projRowEl
               performEvent_ $ ffor pmE $ \(alt, sh) ->
-                if alt && not (isRemotePath (pjDir pKey))
-                  then liftIO (requestSplitOpen (STTermDir (pjDir pKey), sh))
-                  else openTerminalInDir (pjDir pKey)
+                if alt && not (isRemotePath (pkRoot pKey))
+                  then liftIO (requestSplitOpen (STTermDir (pkRoot pKey), sh))
+                  else openTerminalInDir (pkRoot pKey)
               return rowE) $
             el "ul" $ do
               -- Top item: the project's git tree (self-hides unless the project
               -- dir is itself a git checkout).
-              gitTreeNode (pjDir pKey) brD prD
+              gitTreeNode (pkRoot pKey) brD prD
               -- The project's Claude Code sessions, surfaced right under the
               -- project row (self-hides unless the project dir has sessions) so
               -- it's reachable without drilling into the Files node.
               claudeAvail <- liftIO claudeAvailable
-              when claudeAvail $ claudeNode "workspace" (pjDir pKey)
-              let packagesD = M.fromList . map (\p -> (ipdPackageId p, p)) . pjPackages <$> projectD
-              packagesE <- listViewWithKey packagesD $ \packageId packageD -> do
-                cabalFileD <- holdUniqDyn $ ipdCabalFile <$> packageD
-                mbLibD <- holdUniqDyn $ ipdLib <$> packageD
-                pkgDirD <- holdUniqDyn $ dropFileName . ipdCabalFile <$> packageD
+              when claudeAvail $ claudeNode "workspace" (pkRoot pKey)
+              let packagesD = M.fromList . map (\p -> (pkgManifest p, p)) . prPackages <$> projectD
+              packagesE <- listViewWithKey packagesD $ \_manifest packageD -> do
+                cabalFileD <- holdUniqDyn $ pkgManifest <$> packageD
+                hasLibD <- holdUniqDyn $ any ((== KLib) . cKind) . pkgComponents <$> packageD
+                pkgDirD <- holdUniqDyn $ pkgDir <$> packageD
                 -- Directories of other packages *nested inside* this one (a file
                 -- there belongs to the nested package, not this one): used to hide
                 -- them from this package's tree and to not reveal towards them.
                 nestedPkgDirsD <- holdUniqDyn $ (\proj p ->
-                      let myDir = dropTrailingPathSeparator (ipdPackageDir p)
+                      let myDir = dropTrailingPathSeparator (pkgDir p)
                       in S.fromList
-                         [ d | p' <- pjPackages proj, ipdCabalFile p' /= ipdCabalFile p
-                             , let d = dropTrailingPathSeparator (ipdPackageDir p')
+                         [ d | p' <- prPackages proj, pkgManifest p' /= pkgManifest p
+                             , let d = dropTrailingPathSeparator (pkgDir p')
                              , (myDir <> "/") `isPrefixOf` d ])
                     <$> projectD <*> packageD
                 pkgRevealE <- revealUnderExcept pkgDirD nestedPkgDirsD revealFileD
                 let isActivePackageD = (&&) <$> isActiveProjectD <*> ((==) <$> activePackageFileD <*> (Just <$> cabalFileD))
-                    pkgCmd t f = plainPkg $ (t,) . PackageCommand . CommandWorkspaceAction "" "" <$> (runProject . runPackage f <$> packageD <*> projectD)
-                    -- The project-model commands take (project, package)
-                    -- directly; liftIDE lifts them into the command's slot.
-                    pkgCmd' t f = plainPkg $ (t,) . PackageCommand . CommandWorkspaceAction "" "" <$>
-                        ((\pkg proj -> liftIDE (f proj pkg)) <$> packageD <*> projectD)
+                    -- Build-family menu items dispatch through the builder
+                    -- service ('runVerb'), scoped to this package.
+                    pkgVerb t v = plainPkg $ (t,) . PackageCommand . CommandIDEAction "" ""
+                        . (\pkg app -> runVerb (appBuilder app) pKey (Just pkg) Nothing v)
+                        <$> packageD
                     -- A Claude launch item for the package's directory (Dynamic
                     -- because the package dir is); @st@ is its ⌥-split target
                     -- (local dirs only — a split runs on the local tmux server).
                     pkgClaude t c st = (\d -> (t, ( if isRemotePath d then Nothing else Just (st d)
-                                                  , PackageCommand (CommandWorkspaceAction "" "" (liftIO (runClaudeCmd (c d))))))) <$> pkgDirD
+                                                  , PackageCommand (CommandIDEAction "" "" (const (runClaudeCmd (c d))))))) <$> pkgDirD
                     -- ⌥-split plumbing for the package menu (see the project
                     -- menu's wrapSplit/plain above).
-                    wrapSplitPkg t sh = PackageCommand (CommandWorkspaceAction "" ""
-                                          (liftIO (requestSplitOpen (t, sh))))
+                    wrapSplitPkg t sh = PackageCommand (CommandIDEAction "" ""
+                                          (const (requestSplitOpen (t, sh))))
                     plainPkg = fmap (fmap ((,) Nothing))
                 -- claudeAvail is the project-level binding above (in scope here).
                 treeItemDynAttr' pkgRevealE (("class" =:) . ("package" <>) <$> (bool "" " active" <$> isActivePackageD)) False
                   (treeSelect "workspace" (menuSplitWith wrapSplitPkg $
-                      [ plainPkg $ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Package" "" <$>
-                          ((\proj pkg -> liftIDE (workspaceActivatePackage proj (Just pkg) Nothing)) <$> projectD <*> packageD)
-                      , pkgCmd "Build" makePackage
-                      , pkgCmd "Run" packageRun
-                      , pkgCmd' "Test" packageTest
-                      , pkgCmd' "Benchmark" packageBench
-                      , pkgCmd' "Clean" packageClean
+                      [ plainPkg $ ("Activate",) . PackageCommand . CommandIDEAction "Set as Active Package" "" <$>
+                          ((\pkg app -> workspaceActivatePackage (appWorkspace app) pKey (Just (pkgManifest pkg)) Nothing) <$> packageD)
+                      , pkgVerb "Build" VBuild
+                      , pkgVerb "Run" VRun
+                      , pkgVerb "Test" VTest
+                      , pkgVerb "Benchmark" VBench
+                      , pkgVerb "Clean" VClean
                       , (\cf -> ("Open Package File", (Just (STFile cf), PackageFileEvents (("" =:) (OpenFile False cf)))))
-                          . ipdCabalFile <$> packageD
+                          . pkgManifest <$> packageD
                       ]
                       <> [ pkgClaude "New Claude Session" ClaudeNew STClaudeNew | claudeAvail ]
                       <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue STClaudeContinue | claudeAvail ]) $ do
@@ -1436,63 +1486,64 @@ workspaceWidget ide activeFileD revealFileD = do
                     -- is a tooltip, not an inline label — it was crowding the
                     -- row.
                     relPathD <- holdUniqDyn $
-                        (\cf -> T.pack $ fromMaybe cf $ stripPrefix (pjDir pKey) cf) <$> cabalFileD
+                        (\cf -> T.pack $ fromMaybe cf $ stripPrefix (pkRoot pKey) cf) <$> cabalFileD
                     elDynAttr "div" ((\p -> "class" =: "package-id" <> "title" =: p) <$> relPathD) $ do
-                      text $ packageIdentifierToString packageId
+                      dynText $ packageIdText <$> packageD
                       dynText $ do
                         isActive <- isActivePackageD
                         activeComp <- activeComponentD
-                        mbLib <- mbLibD
+                        hasLib <- hasLibD
+                        pkg <- packageD
                         return $ if isActive
-                          then maybe (if isJust mbLib then " (library)" else "")
-                                   (\comp -> " (" <> comp <> ")") activeComp
+                          then maybe (if hasLib then " (library)" else "")
+                                   (\comp -> " (" <> componentTarget pkg comp <> ")") activeComp
                           else ""
                     return never) $
                   el "ul" $ do
                     -- Top item: the package's git tree — only when the package
                     -- is NOT the project root and is itself a git checkout.
-                    pkgDir <- sample (current pkgDirD)
-                    when (dropTrailingPathSeparator pkgDir /= dropTrailingPathSeparator (pjDir pKey)) $ do
-                        (pkgBrD, pkgPrD) <- gitBranchPr pkgDir
-                        gitTreeNode pkgDir pkgBrD pkgPrD
+                    pkgDirNow <- sample (current pkgDirD)
+                    when (dropTrailingPathSeparator pkgDirNow /= dropTrailingPathSeparator (pkRoot pKey)) $ do
+                        (pkgBrD, pkgPrD) <- gitBranchPr pkgDirNow
+                        gitTreeNode pkgDirNow pkgBrD pkgPrD
                     componentsE <- treeItem "components" False
                       (treeSelect "workspace" (return never) $ do
                           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
                           text "Components"
                           return never) $
                       el "ul" $
-                        fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey (M.fromList . zip [0::Int ..] . components <$> packageD) $ \_ componentD -> do
+                        fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey (M.fromList . zip [0::Int ..] . pkgComponents <$> packageD) $ \_ componentD -> do
                           let isActiveComponentD = (&&) <$> isActivePackageD <*> ((==) <$> activeComponentD <*> (Just <$> componentD))
                           elDynClass "li" (("component" <>) <$> (bool "" " active" <$> isActiveComponentD)) $ do
                             let mkActD f = (\proj pkg comp ->
-                                    PackageCommand . CommandWorkspaceAction "" "" $
-                                      liftIDE (f proj pkg comp))
+                                    PackageCommand . CommandIDEAction "" "" $
+                                      f proj pkg comp)
                                   <$> projectD <*> packageD <*> componentD
                             (rowEl, rowE) <- treeSelect' "workspace" (menu
-                              [ ("Activate",) . PackageCommand . CommandWorkspaceAction "Set as Active Component" "" <$>
-                                  ((\proj pkg comp -> liftIDE (workspaceActivatePackage proj (Just pkg) (Just comp)))
-                                     <$> projectD <*> packageD <*> componentD)
+                              [ ("Activate",) . PackageCommand . CommandIDEAction "Set as Active Component" "" <$>
+                                  ((\pkg comp app -> workspaceActivatePackage (appWorkspace app) pKey (Just (pkgManifest pkg)) (Just comp))
+                                     <$> packageD <*> componentD)
                               ]) $ do
                               elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
-                              dynText componentD
+                              dynText $ componentTarget <$> packageD <*> componentD
                               -- A ▶ button on runnable components (exe/test/bench,
                               -- of a cabal project) runs the component in a
                               -- terminal (cabal run/test/bench); libraries have
                               -- none.  Opening the repl is the row's double-click.
-                              case pKey of
-                                CabalTool {} -> switchHold never =<< dyn (ffor componentD $ \comp ->
-                                  if T.takeWhile (/= ':') comp `elem` ["exe", "test", "bench"]
+                              if pkType pKey == "cabal"
+                                then switchHold never =<< dyn (ffor ((,) <$> packageD <*> componentD) $ \(pkg, comp) ->
+                                  if cKind comp `elem` [KExe, KTest, KBench]
                                     then do
-                                      runE <- execButton (runComponentTip comp)
+                                      runE <- execButton (runComponentTip pkg comp)
                                       return $ tagPromptlyDyn (mkActD packageRunComponentTerm) runE
                                     else return never)
-                                _ -> return never
+                                else return never
                             -- Double-click a component opens its ffcabal repl as
                             -- a terminal tab (replacing the old inline repl button
                             -- that used to clutter every row).
-                            let dblE = case pKey of
-                                  CabalTool {} -> tagPromptlyDyn (mkActD packageOpenRepl) (domEvent Dblclick rowEl)
-                                  _ -> never
+                            let dblE = if pkType pKey == "cabal"
+                                  then tagPromptlyDyn (mkActD packageOpenRepl) (domEvent Dblclick rowEl)
+                                  else never
                             return $ leftmost [rowE, dblE]
                     filesE <- treeItem' pkgRevealE "package-files" False (treeSelect "workspace" (return never) $ do
                       elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
@@ -1500,53 +1551,51 @@ workspaceWidget ide activeFileD revealFileD = do
                       return never) $
                         el "ul" $ do
                           sourceDirsD <- holdUniqDyn $ absolutSourceDirs <$> packageD
-                          dirD <- holdUniqDyn $ dropFileName . ipdCabalFile <$> packageD
                           (switchHold never =<<) . dyn $
                             -- Show the package's own Claude node unless the
                             -- package sits at the project root (the project row
                             -- already surfaces that dir's Claude node).
                             (\sd ig d -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD
-                                (dropTrailingPathSeparator d /= dropTrailingPathSeparator (pjDir pKey)) d)
-                              <$> sourceDirsD <*> nestedPkgDirsD <*> dirD
+                                (dropTrailingPathSeparator d /= dropTrailingPathSeparator (pkRoot pKey)) d)
+                              <$> sourceDirsD <*> nestedPkgDirsD <*> pkgDirD
                     return $ leftmost [componentsE, PackageFileEvents <$> filesE]
-              pjSourceDirsD <- holdUniqDyn $ mconcat . (fmap absolutSourceDirs . pjPackages) <$> projectD
+              prSourceDirsD <- holdUniqDyn $ mconcat . (fmap absolutSourceDirs . prPackages) <$> projectD
               -- The project's own ("Other Files") tree excludes the directory of
               -- every package under the project root; and it's left out entirely
               -- when a package sits at the project root (its files would just
               -- duplicate that package's tree).
-              let projDir = dropTrailingPathSeparator (pjDir pKey)
+              let projDir = dropTrailingPathSeparator (pkRoot pKey)
               pkgDirsD <- holdUniqDyn $ (\proj -> S.fromList
-                  [ d | p <- pjPackages proj
-                      , let d = dropTrailingPathSeparator (ipdPackageDir p)
+                  [ d | p <- prPackages proj
+                      , let d = dropTrailingPathSeparator (pkgDir p)
                       , (projDir <> "/") `isPrefixOf` d ])
                 <$> projectD
               hasRootPackageD <- holdUniqDyn $
-                any ((== projDir) . dropTrailingPathSeparator . ipdPackageDir) . pjPackages <$> projectD
+                any ((== projDir) . dropTrailingPathSeparator . pkgDir) . prPackages <$> projectD
               projectFilesE <- switchHold never =<< dyn (ffor hasRootPackageD $ \hasRoot ->
                 if hasRoot then return never else do
-                  projRevealE <- revealUnderExcept (constDyn (pjDir pKey)) pkgDirsD revealFileD
+                  projRevealE <- revealUnderExcept (constDyn (pkRoot pKey)) pkgDirsD revealFileD
                   treeItem' projRevealE "project-files" False (treeSelect "workspace" (return never) $ do
                       elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
-                      -- A directory project (nix / make / plain "Open Folder"
-                      -- CustomTool) has no package "Files" nodes to distinguish
+                      -- A directory project (nix-flake / make / plain "Open
+                      -- Folder" dir) has no package "Files" nodes to distinguish
                       -- from, so plain "Files" reads better than "Other Files".
-                      text $ case pKey of
-                        NixTool {}    -> "Files"
-                        MakeTool {}   -> "Files"
-                        CustomTool {} -> "Files"
-                        _             -> "Other Files"
+                      text $ if pkType pKey `elem` ["nix-flake", "make", "dir"]
+                        then "Files"
+                        else "Other Files"
                       return never) $
                         el "ul" $
                           (switchHold never =<<) . dyn $
                             -- The project row already surfaces the Claude node
-                            -- for pjDir, so suppress it on this "Other Files" tree.
-                            (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD False (pjDir pKey))
-                              <$> pjSourceDirsD <*> pkgDirsD)
+                            -- for the project dir, so suppress it on this
+                            -- "Other Files" tree.
+                            (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD False (pkRoot pKey))
+                              <$> prSourceDirsD <*> pkgDirsD)
               -- Any project with a flake.nix gets a (collapsed) Flake node;
               -- it self-hides when there's no flake and only evaluates once
               -- expanded, so there's no overhead otherwise.
-              flakeNode (pjDir pKey)
+              flakeNode (pkRoot pKey)
               -- Rust (Cargo.toml) / Python (pyproject.toml / setup.py) manifest
               -- introspection, self-hiding like the flake node.
-              manifestNode (pjDir pKey)
+              manifestNode (pkRoot pKey)
               return $ leftmost [ProjectPackageEvents <$> packagesE, ProjectFileEvents <$> projectFilesE]

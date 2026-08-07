@@ -68,7 +68,7 @@ import IDE.Web.NoPty (Pty, writePty)
 import System.Posix.Pty (Pty, writePty)
 #endif
 
-import IDE.Core.Types (TabKey)
+import IDE.Web.Model (TabKey)
 import IDE.Web.ConvertRequest (requestConvert)
 import IDE.Web.ReplTmux (buildSplitWindowCommand, activePaneIdOfWindow)
 

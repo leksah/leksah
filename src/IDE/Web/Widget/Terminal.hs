@@ -111,15 +111,16 @@ import Language.Javascript.JSaddle
         valToNumber, valToBool, liftJSM)
 import GHCJS.DOM.Types (pToJSVal)
 
-import IDE.Core.Location (SrcSpan(..))
-import IDE.Core.State (IDE, focusLog)
+import IDE.DebugLog (focusLog)
+import IDE.Problems.Types (Loc(..), Pos(..), pointRange)
+import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Widget.Menu (menu)
 import qualified IDE.LSP as LSP
 
 import Reflex
        (attach, attachWith, current, ffor, getPostBuild, holdDyn, never,
         leftmost, constDyn, fmapMaybe, switchHold, performEvent, performEvent_,
-        newTriggerEvent, delay, Dynamic, Event)
+        newTriggerEvent, delay, Event)
 import Reflex.Dom.Core
        (elAttr, elAttr', dyn, MonadWidget, (=:),
         _element_raw)
@@ -512,9 +513,9 @@ terminalCss = do
 
 terminalWidget
   :: forall t m . MonadWidget t m
-  => Dynamic t IDE          -- ^ for Ctrl/Cmd-click identifier lookup in metadata
+  => Ctx t                  -- ^ for Ctrl/Cmd-click identifier lookup in metadata
   -> Text -> Event t () -> m (Event t TerminalEvents)
-terminalWidget ide termId selectedE = do
+terminalWidget ctx termId selectedE = do
 #if defined(ghcjs_HOST_OS)
   -- Browser demo: no PTY.  The xterm below renders a canned session dump
   -- (window.leksahDemoTerminals) written once after it is built; writes and
@@ -862,13 +863,15 @@ terminalWidget ide termId selectedE = do
       jsg ("LeksahTermLinks" :: Text) ^. js2 ("resolveHover" :: Text)
           (rid :: Int) (fromMaybe "" mt)
 
-  -- Navigation from a clicked file path.
-  let fileGotoE = (\(f, l, c) -> SrcSpan f l c l c) <$> linkE
+  -- Navigation from a clicked file path.  The link callbacks report 1-based
+  -- line/column (what compilers print); 'Loc' is 0-based, so convert here.
+  let fileGotoE = (\(f, l, c) ->
+          Loc f (pointRange (Pos (max 0 (l - 1)) (max 0 (c - 1))))) <$> linkE
   -- Navigation from a Ctrl/Cmd-clicked identifier: look it up in the metadata.
   -- No match -> nothing; one match -> jump straight there; several -> pop up a
   -- chooser of module names at the click position and jump to the picked one.
   let optsE = attachWith (\_i (_tok, x, y) -> ([], x, y))
-                (current ide) lookupE
+                (current (cUi ctx)) lookupE
       singleGotoE = fmapMaybe (\(opts, _, _) -> case opts of [(_, sp)] -> Just sp; _ -> Nothing) optsE
       multiE      = fmapMaybe (\(opts, x, y) -> if length opts > 1 then Just (x, y, opts) else Nothing) optsE
   rec chooserD <- holdDyn Nothing $ leftmost [ Just <$> multiE, Nothing <$ chosenE ]

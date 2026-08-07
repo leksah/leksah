@@ -11,9 +11,10 @@
 -- @stack.yaml@).  Editor documents are mirrored to the server with full-text
 -- sync ('documentOpened' \/ 'documentChanged' \/ 'documentSaved' \/
 -- 'documentClosed'), and the server's @textDocument/publishDiagnostics@
--- notifications are turned into leksah 'LogRef's and pushed into the shared
--- IDE state — so they render in the Errors pane, the Log pane and as CM6
--- editor squiggles through the same path GHC build errors already use.
+-- notifications are turned into 'Problem's and published to the shared
+-- problems service (source key @lsp:\<root\>@) — so they render in the Errors
+-- pane, the status counts and as editor squiggles through the same path GHC
+-- build errors already use.
 --
 -- The client itself is the vendored @lsp-types-client@ package; this module
 -- is only the glue between it and leksah's state.
@@ -34,7 +35,7 @@ import           Control.Applicative ((<|>))
 import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import           Control.Concurrent.STM
 import           Control.Exception (SomeException, catch, try)
-import           Control.Lens ((%~), (^.))
+import           Control.Lens ((^.))
 import           Control.Monad (forM, join, void, when)
 import           Data.Aeson
 import           Data.Aeson.Types (Parser, parseMaybe)
@@ -45,7 +46,6 @@ import           Data.List (find, nub, sort, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
 import           Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, mapMaybe)
-import qualified Data.Sequence as Seq
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -53,7 +53,7 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import           System.Directory (doesDirectoryExist, doesFileExist, findExecutable,
                                    listDirectory, makeAbsolute)
-import           System.FilePath (addTrailingPathSeparator, takeDirectory, takeExtension, (</>))
+import           System.FilePath (isAbsolute, takeDirectory, takeExtension, (</>))
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Log.Logger (debugM)
 
@@ -63,16 +63,18 @@ import           Language.LSP.Protocol.Types (InitializeParams, filePathToUri, u
 import           Language.LSP.Client (Client, ClientConfig(..), defaultClientConfig,
                                        notify, request, start, stop, alive)
 
-import           IDE.Core.Location (SrcSpan(..))
-import           IDE.Core.Types (Log(..), LogRef(..), LogRefType(..), allLogRefs)
-import           IDE.Core.State (IDEAction, modifyIDE_, reflectIDE, readIDE, prefs,
-                                 lspEnabled, lspServerCommand,
-                                 workspace, wsProjects, wsSettingsFor,
-                                 ProjectSettings(..), pjKey, pjDir)
-import           IDE.Utils.Files (isSubPath)
+import           IDE.App (App(..), getGlobalApp, withApp)
+import           IDE.Config (Config(..), LspC(..), currentConfig)
+import           IDE.Paths (isSubPath)
+import           IDE.Problems (problemsCell, setProblems)
+import           IDE.Problems.Types
+                       (Loc(..), Pos(..), Problem(..), Range(..), Severity(..))
+import           IDE.Reactive (readCell)
 import           IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import           IDE.Web.FS (fsReadFile, fsDoesFileExist)
-import           IDE.Web.IDERefStore (getGlobalIDERef)
+import           IDE.Workspace
+                       (WorkspaceService(..), prDir, wsCmdPrefix, wsPath, wsProjects)
+import           IDE.Ws.Types (Project(..))
 import           Data.Text.Encoding (decodeUtf8With)
 import           Data.Text.Encoding.Error (lenientDecode)
 #if !defined(ghcjs_HOST_OS)
@@ -144,14 +146,14 @@ serverKey = T.pack . fst . lcDefaultCmd
 isSupportedFile :: FilePath -> Bool
 isSupportedFile = isJust . languageOf
 
--- | The current LSP prefs — @(enabled, command-override)@ — read live from the
--- shared IDE state.  Defaults (enabled, no override) before the IDE exists.
+-- | The current LSP settings — @(enabled, command-override)@ — read live from
+-- the config service.  Defaults (enabled, no override) before the app exists.
 lspConfig :: IO (Bool, Text)
-lspConfig = getGlobalIDERef >>= \case
-    Just ideR -> do
-        p <- reflectIDE (readIDE prefs) ideR
-        return (lspEnabled p, lspServerCommand p)
-    Nothing   -> return (True, "")
+lspConfig = getGlobalApp >>= \case
+    Just app -> do
+        lsp <- cfgLsp <$> currentConfig (appConfig app)
+        return (lcEnabled lsp, lcServerCommand lsp)
+    Nothing  -> return (True, "")
 
 -- | Resolve the server command for a project root + language.  For Haskell a
 -- @.leksah-lsp@ file in the root (first non-blank, non-@#@ line) wins, then the
@@ -192,12 +194,14 @@ readOverrideFile f = fsDoesFileExist f >>= \case
 registry :: MVar (Map (FilePath, Text) (Maybe ServerState))  -- key = (project root, 'serverKey')
 registry = unsafePerformIO (newMVar Map.empty)
 
--- | The exact 'LogRef's we last published for each file, so a fresh
--- @publishDiagnostics@ can remove precisely those (by value) and leave build
--- diagnostics in 'allLogRefs' untouched.
-{-# NOINLINE lastRefs #-}
-lastRefs :: IORef (Map FilePath [LogRef])
-lastRefs = unsafePerformIO (newIORef Map.empty)
+-- | The 'Problem's last published per (root, file).  A server publishes one
+-- FILE at a time, but the problems service replaces a whole source slice
+-- (@lsp:\<root\>@) at once — so keep every file's latest diagnostics here and
+-- republish the root's union on each notification, leaving sibling files'
+-- diagnostics (and other producers' slices, e.g. @build:@) untouched.
+{-# NOINLINE lastProblems #-}
+lastProblems :: IORef (Map FilePath (Map FilePath [Problem]))  -- root -> file -> problems
+lastProblems = unsafePerformIO (newIORef Map.empty)
 
 -- | Cache of file -> project root, so we do not walk the filesystem on every
 -- keystroke's @didChange@.
@@ -346,7 +350,7 @@ extractHover = fmap T.strip . nonEmpty . parseMaybe (withObject "Hover" $ \o -> 
 -- | Tooltip for a file reference found in terminal output (git-diff @+++@\/@---@
 -- header paths, Claude Code @Update(...)@ headers, @file:line@ tokens; see
 -- @terminalLinksJs@ in "IDE.Web.Main").  LSP-backed two ways: a diagnostics
--- summary drawn from the shared 'allLogRefs' store — which is populated by
+-- summary drawn from the shared problems service — which is populated by
 -- @textDocument/publishDiagnostics@ (and GHC builds) so it needs no open
 -- document — plus, when a line is known and the file is a Haskell source that is
 -- open in the language server, @textDocument/hover@ for the symbol at that line.
@@ -383,29 +387,34 @@ joinTip parts = case filter (not . T.null) (map T.strip (catMaybes parts)) of
     [] -> Nothing
     xs -> Just (T.intercalate "\n\n" xs)
 
--- | A short diagnostics blurb for @file@ from the shared LogRef store: a header
--- counting errors\/warnings, then the message of the diagnostic on (or nearest)
--- @mline@ if a line is given, else the first one.  'Nothing' when the file has
--- no error\/warning\/lint refs.
+-- | A short diagnostics blurb for @file@ from the shared problems service: a
+-- header counting errors\/warnings, then the message of the diagnostic on (or
+-- nearest) @mline@ if a line is given, else the first one.  'Nothing' when the
+-- file has no problems.
 diagnosticsSummary :: FilePath -> Maybe Int -> IO (Maybe Text)
-diagnosticsSummary file mline = getGlobalIDERef >>= \case
-    Nothing   -> return Nothing
-    Just ideR -> do
-        refs <- reflectIDE (readIDE allLogRefs) ideR
-        let mine = [ r | r <- toList refs
-                       , srcSpanFilename (logRefSrcSpan r) == file
-                       , logRefType r `elem` [ErrorRef, WarningRef, LintRef, TestFailureRef] ]
+diagnosticsSummary file mline = getGlobalApp >>= \case
+    Nothing  -> return Nothing
+    Just app -> do
+        probs <- readCell (problemsCell (appProblems app))
+        -- A problem's path is as the tool printed it; a relative one resolves
+        -- against its source key's root (the @tool:root@ convention).
+        let rootOf key = T.unpack (T.drop 1 (T.dropWhile (/= ':') key))
+            resolve key p | isAbsolute (pPath p) = pPath p
+                          | otherwise            = rootOf key </> pPath p
+            mine = [ p | (key, ps) <- Map.toList probs, p <- ps
+                       , resolve key p == file ]
         if null mine then return Nothing else do
-            let count t   = length (filter ((== t) . logRefType) mine)
-                errs      = count ErrorRef + count TestFailureRef
-                warns     = count WarningRef + count LintRef
+            let count s   = length (filter ((== s) . pSeverity) mine)
+                errs      = count SevError
+                warns     = count SevWarning + count SevHint + count SevInfo
+                startLine p = posLine (rFrom (pRange p)) + 1  -- display is 1-based
                 pick      = listToMaybe $ case mline of
-                                Just ln -> sortOn (\r -> abs (srcSpanStartLine (logRefSrcSpan r) - ln)) mine
+                                Just ln -> sortOn (\p -> abs (startLine p - ln)) mine
                                 Nothing -> mine
                 header    = T.intercalate ", " $
                                 [ tshow errs  <> " error"   <> plural errs  | errs  > 0 ] ++
                                 [ tshow warns <> " warning" <> plural warns | warns > 0 ]
-                body      = maybe "" (\r -> "\n" <> firstLine (refDescription r)) pick
+                body      = maybe "" (\p -> "\n" <> firstLine (pMessage p)) pick
             return (Just (header <> body))
   where
     plural n  = if n == (1 :: Int) then "" else "s"
@@ -474,9 +483,9 @@ compactItem = parseMaybe $ withObject "CompletionItem" $ \o -> do
 --------------------------------------------------------------------------------
 
 -- | Request the definition site at a position (LSP 0-based @line@\/@char@).
--- Non-blocking: @cb@ receives the target as a leksah 'SrcSpan' (1-based line,
--- 0-based column; its filename is the file to open) or 'Nothing'.
-requestDefinition :: FilePath -> Int -> Int -> (Maybe SrcSpan -> IO ()) -> IO ()
+-- Non-blocking: @cb@ receives the target as a 'Loc' (0-based, half-open;
+-- 'locPath' is the file to open) or 'Nothing'.
+requestDefinition :: FilePath -> Int -> Int -> (Maybe Loc -> IO ()) -> IO ()
 #if defined(ghcjs_HOST_OS)
 requestDefinition _ _ _ cb = cb Nothing
 #else
@@ -486,31 +495,27 @@ requestDefinition file line ch cb
         void $ request (ssClient ss) SMethod_TextDocumentDefinition
             (buildParams (posParams file line ch))
             (\case
-                Right res -> cb (qualifySpan file <$> firstLocation (toJSON res))
+                Right res -> cb (qualifyLoc file <$> firstLocation (toJSON res))
                 Left _    -> cb Nothing)
 #endif
 
 -- | The @textDocument/definition@ result is a @Location@, a @Location[]@, or a
--- @LocationLink[]@ (or @null@).  Take the first and turn it into a 'SrcSpan'.
-firstLocation :: Value -> Maybe SrcSpan
+-- @LocationLink[]@ (or @null@).  Take the first and turn it into a 'Loc'.
+firstLocation :: Value -> Maybe Loc
 firstLocation v = case v of
-    Array a  -> listToMaybe (mapMaybe locToSpan (toList a))
-    Object _ -> locToSpan v
+    Array a  -> listToMaybe (mapMaybe locToLoc (toList a))
+    Object _ -> locToLoc v
     _        -> Nothing
 
-locToSpan :: Value -> Maybe SrcSpan
-locToSpan = parseMaybe $ withObject "Location" $ \o -> do
+locToLoc :: Value -> Maybe Loc
+locToLoc = parseMaybe $ withObject "Location" $ \o -> do
     uriV <- (o .: "uri") <|> (o .: "targetUri")
     rng  <- (o .: "range") <|> (o .: "targetSelectionRange") <|> (o .: "targetRange")
     (sl, sc) <- flip (withObject "Range") rng $ \r -> r .: "start" >>= parsePos
     (el, ec) <- flip (withObject "Range") rng $ \r -> r .: "end"   >>= parsePos
     file     <- maybe (fail "bad uri") pure (uriTextToFilePath uriV)
-    pure SrcSpan
-        { srcSpanFilename    = file
-        , srcSpanStartLine   = sl + 1
-        , srcSpanStartColumn = sc
-        , srcSpanEndLine     = el + 1
-        , srcSpanEndColumn   = ec }
+    -- LSP positions are 0-based half-open, exactly like 'Range'.
+    pure (Loc file (Range (Pos sl sc) (Pos el ec)))
 
 --------------------------------------------------------------------------------
 -- Find references (textDocument/references)
@@ -752,35 +757,27 @@ spawnClient root prefix cmd args cfg = case parseRemotePath root of
 --     yet (e.g. an editor restored before the workspace opened).  The caller
 --     should DEFER the spawn rather than launch without a prefix.
 --   * @Just prefix@     — a project was found; @prefix@ is its (possibly
---     'Nothing') @psCmdPrefix@.
+--     'Nothing') command prefix ('wsCmdPrefix').
 remotePrefixFor :: FilePath -> IO (Maybe (Maybe Text))
-remotePrefixFor root = getGlobalIDERef >>= \case
-    Nothing   -> return Nothing
-    Just ideR -> do
-        mbWs <- reflectIDE (readIDE workspace) ideR
-        -- 'isSubPath' compares 'splitPath' components, and 'splitPath' leaves a
-        -- trailing slash on every component EXCEPT the last — so a bare dir
-        -- @…\/proj@ (last component @proj@, no slash) never matches the same
-        -- name appearing mid-path (@proj\/@).  'pjDir' happens to carry a
-        -- trailing slash ('dropFileName') but @root@ (from 'renderRemotePath')
-        -- does not, which broke the exact-match case; forcing a trailing slash
-        -- on BOTH normalises every component and makes 'isSubPath' correct for
-        -- @pjDir == root@ (single-package) and @pjDir@ an ancestor of @root@
-        -- (multi-package, file under a sub-package).
-        let root' = addTrailingPathSeparator root
-            res = do
-                ws      <- mbWs
-                project <- find (\p -> addTrailingPathSeparator (pjDir (pjKey p))
-                                         `isSubPath` root') (ws ^. wsProjects)
-                Just (psCmdPrefix (wsSettingsFor (pjKey project) ws))
+remotePrefixFor root = getGlobalApp >>= \case
+    Nothing  -> return Nothing
+    Just app -> do
+        ws <- readCell (wsCell (appWorkspace app))
+        -- 'IDE.Paths.isSubPath' forces a trailing separator on both sides
+        -- itself, so @prDir == root@ (single-package) and @prDir@ an ancestor
+        -- of @root@ (multi-package, file under a sub-package) both match, and
+        -- @…\/proj@ never matches @…\/project@.
+        let res = do
+                project <- find (\p -> prDir p `isSubPath` root) (wsProjects ws)
+                Just (wsCmdPrefix (prKey project) ws)
         debugM "leksah" ("IDE.LSP: remotePrefixFor " <> root <> " -> "
                          <> show (fmap (fmap T.unpack) res)
-                         <> " (workspace=" <> show (isJust mbWs)
-                         <> " projects=" <> show (maybe 0 (length . (^. wsProjects)) mbWs) <> ")")
+                         <> " (workspace=" <> show (isJust (ws ^. wsPath))
+                         <> " projects=" <> show (length (wsProjects ws)) <> ")")
         return res
 
 -- | The command prefix for a LOCAL project server.  Prefers the project's
--- explicit @psCmdPrefix@ (Project Settings…), and otherwise — for a non-Haskell
+-- explicit command prefix (Project Settings…), and otherwise — for a non-Haskell
 -- project whose root has a @flake.nix@ — defaults to @nix develop -c@ so the
 -- server (rust-analyzer, pyright, …) runs inside the flake's dev shell.  Haskell
 -- HLS is deliberately left on the ambient PATH (as before), since wrapping it
@@ -794,20 +791,17 @@ localPrefixFor lc root = localExplicitPrefix root >>= \case
                     then Just "nix develop -c"
                     else Nothing
 
--- | The explicit @psCmdPrefix@ of the workspace project containing a LOCAL
--- @root@ (mirrors 'remotePrefixFor'\''s project lookup; 'Nothing' if no IDE /
--- workspace / matching project / prefix).
+-- | The explicit command prefix ('wsCmdPrefix') of the workspace project
+-- containing a LOCAL @root@ (mirrors 'remotePrefixFor'\''s project lookup;
+-- 'Nothing' if no app / workspace / matching project / prefix).
 localExplicitPrefix :: FilePath -> IO (Maybe Text)
-localExplicitPrefix root = getGlobalIDERef >>= \case
-    Nothing   -> return Nothing
-    Just ideR -> do
-        mbWs <- reflectIDE (readIDE workspace) ideR
-        let root' = addTrailingPathSeparator root
+localExplicitPrefix root = getGlobalApp >>= \case
+    Nothing  -> return Nothing
+    Just app -> do
+        ws <- readCell (wsCell (appWorkspace app))
         return $ do
-            ws      <- mbWs
-            project <- find (\p -> addTrailingPathSeparator (pjDir (pjKey p))
-                                     `isSubPath` root') (ws ^. wsProjects)
-            psCmdPrefix (wsSettingsFor (pjKey project) ws)
+            project <- find (\p -> prDir p `isSubPath` root) (wsProjects ws)
+            wsCmdPrefix (prKey project) ws
 
 -- | Run an action now if the server has initialized, otherwise queue it.
 onReady :: ServerState -> IO () -> IO ()
@@ -839,7 +833,7 @@ initParams root = buildParams $ object
     ]
 
 --------------------------------------------------------------------------------
--- Diagnostics: publishDiagnostics -> LogRef -> shared IDE state
+-- Diagnostics: publishDiagnostics -> Problem -> the problems service
 --------------------------------------------------------------------------------
 
 handleNotification :: FilePath -> Text -> Value -> IO ()
@@ -848,55 +842,44 @@ handleNotification root method params = case method of
         Just (uriText, diags)
             | Just file0 <- uriTextToFilePath uriText -> do
                 -- The server reports host-local paths; re-attach the root's
-                -- host so refs match the editor's ssh:// buffer.
-                let file    = qualifyLike root file0
-                    newRefs = map (toLogRef root file) diags
-                old <- atomicModifyIORef' lastRefs $ \m ->
-                    (Map.insert file newRefs m, Map.findWithDefault [] file m)
-                runIDE (replaceRefs old newRefs)
+                -- host so problems match the editor's ssh:// buffer.
+                let file     = qualifyLike root file0
+                    newProbs = map (toProblem file) diags
+                probs <- atomicModifyIORef' lastProblems $ \m ->
+                    let inner = Map.insert file newProbs
+                                    (Map.findWithDefault Map.empty root m)
+                    in (Map.insert root inner m, concat (Map.elems inner))
+                withApp $ \app ->
+                    setProblems (appProblems app) ("lsp:" <> T.pack root) probs
         _ -> return ()
     _ -> return ()
-
-replaceRefs :: [LogRef] -> [LogRef] -> IDEAction
-replaceRefs old new =
-    modifyIDE_ $ allLogRefs %~ \s ->
-        Seq.filter (`notElem` old) s <> Seq.fromList new
-
-runIDE :: IDEAction -> IO ()
-runIDE act = getGlobalIDERef >>= \case
-    Just ideR -> reflectIDE act ideR
-    Nothing   -> return ()
 
 -- | A single diagnostic, in the fields we care about (0-based line\/char).
 data Diag = Diag
     { dStartLine, dStartCol, dEndLine, dEndCol :: !Int
     , dSeverity :: Maybe Int
+    , dCode     :: Maybe Text
     , dMessage  :: Text
     }
 
-toLogRef :: FilePath -> FilePath -> Diag -> LogRef
-toLogRef root file Diag{..} = LogRef
-    { logRefSrcSpan  = SrcSpan
-        { srcSpanFilename    = file
-        , srcSpanStartLine   = dStartLine + 1        -- leksah lines are 1-based
-        , srcSpanStartColumn = dStartCol             -- leksah columns are 0-based
-        , srcSpanEndLine     = dEndLine + 1
-        , srcSpanEndColumn   = max 0 (dEndCol - 1)   -- CM re-adds +1 for exclusive end
-        }
-    , logRefLog      = LogProject root
-    , refDescription = dMessage
-    , logRefIdea     = Nothing
-    , logLines       = Nothing
-    , logRefType     = severityToType dSeverity
+-- LSP positions are 0-based with a half-open range — exactly 'Range'.
+toProblem :: FilePath -> Diag -> Problem
+toProblem file Diag{..} = Problem
+    { pPath     = file
+    , pRange    = Range (Pos dStartLine dStartCol) (Pos dEndLine dEndCol)
+    , pSeverity = toSeverity dSeverity
+    , pCode     = dCode
+    , pMessage  = dMessage
+    , pTool     = "lsp"
     }
 
 -- | LSP DiagnosticSeverity: 1=Error 2=Warning 3=Information 4=Hint.
-severityToType :: Maybe Int -> LogRefType
-severityToType (Just 1) = ErrorRef
-severityToType (Just 2) = WarningRef
-severityToType (Just 3) = LintRef
-severityToType (Just 4) = LintRef
-severityToType _        = WarningRef
+toSeverity :: Maybe Int -> Severity
+toSeverity (Just 1) = SevError
+toSeverity (Just 2) = SevWarning
+toSeverity (Just 3) = SevInfo
+toSeverity (Just 4) = SevHint
+toSeverity _        = SevWarning
 
 --------------------------------------------------------------------------------
 -- Minimal JSON parsing of incoming diagnostics (protocol shape is stable)
@@ -914,9 +897,15 @@ parseDiag = withObject "Diagnostic" $ \o -> do
         (sl, sc) <- r .: "start" >>= parsePos
         (el, ec) <- r .: "end"   >>= parsePos
         return (sl, sc, el, ec))
-    sev <- o .:? "severity"
-    msg <- o .: "message"
-    return (Diag sl sc el ec sev msg)
+    sev  <- o .:? "severity"
+    -- The code is an integer or a string in LSP; keep it as text either way.
+    code <- o .:? "code"
+    msg  <- o .: "message"
+    return (Diag sl sc el ec sev (code >>= codeText) msg)
+  where
+    codeText (String s)   = Just s
+    codeText v@(Number _) = Just (encodeToText v)
+    codeText _            = Nothing
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -986,9 +975,9 @@ qualifyLike ref p = case parseRemotePath ref of
     Just (host, _) -> renderRemotePath host p
     Nothing        -> p
 
--- | 'qualifyLike' applied to a 'SrcSpan' filename.
-qualifySpan :: FilePath -> SrcSpan -> SrcSpan
-qualifySpan ref s = s { srcSpanFilename = qualifyLike ref (srcSpanFilename s) }
+-- | 'qualifyLike' applied to a 'Loc' path.
+qualifyLoc :: FilePath -> Loc -> Loc
+qualifyLoc ref l = l { locPath = qualifyLike ref (locPath l) }
 
 -- | Walk up from a source file to the nearest project root.  Remote files walk
 -- up ON the host in one ssh round trip (never 'makeAbsolute', which mangles

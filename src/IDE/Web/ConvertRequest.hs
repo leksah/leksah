@@ -16,7 +16,7 @@ module IDE.Web.ConvertRequest
 import Control.Concurrent.Chan (Chan, newChan, writeChan, readChan)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Core.Types (TabKey)
+import IDE.Web.Model (TabKey)
 
 {-# NOINLINE convertChan #-}
 convertChan :: Chan (TabKey, Bool)

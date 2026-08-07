@@ -161,7 +161,6 @@ library leksah-nogtk
         IDE.Web.Main
         IDE.Web.MenuModel
         IDE.Web.Model
-        IDE.Web.IDERefStore
         IDE.Web.Instance
         IDE.Web.Handoff
         IDE.Web.OpenFileRequest

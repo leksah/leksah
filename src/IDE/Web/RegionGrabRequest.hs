@@ -21,7 +21,7 @@ regionGrabChan :: Chan (Maybe Text)
 regionGrabChan = unsafePerformIO newChan
 
 -- | Ask for a region grab.  @Just target@ overrides the target pane; 'Nothing'
--- uses the 'IDE.Core.Types.regionCaptureTarget' preference.
+-- uses the @ai.captureTarget@ preference.
 requestRegionGrab :: Maybe Text -> IO ()
 requestRegionGrab = writeChan regionGrabChan
 

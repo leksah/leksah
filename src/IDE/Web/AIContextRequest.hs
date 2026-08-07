@@ -5,7 +5,7 @@
 -- the front end ('IDE.Web.Main') drains it, where it has both the live jsaddle
 -- context (to read the active CodeMirror editor's file + selection) and the IDE
 -- state (to read the current error), builds the text and types it into the
--- 'IDE.Core.Types.regionCaptureTarget' pane.  Mirrors
+-- @ai.captureTarget@ pane.  Mirrors
 -- 'IDE.Web.RegionGrabRequest'.
 module IDE.Web.AIContextRequest
   ( AIAction(..)

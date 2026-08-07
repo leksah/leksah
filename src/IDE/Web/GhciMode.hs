@@ -48,7 +48,7 @@ import System.IO.Unsafe (unsafePerformIO)
 ghciMode :: Bool
 ghciMode = unsafePerformIO $ maybe False (not . null) <$> lookupEnv "LEKSAH_GHCI"
 
--- | Timestamped phase mark on the same stderr as 'IDE.Core.State.metaLog'
+-- | Timestamped phase mark on the same stderr as 'IDE.DebugLog.metaLog'
 -- (@LEK <time> [phase] …@), for attributing reload-cycle wall clock to its
 -- stages: teardown steps here, boot steps at the 'boot:' sites.  Cheap and
 -- unconditional — a reload cycle emits a couple of dozen of these, and they are

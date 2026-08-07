@@ -52,15 +52,16 @@ module IDE.Web.Widget.TerminalCC
 import Data.Text (Text)
 import Reflex (Dynamic, Event)
 import Reflex.Dom.Core (MonadWidget)
-import IDE.Core.State (IDE, TabKey)
+import IDE.Web.Ctx (Ctx)
 import IDE.Web.Events (TerminalEvents)
+import IDE.Web.Model (TabKey)
 import IDE.Web.Widget.Terminal (terminalWidget)
 
 -- | The demo's single-pane stand-in for the control-mode window renderer:
 -- the session's canned dump, drawn by the classic terminal widget.
 terminalCCWidget
   :: forall t m . MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Text                -- ^ leksah window id — unused: one window, one pane
   -> Text                -- ^ session id, which is also the canned dump's key
   -> Event t ()
@@ -68,8 +69,8 @@ terminalCCWidget
   -> Dynamic t (Maybe (Text, Bool))
   -> (Text -> Bool -> m ())
   -> m (Event t TerminalEvents)
-terminalCCWidget ide _lwId sessionId selectedE _leafViewW _closeMenuD _renderCloseMenu =
-    terminalWidget ide sessionId selectedE
+terminalCCWidget ctx _lwId sessionId selectedE _leafViewW _closeMenuD _renderCloseMenu =
+    terminalWidget ctx sessionId selectedE
 
 #else
 module IDE.Web.Widget.TerminalCC
@@ -114,13 +115,15 @@ import Language.Javascript.JSaddle
         jss, liftJSM, new, obj, valIsNull, valIsUndefined, valToBool,
         valToNumber, valToText)
 
-import IDE.Core.Location (SrcSpan(..))
-import IDE.Core.State
-       (IDE, TabKey, focusLog, leksahWindows,
-        LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..),
-        readIDE, reflectIDE)
+import IDE.App (appUi, getGlobalApp)
+import IDE.DebugLog (focusLog)
+import IDE.Problems.Types (Loc(..), Pos(..), pointRange)
+import IDE.Reactive (readCell)
+import IDE.Web.Ctx (Ctx(..))
+import IDE.Web.Model
+       (TabKey, leksahWindows,
+        LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..))
 import IDE.Web.Events (TerminalEvents(..))
-import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.WindowBridge (setFocusedLeaf)
 import IDE.Web.ReplTmux (tmuxSocket)
 import IDE.Web.SplitLayout
@@ -149,7 +152,7 @@ import qualified Language.Javascript.JSaddle.Terminal.Protocol as P
 -- windows gets one client per tab).
 terminalCCWidget
   :: forall t m . MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Text                -- ^ leksah window id (\"lw-3\") — the tab identity
                          --   and the key into 'leksahWindows'
   -> Text                -- ^ backing tmux session id (\"$3\") or
@@ -168,7 +171,7 @@ terminalCCWidget
   -> (Text -> Bool -> m ())
                          -- ^ render the close menu for (pane %id, multi-pane?)
   -> m (Event t TerminalEvents)
-terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMenu = do
+terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMenu = do
     pb <- getPostBuild
     (evE, fireEv) <- newTriggerEvent
     (ccStartedE, fireCCStarted) <- newTriggerEvent
@@ -578,7 +581,7 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             viewFocusedRef <- liftIO $ newIORef False
             -- The leksah window this tab renders (shared model state); also
             -- gates output ownership and the focus paths below.
-            lwOwnD <- holdUniqDyn $ M.lookup lwId . (^. leksahWindows) <$> ide
+            lwOwnD <- holdUniqDyn $ M.lookup lwId . (^. leksahWindows) <$> cUi ctx
             let applyActive :: JSM ()
                 applyActive = do
                     mbC <- liftIO $ readIORef containerRef
@@ -976,10 +979,10 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- same frame, and the stale sample made this focus the OLD
             -- leaf, whose async focusin then raced (and sometimes beat)
             -- the flip's write: the flipper landed on the previous pane.
-            let readFocusedContent = getGlobalIDERef >>= \case
-                    Nothing   -> pure Nothing
-                    Just ideR -> (`reflectIDE` ideR) $ do
-                        lws <- readIDE leksahWindows
+            let readFocusedContent = getGlobalApp >>= \case
+                    Nothing  -> pure Nothing
+                    Just app -> do
+                        lws <- (^. leksahWindows) <$> readCell (appUi app)
                         pure $ do
                             lw <- M.lookup lwId lws
                             l  <- lwFocused lw
@@ -1081,7 +1084,7 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- window must publish null, not a fake single-pane universe.
             geomD <- holdUniqDyn $
                 (\i -> (\lw -> (lwTree lw, lwZoomed lw))
-                         <$> M.lookup lwId (i ^. leksahWindows)) <$> ide
+                         <$> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
             pbGeom <- getPostBuild
             performEvent_ $
                 ffor (leftmost [updated geomD, tag (current geomD) pbGeom]) $
@@ -1128,7 +1131,7 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                 Nothing -> (\c -> singlePaneWindow Nothing
                                               (PaneContent (PaneTmux c) Nothing))
                                              <$> cur)
-                              <$> ide <*> currentD
+                              <$> cUi ctx <*> currentD
                         let rectsD = maybe M.empty
                                        (\lw -> leafRects (lwZoomed lw) (lwTree lw))
                                      <$> lwD
@@ -1484,14 +1487,16 @@ terminalCCWidget ide lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 fireTunnelEv (p, Nothing)
         _        -> return ()
 
-    -- Navigation from a clicked file path.
-    let fileGotoE = (\(f, l, c) -> SrcSpan f l c l c) <$> linkE
+    -- Navigation from a clicked file path.  The link callbacks report 1-based
+    -- line/column (what compilers print); 'Loc' is 0-based, so convert here.
+    let fileGotoE = (\(f, l, c) ->
+            Loc f (pointRange (Pos (max 0 (l - 1)) (max 0 (c - 1))))) <$> linkE
     -- Navigation from a Ctrl/Cmd-clicked identifier: look it up in the
     -- metadata.  No match -> nothing; one match -> jump straight there;
     -- several -> pop up a chooser of module names at the click position and
     -- jump to the picked one.  (Same flow as the classic widget.)
     let optsE = attachWith (\_i (_tok, x, y) -> ([], x, y))
-                  (current ide) lookupE
+                  (current (cUi ctx)) lookupE
         singleGotoE = fmapMaybe (\(opts, _, _) -> case opts of [(_, sp)] -> Just sp; _ -> Nothing) optsE
         multiE      = fmapMaybe (\(opts, x, y) -> if length opts > 1 then Just (x, y, opts) else Nothing) optsE
     rec chooserD <- holdDyn Nothing $ leftmost [ Just <$> multiE, Nothing <$ chosenE ]

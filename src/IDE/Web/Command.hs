@@ -3,11 +3,8 @@
 {-# LANGUAGE LambdaCase #-}
 module IDE.Web.Command where
 
-import Control.Lens
-       (Getter, to, makePrisms, view, (%~), (^.), (&), ix)
+import Control.Lens (Getter, to, makePrisms, (%~), (^.), (&), ix)
 import Control.Monad (unless)
-import Control.Monad.Reader (ask, lift)
-import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS (cons)
@@ -26,29 +23,36 @@ import IDE.Web.TerminalInput
 import IDE.Web.TransparencyRequest (requestToggleTransparency)
 import IDE.Web.SnapRequest (requestSnapWindow)
 
-import Data.Map (Map)
 import qualified Data.Map as M (adjust, lookup)
 import Data.Maybe (fromMaybe)
 
-import IDE.Core.State
-       (readIDE, modifyIDE_, Prefs(..), prefs, PackageAction, ProjectAction,
-        WorkspaceAction, IDEAction, __, IDE, TallVisibility(..),
-        webWindows, activeWindow, wwTall, wwWide1, wwActive, activeProject,
-        activePack, pjDir, pjKey, TabKey(..), leksahWindows,
-        LeksahWindow(..), PaneContent(..), PaneKind(..), liftIDE)
+import IDE.App (App(..), AppAction, appNote)
+import IDE.Builder (buildActiveTarget, runVerb)
+import IDE.Config
+       (BuildC(..), Config(..), FontC(..), TerminalC(..), UiC(..),
+        currentConfig, saveConfig)
+import IDE.Reactive (modifyCell, readCell)
+import IDE.Web.Model
+       (LeksahWindow(..), PaneContent(..), PaneKind(..), TabKey(..),
+        TallVisibility(..), activeWindow, leksahWindows, webWindows,
+        wwActive, wwTall, wwWide1)
+import IDE.Workspace
+       (WorkspaceService(..), Ws, activeComponent, activePackage,
+        activeProject, prDir)
+import IDE.Ws.Types (Package, Project(..), Verb(..))
 import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
-import IDE.Gtk.Package
-       (makeModeToggled, runBenchmarksToggled, runUnitTestsToggled,
-        makeDocsToggled, javaScriptToggled, nativeToggled,
-        backgroundBuildToggled, packageRunJavaScript, packageRun)
-import IDE.Project.Build (buildActiveTarget, packageClean)
-import IDE.Project.Nix (projectRefreshNix)
-import IDE.Gtk.Workspaces
-       (projectTry, packageTry, workspaceTry, makePackage)
+
+-- | The active-target flavours of a command's action: run with the current
+-- workspace snapshot / the active project / the active package (a build-log
+-- note when nothing is active — the 'workspaceTry'\/'projectTry'\/'packageTry'
+-- successors, reading the 'Ws' cell instead of an IDE monad).
+type WorkspaceAction = App -> Ws -> IO ()
+type ProjectAction   = App -> Project -> IO ()
+type PackageAction   = App -> Project -> Package -> IO ()
 
 data Command =
-    CommandIDEAction Text Text IDEAction
-  | CommandIDEToggleAction Text Text IDEAction (IDE -> Bool)
+    CommandIDEAction Text Text AppAction
+  | CommandIDEToggleAction Text Text AppAction (Config -> Bool)
   | CommandWorkspaceAction Text Text WorkspaceAction
   | CommandProjectAction Text Text ProjectAction
   | CommandPackageAction Text Text PackageAction
@@ -78,13 +82,32 @@ data Command =
 
 makePrisms ''Command
 
-commandAction :: Getter Command (Maybe IDEAction)
+-- | Run @f@ with the active project, or note why not.
+withActiveProject :: App -> ProjectAction -> IO ()
+withActiveProject app f = do
+  ws <- readCell (wsCell (appWorkspace app))
+  case activeProject ws of
+    Nothing -> appNote app "no active project"
+    Just pr -> f app pr
+
+-- | Run @f@ with the active project and package, or note why not.
+withActivePackage :: App -> PackageAction -> IO ()
+withActivePackage app f = do
+  ws <- readCell (wsCell (appWorkspace app))
+  case activeProject ws of
+    Nothing -> appNote app "no active project"
+    Just pr -> case activePackage ws of
+      Nothing  -> appNote app "no active package"
+      Just pkg -> f app pr pkg
+
+commandAction :: Getter Command (Maybe AppAction)
 commandAction = to $ \case
   (CommandIDEAction       _ _ a)   -> Just a
   (CommandIDEToggleAction _ _ a _) -> Just a
-  (CommandWorkspaceAction _ _ a)   -> Just (workspaceTry a)
-  (CommandProjectAction   _ _ a)   -> Just (projectTry a)
-  (CommandPackageAction   _ _ a)   -> Just (packageTry a)
+  (CommandWorkspaceAction _ _ a)   -> Just $ \app ->
+      readCell (wsCell (appWorkspace app)) >>= a app
+  (CommandProjectAction   _ _ a)   -> Just (`withActiveProject` a)
+  (CommandPackageAction   _ _ a)   -> Just (`withActivePackage` a)
   _ -> Nothing
 
 commandImageAndTip :: Command -> (Text, Text)
@@ -93,18 +116,28 @@ commandImageAndTip (CommandIDEToggleAction img tip _ _) = (img, tip)
 commandImageAndTip (CommandWorkspaceAction img tip _) = (img, tip)
 commandImageAndTip (CommandProjectAction img tip _) = (img, tip)
 commandImageAndTip (CommandPackageAction img tip _) = (img, tip)
-commandImageAndTip CommandFileOpen = ("/pics/file-open.svg", __ "Opens an existing file")
-commandImageAndTip CommandFileSave = ("/pics/file-save.svg", __ "Saves the current buffer")
-commandImageAndTip CommandFind = ("/pics/find.svg", __ "Show or hide the find bar")
-commandImageAndTip CommandNextError = ("/pics/error-next.svg", __ "Go to the next error")
-commandImageAndTip CommandPreviousError = ("/pics/error-prev.svg", __ "Go to the previous error")
-commandImageAndTip CommandShowShortcuts = ("/pics/shortcuts.svg", __ "Show the keyboard shortcut cheat sheet")
-commandImageAndTip CommandOpenBrowser = ("/pics/browser.svg", __ "Open a new web browser pane")
+commandImageAndTip CommandFileOpen = ("/pics/file-open.svg", "Opens an existing file")
+commandImageAndTip CommandFileSave = ("/pics/file-save.svg", "Saves the current buffer")
+commandImageAndTip CommandFind = ("/pics/find.svg", "Show or hide the find bar")
+commandImageAndTip CommandNextError = ("/pics/error-next.svg", "Go to the next error")
+commandImageAndTip CommandPreviousError = ("/pics/error-prev.svg", "Go to the previous error")
+commandImageAndTip CommandShowShortcuts = ("/pics/shortcuts.svg", "Show the keyboard shortcut cheat sheet")
+commandImageAndTip CommandOpenBrowser = ("/pics/browser.svg", "Open a new web browser pane")
 commandImageAndTip _ = ("", "")
 
-commandGetToggleState :: Command -> Maybe (IDE -> Bool)
+-- | A toggle command's live state, read off the current 'Config' (the
+-- Toolbar drives its highlight from @f \<$\> cCfg ctx@; the native menus'
+-- validateMenuItem reads it via 'IDE.Config.currentConfig').
+commandGetToggleState :: Command -> Maybe (Config -> Bool)
 commandGetToggleState (CommandIDEToggleAction _ _ _ f) = Just f
 commandGetToggleState _ = Nothing
+
+-- | Update the live config and persist it (the toggles' shared shape).
+overConfig :: (Config -> Config) -> AppAction
+overConfig f app = currentConfig (appConfig app) >>= saveConfig (appConfig app) . f
+
+overBuildC :: (BuildC -> BuildC) -> AppAction
+overBuildC f = overConfig $ \c -> c { cfgBuild = f (cfgBuild c) }
 
 commandAddModule, commandRefreshNix, commandPackageClean
   , commandPackageBuild, commandPackageRun, commandPackageRunJavascript
@@ -116,127 +149,133 @@ commandAddModule, commandRefreshNix, commandPackageClean
   , commandFileClose :: Command
 commandAddModule = CommandPackageAction
   "/pics/new-module.svg"
-  (__ "Creates a new Haskell module")
-  (return ())
+  "Creates a new Haskell module"
+  (\_ _ _ -> return ())
 
 commandRefreshNix = CommandProjectAction
   "/pics/nix.svg"
-  (__ "Refresh Leksah's cached nix environment variables for the active project")
-  (ask >>= liftIDE . projectRefreshNix)
+  "Refresh Leksah's cached nix environment variables for the active project"
+  -- The nix dev-env command wrapping is dropped for now (commands run in the
+  -- ambient env, like the dev loop); keep the menu/button wiring.
+  (\app _ -> appNote app "nix env refresh is not reimplemented yet")
 
 commandPackageClean = CommandPackageAction
   "/pics/clean.svg"
-  (__ "Cleans the package")
-  (do package <- ask
-      project <- lift ask
-      liftIDE (packageClean project package))
+  "Cleans the package"
+  (\app pr pkg -> runVerb (appBuilder app) (prKey pr) (Just pkg) Nothing VClean)
 
 commandPackageBuild = CommandIDEAction
   "/pics/build.svg"
-  (__ "Builds the package")
-  buildActiveTarget
+  "Builds the package"
+  (buildActiveTarget . appBuilder)
 
 commandPackageRun = CommandPackageAction
   "/pics/run.svg"
-  (__ "Runs the package")
-  packageRun
+  "Runs the package"
+  (\app pr pkg -> do
+      ws <- readCell (wsCell (appWorkspace app))
+      runVerb (appBuilder app) (prKey pr) (Just pkg) (activeComponent ws) VRun)
 
 commandPackageRunJavascript = CommandPackageAction
   "/pics/run-js.svg"
-  (__ "Run jsexe created by GHCJS")
-  packageRunJavaScript
+  "Run jsexe created by GHCJS"
+  -- No JavaScript verb in the new builder yet; keep the wiring, note it.
+  (\app _ _ -> appNote app "run JavaScript (GHCJS) is not reimplemented yet")
 
 commandToggleBackgroundBuild = CommandIDEToggleAction
   "/pics/background-build.svg"
-  (__ "Build in the background and report errors")
-  backgroundBuildToggled
-  (view $ prefs . to backgroundBuild)
+  "Build in the background and report errors"
+  (overBuildC $ \b -> b { bcBackground = not (bcBackground b) })
+  (bcBackground . cfgBuild)
 
 commandToggleNative = CommandIDEToggleAction
   "/pics/target-native.svg"
-  (__ "Use GHC to compile")
-  nativeToggled
-  (view $ prefs . to native)
+  "Use GHC to compile"
+  (overBuildC $ \b -> b { bcNative = not (bcNative b) })
+  (bcNative . cfgBuild)
 
 commandToggleJavaScript = CommandIDEToggleAction
   "/pics/target-js.svg"
-  (__ "Use GHCJS to compile")
-  javaScriptToggled
-  (view $ prefs . to javaScript)
+  "Use GHCJS to compile"
+  (overBuildC $ \b -> b { bcJavaScript = not (bcJavaScript b) })
+  (bcJavaScript . cfgBuild)
 
 commandToggleDebug = CommandIDEToggleAction
   "/pics/debug.svg"
-  (__ "Build and run in GHCi (ffcabal repls)")
-  (modifyIDE_ $ prefs %~ (\p -> p { debug = not (debug p) }))
-  (view $ prefs . to debug)
+  "Build and run in GHCi (ffcabal repls)"
+  (overBuildC $ \b -> b { bcGhci = not (bcGhci b) })
+  (bcGhci . cfgBuild)
 
 commandToggleMakeDocs = CommandIDEToggleAction
   "/pics/docs.svg"
-  (__ "Make documentation when building")
-  makeDocsToggled
-  (view $ prefs . to makeDocs)
+  "Make documentation when building"
+  (overBuildC $ \b -> b { bcDocs = not (bcDocs b) })
+  (bcDocs . cfgBuild)
 
 commandToggleTest = CommandIDEToggleAction
   "/pics/test.svg"
-  (__ "Run unit tests when building")
-  runUnitTestsToggled
-  (view $ prefs . to runUnitTests)
+  "Run unit tests when building"
+  (overBuildC $ \b -> b { bcTests = not (bcTests b) })
+  (bcTests . cfgBuild)
 
 commandToggleRunBenchmarks = CommandIDEToggleAction
   "/pics/bench.svg"
-  (__ "Run benchmarks when building")
-  runBenchmarksToggled
-  (view $ prefs . to runBenchmarks)
+  "Run benchmarks when building"
+  (overBuildC $ \b -> b { bcBenchmarks = not (bcBenchmarks b) })
+  (bcBenchmarks . cfgBuild)
 
 commandToggleMakeDependents = CommandIDEToggleAction
   "/pics/dependents.svg"
-  (__ "Make dependent packages")
-  makeModeToggled
-  (view $ prefs . to makeMode)
+  "Make dependent packages"
+  (overBuildC $ \b -> b { bcMakeMode = not (bcMakeMode b) })
+  (bcMakeMode . cfgBuild)
 
 commandToggleShowIgnored = CommandIDEToggleAction
   "/pics/show-ignored.svg"
-  (__ "Show files ignored by git in the workspace file trees")
-  (modifyIDE_ (prefs %~ \p -> p { showIgnoredFiles = not (showIgnoredFiles p) }))
-  (view $ prefs . to showIgnoredFiles)
+  "Show files ignored by git in the workspace file trees"
+  (overConfig $ \c -> c { cfgUi = (cfgUi c)
+      { uiShowIgnoredFiles = not (uiShowIgnoredFiles (cfgUi c)) } })
+  (uiShowIgnoredFiles . cfgUi)
 
 commandToggleShowHidden = CommandIDEToggleAction
   "/pics/show-hidden.svg"
-  (__ "Show hidden (dot-) files in the workspace file trees")
-  (modifyIDE_ (prefs %~ \p -> p { showHiddenFiles = not (showHiddenFiles p) }))
-  (view $ prefs . to showHiddenFiles)
+  "Show hidden (dot-) files in the workspace file trees"
+  (overConfig $ \c -> c { cfgUi = (cfgUi c)
+      { uiShowHiddenFiles = not (uiShowHiddenFiles (cfgUi c)) } })
+  (uiShowHiddenFiles . cfgUi)
 
 -- | Toggle intercepting the tmux @C-b@ prefix in terminals: @C-b w@ activates
 -- the Terminals pane and other prefix keys run the equivalent tmux command
 -- (so they work in control-mode tabs, where a raw @C-b@ chord otherwise just
 -- types @^B@).  The interception state machine lives in JS
--- (@window.LeksahTmux@); this flips the pref that each window mirrors into it.
+-- (@window.LeksahTmux@); this flips the setting that each window mirrors into it.
 commandToggleTmuxIntercept = CommandIDEToggleAction
   ""  -- menu-only: no toolbar icon
-  (__ "Intercept the tmux Ctrl+B prefix in terminals (C-b w shows the Tmux pane)")
-  (modifyIDE_ (prefs %~ \p -> p { tmuxInterceptPrefix = not (tmuxInterceptPrefix p) }))
-  (view $ prefs . to tmuxInterceptPrefix)
+  "Intercept the tmux Ctrl+B prefix in terminals (C-b w shows the Tmux pane)"
+  (overConfig $ \c -> c { cfgTerminal = (cfgTerminal c)
+      { tcTmuxPrefix = not (tcTmuxPrefix (cfgTerminal c)) } })
+  (tcTmuxPrefix . cfgTerminal)
 
 -- | Cycle the side ("tall") pane: show -> auto-hide -> hide -> show.  Rendered
 -- by a dedicated toolbar button that shows the current state (see Toolbar).
 commandToggleTallPane = CommandIDEAction
   "/pics/sidebar.svg"
-  (__ "Side pane: show / auto-hide / hide")
+  "Side pane: show / auto-hide / hide"
   -- Per-window: cycle the visibility of the frontmost OS window's side pane.
-  (modifyIDE_ $ \i -> case i ^. activeWindow of
-     Just aw -> i & webWindows . ix aw . wwTall %~ cycleTall
-     Nothing -> i)
+  (\app -> modifyCell (appUi app) $ \u -> case u ^. activeWindow of
+     Just aw -> u & webWindows . ix aw . wwTall %~ cycleTall
+     Nothing -> u)
 
 -- | Cycle the bottom pane (the errors/log/grep/changes area, grid area wide1):
 -- show -> auto-hide -> hide -> show.  Like 'commandToggleTallPane' but for the
 -- bottom row instead of the side column.
 commandToggleWide1Pane = CommandIDEAction
   "/pics/bottombar.svg"
-  (__ "Bottom pane: show / auto-hide / hide")
+  "Bottom pane: show / auto-hide / hide"
   -- Per-window: cycle the visibility of the frontmost OS window's bottom pane.
-  (modifyIDE_ $ \i -> case i ^. activeWindow of
-     Just aw -> i & webWindows . ix aw . wwWide1 %~ cycleTall
-     Nothing -> i)
+  (\app -> modifyCell (appUi app) $ \u -> case u ^. activeWindow of
+     Just aw -> u & webWindows . ix aw . wwWide1 %~ cycleTall
+     Nothing -> u)
 
 -- | Next side-pane visibility in the cycle.
 cycleTall :: TallVisibility -> TallVisibility
@@ -248,8 +287,8 @@ cycleTall v = if v == maxBound then minBound else succ v
 -- rather than killing the session.
 commandFileClose = CommandIDEAction
   "/pics/tango/actions/window-close.svg"
-  (__ "Close the active source file or terminal")
-  (liftIO requestCloseActivePane)
+  "Close the active source file or terminal"
+  (const requestCloseActivePane)
 
 -- | File ▸ New Window (⌘N): open a fresh, empty OS window.  The library can't
 -- create a native window, so the action just drops a request; the wkwebview
@@ -259,55 +298,55 @@ commandFileClose = CommandIDEAction
 commandNewWindow :: Command
 commandNewWindow = CommandIDEAction
   ""
-  (__ "Open a new window")
-  (liftIO requestNewWindow)
+  "Open a new window"
+  (const requestNewWindow)
 
 -- | File ▸ Add Server… (and the Terminals-tree row): register an ssh host in
--- the 'remoteHosts' preference.  A plain 'CommandIDEAction', so both the web
+-- the remote-hosts setting.  A plain 'CommandIDEAction', so both the web
 -- menubar and the native menus dispatch it generically; the action drops a
 -- token on the "IDE.Web.AddServerRequest" bridge and the reflex modal in
 -- 'IDE.Web.Main' does the actual work.
 commandAddServer :: Command
 commandAddServer = CommandIDEAction
   ""
-  (__ "Add an ssh server to the Terminals tree")
-  (liftIO requestAddServer)
+  "Add an ssh server to the Terminals tree"
+  (const requestAddServer)
 
 -- | AI ▸ Grab Region: select a screen rectangle and drop its PNG path into the
--- terminal named by the 'regionCaptureTarget' preference.  The orchestration
+-- terminal named by the capture-target setting.  The orchestration
 -- (permission probe → crosshair or in-leksah overlay+snapshot) lives in
 -- 'IDE.Web.Main'; this just drops a request.
 commandGrabRegion :: Command
 commandGrabRegion = CommandIDEAction
   ""
-  (__ "Grab a screen region and send its image to the terminal")
-  (liftIO (requestRegionGrab Nothing))
+  "Grab a screen region and send its image to the terminal"
+  (const (requestRegionGrab Nothing))
 
 -- The AI ▸ Send… commands drop a token; the front end ('IDE.Web.Main') reads the
 -- active editor / current error and types the reference into the AI terminal.
 commandSendSelection :: Command
 commandSendSelection = CommandIDEAction
   ""
-  (__ "Send the selected lines (@file#Lx-Ly) to the AI terminal")
-  (liftIO (requestAIAction SendSelection))
+  "Send the selected lines (@file#Lx-Ly) to the AI terminal"
+  (const (requestAIAction SendSelection))
 
 commandSendFileRef :: Command
 commandSendFileRef = CommandIDEAction
   ""
-  (__ "Send the current file (@file) to the AI terminal")
-  (liftIO (requestAIAction SendFileRef))
+  "Send the current file (@file) to the AI terminal"
+  (const (requestAIAction SendFileRef))
 
 commandSendError :: Command
 commandSendError = CommandIDEAction
   ""
-  (__ "Send the current error (location + message) to the AI terminal")
-  (liftIO (requestAIAction SendError))
+  "Send the current error (location + message) to the AI terminal"
+  (const (requestAIAction SendError))
 
 commandFocusAITerminal :: Command
 commandFocusAITerminal = CommandIDEAction
   ""
-  (__ "Focus the AI terminal pane")
-  (liftIO (requestAIAction FocusAITerminal))
+  "Focus the AI terminal pane"
+  (const (requestAIAction FocusAITerminal))
 
 -- | Start a new Claude Code session in the active project's directory (toolbar
 -- + AI menu).  A no-op when no project is active or @claude@ isn't on PATH
@@ -315,15 +354,17 @@ commandFocusAITerminal = CommandIDEAction
 commandClaudeNew :: Command
 commandClaudeNew = CommandIDEAction
   "/pics/tree-claude.svg"
-  (__ "Start a Claude Code session in the active project")
-  (readIDE activeProject >>= mapM_ (liftIO . runClaudeCmd . ClaudeNew . pjDir . pjKey))
+  "Start a Claude Code session in the active project"
+  (\app -> readCell (wsCell (appWorkspace app)) >>=
+      mapM_ (runClaudeCmd . ClaudeNew . prDir) . activeProject)
 
 -- | Continue the most recent Claude Code session in the active project.
 commandClaudeContinue :: Command
 commandClaudeContinue = CommandIDEAction
   ""
-  (__ "Continue the most recent Claude Code session in the active project")
-  (readIDE activeProject >>= mapM_ (liftIO . runClaudeCmd . ClaudeContinue . pjDir . pjKey))
+  "Continue the most recent Claude Code session in the active project"
+  (\app -> readCell (wsCell (appWorkspace app)) >>=
+      mapM_ (runClaudeCmd . ClaudeContinue . prDir) . activeProject)
 
 -- | View ▸ Bigger/Smaller/Reset Font (⌘+/⌘−/⌘0): adjust the FOCUSED pane's
 -- font size in the active leksah window.  Per-pane fonts are the point of
@@ -333,36 +374,34 @@ commandClaudeContinue = CommandIDEAction
 commandFontBigger, commandFontSmaller, commandFontReset :: Command
 commandFontBigger = CommandIDEAction
   ""
-  (__ "Increase the focused split's font size")
+  "Increase the focused split's font size"
   (leafFontAdjust (\eff -> Just (eff + 1)))
 
 commandFontSmaller = CommandIDEAction
   ""
-  (__ "Decrease the focused split's font size")
+  "Decrease the focused split's font size"
   (leafFontAdjust (\eff -> Just (eff - 1)))
 
 commandFontReset = CommandIDEAction
   ""
-  (__ "Reset the focused split's font size to the preference")
+  "Reset the focused split's font size to the preference"
   (leafFontAdjust (const Nothing))
 
 -- | Apply a font-size edit to the focused pane of the active OS window's
 -- active leksah window.  @f@ maps the current EFFECTIVE size (override, else
--- the global monospace pref) to the new override; 'Nothing' = follow the
--- pref.  A tmux pane in a MULTI-pane window is isolated first (per-pane
+-- the global monospace setting) to the new override; 'Nothing' = follow the
+-- setting.  A tmux pane in a MULTI-pane window is isolated first (per-pane
 -- fonts can't share a tmux window) via the font-convert queue — Main's
 -- driver runs the minimal-path conversion and then applies @f@.
-leafFontAdjust :: (Int -> Maybe Int) -> IDEAction
-leafFontAdjust f = do
-  aw  <- readIDE activeWindow
-  wws <- readIDE webWindows
-  lws <- readIDE leksahWindows
+leafFontAdjust :: (Int -> Maybe Int) -> AppAction
+leafFontAdjust f app = do
+  ui <- readCell (appUi app)
   let mbTarget = do
-        a  <- aw
-        ww <- M.lookup a wws
+        a  <- ui ^. activeWindow
+        ww <- M.lookup a (ui ^. webWindows)
         k  <- ww ^. wwActive
         n  <- case k of LeksahWinKey n' -> Just n'; _ -> Nothing
-        lw <- M.lookup n lws
+        lw <- M.lookup n (ui ^. leksahWindows)
         l  <- lwFocused lw
         pc <- M.lookup l (lwPanes lw)
         return (n, l, pc)
@@ -370,20 +409,21 @@ leafFontAdjust f = do
     Nothing -> return ()
     Just (n, l, PaneContent kind cur) -> do
       multi <- case kind of
-        PaneTmux w -> (> 1) <$> liftIO (paneCountOfWindow w)
+        PaneTmux w -> (> 1) <$> paneCountOfWindow w
         _          -> return False
       case kind of
-        PaneTmux w | multi -> liftIO (requestFontConvert (n, w, f))
+        PaneTmux w | multi -> requestFontConvert (n, w, f)
         _ -> do
-          modifyIDE_ $ \i ->
-            let eff = fromMaybe (monospaceFontSize (i ^. prefs)) cur
+          defSize <- fcMonoSize . cfgFont <$> currentConfig (appConfig app)
+          modifyCell (appUi app) $ \u ->
+            let eff = fromMaybe defSize cur
                 new = fmap (max 6 . min 72) (f eff)
                 setFont lw = lw { lwPanes =
                     M.adjust (\pc -> pc { pcFontSize = new }) l (lwPanes lw) }
-            in i & leksahWindows %~ M.adjust setFont n
+            in u & leksahWindows %~ M.adjust setFont n
           -- The new size may match a neighbouring tmux window's — merge
           -- them (Main's consolidateLw drains this).
-          liftIO (requestConsolidate n)
+          requestConsolidate n
 
 -- | A menu command that sends the tmux prefix (@C-b@, byte 0x02) followed by
 -- @keys@ to the active terminal — exactly as if the shortcut had been typed
@@ -393,8 +433,8 @@ leafFontAdjust f = do
 tmuxKey :: ByteString -> Command
 tmuxKey keys = CommandIDEAction
   ""  -- menu-only: no toolbar icon
-  (__ "Send this tmux C-b shortcut to the active terminal")
-  (liftIO (sendToActiveTerminal (BS.cons 2 keys)))
+  "Send this tmux C-b shortcut to the active terminal"
+  (const (sendToActiveTerminal (BS.cons 2 keys)))
 
 -- | A pane command for the Terminal menu that works with EITHER kind of
 -- terminal tab: on a control-mode (CC) tab it runs @ccCmd@ verbatim over the
@@ -405,8 +445,8 @@ tmuxKey keys = CommandIDEAction
 paneCmd :: Text -> ByteString -> Command
 paneCmd ccCmd chord = CommandIDEAction
   ""  -- menu-only: no toolbar icon
-  (__ "Terminal split/pane command (control channel or C-b chord)")
-  (liftIO $ do
+  "Terminal split/pane command (control channel or C-b chord)"
+  (const $ do
       done <- tmuxCommandActiveTerminal ccCmd
       unless done $ sendToActiveTerminal (BS.cons 2 chord))
 
@@ -417,8 +457,8 @@ paneCmd ccCmd chord = CommandIDEAction
 splitCmd :: Bool -> ByteString -> Command
 splitCmd horizontal chord = CommandIDEAction
   ""  -- menu-only: no toolbar icon
-  (__ "Split the terminal pane (re-entering a directory window's environment)")
-  (liftIO (splitActiveTerminal horizontal chord))
+  "Split the terminal pane (re-entering a directory window's environment)"
+  (const (splitActiveTerminal horizontal chord))
 
 -- | A menu command that toggles whether the active terminal's active tmux pane
 -- is shown as a see-through, click-through hole in the window (macOS).  The work
@@ -427,8 +467,8 @@ splitCmd horizontal chord = CommandIDEAction
 toggleTransparencyCmd :: Command
 toggleTransparencyCmd = CommandIDEAction
   ""  -- menu-only: no toolbar icon
-  (__ "Make the active tmux pane transparent (a click-through hole)")
-  (liftIO requestToggleTransparency)
+  "Make the active tmux pane transparent (a click-through hole)"
+  (const requestToggleTransparency)
 
 -- | A menu command that snaps another app's window over the active tmux pane
 -- (which is made transparent so the window shows through), tracking the pane;
@@ -437,5 +477,5 @@ toggleTransparencyCmd = CommandIDEAction
 snapWindowCmd :: Command
 snapWindowCmd = CommandIDEAction
   ""  -- menu-only: no toolbar icon
-  (__ "Snap another app's window over the active tmux pane (macOS)")
-  (liftIO requestSnapWindow)
+  "Snap another app's window over the active tmux pane (macOS)"
+  (const requestSnapWindow)

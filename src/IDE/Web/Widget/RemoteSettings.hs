@@ -6,11 +6,11 @@
 -- deliberately, so match that here rather than churn.
 {-# OPTIONS_GHC -Wno-deprecations #-}
 -- | The @Remote Settings…@ modal (project-tree context menu).  Edits the
--- per-project command prefix ('psCmdPrefix') — the shell fragment spliced
+-- per-project command prefix ('wpCmdPrefix') — the shell fragment spliced
 -- before every tool command run for a remote project (e.g. @nix develop -c@).
 --
 -- Like "IDE.Web.Widget.AddRemote", the dialog owns its whole flow via
--- 'getGlobalIDERef', so it needs no feedback wiring from "IDE.Web.Main": it
+-- 'getGlobalApp', so it needs no feedback wiring from "IDE.Web.Main": it
 -- reads the current prefix at build time, and on Save persists the new value on
 -- a background thread.  It returns an 'Event' that fires when it should close
 -- (Save or Cancel).  Shown by the @Remote Settings…@ context-menu item, routed
@@ -37,13 +37,11 @@ import Reflex.Dom.Core
         attributes, domEvent, EventName(..), _textInput_value,
         textInputConfig_initialValue)
 
-import IDE.Core.State (reflectIDE, readIDE)
-import IDE.Core.Types
-       (ProjectKey, pjFileOrDir, workspace, wsSettingsFor, psCmdPrefix,
-        ProjectSettings(..))
+import IDE.App (appWorkspace, getGlobalApp, withApp)
+import IDE.Reactive (readCell)
 import IDE.Utils.RemotePath (parseRemotePath)
-import IDE.Web.IDERefStore (getGlobalIDERef)
-import IDE.Project.WorkspaceFile (setProjectSettings)
+import IDE.Workspace (setProjectCmdPrefix, wsCell, wsCmdPrefix)
+import IDE.Ws.Types (ProjectKey(..))
 
 -- | Render the modal for a project.  Reads the project's current command
 -- prefix, lets the user edit it, and on Save persists it (empty clears it).
@@ -52,9 +50,10 @@ import IDE.Project.WorkspaceFile (setProjectSettings)
 remoteSettingsDialog :: MonadWidget t m => ProjectKey -> m (Event t ())
 remoteSettingsDialog pk = do
     current0 <- liftIO (currentPrefix pk)
-    let label = case parseRemotePath (pjFileOrDir pk) of
+    let fileOrDir = fromMaybe (pkRoot pk) (pkFile pk)
+        label = case parseRemotePath fileOrDir of
                   Just (host, rlocal) -> host <> ":" <> T.pack rlocal
-                  Nothing             -> T.pack (pjFileOrDir pk)
+                  Nothing             -> T.pack fileOrDir
     elAttr "div" ("class" =: "remote-settings-overlay" <> "style" =: overlayStyle) $
       elAttr "div" ("class" =: "remote-settings-dialog" <> "style" =: dialogStyle) $ do
         elAttr "p" ("style" =: "font-weight:bold;margin:0 0 4px 0") $
@@ -76,24 +75,21 @@ remoteSettingsDialog pk = do
 
 -- | The project's current command prefix (empty string when unset / no IDE).
 currentPrefix :: ProjectKey -> IO Text
-currentPrefix pk = getGlobalIDERef >>= \case
-    Nothing   -> return ""
-    Just ideR -> do
-        mbWs <- reflectIDE (readIDE workspace) ideR
-        return $ fromMaybe "" (mbWs >>= psCmdPrefix . wsSettingsFor pk)
+currentPrefix pk = getGlobalApp >>= \case
+    Nothing  -> return ""
+    Just app -> do
+        ws <- readCell (wsCell (appWorkspace app))
+        return $ fromMaybe "" (wsCmdPrefix pk ws)
 
 -- | Persist the (stripped) prefix on a background thread; empty clears it
--- (@setProjectSettings@ drops the entry when it equals the default).
+-- (@setProjectCmdPrefix Nothing@ drops the entry from the workspace file).
 savePrefix :: ProjectKey -> Text -> IO ()
 savePrefix pk raw =
     (`catch` \(_ :: SomeException) -> return ()) $
-      getGlobalIDERef >>= \case
-        Nothing   -> return ()
-        Just ideR -> do
-            let pre = T.strip raw
-                settings = ProjectSettings
-                    { psCmdPrefix = if T.null pre then Nothing else Just pre }
-            void $ reflectIDE (setProjectSettings pk settings) ideR
+      withApp $ \app -> do
+        let pre = T.strip raw
+        setProjectCmdPrefix (appWorkspace app) pk
+            (if T.null pre then Nothing else Just pre)
 
 overlayStyle, dialogStyle, fieldStyle, btnStyle, primaryBtnStyle :: Text
 overlayStyle =

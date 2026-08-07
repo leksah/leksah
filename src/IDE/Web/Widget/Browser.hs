@@ -74,7 +74,7 @@ import Reflex.Dom.Core
         _textInputConfig_initialValue, _textInputConfig_setValue,
         _textInputConfig_attributes, getPostBuild)
 
-import IDE.Utils.Files (getConfigFilePathForSave)
+import IDE.Paths (sidecarPath)
 import IDE.Web.Events (BrowserEvents)
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), getNativeBrowserOps)
 
@@ -101,7 +101,7 @@ browserPanesRef :: MVar (Maybe BrowserPanes)
 browserPanesRef = unsafePerformIO (newMVar Nothing)
 
 panesPath :: IO FilePath
-panesPath = getConfigFilePathForSave "web-browser-panes.json"
+panesPath = sidecarPath "web-browser-panes.json"
 
 loadPanes :: IO BrowserPanes
 #if defined(ghcjs_HOST_OS)

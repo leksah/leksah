@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | The pure algebra and persistence of LEKSAH WINDOWS ('LeksahWindow' in
--- @IDE.Core.Types@): each wide0 tab holds a native split tree whose panes are
+-- @IDE.Web.Model@): each wide0 tab holds a native split tree whose panes are
 -- whole tmux windows (tmux keeps laying out its own panes inside them) or
 -- native leksah views (editors, git logs), each with its own font size.
 --
@@ -98,7 +98,7 @@ import System.Log.Logger (debugM)
 import System.Process (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
-import IDE.Core.Types
+import IDE.Web.Model
        (LeafId(..), LeksahWindow(..), PaneContent(..), PaneKind(..),
         SplitOrientation(..), SplitTree(..), TabKey(..))
 import IDE.Web.ReplTmux (tmuxSocket)
@@ -457,7 +457,7 @@ resizeNode path0 i delta = go path0
     go _ t = t
 
 --
--- Edits (pure; callers 'modifyIDE_' the result into '_leksahWindows')
+-- Edits (pure; callers @modifyCell (appUi app)@ the result into '_leksahWindows')
 --
 
 -- | Mint a fresh pane beside @target@.  When the target's parent node already

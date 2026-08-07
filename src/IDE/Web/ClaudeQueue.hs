@@ -11,7 +11,7 @@
 -- lifecycle: worktree + branch + workspace project; when the session ends
 -- the task is ready for the Review pane's diff → merge → archive flow).
 --
--- The queue lives in @~\/.leksah\/claude-queue.json@ behind a process MVar
+-- The queue lives in @~\/.leksah-0.17\/claude-queue.json@ behind a process MVar
 -- (the "IDE.Web.Widget.Browser" sidecar pattern), so it survives restarts;
 -- the scheduler is one background loop ('startQueueScheduler', armed from
 -- "IDE.Web.Main" once per boot — a ghci reload's thread ratchet kills the
@@ -57,14 +57,13 @@ import System.Exit (ExitCode(..))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
 
-import IDE.Core.State (reflectIDE)
-import IDE.Utils.Files (getConfigFilePathForSave)
+import IDE.App (appWorkspace, withApp)
+import IDE.Paths (sidecarPath)
 import IDE.Web.Claude
        (ClaudeCmd(..), runClaudeCmd, claudeRunning, claudeLiveBySession,
         ClaudeLive(..), mruClaudePane, claudeTranscriptPath)
-import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Worktree (newClaudeWorktreeUnique)
-import IDE.Project.WorkspaceFile (projectOpenPath)
+import IDE.Workspace (projectOpenPath)
 
 -- | How many queue-started sessions may run at once.  A small fixed number
 -- for now (agents saturate a machine quickly); a preference if demand shows.
@@ -107,7 +106,7 @@ queueVar :: MVar (Maybe Queue)
 queueVar = unsafePerformIO (newMVar Nothing)
 
 queuePath :: IO FilePath
-queuePath = getConfigFilePathForSave "claude-queue.json"
+queuePath = sidecarPath "claude-queue.json"
 
 loadQueue :: IO Queue
 loadQueue = (`catch` \(_ :: SomeException) -> return (Queue 1 [])) $ do
@@ -177,8 +176,7 @@ startTask t = do
       Left err -> void . withQueue $ \q ->
         (patch q (qtId t) (\x -> x { qtStatus = "error", qtNote = err }), ())
       Right (wt, _branch) -> do
-        getGlobalIDERef >>= mapM_
-          (reflectIDE (projectOpenPath wt))
+        withApp $ \app -> projectOpenPath (appWorkspace app) wt
         runClaudeCmd (ClaudePrompt wt (qtPrompt t))
         void . withQueue $ \q ->
           (patch q (qtId t) (\x ->

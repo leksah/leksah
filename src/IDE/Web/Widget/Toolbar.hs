@@ -5,8 +5,6 @@ module IDE.Web.Widget.Toolbar
   , toolbarWidget
   ) where
 
-import Control.Lens (view, to)
-
 import Data.Bool (bool)
 import Data.Text (Text)
 
@@ -23,7 +21,8 @@ import Reflex.Dom.Core
         Event, domEvent, EventName(..))
 
 import IDE.Web.Theme (selectionColor, selectionColorFaint, dimOpacity, surfaceHiColor, accentHoverColor)
-import IDE.Core.State (IDE, TallVisibility(..))
+import IDE.Web.Ctx (Ctx(..))
+import IDE.Web.Model (TallVisibility(..))
 import IDE.Web.Events (ToolbarEvents(..))
 import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
   , commandToggleWide1Pane, Command(..)
@@ -96,14 +95,14 @@ toolbarCss = do
 
 toolbarButton
   :: MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Command
   -> m (Event t ToolbarEvents)
-toolbarButton ide cmd = do
+toolbarButton ctx cmd = do
   let (src, tip) = commandImageAndTip cmd
   attrD <- case commandGetToggleState cmd of
     Just f -> fmap (("class" =:) . ("toolbar-item" <>) . bool "" " toggled") <$>
-                holdUniqDyn (f <$> ide)
+                holdUniqDyn (f <$> cCfg ctx)
     Nothing -> return $ constDyn ("class" =: "toolbar-item")
   (e, _) <- elDynAttr' "div" attrD $ do
     elAttr "img" ("src" =: src <> "class" =: "toolbar-button") $ return ()
@@ -160,15 +159,15 @@ wide1ToggleButton visInD = do
 
 toolbarWidget
   :: MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Dynamic t TallVisibility   -- ^ this window's side-pane visibility
   -> Dynamic t TallVisibility   -- ^ this window's bottom-pane visibility
   -> m (Event t ToolbarEvents)
-toolbarWidget ide tallVisD wide1VisD =
+toolbarWidget ctx tallVisD wide1VisD =
   divClass "toolbar" $ do
     tallE  <- tallToggleButton tallVisD
     wide1E <- wide1ToggleButton wide1VisD
-    rest   <- mapM (toolbarButton ide)
+    rest   <- mapM (toolbarButton ctx)
       [ commandAddModule
       , CommandFileOpen
       , CommandFileSave

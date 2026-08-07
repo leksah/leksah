@@ -525,7 +525,7 @@ handleConn app conn = do
                  <> "(Failsafe if the IDE build is broken: rebuild-self --use-cabal)\n"
             void . forkIO $ do
                 r <- runVerbWait (appBuilder app) (prKey project)
-                        (Just (pkgManifest package)) Nothing VBuild
+                        (Just package) Nothing VBuild
                 case r of
                   Just ExitSuccess
                     | not noRestart ->

@@ -37,11 +37,14 @@ import Language.Javascript.JSaddle
        (JSM, eval, fun, js, js0, js1, js2, jsg, jss, liftJSM, valIsNull,
         valToBool, valToNumber, valToText)
 
-import IDE.Core.State
-       (IDE, TabKey, focusLog, leksahWindows,
+import IDE.App (appUi, withApp)
+import IDE.DebugLog (focusLog)
+import IDE.Reactive (modifyCell)
+import IDE.Web.Ctx (Ctx(..))
+import IDE.Web.Model
+       (TabKey, leksahWindows,
         LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..),
-        SplitTree, modifyIDE_, reflectIDE)
-import IDE.Web.IDERefStore (getGlobalIDERef)
+        SplitTree)
 import IDE.Web.WindowBridge (setFocusedLeaf)
 import IDE.Web.SplitLayout
        (leafRects, LeafRect(..), treeDividers, NativeDivider(..), resizeNode,
@@ -55,15 +58,15 @@ import IDE.Web.TerminalInput (registerTerminalFocus)
 -- binds a backing session (⌘D creating a terminal beside the view).
 sessionlessLwWidget
   :: forall t m . MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Text                            -- ^ leksah window id
   -> Event t ()                      -- ^ tab selected (refocus pulse)
   -> (TabKey -> Event t () -> Dynamic t Bool -> m ())
                                      -- ^ view pane builder (per-leaf focus
                                      --   pulse + \"is the focused leaf\")
   -> m ()
-sessionlessLwWidget ide lwId selectedE leafViewW = do
-    lwD <- holdUniqDyn $ (\i -> M.lookup lwId (i ^. leksahWindows)) <$> ide
+sessionlessLwWidget ctx lwId selectedE leafViewW = do
+    lwD <- holdUniqDyn $ (\i -> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
     -- \"Take keyboard focus\" pulses for the leaves, fired by the reconciler
     -- below for the focused leaf only.
     (viewFocusE, fireViewFocus) <- newTriggerEvent
@@ -254,9 +257,9 @@ publishLwGeom i mb = void . eval $
       <> ",w:" <> num w <> ",h:" <> num h <> "}"
     num = T.pack . show
 
--- | Mutate a leksah window's shared layout through the global IDE ref (the
+-- | Mutate a leksah window's shared layout through the global app (the
 -- widget has no reflex path back to Main's mutation stream).  No-op before
--- the ref exists.
+-- boot completes.
 modifyLeksahWindow :: Text -> (LeksahWindow -> LeksahWindow) -> IO ()
-modifyLeksahWindow i f = getGlobalIDERef >>= mapM_ (\ideR ->
-    (`reflectIDE` ideR) $ modifyIDE_ $ over leksahWindows (M.adjust f i))
+modifyLeksahWindow i f = withApp $ \app ->
+    modifyCell (appUi app) (over leksahWindows (M.adjust f i))

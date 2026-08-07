@@ -64,7 +64,7 @@ import System.Directory (doesFileExist, getModificationTime)
 import System.FilePath (dropTrailingPathSeparator)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Utils.Files (getConfigFilePathForSave)
+import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.Claude
        (ClaudeLive(..), claudeLiveBySession, claudeSessionLabel,
@@ -129,7 +129,7 @@ infoVar :: MVar (Maybe (Map Text AgentInfo))
 infoVar = unsafePerformIO (newMVar Nothing)
 
 infoPath :: IO FilePath
-infoPath = getConfigFilePathForSave "agents.json"
+infoPath = sidecarPath "agents.json"
 
 loadInfos :: IO (Map Text AgentInfo)
 loadInfos = (`catch` \(_ :: SomeException) -> return M.empty) $ do

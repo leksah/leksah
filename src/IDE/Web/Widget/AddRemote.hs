@@ -12,7 +12,7 @@
 -- add it to the workspace, and persist the optional per-project command prefix.
 --
 -- The dialog owns its whole flow (validation + the add) on a background thread
--- via 'getGlobalIDERef', so it needs no feedback wiring from "IDE.Web.Main" —
+-- via 'getGlobalApp', so it needs no feedback wiring from "IDE.Web.Main" —
 -- it just returns an 'Event' that fires when it should close (Cancel, or a
 -- successful add).  Shown by the @CommandProjectAddRemote@ menu command, routed
 -- through the "IDE.Web.AddRemoteRequest" bridge (native menu) or the web
@@ -38,16 +38,16 @@ import Reflex.Dom.Core
        (elAttr, elAttr', textInput, text, dynText, dyn_, MonadWidget, (=:),
         Event, attributes, domEvent, EventName(..), blank, _textInput_value)
 
-import IDE.Core.State (reflectIDE)
-import IDE.Core.Types (filePathToProjectKey, ProjectSettings(..))
+import IDE.App (appWorkspace, getGlobalApp)
 import IDE.Utils.RemoteExec (resolveProjectInput)
-import IDE.Web.IDERefStore (getGlobalIDERef)
-import IDE.Project.WorkspaceFile (projectOpenThis, setProjectSettings)
+import IDE.Workspace (projectOpenKey, setProjectCmdPrefix)
+import IDE.Ws.Registry (detectProject)
+import IDE.Ws.Types (defaultEffects)
 
 -- | Render the modal.  Returns an 'Event' that fires (once) when the caller
 -- should tear the modal down: on Cancel, or after a project is successfully
 -- added.  @hostsD@ seeds the host field's autocomplete datalist (the
--- @remoteHosts@ pref + any hosts already in the workspace).
+-- @rcHosts@ setting + any hosts already in the workspace).
 addRemoteDialog :: MonadWidget t m => Dynamic t [Text] -> m (Event t ())
 addRemoteDialog hostsD = do
     -- Result of a background add attempt: Left = inline error, Right = added.
@@ -91,14 +91,14 @@ addRemoteIO host path prefix fire =
         then fire (Left "Host and path are both required.")
         else resolveProjectInput "." (h <> ":" <> p) >>= \case
           Left err -> fire (Left err)
-          Right fp -> case filePathToProjectKey fp of
+          Right fp -> detectProject defaultEffects fp >>= \case
             Nothing -> fire (Left ("Not a project file: " <> T.pack fp))
-            Just pk -> getGlobalIDERef >>= \case
-              Nothing   -> fire (Left "IDE is not ready yet.")
-              Just ideR -> do
-                void $ reflectIDE (projectOpenThis pk) ideR
-                unless (T.null pre) . void $ reflectIDE
-                    (setProjectSettings pk ProjectSettings { psCmdPrefix = Just pre }) ideR
+            Just pk -> getGlobalApp >>= \case
+              Nothing  -> fire (Left "IDE is not ready yet.")
+              Just app -> do
+                projectOpenKey (appWorkspace app) pk
+                unless (T.null pre) $
+                    setProjectCmdPrefix (appWorkspace app) pk (Just pre)
                 fire (Right ())
 
 overlayStyle, dialogStyle, fieldStyle, btnStyle, primaryBtnStyle :: Text

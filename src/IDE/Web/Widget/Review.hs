@@ -56,12 +56,11 @@ import Reflex.Dom.Core
         dyn_, text, domEvent, EventName(..), _element_raw, blank, (=:),
         textInput, _textInput_value, attributes)
 
-import IDE.Core.State (reflectIDE)
+import IDE.App (appWorkspace, withApp)
 import IDE.Git (runGitBatch)
 import IDE.Web.Claude (claudeKeyFor)
 import IDE.Web.Events (ReviewEvents)
 import IDE.Web.GitInfo (openUrl)
-import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.ReplTmux (liveRunPanes, sendKeysTo)
 import IDE.Web.Widget.Editor (ensureMonacoLoaded)
 import IDE.Web.Widget.FileTree (GitStatus(..), gitClass, gitBadge)
@@ -71,7 +70,8 @@ import IDE.Web.Widget.GitLog
 import IDE.Web.Worktree
        (ReviewInfo(..), scanReview, worktreeMerge, worktreePushPR,
         worktreeArchive)
-import IDE.Project.WorkspaceFile (workspaceRemoveProject, dirProjectKey)
+import IDE.Workspace (workspaceRemoveProject)
+import IDE.Ws.Types (ProjectKey(..))
 
 --------------------------------------------------------------------------------
 -- Widget
@@ -146,8 +146,8 @@ reviewWidget useMonaco dir = divClass "gitlog review" $ do
                     Right () -> do
                       -- Drop the (now deleted) worktree project from the
                       -- workspace; the tab itself closes with ⌘W.
-                      getGlobalIDERef >>= mapM_ (reflectIDE
-                        (workspaceRemoveProject (dirProjectKey (riRoot ri'))))
+                      withApp $ \app -> workspaceRemoveProject
+                        (appWorkspace app) (ProjectKey "dir" (riRoot ri') Nothing)
                       fireStatus "archived — worktree removed; close this tab"
               _ -> return ()
         _ -> return ()

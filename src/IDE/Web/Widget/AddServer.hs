@@ -6,7 +6,7 @@
 -- still uses it deliberately, so match that here rather than churn.
 {-# OPTIONS_GHC -Wno-deprecations #-}
 -- | The @Add Server…@ modal.  A one-field form that adds an ssh host to the
--- 'remoteHosts' preference — the list shown as top-level nodes in the
+-- 'rcHosts' setting — the list shown as top-level nodes in the
 -- Terminals tree and offered as autocomplete in the Add Remote Project
 -- dialog.  The host is whatever ssh accepts as a destination (an ssh-config
 -- alias like @x86_64-linux-0@, or @user\@host@); Add first probes it with a
@@ -15,11 +15,11 @@
 -- currently offline).
 --
 -- The dialog owns its whole flow (validation + the add) on a background
--- thread via 'getGlobalIDERef', so it needs no feedback wiring from
+-- thread via 'getGlobalApp', so it needs no feedback wiring from
 -- "IDE.Web.Main" — it just returns an 'Event' that fires when it should
--- close (Cancel, or a successful add).  The pref mutation goes through
--- 'modifyIDE_', so the debounced prefs writer in "IDE.Web.Main" persists it
--- and every window's Terminals tree picks the new host up via the resync.
+-- close (Cancel, or a successful add).  The setting mutation goes through
+-- 'saveConfig', which persists it and updates the config cell, so every
+-- window's Terminals tree picks the new host up.
 -- Shown via the "IDE.Web.AddServerRequest" bridge; styling mirrors
 -- 'IDE.Web.Widget.AddRemote'.
 module IDE.Web.Widget.AddServer
@@ -28,7 +28,7 @@ module IDE.Web.Widget.AddServer
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, catch)
-import Control.Lens ((.~), (%~))
+import Control.Lens ((.~))
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Default (def)
@@ -47,10 +47,10 @@ import Reflex.Dom.Core
        (elAttr, elAttr', textInput, text, dynText, MonadWidget, (=:),
         Event, attributes, domEvent, EventName(..), _textInput_value)
 
-import IDE.Core.State (reflectIDE, readIDE, modifyIDE_, prefs)
-import IDE.Core.Types (Prefs(..))
+import IDE.App (appConfig, getGlobalApp)
+import IDE.Config
+       (Config(..), RemoteC(..), currentConfig, saveConfig)
 import IDE.Utils.RemoteExec (runSsh)
-import IDE.Web.IDERefStore (getGlobalIDERef)
 
 -- | Render the modal.  Returns an 'Event' that fires (once) when the caller
 -- should tear the modal down: on Cancel, or after a server is successfully
@@ -90,7 +90,7 @@ addServerDialog = do
             , fmapMaybe (either (const Nothing) Just) resultE ]
 
 -- | Do the actual work on a background thread: validate, probe, append to the
--- 'remoteHosts' pref; report Left (retriable, error) / Right () through the
+-- 'rcHosts' setting; report Left (retriable, error) / Right () through the
 -- callback.  The ssh probe stays off the frame thread.
 addServerIO :: Text -> Bool -> (Either (Bool, Text) () -> IO ()) -> IO ()
 addServerIO host skipProbe fire =
@@ -100,19 +100,23 @@ addServerIO host skipProbe fire =
         then fire (Left (False, "Host is required."))
       else if T.any (== ' ') h
         then fire (Left (False, "Host must not contain spaces — use an ssh destination or config alias."))
-      else getGlobalIDERef >>= \case
-        Nothing   -> fire (Left (False, "IDE is not ready yet."))
-        Just ideR -> do
-          ps <- reflectIDE (readIDE prefs) ideR
-          if h `elem` remoteHosts ps
+      else getGlobalApp >>= \case
+        Nothing  -> fire (Left (False, "IDE is not ready yet."))
+        Just app -> do
+          cfg <- currentConfig (appConfig app)
+          if h `elem` rcHosts (cfgRemote cfg)
             then fire (Left (False, h <> " is already in the server list."))
             else do
               probed <- if skipProbe then return (Right ()) else probeHost h
               case probed of
                 Left err -> fire (Left (True, err))
                 Right () -> do
-                  void $ reflectIDE (modifyIDE_ (prefs %~ \p ->
-                      p { remoteHosts = remoteHosts p <> [h] })) ideR
+                  -- Re-read at write time so the probe window can't clobber
+                  -- a concurrent settings change.
+                  cfg' <- currentConfig (appConfig app)
+                  saveConfig (appConfig app) cfg'
+                      { cfgRemote = (cfgRemote cfg')
+                          { rcHosts = rcHosts (cfgRemote cfg') <> [h] } }
                   fire (Right ())
 
 -- | One no-op ssh exec to catch typos/config problems up front.  ssh exits

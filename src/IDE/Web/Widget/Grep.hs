@@ -39,7 +39,7 @@ import Reflex.Dom.Core
         domEvent, EventName(..), (=:))
 
 import IDE.Web.Theme (selectionColor, dimColor)
-import IDE.Core.Location (SrcSpan(..))
+import IDE.Problems.Types (Loc(..), Pos(..), pointRange)
 import IDE.Web.Events (GrepEvents(..), FindbarEvents)
 import IDE.Web.Widget.Findbar (findSelection)
 
@@ -89,14 +89,15 @@ grepWidget resultsD findE = divClass "grep leksah-nav" $ do
       elClass "span" "grep-loc" $
         dynText $ (\r -> T.pack (grepFile r) <> ":" <> T.pack (show (grepLine r)) <> ":") <$> resD
       dynText $ grepContext <$> resD
-    return $ (GrepGoto . resultToSpan) <$> tag (current resD) (domEvent Click e)
+    return $ (GrepGoto . resultToLoc) <$> tag (current resD) (domEvent Click e)
   return $ switchDyn (leftmost <$> clicksD)
 
 grepLabel :: GrepResult -> Text
 grepLabel r = T.pack (grepFile r) <> ":" <> grepContext r
 
-resultToSpan :: GrepResult -> SrcSpan
-resultToSpan r = SrcSpan (grepFile r) (grepLine r) 0 (grepLine r) 0
+-- | Grep output lines are 1-based; 'Pos' lines are 0-based.
+resultToLoc :: GrepResult -> Loc
+resultToLoc r = Loc (grepFile r) (pointRange (Pos (grepLine r - 1) 0))
 
 -- | Grep the given directories (the caller orders them active-package first) for
 -- the query, honouring the find-bar flags (bit 0 = case sensitive, bit 1 = whole

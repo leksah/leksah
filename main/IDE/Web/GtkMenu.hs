@@ -41,10 +41,9 @@ import qualified GI.Gtk as Gtk
         fileDialogOpen, fileDialogOpenFinish,
         fileDialogSelectFolder, fileDialogSelectFolderFinish)
 
-import IDE.Core.State (reflectIDE)
-import IDE.Project.WorkspaceFile (projectOpenPath)
+import IDE.App (appWorkspace, withApp)
+import IDE.Workspace (projectOpenPath)
 import IDE.Web.Command (Command(..), commandAction)
-import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Commands (allCommands)
 import IDE.Web.Keybindings (currentKeymap, loadKeybindings)
 import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
@@ -114,12 +113,10 @@ dispatchTag win tag = do
     (CommandShowShortcuts:_)   -> requestShowShortcuts
     (CommandOpenBrowser:_)     -> requestOpenBrowser
     (cmd:_) -> case cmd ^. commandAction of
-      -- No IDEAction: handled inside the reflex network by matching the keymap
+      -- No AppAction: handled inside the reflex network by matching the keymap
       -- event stream (flipper, next/previous error, …) — inject via the bridge.
       Nothing  -> requestKeymapCommand cmd
-      Just act -> getGlobalIDERef >>= \case
-        Just ideR -> void $ reflectIDE act ideR
-        Nothing   -> return ()
+      Just act -> withApp act
     [] -> return ()
 
 -- | Native GTK4 open-file dialog; the chosen path goes through the same
@@ -159,9 +156,7 @@ openFolderPanel win = postGUIAsync $ do
 -- | Add a path (project file or directory) to the workspace; 'projectOpenPath'
 -- decides which.  Shared by the open-project and open-folder dialogs.
 addToWorkspace :: FilePath -> IO ()
-addToWorkspace fp = getGlobalIDERef >>= \case
-  Just ideR -> void $ reflectIDE (projectOpenPath fp) ideR
-  Nothing   -> return ()
+addToWorkspace fp = withApp $ \app -> projectOpenPath (appWorkspace app) fp
 
 -- | Translate a key spec like @\"cmd+ctrl+s\"@ to a GTK accelerator string.
 -- cmd is the primary modifier → Control on Linux; the specs' extra ctrl

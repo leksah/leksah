@@ -43,12 +43,14 @@ import Data.Ord (Down(..))
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import IDE.Core.Types
-       (AIPaneRef(..), FlipItem(..), IDE, LeafId(..), LeksahWindow(..),
-        PaneContent(..), PaneKind(..), TabKey(..), WebWindow(..),
-        activeWindow, flipMru, leksahWindows, paneAISession, pjDir, pjKey,
-        webWindows, workspace, wsProjects)
-import IDE.Utils.Files (isSubPath)
+import IDE.App (App(..))
+import IDE.Paths (isSubPath)
+import IDE.Reactive (readCell)
+import IDE.Web.Model
+       (AIPaneRef(..), FlipItem(..), LeafId(..), LeksahWindow(..),
+        PaneContent(..), PaneKind(..), TabKey(..), WebUi, WebWindow(..),
+        activeWindow, flipMru, leksahWindows, paneAISession, webWindows)
+import IDE.Workspace (Ws, WorkspaceService(..), prDir, wsProjects)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeSession(..), claudeLiveBySession,
         claudeLiveOwners, claudeSessionLabel, claudeSessionsFor,
@@ -89,14 +91,14 @@ choiceKey (AINewSession d)    = "new:" <> T.pack d
 -- tab, and — when that tab is a leksah window — its focused leaf.  Focus in the
 -- side/bottom areas is deliberately ignored: those are not AI-relevant panes, so
 -- the wide0 pane stays the subject while you click about in the trees.
-activeAIPaneRef :: IDE -> Map Text (Text, [TmuxWindow]) -> Maybe AIPaneRef
-activeAIPaneRef ide tree = do
-  wid <- ide ^. activeWindow
-  ww  <- M.lookup wid (ide ^. webWindows)
+activeAIPaneRef :: WebUi -> Map Text (Text, [TmuxWindow]) -> Maybe AIPaneRef
+activeAIPaneRef ui tree = do
+  wid <- ui ^. activeWindow
+  ww  <- M.lookup wid (ui ^. webWindows)
   k   <- _wwActive ww
   case k of
     LeksahWinKey n -> do
-      lw           <- M.lookup n (ide ^. leksahWindows)
+      lw           <- M.lookup n (ui ^. leksahWindows)
       lid@(LeafId l) <- lwFocused lw
       pc           <- M.lookup lid (lwPanes lw)
       case pcKind pc of
@@ -116,11 +118,11 @@ activeTmuxPaneIn wid tree = listToMaybe
 -- | The directory a pane is \"in\", for finding its project: an editor's file, a
 -- git-log\/review checkout, or a shell pane's current working directory (one
 -- tmux round trip, only on the AI path).
-paneDir :: Map Text (Text, [TmuxWindow]) -> IDE -> AIPaneRef -> IO (Maybe FilePath)
-paneDir tree ide = \case
+paneDir :: Map Text (Text, [TmuxWindow]) -> WebUi -> AIPaneRef -> IO (Maybe FilePath)
+paneDir tree ui = \case
   PRTab k    -> return (tabDir k)
   PRLeaf n l -> return $ do
-    lw <- M.lookup n (ide ^. leksahWindows)
+    lw <- M.lookup n (ui ^. leksahWindows)
     pc <- M.lookup (LeafId l) (lwPanes lw)
     case pcKind pc of
       PaneView k -> tabDir k
@@ -137,10 +139,9 @@ paneDir tree ide = \case
 
 -- | The workspace project a path belongs to, most specific first (so a worktree
 -- added as its own project wins over the checkout that contains it).
-projectDirFor :: IDE -> FilePath -> Maybe FilePath
-projectDirFor ide fp = listToMaybe
-  [ d | ws <- maybe [] pure (ide ^. workspace)
-      , d <- sortOn (Down . length) [ pjDir (pjKey p) | p <- ws ^. wsProjects ]
+projectDirFor :: Ws -> FilePath -> Maybe FilePath
+projectDirFor ws fp = listToMaybe
+  [ d | d <- sortOn (Down . length) (map prDir (wsProjects ws))
       , d `isSubPath` fp ]
 
 -- | The live session running in tmux pane @pane@, from a tree we already have
@@ -197,43 +198,45 @@ orderSessions owners tree mru live =
 -- module.  One 'claudeLiveOwners' \/ 'claudeLiveBySession' read per call (plus a
 -- tmux round trip for a shell pane's cwd, and a transcript scan only when a
 -- project has no LIVE session).
-paneDefaultSession :: IDE -> Map Text (Text, [TmuxWindow]) -> AIPaneRef
+paneDefaultSession :: App -> Map Text (Text, [TmuxWindow]) -> AIPaneRef
                    -> IO (Maybe Text)
-paneDefaultSession ide tree ref = do
+paneDefaultSession app tree ref = do
   owners <- claudeLiveOwners
   live   <- claudeLiveBySession
-  paneDefaultSessionWith owners live ide tree ref
+  paneDefaultSessionWith owners live app tree ref
 
 -- | 'paneDefaultSession' with the two live-session reads already done — they cost
 -- a @ps@ each, and the picker needs them anyway.
 paneDefaultSessionWith
-  :: Map Int ClaudeLive -> Map Text ClaudeLive -> IDE
+  :: Map Int ClaudeLive -> Map Text ClaudeLive -> App
   -> Map Text (Text, [TmuxWindow]) -> AIPaneRef -> IO (Maybe Text)
-paneDefaultSessionWith owners live ide tree ref =
-  case M.lookup ref (ide ^. paneAISession) of
-  Just sid -> return (Just sid)          -- 1. explicitly chosen
-  Nothing  -> do
-    let ordered = orderSessions owners tree (ide ^. flipMru) live
-        self = case ref of               -- 2. the pane is a session's own pane
-          PRTmux pane -> sessionInPane owners tree pane
-          _           -> Nothing
-    case self of
-      Just sid -> return (Just sid)
-      Nothing -> do
-        mdir <- paneDir tree ide ref     -- 3. the pane's project
-        let mproj = projectDirFor ide =<< mdir
-        inProject <- case mproj of
-          Nothing   -> return Nothing
-          Just pdir -> case [ s | s <- ordered
-                                , Just l <- [M.lookup s live]
-                                , pdir `isSubPath` clDir l ] of
-            (s : _) -> return (Just s)
-            -- No live session here: the project's most recent transcript, which
-            -- the caller resumes on commit.
-            []      -> fmap (fmap csId . listToMaybe) (claudeSessionsFor pdir)
-        return $ case inProject of
-          Just s  -> Just s
-          Nothing -> listToMaybe ordered -- 4./5. frontmost live session, or none
+paneDefaultSessionWith owners live app tree ref = do
+  ui <- readCell (appUi app)
+  ws <- readCell (wsCell (appWorkspace app))
+  case M.lookup ref (ui ^. paneAISession) of
+    Just sid -> return (Just sid)        -- 1. explicitly chosen
+    Nothing  -> do
+      let ordered = orderSessions owners tree (ui ^. flipMru) live
+          self = case ref of             -- 2. the pane is a session's own pane
+            PRTmux pane -> sessionInPane owners tree pane
+            _           -> Nothing
+      case self of
+        Just sid -> return (Just sid)
+        Nothing -> do
+          mdir <- paneDir tree ui ref    -- 3. the pane's project
+          let mproj = projectDirFor ws =<< mdir
+          inProject <- case mproj of
+            Nothing   -> return Nothing
+            Just pdir -> case [ s | s <- ordered
+                                  , Just l <- [M.lookup s live]
+                                  , pdir `isSubPath` clDir l ] of
+              (s : _) -> return (Just s)
+              -- No live session here: the project's most recent transcript, which
+              -- the caller resumes on commit.
+              []      -> fmap (fmap csId . listToMaybe) (claudeSessionsFor pdir)
+          return $ case inProject of
+            Just s  -> Just s
+            Nothing -> listToMaybe ordered -- 4./5. frontmost live session, or none
 
 --
 -- The picker's rows
@@ -241,13 +244,15 @@ paneDefaultSessionWith owners live ide tree ref =
 
 -- | The project directory a pane belongs to (its file's project, else the
 -- directory itself) — where a \"new session\" started from this pane should run.
-paneProjectDir :: IDE -> Map Text (Text, [TmuxWindow]) -> AIPaneRef
+paneProjectDir :: App -> Map Text (Text, [TmuxWindow]) -> AIPaneRef
                -> IO (Maybe FilePath)
-paneProjectDir ide tree ref = do
-  mdir <- paneDir tree ide ref
+paneProjectDir app tree ref = do
+  ui <- readCell (appUi app)
+  ws <- readCell (wsCell (appWorkspace app))
+  mdir <- paneDir tree ui ref
   return $ case mdir of
     Nothing -> Nothing
-    Just d  -> Just (fromMaybe d (projectDirFor ide d))
+    Just d  -> Just (fromMaybe d (projectDirFor ws d))
 
 -- | The picker's list for pane @ref@: its default first (even if that session
 -- has exited — it is shown @closed@ and resumed on commit), then every live
@@ -256,22 +261,23 @@ paneProjectDir ide tree ref = do
 -- NOT for the reflex frame thread: this spawns @ps@ (twice) and may make a tmux
 -- round trip and read a transcript head.  Call it from a forked thread and fire
 -- the result in as an event — see the picker's wiring in "IDE.Web.Main".
-aiPickerChoices :: IDE -> Map Text (Text, [TmuxWindow]) -> Maybe AIPaneRef
+aiPickerChoices :: App -> Map Text (Text, [TmuxWindow]) -> Maybe AIPaneRef
                 -> IO ([AIChoice], Maybe Text)
-aiPickerChoices ide tree mref = do
+aiPickerChoices app tree mref = do
   owners  <- claudeLiveOwners
   live    <- claudeLiveBySession
   -- Titles come from the status poll's cache (an 'IORef' read): it already holds
   -- a name-or-first-prompt for every live session, so the picker never re-reads a
   -- transcript for one.
   cached  <- claudeStatusNow
-  mdflt   <- maybe (return Nothing) (paneDefaultSessionWith owners live ide tree) mref
+  ui      <- readCell (appUi app)
+  mdflt   <- maybe (return Nothing) (paneDefaultSessionWith owners live app tree) mref
   let titles  = M.fromList [ (csrSession r, csrTitle r) | r <- csRows cached ]
-      ordered = orderSessions owners tree (ide ^. flipMru) live
+      ordered = orderSessions owners tree (ui ^. flipMru) live
       -- The default leads, and is not repeated further down.
       sids = maybe ordered (\d -> d : filter (/= d) ordered) mdflt
   rows  <- mapM (row titles mdflt live) sids
-  mnew  <- maybe (return Nothing) (paneProjectDir ide tree) mref
+  mnew  <- maybe (return Nothing) (paneProjectDir app tree) mref
   let newRow = case mnew of
         Just d  -> [AINewSession d]
         -- No directory to anchor a new session to (an untitled pane, no

@@ -15,7 +15,7 @@ module IDE.Web.RemoteSettingsRequest
 import Control.Concurrent.Chan (Chan, newChan, writeChan, readChan)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Core.Types (ProjectKey)
+import IDE.Ws.Types (ProjectKey)
 
 {-# NOINLINE remoteSettingsChan #-}
 remoteSettingsChan :: Chan ProjectKey

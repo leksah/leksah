@@ -25,12 +25,13 @@ module IDE.Web.Main
   ) where
 
 import Control.Concurrent
-       (tryPutMVar, takeMVar, putMVar, readMVar, threadDelay, modifyMVar,
-        newMVar, newEmptyMVar, forkIO, killThread, myThreadId,
+       (tryPutMVar, takeMVar, threadDelay,
+        newEmptyMVar, forkIO, killThread, myThreadId,
         rtsSupportsBoundThreads, getNumCapabilities, setNumCapabilities)
 import GHC.Conc (getNumProcessors)
 import Control.Concurrent.Chan (readChan)
-import Control.Concurrent.MVar (MVar, mkWeakMVar, withMVar)
+import Control.Concurrent.MVar (MVar, withMVar)
+import System.IO.Unsafe (unsafePerformIO)
 import Control.Concurrent.STM (readTVarIO)
 import GHC.Conc.Sync (labelThread)
 import IDE.Web.RestartRequest (setRestartHandler)
@@ -44,7 +45,7 @@ import qualified System.IO as IO
 #else
 import qualified System.IO as IO (hPutStrLn, stderr, hSetBuffering, BufferMode(..))
 #endif
-import Control.Lens (to, view, (^.), (^..), (^?), (?~), (.~), (%~), (<&>), _Just)
+import Control.Lens (view, (^.), (^..), (^?), (?~), (.~), (%~), (<&>), _Just)
 import Control.Applicative ((<|>), optional)
 import Control.Monad (forever, forM, forM_, guard, unless, when, void)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -59,46 +60,45 @@ import qualified Data.Dependent.Map as DM (singleton, fromList, lookup)
 import Data.Dependent.Sum (DSum(..))
 import Data.Foldable (Foldable(..))
 import Data.Function ((&))
-import Data.Functor (($>))
 import Data.Functor.Identity (Identity(..))
 import Data.Functor.Misc (Const2(..))
 import Data.IORef (newIORef, atomicModifyIORef', writeIORef, readIORef)
 import Data.Map (mapKeys)
 import qualified Data.Map as M
        (Map, keys, elems, toList, toAscList, fromList, fromListWith, union,
-        findWithDefault, lookup, insert, insertWith, adjust, alter, delete,
-        member, filterWithKey, singleton, mapWithKey, empty, size, null,
-        withoutKeys)
+        findWithDefault, lookup, insert, insertWith, adjust, delete,
+        member, filterWithKey, singleton, mapWithKey, empty, size, null)
 import Data.Map (Map)
 import qualified Data.Set as S
-       (Set, fromList, delete, null, singleton, empty, insert, member, intersection, toList)
+       (Set, fromList, delete, null, singleton, empty, insert, member, intersection)
 import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, take, length, replace)
+import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, replace)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
-import Text.Printf (printf)
 import Text.Read (readMaybe)
 
 import System.Directory
        (createDirectoryIfMissing, doesFileExist, doesDirectoryExist,
         getDirectoryContents, removeFile,
-        getHomeDirectory, getTemporaryDirectory, makeRelativeToCurrentDirectory)
+        getHomeDirectory, makeRelativeToCurrentDirectory)
 import System.Process (readProcessWithExitCode)
 import Data.Aeson (Value, decodeStrict', encode, withObject, (.:))
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Types as AT (parseMaybe)
-import Data.List (nub, sort, isPrefixOf, isInfixOf, find, elemIndex, findIndex)
+import Data.List
+       (nub, sort, isPrefixOf, isInfixOf, isSuffixOf, find, elemIndex,
+        findIndex)
 import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing)
 import System.Exit (ExitCode(..))
 import System.FilePath
-       (takeFileName, takeExtension, dropFileName, takeDirectory, (</>),
+       (takeFileName, takeExtension, takeDirectory, (</>),
         dropTrailingPathSeparator)
 import System.Environment (getArgs, setEnv)
 import IDE.Utils.ExitImmediately (exitImmediately)
 #if !defined(ghcjs_HOST_OS)
-import System.FSNotify (eventPath, watchDir, withManager)
+import System.FSNotify (eventPath, watchDir)
 #endif
 
 #if !defined(ghcjs_HOST_OS)
@@ -121,7 +121,7 @@ import Criterion.Measurement (initializeTime)
 import Clay
        (height, pct, width, fontFaceSrc, fontWeight, fontStyle,
         fontFace, render, (?), margin, nil, px, fontFamily, background,
-        color, black, white, fontSize, normal, FontFaceFormat(..),
+        color, fontSize, normal, FontFaceFormat(..),
         FontFaceSrc(..))
 
 import Language.Javascript.JSaddle
@@ -145,28 +145,39 @@ import Reflex
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never,
         performEvent_, getPostBuild, performEvent, select, fan, fanMap,
         fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate, zipDyn,
-        listViewWithKey, sample, constDyn,
+        sample, constDyn,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
         text, blank, domEvent, EventName(..),
         _element_raw, (=:), MonadWidget, mainWidgetWithCss)
 
-import IDE.Core.State
-       (triggerBuild, readIDE, IDEAction, wsFile, jsContexts, workspace,
-        IDEState(..), Prefs(..), TallVisibility(..), IDE(..), IDERef, __,
-        externalEditor, monacoEditor, LogTag(..),
-        reflectIDE, getDataDir, catchIDE, modifyIDE_, modifyIDE, prefs, currentState,
-        wsProjects, pjPackages, ipdCabalFile, ipdPackageDir, wsActivePackFile,
-        currentError, logRefFullFilePath, refDescription, logRefSrcSpan,
-        srcSpanStartLine,
-        WindowId(..), WebWindow(..), webWindows, activeWindow, nextWindowId,
-        leksahWindows, nextLeksahWin, hiddenWindows,
-        LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..),
-        SplitOrientation(..), SplitTree(..),
-        flipMirror, flipMru, AIPaneRef(..), paneAISession,
-        ideVersion, focusLog, metaLog)
-import IDE.Web.IDERefStore (setGlobalIDERef, getGlobalIDERef)
+import IDE.App
+       (App(..), AppAction, RunState(..), appNote, getGlobalApp, newApp,
+        registerJsContext, setGlobalApp, withApp)
+import IDE.Builder (buildActiveTarget)
+import IDE.Config
+       (AiC(..), BuildC(..), Config(..), Editor(..), EditorC(..), FontC(..),
+        RemoteC(..), TerminalC(..), ThemeC(..), UiC(..), currentConfig)
+#if defined(ghcjs_HOST_OS)
+import IDE.Config (configCell)
+#endif
+import IDE.DebugLog (focusLog, metaLog)
+import IDE.Paths (getDataDir)
+import IDE.Problems.Types
+       (Pos(..), Problem(..), Range(..), Severity(..))
+import IDE.Reactive (modifyCell, readCell, stateCell, writeCell)
+import IDE.Watch (WatchService(..))
+import IDE.Web.Ctx (Ctx(..), newCtx)
+import IDE.Web.Model
+       (TallVisibility(..), WindowId(..), WebWindow(..), webWindows,
+        activeWindow, nextWindowId, leksahWindows, nextLeksahWin,
+        hiddenWindows, LeksahWindow(..), PaneContent(..), PaneKind(..),
+        LeafId(..), SplitOrientation(..), SplitTree(..), WebUi(..),
+        flipMirror, flipMru, AIPaneRef(..), paneAISession)
+import IDE.Workspace
+       (activePackage, wsOpenFile, wsProjects)
+import IDE.Ws.Types (Package(..), Project(..))
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
 import IDE.Web.Bridge
        (Bridge, BridgeError, BridgeValue(..), HelloInfo(..), Side(..),
@@ -194,7 +205,7 @@ import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel, runOpenFolderPa
 import IDE.Web.Theme (themeVarsCss, paletteCss, contrastCss, bgColor, fgColor)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
-        registerResync, notifyResync, setFocusedLeaf)
+        setFocusedLeaf)
 import IDE.Web.RegionGrabRequest (nextRegionGrab)
 import IDE.Web.AddRemoteRequest (nextAddRemoteRequest)
 import IDE.Web.AddServerRequest (nextAddServerRequest)
@@ -248,7 +259,7 @@ import IDE.Web.TmuxLayout
         rerootCell, combineCells)
 import IDE.Web.TerminalInput
        (setActiveTerminal, setActiveConvertible, setActiveViewSplit,
-        setActiveSplitWindow, tmuxCommandActiveTerminal,
+        setActiveSplitWindow,
         selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
         getActiveTerminal)
 import IDE.Web.TransparencyRequest (nextToggleTransparency)
@@ -256,25 +267,14 @@ import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest (requestOpenWindow, requestRaiseWindow)
-#if defined(ghcjs_HOST_OS)
--- Browser: no config dir or data files — 'newIDE' bakes in the defaults
--- instead of loading settings from disk.  WatchManager is Core.Types'
--- fsnotify stand-in (see the withManager shim below).
-import IDE.Core.Types (WatchManager(..))
-import IDE.Settings (defaultPrefs, writeSettings)
-#else
-import IDE.Settings (readSettings, writeSettings)
-#endif
 import IDE.Web.Commands (allCommands, duplicateCommandIds)
 import IDE.Web.Keybindings (keybindingsFilePath, loadKeybindings)
-import IDE.Utils.Files
-       (loadNixCache, getConfigFilePathForLoad, getConfigFilePathForSave)
 import IDE.Web.Command
        (commandAction, Command(..), _CommandSelectSplit,
         _CommandSelectSidePane, _CommandSelectBottomPane)
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TabKey(..), TerminalEvents(..),
-        FindbarEvents(..), PreferencesEvents(..), FlipItem(..),
+        FindbarEvents(..), FlipItem(..),
         KeymapEvents(..),
         _ToolbarCommand, _MenubarCommand, _KeymapCommand, _PackageCommand,
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
@@ -325,7 +325,7 @@ import IDE.Web.Widget.Terminal
        (terminalCss, terminalWidget, listTerminalSessions, killTerminalSession,
         selectTmuxWindow, selectTmuxPane, activePaneId, paneGeometry, sessionOfPane,
         listTerminalTree, createTerminalSession, openFileInEditor, notifyTerminalBell,
-        cleanupStaleTwinPanes, resolveEditorCmd, shellQuoteArg,
+        cleanupStaleTwinPanes,
         killTmuxPaneId, breakTmuxPaneId, windowIndexOfPane, paneCountOfSession,
         moveTmuxWindow, selectTmuxWindowId, selectTmuxPaneId,
         panesOfWindow, joinTmuxPane, joinTmuxPaneFull, breakTmuxPaneTo,
@@ -337,16 +337,12 @@ import IDE.Web.Widget.Terminal
         listRemoteTerminalTree, remoteTabHostTarget,
         reapControlClients, TmuxWindow(..), TmuxPane(..), isClaudePane)
 import IDE.Web.Widget.Terminals
-       (terminalsCss, terminalsWidget, sessionAlert, windowAlertSrc,
-        windowActivePane, isClaudeWindow, windowIconSrc, windowTabLabel,
-        stripIdxPrefix)
+       (terminalsCss, terminalsWidget, sessionAlert, windowIconSrc,
+        windowTabLabel, stripIdxPrefix)
 import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.LwView (sessionlessLwWidget)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
-import qualified IDE.Project.WorkspaceFile as Writer
-       (installWorkspace, readWorkspace, resolveDeferredProjects)
-import qualified IDE.Project.Build as Build
 
 -- > :fork 1 IDE.Web.Main.develMain
 
@@ -392,8 +388,8 @@ convertWindowPane lwi w actP = do
             case mcp of
               Nothing -> return False
               Just cp -> do
-                getGlobalIDERef >>= mapM_ (\r' -> (`reflectIDE` r') $
-                  modifyIDE_ $ \i ->
+                withApp (\app ->
+                  modifyCell (appUi app) $ \i ->
                     case [ l | Just lw <- [M.lookup lwi (i ^. leksahWindows)]
                              , l <- treeLeafIds (lwTree lw)
                              , Just pc <- [M.lookup l (lwPanes lw)]
@@ -487,18 +483,18 @@ sessionBase dir = case T.pack (takeFileName (dropTrailingPathSeparator dir)) of
 -- | Bind a (sessionless) leksah window to its backing tmux session — the
 -- moment its first terminal pane arrives (⌘D beside a materialized view).
 bindLwSession :: Text -> Text -> IO ()
-bindLwSession lwi sid = getGlobalIDERef >>= mapM_ (\r -> (`reflectIDE` r) $
-    modifyIDE_ (leksahWindows %~
-        M.adjust (\lw -> lw { lwSession = Just sid }) lwi))
+bindLwSession lwi sid = withApp $ \app ->
+    modifyCell (appUi app) (leksahWindows %~
+        M.adjust (\lw -> lw { lwSession = Just sid }) lwi)
 
 -- | Mint a fresh single-pane leksah window in the shared map (advancing the
 -- id minter) and return its id.  IO-side — the open paths run in forked
 -- handlers; the tab is placed by 'requestLocalTerm' (or the reconcile's tab
--- sync).  'Nothing' before the global IDE ref exists.
+-- sync).  'Nothing' before the global 'App' exists.
 mintLeksahWindow :: Maybe Text -> PaneContent -> IO (Maybe Text)
-mintLeksahWindow msess pc = getGlobalIDERef >>= \case
-    Nothing   -> return Nothing
-    Just ideR -> (`reflectIDE` ideR) $ fmap Just . modifyIDE $ \i ->
+mintLeksahWindow msess pc = getGlobalApp >>= \case
+    Nothing  -> return Nothing
+    Just app -> fmap Just . stateCell (appUi app) $ \i ->
       let n   = i ^. nextLeksahWin
           lwi = lwIdText n
       in ( i & nextLeksahWin .~ (n + 1)
@@ -511,7 +507,7 @@ mintLeksahWindow msess pc = getGlobalIDERef >>= \case
 -- Runs at the end of 'applyReconcile' and after every cross-window pane move
 -- (which can dissolve an emptied source window with no tmux change to wake
 -- the reconcile).
-syncLwTabs :: IDE -> IDE
+syncLwTabs :: WebUi -> WebUi
 syncLwTabs i =
   let lws = i ^. leksahWindows
       liveTab k = case k of LeksahWinKey n -> n `M.member` lws
@@ -615,7 +611,7 @@ parseLeafDrop = AT.parseMaybe $ withObject "leafDrop" $ \o -> do
 -- destination un-zooms so the arrival is visible; source focus falls to the
 -- leaf absorbing the space.  Returns @i@ unchanged whenever a piece vanished
 -- under the drag.  Callers compose 'syncLwTabs' after it.
-moveLeafAcross :: Text -> LeafId -> Text -> DropSpec -> IDE -> IDE
+moveLeafAcross :: Text -> LeafId -> Text -> DropSpec -> WebUi -> WebUi
 moveLeafAcross srcLwId srcLeaf dstLwId spec i = fromMaybe i $ do
     guard (srcLwId /= dstLwId)
     slw <- M.lookup srcLwId lws
@@ -676,9 +672,9 @@ withoutLeaf l lw = detachLeaf l (lwTree lw) <&> \t' -> lw
 -- restructuring under a zoom would yank the zoomed pane around.
 consolidateLw :: Text -> IO ()
 consolidateLw lwId = withMVar consolidateLock $ \_ ->
-  getGlobalIDERef >>= mapM_ (\ideR -> do
-    lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
-    defFont <- monospaceFontSize <$> (`reflectIDE` ideR) (readIDE prefs)
+  withApp (\app -> do
+    lws0 <- view leksahWindows <$> readCell (appUi app)
+    defFont <- fcMonoSize . cfgFont <$> currentConfig (appConfig app)
     case M.lookup lwId lws0 of
       Just lw | Nothing <- lwZoomed lw ->
         forM_ (consolidateGroups defFont (lwPanes lw) (lwTree lw)) $ \g ->
@@ -719,7 +715,7 @@ consolidateLw lwId = withMVar consolidateLock $ \_ ->
                   -- active (selecting afterwards raced it, and losing that
                   -- race dropped the keyboard on the wrong pane).
                   forM_ mact selectTmuxPaneId
-                  (`reflectIDE` ideR) $ modifyIDE_ $ leksahWindows %~
+                  modifyCell (appUi app) $ leksahWindows %~
                     M.adjust (\lw' -> lw'
                       { lwTree    = collapseGroup (map fst allLs) (lwTree lw')
                       , lwPanes   = foldr (M.delete . fst) (lwPanes lw') rest
@@ -748,9 +744,9 @@ consolidateLw lwId = withMVar consolidateLock $ \_ ->
 -- create same-font adjacency anywhere, and the pass is idempotent and free
 -- when nothing matches).
 consolidateAll :: IO ()
-consolidateAll = getGlobalIDERef >>= mapM_ (\ideR -> do
-    lws <- (`reflectIDE` ideR) (readIDE leksahWindows)
-    mapM_ consolidateLw (M.keys lws))
+consolidateAll = withApp $ \app -> do
+    lws <- view leksahWindows <$> readCell (appUi app)
+    mapM_ consolidateLw (M.keys lws)
 
 
 #if defined(ghcjs_HOST_OS)
@@ -763,13 +759,25 @@ withSocketsDo = id
 -- don't build); nothing in the browser reads the timer it would initialise.
 initializeTime :: IO ()
 initializeTime = return ()
-
--- | No fsnotify on the JS backend (unix-compat doesn't build).  The stand-in
--- 'WatchManager' in IDE.Core.Types carries no state, and the JS branch of
--- IDE.Workspaces.Writer registers no watchers, so this just runs the body.
-withManager :: (WatchManager -> IO a) -> IO a
-withManager f = f NoWatchManager
 #endif
+
+-- | Background-build trigger: the editors' change events drop a token here
+-- (coalescing into an already-set slot); a drain forked in 'newIDE' runs
+-- 'buildActiveTarget' for each token while the background-build setting is
+-- on.  Process-global so the reflex fold can reach it without threading.
+{-# NOINLINE triggerBuildVar #-}
+triggerBuildVar :: MVar ()
+triggerBuildVar = unsafePerformIO newEmptyMVar
+
+-- | The editors' change events run this 'AppAction': poke the background
+-- build (the drain reads the config and refuses while one runs).
+triggerBackgroundBuild :: AppAction
+triggerBackgroundBuild _ = void (tryPutMVar triggerBuildVar ())
+
+-- | Shape a pure UI-model edit as an 'AppAction' — what the shared-state
+-- mutation arms of the reflex action fold produce.
+overUi :: (WebUi -> WebUi) -> AppAction
+overUi f app = modifyCell (appUi app) f
 
 -- | First 'Bool': whether to render the web menu bar (hidden for
 -- @leksah-wkwebview@, which has a native macOS menu).  Second 'Bool':
@@ -825,113 +833,53 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
   IO.hSetBuffering IO.stdout IO.LineBuffering
 #endif
   initializeTime
-  exitCode <- newIORef ExitSuccess
   withSocketsDo $ do
+      -- The services: config (settings.json already loaded, with any parse
+      -- error carried in 'appConfigError'), build log, problems, workspace,
+      -- builder, watch, the UI cell — one 'App' wires them together.
+      app <- newApp developLeksah
+      setGlobalApp app   -- so the native menus / socket verbs can run commands
+      metaLog "boot: app services created"
 #if defined(ghcjs_HOST_OS)
-    -- Browser: no config dir and no data files to read — bake in the
-    -- defaults (prefs, an empty candy table, an empty nix cache), tweaked
-    -- for the demo: ⌘-held shortcut badges on (defaultPrefs has them off,
-    -- and there is no settings file to turn them on).
-    let initPrefs = defaultPrefs { showShortcutBadges = True }
-        settingsErr = Nothing :: Maybe Text
-    (_, kbWarns) <- loadKeybindings allCommands
-    withManager $ \fsnotify -> do
-      triggerBuildVar <- newEmptyMVar
-      let nixCache = mempty
-#else
-    dataDir         <- getDataDir
-
-    (initPrefs, settingsErr) <- readSettings
-    metaLog "boot: settings read"
-    -- Resolve keybindings.json against the command registry; problems land in
-    -- the Log pane below (the logLineMap seed).
-    (_, kbWarns) <- loadKeybindings allCommands
-    metaLog "boot: keybindings read"
-    withManager $ \fsnotify -> do
-      metaLog "boot: fsnotify started"
+      -- Browser demo tweak: ⌘-held shortcut badges on (the default config has
+      -- them off, and there is no settings file to turn them on).  Cell-only —
+      -- there is no disk to save to in the browser.
+      do cfg0 <- currentConfig (appConfig app)
+         writeCell (configCell (appConfig app))
+             cfg0 { cfgUi = (cfgUi cfg0) { uiShortcutBadges = True } }
+#endif
+      -- Resolve keybindings.json against the command registry; problems land
+      -- in the build log below (with the settings-file error, if any).
+      (_, kbWarns) <- loadKeybindings allCommands
+      metaLog "boot: keybindings read"
+      -- Config problems noticed at boot: broken settings file, keybindings
+      -- issues, duplicate registry ids — user-visible one-liners in the log.
+      forM_ (appConfigError app) $ \e ->
+          appNote app ("Error reading settings (using defaults): " <> e)
+      mapM_ (appNote app) kbWarns
+      unless (null duplicateCommandIds) $
+          appNote app ("Duplicate command ids in the registry: "
+                       <> T.intercalate ", " duplicateCommandIds)
+#if !defined(ghcjs_HOST_OS)
       -- Saving keybindings.json applies it live (the DOM keymap, the menus
       -- and the Shortcuts pane all follow the table).  Warnings from THESE
       -- reloads go nowhere visible - Edit > Reload Keybindings logs them.
       _ <- liftIO . try $ do
           kbPath <- keybindingsFilePath
           createDirectoryIfMissing True (takeDirectory kbPath)
-          void $ watchDir fsnotify (takeDirectory kbPath)
+          void $ watchDir (wManager (appWatch app)) (takeDirectory kbPath)
               ((== kbPath) . eventPath)
               (const . void $ loadKeybindings allCommands)
         :: IO (Either SomeException ())
-
-      triggerBuildVar <- newEmptyMVar
-      nixCache <- loadNixCache
-      metaLog "boot: nix cache loaded"
 #endif
-      externalModified <- newMVar mempty
-      watchers <- newMVar (mempty, mempty)
-      let ide = IDE
-            {   _ideGtk            =   Nothing
-            ,   _exitCode          =   exitCode
-            ,   _prefs             =   initPrefs
-            ,   _workspace         =   Nothing
-            ,   _bufferProjCache   =   mempty
-            ,   _allLogRefs        =   mempty
-            ,   _currentHist       =   0
-            ,   _currentEBC        =   (Nothing, Nothing, Nothing)
-            ,   _currentState      =   IsStartingUp
-            ,   _recentFiles       =   []
-            ,   _recentWorkspaces  =   []
-            ,   _runningTool       =   Nothing
-            ,   _hlintQueue        =   Nothing
-            ,   _logLaunches       =   mempty
-            ,   _autoCommand       =   Nothing
-            ,   _autoURI           =   Nothing
-            ,   _triggerBuild      =   triggerBuildVar
-            ,   _fsnotify          =   fsnotify
-            ,   _watchers          =   watchers
-            ,   _developLeksah     =   developLeksah
-            ,   _nixCache          =   nixCache
-            ,   _externalModified  =   externalModified
-            ,   _jsContexts        =   []
-            ,   _logLineMap        =   M.fromList $ zip [0 ..]
-                    -- Config problems noticed at boot: broken settings file,
-                    -- keybindings issues, duplicate registry ids.
-                    [ (msg <> "\n", ErrorTag)
-                    | msg <- maybe [] (\e ->
-                            ["Error reading settings (using defaults): " <> e])
-                            settingsErr
-                        <> kbWarns
-                        <> [ "Duplicate command ids in the registry: "
-                             <> T.intercalate ", " duplicateCommandIds
-                           | not (null duplicateCommandIds) ] ]
-            ,   _webWindows        =   mempty
-            ,   _leksahWindows     =   mempty
-            ,   _nextLeksahWin     =   0
-            ,   _hiddenWindows     =   mempty
-            ,   _activeWindow      =   Nothing
-            ,   _nextWindowId      =   0
-            ,   _flipMirror        =   Nothing
-            ,   _flipMru           =   []
-            ,   _paneAISession     =   mempty
-            ,   _ideVersion        =   0
-      }
-      -- The trigger slot runs after every 'modifyIDEM', on the mutating thread:
-      -- keep it down to the non-blocking resync signals (see 'notifyResync' —
-      -- each window's own notifier thread then fires that window's coalesced
-      -- resync).  NEVER put reflex trigger fires or JS in this slot.
-      ideR <- liftIO $ newMVar (const notifyResync, ide)
-      -- Leak probe (ghci mode): fires once this instance's IDE-state root — and
-      -- so its whole object graph: workspace, panes, log refs, the reflex
-      -- network hanging off them — has become unreachable, which should happen
-      -- during the NEXT reload's teardown.  A reload cycle that never logs a
-      -- @[gc]@ line for the previous boot is RETAINING that instance; that is
-      -- the difference between "teardown frees it" and "the session grows by an
-      -- instance per reload".  Deliberately built from compiled-base pieces
-      -- only (a String and 'IO.hPutStrLn'): a finalizer that called back into an
-      -- interpreted module would run reverted-CAF code after the reload.  The
-      -- finalizer must not mention @ideR@ itself, or it would keep it alive.
-      when ghciMode . liftIO $ do
-        born <- getCurrentTime
-        let msg = "LEK [gc] IDE state born " <> show born <> " collected"
-        void $ mkWeakMVar ideR (IO.hPutStrLn IO.stderr msg)
-      liftIO $ setGlobalIDERef ideR  -- so the native macOS menu can run commands
+      -- Background-build drain: editor changes drop a token on
+      -- 'triggerBuildVar' (via the reflex action fold); build the active
+      -- target while the background-build setting is on.
+      _ <- liftIO . forkIO . forever $ do
+          takeMVar triggerBuildVar
+          cfg <- currentConfig (appConfig app)
+          when (bcBackground (cfgBuild cfg)) $
+              buildActiveTarget (appBuilder app)
       -- Frontend↔backend bridge (UI-split stage 1, see IDE.Web.Bridge): here
       -- both halves share this RTS, so the seam is a direct in-process pair.
       -- The backend end serves the proof endpoints; the frontend end's are
@@ -942,12 +890,12 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         setBackendBridge beBr
         exposeBackendProofEndpoints beBr
 #if !defined(ghcjs_HOST_OS)
-      liftIO $ startCmdServer ideR   -- control socket for the leksah-cmd CLI
+      liftIO $ startCmdServer app   -- control socket for the leksah-cmd CLI
 #endif
       -- Single process-wide drains for the "act on the active window" bridges
       -- (close/save/find/prefs/open-file); each window's network registers its
       -- triggers via 'registerWindowBridge' and the drain routes to the frontmost.
-      liftIO $ startWindowBridgeDrains ideR
+      liftIO $ startWindowBridgeDrains app
 #if !defined(ghcjs_HOST_OS)
       -- The one poll of the live Claude Code sessions, feeding every status
       -- surface: the in-page traffic light (each window pulls it on its tick,
@@ -1037,36 +985,22 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- (window.leksahDemoFiles → IDE.Web.FS).
       let filePath = "/demo/demo.lkshw"
 #else
-      let filePath = "/Users/hamish/leksah.lkshw"
+      let filePath = "/Users/hamish/haskell/leksah/leksah.leksah.json"
 #endif
       metaLog ("boot: reading workspace " <> filePath)
-      liftIO $ (`reflectIDE` ideR) $
-          catchIDE (
-              Writer.readWorkspace filePath >>= \case
-                  Left errorMsg -> liftIO $ putStrLn $ "Could not open " <> filePath <> ". " <> errorMsg
-                  Right (ws, deferred) -> do
-                        modifyIDE_ (workspace ?~ ws)
-                        Writer.installWorkspace (Just $ ws & wsFile .~ filePath)
-                        -- Remote (ssh://) projects are placeholders at this
-                        -- point; fill them in behind the UI instead of making
-                        -- startup (and every ghci reload) wait on ssh.
-                        Writer.resolveDeferredProjects deferred
-                      )
-             (\ (e :: SomeException) ->
-                  liftIO $ putStrLn $ printf (T.unpack $ __ "Can't load workspace file %s\n%s") filePath (show e))
+      -- The old @.lkshw@ v4 format is dead: a stored session pointing at one
+      -- means "no workspace" (plus a visible note); a @.leksah.json@ path
+      -- loads through the workspace service (projects enumerate in the
+      -- background, the cell updates as results land).
+      liftIO $ if ".lkshw" `isSuffixOf` filePath
+          then appNote app (T.pack filePath
+                 <> " is the retired .lkshw workspace format — open a"
+                 <> " .leksah.json workspace instead")
+          else (wsOpenFile (appWorkspace app) filePath
+                  `catch` \(e :: SomeException) ->
+                      appNote app ("Can't load workspace file "
+                                   <> T.pack filePath <> ": " <> T.pack (show e)))
       metaLog "boot: workspace read"
-      _ <- liftIO . forkIO . forever $ do
-            takeMVar triggerBuildVar
-            reflectIDE (do
---              postSyncIDE' PRIORITY_LOW $
---                eventsPending >>= \case
---                    True ->
---                        liftIO . void $ tryPutMVar triggerBuild ()
---                    False -> do
---                        _ <- liftIO $ tryTakeMVar triggerBuild
-                        currentPrefs <- readIDE prefs
-                        when (backgroundBuild currentPrefs)
-                             Build.runBackgroundBuild) ideR
       -- Multi-window restore: read the saved session and SEED every saved
       -- window's per-window state (wide0 tabs — terminals filtered to still-live
       -- tmux sessions — plus its side/bottom visibility) into the shared MVar
@@ -1163,7 +1097,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
               | (i, w) <- zip [0 ..] wwsList ]
             nWins    = length wwsList
         metaLog $ "boot: session + leksah windows read (" <> show nWins <> " window(s))"
-        (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
+        modifyCell (appUi app) $ \i ->
           i & webWindows .~ seeded & nextWindowId .~ nWins & activeWindow ?~ WindowId 0
             & leksahWindows .~ lws0
             & nextLeksahWin .~ nextSeed
@@ -1180,7 +1114,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         metaLog $ "boot: requesting native windows 1.." <> show (nWins - 1)
         mapM_ requestOpenWindow [1 .. nWins - 1]
       metaLog "boot: entering runJs (window 0 UI)"
-      runJs $ jsMain showMenubar macTitlebar (Just (WindowId 0)) ideR
+      runJs $ jsMain showMenubar macTitlebar (Just (WindowId 0)) app
 
 #if defined(ghcjs_HOST_OS)
 -- | Entry point of the JS-backend front end (src-ghcjs/Main.hs): the shared
@@ -1261,30 +1195,30 @@ exposeBackendProofEndpoints beBr = do
 
 -- | The default per-window state a freshly-minted (or adopted-but-unseeded)
 -- window inherits: no wide0 tabs, and side/bottom panes shown (visibility is
--- per-window session state; see 'IDE.Core.Types.WebWindow').
-defaultWebWindow :: Prefs -> WebWindow
-defaultWebWindow _p = WebWindow
+-- per-window session state; see 'IDE.Web.Model.WebWindow').
+defaultWebWindow :: WebWindow
+defaultWebWindow = WebWindow
   { _wwWide0 = [], _wwActive = Nothing
   , _wwTall = TallShow, _wwWide1 = TallShow, _wwFrame = Nothing }
 
 -- | Allocate a fresh 'WindowId', seed a default 'WebWindow' for it, and make it
--- the active window if none is yet.  Runs the shared trigger so any already-open
--- window observes the new (empty) window immediately (e.g. in its flipper).
-mintWindowId :: IDERef -> IO WindowId
-mintWindowId ideR = (`reflectIDE` ideR) $ modifyIDE $ \ide ->
-  let n   = ide ^. nextWindowId
+-- the active window if none is yet.  A cell write, so any already-open window
+-- observes the new (empty) window immediately (e.g. in its flipper).
+mintWindowId :: App -> IO WindowId
+mintWindowId app = stateCell (appUi app) $ \ui ->
+  let n   = ui ^. nextWindowId
       wid = WindowId n
-      ide' = ide & nextWindowId .~ (n + 1)
-                 & webWindows %~ M.insert wid (defaultWebWindow (ide ^. prefs))
-                 & activeWindow %~ Just . fromMaybe wid
-  in (ide', wid)
+      ui' = ui & nextWindowId .~ (n + 1)
+               & webWindows %~ M.insert wid defaultWebWindow
+               & activeWindow %~ Just . fromMaybe wid
+  in (ui', wid)
 
 -- | Adopt a 'WindowId' the native side already created, ensuring its 'WebWindow'
 -- exists (idempotent: keeps any entry the native seed already inserted).
-adoptWindowId :: WindowId -> IDERef -> IO ()
-adoptWindowId wid ideR = (`reflectIDE` ideR) $ modifyIDE_ $ \ide ->
-  ide & webWindows %~ M.insertWith (\_ old -> old) wid (defaultWebWindow (ide ^. prefs))
-      & activeWindow %~ Just . fromMaybe wid
+adoptWindowId :: WindowId -> App -> IO ()
+adoptWindowId wid app = modifyCell (appUi app) $ \ui ->
+  ui & webWindows %~ M.insertWith (\_ old -> old) wid defaultWebWindow
+     & activeWindow %~ Just . fromMaybe wid
 
 -- | The wide0 (editor/terminal) state a window has before it is seeded — used
 -- only as a 'M.findWithDefault' fallback (every live window is seeded first).
@@ -1403,18 +1337,18 @@ viewKeyOf lws n l = do
     PaneView k -> Just k
     _          -> Nothing
 
-jsMain :: Bool -> Bool -> Maybe WindowId -> IDERef -> JSM ()
-jsMain showMenubar macTitlebar mbWid ideR = do
+jsMain :: Bool -> Bool -> Maybe WindowId -> App -> JSM ()
+jsMain showMenubar macTitlebar mbWid app = do
   -- enableLogging True -- Uncomment this to add verbose JSaddle logging
   metaLog $ "boot: jsMain enter " <> show mbWid
 #if !defined(ghcjs_HOST_OS)
   dataDir <- liftIO getDataDir
 #endif
-  ctx <- askJSM
+  jsCtx <- askJSM
   -- Resolve this connection's window identity: adopt the id the native side
   -- pre-created (restore / New Window), or mint one (the first wkwebview window
   -- and every leksah-warp browser connection).
-  wid <- liftIO $ maybe (mintWindowId ideR) (\w -> adoptWindowId w ideR >> return w) mbWid
+  wid <- liftIO $ maybe (mintWindowId app) (\w -> adoptWindowId w app >> return w) mbWid
   -- Tag this context with its window id, so tooling (leksah-cmd js eval, which
   -- broadcasts to every context) can tell the windows apart.
   _ <- eval ("window.leksahWindowId = " <> T.pack (show (case wid of WindowId n -> n)))
@@ -1601,84 +1535,32 @@ jsMain showMenubar macTitlebar mbWid ideR = do
   -- The colour palette (all --leksah-* tokens, dark + light) goes in first, so
   -- every stylesheet below resolves them; see "IDE.Web.Theme".
   metaLog "boot: helper JS eval'd, entering mainWidgetWithCss"
-  mainWidgetWithCss (BS.unlines [xtermCss, encodeUtf8 paletteCss, encodeUtf8 contrastCss, BS.toStrict (LT.encodeUtf8 css)]) $ mdo
-      ideActionE <- main showMenubar macTitlebar wid ideD
-      performEvent_ $ ffor ideActionE $ \act -> do
-          wlog wid "ENTER ideAction (reflectIDE)"
-          liftIO ((`reflectIDE` ideR) act)
-          wlog wid "EXIT ideAction"
-      -- Register this context, but DO NOT compose a reflex trigger into the ideR
-      -- trigger slot.  The old design had modifyIDE_ run @oldT x >> t x@ — one
-      -- un-coalesced frame per mutation for EVERY window.  All windows share the
-      -- single global Spider lock, and each frame holds it across synchronous
-      -- jsaddle JS, so a mutation burst floods frames that pile up on that lock
-      -- and hard-freezes a background window (observed: its heartbeat stops dead
-      -- mid-idle).  Instead each window learns of shared-state changes through
-      -- its COALESCED resync (below): the trigger slot only sets a per-window
-      -- binary signal, and a per-window notifier thread fires at most one resync
-      -- frame at a time.  Pure reflex, no JS.
-      newIde <- liftIO $ modifyMVar ideR $ \(oldT, oldIde) -> do
-          let newIde' = oldIde & jsContexts %~ (<> [ctx])
-          return ((oldT, newIde'), newIde')
-      wlog wid ("network attached; contexts now=" <> show (length (newIde ^. jsContexts))
-                <> " initial ideVer=" <> show (newIde ^. ideVersion))
+  mainWidgetWithCss (BS.unlines [xtermCss, encodeUtf8 paletteCss, encodeUtf8 contrastCss, BS.toStrict (LT.encodeUtf8 css)]) $ do
+      -- This window's view of the shared state: one push-fed Dynamic per
+      -- service cell, built once at the window root ('IDE.Web.Ctx') and
+      -- threaded to every widget.  This replaced the per-window MVar resync
+      -- (signal/ack notifier threads, version guard, 5s fallback poll): a
+      -- cell write reaches each window as an async trigger fire into its own
+      -- frame queue, so no cross-window lock or serialize dance exists.
+      ctx <- newCtx app wid
+      appActionE <- main showMenubar macTitlebar wid ctx
+      performEvent_ $ ffor appActionE $ \act -> do
+          wlog wid "ENTER appAction"
+          liftIO (act app)
+          wlog wid "EXIT appAction"
+      -- Register this context so process-wide JS (leksah-cmd js eval,
+      -- appJSM fan-outs) reaches this window too.
+      liftIO $ registerJsContext app wid jsCtx
+      wlog wid "network attached"
       pb <- getPostBuild
-      -- Leave the start-up state (commands gate on it).  The metadata load that
-      -- used to happen here is soft-deleted behind the `metadata` cabal flag.
-      performEvent_ $ ffor pb $ \_ -> do
-        wlog wid "ENTER pb-initInfo"
-        (liftIO . (`reflectIDE` ideR) $ do
-          -- Only the FIRST window to leave IsStartingUp would have loaded
-          -- metadata; the atomic flip is still how every window agrees the app
-          -- is running.
-          firstToRun <- modifyIDE $ \i ->
-              ( i & currentState .~ IsRunning
-              , case i ^. currentState of IsStartingUp -> True; _ -> False )
-          metaLog $ "post-build " <> show wid <> " firstToRun=" <> show firstToRun)
-        wlog wid "EXIT pb-initInfo"
-      pbIde <- performEvent $ pb $> liftIO (snd <$> readMVar ideR)
-      -- Cross-window updates, event-driven but COALESCED and SERIALIZED:
-      -- 'modifyIDEM' sets this window's binary resync signal (see the ideR trigger
-      -- slot / 'notifyResync'); the per-window notifier fires resyncE, then blocks
-      -- until the handler below acks — so at most one resync frame is in flight
-      -- per window and a mutation burst collapses into the already-set signal.
-      -- The notifier ALSO holds a process-global lock across fire→ack
-      -- ('resyncGlobalLock'), so no two windows run a resync frame at once: the
-      -- real freeze was two windows' frames doing synchronous jsaddle flushes
-      -- CONCURRENTLY on the shared WKWebView main-thread bridge, wedging one
-      -- frame thread forever (see WindowBridge).  (A 'newTriggerEvent' fire is
-      -- only a writeChan; the frame runs on this window's own host thread
-      -- regardless of who fires.)  The version guard means a no-op signal
-      -- advances nothing, and the 1 s heartbeat below re-feeds the guard so a
-      -- momentarily-starved background window self-heals.
-      (resyncE, fireResync) <- newTriggerEvent
-      resyncAck <- liftIO newEmptyMVar
-      liftIO $ registerResync wid (fireResync ()) resyncAck
-      polledIdeE <- performEvent $ ffor resyncE $ \() -> do
-          wlog wid "ENTER resync (readMVar ideR)"
-          i <- liftIO (snd <$> readMVar ideR)
-          wlog wid "EXIT resync"
-          return i
-      -- Ack (release the global serialize lock) only AFTER this resync frame's DOM
-      -- has been built AND flushed: deferring one frame ('delay 0') pushes the ack
-      -- past the frame-end jsaddle syncPoint, so the synchronous flush that wedges
-      -- falls INSIDE the lock — no two windows ever flush the shared WKWebView
-      -- main-thread bridge at once.  (Releasing at the source event, before the
-      -- syncPoint, still let sustained bursts overlap and wedge a window.)
-      resyncSettledE <- delay 0 (void polledIdeE)
-      performEvent_ $ ffor resyncSettledE $ \_ -> liftIO (putMVar resyncAck ())
-      -- Freeze detector: a coarse (5s) keepalive per window.  If a window stops
-      -- emitting "alive" lines, its reflex network has frozen.  Doubles as the
-      -- resync fallback: it feeds the same version guard, so a lost resync signal
-      -- self-heals within a few seconds (resync normally fires via WindowBridge
-      -- events — this timer is only the backstop, so a slow tick is fine and
-      -- keeps the idle window from waking every second).
+      -- Leave the start-up state (commands gate on it).
+      performEvent_ $ ffor pb $ \_ -> liftIO $ do
+          writeCell (appRunState app) IsRunning
+          metaLog $ "post-build " <> show wid
+      -- Freeze detector: a coarse (5s) keepalive per window.  If a window
+      -- stops emitting "alive" lines, its reflex network has frozen.
       heartbeatTick <- tickLossyFromPostBuildTime 5
-      heartbeatE <- performEvent $ ffor heartbeatTick $ \_ -> liftIO (snd <$> readMVar ideR)
-      let freshPolledE = attachWithMaybe
-            (\cur new -> if new ^. ideVersion > cur ^. ideVersion then Just new else Nothing)
-            (current ideD) (leftmost [polledIdeE, heartbeatE])
-      performEvent_ $ ffor (attach (current ideD) heartbeatE) $ \(cur, new) -> do
+      performEvent_ $ ffor heartbeatTick $ \_ -> do
           -- Label this window's frame thread (processAsyncEvents) so a
           -- `leksah-cmd threads` dump can tell the windows apart, and raise its
           -- OS-thread priority so UI reactivity keeps CPU when background
@@ -1693,9 +1575,7 @@ jsMain showMenubar macTitlebar mbWid ideR = do
           -- so a wedged frame thread is visible from outside (the socket
           -- answering proves only that ITS thread is alive).
           liftIO beat
-          wlog wid ("alive ideVer=" <> show (cur ^. ideVersion) <> " mvarVer=" <> show (new ^. ideVersion)
-                    <> if new ^. ideVersion > cur ^. ideVersion then " STALE(+" <> show (new ^. ideVersion - cur ^. ideVersion) <> ")" else "")
-      performEvent_ $ ffor freshPolledE $ \i -> wlog wid ("ideD<-resync ver=" <> show (i ^. ideVersion))
+          wlog wid "alive"
 #if !defined(ghcjs_HOST_OS)
       -- The top-right traffic light shows what the live Claude sessions are
       -- doing — the same states the macOS menu-bar status item draws, off the
@@ -1714,7 +1594,6 @@ jsMain showMenubar macTitlebar mbWid ideR = do
             ^. js3 ("leksahClaudeStatus" :: Text) (csState st) (claudeStatusTooltip st)
                   (csCount st)
 #endif
-      ideD <- holdDyn newIde $ leftmost [pbIde, freshPolledE]
       return ()
   liftIO $ threadDelay 1000000000
 
@@ -4658,10 +4537,19 @@ main
   => Bool             -- ^ render the web menu bar (hidden when there's a native menu)
   -> Bool             -- ^ native mac title bar (the toolbar occupies the title bar)
   -> WindowId         -- ^ which OS window this reflex network drives
-  -> Dynamic t IDE
-  -> m (Event t IDEAction)
-main showMenubar macTitlebar wid ide = mdo
+  -> Ctx t
+  -> m (Event t AppAction)
+main showMenubar macTitlebar wid ctx = mdo
   let widN = case wid of WindowId n -> n   -- this window's id as an Int (for JS)
+      -- The UI model slice (windows/tabs/splits/AI bindings) — the piece of
+      -- the old whole-IDE Dynamic every widget below actually read.
+      ide = cUi ctx
+      -- The live settings; field access goes through the section records.
+      prefsD = cCfg ctx
+      externalEditorCmd cfg = case ecEditor (cfgEditor cfg) of
+          EditorExternal cmd -> cmd
+          _                  -> ""
+      useMonaco cfg = ecEditor (cfgEditor cfg) == EditorMonaco
   -- Handoff readiness: when this process is the successor, touch the ready file
   -- once window 0's DOM has built, so the supervisor loop knows it may retire
   -- the predecessor (see IDE.Web.Handoff).  Harmless / no-op otherwise.
@@ -4730,7 +4618,7 @@ main showMenubar macTitlebar wid ide = mdo
     -- The web menu bar is suppressed when a native menu is present
     -- (leksah-wkwebview); its command events then simply never fire.
     menubarE   <- if showMenubar then menubarWidget else return never
-    toolbarE   <- toolbarWidget ide tallVisD wide1VisD
+    toolbarE   <- toolbarWidget ctx tallVisD wide1VisD
     -- Transparent, click-through overlays over the side pane / bottom bar that
     -- draw the divider line next to the editor area and (via CSS :has focus) a
     -- drop shadow when one of that panel's panes is active — see layoutCss.
@@ -4901,20 +4789,35 @@ main showMenubar macTitlebar wid ide = mdo
     -- while the editor still has it.
     (aiActionE, fireAIAction) <- newTriggerEvent
     _ <- liftIO . forkIO . forever $ nextAIAction >>= fireAIAction
-    performEvent_ $ ffor (attach (current ide) aiActionE) $ \(ideNow, act) -> do
+    performEvent_ $ ffor (attach (current (cProblems ctx)) aiActionE) $ \(probsNow, act) -> do
         let mkRel absf suffix = liftIO $ do
                 rel <- makeRelativeToCurrentDirectory (T.unpack absf)
                 return (Just (AIText ("@" <> T.pack rel <> suffix <> " ")))
+            -- The worst problem on record, its path resolved against the
+            -- producing source key's root (@build:\/root@ \/ @lsp:\/root@).
+            firstProblem =
+              let all' = [ (fullPath src p, p)
+                         | (src, ps) <- M.toList probsNow, p <- ps ]
+                  srcRoot src = T.unpack . fromMaybe src $
+                      maybe (T.stripPrefix "lsp:" src) Just
+                            (T.stripPrefix "build:" src)
+                  fullPath src p
+                    | isRelative' (pPath p) = srcRoot src </> pPath p
+                    | otherwise             = pPath p
+                  isRelative' ('/' : _) = False
+                  isRelative' _         = True
+              in listToMaybe ([ e | e@(_, p) <- all', pSeverity p == SevError ]
+                              ++ all')
         mPayload <- case act of
           -- Focus carries nothing: the picker still opens, so "go to my AI
           -- session" and "go to a DIFFERENT one" are the same gesture.
           FocusAITerminal -> return (Just AIFocusOnly)
-          SendError -> case ideNow ^. currentError of
+          SendError -> case firstProblem of
               Nothing -> return Nothing
-              Just lr -> liftIO $ do
-                  rel <- makeRelativeToCurrentDirectory (logRefFullFilePath lr)
-                  let ln  = srcSpanStartLine (logRefSrcSpan lr)
-                      msg = T.takeWhile (/= '\n') (refDescription lr)
+              Just (fp, p) -> liftIO $ do
+                  rel <- makeRelativeToCurrentDirectory fp
+                  let ln  = posLine (rFrom (pRange p)) + 1
+                      msg = T.takeWhile (/= '\n') (pMessage p)
                   return . Just . AIText $
                       "@" <> T.pack rel <> "#L" <> T.pack (show ln)
                       <> " " <> msg <> " "
@@ -4969,21 +4872,21 @@ main showMenubar macTitlebar wid ide = mdo
     (aiOpenRowsE, fireAIRows) <- newTriggerEvent
     performEvent_ $ ffor
         (attach ((,) <$> current ide <*> current allTreeD) aiOpenPayloadE) $
-        \((ideNow, tree), payload) -> liftIO $ do
+        \((uiNow, tree), payload) -> liftIO $ do
             writeIORef aiPendingRef (Just payload)
             void . forkIO $ do
-                let mref = activeAIPaneRef ideNow tree
-                (choices, _) <- aiPickerChoices ideNow tree mref
+                let mref = activeAIPaneRef uiNow tree
+                (choices, _) <- aiPickerChoices (cApp ctx) tree mref
                 fireAIRows (mref, choices)
     -- Nothing to offer at all (no session running anywhere, and no directory to
     -- start one in): fall back to what the AI tools did before — the
     -- 'regionCaptureTarget' pref — rather than opening an empty overlay.
     let aiHaveChoicesE = ffilter (not . null . snd) aiOpenRowsE
-    performEvent_ $ ffor (attach (current ide) (ffilter (null . snd) aiOpenRowsE)) $
-        \(ideNow, _) -> liftIO $ do
+    performEvent_ $ ffor (attach (current prefsD) (ffilter (null . snd) aiOpenRowsE)) $
+        \(cfgNow, _) -> liftIO $ do
             mp <- readIORef aiPendingRef
             writeIORef aiPendingRef Nothing
-            let target = regionCaptureTarget (ideNow ^. prefs)
+            let target = acCaptureTarget (cfgAi cfgNow)
             void . forkIO $ case mp of
                 Just (AIText txt) -> void $ sendTextToTarget target txt
                 -- Focus-only: resolve the pref's session name to the tmux id
@@ -5286,7 +5189,7 @@ main showMenubar macTitlebar wid ide = mdo
           , leafCloseSaveE
           -- ⌘D conversion of a dirty editor saves it first.
           , convertSaveE ]
-    (openFileE, fileLineE, lspRefsE, savedFileE, makeEditor) <- editorWidget ide allE saveFileE
+    (openFileE, fileLineE, lspRefsE, savedFileE, makeEditor) <- editorWidget ctx allE saveFileE
     -- Completion routing for waiting save requests: acked when the target
     -- file's editor reports its write settled ('savedFileE'), or at once
     -- when there was nothing to save.  This is what replaced the guessed
@@ -5322,10 +5225,10 @@ main showMenubar macTitlebar wid ide = mdo
             changeE <- makeEditor f focusE focD
             performEvent_ $ liftIO (fireLayoutEditorChanged f) <$ changeE
           GitLogKey d b -> do
-            mon <- monacoEditor . view prefs <$> sample (current ide)
+            mon <- useMonaco <$> sample (current prefsD)
             void $ gitLogWidget mon d b
           ReviewKey d -> do
-            mon <- monacoEditor . view prefs <$> sample (current ide)
+            mon <- useMonaco <$> sample (current prefsD)
             void $ reviewWidget mon d
           BrowserKey n -> void $ browserWidget n focusE focD
           _ -> return ()
@@ -5371,14 +5274,14 @@ main showMenubar macTitlebar wid ide = mdo
             ok <- withMVar consolidateLock $ \_ -> do
                 n  <- paneCountOfWindow w
                 ok <- if n > 1 then convertWindowMinimal lwi w else pure True
-                when ok $ getGlobalIDERef >>= mapM_ (\r' -> (`reflectIDE` r') $ do
-                    ps <- readIDE prefs
-                    modifyIDE_ $ \i ->
+                when ok $ withApp (\app -> do
+                    ps <- currentConfig (appConfig app)
+                    modifyCell (appUi app) $ \i ->
                       case M.lookup lwi (i ^. leksahWindows)
                              >>= \lw -> (,) lw <$> lwFocused lw of
                         Just (lw, l)
                           | Just (PaneContent _ cur) <- M.lookup l (lwPanes lw) ->
-                            let eff = fromMaybe (monospaceFontSize ps) cur
+                            let eff = fromMaybe (fcMonoSize (cfgFont ps)) cur
                             in i & leksahWindows
                                    %~ M.adjust (setPaneFont l (f eff)) lwi
                         _ -> i)
@@ -5416,13 +5319,13 @@ main showMenubar macTitlebar wid ide = mdo
     liftIO armQueueScheduler
     -- Hosts shown as top-level Terminals-tree nodes: the preference list plus
     -- any host that has an open ssh:// tab.
-    remoteHostsD <- holdUniqDyn $ (\p rt -> nub $ remoteHosts p ++
+    remoteHostsD <- holdUniqDyn $ (\p rt -> nub $ rcHosts (cfgRemote p) ++
           [ T.takeWhile (/= '#') rest
           | (_, TerminalKey n) <- rt, Just rest <- [T.stripPrefix "ssh://" n] ])
         <$> prefsD <*> recentTabs
     -- Native File▸Open / `leksah-cmd editor open` honour the external-editor pref too:
     -- when set, they open in the external editor (line 1) rather than CodeMirror.
-    let extActiveMainB = current ((not . T.null . externalEditor) <$> prefsD)
+    let extActiveMainB = current ((not . T.null . externalEditorCmd) <$> prefsD)
         -- fileLineE is UNGATED (every open, with its line); external-editor
         -- opens are the gated slice, and the built-in slice drives the
         -- backing shell panes below.
@@ -6228,7 +6131,7 @@ main showMenubar macTitlebar wid ide = mdo
     editTermSidE <- fmapMaybe id <$> performEvent
       (ffor (attach (current prefsD) (leftmost [openExternalE, nativeOpenExtE])) $ \(p, (file, line)) ->
          liftIO $ openFileInEditor file (takeFileName file)
-           (words (T.unpack (externalEditor p)) ++ ["+" <> show line, file]))
+           (words (T.unpack (externalEditorCmd p)) ++ ["+" <> show line, file]))
     let newOrEditTermE = leftmost [newTermIdE, editTermSidE]
     -- Once the new session/window exists, poll the tree and float its active pane
     -- to the MRU front (see newTermPolledE above) so Ctrl-` lists it on top.
@@ -6677,12 +6580,12 @@ main showMenubar macTitlebar wid ide = mdo
     -- tree's highlight + reveal target (so we reuse the tree's own select/scroll
     -- rather than DOM-searching a virtualized list).
     wsFindPb <- getPostBuild
-    pkgDirsD <- holdUniqDyn $ nub . map (dropFileName . ipdCabalFile)
-        . (>>= pjPackages) . fromMaybe [] . (^? (workspace . _Just . wsProjects)) <$> ide
+    pkgDirsD <- holdUniqDyn $
+        nub . map pkgDir . (>>= prPackages) . wsProjects <$> cWs ctx
     -- Match what the tree shows: respect the show-hidden / show-ignored toggles
     -- (revealing a file the tree filters out would silently no-op).
-    wsShowHiddenD  <- holdUniqDyn $ view (prefs . to showHiddenFiles)  <$> ide
-    wsShowIgnoredD <- holdUniqDyn $ view (prefs . to showIgnoredFiles) <$> ide
+    wsShowHiddenD  <- holdUniqDyn $ uiShowHiddenFiles  . cfgUi <$> prefsD
+    wsShowIgnoredD <- holdUniqDyn $ uiShowIgnoredFiles . cfgUi <$> prefsD
     enumInputsD <- holdUniqDyn $ (,,) <$> pkgDirsD <*> wsShowHiddenD <*> wsShowIgnoredD
     -- Enumerate OFF the frame thread (remote dirs = ssh round trips), and
     -- re-enumerate remote-project files on RemoteRefresh events (save/build/⟳
@@ -6704,7 +6607,7 @@ main showMenubar macTitlebar wid ide = mdo
         liftJSM . void $ jsg ("LeksahTermLinks" :: Text) ^. js1 ("setProjectFiles" :: Text) files
     -- Drive the provider on/off from the "Clickable file paths…" preference: when
     -- off it claims no links, leaving OSC 8 hyperlinks in the output unobstructed.
-    termLinksEnabledD <- holdUniqDyn (terminalFileLinks . view prefs <$> ide)
+    termLinksEnabledD <- holdUniqDyn (tcFileLinks . cfgTerminal <$> prefsD)
     termLinksEnabledPb <- getPostBuild
     performEvent_ $ ffor (leftmost [ updated termLinksEnabledD
                                    , tag (current termLinksEnabledD) termLinksEnabledPb ]) $ \en ->
@@ -6743,10 +6646,10 @@ main showMenubar macTitlebar wid ide = mdo
     -- ssh round trip per host, and even locally a big workspace grep can
     -- take a while.
     (grepResultsE, fireGrepResults) <- newTriggerEvent
-    performEvent_ $ ffor (attach (current ide) grepReqE) $ \(i, (q, fl)) -> liftIO $ do
-        let pkgs    = (>>= pjPackages) . fromMaybe [] $ i ^? (workspace . _Just . wsProjects)
-            allDirs = nub (map ipdPackageDir pkgs)
-            activeD = dropFileName <$> (i ^? workspace . _Just . wsActivePackFile . _Just)
+    performEvent_ $ ffor (attach (current (cWs ctx)) grepReqE) $ \(ws, (q, fl)) -> liftIO $ do
+        let pkgs    = wsProjects ws >>= prPackages
+            allDirs = nub (map pkgDir pkgs)
+            activeD = pkgDir <$> activePackage ws
             dirs    = case activeD of
                         Just a  -> a : filter (/= a) allDirs
                         Nothing -> allDirs
@@ -7137,14 +7040,14 @@ main showMenubar macTitlebar wid ide = mdo
                 | (k, _) <- order, viewLeafAllowed k ]
            <> "};"
     performEvent_ $ ffor leafDropRawE $ \json ->
-      liftIO . void . forkIO $ getGlobalIDERef >>= mapM_ (\ideR -> do
+      liftIO . void . forkIO $ withApp (\app -> do
         let parsed = parseLeafDrop =<< decodeStrict' (encodeUtf8 json)
             -- "Nothing happened": activate the dragged pane — its window
             -- flips back visible (the drag can only start in the visible
             -- tab) and the pane takes the focus, exactly as if clicked.
             activateSrc src = case src of
               LDPane slwId slInt -> do
-                (`reflectIDE` ideR) $ modifyIDE_ $ leksahWindows %~
+                modifyCell (appUi app) $ leksahWindows %~
                   M.adjust (\lw -> if LeafId slInt `M.member` lwPanes lw
                                      then lw { lwFocused = Just (LeafId slInt) }
                                      else lw) slwId
@@ -7159,8 +7062,8 @@ main showMenubar macTitlebar wid ide = mdo
                 let sl = LeafId slInt
                 if slwId == dlwId
                   then do   -- same window: pure move, LeafId preserved
-                    lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
-                    (`reflectIDE` ideR) $ modifyIDE_ $ leksahWindows %~
+                    lws0 <- view leksahWindows <$> readCell (appUi app)
+                    modifyCell (appUi app) $ leksahWindows %~
                       M.adjust (moveLeafInWindow sl spec) slwId
                     -- Focus-follow: a moved tmux pane's window becomes the
                     -- session's current window (see the cross-window case).
@@ -7169,7 +7072,7 @@ main showMenubar macTitlebar wid ide = mdo
                       _ -> return ()
                     requestLocalTerm dlwId
                   else do
-                    lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                    lws0 <- view leksahWindows <$> readCell (appUi app)
                     case (M.lookup slwId lws0, M.lookup dlwId lws0
                          ,M.lookup slwId lws0 >>= (M.lookup sl . lwPanes)) of
                       (Just slw0, Just dlw0, Just pc) -> do
@@ -7180,11 +7083,11 @@ main showMenubar macTitlebar wid ide = mdo
                           (PaneTmux w, Just ss, Just ds) | ss /= ds -> do
                             beginConversion
                             moveTmuxWindow w ds
-                            (`reflectIDE` ideR) $ modifyIDE_ $
+                            modifyCell (appUi app) $
                               syncLwTabs . moveLeafAcross slwId sl dlwId spec
                             endConversion
                           _ ->
-                            (`reflectIDE` ideR) $ modifyIDE_ $
+                            modifyCell (appUi app) $
                               syncLwTabs . moveLeafAcross slwId sl dlwId spec
                         -- Land the focus ON the moved pane: make its window
                         -- current in the (possibly new) session, or the CC
@@ -7202,9 +7105,9 @@ main showMenubar macTitlebar wid ide = mdo
               -- view leaf, font mismatch) breaks it out into a fresh tmux
               -- window + leaf inheriting the source leaf's font.
               LDTmuxPane slwId slInt p -> do
-                lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
-                defFont <- monospaceFontSize
-                             <$> (`reflectIDE` ideR) (readIDE prefs)
+                lws0 <- view leksahWindows <$> readCell (appUi app)
+                defFont <- fcMonoSize . cfgFont
+                             <$> currentConfig (appConfig app)
                 case ( M.lookup dlwId lws0
                      , M.lookup slwId lws0 >>= (M.lookup (LeafId slInt) . lwPanes)
                      , M.lookup slwId lws0 >>= lwSession ) of
@@ -7247,7 +7150,7 @@ main showMenubar macTitlebar wid ide = mdo
                                   endConversion
                                   activateSrc src
                                 Just newW -> do
-                                  (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
+                                  modifyCell (appUi app) $ \i ->
                                     case M.lookup dlwId (i ^. leksahWindows) of
                                       Nothing -> i
                                       Just dlw ->
@@ -7269,7 +7172,7 @@ main showMenubar macTitlebar wid ide = mdo
                                   requestLocalTerm dlwId
                   _ -> activateSrc src
               LDTab kStr -> do
-                wws <- (`reflectIDE` ideR) (readIDE webWindows)
+                wws <- view webWindows <$> readCell (appUi app)
                 case [ k | ww <- M.elems wws, k <- _wwWide0 ww
                          , T.pack (show k) == kStr ] of
                   (k:_) | viewLeafAllowed k -> do
@@ -7278,7 +7181,7 @@ main showMenubar macTitlebar wid ide = mdo
                     -- exactly like the ⌘D pipeline, then it becomes a fresh
                     -- view leaf and its tab closes.
                     requestSaveActiveFileWait
-                    (`reflectIDE` ideR) $ modifyIDE_ $ \i ->
+                    modifyCell (appUi app) $ \i ->
                       case M.lookup dlwId (i ^. leksahWindows) of
                         Nothing -> i
                         Just dlw ->
@@ -7310,9 +7213,9 @@ main showMenubar macTitlebar wid ide = mdo
             -- shadow promised, because the conversion mirrors tmux's own cell
             -- proportions.
             dropOntoTmuxPane src dlwId l wd tt = do
-              lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
-              defFont <- monospaceFontSize
-                           <$> (`reflectIDE` ideR) (readIDE prefs)
+              lws0 <- view leksahWindows <$> readCell (appUi app)
+              defFont <- fcMonoSize . cfgFont
+                           <$> currentConfig (appConfig app)
               let fontOf lwId lf = fromMaybe Nothing $
                     fmap pcFontSize (M.lookup lwId lws0
                                        >>= M.lookup lf . lwPanes)
@@ -7350,7 +7253,7 @@ main showMenubar macTitlebar wid ide = mdo
                       beginConversion
                       joinTmuxPane ps (ttPane tt) (ttOrient tt == SplitH)
                                                   (not (ttAfter tt)) False
-                      when lastPane $ (`reflectIDE` ideR) $ modifyIDE_ $
+                      when lastPane $ modifyCell (appUi app) $
                         syncLwTabs . (leksahWindows %~ \lws ->
                           case M.lookup slwId lws >>= withoutLeaf sl of
                             Just slw' -> M.insert slwId slw' lws
@@ -7364,7 +7267,7 @@ main showMenubar macTitlebar wid ide = mdo
                   -- Isolate the target pane, then re-find its leaf: the tree
                   -- has changed under us but the pane KEPT its leaf id.
                   _ <- convertWindowPane dlwId wd (ttPane tt)
-                  lws1 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                  lws1 <- view leksahWindows <$> readCell (appUi app)
                   case [ pth | Just dlw <- [M.lookup dlwId lws1]
                              , (pth, Just l', _) <- subtreeRects (lwTree dlw)
                              , l' == l ] of
@@ -7374,7 +7277,7 @@ main showMenubar macTitlebar wid ide = mdo
         forM_ parsed $ \(src, dst) -> case dst of
           LDDstNone -> activateSrc src
           LDDstPane dlwId ptr box mtt -> do
-            lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+            lws0 <- view leksahWindows <$> readCell (appUi app)
             case M.lookup dlwId lws0 of
               Nothing -> activateSrc src
               Just dlw0 -> do
@@ -7405,7 +7308,7 @@ main showMenubar macTitlebar wid ide = mdo
             -- dropping a plain tab onto its own button: nothing to do
             | LDTab s <- src, s == tstr -> activateSrc src
             | otherwise -> do
-                lws0 <- (`reflectIDE` ideR) (readIDE leksahWindows)
+                lws0 <- view leksahWindows <$> readCell (appUi app)
                 case [ n | n <- M.keys lws0
                          , T.pack (show (LeksahWinKey n)) == tstr ] of
                   -- An LW tab button: land at the right edge of its tree.
@@ -7413,7 +7316,7 @@ main showMenubar macTitlebar wid ide = mdo
                   []    -> do
                     -- A draggable plain tab's button: MATERIALIZE it, then
                     -- land beside the fresh view leaf.
-                    wws <- (`reflectIDE` ideR) (readIDE webWindows)
+                    wws <- view webWindows <$> readCell (appUi app)
                     case [ k | ww <- M.elems wws, k <- _wwWide0 ww
                              , T.pack (show k) == tstr ] of
                       (k':_) | viewLeafAllowed k' ->
@@ -7804,9 +7707,9 @@ main showMenubar macTitlebar wid ide = mdo
       (\k selectedE _v -> do
         let toDM x = fmap (DM.singleton x . Identity)
         case k of
-          WorkspaceKey   -> toDM WorkspaceTab <$> workspaceWidget ide treeHighlightD treeRevealD
-          ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ide allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
-          LogKey         -> toDM LogTab <$> logWidget ide (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
+          WorkspaceKey   -> toDM WorkspaceTab <$> workspaceWidget ctx treeHighlightD treeRevealD
+          ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ctx allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
+          LogKey         -> toDM LogTab <$> logWidget ctx (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
           TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD hostTreesD
           LeksahWinKey n -> toDM TerminalTab <$> do
@@ -7820,8 +7723,8 @@ main showMenubar macTitlebar wid ide = mdo
               lwSessD <- holdUniqDyn
                   ((\i -> M.lookup n (i ^. leksahWindows) >>= lwSession) <$> ide)
               evE <- dyn $ ffor lwSessD $ \case
-                  Nothing  -> never <$ sessionlessLwWidget ide n selectedE leafViewW
-                  Just sid -> terminalCCWidget ide n sid selectedE leafViewW
+                  Nothing  -> never <$ sessionlessLwWidget ctx n selectedE leafViewW
+                  Just sid -> terminalCCWidget ctx n sid selectedE leafViewW
                                   closeMenuD renderCloseMenu
               switchHold never evE
           TerminalKey n  -> toDM TerminalTab <$> do
@@ -7829,37 +7732,37 @@ main showMenubar macTitlebar wid ide = mdo
               -- browser-demo paths: local control-mode terminals are
               -- 'LeksahWinKey' tabs now.  Control mode (-CC) vs classic PTY
               -- attach is decided when the tab is created.
-              cm <- terminalControlMode . view prefs <$> sample (current ide)
+              cm <- tcControlMode . cfgTerminal <$> sample (current prefsD)
               -- Control mode needs tmux, which has no Windows build; there the
               -- classic ConPTY-backed widget is the only option.
               let useCC = tmuxSupported && (cm || "ssh://" `T.isPrefixOf` n)
               if useCC
-                then terminalCCWidget ide n n selectedE leafViewW
+                then terminalCCWidget ctx n n selectedE leafViewW
                          closeMenuD renderCloseMenu
-                else terminalWidget ide n selectedE
+                else terminalWidget ctx n selectedE
           -- Tombstone: MetadataKey stays parseable in old sessions (the
           -- metadata feature is deleted); renders nothing and the post-build
           -- close event prunes any restored tab.
           MetadataKey    -> toDM MetadataTab <$> (never <$ blank)
           AgentsKey      -> toDM AgentsTab <$> agentsWidget
-          ChangesKey     -> toDM ChangesTab <$> changesWidget ide (paneFind ChangesKey)
-          PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ide
-          ShortcutsKey   -> toDM ShortcutsTab <$> withConvertHint (shortcutsWidget ide)
+          ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
+          PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
+          ShortcutsKey   -> toDM ShortcutsTab <$> withConvertHint (shortcutsWidget ctx)
           BrowserKey n   -> toDM BrowserTab <$>
               withConvertHint (browserWidget n selectedE (constDyn True))
           GitLogKey d b  -> toDM GitLogTab <$> do
               -- Same editor-backend pref as file tabs (decided at creation).
-              mon <- monacoEditor . view prefs <$> sample (current ide)
+              mon <- useMonaco <$> sample (current prefsD)
               withConvertHint $ gitLogWidget mon d b
           ReviewKey d    -> toDM ReviewTab <$> do
-              mon <- monacoEditor . view prefs <$> sample (current ide)
+              mon <- useMonaco <$> sample (current prefsD)
               withConvertHint $ reviewWidget mon d
           TasksKey       -> toDM TasksTab <$> do
               seed <- liftIO (readIORef tasksSeedRef)
               tasksWidget seed
           PlanKey d p    -> toDM PlanTab <$> planWidget d (T.unpack p) selectedE
           CompareKey d p -> toDM CompareTab <$> do
-              mon <- monacoEditor . view prefs <$> sample (current ide)
+              mon <- useMonaco <$> sample (current prefsD)
               compareWidget mon d p selectedE
           EditorKey file -> toDM EditorTab <$>
               withConvertHint (makeEditor file selectedE (constDyn True)))
@@ -7920,7 +7823,7 @@ main showMenubar macTitlebar wid ide = mdo
     _ <- liftIO . forkIO . forever $
             readChan remoteInFlightChanged >> readTVarIO remoteInFlight >>= fireRemoteAct
     remoteActD <- holdDyn M.empty remoteActE
-    statusbarE <- statusbarWidget ide remoteActD
+    statusbarE <- statusbarWidget ctx remoteActD
 
     -- The virtualized list panes (Errors/Log) can't be driven by DOM roving (off-
     -- screen rows aren't in the DOM), so the keyboard handler (listNavJs) calls
@@ -8075,7 +7978,7 @@ main showMenubar macTitlebar wid ide = mdo
     -- Mirror the tmuxInterceptPrefix pref into window.LeksahTmux.enabled so the
     -- JS interceptor turns on/off the instant the menu toggle flips it (and on
     -- first build, since 'updated' skips the initial value).
-    tmuxInterceptD <- holdUniqDyn ((tmuxInterceptPrefix . view prefs) <$> ide)
+    tmuxInterceptD <- holdUniqDyn (tcTmuxPrefix . cfgTerminal <$> prefsD)
     tmuxEnabledPb  <- getPostBuild
     performEvent_ $ ffor (leftmost [ updated tmuxInterceptD
                                    , tag (current tmuxInterceptD) tmuxEnabledPb ]) $ \on ->
@@ -8242,27 +8145,27 @@ main showMenubar macTitlebar wid ide = mdo
     -- build flags, ...) so they survive a restart.  They already load at startup
     -- via readSettings; here we write them back on change.  (Side-pane visibility is
     -- session-only and lives in the web session, not the prefs file.)
-    prefsD <- holdUniqDyn $ view prefs <$> ide
-    prefsSaveE <- debounce (1 :: NominalDiffTime) (updated prefsD)
-    performEvent_ $ ffor prefsSaveE $ \p -> liftIO $
-      writeSettings p
+    -- (Settings persistence happens at the point of change — 'saveConfig' in
+    -- the Preferences pane / the command toggles — so the old debounced
+    -- write-back watcher is gone.)
     -- The colour prefs bind the CSS variables the stylesheets reference
     -- (--leksah-selection / --leksah-hover; see "IDE.Web.Theme") in a live
     -- style element, so the Preferences colour pickers apply immediately.
     themeCssD <- holdUniqDyn $
-        (\p -> themeVarsCss (uiSelectionColor p) (uiHoverColor p)) <$> prefsD
+        (\p -> themeVarsCss (thSelectionColor (cfgTheme p))
+                            (thHoverColor (cfgTheme p))) <$> prefsD
     el "style" $ dynText themeCssD
     -- The monospace-font prefs drive the --leksah-mono / --leksah-mono-size CSS
     -- variables the editor (CodeMirror) and monospace panes (git log, log)
     -- reference, so a change in Preferences reflows them live.
     fontCssD <- holdUniqDyn $
-        (\p -> ":root{--leksah-mono:" <> monospaceFont p
-            <> ";--leksah-mono-size:" <> T.pack (show (monospaceFontSize p)) <> "px}") <$> prefsD
+        (\p -> ":root{--leksah-mono:" <> fcMonoFamily (cfgFont p)
+            <> ";--leksah-mono-size:" <> T.pack (show (fcMonoSize (cfgFont p))) <> "px}") <$> prefsD
     el "style" $ dynText fontCssD
     -- …and are published to window globals the terminals (xterm, fixed cell grid)
     -- read when they are created.  A terminal-font change takes effect for new
     -- terminals / on restart (open terminals keep their measured grid).
-    monoPrefD <- holdUniqDyn ((\p -> (monospaceFont p, monospaceFontSize p)) <$> prefsD)
+    monoPrefD <- holdUniqDyn ((\p -> (fcMonoFamily (cfgFont p), fcMonoSize (cfgFont p))) <$> prefsD)
     monoPb <- getPostBuild
     performEvent_ $ ffor (leftmost [updated monoPrefD, tag (current monoPrefD) monoPb]) $ \(fam, sz) ->
         liftJSM $ do
@@ -8270,13 +8173,13 @@ main showMenubar macTitlebar wid ide = mdo
             _ <- w ^. jss ("__leksahMonoFamily" :: Text) fam
             void $ w ^. jss ("__leksahMonoSize" :: Text) sz
     -- Publish the shortcut-badges preference to the ⌘-held handler (badgesJs).
-    badgesPrefD <- holdUniqDyn (showShortcutBadges <$> prefsD)
+    badgesPrefD <- holdUniqDyn (uiShortcutBadges . cfgUi <$> prefsD)
     badgesPb <- getPostBuild
     performEvent_ $ ffor (leftmost [updated badgesPrefD, tag (current badgesPrefD) badgesPb]) $ \v ->
         liftJSM . void $ jsg ("window" :: Text)
             ^. jss ("__leksahShortcutBadges" :: Text) v
     -- Colourful-icons preference → the icon-src swapper (colorIconsJs).
-    colorPrefD <- holdUniqDyn (colorfulIcons <$> prefsD)
+    colorPrefD <- holdUniqDyn (uiColorfulIcons . cfgUi <$> prefsD)
     colorPb <- getPostBuild
     performEvent_ $ ffor (leftmost [updated colorPrefD, tag (current colorPrefD) colorPb]) $ \v ->
         liftJSM . void $ jsg ("window" :: Text)
@@ -8284,9 +8187,10 @@ main showMenubar macTitlebar wid ide = mdo
     -- The six editor/terminal theme names → window globals the re-theme engine
     -- (themeSwitchJs) reads, then re-theme now.  Fires on any theme-pref change
     -- and once at post-build; the matchMedia listener covers OS appearance flips.
-    themePrefD <- holdUniqDyn ((\p -> ( monacoThemeDark p, monacoThemeLight p
-                                      , codeMirrorThemeDark p, codeMirrorThemeLight p
-                                      , xtermThemeDark p, xtermThemeLight p )) <$> prefsD)
+    themePrefD <- holdUniqDyn ((\p -> let t = cfgTheme p in
+                                      ( thMonacoDark t, thMonacoLight t
+                                      , thCodeMirrorDark t, thCodeMirrorLight t
+                                      , thXtermDark t, thXtermLight t )) <$> prefsD)
     themePb <- getPostBuild
     performEvent_ $ ffor (leftmost [updated themePrefD, tag (current themePrefD) themePb]) $
         \(md, ml, cd, cl, xd, xl) -> liftJSM $ do
@@ -8308,81 +8212,73 @@ main showMenubar macTitlebar wid ide = mdo
             , KeymapWidget    :=> keymapE
             ])
         workspaceE = select (fan (select (fanMap tabE) (Const2 WorkspaceKey))) WorkspaceTab
-        prefsPaneE = select (fan (select (fanMap tabE) (Const2 PreferencesKey))) PreferencesTab
         editorE' = switchDyn $ leftmost . map (select (fanMap tabE) . Const2) . toList <$> openFileKeysD
         editorE = select (fan editorE') EditorTab
 
-    return $ sequence_ <$>
+    return $ (\acts app -> mapM_ ($ app) acts) <$>
          ((^.. _ToolbarCommand . commandAction . _Just) <$> toolbarE)
       <> ((^.. _MenubarCommand . commandAction . _Just) <$> menubarE)
       <> ((^.. _KeymapCommand . commandAction . _Just) <$> keymapE)
       <> ((^.. traverse . _ProjectCommand . commandAction . _Just) <$> workspaceE)
       <> ((^.. traverse . _ProjectPackageEvents . traverse . _PackageCommand . commandAction . _Just) <$> workspaceE)
-      <> ((^.. (to $ \() -> do
-        tb <- readIDE triggerBuild
-        void . liftIO $ tryPutMVar tb ())) <$> editorE)
+      <> ([triggerBackgroundBuild] <$ editorE)
       -- Native view-leaf editors aren't in the tab fan above; their changes
       -- trigger the background build the same way.
-      <> ((^.. (to $ \_ -> do
-        tb <- readIDE triggerBuild
-        void . liftIO $ tryPutMVar tb ())) <$> layoutEditorChangedE)
+      <> ([triggerBackgroundBuild] <$ layoutEditorChangedE)
       -- ⌘W close menu: "Hide Window"/"Move Pane to Hidden Window" add a tmux
       -- window to 'hiddenWindows' (dropped from tab rows + flipper, kept alive);
       -- focusing a pane in a hidden window (tree/claude/editor reopen) un-hides it.
-      <> ((\sw -> [modifyIDE_ (hiddenWindows %~ S.insert sw)]) <$> hideOrMoveWinE)
-      <> ((\sw -> [modifyIDE_ (hiddenWindows %~ S.delete sw)]) <$> unhideWinE)
+      <> ((\sw -> [overUi (hiddenWindows %~ S.insert sw)]) <$> hideOrMoveWinE)
+      <> ((\sw -> [overUi (hiddenWindows %~ S.delete sw)]) <$> unhideWinE)
       -- Leksah windows: reconcile against the live pane tree (recomputed
       -- from the CURRENT ide inside the mutation, so nothing stale is
       -- written; 'applyReconcile' also keeps the wide0 tab lists in step).
-      <> ((\tree -> [modifyIDE_ (applyReconcile tree)]) <$> needsReconcileGatedE)
+      <> ((\tree -> [overUi (applyReconcile tree)]) <$> needsReconcileGatedE)
       -- ⌥-open / ⌘D new content into an existing leksah window's split
       -- (see leafOpenE).
       <> ((\(lwi, pc, vert) ->
-             [modifyIDE_ (leksahWindows %~ M.adjust (leafOpenPane pc vert) lwi)])
+             [overUi (leksahWindows %~ M.adjust (leafOpenPane pc vert) lwi)])
             <$> leafOpenE)
       -- ⌘W closed a native view pane (saved first if dirty — see leafCloseReqE).
-      <> ((\(n, l) -> [modifyIDE_ (leksahWindows %~ M.adjust (closeLeaf l) n)])
+      <> ((\(n, l) -> [overUi (leksahWindows %~ M.adjust (closeLeaf l) n)])
             <$> delayedLeafCloseE)
-      -- ⌘D conversion: record the pane→view overlay in the shared state (the
-      -- CC widgets render it; every OS window sees it via the resync poll).
-      -- (Per-window side/bottom visibility is seeded into '_webWindows' by
-      -- 'newIDE' at restore, so there is no restore-visibility event here.)
-      <> ((\(PrefsUpdate f) -> [modifyIDE_ (prefs %~ f)]) <$> prefsPaneE)
+      -- (The Preferences pane persists its own edits via 'saveConfig' now —
+      -- no PrefsUpdate re-application here, or every toggle would land twice.)
       -- wide0 tab ownership lives in the shared per-window state: opening a tab
       -- moves it into THIS window (front, active), closing removes it, and
       -- focusing/clicking one floats it to the MRU front.  Every window's reflex
       -- network then re-renders its own wide0 row from that shared state.
-      <> ((\m -> [modifyIDE_ (webWindows %~ \wins ->
+      <> ((\m -> [overUi (webWindows %~ \wins ->
                     foldl' (\ws k -> moveTabTo wid k ws) wins (M.keys m))]) <$> openTabsE)
-      <> ((\ks -> [modifyIDE_ (webWindows %~ closeWide0 wid ks)]) <$> closeTabsE)
+      <> ((\ks -> [overUi (webWindows %~ closeWide0 wid ks)]) <$> closeTabsE)
       -- Closing a tab also drops it from the shared flip MRU, so the flipper
       -- forgets it at once (the display filter would hide it anyway, but a
       -- stale entry would otherwise resurface a reopened tab mid-list).
-      <> ((\ks -> [modifyIDE_ (flipMru %~ filter (\case
+      <> ((\ks -> [overUi (flipMru %~ filter (\case
               FlipTab k -> k `notElem` ks
               _         -> True))]) <$> closeTabsE)
       -- …and a closed view leaf drops its FlipView entry the same way.
-      <> ((\(n, LeafId l) -> [modifyIDE_ (flipMru %~ filter (/= FlipView n l))])
+      <> ((\(n, LeafId l) -> [overUi (flipMru %~ filter (/= FlipView n l))])
             <$> delayedLeafCloseE)
       -- A closed pane also forgets which AI session it aimed at.  Keyed by the
       -- PANE, so this is the only thing that drops a binding — a binding whose
       -- SESSION has exited is kept deliberately (it gets resumed on next use).
       -- 'PRTmux' entries need no sweep: tmux never reuses a @%N@ pane id, so a
       -- stale one can't be mistaken for a new pane.
-      <> ((\ks -> [modifyIDE_ (paneAISession %~ M.filterWithKey (\r _ -> case r of
+      <> ((\ks -> [overUi (paneAISession %~ M.filterWithKey (\r _ -> case r of
               PRTab k -> k `notElem` ks
               _       -> True))]) <$> closeTabsE)
       <> ((\(n, LeafId l) ->
-              [modifyIDE_ (paneAISession %~ M.delete (PRLeaf n l))])
+              [overUi (paneAISession %~ M.delete (PRLeaf n l))])
             <$> delayedLeafCloseE)
       -- …and picking a session in the AI picker makes it that pane's default.
-      <> ((\(r, sid) -> [modifyIDE_ (paneAISession %~ M.insert r sid)])
+      <> ((\(r, sid) -> [overUi (paneAISession %~ M.insert r sid)])
             <$> aiBindE)
-      <> ((\k -> [modifyIDE_ (webWindows %~ activateWide0 wid k)]) <$> wide0ActivateE)
+      <> ((\k -> [overUi (webWindows %~ activateWide0 wid k)]) <$> wide0ActivateE)
       -- Cross-window flip: make the selected tab active in ITS window (which was
       -- just raised), without moving it here.  A pane's tab is resolved from
       -- the live leksah-window map inside the mutation.
-      <> ((\(tree, (w, fi)) -> [modifyIDE_ (\i ->
+      <> ((\(tree, (w, fi)) -> [overUi (\i ->
               let lws = i ^. leksahWindows
                   mk = case fi of
                     FlipTab k       -> Just k
@@ -8400,20 +8296,20 @@ main showMenubar macTitlebar wid ide = mdo
                    Nothing -> i)]) <$> attach (current allTreeD) crossFlipE)
       -- An in-window view-leaf flip commit focuses the leaf (its lw tab was
       -- selected via flipTabE).
-      <> ((\(n, l) -> [modifyIDE_ (leksahWindows
+      <> ((\(n, l) -> [overUi (leksahWindows
               %~ M.adjust (\lw -> lw { lwFocused = Just (LeafId l) }) n)])
             <$> flipViewE)
       -- Float an item to the front of the SHARED flip MRU ('_flipMru') — the one
       -- flipper order every window reads (see flipBumpE above).
-      <> ((\fi -> [modifyIDE_ (flipMru %~ \mru -> fi : filter (/= fi) mru)]) <$> flipBumpE)
+      <> ((\fi -> [overUi (flipMru %~ \mru -> fi : filter (/= fi) mru)]) <$> flipBumpE)
       -- Mirror this window's open flipper onto every other OS window purely through
       -- SHARED state: write '_flipMirror' and let each window draw it from its own
       -- reflex network (see flipMirrorSharedD above).  NO cross-window JS broadcast
       -- — 'ideJSM_' into every WKWebView deadlocks the jsaddle-wkwebview main-thread
       -- bridge with 2+ windows.  We tag the state with THIS window's id so the mirror
       -- knows the owner (and skips redrawing it here).
-      <> ((\(items, idx) -> [modifyIDE_ (flipMirror .~ Just (widN, items, idx))])
+      <> ((\(items, idx) -> [overUi (flipMirror .~ Just (widN, items, idx))])
             <$> flipMirrorShowE)
-      <> ((\() -> [modifyIDE_ (flipMirror .~ Nothing)])
+      <> ((\() -> [overUi (flipMirror .~ Nothing)])
             <$> flipMirrorHideE)
   return topEvents

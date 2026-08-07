@@ -17,8 +17,9 @@ import Control.Monad (void, when, unless)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.HostFlags (getBrowserHosted)
 import IDE.Web.RemoteRefresh (RefreshReason(..), requestRemoteRefresh)
+import Control.Applicative ((<|>))
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Lens (view, (^..), (^.))
+import Control.Lens ((^..), (^.))
 import System.Log.Logger (errorM)
 
 -- File access goes through the IDE.Web.FS seam (real FS natively; the
@@ -26,7 +27,6 @@ import System.Log.Logger (errorM)
 import IDE.Web.FS (fsReadFile, fsWriteFile, fsDoesFileExist)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DM (lookup)
-import Data.Foldable (toList)
 import Data.Functor.Misc (Const2(..))
 import Data.Functor.Identity (Identity(..))
 import Data.Map (Map)
@@ -34,7 +34,7 @@ import qualified Data.Map as M
        (lookup, fromListWith, toList)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, null, unlines)
+import qualified Data.Text as T (pack, null, unlines, unpack, drop, dropWhile)
 import qualified Data.Text.IO as TIO (readFile)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import Data.Traversable (forM)
@@ -56,12 +56,12 @@ import Reflex
 import Reflex.Dom.Core
        ((=:), MonadWidget, elAttr, elAttr', dyn, _element_raw, blank)
 
-import IDE.Core.Location
-       (SrcSpan(..), srcSpanEndColumn, srcSpanEndLine, srcSpanStartColumn,
-        srcSpanStartLine)
-import IDE.Core.State
-       (LogRef, logRefType, logRefSrcSpan, allLogRefs, logRefFullFilePath, IDE,
-        prefs, externalEditor, monacoEditor, getDataDir)
+import IDE.Config (Config(..), Editor(..), EditorC(..))
+import IDE.Paths (getDataDir)
+import IDE.Problems.Types
+       (Loc(..), Pos(..), Problem(..), Range(..), Severity(..), problemLoc,
+        problemsByPath)
+import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TerminalEvents(..), _OpenFile, TabKey(..),
         _ErrorsGoto, _MetadataGoto, _GrepGoto, _ChangesOpen, _ProjectFileEvents,
@@ -71,7 +71,7 @@ import IDE.Web.Widget.Grep (GrepResult(..))
 import qualified IDE.LSP as LSP
 
 import System.Exit (ExitCode(..))
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath (isAbsolute, takeDirectory, takeFileName, (</>))
 import IDE.Git (runGitBatch)
 
 editorCss :: Css
@@ -126,11 +126,11 @@ editorCss = do
 
 -- | Whether new editors should use the Monaco backend (the in-browser demo is
 -- always CodeMirror — no datadir to load the bundle from).
-useMonacoPref :: IDE -> Bool
+useMonacoPref :: Config -> Bool
 #if defined(ghcjs_HOST_OS)
 useMonacoPref _ = False
 #else
-useMonacoPref = monacoEditor . view prefs
+useMonacoPref = (== EditorMonaco) . ecEditor . cfgEditor
 #endif
 
 -- | Load the Monaco bundle once (lazily, on the first Monaco editor):
@@ -205,29 +205,53 @@ gitOriginal file = do
     _ -> Nothing
 #endif
 
--- | Push the current LogRefs to the editor as mark decorations (apiNs is the
--- backend's JS namespace: LeksahCM or LeksahMonaco).
-updateTextMarks :: Text -> JSVal -> [LogRef] -> JSM ()
-updateTextMarks apiNs editorView logRefs = do
-  marks <- forM logRefs $ \logRef -> do
-      let sp = logRefSrcSpan logRef
+-- | The mark-decoration CSS class of a severity (the class names predate
+-- 'Severity' — they are what editorCss above and the bundles' comments key
+-- on, so they stay).
+severityClass :: Severity -> Text
+severityClass SevError   = "ErrorRef"
+severityClass SevWarning = "WarningRef"
+severityClass _          = "LintRef"
+
+-- | Push the current problems to the editor as mark decorations (apiNs is the
+-- backend's JS namespace: LeksahCM or LeksahMonaco).  Both bundles' position
+-- helpers (offsetOf/posOf) take a 1-based line and a 0-based character, and
+-- treat the end as exclusive — 'Range' is 0-based half-open, so only the
+-- lines shift.
+updateTextMarks :: Text -> JSVal -> [Problem] -> JSM ()
+updateTextMarks apiNs editorView problems = do
+  marks <- forM problems $ \p -> do
+      let Range from to = pRange p
       m <- obj
-      m ^. jss ("fromLine" :: Text) (srcSpanStartLine sp)
-      m ^. jss ("fromCh"   :: Text) (srcSpanStartColumn sp)
-      m ^. jss ("toLine"   :: Text) (srcSpanEndLine sp)
-      m ^. jss ("toCh"     :: Text) (srcSpanEndColumn sp + 1)
-      m ^. jss ("cls"      :: Text) (T.pack . show $ logRefType logRef)
+      m ^. jss ("fromLine" :: Text) (posLine from + 1)
+      m ^. jss ("fromCh"   :: Text) (posCol from)
+      m ^. jss ("toLine"   :: Text) (posLine to + 1)
+      m ^. jss ("toCh"     :: Text) (posCol to)
+      m ^. jss ("cls"      :: Text) (severityClass (pSeverity p))
       return m
   void $ jsg apiNs ^. js2 ("setMarks" :: Text) editorView marks
 
-gotoSrcSpan :: MonadJSM m => Text -> JSVal -> SrcSpan -> m ()
-gotoSrcSpan apiNs editorView srcSpan = liftJSM . void $
+-- | Regroup the problems service's per-producer map by file, for the gutter
+-- marks.  A producer may report paths relative to its own root — the part of
+-- its @tool:root@ source key after the colon — while an editor is keyed by
+-- the absolute path it has open.
+byResolvedPath :: Map Text [Problem] -> Map FilePath [Problem]
+byResolvedPath m = problemsByPath
+    [ resolve (keyRoot k) p | (k, ps) <- M.toList m, p <- ps ]
+  where
+    keyRoot = T.unpack . T.drop 1 . T.dropWhile (/= ':')
+    resolve root p
+      | isAbsolute (pPath p) = p
+      | otherwise            = p { pPath = root </> pPath p }
+
+gotoLoc :: MonadJSM m => Text -> JSVal -> Loc -> m ()
+gotoLoc apiNs editorView (Loc _ (Range from _)) = liftJSM . void $
   jsg apiNs ^. js3 ("gotoPos" :: Text) editorView
-      (srcSpanStartLine srcSpan) (srcSpanStartColumn srcSpan)
+      (posLine from + 1) (posCol from)
 
 editorWidget
   :: forall t m . MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Event t (DMap IDEWidget Identity)
   -> Event t FilePath        -- ^ save the editor for this file (write to disk)
   -> m
@@ -248,7 +272,7 @@ editorWidget
       --   file focuses it), and \"is this the leksah window's focused leaf\"
       --   for view leaves, so a restored background leaf can't steal the
       --   keyboard at build time.
-editorWidget ide allEvents saveFileE = do
+editorWidget ctx allEvents saveFileE = do
   -- LSP navigation bridges (fired from an editor's F12/Shift-F12 handler on the
   -- LSP client thread): go-to-definition feeds the unified 'gotoSpanE' below;
   -- find-references is returned for the Grep pane.
@@ -273,44 +297,48 @@ editorWidget ide allEvents saveFileE = do
       liftIO (fsDoesFileExist file) >>= \case
         False -> return Nothing
         True -> return $ Just file)
-  let gotoLocationE :: Event t LogRef = fmapMaybe listToMaybe $ (^.. _ErrorsGoto) <$>
+  let gotoLocationE :: Event t Problem = fmapMaybe listToMaybe $ (^.. _ErrorsGoto) <$>
         select (fan (select (fanMap tabEvents) (Const2 ErrorsKey))) ErrorsTab
-      -- Navigation from the metadata tree (file + span).
-      metadataGotoE :: Event t SrcSpan = fmapMaybe listToMaybe $ (^.. _MetadataGoto) <$>
+      -- Navigation from the metadata tree (file + range).
+      metadataGotoE :: Event t Loc = fmapMaybe listToMaybe $ (^.. _MetadataGoto) <$>
         select (fan (select (fanMap tabEvents) (Const2 MetadataKey))) MetadataTab
       -- Navigation from a Grep result (file + line).
-      grepGotoE :: Event t SrcSpan = fmapMaybe listToMaybe $ (^.. _GrepGoto) <$>
+      grepGotoE :: Event t Loc = fmapMaybe listToMaybe $ (^.. _GrepGoto) <$>
         select (fan (select (fanMap tabEvents) (Const2 GrepKey))) GrepTab
       -- Ctrl+click on a project-file path in any terminal's output.  Terminals
       -- are keyed dynamically (LeksahWinKey / remote TerminalKey), so collect
       -- from the raw tab map rather than a fixed Const2 key.
-      terminalGotoE :: Event t SrcSpan = fmapMaybe
-        (\m -> listToMaybe [ sp | (_, dm) <- M.toList m
-                                , Just (Identity (TerminalGoto sp)) <- [DM.lookup TerminalTab dm] ])
+      terminalGotoE :: Event t Loc = fmapMaybe
+        (\m -> listToMaybe [ loc | (_, dm) <- M.toList m
+                                 , Just (Identity (TerminalGoto loc)) <- [DM.lookup TerminalTab dm] ])
         tabEvents
-      -- Unified "go to a source span"; the span's filename is the file to open.
-      -- For errors the span's filename is set to the LogRef's full path.
-      gotoSpanE :: Event t SrcSpan = leftmost
-        [ ffor gotoLocationE $ \lr -> (logRefSrcSpan lr) { srcSpanFilename = logRefFullFilePath lr }
+      -- Unified "go to a source location"; the Loc's path is the file to open.
+      -- The Errors pane resolves a problem's path against its producing root
+      -- before emitting, so 'problemLoc' here is already absolute.
+      gotoLocE :: Event t Loc = leftmost
+        [ problemLoc <$> gotoLocationE
         , metadataGotoE
         , grepGotoE
         , terminalGotoE
         , defGotoE ]        -- LSP go-to-definition
-      fileE = leftmost [ openFileE, srcSpanFilename <$> gotoSpanE ]
-      -- Every open with its line (1 for a plain file open, the span's start line
-      -- for a grep/error/metadata/terminal-link goto).  Used only for external
+      fileE = leftmost [ openFileE, locPath <$> gotoLocE ]
+      -- Every open with its line (1 for a plain file open, the location's start
+      -- line for a grep/error/metadata/terminal-link goto — 'Pos' is 0-based,
+      -- the external editor's +line is 1-based).  Used only for external
       -- opens (vim +line); the CM path reveals the line itself via locationsD.
       fileWithLineE = leftmost
         [ (, 1) <$> openFileE
-        , (\sp -> (srcSpanFilename sp, srcSpanStartLine sp)) <$> gotoSpanE ]
+        , (\loc -> (locPath loc, posLine (rFrom (locRange loc)) + 1)) <$> gotoLocE ]
       -- When an external editor is configured, files open there instead of in the
       -- built-in editor.  Gate the built-in stream on the (live) preference;
       -- the (file, line) stream is returned UNGATED — Main re-derives the
       -- external-editor opens with its own gate, and also uses every open to
       -- keep the file's backing tmux shell pane in step (see ensureShellPane).
-      extActiveB = current ((not . T.null . externalEditor . view prefs) <$> ide)
-  logRefsByFileD <- fmap (M.fromListWith (<>) . map (\lr -> (logRefFullFilePath lr, [lr])) . toList) <$> holdUniqDyn (view allLogRefs <$> ide)
-  locationsD <- foldDyn (<>) mempty $ (\sp -> srcSpanFilename sp =: sp) <$> gotoSpanE
+      extActiveB = current ((\c -> case ecEditor (cfgEditor c) of
+                                     EditorExternal cmd -> not (T.null cmd)
+                                     _                  -> False) <$> cCfg ctx)
+  logRefsByFileD <- fmap byResolvedPath <$> holdUniqDyn (cProblems ctx)
+  locationsD <- foldDyn (<>) mempty $ (\loc -> locPath loc =: loc) <$> gotoLocE
   return
     ( gate (not <$> extActiveB) ((=:("wide0", Just())) <$> fileE)
     , fileWithLineE
@@ -320,7 +348,7 @@ editorWidget ide allEvents saveFileE = do
       (changeE, triggerChangeE) <- newTriggerEvent
       -- Editor backend, decided when the tab is created (like the terminals'
       -- control-mode pref): existing tabs keep their editor until reopened.
-      useMonaco <- useMonacoPref <$> sample (current ide)
+      useMonaco <- useMonacoPref <$> sample (current (cCfg ctx))
       let apiNs :: Text
           apiNs = if useMonaco then "LeksahMonaco" else "LeksahCM"
       -- LSP hover: the CM6 hover source calls back with (reqId, line, ch); the
@@ -368,7 +396,7 @@ editorWidget ide allEvents saveFileE = do
           performEvent_ $ ffor (attach (current $ (,) <$> locationsD <*> logRefsD) editorE) $ \((locations, logRefs), editorView) -> liftJSM $ do
               case M.lookup file locations of
                 Nothing -> return ()
-                Just sp -> gotoSrcSpan apiNs editorView sp
+                Just sp -> gotoLoc apiNs editorView sp
               updateTextMarks apiNs editorView logRefs
           editorD <- holdDyn Nothing $ Just <$> editorE
           -- LSP (Stage 1): mirror this document to the language server — open
@@ -445,9 +473,9 @@ editorWidget ide allEvents saveFileE = do
           performEvent_ $ ffor (attach (current editorD) (updated logRefsD)) $ \case
             (Nothing, _) -> return ()
             (Just editorView, logRefs) -> liftJSM $ updateTextMarks apiNs editorView logRefs
-          let gotoE = ffilter ((==file) . srcSpanFilename) gotoSpanE
+          let gotoE = ffilter ((==file) . locPath) gotoLocE
           performEvent_ $ ffor (attach (current editorD) gotoE) $ \case
-              (Just editorView, sp) -> gotoSrcSpan apiNs editorView sp
+              (Just editorView, sp) -> gotoLoc apiNs editorView sp
               _ -> return ()
           -- File ▸ Save / the Save toolbar button: write this editor's current
           -- contents to disk.  (The dirty-line highlighting is relative to git,

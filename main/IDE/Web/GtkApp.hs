@@ -9,13 +9,13 @@
 -- forks).  The Linux sibling of the AppKit windows leksah-wkwebview gets from
 -- jsaddle-wkwebview.
 --
--- Multi-window mirrors the macOS ('IDE.Web.MacMenu') design: the shared IDE
--- state ('IDE.Core.Types.webWindows') holds one 'WebWindow' per OS window, each
--- window runs its OWN reflex network ('IDE.Web.Main.jsMain') in its own jsaddle
--- context over that WebView, and the networks coordinate through the shared
--- state + the coalesced resync (see 'IDE.Web.WindowBridge').  Only the native
+-- Multi-window mirrors the macOS ('IDE.Web.MacMenu') design: the shared UI
+-- cell ('IDE.Web.Model.webWindows' on the 'App') holds one 'WebWindow' per OS
+-- window, each window runs its OWN reflex network ('IDE.Web.Main.jsMain') in
+-- its own jsaddle context over that WebView, and the networks coordinate
+-- through the shared cells (see 'IDE.Web.WindowBridge').  Only the native
 -- window/WebView creation is platform-specific and lives here; everything else
--- (WindowBridge registration, resync, the close-merge) is shared.
+-- (WindowBridge registration, the close-merge) is shared.
 --
 -- File ▸ New Window mints a 'WindowId' and opens another window; window close
 -- merges its tabs into a survivor via the shared 'closeWindowMerge'; the global
@@ -29,7 +29,7 @@ module IDE.Web.GtkApp
 
 import Control.Exception (SomeException, try)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Lens ((?~))
+import Control.Lens ((?~), view)
 import Control.Monad (forM_, unless, void, when)
 
 import Data.ByteString (ByteString)
@@ -58,10 +58,10 @@ import qualified GI.WebKit as WK
 import Language.Javascript.JSaddle (JSM)
 import Language.Javascript.JSaddle.WebKitGTK (runInWebView)
 
-import IDE.Core.State (reflectIDE, readIDE, modifyIDE_)
-import IDE.Core.Types (IDERef, WindowId(..), activeWindow, webWindows)
+import IDE.App (App, appUi, getGlobalApp)
+import IDE.Reactive (modifyCell, readCell)
+import IDE.Web.Model (WindowId(..), activeWindow, webWindows)
 import IDE.Web.GtkMenu (installGtkMenu, postGUIAsync)
-import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Main (jsMain, mintWindowId)
 import IDE.Web.NewWindowRequest
        (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler)
@@ -72,7 +72,7 @@ import IDE.Web.WindowBridge (closeWindowMerge)
 -- 'IDE.Web.Main.startJSaddle' expects; the @jsm@ it is handed (a 'jsMain'
 -- pinned to 'WindowId' 0) is intentionally unused — this back end builds a
 -- fresh per-window 'jsMain' for every OS window (including window 0) from the
--- shared 'IDERef' instead, so New Window and session restore go through exactly
+-- shared 'App' instead, so New Window and session restore go through exactly
 -- the same path.  The index HTML is loaded with the warp server's URL as base,
 -- so relative fetches (xterm assets, terminal iframes) resolve against it — the
 -- GTK counterpart of wkwebview's @runHTMLWithBaseURL@.
@@ -87,23 +87,23 @@ runGtkApp html url _jsm = do
   -- (window open/close) and from the raise handler (marshalled there via
   -- 'postGUIAsync'), so an IORef with atomic updates suffices.
   windowsRef <- newIORef M.empty
-  _ <- Gio.onApplicationActivate app $ getGlobalIDERef >>= \case
-    Nothing   -> return ()   -- newIDE always publishes the IDERef before runJs
-    Just ideR -> do
+  _ <- Gio.onApplicationActivate app $ getGlobalApp >>= \case
+    Nothing     -> return ()   -- newIDE always publishes the App before runJs
+    Just theApp -> do
       -- Register the native window hooks the shared New Window command / flipper
       -- drive.  All three must touch GTK on the main loop, so marshal there.
-      setNewWindowHandler   $ postGUIAsync (openWindow app html url windowsRef ideR Nothing)
+      setNewWindowHandler   $ postGUIAsync (openWindow app html url windowsRef theApp Nothing)
       setOpenWindowHandler  $ \n -> postGUIAsync
-                                (openWindow app html url windowsRef ideR (Just (WindowId n)))
+                                (openWindow app html url windowsRef theApp (Just (WindowId n)))
       setRaiseWindowHandler $ \n -> postGUIAsync $
         readIORef windowsRef >>= mapM_ Gtk.windowPresent . M.lookup (WindowId n)
       -- Open a native window for every window the shared state was seeded with
       -- (window 0 plus any restored by 'newIDE').  Independent of the earlier
       -- 'requestOpenWindow' calls, which no-op'd because no handler was set yet.
-      seeded <- (`reflectIDE` ideR) (readIDE webWindows)
+      seeded <- view webWindows <$> readCell (appUi theApp)
       case M.keys seeded of
-        []   -> openWindow app html url windowsRef ideR Nothing
-        wids -> forM_ wids $ \wid -> openWindow app html url windowsRef ideR (Just wid)
+        []   -> openWindow app html url windowsRef theApp Nothing
+        wids -> forM_ wids $ \wid -> openWindow app html url windowsRef theApp (Just wid)
   void $ Gio.applicationRun app Nothing
 
 -- | Create one native GTK4 window + WebKitGTK WebView and attach a fresh reflex
@@ -111,10 +111,10 @@ runGtkApp html url _jsm = do
 -- with 'Just' an already-seeded id is adopted (window 0 / session restore).
 -- Must run on the GTK main thread.
 openWindow :: Gtk.Application -> ByteString -> ByteString
-           -> IORef (M.Map WindowId Gtk.ApplicationWindow) -> IDERef
+           -> IORef (M.Map WindowId Gtk.ApplicationWindow) -> App
            -> Maybe WindowId -> IO ()
-openWindow app html url windowsRef ideR mbWid = do
-  wid <- maybe (mintWindowId ideR) return mbWid
+openWindow app html url windowsRef theApp mbWid = do
+  wid <- maybe (mintWindowId theApp) return mbWid
   win <- Gtk.applicationWindowNew app
   Gtk.windowSetTitle win (Just "Leksah")
   Gtk.windowSetDefaultSize win 1200 800
@@ -135,7 +135,7 @@ openWindow app html url windowsRef ideR mbWid = do
   -- surfaces its changes only through PropertyNotify.)
   _ <- on win (PropertyNotify #isActive) $ \_ -> do
          active <- get win #isActive
-         when active $ setActiveWindow ideR wid
+         when active $ setActiveWindow theApp wid
   -- Window close: merge this window's tabs into a survivor (shared logic); the
   -- last window quits the GTK app.  Returning False lets the default close
   -- proceed (True would veto it).
@@ -152,15 +152,15 @@ openWindow app html url windowsRef ideR mbWid = do
   _ <- WK.onWebViewLoadChanged webView $ \case
     WK.LoadEventFinished -> do
       done <- atomicModifyIORef' started (True,)
-      unless done $ runInWebView (jsMain False False (Just wid) ideR) webView
+      unless done $ runInWebView (jsMain False False (Just wid) theApp) webView
     _ -> return ()
   WK.webViewLoadHtml webView (decodeUtf8 html) (Just (decodeUtf8 url))
   Gtk.windowPresent win
 
 -- | Record @wid@ as the active (frontmost) OS window in the shared state.
-setActiveWindow :: IDERef -> WindowId -> IO ()
-setActiveWindow ideR wid =
-  (`reflectIDE` ideR) $ modifyIDE_ (activeWindow ?~ wid)
+setActiveWindow :: App -> WindowId -> IO ()
+setActiveWindow theApp wid =
+  modifyCell (appUi theApp) (activeWindow ?~ wid)
 
 -- | @leksah-cmd screenshot FILE@: snapshot the WebView to a PNG.  The request
 -- arrives on a CmdServer thread; the snapshot must run on the GTK main loop,

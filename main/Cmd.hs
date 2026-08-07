@@ -675,7 +675,7 @@ removeInfixes subs = trim . go
 
 -- | Drop leksah's own @LEK …@ trace/heartbeat lines from an eval's output.
 -- @hs eval@ only suspends the run loop (@--keep-windows@), so leksah's
--- diagnostic threads (@logMutation@, @wlog@ — see IDE.Core.State / IDE.Web.Main)
+-- diagnostic threads (@logMutation@, @wlog@ — see IDE.Web.Main)
 -- keep writing to the pane's stderr and interleave with the eval result.  Those
 -- traces are wanted everywhere else (freeze debugging), just not in a result;
 -- a @Show@ value never starts @LEK @ + a digit, so this can't eat real output.

@@ -1,23 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE LambdaCase #-}
--- 'stateLabel' needs a catch-all for the gtk build's extra IDEState constructor
--- (IsCompleting), which the nogtk stub lacks — so that same catch-all reads as
--- redundant in the nogtk build.  Silence the (nogtk-only) overlap here.
-{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 module IDE.Web.Widget.Statusbar
   ( statusbarCss
   , statusbarWidget
   ) where
 
-import Control.Lens (view, (^.))
 import Control.Concurrent (forkIO)
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (liftIO)
 
-import Data.Foldable (toList)
 import Data.Map (Map)
-import qualified Data.Map as M (toList)
+import qualified Data.Map as M (findWithDefault, toList)
 import Data.Text (Text)
 import qualified Data.Text as T (intercalate, pack)
 import System.FilePath (takeFileName, dropTrailingPathSeparator)
@@ -36,11 +30,13 @@ import Reflex.Dom.Core
         newTriggerEvent, domEvent, EventName(Click), elClass', elClass,
         elAttr, (=:), text)
 
-import IDE.Core.Location (packageIdentifierToString)
-import IDE.Core.State
-       (IDE, IDEState(..), currentState, activeProject, activePack,
-        activeComponent, activeProjectLogRefs, logRefType, LogRefType(..),
-        ipdPackageId, pjDir, pjKey)
+import IDE.App (RunState(..))
+import IDE.Problems.Types (Problem(..), Severity(..))
+import IDE.Web.Ctx (Ctx(..))
+import IDE.Workspace
+       (Ws, activeComponent, activePackage, activeProject, packageIdText,
+        prDir)
+import IDE.Ws.Types (Component(..))
 import IDE.Web.GitInfo
        (ActiveGitInfo(..), scanActiveGitInfo, emptyGitInfo, openUrl)
 import IDE.Web.LocalRefresh (registerLocalRefresh)
@@ -78,15 +74,15 @@ statusbarCss = do
 -- The active project (its directory name), then — only when the project has
 -- an active package — the package and component.  A package-less project (e.g.
 -- a Rust crate) shows just its name, never "No active package".
-activeLabel :: IDE -> Text
-activeLabel ide = case ide ^. activeProject of
+activeLabel :: Ws -> Text
+activeLabel ws = case activeProject ws of
   Nothing   -> ""
   Just proj ->
-      T.pack (takeFileName (dropTrailingPathSeparator (pjDir (pjKey proj))))
-        <> case ide ^. activePack of
+      T.pack (takeFileName (dropTrailingPathSeparator (prDir proj)))
+        <> case activePackage ws of
              Nothing  -> ""
-             Just pkg -> "  \x203A  " <> packageIdentifierToString (ipdPackageId pkg)
-                       <> maybe "" (\c -> " (" <> c <> ")") (ide ^. activeComponent)
+             Just pkg -> "  \x203A  " <> packageIdText pkg
+                       <> maybe "" (\c -> " (" <> cName c <> ")") (activeComponent ws)
 
 -- | Remote-activity blurb: @⇅ host (n)@ for each host with ssh ops in flight
 -- (build, grep, git, HLS start, file read), empty when the link is quiet.
@@ -96,35 +92,38 @@ remoteActivity m = case [ (h, n) | (h, n) <- M.toList m, n > 0 ] of
     [] -> ""
     xs -> "⇅ " <> T.intercalate "  " [ h <> " (" <> T.pack (show n) <> ")" | (h, n) <- xs ]
 
-stateLabel :: IDEState -> Text
+stateLabel :: RunState -> Text
 stateLabel = \case
   IsStartingUp   -> "Starting up…"
   IsRunning      -> "Ready"
   IsShuttingDown -> "Shutting down…"
-  -- IDEState has an extra constructor in the gtk front end (IsCompleting) but
-  -- not in the nogtk stub, so this fallthrough is required for exhaustiveness
-  -- there while looking redundant here — see the -Wno-overlapping-patterns note.
-  _              -> ""
 
 statusbarWidget
   :: MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> Dynamic t (Map Text Int)  -- ^ in-flight remote (ssh) ops per host
   -> m (Event t StatusbarEvents)
-statusbarWidget ide remoteActD = divClass "statusbar" $ do
-  (divClass "sb-section sb-package" . dynText) =<< holdUniqDyn (activeLabel <$> ide)
-  gitStatusSection ide
-  countsD <- holdUniqDyn (counts . toList . activeProjectLogRefs <$> ide)
+statusbarWidget ctx remoteActD = divClass "statusbar" $ do
+  (divClass "sb-section sb-package" . dynText) =<< holdUniqDyn (activeLabel <$> cWs ctx)
+  gitStatusSection (cWs ctx)
+  countsD <- holdUniqDyn (counts <$> cWs ctx <*> cProblems ctx)
   countsSection countsD
-  (divClass "sb-section sb-state"   . dynText) =<< holdUniqDyn (stateLabel . view currentState <$> ide)
+  (divClass "sb-section sb-state"   . dynText) =<< holdUniqDyn (stateLabel <$> cRunState ctx)
   (divClass "sb-section sb-remote"  . dynText) =<< holdUniqDyn (remoteActivity <$> remoteActD)
   return never
   where
-    counts refs =
-      let n p = length (filter p refs)
-          errs  = n (\r -> logRefType r `elem` [ErrorRef, TestFailureRef])
-          warns = n ((== WarningRef) . logRefType)
-          lints = n ((== LintRef) . logRefType)
+    -- Counts are scoped to the active project: only its build and lsp
+    -- producers' slices of the problems map (nothing active = no counts).
+    counts ws probs =
+      let refs = case prDir <$> activeProject ws of
+            Nothing   -> []
+            Just root -> concatMap
+                (\pfx -> M.findWithDefault [] (pfx <> T.pack root) probs)
+                ["build:", "lsp:"]
+          n p = length (filter p refs)
+          errs  = n ((== SevError) . pSeverity)
+          warns = n ((== SevWarning) . pSeverity)
+          lints = n ((== SevHint) . pSeverity)
       in (errs, warns, lints)
 
 -- | Error / warning / hint counts as severity-icon + number (no text labels).
@@ -146,9 +145,9 @@ countsSection countsD = divClass "sb-section sb-counts" $ do
 -- @+/-@ and, separately, commits-ahead-of-upstream @↑ +/-@.  Re-scans when the
 -- active project changes and on any local filesystem refresh; hidden when the
 -- active project is not a git checkout.
-gitStatusSection :: MonadWidget t m => Dynamic t IDE -> m ()
-gitStatusSection ide = do
-    activeDirD <- holdUniqDyn $ fmap (pjDir . pjKey) . view activeProject <$> ide
+gitStatusSection :: MonadWidget t m => Dynamic t Ws -> m ()
+gitStatusSection wsD = do
+    activeDirD <- holdUniqDyn $ fmap prDir . activeProject <$> wsD
     (giE, fireGi)          <- newTriggerEvent
     (refreshE, fireRefresh) <- newTriggerEvent
     liftIO . void $ registerLocalRefresh (const (fireRefresh ()))

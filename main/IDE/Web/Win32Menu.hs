@@ -33,10 +33,9 @@ import Foreign.Ptr (Ptr)
 
 import Language.Javascript.JSaddle.WebView2 (WebView2, webView2Hwnd)
 
-import IDE.Core.State (reflectIDE)
-import IDE.Project.WorkspaceFile (projectOpenPath)
+import IDE.App (appWorkspace, withApp)
 import IDE.Web.Command (Command(..), commandAction)
-import IDE.Web.IDERefStore (getGlobalIDERef)
+import IDE.Workspace (projectOpenPath)
 import IDE.Web.Commands (allCommands)
 import IDE.Web.Keybindings (currentKeymap, loadKeybindings)
 import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
@@ -127,9 +126,7 @@ foreign export ccall "leksah_open_project" leksah_open_project :: CString -> IO 
 leksah_open_project :: CString -> IO ()
 leksah_open_project cstr = do
   fp <- peekCString cstr
-  getGlobalIDERef >>= \case
-    Just ideR -> void $ reflectIDE (projectOpenPath fp) ideR
-    Nothing   -> return ()
+  withApp $ \app -> projectOpenPath (appWorkspace app) fp
 
 -- | The Underlay submenu (pane transparency, window snapping) is macOS-only
 -- window trickery; drop it.  Preferences stays in Edit — the Windows
@@ -180,9 +177,7 @@ leksah_menu_action tag = do
       -- No IDEAction: handled inside the reflex network by matching the keymap
       -- event stream (flipper, next/previous error, …) — inject via the bridge.
       Nothing  -> requestKeymapCommand cmd
-      Just act -> getGlobalIDERef >>= \case
-        Just ideR -> void $ reflectIDE act ideR
-        Nothing   -> return ()
+      Just act -> withApp act
     [] -> return ()
 
 -- | Render a key spec (@\"cmd+shift+d\"@) or a mac-symbol hint (@\"⌃B d\"@)

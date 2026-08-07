@@ -6,7 +6,7 @@
 -- @main/leksah-mac-menu.m@) from the shared 'IDE.Web.MenuModel.menus', so the
 -- macOS menu, the in-page web menubar, and the GTK app all run the same
 -- 'Command's.  When a menu item is chosen, Objective-C calls back into
--- Haskell, which runs that command's 'IDEAction' in the IDE.
+-- Haskell, which runs that command's 'AppAction' against the booted 'App'.
 --
 -- The @foreign import@/@foreign export@ layer lives in 'IDE.Web.MacGlue' (the
 -- compiled @leksah-mac-glue@ sublibrary — @foreign export@ is illegal in
@@ -19,7 +19,7 @@ module IDE.Web.MacMenu
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Lens ((^.), (?~), to)
+import Control.Lens ((^.), (?~))
 import Control.Monad (void, when)
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef, atomicModifyIORef')
@@ -37,9 +37,12 @@ import System.Posix.Process (exitImmediately)
 import Language.Javascript.JSaddle.WKWebView
        (WKWebView(..), jsaddleMainHTMLWithBaseURL, jsaddleWebViewInvalidate)
 
-import IDE.Core.State (reflectIDE, modifyIDE_, readIDE)
-import IDE.Core.Types (WindowId(..), activeWindow)
-import IDE.Project.WorkspaceFile (projectOpenPath)
+import IDE.App
+       (appConfig, appUi, appWorkspace, getGlobalApp, withApp)
+import IDE.Config (currentConfig)
+import IDE.Reactive (modifyCell)
+import IDE.Web.Model (WindowId(..), activeWindow)
+import IDE.Workspace (projectOpenPath)
 import IDE.Web.Claude (showLiveSession)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), registerClaudeStatusPush)
@@ -47,7 +50,6 @@ import IDE.Web.Command (Command(..), commandAction, commandGetToggleState)
 import IDE.Web.GhciMode
        (ghciMode, registerGhciCleanupNamed, registerGhciQuiesceNamed, setGhciStop,
         stopForGhci, phaseLog)
-import IDE.Web.IDERefStore (getGlobalIDERef)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.MacGlue
 import IDE.Web.Main (jsMain, indexHtml, mintWindowId)
@@ -80,9 +82,7 @@ import IDE.Web.TerminalInput (setActiveTerminalNotifier, setSplitActiveNotifier)
 -- projectOpen.  'projectOpenPath' handles both: a directory becomes a
 -- plain-directory project, a file is a project file (cabal.project / …).
 macOpenProject :: FilePath -> IO ()
-macOpenProject fp = getGlobalIDERef >>= \case
-  Just ideR -> void $ reflectIDE (projectOpenPath fp) ideR
-  Nothing   -> return ()
+macOpenProject fp = withApp $ \app -> projectOpenPath (appWorkspace app) fp
 
 -- | Called (via the glue) once 'c_newWindow' (or the restore path) has
 -- created an NSWindow + WKWebView for 'wid': attach a fresh jsaddle context so a
@@ -92,16 +92,16 @@ macAttachWindow :: Int -> Ptr () -> IO ()
 macAttachWindow widInt pWebView = do
   phaseLog $ "boot: macAttachWindow wid=" <> show widInt
              <> " webview=" <> show pWebView
-  getGlobalIDERef >>= \case
-    Nothing   -> phaseLog "boot: macAttachWindow: no global IDE ref!"
-    Just ideR -> do
+  getGlobalApp >>= \case
+    Nothing  -> phaseLog "boot: macAttachWindow: no global App!"
+    Just app -> do
       -- Remember the webview so the ghci teardown can invalidate its jsaddle
       -- context before the native side releases it (see 'installMacMenu').
       atomicModifyIORef' attachedWebViews (\ws -> (castPtr pWebView : ws, ()))
       -- Flags match the first window's (main/WKWebView.hs: newIDE False True):
       -- hide the web menubar, use the native title bar.
       jsaddleMainHTMLWithBaseURL indexHtml baseURL
-        (jsMain False True (Just (WindowId widInt)) ideR)
+        (jsMain False True (Just (WindowId widInt)) app)
         (WKWebView (castPtr pWebView))
       phaseLog $ "boot: macAttachWindow wid=" <> show widInt
                  <> " attach call returned"
@@ -135,9 +135,8 @@ invalidateAttachedWebViews = do
 -- process-wide bridges (close/save/find/…) and the flipper's in-place actions
 -- target it.
 macWindowActivated :: Int -> IO ()
-macWindowActivated widInt = getGlobalIDERef >>= \case
-  Nothing   -> return ()
-  Just ideR -> reflectIDE (modifyIDE_ (activeWindow ?~ WindowId widInt)) ideR
+macWindowActivated widInt = withApp $ \app ->
+  modifyCell (appUi app) (activeWindow ?~ WindowId widInt)
 
 -- | A window is closing: its wide0 tabs merge into the frontmost remaining
 -- window (its 'activeWindow', else the lowest-id one); closing the last window
@@ -201,13 +200,11 @@ macMenuAction tag = do
     -- View ▸ New Browser Pane opens a reflex browser pane; bridge it too.
     (CommandOpenBrowser:_)   -> requestOpenBrowser
     (cmd:_) -> case cmd ^. commandAction of
-      -- No IDEAction: the command is handled inside the reflex network by
+      -- No AppAction: the command is handled inside the reflex network by
       -- matching the keymap event stream (flipper, next/previous error,
       -- focus-alert, …) — inject it there via the bridge.
       Nothing  -> requestKeymapCommand cmd
-      Just act -> getGlobalIDERef >>= \case
-        Just ideR -> void $ reflectIDE act ideR
-        Nothing   -> return ()
+      Just act -> withApp act
     [] -> return ()
 
 -- | Report a menu item's live toggle state to the native validateMenuItem (so
@@ -219,8 +216,9 @@ macToggleState tag = do
   cmds <- readIORef commandsRef
   case drop tag cmds of
     (c:_) | Just f <- commandGetToggleState c ->
-      getGlobalIDERef >>= \case
-        Just ideR -> (\on -> if on then 1 else 0) <$> reflectIDE (readIDE (to f)) ideR
+      getGlobalApp >>= \case
+        Just app -> (\on -> if on then 1 else 0) . f
+                        <$> currentConfig (appConfig app)
         Nothing   -> return (-1)
     _ -> return (-1)
 
@@ -322,10 +320,8 @@ installMacMenu = do
   setOpenFolderPanelHandler c_showOpenFolderPanel
   -- File ▸ New Window: mint a WindowId (seeds an empty WebWindow), then ask the
   -- ObjC glue to create an NSWindow + WKWebView; it calls back macAttachWindow.
-  setNewWindowHandler $ getGlobalIDERef >>= \case
-    Nothing   -> return ()
-    Just ideR -> do
-      WindowId n <- mintWindowId ideR
+  setNewWindowHandler . withApp $ \app -> do
+      WindowId n <- mintWindowId app
       c_newWindow (fromIntegral n)
   -- Restore: create a native window for an already-seeded window id (no mint).
   setOpenWindowHandler (c_newWindow . fromIntegral)

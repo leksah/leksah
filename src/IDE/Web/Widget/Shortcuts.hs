@@ -34,11 +34,11 @@ import qualified Data.Text as T
 
 import Clay ((?), (-:), Css)
 
-import Reflex (Dynamic, Event, holdDyn, never, newTriggerEvent)
+import Reflex (Event, holdDyn, never, newTriggerEvent)
 import Reflex.Dom.Core (MonadWidget, dyn, elClass, text)
 
-import IDE.Core.State (IDE)
 import IDE.Web.Chord (toGlyphs)
+import IDE.Web.Ctx (Ctx)
 import IDE.Web.Command (commandImageAndTip)
 import IDE.Web.Events (ShortcutsEvents)
 import IDE.Web.Keybindings
@@ -124,9 +124,9 @@ describeBinding b = fromMaybe (csTitle (bSpec b)) $ do
 -- The pane widget: read-only; re-renders when the keybindings table reloads.
 shortcutsWidget
   :: forall t m. MonadWidget t m
-  => Dynamic t IDE
+  => Ctx t
   -> m (Event t ShortcutsEvents)
-shortcutsWidget _ide = do
+shortcutsWidget _ctx = do
   (kmE, fireKm) <- newTriggerEvent
   -- Fires immediately with the current table, then on every reload.
   liftIO (registerKeymapListener fireKm)

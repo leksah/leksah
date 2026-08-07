@@ -39,12 +39,11 @@ import qualified Data.Text as T (unpack)
 
 import GHC.Generics (Generic)
 
-import IDE.Core.Types
+import IDE.Paths (sidecarPath)
+import IDE.Web.Model
        (AIPaneRef(..), TallVisibility(..), FlipItem(..), LeafId(..),
         LeksahWindow(..), PaneContent(..), PaneKind(..), SplitOrientation(..),
-        SplitTree(..))
-import IDE.Utils.Files (getConfigFilePathForSave)
-import IDE.Web.Events (TabKey(..))
+        SplitTree(..), TabKey(..))
 
 -- | The current on-disk format version.  Bump when the shape changes so an old
 -- file is ignored rather than mis-read.
@@ -106,7 +105,7 @@ instance FromJSON FlipItem
 instance ToJSON AIPaneRef
 instance FromJSON AIPaneRef
 
--- TabKey is defined in IDE.Web.Events and TallVisibility in IDE.Core.Types; we
+-- TabKey and TallVisibility are defined in IDE.Web.Model; we
 -- serialize them here (orphan instances, internal use only).  An absent
 -- wsTall in an older file decodes as Nothing, so the format stays compatible.
 instance ToJSON TabKey
@@ -205,7 +204,7 @@ emptyWebSession =
     WebSession webSessionVersion [] [] Nothing Nothing Nothing Nothing
 
 webSessionPath :: IO FilePath
-webSessionPath = getConfigFilePathForSave "web-session.json"
+webSessionPath = sidecarPath "web-session.json"
 
 -- | Read the saved web session, or 'Nothing' if there is none, it can't be read,
 -- or it was written by an incompatible version.
