@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -64,11 +65,11 @@ import Language.Javascript.JSaddle (eval, liftJSM, valToText)
 
 import Reflex
        (Dynamic, Event, never, constDyn, current, gate, leftmost, ffilter,
-        ffor, foldDyn, fmapMaybe, tagPromptlyDyn, performEvent_, performEvent,
+        ffor, foldDyn, fmapMaybe, tagPromptlyDyn,
         delay, holdDyn, attachWithMaybe, newTriggerEvent, tag,
         tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (MonadWidget, (=:), elClass, elAttr, elDynAttr', elAttr', blank, text,
+       ((=:), elClass, elAttr, elDynAttr', elAttr', blank, text,
         domEvent, EventName(..), textInput, def, _element_raw,
         TextInputConfig, _textInput_value, _textInput_keypress,
         _textInputConfig_initialValue, _textInputConfig_setValue,
@@ -77,6 +78,7 @@ import Reflex.Dom.Core
 import IDE.Paths (sidecarPath)
 import IDE.Web.Events (BrowserEvents)
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), getNativeBrowserOps)
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 --
 -- The pane registry: ids + last driven URL, persisted as a tiny JSON sidecar

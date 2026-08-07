@@ -40,8 +40,10 @@ import qualified GHCJS.DOM.Types as DOM (Element)
 
 import Reflex.Dom.Core
        (Event, DomBuilder, DomBuilderSpace, GhcjsDomSpace, PostBuild,
-        PerformEvent, Performable, TriggerEvent, getPostBuild, performEvent_,
+        PerformEvent, Performable, TriggerEvent, getPostBuild,
         newTriggerEvent, ffor, elAttr', _element_raw)
+import Control.Monad.Exception (MonadException)
+import IDE.Web.Frame (performEvent_)
 
 -- | Fire an element's content-box @(width, height)@, in CSS pixels, whenever it
 -- changes.  @ResizeObserver@ delivers one callback on @observe@, so the 'Event'
@@ -51,7 +53,8 @@ import Reflex.Dom.Core
 -- 'Reflex.Dom.Widget.Resize.resizeDetector' does with its sensor divs); it is
 -- not disconnected when the widget is torn down.
 resizeObserver
-  :: (PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m))
+  :: (PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m),
+      MonadException (Performable m))
   => DOM.Element                     -- ^ the element to observe
   -> m (Event t (Double, Double))
 resizeObserver el = do
@@ -80,7 +83,8 @@ resizeObserver el = do
 -- observer never reports a half-known size.
 resizeObserverWithAttrs
   :: (DomBuilder t m, DomBuilderSpace m ~ GhcjsDomSpace, PostBuild t m,
-      PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m))
+      PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m),
+      MonadException (Performable m))
   => Map Text Text                   -- ^ attributes for the wrapping @div@
   -> m a                             -- ^ the embedded widget
   -> m (Event t (Double, Double), a)

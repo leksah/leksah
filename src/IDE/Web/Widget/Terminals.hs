@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -61,11 +62,10 @@ import Clay.Stylesheet (key)
 
 import Reflex
        (holdUniqDyn, listViewWithKey, leftmost, fmapMaybe, ffor, ffilter, holdDyn,
-        switchHold, switchDyn, never, constDyn, tagPromptlyDyn, newTriggerEvent,
-        performEvent_, getPostBuild, debounce, updated,
+        switchHold, switchDyn, never, constDyn, tagPromptlyDyn, newTriggerEvent, getPostBuild, debounce, updated,
         Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, el, elClass, elClass', elAttr, elAttr', elDynAttr', dyn,
+       (el, elClass, elClass', elAttr, elAttr', elDynAttr', dyn,
         blank, dynText, text, domEvent, EventName(..), (=:), textInput, attributes,
         widgetHold, textInputConfig_initialValue, _textInput_value,
         _textInput_keydown, _textInput_hasFocus, _element_raw)
@@ -83,6 +83,7 @@ import IDE.Web.Widget.Terminal
 import IDE.Web.Widget.Tree (treeItem)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | Shared positioning for the close control's contents: pinned to the right of
 -- its (relative) slot and vertically centred, out of normal flow so it overlays

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 -- | The AI-session picker's presentation: one row per session, and the JS that
@@ -22,12 +23,13 @@ import Clay
 import qualified Clay (display)
 
 import Reflex (Dynamic)
-import Reflex.Dom.Core (MonadWidget, elDynAttr, dynText, (=:))
+import Reflex.Dom.Core (elDynAttr, dynText, (=:))
 
 import System.FilePath (takeFileName)
 
 import IDE.Web.AISession (AIChoice(..), AIRow(..))
 import IDE.Web.Theme (dimColor)
+import IDE.Web.Frame (MonadWidget)
 
 -- The same three status colours every other Claude surface uses (the in-page
 -- traffic light's @statusLightJs@ and the workspace tree's badges) — kept

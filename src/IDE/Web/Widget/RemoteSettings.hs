@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -31,9 +32,9 @@ import Data.Text (Text)
 import qualified Data.Text as T (null, pack, strip)
 
 import Reflex
-       (constDyn, ffor, leftmost, current, performEvent_, tag)
+       (constDyn, ffor, leftmost, current, tag)
 import Reflex.Dom.Core
-       (elAttr, elAttr', textInput, text, MonadWidget, (=:), Event,
+       (elAttr, elAttr', textInput, text, (=:), Event,
         attributes, domEvent, EventName(..), _textInput_value,
         textInputConfig_initialValue)
 
@@ -42,6 +43,7 @@ import IDE.Reactive (readCell)
 import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Workspace (setProjectCmdPrefix, wsCell, wsCmdPrefix)
 import IDE.Ws.Types (ProjectKey(..))
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | Render the modal for a project.  Reads the project's current command
 -- prefix, lets the user edit it, and on Save persists it (empty clears it).

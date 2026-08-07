@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
@@ -51,10 +52,10 @@ import Clay ((?), (-:), Css)
 import Language.Javascript.JSaddle (jsg, js1, js4, liftJSM)
 
 import Reflex
-       (holdDyn, getPostBuild, performEvent_, newTriggerEvent, ffor, leftmost,
+       (holdDyn, getPostBuild, newTriggerEvent, ffor, leftmost,
         tag, current, updated, switchDyn, fmapMaybe, never, Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, elClass, elClass', elAttr', elDynAttr',
+       (divClass, elClass, elClass', elAttr', elDynAttr',
         elDynHtmlAttr', elDynClass, dynText, text, dyn, simpleList, domEvent,
         EventName(..), _element_raw, blank, (=:))
 
@@ -62,6 +63,7 @@ import IDE.Git (runGit, runGitBatch)
 import IDE.Web.Events (GitLogEvents)
 import IDE.Web.Widget.Editor (ensureMonacoLoaded)
 import IDE.Web.Widget.FileTree (GitStatus(..), gitClass)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | A parsed @git log@ entry.
 data Commit = Commit

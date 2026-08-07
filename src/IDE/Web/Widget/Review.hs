@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
@@ -48,11 +49,11 @@ import Clay ((?), (-:), Css)
 import Language.Javascript.JSaddle (jsg, js1, js4, liftJSM, eval, valToText)
 
 import Reflex
-       (Dynamic, Event, holdDyn, getPostBuild, performEvent_, newTriggerEvent,
+       (Dynamic, Event, holdDyn, getPostBuild, newTriggerEvent,
         ffor, leftmost, tag, current, updated, switchDyn, never, constDyn,
         simpleList, attach)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, elClass, elClass', elAttr', elDynAttr', dynText,
+       (divClass, elClass, elClass', elAttr', elDynAttr', dynText,
         dyn_, text, domEvent, EventName(..), _element_raw, blank, (=:),
         textInput, _textInput_value, attributes)
 
@@ -72,6 +73,7 @@ import IDE.Web.Worktree
         worktreeArchive)
 import IDE.Workspace (workspaceRemoveProject)
 import IDE.Ws.Types (ProjectKey(..))
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 --------------------------------------------------------------------------------
 -- Widget

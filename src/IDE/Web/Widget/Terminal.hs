@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -119,10 +120,10 @@ import qualified IDE.LSP as LSP
 
 import Reflex
        (attach, attachWith, current, ffor, getPostBuild, holdDyn, never,
-        leftmost, constDyn, fmapMaybe, switchHold, performEvent, performEvent_,
+        leftmost, constDyn, fmapMaybe, switchHold,
         newTriggerEvent, delay, Event)
 import Reflex.Dom.Core
-       (elAttr, elAttr', dyn, MonadWidget, (=:),
+       (elAttr, elAttr', dyn, (=:),
         _element_raw)
 
 import IDE.Web.Widget.ResizeObserver (resizeObserverWithAttrs)
@@ -159,6 +160,7 @@ import IDE.Web.ReplTmux
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 terminalCss :: Css
 terminalCss = do

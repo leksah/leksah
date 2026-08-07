@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -53,10 +54,10 @@ import Clay
 import IDE.Web.Theme (dimColor)
 
 import Reflex
-       (ffor, never, holdDyn, newTriggerEvent, performEvent_, getPostBuild,
+       (ffor, never, holdDyn, newTriggerEvent, getPostBuild,
         Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, el, elClass, elAttr', dyn, dynText, text,
+       (divClass, el, elClass, elAttr', dyn, dynText, text,
         domEvent, EventName(..), (=:))
 
 import System.Directory (findExecutable)
@@ -68,6 +69,7 @@ import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.RemoteTermRequest (requestLocalTerm, requestRemoteTerm)
 import IDE.Web.ReplTmux (ensureCommandWindow, ensureRemoteWindow)
 import IDE.Web.Widget.Tree (treeItem, treeSelect, treeSelect')
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | One node of the top-level flake-outputs listing: a category and its
 -- immediate attribute names.  The shape parses straight from the JSON.

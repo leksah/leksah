@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -44,11 +45,11 @@ import System.FilePath (takeExtension, (</>), dropTrailingPathSeparator)
 
 import Reflex
        (Dynamic, listViewWithKey, Event, never, ffilter, updated, leftmost,
-        tag, current, getPostBuild, performEvent, performEvent_, holdDyn,
+        tag, current, getPostBuild, holdDyn,
         newTriggerEvent, holdUniqDyn, ffor, constDyn, zipDynWith,
         tickLossyFromPostBuildTime, sample)
 import Reflex.Dom.Core
-       (MonadWidget, elAttr, elDynAttr, (=:), text, el, elClass, elDynClass,
+       (elAttr, elDynAttr, (=:), text, el, elClass, elDynClass,
         dynText, dyn, domEvent, EventName(..))
 
 import IDE.Web.Events (FileEvents, FileEvent(..))
@@ -64,6 +65,7 @@ import IDE.Web.Claude
         copySessionId, revealSession, deleteSession)
 import IDE.Web.Worktree (requestNewWorktree)
 import IDE.Web.ClaudeQueue (requestTaskQueue, requestPlanReview)
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 -- | Sub-directories and files of a directory, names only.
 --

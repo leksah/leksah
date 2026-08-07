@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -54,10 +55,10 @@ import IDE.Web.LocalRefresh (registerLocalRefresh)
 import Reflex
        (holdDyn, holdUniqDyn, listViewWithKey, never, ffor, switchHold,
         fmapMaybe, ffilter, leftmost, tag, current, updated,
-        newTriggerEvent, performEvent_, debounce,
+        newTriggerEvent, debounce,
         constDyn, getPostBuild, Dynamic, Event)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, el, elClass, elClass', elDynAttr', elDynClass,
+       (divClass, el, elClass, elClass', elDynAttr', elDynClass,
         dynText, text, dyn, domEvent, EventName(..), (=:))
 
 import IDE.Web.Ctx (Ctx(..))
@@ -66,6 +67,7 @@ import IDE.Workspace (prDir, wsPath, wsProjects)
 import IDE.Web.Widget.FileTree (GitStatus(..), gitClass, gitBadge)
 import IDE.Web.Widget.Findbar (findSelection)
 import IDE.Web.Widget.Tree (scrollIntoViewNearest)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | A changed file: its absolute path, git status, and (where git can report
 -- them) the number of added/deleted lines.

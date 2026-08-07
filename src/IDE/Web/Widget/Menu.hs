@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -18,7 +19,7 @@ import qualified Clay (display, none)
 import Reflex (leftmost, never, Event, Dynamic, tag, current, attachWith)
 
 import Reflex.Dom.Core
-       (dynText, el', el, elClass, divClass, text, MonadWidget,
+       (dynText, el', el, elClass, divClass, text,
         HasDomEvent(..), EventName(..))
 
 import IDE.Web.Theme
@@ -27,6 +28,7 @@ import IDE.Web.Command (Command)
 import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec)
 import IDE.Web.Widget.Tree (clickMods)
 import IDE.Web.SplitOpenRequest (SplitTarget, requestSplitOpen)
+import IDE.Web.Frame (MonadWidget)
 
 menuCss :: Css
 menuCss = do

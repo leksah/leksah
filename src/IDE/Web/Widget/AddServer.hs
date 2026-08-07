@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -41,16 +42,17 @@ import Data.Text.Encoding.Error (lenientDecode)
 import System.Exit (ExitCode(..))
 
 import Reflex
-       (constDyn, ffor, leftmost, current, performEvent_, holdDyn,
+       (constDyn, ffor, leftmost, current, holdDyn,
         fmapMaybe, tag, newTriggerEvent, updated)
 import Reflex.Dom.Core
-       (elAttr, elAttr', textInput, text, dynText, MonadWidget, (=:),
+       (elAttr, elAttr', textInput, text, dynText, (=:),
         Event, attributes, domEvent, EventName(..), _textInput_value)
 
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config
        (Config(..), RemoteC(..), currentConfig, saveConfig)
 import IDE.Utils.RemoteExec (runSsh)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | Render the modal.  Returns an 'Event' that fires (once) when the caller
 -- should tear the modal down: on Cancel, or after a server is successfully

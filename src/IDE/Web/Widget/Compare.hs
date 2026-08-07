@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
@@ -39,10 +40,10 @@ import Clay ((?), (-:), Css)
 import Language.Javascript.JSaddle (jsg, js1, js4, liftJSM)
 
 import Reflex
-       (Dynamic, Event, holdDyn, getPostBuild, performEvent_, newTriggerEvent,
+       (Dynamic, Event, holdDyn, getPostBuild, newTriggerEvent,
         ffor, leftmost, tag, current, updated, never, attach)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, elClass, elClass', elAttr', elDynAttr', dynText,
+       (divClass, elClass, elClass', elAttr', elDynAttr', dynText,
         dyn_, text, domEvent, EventName(..), _element_raw, blank, (=:))
 
 import IDE.Web.ClaudeQueue (QueueTask(..), queueList)
@@ -51,6 +52,7 @@ import IDE.Web.Widget.Editor (ensureMonacoLoaded)
 import IDE.Web.Widget.GitLog (DiffFile(..), gitShowFile)
 import IDE.Web.Widget.Review (reviewFiles)
 import IDE.Web.Worktree (ReviewInfo(..), scanReview, requestReview)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | One approach column's data, resolved off-frame per scan.
 data Approach = Approach

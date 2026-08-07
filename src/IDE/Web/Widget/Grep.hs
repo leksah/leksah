@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -35,13 +36,14 @@ import Clay
 import Reflex
        (Dynamic, Event, switchDyn, leftmost, current, tag)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, elClass, elDynAttr', simpleList, dynText,
+       (divClass, elClass, elDynAttr', simpleList, dynText,
         domEvent, EventName(..), (=:))
 
 import IDE.Web.Theme (selectionColor, dimColor)
 import IDE.Problems.Types (Loc(..), Pos(..), pointRange)
 import IDE.Web.Events (GrepEvents(..), FindbarEvents)
 import IDE.Web.Widget.Findbar (findSelection)
+import IDE.Web.Frame (MonadWidget)
 
 -- | One match from a workspace grep: the (absolute) file, 1-based line, and the
 -- text of the matching line.

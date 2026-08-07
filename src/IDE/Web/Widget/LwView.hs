@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -28,10 +29,10 @@ import qualified Data.Text as T
 
 import Reflex
        (Dynamic, Event, current, delay, ffilter, ffor, fmapMaybe,
-        getPostBuild, holdUniqDyn, leftmost, newTriggerEvent, performEvent_,
+        getPostBuild, holdUniqDyn, leftmost, newTriggerEvent,
         tag, updated)
 import Reflex.Dom.Core
-       (MonadWidget, blank, dyn_, elAttr', elDynAttr, elDynAttr',
+       (blank, dyn_, elAttr', elDynAttr, elDynAttr',
         listWithKey, _element_raw, (=:))
 import Language.Javascript.JSaddle
        (JSM, eval, fun, js, js0, js1, js2, jsg, jss, liftJSM, valIsNull,
@@ -50,6 +51,7 @@ import IDE.Web.SplitLayout
        (leafRects, LeafRect(..), treeDividers, NativeDivider(..), resizeNode,
         subtreeRects, treeLeafIds)
 import IDE.Web.TerminalInput (registerTerminalFocus)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | Renderer for a SESSIONLESS leksah window (native views only — no tmux
 -- windows yet, so no control client): the same absolutely-positioned leaf

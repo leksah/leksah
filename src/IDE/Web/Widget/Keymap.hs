@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 -- | The DOM keydown handler: matches the resolved keybindings table
@@ -21,7 +22,7 @@ import qualified Data.Set as S (Set, fromList)
 
 import Reflex (Event, ffilter, leftmost)
 import Reflex.Dom.Core
-       (DomBuilderSpace, Element, EventResult, Key(..), MonadWidget,
+       (DomBuilderSpace, Element, EventResult, Key(..),
         keyCodeLookup, wrapDomEvent, wrapDomEventMaybe)
 
 import GHCJS.DOM (currentDocumentUnchecked)
@@ -36,6 +37,7 @@ import IDE.Web.Events (KeymapEvents(..))
 import IDE.Web.Keybindings
        (Binding(..), CommandSpec(..), Keymap, When(..),
         registerKeymapListener)
+import IDE.Web.Frame (MonadWidget)
 
 -- | The keydown lookup table for one front end: exact modifier set + trigger
 -- key → the bound command.

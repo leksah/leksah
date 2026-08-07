@@ -148,6 +148,7 @@ library leksah-nogtk
         IDE.Web.AIContextRequest
         IDE.Web.ScreenshotRequest
         IDE.Web.Attach
+        IDE.Web.Frame
         IDE.Web.Bridge
         IDE.Web.BridgeStore
         IDE.Web.Events
@@ -266,6 +267,7 @@ library leksah-nogtk
         dependent-sum >=0.4 && <0.8,
         dependent-sum-template >=0.0.0.6 && <0.3,
         directory >=1.0.0.2 && <1.4,
+        exception-transformers >=0.4 && <0.5,
         executable-path >=0.0.3 && <0.1,
         extra >=1.6.12 && <1.9,
         filepath >=1.1.0.1 && <1.6,

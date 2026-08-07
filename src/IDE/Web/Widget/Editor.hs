@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -50,11 +51,11 @@ import Language.Javascript.JSaddle
 
 import Reflex
        (ffilter, leftmost, attach, holdUniqDyn, foldDyn, fanMap, select,
-        fmapMaybe, getPostBuild, performEvent, performEvent_, ffor, constDyn,
+        fmapMaybe, getPostBuild, ffor, constDyn,
         switchHold, never, Dynamic, Event, fan, current, updated, holdDyn,
         newTriggerEvent, delay, gate, sample)
 import Reflex.Dom.Core
-       ((=:), MonadWidget, elAttr, elAttr', dyn, _element_raw, blank)
+       ((=:), elAttr, elAttr', dyn, _element_raw, blank)
 
 import IDE.Config (Config(..), Editor(..), EditorC(..))
 import IDE.Paths (getDataDir)
@@ -73,6 +74,7 @@ import qualified IDE.LSP as LSP
 import System.Exit (ExitCode(..))
 import System.FilePath (isAbsolute, takeDirectory, takeFileName, (</>))
 import IDE.Git (runGitBatch)
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 editorCss :: Css
 editorCss = do

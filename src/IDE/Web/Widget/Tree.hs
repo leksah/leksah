@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -34,12 +35,11 @@ import Language.Javascript.JSaddle
        (liftJSM, toJSVal, obj, jss, js1, fun, jsg)
 
 import Reflex
-       (constDyn, switchHold, leftmost, tag, ffor, performEvent_,
+       (constDyn, switchHold, leftmost, tag, ffor,
         holdUniqDyn, Dynamic, Event, never, ffilter, updated, getPostBuild,
         holdDyn, current)
 import Reflex.Dom.Core
-       (inputElementConfig_setChecked, EventResult, Element, elClass',
-        MonadWidget, DomBuilderSpace, dyn, (=:), elDynAttr, divClass, el,
+       (inputElementConfig_setChecked, EventResult, Element, elClass', DomBuilderSpace, dyn, (=:), elDynAttr, divClass, el,
         inputElement, inputElementConfig_elementConfig,
         elementConfig_initialAttributes, domEvent, EventName(..),
         _element_raw, wrapDomEvent)
@@ -58,6 +58,7 @@ import Reflex.Dom.Widget.SVG.Types
         Height(..), ViewBox(..), _M, _PosX, _PosY, _l, _z)
 
 import IDE.Web.Widget.ContextMenu (contextMenu)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 simpleSvgPath
   :: MonadWidget t m

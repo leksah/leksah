@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -51,7 +52,6 @@ module IDE.Web.Widget.TerminalCC
 
 import Data.Text (Text)
 import Reflex (Dynamic, Event)
-import Reflex.Dom.Core (MonadWidget)
 import IDE.Web.Ctx (Ctx)
 import IDE.Web.Events (TerminalEvents)
 import IDE.Web.Model (TabKey)
@@ -104,10 +104,10 @@ import Text.Read (readMaybe)
 import Reflex
        (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe,
         foldDyn, delay, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost,
-        never, newTriggerEvent, performEvent, performEvent_, switchHold,
+        never, newTriggerEvent, switchHold,
         tag, updated)
 import Reflex.Dom.Core
-       (MonadWidget, blank, divClass, domEvent, dyn, dyn_, elAttr,
+       (blank, divClass, domEvent, dyn, dyn_, elAttr,
         elAttr', elDynAttr, elDynAttr', listWithKey, text,
         widgetHold, _element_raw, EventName(Click, Keydown), (=:))
 import Language.Javascript.JSaddle
@@ -144,6 +144,7 @@ import IDE.Web.ThreadPriority (ThreadPriority(..), forkPriorityThread)
 import IDE.Web.Widget.Menu (menu)
 import qualified IDE.LSP as LSP
 import qualified Language.Javascript.JSaddle.Terminal.Protocol as P
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 -- | Leksah-window widget: renders ONE leksah window (a wide0 tab) — its
 -- native split tree of panes, each pane a whole tmux window (its tmux panes

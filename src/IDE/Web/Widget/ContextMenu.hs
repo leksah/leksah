@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -34,7 +35,8 @@ import Reflex
         fmapMaybe)
 import Reflex.Dom.Core
        (wrapDomEventMaybe, elAttr', wrapDomEvent, EventResult,
-        Element, MonadWidget, DomBuilderSpace, dyn, (=:), _element_raw)
+        Element, DomBuilderSpace, dyn, (=:), _element_raw)
+import IDE.Web.Frame (MonadWidget)
 
 contextMenuCss :: Css
 contextMenuCss =

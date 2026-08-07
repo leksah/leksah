@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE LambdaCase #-}
@@ -39,10 +40,10 @@ import Language.Javascript.JSaddle (jsg, js0, js3, liftJSM)
 
 import Reflex
        (constDyn, Dynamic, toggle, ffor, ffilter, tagPromptlyDyn,
-        updated, leftmost, gate, current, performEvent_, holdDyn, foldDyn,
+        updated, leftmost, gate, current, holdDyn, foldDyn,
         fmapMaybe)
 import Reflex.Dom.Core
-       (elDynAttr, elDynAttr', textInput, text, MonadWidget, (=:),
+       (elDynAttr, elDynAttr', textInput, text, (=:),
         Event, attributes, domEvent, EventName(..), blank,
         _textInput_value, _textInput_keypress)
 
@@ -50,6 +51,7 @@ import IDE.Web.Theme
        (selectionColor, fgColor, accentHoverColor,
         barTopColor, barBottomColor, inputTopColor, inputBottomColor)
 import IDE.Web.Events (FindbarEvents(..), TabKey(..))
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 findbarCss :: Css
 findbarCss = do

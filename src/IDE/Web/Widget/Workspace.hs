@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -68,11 +69,10 @@ import Clay.Stylesheet (key)
 
 import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffor,
-        current, getPostBuild, holdUniqDyn, holdDyn, performEvent,
-        performEvent_, newTriggerEvent, Dynamic, updated, delay, tag,
+        current, getPostBuild, holdUniqDyn, holdDyn, newTriggerEvent, Dynamic, updated, delay, tag,
         Event, never, fmapMaybe, tagPromptlyDyn, sample)
 import Reflex.Dom.Core
-       (elDynClass, MonadWidget, elAttr, dyn, button, (=:), elDynAttr,
+       (elDynClass, elAttr, dyn, button, (=:), elDynAttr,
         divClass, text, el, elClass, dynText, domEvent, EventName(..))
 
 import IDE.Web.Theme
@@ -111,6 +111,7 @@ import IDE.Web.Widget.Tree
 import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.GitInfo (prForBranch)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 workspaceCss :: Css
 workspaceCss = do

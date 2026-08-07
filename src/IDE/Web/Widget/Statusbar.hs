@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE LambdaCase #-}
@@ -26,7 +27,7 @@ import Reflex
        (holdUniqDyn, holdDyn, never, Dynamic, Event, current, updated, tag,
         leftmost, ffor)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, dynText, dyn_, getPostBuild, performEvent_,
+       (divClass, dynText, dyn_, getPostBuild,
         newTriggerEvent, domEvent, EventName(Click), elClass', elClass,
         elAttr, (=:), text)
 
@@ -42,6 +43,7 @@ import IDE.Web.GitInfo
 import IDE.Web.LocalRefresh (registerLocalRefresh)
 import IDE.Web.Theme (barTopColor, barBottomColor, fgMutedColor)
 import IDE.Web.Events (StatusbarEvents)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 statusbarCss :: Css
 statusbarCss = do

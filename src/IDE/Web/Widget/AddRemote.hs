@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -32,10 +33,10 @@ import Data.Text (Text)
 import qualified Data.Text as T (null, pack, strip)
 
 import Reflex
-       (constDyn, Dynamic, ffor, leftmost, current, performEvent_, holdDyn,
+       (constDyn, Dynamic, ffor, leftmost, current, holdDyn,
         fmapMaybe, tag, newTriggerEvent)
 import Reflex.Dom.Core
-       (elAttr, elAttr', textInput, text, dynText, dyn_, MonadWidget, (=:),
+       (elAttr, elAttr', textInput, text, dynText, dyn_, (=:),
         Event, attributes, domEvent, EventName(..), blank, _textInput_value)
 
 import IDE.App (appWorkspace, getGlobalApp)
@@ -43,6 +44,7 @@ import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Workspace (projectOpenKey, setProjectCmdPrefix)
 import IDE.Ws.Registry (detectProject)
 import IDE.Ws.Types (defaultEffects)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | Render the modal.  Returns an 'Event' that fires (once) when the caller
 -- should tear the modal down: on Cancel, or after a project is successfully

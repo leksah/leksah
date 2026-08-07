@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -142,15 +143,14 @@ import GHCJS.DOM.Types (askJSM)
 
 import Reflex
        (switchDyn, switchHold, foldDyn, ffor,
-        Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never,
-        performEvent_, getPostBuild, performEvent, select, fan, fanMap,
+        Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never, getPostBuild, select, fan, fanMap,
         fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate, zipDyn,
         sample, constDyn,
         tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
         text, blank, domEvent, EventName(..),
-        _element_raw, (=:), MonadWidget)
+        _element_raw, (=:))
 
 import IDE.Web.Attach (mainWidgetWithCssGuarded)
 
@@ -345,6 +345,7 @@ import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.LwView (sessionlessLwWidget)
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 -- > :fork 1 IDE.Web.Main.develMain
 

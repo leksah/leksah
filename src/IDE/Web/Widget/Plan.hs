@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
@@ -33,10 +34,10 @@ import GHCJS.DOM.Element (setAttribute)
 import Language.Javascript.JSaddle (liftJSM)
 
 import Reflex
-       (Event, holdDyn, getPostBuild, performEvent_, newTriggerEvent,
+       (Event, holdDyn, getPostBuild, newTriggerEvent,
         ffor, tag, current, never, constDyn, leftmost)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, elClass, elAttr', dynText, blank,
+       (divClass, elClass, elAttr', dynText, blank,
         text, domEvent, EventName(..), (=:), textInput, _textInput_value,
         _element_raw, TextInputConfig, _textInputConfig_attributes)
 
@@ -45,6 +46,7 @@ import Data.Default (def)
 import IDE.Web.Claude (claudeLatestPlan, mruClaudePane)
 import IDE.Web.ReplTmux (sendKeysTo)
 import IDE.Web.Events (PlanEvents)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 planWidget
   :: forall t m . MonadWidget t m

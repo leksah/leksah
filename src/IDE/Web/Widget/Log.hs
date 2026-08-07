@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -33,10 +34,9 @@ import Language.Javascript.JSaddle
        (JSM, JSVal, js, js1, js2, jsg, jss, liftJSM, new, pToJSVal,
         valToNumber)
 import Reflex
-       (Event, attachPromptlyDyn, ffor, holdDyn, never, newTriggerEvent,
-        performEvent, performEvent_)
+       (Event, attachPromptlyDyn, ffor, holdDyn, never, newTriggerEvent)
 import Reflex.Dom.Core
-       (MonadWidget, (=:), elAttr', getPostBuild, _element_raw)
+       ((=:), elAttr', getPostBuild, _element_raw)
 
 import IDE.App (App, appBuildLog)
 import IDE.BuildLog (blAttach)
@@ -44,6 +44,7 @@ import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Events (FindbarEvents, LogEvents)
 import IDE.Web.Model (WindowId)
 import IDE.Web.Widget.ResizeObserver (resizeObserverWithAttrs)
+import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 
 logCss :: Css
 logCss =

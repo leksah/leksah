@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -49,10 +50,10 @@ import Clay.Stylesheet (key)
 
 import Reflex
        (Dynamic, Event, ffor, getPostBuild, holdDyn, holdUniqDyn, leftmost,
-        listViewWithKey, never, newTriggerEvent, performEvent_, switchHold,
+        listViewWithKey, never, newTriggerEvent, switchHold,
         tagPromptlyDyn, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (MonadWidget, blank, divClass, domEvent, dyn, dyn_, dynText, el, elAttr,
+       (blank, divClass, domEvent, dyn, dyn_, dynText, el, elAttr,
         elAttr', elClass, elClass', elDynAttr, elDynAttr', elDynHtmlAttr',
         text, EventName(..), (=:), _element_raw)
 import Language.Javascript.JSaddle (liftJSM, jsg, js1)
@@ -65,6 +66,7 @@ import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
         dimColor, dimOpacity, fgColor, hoverColor, selectionColor)
 import IDE.Web.Widget.Tree (treeItem)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | The pane.  Polls 'agentForest' (cheap — it reads the status poll's cache),
 -- and renders it with keyed lists so a poll that changes one agent's state

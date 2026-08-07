@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -35,7 +36,7 @@ import qualified Data.Text as T
 import Clay ((?), (-:), Css)
 
 import Reflex (Event, holdDyn, never, newTriggerEvent)
-import Reflex.Dom.Core (MonadWidget, dyn, elClass, text)
+import Reflex.Dom.Core (dyn, elClass, text)
 
 import IDE.Web.Chord (toGlyphs)
 import IDE.Web.Ctx (Ctx)
@@ -45,6 +46,7 @@ import IDE.Web.Keybindings
        (Binding(..), CommandSpec(..), Keymap, When(..),
         registerKeymapListener)
 import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec, renderedMenus)
+import IDE.Web.Frame (MonadWidget)
 
 -- | One line of a group: a shortcut chord (already rendered to display glyphs)
 -- and what it does; or a sub-heading dividing a group (nested menus).

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -34,8 +35,7 @@ import Reflex
        (ffor, foldDyn, holdDyn, leftmost, never, newTriggerEvent,
         switchHold, Event)
 import Reflex.Dom.Core
-       (text, el, el', elAttr', dyn, wrapDomEventMaybe, _element_raw,
-        MonadWidget, (=:), domEvent, EventName(..))
+       (text, el, el', elAttr', dyn, wrapDomEventMaybe, _element_raw, (=:), domEvent, EventName(..))
 
 import IDE.Web.Theme
        (selectionColor, barTopColor, barBottomColor,
@@ -44,6 +44,7 @@ import IDE.Web.Events (MenubarEvents(..))
 import IDE.Web.Keybindings (registerKeymapListener)
 import IDE.Web.MenuModel (MenuItem, renderedMenus)
 import IDE.Web.Widget.Menu (menuItems)
+import IDE.Web.Frame (MonadWidget)
 
 menubarCss :: Css
 menubarCss = do

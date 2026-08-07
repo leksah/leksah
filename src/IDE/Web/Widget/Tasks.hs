@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
@@ -26,11 +27,11 @@ import Text.Read (readMaybe)
 import Clay ((?), (-:), Css)
 
 import Reflex
-       (Event, holdDyn, getPostBuild, performEvent_, newTriggerEvent,
+       (Event, holdDyn, getPostBuild, newTriggerEvent,
         ffor, leftmost, tag, current, never, constDyn, simpleList,
         tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (MonadWidget, divClass, elClass, elAttr', dynText, dyn_, text,
+       (divClass, elClass, elAttr', dynText, dyn_, text,
         domEvent, EventName(..), (=:), textInput, _textInput_value,
         TextInputConfig, _textInputConfig_initialValue,
         _textInputConfig_attributes)
@@ -40,6 +41,7 @@ import IDE.Web.ClaudeQueue
        (QueueTask(..), queueSlots, queueList, queueAdd, queueDelete,
         queueStartNow, requestCompare)
 import IDE.Web.Worktree (requestReview)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 tasksWidget
   :: forall t m . MonadWidget t m

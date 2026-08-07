@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module IDE.Web.Widget.Flipper
@@ -28,10 +29,10 @@ import Reflex
         tag, gate, Dynamic, Event, MonadHold(..), Reflex(..),
         ffilter, fmapMaybe)
 import Reflex.Dom.Core
-       (el, elDynAttr', (=:), elDynAttr, divClass,
-        MonadWidget, HasDomEvent(..), EventName(..))
+       (el, elDynAttr', (=:), elDynAttr, divClass, HasDomEvent(..), EventName(..))
 
 import IDE.Web.Theme (selectionColor, bgSunkenColor, dropShadowColor, fgColor)
+import IDE.Web.Frame (MonadWidget)
 
 flipperCss :: Css
 flipperCss = do

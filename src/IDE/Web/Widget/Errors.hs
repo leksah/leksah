@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -37,7 +38,7 @@ import Reflex
         current, fan, foldDyn, ffilter)
 import Reflex.Dom.Core
        (elDynClass', virtualList, elAttr, elClass',
-        dynText, elDynAttr, text, MonadWidget,
+        dynText, elDynAttr, text,
         (=:), Event, domEvent, EventName(..), _element_raw)
 
 import IDE.Web.Widget.ResizeObserver (resizeObserver)
@@ -50,6 +51,7 @@ import IDE.Web.Command (_CommandNextError, _CommandPreviousError)
 import IDE.Web.Events
        (IDEWidget(..), ErrorsEvents(..), FindbarEvents, _KeymapCommand)
 import IDE.Web.Widget.Findbar (findSelection)
+import IDE.Web.Frame (MonadWidget)
 
 errorsCss :: Css
 errorsCss = do

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -35,12 +36,13 @@ import Reflex
        (foldDyn, holdDyn, holdUniqDyn, listViewWithKey, listWithKey, switchDyn,
         mergeMap, mergeWith, leftmost, attachWith, attachWithMaybe, current,
         ffilter, fmapMaybe, constDyn, Dynamic, sample, updated, never,
-        switchHold, ffor, performEvent_)
+        switchHold, ffor)
 import Reflex.Dom.Core
-       (elDynAttr', elAttr, blank, MonadWidget, (=:),
+       (elDynAttr', elAttr, blank, (=:),
         divClass, Event, domEvent, EventName(..), dyn, _element_raw)
 
 import IDE.Web.Theme (selectionColor, dimColor, dimOpacity, bgColor, accentHoverColor, fgColor, onAccentColor)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 tabsCss :: Css
 tabsCss = do

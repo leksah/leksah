@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module IDE.Web.Widget.Toolbar
@@ -17,7 +18,7 @@ import Clay
 
 import Reflex (constDyn, holdUniqDyn, leftmost, ffor, Dynamic)
 import Reflex.Dom.Core
-       (elDynAttr', text, dynText, MonadWidget, (=:), elAttr, divClass,
+       (elDynAttr', text, dynText, (=:), elAttr, divClass,
         Event, domEvent, EventName(..))
 
 import IDE.Web.Theme (selectionColor, selectionColorFaint, dimOpacity, surfaceHiColor, accentHoverColor)
@@ -34,6 +35,7 @@ import IDE.Web.Command (commandImageAndTip, commandToggleTallPane
   , commandToggleShowIgnored, commandToggleShowHidden
   , commandGetToggleState
   , commandClaudeNew)
+import IDE.Web.Frame (MonadWidget)
 
 toolbarCss :: Css
 toolbarCss = do

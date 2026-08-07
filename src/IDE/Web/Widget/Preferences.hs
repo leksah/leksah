@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -34,9 +35,9 @@ import Control.Monad.IO.Class (liftIO)
 
 import Reflex
        (Dynamic, Event, constDyn, current, updated, tag, leftmost, ffor,
-        fmapMaybe, holdUniqDyn, sample, newTriggerEvent, performEvent_)
+        fmapMaybe, holdUniqDyn, sample, newTriggerEvent)
 import Reflex.Dom.Core
-       (MonadWidget, DomBuilderSpace, EventResult, InputElement,
+       (DomBuilderSpace, EventResult, InputElement,
         TextAreaElement, AttributeName, elClass, elDynAttr, elDynAttr', text,
         (=:), domEvent, EventName(Click), blank, inputElement,
         _inputElement_value, inputElementConfig_initialValue,
@@ -53,6 +54,7 @@ import IDE.Config
 import IDE.Web.ColorPick (hasColorPickImpl, requestColorPick)
 import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Events (PreferencesEvents(..))
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 preferencesWidget
   :: forall t m. MonadWidget t m

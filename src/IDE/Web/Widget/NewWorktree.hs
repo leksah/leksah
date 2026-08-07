@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -27,16 +28,17 @@ import Data.Text (Text)
 import qualified Data.Text as T (null, pack, strip)
 
 import Reflex
-       (constDyn, ffor, leftmost, current, performEvent_, holdDyn,
+       (constDyn, ffor, leftmost, current, holdDyn,
         fmapMaybe, tag, newTriggerEvent)
 import Reflex.Dom.Core
-       (elAttr, elAttr', textInput, text, dynText, MonadWidget, (=:),
+       (elAttr, elAttr', textInput, text, dynText, (=:),
         Event, attributes, domEvent, EventName(..), _textInput_value)
 
 import IDE.App (appWorkspace, withApp)
 import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.Worktree (newClaudeWorktree, slugify)
 import IDE.Workspace (projectOpenPath)
+import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | Render the modal for starting a Claude session in a fresh worktree of the
 -- repo containing @dir@.  Returns an 'Event' that fires (once) when the caller
