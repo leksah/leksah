@@ -14,11 +14,12 @@ module IDE.Web.Widget.Log
   , logWidget
   ) where
 
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString (ByteString)
 import Data.IORef
-       (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+       (IORef, atomicModifyIORef', modifyIORef', newIORef, readIORef,
+        writeIORef)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text (Text)
@@ -29,7 +30,8 @@ import System.IO.Unsafe (unsafePerformIO)
 import Clay (height, pct, (?), Css)
 import Control.Lens ((^.))
 import Language.Javascript.JSaddle
-       (js, js1, js2, jsg, jss, liftJSM, new, pToJSVal)
+       (JSM, JSVal, js, js1, js2, jsg, jss, liftJSM, new, pToJSVal,
+        valToNumber)
 import Reflex
        (Event, attachPromptlyDyn, ffor, holdDyn, never, newTriggerEvent,
         performEvent, performEvent_)
@@ -72,6 +74,24 @@ logWidget ctx _findE _moveE _activateE = do
     -- Live chunks arrive on a service thread; a trigger event carries the
     -- decoded text into this window's frame without blocking the writer.
     (chunkE, fireChunk) <- newTriggerEvent
+    -- Subscribe BEFORE building the terminal, and never behind anything
+    -- that can throw: this pane is usually built in a hidden tab, and the
+    -- setup below can fail there.  Output that arrives before the terminal
+    -- exists (the history replay always does) waits in 'pendingRef'.
+    pendingRef <- liftIO $ newIORef []
+    liftIO $ do
+        decodeRef <- newIORef (TE.streamDecodeUtf8With TE.lenientDecode)
+        let deliver bs = do
+                decode <- readIORef decodeRef
+                let TE.Some t _ cont = decode bs
+                writeIORef decodeRef cont
+                fireChunk t
+        (history, detach) <- blAttach (appBuildLog app) deliver
+        -- Replace any previous pane's feed for this window.
+        old <- atomicModifyIORef' logFeeds $ \m ->
+            (M.insert wid detach m, M.lookup wid m)
+        sequence_ old
+        deliver history
     postBuild <- getPostBuild
     termE <- performEvent $ ffor postBuild $ \_ -> liftJSM $ do
         term <- new (jsg ("Terminal" :: Text)) ()
@@ -90,36 +110,34 @@ logWidget ctx _findE _moveE _activateE = do
         fit <- new (jsg ("FitAddon" :: Text) ^. js ("FitAddon" :: Text)) ()
         _ <- term ^. js1 ("loadAddon" :: Text) fit
         _ <- term ^. js1 ("open" :: Text) rawEl
-        _ <- fit ^. js1 ("fit" :: Text) ()
+        fitIfSized rawEl fit
         -- Find-bar search + clickable file tokens, same registry as the
         -- shell terminals.
         _ <- jsg ("LeksahCM" :: Text)
                 ^. js2 ("loadTerminalSearch" :: Text) term rawEl
-        -- Attach to the service: replay history, then follow.  A stateful
-        -- UTF-8 decoder spans chunk boundaries (a multi-byte glyph can
-        -- split across two reads).
-        liftIO $ do
-            decodeRef <- newIORef (TE.streamDecodeUtf8With TE.lenientDecode)
-            let deliver bs = do
-                    decode <- readIORef decodeRef
-                    let TE.Some t _ cont = decode bs
-                    writeIORef decodeRef cont
-                    fireChunk t
-            (history, detach) <- blAttach (appBuildLog app) deliver
-            -- Replace any previous pane's feed for this window.
-            old <- atomicModifyIORef' logFeeds $ \m ->
-                (M.insert wid detach m, M.lookup wid m)
-            sequence_ old
-            deliver history
         return (term, fit)
     termD <- holdDyn Nothing (Just <$> termE)
 
+    -- Flush whatever arrived while the terminal was still being built.
+    performEvent_ $ ffor termE $ \(term, _) -> do
+        buffered <- liftIO $ atomicModifyIORef' pendingRef (\ts -> ([], reverse ts))
+        liftJSM $ mapM_ (void . (term ^.) . js1 ("write" :: Text)) buffered
     performEvent_ $ ffor (attachPromptlyDyn termD chunkE) $ \(mbTerm, t) ->
         case mbTerm of
             Just (term, _) -> liftJSM . void $ term ^. js1 ("write" :: Text) t
-            Nothing        -> return ()
+            Nothing        -> liftIO $ modifyIORef' pendingRef (t:)
+    -- The pane is usually built hidden; the first real fit comes from the
+    -- resize observer when its tab is shown.
     performEvent_ $ ffor (attachPromptlyDyn termD resizeE) $ \(mbTerm, _) ->
         case mbTerm of
-            Just (_, fit) -> liftJSM . void $ fit ^. js1 ("fit" :: Text) ()
+            Just (_, fit) -> liftJSM $ fitIfSized rawEl fit
             Nothing       -> return ()
     return never
+
+-- | 'FitAddon.fit' throws on a zero-sized element, which a pane in a
+-- hidden tab always is.
+fitIfSized :: JSVal -> JSVal -> JSM ()
+fitIfSized el fit = do
+    w <- valToNumber =<< el ^. js ("offsetWidth" :: Text)
+    h <- valToNumber =<< el ^. js ("offsetHeight" :: Text)
+    when (w > 0 && h > 0) . void $ fit ^. js1 ("fit" :: Text) ()
