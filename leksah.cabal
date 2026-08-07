@@ -147,6 +147,7 @@ library leksah-nogtk
         IDE.Web.RegionGrabRequest
         IDE.Web.AIContextRequest
         IDE.Web.ScreenshotRequest
+        IDE.Web.Attach
         IDE.Web.Bridge
         IDE.Web.BridgeStore
         IDE.Web.Events

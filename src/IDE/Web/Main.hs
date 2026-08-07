@@ -150,7 +150,9 @@ import Reflex
 import Reflex.Dom.Core
        (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
         text, blank, domEvent, EventName(..),
-        _element_raw, (=:), MonadWidget, mainWidgetWithCss)
+        _element_raw, (=:), MonadWidget)
+
+import IDE.Web.Attach (mainWidgetWithCssGuarded)
 
 import IDE.App
        (App(..), AppAction, RunState(..), appNote, getGlobalApp, newApp,
@@ -1535,7 +1537,18 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- The colour palette (all --leksah-* tokens, dark + light) goes in first, so
   -- every stylesheet below resolves them; see "IDE.Web.Theme".
   metaLog "boot: helper JS eval'd, entering mainWidgetWithCss"
-  mainWidgetWithCss (BS.unlines [xtermCss, encodeUtf8 paletteCss, encodeUtf8 contrastCss, BS.toStrict (LT.encodeUtf8 css)]) $ do
+  -- GUARDED attach ("IDE.Web.Attach"): reflex-dom's own frame loop has no
+  -- exception handler, so anything escaping a performEvent/dyn body would
+  -- end async event processing for this window — a frozen UI that still
+  -- answers `leksah-cmd ping`.  Here such a frame is abandoned and reported
+  -- (ghci pane + Log pane) and the window keeps running.  A report is a BUG:
+  -- frame-thread IO is supposed to be total.
+  mainWidgetWithCssGuarded
+      (\msg -> do
+          wlog wid ("FRAME ABORTED (exception on the frame thread): " <> msg)
+          appNote app ("A UI frame was abandoned by an exception — please"
+                       <> " report this. " <> T.pack msg))
+      (BS.unlines [xtermCss, encodeUtf8 paletteCss, encodeUtf8 contrastCss, BS.toStrict (LT.encodeUtf8 css)]) $ do
       -- This window's view of the shared state: one push-fed Dynamic per
       -- service cell, built once at the window root ('IDE.Web.Ctx') and
       -- threaded to every widget.  This replaced the per-window MVar resync
