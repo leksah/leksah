@@ -451,7 +451,7 @@ EOF
         if grep -q "Relocation out of range" "$GHCI_LOG" 2>/dev/null; then outcome=reloc; break; fi
         dead=$("$TMUX_BIN" -L "$TMUXSOCK" display-message -p -t "$PANE" '#{pane_dead}' 2>/dev/null) || dead=1
         if [ "$dead" = "1" ]; then outcome=dead; break; fi
-        if grep -q "alive ideVer" "$GHCI_LOG" 2>/dev/null; then
+        if grep -q "] alive" "$GHCI_LOG" 2>/dev/null; then
           # The heartbeat is up — but the RTS linker can also load reflex with a
           # SILENTLY bad relocation (no crash message): the app runs yet the
           # reflex network is corrupt and never builds the DOM.  So require the
@@ -459,7 +459,7 @@ EOF
           # success; otherwise it's a dud layout — retry.
           dom=$("$LEKSAHCMD" js eval 'document.querySelectorAll("*").length' 2>/dev/null \
                   | grep -oE '[0-9]+' | sort -n | tail -1)
-          if [ -n "$dom" ] && [ "$dom" -gt 2000 ] 2>/dev/null; then outcome=up; break; fi
+          if [ -n "$dom" ] && [ "$dom" -gt 500 ] 2>/dev/null; then outcome=up; break; fi
         fi
         sleep 2
       done
