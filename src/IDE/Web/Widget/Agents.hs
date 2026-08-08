@@ -41,7 +41,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Clay
-       (Css, (?), (#), (-:), auto, backgroundImage, bold, borderRadius,
+       (Css, (?), (#), (|>), (-:), auto, backgroundImage, bold, borderRadius,
         borderStyle, color, cursor, cursorDefault, display, flex, fontSize,
         fontWeight, height, hidden, hover, none, opacity, overflow, padding,
         pct, pointer, px, textDecoration, underline, vGradient,
@@ -64,7 +64,7 @@ import IDE.Web.AgentInfo
 import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
-        dimColor, dimOpacity, fgColor, hoverColor, selectionColor)
+        dimColor, dimOpacity, fgColor, fgMutedColor, hoverColor, selectionColor)
 import IDE.Web.Widget.Tree (treeItem)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 
@@ -161,21 +161,24 @@ agentNodeW open refresh nD = treeItem "agents-node" open item children
       return (never :: Event t ())
 
     children = do
-      -- The description, straight into innerHTML — sanitized once, where it was
-      -- stored ('IDE.Web.AgentInfo.sanitizeAgentHtml').  Empty collapses away
-      -- (see the :empty rule in 'agentsCss') rather than leaving a gap.
-      void $ elDynHtmlAttr' "div" ("class" =: "agent-desc")
-        (fromMaybe "" . anDesc <$> nD)
       -- The line leksah writes itself (as against the agent's description):
       -- which checkout it is in, its open PR — clickable, same routing as a
       -- link in the description — and the branch it is on.  For worktree agents
-      -- that trio is the whole story of what the agent produced.
+      -- that trio is the whole story of what the agent produced.  It comes
+      -- FIRST, directly under the title: it is one short line of leksah's own
+      -- facts, and a reader wants "which checkout / which branch" before the
+      -- agent's multi-line prose.
       divClass "agents-where" $ do
         dynText $ (T.pack . baseName . anDir) <$> nD
         elDynAttr "span" (sepAttrs <$> nD) $ text "  ·  "
         elDynAttr "a" (prAttrs <$> nD) . dynText $
           ffor nD $ \n -> maybe "" (\(k, _) -> "PR #" <> T.pack (show k)) (anPr n)
         dynText $ ffor nD $ maybe "" ("  ·  " <>) . anBranch
+      -- The description, straight into innerHTML — sanitized once, where it was
+      -- stored ('IDE.Web.AgentInfo.sanitizeAgentHtml').  Empty collapses away
+      -- (see the :empty rule in 'agentsCss') rather than leaving a gap.
+      void $ elDynHtmlAttr' "div" ("class" =: "agent-desc")
+        (fromMaybe "" . anDesc <$> nD)
       el "ul" $ agentLevel False refresh (byKey . anChildren <$> nD)
 
     -- Signatures because '=:' is polymorphic in its container: without them the
@@ -280,13 +283,25 @@ agentsCss = do
         cursor cursorDefault
     ".agents button" # hover ?
         backgroundImage (vGradient btnHoverTopColor btnHoverBottomColor)
+    -- The per-row ⟳ / ✕ is a QUIET glyph, not a button: one boxed control per
+    -- row stacked up a column of chrome that competed with the titles.  Faint
+    -- at rest (still discoverable — hiding it entirely would make it a secret),
+    -- clearer on the row, full on itself and on keyboard focus.
     ".agents .agents-action" ? do
-        padding (px 0) (px 4) (px 0) (px 4)
-        "margin-left" -: "2px"
+        padding (px 0) (px 3) (px 0) (px 3)
         fontSize (px 11)
-        "opacity" -: "0.55"
+        "background" -: "none"
+        color dimColor
+        "opacity" -: "0.35"
         "flex" -: "0 0 auto"
-    ".agents .agents-action" # hover ? ("opacity" -: "1")
+    ".agents li" # hover |> ".agents-action" ? ("opacity" -: "0.75")
+    ".agents .agents-action" # hover ? do
+        "opacity" -: "1"
+        color fgColor
+        backgroundImage (vGradient hoverColor hoverColor)
+    ".agents .agents-action:focus-visible" ? ("opacity" -: "1")
+    -- The header's own re-read glyph has no row to hover, so it always shows.
+    ".agents .agents-head .agents-action" ? ("opacity" -: "0.6")
     -- The header: agent count on the left, the re-read glyph on the right.
     ".agents .agents-head" ? do
         display flex
@@ -308,26 +323,51 @@ agentsCss = do
         display flex
         "flex-wrap" -: "wrap"
         "align-items" -: "center"
+    -- One agent is one block: a hairline above each sibling after the first
+    -- separates a tall expanded agent from the next row, which otherwise ran
+    -- into it as one wall of text.  Only at the top level — nested children
+    -- are already set apart by the tree indent.
+    ".agents > ul > li.agents-node + li.agents-node" ? do
+        "border-top" -: "1px solid var(--leksah-border-faint)"
+        "margin-top" -: "3px"
+        "padding-top" -: "4px"
+    -- The row is a flex line so the title can take the slack and ellipsize;
+    -- `gap` spaces the glyphs (each used to carry its own margin).
     ".agents .agents-label" ? do
         cursor cursorDefault
         color dimColor
+        display flex
+        "align-items" -: "center"
+        "gap" -: "4px"
         "flex" -: "1"
         "min-width" -: "0"
-        "overflow-wrap" -: "anywhere"
+        "line-height" -: "18px"
         "padding-left" -: "2px"
-    ".agents .agents-label img.tree-icon" ? opacity dimOpacity
+    ".agents .agents-label img.tree-icon" ? do
+        opacity dimOpacity
+        "flex" -: "0 0 auto"
     -- A live agent's title is lit; an exited one stays dim (and its whole row
-    -- reads as history).
-    ".agents .agents-label .agents-title" ? color fgColor
+    -- reads as history).  ONE line, ellipsized: a wrapped title made every row
+    -- a different height and buried the rest of the block.  The full text is a
+    -- hover away (the row's title attribute).
+    ".agents .agents-label .agents-title" ? do
+        color fgColor
+        fontSize (px 12)
+        "font-weight" -: "500"
+        "flex" -: "1"
+        "min-width" -: "0"
+        "white-space" -: "nowrap"
+        overflow hidden
+        "text-overflow" -: "ellipsis"
     ".agents .agents-gone" ? ("opacity" -: "0.55")
     -- The state glyph carries meaning in its colour, so it is never dimmed.
     ".agents .agents-badge" ? do
-        "margin-right" -: "4px"
-        fontSize (px 10)
+        fontSize (px 9)
+        "flex" -: "0 0 auto"
         opacity 1
     ".agents .agents-age" ? do
-        "margin-left" -: "6px"
         fontSize (px 11)
+        "flex" -: "0 0 auto"
         color dimColor
     ".agents .tree-expand" ? ("flex" -: "0 0 auto")
     ".agents .tree-children" ? ("flex-basis" -: "100%")
@@ -340,18 +380,27 @@ agentsCss = do
     -- "IDE.Web.Widget.Tree"), plus the 2px inset .agents-label carries.  Nested
     -- child agents keep the shared tree indent (their own <ul>'s 20px).
     ".agents .agent-desc" ? do
-        color fgColor
+        -- Muted, not full foreground: the title is the thing you scan for, and
+        -- three or four lines of body text at the same weight drowned it.
+        color fgMutedColor
         fontSize (px 12)
-        padding (px 2) (px 4) (px 2) (px 14)
+        "line-height" -: "1.45"
+        padding (px 1) (px 4) (px 3) (px 14)
         "overflow-wrap" -: "anywhere"
         "display" -: "-webkit-box"
-        "-webkit-line-clamp" -: "4"
+        "-webkit-line-clamp" -: "3"
         "-webkit-box-orient" -: "vertical"
         overflow hidden
     ".agents .agent-desc:empty" ? ("display" -: "none")
     ".agents .agent-desc p" ? ("margin" -: "0 0 2px 0")
     ".agents .agent-desc ul" ? ("margin" -: "0")
-    ".agents .agent-desc code" ? ("font-size" -: "11px")
+    -- Inline code as a small chip rather than same-size text that only differs
+    -- by family (`ghc914-sh`, `emcc`, … are frequent in these descriptions).
+    ".agents .agent-desc code" ? do
+        "font-size" -: "11px"
+        "background" -: "var(--leksah-surface-alt)"
+        "border-radius" -: "3px"
+        "padding" -: "0 3px"
     -- Links look like links and are clickable (the pane's handler decides where
     -- they open: OS browser, or ⌥ for a leksah browser pane split) — both the
     -- ones inside an agent's description and the PR on the checkout line.
@@ -362,7 +411,7 @@ agentsCss = do
     ".agents .agents-where" ? do
         color dimColor
         fontSize (px 11)
-        padding (px 0) (px 4) (px 2) (px 14)
+        padding (px 0) (px 4) (px 1) (px 14)
         "overflow-wrap" -: "anywhere"
     -- Hovering a row's own button highlights that row's line, like the
     -- Terminals tree (clipped to the first line so it can't bleed over an

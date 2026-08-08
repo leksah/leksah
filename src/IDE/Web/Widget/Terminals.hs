@@ -43,6 +43,8 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.Default (def)
 import Data.Function ((&))
+import Data.List (intercalate)
+import Data.String (fromString)
 import Data.Map (Map)
 import qualified Data.Map as M (fromList, elems, empty, lookup)
 import Data.Set (Set)
@@ -57,7 +59,8 @@ import Clay
        (overflow, auto, height, pct, padding, px, (-:), display, flex,
         width, background, color, borderStyle, borderRadius,
         backgroundImage, vGradient, fontSize, fontWeight, bold, hover,
-        opacity, (#), cursor, cursorDefault, (?), Css, None(..), Cursor(..))
+        opacity, (#), (|>), cursor, cursorDefault, (?), Css, None(..),
+        Cursor(..))
 import Clay.Stylesheet (key)
 
 import Reflex
@@ -124,14 +127,25 @@ terminalsCss = do
         cursor cursorDefault
     ".terminals button" # hover ?
         backgroundImage (vGradient btnHoverTopColor btnHoverBottomColor)
-    -- Compact management glyphs (new window / zoom / break / rename) sitting in a
-    -- row, kept subtle until hovered so they don't shout over the labels.
+    -- Compact management glyphs (new window / zoom / break / rename): GLYPHS,
+    -- not buttons.  They inherit no button chrome (`background: none` also
+    -- clears the global button fill, which drew a grey chip around every one of
+    -- them — two or three per row, a column of boxes louder than the session
+    -- names).  Faint at rest so they stay discoverable, clearer once the row is
+    -- hovered, full on the glyph itself.
     ".terminals .terminals-action" ? do
-        padding (px 0) (px 4) (px 0) (px 4)
+        padding (px 0) (px 3) (px 0) (px 3)
         "margin-left" -: "2px"
         fontSize (px 11)
-        "opacity" -: "0.55"
-    ".terminals .terminals-action" # hover ? ("opacity" -: "1")
+        "background" -: "none"
+        color dimColor
+        "opacity" -: "0.35"
+    ".terminals li" # hover |> ".terminals-action" ? ("opacity" -: "0.75")
+    ".terminals .terminals-action" # hover ? do
+        "opacity" -: "1"
+        color fgColor
+        backgroundImage (vGradient hoverColor hoverColor)
+    ".terminals .terminals-action:focus-visible" ? ("opacity" -: "1")
     -- Hovering any of a row's buttons highlights the whole row line — label
     -- through the area behind the button — with the (configurable) hover
     -- colour; the button itself keeps its normal look.  Clipped to the first
@@ -214,7 +228,23 @@ terminalsCss = do
         width (px 16)
         "position" -: "relative"
         "align-self" -: "stretch"
-    ".terminals .terminals-close-slot > button" ? closeOverlay
+    -- The ✕ gets the same glyph treatment as the action row above (it is the
+    -- one control every single row carries, so a chip here was the worst of
+    -- the lot).  The confirm buttons it swaps in for — Kill / Cancel — keep
+    -- their button look on purpose: that click is destructive.
+    ".terminals .terminals-close-slot > button" ? do
+        closeOverlay
+        "background" -: "none"
+        color dimColor
+        "opacity" -: "0.35"
+        padding (px 0) (px 3) (px 0) (px 3)
+    ".terminals li" # hover |> ".terminals-close-slot" |> "button" ?
+        ("opacity" -: "0.75")
+    ".terminals .terminals-close-slot > button" # hover ? do
+        "opacity" -: "1"
+        color fgColor
+        backgroundImage (vGradient hoverColor hoverColor)
+    ".terminals .terminals-close-slot > button:focus-visible" ? ("opacity" -: "1")
     ".terminals .terminals-confirm" ? do
         closeOverlay
         display flex
@@ -252,6 +282,23 @@ terminalsCss = do
     -- 'box-shadow:none' stops the filled node also drawing the nav-cursor outline
     -- below when the two coincide, so the filled row shows a fill only.
     let deepestFill = do { background selectionColor; color onAccentColor; "box-shadow" -: "none" }
+    -- The filled row's own glyphs (rename ✎, close ✕, and any action) come up
+    -- from the 0.35 rest level: this is the row you are working in, and its
+    -- controls are the ones you reach for.  Same three paths as the fill.
+    let filledRow =
+          [ ".terminals li:has(> .terminals-active):not(:has(> .tree-children))"
+          , ".terminals li:has(> .terminals-active) > .tree-children > ul > \
+            \li:has(> .terminals-current):not(:has(> .tree-children))"
+          , ".terminals li:has(> .terminals-active) > .tree-children > ul > \
+            \li:has(> .terminals-current) > .tree-children > ul > li"
+          ]
+    fromString (intercalate ", "
+        [ row <> glyph
+        | row   <- filledRow
+        , glyph <- [ " > .terminals-action"
+                   , " > .terminals-rename-slot > button"
+                   , " > .terminals-close-slot > button" ]
+        ]) ? ("opacity" -: "0.7")
     -- session, collapsed:
     ".terminals li:has(> .terminals-active):not(:has(> .tree-children)) > .terminals-active"
         ? deepestFill
