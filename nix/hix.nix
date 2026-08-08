@@ -277,6 +277,15 @@ rec {
         # no nixpkgs-prebuilt GHC — v2-cabal-install builds itself with a
         # nixpkgs ghc9141).
         cabal = pkgs.pkgsBuildBuild.haskell-nix.v2-cabal-install;
+        # happy, pinned BELOW 2.2.  ghc-lib-parser (pulled in by hlint) declares
+        # the legacy `build-tools: happy >=1.20 && <1.21 || ==2.0.2 ||
+        # >=2.1.2 && <2.2`, and cabal satisfies a legacy build-tool from the
+        # PATH — it never enters the plan, so the `any.happy ==2.1.7` constraint
+        # in cabal.project does NOT apply to it.  With the shell's default happy
+        # (2.2) every reconfigure of ghc-lib-parser dies at:
+        #   The program 'happy' version … is required but the version found … is 2.2
+        # so the shell has to put a satisfying happy on PATH itself.
+        happy = "2.1.7";
         # Build HLS from its master branch rather than hackage: released HLS
         # can't solve for GHC 9.14 (hie-compat caps base < 4.22), but master's
         # cabal.project uses allow-newer to support it.  Passing `src` overrides
