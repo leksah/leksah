@@ -267,7 +267,8 @@ import IDE.Web.TerminalInput
 import IDE.Web.SnapRequest (SnapReq(..))
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
-import IDE.Web.NewWindowRequest (requestOpenWindow, requestRaiseWindow)
+import IDE.Web.NewWindowRequest
+       (requestOpenWindow, requestRaiseWindow, requestOrderWindowFront)
 import IDE.Web.Commands (allCommands, duplicateCommandIds)
 import IDE.Web.Keybindings (keybindingsFilePath, loadKeybindings)
 import IDE.Web.Command
@@ -6119,6 +6120,25 @@ main showMenubar macTitlebar wid ctx = mdo
           Just (_, fi) -> flipOwnerWindow lws tree wins fi == Just wid
           Nothing      -> False)
       <$> leksahWindowsD' <*> allTreeD <*> webWindowsD <*> flipperSelD
+    -- Live preview of the flip destination: as the highlight moves, walk the OS
+    -- window that OWNS the highlighted entry to the top, so you can see what you
+    -- are about to select rather than only finding out on release.  Raised
+    -- WITHOUT taking the keyboard ('requestOrderWindowFront', @orderFront:@):
+    -- the flipper commits on the modifier keyup, and that reaches only the KEY
+    -- window, so a preview that stole focus would leave the flipper stuck open
+    -- (the same failure the browser-pane keyboard release above fixes).
+    -- Only the acting window runs this — everyone else's 'flipperVisibleD' is
+    -- False (their flipper is the JS mirror, not this widget).  Our own window
+    -- is included: after stepping through another window's entries, coming back
+    -- to a local one must bring us out from under it.  Entries with no owner
+    -- (shared side/bottom tabs) leave the z-order alone.
+    flipPreviewWinD <- holdUniqDyn $
+      (\vis lws tree wins msel ->
+          if vis then flipOwnerWindow lws tree wins . snd =<< msel else Nothing)
+      <$> flipperVisibleD <*> leksahWindowsD' <*> allTreeD <*> webWindowsD <*> flipperSelD
+    performEvent_ $ ffor (fmapMaybe id (updated flipPreviewWinD)) $ \(WindowId n) -> do
+        wlog wid ("flipper preview -> order window " <> show n <> " front")
+        liftIO (requestOrderWindowFront n)
     -- Global flipper mirror: show this window's open flipper on every OTHER OS
     -- window too.  We drive it with a DIRECT JS broadcast (ideJSM_ →
     -- leksahFlipMirror in every context, see flipMirrorJs) on open / step / close,

@@ -46,6 +46,7 @@ module IDE.Web.MacGlue
   , c_titlebarSetup
   , c_newWindow
   , c_raiseWindow
+  , c_orderWindowFront
   , c_showOpenPanel
   , c_showOpenProjectPanel
   , c_showOpenFolderPanel
@@ -150,6 +151,9 @@ foreign import ccall "leksah_titlebar_setup" c_titlebarSetup :: IO ()
 foreign import ccall "leksah_new_window" c_newWindow :: CInt -> IO ()
 -- Bring a specific window to the front (the global flipper's cross-window raise).
 foreign import ccall "leksah_raise_window" c_raiseWindow :: CInt -> IO ()
+-- Raise a window without making it key (the flipper's live preview — see
+-- 'IDE.Web.NewWindowRequest.requestOrderWindowFront').
+foreign import ccall "leksah_order_window_front" c_orderWindowFront :: CInt -> IO ()
 -- Show the native "Open File" panel (NSOpenPanel); it calls back 'cbOpenFile'.
 foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
 -- Show the native "Open Project" panel; it calls back 'cbOpenProject'.

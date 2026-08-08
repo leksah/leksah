@@ -13,6 +13,8 @@ module IDE.Web.NewWindowRequest
   , requestOpenWindow
   , setRaiseWindowHandler
   , requestRaiseWindow
+  , setOrderWindowFrontHandler
+  , requestOrderWindowFront
   ) where
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
@@ -60,3 +62,21 @@ setRaiseWindowHandler = writeIORef raiseWindowHandler
 -- | Bring the given window to the front.
 requestRaiseWindow :: Int -> IO ()
 requestRaiseWindow n = readIORef raiseWindowHandler >>= ($ n)
+
+{-# NOINLINE orderWindowFrontHandler #-}
+orderWindowFrontHandler :: IORef (Int -> IO ())
+orderWindowFrontHandler = unsafePerformIO (newIORef (const (return ())))
+
+-- | Register how to raise a window WITHOUT giving it the keyboard (wkwebview
+-- @orderFront:@).  Left unregistered on back ends that can't separate the two.
+setOrderWindowFrontHandler :: (Int -> IO ()) -> IO ()
+setOrderWindowFrontHandler = writeIORef orderWindowFrontHandler
+
+-- | Raise a window but leave the keyboard where it is — the flipper's live
+-- preview, which walks the OS window owning the highlighted entry to the top as
+-- you step.  It must not take key: the flipper commits on the modifier keyup,
+-- which is delivered only to the key window, so a preview that stole focus
+-- would leave the flipper open and uncommittable.  A no-op where the back end
+-- has no such call (GTK's @windowPresent@ always focuses).
+requestOrderWindowFront :: Int -> IO ()
+requestOrderWindowFront n = readIORef orderWindowFrontHandler >>= ($ n)

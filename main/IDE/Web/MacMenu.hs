@@ -57,7 +57,8 @@ import IDE.Web.Keybindings (registerKeymapListener)
 import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), setNativeBrowserOps)
 import IDE.Web.NewWindowRequest
-       (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler)
+       (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler,
+        setOrderWindowFrontHandler)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel
        (setOpenFilePanelHandler, setOpenProjectPanelHandler,
@@ -327,6 +328,9 @@ installMacMenu = do
   setOpenWindowHandler (c_newWindow . fromIntegral)
   -- Global flipper: bring another window to the front on cross-window select.
   setRaiseWindowHandler (c_raiseWindow . fromIntegral)
+  -- Global flipper, live preview: walk the highlighted entry's window to the
+  -- top as you step, WITHOUT moving the keyboard off the flipping window.
+  setOrderWindowFrontHandler (c_orderWindowFront . fromIntegral)
   -- The Preferences colour swatches open the native NSColorPanel (the web
   -- colour input's popover mis-anchors in our transparent-titlebar window).
   setColorPickImpl $ \hex -> withCString (T.unpack hex) c_pickColor

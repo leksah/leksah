@@ -2291,6 +2291,20 @@ void leksah_raise_window(int wid) {
     });
 }
 
+// Raise a window WITHOUT making it key — the flipper's live preview: as the
+// highlight moves, the OS window owning the highlighted entry comes to the top
+// so you can see where you are about to land.  Key status must NOT move: the
+// flipper commits on the modifier KEYUP, and that only reaches the page in the
+// KEY window, so stealing key mid-flip would leave the flipper stuck open with
+// nothing selected.  (Ordering is independent of key on macOS, so a non-key
+// window can sit above the key one — exactly what a preview wants.)
+void leksah_order_window_front(int wid) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSWindow *win = (gWindows != nil) ? [gWindows objectForKey:@(wid)] : nil;
+        if (win != nil) [win orderFront:nil];
+    });
+}
+
 // --- ghci-mode lifecycle (leksah.sh --ghci) --------------------------------
 // Under a cabal repl the app must be able to hand control back to the ghci
 // prompt and take it again: [NSApp stop:] makes [NSApp run] return (after the
