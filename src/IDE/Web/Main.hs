@@ -3704,12 +3704,19 @@ leafDragJs = T.unlines
   , "      out.push({p:lp.concat([i]), tp:{leaf:lid, pane:pid},"
   , "                x:x, y:y, w:r.width, h:r.height}); }"
   , "    return out; }"
+  -- Over the leaf being dragged there is no split to offer — releasing there
+  -- must mean "nothing changes".  It still gets SCORED, though: the answer is
+  -- flagged @excluded@ and carries the winning distance, so a caller weighing
+  -- another candidate (the wide0 centre) can only take it by genuinely being
+  -- nearer than the pane's own halves.  Returning a bare null instead let that
+  -- candidate win the source pane's whole area, and a drag released where it
+  -- started would pop the pane out instead of doing nothing.
   , "  function pickTarget(subs, cw, ch, px, py, excl, extra){"
-  , "    var containing = [];"
+  , "    var containing = [], hitExcl = false;"
   , "    for (var i=0; i<subs.length; i++){ var s=subs[i];"
   , "      var x=s.x*cw, y=s.y*ch, w=s.w*cw, h=s.h*ch;"
   , "      if (px>=x && px<=x+w && py>=y && py<=y+h){"
-  , "        if (excl!==null && s.leaf!==null && s.leaf===excl) return null;"
+  , "        if (excl!==null && s.leaf!==null && s.leaf===excl) hitExcl = true;"
   , "        containing.push({p:s.p, x:x, y:y, w:w, h:h, tp:null}); } }"
   , "    if (!containing.length) return null;"
   , "    (extra||[]).forEach(function(c){ containing.push(c); });"
@@ -3726,6 +3733,7 @@ leafDragJs = T.unlines
   , "    cands.forEach(function(c){ if (c.d < best) best = c.d; });"
   , "    var ties = cands.filter(function(c){ return Math.sqrt(c.d) <= Math.sqrt(best)+0.5; });"
   , "    ties.sort(cmpSpec);"
+  , "    if (hitExcl) return {excluded:true, d:best};"
   , "    return ties[Math.abs(Math.floor(px)+Math.floor(py)) % ties.length]; }"
   , "  function setBrowserDrag(on){"
   , "    try { if (window.webkit && window.webkit.messageHandlers"
@@ -3783,6 +3791,28 @@ leafDragJs = T.unlines
   , "    if (row){ var rr = row.getBoundingClientRect();"
   , "      if (rr.height > 0 && rr.bottom > top && rr.bottom < r.bottom) top = rr.bottom; }"
   , "    return {x:r.left, y:top, w:r.width, h:Math.max(0, r.bottom - top)}; }"
+  -- The editor area's own CENTRE, as one more candidate in the same
+  -- nearest-centre contest the split halves are scored by: aim at the middle of
+  -- wide0 and the pane becomes a leksah window of its OWN (a new tab here)
+  -- rather than a split of whatever is under the pointer.  "A window of its
+  -- own" is a destination like any other, so it competes like one.
+  --
+  -- Null unless the pointer is actually inside the area, so it can never win a
+  -- contest it isn't part of.  The region it takes is the set of points nearer
+  -- the area's centre than to any half-centre — about w\/4 × h\/4 in the middle
+  -- for a whole-area split, and smaller where a deep split puts leaf halves
+  -- closer; the four half-centres are at ±w\/4 \/ ±h\/4, so their bisectors with
+  -- the centre sit at ±w\/8 \/ ±h\/8.
+  , "  function wide0Cand(cx, cy){"
+  , "    var a = wide0AreaRect();"
+  , "    if (!a || a.w <= 0 || a.h <= 0) return null;"
+  , "    if (cx < a.x || cx > a.x + a.w || cy < a.y || cy > a.y + a.h) return null;"
+  , "    return {d: dist(cx, cy, a.x + a.w/2, a.y + a.h/2),"
+  , "            dst: {kind:'window'}, rect: [a.x, a.y, a.w, a.h]}; }"
+  -- Both scores are squared distances between two points of the SAME viewport
+  -- (pickTarget works container-relative, which is a pure translation), so they
+  -- compare directly.  Ties go to the split, which is the finer-grained answer.
+  , "  function beatsPick(w0, pick){ return w0 && (!pick || w0.d < pick.d); }"
   , "  function pickAt(cx, cy, src){"
   , "    var t = document.elementFromPoint(cx, cy);"
   , "    if (!t || !t.closest) return null;"
@@ -3804,7 +3834,9 @@ leafDragJs = T.unlines
   , "    var excl = (src.srcKind==='pane' && lw===src.srcLw) ? src.srcLeaf : null;"
   , "    var pick = pickTarget(geom.subs, cr.width, cr.height, px, py, excl,"
   , "                          tmuxCands(t, geom.subs, cr, px, py, src));"
-  , "    if (!pick) return null;"
+  , "    var w0 = wide0Cand(cx, cy);"
+  , "    if (beatsPick(w0, pick)) return {dst: w0.dst, rect: w0.rect};"
+  , "    if (!pick || pick.excluded) return null;"
   , "    var dst = {kind:'pane', lw:lw, px:px, py:py, cw:cr.width, ch:cr.height};"
   , "    if (pick.tp){ dst.tleaf = pick.tp.leaf; dst.tpane = pick.tp.pane;"
   , "                  dst.tv = pick.v; dst.tafter = pick.after; }"
@@ -3916,6 +3948,15 @@ leafDragJs = T.unlines
   , "    document.addEventListener('click', swallow, true);"
   , "    if (window.leksahLeafDragStart) window.leksahLeafDragStart();"
   , "  }"
+  -- Nothing draggable under the pointer.  Inside the editor area that still
+  -- means something — "a window of its own, here" — which is how an EMPTY
+  -- wide0 is reachable at all, and is what a foreign window already answers
+  -- for the same point ('pickAt').  Outside it, park on the source.
+  , "  function noTarget(e){"
+  , "    var w0 = wide0Cand(e.clientX, e.clientY);"
+  , "    if (w0){ shadowTo(w0.rect[0], w0.rect[1], w0.rect[2], w0.rect[3]);"
+  , "             st.lastDst = {kind:'window'}; return; }"
+  , "    srcBox(); st.lastDst = {kind:'none'}; }"
   , "  function track(e){"
   -- What is under the POINTER, not what the event calls its target.  An editor
   -- runs its own pointer monitor for drag-select and takes pointer capture with
@@ -3966,7 +4007,15 @@ leafDragJs = T.unlines
   , "        var excl = (st.srcKind==='pane' && lw===st.srcLw) ? st.srcLeaf : null;"
   , "        var pick = pickTarget(geom.subs, cr.width, cr.height, px, py, excl,"
   , "                              tmuxCands(t, geom.subs, cr, px, py, st));"
-  , "        if (pick){"
+  -- Aimed at the middle of the editor area: a window of its own wins over any
+  -- split.  (Also the only candidate left when the pointer is inside the leaf
+  -- being dragged, which pickTarget refuses outright.)
+  , "        var w0 = wide0Cand(e.clientX, e.clientY);"
+  , "        if (beatsPick(w0, pick)){"
+  , "          shadowTo(w0.rect[0], w0.rect[1], w0.rect[2], w0.rect[3]);"
+  , "          st.lastDst = {kind:'window'};"
+  , "          return; }"
+  , "        if (pick && !pick.excluded){"
   , "          shadowTo(cr.left+pick.rect[0], cr.top+pick.rect[1], pick.rect[2], pick.rect[3]);"
   , "          st.lastDst = {kind:'pane', lw:lw, px:px, py:py, cw:cr.width, ch:cr.height};"
   -- A tmux pane won: the pointer alone can't express it, so the pick rides
@@ -3975,6 +4024,9 @@ leafDragJs = T.unlines
   , "                        st.lastDst.tpane = pick.tp.pane;"
   , "                        st.lastDst.tv = pick.v; st.lastDst.tafter = pick.after; }"
   , "          return; } }"
+  -- Inside a leksah window but with no split to offer (over the dragged leaf
+  -- itself, or no geometry yet): park on the source.  NOT 'noTarget' — that
+  -- would hand the source pane's own area to the wide0 candidate.
   , "      srcBox(); st.lastDst = {kind:'none'}; return; }"
   -- A draggable plain tab's visible body: land beside it (right half).
   , "    var tb = t.closest('.tab.area-wide0[data-tabkey]');"
@@ -3985,7 +4037,7 @@ leafDragJs = T.unlines
   , "        shadowTo(r2.left+r2.width/2, r2.top, r2.width/2, r2.height);"
   , "        st.lastDst = {kind:'tab', tab:k};"
   , "        return; } }"
-  , "    srcBox(); st.lastDst = {kind:'none'};"
+  , "    noTarget(e);"
   , "  }"
   -- Pointer events are a separate stream from the mouse events this gesture is
   -- built on, and the editor's drag-select monitor listens on THAT one — hence
@@ -7518,7 +7570,7 @@ main showMenubar macTitlebar wid ctx = mdo
             -- them the same pane would otherwise be in two leksah windows, and
             -- the reconcile is free to run in that moment.
             dropIntoNewWindow src = case src of
-              LDPane slwId slInt -> newWindowFrom slwId (LeafId slInt)
+              LDPane slwId slInt -> intoOwnWindow src slwId (LeafId slInt)
               LDTmuxPane slwId slInt p -> do
                 lws0 <- view leksahWindows <$> readCell (appUi app)
                 let sl = LeafId slInt
@@ -7527,7 +7579,7 @@ main showMenubar macTitlebar wid ctx = mdo
                     sps <- panesOfWindow ws
                     if p `notElem` sps then activateSrc src
                       -- The pane IS its window: move the whole leaf.
-                      else if length sps <= 1 then newWindowFrom slwId sl
+                      else if length sps <= 1 then intoOwnWindow src slwId sl
                       else case lwSession =<< M.lookup slwId lws0 of
                         Nothing -> activateSrc src
                         Just ds -> do
@@ -7551,6 +7603,23 @@ main showMenubar macTitlebar wid ctx = mdo
                   (k:_) -> modifyCell (appUi app) $ webWindows %~
                              (activateWide0 wid k . moveTabTo wid k)
                   _     -> activateSrc src
+            -- "Make this pane a window of its own" — but a pane that is ALREADY
+            -- the only leaf of its leksah window IS that window, so there is
+            -- nothing to detach: re-minting it would destroy and rebuild the tab
+            -- (a remounted terminal, a lost flip-MRU entry) to arrive back where
+            -- it started.  Just make sure its existing tab is in this OS window
+            -- and in front, which is a no-op when it already was — the "dropped a
+            -- solo pane on its own window's centre" case.
+            intoOwnWindow src slwId sl = do
+              lws0 <- view leksahWindows <$> readCell (appUi app)
+              if maybe False ((<= 1) . length . treeLeafIds . lwTree)
+                     (M.lookup slwId lws0)
+                then do
+                  modifyCell (appUi app) $ webWindows %~
+                    (activateWide0 wid (LeksahWinKey slwId)
+                     . moveTabTo wid (LeksahWinKey slwId))
+                  activateSrc src
+                else newWindowFrom slwId sl
             -- Detach leaf @sl@ from @slwId@ into a leksah window of its own
             -- here (dissolving the source window if that was its last leaf).
             newWindowFrom slwId sl = do
