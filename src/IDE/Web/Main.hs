@@ -6368,6 +6368,13 @@ main showMenubar macTitlebar wid ctx = mdo
           [ selectTermE
           , (\(s, _)    -> s) <$> selectWinE
           , (\(s, _, _) -> s) <$> selectPaneE ]
+        -- …and the same selection keeping the tmux WINDOW index the click named
+        -- (a session row names none).  The tab to bring up is the leksah window
+        -- OWNING that tmux window, not the session's first — see 'ownerTabKey'.
+        selectAnyTermWinE = leftmost
+          [ (\s         -> (s, Nothing)) <$> selectTermE
+          , (\(s, w)    -> (s, Just w))  <$> selectWinE
+          , (\(s, w, _) -> (s, Just w))  <$> selectPaneE ]
         -- Remote host nodes: sessions/windows/panes on another machine's tmux,
         -- rendered in control-mode tabs keyed "ssh://host#session".
         newRemoteE     = fmapMaybe (^? _NewRemoteTerminal) terminalsListE
@@ -8069,7 +8076,23 @@ main showMenubar macTitlebar wid ctx = mdo
         Just pk -> remoteSettingsDialog pk)
     let openInWide0 lws n =
           maybe M.empty (=: ("wide0", Just ())) (termTabKey lws n)
+        -- The tab that shows a selected tmux WINDOW (a tree click, a flip, a
+        -- bell alert) — as opposed to a bare session id, which 'termTabKey'
+        -- answers with the session's FIRST leksah window.  One session can back
+        -- several leksah windows (one per tmux window), so that first-lw answer
+        -- is right only for the first: selecting any other window/pane
+        -- re-activated the already-active tab and looked like nothing happened.
+        -- 'flipForSel' resolves "no window given" to the session's active (or
+        -- first) window, so this agrees with the flipper item the same click
+        -- floats to the MRU front ('treeSelFlipE').
+        ownerTabKey lws tree s mw =
+          maybe (termTabKey lws s) (Just . LeksahWinKey) $ do
+            FlipPane _ w _ <- flipForSel s mw Nothing tree
+            paneOwnerLw lws tree s w
+        openOwnerWide0 lws tree s mw =
+          maybe M.empty (=: ("wide0", Just ())) (ownerTabKey lws tree s mw)
         lwsB = current leksahWindowsD'
+        lwsTreeB = (,) <$> lwsB <*> current allTreeD
         openTabsE = leftmost
           [ openFileE'   -- carries native opens too (see openFileSplitE)
           -- A new terminal opens by the key of the leksah window just minted
@@ -8086,9 +8109,12 @@ main showMenubar macTitlebar wid ctx = mdo
           , attachWith openInWide0 lwsB editTermSidE
           , attachWith openInWide0 lwsB termRequestE
           , attachWith openInWide0 lwsB remoteOpenKeyE
-          , attachWith openInWide0 lwsB selectAnyTermE
-          , attachWith (\lws (s, _, _) -> openInWide0 lws s) lwsB flipPaneE
-          , attachWith (\lws (s, _)    -> openInWide0 lws s) lwsB alertTargetE
+          , attachWith (\(lws, tree) (s, mw) -> openOwnerWide0 lws tree s mw)
+              lwsTreeB selectAnyTermWinE
+          , attachWith (\(lws, tree) (s, w, _) -> openOwnerWide0 lws tree s (Just w))
+              lwsTreeB flipPaneE
+          , attachWith (\(lws, tree) (s, w) -> openOwnerWide0 lws tree s (Just w))
+              lwsTreeB alertTargetE
           , ((\(d, b) -> GitLogKey d b =: ("wide0", Just ())) <$> gitLogReqE)
           , ((\d -> ReviewKey d =: ("wide0", Just ())) <$> reviewReqE)
           , (TasksKey =: ("wide0", Just ())) <$ tasksReqE
@@ -8143,14 +8169,19 @@ main showMenubar macTitlebar wid ctx = mdo
                               -- window's tab (not the session's first lw).
                               , attachWith (\(lws, tree) (s, w, _) ->
                                   maybe M.empty ("wide0" =:)
-                                    (maybe (termTabKey lws s) (Just . LeksahWinKey)
-                                           (paneOwnerLw lws tree s w)))
-                                  ((,) <$> lwsB <*> current allTreeD) flipPaneE
+                                        (ownerTabKey lws tree s (Just w)))
+                                  lwsTreeB flipPaneE
                               , attachWith (\(lws, tree) (s, w) ->
                                   maybe M.empty ("wide0" =:)
-                                    (maybe (termTabKey lws s) (Just . LeksahWinKey)
-                                           (paneOwnerLw lws tree s w)))
-                                  ((,) <$> lwsB <*> current allTreeD) alertTargetE
+                                        (ownerTabKey lws tree s (Just w)))
+                                  lwsTreeB alertTargetE
+                              -- (Terminals-tree selections must NOT be listed
+                              -- here: they come off 'tabE', which tabsWidget
+                              -- produces from this very event — a same-frame
+                              -- causality loop that leaves the window blank.
+                              -- They select through 'openTabsE'/'moveTabTo'
+                              -- and the shared-state echo, like every other
+                              -- wide0 open.)
                               , ("wide0" =: PreferencesKey) <$ showPrefsE
                               , ("wide0" =: ShortcutsKey) <$ showShortcutsE
                               , ("wide0" =:) <$> newBrowserKeyE
