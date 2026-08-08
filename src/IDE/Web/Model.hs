@@ -44,6 +44,7 @@ module IDE.Web.Model
   , flipMirror
   , flipMru
   , paneAISession
+  , dragPreview
   ) where
 
 import Control.Lens (makeLenses)
@@ -230,6 +231,24 @@ data WebUi = WebUi
   , _flipMru       :: [FlipItem]       -- ^ flip order, most recent first
   , _paneAISession :: Map.Map AIPaneRef Text
     -- ^ which AI session a pane's \"send to AI\" targets
+  , _dragPreview   :: Maybe Text
+    -- ^ a ⌘-drag pane move in flight, so the OTHER OS windows can preview it:
+    --   one JSON message @{owner, seq, src, x, y, release, end}@ with the
+    --   pointer in SCREEN coordinates.  @release@ is the mouse coming up:
+    --   whichever window is holding a candidate commits the move itself, since
+    --   only it knows the target in its own geometry.
+    --
+    --   @seq@ is not decoration.  Each message is a separate jsaddle callback
+    --   and those are NOT delivered in call order, so without it a stale move
+    --   lands after the release and redraws the preview the release just tore
+    --   down (observed: published @move, move, release, end@, received
+    --   @move, release, move@).  Receivers drop anything not newer than the
+    --   last seq seen from that owner.  Opaque here so the shape can change
+    --   without touching the model.  A drag is captured by the window it
+    --   started in, so no other window sees the pointer; the owner republishes
+    --   it here and each window decides for itself whether the point is over
+    --   it, draws its own shadow and offers its own drop candidate.  Transient
+    --   (like '_flipMirror'): never written to the session.
   } deriving (Eq, Show)
 
 -- | The state of a UI with no windows yet (boot).
@@ -244,6 +263,7 @@ newWebUi = WebUi
   , _flipMirror    = Nothing
   , _flipMru       = []
   , _paneAISession = mempty
+  , _dragPreview   = Nothing
   }
 
 makeLenses ''WebWindow

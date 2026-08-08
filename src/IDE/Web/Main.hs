@@ -30,10 +30,9 @@ import Control.Concurrent
         newEmptyMVar, forkIO, killThread, myThreadId,
         rtsSupportsBoundThreads, getNumCapabilities, setNumCapabilities)
 import GHC.Conc (getNumProcessors)
-import Control.Concurrent.Chan (readChan)
 import Control.Concurrent.MVar (MVar, withMVar)
 import System.IO.Unsafe (unsafePerformIO)
-import Control.Concurrent.STM (readTVarIO)
+import Control.Concurrent.STM (atomically, readTChan, readTVarIO)
 import GHC.Conc.Sync (labelThread)
 import IDE.Web.RestartRequest (setRestartHandler)
 import Control.Exception (SomeException, catch, try)
@@ -63,7 +62,7 @@ import Data.Foldable (Foldable(..))
 import Data.Function ((&))
 import Data.Functor.Identity (Identity(..))
 import Data.Functor.Misc (Const2(..))
-import Data.IORef (newIORef, atomicModifyIORef', writeIORef, readIORef)
+import Data.IORef (IORef, newIORef, atomicModifyIORef', writeIORef, readIORef)
 import Data.Map (mapKeys)
 import qualified Data.Map as M
        (Map, keys, elems, toList, toAscList, fromList, fromListWith, union,
@@ -87,10 +86,13 @@ import System.Directory
 import System.Process (readProcessWithExitCode)
 import Data.Aeson (Value, decodeStrict', encode, withObject, (.:))
 import qualified Data.Aeson as A
-import qualified Data.Aeson.Types as AT (parseMaybe)
+import qualified Data.Aeson.Types as AT (Parser, parseMaybe)
 import Data.List
        (nub, sort, isPrefixOf, isInfixOf, isSuffixOf, find, elemIndex,
         findIndex)
+#if defined(ghcjs_HOST_OS)
+import Data.List (sortOn)              -- 'demoSplitCandidates' only
+#endif
 -- nubOrd, not nub: the workspace file enumeration is big enough for O(n^2)
 -- to be a boot-time hang (see 'enumerateWorkspaceFiles').
 import Data.List.Extra (nubOrd)
@@ -129,7 +131,7 @@ import Clay
         FontFaceSrc(..))
 
 import Language.Javascript.JSaddle
-       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, jss, fun, toJSVal, valToText, valToBool, valToNumber, liftJSM, runJSM)
+       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, js4, jss, fun, toJSVal, valToText, valToBool, valToNumber, liftJSM, runJSM)
 #if defined(ghcjs_HOST_OS)
 -- Under the JS backend jsaddle-warp is a base-only shim whose `run` executes
 -- the JSM directly against the page (no port, no server) — the websocket
@@ -179,7 +181,7 @@ import IDE.Web.Model
         activeWindow, nextWindowId, leksahWindows, nextLeksahWin,
         hiddenWindows, LeksahWindow(..), PaneContent(..), PaneKind(..),
         LeafId(..), SplitOrientation(..), SplitTree(..), WebUi(..),
-        flipMirror, flipMru, AIPaneRef(..), paneAISession)
+        flipMirror, flipMru, AIPaneRef(..), paneAISession, dragPreview)
 import IDE.Workspace
        (activePackage, wsOpenFile, wsProjects)
 import IDE.Ws.Types (Package(..), Project(..))
@@ -196,7 +198,7 @@ import IDE.Web.DemoTerminals (demoTerminals)
 #endif
 import IDE.Git (runGit)
 import IDE.Utils.RemotePath (isRemotePath)
-import IDE.Utils.RemoteExec (remoteInFlight, remoteInFlightChanged)
+import IDE.Utils.RemoteExec (remoteInFlight, dupRemoteInFlight)
 import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
@@ -211,18 +213,14 @@ import IDE.Web.Theme (themeVarsCss, paletteCss, contrastCss, bgColor, fgColor)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
         setFocusedLeaf)
-import IDE.Web.RegionGrabRequest (nextRegionGrab)
-import IDE.Web.AddRemoteRequest (nextAddRemoteRequest)
-import IDE.Web.AddServerRequest (nextAddServerRequest)
-import IDE.Web.RemoteSettingsRequest (nextRemoteSettings)
 import IDE.Web.ScreenshotRequest (requestScreenshotRegion)
 import IDE.Web.RegionCapture
        (screenCaptureAllowed, grabRegionToTarget, grabRegionToFile,
         sendPathToTarget, sendTextToTarget, nextRegionFile,
         resolveTmuxSessionId)
-import IDE.Web.AIContextRequest (AIAction(..), nextAIAction)
-import IDE.Web.RemoteTermRequest (nextTermRequest, requestLocalTerm)
-import IDE.Web.ConvertRequest (nextConvertRequest)
+import IDE.Web.AIContextRequest (AIAction(..))
+import IDE.Web.RemoteTermRequest
+       (dupTermRequests, nextTermRequest, requestLocalTerm)
 import IDE.Web.SplitLayout
        (readLeksahWindows, saveSessionLayouts, reconcileWindows,
         encodeLayoutOption, splitLeaf, closeLeaf, treeLeafIds,
@@ -232,7 +230,7 @@ import IDE.Web.SplitLayout
         pickDropTarget, successorLeaf, windowOwner, subtreeRects,
         MergeGroup(..), consolidateGroups, collapseGroup)
 import IDE.Web.SplitOpenRequest
-       (SplitTarget(..), nextSplitOpenRequest, requestSplitOpen)
+       (SplitTarget(..), requestSplitOpen)
 import IDE.Web.RecentFiles (updateRecentFiles)
 import IDE.Web.Heartbeat (beat)
 import IDE.Web.GhciMode
@@ -257,8 +255,7 @@ import IDE.Web.ClaudeStatus
 import IDE.Web.AgentInfo (agentTitles)
 #endif
 import IDE.Web.NewLwRequest
-       (nextNewLwRequest, beginConversion, endConversion, conversionActive,
-        nextFontConvert, nextConsolidate, consolidateLock)
+       (beginConversion, endConversion, conversionActive, consolidateLock)
 import IDE.Web.TmuxLayout
        (TmuxCell(..), parseWindowLayout, printWindowLayout, cellPanes,
         rerootCell, combineCells)
@@ -267,8 +264,7 @@ import IDE.Web.TerminalInput
         setActiveSplitWindow,
         selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
         getActiveTerminal)
-import IDE.Web.TransparencyRequest (nextToggleTransparency)
-import IDE.Web.SnapRequest (SnapReq(..), nextSnapRequest)
+import IDE.Web.SnapRequest (SnapReq(..))
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest (requestOpenWindow, requestRaiseWindow)
@@ -299,11 +295,9 @@ import IDE.Web.Widget.Tasks (tasksCss, tasksWidget)
 import IDE.Web.Widget.Agents (agentsCss, agentsWidget, agentLinksJs)
 import IDE.Web.Widget.Plan (planCss, planWidget)
 import IDE.Web.Widget.Compare (compareCss, compareWidget)
-import IDE.Web.Worktree (nextNewWorktreeRequest, nextReviewRequest)
 import IDE.Web.ClaudeQueue
-       (nextTaskQueueRequest, nextPlanReviewRequest, nextCompareRequest,
-        armQueueScheduler)
-import IDE.Web.GitLogRequest (nextGitLogRequest, requestGitLog)
+       (armQueueScheduler)
+import IDE.Web.GitLogRequest (requestGitLog)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
 import IDE.Web.Widget.Shortcuts (shortcutsCss, shortcutsWidget)
 import IDE.Web.GitInfo (openUrl)
@@ -346,6 +340,9 @@ import IDE.Web.Widget.Terminals
         windowTabLabel, stripIdxPrefix)
 import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.LwView (sessionlessLwWidget)
+#if defined(ghcjs_HOST_OS)
+import IDE.Web.Widget.LwView (modifyLeksahWindow)  -- the demo's ⌘D
+#endif
 import IDE.Web.Widget.Toolbar (toolbarCss, toolbarWidget)
 import IDE.Web.Widget.Workspace (workspaceCss, workspaceWidget)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -583,6 +580,13 @@ data LeafDragDst
       -- drop target is RECOMPUTED from these against the live tree — plus the
       -- tmux pane the pointer was aimed at, when it was aimed at one
   | LDDstTab Text                    -- ^ on a tab button (its @show@-key)
+  | LDDstForeign                     -- ^ over ANOTHER OS window: that window
+                                     --   commits the drop itself (it is the
+                                     --   only one that knows its own geometry)
+  | LDDstWindow                      -- ^ on an OS window's editor area but not
+                                     --   on any leksah window — open the source
+                                     --   as a NEW tab there.  The only way into
+                                     --   a window that has no tabs at all.
   | LDDstNone                        -- ^ nowhere / cancelled
   deriving (Eq, Show)
 
@@ -593,7 +597,13 @@ parseLeafDrop = AT.parseMaybe $ withObject "leafDrop" $ \o -> do
              (LDTmuxPane <$> s .: "lw" <*> s .: "leaf" <*> s .: "pane")
              <|> (LDPane <$> s .: "lw" <*> s .: "leaf")
              <|> (LDTab <$> s .: "tab"))
-    dst <- o .: "dst" >>= withObject "dst" (\d -> d .: "kind" >>= \k ->
+    dst <- o .: "dst" >>= dropDstP
+    return (src, dst)
+
+-- | The @dst@ half on its own — the shape a foreign window reports through
+-- @leksahLeafDragCandidate@, which is the same object the owner would have sent.
+dropDstP :: Value -> AT.Parser LeafDragDst
+dropDstP = withObject "dst" (\d -> d .: "kind" >>= \k ->
              case k :: Text of
                "pane" -> LDDstPane <$> d .: "lw"
                            <*> ((,) <$> d .: "px" <*> d .: "py")
@@ -604,8 +614,9 @@ parseLeafDrop = AT.parseMaybe $ withObject "leafDrop" $ \o -> do
                                         <$> d .: "tv")
                                  <*> d .: "tafter")
                "tab"  -> LDDstTab <$> d .: "tab"
+               "foreign" -> pure LDDstForeign
+               "window"  -> pure LDDstWindow
                _      -> pure LDDstNone)
-    return (src, dst)
 
 -- | The cross-window pane move — ONE pure step, so no intermediate state (an
 -- unowned tmux window ripe for stray adoption, an emptied source window) is
@@ -989,7 +1000,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 #if defined(ghcjs_HOST_OS)
       -- The browser demo's workspace lives in the page-seeded mock tree
       -- (window.leksahDemoFiles → IDE.Web.FS).
-      let filePath = "/demo/demo.lkshw"
+      let filePath = "/demo/demo.leksah.json"
 #else
       let filePath = "/Users/hamish/haskell/leksah/leksah.leksah.json"
 #endif
@@ -1485,6 +1496,14 @@ jsMain showMenubar macTitlebar mbWid app = do
   _ <- eval focusPaneJs
   _ <- eval listNavJs
   _ <- eval focusTabJs
+  -- A click inside an iframe pane (browser panes on every non-wkwebview front
+  -- end) never reaches this document; replay it as the focusin the pane
+  -- activation consumers above expect.
+  _ <- eval iframePaneFocusJs
+#if defined(ghcjs_HOST_OS)
+  -- The demo's ↗ button — opened from the click itself, for the popup blocker.
+  _ <- eval demoOpenExternalJs
+#endif
   _ <- eval termActivityJs
 
   -- Helper used to decide whether to reveal a focused file in the workspace
@@ -1545,13 +1564,16 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- exception handler, so anything escaping a performEvent/dyn body would
   -- end async event processing for this window — a frozen UI that still
   -- answers `leksah-cmd ping`.  Here such a frame is abandoned and reported
-  -- (ghci pane + Log pane) and the window keeps running.  A report is a BUG:
-  -- frame-thread IO is supposed to be total.
+  -- (ghci pane + Log pane) and the window keeps running.  The window's
+  -- initial BUILD is guarded the same way, though it cannot be survived:
+  -- that report says the window is blank for good.  Either report is a BUG —
+  -- frame-thread IO is supposed to be total.  The message arrives ready to
+  -- log ("FRAME ABORTED …" / "WINDOW BUILD FAILED …"), tagged here with the
+  -- window it belongs to.
   mainWidgetWithCssGuarded
       (\msg -> do
-          wlog wid ("FRAME ABORTED (exception on the frame thread): " <> msg)
-          appNote app ("A UI frame was abandoned by an exception — please"
-                       <> " report this. " <> T.pack msg))
+          wlog wid msg
+          appNote app (T.pack msg <> " — please report this."))
       (BS.unlines [xtermCss, encodeUtf8 paletteCss, encodeUtf8 contrastCss, BS.toStrict (LT.encodeUtf8 css)]) $ do
       -- This window's view of the shared state: one push-fed Dynamic per
       -- service cell, built once at the window root ('IDE.Web.Ctx') and
@@ -2825,6 +2847,86 @@ focusTabJs = T.unlines
   , "})();"
   ]
 
+-- | Make a click inside an @iframe@-backed pane activate that pane.
+--
+-- Every pane-activation consumer keys off the @mousedown@ \/ bubbling
+-- @focusin@ a click produces — the tab float ('focusTabJs'), @lwFocused@ (the
+-- leaf listeners in "IDE.Web.Widget.LwView" and the CC widget), and the active
+-- pane ring.  A click inside an iframe produces NEITHER in the hosting
+-- document: the event belongs to the frame's own document, and focus moving
+-- into a frame fires no @focusin@ on the frame element either.  So clicking a
+-- browser pane (leksah-warp, webkitgtk, the in-browser demo) reached the page
+-- but never moved the ring or the keyboard's owner off whatever pane had them
+-- — the pane you were looking at was not the active one.  (The wkwebview
+-- front end's NATIVE browser views don't need this: their delegate reports the
+-- click and 'browserNativeReporterJs' replays the same synthetic focusin.)
+--
+-- What the parent DOES get is a window @blur@ with @document.activeElement@
+-- now set to the frame element, so replay the focusin from there.  Guarded on
+-- the active element actually having CHANGED, since switching away from the
+-- browser entirely fires the identical blur.
+iframePaneFocusJs :: Text
+iframePaneFocusJs = T.unlines
+  [ "(function(){"
+  , "  var last = document.activeElement;"
+  , "  document.addEventListener('focusin', function(e){ last = e.target; }, true);"
+  , "  window.addEventListener('blur', function(){ setTimeout(function(){"
+  , "    var ae = document.activeElement;"
+  , "    if (!ae || ae === last || ae.tagName !== 'IFRAME' || !ae.closest) return;"
+  , "    last = ae;"
+  , "    if (!ae.closest('.terminal-cc-leaf[data-leaf], .tab[data-tabkey]')) return;"
+  , "    try { ae.dispatchEvent(new FocusEvent('focusin', {bubbles: true})); } catch(e){}"
+  , "  }, 0); });"
+  , "})();"
+  ]
+
+#if defined(ghcjs_HOST_OS)
+-- | The browser demo's ↗ button, opened synchronously.
+--
+-- @window.open@ needs a user activation.  Reflex hears a click one frame
+-- later, and by the time the pane's handler ('IDE.Web.Widget.Browser.openExternal')
+-- runs the activation may be spent — Safari in particular only honours an
+-- open from the click's own event-loop turn, so the popup blocker would eat
+-- it.  So the demo opens the page here, in the click's capture phase, and
+-- @stopPropagation@ keeps the same click from reaching reflex — exactly one
+-- window opens, not two.
+--
+-- Only the demo's OWN pages: the URL comes from the pane's (read-only)
+-- address bar and must be site-relative, so the button can never be talked
+-- into opening something the demo doesn't host.
+demoOpenExternalJs :: Text
+demoOpenExternalJs = T.unlines
+  [ "(function(){"
+  , "  document.addEventListener('click', function(e){"
+  , "    var b = e.target && e.target.closest"
+  , "            && e.target.closest('.browser .browser-btn');"
+  , "    if (!b || !/new browser window/i.test(b.title || '')) return;"
+  , "    var pane = b.closest('.browser');"
+  , "    var i = pane && pane.querySelector('.browser-url');"
+  , "    var u = i && i.value;"
+  , "    if (!u || u.charAt(0) !== '/' || u.slice(0, 2) === '//') return;"
+  , "    e.preventDefault(); e.stopPropagation();"
+  , "    try { window.open(u, '_blank'); } catch (err) {}"
+  , "  }, true);"
+  , "})();"
+  ]
+
+-- | What the browser demo's ⌘D offers to split with, best first: the packed
+-- demo tree ("IDE.Web.FS") minus the workspace file itself, sources ahead of
+-- build files ahead of the rest.
+demoSplitCandidates :: IO [FilePath]
+demoSplitCandidates = do
+    fs <- fsListFilesRecursive "/demo"
+    return . sortOn rank $
+      [ f | f <- fs, takeFileName f /= "demo.leksah.json" ]
+  where
+    rank f = (,) (case takeExtension f of
+                    ".hs"      -> 0 :: Int
+                    ".cabal"   -> 1
+                    ".project" -> 2
+                    _          -> 3) f
+#endif
+
 -- | A document listener that pokes reflex (@leksahTermActivity@) when the active
 -- tmux pane may have just changed inside a terminal: a mouse-down in a @.terminal@
 -- (clicking a split), or the tmux prefix ⌃B (a pane command may follow — polled
@@ -3583,7 +3685,7 @@ leafDragJs = T.unlines
   -- mousedown hit-test picks the dragged pane out of.  A pane's OWN halves are
   -- never offered to itself; a whole-leaf drag never reaches here for its own
   -- leaf (pickTarget bails on the excluded leaf before extras are added).
-  , "  function tmuxCands(el, subs, cr, px, py){"
+  , "  function tmuxCands(el, subs, cr, px, py, src){"
   , "    var leaf = el && el.closest && el.closest('.terminal-cc-leaf[data-leaf]');"
   , "    if (!leaf) return [];"
   , "    var hls = leaf.querySelectorAll('.terminal-cc-hl[data-pane]');"
@@ -3594,7 +3696,7 @@ leafDragJs = T.unlines
   , "    var out = [];"
   , "    for (var i=0; i<hls.length; i++){"
   , "      var pid = hls[i].getAttribute('data-pane');"
-  , "      if (st.srcKind==='tmux' && pid===st.srcPane) continue;"
+  , "      if (src.srcKind==='tmux' && pid===src.srcPane) continue;"
   , "      var r = hls[i].getBoundingClientRect();"
   , "      var x = r.left-cr.left, y = r.top-cr.top;"
   , "      if (px<x || px>x+r.width || py<y || py>y+r.height) continue;"
@@ -3628,6 +3730,162 @@ leafDragJs = T.unlines
   , "    try { if (window.webkit && window.webkit.messageHandlers"
   , "              && window.webkit.messageHandlers.leksahBrowserFrame)"
   , "      window.webkit.messageHandlers.leksahBrowserFrame.postMessage({drag:on}); } catch(_){} }"
+  -- Where this window's viewport sits on screen, learned from any real mouse
+  -- event: screenX/screenY are the pointer in SCREEN coordinates, clientX/Y the
+  -- same point in ours, so the difference IS the origin.  (window.screenX is
+  -- useless here — jsaddle-wkwebview's WKWebView reports 0 for every window.)
+  -- __leksahOriginSample keeps the raw pair so the assumption stays checkable.
+  , "  function recOrigin(e){"
+  -- On macOS the native side pushes this on attach and on every move/resize
+  -- (leksah_publish_origin), which is always current and needs no visit; this
+  -- inference is the fallback for the front ends that have no such hook.
+  , "    if (window.__leksahOriginNative) return;"
+  , "    if (typeof e.screenX !== 'number') return;"
+  , "    window.__leksahOriginSample = [e.screenX, e.screenY, e.clientX, e.clientY];"
+  , "    if (e.screenX === 0 && e.screenY === 0) return;"
+  , "    window.__leksahOrigin = [e.screenX - e.clientX, e.screenY - e.clientY]; }"
+  -- Every mouse event that carries screen coordinates, because a window the
+  -- pointer has never visited cannot place itself and so cannot be a drop
+  -- target.  Hovering is NOT enough: macOS does not deliver mouse-moved to a
+  -- non-key window's WKWebView, so an unfocused window hears nothing until it
+  -- is clicked.  (The real fix is the native publish — see the WindowId frame
+  -- in "IDE.Web.Model"; this widens the net meanwhile.)
+  , "  ['mousemove','mousedown','mouseup','click','mouseover','wheel',"
+  , "   'contextmenu','dblclick'].forEach(function(t){"
+  , "    document.addEventListener(t, recOrigin, true); });"
+  -- The drop candidate at a point in OUR viewport, for a drag whose source is
+  -- described by `src`.  Shared by the local track (below) and the preview a
+  -- FOREIGN window's drag asks us to draw: same geometry, same tie-breaks, so
+  -- the shadow means the same thing wherever it is drawn.
+  -- The wide0 (editor\/terminal) area, as a rect, WITHOUT needing anything to
+  -- be in it: the tab strip is rendered whether or not there are tabs, so it
+  -- fixes the left edge and width, and the first thing below it (the bottom
+  -- bar, else the status bar) fixes the height.  This is what makes a window
+  -- with NO tabs a drop target at all — there is no element in that grid area
+  -- to hit-test against.
+  , "  function wide0AreaRect(){"
+  , "    var row = document.querySelector('.tab-buttons.area-wide0');"
+  , "    if (!row) return null;"
+  , "    var r = row.getBoundingClientRect();"
+  , "    if (r.width <= 0) return null;"
+  , "    var bottom = window.innerHeight;"
+  , "    ['.area-wide1', '.statusbar'].forEach(function(sel){"
+  , "      var es = document.querySelectorAll(sel);"
+  , "      for (var i = 0; i < es.length; i++){"
+  , "        var b = es[i].getBoundingClientRect();"
+  , "        if (b.height > 0 && b.top >= r.bottom && b.top < bottom) bottom = b.top; } });"
+  , "    return {x:r.left, y:r.bottom, w:r.width, h:Math.max(0, bottom - r.bottom)}; }"
+  , "  function pickAt(cx, cy, src){"
+  , "    var t = document.elementFromPoint(cx, cy);"
+  , "    if (!t || !t.closest) return null;"
+  , "    var cc = t.closest('.terminal-cc[data-lw]');"
+  -- No leksah window under the pointer, but still inside the editor area: the
+  -- whole area is the target and the drop opens the pane as a NEW tab here.
+  -- Only reachable from the cross-window preview (the local 'track' keeps its
+  -- own logic), which is the case that matters: an empty window.
+  , "    if (!cc){"
+  , "      var a = wide0AreaRect();"
+  , "      if (!a || a.h <= 0) return null;"
+  , "      if (cx < a.x || cx > a.x + a.w || cy < a.y || cy > a.y + a.h) return null;"
+  , "      return {dst:{kind:'window'}, rect:[a.x, a.y, a.w, a.h]}; }"
+  , "    var lw = cc.getAttribute('data-lw');"
+  , "    var geom = (window.__leksahLwGeom||{})[lw];"
+  , "    if (!geom || !geom.subs) return null;"
+  , "    var cr = cc.getBoundingClientRect();"
+  , "    var px = cx - cr.left, py = cy - cr.top;"
+  , "    var excl = (src.srcKind==='pane' && lw===src.srcLw) ? src.srcLeaf : null;"
+  , "    var pick = pickTarget(geom.subs, cr.width, cr.height, px, py, excl,"
+  , "                          tmuxCands(t, geom.subs, cr, px, py, src));"
+  , "    if (!pick) return null;"
+  , "    var dst = {kind:'pane', lw:lw, px:px, py:py, cw:cr.width, ch:cr.height};"
+  , "    if (pick.tp){ dst.tleaf = pick.tp.leaf; dst.tpane = pick.tp.pane;"
+  , "                  dst.tv = pick.v; dst.tafter = pick.after; }"
+  , "    return {dst: dst, rect: [cr.left+pick.rect[0], cr.top+pick.rect[1],"
+  , "                             pick.rect[2], pick.rect[3]]}; }"
+  -- THE OTHER SIDE of a cross-window move.  A drag is captured by the window it
+  -- started in, so this window sees no mouse events at all; the owner publishes
+  -- the pointer (screen coords) through the shared model and every other window
+  -- is handed it here.  We answer for ourselves: convert to our viewport, pick
+  -- our own candidate, draw our own shadow, report it back.  Nothing is
+  -- broadcast — each window evaluates this in its OWN jsaddle context.
+  , "  var pvShadow = null, pvDst = null;"
+  , "  window.leksahDragPreview = function(json){"
+  , "    var m; try { m = JSON.parse(json); } catch(_) { return; }"
+  , "    if (!m || m.owner === window.leksahWindowId) return;"
+  -- Out-of-order delivery is normal here; anything not newer than the last
+  -- message from this owner is a straggler and must be ignored, or it redraws
+  -- a preview the release already tore down.
+  , "    var seen = (window.__leksahDragSeen = window.__leksahDragSeen || {});"
+  , "    if (seen[m.owner] && m.seq <= seen[m.owner]) return;"
+  , "    seen[m.owner] = m.seq;"
+  , "    if (m.end) return window.leksahDragPreviewEnd();"
+  , "    var o = window.__leksahOrigin;"
+  , "    if (!o) return window.leksahDragPreviewEnd();"
+  , "    var cx = m.x - o[0], cy = m.y - o[1];"
+  , "    if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight)"
+  , "      return window.leksahDragPreviewEnd();"
+  , "    var sj = m.src || {};"
+  , "    var p = pickAt(cx, cy, {srcKind:sj.kind, srcLw:sj.lw,"
+  , "                            srcLeaf:sj.leaf, srcPane:sj.pane});"
+  -- The release carries the final pointer position, so the target is computed
+  -- from THAT rather than from whatever the last preview left behind: a move
+  -- overtaken by its own release is dropped as stale (above), and a commit
+  -- that leaned on it would silently do nothing.
+  , "    if (m.release){"
+  , "      window.leksahDragPreviewEnd();"
+  , "      if (!p || !window.leksahLeafDrop) return;"
+  , "      var srcOut = (sj.kind==='tmux') ? {lw:sj.lw, leaf:sj.leaf, pane:sj.pane}"
+  , "                 : (sj.kind==='pane') ? {lw:sj.lw, leaf:sj.leaf}"
+  , "                 : {tab:sj.tab};"
+  , "      window.leksahLeafDrop(JSON.stringify({src:srcOut, dst:p.dst}));"
+  , "      return; }"
+  , "    if (!p) return window.leksahDragPreviewEnd();"
+  , "    if (!pvShadow){ pvShadow = document.createElement('div');"
+  , "      pvShadow.className = 'leksah-drag-shadow';"
+  , "      document.body.appendChild(pvShadow); }"
+  , "    var s2 = pvShadow.style;"
+  , "    s2.left = p.rect[0]+'px'; s2.top = p.rect[1]+'px';"
+  , "    s2.width = p.rect[2]+'px'; s2.height = p.rect[3]+'px';"
+  -- Unfocused windows hide the active-pane mark (terminalCss
+  -- ".leksah.window-unfocused"); a move aimed here is exactly the exception.
+  , "    var root = document.querySelector('.leksah');"
+  , "    if (root) root.classList.add('leksah-drop-target');"
+  , "    pvDst = JSON.stringify(p.dst); };"
+  , "  window.leksahDragPreviewEnd = function(){"
+  , "    if (pvShadow && pvShadow.parentNode) pvShadow.parentNode.removeChild(pvShadow);"
+  , "    pvShadow = null;"
+  , "    var root = document.querySelector('.leksah');"
+  , "    if (root) root.classList.remove('leksah-drop-target');"
+  , "    pvDst = null; };"
+  -- Publish the pointer while it is over ANOTHER window (and once, empty, when
+  -- it comes back).  Throttled: this crosses a cell write and one reflex frame
+  -- per window, and the shadow it moves is a discrete candidate rect with its
+  -- own 0.12s transition — 30Hz is far more than it can show.
+  -- One message, stamped with a per-window sequence number: each of these is
+  -- its own jsaddle callback and those do NOT arrive in call order, so the
+  -- receiver needs to be able to recognise a straggler.
+  , "  function pubSend(m){"
+  , "    m.owner = window.leksahWindowId;"
+  , "    m.seq = (window.__leksahPubSeq = (window.__leksahPubSeq || 0) + 1);"
+  , "    if (window.leksahLeafDragMove)"
+  , "      window.leksahLeafDragMove(JSON.stringify(m)); }"
+  , "  function publishMove(e){"
+  , "    if (!e){ if (st && st.published){ st.published = false;"
+  , "        pubSend({end:true}); }"
+  , "      return; }"
+  , "    var now = Date.now();"
+  , "    if (st.pubAt && now - st.pubAt < 33) return;"
+  , "    var o = window.__leksahOrigin;"
+  , "    var sx = (e.screenX || e.screenY) ? e.screenX : (o ? o[0]+e.clientX : null);"
+  , "    var sy = (e.screenX || e.screenY) ? e.screenY : (o ? o[1]+e.clientY : null);"
+  , "    if (sx === null || sy === null) return;"
+  , "    st.pubAt = now; st.published = true;"
+  , "    var src = (st.srcKind==='tmux')"
+  , "      ? {kind:'tmux', lw:st.srcLw, leaf:st.srcLeaf, pane:st.srcPane}"
+  , "      : (st.srcKind==='pane') ? {kind:'pane', lw:st.srcLw, leaf:st.srcLeaf}"
+  , "      : {kind:'tab', tab:st.srcTab};"
+  , "    st.pubSrc = src; st.pubX = sx; st.pubY = sy;"
+  , "    pubSend({src:src, x:sx, y:sy}); }"
   , "  function swallow(e){ e.preventDefault(); e.stopPropagation(); }"
   , "  function engage(e){"
   , "    st.engaged = true;"
@@ -3659,6 +3917,16 @@ leafDragJs = T.unlines
   -- window still worked, because that lookup lands on the same container either
   -- way.  Terminals never do this, which is why only editor panes were stuck.
   -- The shadow is pointer-events:none, so the hit test can never return it.
+  -- Outside our own viewport the pointer is over ANOTHER OS window (or the
+  -- desktop).  Park our shadow on the source — the preview belongs to whoever
+  -- the pointer is over, and it draws its own — and publish the pointer so
+  -- that window can answer.  'foreign' as the destination means "ask the
+  -- window that reported a candidate", resolved at the commit.
+  , "    if (e.clientX < 0 || e.clientY < 0"
+  , "        || e.clientX > window.innerWidth || e.clientY > window.innerHeight){"
+  , "      clearPeekHl(); srcBox(); st.lastDst = {kind:'foreign'};"
+  , "      publishMove(e); return; }"
+  , "    publishMove(null);"
   , "    var t = document.elementFromPoint(e.clientX, e.clientY) || e.target;"
   , "    if (!t || !t.closest) { srcBox(); st.lastDst = {kind:'none'}; return; }"
   -- The wide0 tab row: peek the hovered tab (dwell 150ms) so the user can
@@ -3689,7 +3957,7 @@ leafDragJs = T.unlines
   , "        var px = e.clientX - cr.left, py = e.clientY - cr.top;"
   , "        var excl = (st.srcKind==='pane' && lw===st.srcLw) ? st.srcLeaf : null;"
   , "        var pick = pickTarget(geom.subs, cr.width, cr.height, px, py, excl,"
-  , "                              tmuxCands(t, geom.subs, cr, px, py));"
+  , "                              tmuxCands(t, geom.subs, cr, px, py, st));"
   , "        if (pick){"
   , "          shadowTo(cr.left+pick.rect[0], cr.top+pick.rect[1], pick.rect[2], pick.rect[3]);"
   , "          st.lastDst = {kind:'pane', lw:lw, px:px, py:py, cw:cr.width, ch:cr.height};"
@@ -3745,8 +4013,18 @@ leafDragJs = T.unlines
   , "                       : (st.srcKind==='pane') ? {lw:st.srcLw, leaf:st.srcLeaf}"
   , "                       : {tab:st.srcTab},"
   , "                    dst: dst || {kind:'none'} };"
+  -- Released over another OS window: the window the pointer is over is the one
+  -- holding the candidate, in its own geometry — so IT commits (it calls its
+  -- own leksahLeafDrop with a perfectly ordinary payload).  Sending our own
+  -- drop here as well would race it and reactivate the source pane instead.
+  , "    var foreign = payload.dst && payload.dst.kind === 'foreign';"
+  , "    var pubSrc = st.pubSrc, pubX = st.pubX, pubY = st.pubY;"
+  , "    var pub = !!st.published;"
   , "    st = null;"
-  , "    if (window.leksahLeafDrop) window.leksahLeafDrop(JSON.stringify(payload));"
+  , "    if (foreign && pubSrc) pubSend({src:pubSrc, x:pubX, y:pubY, release:true});"
+  , "    else if (window.leksahLeafDrop)"
+  , "      window.leksahLeafDrop(JSON.stringify(payload));"
+  , "    if (pub) pubSend({end:true});"
   , "  }"
   , "  function mv(e){"
   , "    if (!st) return;"
@@ -4644,6 +4922,12 @@ main showMenubar macTitlebar wid ctx = mdo
   webWindowsD <- holdUniqDyn (_webWindows <$> ide)
   tallVisD  <- holdUniqDyn (_wwTall  <$> myWinD)
   wide1VisD <- holdUniqDyn (_wwWide1 <$> myWinD)
+  -- Is this the KEY OS window?  Same predicate as 'isActiveD' (defined far
+  -- below, where the session writer needs it); the root class wants it here.
+  -- When the app itself loses focus this stays true for the last key window,
+  -- which is the macOS "main window" convention and what we want: the mark
+  -- comes back on the window you left it in.
+  windowKeyD <- holdUniqDyn ((== Just wid) . _activeWindow <$> ide)
   let menuClass = if showMenubar then "" else " no-menubar"
       titlebarClass = if macTitlebar then " mac-titlebar" else ""
       tallClass TallShow     = ""
@@ -4654,10 +4938,15 @@ main showMenubar macTitlebar wid ctx = mdo
       wide1Class TallHide     = " wide1-hide"
       -- Side/bottom pane visibility is now per-OS-window (from this window's
       -- WebWindow), not the global prefs.
-      rootAttrD = (\tv wv ->
+      -- window-unfocused: everything that says "the active pane is HERE" is
+      -- a statement about where the keyboard is, and the keyboard is in one
+      -- OS window at a time — so only the key window draws it (terminalCss
+      -- ".leksah.window-unfocused").
+      rootAttrD = (\tv wv key ->
           "class" =: ("leksah" <> menuClass <> titlebarClass
-                      <> tallClass tv <> wide1Class wv)
-            <> "tabindex" =: "0") <$> tallVisD <*> wide1VisD
+                      <> tallClass tv <> wide1Class wv
+                      <> (if key then "" else " window-unfocused"))
+            <> "tabindex" =: "0") <$> tallVisD <*> wide1VisD <*> windowKeyD
   (top, topEvents) <- elDynAttr' "div" rootAttrD $ mdo
     -- The active pane's soft outward glow: ONE fixed overlay whose position
     -- is tied to the active chrome element (anchor-name --leksah-active-pane,
@@ -4822,7 +5111,6 @@ main showMenubar macTitlebar wid ctx = mdo
     (regionStartOverlayE, fireOverlay) <- newTriggerEvent
     (regionRectE, fireRegionRect)     <- newTriggerEvent
     regionTargetRef <- liftIO $ newIORef ("" :: Text)
-    _ <- liftIO . forkIO . forever $ nextRegionGrab >>= fireRegionGrab
     -- Install the overlay's result callback (\"x,y,w,h\" | \"\").
     _ <- liftJSM $ jsg ("window" :: Text) ^. jss ("__leksahRegionResult" :: Text)
            (fun $ \_ _ args -> case args of
@@ -4866,7 +5154,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- moves focus to the chosen session — the editor selection has to be read
     -- while the editor still has it.
     (aiActionE, fireAIAction) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextAIAction >>= fireAIAction
     performEvent_ $ ffor (attach (current (cProblems ctx)) aiActionE) $ \(probsNow, act) -> do
         let mkRel absf suffix = liftIO $ do
                 rel <- makeRelativeToCurrentDirectory (T.unpack absf)
@@ -5324,12 +5611,37 @@ main showMenubar macTitlebar wid ctx = mdo
     -- cc-connect HOST` (a remote control-mode tab keyed "ssh://HOST") and the
     -- workspace-tree repl buttons (a local session id from
     -- 'IDE.Web.RemoteTermRequest.requestLocalTerm').
-    (termRequestE, fireTermRequest) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextTermRequest >>= fireTermRequest
+    -- BROADCAST, not a queue: see "IDE.Web.RemoteTermRequest".  Every window
+    -- hears every request and 'termRequestMineE' below picks the one that acts.
+    (termRequestE0, fireTermRequest) <- newTriggerEvent
+    termReqChan <- liftIO dupTermRequests
+    _ <- liftIO . forkIO . forever $ nextTermRequest termReqChan >>= fireTermRequest
+    -- …and here is where a window decides a broadcast request is ITS to serve.
+    -- The window that ALREADY owns the resolved tab serves it, so bringing a
+    -- tab up never MOVES it — the cross-window flipper's rule, and the reason
+    -- cancelling a ⌘-drag (which asks for the source's own tab back) used to
+    -- fling the pane into whichever window's drain thread won the race.  Only
+    -- a tab no window owns yet — a session just created — falls to the active
+    -- window.  Both facts are shared state read the same way everywhere, so
+    -- exactly one window answers.
+    let tabOwner wws lws key = listToMaybe
+          [ w | Just k <- [termTabKey lws key]
+              , (w, ww) <- M.toList wws, k `elem` _wwWide0 ww ]
+        termRequestE = attachWithMaybe
+          (\(wws, lws, iAmKey) key -> case tabOwner wws lws key of
+              Just owner -> if owner == wid then Just key else Nothing
+              Nothing    -> if iAmKey       then Just key else Nothing)
+          ((,,) <$> current webWindowsD <*> current leksahWindowsD'
+                <*> current windowKeyD)
+          termRequestE0
+    -- Serving one while we are NOT the key window means the tab the user asked
+    -- for lives over here: come forward, or "bring up" would be invisible.
+    -- (Same move the cross-window flip makes for the window it selects into.)
+    performEvent_ $ ffor (gate (not <$> current windowKeyD) termRequestE) $ \_ ->
+        liftIO (requestRaiseWindow widN)
     -- Fresh tmux windows from the session-per-open paths (openTerminalInDir /
     -- runClaudeCmd): mint the leksah window and open its tab at once.
     (newLwReqE, fireNewLwReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextNewLwRequest >>= fireNewLwReq
     performEvent_ $ ffor newLwReqE $ \(sid, wid') ->
         liftIO . void . forkIO $ do
             mlwi <- mintLeksahWindow (Just sid) (PaneContent (PaneTmux wid') Nothing)
@@ -5338,7 +5650,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- isolate the pane first (per-pane fonts can't share a tmux window),
     -- then apply the size to the isolated leaf.
     (fontConvE, fireFontConv) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextFontConvert >>= fireFontConv
     performEvent_ $ ffor fontConvE $ \(lwi, w, f) ->
         liftIO . void . forkIO $ do
             -- Serialized under the consolidate lock: a second font key
@@ -5369,30 +5680,21 @@ main showMenubar macTitlebar wid ctx = mdo
     -- Consolidation requests from the command layer (a direct leaf font
     -- change, see leafFontAdjust) — same Chan seam as the font converts.
     (consolidateReqE, fireConsolidateReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextConsolidate >>= fireConsolidateReq
     performEvent_ $ ffor consolidateReqE $ \lwi ->
         liftIO . void . forkIO $ consolidateLw lwi
     -- Git log viewer requested from the workspace git tree (a branch click drops
     -- (repo dir, branch) on the GitLogRequest queue); open it as a center tab.
     (gitLogReqE, fireGitLogReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextGitLogRequest >>= fireGitLogReq
     -- Review pane requested from the git tree ("Review Changes…" / "Review
     -- Worktree…") or the Claude worktree flow; opens as a center tab too.
     (reviewReqE, fireReviewReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextReviewRequest >>= fireReviewReq
     -- The Claude task queue ("Claude Task Queue…" on a Claude node) and the
     -- plan-review pane ("Review Plan…" on a session row).  TasksKey is one
     -- global tab; the requesting dir seeds its add-form via the ref.
     tasksSeedRef <- liftIO (newIORef ".")
     (tasksReqE, fireTasksReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ do
-        d <- nextTaskQueueRequest
-        writeIORef tasksSeedRef d
-        fireTasksReq ()
     (planReqE, firePlanReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextPlanReviewRequest >>= firePlanReq
     (compareReqE, fireCompareReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextCompareRequest >>= fireCompareReq
     -- The queue scheduler (one background loop per process; idempotent).
     liftIO armQueueScheduler
     -- Hosts shown as top-level Terminals-tree nodes: the preference list plus
@@ -5875,6 +6177,19 @@ main showMenubar macTitlebar wid ctx = mdo
             liftJSM . void $ jsg ("window" :: Text)
               ^. js1 ("leksahFlipMirrorHide" :: Text) widN
         wlog wid "EXIT flipMirrorRead"
+    -- A ⌘-drag pane move that some OTHER window owns: hand this window the
+    -- pointer so it can offer its own drop target (see @leksahDragPreview@).
+    -- Same rule as the flipper mirror above — evaluated ONLY in our own
+    -- jsaddle context, never broadcast; 'leksahDragPreview' ignores the
+    -- payload when the owner is us, since our own shadow is the real one.
+    dragPreviewD <- holdUniqDyn (_dragPreview <$> ide)
+    performEvent_ $ ffor (updated dragPreviewD) $ \case
+        Just msg ->
+          liftJSM . void $ jsg ("window" :: Text)
+            ^. js1 ("leksahDragPreview" :: Text) msg
+        Nothing ->
+          liftJSM . void $ jsg ("window" :: Text)
+            ^. js0 ("leksahDragPreviewEnd" :: Text)
     -- Split the flipper selection: a tab selects as before; a pane brings its
     -- terminal up in wide0 (below) and makes that tmux pane active.
     -- A ⌘-number on a non-active wide0 button feeds a synthetic flip selection
@@ -6431,6 +6746,24 @@ main showMenubar macTitlebar wid ctx = mdo
         $ \mb -> liftIO $ do
       -- ⌘D / C-b % on a tmux pane target the FOCUSED pane's window.
       setActiveSplitWindow (mb >>= either (const Nothing) Just)
+#if defined(ghcjs_HOST_OS)
+      -- Browser demo: there is no shell to open beside the view, so ⌘D splits
+      -- with the next demo source file that isn't already showing in this
+      -- window — the pane splitting the demo exists to show, with the only
+      -- content the demo has.  When they are all up it does nothing (rather
+      -- than stack duplicates).
+      setActiveViewSplit $ (mb >>= either Just (const Nothing))
+        <&> \(lwi, _, _) horiz -> void . forkIO $ do
+          files <- demoSplitCandidates
+          modifyLeksahWindow lwi $ \lw ->
+            let shown = [ k | PaneContent (PaneView k) _ <- M.elems (lwPanes lw) ]
+                fresh = [ EditorKey f | f <- files, EditorKey f `notElem` shown ]
+            in case (fresh, lwFocused lw) of
+                 (k:_, Just l) ->
+                   snd (splitLeaf l (if horiz then SplitH else SplitV) True
+                          (PaneContent (PaneView k) Nothing) lw)
+                 _ -> lw
+#else
       setActiveViewSplit $ (mb >>= either Just (const Nothing))
         <&> \(lwi, msess, dir0) horiz ->
           void . forkIO $ do
@@ -6450,6 +6783,7 @@ main showMenubar macTitlebar wid ctx = mdo
                   >>= mapM_ (\(sid, w, _) -> do
                     bindLwSession lwi sid
                     fireLeafOpen (lwi, PaneContent (PaneTmux w) Nothing, not horiz))
+#endif
     -- The ⌘` flipper hint's target: the one-press destination is the second
     -- entry of the MRU flip list (index 0 is the current pane).  Resolve it to
     -- an on-screen pane %id or a tab button and publish to hintsJs.
@@ -6553,14 +6887,12 @@ main showMenubar macTitlebar wid ctx = mdo
     -- and hands it to window.leksahSetHoles, which clips it out of the window as a
     -- see-through, click-through hole (see transparencyJs + leksah-mac-menu.m).
     (toggleTransE, fireToggleTrans) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextToggleTransparency >> fireToggleTrans ()
     -- Snapping another app's window onto a pane (macOS): the pane is also made
     -- transparent (so the window shows through); the native side captures the
     -- window and tracks it to the pane (see leksah-mac-menu.m).  Two sources: the
     -- menu (toggle the active pane, click-to-pick) and `leksah-cmd open-browser`
     -- (snap a specific pane by pane_id, bind the frontmost window).
     (snapReqE, fireSnapReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextSnapRequest >>= fireSnapReq
     let snapActiveE  = fmapMaybe (\case SnapActive -> Just (); _ -> Nothing) snapReqE
         snapPaneCmdE = fmapMaybe (\case SnapPane p -> Just p;  _ -> Nothing) snapReqE
         unsnapKeyE   = fmapMaybe (\case SnapUnsnap k -> parsePaneKey k; _ -> Nothing) snapReqE
@@ -6855,7 +7187,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- closes (leafConvertDoneE joins closeTabsE).  Views no pane may hold
     -- (Shortcuts) no-op.
     (convertReqE, fireConvertReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextConvertRequest >>= fireConvertReq
     let convertSaveE = attachWithMaybe
           (\dirty (k, _) -> case k of
               EditorKey f | f `S.member` dirty -> Just f
@@ -6908,7 +7239,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- When the active tab is neither a terminal nor convertible (or is remote,
     -- which can't cross tmux servers) it falls back to a normal open.
     (splitOpenReqE, fireSplitOpen) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextSplitOpenRequest >>= fireSplitOpen
     -- ⌥-open into a leksah window: split its focused pane with the new
     -- content (⌥⇧ = below) — or just refocus the pane when the same content
     -- is already in the layout.  Rides the IDEAction mutation stream.
@@ -7139,6 +7469,89 @@ main showMenubar macTitlebar wid ctx = mdo
                 activateSrc (LDPane slwId slInt)
                 selectTmuxPaneId p
               LDTab kStr -> fireLeafSelectReq kStr
+            -- Dropped on THIS window's editor area but not on any leksah
+            -- window: the pane becomes a leksah window of its own, with its
+            -- tab in this OS window.  The one route into a window that has no
+            -- tabs — every other destination is expressed relative to a tab
+            -- that is already there.
+            --
+            -- Mint + detach + place is ONE cell write: for the moment between
+            -- them the same pane would otherwise be in two leksah windows, and
+            -- the reconcile is free to run in that moment.
+            dropIntoNewWindow src = case src of
+              LDPane slwId slInt -> newWindowFrom slwId (LeafId slInt)
+              LDTmuxPane slwId slInt p -> do
+                lws0 <- view leksahWindows <$> readCell (appUi app)
+                let sl = LeafId slInt
+                case M.lookup slwId lws0 >>= (M.lookup sl . lwPanes) of
+                  Just (PaneContent (PaneTmux ws) sfont) -> do
+                    sps <- panesOfWindow ws
+                    if p `notElem` sps then activateSrc src
+                      -- The pane IS its window: move the whole leaf.
+                      else if length sps <= 1 then newWindowFrom slwId sl
+                      else case lwSession =<< M.lookup slwId lws0 of
+                        Nothing -> activateSrc src
+                        Just ds -> do
+                          -- Same atomicity rule as moveLeafAcross's
+                          -- cross-session arm: the new tmux window is
+                          -- strayable until the model names it.
+                          beginConversion
+                          mW <- breakTmuxPaneTo p ds
+                          case mW of
+                            Nothing -> endConversion >> activateSrc src
+                            Just newW -> do
+                              newWindowWith (Just ds)
+                                (PaneContent (PaneTmux newW) sfont)
+                              endConversion
+                  _ -> activateSrc src
+              -- A plain tab just moves house; it is already a whole tab.
+              LDTab kStr -> do
+                wws <- view webWindows <$> readCell (appUi app)
+                case [ k | ww <- M.elems wws, k <- _wwWide0 ww
+                         , T.pack (show k) == kStr ] of
+                  (k:_) -> modifyCell (appUi app) $ webWindows %~
+                             (activateWide0 wid k . moveTabTo wid k)
+                  _     -> activateSrc src
+            -- Detach leaf @sl@ from @slwId@ into a leksah window of its own
+            -- here (dissolving the source window if that was its last leaf).
+            newWindowFrom slwId sl = do
+              lws0 <- view leksahWindows <$> readCell (appUi app)
+              case (M.lookup slwId lws0, M.lookup slwId lws0 >>= (M.lookup sl . lwPanes)) of
+                (Just slw0, Just pc) -> do
+                  newId <- stateCell (appUi app) $ \i ->
+                    let n     = i ^. nextLeksahWin
+                        lwi   = lwIdText n
+                        drop' = \lws -> case M.lookup slwId lws >>= withoutLeaf sl of
+                                  Just slw' -> M.insert slwId slw' lws
+                                  Nothing   -> M.delete slwId lws
+                    in ( syncLwTabs
+                           (i & nextLeksahWin .~ (n + 1)
+                              & leksahWindows %~
+                                  (M.insert lwi (singlePaneWindow (lwSession slw0) pc)
+                                   . drop'))
+                           & webWindows %~ (activateWide0 wid (LeksahWinKey lwi)
+                                            . moveTabTo wid (LeksahWinKey lwi))
+                       , lwi )
+                  case pcKind pc of
+                    PaneTmux w -> selectTmuxWindowId w
+                    _          -> return ()
+                  requestLocalTerm newId
+                _ -> return ()
+            -- …and the same placement for a pane that has just been broken out
+            -- into a tmux window of its own (no source leaf to detach).
+            newWindowWith msess pc = do
+              newId <- stateCell (appUi app) $ \i ->
+                let n   = i ^. nextLeksahWin
+                    lwi = lwIdText n
+                in ( (i & nextLeksahWin .~ (n + 1)
+                        & leksahWindows %~ M.insert lwi (singlePaneWindow msess pc))
+                       & webWindows %~ (activateWide0 wid (LeksahWinKey lwi)
+                                        . moveTabTo wid (LeksahWinKey lwi))
+                   , lwi )
+              case pcKind pc of
+                PaneTmux w -> selectTmuxWindowId w
+                _          -> return ()
+              requestLocalTerm newId
             -- Land the source beside/at `spec` in leksah window dlwId.
             dropInto src dlwId spec = case src of
               LDPane slwId slInt -> do
@@ -7358,6 +7771,10 @@ main showMenubar macTitlebar wid ctx = mdo
                                  (DropSpec pth (ttOrient tt) (ttAfter tt))
                     []      -> activateSrc src
         forM_ parsed $ \(src, dst) -> case dst of
+          -- The window the pointer was over commits a foreign release itself
+          -- (see @leksahDragPreview@); reaching here means nothing was under it.
+          LDDstForeign -> activateSrc src
+          LDDstWindow -> dropIntoNewWindow src
           LDDstNone -> activateSrc src
           LDDstPane dlwId ptr box mtt -> do
             lws0 <- view leksahWindows <$> readCell (appUi app)
@@ -7581,7 +7998,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- directly.  Either opens the modal (dyn/switchHold, like the save prompt);
     -- the dialog owns its own validate+add and fires when it should close.
     (addRemoteReqE, fireAddRemoteReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextAddRemoteRequest >>= fireAddRemoteReq
     let menuAddRemoteE = fmapMaybe (\case CommandProjectAddRemote -> Just (); _ -> Nothing)
                            (fmapMaybe (^? _MenubarCommand) menubarE)
         openAddRemoteE = leftmost [addRemoteReqE, menuAddRemoteE]
@@ -7593,7 +8009,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- dir on the bridge): same modal pattern; the dialog owns the whole flow
     -- (create worktree → add project → start claude).
     (newWtReqE, fireNewWtReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextNewWorktreeRequest >>= fireNewWtReq
     newWtOpenD <- holdDyn Nothing $ leftmost
         [ Just <$> newWtReqE, Nothing <$ newWtCloseE ]
     newWtCloseE <- switchHold never =<< dyn (ffor newWtOpenD $ \case
@@ -7605,7 +8020,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- its validate+add (appends to the remoteHosts pref); the debounced prefs
     -- writer below persists the change and remoteHostsD picks it up.
     (addServerReqE, fireAddServerReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextAddServerRequest >>= fireAddServerReq
     addServerOpenD <- holdDyn False $ leftmost
         [ True <$ addServerReqE, False <$ addServerCloseE ]
     addServerCloseE <- switchHold never =<< dyn (ffor addServerOpenD $ \case
@@ -7616,7 +8030,6 @@ main showMenubar macTitlebar wid ctx = mdo
     -- opens the per-project prefix editor for that project, and the dialog
     -- fires when it should close (Save or Cancel).
     (remoteSettingsReqE, fireRemoteSettingsReq) <- newTriggerEvent
-    _ <- liftIO . forkIO . forever $ nextRemoteSettings >>= fireRemoteSettingsReq
     remoteSettingsPkD <- holdDyn Nothing $ leftmost
         [ Just <$> remoteSettingsReqE, Nothing <$ remoteSettingsCloseE ]
     remoteSettingsCloseE <- switchHold never =<< dyn (ffor remoteSettingsPkD $ \case
@@ -7880,6 +8293,26 @@ main showMenubar macTitlebar wid ctx = mdo
       , wbBrowser = fireBrowserReq ()
       , wbKeymap = fireKeymapCmd
       , wbOpenedFile = fireOpenedFile
+      , wbRegionGrab = fireRegionGrab
+      , wbAIAction = fireAIAction
+      , wbNewLw = fireNewLwReq
+      , wbFontConvert = fireFontConv
+      , wbConsolidate = fireConsolidateReq
+      , wbGitLog = fireGitLogReq
+      , wbReview = fireReviewReq
+        -- The seed ref belongs to the window that will show the pane, so the
+        -- write rides along with the trigger rather than living in the drain.
+      , wbTasks = \d -> writeIORef tasksSeedRef d >> fireTasksReq ()
+      , wbPlanReview = firePlanReq
+      , wbCompare = fireCompareReq
+      , wbToggleTransparency = fireToggleTrans ()
+      , wbSnap = fireSnapReq
+      , wbConvert = fireConvertReq
+      , wbSplitOpen = fireSplitOpen
+      , wbAddRemote = fireAddRemoteReq ()
+      , wbNewWorktree = fireNewWtReq
+      , wbAddServer = fireAddServerReq ()
+      , wbRemoteSettings = fireRemoteSettingsReq
       }
     -- Toolbar/menu Find toggles the bar; Cmd+F (keymap) always shows + focuses it.
     let findToggleE = leftmost
@@ -7903,8 +8336,13 @@ main showMenubar macTitlebar wid ctx = mdo
     -- starts/finishes, RemoteExec signals on 'remoteInFlightChanged'; re-read
     -- the per-host in-flight counts and push them in.  Off the frame thread.
     (remoteActE, fireRemoteAct) <- newTriggerEvent
+    -- BROADCAST (not routed): every window's statusbar shows this, so each
+    -- takes its own reading copy.  A shared 'Chan' gave each poke to one
+    -- window and left the others' indicators stale.
+    remoteActChan <- liftIO dupRemoteInFlight
     _ <- liftIO . forkIO . forever $
-            readChan remoteInFlightChanged >> readTVarIO remoteInFlight >>= fireRemoteAct
+            atomically (readTChan remoteActChan)
+              >> readTVarIO remoteInFlight >>= fireRemoteAct
     remoteActD <- holdDyn M.empty remoteActE
     statusbarE <- statusbarWidget ctx remoteActD
 
@@ -7961,6 +8399,17 @@ main showMenubar macTitlebar wid ctx = mdo
                 _ -> return ())
         _ <- w ^. jss ("leksahLeafDrop" :: Text) (fun $ \_ _ args -> case args of
                 (jV:_) -> valToText jV >>= liftIO . fireLeafDrop
+                _ -> return ())
+        -- A cross-window move in flight: the owner republishes the pointer
+        -- (screen coords) into the shared model, from where every OTHER window
+        -- is handed it and answers with its own candidate.  An empty source
+        -- string ends it.
+        _ <- w ^. jss ("leksahLeafDragMove" :: Text) (fun $ \_ _ args -> case args of
+                (msgV:_) -> do
+                    msg <- valToText msgV
+                    liftIO . withApp $ \app ->
+                        modifyCell (appUi app) $ dragPreview .~
+                          (if T.null msg then Nothing else Just msg)
                 _ -> return ())
         _ <- w ^. jss ("leksahPaneFocus" :: Text) (fun $ \_ _ args -> case args of
                 (pV:_) -> do

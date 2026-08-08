@@ -266,10 +266,53 @@ frameBlockedPage u reason =
 -- | Open a URL in the system's default browser (macOS @open@ / else
 -- @xdg-open@) — the escape hatch for pages the pane can't embed.
 openExternal :: Text -> IO ()
+#if defined(ghcjs_HOST_OS)
+-- Browser demo: there is no system to hand a URL to, and the visitor's real
+-- browser is already right here — so @window.open@ it in a new window.  Only
+-- the demo's OWN pages: the pane can only ever be showing a site-relative
+-- path (its URL is seeded by the page and the address bar is read-only), and
+-- an absolute URL arriving here anyway would mean the demo had been talked
+-- into opening something it doesn't host.  JSM is in-process under the JS
+-- backend, so the eval is safe from plain IO (as in 'loadPanes').
+openExternal u = when (isDemoPath u) . void $
+    (try (void . eval $ "window.open(" <> jsStr u <> ",'_blank')")
+       :: IO (Either SomeException ()))
+  where
+    -- Site-relative and no scheme-ish escape ("//host" is protocol-relative).
+    isDemoPath p = "/" `T.isPrefixOf` p && not ("//" `T.isPrefixOf` p)
+    jsStr p = "'" <> T.replace "'" "\\'" (T.replace "\\" "\\\\" p) <> "'"
+#else
 openExternal u = unless (T.null u) . void $
     (try (void $ createProcess (proc opener [T.unpack u]))
        :: IO (Either SomeException ()))
   where opener = if os == "darwin" then "open" else "xdg-open"
+#endif
+
+-- | The ↗ button's tooltip — see 'openExternal' for what it does where.
+externalTip :: Text
+#if defined(ghcjs_HOST_OS)
+externalTip = "Open this page in a new browser window"
+#else
+externalTip = "Open in system browser"
+#endif
+
+-- | The address field's attributes.  In the browser DEMO the bar is
+-- read-only: the pane is there to show the demo's own page, it has no
+-- out-of-band way to check whether a site refuses framing ('embedBlockReason'
+-- shells out to curl), and a site that does refuse just leaves the frame
+-- blank — so an inviting empty address bar could only disappoint.  It still
+-- selects and copies, and the ↗ button still opens the page for real.
+urlBarAttrs :: Text -> Map Text Text
+urlBarAttrs urlClass =
+    "class" =: ("browser-url " <> urlClass)
+    <> "spellcheck" =: "false" <> "autocorrect" =: "off"
+    <> "autocapitalize" =: "off" <> "autocomplete" =: "off"
+#if defined(ghcjs_HOST_OS)
+    <> "readonly" =: "" <> "tabindex" =: "-1"
+    <> "title" =: "The demo's browser pane only shows this page"
+#else
+    <> "placeholder" =: "Enter address (https://\x2026 or localhost:port)"
+#endif
 
 -- | Something typed into the address bar → a loadable URL: keep an explicit
 -- scheme, default local-looking hosts to @http://@ and everything else to
@@ -324,15 +367,11 @@ nativeBrowserWidget ops bid selectedE focusOnCreateD = elClass "div" "browser" $
       fwdE'    <- navButton canFwdD  "/pics/browser-forward.svg" "Forward"
       reloadE' <- navButton (constDyn True) "/pics/browser-reload.svg" "Reload"
       extE'    <- navButton (constDyn True) "/pics/browser-external.svg"
-                    "Open in system browser"
+                    externalTip
       ti <- textInput $ (def :: TextInputConfig t)
         { _textInputConfig_initialValue = url0
         , _textInputConfig_setValue     = barSetE   -- page navigation tracks the bar
-        , _textInputConfig_attributes   = constDyn
-            (  "class" =: ("browser-url " <> urlClass)
-            <> "placeholder" =: "Enter address (https://… or localhost:port)"
-            <> "spellcheck" =: "false" <> "autocorrect" =: "off"
-            <> "autocapitalize" =: "off" <> "autocomplete" =: "off" )
+        , _textInputConfig_attributes   = constDyn (urlBarAttrs urlClass)
         }
       let enterE = () <$ ffilter (== 13) (_textInput_keypress ti)
           goE'   = fmapMaybe (\u -> let n = normalizeUrl u
@@ -447,15 +486,11 @@ iframeBrowserWidget bid selectedE focusOnCreateD = elClass "div" "browser" $ do
       -- The escape hatch for pages that refuse to be embedded (see
       -- 'embedBlockReason'), and generally handy.
       extE'    <- navButton (constDyn True) "/pics/browser-external.svg"
-                    "Open in system browser"
+                    externalTip
       ti <- textInput $ (def :: TextInputConfig t)
         { _textInputConfig_initialValue = url0
         , _textInputConfig_setValue     = loadE   -- back/forward/go track the bar
-        , _textInputConfig_attributes   = constDyn
-            (  "class" =: ("browser-url " <> urlClass)
-            <> "placeholder" =: "Enter address (https://… or localhost:port)"
-            <> "spellcheck" =: "false" <> "autocorrect" =: "off"
-            <> "autocapitalize" =: "off" <> "autocomplete" =: "off" )
+        , _textInputConfig_attributes   = constDyn (urlBarAttrs urlClass)
         }
       let enterE = () <$ ffilter (== 13) (_textInput_keypress ti)
           goE'   = fmapMaybe (\u -> let n = normalizeUrl u

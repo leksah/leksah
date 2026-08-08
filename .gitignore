@@ -15,6 +15,7 @@ leksah.lkshw
 /dist-*-ghc-*/
 /*.local
 /result
+/result-*
 *.ghc.environment.*
 /dist-ghcjs/
 /stack.yaml.lock

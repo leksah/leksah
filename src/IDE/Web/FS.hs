@@ -29,10 +29,14 @@ module IDE.Web.FS
   , fsListDirectory
   , fsListFilesRecursive
   , fsCreateDirectoryIfMissing
+  , fsEffects
   ) where
 
+import Control.Exception (SomeException, try)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as LBS (ByteString, fromStrict, toStrict)
+
+import IDE.Ws.Types (Effects(..), defaultEffects)
 
 #if defined(ghcjs_HOST_OS)
 
@@ -217,3 +221,26 @@ fsCreateDirectoryIfMissing p =
   withRemote p remoteCreateDirectoryIfMissing (createDirectoryIfMissing True p)
 
 #endif
+
+-- | The project model's file-access 'Effects', routed through THIS seam
+-- instead of straight at @System.Directory@: natively that is the real file
+-- system (and @ssh:\/\/host\/…@ roots for free), in the browser demo it is
+-- the page-seeded mock tree — which is the only way the demo's workspace
+-- and its packages can be detected and enumerated at all.
+--
+-- Only the read side is overridden; 'eRunTool' keeps 'defaultEffects''
+-- behaviour, which already answers 'Nothing' when the program cannot be
+-- run (there is no cargo, and no process at all, in the browser).
+fsEffects :: Effects
+fsEffects = defaultEffects
+  { eReadFile  = \p -> either (const Nothing) Just <$> tryIO (fsReadFile p)
+  , eListDir   = \p -> either (const []) (map fst) <$> tryIO (fsListDirectory p)
+  , eDoesExist = \p -> orFalse . tryIO $ do
+      isFile <- fsDoesFileExist p
+      if isFile then return True else fsDoesDirectoryExist p
+  , eIsDir     = \p -> orFalse (tryIO (fsDoesDirectoryExist p))
+  }
+ where
+  tryIO :: IO a -> IO (Either SomeException a)
+  tryIO = try
+  orFalse = fmap (either (const False) id)

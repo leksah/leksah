@@ -128,9 +128,8 @@ import IDE.Workspace
         workspaceActivatePackage, wsCell, wsProjectKey, wsProjects, wsSpec)
 import qualified IDE.Ws.File as WF
 import IDE.Ws.Registry (detectProject)
-import IDE.Ws.Types
-       (Package(..), Project(..), ProjectKey(..), Verb(..),
-        defaultEffects)
+import IDE.Ws.Types (Package(..), Project(..), ProjectKey(..), Verb(..))
+import IDE.Web.FS (fsEffects)
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
@@ -340,7 +339,7 @@ handleConn app conn = do
                   [ wsProjectKey p
                   | p <- WF.wsProjects (view wsSpec ws)
                   , WF.wpFile p == Just fp || WF.wpRoot p == fp ]
-            mbKey <- maybe (detectProject defaultEffects fp) (return . Just) inWs
+            mbKey <- maybe (detectProject fsEffects fp) (return . Just) inWs
             case mbKey of
               Nothing -> reply $ "Not a project file: " <> T.pack fp <> "\n"
               Just pk -> do

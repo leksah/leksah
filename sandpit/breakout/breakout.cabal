@@ -34,5 +34,9 @@ executable breakout
     build-depends:    jsaddle-warp >=0.9.4.0 && <0.10
   else
     build-depends:    jsaddle-terminal
-  ghc-options:        -threaded -Wall
+  ghc-options:        -Wall
+  -- The JS backend's RTS is single-threaded; asking for -threaded there
+  -- panics GHC ("The RTS for rts:threaded-nodebug is missing").
+  if !(impl(ghcjs) || arch(javascript))
+    ghc-options:      -threaded
   default-language:   Haskell2010

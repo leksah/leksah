@@ -48,7 +48,7 @@ import IDE.App (App, appUi, withApp)
 import IDE.Reactive (modifyCell, readCell)
 import IDE.Web.Model
        (FlipItem(..), LeafId(..), LeksahWindow(..), PaneContent(..),
-        PaneKind(..), WindowId, activeWindow, flipMru, leksahWindows,
+        PaneKind(..), TabKey, WindowId, activeWindow, flipMru, leksahWindows,
         webWindows, wwActive, wwWide0)
 
 import IDE.Web.CloseRequest (nextCloseRequest)
@@ -60,6 +60,21 @@ import IDE.Web.BrowserRequest (nextBrowserRequest)
 import IDE.Web.KeymapRequest (nextKeymapCommand)
 import IDE.Web.OpenFileRequest (nextOpenedFile)
 import IDE.Web.Command (Command)
+import IDE.Web.RegionGrabRequest (nextRegionGrab)
+import IDE.Web.AIContextRequest (AIAction, nextAIAction)
+import IDE.Web.NewLwRequest (nextNewLwRequest, nextFontConvert, nextConsolidate)
+import IDE.Web.GitLogRequest (nextGitLogRequest)
+import IDE.Web.Worktree (nextNewWorktreeRequest, nextReviewRequest)
+import IDE.Web.ClaudeQueue
+       (nextTaskQueueRequest, nextPlanReviewRequest, nextCompareRequest)
+import IDE.Web.TransparencyRequest (nextToggleTransparency)
+import IDE.Web.SnapRequest (SnapReq, nextSnapRequest)
+import IDE.Web.ConvertRequest (nextConvertRequest)
+import IDE.Web.SplitOpenRequest (SplitTarget, nextSplitOpenRequest)
+import IDE.Web.AddRemoteRequest (nextAddRemoteRequest)
+import IDE.Web.AddServerRequest (nextAddServerRequest)
+import IDE.Web.RemoteSettingsRequest (nextRemoteSettings)
+import IDE.Ws.Types (ProjectKey)
 
 -- | One window's set of "act on me" triggers (the per-network reflex fire
 -- functions, already partially applied to their unit argument where relevant).
@@ -77,6 +92,39 @@ data WindowBridge = WindowBridge
                                       --   'AppAction') into this window's
                                       --   keymap event stream
   , wbOpenedFile :: FilePath -> IO () -- ^ open a natively-chosen file in this window
+    -- Everything below arrives from a context menu, a tree button, an
+    -- 'AppAction' or the command socket — never from the reflex network — and
+    -- so had its own per-window drain until they were centralised here.
+  , wbRegionGrab :: Maybe Text -> IO ()
+                                      -- ^ start the screen-region picker
+  , wbAIAction   :: AIAction -> IO () -- ^ open the AI picker with this payload
+  , wbNewLw      :: (Text, Text) -> IO ()
+                                      -- ^ a fresh @(session, tmux window)@:
+                                      --   mint its leksah window and open it
+  , wbFontConvert :: (Text, Text, Int -> Maybe Int) -> IO ()
+                                      -- ^ isolate a tmux pane before resizing it
+  , wbConsolidate :: Text -> IO ()    -- ^ re-consolidate one leksah window
+  , wbGitLog     :: (FilePath, Text) -> IO ()
+                                      -- ^ open the git-log pane for @(dir, branch)@
+  , wbReview     :: FilePath -> IO () -- ^ open the Review pane for a checkout
+  , wbTasks      :: FilePath -> IO () -- ^ open the Claude task queue, seeded
+                                      --   with this directory
+  , wbPlanReview :: (FilePath, Text) -> IO ()
+                                      -- ^ open the plan-review pane
+  , wbCompare    :: (FilePath, Text) -> IO ()
+                                      -- ^ open the compare-approaches pane
+  , wbToggleTransparency :: IO ()     -- ^ toggle the active pane's transparency
+  , wbSnap       :: SnapReq -> IO ()  -- ^ snap another app's window onto a pane
+  , wbConvert    :: (TabKey, Bool) -> IO ()
+                                      -- ^ convert a tab into a pane (or back)
+  , wbSplitOpen  :: (SplitTarget, Bool) -> IO ()
+                                      -- ^ ⌥-open: split the active pane with this
+  , wbAddRemote  :: IO ()             -- ^ Project ▸ Add Remote… modal
+  , wbNewWorktree :: FilePath -> IO ()
+                                      -- ^ New Claude Session in Worktree… modal
+  , wbAddServer  :: IO ()             -- ^ Add Server… modal
+  , wbRemoteSettings :: ProjectKey -> IO ()
+                                      -- ^ per-project remote settings modal
   }
 
 {-# NOINLINE bridgeRegistry #-}
@@ -157,6 +205,48 @@ startWindowBridgeDrains app = do
     nextKeymapCommand >>= \c -> route app (`wbKeymap` c)
   drain "bridge-drain-open"  $
     nextOpenedFile >>= \fp -> route app (`wbOpenedFile` fp)
+  -- Migrated from per-window drains in "IDE.Web.Main" (each was one
+  -- @forkIO . forever $ nextX >>= fireX@ inside the per-window network, i.e.
+  -- N readers of one 'Chan' — so every one of these opened its pane or dialog
+  -- in an ARBITRARY window).  Same rule as the ones above: the frontmost
+  -- window acts, because that is the window whose menu, tree or context menu
+  -- the user just used.
+  drain "bridge-drain-region"  $
+    nextRegionGrab >>= \t -> route app (`wbRegionGrab` t)
+  drain "bridge-drain-ai"      $
+    nextAIAction >>= \a -> route app (`wbAIAction` a)
+  drain "bridge-drain-newlw"   $
+    nextNewLwRequest >>= \r -> route app (`wbNewLw` r)
+  drain "bridge-drain-fontconv" $
+    nextFontConvert >>= \r -> route app (`wbFontConvert` r)
+  drain "bridge-drain-consolidate" $
+    nextConsolidate >>= \i -> route app (`wbConsolidate` i)
+  drain "bridge-drain-gitlog"  $
+    nextGitLogRequest >>= \r -> route app (`wbGitLog` r)
+  drain "bridge-drain-review"  $
+    nextReviewRequest >>= \d -> route app (`wbReview` d)
+  drain "bridge-drain-tasks"   $
+    nextTaskQueueRequest >>= \d -> route app (`wbTasks` d)
+  drain "bridge-drain-plan"    $
+    nextPlanReviewRequest >>= \r -> route app (`wbPlanReview` r)
+  drain "bridge-drain-compare" $
+    nextCompareRequest >>= \r -> route app (`wbCompare` r)
+  drain "bridge-drain-transparency" $
+    nextToggleTransparency >> route app wbToggleTransparency
+  drain "bridge-drain-snap"    $
+    nextSnapRequest >>= \r -> route app (`wbSnap` r)
+  drain "bridge-drain-convert" $
+    nextConvertRequest >>= \r -> route app (`wbConvert` r)
+  drain "bridge-drain-splitopen" $
+    nextSplitOpenRequest >>= \r -> route app (`wbSplitOpen` r)
+  drain "bridge-drain-addremote" $
+    nextAddRemoteRequest >> route app wbAddRemote
+  drain "bridge-drain-newworktree" $
+    nextNewWorktreeRequest >>= \d -> route app (`wbNewWorktree` d)
+  drain "bridge-drain-addserver" $
+    nextAddServerRequest >> route app wbAddServer
+  drain "bridge-drain-remotesettings" $
+    nextRemoteSettings >>= \pk -> route app (`wbRemoteSettings` pk)
 
 -- | Focus entered a native pane: record it as the leksah window's focused
 -- pane (the target of ⌘+/⌘− and future splits) and, for a VIEW pane, float

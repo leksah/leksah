@@ -2,10 +2,25 @@
 
 The web UI (`src/IDE/Web`, front ends `leksah-wkwebview` / `leksah-warp` /
 `leksah-webkitgtk`) runs **one reflex network per OS window**, all sharing a
-single `IDE` behind an `MVar` (`ideR`). A "freeze" is almost always **one
-window's reflex *frame thread* blocked on an `MVar`** while the others keep
-running — not the whole process. This guide covers the tooling built for
-diagnosing that, and a step-by-step method.
+single `IDE` behind an `MVar` (`ideR`). A "freeze" is one window going dead
+while the others keep running — not the whole process. This guide covers the
+tooling built for diagnosing that, and a step-by-step method.
+
+**Two different failures wear the same face.** Both leave a window that does
+not repaint while `leksah-cmd ping` still answers `ok`, so tell them apart
+first — the whole method below branches on it:
+
+| | **wedged frame** | **dead window** |
+|---|---|---|
+| `threads \| grep reflex-frames` | `WindowId N` present, `BlockedOnMVar` | **`WindowId N` absent** |
+| heartbeat | ticked, then stopped | usually **never ticked at all** |
+| DOM | last good render, stale | blank, or a stale render from before |
+| cause | a `performEvent` handler blocking on the frame thread | the window's *initial build* threw or never returned |
+
+The frame thread is labelled by the heartbeat handler, which runs on it, and
+`guardedAsyncEvents` is forked only after the build returns — so **a missing
+thread means the build, not a frame**. Jump to
+[When the build never finished](#when-the-build-never-finished) for that case.
 
 All the live-inspection commands are subcommands of `leksah-cmd` (the control
 socket, `src/IDE/Web/CmdServer.hs`); they answer even while a window's reflex
@@ -48,6 +63,9 @@ threads (set via `labelThread`) are the ones that matter:
   *and* its heartbeat stopped. (Note: an *idle* frame thread is *also*
   `BlockedOnMVar` — waiting for its next event — so the status alone doesn't
   prove a wedge; correlate with the heartbeat.)
+  **A window with no `reflex-frames-WindowId N` line at all is a different
+  bug** — its build never finished, so the loop was never forked. Count the
+  lines against the number of OS windows before reading anything else.
 - `resync-notifier-WindowId N` — the per-window cross-window-resync notifier.
 - `bridge-drain-*` — the native→reflex request drains (`IDE.Web.WindowBridge`).
 
@@ -154,6 +172,8 @@ already carry markers (`flipBump`, `flipMirror write`, `wide0Activate`,
 3. **Find the wedged thread.** `leksah-cmd threads | grep reflex-frames` → the
    frozen window's `reflex-frames-WindowId N` is `BlockedOnMVar`.
    `leksah-cmd resync-state` will show it `sig=FULL ack=empty` (symptom).
+   **If that window has no line here at all, stop** — nothing below applies;
+   go to [When the build never finished](#when-the-build-never-finished).
 
 4. **Rule out the usual `MVar`s** before instrumenting:
    - **`ideR`** (the shared `IDE`): if *another* window's heartbeat still
@@ -185,6 +205,69 @@ already carry markers (`flipBump`, `flipMirror write`, `wide0Activate`,
    fill, no blocking `readProcessWithExitCode`, no reply-correlated
    `ccCommand` (see `IDE.Web.TmuxCC`). Move the work off the frame with `forkIO`,
    or bound it with a timeout.
+
+## When the build never finished
+
+No `reflex-frames-WindowId N` thread means `attachImmediateWidget` — which
+builds the window's entire widget tree and fires its post-build frame — never
+returned, so `guardedAsyncEvents` was never forked. reflex commits the built
+DOM only at the end, so that window shows nothing (or whatever a previous run
+left behind). Everything else keeps working: the process, the command socket,
+and that window's own jsaddle context, which is why `ping` and
+`js eval 'Math.random()'` both look healthy.
+
+`IDE.Web.Attach` reports the throwing case as
+
+```
+LEK … [win 1] WINDOW BUILD FAILED (the reflex network never built; …): <exception>
+```
+
+and it also reaches the Log pane of the windows that *do* work. If the build
+**hung** instead of throwing there is no report at all — the missing thread is
+the only signal.
+
+### The known cause: two windows building at once
+
+Every window has its own reflex network, but they all share **one Spider
+timeline** (`SpiderTimeline Global` — a top-level `unsafePerformIO`
+environment in `Reflex.Spider.Internal`: one height bag, one delayed-merge
+queue, one propagation depth). reflex takes that timeline's mutex around
+event *propagation* (`run`) but not around `runFrame`, which is what
+`runHostFrame` / `hold` / `holdDyn` / `buildDynamic` / `subscribeEvent` /
+`sample` all go through — i.e. all of building a widget tree. reflex's own
+source says as much:
+
+```haskell
+runFrame :: … --TODO: This function also needs to hold the mutex
+```
+
+Two windows building simultaneously — or one building while another
+propagates — therefore interleave writes to that shared state. The window
+that loses fails in whichever way the corruption happens to show up:
+
+```
+merge: accumRef not yet initialized                    (Spider/Internal.hs:2152)
+heightBagRemove: Height 18 not present in bag …        (Spider/Internal.hs:1135)
+causality loop detected                                (EventLoopException)
+```
+
+…or with no exception at all, just a build that never returns. All four were
+observed on four consecutive boots of the same two-window session.
+
+This is why it looks intermittent: a window opened later, by hand, builds
+while the others are idle and usually gets away with it. A **multi-window
+session restore** attaches them in the same millisecond and hits it reliably.
+
+`IDE.Web.Attach.frameLock` — one process-global `MVar` held around each build
+and each frame batch — makes the timeline single-threaded again. It is the
+outer lock (reflex's own mutex is only ever taken inside propagation, never
+around a build), so there is no lock-order inversion. The cost is that a
+blocking frame-thread handler now stalls *every* window rather than its own,
+which makes step 6 above matter more, not less.
+
+If you ever see these Spider errors again, suspect something that runs a
+reflex frame outside `IDE.Web.Attach` — that is the only place holding the
+lock.
 
 ## Status light (courtesy while debugging)
 

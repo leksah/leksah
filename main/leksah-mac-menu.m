@@ -837,6 +837,43 @@ static void leksah_eval_js(id web, NSString *js) {
     ((void (*)(id, SEL, id, id))objc_msgSend)(web, sel, js, (id)nil);
 }
 
+// Tell a window's page where its viewport sits on screen, as
+// @window.__leksahOrigin = [x, y]@ — the same coordinate space a DOM
+// MouseEvent's screenX/screenY use (primary-screen top-left origin, y down,
+// CSS px), so page code can convert a screen point to its own clientX/clientY
+// by subtracting it.
+//
+// Why this has to come from here: a WKWebView reports @window.screenX@ as 0 and
+// @outerWidth/outerHeight@ as 0 for EVERY leksah window, so a page cannot place
+// itself.  It can infer the origin from @screenX - clientX@ of any real mouse
+// event, but only for a window the pointer has actually visited — and macOS
+// does not deliver mouse-moved to a NON-KEY window's WKWebView, so an untouched
+// window learns nothing, and a window MOVED after its last click keeps a stale
+// answer.  The cross-OS-window pane drag ('leksahDragPreview' in IDE.Web.Main)
+// needs it for every window, always current, so it is pushed from here on
+// attach and on every move/resize.
+static void leksah_publish_origin(NSWindow *win) {
+    if (win == nil) return;
+    NSView *content = [win contentView];
+    id web = leksah_find_webview(content);
+    if (content == nil || web == nil) return;
+    // Viewport (0,0) is the content view's TOP-left; in window coords
+    // (bottom-left origin) that is (0, height).  Mirrors leksah_viewport_to_ax.
+    NSRect scr = [win convertRectToScreen:
+                      NSMakeRect(0.0, NSHeight([content bounds]), 0.0, 0.0)];
+    CGFloat primaryH = NSHeight([[[NSScreen screens] firstObject] frame]);
+    leksah_eval_js(web, [NSString stringWithFormat:
+        @"window.__leksahOrigin=[%.1f,%.1f];window.__leksahOriginNative=1;",
+        scr.origin.x, primaryH - scr.origin.y]);
+}
+
+// Every window's origin — after a screen-configuration change the primary
+// screen's height (which the flip above is relative to) can itself change.
+static void leksah_publish_all_origins(void) {
+    if (gWindows == nil) return;
+    for (NSWindow *w in [gWindows allValues]) leksah_publish_origin(w);
+}
+
 // A viewport rect (content-view-relative, top-left, CSS px) -> global AX screen
 // coords (primary-screen top-left origin, y down).
 static CGRect leksah_viewport_to_ax(NSRect vp) {
@@ -2153,8 +2190,22 @@ static BOOL leksah_configure_window(NSWindow *win, int wid) {
             if (!gTeardownInProgress && gHs.window_closing) gHs.window_closing(wid);
             [gWindows removeObjectForKey:@(wid)];
         }];
+    // Where this window's viewport is on screen — the page cannot work it out
+    // (see 'leksah_publish_origin'), and the cross-window pane drag needs it.
+    // These two fire continuously through a drag or resize, which is what keeps
+    // it correct rather than merely initialised.
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidMoveNotification
+        object:win queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){ (void)note; leksah_publish_origin(win); }];
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidResizeNotification
+        object:win queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){ (void)note; leksah_publish_origin(win); }];
     // Let this window's JS ring the native beep (see LeksahBeepHandler).
     leksah_install_beep_handler(leksah_find_webview([win contentView]));
+    // The page may not have loaded yet at attach; a short retry covers boot.
+    leksah_publish_origin(win);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ leksah_publish_origin(win); });
     return restored;
 }
 
@@ -2431,6 +2482,12 @@ static void leksah_configure_titlebar(void) {
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeMainNotification
         object:win queue:[NSOperationQueue mainQueue]
         usingBlock:^(NSNotification *note){ (void)note; leksah_raise_snaps(); leksah_read_holes(); }];
+    // A display change moves every window in the primary-screen-relative space
+    // 'leksah_publish_origin' reports in, without any per-window notification.
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationDidChangeScreenParametersNotification
+        object:nil queue:[NSOperationQueue mainQueue]
+        usingBlock:^(NSNotification *note){ (void)note; leksah_publish_all_origins(); }];
 }
 
 void leksah_titlebar_setup(void) {

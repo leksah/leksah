@@ -67,6 +67,17 @@
         + (window.leksahDemoTerminals || []).length
         + '; hover files in page: '
         + Object.keys(window.leksahDemoHovers || {}).length);
+    // Activate the claude tab first.  The demo now opens on the showcase
+    // window (editor beside the breakout browser pane), and tab bodies build
+    // lazily — a terminal in a background tab has no xterm at all, so
+    // LeksahTerm.byId would stay empty however long we waited.
+    var tabs = document.querySelectorAll('.area-wide0 .tab-wrap button');
+    for (var ti = 0; ti < tabs.length; ti++) {
+      if (tabs[ti].textContent.trim().indexOf('claude') !== -1) {
+        tabs[ti].click();
+        break;
+      }
+    }
     // The claude terminal tab should exist and have rendered the canned dump.
     var t0 = Date.now(), n = 0;
     var timer2 = setInterval(function () {
@@ -148,16 +159,29 @@
         log('Ctrl+` flip: "' + before + '" -> "' + selectedTab() + '"'
             + (selectedTab() === before ? ' (UNCHANGED)' : ''));
         rendererCheck();
+        // Straight after, while the MRU's top two entries are still two
+        // different TABS — later in the run the front of the flip list is a
+        // pane inside the current tab, and a tab-label check reads that
+        // (correct) flip as "unchanged".
+        cmdFlipCheck(function () {
         menubarCheck(function () {
           newTerminalCheck(function () {
             showcaseCheck(function () {
               dragCheck(function () {
                 breakoutCheck(function () {
-                  agentsCheck(function () { log('ALL CHECKS DONE'); });
+                  agentsCheck(function () {
+                    browserChromeCheck(function () {
+                      paneFocusCheck(function () {
+                        // LAST: it adds a leaf to the showcase window.
+                        splitKeyCheck(function () { log('ALL CHECKS DONE'); });
+                      });
+                    });
+                  });
                 });
               });
             });
           });
+        });
         });
       }, 600);
     }, 300);
@@ -354,7 +378,7 @@
           clearInterval(timer);
           log('breakout iframe loaded: src=' + src + ' body children='
               + body.children.length);
-          done();
+          breakoutPlays(body, done);
           return;
         }
       }
@@ -366,6 +390,47 @@
         done();
       }
     }, 400);
+  }
+
+  // The game is a SECOND Haskell program (reflex, GHC JS backend) running in
+  // the pane, so "the page loaded" is not the interesting claim — "its event
+  // network is live" is.  Click the board (the game offers click as well as
+  // Space) and watch the Ready overlay clear and the ball's inline style move:
+  // both come from foldDyn stepping on the 30fps tick.
+  //
+  // The game renders style-only divs, so the walk is positional: body > wrap,
+  // wrap.children = [hud, board], board.children = [...bricks, ball, paddle,
+  // overlay].
+  function breakoutPlays(body, done) {
+    var wrap = body.firstElementChild;
+    var board = wrap && wrap.children[1];
+    if (!board || board.children.length < 3) {
+      log('BREAKOUT SKIP — unexpected game DOM');
+      done();
+      return;
+    }
+    var overlay = board.children[board.children.length - 1];
+    var ball = board.children[board.children.length - 3];
+    var before = ball.getAttribute('style');
+    var wasReady = /launch/i.test(overlay.textContent || '');
+    board.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      var moved = ball.getAttribute('style') !== before;
+      var cleared = (overlay.textContent || '').trim() === '';
+      if (moved && cleared) {
+        clearInterval(timer);
+        log('breakout plays: click launched it (overlay cleared, ball moving)'
+            + (wasReady ? '' : ' — WARNING: no Ready overlay before the click'));
+        done();
+      } else if (Date.now() - t0 > 5000) {
+        clearInterval(timer);
+        log('BREAKOUT NOT PLAYING — overlay="'
+            + (overlay.textContent || '').trim().slice(0, 40)
+            + '" ballMoved=' + moved);
+        done();
+      }
+    }, 250);
   }
 
   // --- The Agents pane (canned demo forest) ------------------------------
@@ -395,6 +460,122 @@
         done();
       }
     }, 400);
+  }
+
+  // --- Keyboard: the browser build now takes ⌘ as well as Ctrl ------------
+  // `mod` resolves to Ctrl when browser-hosted, but a Mac visitor reaches for
+  // ⌘` first, so both are bound (IDE.Web.Chord.toReflexKeys).  Same gesture as
+  // flipCheck, with the other modifier — and the flip commits on ITS release.
+  function cmdFlipCheck(done) {
+    function selectedTab() {
+      var el = document.querySelector('.area-wide0 .tab-wrap.selected button');
+      return el ? el.textContent.trim().slice(0, 30) : '(none)';
+    }
+    var before = selectedTab();
+    var down = new KeyboardEvent('keydown',
+      { key: '`', code: 'Backquote', metaKey: true, bubbles: true });
+    Object.defineProperty(down, 'keyCode', { get: function () { return 192; } });
+    document.dispatchEvent(down);
+    var up = new KeyboardEvent('keyup', { key: 'Meta', bubbles: true });
+    Object.defineProperty(up, 'keyCode', { get: function () { return 91; } });
+    setTimeout(function () {
+      document.dispatchEvent(up);
+      setTimeout(function () {
+        var after = selectedTab();
+        log('Cmd+` flip: "' + before + '" -> "' + after + '"'
+            + (after === before ? ' (UNCHANGED — bug)' : ''));
+        done();
+      }, 600);
+    }, 300);
+  }
+
+  // ⌘D is a terminal-GATED chord: it used to exist only as a native menu key
+  // equivalent, so it was dead in every browser-hosted front end.  Here it
+  // splits the focused view with the next demo file (there is no shell to
+  // open), so the showcase window must gain a leaf.
+  function splitKeyCheck(done) {
+    function leafCount() {
+      var lw = document.querySelector('.terminal-cc[data-lw="lw-0"]');
+      return lw ? lw.querySelectorAll('.terminal-cc-leaf').length : 0;
+    }
+    var before = leafCount();
+    if (!before) { log('SPLIT-KEY SKIP — no showcase window'); done(); return; }
+    var down = new KeyboardEvent('keydown',
+      { key: 'd', code: 'KeyD', metaKey: true, bubbles: true });
+    Object.defineProperty(down, 'keyCode', { get: function () { return 68; } });
+    document.dispatchEvent(down);
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      if (leafCount() > before) {
+        clearInterval(timer);
+        log('Cmd+D split: lw-0 leaves ' + before + ' -> ' + leafCount());
+        done();
+      } else if (Date.now() - t0 > 6000) {
+        clearInterval(timer);
+        log('CMD+D DID NOTHING — lw-0 still has ' + before + ' leaves');
+        done();
+      }
+    }, 300);
+  }
+
+  // --- Browser-pane chrome ------------------------------------------------
+  // The demo's address bar is read-only (the pane only ever shows the demo's
+  // own page), and ↗ opens that page in a real browser window rather than
+  // shelling out to a system that isn't there.
+  function browserChromeCheck(done) {
+    var input = document.querySelector('.browser .browser-url');
+    if (!input) { log('BROWSER-CHROME SKIP — no address bar'); done(); return; }
+    log('address bar: value=' + JSON.stringify(input.value)
+        + ' readOnly=' + input.readOnly
+        + (input.readOnly ? '' : ' — EDITABLE (bug)'));
+    var btn = Array.prototype.slice.call(
+        document.querySelectorAll('.browser .browser-btn'))
+      .filter(function (b) { return /new browser window|system browser/i.test(b.title); })[0];
+    if (!btn) { log('BROWSER-CHROME: no ↗ button'); done(); return; }
+    var opened = null, orig = window.open;
+    window.open = function (u, t) { opened = [u, t]; return null; };
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    setTimeout(function () {
+      window.open = orig;
+      log('↗ button: ' + (opened
+            ? 'window.open(' + JSON.stringify(opened[0]) + ', '
+              + JSON.stringify(opened[1]) + ')'
+              + (/^\/try\/breakout/.test(opened[0]) ? '' : ' — WRONG URL')
+            : 'DID NOT open a window'));
+      done();
+    }, 1200);
+  }
+
+  // Clicking inside a browser pane must ACTIVATE that pane.  The click lands
+  // in the iframe's own document, so the host page sees no mousedown and no
+  // focusin — only a window blur with activeElement now the frame.  Focusing
+  // the frame reproduces exactly that, and the pane ring must follow.
+  function paneFocusCheck(done) {
+    var lw = document.querySelector('.terminal-cc[data-lw="lw-0"]');
+    var frame = lw && lw.querySelector('.browser-frame');
+    if (!frame) { log('PANE-FOCUS SKIP — no browser pane in the showcase'); done(); return; }
+    var leaf = frame.closest('.terminal-cc-leaf');
+    function activeLeaf() {
+      var a = lw.querySelector('.terminal-cc-leaf .pane-chrome.active');
+      var l = a && a.closest('.terminal-cc-leaf');
+      return l ? l.getAttribute('data-leaf') : '(none)';
+    }
+    var before = activeLeaf(), want = leaf.getAttribute('data-leaf');
+    if (before === want) { log('PANE-FOCUS SKIP — browser pane already active'); done(); return; }
+    try { frame.contentWindow.focus(); } catch (e) {}
+    var t0 = Date.now();
+    var timer = setInterval(function () {
+      if (activeLeaf() === want) {
+        clearInterval(timer);
+        log('browser pane click activates it: leaf ' + before + ' -> ' + want);
+        done();
+      } else if (Date.now() - t0 > 5000) {
+        clearInterval(timer);
+        log('PANE-FOCUS FAILED — active leaf still ' + activeLeaf()
+            + ' (wanted ' + want + ')');
+        done();
+      }
+    }, 300);
   }
 
   function rendererCheck() {

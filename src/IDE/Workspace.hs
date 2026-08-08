@@ -160,7 +160,7 @@ newWorkspaceService eff note = do
 -- background; the cell updates as results land.
 wsOpenFile :: WorkspaceService -> FilePath -> IO ()
 wsOpenFile svc path =
-    readWorkspaceFile path >>= \case
+    readWorkspaceFile (wsEffects svc) path >>= \case
         Left err -> wsNote svc ("workspace " <> T.pack path <> ": " <> err)
         Right spec -> do
             let keys = map wsProjectKey (WF.wsProjects spec)

@@ -386,6 +386,25 @@ terminalCss = do
     -- whole page shows a grabbing cursor and never starts a text selection.
     ".leksah.leksah-pane-dragging .leksah-pane-glow, .leksah.leksah-pane-dragging .leksah-pane-left-line" ?
         ("display" -: "none")
+    -- Only the KEY OS window marks its active pane.  The ring and glow say
+    -- "the keyboard is in this pane", and there is one keyboard: a second
+    -- window drawing the same mark claims a focus it does not have, and with
+    -- two windows side by side you cannot tell which one a keystroke goes to.
+    -- The class is stamped on the root from the model's active window (see
+    -- 'rootAttrD' in "IDE.Web.Main"); every glow variant (glow-tall,
+    -- glow-wide1) shares the base class and so is covered.
+    --
+    -- The escape hatch: a pane MOVE in flight, aimed at this window, must be
+    -- able to show its target here even though the window is not key (a drag
+    -- does not change the key window until the mouse comes up).  That is what
+    -- @.leksah-drop-target@ is for.  Nothing sets it yet — a ⌘-drag lives
+    -- entirely in one document ('leafDragJs' pointer capture, and
+    -- 'parseLeafDrop' has no OS-window field), so a pane cannot presently be
+    -- dropped into another OS window at all.  Whoever adds that: stamp this
+    -- class on the target window's root for the duration of the drag and the
+    -- mark comes back on its own.
+    ".leksah.window-unfocused:not(.leksah-drop-target) :is(.leksah-pane-glow, .leksah-pane-left-line)" ?
+        ("display" -: "none")
     ".leksah.leksah-pane-dragging" ? do
         "cursor" -: "grabbing"
         "user-select" -: "none"

@@ -40,7 +40,7 @@ import IDE.Reactive (Cell, modifyCell, newCell, readCell)
 import IDE.Watch (WatchService, newWatchService)
 import IDE.Web.Model (WebUi, WindowId, newWebUi)
 import IDE.Workspace (WorkspaceService, newWorkspaceService)
-import IDE.Ws.Types (defaultEffects)
+import IDE.Web.FS (fsEffects)
 
 -- | Boot lifecycle, mostly for the status bar.
 data RunState = IsStartingUp | IsRunning | IsShuttingDown
@@ -68,7 +68,10 @@ newApp develop = do
     buildLog <- newBuildLog
     (config, cfgErr) <- newConfigService
     problems <- newProblems
-    workspace <- newWorkspaceService defaultEffects (blNote buildLog)
+    -- fsEffects, not defaultEffects: file access goes through the web UI's
+    -- FS seam, so ssh:// project roots work natively and the browser demo's
+    -- page-seeded tree is visible to detection and enumeration at all.
+    workspace <- newWorkspaceService fsEffects (blNote buildLog)
     builder <- newBuilder buildLog problems config workspace
     watch <- newWatchService
     ui <- newCell newWebUi

@@ -34,13 +34,11 @@ module IDE.Ws.File
   , applyOverrides
   ) where
 
-import Control.Exception (SomeException, try)
 import Data.Aeson
 import Data.Aeson.Types (Parser, parseEither)
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Encode.Pretty (Config(..), defConfig, encodePretty')
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -90,12 +88,14 @@ data Workspace = Workspace
 -- Reading -----------------------------------------------------------------
 
 -- | Read a workspace file; relative paths are resolved against the file's
--- directory.
-readWorkspaceFile :: FilePath -> IO (Either Text Workspace)
-readWorkspaceFile path = do
-  ebs <- try (B.readFile path) :: IO (Either SomeException B.ByteString)
-  pure $ case ebs of
-    Left e -> Left (T.pack (show e))
+-- directory.  The read goes through 'Effects' — the same seam detection and
+-- enumeration use — so a workspace can live somewhere other than the local
+-- disk (an @ssh:\/\/@ root, or the browser demo's in-memory tree).
+readWorkspaceFile :: Effects -> FilePath -> IO (Either Text Workspace)
+readWorkspaceFile eff path = do
+  mbs <- eReadFile eff path
+  pure $ case maybe (Left ("cannot read " <> T.pack path)) Right mbs of
+    Left e -> Left e
     Right bs -> case eitherDecodeStrict' bs of
       Left err -> Left (T.pack err)
       Right v -> case parseEither (parseWorkspace base) v of

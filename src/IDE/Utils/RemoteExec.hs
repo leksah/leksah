@@ -40,9 +40,10 @@ module IDE.Utils.RemoteExec
   -- * activity indicator feed
   , remoteInFlight
   , remoteInFlightChanged
+  , dupRemoteInFlight
   ) where
 
-import Control.Concurrent.STM (TVar)
+import Control.Concurrent.STM (TChan, TVar)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import qualified Data.Map as M (Map)
@@ -52,8 +53,8 @@ import IDE.Utils.RemotePath
 
 #if defined(ghcjs_HOST_OS)
 
-import Control.Concurrent.STM (newTVarIO)
-import Control.Concurrent.Chan (Chan, newChan)
+import Control.Concurrent.STM
+       (atomically, dupTChan, newBroadcastTChanIO, newTVarIO)
 import Control.Exception (throwIO)
 import qualified Data.Map as M (empty)
 import GHC.IO (unsafePerformIO)
@@ -119,14 +120,22 @@ interruptRemoteRun _ _ = noRemote
 remoteInFlight :: TVar (M.Map Text Int)
 remoteInFlight = unsafePerformIO (newTVarIO M.empty)
 
+-- | BROADCAST, not a queue: every OS window's statusbar has to see every
+-- transition.  A plain 'Chan' would hand each poke to exactly one window's
+-- drain and leave the other statusbars stale — see 'dupRemoteInFlight'.
 {-# NOINLINE remoteInFlightChanged #-}
-remoteInFlightChanged :: Chan ()
-remoteInFlightChanged = unsafePerformIO newChan
+remoteInFlightChanged :: TChan ()
+remoteInFlightChanged = unsafePerformIO newBroadcastTChanIO
+
+-- | One window's reading copy of the activity feed.
+dupRemoteInFlight :: IO (TChan ())
+dupRemoteInFlight = atomically (dupTChan remoteInFlightChanged)
 
 #else
 
 import Control.Concurrent (forkIO)
-import Control.Concurrent.Chan (Chan, newChan, writeChan)
+import Control.Concurrent.STM
+       (atomically, dupTChan, newBroadcastTChanIO, writeTChan)
 import Control.Concurrent.MVar
        (MVar, modifyMVar, newEmptyMVar, newMVar, putMVar, takeMVar)
 import Control.Concurrent.QSem
@@ -210,16 +219,23 @@ hostSem host = modifyMVar hostSems $ \m ->
 remoteInFlight :: TVar (M.Map Text Int)
 remoteInFlight = unsafePerformIO (newTVarIO M.empty)
 
+-- | BROADCAST, not a queue: every OS window's statusbar has to see every
+-- transition.  A plain 'Chan' would hand each poke to exactly one window's
+-- drain and leave the other statusbars stale — see 'dupRemoteInFlight'.
 {-# NOINLINE remoteInFlightChanged #-}
-remoteInFlightChanged :: Chan ()
-remoteInFlightChanged = unsafePerformIO newChan
+remoteInFlightChanged :: TChan ()
+remoteInFlightChanged = unsafePerformIO newBroadcastTChanIO
+
+-- | One window's reading copy of the activity feed.
+dupRemoteInFlight :: IO (TChan ())
+dupRemoteInFlight = atomically (dupTChan remoteInFlightChanged)
 
 trackInFlight :: Text -> IO a -> IO a
 trackInFlight host = bracket_ (bump 1) (bump (-1))
   where
     bump d = do
       atomically . modifyTVar' remoteInFlight $ M.alter (upd d) host
-      writeChan remoteInFlightChanged ()
+      atomically (writeTChan remoteInFlightChanged ())
     upd d mb = let n = maybe 0 id mb + d in if n <= 0 then Nothing else Just n
 
 -- | Run @sh -c SCRIPT arg0 args…@ on the host with the given stdin, and

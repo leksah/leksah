@@ -54,6 +54,7 @@ import Data.Text (Text)
 import Reflex (Dynamic, Event)
 import IDE.Web.Ctx (Ctx)
 import IDE.Web.Events (TerminalEvents)
+import IDE.Web.Frame (MonadWidget)
 import IDE.Web.Model (TabKey)
 import IDE.Web.Widget.Terminal (terminalWidget)
 

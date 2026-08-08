@@ -19,11 +19,13 @@ module IDE.Web.Chord
   , parseChord
   , renderChord
   , toReflexKey
+  , toReflexKeys
   , toNativeSpec
   , toGlyphs
   ) where
 
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, toLower)
+import Data.List (nub)
 import qualified Data.Set as S (Set, fromList)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -105,6 +107,30 @@ toReflexKey primaryIsCtrl c = do
                [ Shift | chShift c ] ++ [ Command | chCmd c ] ++
                [ primary | chMod c ]
            , key )
+
+-- | Every @(modifier set, trigger key)@ a chord should match — what the DOM
+-- keymap actually binds.  One pair normally; TWO for a @mod@ chord on a
+-- browser-hosted front end, where ⌘ is accepted alongside the resolved Ctrl.
+--
+-- Browser-hosted resolves @mod@ to Ctrl because ⌘-chords belong to the
+-- browser and the OS.  But leksah looks like a Mac app in the page, and a Mac
+-- user reaches for ⌘\` \/ ⌘F \/ ⌘\/ first — so accept both.
+--
+-- Except where the browser has already spoken for the ⌘ chord and will act on
+-- it whatever the page does ('browserReserved'): binding those would run the
+-- leksah command AND close the tab \/ open a window.  Ctrl keeps them.
+toReflexKeys :: Bool -> Chord -> [(S.Set Key, Key)]
+toReflexKeys primaryIsCtrl c
+    | primaryIsCtrl, chMod c, not (browserReserved c) = nub (both True <> both False)
+    | otherwise                                       = both primaryIsCtrl
+  where both p = maybe [] (:[]) (toReflexKey p c)
+
+-- | ⌘-chords a browser handles itself and does not let a page cancel (macOS
+-- tab\/window management).  Adding another modifier takes the chord out of
+-- that set — ⇧ does not (⇧⌘T reopens a closed tab).
+browserReserved :: Chord -> Bool
+browserReserved c =
+    not (chCtrl c || chAlt c) && chKey c `elem` ["n", "t", "w", "q"]
 
 reflexKey :: Text -> Maybe Key
 reflexKey t = case T.unpack t of
