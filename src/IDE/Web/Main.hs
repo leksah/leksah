@@ -1135,7 +1135,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       runJs $ jsMain showMenubar macTitlebar (Just (WindowId 0)) app
 
 #if defined(ghcjs_HOST_OS)
--- | Entry point of the JS-backend front end (src-ghcjs/Main.hs): the shared
+-- | Entry point of the JS-backend front end (main/ghcjs/Main.hs): the shared
 -- 'newIDE' → 'jsMain' pipeline, run directly against the hosting page's DOM.
 -- Web menu bar on (there is no native menu), mac title bar off, develop mode
 -- off (there is no wrapper loop to relaunch us).

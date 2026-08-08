@@ -70,7 +70,7 @@ On macOS the native front end can run *interpreted* in a cabal multi-repl:
 ./leksah.sh --ghci
 ```
 
-This starts `cabal repl leksah:exe:leksah leksah:lib:leksah-nogtk
+This starts `cabal repl leksah:exe:leksah leksah:lib:leksah
 --enable-multi-repl` in a tmux pane (session `ghci` on leksah's own tmux
 server) and types `:main`. The first load compiles everything to bytecode —
 slow, once per session. After that:

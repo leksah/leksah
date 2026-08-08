@@ -12,7 +12,7 @@ usage() {
     echo "              WebKitGTK on Linux — one exe, chosen per-OS in the cabal file)."
     echo "  --warp    : the browser front end, exe:leksah-warp (http://127.0.0.1:PORT/)."
     echo "  --ghci    : run the native web front end INTERPRETED in a cabal multi-repl"
-    echo "              (cabal repl exe:leksah lib:leksah-nogtk) inside a tmux session,"
+    echo "              (cabal repl exe:leksah lib:leksah) inside a tmux session,"
     echo "              so 'leksah-cmd rebuild-self' becomes :reload + :main (seconds,"
     echo "              no relink) and 'leksah-cmd hs eval' can poke the live IDE."
     echo "              First load compiles everything to bytecode — slow, once."
@@ -312,7 +312,7 @@ export TERM=dumb
 # disabled" — including when typed in one of leksah's own terminal panes.  Nor
 # does --repl-options=+RTS work: cabal passes repl options through a @response
 # file, which the RTS never parses.
-exec cabal repl leksah:exe:leksah leksah:lib:leksah-nogtk \\
+exec cabal repl leksah:exe:leksah leksah:lib:leksah \\
   --enable-multi-repl \\
   --constraint="leksah -objc-in-library" \\
   --constraint="jsaddle-wkwebview -objc-in-library" \\

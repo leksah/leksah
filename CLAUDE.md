@@ -246,7 +246,7 @@
   test which jsaddle transports are live. Full toolset + step-by-step method:
   [docs/development/debugging-web-ui-freezes.md](docs/development/debugging-web-ui-freezes.md).
 
-## Web UI architecture (src/IDE/Web, lib leksah-nogtk)
+## Web UI architecture (src/IDE/Web, the leksah library)
 - Front ends share code: `leksah-warp` (browser at http://127.0.0.1:3367/),
   `leksah-wkwebview` (macOS), `leksah-webkitgtk`.
 - **Do NOT set the WKWebView `uiDelegate`** — jsaddle-wkwebview uses it for its

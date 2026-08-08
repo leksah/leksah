@@ -2239,7 +2239,7 @@ void leksah_new_window(int wid) {
         // Restore this window's saved position/size; only centre a genuinely new
         // window (no saved frame).  Centring unconditionally would clobber the
         // remembered location on a ghci-mode restart, where even window 0 comes
-        // back through this path (see src-wkwebview/Main.hs).
+        // back through this path (see main/wkwebview/Main.hs).
         BOOL restored = leksah_configure_window(win, wid);
         if (!restored) [win center];
         [win makeKeyAndOrderFront:nil];

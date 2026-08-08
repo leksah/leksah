@@ -41,7 +41,7 @@ running instance with your changes in place
 | `src/IDE/Web/` | The reflex-dom web UI: `Main.hs` builds the whole DOM, widgets live in `Widget/` (Editor, Terminals, Workspace, FileTree, Grep, Changes, GitLog, Preferences, …) |
 | `src/IDE/Web/MenuModel.hs` | The menu/keyboard-shortcut model shared by all front ends |
 | `src/IDE/LSP.hs` | Language Server Protocol client glue (per-language server table) |
-| `main/` | The native shells: `Main.hs` + `src-wkwebview` / `src-webkitgtk` / `src-webview2` / `src-ghcjs` (per-OS `exe:leksah`), `Warp.hs` (`exe:leksah-warp`), `Cmd.hs` (`exe:leksah-cmd`) |
+| `main/` | The native shells: `wkwebview/` / `webkitgtk/` / `webview2/` / `ghcjs/` `Main.hs` (per-OS `exe:leksah`), `Warp.hs` (`exe:leksah-warp`), `Cmd.hs` (`exe:leksah-cmd`) |
 | `cm6/` | CodeMirror 6 editor bundle (`src/leksah-cm6.mjs` → built `leksah-cm6.js`, checked in) |
 | `monaco/` | Monaco editor bundle, same pattern |
 | `leksah-server` | Background metadata/build server (separate repo, pulled in by the flake) |

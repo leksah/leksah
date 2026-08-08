@@ -13,16 +13,17 @@ cradle:
     # leksah-cmd is a standalone exe whose main-is (Cmd.hs) lives in main/.
     - path: "./main/Cmd.hs"
       component: "leksah:exe:leksah-cmd"
-    # Native web front end: the macOS exe:leksah is (src-wkwebview + main).
+    # leksah-warp's main-is (Warp.hs) also lives in main/.
+    - path: "./main/Warp.hs"
+      component: "leksah:exe:leksah-warp"
+    # Native web front end: exe:leksah is main/<ui>/Main.hs + main/.
     - path: "./main"
-      component: "leksah:exe:leksah"
-    - path: "./src-wkwebview"
       component: "leksah:exe:leksah"
     # (leksah-classic/ is a separate project with its own cabal.project and its
     # own hie.yaml — HLS picks that one up when you open a file under it.)
     # The web-UI library.
     - path: "./src"
-      component: "leksah:lib:leksah-nogtk"
+      component: "leksah:lib:leksah"
     # The vendored LSP client types (its own single-component package).
     - path: "./lsp-types-client"
       component: "lsp-types-client:lib:lsp-types-client"
