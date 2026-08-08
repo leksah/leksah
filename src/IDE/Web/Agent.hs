@@ -80,7 +80,7 @@ import IDE.Web.Claude
        (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
         claudeCommandLine, claudeLiveBySession, claudeLiveOwners,
         claudeSessionLabel, claudeTranscriptPath, paneForSession,
-        showLiveSession)
+        showLiveSession, showTmuxPane)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
@@ -292,11 +292,7 @@ showAgentPane sid = showLiveSession sid >>= \case
   False -> do
     panes <- liveRunPanes
     case [ (s, w, p) | (k, s, w, p) <- panes, ("#claude#" <> sid) `T.isSuffixOf` k ] of
-      ((s, w, p) : _) -> do
-        tmuxCmd ["select-window", "-t", T.unpack w]
-        tmuxCmd ["select-pane", "-t", T.unpack p]
-        requestLocalTerm s
-        return True
+      ((s, w, p) : _) -> showTmuxPane s w p >> return True
       [] -> return False
 
 -- | Type @txt@ into a live session's composer, optionally pressing Enter to

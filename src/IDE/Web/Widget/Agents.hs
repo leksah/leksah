@@ -81,6 +81,14 @@ agentsWidget = do
     -- agents, and a synchronous performEvent would hitch the whole UI.
     let refresh = void . forkIO $ agentForest >>= fireForest
     forestD <- holdUniqDyn =<< holdDyn [] forestE
+    -- A click that finds no pane used to do nothing at all, which reads as a
+    -- broken row rather than as the fact it is: the session is running, but not
+    -- in a terminal of leksah's tmux (another terminal, another machine, or —
+    -- like a `claude` background job — no terminal at all).  Say so instead.
+    -- Fired from the click's own thread, shown on the frame thread.
+    (missE, fireMiss) <- newTriggerEvent
+    performEvent_ $ ffor missE $ \msg -> liftJSM . void $
+      jsg ("window" :: Text) ^. js1 ("__leksahBridgeToast" :: Text) (msg :: Text)
     hdrE <- divClass "agents-head" $ do
       elClass "span" "agents-head-label" . dynText $ ffor forestD $ \f ->
         case count f of
@@ -98,7 +106,7 @@ agentsWidget = do
     -- Top-level agents come up EXPANDED: a root is usually the session you are
     -- talking to, and what it says about itself is the reason to look here.
     -- Anything it forked stays collapsed, so a deep tree still opens small.
-    void . el "ul" $ agentLevel True refresh (byKey <$> forestD)
+    void . el "ul" $ agentLevel True refresh fireMiss (byKey <$> forestD)
   -- Arm the description links on THIS pane's root element.  The handle, never
   -- document.querySelector: at postBuild the div isn't attached in wkwebview's
   -- batched DOM, and setting a property on null aborts the build batch (which
@@ -120,17 +128,18 @@ byKey ns = M.fromList [ (anSession n, n) | n <- ns ]
 -- the keyed list never rebuilds the rows it already has.
 agentLevel
   :: MonadWidget t m
-  => Bool -> IO () -> Dynamic t (Map Text AgentNode) -> m (Event t ())
-agentLevel open refresh mD = do
-  e <- listViewWithKey mD (\_ nD -> agentNodeW open refresh nD)
+  => Bool -> IO () -> (Text -> IO ()) -> Dynamic t (Map Text AgentNode)
+  -> m (Event t ())
+agentLevel open refresh miss mD = do
+  e <- listViewWithKey mD (\_ nD -> agentNodeW open refresh miss nD)
   return (() <$ e)
 
 -- | One agent: its row, and — only while expanded, which is the point — its
 -- description and the agents it forked.
 agentNodeW
   :: forall t m . MonadWidget t m
-  => Bool -> IO () -> Dynamic t AgentNode -> m (Event t ())
-agentNodeW open refresh nD = treeItem "agents-node" open item children
+  => Bool -> IO () -> (Text -> IO ()) -> Dynamic t AgentNode -> m (Event t ())
+agentNodeW open refresh miss nD = treeItem "agents-node" open item children
   where
     item = do
       (lbl, _) <- elDynAttr' "span" (rowAttrs <$> nD) $ do
@@ -146,7 +155,10 @@ agentNodeW open refresh nD = treeItem "agents-node" open item children
         liftIO . void . forkIO $
           if anState n == "gone"
             then runClaudeCmd (ClaudeResume (anDir n) (anSession n))
-            else void (showAgentPane (anSession n))
+            else showAgentPane (anSession n) >>= \found -> if found
+              then return ()
+              else miss $ anTitle n <> " is running, but not in a terminal \
+                          \here — there is no pane to bring up."
       -- ⟳ while it is running, ✕ once it has gone.
       liveD <- holdUniqDyn (anLive <$> nD)
       btnE  <- switchHold never =<< dyn (ffor liveD $ \l ->
@@ -179,7 +191,7 @@ agentNodeW open refresh nD = treeItem "agents-node" open item children
       -- (see the :empty rule in 'agentsCss') rather than leaving a gap.
       void $ elDynHtmlAttr' "div" ("class" =: "agent-desc")
         (fromMaybe "" . anDesc <$> nD)
-      el "ul" $ agentLevel False refresh (byKey . anChildren <$> nD)
+      el "ul" $ agentLevel False refresh miss (byKey . anChildren <$> nD)
 
     -- Signatures because '=:' is polymorphic in its container: without them the
     -- inferred type is an over-general 'At' constraint that won't generalize.

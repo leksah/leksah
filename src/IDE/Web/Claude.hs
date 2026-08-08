@@ -39,6 +39,7 @@ module IDE.Web.Claude
   , claudeTranscriptPath
   , activateMruClaude
   , showLiveSession
+  , showTmuxPane
   , paneForSession
   , sessionForPaneId
   , sessionOwningPid
@@ -94,12 +95,16 @@ import System.Exit (ExitCode(..))
 import System.Process (createProcess, proc, readProcess, readProcessWithExitCode)
 import Text.Read (readMaybe)
 
+import IDE.App (appUi, getGlobalApp)
+import IDE.Reactive (readCell)
+import IDE.Web.Model (WebUi(_leksahWindows))
 import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
         liveRunPanes, livePanePids, tmuxCmd, sendKeysTo, findRunPane,
         newSessionWindow, freshSessionName)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.NewLwRequest (requestNewLw)
+import IDE.Web.SplitLayout (windowOwner)
 
 -- | A saved Claude Code session for some directory.
 data ClaudeSession = ClaudeSession
@@ -740,11 +745,32 @@ activateMruClaude dir = do
   panes <- filter (\(k, _, _, _) -> claudeKeyFor base k) <$> liveRunPanes
   case panes of
     [] -> return False
-    ((_, sid, wid, pid) : _) -> do
-      tmuxCmd ["select-window", "-t", T.unpack wid]
-      tmuxCmd ["select-pane", "-t", T.unpack pid]
-      requestLocalTerm sid
-      return True
+    ((_, sid, wid, pid) : _) -> showTmuxPane sid wid pid >> return True
+
+-- | Make tmux pane @p@ of window @w@ current, and bring up the leksah TAB that
+-- shows it.
+--
+-- The tab is asked for by the LEKSAH WINDOW that owns tmux window @w@, not by
+-- the tmux session @s@.  A session can back several leksah windows — one per
+-- tmux window — and a request naming only the session resolves to whichever of
+-- them is first, so selecting a pane in any other window raised the wrong tab:
+-- "show me this agent" put a plain shell on screen while the agent's own pane
+-- stayed hidden one tab over.  Falling back to @s@ covers the window no leksah
+-- window owns yet (the reconcile mints one within a poll tick).
+showTmuxPane :: Text -> Text -> Text -> IO ()
+showTmuxPane s w p = do
+  tmuxCmd ["select-window", "-t", T.unpack w]
+  tmuxCmd ["select-pane", "-t", T.unpack p]
+  mlw <- lwForTmuxWindow w
+  requestLocalTerm (fromMaybe s mlw)
+
+-- | The leksah window (wide0 tab) holding tmux window @w@, if one does.
+lwForTmuxWindow :: Text -> IO (Maybe Text)
+lwForTmuxWindow w = getGlobalApp >>= \case
+  Nothing  -> return Nothing
+  Just app -> do
+    ui <- readCell (appUi app)
+    return (fst <$> windowOwner w (_leksahWindows ui))
 
 -- | Bring the terminal running LIVE session @sid@ to the front: find the tmux
 -- pane whose process tree owns that session's @claude@ process, select its
@@ -758,14 +784,31 @@ activateMruClaude dir = do
 -- terminal outside leksah), and returns 'False' when there is nothing to show.
 showLiveSession :: Text -> IO Bool
 showLiveSession sid = paneForSession sid >>= \case
-    Just (s, w, p) -> do
-      tmuxCmd ["select-window", "-t", T.unpack w]
-      tmuxCmd ["select-pane", "-t", T.unpack p]
-      requestLocalTerm s
-      return True
+    Just (s, w, p) -> showTmuxPane s w p >> return True
     Nothing -> claudeLiveBySession >>= \live -> case M.lookup sid live of
-      Just l | not (null (clDir l)) -> activateMruClaude (clDir l)
+      Just l | not (null (clDir l)) -> mruClaudeUnclaimed sid (clDir l)
       _                             -> return False
+
+-- | The directory-MRU fallback of 'showLiveSession', but never someone ELSE's
+-- pane.  The MRU pane for a directory says nothing about WHICH of that
+-- directory's sessions is in it, so a session with no pane of its own — running
+-- in another terminal, on another tmux server, or as a background job with no
+-- terminal at all — used to be "shown" by raising a different live session's
+-- pane.  From the Agents pane that read as one row activating another row's
+-- agent.
+--
+-- A pane running no live session we can name is still fair game: that is the
+-- case the fallback exists for (no @ps@, so 'paneForSession' can identify
+-- nothing at all, and the run key is the only evidence there is).
+mruClaudeUnclaimed :: Text -> FilePath -> IO Bool
+mruClaudeUnclaimed sid dir = do
+  let base = T.pack (dropTrailingPathSeparator dir) <> "#claude"
+  panes <- filter (\(k, _, _, _) -> claudeKeyFor base k) <$> liveRunPanes
+  case panes of
+    [] -> return False
+    ((_, s, w, p) : _) -> sessionForPaneId p >>= \case
+      Just other | other /= sid -> return False
+      _                         -> showTmuxPane s w p >> return True
 
 -- | The tmux @(session id, window id, pane id)@ whose process tree owns LIVE
 -- session @sid@ — the exact identification 'showLiveSession' documents, factored
