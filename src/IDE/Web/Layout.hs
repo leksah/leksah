@@ -556,6 +556,21 @@ layoutCss = do
         Clay.display none
     ".leksah.tall-auto .tall-sensor" ?
         ("display" -: "block")
+    -- An empty, invisible, click-through grid item stretched over the WHOLE
+    -- editor (wide0) cell, purely so JS can measure that cell.  The cross-window
+    -- drag needs the editor area's box to offer a window with NO tabs as a drop
+    -- target ('wide0AreaRect' in "IDE.Web.Main"), and every other element there
+    -- is conditional: the '.tab-buttons.area-wide0' strip is only rendered when
+    -- the window HAS a wide0 tab (listViewWithKey over the visible-tab map), so
+    -- measuring from it made a fresh empty window untargetable — the one case
+    -- the feature exists for.  Behind everything (z-index 0, no background) and
+    -- pointer-events:none, so it neither paints nor takes the mouse.
+    ".wide0-anchor" ? do
+        "grid-area" -: "wide0"
+        "align-self" -: "stretch"
+        "justify-self" -: "stretch"
+        "pointer-events" -: "none"
+        "z-index" -: "0"
     -- (The active-pane highlight for every area is the per-pane chrome ring —
     -- '.terminal-cc-hl' markers / '.pane-chrome' leaf divs / the
     -- '.tab.tab-active' outline, all model-driven; the dividers carry only

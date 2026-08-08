@@ -3759,23 +3759,30 @@ leafDragJs = T.unlines
   -- FOREIGN window's drag asks us to draw: same geometry, same tie-breaks, so
   -- the shadow means the same thing wherever it is drawn.
   -- The wide0 (editor\/terminal) area, as a rect, WITHOUT needing anything to
-  -- be in it: the tab strip is rendered whether or not there are tabs, so it
-  -- fixes the left edge and width, and the first thing below it (the bottom
-  -- bar, else the status bar) fixes the height.  This is what makes a window
-  -- with NO tabs a drop target at all — there is no element in that grid area
-  -- to hit-test against.
+  -- be in it.  This is what makes a window with NO tabs a drop target at all —
+  -- there is no element in that grid area to hit-test against.
+  --
+  -- Measured from '.wide0-anchor', an empty click-through box stretched over
+  -- the whole wide0 grid cell for exactly this purpose (see layoutCss).  It
+  -- used to measure the '.tab-buttons.area-wide0' strip instead, on the belief
+  -- that the strip is always there — it is NOT: tabsWidget builds one strip per
+  -- grid area PRESENT in the visible-tab map, so a window with no wide0 tab has
+  -- no strip, wide0AreaRect returned null, and a brand-new empty window (the
+  -- one case this exists for) could not be dropped on.
+  --
+  -- The tab strip, when there is one, is excluded: the top of the area is the
+  -- strip's bottom edge, since a drop ON the strip is the tab-row target, not
+  -- this one.
   , "  function wide0AreaRect(){"
+  , "    var a = document.querySelector('.wide0-anchor');"
+  , "    if (!a) return null;"
+  , "    var r = a.getBoundingClientRect();"
+  , "    if (r.width <= 0 || r.height <= 0) return null;"
+  , "    var top = r.top;"
   , "    var row = document.querySelector('.tab-buttons.area-wide0');"
-  , "    if (!row) return null;"
-  , "    var r = row.getBoundingClientRect();"
-  , "    if (r.width <= 0) return null;"
-  , "    var bottom = window.innerHeight;"
-  , "    ['.area-wide1', '.statusbar'].forEach(function(sel){"
-  , "      var es = document.querySelectorAll(sel);"
-  , "      for (var i = 0; i < es.length; i++){"
-  , "        var b = es[i].getBoundingClientRect();"
-  , "        if (b.height > 0 && b.top >= r.bottom && b.top < bottom) bottom = b.top; } });"
-  , "    return {x:r.left, y:r.bottom, w:r.width, h:Math.max(0, bottom - r.bottom)}; }"
+  , "    if (row){ var rr = row.getBoundingClientRect();"
+  , "      if (rr.height > 0 && rr.bottom > top && rr.bottom < r.bottom) top = rr.bottom; }"
+  , "    return {x:r.left, y:top, w:r.width, h:Math.max(0, r.bottom - top)}; }"
   , "  function pickAt(cx, cy, src){"
   , "    var t = document.elementFromPoint(cx, cy);"
   , "    if (!t || !t.closest) return null;"
@@ -4992,6 +4999,11 @@ main showMenubar macTitlebar wid ctx = mdo
     -- drop shadow when one of that panel's panes is active — see layoutCss.
     elAttr "div" ("class" =: "tall-divider") (pure ())
     elAttr "div" ("class" =: "wide1-divider") (pure ())
+    -- A click-through box over the whole editor (wide0) grid cell, so JS can
+    -- measure that cell even when the window has no wide0 tab at all — see
+    -- 'wide0AreaRect' (the cross-window drag's empty-window drop target) and
+    -- the .wide0-anchor rule in "IDE.Web.Layout".
+    elAttr "div" ("class" =: "wide0-anchor") (pure ())
     -- The auto-hide activation strip: an invisible 3px zone over the editor's left
     -- padding whose hover re-opens the collapsed side pane (see layoutCss).
     elAttr "div" ("class" =: "tall-sensor") (pure ())
