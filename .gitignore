@@ -20,10 +20,6 @@ leksah.lkshw
 /dist-ghcjs/
 /stack.yaml.lock
 /bin/
-/vendor/gi-gobject/GI/
-/vendor/gi-gobject/dist/
-/vendor/gi-gtkosxapplication/GI/
-/vendor/gi-gtkosxapplication/dist/
 .*.swp
 
 # Dev .app wrapper built by leksah-nix.sh (wkwebview naming)

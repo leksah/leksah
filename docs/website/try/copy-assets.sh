@@ -24,7 +24,7 @@ cd "$(dirname "$0")"
 SITE=..
 REPO=../../..
 
-nix build "$REPO?submodules=1#leksah-website" -o result-site
+nix build "$REPO#leksah-website" -o result-site
 echo "Staging site from: $(readlink result-site)"
 
 # rsync (not cp): the store copy is read-only, and --chmod restores normal

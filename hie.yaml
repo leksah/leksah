@@ -18,17 +18,11 @@ cradle:
       component: "leksah:exe:leksah"
     - path: "./src-wkwebview"
       component: "leksah:exe:leksah"
-    # The classic GTK3 IDE, split into its own frozen package (its src/ is a
-    # copy of the formerly shared tree; pins come before the generic ./src).
-    - path: "./leksah-classic/main"
-      component: "leksah-classic:exe:leksah-classic"
-    - path: "./leksah-classic/src-gtk"
-      component: "leksah-classic:lib:leksah-classic"
-    - path: "./leksah-classic/src"
-      component: "leksah-classic:lib:leksah-classic"
+    # (leksah-classic/ is a separate project with its own cabal.project and its
+    # own hie.yaml — HLS picks that one up when you open a file under it.)
     # The web-UI library.
     - path: "./src"
       component: "leksah:lib:leksah-nogtk"
-    # Vendored sibling packages (their own single-component packages).
-    - path: "./vendor/lsp-types-client"
+    # The vendored LSP client types (its own single-component package).
+    - path: "./lsp-types-client"
       component: "lsp-types-client:lib:lsp-types-client"

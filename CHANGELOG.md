@@ -34,4 +34,4 @@ GtkSourceView interface:
   outputs for macOS (app/DMG), Windows (installer) and Linux.
 
 Release notes for the GTK-era versions (up to 0.8, 2010) are preserved in
-[docs/old_manual/intro.rst](docs/old_manual/intro.rst).
+[leksah-classic/docs/old_manual/intro.rst](leksah-classic/docs/old_manual/intro.rst).

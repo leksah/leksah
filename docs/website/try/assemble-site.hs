@@ -8,7 +8,7 @@
 --   assemble-site --repo REPO --leksah-js FILE --breakout-js FILE --out DIR
 --
 -- Everything is copied by an explicit whitelist, so working files
--- (record-demo.*, the .hs sources, terminals\/*.ans, .gitignore) never leak
+-- (the .hs sources, terminals\/*.ans, .gitignore) never leak
 -- onto the public site.  Files are copied by read+write (never copyFile):
 -- the inputs live in the read-only nix store, and a byte copy gives the new
 -- file normal writable permissions — which the in-place PatchRts step needs.

@@ -1,0 +1,14 @@
+# HLS cradle for leksah-classic.
+#
+# src/ and src-gtk/ are both part of lib:leksah-classic, and main/ is the
+# executable.  Pinning each tree to one component keeps `cabal v2-repl` from
+# failing with "Ambiguous target" (which would leave HLS with no GHC session at
+# all — no hover, no go-to-def, no diagnostics).
+cradle:
+  cabal:
+    - path: "./main"
+      component: "leksah-classic:exe:leksah-classic"
+    - path: "./src-gtk"
+      component: "leksah-classic:lib:leksah-classic"
+    - path: "./src"
+      component: "leksah-classic:lib:leksah-classic"

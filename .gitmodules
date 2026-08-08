@@ -1,9 +1,0 @@
-[submodule "vendor/haskellVCSGUI"]
-	path = vendor/haskellVCSGUI
-	url = https://github.com/leksah/haskellVCSGUI.git
-[submodule "vendor/haskellVCSWrapper"]
-	path = vendor/haskellVCSWrapper
-	url = https://github.com/leksah/haskellVCSWrapper.git
-[submodule "vendor/reflex-dom"]
-	path = vendor/reflex-dom
-	url = git@github.com:reflex-frp/reflex-dom.git

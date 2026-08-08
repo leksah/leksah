@@ -47,6 +47,10 @@ data-files:
     data/.gtkrc-2.0
     data/styles/leksah.xml
     data/styles/leksah-dark.xml
+    data/styles/arc.xml
+    data/styles/github.xml
+    data/styles/github-dark.xml
+    data/styles/industrial.xml
     language-specs/cabal.lang
     language-specs/haskell.lang
     language-specs/haskell-literate.lang
@@ -107,6 +111,31 @@ data-files:
 extra-source-files:
     po/*.pot
     po/*.po
+    win32/gtk2hsall.sh
+    win32/gtkrc
+    win32/heat.xslt
+    win32/leksah.bat
+    win32/leksah.ico
+    win32/leksah.nsi
+    win32/leksah.wxs
+    win32/leksah-rebuild-metadata.bat
+    win32/leksah-server.bat
+    win32/makeinstaller.sh
+    win32/makeinstallers.sh
+    win32/recache.sh
+    scripts/clean.sh
+    scripts/stage.sh
+    osx/bundle.sh
+    osx/gtk.sh
+    osx/gtk2.sh
+    osx/Info.plist
+    osx/launcher.sh
+    osx/leksah.bundle
+    osx/leksah.icns
+    osx/makedmg.sh
+    osx/makedmgs.sh
+    osx/run
+    osx/settings.ini
 
 source-repository head
     type: git

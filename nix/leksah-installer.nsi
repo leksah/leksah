@@ -12,7 +12,7 @@
 ; IDE.Core.State.leksahSubDir: the exe must be named leksah.exe, and the data
 ; dir is <installroot>\leksah):
 ;   $INSTDIR\bin\leksah.exe   (+ runtime DLLs, WebView2Loader.dll)
-;   $INSTDIR\leksah\...        (data, pics, cm6, xterm, fonts, language-specs)
+;   $INSTDIR\leksah\...        (pics, cm6, xterm, fonts)
 
 Unicode true
 SetCompressor /SOLID lzma

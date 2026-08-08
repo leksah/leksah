@@ -1,0 +1,10 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=Leksah (classic)
+GenericName=Haskell IDE
+Comment=The Haskell development environment (classic GTK3 front end)
+Exec=leksah-classic %F
+Icon=leksah
+Type=Application
+Categories=GNOME;GTK;Development;
+MimeType=text/x-haskell;text/x-literate-haskell;application/leksah-session;application/leksah-workspace;

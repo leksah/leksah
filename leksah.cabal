@@ -24,43 +24,11 @@ build-type: Simple
 data-files:
     LICENSE
     Readme.md
-    data/prefs.lkshp
-    data/prefscoll.lkshp
-    data/LICENSE
-    data/module.lksht
-    data/welcome.txt
-    data/leksah-welcome/cabal.project
-    data/leksah-welcome/Setup.lhs
-    data/leksah-welcome/leksah-welcome.cabal
-    data/leksah-welcome/LICENSE
-    data/leksah-welcome/src/Main.hs
-    data/leksah-welcome/test/Main.hs
-    data/empty-file
-    scripts/clean.sh
-    scripts/stage.sh
-    osx/bundle.sh
-    osx/gtk2.sh
-    osx/gtk.sh
-    osx/Info.plist
-    osx/launcher.sh
-    osx/leksah.bundle
     osx/leksah.icns
-    osx/makedmg.sh
-    osx/makedmgs.sh
-    osx/settings.ini
-    win32/gtk2hsall.sh
-    win32/gtkrc
-    win32/leksah.bat
-    win32/leksah.ico
-    win32/leksah.nsi
-    win32/leksah-rebuild-metadata.bat
-    win32/leksah-server.bat
-    win32/makeinstaller.sh
-    win32/makeinstallers.sh
-    win32/recache.sh
+    osx/leksah-macapp.icns
     linux/applications/leksah.desktop
     linux/applications/leksah.xml
-    linux/icons/hicolor/48x48/apps/leksah_48x48.png
+    linux/icons/hicolor/48x48/apps/leksah.png
 extra-source-files:
 
 source-repository head

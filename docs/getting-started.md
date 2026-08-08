@@ -9,12 +9,13 @@ hovers and terminal output.
 
 ## Install and run
 
-Install [Nix](https://nixos.org/download/), then:
+With `ghc`, `cabal`, `tmux` and `leksah-server` on your PATH (or inside
+`nix develop`, which provides them):
 
 ```shell
-git clone --recursive https://github.com/leksah/leksah.git
+git clone https://github.com/leksah/leksah.git
 cd leksah
-./leksah.sh --nix ghc914
+./leksah.sh
 ```
 
 The first build takes a while (it builds `leksah-server`, the front end and
@@ -24,15 +25,13 @@ the native front end — WKWebView on macOS, GTK4 + WebKitGTK on Linux.
 Variants:
 
 ```shell
-./leksah.sh --nix --warp ghc914     # serve the UI to your browser
-                                    # (http://127.0.0.1:3367/)
-./leksah.sh --nix --classic ghc98   # the classic Gtk front end
+./leksah.sh --warp     # serve the UI to your browser (http://127.0.0.1:3367/)
+./leksah.sh --ghci     # run it interpreted in a cabal multi-repl
 ```
 
-Run `./leksah.sh` with no arguments for the full usage. Without `--nix`,
-commands run in your ambient environment — use that if you already have
-`ghc`, `cabal`, `tmux` and `leksah-server` on PATH and want to skip the
-per-command Nix evaluation.
+Run `./leksah.sh --help` for the full usage.  (The classic Gtk front end is
+no longer part of this project — it lives in `leksah-classic/`, which has its
+own `cabal.project` and flake.)
 
 ## Opening a project
 

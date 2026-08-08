@@ -6,8 +6,3 @@
 /fonts/
 /pics/
 /xterm/
-
-# Screencast intermediate from record-demo.sh; the final .mp4/.webm/.gif in
-# media/ are committed deliverables (re-recording is manual), the raw capture
-# is not.
-media/*.raw.webm

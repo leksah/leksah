@@ -29,8 +29,7 @@
   file or `tail`.
 - `leksah-cmd restart [--no-rebuild]` — exit immediately so `leksah.sh`
   relaunches; plain restart exits 2 (loop rebuilds first), `--no-rebuild` exits
-  3 (loop skips the build — use after rebuild-self already built). Both replace
-  the older `./dev-relaunch.sh`.
+  3 (loop skips the build — use after rebuild-self already built).
 - **ghci mode**: `./leksah.sh --ghci` runs the app INTERPRETED in a cabal
   multi-repl (tmux session `ghci` on `-L leksah`; first bytecode load is slow,
   once). The repl flips cabal flags (`leksah -objc-in-library`,
@@ -120,14 +119,20 @@
   index-refresh lock; your `git commit`/`add` in a terminal won't contend on
   `.git/index.lock`. (An old instance built before this fix still contends —
   retry the commit, or rebuild+restart to pick up the fix.)
-- Full driver: `./leksah.sh [--warp|--classic|--ghci] [--in-tmux] [ARGS]`
+- Full driver: `./leksah.sh [--warp|--ghci] [--in-tmux] [ARGS]`
   (a bare `./leksah.sh` runs the default front end; `--help` prints usage).
   **Front end**: default is the native web exe:leksah (WKWebView on macOS,
   WebKitGTK on Linux — one exe, chosen per-OS in the cabal file); `--warp` is
-  exe:leksah-warp (browser), `--classic` is the classic Gtk exe:leksah-classic
-  — now its own package in **`leksah-classic/`**, a frozen GPLv2 fork with its
-  own copies of the formerly shared core modules (see docs/relicensing.md);
-  the main leksah package does not depend on it.
+  exe:leksah-warp (browser).
+  **The classic Gtk IDE is NOT part of this project any more**: `leksah-classic/`
+  is a frozen GPLv2 fork with its **own cabal.project, flake.nix/flake.lock,
+  nix/hix.nix, hie.yaml and vendor/** (see docs/relicensing.md), meant to be
+  liftable into its own repo. Build it from inside that directory
+  (`cd leksah-classic && nix develop` / `cabal build leksah-classic:exe:leksah-classic`);
+  it pins its own compiler (ghc914-sh) and carries its own copies of the
+  fork workarounds and of `vendor/gi-gtkosxapplication`. Nothing in the root
+  project — cabal.project, flake, leksah.sh, hie.yaml — refers to it. Don't add
+  it back to the root plan.
   Commands run in the **ambient** environment (ghc/cabal/tmux/leksah-server
   must be on PATH); leksah-server/leksah-cmd/ffcabal + the front end are built
   with cabal.
@@ -273,7 +278,7 @@
   ENTRY itself with "The package location '…' does not exist", before
   leksah.sh runs.  Workaround while iterating on a local dep: evaluate the
   shell from the clean HEAD commit instead —
-  `nix develop "git+file://$PWD?rev=$(git rev-parse HEAD)&submodules=1"` —
+  `nix develop "git+file://$PWD?rev=$(git rev-parse HEAD)"` —
   the shell only provides the toolchain; the in-shell cabal then solves the
   real working-tree project (local packages build from source).
 - The flake reads the **dirty working tree** (uncommitted edits ARE picked up;

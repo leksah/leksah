@@ -1,5 +1,4 @@
-# The leksah.org site root as a nix derivation (`nix build
-# '.?submodules=1#leksah-website'`): the homepage plus the in-browser demo
+# The leksah.org site root as a nix derivation (`nix build '.#leksah-website'`): the homepage plus the in-browser demo
 # (leksah compiled with the GHC JS backend) and the breakout game it plays in
 # a browser pane.  The output is the exact directory to mirror to the
 # leksah/leksah.github.io repo (or serve locally:

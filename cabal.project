@@ -1,50 +1,34 @@
+-- The classic GTK3 IDE is NOT part of this project.  It was split out as a
+-- frozen GPLv2 fork with its own copies of the (formerly shared) core modules,
+-- and it now has its own cabal.project/flake in leksah-classic/ so that
+-- directory can be lifted into its own repository.  Build it from there:
+--   cd leksah-classic && cabal build leksah-classic
 packages:
  ./
- -- The classic GTK3 IDE, split out as a frozen GPLv2 fork with its own copies
- -- of the (formerly shared) core modules; the main leksah package no longer
- -- depends on it or on leksah-server/ltk/vcswrapper/vcsgui.
- leksah-classic/
--- vendor/gi-gobject/
- vendor/gi-gtkosxapplication/
- vendor/lsp-types-client/
+ -- LSP client types, vendored (the hackage lsp-types package is tied to the
+ -- server side); see IDE.LSP.
+ lsp-types-client/
  -- The sandpit's breakout game is in the root plan so the JS cross plan
  -- builds it for the website demo's browser pane
  -- (javascript-unknown-ghcjs:breakout:exe:breakout); sandpit/cabal.project
  -- stays standalone for opening the sandpit as its own leksah workspace.
  sandpit/breakout/
 
--- leksah-server, ltk and the Haskell VCS libraries (vcswrapper/vcsgui) used to
--- be git submodules under vendor/ listed as local packages, which forced every
--- nix invocation to use `.?submodules=1#…` (else the submodule dirs are empty
--- and the packages vanish).  They now come from their own repos as
--- source-repository-packages, so a plain `nix develop .#` works.  For nix each
--- location+tag is resolved to a flake input via inputMap in flake.nix (no
--- network fetch during pure eval).
--- These four SRPs (and the patched haddock ones below) are needed ONLY by
--- leksah-classic now (plus leksah-server by the main package's soft-deleted
--- metadata support, until Stage 2 of docs/relicensing.md lands) — web-only
--- packaging can omit them all.
+-- leksah-server used to be a git submodule under vendor/ listed as a local
+-- package, which forced every nix invocation to use `.?submodules=1#…` (else
+-- the submodule dir is empty and the package vanishes).  It comes from its own
+-- repo as a source-repository-package now — this project has no submodules at
+-- all any more — so a plain `nix develop .#` works.
+-- For nix the location+tag is resolved to a flake input via inputMap in
+-- flake.nix (no network fetch during pure eval).
+-- leksah builds no Haskell against it: it is the background metadata server the
+-- IDE runs as a subprocess (and the installers ship next to leksah), which is
+-- why this SRP and the patched haddock-api ones below are still here.
+-- ltk, vcswrapper and vcsgui left with leksah-classic (leksah-classic/cabal.project).
 source-repository-package
   type: git
   location: https://github.com/leksah/leksah-server
   tag: cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd
-
-source-repository-package
-  type: git
-  location: https://github.com/leksah/ltk
-  tag: cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f
-
-source-repository-package
-  type: git
-  location: https://github.com/leksah/haskellVCSWrapper
-  tag: b77a455d4250223a6bde047aa0901df72dfb9c7f
-  subdir: vcswrapper
-
-source-repository-package
-  type: git
-  location: https://github.com/leksah/haskellVCSGUI
-  tag: fbdd7bfaefb49b35a956b79e2958a826e6e86f66
-  subdir: vcsgui
 
 -- ffcabal lives in its own repo (hamishmack/ffcabal) now; consume it via a
 -- source-repository-package.  For nix the location+tag is resolved to a flake
@@ -136,8 +120,6 @@ allow-newer:
   , reflex-dom-svg:reflex-dom-core
   , patch:base
   , patch:these
-  , gi-gtkosxapplication:haskell-gi
-  , gi-gtkosxapplication:haskell-gi-base
   , brittany:base
   , brittany:strict
   , brittany:aeson
@@ -160,21 +142,18 @@ allow-newer:
 
 constraints: monoidal-containers >=0.6.2.0, any.haskell-gi-overloading ==0.0, any.happy ==2.1.7, extra >=1.8, semialign <1.4
 
--- The gi-* custom Setups (leksah-classic's gtk stack) link haskell-gi, whose
--- build-store compile resolves Cabal from the toolchain's global db
--- (Cabal-3.17.0.1) even though the plan records build:Cabal-3.16.1.0 — the
--- setup exe link then fails with undefined Cabal-3.17.* symbols.  Pinning the
--- gi setups to the installed Cabal makes the link line match what the compile
--- actually used.  (Fork-cabal build/host store issue; drop these when fixed.)
+-- The gi-* custom Setups (the Linux front end's GTK4/WebKitGTK stack) link
+-- haskell-gi, whose build-store compile resolves Cabal from the toolchain's
+-- global db (Cabal-3.17.0.1) even though the plan records build:Cabal-3.16.1.0
+-- — the setup exe link then fails with undefined Cabal-3.17.* symbols.  Pinning
+-- the gi setups to the installed Cabal makes the link line match what the
+-- compile actually used.  (Fork-cabal build/host store issue; drop these when
+-- fixed.)  The GTK3-only entries left with leksah-classic.
 constraints:
-  gi-atk:setup.Cabal ==3.17.0.1, gi-cairo:setup.Cabal ==3.17.0.1,
-  gi-freetype2:setup.Cabal ==3.17.0.1, gi-gdk:setup.Cabal ==3.17.0.1,
-  gi-gdk3:setup.Cabal ==3.17.0.1, gi-gdkpixbuf:setup.Cabal ==3.17.0.1,
+  gi-cairo:setup.Cabal ==3.17.0.1,
+  gi-freetype2:setup.Cabal ==3.17.0.1, gi-gdkpixbuf:setup.Cabal ==3.17.0.1,
   gi-gio:setup.Cabal ==3.17.0.1, gi-glib:setup.Cabal ==3.17.0.1,
   gi-gmodule:setup.Cabal ==3.17.0.1, gi-gobject:setup.Cabal ==3.17.0.1,
-  gi-gtk:setup.Cabal ==3.17.0.1, gi-gtk3:setup.Cabal ==3.17.0.1,
-  gi-gtkosxapplication:setup.Cabal ==3.17.0.1,
-  gi-gtksource:setup.Cabal ==3.17.0.1, gi-gtksource3:setup.Cabal ==3.17.0.1,
   gi-harfbuzz:setup.Cabal ==3.17.0.1, gi-pango:setup.Cabal ==3.17.0.1
 
 -- The GHC JS backend build (docs/website/try demo) must use ghcjs-dom's
@@ -194,12 +173,10 @@ if arch(javascript)
 --  --sha256: 0wlsvm7gxa7hmz4093lfqnpvdwy5awjli5bvf2dah2bywdhd3qf6
 
 if impl(ghc >=9.6)
-  -- reflex-dom-core 0.8.1.4 is on hackage; using it (rather than vendoring
-  -- the submodule as a local `packages:` entry) keeps reflex-dom-svg's
-  -- dependency on it identical between the project plan and the v2 slice
-  -- builds (avoids an inplace-vs-reinstalled unit-id mismatch).
-  -- packages:
-  --   vendor/reflex-dom/reflex-dom-core/
+  -- reflex-dom-core 0.8.1.4 is on hackage; using it (rather than vendoring it
+  -- as a local `packages:` entry) keeps reflex-dom-svg's dependency on it
+  -- identical between the project plan and the v2 slice builds (avoids an
+  -- inplace-vs-reinstalled unit-id mismatch).
 
   allow-newer:
     , reflex:primitive
@@ -285,15 +262,9 @@ if impl(ghc >=9.14)
   allow-newer: haddock-api:*, haddock-library:*
   allow-boot-library-installs: True
 
--- Issues with command line length limits on macOS prevent the gtk version checks working
-package ltk
- flags: -check-gtk-version
-
 -- NOTE: leksah-webkitgtk is the GTK4/WebKitGTK 6.0 front end
 -- (jsaddle-webkitgtk + gi-webkit 6.x), Linux-only via os(linux) guards in its
--- executable stanza.  The `webkitgtk` cabal flag is unrelated to it now: the
--- flag only gates the legacy GTK3 library's gi-webkit2 panes (webkit2gtk-4.x,
--- gone from nixpkgs) and stays off.
+-- executable stanza.
 --package leksah-server
 -- extra-framework-dirs: /System/Library/Frameworks
 --package jsaddle-wkwebview

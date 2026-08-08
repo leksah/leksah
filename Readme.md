@@ -8,8 +8,6 @@ to JavaScript and run entirely in-page — no install, no server.
 
 That last one is the easiest way to see it:
 
-[![Leksah demo](docs/website/media/breakout-demo.gif)](https://leksah.org/try/)
-
 **[▶ Try Leksah in your browser](https://leksah.org/try/)** — the real IDE,
 compiled with GHC's JavaScript backend, editing a small game project with
 prerecorded language-server hovers and terminal output.
@@ -51,7 +49,7 @@ and LSP support work the same for any language.
 Install [Nix](https://nixos.org/download/), then:
 
 ```shell
-git clone --recursive https://github.com/leksah/leksah.git
+git clone https://github.com/leksah/leksah.git
 cd leksah
 ./leksah.sh --nix ghc914
 ```

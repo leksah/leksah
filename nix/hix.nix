@@ -156,7 +156,6 @@ rec {
         [ p.aarch64-multiplatform-musl p.ucrt64 ]
       ++ [ p.ghcjs ];
     modules = [({pkgs, lib, config, ...}: let
-        inherit (config) hsPkgs;
         inherit (pkgs.stdenv.hostPlatform) isWindows;
         # The GHC JavaScript backend (javascript-unknown-ghcjs).  nixpkgs gives
         # this platform NO C compiler by design (pkgs/stdenv/cross/default.nix:
@@ -239,34 +238,6 @@ rec {
             --prefix 'XDG_DATA_DIRS' ':' "${pkgs.adwaita-icon-theme}/share" \
             ''} --argv0 leksah
         '';
-        # The classic GTK3 IDE (its own frozen package, leksah-classic/).
-        packages.leksah-classic.components.exes.leksah-classic.build-tools =
-          lib.optionals (!isWindows && !isJS) [
-            pkgs.wrapGAppsHook3
-            pkgs.makeWrapper
-          ];
-        packages.leksah-classic.components.exes.leksah-classic.libs =
-          lib.optionals (!isWindows && !isJS) [
-            pkgs.gtk3
-            pkgs.dconf
-            pkgs.adwaita-icon-theme
-            pkgs.gsettings-desktop-schemas
-          ];
-        packages.leksah-classic.components.exes.leksah-classic.postInstall =
-          lib.optionalString (!isWindows && !isJS) ''
-          ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-            mkdir -p $out/share
-            cp -r ${../linux} $out/share/
-          ''}
-          wrapProgram $out/bin/leksah-classic \
-            --prefix 'PATH' ':' "${hsPkgs.leksah-server.components.exes.leksah-server}/bin" \
-            --prefix 'PATH' ':' "${hsPkgs.vcsgui.components.exes.vcsgui}/bin" \
-            --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
-            --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin" \
-            --suffix 'PATH' ':' "${hsPkgs.doctest.components.exes.doctest}/bin" \
-            --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
-            --set 'XDG_DATA_DIRS' ""
-        '';
         packages.leksah.components.exes.leksah-warp.build-tools =
           lib.optionals (!isWindows && !isJS) [
             pkgs.makeWrapper
@@ -294,11 +265,7 @@ rec {
       packages = ps: with ps; [
         leksah-server
         leksah
-        leksah-classic
-        ltk
-        vcsgui
-        vcswrapper
-      ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin gi-gtkosxapplication;
+      ];
       tools = {
         # The stable-haskell cabal FORK (Cabal 3.17, distStoreDirLayout →
         # ~/.cabal/store/host/<platform>/package.conf.d) — the SAME cabal the
@@ -340,10 +307,10 @@ rec {
         #   ];
         # })
         # pkgs.stack
+        # haskell-gi's build needs these for the Linux front end's GTK4 /
+        # WebKitGTK 6.0 bindings (gi-gtk4, gi-gdk4, gi-webkit).
         pkgs.gobject-introspection
         pkgs.pkg-config
-        pkgs.gtk3
-        pkgs.gtksourceview3
         # Persistent web-UI terminals: each leksah terminal attaches to a tmux
         # session (on a private socket), so shells survive a leksah restart.
         pkgs.tmux
@@ -351,6 +318,6 @@ rec {
         pkgs.buildPackages.imagemagick
         # Nix language server (nix-community/nixd) for .nix files (IDE.LSP).
         pkgs.nixd
-      ] ++ pkgs.lib.optional pkgs.stdenv.isDarwin pkgs.gtk-mac-integration;
+      ];
     };
 })

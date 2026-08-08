@@ -189,10 +189,7 @@
         <span>The real IDE compiled to JavaScript — a canned sample, not a full IDE in your browser</span>
         <button class="fsbtn" id="demoFullscreen" type="button" title="Full screen">⛶ Full screen</button>
       </div>
-      <video autoplay muted loop playsinline poster="" aria-label="Screencast of Leksah editing a Haskell game project">
-        <source src="/media/breakout-demo.webm" type="video/webm">
-        <source src="/media/breakout-demo.mp4" type="video/mp4">
-      </video>
+      <iframe src="/try/" title="Leksah running in your browser" loading="lazy"></iframe>
     </div>
     <div class="below">
       This is a <b>canned demo</b>: Leksah itself, built with GHC's JavaScript
@@ -275,7 +272,7 @@
   <section id="install">
     <h2>Get it</h2>
     <p class="lead">Install <a href="https://nixos.org/download/">Nix</a>, then:</p>
-    <pre class="install"><code><span class="p">$</span> git clone --recursive https://github.com/leksah/leksah.git
+    <pre class="install"><code><span class="p">$</span> git clone https://github.com/leksah/leksah.git
 <span class="p">$</span> cd leksah
 <span class="p">$</span> ./leksah.sh --nix ghc914   <span class="c"># native app (or --warp for the browser UI)</span></code></pre>
     <p class="lead" style="margin-top:16px">
@@ -317,9 +314,10 @@
 </div>
 
 <script>
-  // Auto-embed the live in-browser IDE when its frame scrolls into view: the
-  // screencast is the instant placeholder until then, so first paint never
-  // waits on leksah.js (large; GitHub Pages serves it compressed).
+  // The live in-browser IDE is embedded directly (loading="lazy", so the
+  // browser still defers leksah.js — which is large — until the frame nears
+  // the viewport).  `embed()` survives for the fullscreen button and for the
+  // old placeholder path: it is a no-op once an iframe is in place.
   (function () {
     var frame = document.getElementById('demoFrame');
     function embed() {

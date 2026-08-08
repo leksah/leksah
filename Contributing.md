@@ -12,7 +12,7 @@ Questions and ideas are welcome on the
 2. Clone your fork locally (with submodules):
 
    ```
-   git clone --recursive <url-to-your-fork>
+   git clone <url-to-your-fork>
    ```
 
 3. Make sure you can build and run Leksah from source — see
@@ -44,12 +44,12 @@ running instance with your changes in place
 | `main/` | The native shells: `Main.hs` + `src-wkwebview` / `src-webkitgtk` / `src-webview2` / `src-ghcjs` (per-OS `exe:leksah`), `Warp.hs` (`exe:leksah-warp`), `Cmd.hs` (`exe:leksah-cmd`) |
 | `cm6/` | CodeMirror 6 editor bundle (`src/leksah-cm6.mjs` → built `leksah-cm6.js`, checked in) |
 | `monaco/` | Monaco editor bundle, same pattern |
-| `vendor/ltk` | UI toolkit library (submodule) |
 | `leksah-server` | Background metadata/build server (separate repo, pulled in by the flake) |
 | `docs/website/` | leksah.org sources, including the in-browser demo (`try/`) |
 
-The classic Gtk front end (`exe:leksah-classic`, `src-gtk/`, panes in
-`src/IDE/Pane/`) is still built but new work happens in the web UI.
+The classic Gtk front end is no longer part of this project.  It lives in
+`leksah-classic/` as a frozen GPLv2 fork with its own `cabal.project` and flake
+(build it from that directory); nothing here depends on it.
 
 ## Architecture notes (web UI)
 

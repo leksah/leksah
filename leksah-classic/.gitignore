@@ -1,0 +1,8 @@
+# leksah-classic is its own cabal project (own cabal.project/flake), so its
+# build output lands here rather than in the parent's dist-newstyle.
+/dist-newstyle*/
+/.ghc.environment.*
+/result
+/result-*
+/vendor/gi-gtkosxapplication/GI/
+/vendor/gi-gtkosxapplication/dist/

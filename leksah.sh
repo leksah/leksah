@@ -6,12 +6,11 @@
 
 
 usage() {
-    echo "Usage: ./leksah.sh [--warp|--classic|--ghci] [--in-tmux] [LEKSAH_ARGS]"
+    echo "Usage: ./leksah.sh [--warp|--ghci] [--in-tmux] [LEKSAH_ARGS]"
     echo
     echo "  (default) : the native web front end, exe:leksah (WKWebView on macOS,"
     echo "              WebKitGTK on Linux — one exe, chosen per-OS in the cabal file)."
     echo "  --warp    : the browser front end, exe:leksah-warp (http://127.0.0.1:PORT/)."
-    echo "  --classic : the classic Gtk front end, exe:leksah-classic."
     echo "  --ghci    : run the native web front end INTERPRETED in a cabal multi-repl"
     echo "              (cabal repl exe:leksah lib:leksah-nogtk) inside a tmux session,"
     echo "              so 'leksah-cmd rebuild-self' becomes :reload + :main (seconds,"
@@ -33,7 +32,7 @@ usage() {
     echo "          ./leksah.sh --warp --in-tmux"
     echo "          LEKSAH_PORT=3368 ./leksah.sh   # 2nd instance"
     echo
-    echo "For details of other LEKSAH_ARGS run: ./leksah.sh --classic --help"
+    echo "For details of other LEKSAH_ARGS run: ./leksah.sh --help"
 }
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -47,8 +46,9 @@ INVOCATION="$0 $*"
 
 # Pull the script's own flags out from anywhere in the argument list; whatever
 # is left is positional (LEKSAH_ARGS).  There is a single native web exe
-# (exe:leksah, chosen per-OS in the cabal file) — the default; --warp and
-# --classic select the two alternative front ends instead.
+# (exe:leksah, chosen per-OS in the cabal file) — the default; --warp selects
+# the browser front end instead.  (The classic Gtk IDE is no longer part of this
+# project: it lives in leksah-classic/, which has its own cabal.project/flake.)
 IN_TMUX=0
 GHCI=0
 UI=leksah
@@ -60,7 +60,6 @@ for a in "$@"; do
         --in-tmux) IN_TMUX=1 ;;
         --ghci)    GHCI=1 ;;
         --warp)    UI=warp ;;
-        --classic) UI=classic ;;
         *)         POS+=("$a") ;;
     esac
 done
@@ -68,7 +67,7 @@ set -- "${POS[@]}"
 
 # On macOS the default exe:leksah is the WKWebView front end, which we run from a
 # real Leksah.app bundle (correct name in the menu bar / Dock / ⌘-Tab).  --warp
-# and --classic don't; nor does the Linux exe:leksah (WebKitGTK).
+# doesn't; nor does the Linux exe:leksah (WebKitGTK).
 RUN_FROM_APP=0
 if [ "$UI" = "leksah" ] && [ "$(uname)" = "Darwin" ]; then RUN_FROM_APP=1; fi
 
@@ -87,7 +86,7 @@ export LEKSAH_PORT
 if [ "$LEKSAH_PORT" = "3367" ]; then INSTANCE_TAG=""; else INSTANCE_TAG="-$LEKSAH_PORT"; fi
 
 # Log-file discriminator: empty for the default front end (exe:leksah), so its
-# logs are just leksah[-run].log; -warp / -classic for the alternatives.
+# logs are just leksah[-run].log; -warp for the browser front end.
 if [ "$UI" = "leksah" ]; then LOG_TAG=""; else LOG_TAG="-$UI"; fi
 
 # Tee everything (build output + leksah's own stdout/stderr, including the
@@ -119,10 +118,9 @@ trap 'status "exited: code=$?"' EXIT
 # it calls cabal directly with the same target leksah was launched with.
 # Map the UI selector to its cabal executable target.  The native web front end
 # (WKWebView on macOS, WebKitGTK on Linux, WebView2 on Windows) is a single
-# exe:leksah selected per-OS in the cabal file — the default; --classic is the
-# classic GTK exe:leksah-classic; --warp is exe:leksah-warp.
+# exe:leksah selected per-OS in the cabal file — the default; --warp is
+# exe:leksah-warp.
 case "$UI" in
-    classic) EXE_TARGET="exe:leksah-classic" ;;
     warp)    EXE_TARGET="exe:leksah-warp" ;;
     *)       EXE_TARGET="exe:leksah" ;;
 esac
@@ -172,11 +170,6 @@ PLIST
     elif [ -f osx/leksah.icns ]; then
         cp -f osx/leksah.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
     fi
-fi
-
-if [ "$IN_TMUX" = "1" ] && [ "$UI" = "classic" ]; then
-    echo "Note: --in-tmux only applies to the web front ends; ignoring for --classic."
-    IN_TMUX=0
 fi
 
 if [ "$IN_TMUX" = "1" ]; then
@@ -289,8 +282,8 @@ if [ "$GHCI" = "1" ]; then
   # spawned by the tmux SERVER, whose environment is whatever shell started
   # it — not this one.  A cabal solve/build inside the repl needs the same
   # toolchain env this shell has (e.g. PKG_CONFIG_PATH, so pkg-config deps
-  # like gi-gtkosxapplication's gtk-mac-integration resolve when leksah.sh is
-  # run inside `nix develop`).  tmux/terminal-specific vars are dropped; the
+  # resolve the same way when leksah.sh is run inside `nix develop`).
+  # tmux/terminal-specific vars are dropped; the
   # explicit exports in ghci-run.sh below override the snapshot where needed.
   ENV_SNAPSHOT="$RUNLOGDIR/ghci-env$INSTANCE_TAG.sh"
   export -p | grep -v -E '^declare -x (TMUX|TMUX_PANE|TERM|PWD|OLDPWD|SHLVL|_)=' > "$ENV_SNAPSHOT"
@@ -497,13 +490,13 @@ fi
 
 # ===========================================================================
 # Zero-downtime handoff supervisor (opt-in: LEKSAH_HANDOFF=1; native web UI
-# only — not --warp/--classic, and ghci has its own arm above).  Keeps the
+# only — not --warp, and ghci has its own arm above).  Keeps the
 # current instance up while its successor starts on an ephemeral asset port,
 # and retires it only once the successor's UI signals ready.  See
 # IDE.Web.Handoff.  When off, control falls through to the ordinary exit-2/3
 # relaunch loop below, which is unchanged.
 # ===========================================================================
-if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "classic" ] && [ "$UI" != "warp" ]; then
+if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "warp" ]; then
   export LEKSAH_HANDOFF=1
 
   # Same launch recipe as the loop's launch_leksah, duplicated so the default
@@ -602,82 +595,63 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   rm -f .ghc.environment.*
   mkdir -p bin
 
-  if [ "$UI" = "classic" ]; then
-    # Classic Gtk (the leksah-classic/ package — a frozen GPLv2 fork): install
-    # the binaries, then launch directly (the Gtk runtime environment must
-    # already be in place in the ambient shell).
-    if [ "$SKIP_REBUILD" != 1 ]; then
-      cabal install --installdir bin --overwrite-policy=always \
-          exe:leksah-server exe:leksah-classic exe:leksahecho exe:vcswrapper exe:vcsgui exe:vcsgui-askpass \
-          || read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."
-    else
-      echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
-    fi
-    rm -f .ghc.environment.*
+  # Web front ends (default exe:leksah, or --warp): leksah-server must be on
+  # PATH (for metadata) and tmux is needed for persistent terminals.  With
+  # --develop-leksah leksah exits with code 2 when rebuilt (in-IDE or via
+  # `leksah-cmd rebuild-self`), so this loop relaunches it.
+  if [ "$SKIP_REBUILD" != 1 ]; then
+    status "building"
+    build_and_link "$EXE_TARGET" \
+        || { status "build failed (offering last built version)"
+             read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."; }
+  else
+    echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
+  fi
+  rm -f .ghc.environment.*
+  status "up: launching instance"
 
-    LEKSAH_EXIT_CODE=0
-    PATH="$(pwd)/bin:$PATH" leksah_classic_datadir="$(pwd)/leksah-classic" \
-      ./bin/leksah-classic --develop-leksah "$@" \
+  # Launch the freshly-built binary directly, with the data dir `cabal run`
+  # would have set (the package root).  `exec` so leksah's exit code
+  # propagates (2 => rebuilt => relaunch).
+  launch_leksah='
+    app="$1"; tgt="$2"; shift 2
+    export leksah_datadir="$(pwd)"
+    bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
+    if [ "$app" = "1" ]; then
+      # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name
+      # everywhere).  cabal relinks a new inode each build, so refresh the
+      # bundle executable (hard link; copy across volumes) every launch.  exec
+      # so leksah'\''s exit code still drives the relaunch loop.
+      macos="$(pwd)/Leksah.app/Contents/MacOS"
+      ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
+      exec "$macos/leksah" --develop-leksah "$@"
+    fi
+    exec "$bin" --develop-leksah "$@"'
+
+  LEKSAH_EXIT_CODE=0
+  if [ "$IN_TMUX" = "1" ]; then
+    # A persistent session (shown as "Terminal 0" in leksah) tails leksah's
+    # own log.  Created once on the `leksah` socket; closing it just stops the
+    # tail, not leksah.
+    # On leksah's own tmux server (leksah / leksah-<port>, see IDE.Web.Instance)
+    # so it lists in THIS instance's Terminals pane, with a matching name.
+    # NB: plain `new-session -d` (NOT `-A`): if the session already exists (a
+    # relaunch), -A would turn this into an attach-session and BLOCK the loop
+    # forever; without -A it just fails "duplicate session" and `|| true`
+    # no-ops, leaving the existing log tail in place.
+    tmux -L "leksah$INSTANCE_TAG" -f "$CONF" new-session -d -s "leksah$INSTANCE_TAG-0" tail -n +1 -F "$LOGFILE" || true
+    echo "Launching leksah$LOG_TAG; its output appears as \"Terminal 0\" inside leksah (log: $LOGFILE)"
+    PATH="$(pwd)/bin:$PATH" \
+      bash -c "$launch_leksah" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" > "$LOGFILE" 2>&1 \
       || LEKSAH_EXIT_CODE=$?
   else
-    # Web front ends (default exe:leksah, or --warp): leksah-server must be on
-    # PATH (for metadata) and tmux is needed for persistent terminals.  With
-    # --develop-leksah leksah exits with code 2 when rebuilt (in-IDE or via
-    # `leksah-cmd rebuild-self`), so this loop relaunches it.
-    if [ "$SKIP_REBUILD" != 1 ]; then
-      status "building"
-      build_and_link "$EXE_TARGET" \
-          || { status "build failed (offering last built version)"
-               read -n 1 -s -r -p "Build failed.  Press any key to attempt to run last built version."; }
-    else
-      echo "leksah-cmd restart --no-rebuild: skipping build, relaunching."
-    fi
-    rm -f .ghc.environment.*
-    status "up: launching instance"
+    PATH="$(pwd)/bin:$PATH" \
+      bash -c "$launch_leksah" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
+      || LEKSAH_EXIT_CODE=$?
+  fi
 
-    # Launch the freshly-built binary directly, with the data dir `cabal run`
-    # would have set (the package root).  `exec` so leksah's exit code
-    # propagates (2 => rebuilt => relaunch).
-    launch_leksah='
-      app="$1"; tgt="$2"; shift 2
-      export leksah_datadir="$(pwd)"
-      bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
-      if [ "$app" = "1" ]; then
-        # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name
-        # everywhere).  cabal relinks a new inode each build, so refresh the
-        # bundle executable (hard link; copy across volumes) every launch.  exec
-        # so leksah'\''s exit code still drives the relaunch loop.
-        macos="$(pwd)/Leksah.app/Contents/MacOS"
-        ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
-        exec "$macos/leksah" --develop-leksah "$@"
-      fi
-      exec "$bin" --develop-leksah "$@"'
-
-    LEKSAH_EXIT_CODE=0
-    if [ "$IN_TMUX" = "1" ]; then
-      # A persistent session (shown as "Terminal 0" in leksah) tails leksah's
-      # own log.  Created once on the `leksah` socket; closing it just stops the
-      # tail, not leksah.
-      # On leksah's own tmux server (leksah / leksah-<port>, see IDE.Web.Instance)
-      # so it lists in THIS instance's Terminals pane, with a matching name.
-      # NB: plain `new-session -d` (NOT `-A`): if the session already exists (a
-      # relaunch), -A would turn this into an attach-session and BLOCK the loop
-      # forever; without -A it just fails "duplicate session" and `|| true`
-      # no-ops, leaving the existing log tail in place.
-      tmux -L "leksah$INSTANCE_TAG" -f "$CONF" new-session -d -s "leksah$INSTANCE_TAG-0" tail -n +1 -F "$LOGFILE" || true
-      echo "Launching leksah$LOG_TAG; its output appears as \"Terminal 0\" inside leksah (log: $LOGFILE)"
-      PATH="$(pwd)/bin:$PATH" \
-        bash -c "$launch_leksah" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" > "$LOGFILE" 2>&1 \
-        || LEKSAH_EXIT_CODE=$?
-    else
-      PATH="$(pwd)/bin:$PATH" \
-        bash -c "$launch_leksah" _ "$RUN_FROM_APP" "$EXE_TARGET" "$@" \
-        || LEKSAH_EXIT_CODE=$?
-    fi
-
-    if [ "$UI" = "warp" ] && [ $LEKSAH_EXIT_CODE -eq 2 ]; then
-      echo "leksah-warp rebuilt — relaunching (reload http://127.0.0.1:$LEKSAH_PORT/ when ready)"
-    fi
+  if [ "$UI" = "warp" ] && [ $LEKSAH_EXIT_CODE -eq 2 ]; then
+    echo "leksah-warp rebuilt — relaunching (reload http://127.0.0.1:$LEKSAH_PORT/ when ready)"
   fi
   status "instance exited: code=$LEKSAH_EXIT_CODE"
 done

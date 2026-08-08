@@ -1,0 +1,29 @@
+diff -ru a/src/Distribution/Extra/Doctest.hs b/src/Distribution/Extra/Doctest.hs
+--- a/src/Distribution/Extra/Doctest.hs	2026-07-09 10:42:53.870066000 +1200
++++ b/src/Distribution/Extra/Doctest.hs	2026-07-09 10:42:53.894624408 +1200
+@@ -128,6 +128,11 @@
+        (findFile)
+ #endif
+ 
++#if MIN_VERSION_Cabal(3,17,0)
++import Distribution.Verbosity
++       (mkVerbosity, defaultVerbosityHandles)
++#endif
++
+ #if MIN_VERSION_Cabal(3,0,0)
+ import Distribution.Types.LibraryName
+        (libraryNameString)
+@@ -333,7 +338,13 @@
+     :: TestSuiteName
+     -> BuildFlags -> PackageDescription -> LocalBuildInfo -> IO ()
+ generateBuildModule testSuiteName flags pkg lbi = do
++#if MIN_VERSION_Cabal(3,17,0)
++  -- Cabal 3.17 split Verbosity into VerbosityFlags (carried by BuildFlags)
++  -- plus output handles; rebuild the rich Verbosity from the flags.
++  let verbosity = mkVerbosity defaultVerbosityHandles (fromFlag (buildVerbosity flags))
++#else
+   let verbosity = fromFlag (buildVerbosity flags)
++#endif
+   let distPref = fromFlag (buildDistPref flags)
+ 
+   -- Package DBs & environments

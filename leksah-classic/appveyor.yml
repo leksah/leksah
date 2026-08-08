@@ -1,0 +1,42 @@
+environment:
+  global:
+   # https://github.com/haskell/cabal/issues/5386
+   TMP: "c:\\tmp"
+
+  matrix:
+#    - GHCVER: 8.0.2
+    - GHCVER: 8.4.3
+
+cache:
+  - cache1 -> appveyor\cleanup-cache1.txt
+  - cache2 -> appveyor\cleanup-cache1.txt, appveyor\cleanup-cache2.txt
+  - cache3 -> appveyor\cleanup-cache1.txt, appveyor\cleanup-cache2.txt, appveyor\cleanup-cache3.txt
+
+install:
+  - git submodule update --init
+  - SET PATH=%APPDATA%\cabal\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\ProgramData\chocolatey\lib\ghc\tools\ghc-%GHCVER%\bin;C:\ProgramData\chocolatey\lib\cabal\tools;C:\Program Files (x86)/WiX Toolset v3.11\bin;%PATH%
+  - SET PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig
+  - SET XDG_DATA_DIRS=C:\msys64\mingw64\share
+  - pacman --version
+  - appveyor-retry choco install ghc --version %GHCVER% | grep -v '^Extracting '
+  - cabal --version
+  - appveyor-retry choco install wixtoolset --checksum e4b826a23477d0580f1c80c976ac764c3b883a66507dfa8a9988016a10b53b21e8ff274b287f9c3cec75cc5fa8493f25fa829b00d41e4c191690584f000ef977 --checksumtype sha512
+  - heat -? | grep version
+  - appveyor-retry choco install dejavufonts --version 2.35
+  - appveyor-retry pacman -S -q --noconfirm mingw64/mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gobject-introspection mingw64/mingw-w64-x86_64-gtksourceview3 mingw64/mingw-w64-x86_64-webkitgtk3 binutils
+
+#  # In the past not all packages were rebuilt with the new ICU and this work
+#  # around was used to install an older version.  Leaving it here for now
+#  # in case we need it again.
+#  # The webkitgtk package still expects ICU 56
+#  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz/download
+#  - pacman -U --noconfirm mingw-w64-x86_64-icu-56.1-1-any.pkg.tar.xz
+#  - appveyor-retry curl -fsSL -o mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz/download
+#  - pacman -U --noconfirm mingw-w64-x86_64-harfbuzz-1.2.7-1-any.pkg.tar.xz
+
+build_script:
+  - chcp 65001 && bash -ex appveyor/build-some.sh
+
+artifacts:
+  - path: leksah-classic/win32/*.msi
+    name: Leksah Windows Installer

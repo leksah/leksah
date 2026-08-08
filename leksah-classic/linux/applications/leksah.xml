@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+<mime-type type="application/leksah-session">
+<comment>leksah session file</comment>
+<glob pattern="*.lkshs"/>
+</mime-type>
+
+<mime-type type="application/leksah-workspace">
+<comment>leksah workspace file</comment>
+<glob pattern="*.lkshw"/>
+<generic-icon name="application-x-leksah"/>
+</mime-type>
+
+<mime-type type="text/leksah-preferences">
+<comment>leksah preferences file</comment>
+<glob pattern="*.lkshp"/>
+</mime-type>
+
+<mime-type type="text/leksah-candy">
+<comment>leksah candy file</comment>
+<glob pattern="*.lkshc"/>
+</mime-type>
+
+<mime-type type="text/leksah-keymap">
+<comment>leksah keymap file</comment>
+<glob pattern="*.lkshk"/>
+</mime-type>
+
+<mime-type type="x-contents/leksah-metadata">
+<comment>leksah metadata file</comment>
+<glob pattern="*.lkshm"/>
+</mime-type>
+
+<mime-type type="text/leksah-metadata-path">
+<comment>leksah metadata file</comment>
+<glob pattern="*.lkshp"/>
+
+</mime-type>
+
+<mime-type type="x-contents/leksah-metadata-ws">
+<comment>leksah workspace metadata file</comment>
+<glob pattern="*.lkshe"/>
+</mime-type>
+
+</mime-info>

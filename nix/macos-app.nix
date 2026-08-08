@@ -105,12 +105,10 @@ pkgs.runCommand "Leksah.app"
 
     # --- icon + datadir ---
     cp ${src}/osx/leksah-macapp.icns "$RES/leksah.icns"
-    cp -r ${src}/data           "$RES/leksah/data"
     cp -r ${src}/pics           "$RES/leksah/pics"
     cp -r ${src}/cm6            "$RES/leksah/cm6"
     cp -r ${src}/xterm          "$RES/leksah/xterm"
     cp -r ${src}/fonts          "$RES/leksah/fonts"
-    cp -r ${src}/language-specs "$RES/leksah/language-specs"
     cp    ${src}/LICENSE        "$RES/leksah/LICENSE"
     cp    ${src}/Readme.md      "$RES/leksah/Readme.md"
     chmod -R u+w "$RES/leksah"

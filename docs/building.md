@@ -3,42 +3,38 @@
 ## The short version
 
 ```shell
-git clone --recursive https://github.com/leksah/leksah.git
+git clone https://github.com/leksah/leksah.git
 cd leksah
-./leksah.sh --nix ghc914
+./leksah.sh
 ```
 
 `leksah.sh` is the build-and-run driver:
 
 ```
-./leksah.sh [--nix] [--warp|--classic] GHCVER [--in-tmux] [LEKSAH_ARGS]
+./leksah.sh [--warp|--ghci] [--in-tmux] [LEKSAH_ARGS]
 ```
 
-* `--nix` re-enters the Nix dev shell (`nix develop ".?submodules=1#GHCVER"`)
-  for every build/run command. Without it, commands run in your ambient
-  environment — you need `ghc`, `cabal`, `tmux` and `leksah-server` on
-  PATH already.
+* Commands run in your **ambient** environment — you need `ghc`, `cabal`,
+  `tmux` and `leksah-server` on PATH; cabal picks the compiler and builds
+  land in cabal's default `dist-newstyle`.
 * Default front end is the native `exe:leksah` (WKWebView on macOS,
-  WebKitGTK on Linux); `--warp` builds/runs the browser front end;
-  `--classic` the Gtk one — now its own package in `leksah-classic/`, a
-  frozen GPLv2 fork with its own copies of the formerly shared core modules
-  (see `docs/relicensing.md`); the main package does not depend on it.
-* `GHCVER`: `ghc914` for the web front ends (the default); the classic
-  front end also builds with older compilers (e.g. `ghc98`). The libraries
-  support GHC 9.6.7 through 9.14.
+  WebKitGTK on Linux); `--warp` builds/runs the browser front end.
+  The classic Gtk front end is **not part of this project**: `leksah-classic/`
+  is a frozen GPLv2 fork with its own `cabal.project`, flake and vendored
+  packages (see `docs/relicensing.md`), built from inside that directory.
+* `--ghci` runs the app interpreted in a cabal multi-repl (see "ghci mode").
+  The libraries support GHC 9.6.7 through 9.14.
 * `--in-tmux` runs leksah inside a tmux session so its own output shows up
   as "Terminal 0" in the Tmux pane.
 * `LEKSAH_PORT=N ./leksah.sh …` runs a second instance side by side.
 
-Builds use the `dist-ghc-<version>` build directory (e.g.
-`dist-ghc-9.14.1`) — the same one Leksah's own in-IDE builds use, so the
-two share incremental state.
+Builds use cabal's default `dist-newstyle` build directory — the same one
+Leksah's own in-IDE builds use, so the two share incremental state.
 
 ## Nix notes
 
 * The flake reads the **dirty working tree**: uncommitted edits are picked
   up, but **new files must be `git add`ed** before Nix can see them.
-* Flake attributes need submodules: `nix build '.?submodules=1#…'`.
 * Packaging outputs: `leksah-macos-app` / `leksah-macos-dmg` (macOS),
   `leksah-windows-installer` (WebView2), and `leksah-linux` /
   `leksah-windows` run apps for cross-built binaries.
@@ -71,7 +67,7 @@ Run exactly **one** instance per control socket: each instance rebinds
 On macOS the native front end can run *interpreted* in a cabal multi-repl:
 
 ```shell
-./leksah.sh --nix --ghci ghc914
+./leksah.sh --ghci
 ```
 
 This starts `cabal repl leksah:exe:leksah leksah:lib:leksah-nogtk
@@ -124,7 +120,7 @@ cursor escapes to glue lines together).
 
 Escape hatches: `tmux -L leksah attach -t ghci` for the raw prompt;
 `tmux -L leksah kill-session -t ghci` to end the session; a plain
-`./leksah.sh --nix ghc914` still runs the compiled binary.
+`./leksah.sh` still runs the compiled binary.
 
 ## Editor bundles
 
@@ -140,5 +136,4 @@ changing their sources (`cm6/src/leksah-cm6.mjs`,
 * [tmux control-mode terminals](tmux-control-mode.md)
 * [The website & in-browser demo pipeline](website/) —
   `docs/website/try/copy-assets.sh` builds the demo with the GHC
-  JavaScript backend; `docs/website/record-demo.md` documents the
-  screencast pipeline.
+  JavaScript backend, and the homepage embeds it live.

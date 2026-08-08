@@ -8,7 +8,10 @@
 #      the cabal data-files leksah reads at runtime plus the bundled web assets
 #      cm6/ and xterm/ and the Hasklig fonts, which are not cabal data-files).
 #   2. makensis packages that tree into $out/LeksahSetup.exe via
-#      nix/leksah-installer.nsi.
+#      nix/leksah-installer.nsi, with nix/leksah.ico as the installer icon.
+#      (The icon lives here, beside the .nsi, rather than in the old win32/
+#      tree — that is the classic GTK installer and now lives in
+#      leksah-classic/win32.)
 #
 # Consumed from flake.nix (x86_64-linux only, where crossPlatforms yields ucrt64).
 { pkgs
@@ -33,12 +36,10 @@ let
     ''}
 
     # Datadir.  Keep it to what the app actually reads at runtime.
-    cp -r ${src}/data           $out/leksah/data
     cp -r ${src}/pics           $out/leksah/pics
     cp -r ${src}/cm6            $out/leksah/cm6
     cp -r ${src}/xterm          $out/leksah/xterm
     cp -r ${src}/fonts          $out/leksah/fonts
-    cp -r ${src}/language-specs $out/leksah/language-specs
     cp    ${src}/LICENSE        $out/leksah/LICENSE
     cp    ${src}/Readme.md      $out/leksah/Readme.md
 
@@ -59,7 +60,7 @@ pkgs.runCommand "leksah-windows-installer"
       "-DVERSION=${version}" \
       "-DSTAGING=${staging}" \
       "-DOUTFILE=$out/LeksahSetup.exe" \
-      "-DICON=${src}/win32/leksah.ico" \
+      "-DICON=${./leksah.ico}" \
       "-DLICENSE=${staging}/leksah/LICENSE" \
       ${./leksah-installer.nsi}
   ''

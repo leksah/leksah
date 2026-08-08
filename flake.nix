@@ -38,19 +38,15 @@
   # base < 4.22).  Consumed as a tool `src` in nix/hix.nix.
   inputs.hls-github.url = "github:haskell/haskell-language-server";
   inputs.hls-github.flake = false;
-  # leksah-server, ltk and the Haskell VCS libs (vcswrapper/vcsgui) were git
-  # submodules under vendor/; they are now source-repository-packages in
-  # cabal.project.  Wire each to a flake input (same as ffcabal/jsaddle) so the
-  # haskell.nix planner resolves them without a network fetch (pure eval) and a
+  # leksah-server (the background metadata server leksah runs as a subprocess)
+  # was a git submodule under vendor/; it is a source-repository-package in
+  # cabal.project now.  Wire it to a flake input (same as ffcabal/jsaddle) so the
+  # haskell.nix planner resolves it without a network fetch (pure eval) and a
   # plain `nix develop .#` works — no ?submodules=1 needed.
+  # (ltk and the Haskell VCS libs went with leksah-classic, which has its own
+  # flake in leksah-classic/.)
   inputs.leksah-server-src.url = "github:leksah/leksah-server/cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd";
   inputs.leksah-server-src.flake = false;
-  inputs.ltk-src.url = "github:leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f";
-  inputs.ltk-src.flake = false;
-  inputs.haskellvcswrapper-src.url = "github:leksah/haskellVCSWrapper/b77a455d4250223a6bde047aa0901df72dfb9c7f";
-  inputs.haskellvcswrapper-src.flake = false;
-  inputs.haskellvcsgui-src.url = "github:leksah/haskellVCSGUI/fbdd7bfaefb49b35a956b79e2958a826e6e86f66";
-  inputs.haskellvcsgui-src.flake = false;
   outputs = { self, nixpkgs, flake-utils, haskellNix, ... }@inputs:
     let
       supportedSystems = [
@@ -82,9 +78,6 @@
                   "https://github.com/ghcjs/jsaddle/d9873936e47050361899414e4f640931779c3110" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed" = inputs.ffcabal-src;
                   "https://github.com/leksah/leksah-server/cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd" = inputs.leksah-server-src;
-                  "https://github.com/leksah/ltk/cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f" = inputs.ltk-src;
-                  "https://github.com/leksah/haskellVCSWrapper/b77a455d4250223a6bde047aa0901df72dfb9c7f" = inputs.haskellvcswrapper-src;
-                  "https://github.com/leksah/haskellVCSGUI/fbdd7bfaefb49b35a956b79e2958a826e6e86f66" = inputs.haskellvcsgui-src;
                 };
               };
           } // prev.lib.optionalAttrs (system == "aarch64-darwin") {
@@ -105,9 +98,6 @@
           };
         };
         flake = pkgs.hixProject.flake {};
-        launch-leksah-script = pkgs.writeShellScriptBin "launch-leksah" ''
-          "$@"
-        '';
         # Headless runtime smoke test for the GTK4/WebKitGTK 6.0 front end.
         extraChecks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           leksah-webkitgtk-smoke = pkgs.callPackage ./nix/webkitgtk-smoke.nix {
@@ -167,33 +157,7 @@
               version = "0.17.0.0";
             };
           });
-        apps = flake.apps // {
-          launch-leksah.type = "app";
-          launch-leksah.program = (pkgs.stdenv.mkDerivation {
-            name = "launch-leksah";
-            nativeBuildInputs = with pkgs; [ wrapGAppsHook makeWrapper ];
-            buildInputs = with pkgs; [
-              gtk3
-              dconf
-              gnome3.adwaita-icon-theme
-              gsettings-desktop-schemas
-            ];
-            src = ./linux;
-            buildPhase = ''
-                mkdir -p $out
-              '';
-            installPhase = ''
-              mkdir -p $out/bin
-              ln -s ${launch-leksah-script}/bin/launch-leksah $out/bin
-              cp launch-leksah/Info.plist $out/bin
-              wrapProgram $out/bin/launch-leksah \
-                --suffix 'PATH' ':' "${pkgs.hixProject.hsPkgs.doctest.components.exes.doctest}/bin" \
-                --suffix 'LD_LIBRARY_PATH' ':' "${pkgs.cairo}/lib" \
-                --suffix 'FONTCONFIG_PATH' ':' "${pkgs.fontconfig.out}/etc/fonts" \
-                --set 'XDG_DATA_DIRS' ""
-              '';
-          }) + "/bin/launch-leksah";
-        }
+        apps = flake.apps
         # macOS runners for the cross-compiled builds: `hl` (hyper-linux) runs
         # the aarch64-linux-musl ELF directly on Apple Silicon, and wine runs the
         # Windows exe.  Both cross builds come from crossPlatforms in nix/hix.nix.

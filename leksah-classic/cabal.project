@@ -1,0 +1,174 @@
+-- leksah-classic: the classic GTK3 leksah IDE, a frozen GPLv2 fork split out of
+-- the main (Apache-2.0) leksah package (see docs/relicensing.md in the leksah
+-- repository).
+--
+-- This project is SELF-CONTAINED: nothing in it refers to the parent tree, so
+-- this directory can be lifted into its own repository unchanged.  Build it
+-- from here (`cd leksah-classic && cabal build leksah-classic`), not from the
+-- repository root — the root project no longer knows about this package.
+packages:
+ ./
+ -- The macOS GtkosxApplication bindings (menu bar integration for the Gtk
+ -- app).  Vendored because hackage's gi-gtkosxapplication needs the
+ -- allow-newer below to build against a current haskell-gi.
+ vendor/gi-gtkosxapplication/
+
+-- The classic IDE's own libraries and helper executables.  These used to be
+-- git submodules under vendor/ (which forced `.?submodules=1#…` on every nix
+-- invocation); they come from their own repos now, and for nix each
+-- location+tag is resolved to a flake input via inputMap in flake.nix, so no
+-- network fetch happens during pure eval.
+source-repository-package
+  type: git
+  location: https://github.com/leksah/leksah-server
+  tag: cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd
+
+source-repository-package
+  type: git
+  location: https://github.com/leksah/ltk
+  tag: cea1aedf86f1223c6fc2f1a7a9a69cc8bf94603f
+
+source-repository-package
+  type: git
+  location: https://github.com/leksah/haskellVCSWrapper
+  tag: b77a455d4250223a6bde047aa0901df72dfb9c7f
+  subdir: vcswrapper
+
+source-repository-package
+  type: git
+  location: https://github.com/leksah/haskellVCSGUI
+  tag: fbdd7bfaefb49b35a956b79e2958a826e6e86f66
+  subdir: vcsgui
+
+-- leksah-server's IDE.Metainfo.SourceCollectorH needs haddock-api's internal
+-- Haddock.Types module (the ExportD record).  Upstream haddock-api keeps it
+-- hidden, so we build it from leksah/haddock, whose per-GHC branches re-export
+-- Haddock.Types.  9.6-9.10 are the upstream release branches + the patch;
+-- 9.12/9.14 are the GHC in-tree haddock-api (no standalone upstream branch
+-- past 9.10) + the patch, so they reinstall the GHC boot haddock-api.
+-- (Sources are wired to flake inputs via inputMap in flake.nix.)
+if impl(ghc >=9.6) && impl(ghc <9.8)
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.6
+    subdir: haddock-api
+
+  allow-newer: haddock-api:*
+
+if impl(ghc >=9.8) && impl(ghc <9.10)
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.8
+    subdir: haddock-api
+
+  allow-newer: haddock-api:*
+
+if impl(ghc >=9.10) && impl(ghc <9.12)
+  -- ghc-9.10 haddock-api needs haddock-library ^>=1.12, which is not on
+  -- hackage (max 1.11.0); take the matching 1.12.0 from the same branch.
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.10
+    subdir: haddock-api
+
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.10
+    subdir: haddock-library
+
+  allow-newer: haddock-api:*, haddock-library:*
+
+if impl(ghc >=9.12) && impl(ghc <9.14)
+  -- 9.12+ haddock-api is the in-tree version, which needs the matching in-tree
+  -- haddock-library (its 1.11.0 has MetaSince etc. that hackage's 1.11.0 lacks).
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.12
+    subdir: haddock-api
+
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.12
+    subdir: haddock-library
+
+  allow-newer: haddock-api:*, haddock-library:*
+  allow-boot-library-installs: True
+
+if impl(ghc >=9.14)
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.14
+    subdir: haddock-api
+
+  source-repository-package
+    type: git
+    location: https://github.com/leksah/haddock
+    tag: ghc-9.14
+    subdir: haddock-library
+
+  allow-newer: haddock-api:*, haddock-library:*
+  allow-boot-library-installs: True
+
+package haddock-library
+  tests: False
+package haddock-api
+  tests: False
+
+-- Issues with command line length limits on macOS prevent the gtk version
+-- checks working.
+package ltk
+ flags: -check-gtk-version
+
+allow-older: *:haddock-api
+allow-newer:
+    which:base
+  , which:template-haskell
+  , text-replace:base
+  , text-replace:optparse-applicative
+  , text-replace:text
+  , gi-gtkosxapplication:haskell-gi
+  , gi-gtkosxapplication:haskell-gi-base
+  , brittany:base
+  , brittany:strict
+  , brittany:aeson
+  , data-tree-print:base
+  , network-bsd:network
+  , monad-control:transformers-compat
+
+  , *:base
+  , *:bytestring
+  , *:containers
+  , *:template-haskell
+  , *:time
+  , *:mmorph
+  , *:witherable
+  , *:semialign
+  , *:aeson
+
+constraints: any.haskell-gi-overloading ==0.0
+
+-- The gi-* custom Setups link haskell-gi, whose build-store compile resolves
+-- Cabal from the toolchain's global db (Cabal-3.17.0.1) even though the plan
+-- records build:Cabal-3.16.1.0 — the setup exe link then fails with undefined
+-- Cabal-3.17.* symbols.  Pinning the gi setups to the installed Cabal makes the
+-- link line match what the compile actually used.  (Fork-cabal build/host store
+-- issue; drop these when fixed.)
+constraints:
+  gi-atk:setup.Cabal ==3.17.0.1, gi-cairo:setup.Cabal ==3.17.0.1,
+  gi-freetype2:setup.Cabal ==3.17.0.1, gi-gdk:setup.Cabal ==3.17.0.1,
+  gi-gdk3:setup.Cabal ==3.17.0.1, gi-gdkpixbuf:setup.Cabal ==3.17.0.1,
+  gi-gio:setup.Cabal ==3.17.0.1, gi-glib:setup.Cabal ==3.17.0.1,
+  gi-gmodule:setup.Cabal ==3.17.0.1, gi-gobject:setup.Cabal ==3.17.0.1,
+  gi-gtk:setup.Cabal ==3.17.0.1, gi-gtk3:setup.Cabal ==3.17.0.1,
+  gi-gtkosxapplication:setup.Cabal ==3.17.0.1,
+  gi-gtksource:setup.Cabal ==3.17.0.1, gi-gtksource3:setup.Cabal ==3.17.0.1,
+  gi-harfbuzz:setup.Cabal ==3.17.0.1, gi-pango:setup.Cabal ==3.17.0.1
+
+write-ghc-environment-files: never
