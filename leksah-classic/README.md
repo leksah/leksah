@@ -4,7 +4,7 @@ The classic GTK3 front end of the leksah IDE, split out of the main package
 (2026-08) so the new web-UI leksah can be relicensed (see `docs/relicensing.md`
 in the leksah repository).
 
-**This is a frozen fork.**  Its `src/` tree contains this package's own GPLv2
+**This tree stands alone.**  Its `src/` tree contains this package's own GPLv2
 copies of the modules that used to be shared with the web UI (`IDE.Core.*`,
 `IDE.Package`, `IDE.Workspaces`, …).  The main package's versions of those
 modules are being rewritten and will drift immediately — do not expect the

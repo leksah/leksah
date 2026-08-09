@@ -2,8 +2,8 @@
 
 The new (web-UI) leksah is being relicensed from GPL-2.0-or-later to
 **Apache-2.0**.  Relicensing needs the consent of every copyright holder, so
-the approach is: split the classic Gtk IDE into `leksah-classic/` (a frozen
-GPLv2 fork with its own copies of the shared code), then **remove from the
+the approach is: split the classic Gtk IDE into `leksah-classic/` (which stays
+GPLv2, with its own copies of the shared code), then **remove from the
 main package every file whose git history has authors other than Hamish
 Mackenzie**, replacing each with modern, less Haskell-specific code — or
 getting sign-off from its authors where a rewrite would be wasteful.

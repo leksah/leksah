@@ -19,9 +19,9 @@ cd leksah
   land in cabal's default `dist-newstyle`.
 * Default front end is the native `exe:leksah` (WKWebView on macOS,
   WebKitGTK on Linux); `--warp` builds/runs the browser front end.
-  The classic Gtk front end is **not part of this project**: `leksah-classic/`
-  is a frozen GPLv2 fork with its own `cabal.project`, flake and vendored
-  packages (see `docs/relicensing.md`), built from inside that directory.
+  The classic Gtk UI is **not part of this project**: `leksah-classic/` stays
+  GPLv2 and has its own `cabal.project`, flake and vendored packages (see
+  `docs/relicensing.md`), built from inside that directory.
 * `--ghci` runs the app interpreted in a cabal multi-repl (see "ghci mode").
   The libraries support GHC 9.6.7 through 9.14.
 * `--in-tmux` runs leksah inside a tmux session so its own output shows up

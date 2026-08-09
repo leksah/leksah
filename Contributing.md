@@ -49,9 +49,9 @@ running instance with your changes in place
 | `leksah-server` | Background metadata/build server (separate repo, pulled in by the flake) |
 | `docs/website/` | leksah.org sources, including the in-browser demo (`try/`) |
 
-The classic Gtk front end is no longer part of this project.  It lives in
-`leksah-classic/` as a frozen GPLv2 fork with its own `cabal.project` and flake
-(build it from that directory); nothing here depends on it.
+The classic Gtk UI is in `leksah-classic/`, which stays GPLv2 and has its own
+`cabal.project` and flake (build it from that directory); nothing here depends
+on it.
 
 ## Architecture notes (web UI)
 

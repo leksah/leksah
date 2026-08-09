@@ -1,7 +1,7 @@
--- The classic GTK3 IDE is NOT part of this project.  It was split out as a
--- frozen GPLv2 fork with its own copies of the (formerly shared) core modules,
--- and it now has its own cabal.project/flake in leksah-classic/ so that
--- directory can be lifted into its own repository.  Build it from there:
+-- The classic GTK3 IDE is NOT part of this project.  It was split out into
+-- leksah-classic/, which stays GPLv2 and carries its own copies of the
+-- (formerly shared) core modules, and it has its own cabal.project/flake so
+-- that directory can be lifted into its own repository.  Build it from there:
 --   cd leksah-classic && cabal build leksah-classic
 packages:
  leksah/

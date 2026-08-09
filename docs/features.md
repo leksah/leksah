@@ -8,7 +8,7 @@ The UI is one reflex-dom program with interchangeable shells:
 |---|---|
 | `leksah` | Native app: WKWebView (macOS), GTK4 + WebKitGTK (Linux), Edge WebView2 (Windows) — one exe, the shell is chosen per-OS at build time |
 | `leksah-warp` | Serves the same UI over HTTP to any browser |
-| `leksah-classic` | The original Gtk front end — a frozen GPLv2 fork, built from its own project in `leksah-classic/` |
+| `leksah-classic` | The original Gtk front end — GPLv2, built from its own project in `leksah-classic/` |
 | (GHC JS backend) | The same UI compiled to JavaScript — the [in-browser demo](https://leksah.org/try/) |
 
 ## Editors

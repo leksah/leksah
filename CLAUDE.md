@@ -125,12 +125,12 @@
   WebKitGTK on Linux — one exe, chosen per-OS in the cabal file); `--warp` is
   exe:leksah-warp (browser).
   **The classic Gtk IDE is NOT part of this project any more**: `leksah-classic/`
-  is a frozen GPLv2 fork with its **own cabal.project, flake.nix/flake.lock,
+  stays GPLv2 and has its **own cabal.project, flake.nix/flake.lock,
   nix/hix.nix, hie.yaml and vendor/** (see docs/relicensing.md), meant to be
   liftable into its own repo. Build it from inside that directory
   (`cd leksah-classic && nix develop` / `cabal build leksah-classic:exe:leksah-classic`);
   it pins its own compiler (ghc914-sh) and carries its own copies of the
-  fork workarounds and of `vendor/gi-gtkosxapplication`. Nothing in the root
+  toolchain workarounds and of `vendor/gi-gtkosxapplication`. Nothing in the root
   project — cabal.project, flake, leksah.sh, hie.yaml — refers to it. Don't add
   it back to the root plan.
   Commands run in the **ambient** environment (ghc/cabal/tmux must be on

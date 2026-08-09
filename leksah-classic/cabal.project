@@ -1,4 +1,4 @@
--- leksah-classic: the classic GTK3 leksah IDE, a frozen GPLv2 fork split out of
+-- leksah-classic: the classic GTK3 leksah IDE, which stays GPLv2, split out of
 -- the main (Apache-2.0) leksah package (see docs/relicensing.md in the leksah
 -- repository).
 --
