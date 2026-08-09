@@ -92,18 +92,6 @@ GHCi debugging (step, continue) is available from the Debug menu. Nix
 users: *Workspace ▸ Refresh Nix Environment* caches the project's dev
 shell so builds don't pay Nix evaluation on every command.
 
-## Leksah metadata *(off by default)*
-
-Leksah can also build an index of its own — every installed package's
-modules and declarations, collected by a `leksah-server` process into
-`~/.leksah-0.17/metadata` — which drives the **Metadata** tree, its
-search and the *Add import* fix. The language server above answers the
-same questions about live code, so this second index is **off** unless
-you turn on *Enable Leksah metadata* in the preferences' Metadata
-section. While it is off no `leksah-server` is started, no metadata file
-is read, and the Metadata tree is not shown; turn it on and the tree
-appears straight away, without a restart.
-
 ## Remote projects over SSH *(experimental)*
 
 **Workspace ▸ Add Remote Project…** opens a project that lives on another

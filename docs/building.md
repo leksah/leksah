@@ -14,9 +14,9 @@ cd leksah
 ./leksah.sh [--warp|--ghci] [--in-tmux] [LEKSAH_ARGS]
 ```
 
-* Commands run in your **ambient** environment — you need `ghc`, `cabal`,
-  `tmux` and `leksah-server` on PATH; cabal picks the compiler and builds
-  land in cabal's default `dist-newstyle`.
+* Commands run in your **ambient** environment — you need `ghc`, `cabal`
+  and `tmux` on PATH; cabal picks the compiler and builds land in cabal's
+  default `dist-newstyle`.
 * Default front end is the native `exe:leksah` (WKWebView on macOS,
   WebKitGTK on Linux); `--warp` builds/runs the browser front end.
   The classic Gtk UI is **not part of this project**: `leksah-classic/` stays

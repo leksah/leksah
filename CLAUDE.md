@@ -134,10 +134,7 @@
   project — cabal.project, flake, leksah.sh, hie.yaml — refers to it. Don't add
   it back to the root plan.
   Commands run in the **ambient** environment (ghc/cabal/tmux must be on
-  PATH); leksah-cmd/ffcabal + the front end are built with cabal.  (leksah.sh
-  still builds and links exe:leksah-server, and the installers ship it, but
-  nothing runs it: the app has no invocation of it and the Metadata pane is a
-  tombstone — so it is not a PATH requirement.)
+  PATH); leksah-cmd/ffcabal + the front end are built with cabal.
 - Build dir is cabal's default `dist-newstyle` (never pass `--builddir` —
   leksah's own in-IDE builds use the default too, via `cabalBuildDir`).
 - **Editing `leksah.sh` requires restarting it** — a running `bash` reads the

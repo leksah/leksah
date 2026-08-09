@@ -192,16 +192,6 @@ rec {
         # (libgcc) symbol the iserv RTS linker can't resolve when loading the
         # unit for TH under wine; the flag drops the cbits.
         packages.bitvec.flags.simd = lib.mkIf isWindows (lib.mkForce false);
-        packages.leksah-server.components.exes.leksah-server.build-tools =
-          lib.optionals (!isWindows) [
-            pkgs.makeWrapper
-          ];
-        packages.leksah-server.components.exes.leksah-server.postInstall =
-          lib.optionalString (!isWindows) ''
-          wrapProgram $out/bin/leksah-server \
-            --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
-            --suffix 'PATH' ':' "${pkgs.haskell-nix.compiler.${config.compiler.nix-name}}/bin"
-        '';
         # The native web front end (exe:leksah — WKWebView on macOS,
         # GTK4/WebKitGTK 6.0 on Linux, WebView2 on Windows).  On Linux WebKit
         # needs the gsettings schemas at runtime, so the wrapper extends
@@ -263,7 +253,6 @@ rec {
       # to enter the shell.  Cross builds go through `nix build`/`nix run`.
       crossPlatforms = _: [];
       packages = ps: with ps; [
-        leksah-server
         leksah
       ];
       tools = {

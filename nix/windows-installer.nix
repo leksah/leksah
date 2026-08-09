@@ -17,7 +17,6 @@
 { pkgs
 , lib ? pkgs.lib
 , leksah                # cross exe derivation (…leksah:exe:leksah)
-, leksah-server ? null  # optional cross exe (…leksah-server:exe:leksah-server)
 , src                   # leksah source tree (for the datadir)
 , version
 }:
@@ -31,10 +30,6 @@ let
     # import libraries in bin/ are build-time only — the *.dll glob skips them.
     cp -L ${leksah}/bin/leksah.exe $out/bin/leksah.exe
     for f in ${leksah}/bin/*.dll; do cp -L "$f" $out/bin/; done
-    ${lib.optionalString (leksah-server != null) ''
-      cp -L ${leksah-server}/bin/leksah-server.exe $out/bin/
-    ''}
-
     # Datadir.  Keep it to what the app actually reads at runtime.
     cp -r ${src}/leksah/pics           $out/leksah/pics
     cp -r ${src}/leksah/cm6            $out/leksah/cm6

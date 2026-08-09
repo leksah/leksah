@@ -9,8 +9,8 @@ hovers and terminal output.
 
 ## Install and run
 
-With `ghc`, `cabal`, `tmux` and `leksah-server` on your PATH (or inside
-`nix develop`, which provides them):
+With `ghc`, `cabal` and `tmux` on your PATH (or inside `nix develop`,
+which provides them):
 
 ```shell
 git clone https://github.com/leksah/leksah.git
@@ -18,8 +18,8 @@ cd leksah
 ./leksah.sh
 ```
 
-The first build takes a while (it builds `leksah-server`, the front end and
-their dependencies); after that builds are incremental. `leksah.sh` launches
+The first build takes a while (the front end and its dependencies);
+after that builds are incremental. `leksah.sh` launches
 the native front end — WKWebView on macOS, GTK4 + WebKitGTK on Linux.
 
 Variants:

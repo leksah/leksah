@@ -13,7 +13,6 @@
 { pkgs
 , lib ? pkgs.lib
 , leksah                 # exe derivation (…leksah:exe:leksah)
-, leksah-server ? null   # optional exe (…leksah-server:exe:leksah-server)
 , src
 , version
 }:
@@ -37,11 +36,6 @@ pkgs.runCommand "Leksah.app"
     # --- executables (named 'leksah' so leksahSubDir finds the datadir) ---
     cp ${leksah}/bin/leksah "$MACOS/leksah"
     chmod u+w "$MACOS/leksah"
-    ${lib.optionalString (leksah-server != null) ''
-      cp ${leksah-server}/bin/leksah-server "$MACOS/leksah-server"
-      chmod u+w "$MACOS/leksah-server"
-    ''}
-
     # --- bundle the non-system dylib closure into Frameworks ---
     # Worklist: scan each Mach-O, copy every /nix/store dependency into FW, and
     # repoint the reference.  Executables reference @executable_path/../Frameworks;

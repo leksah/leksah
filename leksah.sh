@@ -87,7 +87,7 @@ if [ "$LEKSAH_PORT" = "3367" ]; then INSTANCE_TAG=""; else INSTANCE_TAG="-$LEKSA
 if [ "$UI" = "leksah" ]; then LOG_TAG=""; else LOG_TAG="-$UI"; fi
 
 # Tee everything (build output + leksah's own stdout/stderr, including the
-# leksah-server metadata logs) to a file under ~/.leksah so a run can be
+# build logs) to a file under ~/.leksah so a run can be
 # examined after the fact.  Truncated each run.
 RUNLOGDIR="$HOME/.leksah"
 mkdir -p "$RUNLOGDIR"
@@ -206,9 +206,8 @@ build_and_link() {
     # callers use `build_and_link … || read`, which turns off `set -e` inside
     # the function — without it a failed build would fall through to the
     # symlinking below.
-    PATH="$(pwd)/bin:$PATH" cabal build exe:leksah-server exe:leksah-cmd exe:ffcabal "$@" || return 1
+    PATH="$(pwd)/bin:$PATH" cabal build exe:leksah-cmd exe:ffcabal "$@" || return 1
     mkdir -p bin
-    ln -sf "$(PATH="$(pwd)/bin:$PATH" cabal list-bin exe:leksah-server | grep '^/' | tail -1)" bin/leksah-server
     ln -sf "$(PATH="$(pwd)/bin:$PATH" cabal list-bin exe:leksah-cmd | grep '^/' | tail -1)"    bin/leksah-cmd
     ln -sf "$(PATH="$(pwd)/bin:$PATH" cabal list-bin exe:ffcabal | grep '^/' | tail -1)"       bin/ffcabal
 }
@@ -230,7 +229,7 @@ if [ "$GHCI" = "1" ]; then
   fi
   rm -f .ghc.environment.*
   mkdir -p bin
-  # Same helper prebuild as the binary arm (leksah-server/leksah-cmd/ffcabal
+  # Same helper prebuild as the binary arm (leksah-cmd/ffcabal
   # must be on PATH for the IDE), same PATH prefix — the repl's dependency
   # builds then share the same plan and stay incremental.
   status "ghci: building helper exes"

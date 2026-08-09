@@ -191,7 +191,7 @@ startCmdServer app = void . forkIO $ serve `catch` \(_ :: SomeException) -> retu
 
     bindAndServe path = do
       sock <- socket AF_UNIX Stream defaultProtocol
-      -- Never let spawned children (leksah-server, tmux, git …) inherit the
+      -- Never let spawned children (tmux, git, language servers …) inherit the
       -- listener: an inheritor outliving this instance keeps the socket
       -- "connectable" after we exit, so the NEXT instance's in-use guard sees
       -- a live listener and silently declines to bind — leaving it without a

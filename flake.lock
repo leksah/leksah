@@ -197,91 +197,6 @@
         "type": "github"
       }
     },
-    "haddock-ghc910": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1781399453,
-        "narHash": "sha256-iY/Q92EE3+NqjcWSgzxBxYguGxeta+FWTChPDrih9RI=",
-        "owner": "leksah",
-        "repo": "haddock",
-        "rev": "11e1ebb99c445730f2c7ae8c157940a6b4f13eca",
-        "type": "github"
-      },
-      "original": {
-        "owner": "leksah",
-        "ref": "ghc-9.10",
-        "repo": "haddock",
-        "type": "github"
-      }
-    },
-    "haddock-ghc912": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1781399532,
-        "narHash": "sha256-uOPS31AijQFxZNEIgDvPEfZE+cRHM3Wbk443nkc/M+E=",
-        "owner": "leksah",
-        "repo": "haddock",
-        "rev": "e2a28b30c13ca0957b2e1d73754f9dc2ec263309",
-        "type": "github"
-      },
-      "original": {
-        "owner": "leksah",
-        "ref": "ghc-9.12",
-        "repo": "haddock",
-        "type": "github"
-      }
-    },
-    "haddock-ghc914": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1781399516,
-        "narHash": "sha256-fYMpIpDHeAaT3uT8R9MiiIC/m2wIMlUi9uFXxOKU1T0=",
-        "owner": "leksah",
-        "repo": "haddock",
-        "rev": "801fa1024354643436e6a417601955430726c82e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "leksah",
-        "ref": "ghc-9.14",
-        "repo": "haddock",
-        "type": "github"
-      }
-    },
-    "haddock-ghc96": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1781399453,
-        "narHash": "sha256-qi4SxgBC4wF3zezrRQ9o+LDBkajQ2skJfqbOsYIU+dM=",
-        "owner": "leksah",
-        "repo": "haddock",
-        "rev": "18c08fb510aa2110a14d1abd2f9bde1e59cf0d32",
-        "type": "github"
-      },
-      "original": {
-        "owner": "leksah",
-        "ref": "ghc-9.6",
-        "repo": "haddock",
-        "type": "github"
-      }
-    },
-    "haddock-ghc98": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1781399453,
-        "narHash": "sha256-AlxaE0Rcn6IR3c300OxXnmkR/WO7u9qirlKt7hqb154=",
-        "owner": "leksah",
-        "repo": "haddock",
-        "rev": "148cc27c5fea557bafe17e005079c22c1a683c9f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "leksah",
-        "ref": "ghc-9.8",
-        "repo": "haddock",
-        "type": "github"
-      }
-    },
     "haskellNix": {
       "inputs": {
         "HTTP": "HTTP",
@@ -701,23 +616,6 @@
         "type": "github"
       }
     },
-    "leksah-server-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1785671420,
-        "narHash": "sha256-pihsa+u0K4hdzNBchPd2MwDwCCUhoQF/4rC+qsx4w48=",
-        "owner": "leksah",
-        "repo": "leksah-server",
-        "rev": "cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd",
-        "type": "github"
-      },
-      "original": {
-        "owner": "leksah",
-        "repo": "leksah-server",
-        "rev": "cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1771008912,
@@ -884,16 +782,10 @@
         "ffcabal-src": "ffcabal-src",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
-        "haddock-ghc910": "haddock-ghc910",
-        "haddock-ghc912": "haddock-ghc912",
-        "haddock-ghc914": "haddock-ghc914",
-        "haddock-ghc96": "haddock-ghc96",
-        "haddock-ghc98": "haddock-ghc98",
         "haskellNix": "haskellNix",
         "hls-github": "hls-github",
         "hyper-linux": "hyper-linux_2",
         "jsaddle-terminal-src": "jsaddle-terminal-src",
-        "leksah-server-src": "leksah-server-src",
         "nixpkgs": [
           "haskellNix",
           "nixpkgs-unstable"

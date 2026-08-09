@@ -46,7 +46,6 @@ running instance with your changes in place
 | `leksah/cm6/` | CodeMirror 6 editor bundle (`src/leksah-cm6.mjs` → built `leksah-cm6.js`, checked in) |
 | `leksah/monaco/` | Monaco editor bundle, same pattern |
 | `leksah/pics/`, `leksah/xterm/`, `leksah/fonts/` | The rest of the runtime datadir, served over HTTP by the front ends |
-| `leksah-server` | Background metadata/build server (separate repo, pulled in by the flake) |
 | `docs/website/` | leksah.org sources, including the in-browser demo (`try/`) |
 
 The classic Gtk UI is in `leksah-classic/`, which stays GPLv2 and has its own

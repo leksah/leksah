@@ -10,20 +10,6 @@
   inputs.hyper-linux.url = "github:zw3rk/hyper-linux";
   inputs.flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   inputs.flake-utils.url = "github:numtide/flake-utils";
-  # Patched haddock-api (Haddock.Types exposed for leksah-server's
-  # IDE.Metainfo.SourceCollectorH), per GHC.  9.6-9.10 are the upstream
-  # release branches + the patch; 9.12/9.14 are the GHC in-tree haddock-api
-  # (no standalone upstream branch past 9.10) + the patch.  See leksah/haddock.
-  inputs.haddock-ghc96.url = "github:leksah/haddock/ghc-9.6";
-  inputs.haddock-ghc96.flake = false;
-  inputs.haddock-ghc98.url = "github:leksah/haddock/ghc-9.8";
-  inputs.haddock-ghc98.flake = false;
-  inputs.haddock-ghc910.url = "github:leksah/haddock/ghc-9.10";
-  inputs.haddock-ghc910.flake = false;
-  inputs.haddock-ghc912.url = "github:leksah/haddock/ghc-9.12";
-  inputs.haddock-ghc912.flake = false;
-  inputs.haddock-ghc914.url = "github:leksah/haddock/ghc-9.14";
-  inputs.haddock-ghc914.flake = false;
   # jsaddle (core), jsaddle-wkwebview, jsaddle-terminal, jsaddle-webkitgtk and
   # jsaddle-webview2 live in the jsaddle monorepo; wire it so the haskell.nix
   # planner resolves the source-repository-package in cabal.project without a
@@ -38,15 +24,6 @@
   # base < 4.22).  Consumed as a tool `src` in nix/hix.nix.
   inputs.hls-github.url = "github:haskell/haskell-language-server";
   inputs.hls-github.flake = false;
-  # leksah-server (the background metadata server leksah runs as a subprocess)
-  # was a git submodule under vendor/; it is a source-repository-package in
-  # cabal.project now.  Wire it to a flake input (same as ffcabal/jsaddle) so the
-  # haskell.nix planner resolves it without a network fetch (pure eval) and a
-  # plain `nix develop .#` works — no ?submodules=1 needed.
-  # (ltk and the Haskell VCS libs went with leksah-classic, which has its own
-  # flake in leksah-classic/.)
-  inputs.leksah-server-src.url = "github:leksah/leksah-server/cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd";
-  inputs.leksah-server-src.flake = false;
   outputs = { self, nixpkgs, flake-utils, haskellNix, ... }@inputs:
     let
       supportedSystems = [
@@ -66,18 +43,12 @@
               final.haskell-nix.hix.project {
                 src = ./.;
                 evalSystem = "aarch64-darwin";
-                # Wire the patched haddock-api branches (leksah/haddock) so the
-                # haskell.nix planner resolves the source-repository-packages in
-                # cabal.project without a network fetch (pure eval).
+                # Wire the source-repository-packages in cabal.project to flake
+                # inputs so the haskell.nix planner resolves them without a
+                # network fetch (pure eval).
                 inputMap = {
-                  "https://github.com/leksah/haddock/ghc-9.6"  = inputs.haddock-ghc96;
-                  "https://github.com/leksah/haddock/ghc-9.8"  = inputs.haddock-ghc98;
-                  "https://github.com/leksah/haddock/ghc-9.10" = inputs.haddock-ghc910;
-                  "https://github.com/leksah/haddock/ghc-9.12" = inputs.haddock-ghc912;
-                  "https://github.com/leksah/haddock/ghc-9.14" = inputs.haddock-ghc914;
                   "https://github.com/ghcjs/jsaddle/d9873936e47050361899414e4f640931779c3110" = inputs.jsaddle-terminal-src;
                   "https://github.com/leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed" = inputs.ffcabal-src;
-                  "https://github.com/leksah/leksah-server/cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd" = inputs.leksah-server-src;
                 };
               };
           } // prev.lib.optionalAttrs (system == "aarch64-darwin") {
@@ -131,7 +102,6 @@
           leksah-windows-installer = import ./nix/windows-installer.nix {
             inherit pkgs;
             leksah = flake.packages."x86_64-w64-mingw32:leksah:exe:leksah";
-            leksah-server = flake.packages."x86_64-w64-mingw32:leksah-server:exe:leksah-server";
             src = ./.;
             version = "0.17.0.0";
           };
@@ -145,7 +115,6 @@
             leksah-macos-app = import ./nix/macos-app.nix {
               inherit pkgs;
               leksah = flake.packages."leksah:exe:leksah";
-              leksah-server = flake.packages."leksah-server:exe:leksah-server";
               src = ./.;
               version = "0.17.0.0";
             };

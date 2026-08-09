@@ -14,22 +14,6 @@ packages:
  -- stays standalone for opening the sandpit as its own leksah workspace.
  sandpit/breakout/
 
--- leksah-server used to be a git submodule under vendor/ listed as a local
--- package, which forced every nix invocation to use `.?submodules=1#…` (else
--- the submodule dir is empty and the package vanishes).  It comes from its own
--- repo as a source-repository-package now — this project has no submodules at
--- all any more — so a plain `nix develop .#` works.
--- For nix the location+tag is resolved to a flake input via inputMap in
--- flake.nix (no network fetch during pure eval).
--- leksah builds no Haskell against it: it is the background metadata server the
--- IDE runs as a subprocess (and the installers ship next to leksah), which is
--- why this SRP and the patched haddock-api ones below are still here.
--- ltk, vcswrapper and vcsgui left with leksah-classic (leksah-classic/cabal.project).
-source-repository-package
-  type: git
-  location: https://github.com/leksah/leksah-server
-  tag: cde8bb8db19dad008fe8a5cd7c1628b4eba14fdd
-
 -- ffcabal lives in its own repo (hamishmack/ffcabal) now; consume it via a
 -- source-repository-package.  For nix the location+tag is resolved to a flake
 -- input via inputMap in flake.nix (no network fetch during pure eval).
@@ -77,10 +61,6 @@ package reflex
   tests: False
 package reflex-dom-core
   tests: False
-package haddock-library
-  tests: False
-package haddock-api
-  tests: False
 
 -- For better stack traces
 package reflex
@@ -92,7 +72,6 @@ package jsaddle
 package jsaddle-wkwebview
   ghc-options: -finfo-table-map
 
-allow-older: *:haddock-api
 allow-newer:
     which:base
   , which:template-haskell
@@ -186,87 +165,9 @@ if impl(ghc >=9.6)
 
   constraints: dependent-sum-template >=0.2.0.1
 
--- leksah-server's IDE.Metainfo.SourceCollectorH needs haddock-api's internal
--- Haddock.Types module (the ExportD record).  Upstream haddock-api keeps it
--- hidden, so we build it from leksah/haddock, whose per-GHC branches re-export
--- Haddock.Types.  9.6-9.10 are the upstream release branches + the patch;
--- 9.12/9.14 are the GHC in-tree haddock-api (no standalone upstream branch
--- past 9.10) + the patch, so they reinstall the GHC boot haddock-api.
--- (Sources are wired to flake inputs via inputMap in flake.nix.)
-if impl(ghc >=9.6) && impl(ghc <9.8)
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.6
-    subdir: haddock-api
-
-  allow-newer: haddock-api:*
-
-if impl(ghc >=9.8) && impl(ghc <9.10)
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.8
-    subdir: haddock-api
-
-  allow-newer: haddock-api:*
-
-if impl(ghc >=9.10) && impl(ghc <9.12)
-  -- ghc-9.10 haddock-api needs haddock-library ^>=1.12, which is not on
-  -- hackage (max 1.11.0); take the matching 1.12.0 from the same branch.
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.10
-    subdir: haddock-api
-
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.10
-    subdir: haddock-library
-
-  allow-newer: haddock-api:*, haddock-library:*
-
-if impl(ghc >=9.12) && impl(ghc <9.14)
-  -- 9.12+ haddock-api is the in-tree version, which needs the matching in-tree
-  -- haddock-library (its 1.11.0 has MetaSince etc. that hackage's 1.11.0 lacks).
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.12
-    subdir: haddock-api
-
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.12
-    subdir: haddock-library
-
-  allow-newer: haddock-api:*, haddock-library:*
-  allow-boot-library-installs: True
-
-if impl(ghc >=9.14)
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.14
-    subdir: haddock-api
-
-  source-repository-package
-    type: git
-    location: https://github.com/leksah/haddock
-    tag: ghc-9.14
-    subdir: haddock-library
-
-  allow-newer: haddock-api:*, haddock-library:*
-  allow-boot-library-installs: True
-
 -- NOTE: leksah-webkitgtk is the GTK4/WebKitGTK 6.0 front end
 -- (jsaddle-webkitgtk + gi-webkit 6.x), Linux-only via os(linux) guards in its
 -- executable stanza.
---package leksah-server
--- extra-framework-dirs: /System/Library/Frameworks
 --package jsaddle-wkwebview
 -- extra-framework-dirs: /System/Library/Frameworks
 
