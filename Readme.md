@@ -46,33 +46,38 @@ and LSP support work the same for any language.
 
 ## Getting started
 
-Install [Nix](https://nixos.org/download/), then:
+You need `ghc`, `cabal`, `tmux` and `leksah-server` on your PATH. Then:
 
 ```shell
 git clone https://github.com/leksah/leksah.git
 cd leksah
-./leksah.sh --nix ghc914
+./leksah.sh
 ```
 
 That builds and launches the native front end (WKWebView on macOS,
-WebKitGTK on Linux). Other front ends:
+WebKitGTK on Linux). Cabal picks the compiler and the build directory.
+Other front ends:
 
 ```shell
-./leksah.sh --nix --warp ghc914       # browser UI at http://127.0.0.1:3367/
-./leksah.sh --nix --classic ghc98     # the classic Gtk front end
+./leksah.sh --warp    # browser UI at http://127.0.0.1:3367/
+./leksah.sh --ghci    # interpreted in a cabal multi-repl: rebuilds in
+                      # seconds without relinking, at the cost of a slow
+                      # first load
 ```
 
 `./leksah.sh` with no arguments prints the full usage, including
 `--in-tmux` (show leksah's own output as a terminal inside leksah) and
-`LEKSAH_PORT` for running a second instance.
-
-`--nix` re-enters the Nix dev shell for every build/run command. If you
-already have `ghc`, `cabal`, `tmux` and `leksah-server` on your PATH you
-can drop it and build in your ambient environment.
+`LEKSAH_PORT` for running a second instance alongside the first.
 
 Leksah builds with GHC 9.6.7 through 9.14; the web UI front ends use
-GHC 9.14 (the default). The Nix flake also has packaging outputs for a
-macOS app bundle/DMG, a Windows installer and a portable Linux build.
+GHC 9.14. If you would rather not assemble the toolchain yourself, the
+Nix flake provides it — but the dev loop above no longer uses Nix itself.
+The flake's other outputs are for packaging: a macOS app bundle/DMG, a
+Windows installer and a portable Linux build.
+
+The classic Gtk front end is no longer part of this project. It lives on
+as a frozen GPL-2.0 fork in [`leksah-classic/`](leksah-classic/), with its
+own `cabal.project` and flake — build it from inside that directory.
 
 ## Documentation
 
@@ -93,4 +98,6 @@ on one — the source is right here, and Leksah is developed in Leksah.
 
 ## License
 
-[GPL-2.0](LICENSE). Copyright 2007–2026 the Leksah team.
+[Apache-2.0](LICENSE). Copyright 2007–2026 the Leksah team.
+
+(The classic Gtk fork in `leksah-classic/` keeps its original GPL-2.0 licence.)
