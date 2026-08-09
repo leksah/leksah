@@ -70,6 +70,14 @@ data WebWindowSession = WebWindowSession
   , wwsActive :: Maybe TabKey       -- ^ the wide0 tab shown in this window
   , wwsTall   :: TallVisibility     -- ^ side-pane visibility
   , wwsWide1  :: TallVisibility     -- ^ bottom-pane visibility
+  , wwsZoom   :: Maybe Int          -- ^ page zoom in percent (100 = 1:1).
+                                    --   Optional — the JSON here is
+                                    --   Generic-derived, so the field names ARE
+                                    --   the keys and a non-'Maybe' addition
+                                    --   would make every existing session file
+                                    --   fail to decode.  Absent = 100%, so no
+                                    --   'webSessionVersion' bump is needed
+                                    --   (same rule as 'wsFlipMru' below).
   } deriving (Eq, Show, Generic)
 
 data WebSession = WebSession
@@ -92,6 +100,13 @@ data WebSession = WebSession
       --   existed still decode (→ restored empty) — no version bump needed.
       --   Session ids of long-gone sessions are kept deliberately: a closed
       --   default is resumed on next use, not forgotten.
+  , wsTabFonts :: Maybe [(TabKey, Int)]
+      -- ^ per-TAB font overrides ('_tabFontSize'), as @(tab, px)@.  Optional
+      --   like the two above, so older files decode to none.  A list of pairs
+      --   rather than a 'Map' because 'TabKey' has no 'ToJSONKey' — same shape
+      --   as 'wsPaneAI'.  UNLIKE 'wsPaneAI', entries are dropped when their tab
+      --   closes: a font means nothing without the pane, and keeping them would
+      --   grow the file without bound.
   } deriving (Eq, Show, Generic)
 
 instance ToJSON WebWindowSession
@@ -201,7 +216,7 @@ instance FromJSON LeksahWindow where
 
 emptyWebSession :: WebSession
 emptyWebSession =
-    WebSession webSessionVersion [] [] Nothing Nothing Nothing Nothing
+    WebSession webSessionVersion [] [] Nothing Nothing Nothing Nothing Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = sidecarPath "web-session.json"

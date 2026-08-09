@@ -64,9 +64,18 @@ allCommands =
 
     , always "view.nextTab"               "Next Tab"              CommandFlipDown
     , always "view.previousTab"           "Previous Tab"          CommandFlipUp
-    , always "view.fontBigger"            "Bigger Font"           commandFontBigger
-    , always "view.fontSmaller"           "Smaller Font"          commandFontSmaller
-    , always "view.fontReset"             "Reset Font"            commandFontReset
+    -- Two size families, and the titles are what tell them apart in the View
+    -- menu and the ⌘/ sheet: the whole WINDOW (browser-style page zoom) versus
+    -- one PANE's font.  "Zoom In/Out" rather than "Bigger Window" because
+    -- terminal.zoomSplit is already called "Zoom Split".  The command IDs of
+    -- the font trio are deliberately unchanged — users' keybindings.json files
+    -- name them.
+    , always "view.zoomIn"                "Zoom In"               commandZoomIn
+    , always "view.zoomOut"               "Zoom Out"              commandZoomOut
+    , always "view.zoomReset"             "Actual Size"           commandZoomReset
+    , always "view.fontBigger"            "Bigger Pane Font"      commandFontBigger
+    , always "view.fontSmaller"           "Smaller Pane Font"     commandFontSmaller
+    , always "view.fontReset"             "Reset Pane Font"       commandFontReset
     , always "view.newBrowserPane"        "New Browser Pane"      CommandOpenBrowser
     , always "view.toggleSidebar"         "Toggle Side Pane"      commandToggleTallPane
     , always "view.toggleBottomBar"       "Toggle Bottom Pane"    commandToggleWide1Pane

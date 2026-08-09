@@ -241,8 +241,15 @@ monaco.editor.defineTheme("leksah-github-light", {
 })
 
 // Same CSS vars the cm6 bundle reads (set from the Fonts preferences).
-function fontOptions() {
-  const cs = getComputedStyle(document.documentElement)
+//
+// Read them off the editor's OWN container, not the document root: leksah sets
+// a per-pane --leksah-mono-size on the wrapper around each editor (a split
+// leaf's .terminal-cc-view-leaf, a tab's .leksah-convertible).  Monaco snapshots
+// its font at creation, so a root-scoped read made an editor born into an
+// already-resized pane come up at the global size and stay there until the
+// override happened to change.  Falls back to the root when no element is given.
+function fontOptions(el) {
+  const cs = getComputedStyle(el || document.documentElement)
   const fam = cs.getPropertyValue("--leksah-mono").trim() || "Hasklig, Menlo, monospace"
   const sz = parseFloat(cs.getPropertyValue("--leksah-mono-size")) || 13
   return { fontFamily: fam, fontSize: sz, fontLigatures: true }
@@ -414,7 +421,7 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
     model,
     theme: "leksah-github-dark",
     automaticLayout: true,
-    ...fontOptions(),
+    ...fontOptions(edNode),
     minimap: { enabled: false },       // parity with the CM editor (no minimap)
     contextmenu: false,                // content right-click = browser menu, like CM;
                                        // the gutter menu below is Leksah's own
@@ -426,6 +433,27 @@ function createEditor(parent, doc, onChange, onGutterMenu) {
   // whatever `theme:` above named.  Re-apply the OS-appropriate theme (no-op if
   // leksahRetheme isn't wired yet — the startup call covers that case).
   if (window.leksahRetheme) window.leksahRetheme()
+  // Monaco snapshots its font at creation — and at that moment this node is
+  // usually still DETACHED: reflex flushes the DOM in a batch, so the per-pane
+  // --leksah-mono-size on the wrapper above has no computed value yet and
+  // fontOptions falls back to the global size.  Re-read it once the element has
+  // landed in the document.  This is what makes an editor BORN into a resized
+  // pane (a restored tab, a reopened file, a ⌘D'd leaf) come up at the right
+  // size instead of the preference's.
+  // …and wait until it is actually IN the document before re-reading: reflex
+  // can take several frames to flush a boot-time build, and getComputedStyle on
+  // a detached node yields nothing.  isConnected is the precise signal; the
+  // bound just stops a node that never lands from spinning forever.
+  let fontTries = 0
+  const settleFont = () => {
+    if (!edNode.isConnected && fontTries++ < 240) {
+      requestAnimationFrame(settleFont)
+      return
+    }
+    try { editor.updateOptions(fontOptions(edNode)) } catch (_e) { /* ignore */ }
+  }
+  requestAnimationFrame(settleFont)
+
   const st = { parent, edNode, editor, model, langId,
                original: null, diff: null,
                marks: editor.createDecorationsCollection(),
@@ -534,7 +562,7 @@ function showDiffView(view, sideBySide) {
   const diffEditor = monaco.editor.createDiffEditor(node, {
     theme: "leksah-github-dark",
     automaticLayout: true,
-    ...fontOptions(),
+    ...fontOptions(node),
     renderSideBySide: sideBySide,
     originalEditable: false,
     minimap: { enabled: false },
@@ -643,7 +671,7 @@ function showDiff(parent, filePath, oldDoc, newDoc) {
   const diffEditor = monaco.editor.createDiffEditor(parent, {
     theme: "leksah-github-dark",
     automaticLayout: true,
-    ...fontOptions(),
+    ...fontOptions(parent),
     readOnly: true,
     originalEditable: false,
     renderSideBySide: true,

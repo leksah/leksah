@@ -20,6 +20,7 @@ module IDE.Web.Model
   , wwActive
   , wwTall
   , wwWide1
+  , wwZoom
   , wwFrame
     -- * The tab flipper
   , FlipItem(..)
@@ -44,6 +45,7 @@ module IDE.Web.Model
   , flipMirror
   , flipMru
   , paneAISession
+  , tabFontSize
   , dragPreview
   ) where
 
@@ -122,6 +124,18 @@ data WebWindow = WebWindow
   , _wwTall   :: TallVisibility    -- ^ per-window side-pane visibility
   , _wwWide1  :: TallVisibility    -- ^ per-window bottom-bar visibility
   , _wwFrame  :: Maybe Text        -- ^ native window frame "x,y,w,h" (filled by the native side)
+  , _wwZoom   :: Int               -- ^ page zoom for this OS window, in PERCENT
+                                   --   (100 = 1:1).  Applied as the CSS @zoom@
+                                   --   property on @\<html\>@ via the
+                                   --   @--leksah-zoom@ custom property, so it
+                                   --   scales layout as well as text — a true
+                                   --   browser-style ⌘+, not a font size.
+                                   --   Percent as an 'Int' (not a 'Double' or a
+                                   --   ladder index) so equality is exact for
+                                   --   'holdUniqDyn', the value is
+                                   --   self-describing on disk, and a later
+                                   --   edit to 'zoomLadder' can't reinterpret
+                                   --   saved sessions.
   } deriving (Eq, Show)
 
 -- | A flipper (Ctrl-Tab) target: an ordinary tab, an individual tmux pane
@@ -206,7 +220,7 @@ data LeksahWindow = LeksahWindow
                                  --   @Nothing@ = sessionless (views only)
   , lwTree    :: SplitTree
   , lwPanes   :: Map.Map LeafId PaneContent
-  , lwFocused :: Maybe LeafId    -- ^ target of ⌘+/⌘−/split commands
+  , lwFocused :: Maybe LeafId    -- ^ target of ⌥⌘=/⌥⌘−/split commands
   , lwZoomed  :: Maybe LeafId    -- ^ zoomed pane fills the tab
   , lwNext    :: Int             -- ^ 'LeafId' minter (monotonic, never reused)
   } deriving (Eq, Show, Generic)
@@ -231,6 +245,19 @@ data WebUi = WebUi
   , _flipMru       :: [FlipItem]       -- ^ flip order, most recent first
   , _paneAISession :: Map.Map AIPaneRef Text
     -- ^ which AI session a pane's \"send to AI\" targets
+  , _tabFontSize   :: Map TabKey Int
+    -- ^ per-TAB font size override in px, for wide0 tabs that are not leksah
+    --   windows (an editor or browser opened as an ordinary tab).  A leksah
+    --   window's panes carry theirs on 'PaneContent' instead, because those
+    --   have to ride the @\@leksah_layout@ tmux option and take part in
+    --   consolidation; a plain tab has neither concern.
+    --
+    --   Keyed by 'TabKey' ALONE, deliberately: a 'TabKey' is already a pane's
+    --   global identity, and a tab MOVES between OS windows (⌘-drag, restore),
+    --   so a window-scoped key would silently reset the size on every move and
+    --   would need pruning when a window closes.  Same argument as
+    --   '_paneAISession' above.  Absent = follow the @monoSize@ preference, so
+    --   \"reset\" is a delete and there is no second way to say \"default\".
   , _dragPreview   :: Maybe Text
     -- ^ a ⌘-drag pane move in flight, so the OTHER OS windows can preview it:
     --   one JSON message @{owner, seq, src, x, y, release, end}@ with the
@@ -263,6 +290,7 @@ newWebUi = WebUi
   , _flipMirror    = Nothing
   , _flipMru       = []
   , _paneAISession = mempty
+  , _tabFontSize   = mempty
   , _dragPreview   = Nothing
   }
 

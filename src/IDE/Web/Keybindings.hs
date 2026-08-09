@@ -135,9 +135,22 @@ defaultKeybindings =
     -- The tab flipper: step with mod+`, commit on the modifier's release.
     , r "mod+`"            "view.nextTab"
     , r "mod+shift+`"      "view.previousTab"
-    , r "cmd+="            "view.fontBigger"
-    , r "cmd+-"            "view.fontSmaller"
-    , r "cmd+0"            "view.fontReset"
+    -- Whole-window page zoom, browser-style.  ⌘⇧= is listed FIRST so the plain
+    -- ⌘= is the command's LAST binding and therefore the one the menus display
+    -- (see the note on ctrl+shift+b above); both are needed because
+    -- 'toReflexKey' matches an EXACT modifier set, and ⌘+ on a US layout is
+    -- physically ⌘⇧=.
+    , r "cmd+shift+="      "view.zoomIn"
+    , r "cmd+="            "view.zoomIn"
+    , r "cmd+-"            "view.zoomOut"
+    , r "cmd+0"            "view.zoomReset"
+    -- Per-PANE font size.  These held the plain ⌘+/⌘−/⌘0 until the window-wide
+    -- page zoom took those over (the browser-standard meaning); ⌥ is the
+    -- "finer-grained target" variant, the same way ⌥⌘1…9 picks a side pane
+    -- where ⌘1…9 picks a split.
+    , r "cmd+alt+="        "view.fontBigger"
+    , r "cmd+alt+-"        "view.fontSmaller"
+    , r "cmd+alt+0"        "view.fontReset"
     , r "cmd+ctrl+b"       "view.newBrowserPane"
     -- Terminal (native-menu key equivalents, gated by the command's when).
     , r "cmd+shift+t"      "terminal.newWindow"

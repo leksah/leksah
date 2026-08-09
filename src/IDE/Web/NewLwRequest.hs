@@ -54,7 +54,7 @@ endConversion   = atomicModifyIORef' conversionsRef (\n -> (max 0 (n - 1), ()))
 conversionActive :: IO Bool
 conversionActive = (> 0) <$> readIORef conversionsRef
 
--- | A ⌘+/⌘−/⌘0 landed on a tmux pane in a MULTI-pane window: per-pane fonts
+-- | A ⌥⌘=/⌥⌘−/⌥⌘0 landed on a tmux pane in a MULTI-pane window: per-pane fonts
 -- need the pane isolated first (minimal-path conversion), which the pure
 -- command layer cannot do — so it queues @(leksah window id, tmux window id,
 -- effective-size → new override)@ here and Main's driver converts, then

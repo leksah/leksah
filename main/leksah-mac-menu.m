@@ -1278,12 +1278,14 @@ static NSMutableDictionary *gBrowserViews   = nil;  // @(bid) -> WKWebView
 static NSMutableDictionary *gBrowserPending = nil;  // @(bid) -> NSString url (load before creation)
 static NSMutableDictionary *gBrowserWid     = nil;  // @(bid) -> @(wid) last reporting window
 static NSMutableDictionary *gBrowserMiss    = nil;  // @(bid) -> @(consecutive absences)
+static NSMutableDictionary *gBrowserZoom    = nil;  // @(bid) -> @(pageZoom last applied)
 
 static void leksah_browser_ensure_dicts(void) {
     if (gBrowserViews   == nil) gBrowserViews   = [[NSMutableDictionary alloc] init];
     if (gBrowserPending == nil) gBrowserPending = [[NSMutableDictionary alloc] init];
     if (gBrowserWid     == nil) gBrowserWid     = [[NSMutableDictionary alloc] init];
     if (gBrowserMiss    == nil) gBrowserMiss    = [[NSMutableDictionary alloc] init];
+    if (gBrowserZoom    == nil) gBrowserZoom    = [[NSMutableDictionary alloc] init];
 }
 
 // Push a view's navigation state into its host window's MAIN webview (the
@@ -1651,6 +1653,22 @@ static void leksah_browser_reconcile(int wid, NSArray *panes, BOOL dark) {
         // ALREADY had focus and no focusin is fired at all.  Coming back into
         // view re-takes the keyboard from the page side (see the reporter).
         if (!vis) leksah_browser_release_responder((NSView *)web);
+        // The pane's page zoom (per-pane font override x the window's page
+        // zoom).  A native view is a SIBLING of the page, so the CSS zoom that
+        // scales the rest of the UI does not touch its content — this is what
+        // makes "everything scales" true for a browser pane as well.
+        //
+        // Only on CHANGE: this loop runs four times a second for the life of
+        // the pane, and telling WebKit its zoom that often would be absurd.
+        // pageZoom is macOS 11+, hence KVC in a @try — the same weak-linking
+        // style used for the other newer properties here.
+        double z = [[p objectForKey:@"z"] doubleValue];
+        if (!(z > 0.05 && z < 20)) z = 1.0;
+        NSNumber *lastZ = [gBrowserZoom objectForKey:bid];
+        if (lastZ == nil || fabs([lastZ doubleValue] - z) > 0.001) {
+            @try { [web setValue:@(z) forKey:@"pageZoom"]; } @catch (...) {}
+            [gBrowserZoom setObject:@(z) forKey:bid];
+        }
     }
     // Panes this window last owned but which no longer report: after ~3s of
     // absence the element has really left the DOM (closed) — destroy.  A tab
@@ -1679,6 +1697,7 @@ static void leksah_browser_reconcile(int wid, NSArray *panes, BOOL dark) {
             [gBrowserViews removeObjectForKey:bid];
             [gBrowserWid removeObjectForKey:bid];
             [gBrowserMiss removeObjectForKey:bid];
+            [gBrowserZoom removeObjectForKey:bid];
         } else
             [gBrowserMiss setObject:@(miss) forKey:bid];
     }
@@ -2304,6 +2323,7 @@ void leksah_order_window_front(int wid) {
         if (win != nil) [win orderFront:nil];
     });
 }
+
 
 // --- ghci-mode lifecycle (leksah.sh --ghci) --------------------------------
 // Under a cabal repl the app must be able to hand control back to the ghci

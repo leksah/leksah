@@ -23,7 +23,7 @@ import IDE.Web.TerminalInput
 import IDE.Web.TransparencyRequest (requestToggleTransparency)
 import IDE.Web.SnapRequest (requestSnapWindow)
 
-import qualified Data.Map as M (adjust, lookup)
+import qualified Data.Map as M (adjust, delete, insert, lookup)
 import Data.Maybe (fromMaybe)
 
 import IDE.App (App(..), AppAction, appNote)
@@ -33,9 +33,9 @@ import IDE.Config
         currentConfig, saveConfig)
 import IDE.Reactive (modifyCell, readCell)
 import IDE.Web.Model
-       (LeksahWindow(..), PaneContent(..), PaneKind(..), TabKey(..),
-        TallVisibility(..), activeWindow, leksahWindows, webWindows,
-        wwActive, wwTall, wwWide1)
+       (LeafId, LeksahWindow(..), PaneContent(..), PaneKind(..), TabKey(..),
+        TallVisibility(..), WebUi, activeWindow, leksahWindows, tabFontSize,
+        webWindows, wwActive, wwTall, wwWide1, wwZoom)
 import IDE.Workspace
        (WorkspaceService(..), Ws, activeComponent, activePackage,
         activeProject, prDir)
@@ -281,6 +281,56 @@ commandToggleWide1Pane = CommandIDEAction
 cycleTall :: TallVisibility -> TallVisibility
 cycleTall v = if v == maxBound then minBound else succ v
 
+-- | View ▸ Zoom In / Zoom Out / Actual Size (⌘+/⌘−/⌘0): the whole OS window's
+-- page zoom, browser-style — layout as well as text (see '_wwZoom').
+--
+-- Deliberately much simpler than 'paneFontAdjust' below: zoom is a property of
+-- the OS WINDOW, so 'activeWindow' is the entire target lookup.  There is no
+-- focused-leaf resolution, no tmux font-convert detour and no consolidate,
+-- because nothing about a window's zoom can split or merge a tmux window.  On
+-- macOS the single menubar acts on the key window, which is exactly what
+-- '_activeWindow' tracks.
+commandZoomIn, commandZoomOut, commandZoomReset :: Command
+commandZoomIn = CommandIDEAction
+  "" "Zoom this window in"      (zoomAdjust (stepZoom 1))
+commandZoomOut = CommandIDEAction
+  "" "Zoom this window out"     (zoomAdjust (stepZoom (-1)))
+commandZoomReset = CommandIDEAction
+  "" "Reset this window's zoom" (zoomAdjust (const 100))
+
+zoomAdjust :: (Int -> Int) -> AppAction
+zoomAdjust f app = modifyCell (appUi app) $ \u -> case u ^. activeWindow of
+  Just aw -> u & webWindows . ix aw . wwZoom %~ (clampZoom . f)
+  Nothing -> u
+
+-- | The zoom rungs, in percent — the familiar browser ladder.  ⌘0 goes to 100
+-- directly rather than walking back down it.  Kept non-empty by construction;
+-- 'zoomMin'\/'zoomMax' are the ends (spelled out rather than @head@\/@last@,
+-- which are -Wx-partial errors here).
+zoomLadder :: [Int]
+zoomLadder = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300]
+
+zoomMin, zoomMax :: Int
+zoomMin = 50
+zoomMax = 300
+
+-- | Step @n@ rungs from the current percent.  A value that is not ON the ladder
+-- (a hand-edited session file, or a rung removed by a later edit to
+-- 'zoomLadder') snaps to the nearest rung first, so the next ⌘+ always does
+-- something sensible instead of nothing.  Stepping past either end stays there.
+stepZoom :: Int -> Int -> Int
+stepZoom n cur =
+    case drop (max 0 (min (length zoomLadder - 1) (nearest + n))) zoomLadder of
+      (z : _) -> z
+      []      -> cur   -- unreachable: the index is clamped into the ladder
+  where
+    nearest = snd (minimum [ (abs (z - cur), i) | (i, z) <- zip [0 :: Int ..] zoomLadder ])
+
+-- | Keep a zoom percentage inside the ladder's range.  Applied on the way in
+-- from a session file as well as on every step.
+clampZoom :: Int -> Int
+clampZoom = max zoomMin . min zoomMax
+
 -- | Close the active editor or terminal tab.  The actual close happens in the
 -- reflex network (it's tab state), so this just signals a request that
 -- 'IDE.Web.Main' picks up; closing a terminal this way detaches from tmux
@@ -366,7 +416,7 @@ commandClaudeContinue = CommandIDEAction
   (\app -> readCell (wsCell (appWorkspace app)) >>=
       mapM_ (runClaudeCmd . ClaudeContinue . prDir) . activeProject)
 
--- | View ▸ Bigger/Smaller/Reset Font (⌘+/⌘−/⌘0): adjust the FOCUSED pane's
+-- | View ▸ Bigger/Smaller/Reset Pane Font (⌥⌘=/⌥⌘−/⌥⌘0): adjust the FOCUSED pane's
 -- font size in the active leksah window.  Per-pane fonts are the point of
 -- the native split system: a pane shows a whole tmux window, so two tmux
 -- panes with different font sizes can never share a window.  A no-op when
@@ -375,17 +425,17 @@ commandFontBigger, commandFontSmaller, commandFontReset :: Command
 commandFontBigger = CommandIDEAction
   ""
   "Increase the focused split's font size"
-  (leafFontAdjust (\eff -> Just (eff + 1)))
+  (paneFontAdjust (\eff -> Just (eff + 1)))
 
 commandFontSmaller = CommandIDEAction
   ""
   "Decrease the focused split's font size"
-  (leafFontAdjust (\eff -> Just (eff - 1)))
+  (paneFontAdjust (\eff -> Just (eff - 1)))
 
 commandFontReset = CommandIDEAction
   ""
   "Reset the focused split's font size to the preference"
-  (leafFontAdjust (const Nothing))
+  (paneFontAdjust (const Nothing))
 
 -- | Apply a font-size edit to the focused pane of the active OS window's
 -- active leksah window.  @f@ maps the current EFFECTIVE size (override, else
@@ -393,21 +443,47 @@ commandFontReset = CommandIDEAction
 -- setting.  A tmux pane in a MULTI-pane window is isolated first (per-pane
 -- fonts can't share a tmux window) via the font-convert queue — Main's
 -- driver runs the minimal-path conversion and then applies @f@.
-leafFontAdjust :: (Int -> Maybe Int) -> AppAction
-leafFontAdjust f app = do
+-- | What a pane-font change acts on: a focused LEAF inside the active leksah
+-- window, or the active wide0 TAB itself.
+data FontTarget
+  = FTLeaf Text LeafId PaneContent   -- ^ leksah window id, leaf, its content
+  | FTTab TabKey                     -- ^ a plain wide0 tab (editor, browser, …)
+
+-- | Resolve the pane a font change aims at.  Mirrors 'activeAIPaneRef' (see
+-- "IDE.Web.AISession"), which already encodes the rule the whole UI uses:
+-- active OS window → its active wide0 tab → the focused leaf if that tab is a
+-- leksah window, else the tab itself.  Focus in the side\/bottom trees is
+-- deliberately ignored, so ⌥⌘= keeps acting on the pane you were editing while
+-- you click about in the Workspace tree.
+activeFontTarget :: WebUi -> Maybe FontTarget
+activeFontTarget ui = do
+  a  <- ui ^. activeWindow
+  ww <- M.lookup a (ui ^. webWindows)
+  k  <- ww ^. wwActive
+  case k of
+    LeksahWinKey n
+      | Just lw <- M.lookup n (ui ^. leksahWindows)
+      , Just l  <- lwFocused lw
+      , Just pc <- M.lookup l (lwPanes lw) -> Just (FTLeaf n l pc)
+    _ -> Just (FTTab k)
+
+-- | Which wide0 tabs have a resizable text body.  Kept separate from
+-- 'IDE.Web.Session.viewLeafAllowed' although the two sets coincide today: that
+-- one answers \"may live in a split leaf\", this one \"has text you can resize\",
+-- and they will diverge as more panes gain the wrapper.
+fontAdjustableTab :: TabKey -> Bool
+fontAdjustableTab EditorKey{}  = True
+fontAdjustableTab BrowserKey{} = True
+fontAdjustableTab GitLogKey{}  = True
+fontAdjustableTab ReviewKey{}  = True
+fontAdjustableTab _            = False
+
+paneFontAdjust :: (Int -> Maybe Int) -> AppAction
+paneFontAdjust f app = do
   ui <- readCell (appUi app)
-  let mbTarget = do
-        a  <- ui ^. activeWindow
-        ww <- M.lookup a (ui ^. webWindows)
-        k  <- ww ^. wwActive
-        n  <- case k of LeksahWinKey n' -> Just n'; _ -> Nothing
-        lw <- M.lookup n (ui ^. leksahWindows)
-        l  <- lwFocused lw
-        pc <- M.lookup l (lwPanes lw)
-        return (n, l, pc)
-  case mbTarget of
+  case activeFontTarget ui of
     Nothing -> return ()
-    Just (n, l, PaneContent kind cur) -> do
+    Just (FTLeaf n l (PaneContent kind cur)) -> do
       multi <- case kind of
         PaneTmux w -> (> 1) <$> paneCountOfWindow w
         _          -> return False
@@ -424,6 +500,19 @@ leafFontAdjust f app = do
           -- The new size may match a neighbouring tmux window's — merge
           -- them (Main's consolidateLw drains this).
           requestConsolidate n
+    -- A plain tab: neither the tmux isolate detour nor the consolidate applies,
+    -- structurally — a wide0 tab is never a 'PaneTmux' and never shares a tmux
+    -- window with a neighbour, so there is nothing to break out and nothing to
+    -- merge back.  Absent from the map = follow the preference, so a reset
+    -- ('f' answering 'Nothing') deletes rather than storing a default.
+    Just (FTTab k)
+      | fontAdjustableTab k -> do
+          defSize <- fcMonoSize . cfgFont <$> currentConfig (appConfig app)
+          modifyCell (appUi app) $ tabFontSize %~ \m ->
+            let eff = fromMaybe defSize (M.lookup k m)
+            in maybe (M.delete k m) (\n -> M.insert k n m)
+                     (fmap (max 6 . min 72) (f eff))
+      | otherwise -> return ()
 
 -- | A menu command that sends the tmux prefix (@C-b@, byte 0x02) followed by
 -- @keys@ to the active terminal — exactly as if the shortcut had been typed

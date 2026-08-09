@@ -137,6 +137,12 @@ menuModel =
       [ MCmd "view.nextTab"
       , MCmd "view.previousTab"
       , MSepE
+      -- Whole-window page zoom, then one pane's font: the coarse control
+      -- first, since it is the one on the unmodified chords.
+      , MCmd "view.zoomIn"
+      , MCmd "view.zoomOut"
+      , MCmd "view.zoomReset"
+      , MSepE
       , MCmd "view.fontBigger"
       , MCmd "view.fontSmaller"
       , MCmd "view.fontReset"

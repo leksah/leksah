@@ -181,7 +181,8 @@ import IDE.Web.Model
         activeWindow, nextWindowId, leksahWindows, nextLeksahWin,
         hiddenWindows, LeksahWindow(..), PaneContent(..), PaneKind(..),
         LeafId(..), SplitOrientation(..), SplitTree(..), WebUi(..),
-        flipMirror, flipMru, AIPaneRef(..), paneAISession, dragPreview)
+        flipMirror, flipMru, AIPaneRef(..), paneAISession, tabFontSize,
+        dragPreview)
 import IDE.Workspace
        (activePackage, wsOpenFile, wsProjects)
 import IDE.Ws.Types (Package(..), Project(..))
@@ -273,7 +274,7 @@ import IDE.Web.Commands (allCommands, duplicateCommandIds)
 import IDE.Web.Keybindings (keybindingsFilePath, loadKeybindings)
 import IDE.Web.Command
        (commandAction, Command(..), _CommandSelectSplit,
-        _CommandSelectSidePane, _CommandSelectBottomPane)
+        _CommandSelectSidePane, _CommandSelectBottomPane, clampZoom)
 import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TabKey(..), TerminalEvents(..),
         FindbarEvents(..), FlipItem(..),
@@ -1100,9 +1101,9 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             -- it focuses this tab rather than opening a duplicate editor.
             demoTabs = map LeksahWinKey (M.keys lws0)
             dfltWin  = WebWindowSession demoTabs (listToMaybe demoTabs)
-                                        TallShow TallShow
+                                        TallShow TallShow Nothing
 #else
-            dfltWin  = WebWindowSession [] Nothing TallShow TallShow
+            dfltWin  = WebWindowSession [] Nothing TallShow TallShow Nothing
 #endif
             wwsList  = case mbSession of
                          Just s | not (null (wsWindows s)) -> wsWindows s
@@ -1111,7 +1112,11 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
               [ (WindowId i
                 , WebWindow (nub (concatMap expandTab (wwsWide0 w)))
                             (wwsActive w >>= listToMaybe . expandTab)
-                            (wwsTall w) (wwsWide1 w) Nothing)
+                            (wwsTall w) (wwsWide1 w) Nothing
+                            -- Clamped on the way IN as well as on the way out,
+                            -- so a hand-edited or corrupt session file can't
+                            -- restore a window at an unusable size.
+                            (clampZoom (fromMaybe 100 (wwsZoom w))))
               | (i, w) <- zip [0 ..] wwsList ]
             nWins    = length wwsList
         metaLog $ "boot: session + leksah windows read (" <> show nWins <> " window(s))"
@@ -1126,6 +1131,8 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             -- are gone are pruned as panes close; entries naming a session that
             -- has since exited are KEPT (they get resumed on next use).
             & paneAISession .~ M.fromList (fromMaybe [] (mbSession >>= wsPaneAI))
+            -- Restore per-tab font overrides (absent in older files → none).
+            & tabFontSize .~ M.fromList (fromMaybe [] (mbSession >>= wsTabFonts))
         -- Ask native to create the windows past the first (the first is created
         -- by the wkwebview AppDelegate / warp connection and attached below).
         -- No-op on warp (no handler), which stays single-window.
@@ -1217,18 +1224,26 @@ exposeBackendProofEndpoints beBr = do
 defaultWebWindow :: WebWindow
 defaultWebWindow = WebWindow
   { _wwWide0 = [], _wwActive = Nothing
-  , _wwTall = TallShow, _wwWide1 = TallShow, _wwFrame = Nothing }
+  , _wwTall = TallShow, _wwWide1 = TallShow, _wwFrame = Nothing
+  , _wwZoom = 100 }
 
 -- | Allocate a fresh 'WindowId', seed a default 'WebWindow' for it, and make it
 -- the active window if none is yet.  A cell write, so any already-open window
 -- observes the new (empty) window immediately (e.g. in its flipper).
+--
+-- The new window INHERITS the zoom of the window it was opened from: someone
+-- working at 125% because of their display wants every window that way, and
+-- re-zooming each one by hand is the annoying half of a per-window setting.
 mintWindowId :: App -> IO WindowId
 mintWindowId app = stateCell (appUi app) $ \ui ->
-  let n   = ui ^. nextWindowId
-      wid = WindowId n
-      ui' = ui & nextWindowId .~ (n + 1)
-               & webWindows %~ M.insert wid defaultWebWindow
-               & activeWindow %~ Just . fromMaybe wid
+  let n    = ui ^. nextWindowId
+      wid  = WindowId n
+      zoom = fromMaybe 100 $ do
+               aw <- ui ^. activeWindow
+               _wwZoom <$> M.lookup aw (ui ^. webWindows)
+      ui'  = ui & nextWindowId .~ (n + 1)
+                & webWindows %~ M.insert wid defaultWebWindow { _wwZoom = zoom }
+                & activeWindow %~ Just . fromMaybe wid
   in (ui', wid)
 
 -- | Adopt a 'WindowId' the native side already created, ensuring its 'WebWindow'
@@ -1241,7 +1256,7 @@ adoptWindowId wid app = modifyCell (appUi app) $ \ui ->
 -- | The wide0 (editor/terminal) state a window has before it is seeded — used
 -- only as a 'M.findWithDefault' fallback (every live window is seeded first).
 emptyWebWindow :: WebWindow
-emptyWebWindow = WebWindow [] Nothing TallShow TallShow Nothing
+emptyWebWindow = WebWindow [] Nothing TallShow TallShow Nothing 100
 
 -- | Move wide0 tab @k@ into window @w@ as its new MRU-front active tab, removing
 -- it from whichever window currently owns it.  This is how "open from the shared
@@ -1516,6 +1531,10 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- a selection in it activates a file/terminal, even if the cursor is still over
   -- the pane (the CSS reveal is hover-driven; this overrides it).
   _ <- eval collapseAutoHideJs
+
+  -- window.leksahZoom / leksahLocal / leksahLocalRect / leksahZoomChanged: the
+  -- window page-zoom helpers.  Eval'd BEFORE the blobs below, which use them.
+  _ <- eval zoomJs
 
   -- Drag-to-resize the side (tall) and bottom (wide1) panes by their divider
   -- edge handles; the widths persist in localStorage across reloads.
@@ -2368,7 +2387,11 @@ hintsJs = T.unlines
   , "    var ap=activePaneEl();"
   , "    if(!ap){ var cs=document.querySelectorAll('.leksah-convertible');"
   , "      for(var k=0;k<cs.length;k++){ if(shown(cs[k])){ ap=cs[k]; break; } } }"
-  , "    if(ap){ var r=ap.getBoundingClientRect();"
+  -- LOCAL rects throughout: 'put' writes style.left/top, which are pre-zoom
+  -- lengths, while getBoundingClientRect is post-zoom.  Converting at the
+  -- measurement also keeps the -18/-12 nudges in the same units as the chips
+  -- they are nudging, so they stay put relative to the chip at every zoom.
+  , "    if(ap){ var r=window.leksahLocalRect(ap);"
   , "      put(sd, r.right - 18, r.top + r.height/2);"
   , "      put(sr, r.left + r.width/2, r.bottom - 12); }"
   -- Flip destination: reveal the ⌘` suffix on its numbered badge (a pane by
@@ -2387,7 +2410,7 @@ hintsJs = T.unlines
   , "    for(var j=0;j<tb.length;j++){ var bg=tb[j];"
   , "      var tw2=bg.closest('.tab-wrap'), strip=bg.closest('.tab-buttons');"
   , "      if(!tw2||!strip||!shown(tw2)){ bg.style.visibility='hidden'; continue; }"
-  , "      var tr=tw2.getBoundingClientRect(), srect=strip.getBoundingClientRect();"
+  , "      var tr=window.leksahLocalRect(tw2), srect=window.leksahLocalRect(strip);"
   , "      if(tr.right<=srect.left+1 || tr.left>=srect.right-1){ bg.style.visibility='hidden'; continue; }"
   , "      bg.style.visibility=''; bg.style.left=(tr.left+tr.width/2)+'px'; bg.style.top=(tr.top-14)+'px'; }"
   , "  }"
@@ -2442,7 +2465,12 @@ nativeDragJs = T.unlines
   , "    el.style.background = 'var(--leksah-selection, rgba(100,150,255,0.35))';"
   , "    function mm(ev){ ev.preventDefault();"
   , "      var d = (vert ? ev.clientX : ev.clientY) - start;"
-  , "      el.style.transform = vert ? ('translateX('+d+'px)') : ('translateY('+d+'px)');"
+  -- The preview is a CSS translate (LOCAL px) of a pointer delta (VISUAL), so
+  -- it needs dividing or the bar runs away from the cursor at zoom > 1.  The
+  -- COMMIT below deliberately does not: its `d` is divided by a visual extent
+  -- on the Haskell side, and that ratio is already scale-free.
+  , "      var dl = window.leksahLocal(d);"
+  , "      el.style.transform = vert ? ('translateX('+dl+'px)') : ('translateY('+dl+'px)');"
   , "    }"
   , "    function mu(ev){"
   , "      document.removeEventListener('mousemove', mm, true);"
@@ -2459,15 +2487,85 @@ nativeDragJs = T.unlines
   -- --leksah-mono-size CSS var by itself; Monaco snapshots its font at
   -- creation, so poke every Monaco editor inside the leaf (n = the override
   -- in px, 0 = back to the global monospace size).
+  -- Only reaches editors that ALREADY exist, which is the font-CHANGED case.
+  -- A pane BORN with an override is handled in the bundle instead: Monaco
+  -- re-reads its container one frame after creation (see createEditor in
+  -- monaco/src/leksah-monaco.mjs), because at creation the wrapper is still
+  -- detached and has no computed --leksah-mono-size to inherit.
   , "window.leksahSetLeafFont = function(el, n){"
-  , "  try {"
-  , "    if (window.monaco && monaco.editor && monaco.editor.getEditors) {"
-  , "      monaco.editor.getEditors().forEach(function(e){"
+  , "  (function(){"
+  , "    try {"
+  -- The bundle exposes its monaco namespace as window.LeksahMonaco.monaco;
+  -- there is no bare window.monaco, so testing for one made this a silent
+  -- no-op and per-pane fonts never reached a Monaco editor at all.  The bare
+  -- name is still tried second, in case a future bundle publishes it.
+  , "      var mco = (window.LeksahMonaco && window.LeksahMonaco.monaco)"
+  , "                || window.monaco;"
+  , "      if (!mco || !mco.editor || !mco.editor.getEditors) return;"
+  , "      mco.editor.getEditors().forEach(function(e){"
   , "        var d = e.getDomNode();"
-  , "        if (d && el.contains(d)) e.updateOptions({fontSize: (n || window.__leksahMonoSize)});"
-  , "      });"
-  , "    }"
-  , "  } catch (err) {}"
+  , "        if (d && el.contains(d))"
+  , "          e.updateOptions({fontSize: (n || window.__leksahMonoSize)}); });"
+  , "    } catch (err) {}"
+  , "  })();"
+  , "};"
+  ]
+
+-- | @:root{--leksah-zoom:1.25}@ for @125@ — this OS window's page zoom, which
+-- @Layout.hs@'s @html@ rule feeds to the CSS @zoom@ property.
+--
+-- The decimal is built by hand from the 'Int' rather than via @show@ on a
+-- 'Double', so it is exact and can never come out in scientific notation.  It
+-- must stay a BARE number (not @125%@): both CSS (@calc(60vh / …)@) and JS
+-- ('leksahLocal') divide by it.
+zoomVarCss :: Int -> Text
+zoomVarCss pct = ":root{--leksah-zoom:" <> whole <> "." <> frac <> "}"
+  where
+    (w, f) = abs pct `divMod` 100
+    whole  = T.pack (show w)
+    frac   = (if f < 10 then "0" else "") <> T.pack (show f)
+
+-- | The window page-zoom helpers.
+--
+-- CSS @zoom@ splits the page into two coordinate spaces, and this is the one
+-- place that difference is spelled out:
+--
+--   * VISUAL — @getBoundingClientRect()@, @elementFromPoint@, an event's
+--     @clientX\/clientY@.  Post-zoom, and the space the viewport itself is in
+--     (so it is also what native code wants: one CSS px is still one window
+--     point, because zoom does not change @innerWidth@\/@innerHeight@).
+--   * LOCAL — @offsetWidth@\/@clientWidth@, @getComputedStyle@ lengths, and
+--     anything you WRITE as a CSS length (@style.left@, a custom property, a
+--     @translate@).  Pre-zoom.
+--
+-- Measure→native therefore needs no conversion at all; measure→CSS must divide,
+-- and 'leksahLocal' is where that happens so there is one thing to fix if an
+-- engine ever reports rects differently.
+zoomJs :: Text
+zoomJs = T.unlines
+  [ "window.leksahZoom = function(){"
+  -- From the custom property, not Element.currentCSSZoom: the property is set
+  -- by us and readable on every engine, including ones without that API.
+  , "  var v = parseFloat(getComputedStyle(document.documentElement)"
+  , "                       .getPropertyValue('--leksah-zoom'));"
+  , "  return (v > 0) ? v : 1;"
+  , "};"
+  , "window.leksahLocal = function(px){ return px / window.leksahZoom(); };"
+  , "window.leksahLocalRect = function(el){"
+  , "  var r = el.getBoundingClientRect(), z = window.leksahZoom();"
+  , "  return { left: r.left/z, top: r.top/z, right: r.right/z, bottom: r.bottom/z,"
+  , "           width: r.width/z, height: r.height/z };"
+  , "};"
+  -- The viewport does not change size when the zoom does, so no resize event is
+  -- guaranteed.  One synthetic one on the next frame (after layout has settled
+  -- at the new scale) covers everything keyed off window resize; it is cheap and
+  -- idempotent.  Terminals do not need it — their ResizeObserver sees the leaf's
+  -- LOCAL box change on its own.
+  , "window.leksahZoomChanged = function(){"
+  , "  requestAnimationFrame(function(){"
+  , "    try { window.dispatchEvent(new Event('resize')); } catch(_){}"
+  , "    if (window.leksahUpdateHints) window.leksahUpdateHints();"
+  , "  });"
   , "};"
   ]
 
@@ -2491,14 +2589,23 @@ resizeBarsJs = T.unlines
   , "  document.addEventListener('mousemove', function(e){"
   , "    if (!drag) return;"
   , "    var r = root(); if (!r) return;"
+  -- --tall-col / --wide1-bar are CSS lengths, i.e. LOCAL (pre-zoom), while the
+  -- pointer and every rect are VISUAL.  Convert the inputs once, here, and the
+  -- arithmetic below is the original — with its px constants still meaning what
+  -- they say.  It also keeps the persisted localStorage values local, so they
+  -- are zoom-independent and an entry written before this existed still means
+  -- the same width.
+  , "    var LC = window.leksahLocal;"
+  , "    var iw = LC(window.innerWidth), ih = LC(window.innerHeight);"
+  , "    var cx = LC(e.clientX), cy = LC(e.clientY);"
   , "    if (drag === 'tall') {"
-  , "      var maxW = Math.max(200, Math.min(700, window.innerWidth - 200));"
-  , "      var w = Math.max(120, Math.min(maxW, e.clientX - r.getBoundingClientRect().left));"
+  , "      var maxW = Math.max(200, Math.min(700, iw - 200));"
+  , "      var w = Math.max(120, Math.min(maxW, cx - window.leksahLocalRect(r).left));"
   , "      r.style.setProperty('--tall-col', w + 'px');"
   , "    } else {"
   , "      var wd = document.querySelector('.wide1-divider');"
-  , "      var bottom = wd ? wd.getBoundingClientRect().bottom : (window.innerHeight - 20);"
-  , "      var h = Math.max(60, Math.min(window.innerHeight - 120, bottom - e.clientY));"
+  , "      var bottom = wd ? window.leksahLocalRect(wd).bottom : (ih - 20);"
+  , "      var h = Math.max(60, Math.min(ih - 120, bottom - cy));"
   , "      r.style.setProperty('--wide1-bar', h + 'px');"
   , "    }"
   , "    e.preventDefault();"
@@ -3081,7 +3188,10 @@ terminalLinksJs = T.unlines
   , "      tip.className = 'leksah-term-hovertip';"
   , "      tip.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;'"
   , "        + 'background:var(--leksah-surface-alt);color:var(--leksah-fg-muted);border:1px solid var(--leksah-border-control);'"
-  , "        + 'border-radius:5px;padding:6px 9px;font-size:12px;max-width:72ch;max-height:60vh;'"
+    -- 60vh of the WINDOW: viewport units ignore the root zoom, so dividing by
+    -- it keeps "at most 60% of the window" true at every zoom level.
+  , "        + 'border-radius:5px;padding:6px 9px;font-size:12px;max-width:72ch;'"
+  , "        + 'max-height:calc(60vh / var(--leksah-zoom, 1));'"
   , "        + 'white-space:normal;overflow:hidden;display:none;box-shadow:0 4px 14px var(--leksah-shadow-drop);'"
   , "        + 'font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;line-height:1.4;';"
   , "      document.body.appendChild(tip);"
@@ -3091,8 +3201,10 @@ terminalLinksJs = T.unlines
   , "  function showTip(ev, text){"
   , "    var t = ensureTip();"
   , "    t.innerHTML = fmtTip(text);"
-  , "    t.style.left = (((ev && ev.clientX) || 0) + 12) + 'px';"
-  , "    t.style.top  = (((ev && ev.clientY) || 0) + 16) + 'px';"
+  -- clientX/Y are VISUAL, style.left/top are LOCAL: convert, and keep the
+  -- +12/+16 cursor offsets as local px so they stay in step with the tip.
+  , "    t.style.left = (window.leksahLocal((ev && ev.clientX) || 0) + 12) + 'px';"
+  , "    t.style.top  = (window.leksahLocal((ev && ev.clientY) || 0) + 16) + 'px';"
   , "    t.style.display = 'block';"
   , "  }"
   , "  function hideTip(){ if (tip) tip.style.display = 'none'; shownRid = -1; shownKey = null; }"
@@ -3326,8 +3438,8 @@ terminalOscLinksJs = T.unlines
   , "      hover: function(ev, text){"
   , "        var t = ensureTip();"
   , "        t.textContent = text;"
-  , "        t.style.left = (((ev && ev.clientX) || 0) + 12) + 'px';"
-  , "        t.style.top  = (((ev && ev.clientY) || 0) + 16) + 'px';"
+  , "        t.style.left = (window.leksahLocal((ev && ev.clientX) || 0) + 12) + 'px';"
+  , "        t.style.top  = (window.leksahLocal((ev && ev.clientY) || 0) + 16) + 'px';"
   , "        t.style.display = 'block';"
   , "      },"
   , "      leave: function(){ if (tip) tip.style.display = 'none'; },"
@@ -3435,8 +3547,17 @@ terminalWriteJs = T.unlines
   , "      t.options.letterSpacing = o.letterSpacing;"
   , "      t.open(host);"
   , "      var s = host.querySelector('.xterm-screen');"
+  -- The probe host hangs off document.body, which is INSIDE the window's page
+  -- zoom, so its rect comes back visual (post-zoom) — while 'refit' measures
+  -- the real leaf with clientWidth/clientHeight, which are local.  Divide, so
+  -- a cell measured at 175% means the same thing as one measured at 100%:
+  -- the grid is then floor(local box / local cell) at every zoom, and the
+  -- family+size cache stays valid across zoom changes instead of having to be
+  -- invalidated (and re-probed) on each one.
+  , "      var z = window.leksahZoom ? window.leksahZoom() : 1;"
   , "      var r = s ? s.getBoundingClientRect() : null;"
-  , "      if (r && r.width && r.height) cellCache[key] = { w: r.width / 80, h: r.height / 24 };"
+  , "      if (r && r.width && r.height)"
+  , "        cellCache[key] = { w: r.width / 80 / z, h: r.height / 24 / z };"
   , "      t.dispose();"
   , "      document.body.removeChild(host);"
   , "    } catch (e) {}"
@@ -3531,7 +3652,8 @@ dividerDragJs = T.unlines
   , "    iframes.forEach(function(f){ f.style.pointerEvents = 'none'; });"
   , "    function mv(e2){"
   , "      var d = (vert ? e2.clientX : e2.clientY) - start;"
-  , "      if (line) line.style.transform = vert ? ('translateX('+d+'px)') : ('translateY('+d+'px)');"
+  , "      var dl = window.leksahLocal(d);"
+  , "      if (line) line.style.transform = vert ? ('translateX('+dl+'px)') : ('translateY('+dl+'px)');"
   , "    }"
   , "    function up(e2){"
   , "      document.removeEventListener('mousemove', mv);"
@@ -3539,7 +3661,11 @@ dividerDragJs = T.unlines
   , "      iframes.forEach(function(f){ f.style.pointerEvents = ''; });"
   , "      el.classList.remove('dragging');"
   , "      if (line) line.style.transform = '';"
-  , "      var cells = Math.round(((vert ? e2.clientX : e2.clientY) - start) / cellPx);"
+  -- cellPx comes from 'cellMetrics', which is LOCAL, so the VISUAL pointer
+  -- delta has to be converted before it can be divided into cells — otherwise
+  -- one dragged cell moves the pane by zoom-many at any zoom but 100%.
+  , "      var cells = Math.round(window.leksahLocal("
+  , "                    (vert ? e2.clientX : e2.clientY) - start) / cellPx);"
   , "      if (cells !== 0 && el.__leksahResize) el.__leksahResize(cells);"
   , "    }"
   , "    document.addEventListener('mousemove', mv);"
@@ -3650,8 +3776,13 @@ leafDragJs = T.unlines
   [ "(function(){"
   , "  var MOD = (navigator.platform||'').toUpperCase().indexOf('MAC') >= 0 ? 'metaKey' : 'ctrlKey';"
   , "  var st = null;"
-  , "  function shadowTo(x,y,w,h){ var s = st.shadow.style;"
-  , "    s.left = x+'px'; s.top = y+'px'; s.width = w+'px'; s.height = h+'px'; }"
+  -- Every caller hands this a VISUAL rect (getBoundingClientRect, or a
+  -- candidate computed from one), but style.left/top/width/height are LOCAL
+  -- lengths.  Converting here covers srcBox, the tab-row peek, the split
+  -- candidate and the wide0 whole-area candidate in one place.
+  , "  function shadowTo(x,y,w,h){ var s = st.shadow.style, z = window.leksahZoom();"
+  , "    s.left = (x/z)+'px'; s.top = (y/z)+'px';"
+  , "    s.width = (w/z)+'px'; s.height = (h/z)+'px'; }"
   -- "Nothing will change if released here": park the shadow ON the source
   -- pane (static — a mouse-following box restarts its transition every move
   -- and lags).  A detached source element measures 0×0: leave the shadow be.
@@ -3883,9 +4014,14 @@ leafDragJs = T.unlines
   , "    if (!pvShadow){ pvShadow = document.createElement('div');"
   , "      pvShadow.className = 'leksah-drag-shadow';"
   , "      document.body.appendChild(pvShadow); }"
-  , "    var s2 = pvShadow.style;"
-  , "    s2.left = p.rect[0]+'px'; s2.top = p.rect[1]+'px';"
-  , "    s2.width = p.rect[2]+'px'; s2.height = p.rect[3]+'px';"
+  -- Same VISUAL→LOCAL conversion 'shadowTo' does for the owner's own shadow:
+  -- 'pickAt' measures with getBoundingClientRect, these are CSS lengths.  (This
+  -- window's zoom, not the dragging window's — each window draws its own
+  -- preview in its own geometry, which is the whole point of this path, so two
+  -- windows at different zoom levels each get it right.)
+  , "    var s2 = pvShadow.style, pz = window.leksahZoom();"
+  , "    s2.left = (p.rect[0]/pz)+'px'; s2.top = (p.rect[1]/pz)+'px';"
+  , "    s2.width = (p.rect[2]/pz)+'px'; s2.height = (p.rect[3]/pz)+'px';"
   -- Unfocused windows hide the active-pane mark (terminalCss
   -- ".leksah.window-unfocused"); a move aimed here is exactly the exception.
   , "    var root = document.querySelector('.leksah');"
@@ -4213,11 +4349,14 @@ transparencyJs = T.unlines
   , "window.leksahAutoExpanded = function(){"
   , "  var root = document.querySelector('.leksah'); if (!root) return false;"
   , "  var a = root.classList.contains('tall-auto') && document.querySelector('.area-tall');"
-  , "  if (a && a.getBoundingClientRect().width > 8) return true;"
+  -- LOCAL widths/positions: the 8 and 22 below are px constants in the same
+  -- space the CSS is written in, so the measurements must come back pre-zoom or
+  -- the auto-hide reveal is mis-detected at zoom != 1.
+  , "  if (a && window.leksahLocalRect(a).width > 8) return true;"
   -- The wide1 bar reveals by transform (its size never changes), so
   -- "expanded" is positional: any part of it above the statusbar line.
   , "  var b = root.classList.contains('wide1-auto') && document.querySelector('.tab-buttons.area-wide1');"
-  , "  if (b && b.getBoundingClientRect().top < window.innerHeight - 22) return true;"
+  , "  if (b && window.leksahLocalRect(b).top < window.leksahLocal(window.innerHeight) - 22) return true;"
   , "  return false;"
   , "};"
   -- Viewport-px rect of a tmux pane (cell spec h) from the *live* terminal grid,
@@ -4386,8 +4525,12 @@ contextMenuClampJs = T.unlines
   , "  var M = 4;"  -- viewport margin
   , "  function clamp(el){"
   , "    try {"
-  , "      var r = el.getBoundingClientRect();"
-  , "      var vw = window.innerWidth, vh = window.innerHeight;"
+  -- All LOCAL: el.style.top/left are pre-zoom lengths and M is a px constant,
+  -- so the rect and the viewport have to be converted to match — otherwise the
+  -- menu is clamped against a box the wrong size and spills off at zoom != 1.
+  , "      var r = window.leksahLocalRect(el);"
+  , "      var vw = window.leksahLocal(window.innerWidth),"
+  , "          vh = window.leksahLocal(window.innerHeight);"
   , "      var top = parseFloat(el.style.top); if (isNaN(top)) top = r.top;"
   , "      var left = parseFloat(el.style.left); if (isNaN(left)) left = r.left;"
   , "      if (top + r.height > vh - M) top = vh - M - r.height;"
@@ -4876,9 +5019,21 @@ browserNativeReporterJs = T.unlines
   , "                                              r.top + r.height/2);"
   , "          vis = !!(hit && el.contains(hit));"
   , "        }"
+  -- The view's own page zoom, as a RATIO — the natural unit for a web page,
+  -- where the rest of leksah works in px.  Two things multiply into it: the
+  -- pane's font override relative to the monospace preference (⌥⌘=/⌥⌘− on a
+  -- browser pane), and the window's page zoom, since the native view is a
+  -- sibling of the page rather than part of it and so is not scaled by the CSS
+  -- `zoom` that scales everything else.  Computed here because both operands
+  -- are already published to the page.
+  , "        var ps = parseFloat(getComputedStyle(el)"
+  , "                   .getPropertyValue('--leksah-mono-size')) || 0;"
+  , "        var gs = window.__leksahMonoSize || 13;"
+  , "        var pz = (ps > 0 && gs > 0) ? (ps / gs) : 1;"
+  , "        var z = pz * (window.leksahZoom ? window.leksahZoom() : 1);"
   , "        panes.push({bid: bid, x: Math.round(r.left), y: Math.round(r.top),"
   , "                    w: Math.round(r.width), h: Math.round(r.height),"
-  , "                    vis: !!vis});"
+  , "                    vis: !!vis, z: z});"
   -- Hand the keyboard to the view on the RISING EDGE of \"this pane should have
   -- it\" — never on every tick, so a wrong answer can't fight the page for the
   -- keys, it can only lose them once.  The edge covers what the widget's select
@@ -4928,8 +5083,14 @@ regionSelectJs = T.unlines
   , "  function b4(e){ return { x:Math.min(sx,e.clientX), y:Math.min(sy,e.clientY),"
   , "                           w:Math.abs(e.clientX-sx), h:Math.abs(e.clientY-sy) }; }"
   , "  ov.addEventListener('mousedown', function(e){ dragging=true; sx=e.clientX; sy=e.clientY; box.style.display='block'; e.preventDefault(); });"
-  , "  ov.addEventListener('mousemove', function(e){ if(!dragging) return; var b=b4(e);"
-  , "    box.style.left=b.x+'px'; box.style.top=b.y+'px'; box.style.width=b.w+'px'; box.style.height=b.h+'px'; });"
+  -- 'b4' is VISUAL (pointer coordinates), which is exactly what 'report' below
+  -- must stay in — it becomes an NSMakeRect for the native snapshot, and one
+  -- CSS px is still one window point at any zoom.  Only the rubber-band, which
+  -- is drawn with CSS lengths, converts to LOCAL.
+  , "  ov.addEventListener('mousemove', function(e){ if(!dragging) return;"
+  , "    var b=b4(e), z=window.leksahZoom();"
+  , "    box.style.left=(b.x/z)+'px'; box.style.top=(b.y/z)+'px';"
+  , "    box.style.width=(b.w/z)+'px'; box.style.height=(b.h/z)+'px'; });"
   , "  ov.addEventListener('mouseup', function(e){ if(!dragging){ report(''); return; } dragging=false;"
   , "    var b=b4(e); if(b.w<3||b.h<3){ report(''); return; }"
   , "    report(Math.round(b.x)+','+Math.round(b.y)+','+Math.round(b.w)+','+Math.round(b.h)); });"
@@ -5666,9 +5827,41 @@ main showMenubar macTitlebar wid ctx = mdo
         -- navigation hints (hintsJs) can drop their yellow ⌘D / ⌘⇧D chips on
         -- them — here the keys move the tab into a session tab's native split
         -- layout as a view leaf.
-        withConvertHint body =
-          elAttr "div" ("class" =: "leksah-convertible"
-              <> "style" =: "position:relative;width:100%;height:100%") body
+        -- A SPLIT LEAF's body: no font declaration of its own.  Its size comes
+        -- from the enclosing '.terminal-cc-view-leaf', which the split renderers
+        -- already set from 'pcFontSize'; emitting nothing here lets that value
+        -- inherit instead of the two fighting.
+        withConvertHint = withPaneFont (constDyn Nothing)
+        -- A wide0 TAB's body: carries the tab's own override (⌥⌘=/⌥⌘−/⌥⌘0 on a
+        -- tab, which has no 'PaneContent' to hang a size on — see
+        -- '_tabFontSize').
+        withTabFont k body = do
+          fontD <- holdUniqDyn ((\i -> M.lookup k (i ^. tabFontSize)) <$> ide)
+          withPaneFont fontD body
+        -- The override rides a CSS-var wrapper: CodeMirror reads
+        -- --leksah-mono-size live, so it needs nothing else.  Monaco snapshots
+        -- its font at creation, so a CHANGE also has to poke the editors inside
+        -- (0 = back to the global size).  Same shape as the split renderers'
+        -- view-leaf wrapper in 'IDE.Web.Widget.TerminalCC'.
+        withPaneFont fontD body = do
+          let attrs mf = "class" =: "leksah-convertible"
+                <> "style" =: ("position:relative;width:100%;height:100%"
+                     <> maybe "" (\n -> ";--leksah-mono-size:"
+                                        <> T.pack (show n) <> "px") mf)
+          (vEl, r) <- elDynAttr' "div" (attrs <$> fontD) body
+          -- On CHANGE, and once at postBuild.  The postBuild pass is what makes
+          -- a pane that is BORN with an override come up at the right size:
+          -- Monaco reads its font when it is created, and at that moment the
+          -- wrapper is not in the document yet (jsaddle batches the DOM), so
+          -- there is no computed --leksah-mono-size for it to inherit.  Reading
+          -- the container instead of the root — which the bundle now also does —
+          -- cannot fix that on its own, because the element is still detached.
+          pbFont <- getPostBuild
+          performEvent_ $ ffor (leftmost [updated fontD, tag (current fontD) pbFont]) $ \mf ->
+              liftJSM . void $ jsg ("window" :: Text)
+                  ^. js2 ("leksahSetLeafFont" :: Text) (_element_raw vEl)
+                        (fromMaybe (0 :: Int) mf)
+          return r
     -- File ▸ Open (the native NSOpenPanel on wkwebview) delivers chosen files via
     -- a background thread; open each one in the editor area like any other file.
     (nativeOpenedFileE, fireOpenedFile) <- newTriggerEvent
@@ -5711,7 +5904,7 @@ main showMenubar macTitlebar wid ctx = mdo
         liftIO . void . forkIO $ do
             mlwi <- mintLeksahWindow (Just sid) (PaneContent (PaneTmux wid') Nothing)
             mapM_ requestLocalTerm mlwi
-    -- ⌘+/⌘− on a tmux pane in a MULTI-pane window (see leafFontAdjust):
+    -- ⌥⌘=/⌥⌘− on a tmux pane in a MULTI-pane window (see paneFontAdjust):
     -- isolate the pane first (per-pane fonts can't share a tmux window),
     -- then apply the size to the isolated leaf.
     (fontConvE, fireFontConv) <- newTriggerEvent
@@ -5719,7 +5912,7 @@ main showMenubar macTitlebar wid ctx = mdo
         liftIO . void . forkIO $ do
             -- Serialized under the consolidate lock: a second font key
             -- arriving while the first conversion's tmux work is in flight
-            -- used to start a CONCURRENT conversion (leafFontAdjust's
+            -- used to start a CONCURRENT conversion (paneFontAdjust's
             -- pane-count check still saw the old window) — the interleaved
             -- conversions duplicated leaves and corrupted the tree.  Inside
             -- the lock the pane count is re-checked: by the time a queued
@@ -5743,7 +5936,7 @@ main showMenubar macTitlebar wid ctx = mdo
             -- The isolated pane's new size may now match a neighbour.
             when ok $ consolidateLw lwi
     -- Consolidation requests from the command layer (a direct leaf font
-    -- change, see leafFontAdjust) — same Chan seam as the font converts.
+    -- change, see paneFontAdjust) — same Chan seam as the font converts.
     (consolidateReqE, fireConsolidateReq) <- newTriggerEvent
     performEvent_ $ ffor consolidateReqE $ \lwi ->
         liftIO . void . forkIO $ consolidateLw lwi
@@ -8375,16 +8568,16 @@ main showMenubar macTitlebar wid ctx = mdo
           AgentsKey      -> toDM AgentsTab <$> agentsWidget
           ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
-          ShortcutsKey   -> toDM ShortcutsTab <$> withConvertHint (shortcutsWidget ctx)
+          ShortcutsKey   -> toDM ShortcutsTab <$> withTabFont k (shortcutsWidget ctx)
           BrowserKey n   -> toDM BrowserTab <$>
-              withConvertHint (browserWidget n selectedE (constDyn True))
+              withTabFont k (browserWidget n selectedE (constDyn True))
           GitLogKey d b  -> toDM GitLogTab <$> do
               -- Same editor-backend pref as file tabs (decided at creation).
               mon <- useMonaco <$> sample (current prefsD)
-              withConvertHint $ gitLogWidget mon d b
+              withTabFont k $ gitLogWidget mon d b
           ReviewKey d    -> toDM ReviewTab <$> do
               mon <- useMonaco <$> sample (current prefsD)
-              withConvertHint $ reviewWidget mon d
+              withTabFont k $ reviewWidget mon d
           TasksKey       -> toDM TasksTab <$> do
               seed <- liftIO (readIORef tasksSeedRef)
               tasksWidget seed
@@ -8393,7 +8586,7 @@ main showMenubar macTitlebar wid ctx = mdo
               mon <- useMonaco <$> sample (current prefsD)
               compareWidget mon d p selectedE
           EditorKey file -> toDM EditorTab <$>
-              withConvertHint (makeEditor file selectedE (constDyn True)))
+              withTabFont k (makeEditor file selectedE (constDyn True)))
     -- The active pane became a wide0 tab THIS window owns: float it to the MRU
     -- front / mark it active in the shared state (ignored for side/bottom tabs and
     -- for tabs owned by other windows).
@@ -8696,11 +8889,12 @@ main showMenubar macTitlebar wid ctx = mdo
     let notPrefs k = k /= PreferencesKey && k /= ShortcutsKey
     leksahWindowsD <- holdUniqDyn ((^. leksahWindows) <$> ide)
     paneAID <- holdUniqDyn ((^. paneAISession) <$> ide)
+    tabFontD' <- holdUniqDyn ((^. tabFontSize) <$> ide)
     sessionD <- holdUniqDyn $
-      (\wins vis recF lws mru paneAI ->
+      (\wins vis recF lws mru paneAI tabFonts ->
           WebSession 6
             [ WebWindowSession (filter notPrefs (_wwWide0 ww)) (_wwActive ww)
-                               (_wwTall ww) (_wwWide1 ww)
+                               (_wwTall ww) (_wwWide1 ww) (Just (_wwZoom ww))
             | (_, ww) <- M.toList wins ]
             (M.toList (M.filterWithKey (\a k -> a /= "wide0" && notPrefs k) vis))
             (Just recF)
@@ -8713,9 +8907,12 @@ main showMenubar macTitlebar wid ctx = mdo
             -- Explicit per-pane AI-session bindings; the derived ones are
             -- recomputed from the live sessions on demand, so only these need
             -- saving.
-            (Just (M.toAscList paneAI)))
+            (Just (M.toAscList paneAI))
+            -- Per-TAB font overrides; the per-LEAF ones ride their leksah
+            -- window's layout instead (@leksah_layout / wsLeksahWindows).
+            (Just (M.toAscList tabFonts)))
         <$> webWindowsD <*> visibleTabsD <*> recentFilesD <*> leksahWindowsD
-        <*> flipMruD <*> paneAID
+        <*> flipMruD <*> paneAID <*> tabFontD'
     let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
     saveSessE <- debounce (1 :: NominalDiffTime) (gate (current writeGateD) (updated sessionD))
     -- Once this instance has initiated a handoff, stop writing the session — the
@@ -8826,6 +9023,18 @@ main showMenubar macTitlebar wid ctx = mdo
         (\p -> ":root{--leksah-mono:" <> fcMonoFamily (cfgFont p)
             <> ";--leksah-mono-size:" <> T.pack (show (fcMonoSize (cfgFont p))) <> "px}") <$> prefsD
     el "style" $ dynText fontCssD
+    -- This OS window's page zoom (⌘+/⌘−/⌘0).  Unlike the two above it is
+    -- per-WINDOW, not per-pref, so it reads 'myWinD' — but it is the same
+    -- mechanism, and it lands after them so it wins on the root element.
+    -- Layout.hs's html rule consumes --leksah-zoom as the CSS `zoom` property.
+    zoomD <- holdUniqDyn (_wwZoom <$> myWinD)
+    el "style" $ dynText (zoomVarCss <$> zoomD)
+    -- Nothing fires a resize when the zoom changes — the viewport is exactly the
+    -- same size, only its contents are laid out bigger or smaller.  Terminals
+    -- re-fit by themselves (their ResizeObserver sees the leaf's LOCAL box
+    -- change), but everything else keyed off window resize needs telling.
+    performEvent_ $ ffor (updated zoomD) $ \_ -> liftJSM . void $
+        jsg ("window" :: Text) ^. js0 ("leksahZoomChanged" :: Text)
     -- …and are published to window globals the terminals (xterm, fixed cell grid)
     -- read when they are created.  A terminal-font change takes effect for new
     -- terminals / on restart (open terminals keep their measured grid).
@@ -8932,6 +9141,11 @@ main showMenubar macTitlebar wid ctx = mdo
       <> ((\ks -> [overUi (paneAISession %~ M.filterWithKey (\r _ -> case r of
               PRTab k -> k `notElem` ks
               _       -> True))]) <$> closeTabsE)
+      -- …and its font override.  Dropped, not kept like the AI binding above:
+      -- a size means nothing without the pane, and a map that only ever grew
+      -- would bloat the session file for the life of the install.
+      <> ((\ks -> [overUi (tabFontSize %~ \m -> foldr M.delete m ks)])
+            <$> closeTabsE)
       <> ((\(n, LeafId l) ->
               [overUi (paneAISession %~ M.delete (PRLeaf n l))])
             <$> delayedLeafCloseE)

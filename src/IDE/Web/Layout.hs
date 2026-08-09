@@ -4,7 +4,7 @@ module IDE.Web.Layout where
 import qualified Data.Text as T (unwords)
 
 import Clay
-       (vh, height, (-:), grid, position, relative, none, (?), (#), after,
+       ((-:), grid, position, relative, none, (?), (#), after,
         before, Css)
 import qualified Clay (display)
 
@@ -89,6 +89,23 @@ layoutCss = do
     "html" ? do
         "height" -: "100%"
         "overflow" -: "clip"
+        -- Window page zoom (⌘+/⌘−/⌘0), per OS window — see '_wwZoom'.  It goes
+        -- on the ROOT element, not on .leksah, for two reasons: zooming the root
+        -- scales the initial containing block, so the html→body→.leksah
+        -- height:100% chain still resolves to exactly the viewport with no
+        -- calc() compensation; and everything appended to document.body outside
+        -- .leksah (the ⌘-drag shadow, tooltips, the flipper mirror, context
+        -- menus, toasts) scales with the UI for free instead of needing its own
+        -- rule.  The per-window value is published as --leksah-zoom by
+        -- 'IDE.Web.Main.zoomVarCss'.
+        --
+        -- Beware the coordinate split this creates: getBoundingClientRect() and
+        -- elementFromPoint are POST-zoom, while offsetWidth/clientWidth and
+        -- getComputedStyle lengths are PRE-zoom.  JS that measures one and
+        -- writes the other must divide — window.leksahLocal() is the one place
+        -- that conversion lives.
+        "--leksah-zoom" -: "1"
+        "zoom" -: "var(--leksah-zoom, 1)"
     "body" ? do
         "margin" -: "0"
         "height" -: "100%"
@@ -125,7 +142,11 @@ layoutCss = do
           , "\"tall      wide1\""
           , "\"statusbar statusbar\""
           ]
-        height (vh 100)
+        -- 100%, NOT 100vh: viewport units are not divided by the root zoom, so
+        -- at 150% a vh-sized root would be half again taller than the window.
+        -- The percentage chain from a zoomed <html> resolves to exactly the
+        -- viewport (measured).  Same reason for the 100vw grid tracks below.
+        "height" -: "100%"
         position relative
     -- Side ("tall") pane visibility (the toolbar button cycles these classes on
     -- .leksah): hide collapses its column to nothing; auto-hide narrows it to a
@@ -151,20 +172,20 @@ layoutCss = do
     -- (100vw, minus the 3px padding via border-box) across the hover so a terminal
     -- in there is never reflowed.
     ".leksah.tall-auto" ? do
-        "grid-template-columns" -: "0px 100vw"
+        "grid-template-columns" -: "0px 100%"
         "transition" -: "grid-template-columns 0.15s ease"
     -- Stay open while the sensor or the pane itself is hovered *or* while a pane in
     -- the area has keyboard focus (:focus-within): activating/flipping to a side
     -- pane focuses its list, which holds the bar open; it collapses again on its
     -- own once focus leaves.
     ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)" ?
-        ("grid-template-columns" -: "var(--tall-col) 100vw")
+        ("grid-template-columns" -: "var(--tall-col) 100%")
     -- Force-collapse override: a selection that activated a file/terminal adds
     -- '.tall-suppress' (see leksahCollapseAutoHide), snapping the pane shut even
     -- while the cursor is still hovering it — the extra class outranks the reveal
     -- rule above, so it wins under :hover.  Cleared on the next mouse-out.
     ".leksah.tall-auto.tall-suppress:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)" ?
-        ("grid-template-columns" -: "0px 100vw")
+        ("grid-template-columns" -: "0px 100%")
     -- A constant 3px left pad on the editor column, in ALL side-pane states
     -- (shown, auto-hide, hidden): a small consistent gap from the side divider /
     -- window edge (in auto-hide it also gives the sensor peek strip its room).
@@ -519,7 +540,7 @@ layoutCss = do
     -- it smaller.  transition:none so the live drag tracks the cursor instead of
     -- easing 0.15s behind it.
     ".leksah.tall-auto.leksah-resizing-tall" ? do
-        "grid-template-columns" -: "var(--tall-col) 100vw"
+        "grid-template-columns" -: "var(--tall-col) 100%"
         "transition" -: "none"
     ".leksah.wide1-auto.leksah-resizing-wide1 .tab-buttons.area-wide1" ?
         ("transform" -: "translateY(0)")

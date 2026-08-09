@@ -1172,7 +1172,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                 (\case Just (PaneContent (PaneView k) _) -> Just k
                                        _                                 -> Nothing)
                                   <$> paneD
-                            -- The pane's font-size override (⌘+/⌘−; Nothing =
+                            -- The pane's font-size override (⌥⌘=/⌥⌘−; Nothing =
                             -- follow the global monospace pref).
                             fontD <- holdUniqDyn $ (>>= pcFontSize) <$> paneD
                             (leafEl, _) <- elDynAttr' "div" (leafStyle lid <$> rectD) $ do
@@ -1316,7 +1316,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                                 (_element_raw vEl)
                                                 (maybe (0 :: Int) id mf)
                             -- Focus entering this leaf makes it the layout's
-                            -- focused leaf — the target of ⌘S/⌘+/⌘−/splits.
+                            -- focused leaf — the target of ⌘S/⌥⌘=/⌥⌘−/splits.
                             -- A mouse-DOWN counts too, because a click does not
                             -- always MOVE DOM focus: while a native browser view
                             -- holds the keyboard the page's activeElement stays

@@ -266,7 +266,7 @@ data MergeGroup = MergeGroup
 -- same-font subtree collapses in a single group; one that can't join a
 -- parent-level run still merges internally when it has several leaves.
 -- Fonts are compared EFFECTIVELY (@defFont@ resolves a 'Nothing' override):
--- a ⌘−/⌘+ round trip stores @Just default@ where its neighbours have
+-- a ⌥⌘−/⌥⌘= round trip stores @Just default@ where its neighbours have
 -- @Nothing@, and those must merge back.
 consolidateGroups :: Int -> Map LeafId PaneContent -> SplitTree -> [MergeGroup]
 consolidateGroups defFont panes = go
