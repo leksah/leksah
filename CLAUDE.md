@@ -149,10 +149,33 @@
   make the in-app `cabal build` of `rebuild-self` reconfigure + rebuild everything.
   Don't reintroduce `cabal run` for launching, and don't vary the cabal PATH.
 
+## Repo layout
+- **The `leksah` package lives in `leksah/`**, not at the repo root: `src/`,
+  `main/`, `src-mac-glue/`, `src-ghcjs-stub/`, `osx/`, `linux/` and the runtime
+  asset dirs `pics/`, `cm6/`, `xterm/`, `monaco/`, `fonts/` are all under it,
+  next to `leksah.cabal`. `cabal.project` lists it like any other package
+  (`leksah/`, `lsp-types-client/`, `sandpit/breakout/`). Don't add sources or
+  assets back at the root.
+- **`leksah/` IS the datadir.** `leksah.sh` exports
+  `leksah_datadir="$(pwd)/leksah"`, so `/pics`, `/cm6`, `/xterm` and `/fonts`
+  are served straight out of the package directory — the same layout an
+  installed build gets from `Paths_leksah.getDataDir`. Move an asset dir without
+  that and the failure reads as "the UI is broken", not as a 404: the CSS and the
+  editor bundles arrive through jsaddle.
+- Repo-level things stay at the root: `cabal.project`, `flake.nix`, `nix/`,
+  `leksah.sh`, `bin/`, `scripts/`, `hie.yaml`, `docs/`, `Leksah.app/`, and the
+  sibling packages `lsp-types-client/`, `sandpit/`, `leksah-classic/`.
+- Anything that names those paths needs updating together: `hie.yaml`'s cradle
+  (a wrong path there makes HLS load nothing at all, silently), the `${src}/…`
+  copies in `nix/macos-app.nix` and `nix/windows-installer.nix`, `${../leksah/linux}`
+  in `nix/hix.nix`, and the repo-relative reads in `docs/website/try/`
+  (`assemble-site.hs`, `DemoManifest.hs`).
+
 ## leksah-cmd (control socket)
 - A running web-UI leksah listens on a Unix socket at `~/.leksah/cmd.sock`
-  (server: `src/IDE/Web/CmdServer.hs`, started from `newIDE`). The `leksah-cmd`
-  CLI (`main/Cmd.hs`, a tiny standalone exe — no leksah deps) drives it:
+  (server: `leksah/src/IDE/Web/CmdServer.hs`, started from `newIDE`). The
+  `leksah-cmd` CLI (`leksah/main/Cmd.hs`, a tiny standalone exe — no leksah
+  deps) drives it:
   - `leksah-cmd rebuild-self [--no-restart]` — incremental rebuild in place; with
     `--no-restart` the app stays up (build lands on disk), else it restarts on
     success. Preferred way to build while an instance is running; see above.
@@ -178,7 +201,7 @@
   - `leksah-cmd grab-region [TARGET]` — select a screen region; types its PNG path
     into the AI-target pane (`aiTarget`/`regionCaptureTarget` pref).
 - **`leksah-cmd agent …` — you can put ANOTHER agent in a pane beside you**
-  (`src/IDE/Web/Agent.hs`; the same thing is exposed to a session as the
+  (`leksah/src/IDE/Web/Agent.hs`; the same thing is exposed to a session as the
   `fork_agent` MCP tool). `agent fork [--below|--tab] [--fresh] [--dir D]
   'PROMPT'` splits your own pane and starts a `claude` there, **forked from your
   conversation by default** (`--session-id` pins the child's id, so the reply is
@@ -256,14 +279,15 @@
   jsaddle** — anything that breaks jsaddle also kills all styling.
 - jsaddle-wkwebview dispatches events **asynchronously**, so `preventDefault` from
   a Haskell handler is unreliable; gate/handle in JS where it must be synchronous.
-- Native code lives in `main/` (not the shared lib), so native↔reflex comms go
-  through process-global `Chan`/`IORef` bridge modules in `src/IDE/Web/`
+- Native code lives in `leksah/main/` (not the shared lib), so native↔reflex
+  comms go through process-global `Chan`/`IORef` bridge modules in
+  `leksah/src/IDE/Web/`
   (`CloseRequest`, `SaveRequest`, `FindRequest`, `OpenFileRequest`, `OpenPanel`,
   `RecentFiles`): drop a token, drain it from a background thread into an Event.
 - To add front-end JS, prefer an **inline string eval’d in `Main.hs`** (see
   `revealCheckJs`, `terminalLinksJs`, `focusFindJs`) over editing the CodeMirror
-  bundle: `cm6/leksah-cm6.js` is the built artifact; `cm6/src/leksah-cm6.mjs` is
-  source and needs the bundler to rebuild.
+  bundle: `leksah/cm6/leksah-cm6.js` is the built artifact;
+  `leksah/cm6/src/leksah-cm6.mjs` is source and needs the bundler to rebuild.
 - xterm.js terminals: the SearchAddon needs `allowProposedApi: true` on the
   Terminal, or its highlight decorations throw.
 
