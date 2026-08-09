@@ -47,6 +47,7 @@ module IDE.Web.MacGlue
   , c_newWindow
   , c_raiseWindow
   , c_orderWindowFront
+  , c_closeWindow
   , c_showOpenPanel
   , c_showOpenProjectPanel
   , c_showOpenFolderPanel
@@ -154,6 +155,9 @@ foreign import ccall "leksah_raise_window" c_raiseWindow :: CInt -> IO ()
 -- Raise a window without making it key (the flipper's live preview — see
 -- 'IDE.Web.NewWindowRequest.requestOrderWindowFront').
 foreign import ccall "leksah_order_window_front" c_orderWindowFront :: CInt -> IO ()
+-- Close one OS window (the never-empty-window rule in 'IDE.Web.Main' — see
+-- 'IDE.Web.NewWindowRequest.requestCloseWindow').
+foreign import ccall "leksah_close_window" c_closeWindow :: CInt -> IO ()
 -- Show the native "Open File" panel (NSOpenPanel); it calls back 'cbOpenFile'.
 foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
 -- Show the native "Open Project" panel; it calls back 'cbOpenProject'.
@@ -335,6 +339,8 @@ c_newWindow :: CInt -> IO ()
 c_newWindow _ = return ()
 c_raiseWindow :: CInt -> IO ()
 c_raiseWindow _ = return ()
+c_closeWindow :: CInt -> IO ()
+c_closeWindow _ = return ()
 c_showOpenPanel :: IO ()
 c_showOpenPanel = return ()
 c_showOpenProjectPanel :: IO ()

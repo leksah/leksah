@@ -106,6 +106,12 @@ data TabKey
   -- | Side-by-side comparison of the N worktrees running the same queued
   -- prompt (compare-N-approaches): the project dir and the shared prompt.
   | CompareKey FilePath Text
+  -- | The Welcome pane — what an OS window shows when it would otherwise be
+  -- empty (see "IDE.Web.Widget.Welcome").  The 'Int' is a minted, never-reused
+  -- id, because two OS windows can each be showing one and a 'TabKey' is a
+  -- pane's global identity.  Transient: never restored from a session, so the
+  -- minter needs no persistence.
+  | WelcomeKey Int
     deriving (Ord, Eq, Show, Generic)
 
 -- | Identifies one native OS window in the multi-window web UI.  Minted

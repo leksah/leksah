@@ -269,7 +269,8 @@ import IDE.Web.SnapRequest (SnapReq(..))
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest
-       (requestOpenWindow, requestRaiseWindow, requestOrderWindowFront)
+       (requestOpenWindow, requestRaiseWindow, requestOrderWindowFront,
+        requestCloseWindow)
 import IDE.Web.Commands (allCommands, duplicateCommandIds)
 import IDE.Web.Keybindings (keybindingsFilePath, loadKeybindings)
 import IDE.Web.Command
@@ -302,6 +303,7 @@ import IDE.Web.ClaudeQueue
 import IDE.Web.GitLogRequest (requestGitLog)
 import IDE.Web.Widget.Preferences (preferencesCss, preferencesWidget)
 import IDE.Web.Widget.Shortcuts (shortcutsCss, shortcutsWidget)
+import IDE.Web.Widget.Welcome (nextWelcomeId, welcomeCss, welcomeWidget)
 import IDE.Web.GitInfo (openUrl)
 import IDE.Web.Widget.Browser
        (browserCss, browserWidget, nextBrowserId, rememberUrl, isOwnUrl)
@@ -1087,6 +1089,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                                 , lwSession lw == Just n ]
               PreferencesKey -> []   -- transient, never restore
               ShortcutsKey   -> []   -- transient, never restore
+              WelcomeKey{}   -> []   -- transient; re-minted when a window is empty
               GitLogKey{}    -> []   -- transient, never restore
               ReviewKey{}    -> []   -- transient, never restore
               TasksKey       -> []   -- transient, never restore
@@ -1942,6 +1945,7 @@ css = render $ do
     compareCss
     preferencesCss
     shortcutsCss
+    welcomeCss
     browserCss
     flakeCss
 
@@ -1966,6 +1970,7 @@ tabLabelText k names = case k of
   ChangesKey     -> "Changes"
   PreferencesKey -> "Preferences"
   ShortcutsKey   -> "Shortcuts"
+  WelcomeKey _   -> "Welcome"
   BrowserKey n   -> "Browser " <> T.pack (show n)
   GitLogKey _ b  -> "Log: " <> b
   ReviewKey d    -> "Review: " <> T.pack (takeFileName (dropTrailingPathSeparator d))
@@ -1987,6 +1992,7 @@ tabIconSrc k = case k of
   GrepKey        -> Just "/pics/grep.svg"
   ChangesKey     -> Just "/pics/changes.svg"
   ShortcutsKey   -> Just "/pics/shortcuts.svg"
+  WelcomeKey{}   -> Just "/pics/docs.svg"
   BrowserKey{}   -> Just "/pics/browser.svg"
   GitLogKey{}    -> Just "/pics/tree-git.svg"
   ReviewKey{}    -> Just "/pics/tree-git.svg"
@@ -2191,6 +2197,7 @@ tabFlipKey k = "tab:" <> case k of
     ChangesKey     -> "changes"
     PreferencesKey -> "preferences"
     ShortcutsKey   -> "shortcuts"
+    WelcomeKey n   -> "welcome:" <> T.pack (show n)
     BrowserKey n   -> "browser:" <> T.pack (show n)
     TerminalKey s  -> "terminal:" <> s
     LeksahWinKey n -> "lw:" <> n
@@ -5141,6 +5148,42 @@ main showMenubar macTitlebar wid ctx = mdo
   -- All windows' state (shared) — the global flipper reads other windows' wide0
   -- from here, and the session writer serialises every window from it.
   webWindowsD <- holdUniqDyn (_webWindows <$> ide)
+  -- No OS window is ever empty.  A window with no wide0 tabs shows nothing at
+  -- all — no tab row, no content, and no way to get anything back into it — so
+  -- the moment its last tab goes the window either CLOSES (there is another to
+  -- fall back to) or picks up a fresh Welcome pane.
+  --
+  -- Two arms, because "empty" arrives two ways.  At BOOT the window may simply
+  -- start that way — File ▸ New Window mints an empty 'WebWindow', and a
+  -- restored session whose window held only transient tabs (Preferences,
+  -- Shortcuts, a previous Welcome) comes up empty too; that always means
+  -- Welcome, never close, or ⌘N would create a window and immediately destroy
+  -- it.  At RUNTIME the last tab was closed or dragged to another window, and
+  -- closing is the right answer — the same thing a browser does when you drag
+  -- its last tab out.  The boot check is delayed and then re-gated on the live
+  -- value so a restore that lands late can't be papered over with a Welcome.
+  --
+  -- The SOLE window never closes: 'closeWindowMerge' quits the app on the last
+  -- window, and "I closed a pane" must not mean "quit".  Nor does a front end
+  -- with no close handler at all (warp) — hence the 'Bool' from
+  -- 'requestCloseWindow'; in both cases a Welcome pane is the fallback.
+  emptyWinD  <- holdUniqDyn (null . _wwWide0 <$> myWinD)
+  emptyPb    <- getPostBuild
+  emptyBoot0 <- delay 0.4 emptyPb
+  let emptyBootE = gate (current emptyWinD) emptyBoot0
+      -- True = "this is the boot check", i.e. Welcome unconditionally.
+      wantWelcomeE = leftmost [ True <$ emptyBootE
+                              , False <$ ffilter id (updated emptyWinD) ]
+  welcomeMintE <- performEvent $
+      ffor (attach (current webWindowsD) wantWelcomeE) $ \(wins, isBoot) ->
+        liftIO $ do
+          closed <- if isBoot || M.size wins <= 1
+                      then return False
+                      else requestCloseWindow widN
+          if closed
+            then return Nothing
+            else Just . WelcomeKey <$> nextWelcomeId
+  let welcomeOpenE = fmapMaybe id welcomeMintE
   tallVisD  <- holdUniqDyn (_wwTall  <$> myWinD)
   wide1VisD <- holdUniqDyn (_wwWide1 <$> myWinD)
   -- Is this the KEY OS window?  Same predicate as 'isActiveD' (defined far
@@ -7381,6 +7424,10 @@ main showMenubar macTitlebar wid ctx = mdo
               Just k@CompareKey{}     -> Just k
               Just k@PreferencesKey   -> Just k
               Just k@ShortcutsKey     -> Just k
+              -- Closing the Welcome pane is how you empty a window on purpose,
+              -- and the never-empty rule then closes the window itself — so it
+              -- has to be reachable here, not just openable.
+              Just k@WelcomeKey{}     -> Just k
               Just k@BrowserKey{}     -> Just k
               _ -> Nothing)
           (current activePaneD) closeReqE
@@ -8384,6 +8431,9 @@ main showMenubar macTitlebar wid ctx = mdo
           , ((\(d, p) -> CompareKey d p =: ("wide0", Just ())) <$> compareReqE)
           , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE
           , (ShortcutsKey =: ("wide0", Just ())) <$ showShortcutsE
+          -- The never-empty-window rule (see 'welcomeOpenE'): this window has
+          -- no tabs left and could not be closed, so it gets a Welcome pane.
+          , (\k -> k =: ("wide0", Just ())) <$> welcomeOpenE
           , (\k -> k =: ("wide0", Just ())) <$> newBrowserKeyE ]
         -- Killing a remote session server-side also drops its tab if open — under
         -- either identity it may be keyed by (its id, or its name from a
@@ -8446,6 +8496,7 @@ main showMenubar macTitlebar wid ctx = mdo
                               -- wide0 open.)
                               , ("wide0" =: PreferencesKey) <$ showPrefsE
                               , ("wide0" =: ShortcutsKey) <$ showShortcutsE
+                              , ("wide0" =:) <$> welcomeOpenE
                               , ("wide0" =:) <$> newBrowserKeyE
                               , (\(d, b) -> "wide0" =: GitLogKey d b) <$> gitLogReqE
                               , ("wide0" =:) . ReviewKey <$> reviewReqE
@@ -8569,6 +8620,8 @@ main showMenubar macTitlebar wid ctx = mdo
           ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
           ShortcutsKey   -> toDM ShortcutsTab <$> withTabFont k (shortcutsWidget ctx)
+          WelcomeKey _   -> toDM WelcomeTab <$>
+              withTabFont k (welcomeWidget ctx selectedE recentFilesD)
           BrowserKey n   -> toDM BrowserTab <$>
               withTabFont k (browserWidget n selectedE (constDyn True))
           GitLogKey d b  -> toDM GitLogTab <$> do
@@ -8884,9 +8937,15 @@ main showMenubar macTitlebar wid ctx = mdo
     -- + visibility all come from the shared '_webWindows', so any single window
     -- writes the full multi-window layout.  Gating to one avoids N racing writers.
     isActiveD   <- holdUniqDyn ((== Just wid) . _activeWindow <$> ide)
-    -- The Preferences and Shortcuts panes are transient — never save/restore
-    -- them as open tabs.
-    let notPrefs k = k /= PreferencesKey && k /= ShortcutsKey
+    -- The Preferences, Shortcuts and Welcome panes are transient — never
+    -- save/restore them as open tabs.  (Welcome is re-minted on demand by the
+    -- never-empty-window rule, so a window that held only one comes back with
+    -- a fresh one rather than a stale id.)
+    let notPrefs k = case k of
+          PreferencesKey -> False
+          ShortcutsKey   -> False
+          WelcomeKey{}   -> False
+          _              -> True
     leksahWindowsD <- holdUniqDyn ((^. leksahWindows) <$> ide)
     paneAID <- holdUniqDyn ((^. paneAISession) <$> ide)
     tabFontD' <- holdUniqDyn ((^. tabFontSize) <$> ide)

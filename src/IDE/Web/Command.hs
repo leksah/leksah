@@ -476,6 +476,9 @@ fontAdjustableTab EditorKey{}  = True
 fontAdjustableTab BrowserKey{} = True
 fontAdjustableTab GitLogKey{}  = True
 fontAdjustableTab ReviewKey{}  = True
+-- The Welcome pane sizes its whole layout off @--leksah-mono-size@, so it
+-- resizes like the rest even though nothing in it is monospace.
+fontAdjustableTab WelcomeKey{} = True
 fontAdjustableTab _            = False
 
 paneFontAdjust :: (Int -> Maybe Int) -> AppAction

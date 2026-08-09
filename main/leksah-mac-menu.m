@@ -2324,6 +2324,20 @@ void leksah_order_window_front(int wid) {
     });
 }
 
+// Close one window from Haskell: the never-empty-window rule (IDE.Web.Main)
+// closes a window whose last pane just went, because an empty window shows
+// nothing and offers no way back.  -close, not -performClose:, deliberately:
+// -performClose: asks the delegate and beeps if it declines, whereas this
+// decision has already been taken.  It still posts NSWindowWillClose, so the
+// observer above runs leksah_window_closing and the Haskell side does its
+// usual merge/unregister — this is exactly the red-button path, minus the
+// button.  A no-op if the window is unknown (already closed, or never ours).
+void leksah_close_window(int wid) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSWindow *win = (gWindows != nil) ? [gWindows objectForKey:@(wid)] : nil;
+        if (win != nil) [win close];
+    });
+}
 
 // --- ghci-mode lifecycle (leksah.sh --ghci) --------------------------------
 // Under a cabal repl the app must be able to hand control back to the ghci

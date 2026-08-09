@@ -178,6 +178,9 @@ type AgentsEvents = ()
 type CompareEvents = ()
 -- | The Shortcuts cheat-sheet pane is read-only, so it reports nothing outward.
 type ShortcutsEvents = ()
+-- | The Welcome pane acts entirely through the process-global request hooks
+-- (open panels, new window, preferences) — nothing outward.
+type WelcomeEvents = ()
 -- | The browser pane keeps its navigation state to itself.
 type BrowserEvents = ()
 type StatusbarEvents = ()
@@ -206,6 +209,7 @@ data TabEvents e where
   ChangesTab   :: TabEvents ChangesEvents
   PreferencesTab :: TabEvents PreferencesEvents
   ShortcutsTab :: TabEvents ShortcutsEvents
+  WelcomeTab   :: TabEvents WelcomeEvents
   BrowserTab   :: TabEvents BrowserEvents
   WorkspaceTab :: TabEvents ProjectEvents
   GitLogTab    :: TabEvents GitLogEvents

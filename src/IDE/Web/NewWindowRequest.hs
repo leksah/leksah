@@ -1,4 +1,6 @@
--- | A process-global hook for opening a new OS window.
+{-# LANGUAGE LambdaCase #-}
+-- | Process-global hooks for the OS windows themselves — opening, raising and
+-- closing them.
 --
 -- File ▸ New Window (⌘N) is a shared 'Command' whose action runs in the library
 -- ('IDE.Web.Command'), but actually creating a native NSWindow + WKWebView is
@@ -15,6 +17,8 @@ module IDE.Web.NewWindowRequest
   , requestRaiseWindow
   , setOrderWindowFrontHandler
   , requestOrderWindowFront
+  , setCloseWindowHandler
+  , requestCloseWindow
   ) where
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef)
@@ -80,3 +84,26 @@ setOrderWindowFrontHandler = writeIORef orderWindowFrontHandler
 -- has no such call (GTK's @windowPresent@ always focuses).
 requestOrderWindowFront :: Int -> IO ()
 requestOrderWindowFront n = readIORef orderWindowFrontHandler >>= ($ n)
+
+{-# NOINLINE closeWindowHandler #-}
+closeWindowHandler :: IORef (Maybe (Int -> IO ()))
+closeWindowHandler = unsafePerformIO (newIORef Nothing)
+
+-- | Register how to close an OS window (wkwebview @performClose:@).  Left
+-- unregistered where the back end has no such call — see 'requestCloseWindow'
+-- for why that distinction has to be observable.
+setCloseWindowHandler :: (Int -> IO ()) -> IO ()
+setCloseWindowHandler = writeIORef closeWindowHandler . Just
+
+-- | Close an OS window, reporting whether anything actually will.
+--
+-- Used by the never-empty-window rule in "IDE.Web.Main": when a window's last
+-- wide0 tab closes there is nothing left to show and no way back, so the
+-- window should go.  The 'Bool' matters because the caller needs a fallback —
+-- with no handler (warp, where one browser tab is the whole UI) the window
+-- cannot be closed, and the rule must open a Welcome pane instead rather than
+-- leave an empty husk on screen.
+requestCloseWindow :: Int -> IO Bool
+requestCloseWindow n = readIORef closeWindowHandler >>= \case
+    Nothing -> return False
+    Just h  -> h n >> return True

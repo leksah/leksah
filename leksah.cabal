@@ -179,6 +179,7 @@ library
         IDE.Web.Widget.ContextMenu
         IDE.Web.Widget.Preferences
         IDE.Web.Widget.Shortcuts
+        IDE.Web.Widget.Welcome
         IDE.Web.Widget.Browser
         IDE.Web.Widget.Editor
         IDE.Web.Widget.Errors
