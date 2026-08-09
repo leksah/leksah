@@ -227,7 +227,7 @@ rec {
           '' + lib.optionalString (!isWindows && !isJS) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
-            cp -r ${../linux} $out/share/
+            cp -r ${../leksah/linux} $out/share/
           ''}
           wrapProgram $out/bin/leksah \
             --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \
@@ -246,7 +246,7 @@ rec {
           lib.optionalString (!isWindows && !isJS) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
-            cp -r ${../linux} $out/share/
+            cp -r ${../leksah/linux} $out/share/
           ''}
           wrapProgram $out/bin/leksah-warp \
             --prefix 'PATH' ':' "${pkgs.haskell-nix.tool config.compiler.nix-name "cabal" "latest"}/bin" \

@@ -4,25 +4,25 @@
 # implicit cradle (a bare `cabal v2-repl <file>`) fails with
 # "Cabal-7132: Ambiguous target" and NO GHC session loads — hover, go-to-def
 # and live diagnostics then silently do nothing for the whole project:
-#   * main/           -> three executables (leksah, -warp, -cmd)
+#   * leksah/main/    -> three executables (leksah, -warp, -cmd)
 # Pin each shared tree to one component.  hie-bios matches by longest path
-# prefix, so more specific entries (e.g. main/Cmd.hs) must come before the
+# prefix, so more specific entries (e.g. leksah/main/Cmd.hs) must come before the
 # general one (main/).
 cradle:
   cabal:
     # leksah-cmd is a standalone exe whose main-is (Cmd.hs) lives in main/.
-    - path: "./main/Cmd.hs"
+    - path: "./leksah/main/Cmd.hs"
       component: "leksah:exe:leksah-cmd"
     # leksah-warp's main-is (Warp.hs) also lives in main/.
-    - path: "./main/Warp.hs"
+    - path: "./leksah/main/Warp.hs"
       component: "leksah:exe:leksah-warp"
     # Native web front end: exe:leksah is main/<ui>/Main.hs + main/.
-    - path: "./main"
+    - path: "./leksah/main"
       component: "leksah:exe:leksah"
     # (leksah-classic/ is a separate project with its own cabal.project and its
     # own hie.yaml — HLS picks that one up when you open a file under it.)
     # The web-UI library.
-    - path: "./src"
+    - path: "./leksah/src"
       component: "leksah:lib:leksah"
     # The vendored LSP client types (its own single-component package).
     - path: "./lsp-types-client"

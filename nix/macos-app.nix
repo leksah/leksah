@@ -104,11 +104,11 @@ pkgs.runCommand "Leksah.app"
     PLIST
 
     # --- icon + datadir ---
-    cp ${src}/osx/leksah-macapp.icns "$RES/leksah.icns"
-    cp -r ${src}/pics           "$RES/leksah/pics"
-    cp -r ${src}/cm6            "$RES/leksah/cm6"
-    cp -r ${src}/xterm          "$RES/leksah/xterm"
-    cp -r ${src}/fonts          "$RES/leksah/fonts"
+    cp ${src}/leksah/osx/leksah-macapp.icns "$RES/leksah.icns"
+    cp -r ${src}/leksah/pics           "$RES/leksah/pics"
+    cp -r ${src}/leksah/cm6            "$RES/leksah/cm6"
+    cp -r ${src}/leksah/xterm          "$RES/leksah/xterm"
+    cp -r ${src}/leksah/fonts          "$RES/leksah/fonts"
     cp    ${src}/LICENSE        "$RES/leksah/LICENSE"
     cp    ${src}/Readme.md      "$RES/leksah/Readme.md"
     chmod -R u+w "$RES/leksah"

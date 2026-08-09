@@ -229,7 +229,7 @@ crc32 = xor 0xffffffff . BS.foldl' step 0xffffffff
 
 -- ---------------------------------------------------------------------------
 -- ANSI stripping — ports of the regexes shared by the Python generators and
--- terminalLinksJs (src/IDE/Web/Main.hs).  If the JS changes, change these:
+-- terminalLinksJs (leksah/src/IDE/Web/Main.hs).  If the JS changes, change these:
 --   CSI: \x1b\[[0-9;:?]*[ -/]*[@-~]
 --   OSC: \x1b\][^\x07\x1b]*(\x07|\x1b\\)
 -- Unmatched introducers are left in place, exactly like re.sub.

@@ -1,6 +1,6 @@
 {
     "active": {
-        "package": "leksah.cabal",
+        "package": "leksah/leksah.cabal",
         "project": "."
     },
     "name": "leksah",

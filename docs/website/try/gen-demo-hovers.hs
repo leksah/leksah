@@ -9,7 +9,7 @@
 --   1. Enumerate every hoverable identifier
 --        * in the static terminal windows (terminals/*.ans): walk each dump
 --          with the same header/gutter/identifier recognition the runtime
---          does in JS (terminalLinksJs, src/IDE/Web/Main.hs — keep the
+--          does in JS (terminalLinksJs, leksah/src/IDE/Web/Main.hs — keep the
 --          regexes in sync!), so every token the demo will underline gets a
 --          tooltip; and
 --        * in the packed demo sources (editor hovers): every identifier span
@@ -77,7 +77,7 @@ outFile = "demo-hovers.js"
 
 -- ---------------------------------------------------------------------------
 -- Terminal-dump traversal — ports of the JS in terminalLinksJs
--- (src/IDE/Web/Main.hs).  If those regexes change, change these.
+-- (leksah/src/IDE/Web/Main.hs).  If those regexes change, change these.
 --   HDR: (?:Update|Edit|Write|Read)\(([^)]+)\)|^\s*\+\+\+ (?:b/)?(\S+)
 --   GUT: ^(\s+)(\d+) ([-+ ])
 --   ID:  [A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*

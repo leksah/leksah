@@ -165,10 +165,10 @@ if [ "$RUN_FROM_APP" = "1" ]; then
 PLIST
     # Prefer the macOS app icon (leksah glyph on a dark-grey gradient); fall
     # back to the plain logo.
-    if [ -f osx/leksah-macapp.icns ]; then
-        cp -f osx/leksah-macapp.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
-    elif [ -f osx/leksah.icns ]; then
-        cp -f osx/leksah.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
+    if [ -f leksah/osx/leksah-macapp.icns ]; then
+        cp -f leksah/osx/leksah-macapp.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
+    elif [ -f leksah/osx/leksah.icns ]; then
+        cp -f leksah/osx/leksah.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
     fi
 fi
 
@@ -266,7 +266,7 @@ if [ "$GHCI" = "1" ]; then
     exit 1
   fi
   syscc() { env -i PATH=/usr/bin:/bin HOME="$HOME" /usr/bin/xcrun clang "$@"; }
-  syscc -dynamiclib main/leksah-mac-menu.m \
+  syscc -dynamiclib leksah/main/leksah-mac-menu.m \
      -framework Cocoa -framework ApplicationServices -framework AVFoundation \
      -o "$GHCI_NATIVE/libleksah-mac-menu.dylib"
   syscc -dynamiclib "$JS_SRC/cbits-cocoa/WKWebView-AppDelegate.m" \
@@ -298,7 +298,7 @@ cd "$(pwd)" || exit 1
 . "$ENV_SNAPSHOT"
 export LEKSAH_PORT=$LEKSAH_PORT
 export LEKSAH_GHCI=1
-export leksah_datadir="$(pwd)"
+export leksah_datadir="$(pwd)/leksah"
 export PATH="$(pwd)/bin:$PATH"
 # TERM=dumb makes ghci's haskeline drop all cursor/keypad control escapes, so
 # the prompt no longer rewrites its line — echoed input and command output land
@@ -503,7 +503,7 @@ if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "warp" ]; then
   # loop stays byte-for-byte unchanged.
   handoff_launch_str='
     app="$1"; tgt="$2"; shift 2
-    export leksah_datadir="$(pwd)"
+    export leksah_datadir="$(pwd)/leksah"
     bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
     if [ "$app" = "1" ]; then
       macos="$(pwd)/Leksah.app/Contents/MacOS"
@@ -615,7 +615,7 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   # propagates (2 => rebuilt => relaunch).
   launch_leksah='
     app="$1"; tgt="$2"; shift 2
-    export leksah_datadir="$(pwd)"
+    export leksah_datadir="$(pwd)/leksah"
     bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
     if [ "$app" = "1" ]; then
       # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name

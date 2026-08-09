@@ -36,10 +36,10 @@ let
     ''}
 
     # Datadir.  Keep it to what the app actually reads at runtime.
-    cp -r ${src}/pics           $out/leksah/pics
-    cp -r ${src}/cm6            $out/leksah/cm6
-    cp -r ${src}/xterm          $out/leksah/xterm
-    cp -r ${src}/fonts          $out/leksah/fonts
+    cp -r ${src}/leksah/pics           $out/leksah/pics
+    cp -r ${src}/leksah/cm6            $out/leksah/cm6
+    cp -r ${src}/leksah/xterm          $out/leksah/xterm
+    cp -r ${src}/leksah/fonts          $out/leksah/fonts
     cp    ${src}/LICENSE        $out/leksah/LICENSE
     cp    ${src}/Readme.md      $out/leksah/Readme.md
 

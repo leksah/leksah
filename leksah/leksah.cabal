@@ -23,7 +23,6 @@ category: Development, IDE, Editor
 build-type: Simple
 data-files:
     LICENSE
-    Readme.md
     osx/leksah.icns
     osx/leksah-macapp.icns
     linux/applications/leksah.desktop

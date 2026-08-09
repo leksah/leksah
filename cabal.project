@@ -4,7 +4,7 @@
 -- directory can be lifted into its own repository.  Build it from there:
 --   cd leksah-classic && cabal build leksah-classic
 packages:
- ./
+ leksah/
  -- LSP client types, vendored (the hackage lsp-types package is tied to the
  -- server side); see IDE.LSP.
  lsp-types-client/

@@ -97,16 +97,16 @@ main = do
 
   -- 2. The shared bundles at the site root (root-absolute /cm6, /xterm,
   -- /pics, /fonts — the app's generated CSS references them absolutely).
-  cp (repo </> "cm6/leksah-cm6.js") (out </> "cm6/leksah-cm6.js")
+  cp (repo </> "leksah/cm6/leksah-cm6.js") (out </> "cm6/leksah-cm6.js")
   xterms <- filter (\f -> f == "xterm.css" || f == "xterm.js"
                           || ("addon-" `isPrefixOf` f && ".js" `isSuffixOf` f))
-              <$> listDirectory (repo </> "xterm")
-  forM_ xterms $ \f -> cp (repo </> "xterm" </> f) (out </> "xterm" </> f)
-  cpTree (const True) (repo </> "pics")  (out </> "pics")
-  cpTree (const True) (repo </> "fonts") (out </> "fonts")
+              <$> listDirectory (repo </> "leksah/xterm")
+  forM_ xterms $ \f -> cp (repo </> "leksah/xterm" </> f) (out </> "xterm" </> f)
+  cpTree (const True) (repo </> "leksah/pics")  (out </> "pics")
+  cpTree (const True) (repo </> "leksah/fonts") (out </> "fonts")
 
   -- 3. The generated page seeds.
-  GenXtermCss.run (repo </> "xterm/xterm.css") (out </> "try/demo-xterm-css.js")
+  GenXtermCss.run (repo </> "leksah/xterm/xterm.css") (out </> "try/demo-xterm-css.js")
   GenDemoFiles.run repo (out </> "try/demo-files.js")
   GenDemoTerminals.run (try' </> "terminals") (out </> "try/demo-terminals.js")
 
