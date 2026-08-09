@@ -46,7 +46,7 @@ and LSP support work the same for any language.
 
 ## Getting started
 
-You need `ghc`, `cabal`, `tmux` and `leksah-server` on your PATH. Then:
+You need `ghc`, `cabal` and `tmux` on your PATH. Then:
 
 ```shell
 git clone https://github.com/leksah/leksah.git
@@ -65,9 +65,9 @@ Other front ends:
                       # first load
 ```
 
-`./leksah.sh` with no arguments prints the full usage, including
-`--in-tmux` (show leksah's own output as a terminal inside leksah) and
-`LEKSAH_PORT` for running a second instance alongside the first.
+`./leksah.sh --help` prints the full usage, including `--in-tmux` (show
+leksah's own output as a terminal inside leksah) and `LEKSAH_PORT` for
+running a second instance alongside the first.
 
 Leksah builds with GHC 9.6.7 through 9.14; the web UI front ends use
 GHC 9.14. If you would rather not assemble the toolchain yourself, the
@@ -75,9 +75,8 @@ Nix flake provides it — but the dev loop above no longer uses Nix itself.
 The flake's other outputs are for packaging: a macOS app bundle/DMG, a
 Windows installer and a portable Linux build.
 
-The classic Gtk front end is no longer part of this project. It lives on
-as a frozen GPL-2.0 fork in [`leksah-classic/`](leksah-classic/), with its
-own `cabal.project` and flake — build it from inside that directory.
+The classic Gtk UI is in [`leksah-classic/`](leksah-classic/), with its own
+`cabal.project` and flake — build it from inside that directory.
 
 ## Documentation
 
@@ -100,4 +99,4 @@ on one — the source is right here, and Leksah is developed in Leksah.
 
 [Apache-2.0](LICENSE). Copyright 2007–2026 the Leksah team.
 
-(The classic Gtk fork in `leksah-classic/` keeps its original GPL-2.0 licence.)
+(The classic Gtk UI in `leksah-classic/` remains under GPL-2.0.)

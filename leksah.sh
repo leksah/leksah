@@ -1,8 +1,8 @@
 #!/usr/bin/env bash -e
 
 # Build-and-relaunch loop for developing leksah with leksah.  Plain cabal in
-# the ambient environment: ghc/cabal/tmux/leksah-server must be on PATH, cabal
-# picks the compiler, and builds land in cabal's default dist-newstyle.
+# the ambient environment: ghc/cabal/tmux must be on PATH, cabal picks the
+# compiler, and builds land in cabal's default dist-newstyle.
 
 
 usage() {
@@ -19,9 +19,9 @@ usage() {
     echo "  --in-tmux : (web front ends) run leksah inside a tmux session so its own"
     echo "              output shows up as \"Terminal 0\" in leksah's Terminals pane"
     echo
-    echo "  Commands run in the AMBIENT environment: ghc, cabal, tmux and"
-    echo "  leksah-server must already be on PATH.  cabal picks the compiler and"
-    echo "  the build dir (dist-newstyle)."
+    echo "  Commands run in the AMBIENT environment: ghc, cabal and tmux must"
+    echo "  already be on PATH.  cabal picks the compiler and the build dir"
+    echo "  (dist-newstyle)."
     echo
     echo "  Env LEKSAH_PORT=N runs a SECOND instance alongside the default one:"
     echo "  N (default 3367) is the UI port; leksah keys its control socket and"
@@ -32,13 +32,9 @@ usage() {
     echo "          ./leksah.sh --warp --in-tmux"
     echo "          LEKSAH_PORT=3368 ./leksah.sh   # 2nd instance"
     echo
-    echo "For details of other LEKSAH_ARGS run: ./leksah.sh --help"
+    echo "  --help, -h : this text.  Any argument this script does not"
+    echo "               recognise is passed through to leksah itself."
 }
-
-if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-    usage
-    exit 0
-fi
 
 # Remember the full invocation before we consume the arguments, so it can be
 # echoed into the run log below.
@@ -57,6 +53,7 @@ for a in "$@"; do
     case "$a" in
         --nix)     echo "Note: --nix support has been removed; running in the ambient environment." >&2 ;;
         ghc[0-9]*) echo "Note: compiler selection has been removed ('$a' ignored); cabal picks the GHC on PATH." >&2 ;;
+        --help|-h) usage; exit 0 ;;
         --in-tmux) IN_TMUX=1 ;;
         --ghci)    GHCI=1 ;;
         --warp)    UI=warp ;;
@@ -595,10 +592,10 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
   rm -f .ghc.environment.*
   mkdir -p bin
 
-  # Web front ends (default exe:leksah, or --warp): leksah-server must be on
-  # PATH (for metadata) and tmux is needed for persistent terminals.  With
-  # --develop-leksah leksah exits with code 2 when rebuilt (in-IDE or via
-  # `leksah-cmd rebuild-self`), so this loop relaunches it.
+  # Web front ends (default exe:leksah, or --warp): tmux is needed for
+  # persistent terminals.  With --develop-leksah leksah exits with code 2 when
+  # rebuilt (in-IDE or via `leksah-cmd rebuild-self`), so this loop relaunches
+  # it.
   if [ "$SKIP_REBUILD" != 1 ]; then
     status "building"
     build_and_link "$EXE_TARGET" \

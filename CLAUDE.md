@@ -75,7 +75,7 @@
   that exits the script — **nothing relaunches**, and `leksah-cmd restart
   --wait` then **hangs forever** waiting for an instance that never comes.
   Restart the loop by running, in the `launch` session,
-  `cd ~/haskell/leksah && ./leksah.sh` (ghc/cabal/tmux/leksah-server must be
+  `cd ~/haskell/leksah && ./leksah.sh` (ghc/cabal/tmux must be
   on that shell's PATH; the default front end is exe:leksah — WKWebView on
   macOS).
   **Before** pointing `cabal.project` at a not-yet-pushed
@@ -133,9 +133,11 @@
   fork workarounds and of `vendor/gi-gtkosxapplication`. Nothing in the root
   project — cabal.project, flake, leksah.sh, hie.yaml — refers to it. Don't add
   it back to the root plan.
-  Commands run in the **ambient** environment (ghc/cabal/tmux/leksah-server
-  must be on PATH); leksah-server/leksah-cmd/ffcabal + the front end are built
-  with cabal.
+  Commands run in the **ambient** environment (ghc/cabal/tmux must be on
+  PATH); leksah-cmd/ffcabal + the front end are built with cabal.  (leksah.sh
+  still builds and links exe:leksah-server, and the installers ship it, but
+  nothing runs it: the app has no invocation of it and the Metadata pane is a
+  tombstone — so it is not a PATH requirement.)
 - Build dir is cabal's default `dist-newstyle` (never pass `--builddir` —
   leksah's own in-IDE builds use the default too, via `cabalBuildDir`).
 - **Editing `leksah.sh` requires restarting it** — a running `bash` reads the
