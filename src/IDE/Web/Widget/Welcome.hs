@@ -50,11 +50,11 @@ import Control.Lens ((^.))
 import Language.Javascript.JSaddle (eval, js0, liftJSM)
 
 import Reflex
-       (Dynamic, Event, ffor, getPostBuild, holdDyn, holdUniqDyn, leftmost,
-        never, newTriggerEvent, zipDyn)
+       (Dynamic, Event, ffor, getPostBuild, holdDyn, holdUniqDyn,
+        leftmost, never, newTriggerEvent, zipDyn)
 import Reflex.Dom.Core
-       (EventName(..), _element_raw, divClass, dyn_, elAttr', elClass,
-        elClass', domEvent, text, (=:))
+       (EventName(..), _element_raw, blank, divClass, dyn_, elAttr, elAttr',
+        elClass, elClass', domEvent, text, (=:))
 
 import IDE.Web.Chord (toGlyphs)
 import IDE.Web.Ctx (Ctx)
@@ -164,6 +164,26 @@ tips =
             \always tells you the truth." ] )
   ]
 
+-- | The leksah mark — the double lambda from the application icon.
+--
+-- The real artwork, not a redraw: the 512×512 element out of
+-- @osx\/leksah.icns@, trimmed to the glyph and saved as @pics\/leksah.png@
+-- (@nix\/macos-app.nix@ and @nix\/windows-installer.nix@ copy the whole
+-- @pics@ tree, so it packages itself).  There is no vector to use instead:
+-- the icon began life as a losing entry in the 2008\/09 Haskell logo
+-- competition, drawn in Inkscape but only ever published as PNGs, and every
+-- copy that reached this repo — the two @.icns@, the 128px @leksah.png@s, the
+-- 48px @.ico@s — is a raster.
+--
+-- A PNG rather than an SVG for a second reason: both of the theme mechanisms
+-- that sweep @\/pics@ key on the @.svg@ extension and so leave this alone —
+-- the colour-icon swapper ('IDE.Web.Main.colorIconsJs'), which would rewrite
+-- the src to a @\/pics\/color@ twin that does not exist, and the light-mode
+-- @filter:invert(1)@ in 'IDE.Web.Theme.contrastCss', which would turn the blue
+-- orange.
+markSrc :: Text
+markSrc = "/pics/leksah.png"
+
 links :: [(Text, Text)]
 links =
   [ ("Documentation",   "https://leksah.org/")
@@ -215,7 +235,8 @@ render
   => FilePath -> Keymap -> [FilePath] -> m ()
 render home km recent = divClass "wc-inner" $ do
     divClass "wc-hero" $ do
-      divClass "wc-mark" $ text "λ"
+      elAttr "img" ("class" =: "wc-mark" <> "src" =: markSrc
+                     <> "alt" =: "" <> "aria-hidden" =: "true") blank
       divClass "wc-hero-text" $ do
         divClass "wc-title" $ text "Welcome to Leksah"
         divClass "wc-sub" $
@@ -324,20 +345,17 @@ welcomeCss = do
     "align-items" -: "flex-start"
     "gap" -: "18px"
     "margin-bottom" -: "26px"
+  -- The app icon itself ('markSrc'), sized off the pane font like everything
+  -- else here so ⌥⌘=/⌥⌘− and window zoom both carry it.  Width only — the
+  -- height follows the PNG's own aspect, so the glyph can never be squashed —
+  -- and nudged down a hair so its optical centre lines up with the first line
+  -- of text rather than with the top of the text box.
   ".welcome .wc-mark" ? do
     "flex" -: "0 0 auto"
-    "width" -: "3.6em"
-    "height" -: "3.6em"
-    "border-radius" -: "0.9em"
-    "display" -: "flex"
-    "align-items" -: "center"
-    "justify-content" -: "center"
-    "font-size" -: "1.9em"
-    "line-height" -: "1"
-    "color" -: "var(--leksah-on-accent, #fff)"
-    "background" -: "linear-gradient(160deg, var(--leksah-selection), \
-                    \var(--leksah-accent-hover))"
-    "box-shadow" -: "0 2px 10px var(--leksah-scrim)"
+    "display" -: "block"
+    "width" -: "5em"
+    "height" -: "auto"
+    "margin-top" -: "0.15em"
   ".welcome .wc-title" ? do
     "font-size" -: "2.0em"
     "font-weight" -: "600"
