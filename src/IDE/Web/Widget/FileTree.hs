@@ -28,7 +28,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, intercalate)
+import qualified Data.Text as T (pack, unpack)
 
 -- File access goes through the IDE.Web.FS seam (real FS natively; the
 -- in-memory demo tree in the browser build; ssh for remote projects).
@@ -59,8 +59,8 @@ import IDE.Web.Widget.Tree
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
 import IDE.Web.Widget.Menu (menuSplit)
 import IDE.Web.Claude
-       (claudeAvailable, claudeSessionsWithUsage, claudeLiveBySession,
-        ClaudeSession(..), csTitle, ClaudeLive(..), ClaudeUsage(..),
+       (claudeAvailable, claudeSessionsFor, claudeLiveBySession,
+        ClaudeSession(..), csTitle, ClaudeLive(..),
         ClaudeCmd(..), runClaudeCmd, claudeRunning, activateMruClaude,
         copySessionId, revealSession, deleteSession)
 import IDE.Web.Worktree (requestNewWorktree)
@@ -377,17 +377,6 @@ statusBadge badgeD = elDynAttr "span"
        Nothing            -> "style" =: "display:none")
     (dynText $ ffor badgeD $ maybe "" (\(g, _, _) -> g))
 
--- | Compact human token count: @532@, @4.2k@, @61k@, @1.3M@…
-fmtTok :: Int -> Text
-fmtTok n
-  | n >= 10000000 = T.pack (show (n `div` 1000000)) <> "M"
-  | n >= 1000000  = T.pack (show (n `div` 1000000)) <> "."
-                      <> T.pack (show ((n `mod` 1000000) `div` 100000)) <> "M"
-  | n >= 10000    = T.pack (show (n `div` 1000)) <> "k"
-  | n >= 1000     = T.pack (show (n `div` 1000)) <> "."
-                      <> T.pack (show ((n `mod` 1000) `div` 100)) <> "k"
-  | otherwise     = T.pack (show n)
-
 -- | The synthetic "Claude" node for @dir@, shown only while @dir@ has saved
 -- Claude Code sessions.  Double-click/Enter on the row (robot icon + count)
 -- activates the most-recently-used OPEN claude terminal here, falling back to
@@ -403,10 +392,17 @@ claudeNode treeName dir = do
   (sessE, fireSess) <- newTriggerEvent
   (runE,  fireRun)  <- newTriggerEvent
   (nameE, fireName) <- newTriggerEvent
+  -- Head-reads only ('claudeSessionsFor'), never whole transcripts.  This used
+  -- to call a claudeSessionsWithUsage that summed every assistant message's
+  -- token counts to fill a tooltip — which meant reading the entire folder end
+  -- to end (739MB here, one transcript of 450MB), once per OS WINDOW, and again
+  -- on every 30s tick that fired while the previous scan was still running.
+  -- Cold, that pegged eight cores for minutes after every ghci reload (the
+  -- byte-offset cache was a CAF, so :reload wiped it).  Don't reintroduce it.
   let doScan = void . forkIO $ do
         ok <- claudeAvailable
-        (if ok then claudeSessionsWithUsage dir else return []) >>= fireSess
-        (if ok then claudeRunning dir           else return False) >>= fireRun
+        (if ok then claudeSessionsFor dir else return []) >>= fireSess
+        (if ok then claudeRunning dir     else return False) >>= fireRun
   performEvent_ $ liftIO doScan <$ pb
   tick <- tickLossyFromPostBuildTime 30
   performEvent_ $ liftIO doScan <$ tick
@@ -471,15 +467,14 @@ claudeNode treeName dir = do
 -- | One session row under a Claude node (@rescan@ refreshes the list, e.g. after
 -- a delete; @liveD@ is the live-session map, polled by 'claudeNode', so renaming
 -- a running session relabels its row — and its status badge tracks the CLI's
--- semantic state — without a full rescan).  The row's tooltip carries the
--- session id and its token usage (from the 30s transcript rescan).
+-- semantic state — without a full rescan).  The row's tooltip is the session id.
 sessionRow
   :: forall t m. MonadWidget t m
   => Text -> FilePath -> IO () -> Dynamic t (Map Text ClaudeLive) -> ClaudeSession -> m ()
 sessionRow treeName dir rescan liveD s = el "li" $ do
   (sEl, actE) <- treeSelect' treeName sessMenu $ do
       claudeIcon
-      elAttr "span" ("class" =: "claude-session-label" <> "title" =: usageTitle)
+      elAttr "span" ("class" =: "claude-session-label" <> "title" =: csId s)
         . dynText $ ffor liveD $ \m ->
           csAge s <> " · " <> fromMaybe (csTitle s) (clName =<< M.lookup (csId s) m)
       statusBadge $ ffor liveD (rowBadge . M.lookup (csId s))
@@ -493,13 +488,6 @@ sessionRow treeName dir rescan liveD s = el "li" $ do
       else runClaudeCmd (ClaudeResume dir (csId s))
   performEvent_ $ liftIO <$> actE
   where
-    usageTitle = T.intercalate "\n" $ csId s : maybe []
-      (\u -> [ "tokens: "
-                 <> fmtTok (cuInput u + cuCacheCreate u + cuCacheRead u) <> " in ("
-                 <> fmtTok (cuCacheRead u) <> " cached) · "
-                 <> fmtTok (cuOutput u) <> " out"
-             , T.pack (show (cuTurns u)) <> " assistant messages" ])
-      (csUsage s)
     rowBadge Nothing  = Nothing
     rowBadge (Just l) = case clStatus l of
       Just "waiting" -> Just ("▲", "#f85149",

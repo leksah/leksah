@@ -20,14 +20,11 @@ module IDE.Web.Claude
   , ClaudeSession(..)
   , csTitle
   , claudeSessionsFor
-  , claudeSessionsWithUsage
   , claudeSessionNames
   , ClaudeLive(..)
   , claudeLiveSessions
   , claudeLiveBySession
   , claudeLiveOwners
-  , ClaudeUsage(..)
-  , claudeSessionUsage
   , ClaudeCmd(..)
   , AgentSpec(..)
   , runClaudeCmd
@@ -52,14 +49,13 @@ module IDE.Web.Claude
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (catch, try, SomeException)
+import Control.Exception (catch, SomeException)
 import Control.Monad (void, forM, mfilter, when)
 
 import Data.Char (isAlphaNum)
 import Data.Foldable (toList)
-import Data.IORef
-       (IORef, newIORef, readIORef, writeIORef, atomicModifyIORef')
-import Data.List (sortOn, foldl')
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (mapMaybe, listToMaybe, fromMaybe)
@@ -80,14 +76,14 @@ import Data.Text.Encoding.Error (lenientDecode)
 
 import System.Directory
        (findExecutable, getHomeDirectory, doesDirectoryExist, doesFileExist,
-        listDirectory, getModificationTime, removeFile, getFileSize)
+        listDirectory, getModificationTime, removeFile)
 import System.FilePath
        ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator, replaceExtension)
 import System.Info (os)
 import System.IO
        (withFile, IOMode(ReadMode), hIsEOF, hSeek,
-        SeekMode(AbsoluteSeek, SeekFromEnd), hFileSize)
+        SeekMode(SeekFromEnd), hFileSize)
 
 import IDE.Utils.RemotePath (isRemotePath)
 import System.IO.Unsafe (unsafePerformIO)
@@ -115,9 +111,6 @@ data ClaudeSession = ClaudeSession
   , csLabel    :: Text      -- ^ first user prompt (best-effort), for the row
   , csName     :: Maybe Text -- ^ the name @/rename@ gave a LIVE session, if any
                              --   (see 'claudeSessionNames')
-  , csUsage    :: Maybe ClaudeUsage
-                             -- ^ token totals summed from the transcript
-                             --   ('Nothing' only if the file was unreadable)
   }
 
 -- | What to call a session in the UI: the name @/rename@ gave it if it has one,
@@ -283,104 +276,7 @@ claudeSessionsFor dir = (`catch` \(_ :: SomeException) -> return []) $ do
           , csAge      = humanAge (diffUTCTime now mt)
           , csLabel    = maybe "(untitled session)" id mlabel
           , csName     = M.lookup sid renamed
-          -- Deliberately NOT filled here: callers like 'enrichClaudeTitles'
-          -- run this on the reflex frame thread, and the usage scan reads
-          -- whole transcripts.  See 'claudeSessionsWithUsage'.
-          , csUsage    = Nothing
           }
-
--- | 'claudeSessionsFor' with 'csUsage' filled in.  The first call reads every
--- transcript in the directory END TO END (hundreds of MB for a busy project —
--- incremental after that, see 'usageCacheRef'), so run it from a background
--- thread only, NEVER on the reflex frame thread.
-claudeSessionsWithUsage :: FilePath -> IO [ClaudeSession]
-claudeSessionsWithUsage dir = claudeSessionsFor dir >>= mapM fill
-  where fill s = (\u -> s { csUsage = u }) <$> claudeSessionUsage (csPath s)
-
--- | Cumulative token usage summed over a transcript's assistant messages.
-data ClaudeUsage = ClaudeUsage
-  { cuInput       :: !Int  -- ^ fresh (uncached) input tokens
-  , cuOutput      :: !Int  -- ^ output tokens
-  , cuCacheRead   :: !Int  -- ^ prompt-cache read tokens
-  , cuCacheCreate :: !Int  -- ^ prompt-cache creation tokens
-  , cuTurns       :: !Int  -- ^ assistant messages counted
-  } deriving (Eq, Show)
-
-emptyUsage :: ClaudeUsage
-emptyUsage = ClaudeUsage 0 0 0 0 0
-
--- Transcripts are append-only, so usage is summed INCREMENTALLY: per path we
--- remember how many bytes have been folded in and their running totals, and a
--- rescan only reads what was appended since.  The first scan of a big folder
--- still reads every transcript once, but it runs on the scan's forkIO thread.
-{-# NOINLINE usageCacheRef #-}
-usageCacheRef :: IORef (Map FilePath (Integer, ClaudeUsage))
-usageCacheRef = unsafePerformIO (newIORef M.empty)
-
--- | Token totals for a transcript (cached; see 'usageCacheRef').  'Nothing'
--- only when the file can't be read at all.
-claudeSessionUsage :: FilePath -> IO (Maybe ClaudeUsage)
-claudeSessionUsage f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-  sz <- getFileSize f
-  cached <- M.lookup f <$> readIORef usageCacheRef
-  let (start, acc) = case cached of
-        -- A shrunk file was rewritten (or replaced) — start over.
-        Just (off, u) | off <= sz -> (off, u)
-        _                         -> (0, emptyUsage)
-  if sz == start then return (Just acc) else do
-    (end, acc') <- withFile f ReadMode $ \h -> do
-      hSeek h AbsoluteSeek start
-      -- Read in bounded chunks (transcripts run to hundreds of MB — never
-      -- allocate one in a single buffer), folding only COMPLETE lines: the
-      -- tail after the last newline may be mid-write, so it stays unconsumed
-      -- and is re-read on the next scan.
-      let loop !off !acc' partial = do
-            chunk <- BS.hGet h (8 * 1024 * 1024)
-            if BS.null chunk
-              then return (off - fromIntegral (BS.length partial), acc')
-              else do
-                let buf = partial <> chunk
-                    (complete, rest) = BS.breakEnd (== '\n') buf
-                loop (off + fromIntegral (BS.length chunk))
-                     (foldl' addUsageLine acc' (BS.lines complete)) rest
-      loop start acc BS.empty
-    atomicModifyIORef' usageCacheRef $ \m -> (M.insert f (end, acc') m, ())
-    return (Just acc')
-
--- | Fold one transcript line into the totals.  Assistant lines carry
--- @message.usage@; rather than aeson-decoding every (often huge) line, find the
--- raw @\"usage\":{\"input_tokens\":@ bytes — inside a JSON *string* the quotes
--- would be escaped, so these bytes only occur as real structure — and decode
--- just that little object.
-addUsageLine :: ClaudeUsage -> BS.ByteString -> ClaudeUsage
-addUsageLine u l
-  | not ("\"type\":\"assistant\"" `BS.isInfixOf` l) = u
-  | otherwise =
-      let (_, rest) = BS.breakSubstring "\"usage\":{\"input_tokens\":" l
-      in if BS.null rest then u else
-         case decodeStrict' (balancedObject (BS.drop 8 rest)) of
-           Just v -> ClaudeUsage
-             { cuInput       = cuInput u       + geti "input_tokens" v
-             , cuOutput      = cuOutput u      + geti "output_tokens" v
-             , cuCacheRead   = cuCacheRead u   + geti "cache_read_input_tokens" v
-             , cuCacheCreate = cuCacheCreate u + geti "cache_creation_input_tokens" v
-             , cuTurns       = cuTurns u + 1 }
-           Nothing -> u
-  where geti k v = fromMaybe (0 :: Int) (objField k v)
-
--- | The prefix of @bs@ (which starts at a @{@) up to its matching close brace.
--- The usage object's strings never contain braces, so plain depth counting is
--- enough; an unbalanced (truncated) input just yields something aeson rejects.
-balancedObject :: BS.ByteString -> BS.ByteString
-balancedObject bs = go 0 (0 :: Int)
-  where
-    go i depth
-      | i >= BS.length bs = bs
-      | otherwise = case BS.index bs i of
-          '{' -> go (i + 1) (depth + 1)
-          '}' | depth <= 1 -> BS.take (i + 1) bs
-              | otherwise  -> go (i + 1) (depth - 1)
-          _   -> go (i + 1) depth
 
 -- | Read a transcript's head for @(cwd, first-user-prompt)@, stopping as soon as
 -- both are found (or after a small line budget) so we never read a huge file.
