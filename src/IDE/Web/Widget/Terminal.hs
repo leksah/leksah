@@ -171,6 +171,22 @@ terminalCss = do
     -- subpixel antialiasing, which renders noticeably bolder than a native
     -- terminal; grayscale (antialiased) matches the lighter native rendering.
     ".xterm" ? ("-webkit-font-smoothing" -: "antialiased")
+    -- Undo the window's page zoom for the terminal subtree ONLY.
+    --
+    -- xterm.js cannot survive a CSS `zoom`: it locates the pointer in VISUAL px
+    -- (clientX minus getBoundingClientRect().left) but sizes its cells from
+    -- offsetWidth, which is LOCAL.  Those two agree at zoom 1 and nowhere else,
+    -- so at 150% a click 60 columns in selects column 40, and mouse reporting
+    -- (tmux's own pane hit-testing) is off by the same factor.  Nothing can be
+    -- patched from outside: the arithmetic is inside a module-private helper,
+    -- and no override of getBoundingClientRect can fix it because the error
+    -- depends on clientX.
+    --
+    -- So the terminal runs at an effective zoom of 1 and gets its scale from
+    -- its FONT instead (LeksahTerm.setFontSize multiplies by the same zoom) —
+    -- same rendered size, self-consistent coordinates.  It also means glyphs
+    -- rasterise at their natural device resolution rather than being scaled.
+    ".xterm" ? ("zoom" -: "calc(1 / var(--leksah-zoom, 1))")
     -- The pane box reserves a uniform inset around the grid (terminalPanePad),
     -- and row quantisation leaves a little vertical slack; both areas show the
     -- pane's OWN background.  xterm paints its background on .xterm-viewport
@@ -665,9 +681,12 @@ terminalWidget ctx termId selectedE = do
       -- the rendered cell agree (a system font like Monaco loads immediately).
       win <- jsg ("window" :: Text)
       monoFam <- win ^. js ("__leksahMonoFamily" :: Text)
-      monoSz  <- win ^. js ("__leksahMonoSize" :: Text)
       _ <- opts ^. jss ("fontFamily" :: Text) monoFam
-      _ <- opts ^. jss ("fontSize" :: Text) monoSz
+      -- Size goes through LeksahTerm (0 = follow the global pref), which folds
+      -- in this window's page zoom — the terminal subtree is counter-zoomed back
+      -- to 1 so xterm's mouse coordinates stay self-consistent, so the zoom has
+      -- to arrive as a font size instead.  See 'terminalCss'.
+      _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("setFontSize" :: Text) term (0 :: Int)
       -- Line/letter spacing tuned to match a native terminal (iTerm2 with Monaco)
       -- rather than xterm's tighter default; the cell-metrics probe applies the
       -- same values so the row/column fit stays correct.

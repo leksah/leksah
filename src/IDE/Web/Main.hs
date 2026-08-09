@@ -2566,10 +2566,19 @@ zoomJs = T.unlines
   -- The viewport does not change size when the zoom does, so no resize event is
   -- guaranteed.  One synthetic one on the next frame (after layout has settled
   -- at the new scale) covers everything keyed off window resize; it is cheap and
-  -- idempotent.  Terminals do not need it — their ResizeObserver sees the leaf's
-  -- LOCAL box change on its own.
-  , "window.leksahZoomChanged = function(){"
+  -- idempotent.  Terminals re-fit their GRID on their own (their ResizeObserver
+  -- sees the leaf's page-local box change) but their FONT has to be pushed:
+  -- their subtree is counter-zoomed back to 1 so that xterm's mouse maths stays
+  -- self-consistent, which means the page zoom is the one thing that does not
+  -- reach them by itself.  Synchronously, not in the rAF, so the new size is in
+  -- place before the ResizeObserver measures — and from the zoom PASSED IN,
+  -- because at this instant the --leksah-zoom style patch may not have landed
+  -- yet (see zoomOf).  The rAF repeats it reading the DOM, which costs nothing
+  -- when it agrees and covers any caller that had no value to pass.
+  , "window.leksahZoomChanged = function(z){"
+  , "  try { if (window.LeksahTerm) window.LeksahTerm.applyZoom(z); } catch (_){}"
   , "  requestAnimationFrame(function(){"
+  , "    try { if (window.LeksahTerm) window.LeksahTerm.applyZoom(); } catch (_){}"
   , "    try { window.dispatchEvent(new Event('resize')); } catch(_){}"
   , "    if (window.leksahUpdateHints) window.leksahUpdateHints();"
   , "  });"
@@ -3528,24 +3537,74 @@ terminalWriteJs = T.unlines
   -- font differs guarantees the probe metric matches the font the terminals
   -- actually render (else the row count overflows the pane and clips the bottom).
   -- With per-leaf font sizes (native split layouts) the cache is a map keyed
-  -- fam+'/'+size; measureCell/cellMetrics take an optional size override
-  -- (default: the global __leksahMonoSize).  fontOpts single-sources the
+  -- fam+'/'+size, where size is already zoom-multiplied, so each zoom level
+  -- gets its own entry; measureCell/cellMetrics take an optional size override
+  -- (default: the global __leksahMonoSize) and an optional zoom (default: what
+  -- the page currently says).  fontOpts single-sources the
   -- xterm font options (family/size/lineHeight/letterSpacing) so the probe
   -- and the real terminals can never disagree (a mismatch overflows the row
   -- count and clips the pane bottom).
   , "  var cellCache = {};"
-  , "  function fontOpts(sz){"
+  -- xterm.js CANNOT run inside a CSS `zoom`: it reads the pointer in VISUAL px
+  -- (clientX - getBoundingClientRect().left) but derives its cell size from
+  -- offsetWidth, which is LOCAL — so every click maps to column/zoom instead of
+  -- column, and selection/mouse reporting land in the wrong cell.  So each
+  -- .xterm carries a counter-zoom back to 1 (see 'terminalCss'), and the zoom
+  -- is folded into the FONT SIZE instead: same rendered size, but the terminal's
+  -- own coordinate space is self-consistent again.
+  --
+  -- Everything downstream is unchanged by this.  The probe below builds a real
+  -- .xterm, so it is counter-zoomed too and its rect comes back in the same
+  -- space the terminals live in; dividing by the zoom (as it already did) turns
+  -- that into PAGE-local px, which is what 'refit' measures the container in.
+  -- letterSpacing deliberately does NOT scale — it is the same value for the
+  -- probe and the real terminals, so they cannot disagree, and 0.5px of
+  -- tracking is not worth a second thing that can drift.
+  -- The zoom to size a terminal for.  Callers that KNOW it pass it, because
+  -- the DOM does not know it yet at the moment that matters: on a zoom command
+  -- the --leksah-zoom style patch and the notification are two effects of the
+  -- same reflex frame, and the notification can run first — so reading it back
+  -- returns the PREVIOUS zoom and every terminal ends up one step behind (grid
+  -- sized for the new zoom, glyphs for the old: black bars top and bottom and a
+  -- dead strip down the right).  Everyone else (a terminal being born, the
+  -- cell-metric probe during a refit) runs after the style has landed and can
+  -- just read it.
+  , "  function zoomOf(z){"
+  , "    if (typeof z === 'number' && z > 0) return z;"
+  , "    var v = window.leksahZoom ? window.leksahZoom() : 1;"
+  , "    return (v > 0) ? v : 1;"
+  , "  }"
+  , "  function fontSizeFor(sz, z){ return (sz || window.__leksahMonoSize) * zoomOf(z); }"
+  -- The one way a terminal's font size is set.  Remembers the BASE (unzoomed)
+  -- size — 0 = follow the global monospace pref — so applyZoom can recompute it
+  -- when the window zoom changes.
+  , "  function setFontSize(term, sz, z){"
+  , "    try { term.__leksahBaseFont = sz || 0;"
+  , "          var n = fontSizeFor(sz, z);"
+  , "          if (term.options.fontSize !== n) term.options.fontSize = n; } catch (e) {}"
+  , "  }"
+  -- Called from leksahZoomChanged: the terminals are the one thing the page
+  -- zoom does not scale by itself, because their subtree is counter-zoomed.
+  , "  function applyZoom(z){"
+  , "    for (var k in byId) setFontSize(byId[k], byId[k].__leksahBaseFont, z);"
+  , "  }"
+  , "  function fontOpts(sz, z){"
   , "    return { fontFamily: window.__leksahMonoFamily,"
-  , "             fontSize: (sz || window.__leksahMonoSize),"
+  , "             fontSize: fontSizeFor(sz, z),"
   , "             lineHeight: 1.07, letterSpacing: -0.5 };"
   , "  }"
-  , "  function measureCell(sz){"
-  , "    var o = fontOpts(sz);"
+  , "  function measureCell(sz, z){"
+  , "    var o = fontOpts(sz, z);"
   , "    var key = o.fontFamily + '/' + o.fontSize;"
   , "    if (cellCache[key]) return cellCache[key];"
   , "    try {"
   , "      var host = document.createElement('div');"
-  , "      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:700px;';"
+  -- Roomy on purpose: the probe must hold 80x24 cells at the font it is asked
+  -- for, and the caller's zoom can be a step AHEAD of the page's (see zoomOf),
+  -- so the host's own box is laid out at the old scale while the glyphs are
+  -- already at the new one.  Slack here costs nothing — it is offscreen and
+  -- thrown away.
+  , "      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:1600px;height:1000px;';"
   , "      document.body.appendChild(host);"
   , "      var t = new Terminal({cols: 80, rows: 24});"
   , "      t.options.fontFamily = o.fontFamily;"
@@ -3554,23 +3613,26 @@ terminalWriteJs = T.unlines
   , "      t.options.letterSpacing = o.letterSpacing;"
   , "      t.open(host);"
   , "      var s = host.querySelector('.xterm-screen');"
-  -- The probe host hangs off document.body, which is INSIDE the window's page
-  -- zoom, so its rect comes back visual (post-zoom) — while 'refit' measures
-  -- the real leaf with clientWidth/clientHeight, which are local.  Divide, so
-  -- a cell measured at 175% means the same thing as one measured at 100%:
-  -- the grid is then floor(local box / local cell) at every zoom, and the
-  -- family+size cache stays valid across zoom changes instead of having to be
-  -- invalidated (and re-probed) on each one.
-  , "      var z = window.leksahZoom ? window.leksahZoom() : 1;"
+  -- The probe is a real .xterm, so it carries the same counter-zoom the
+  -- terminals do and its rect comes back in TERMINAL-local px (= visual px) —
+  -- while 'refit' measures the real leaf with clientWidth/clientHeight, which
+  -- are PAGE-local.  Dividing by the zoom converts one to the other, so the
+  -- grid is floor(page-local box / page-local cell) at every zoom.  Both
+  -- operands moved together: at 175% the probe font is 1.75x bigger and its
+  -- rect is 1.75x bigger, so the page-local cell comes out roughly constant
+  -- and the column count falls only because the pane's page-local box shrank
+  -- — which is exactly what zooming in should do.  (The cache key carries the
+  -- zoomed size, so each zoom level gets its own entry rather than a stale one.)
+  , "      var zz = zoomOf(z);"
   , "      var r = s ? s.getBoundingClientRect() : null;"
   , "      if (r && r.width && r.height)"
-  , "        cellCache[key] = { w: r.width / 80 / z, h: r.height / 24 / z };"
+  , "        cellCache[key] = { w: r.width / 80 / zz, h: r.height / 24 / zz };"
   , "      t.dispose();"
   , "      document.body.removeChild(host);"
   , "    } catch (e) {}"
   , "    return cellCache[key];"
   , "  }"
-  , "  function cellMetrics(sz){ return measureCell(sz); }"
+  , "  function cellMetrics(sz, z){ return measureCell(sz, z); }"
   -- After the configured font has actually loaded, drop the cache and re-measure:
   -- a web font (e.g. bundled Hasklig) reports fallback metrics before it loads.
   -- document.fonts.ready settles after pending loads (immediately for system
@@ -3582,7 +3644,7 @@ terminalWriteJs = T.unlines
   , "    } catch (e) { measureCell(); }"
   , "  }"
   , "  if (window.requestAnimationFrame) requestAnimationFrame(warmCell); else warmCell();"
-  , "  return { register: register, unregister: unregister, write: write, loadWebgl: loadWebgl, cellMetrics: cellMetrics, fontOpts: fontOpts, byId: byId };"
+  , "  return { register: register, unregister: unregister, write: write, loadWebgl: loadWebgl, cellMetrics: cellMetrics, fontOpts: fontOpts, setFontSize: setFontSize, applyZoom: applyZoom, byId: byId };"
   , "})();"
   ]
 
@@ -9092,8 +9154,12 @@ main showMenubar macTitlebar wid ctx = mdo
     -- same size, only its contents are laid out bigger or smaller.  Terminals
     -- re-fit by themselves (their ResizeObserver sees the leaf's LOCAL box
     -- change), but everything else keyed off window resize needs telling.
-    performEvent_ $ ffor (updated zoomD) $ \_ -> liftJSM . void $
-        jsg ("window" :: Text) ^. js0 ("leksahZoomChanged" :: Text)
+    -- The new zoom goes WITH the notification: this fires in the same reflex
+    -- frame as the <style> patch above and may well run first, so the page
+    -- cannot yet read --leksah-zoom back (see zoomOf in terminalWriteJs).
+    performEvent_ $ ffor (updated zoomD) $ \zpct -> liftJSM . void $
+        jsg ("window" :: Text) ^. js1 ("leksahZoomChanged" :: Text)
+            (fromIntegral zpct / 100 :: Double)
     -- …and are published to window globals the terminals (xterm, fixed cell grid)
     -- read when they are created.  A terminal-font change takes effect for new
     -- terminals / on restart (open terminals keep their measured grid).

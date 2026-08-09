@@ -99,9 +99,10 @@ logWidget ctx _findE _moveE _activateE = do
         opts <- term ^. js ("options" :: Text)
         win <- jsg ("window" :: Text)
         monoFam <- win ^. js ("__leksahMonoFamily" :: Text)
-        monoSz  <- win ^. js ("__leksahMonoSize" :: Text)
         _ <- opts ^. jss ("fontFamily" :: Text) monoFam
-        _ <- opts ^. jss ("fontSize" :: Text) monoSz
+        -- Size via LeksahTerm (0 = the global pref), which folds in the window's
+        -- page zoom; the .xterm subtree is counter-zoomed (see 'terminalCss').
+        _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("setFontSize" :: Text) term (0 :: Int)
         -- Read-only: no stdin, and tool output uses bare \n.
         _ <- opts ^. jss ("disableStdin" :: Text) True
         _ <- opts ^. jss ("convertEol" :: Text) True

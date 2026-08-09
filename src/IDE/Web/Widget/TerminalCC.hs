@@ -122,7 +122,7 @@ import IDE.Problems.Types (Loc(..), Pos(..), pointRange)
 import IDE.Reactive (readCell)
 import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Model
-       (TabKey, leksahWindows,
+       (TabKey, leksahWindows, webWindows, WebWindow(..),
         LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..))
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.WindowBridge (setFocusedLeaf)
@@ -175,6 +175,14 @@ terminalCCWidget
   -> m (Event t TerminalEvents)
 terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMenu = do
     pb <- getPostBuild
+    -- This OS window's page zoom (⌘+/⌘−/⌘0) as a ratio.  Terminals are the one
+    -- part of the UI the CSS `zoom` does not scale by itself — their subtree is
+    -- counter-zoomed so xterm's mouse coordinates stay self-consistent (see
+    -- 'terminalCss') — so the cell-size probe has to be told about it.
+    zoomFracD <- holdUniqDyn $
+        (\ui -> maybe 1 ((/ 100) . fromIntegral . _wwZoom)
+                      (M.lookup (cWindowId ctx) (ui ^. webWindows)))
+          <$> cUi ctx
     (evE, fireEv) <- newTriggerEvent
     (ccStartedE, fireCCStarted) <- newTriggerEvent
     -- Pane-level affordances (same contract as the classic widget): a clicked
@@ -1185,8 +1193,29 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                               -- measured first (the metricsD pattern).
                               dyn_ $ ffor fontD $ \mbFont -> do
                                 pbFont <- getPostBuild
-                                cellLE <- performEvent $ ffor pbFont $ \_ ->
-                                    liftJSM (getCellMetricsFor mbFont)
+                                -- The window ZOOM re-measures too, because the
+                                -- page-local cell size is not quite zoom-free:
+                                -- the terminal renders at fontSize*zoom inside
+                                -- a counter-zoomed subtree (see 'terminalCss'),
+                                -- and xterm quantises the cell HEIGHT to whole
+                                -- px — so 13px/18px at 100% becomes 14.3px/19px
+                                -- at 110%, i.e. 17.27 page-local px, and rows
+                                -- computed from the stale 18 overshoot the pane
+                                -- (58 rows into a 56-row box: the bottom two get
+                                -- clipped, and every layout-derived box below —
+                                -- pane rects, dividers, badges — is off by the
+                                -- same 4%).  holdUniqDyn absorbs the zoom steps
+                                -- where the cell lands on the same size anyway,
+                                -- so this only rebuilds when it must.
+                                --
+                                -- The zoom is PASSED to the probe, never read
+                                -- back from the page: this fires in the same
+                                -- reflex frame as the --leksah-zoom style patch
+                                -- and can run first (see zoomOf in IDE.Web.Main).
+                                cellLE <- performEvent $
+                                    ffor (leftmost [ tag (current zoomFracD) pbFont
+                                                   , updated zoomFracD ]) $ \z ->
+                                        liftJSM (getCellMetricsForZ mbFont z)
                                 cellLD <- holdUniqDyn =<< holdDyn Nothing (Just <$> cellLE)
                                 dyn_ $ ffor cellLD $ \mbCell -> forM_ mbCell $ \cellL -> do
                                   -- The pane body: its tmux window's panes at
@@ -1563,12 +1592,30 @@ getCellMetrics = getCellMetricsFor Nothing
 
 -- | Cell size for a specific font-size override ('Nothing' = the global
 -- monospace pref) — per-LEAF fonts in the native split layouts.  Cached per
--- (family, size) on the JS side.
+-- (family, size) on the JS side.  The zoom is whatever the page currently
+-- says; use 'getCellMetricsForZ' where the caller knows better.
 getCellMetricsFor :: Maybe Int -> JSM (Double, Double)
 getCellMetricsFor mbSz = do
     v <- case mbSz of
       Nothing -> jsg ("LeksahTerm" :: Text) ^. js0 ("cellMetrics" :: Text)
       Just sz -> jsg ("LeksahTerm" :: Text) ^. js1 ("cellMetrics" :: Text) sz
+    cellOf v
+
+-- | As 'getCellMetricsFor', but for an explicitly given page zoom (1 = 100%).
+--
+-- The probe renders at @size * zoom@ inside a counter-zoomed subtree, so the
+-- zoom is part of what is being measured — and a caller reacting to a zoom
+-- CHANGE cannot read it back from the page yet, because the @--leksah-zoom@
+-- style patch and the reaction are two effects of the same reflex frame.
+getCellMetricsForZ :: Maybe Int -> Double -> JSM (Double, Double)
+getCellMetricsForZ mbSz z =
+    cellOf =<< jsg ("LeksahTerm" :: Text) ^. js2 ("cellMetrics" :: Text)
+                   (maybe (0 :: Int) id mbSz) z
+
+-- | A @{w,h}@ from the cell probe, with a conservative fallback if measurement
+-- was somehow impossible.
+cellOf :: JSVal -> JSM (Double, Double)
+cellOf v = do
     nul <- valIsNull v
     und <- valIsUndefined v
     if nul || und
@@ -1915,13 +1962,14 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         -- to load before measuring, so a system font like Monaco fits correctly.
         win <- jsg ("window" :: Text)
         monoFam <- win ^. js ("__leksahMonoFamily" :: Text)
-        monoSz  <- win ^. js ("__leksahMonoSize" :: Text)
         _ <- opts ^. jss ("fontFamily" :: Text) monoFam
-        -- The leaf's font-size override, if any (per-leaf fonts) — must match
-        -- the cell size this widget was built with or rows clip.
-        case mbFont of
-          Just sz -> void $ opts ^. jss ("fontSize" :: Text) sz
-          Nothing -> void $ opts ^. jss ("fontSize" :: Text) monoSz
+        -- The leaf's font-size override, if any (per-leaf fonts; 0 = follow the
+        -- global pref) — must match the cell size this widget was built with or
+        -- rows clip.  LeksahTerm folds this window's page zoom into it, because
+        -- the .xterm subtree is counter-zoomed back to 1 to keep xterm's mouse
+        -- coordinates self-consistent (see 'terminalCss').
+        _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("setFontSize" :: Text) term
+                 (maybe (0 :: Int) id mbFont)
         -- Line/letter spacing tuned to match a native terminal (see the note in
         -- "IDE.Web.Widget.Terminal"); the cell-metrics probe uses the same values.
         _ <- opts ^. jss ("lineHeight" :: Text) (1.07 :: Double)
