@@ -119,7 +119,12 @@ addProjectDialog serversD pickedE = do
             -- Path, with the browse button(s) beside it.
             let pathRecentsD = ffor serverD (`recentPathsFor` recents)
             (pathF, browseE) <- labelled "Path" $
-                elAttr "div" ("style" =: "display:flex;align-items:flex-start;gap:6px") $ do
+                -- 'center', not 'flex-start': the browse button is shorter than
+                -- the input, so aligning their TOPS left it sitting low.  The
+                -- row's height is the field wrapper's (the drop-down inside it
+                -- is absolutely positioned and adds none), so centring here
+                -- centres the button on the field itself.
+                elAttr "div" ("style" =: "display:flex;align-items:center;gap:6px") $ do
                   p <- elAttr "div" ("style" =: "flex:1;min-width:0") $
                       pathField PathFieldConfig
                         { pfcId          = pathFieldId
@@ -169,8 +174,13 @@ addProjectDialog serversD pickedE = do
                                       \margin:8px 0 4px 0;font-size:12px") $
                 dynText errD
 
-            (addEl, _)    <- elAttr' "button" ("style" =: primaryBtnStyle) $ text "Add"
-            (cancelEl, _) <- elAttr' "button" ("style" =: btnStyle) $ text "Cancel"
+            -- Cancel then Add, right-aligned: the default action is the
+            -- rightmost button everywhere else on this platform, so the order
+            -- follows the alignment.
+            (cancelEl, addEl) <- elAttr "div" ("style" =: footerStyle) $ do
+                (c, _) <- elAttr' "button" ("style" =: btnStyle) $ text "Cancel"
+                (a, _) <- elAttr' "button" ("style" =: primaryBtnStyle) $ text "Add"
+                pure (c, a)
 
           let vals = (,,) <$> pfValue serverF <*> pfValue pathF <*> pfValue prefixF
               -- Whether ANY field's drop-down is up, so the dialog's own
@@ -279,7 +289,7 @@ addProjectIO server path prefix fire =
                   void (recordProjectRecent entry)
                   fire (Right entry)
 
-overlayStyle, dialogStyle, btnStyle, primaryBtnStyle :: Text
+overlayStyle, dialogStyle, footerStyle, btnStyle, primaryBtnStyle :: Text
 overlayStyle =
     "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;\
     \justify-content:center;background:var(--leksah-scrim)"
@@ -287,5 +297,9 @@ dialogStyle =
     "min-width:420px;padding:16px 20px;border-radius:8px;background:var(--leksah-surface);\
     \color:var(--leksah-fg-muted);border:1px solid var(--leksah-border-control);\
     \box-shadow:0 0 64px var(--leksah-shadow-glow)"
-btnStyle        = "margin:12px 6px 0 0;padding:4px 12px"
-primaryBtnStyle = "margin:12px 6px 0 0;padding:4px 12px;font-weight:bold"
+-- The two rows that hold buttons space them themselves (flex 'gap'), so the
+-- buttons carry no margins of their own — a margin here would also push the
+-- Browse button out of line with its field.
+footerStyle     = "display:flex;justify-content:flex-end;gap:6px;margin-top:12px"
+btnStyle        = "padding:4px 12px"
+primaryBtnStyle = "padding:4px 12px;font-weight:bold"

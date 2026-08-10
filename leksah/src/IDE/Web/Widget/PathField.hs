@@ -130,7 +130,8 @@ popupField :: MonadWidget t m
            -> Dynamic t [Text]
            -> (Dynamic t Text -> m (Dynamic t [(Text, Text)]))
            -> m (PathField t)
-popupField fid placeholder initial setE recentsD mkCompletions = do
+popupField fid placeholder initial setE recentsD mkCompletions =
+  elAttr "div" ("style" =: fieldWrapStyle) $ do
     rec
       ti <- textInput $ def
               & textInputConfig_initialValue .~ initial
@@ -203,15 +204,21 @@ popupField fid placeholder initial setE recentsD mkCompletions = do
           cancelE = fmapMaybe (\visible -> if visible then Nothing else Just ())
                               (tag (current visibleD) escE)
 
-      (showRecentsE, clickE) <- elAttr "div" ("style" =: "position:relative") $ do
-          -- The ▾ button force-opens the recents list at any time.
-          (dropEl, _) <- elAttr' "button"
-              ("type" =: "button" <> "class" =: "leksah-popup-arrow"
-               <> "title" =: "Recently used" <> "style" =: arrowStyle) $ text "▾"
+      -- The ▾ button force-opens the recents list at any time.  It is a child
+      -- of the FIELD wrapper, not of the list's own wrapper: the latter sits
+      -- BELOW the input (it is what @top:100%@ is measured from), so an arrow
+      -- positioned against it rendered under the field, on top of the list.
+      (dropEl, _) <- elAttr' "button"
+          ("type" =: "button" <> "class" =: "leksah-popup-arrow"
+           <> "title" =: "Recently used" <> "style" =: arrowStyle) $ text "▾"
+      clickE <- elAttr "div" ("style" =: "position:relative") $ do
           rowsD <- elDynAttr "div"
               (ffor visibleD $ \v ->
                   "class" =: ("path-popup" <> if v then " open" else "")
-                  <> "style" =: (popupStyle <> if v then "" else "display:none")) $
+                  -- The leading ';' matters: 'popupStyle' does not end in one,
+                  -- so without it "display:none" is swallowed into the
+                  -- box-shadow value and the list is never hidden.
+                  <> "style" =: (popupStyle <> if v then "" else ";display:none")) $
               simpleList (zip [0 :: Int ..] <$> itemsD) $ \iD -> do
                   let selfSelD = ffor2 selD iD $ \sel (i, _) -> sel == Just i
                   (rowEl, _) <- elDynAttr' "div"
@@ -220,8 +227,17 @@ popupField fid placeholder initial setE recentsD mkCompletions = do
                           <> "style" =: (rowStyle <> if s then selectedRowStyle else "")) $
                       dynText (fst . snd <$> iD)
                   pure (snd . snd <$> tag (current iD) (domEvent Click rowEl))
-          pure ( () <$ domEvent Click dropEl
-               , switchDyn (leftmost <$> rowsD) )
+          pure (switchDyn (leftmost <$> rowsD))
+      let showRecentsE = () <$ domEvent Click dropEl
+
+      -- Anchor the list under the segment it would replace.  Only in
+      -- completion mode: a recents row is a whole path, so it belongs at the
+      -- field's left edge.
+      alignD <- holdUniqDyn $ ffor2 dirtyD valueD $ \dirty v ->
+          if dirty then fst (completionSplit v) else ""
+      performEvent_ $ ffor (updated alignD) $ \pfx -> liftJSM . void $ eval
+          ("var f=window.leksahPathPopupAlign;\
+           \if(f)f(" <> jsStr fid <> "," <> jsStr pfx <> ");")
 
     pure PathField
       { pfValue     = valueD
@@ -357,6 +373,56 @@ pathFieldKeysJs =
     \  if (e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown')\
     \    e.preventDefault();\
     \}, true);"
+    <> popupAlignJs
+
+-- | Put the drop-down's left edge under the text it would replace, so a
+-- completion sits beneath the segment it completes rather than under the start
+-- of the whole path.
+--
+-- It measures with a canvas rather than the DOM because the answer is wanted
+-- for text that is not in the document (the typed directory prefix), and
+-- because @measureText@ costs nothing next to a reflow.
+--
+-- The result is written as a custom property on the wrapper, NOT as the popup's
+-- own @left@: reflex rewrites that element's @style@ attribute every time the
+-- list opens or closes.  All the quantities involved (computed paddings,
+-- @measureText@, @scrollLeft@) are pre-zoom \"local\" CSS px, as is the property
+-- it sets, so this needs no zoom conversion (see @leksahLocal@ in
+-- "IDE.Web.Main").
+popupAlignJs :: Text
+popupAlignJs =
+    "window.leksahPathPopupAlign = function (id, prefix) {\
+    \  var i = document.getElementById(id); if (!i) return;\
+    \  var w = i.parentElement; if (!w) return;\
+    \  if (!prefix) { w.style.removeProperty('--path-popup-x'); return; }\
+    \  var p = w.querySelector('.path-popup'); if (!p) return;\
+    \  var cs = getComputedStyle(i);\
+    \  var font = cs.font || (cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily);\
+    \  var c = window.__leksahPathCanvas ||\
+    \          (window.__leksahPathCanvas = document.createElement('canvas'));\
+    \  var g = c.getContext('2d'); if (!g) return;\
+    \  g.font = font;\
+    \  var row = p.querySelector('.path-popup-row');\
+    \  var rowPad = row ? (parseFloat(getComputedStyle(row).paddingLeft) || 0) : 8;\
+    \  var popBorder = parseFloat(getComputedStyle(p).borderLeftWidth) || 0;\
+    \  var x = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.borderLeftWidth) || 0)\
+    \        + g.measureText(prefix).width - (i.scrollLeft || 0)\
+    \        - rowPad - popBorder;\
+    \  var max = Math.max(0, i.clientWidth - 160);\
+    \  w.style.setProperty('--path-popup-x',\
+    \                      Math.round(Math.min(Math.max(x, 0), max)) + 'px');\
+    \};"
+
+-- | Quote a 'Text' as a JS string literal.  Paths are user data and reach
+-- 'eval' verbatim, so this cannot be a bare @\"'\" <> t <> \"'\"@.
+jsStr :: Text -> Text
+jsStr t = "'" <> T.concatMap esc t <> "'"
+  where
+    esc '\\' = "\\\\"
+    esc '\'' = "\\'"
+    esc '\n' = "\\n"
+    esc '\r' = "\\r"
+    esc c    = T.singleton c
 
 -- | Focus one of these fields by id, from a frame-thread event.  A fresh input
 -- is not focused automatically, so without this the dialog opens with the
@@ -365,17 +431,32 @@ focusFieldJs :: MonadWidget t m => Text -> Event t a -> m ()
 focusFieldJs fid e = performEvent_ $ ffor e $ \_ -> liftJSM . void $ eval
     ("var i=document.getElementById('" <> fid <> "'); if(i){i.focus();i.select();}")
 
-fieldStyle, popupStyle, rowStyle, selectedRowStyle, arrowStyle :: Text
+fieldWrapStyle, fieldStyle, popupStyle, rowStyle, selectedRowStyle, arrowStyle :: Text
+-- | Wraps the input, the ▾ and the list.  It is the containing block for the
+-- arrow, which therefore has to be able to see the FIELD — see 'arrowStyle'.
+fieldWrapStyle = "position:relative"
+-- The right padding is the arrow's lane: without it a long value runs under
+-- the ▾ instead of stopping beside it.
 fieldStyle =
-    "display:block;width:100%;box-sizing:border-box;margin:4px 0;padding:5px 8px"
+    "display:block;width:100%;box-sizing:border-box;margin:4px 0;\
+    \padding:5px 30px 5px 8px"
+-- @--path-popup-x@ is set by 'popupAlignJs' on the wrapper, so the list starts
+-- under the text it would replace.  It has to be a custom property rather than
+-- an inline @left@: reflex rewrites this element's whole @style@ attribute
+-- whenever the list opens or closes, which would wipe a directly-set left.
 popupStyle =
-    "position:absolute;left:0;right:0;top:100%;z-index:1001;max-height:220px;\
+    "position:absolute;left:var(--path-popup-x,0px);right:0;top:100%;\
+    \z-index:1001;max-height:220px;\
     \overflow-y:auto;background:var(--leksah-surface);\
     \border:1px solid var(--leksah-border-control);border-radius:4px;\
     \box-shadow:0 4px 16px var(--leksah-shadow-glow)"
 rowStyle = "padding:3px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;\
            \text-overflow:ellipsis"
 selectedRowStyle = ";background:var(--leksah-accent);color:var(--leksah-on-accent)"
+-- Vertically centred on the wrapper, which centres it on the input whether or
+-- not the input's 4px margins collapse out of the wrapper (both cases put the
+-- input's centre on the wrapper's centre).
 arrowStyle =
-    "position:absolute;right:4px;top:6px;padding:0 4px;border:none;\
+    "position:absolute;right:2px;top:0;bottom:0;display:flex;align-items:center;\
+    \padding:0 7px;border:none;line-height:1;font-size:15px;\
     \background:transparent;color:var(--leksah-fg-dim);cursor:pointer"
