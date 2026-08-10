@@ -49,8 +49,7 @@ module IDE.Web.MacGlue
   , c_orderWindowFront
   , c_closeWindow
   , c_showOpenPanel
-  , c_showOpenProjectPanel
-  , c_showOpenFolderPanel
+  , c_showPickPathPanel
   , c_setRecentFiles
   , c_setClaudeStatus
   , c_screenshot
@@ -118,6 +117,10 @@ data MacCallbacks = MacCallbacks
   , cbClaudeActivate  :: String -> IO ()       -- ^ a live Claude session chosen
                                                --   from the menu-bar status
                                                --   item's menu (session id)
+  , cbPickPath        :: Int -> FilePath -> IO ()
+                                               -- ^ Add Project… browse panel
+                                               --   chose a path, tagged with the
+                                               --   asking dialog's token
   }
 
 #ifdef darwin_HOST_OS
@@ -160,11 +163,13 @@ foreign import ccall "leksah_order_window_front" c_orderWindowFront :: CInt -> I
 foreign import ccall "leksah_close_window" c_closeWindow :: CInt -> IO ()
 -- Show the native "Open File" panel (NSOpenPanel); it calls back 'cbOpenFile'.
 foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
--- Show the native "Open Project" panel; it calls back 'cbOpenProject'.
-foreign import ccall "leksah_show_open_project_panel" c_showOpenProjectPanel :: IO ()
--- Show the native "Open Folder" panel; it also calls back 'cbOpenProject' (the
--- handler adds a directory as a plain-directory project).
-foreign import ccall "leksah_show_open_folder_panel" c_showOpenFolderPanel :: IO ()
+-- Show the Add Project… dialog's browse panel, tagged with the asking dialog's
+-- token: @c_showPickPathPanel token mode@ where mode is 'PickMode's wire code
+-- (0 = files and directories, 1 = files, 2 = directories).  NSOpenPanel can do
+-- files AND directories in one panel, which is why the dialog needs only one
+-- Browse button on macOS.  Calls back 'cbPickPath'.
+foreign import ccall "leksah_show_pick_path_panel" c_showPickPathPanel
+  :: CInt -> CInt -> IO ()
 -- Populate the native "Open Recent" submenu (newline-separated paths).
 foreign import ccall "leksah_set_recent_files" c_setRecentFiles :: CString -> IO ()
 -- The menu-bar status item: the live Claude sessions' aggregate state
@@ -205,6 +210,8 @@ foreign import ccall "wrapper" mkIntPtrCb
   :: (CInt -> Ptr () -> IO ()) -> IO (FunPtr (CInt -> Ptr () -> IO ()))
 foreign import ccall "wrapper" mkIntRetCb
   :: (CInt -> IO CInt) -> IO (FunPtr (CInt -> IO CInt))
+foreign import ccall "wrapper" mkIntStringCb
+  :: (CInt -> CString -> IO ()) -> IO (FunPtr (CInt -> CString -> IO ()))
 -- Registered separately from the main callbacks (additive, so the 9-arg
 -- leksah_set_haskell_callbacks keeps its ABI): reports a menu item's live
 -- toggle state to validateMenuItem.
@@ -214,6 +221,9 @@ foreign import ccall "leksah_set_toggle_state_callback" c_setToggleStateCallback
 -- item's menu.
 foreign import ccall "leksah_set_claude_activate_callback" c_setClaudeActivateCallback
   :: FunPtr (CString -> IO ()) -> IO ()
+-- Also additive: the Add Project… browse panel's result.
+foreign import ccall "leksah_set_pick_path_callback" c_setPickPathCallback
+  :: FunPtr (CInt -> CString -> IO ()) -> IO ()
 foreign import ccall "leksah_set_haskell_callbacks" c_setHaskellCallbacks
   :: FunPtr (CInt -> IO ())           -- menu_action
   -> FunPtr (CString -> IO ())        -- open_file
@@ -234,7 +244,7 @@ foreign import ccall "leksah_take_previous_callbacks" c_takePreviousCallbacks
 -- | Size of the FunPtr set 'setMacCallbacks' installs — the buffer bound for
 -- 'c_takePreviousCallbacks' (LEKSAH_N_CALLBACKS in leksah-mac-menu.m).
 nMacCallbacks :: Int
-nMacCallbacks = 11
+nMacCallbacks = 12
 
 -- | Register the callbacks with the native side.  Call before anything can
 -- trigger a native callback (in practice: at the top of @installMacMenu@,
@@ -261,11 +271,14 @@ setMacCallbacks cb = do
   colorPicked  <- mkStringCb $ \cs -> peekCString cs >>= cbColorPicked cb
   toggleState  <- mkIntRetCb $ \tag -> fromIntegral <$> cbToggleState cb (fromIntegral tag)
   claudeAct    <- mkStringCb $ \cs -> peekCString cs >>= cbClaudeActivate cb
+  pickPath     <- mkIntStringCb $ \tok cs ->
+                    peekCString cs >>= cbPickPath cb (fromIntegral tok)
   c_setHaskellCallbacks menuAction openFile openProject unsnap openSettings
                         attachWindow activated closing colorPicked
   c_setToggleStateCallback toggleState
   c_setClaudeActivateCallback claudeAct
-  -- All three setters have run, so the snapshot the first of them took is the
+  c_setPickPathCallback pickPath
+  -- All four setters have run, so the snapshot the first of them took is the
   -- complete previous set and nothing native points at it any more.
   allocaArray nMacCallbacks $ \buf -> do
     n <- c_takePreviousCallbacks buf (fromIntegral nMacCallbacks)
@@ -343,10 +356,8 @@ c_closeWindow :: CInt -> IO ()
 c_closeWindow _ = return ()
 c_showOpenPanel :: IO ()
 c_showOpenPanel = return ()
-c_showOpenProjectPanel :: IO ()
-c_showOpenProjectPanel = return ()
-c_showOpenFolderPanel :: IO ()
-c_showOpenFolderPanel = return ()
+c_showPickPathPanel :: CInt -> CInt -> IO ()
+c_showPickPathPanel _ _ = return ()
 c_setRecentFiles :: CString -> IO ()
 c_setRecentFiles _ = return ()
 c_setClaudeStatus :: CString -> CInt -> CString -> CString -> IO ()

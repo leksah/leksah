@@ -41,19 +41,18 @@ import qualified GI.Gtk as Gtk
         fileDialogOpen, fileDialogOpenFinish,
         fileDialogSelectFolder, fileDialogSelectFolderFinish)
 
-import IDE.App (appWorkspace, withApp)
-import IDE.Workspace (projectOpenPath)
+import IDE.App (withApp)
 import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.Commands (allCommands)
 import IDE.Web.Keybindings (currentKeymap, loadKeybindings)
 import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel
-       (setOpenFilePanelHandler, setOpenProjectPanelHandler,
-        setOpenFolderPanelHandler)
+       (setOpenFilePanelHandler, setPickPathHandler, PickCapability(..),
+        PickMode(..))
+import IDE.Web.PickPathRequest (deliverPickedPath)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
-import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.ShortcutsRequest (requestShowShortcuts)
 import IDE.Web.BrowserRequest (requestOpenBrowser)
@@ -101,14 +100,12 @@ dispatchTag :: Gtk.ApplicationWindow -> Int -> IO ()
 dispatchTag win tag = do
   cmds <- readIORef commandsRef
   case drop tag cmds of
-    -- File ▸ Open / Open Project use the native GtkFileDialog.
+    -- File ▸ Open uses the native GtkFileDialog.  File ▸ Add Project… needs no
+    -- arm: it is a plain IDEAction, so the fallthrough below runs it.
     (CommandFileOpen:_)        -> openFilePanel win
-    (CommandProjectOpen:_)     -> openProjectPanel win
-    (CommandProjectOpenFolder:_) -> openFolderPanel win
     -- These act on reflex state; signal via the bridges.
     (CommandFileSave:_)        -> requestSaveActiveFile
     (CommandFind:_)            -> requestToggleFindbar
-    (CommandProjectAddRemote:_) -> requestAddRemoteProject
     (CommandShowPreferences:_) -> requestShowPreferences
     (CommandShowShortcuts:_)   -> requestShowShortcuts
     (CommandOpenBrowser:_)     -> requestOpenBrowser
@@ -130,33 +127,29 @@ openFilePanel win = postGUIAsync $ do
         Right file -> Gio.fileGetPath file >>= mapM_ deliverOpenedFile
         Left (_ :: SomeException) -> return ()  -- dismissed
 
--- | Native open-project dialog; adds the chosen project to the workspace,
--- like MacMenu's leksah_open_project.
-openProjectPanel :: Gtk.ApplicationWindow -> IO ()
-openProjectPanel win = postGUIAsync $ do
+-- | The Add Project… dialog's Browse button.  GTK4 has @fileDialogOpen@ OR
+-- @fileDialogSelectFolder@ and no way to accept both in one dialog, which is
+-- why this front end registers 'PickSeparate' and the dialog draws two buttons
+-- ("File…" and "Folder…") where macOS draws one.
+--
+-- 'PickFilesAndDirs' can still arrive if a future caller asks for it; files are
+-- the more useful half, so it maps to the file chooser rather than failing.
+pickPathPanel :: Gtk.ApplicationWindow -> PickMode -> Int -> IO ()
+pickPathPanel win mode tok = postGUIAsync $ do
   d <- Gtk.fileDialogNew
-  Gtk.fileDialogOpen d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
-    \_ res ->
-      try (Gtk.fileDialogOpenFinish d res) >>= \case
-        Right file -> Gio.fileGetPath file >>= mapM_ addToWorkspace
-        Left (_ :: SomeException) -> return ()
-
--- | Native open-folder dialog; adds the chosen directory to the workspace as a
--- plain-directory project ('projectOpenPath' turns a directory into a
--- package-less 'CustomTool').  The macOS sibling is leksah_show_open_folder_panel.
-openFolderPanel :: Gtk.ApplicationWindow -> IO ()
-openFolderPanel win = postGUIAsync $ do
-  d <- Gtk.fileDialogNew
-  Gtk.fileDialogSelectFolder d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
-    \_ res ->
-      try (Gtk.fileDialogSelectFolderFinish d res) >>= \case
-        Right file -> Gio.fileGetPath file >>= mapM_ addToWorkspace
-        Left (_ :: SomeException) -> return ()
-
--- | Add a path (project file or directory) to the workspace; 'projectOpenPath'
--- decides which.  Shared by the open-project and open-folder dialogs.
-addToWorkspace :: FilePath -> IO ()
-addToWorkspace fp = withApp $ \app -> projectOpenPath (appWorkspace app) fp
+  case mode of
+    PickDirs ->
+      Gtk.fileDialogSelectFolder d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
+        \_ res ->
+          try (Gtk.fileDialogSelectFolderFinish d res) >>= \case
+            Right file -> Gio.fileGetPath file >>= mapM_ (deliverPickedPath tok)
+            Left (_ :: SomeException) -> return ()  -- dismissed
+    _ ->
+      Gtk.fileDialogOpen d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
+        \_ res ->
+          try (Gtk.fileDialogOpenFinish d res) >>= \case
+            Right file -> Gio.fileGetPath file >>= mapM_ (deliverPickedPath tok)
+            Left (_ :: SomeException) -> return ()
 
 -- | Translate a key spec like @\"cmd+ctrl+s\"@ to a GTK accelerator string.
 -- cmd is the primary modifier → Control on Linux; the specs' extra ctrl
@@ -252,10 +245,11 @@ installGtkMenu app win = do
   Gio.actionMapAddAction app quitAct
   Gtk.applicationSetAccelsForAction app "app.quit" ["<Control>q"]
 
-  -- The toolbar/menubar Open commands show the native dialogs.
+  -- The toolbar/menubar Open command shows the native dialog.
   setOpenFilePanelHandler (openFilePanel win)
-  setOpenProjectPanelHandler (openProjectPanel win)
-  setOpenFolderPanelHandler (openFolderPanel win)
+  -- The Add Project… dialog's Browse buttons.  'PickSeparate': GTK4 cannot
+  -- offer files and folders in one dialog, so the modal draws two buttons.
+  setPickPathHandler PickSeparate (pickPathPanel win)
 
   -- Build the menubar.  MenuSep splits a level into GMenu sections (GMenu has
   -- no separator primitive; section boundaries render as separators).

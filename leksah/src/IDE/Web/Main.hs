@@ -209,7 +209,7 @@ import IDE.Web.Handoff
         registerSessionFlush, signalSessionFlushDone)
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
-import IDE.Web.OpenPanel (runOpenFilePanel, runOpenProjectPanel, runOpenFolderPanel)
+import IDE.Web.OpenPanel (runOpenFilePanel)
 import IDE.Web.Theme (themeVarsCss, paletteCss, contrastCss, bgColor, fgColor)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
@@ -312,7 +312,10 @@ import IDE.Web.Widget.ContextMenu (contextMenuCss)
 import IDE.Web.Widget.Editor (editorCss, editorWidget)
 import IDE.Web.Widget.Errors (errorsCss, errorsWidget)
 import IDE.Web.Widget.Findbar (findbarCss, findbarWidget, findMatcher)
-import IDE.Web.Widget.AddRemote (addRemoteDialog)
+import IDE.Web.Widget.AddProject (addProjectDialog)
+import IDE.Web.Widget.PathField (pathFieldKeysJs)
+import IDE.Web.ProjectRecents
+       (addRecentEntry, emptyProjectRecents, setProjectRecents)
 import IDE.Web.Widget.AddServer (addServerDialog)
 import IDE.Web.Widget.RemoteSettings (remoteSettingsDialog)
 import IDE.Web.Widget.Flipper (flipperCss, flipperWidget)
@@ -1509,6 +1512,12 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- Focus the find bar's text input (called when Edit ▸ Find shows it); deferred
   -- to the next frame so the just-revealed input is laid out and focusable.
   _ <- eval focusFindJs
+
+  -- The Add Project… dialog's fields own Tab/↑/↓ while their drop-down is up.
+  -- Has to be JS: jsaddle dispatches asynchronously, so a preventDefault from
+  -- the Haskell handler lands after focus has already moved (see
+  -- 'IDE.Web.Widget.PathField.pathFieldKeysJs').
+  _ <- eval pathFieldKeysJs
 
   -- Focus a side/bottom list pane when it's activated, and keyboard list
   -- navigation (Up/Down/Enter/arrows) for the focused list pane.
@@ -5342,8 +5351,6 @@ main showMenubar macTitlebar wid ctx = mdo
           _                    -> Nothing) panelCmdE
     performEvent_ $ ffor panelCmdE $ \case
       CommandFileOpen          -> liftIO runOpenFilePanel
-      CommandProjectOpen       -> liftIO runOpenProjectPanel
-      CommandProjectOpenFolder -> liftIO runOpenFolderPanel
       _                        -> return ()
     -- The web toolbar/menubar's Preferences command, ⌘, (keymap), or the native
     -- macOS app-menu "Settings…" item (via the bridge) opens the Preferences pane.
@@ -6699,6 +6706,14 @@ main showMenubar macTitlebar wid ctx = mdo
       , const <$> restoreRecentFilesE ]
     recentFilesUniqD <- holdUniqDyn recentFilesD
     performEvent_ $ liftIO . updateRecentFiles <$> updated recentFilesUniqD
+    -- The Add Project… dialog's recently-used inputs.  The dialog itself reads
+    -- (and updates) the process-global mirror in "IDE.Web.ProjectRecents", so
+    -- a second window's dialog is always current; this fold exists only to get
+    -- them into the saved session, and to seed the mirror on restore.
+    projectRecentsD <- foldDyn ($) emptyProjectRecents $ leftmost
+      [ addRecentEntry <$> addProjectAddedE
+      , const <$> restoreProjectRecentsE ]
+    performEvent_ $ ffor restoreProjectRecentsE $ liftIO . setProjectRecents
     -- Terminals: the list pane (TerminalsKey, on the side) creates/selects
     -- terminals, which render as tabs in the editor area (wide0).  Each terminal
     -- reports its window title up through `tabE`; we fold those into the
@@ -6876,6 +6891,8 @@ main showMenubar macTitlebar wid ctx = mdo
           (current metaOnD) restoreE
         -- The saved recent-files list (for the Open Recent menu).
         restoreRecentFilesE = fmapMaybe (\(ms, _) -> ms >>= wsRecentFiles) restoreE
+        restoreProjectRecentsE =
+            fmapMaybe (\(ms, _) -> ms >>= wsProjectRecents) restoreE
         -- The flipper MRU seeds from this window's wide0 order (Step 6 makes the
         -- flipper global); no separate saved-order event any more.
         setRecentE = never
@@ -8403,18 +8420,24 @@ main showMenubar macTitlebar wid ctx = mdo
           (current flipLiveD) hiddenNowE
     performEvent_ $ ffor nextFlipE $ liftIO . fireNumFlip
 
-    -- File ▸ Add Remote Project…: the native menu drops a token on the
-    -- AddRemoteRequest bridge (drained here); the web menubar fires the command
-    -- directly.  Either opens the modal (dyn/switchHold, like the save prompt);
-    -- the dialog owns its own validate+add and fires when it should close.
-    (addRemoteReqE, fireAddRemoteReq) <- newTriggerEvent
-    let menuAddRemoteE = fmapMaybe (\case CommandProjectAddRemote -> Just (); _ -> Nothing)
-                           (fmapMaybe (^? _MenubarCommand) menubarE)
-        openAddRemoteE = leftmost [addRemoteReqE, menuAddRemoteE]
-    addRemoteOpenD <- holdDyn False $ leftmost [ True <$ openAddRemoteE, False <$ addRemoteCloseE ]
-    addRemoteCloseE <- switchHold never =<< dyn (ffor addRemoteOpenD $ \case
-        False -> return never
-        True  -> addRemoteDialog remoteHostsD)
+    -- File ▸ Add Project…: every route (native menu, web menubar, keymap) runs
+    -- the command's IDEAction, which drops a token on the AddProjectRequest
+    -- bridge, drained here.  Opens the modal (dyn/switchHold, like the save
+    -- prompt); the dialog owns its own validate+add and fires when it should
+    -- close.  Its browse panel's results arrive separately on the PickPath
+    -- bridge, tagged with the asking dialog's token.
+    (addProjectReqE, fireAddProjectReq) <- newTriggerEvent
+    (pickedPathE, firePickedPath) <- newTriggerEvent
+    -- "local" is not an ssh host, so it is not in rcHosts; the dialog wants it
+    -- first in the Server drop-down.
+    let serversD = ("local" :) <$> remoteHostsD
+    addProjectOpenD <- holdDyn False $
+        leftmost [ True <$ addProjectReqE, False <$ addProjectCloseE ]
+    addProjectDlgE <- dyn (ffor addProjectOpenD $ \case
+        False -> return (never, never)
+        True  -> addProjectDialog serversD pickedPathE)
+    addProjectCloseE <- switchHold never (fst <$> addProjectDlgE)
+    addProjectAddedE <- switchHold never (snd <$> addProjectDlgE)
     -- "New Claude Session in Worktree…" (tree context menus drop the clicked
     -- dir on the bridge): same modal pattern; the dialog owns the whole flow
     -- (create worktree → add project → start claude).
@@ -8749,7 +8772,8 @@ main showMenubar macTitlebar wid ctx = mdo
       , wbSnap = fireSnapReq
       , wbConvert = fireConvertReq
       , wbSplitOpen = fireSplitOpen
-      , wbAddRemote = fireAddRemoteReq ()
+      , wbAddProject = fireAddProjectReq ()
+      , wbPickedPath = firePickedPath
       , wbNewWorktree = fireNewWtReq
       , wbAddServer = fireAddServerReq ()
       , wbRemoteSettings = fireRemoteSettingsReq
@@ -9012,7 +9036,7 @@ main showMenubar macTitlebar wid ctx = mdo
     paneAID <- holdUniqDyn ((^. paneAISession) <$> ide)
     tabFontD' <- holdUniqDyn ((^. tabFontSize) <$> ide)
     sessionD <- holdUniqDyn $
-      (\wins vis recF lws mru paneAI tabFonts ->
+      (\wins vis recF lws mru paneAI tabFonts projRecents ->
           WebSession 6
             [ WebWindowSession (filter notPrefs (_wwWide0 ww)) (_wwActive ww)
                                (_wwTall ww) (_wwWide1 ww) (Just (_wwZoom ww))
@@ -9031,9 +9055,11 @@ main showMenubar macTitlebar wid ctx = mdo
             (Just (M.toAscList paneAI))
             -- Per-TAB font overrides; the per-LEAF ones ride their leksah
             -- window's layout instead (@leksah_layout / wsLeksahWindows).
-            (Just (M.toAscList tabFonts)))
+            (Just (M.toAscList tabFonts))
+            -- Add Project…'s MRU inputs.
+            (Just projRecents))
         <$> webWindowsD <*> visibleTabsD <*> recentFilesD <*> leksahWindowsD
-        <*> flipMruD <*> paneAID <*> tabFontD'
+        <*> flipMruD <*> paneAID <*> tabFontD' <*> projectRecentsD
     let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
     saveSessE <- debounce (1 :: NominalDiffTime) (gate (current writeGateD) (updated sessionD))
     -- Once this instance has initiated a handoff, stop writing the session — the

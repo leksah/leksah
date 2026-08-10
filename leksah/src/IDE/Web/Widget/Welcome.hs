@@ -17,7 +17,7 @@
 --     into any window that would otherwise be empty, and closes the OS
 --     window instead when there is another one to fall back to.
 --
--- Every action here is a process-global request hook ('runOpenProjectPanel',
+-- Every action here is a process-global request hook ('requestAddProject',
 -- 'requestNewWindow', …) — the same ones the native menu bar drives.  That
 -- keeps the pane free of reflex plumbing: it reports nothing outward
 -- ('WelcomeEvents' is @()@) and needs no wiring beyond its tab dispatch.
@@ -65,7 +65,8 @@ import IDE.Web.Keybindings
 import IDE.Web.NewWindowRequest (requestNewWindow)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel
-       (runOpenFilePanel, runOpenFolderPanel, runOpenProjectPanel)
+       (runOpenFilePanel)
+import IDE.Web.AddProjectRequest (requestAddProject)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.ShortcutsRequest (requestShowShortcuts)
 
@@ -100,12 +101,11 @@ data Frag = Txt Text | Key Text | Code Text
 
 startActions :: [Action]
 startActions =
-  [ Action "Open Project…" "workspace.openProject"
-      "A .cabal, cabal.project, stack.yaml or flake to work in."
-      runOpenProjectPanel
-  , Action "Open Folder…" "workspace.openFolder"
-      "Any directory — leksah treats it as a plain project."
-      runOpenFolderPanel
+  [ Action "Add Project…" "workspace.addProject"
+      "A project file, a folder, or a directory on another machine over ssh."
+      requestAddProject
+    -- Kept beside it: this one opens an EDITOR, not a project, and is the only
+    -- route to that from here.
   , Action "Open File…" "workspace.openFile"
       "Straight into the editor, no project needed."
       runOpenFilePanel

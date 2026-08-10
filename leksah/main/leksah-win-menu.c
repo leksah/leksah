@@ -23,7 +23,7 @@
 /* Haskell callbacks (foreign exports in IDE.Web.Win32Menu). */
 extern void leksah_menu_action(HsInt32 tag);
 extern void leksah_open_file(const char *utf8Path);
-extern void leksah_open_project(const char *utf8Path);
+extern void leksah_pick_path(HsInt32 token, const char *utf8Path);
 
 /* WM_COMMAND id ranges. */
 #define LEKSAH_CMD_EXIT      2      /* File > Exit */
@@ -33,9 +33,10 @@ extern void leksah_open_project(const char *utf8Path);
 
 /* UI-thread marshalling. */
 #define WM_LEKSAH_OPEN_PANEL          (WM_APP + 0x101)
-#define WM_LEKSAH_OPEN_PROJECT_PANEL  (WM_APP + 0x102)
 #define WM_LEKSAH_SET_RECENT          (WM_APP + 0x103)
-#define WM_LEKSAH_OPEN_FOLDER_PANEL   (WM_APP + 0x104)
+/* Add Project... browse: wParam = request token, lParam = PickMode wire code
+ * (0 files+dirs, 1 files, 2 dirs). */
+#define WM_LEKSAH_PICK_PATH           (WM_APP + 0x105)
 
 static HMENU gMenuBar = NULL;
 static HMENU gFileMenu = NULL;    /* first top-level menu (File) */
@@ -183,7 +184,8 @@ void leksah_win_set_split_active(int active)
                        ((gTerminalActive || active) ? MF_ENABLED : MF_GRAYED));
 }
 
-static void showOpenPanel(int project)
+/* File > Open: pick a file to open in an editor. */
+static void showOpenPanel(void)
 {
     WCHAR buf[MAX_PATH];
     buf[0] = 0;
@@ -193,37 +195,53 @@ static void showOpenPanel(int project)
     ofn.hwndOwner = gWnd;
     ofn.lpstrFile = buf;
     ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrTitle = project ? L"Open Project" : L"Open File";
+    ofn.lpstrTitle = L"Open File";
     /* NOCHANGEDIR: the dialog must not move leksah's cwd. */
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetOpenFileNameW(&ofn)) {
         char *u = utf8FromWide(buf);
-        if (u) {
-            if (project) leksah_open_project(u); else leksah_open_file(u);
-            free(u);
-        }
+        if (u) { leksah_open_file(u); free(u); }
     }
 }
 
-/* Open Folder: pick a directory and add it to the workspace as a plain-directory
- * project (no project file needed).  Hands the folder to leksah_open_project --
- * the Haskell side (projectOpenPath) treats a directory as a plain-directory
- * project.  The macOS sibling is leksah_show_open_folder_panel. */
-static void showOpenFolderPanel(void)
+/* The Add Project... dialog's Browse buttons.  Windows, like GTK4, has no one
+ * dialog that accepts a file OR a folder (GetOpenFileName picks files,
+ * SHBrowseForFolder picks folders), so this front end reports PickSeparate and
+ * the dialog draws two buttons -- mode says which one was pressed.  The result
+ * goes back tagged with the asking dialog's token; the macOS sibling is
+ * leksah_show_pick_path_panel. */
+static void showPickPathPanel(int token, int mode)
 {
-    WCHAR path[MAX_PATH];
-    BROWSEINFOW bi;
-    memset(&bi, 0, sizeof bi);
-    bi.hwndOwner = gWnd;
-    bi.lpszTitle = L"Select a folder to add to the workspace";
-    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_EDITBOX;
-    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-    if (pidl) {
-        if (SHGetPathFromIDListW(pidl, path)) {
-            char *u = utf8FromWide(path);
-            if (u) { leksah_open_project(u); free(u); }
+    if (mode == 2) {
+        WCHAR path[MAX_PATH];
+        BROWSEINFOW bi;
+        memset(&bi, 0, sizeof bi);
+        bi.hwndOwner = gWnd;
+        bi.lpszTitle = L"Select a folder to add to the workspace";
+        bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_EDITBOX;
+        LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+        if (pidl) {
+            if (SHGetPathFromIDListW(pidl, path)) {
+                char *u = utf8FromWide(path);
+                if (u) { leksah_pick_path((HsInt32)token, u); free(u); }
+            }
+            CoTaskMemFree(pidl);
         }
-        CoTaskMemFree(pidl);
+    } else {
+        WCHAR buf[MAX_PATH];
+        buf[0] = 0;
+        OPENFILENAMEW ofn;
+        memset(&ofn, 0, sizeof ofn);
+        ofn.lStructSize = sizeof ofn;
+        ofn.hwndOwner = gWnd;
+        ofn.lpstrFile = buf;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrTitle = L"Select a project file";
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+        if (GetOpenFileNameW(&ofn)) {
+            char *u = utf8FromWide(buf);
+            if (u) { leksah_pick_path((HsInt32)token, u); free(u); }
+        }
     }
 }
 
@@ -280,9 +298,10 @@ static LRESULT CALLBACK leksahWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
         }
         break;
-    case WM_LEKSAH_OPEN_PANEL:         showOpenPanel(0); return 0;
-    case WM_LEKSAH_OPEN_PROJECT_PANEL: showOpenPanel(1); return 0;
-    case WM_LEKSAH_OPEN_FOLDER_PANEL:  showOpenFolderPanel(); return 0;
+    case WM_LEKSAH_OPEN_PANEL:         showOpenPanel(); return 0;
+    case WM_LEKSAH_PICK_PATH:
+        showPickPathPanel((int)wp, (int)lp);
+        return 0;
     case WM_LEKSAH_SET_RECENT:         setRecentFiles((char *)lp); return 0;
     }
     return CallWindowProcW(gPrevProc, hwnd, msg, wp, lp);
@@ -312,14 +331,10 @@ void leksah_win_show_open_panel(void)
     if (gWnd) PostMessageW(gWnd, WM_LEKSAH_OPEN_PANEL, 0, 0);
 }
 
-void leksah_win_show_open_project_panel(void)
+void leksah_win_show_pick_path_panel(int token, int mode)
 {
-    if (gWnd) PostMessageW(gWnd, WM_LEKSAH_OPEN_PROJECT_PANEL, 0, 0);
-}
-
-void leksah_win_show_open_folder_panel(void)
-{
-    if (gWnd) PostMessageW(gWnd, WM_LEKSAH_OPEN_FOLDER_PANEL, 0, 0);
+    if (gWnd) PostMessageW(gWnd, WM_LEKSAH_PICK_PATH,
+                           (WPARAM)token, (LPARAM)mode);
 }
 
 void leksah_win_set_recent_files(const char *newlineSeparated)

@@ -33,16 +33,16 @@ import Foreign.Ptr (Ptr)
 
 import Language.Javascript.JSaddle.WebView2 (WebView2, webView2Hwnd)
 
-import IDE.App (appWorkspace, withApp)
+import IDE.App (withApp)
 import IDE.Web.Command (Command(..), commandAction)
-import IDE.Workspace (projectOpenPath)
 import IDE.Web.Commands (allCommands)
 import IDE.Web.Keybindings (currentKeymap, loadKeybindings)
 import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel
-       (setOpenFilePanelHandler, setOpenProjectPanelHandler,
-        setOpenFolderPanelHandler)
+       (setOpenFilePanelHandler, setPickPathHandler, pickModeCode,
+        PickCapability(..))
+import IDE.Web.PickPathRequest (deliverPickedPath)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
@@ -101,13 +101,15 @@ foreign import ccall "leksah_win_set_terminal_active" c_setTerminalActive :: CIn
 -- Whether the active tab can convert to a tmux pane (an editor/git-log with a
 -- backing pane): enables the Split items so ⌘D converts-and-splits.
 foreign import ccall "leksah_win_set_split_active" c_setSplitActive :: CInt -> IO ()
--- Show the native "Open File"/"Open Project" dialog (marshalled to the UI
--- thread); it calls back leksah_open_file/leksah_open_project.
+-- Show the native "Open File" dialog (marshalled to the UI thread); it calls
+-- back leksah_open_file.
 foreign import ccall "leksah_win_show_open_panel" c_showOpenPanel :: IO ()
-foreign import ccall "leksah_win_show_open_project_panel" c_showOpenProjectPanel :: IO ()
--- Show the native "Open Folder" dialog; it also calls back leksah_open_project
--- (the handler adds a directory as a plain-directory project).
-foreign import ccall "leksah_win_show_open_folder_panel" c_showOpenFolderPanel :: IO ()
+-- Show the Add Project… dialog's browse panel: @c_showPickPathPanel token mode@
+-- where mode is 'PickMode's wire code.  Windows needs a different dialog for
+-- files and folders, so this front end reports 'PickSeparate'.  Calls back
+-- leksah_pick_path.
+foreign import ccall "leksah_win_show_pick_path_panel" c_showPickPathPanel
+  :: CInt -> CInt -> IO ()
 -- Populate the "Open Recent" submenu (newline-separated paths).
 foreign import ccall "leksah_win_set_recent_files" c_setRecentFiles :: CString -> IO ()
 
@@ -118,15 +120,16 @@ foreign export ccall "leksah_open_file" leksah_open_file :: CString -> IO ()
 leksah_open_file :: CString -> IO ()
 leksah_open_file cstr = peekCString cstr >>= deliverOpenedFile
 
--- | Called from C with the path chosen in the open-project OR open-folder
--- dialog; add it to the workspace.  'projectOpenPath' handles both: a directory
--- becomes a plain-directory project, a file is a project file.
-foreign export ccall "leksah_open_project" leksah_open_project :: CString -> IO ()
+-- | Called from C with the path chosen in the Add Project… browse panel,
+-- tagged with the token the panel was opened with.  Straight into the dialog's
+-- own queue: unlike 'leksah_open_file' this never opens an editor, and unlike
+-- the Open Project dialog it replaced it never adds to the workspace by itself
+-- — the dialog does that when the user presses Add.
+foreign export ccall "leksah_pick_path" leksah_pick_path :: CInt -> CString -> IO ()
 
-leksah_open_project :: CString -> IO ()
-leksah_open_project cstr = do
-  fp <- peekCString cstr
-  withApp $ \app -> projectOpenPath (appWorkspace app) fp
+leksah_pick_path :: CInt -> CString -> IO ()
+leksah_pick_path tok cstr =
+  peekCString cstr >>= deliverPickedPath (fromIntegral tok)
 
 -- | The Underlay submenu (pane transparency, window snapping) is macOS-only
 -- window trickery; drop it.  Preferences stays in Edit — the Windows
@@ -163,10 +166,11 @@ leksah_menu_action :: CInt -> IO ()
 leksah_menu_action tag = do
   cmds <- readIORef commandsRef
   case drop (fromIntegral tag) cmds of
-    -- File ▸ Open / Open Project are handled natively (GetOpenFileName).
+    -- File ▸ Open is handled natively (GetOpenFileName).  File ▸ Add Project…
+    -- needs no arm: it is a plain IDEAction, so the fallthrough below runs it
+    -- — which is also how the old Add Remote Project…, missing an arm here,
+    -- was a silent no-op on Windows.
     (CommandFileOpen:_)        -> c_showOpenPanel
-    (CommandProjectOpen:_)     -> c_showOpenProjectPanel
-    (CommandProjectOpenFolder:_) -> c_showOpenFolderPanel
     -- These act on reflex state; signal via the bridges.
     (CommandFileSave:_)        -> requestSaveActiveFile
     (CommandFind:_)            -> requestToggleFindbar
@@ -214,10 +218,12 @@ installWin32Menu wv = do
   -- …and whether the active tab, though not a terminal, can convert to a tmux
   -- pane — enables the Split items so ⌘D converts-and-splits (macOS parity).
   setSplitActiveNotifier $ \on -> c_setSplitActive (if on then 1 else 0)
-  -- The toolbar/menubar Open commands show the native open dialogs.
+  -- The toolbar/menubar Open command shows the native open dialog.
   setOpenFilePanelHandler c_showOpenPanel
-  setOpenProjectPanelHandler c_showOpenProjectPanel
-  setOpenFolderPanelHandler c_showOpenFolderPanel
+  -- The Add Project… dialog's Browse buttons.  'PickSeparate': Windows needs a
+  -- different dialog for files and folders, so the modal draws two buttons.
+  setPickPathHandler PickSeparate $ \mode tok ->
+      c_showPickPathPanel (fromIntegral tok) (fromIntegral (pickModeCode mode))
   -- File ▸ New Window: multi-window needs a jsaddle-webview2 primitive that does
   -- not exist yet (see the module NOTE).  Give the user feedback instead of a
   -- silent no-op, so the command's absence is explicable rather than a bug.

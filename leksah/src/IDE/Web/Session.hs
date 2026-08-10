@@ -40,6 +40,7 @@ import qualified Data.Text as T (unpack)
 import GHC.Generics (Generic)
 
 import IDE.Paths (sidecarPath)
+import IDE.Web.ProjectRecents (ProjectRecents(..))
 import IDE.Web.Model
        (AIPaneRef(..), TallVisibility(..), FlipItem(..), LeafId(..),
         LeksahWindow(..), PaneContent(..), PaneKind(..), SplitOrientation(..),
@@ -107,12 +108,21 @@ data WebSession = WebSession
       --   as 'wsPaneAI'.  UNLIKE 'wsPaneAI', entries are dropped when their tab
       --   closes: a font means nothing without the pane, and keeping them would
       --   grow the file without bound.
+  , wsProjectRecents :: Maybe ProjectRecents
+      -- ^ the Add Project… dialog's recently-used server\/path\/prefix inputs
+      --   ("IDE.Web.ProjectRecents").  Optional like the three above, so files
+      --   written before it existed decode to none — no version bump.  The live
+      --   value also sits in a process-global 'IORef' there, which is what a
+      --   dialog in a SECOND window reads: this field is only how it survives a
+      --   restart.
   } deriving (Eq, Show, Generic)
 
 instance ToJSON WebWindowSession
 instance FromJSON WebWindowSession
 instance ToJSON WebSession
 instance FromJSON WebSession
+instance ToJSON ProjectRecents
+instance FromJSON ProjectRecents
 instance ToJSON FlipItem
 instance FromJSON FlipItem
 -- Generic (tagged-object) instances, like 'FlipItem''s above: 'wsPaneAI' stores
@@ -217,6 +227,7 @@ instance FromJSON LeksahWindow where
 emptyWebSession :: WebSession
 emptyWebSession =
     WebSession webSessionVersion [] [] Nothing Nothing Nothing Nothing Nothing
+                Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = sidecarPath "web-session.json"

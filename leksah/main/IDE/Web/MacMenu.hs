@@ -61,8 +61,9 @@ import IDE.Web.NewWindowRequest
         setOrderWindowFrontHandler, setCloseWindowHandler)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel
-       (setOpenFilePanelHandler, setOpenProjectPanelHandler,
-        setOpenFolderPanelHandler)
+       (setOpenFilePanelHandler, setPickPathHandler, pickModeCode,
+        PickCapability(..))
+import IDE.Web.PickPathRequest (deliverPickedPath)
 import IDE.Web.PreferencesRequest (requestShowPreferences)
 import IDE.Web.SaveRequest (requestSaveActiveFile)
 import IDE.Web.SnapRequest (requestUnsnapPane)
@@ -70,7 +71,6 @@ import IDE.Web.FindRequest (requestToggleFindbar)
 import IDE.Web.ShortcutsRequest (requestShowShortcuts)
 import IDE.Web.BrowserRequest (requestOpenBrowser)
 import IDE.Web.KeymapRequest (requestKeymapCommand)
-import IDE.Web.AddRemoteRequest (requestAddRemoteProject)
 import IDE.Web.WindowBridge (closeWindowMerge)
 import IDE.Web.ScreenshotRequest
        (registerScreenshotHandler, registerScreenshotRegionHandler)
@@ -78,10 +78,13 @@ import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
 import IDE.Web.RecentFiles (setRecentFilesHandler)
 import IDE.Web.TerminalInput (setActiveTerminalNotifier, setSplitActiveNotifier)
 
--- | Called from Objective-C (via the glue) with the path chosen in the
--- open-project OR open-folder dialog; add it to the workspace, like the GTK
--- projectOpen.  'projectOpenPath' handles both: a directory becomes a
--- plain-directory project, a file is a project file (cabal.project / …).
+-- | Add a path to the workspace: a directory becomes a plain-directory project,
+-- a file is a project file (cabal.project / …).
+--
+-- Registered as 'cbOpenProject', which nothing in the ObjC calls any more — the
+-- panels that did were replaced by the Add Project… dialog's single pick-path
+-- panel, which reports through 'deliverPickedPath' instead.  Kept registered so
+-- the 9-arg native setter's ABI (and this callback slot) stays as it was.
 macOpenProject :: FilePath -> IO ()
 macOpenProject fp = withApp $ \app -> projectOpenPath (appWorkspace app) fp
 
@@ -185,13 +188,10 @@ macMenuAction :: Int -> IO ()
 macMenuAction tag = do
   cmds <- readIORef commandsRef
   case drop tag cmds of
-    -- File ▸ Open / Open Project are handled natively (NSOpenPanel).
+    -- File ▸ Open is handled natively (NSOpenPanel).  File ▸ Add Project…
+    -- needs no arm here: it is a plain IDEAction, so the generic
+    -- 'commandAction' fallthrough below runs it.
     (CommandFileOpen:_)    -> c_showOpenPanel
-    (CommandProjectOpen:_) -> c_showOpenProjectPanel
-    (CommandProjectOpenFolder:_) -> c_showOpenFolderPanel
-    -- Add Remote Project… opens a reflex modal (host/path/prefix); signal it
-    -- via the bridge, like Find/Save.
-    (CommandProjectAddRemote:_) -> requestAddRemoteProject
     -- File ▸ Save acts on the active editor (reflex state); signal via the bridge.
     (CommandFileSave:_)    -> requestSaveActiveFile
     -- Edit ▸ Find toggles the find bar (reflex state); signal via the bridge.
@@ -268,6 +268,9 @@ installMacMenu = do
     , cbWindowClosing   = macWindowClosing
     , cbColorPicked     = colorPicked . T.pack
     , cbToggleState     = macToggleState
+      -- The Add Project… browse panel's result: straight into the dialog's own
+      -- queue (never 'deliverOpenedFile', which would open an editor tab).
+    , cbPickPath        = deliverPickedPath
       -- A session chosen from the menu-bar status item: show its terminal.  Off
       -- the main thread — it runs tmux/ps, and Cocoa is waiting for the menu
       -- action to return.
@@ -315,10 +318,12 @@ installMacMenu = do
   -- pane (editor/git-log with a backing pane) — enables the Split items so
   -- ⌘D converts-and-splits.
   setSplitActiveNotifier $ \on -> c_setSplitActive (if on then 1 else 0)
-  -- The toolbar/menubar Open commands show the native open panels.
+  -- The toolbar/menubar Open command shows the native open panel.
   setOpenFilePanelHandler c_showOpenPanel
-  setOpenProjectPanelHandler c_showOpenProjectPanel
-  setOpenFolderPanelHandler c_showOpenFolderPanel
+  -- The Add Project… dialog's Browse button.  'PickBoth' because NSOpenPanel
+  -- picks files AND directories in one panel, so the dialog draws one button.
+  setPickPathHandler PickBoth $ \mode tok ->
+      c_showPickPathPanel (fromIntegral tok) (fromIntegral (pickModeCode mode))
   -- File ▸ New Window: mint a WindowId (seeds an empty WebWindow), then ask the
   -- ObjC glue to create an NSWindow + WKWebView; it calls back macAttachWindow.
   setNewWindowHandler . withApp $ \app -> do

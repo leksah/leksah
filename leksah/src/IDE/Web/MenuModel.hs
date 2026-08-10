@@ -92,9 +92,7 @@ menuModel =
       [ MCmd "workspace.newWindow"
       , MSepE
       , MCmd "workspace.openFile"
-      , MCmd "workspace.openProject"
-      , MCmd "workspace.openFolder"
-      , MCmd "workspace.addRemoteProject"
+      , MCmd "workspace.addProject"
       , MCmd "workspace.addServer"
       , MCmd "workspace.saveFile"
       , MCmd "workspace.closeFile"

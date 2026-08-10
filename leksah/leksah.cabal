@@ -102,7 +102,7 @@ library
         IDE.Web.DemoTerminals
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
-        IDE.Web.AddRemoteRequest
+        IDE.Web.AddProjectRequest
         IDE.Web.AddServerRequest
         IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
@@ -140,6 +140,8 @@ library
         IDE.Web.ClaudeQueue
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel
+        IDE.Web.PickPathRequest
+        IDE.Web.ProjectRecents
         IDE.Web.RecentFiles
         IDE.Web.RemoteTermRequest
         IDE.Web.RestartRequest
@@ -185,8 +187,9 @@ library
         IDE.Web.Widget.ResizeObserver
         IDE.Web.Widget.FileTree
         IDE.Web.Widget.Findbar
-        IDE.Web.Widget.AddRemote
+        IDE.Web.Widget.AddProject
         IDE.Web.Widget.AddServer
+        IDE.Web.Widget.PathField
         IDE.Web.Widget.RemoteSettings
         IDE.Web.Widget.Flake
         IDE.Web.Widget.Flipper

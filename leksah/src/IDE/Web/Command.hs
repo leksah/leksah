@@ -12,6 +12,7 @@ import Data.Text (Text)
 
 import IDE.Web.AIContextRequest
        (AIAction(..), requestAIAction)
+import IDE.Web.AddProjectRequest (requestAddProject)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.NewWindowRequest (requestNewWindow)
@@ -57,9 +58,6 @@ data Command =
   | CommandProjectAction Text Text ProjectAction
   | CommandPackageAction Text Text PackageAction
   | CommandFileOpen
-  | CommandProjectOpen
-  | CommandProjectOpenFolder
-  | CommandProjectAddRemote
   | CommandFileSave
   | CommandFind
   | CommandShowPreferences
@@ -350,6 +348,23 @@ commandNewWindow = CommandIDEAction
   ""
   "Open a new window"
   (const requestNewWindow)
+
+-- | File ▸ Add Project…: the one way into the workspace, for a project file, a
+-- plain folder, or a directory on another machine over ssh (it replaced three
+-- separate menu items that all ended at 'IDE.Workspace.projectOpenPath').
+--
+-- A plain 'CommandIDEAction' rather than a bespoke constructor, which is what
+-- makes it reachable from EVERY dispatch route: 'commandAction' answers 'Just',
+-- so the native menus, the web menubar and — unlike the three commands it
+-- replaced — the KEYMAP all run it through their generic fallthrough, with no
+-- per-platform special case.  The action drops a token on the
+-- "IDE.Web.AddProjectRequest" bridge; the reflex modal in 'IDE.Web.Main' does
+-- the work.
+commandAddProject :: Command
+commandAddProject = CommandIDEAction
+  "/pics/file-open.svg"
+  "Add a project, folder or remote directory to the workspace"
+  (const requestAddProject)
 
 -- | File ▸ Add Server… (and the Terminals-tree row): register an ssh host in
 -- the remote-hosts setting.  A plain 'CommandIDEAction', so both the web

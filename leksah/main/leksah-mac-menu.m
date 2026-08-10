@@ -31,6 +31,10 @@
 typedef struct {
     void (*menu_action)(int tag);
     void (*open_file)(const char *path);
+    // Currently unused: the Open Project / Open Folder panels that called it
+    // were replaced by pick_path below.  The slot (and its argument in the
+    // 9-arg leksah_set_haskell_callbacks) stays because changing that ABI is
+    // exactly the churn the comment above warns about.
     void (*open_project)(const char *path);
     void (*unsnap)(const char *key);       // Tmux ▸ Underlay ▸ Unsnap <window>
     void (*open_settings)(void);           // app menu ▸ Settings…
@@ -46,6 +50,11 @@ typedef struct {
     // A live Claude session chosen from the menu-bar status item's menu: show
     // its terminal (by session id).
     void (*claude_activate)(const char *session_id);
+    // A path chosen in the Add Project… dialog's browse panel, tagged with the
+    // token the panel was opened with so a dialog can drop a result that is not
+    // its own (see IDE.Web.PickPathRequest).  Deliberately NOT open_file: this
+    // one only fills in a text field, it never opens an editor.
+    void (*pick_path)(int token, const char *path);
 } leksah_haskell_callbacks;
 
 static leksah_haskell_callbacks gHs;   // zero-initialised
@@ -57,7 +66,7 @@ static leksah_haskell_callbacks gHs;   // zero-initialised
 // reload.  Statics in this dylib, not a Haskell CAF: a :reload resets
 // leksah-mac-glue's CAFs (it is a home-package object module) but never reloads
 // this dylib, the same reason leksah_take_first_launch lives here.
-#define LEKSAH_N_CALLBACKS 11
+#define LEKSAH_N_CALLBACKS 12
 static void *gPrevCbs[LEKSAH_N_CALLBACKS];
 static int   gPrevCbCount = 0;
 
@@ -71,7 +80,7 @@ static void leksah_remember_previous_callbacks(void)
         (void *)gHs.open_settings,    (void *)gHs.attach_window,
         (void *)gHs.window_activated, (void *)gHs.window_closing,
         (void *)gHs.color_picked,     (void *)gHs.toggle_state,
-        (void *)gHs.claude_activate };
+        (void *)gHs.claude_activate,  (void *)gHs.pick_path };
     for (int i = 0; i < LEKSAH_N_CALLBACKS; i++)
         if (cur[i]) gPrevCbs[n++] = cur[i];
     gPrevCbCount = n;
@@ -125,6 +134,12 @@ void leksah_set_toggle_state_callback(int (*toggle_state)(int))
 void leksah_set_claude_activate_callback(void (*claude_activate)(const char *))
 {
     gHs.claude_activate = claude_activate;
+}
+
+// Likewise additive: the Add Project… browse panel's result callback.
+void leksah_set_pick_path_callback(void (*pick_path)(int, const char *))
+{
+    gHs.pick_path = pick_path;
 }
 
 // The title bar is transparent and the WKWebView fills the whole window, so the
@@ -2600,47 +2615,39 @@ void leksah_show_open_panel(void) {
     });
 }
 
-// File ▸ Open Project: pick a project file (cabal.project / stack.yaml) and add
-// it to the workspace via leksah_open_project -- like the GTK projectOpen.
-void leksah_show_open_project_panel(void) {
+// The Add Project… dialog's Browse button: ONE panel that picks either a
+// project file or a plain folder, because NSOpenPanel can do both at once
+// (canChooseFiles AND canChooseDirectories).  GTK4 and Win32 cannot, which is
+// why IDE.Web.OpenPanel has a PickCapability at all -- those front ends report
+// PickSeparate and the dialog draws two buttons instead of one.
+//
+// mode: 0 = files and directories, 1 = files only, 2 = directories only.
+// The result goes back with the token the panel was opened with, so a dialog
+// that has since closed (or one in another window) drops it.
+void leksah_show_pick_path_panel(int token, int mode) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSOpenPanel *panel = [NSOpenPanel openPanel];
-        panel.canChooseFiles = YES;
-        panel.canChooseDirectories = NO;
+        panel.canChooseFiles = (mode != 2);
+        panel.canChooseDirectories = (mode != 1);
         panel.allowsMultipleSelection = NO;
-        panel.message = @"Select a project file: cabal.project, stack.yaml, flake.nix, Cargo.toml, or pyproject.toml";
+        panel.message = (mode == 1)
+            ? @"Select a project file: cabal.project, stack.yaml, flake.nix, Cargo.toml, or pyproject.toml"
+            : (mode == 2)
+            ? @"Select a folder to add to the workspace"
+            : @"Select a project file or a folder to add to the workspace";
         void (^done)(NSModalResponse) = ^(NSModalResponse result) {
             if (result == NSModalResponseOK) {
                 NSURL *url = [[panel URLs] firstObject];
-                if (url != nil && gHs.open_project) gHs.open_project([[url path] UTF8String]);
+                if (url != nil && gHs.pick_path)
+                    gHs.pick_path(token, [[url path] UTF8String]);
             }
         };
-        if (gLeksahWindow != nil)
-            [panel beginSheetModalForWindow:gLeksahWindow completionHandler:done];
-        else
-            [panel beginWithCompletionHandler:done];
-    });
-}
-
-// File ▸ Open Folder: pick a plain directory and add it to the workspace as a
-// directory project (no build file needed).  Hands the chosen folder back via
-// the same leksah_open_project callback -- the Haskell side (projectOpenPath)
-// treats a directory as a plain-directory project and a file as a project file.
-void leksah_show_open_folder_panel(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSOpenPanel *panel = [NSOpenPanel openPanel];
-        panel.canChooseFiles = NO;
-        panel.canChooseDirectories = YES;
-        panel.allowsMultipleSelection = NO;
-        panel.message = @"Select a folder to add to the workspace";
-        void (^done)(NSModalResponse) = ^(NSModalResponse result) {
-            if (result == NSModalResponseOK) {
-                NSURL *url = [[panel URLs] firstObject];
-                if (url != nil && gHs.open_project) gHs.open_project([[url path] UTF8String]);
-            }
-        };
-        if (gLeksahWindow != nil)
-            [panel beginSheetModalForWindow:gLeksahWindow completionHandler:done];
+        // Sheet onto the window that owns the dialog.  gLeksahWindow is only the
+        // FIRST window; with several open, the modal is in the key one.
+        NSWindow *host = [NSApp keyWindow];
+        if (host == nil) host = gLeksahWindow;
+        if (host != nil)
+            [panel beginSheetModalForWindow:host completionHandler:done];
         else
             [panel beginWithCompletionHandler:done];
     });

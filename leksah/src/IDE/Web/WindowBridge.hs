@@ -71,7 +71,8 @@ import IDE.Web.TransparencyRequest (nextToggleTransparency)
 import IDE.Web.SnapRequest (SnapReq, nextSnapRequest)
 import IDE.Web.ConvertRequest (nextConvertRequest)
 import IDE.Web.SplitOpenRequest (SplitTarget, nextSplitOpenRequest)
-import IDE.Web.AddRemoteRequest (nextAddRemoteRequest)
+import IDE.Web.AddProjectRequest (nextAddProjectRequest)
+import IDE.Web.PickPathRequest (nextPickedPath)
 import IDE.Web.AddServerRequest (nextAddServerRequest)
 import IDE.Web.RemoteSettingsRequest (nextRemoteSettings)
 import IDE.Ws.Types (ProjectKey)
@@ -119,7 +120,11 @@ data WindowBridge = WindowBridge
                                       -- ^ convert a tab into a pane (or back)
   , wbSplitOpen  :: (SplitTarget, Bool) -> IO ()
                                       -- ^ ⌥-open: split the active pane with this
-  , wbAddRemote  :: IO ()             -- ^ Project ▸ Add Remote… modal
+  , wbAddProject :: IO ()             -- ^ File ▸ Add Project… modal
+  , wbPickedPath :: (Int, FilePath) -> IO ()
+                                      -- ^ a path chosen in that modal's native
+                                      --   browse panel, tagged with the asking
+                                      --   dialog's token
   , wbNewWorktree :: FilePath -> IO ()
                                       -- ^ New Claude Session in Worktree… modal
   , wbAddServer  :: IO ()             -- ^ Add Server… modal
@@ -239,8 +244,12 @@ startWindowBridgeDrains app = do
     nextConvertRequest >>= \r -> route app (`wbConvert` r)
   drain "bridge-drain-splitopen" $
     nextSplitOpenRequest >>= \r -> route app (`wbSplitOpen` r)
-  drain "bridge-drain-addremote" $
-    nextAddRemoteRequest >> route app wbAddRemote
+  drain "bridge-drain-addproject" $
+    nextAddProjectRequest >> route app wbAddProject
+  -- Routed to the frontmost window like everything else; the token is what
+  -- makes that safe — a dialog ignores a result that is not its own.
+  drain "bridge-drain-pickpath" $
+    nextPickedPath >>= \r -> route app (`wbPickedPath` r)
   drain "bridge-drain-newworktree" $
     nextNewWorktreeRequest >>= \d -> route app (`wbNewWorktree` d)
   drain "bridge-drain-addserver" $

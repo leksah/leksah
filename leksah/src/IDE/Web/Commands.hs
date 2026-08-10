@@ -31,9 +31,7 @@ allCommands :: [CommandSpec]
 allCommands =
     [ always "workspace.newWindow"        "New Window"            commandNewWindow
     , always "workspace.openFile"         "Open File…"            CommandFileOpen
-    , always "workspace.openProject"      "Open Project…"         CommandProjectOpen
-    , always "workspace.openFolder"       "Open Folder…"          CommandProjectOpenFolder
-    , always "workspace.addRemoteProject" "Add Remote Project…"   CommandProjectAddRemote
+    , always "workspace.addProject"       "Add Project…"          commandAddProject
     , always "workspace.addServer"        "Add Server…"           commandAddServer
     , always "workspace.saveFile"         "Save File"             CommandFileSave
     , always "workspace.closeFile"        "Close File"            commandFileClose
