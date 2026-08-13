@@ -149,16 +149,15 @@ layoutCss = do
         "height" -: "100%"
         position relative
     -- Side ("tall") pane visibility (the toolbar button cycles these classes on
-    -- .leksah): hide collapses its column to nothing; auto-hide narrows it to a
-    -- thin peek strip (~1/4 of the old ~12px peek) that widens to the full pane
-    -- on hover.  Both keep the pane as a real grid column, so its tab buttons
-    -- and body stay in the same vertical positions as in show mode and never
-    -- overlay the wide (editor) panes -- the editor just starts after the
-    -- (narrow) column.
-    ".leksah.tall-hide" ?
-        ("grid-template-columns" -: "0 1fr")
-    ".leksah.tall-hide .area-tall" ?
-        Clay.display none
+    -- .leksah): hide and auto-hide both collapse the column to nothing and share
+    -- the same slide-open reveal geometry (the ':is(.tall-auto, .tall-hide)'
+    -- rules below); they differ ONLY in what reveals the pane.  Auto-hide opens
+    -- on mouse-over (sensor / pane / divider hover) or keyboard focus; hide
+    -- opens on keyboard focus alone — activating/flipping to a pane in the
+    -- hidden bar shows the bar, but the mouse can't pull it open.  Both keep
+    -- the pane as a real grid column, so its tab buttons and body stay in the
+    -- same vertical positions as in show mode and never overlay the wide
+    -- (editor) panes -- the editor just starts after the (collapsed) column.
     -- The content column has a *fixed* width (the full width minus the peek
     -- strip) that doesn't change on hover, so when the side pane slides in to its
     -- full width it pushes the wide panes to the right (their right edge slides
@@ -171,14 +170,18 @@ layoutCss = do
     -- the mouse and re-opens the pane (see below).  wide0 keeps its constant width
     -- (100vw, minus the 3px padding via border-box) across the hover so a terminal
     -- in there is never reflowed.
-    ".leksah.tall-auto" ? do
+    ".leksah:is(.tall-auto, .tall-hide)" ? do
         "grid-template-columns" -: "0px 100%"
         "transition" -: "grid-template-columns 0.15s ease"
     -- Stay open while the sensor or the pane itself is hovered *or* while a pane in
     -- the area has keyboard focus (:focus-within): activating/flipping to a side
     -- pane focuses its list, which holds the bar open; it collapses again on its
-    -- own once focus leaves.
-    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)" ?
+    -- own once focus leaves.  In hide mode only the focus trigger applies — via
+    -- the .tall-focus class barFocusJs stamps on .leksah, NOT a root
+    -- :has(.area-tall:focus-within): WebKit doesn't reliably re-evaluate that
+    -- :has when focus leaves the subtree, leaving the bar stuck open (auto mode
+    -- gets away with it because its :hover terms re-invalidate on mouse moves).
+    ".leksah.tall-auto:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover), .leksah.tall-hide.tall-focus" ?
         ("grid-template-columns" -: "var(--tall-col) 100%")
     -- Force-collapse override: a selection that activated a file/terminal adds
     -- '.tall-suppress' (see leksahCollapseAutoHide), snapping the pane shut even
@@ -216,7 +219,7 @@ layoutCss = do
     -- Keep the side pane's body laid out at its full width while collapsed, so
     -- its contents (e.g. the "New Terminal" button) don't reflow as the column
     -- narrows -- the narrow column just clips them.
-    ".leksah.tall-auto .tab.area-tall > *" ?
+    ".leksah:is(.tall-auto, .tall-hide) .tab.area-tall > *" ?
         ("width" -: "var(--tall-col)")
     -- When the web menu bar is hidden (native menu present), drop its row so
     -- the toolbar sits at the top with no empty strip.
@@ -258,16 +261,12 @@ layoutCss = do
     ".leksah:has(.findbar.hidden)" ?
         ("--bar-row" -: "0px")
     -- Bottom ("wide1") pane visibility (the toolbar button cycles these classes
-    -- on .leksah): hide collapses its grid row; auto-hide keeps the row
-    -- collapsed permanently and reveals the bar as a transform-only overlay --
-    -- see the note below.
-    -- Collapse the grid row to 0 (the bar is display:none in hide mode).  No
-    -- !important needed: resizeBarsJs writes --wide1-bar, not --wide1-row, so
-    -- nothing inline fights this class rule.
-    ".leksah.wide1-hide" ?
-        ("--wide1-row" -: "0px")
-    ".leksah.wide1-hide .area-wide1" ?
-        Clay.display none
+    -- on .leksah): hide and auto-hide both keep the grid row collapsed
+    -- permanently and reveal the bar as a transform-only overlay (the shared
+    -- ':is(.wide1-auto, .wide1-hide)' rules below); like the side pane, they
+    -- differ only in the reveal trigger — auto opens on hover (statusbar / bar /
+    -- divider) or keyboard focus, hide on keyboard focus alone, so activating a
+    -- pane in the hidden bar shows the bar but the mouse can't.
     -- Bottom-bar auto-reveal must never change any element's SIZE: a size
     -- change reflows xterm (and, for CC panes, resizes the real tmux window).
     -- An earlier calc()-based version resized every wide0 terminal by ~10
@@ -289,9 +288,9 @@ layoutCss = do
     -- Sizing the overlay from --wide1-bar (not a hard-coded 150px) is what lets
     -- the bar be drag-resized in auto-hide and keep that height across mode
     -- switches.  The grid track itself stays 0, so nothing reflows:
-    ".leksah.wide1-auto" ?
+    ".leksah:is(.wide1-auto, .wide1-hide)" ?
         ("--wide1-row" -: "0px")
-    ".leksah.wide1-auto .tab-buttons.area-wide1" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide) .tab-buttons.area-wide1" ? do
         "position" -: "absolute"
         "left" -: "0"
         "right" -: "0"
@@ -301,7 +300,7 @@ layoutCss = do
         "z-index" -: "1"
         "transform" -: "translateY(calc(var(--wide1-bar) + 20px))"
         "transition" -: "transform 0.15s ease"
-    ".leksah.wide1-auto .tab.area-wide1" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide) .tab.area-wide1" ? do
         "position" -: "absolute"
         "left" -: "0"
         "right" -: "0"
@@ -310,25 +309,25 @@ layoutCss = do
         "z-index" -: "1"
         "transform" -: "translateY(calc(var(--wide1-bar) + 20px))"
         "transition" -: "transform 0.15s ease"
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab-buttons.area-wide1" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab-buttons.area-wide1, .leksah.wide1-hide.wide1-focus .tab-buttons.area-wide1" ?
         ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide1" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide1, .leksah.wide1-hide.wide1-focus .tab.area-wide1" ?
         ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto .statusbar" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide) .statusbar" ? do
         "position" -: "relative"
         "z-index" -: "2"
-    ".leksah.wide1-auto .tab.area-wide0 > *" ?
+    ".leksah:is(.wide1-auto, .wide1-hide) .tab.area-wide0 > *" ?
         ("transition" -: "transform 0.15s ease")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide0 > *" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .tab.area-wide0 > *, .leksah.wide1-hide.wide1-focus .tab.area-wide0 > *" ?
         ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
     -- The find bar sits in its own grid row directly above the (0-height) wide1
     -- area, i.e. exactly where the auto-hide bar's overlay slides up to — so it
     -- must ride up with the editor content or the revealed bar covers it.  Same
     -- transform, same timing, so the three (editor bottom / find bar / revealed
     -- bar top) tile seamlessly throughout the animation.
-    ".leksah.wide1-auto .findbar" ?
+    ".leksah:is(.wide1-auto, .wide1-hide) .findbar" ?
         ("transition" -: "transform 0.15s ease")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .findbar" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .findbar, .leksah.wide1-hide.wide1-focus .findbar" ?
         ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
     -- The active-pane glow/ring overlays (terminalCss .leksah-pane-glow) are
     -- position:fixed and CSS-anchored to LAYOUT geometry, which transforms do
@@ -340,22 +339,22 @@ layoutCss = do
     -- transition, same suppress and drag-resize overrides as the content.
     -- (.leksah-pane-left-line is wide0-anchored like the base glow, so it
     -- rides the base glow's transforms wherever they apply.)
-    ".leksah.wide1-auto .leksah-pane-glow, .leksah.wide1-auto .leksah-pane-left-line" ?
+    ".leksah:is(.wide1-auto, .wide1-hide) .leksah-pane-glow, .leksah:is(.wide1-auto, .wide1-hide) .leksah-pane-left-line" ?
         ("transition" -: "transform 0.15s ease")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line), .leksah.wide1-hide.wide1-focus :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ?
         ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
-    ".leksah.wide1-auto .leksah-pane-glow.glow-wide1" ?
+    ".leksah:is(.wide1-auto, .wide1-hide) .leksah-pane-glow.glow-wide1" ?
         ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1" ?
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1, .leksah.wide1-hide.wide1-focus .leksah-pane-glow.glow-wide1" ?
         ("transform" -: "translateY(0)")
     ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ?
         ("transform" -: "translateY(0)")
     ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1" ?
         ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
-    ".leksah.wide1-auto.leksah-resizing-wide1 :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ? do
         "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
         "transition" -: "none"
-    ".leksah.wide1-auto.leksah-resizing-wide1 .leksah-pane-glow.glow-wide1" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 .leksah-pane-glow.glow-wide1" ? do
         "transform" -: "translateY(0)"
         "transition" -: "none"
     -- Force-collapse override (bottom bar): '.wide1-suppress' slides the bar back
@@ -492,9 +491,17 @@ layoutCss = do
     ".leksah.tall-auto.leksah-resizing-tall .tall-divider" # before ?
         ("background" -: "var(--leksah-border-line-hi)")
     -- Hide each divider when its panel is hidden (else a stray 1px line lingers
-    -- against a zero-width/height cell).
+    -- against a zero-width/height cell)…
     ".leksah.tall-hide .tall-divider" ? Clay.display none
     ".leksah.wide1-hide .wide1-divider" ? Clay.display none
+    -- …except while the hidden bar is focus-revealed: then the divider (its
+    -- boundary line and resize handle) comes back, matching the auto reveal.
+    -- (The revealed wide1 divider's overlay geometry is in the shared reveal
+    -- rule below.)
+    ".leksah.tall-hide.tall-focus .tall-divider" ?
+        ("display" -: "block")
+    ".leksah.tall-hide.leksah-resizing-tall .tall-divider" ?
+        ("display" -: "block")
     -- In bottom-bar auto-hide the wide1 row is 0 (the bar is a transform overlay),
     -- so the grid-positioned divider would be a stray 1px line above the statusbar
     -- — hide it while the bar is parked.
@@ -510,7 +517,7 @@ layoutCss = do
     -- bottom, which resizeBarsJs uses as the fixed edge for the drag height.
     -- Hovering the handle is in the reveal :has() above (.wide1-divider:hover), so
     -- grabbing it holds the bar open instead of collapsing it out from under you.
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .wide1-divider" ? do
+    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .wide1-divider, .leksah.wide1-hide.wide1-focus .wide1-divider" ? do
         "display" -: "block"
         "position" -: "absolute"
         "left" -: "0"
@@ -539,20 +546,20 @@ layoutCss = do
     -- a pane moves the mouse off it and it snaps shut — so you could only ever drag
     -- it smaller.  transition:none so the live drag tracks the cursor instead of
     -- easing 0.15s behind it.
-    ".leksah.tall-auto.leksah-resizing-tall" ? do
+    ".leksah:is(.tall-auto, .tall-hide).leksah-resizing-tall" ? do
         "grid-template-columns" -: "var(--tall-col) 100%"
         "transition" -: "none"
-    ".leksah.wide1-auto.leksah-resizing-wide1 .tab-buttons.area-wide1" ?
+    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 .tab-buttons.area-wide1" ?
         ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto.leksah-resizing-wide1 .tab.area-wide1" ?
+    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 .tab.area-wide1" ?
         ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto.leksah-resizing-wide1 .tab.area-wide0 > *" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 .tab.area-wide0 > *" ? do
         "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
         "transition" -: "none"
-    ".leksah.wide1-auto.leksah-resizing-wide1 .findbar" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 .findbar" ? do
         "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
         "transition" -: "none"
-    ".leksah.wide1-auto.leksah-resizing-wide1 .wide1-divider" ? do
+    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 .wide1-divider" ? do
         "display" -: "block"
         "position" -: "absolute"
         "left" -: "0"

@@ -347,7 +347,7 @@ terminalCss = do
     -- column starts AT the screen's left edge — the boundary line is gated
     -- away there (see the .tall-divider ::before gating in Layout.hs), and
     -- the ring's left border must vanish with it: no line at screen edges.
-    ".leksah.tall-hide .leksah-pane-glow" ?
+    ".leksah.tall-hide:not(:has(.area-tall:focus-within)) .leksah-pane-glow" ?
         ("border-left" -: "none")
     ".leksah.tall-auto:not(:has(.tall-sensor:hover, .area-tall:hover, .area-tall:focus-within, .tall-divider:hover)) .leksah-pane-glow" ?
         ("border-left" -: "none")

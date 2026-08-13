@@ -1556,6 +1556,10 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- Esc collapses the auto-hidden side/bottom bar when focus is inside it.
   _ <- eval escAutoHideJs
 
+  -- .leksah gets tall-focus / wide1-focus while focus is inside that bar;
+  -- the hide-mode focus reveal keys on these (see barFocusJs).
+  _ <- eval barFocusJs
+
   -- window.leksahFlipMirror/Hide: the global flipper mirror overlay (a copy of
   -- another window's open flipper), driven by ideJSM_ broadcasts from main.
   _ <- eval flipMirrorJs
@@ -2765,6 +2769,29 @@ escAutoHideJs = T.unlines
   , "    if (inWide1 && root.classList.contains('wide1-auto')) window.leksahCollapseAutoHide('wide1');"
   , "    e.preventDefault(); e.stopPropagation();"
   , "  }, false);"
+  , "})();"
+  ]
+
+-- | Tags @.leksah@ with @tall-focus@ / @wide1-focus@ while keyboard focus is
+-- inside the side / bottom bar.  The HIDE-mode reveal (Layout.hs) keys on
+-- these plain classes rather than a root @:has(.area-…:focus-within)@:
+-- WebKit's @:has@ result is not reliably re-evaluated when focus LEAVES the
+-- subtree (auto-hide never shows it because its @:hover@ terms re-invalidate
+-- on every mouse move), which left a focus-revealed hidden bar stuck open.
+-- @focusout@ fires before the next element gains focus, so that side
+-- re-checks on a 0-timeout once the new focus has settled.
+barFocusJs :: Text
+barFocusJs = T.unlines
+  [ "(function(){"
+  , "  function upd(){"
+  , "    var root = document.querySelector('.leksah'); if (!root) return;"
+  , "    var a = document.activeElement;"
+  , "    root.classList.toggle('tall-focus',  !!(a && a.closest && a.closest('.area-tall')));"
+  , "    root.classList.toggle('wide1-focus', !!(a && a.closest && a.closest('.area-wide1')));"
+  , "  }"
+  , "  document.addEventListener('focusin', upd, true);"
+  , "  document.addEventListener('focusout', function(){ setTimeout(upd, 0); }, true);"
+  , "  upd();"
   , "})();"
   ]
 
