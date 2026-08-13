@@ -2001,9 +2001,9 @@ static NSColor *leksah_coord_ring_color(NSString *st) {
 // Announcing "safe to use" told everyone who isn't modifying leksah something
 // they never needed to know, and read as a warning at a glance.
 static NSString *leksah_coord_line(NSString *st) {
-    if ([st isEqualToString:@"orange"]) return @"Leksah: Claude needs it shortly";
-    if ([st isEqualToString:@"red"])    return @"Leksah: Claude is testing — hands off";
-    if ([st isEqualToString:@"blue"])   return @"Leksah: Claude is rebuilding/restarting";
+    if ([st isEqualToString:@"orange"]) return @"Leksah: an agent needs it shortly";
+    if ([st isEqualToString:@"red"])    return @"Leksah: an agent is testing — hands off";
+    if ([st isEqualToString:@"blue"])   return @"Leksah: an agent is rebuilding/restarting";
     return nil;
 }
 
@@ -2016,7 +2016,7 @@ static void leksah_status_rebuild_menu(void) {
     NSMenu *menu = [[NSMenu alloc] init];
     [menu setAutoenablesItems:NO];      // the informational rows stay disabled
     if ([gClaudeRows count] == 0) {
-        NSMenuItem *none = [[NSMenuItem alloc] initWithTitle:@"No Claude sessions running"
+        NSMenuItem *none = [[NSMenuItem alloc] initWithTitle:@"No agents running"
                                                      action:NULL keyEquivalent:@""];
         [none setEnabled:NO];
         [menu addItem:none];

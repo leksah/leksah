@@ -270,7 +270,7 @@ sendToClaude root txt = do
   let base = T.pack (dropTrailingPathSeparator root) <> "#claude"
   panes <- filter (\(k, _, _, _) -> claudeKeyFor base k) <$> liveRunPanes
   case panes of
-    [] -> return "no Claude session is running in this checkout — start one from its Claude node"
+    [] -> return "no agent session is running in this checkout — start one from its Agents node"
     ((_, _, _, pid) : _) -> do
       ok <- sendKeysTo pid ["-l", T.unpack txt]
       return $ if ok then "sent to the Claude session"

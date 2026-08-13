@@ -118,7 +118,7 @@ planWidget dir transcript selectE = divClass "plan" $ do
   -- picker has yielded to the composer, then Enter submits it.
   sendAnswer :: String -> Text -> IO Text
   sendAnswer keys feedback = mruClaudePane dir >>= \case
-    Nothing  -> return "no Claude session is running here"
+    Nothing  -> return "no agent session is running here"
     Just pid -> do
       ok <- keysTo pid [keys]
       unless (T.null feedback) $ do

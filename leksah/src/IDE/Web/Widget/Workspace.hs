@@ -14,7 +14,7 @@ module IDE.Web.Widget.Workspace (
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, try, SomeException)
 import Control.Lens (view)
-import Control.Monad (void, when, unless, forM, forM_)
+import Control.Monad (void, when, unless, filterM, forM, forM_)
 import Control.Monad.IO.Class (liftIO)
 import Language.Javascript.JSaddle (liftJSM, eval, valToNumber)
 import qualified System.IO as IO (hPutStrLn, stderr)
@@ -39,11 +39,11 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8, decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import Text.Read (readMaybe)
-import Data.Time.Clock.POSIX (getPOSIXTime, POSIXTime)
+import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds, POSIXTime)
 
 import qualified Data.ByteString as BS
        (ByteString, hGet, isInfixOf, length, null, takeEnd, append)
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory (doesFileExist, getModificationTime, listDirectory)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.FilePath
@@ -111,7 +111,7 @@ import IDE.Web.Widget.Flake
         flakeTreeWidget, execButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu, menuSplit, menuSplitWith)
 import IDE.Web.Widget.FileTree
-       (fileTree, claudeNode, gitClass, gitBadge, statusBadge)
+       (fileTree, agentsNode, agentsNodeWith, gitClass, gitBadge, statusBadge)
 import IDE.Web.Widget.Changes (gitChanges, FileChange(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.Claude
@@ -858,7 +858,7 @@ worktreesNode dir rootKeysD = do
 -- registry's whole story (claims + branch history).  Click opens a terminal
 -- there (⌥ = into a split); the menu is 'worktreeMenu'.
 --
--- The row EXPANDS to the worktree's Claude sessions: the 'claudeNode' for
+-- The row EXPANDS to the worktree's Claude sessions: the 'agentsNode' for
 -- sessions whose transcripts live in the worktree itself, plus one
 -- 'worktreeClaimRow' per session the registry links to it — which is how the
 -- session that CREATED a worktree is reachable even though it ran (and its
@@ -883,11 +883,11 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
   let badgeD = ffor statusD $ \rows ->
         let here = [ r | r <- rows, T.unpack (csrDir r) == pNorm ]
         in if | any ((== "waiting") . csrState) here ->
-                  Just ("▲", "#f85149", "Claude is waiting for approval here")
+                  Just ("▲", "#f85149", "An agent is waiting for approval here")
               | any ((== "busy") . csrState) here ->
-                  Just ("●", "#d29922", "Claude is working here")
+                  Just ("●", "#d29922", "An agent is working here")
               | not (null here) ->
-                  Just ("●", "#3fb950", "A Claude session is running here")
+                  Just ("●", "#3fb950", "An agent session is running here")
               | otherwise -> Nothing
       -- The scan-time branch from `worktree list` is the fallback until the
       -- row's own scan lands (agiBranch is live and survives re-pointing).
@@ -931,7 +931,7 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
     (el "ul" $ do
         -- Sessions whose transcripts live in the worktree itself (self-hides
         -- when there are none).
-        when claudeAvail $ claudeNode "workspace" p
+        when claudeAvail $ agentsNode "workspace" p
         -- Sessions the REGISTRY links to this worktree (creator, workers,
         -- reviewers) — they usually live in a sibling checkout.
         void . dyn $ ffor regD $ \(_, _, claims) ->
@@ -946,8 +946,8 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
 -- in a sibling checkout.
 worktreeClaimRow :: forall t m . MonadWidget t m
                  => FilePath -> FilePath -> Dynamic t [ClaudeStatusRow]
-                 -> (Text, Text, Text) -> m ()
-worktreeClaimRow dir p statusD (sid, label, tip) = el "li" $ do
+                 -> (Text, Text, Text, Double) -> m ()
+worktreeClaimRow dir p statusD (sid, label, tip, _when) = el "li" $ do
   let badgeD = ffor statusD $ \rows ->
         case [ r | r <- rows, csrSession r == sid ] of
           (r : _) | csrState r == "waiting"
@@ -972,6 +972,34 @@ worktreeClaimRow dir p statusD (sid, label, tip) = el "li" $ do
   performEvent_ $ liftIO open <$ domEvent Dblclick rowEl
   performEvent_ $ liftIO <$> mE
   return ()
+
+-- | The registry's session claims for a project directory that is ITSELF a
+-- worktree — the MRU-keyed rows a project's Agents node merges in (via
+-- 'agentsNodeWith'): a worktree promoted to a project keeps listing the
+-- sessions the registry (or a "Find Sessions…" scan) linked to it — a
+-- creator\/worker usually ran in a sibling checkout, so the transcript-based
+-- session list alone misses them.  Empty when the dir has no registered
+-- claims (or is no worktree).  Re-scans on the status tick as well as git
+-- refreshes, so a registration made elsewhere (a hook, a scan run from the
+-- Worktrees node) shows up within seconds.
+worktreeClaims :: forall t m . MonadWidget t m
+               => FilePath -> m (Dynamic t [(Double, m ())])
+worktreeClaims p = do
+  pb <- getPostBuild
+  (clE, fireCl) <- newTriggerEvent
+  scan <- liftIO . newCoalescer $
+      worktreeStory p >>= \(_, _, claims) -> fireCl claims
+  unless (isRemotePath p) . liftIO $ registerGitRefresh p scan
+  (stE, fireSt) <- newTriggerEvent
+  stTick <- tickLossyFromPostBuildTime 3
+  performEvent_ $ liftIO (scan >> (claudeStatusNow >>= fireSt))
+      <$ leftmost [() <$ pb, () <$ stTick]
+  -- holdUniqDyn: the scan re-fires every tick; only actual claim changes
+  -- may rebuild the rows.
+  clD     <- holdUniqDyn =<< holdDyn [] clE
+  statusD <- holdUniqDyn =<< holdDyn [] (csRows <$> stE)
+  return $ ffor clD $ map
+      (\c@(_, _, _, w) -> (w, worktreeClaimRow p p statusD c))
 
 -- | Where does a session's transcript live?  Tried in order: the worktree
 -- itself, wherever @agents.json@ says the session was ('agentDirOf'), the
@@ -1055,10 +1083,10 @@ scanFileFor fp needle marker =
 -- | Render a worktree's registry record as @(tooltip story, newest note,
 -- claim rows)@: the story is claims first ("working · 2h ago · ab12cd34 —
 -- fixing the parser") then the branch-move log; the rows are one
--- @(session id, label, tooltip)@ per session-holding claim, labelled with the
+-- @(session id, label, tooltip, MRU key)@ per session-holding claim, labelled with the
 -- session's own Agents-pane title when it has one.  Runs in the row's scan
 -- (IO), so ages are formatted against a real clock.
-worktreeStory :: FilePath -> IO (Text, Maybe Text, [(Text, Text, Text)])
+worktreeStory :: FilePath -> IO (Text, Maybe Text, [(Text, Text, Text, Double)])
 worktreeStory p = do
   mwi    <- worktreeInfo p
   titles <- agentTitles
@@ -1080,16 +1108,38 @@ worktreeStory p = do
         return ( s
                , roleText (scRole c) <> " · " <> name
                , s <> " · " <> age (scWhen c)
-                   <> (if T.null (scNote c) then "" else " — " <> scNote c) )
-  return $ case mwi of
-    Nothing -> ("", Nothing, [])
-    Just wi ->
-      ( T.intercalate "\n" $ map claimLine (wiClaims wi)
-          <> case wiBranches wi of
-               (_ : olds@(_ : _)) -> "branch history:" : map moveLine olds
-               _                  -> []
-      , listToMaybe [ scNote c | c <- wiClaims wi, not (T.null (scNote c)) ]
-      , mapMaybe claimRow (wiClaims wi) )
+                   <> (if T.null (scNote c) then "" else " — " <> scNote c)
+               , scWhen c )
+  case mwi of
+    Nothing -> return ("", Nothing, [])
+    Just wi -> do
+      -- Sessions whose transcript lives in the worktree ITSELF are dropped
+      -- from the rows: the 'agentsNode' rendered beside them already lists
+      -- those, so the claim rows are for the sessions only the registry
+      -- knows about (a creator that ran in a sibling checkout).  The
+      -- tooltip story keeps every claim.
+      rows0 <- filterM (\(s, _, _, _) ->
+                  not <$> (doesFileExist =<< claudeTranscriptPath p s))
+              (mapMaybe claimRow (wiClaims wi))
+      -- MRU key: the session's transcript mtime wherever it actually lives
+      -- (found the same way resuming does), so a claim row sorts among the
+      -- dir's own sessions by real last activity; the claim's own time
+      -- stands in when no transcript is found.
+      rows <- forM rows0 $ \(s, l, t, w) -> do
+        mw <- resolveSessionDir p p s >>= \case
+          Nothing -> return Nothing
+          Just d  -> (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            tp <- claudeTranscriptPath d s
+            Just . realToFrac . utcTimeToPOSIXSeconds
+              <$> getModificationTime tp
+        return (s, l, t, fromMaybe w mw)
+      return
+        ( T.intercalate "\n" $ map claimLine (wiClaims wi)
+            <> case wiBranches wi of
+                 (_ : olds@(_ : _)) -> "branch history:" : map moveLine olds
+                 _                  -> []
+        , listToMaybe [ scNote c | c <- wiClaims wi, not (T.null (scNote c)) ]
+        , rows )
 
 -- | True when @dir@ is the root of a git checkout — it has its own @.git@ dir
 -- (a normal checkout) or @.git@ file (a linked worktree).  A subdirectory of a
@@ -1819,7 +1869,12 @@ workspaceWidget ctx activeFileD revealFileD = do
                   -- project row (self-hides unless the project dir has sessions) so
                   -- it's reachable without drilling into the Files node.
                   claudeAvail <- liftIO claudeAvailable
-                  when claudeAvail $ claudeNode "workspace" (pkRoot pKey)
+                  when claudeAvail $ do
+                      -- A project dir that is itself a worktree also lists
+                      -- the sessions the registry links to it, INSIDE its
+                      -- Agents node after its own sessions ('worktreeClaims').
+                      claimsD <- worktreeClaims (pkRoot pKey)
+                      agentsNodeWith "workspace" (pkRoot pKey) claimsD
                   let packagesD = M.fromList . map (\p -> (pkgManifest p, p)) . prPackages <$> projectD
                   packagesE <- listViewWithKey packagesD $ \_manifest packageD -> do
                     cabalFileD <- holdUniqDyn $ pkgManifest <$> packageD

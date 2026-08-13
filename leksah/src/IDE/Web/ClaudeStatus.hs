@@ -65,12 +65,12 @@ data ClaudeStatus = ClaudeStatus
                                    --   0 unless the state needs you (@waiting@ \/
                                    --   @busy@): all-idle and nothing-running are
                                    --   not situations to put a number on.
-  , csSummary :: Text              -- ^ one line, e.g. @"Claude: 3 sessions — 1 waiting"@
+  , csSummary :: Text              -- ^ one line, e.g. @"3 agents — 1 waiting"@
   , csRows    :: [ClaudeStatusRow] -- ^ attention first, then working, then idle
   } deriving (Eq, Show)
 
 emptyClaudeStatus :: ClaudeStatus
-emptyClaudeStatus = ClaudeStatus "none" 0 "Claude: no sessions running" []
+emptyClaudeStatus = ClaudeStatus "none" 0 "No agents running" []
 
 -- The latest poll result, and the push handlers to notify when it changes.
 -- (Interpreted-module CAFs: a ghci :reload gives the next instance empty ones,
@@ -155,8 +155,8 @@ summarize titles labels ls = ClaudeStatus
     nWorking = length (filter ((== 1) . rank) ls)
     summary
       | null ls = csSummary emptyClaudeStatus
-      | otherwise = "Claude: " <> num (length ls)
-                      <> (if length ls == 1 then " session" else " sessions") <> detail
+      | otherwise = num (length ls)
+                      <> (if length ls == 1 then " agent" else " agents") <> detail
       where detail = case [ num n <> w | (n, w) <- [ (nWaiting, " waiting")
                                                    , (nWorking, " working") ], n > 0 ] of
               [] -> ""

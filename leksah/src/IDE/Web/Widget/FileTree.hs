@@ -8,7 +8,8 @@ module IDE.Web.Widget.FileTree
   ( filesAndDirs
   , joinPaths
   , fileTree
-  , claudeNode
+  , agentsNode
+  , agentsNodeWith
   , statusBadge
   , GitStatus(..)
   , gitClass
@@ -22,13 +23,15 @@ import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.Bool (bool)
 import Data.Char (isSpace)
-import Data.List (isPrefixOf, tails, dropWhileEnd, partition)
+import Data.List (isPrefixOf, tails, dropWhileEnd, partition, sortOn)
+import Data.Ord (Down(..))
 import Data.Map (Map, mapKeys)
 import qualified Data.Map as M (toList, fromList, lookup, empty, elems)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S (member, fromList)
 import Data.Text (Text)
+import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import qualified Data.Text as T (pack, unpack)
 
 -- File access goes through the IDE.Web.FS seam (real FS natively; the
@@ -246,11 +249,11 @@ fileTree'
   -> FilePath
   -> m (Event t FileEvents)
 fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD revealD infoD claudeHere dir = do
-  -- A synthetic "Claude" node at the top of every directory that has saved
+  -- A synthetic "Agents" node at the top of every directory that has saved
   -- Claude Code sessions (self-hiding otherwise; only when the CLI is on PATH).
   -- Suppressed at a dir already covered by a project/package row's Claude node.
   avail <- liftIO claudeAvailable
-  when (claudeHere && avail) $ claudeNode treeName dir
+  when (claudeHere && avail) $ agentsNode treeName dir
   postBuild <- getPostBuild
   newListE <- performEvent $ filesAndDirs dir <$ postBuild
   allD <- holdDyn ([], []) newListE
@@ -362,8 +365,8 @@ fileClaudeMenu avail f
                                                 , runClaudeCmd (ClaudeAsk f) )) ]
 
 -- | A leading robot icon for Claude tree rows.
-claudeIcon :: MonadWidget t m => m ()
-claudeIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") (return ())
+agentIcon :: MonadWidget t m => m ()
+agentIcon = elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") (return ())
 
 -- | A little status glyph driven by @(glyph, colour, tooltip)@; hidden when
 -- 'Nothing'.  Shape AND colour differ per state (red ▲ = blocked on approval,
@@ -378,7 +381,7 @@ statusBadge badgeD = elDynAttr "span"
        Nothing            -> "style" =: "display:none")
     (dynText $ ffor badgeD $ maybe "" (\(g, _, _) -> g))
 
--- | The synthetic "Claude" node for @dir@, shown only while @dir@ has saved
+-- | The synthetic "Agents" node for @dir@, shown only while @dir@ has saved
 -- Claude Code sessions.  Double-click/Enter on the row (robot icon + count)
 -- activates the most-recently-used OPEN claude terminal here, falling back to
 -- the resume picker when none is open; right-click offers New/Continue/Resume.
@@ -387,8 +390,20 @@ statusBadge badgeD = elDynAttr "span"
 -- delete on right-click.  The list rescans on a slow tick, so new sessions —
 -- and freshening "3h ago" ages — appear on their own; @/rename@ names ride a
 -- separate fast tick (see 'namesD') so a rename shows up promptly.
-claudeNode :: forall t m. MonadWidget t m => Text -> FilePath -> m ()
-claudeNode treeName dir = do
+agentsNode :: forall t m. MonadWidget t m => Text -> FilePath -> m ()
+agentsNode treeName dir = agentsNodeWith treeName dir (constDyn [])
+
+-- | 'agentsNode' with extra agent rows MERGED into the session children:
+-- each extra row carries its last-activity time (POSIX seconds), and the
+-- children render as one most-recently-active-first list — sessions keyed by
+-- transcript mtime, extras by their own key.  The extras join the label's
+-- count and make the node show even when the dir has no sessions of its own
+-- — how a worktree project's registry-linked sessions ('worktreeClaims' in
+-- "IDE.Web.Widget.Workspace") live INSIDE its Agents node rather than
+-- beside it.
+agentsNodeWith :: forall t m. MonadWidget t m
+               => Text -> FilePath -> Dynamic t [(Double, m ())] -> m ()
+agentsNodeWith treeName dir extraD = do
   pb <- getPostBuild
   (sessE, fireSess) <- newTriggerEvent
   (runE,  fireRun)  <- newTriggerEvent
@@ -418,17 +433,18 @@ claudeNode treeName dir = do
   liveD <- holdUniqDyn =<< holdDyn M.empty nameE
   sessD <- holdDyn [] sessE
   runD  <- holdUniqDyn =<< holdDyn False runE
-  hasD  <- holdUniqDyn (not . null <$> sessD)
+  hasD  <- holdUniqDyn ((\ss ex -> not (null ss) || not (null ex)) <$> sessD <*> extraD)
   -- The node's status badge: the "worst" state among the live sessions running
   -- in THIS directory (waiting > working > idle), falling back to the plain
   -- green dot while a claude terminal is open here but no live state is
   -- readable (older CLI).
   let badgeD = zipDynWith nodeBadge runD liveD
   void . dyn $ ffor hasD $ \has -> when has . void $
-    treeItem "claude" False
+    treeItem "agents" False
       (do (rowEl, dmenuE) <- treeSelect' treeName rootMenu $ do
-             claudeIcon
-             dynText $ ffor sessD $ \ss -> "Claude (" <> T.pack (show (length ss)) <> ")"
+             agentIcon
+             dynText $ (\ss ex -> "Agents (" <> T.pack (show (length ss + length ex)) <> ")")
+                         <$> sessD <*> extraD
              statusBadge badgeD
              return (never :: Event t (IO ()))
           -- Double-click / Enter on the Claude node → the most-recently-used
@@ -443,16 +459,21 @@ claudeNode treeName dir = do
           performEvent_ $ liftIO <$> dmenuE
           return (never :: Event t ()))
       (el "ul" $ do
-          void . dyn $ ffor sessD $ mapM_ (sessionRow treeName dir doScan liveD)
+          void . dyn $ (\ss extras -> sequence_
+              [ w | (_, w) <- sortOn (Down . fst) $
+                      [ (realToFrac (utcTimeToPOSIXSeconds (csModified s)) :: Double,
+                         sessionRow treeName dir doScan liveD s) | s <- ss ]
+                      <> extras ])
+            <$> sessD <*> extraD
           return (never :: Event t ()))
   where
     nodeBadge run m
       | any ((== Just "waiting") . clStatus) here =
-          Just ("▲", "#f85149", "Claude is waiting for approval here")
+          Just ("▲", "#f85149", "An agent is waiting for approval here")
       | any ((`elem` [Just "busy", Just "shell"]) . clStatus) here =
-          Just ("●", "#d29922", "Claude is working here")
+          Just ("●", "#d29922", "An agent is working here")
       | not (null here) || run =
-          Just ("●", "#3fb950", "A Claude session is running here")
+          Just ("●", "#3fb950", "An agent session is running here")
       | otherwise = Nothing
       where here = [ l | l <- M.elems m, clDir l == dropTrailingPathSeparator dir ]
     rootMenu = menuSplit $
@@ -462,11 +483,11 @@ claudeNode treeName dir = do
       ] <>
       [ constDyn ("New Claude Session in Worktree…", (Nothing, requestNewWorktree dir))
       | not (isRemotePath dir) ] <>
-      [ constDyn ("Claude Task Queue…", (Nothing, requestTaskQueue dir))
+      [ constDyn ("Agent Task Queue…", (Nothing, requestTaskQueue dir))
       | not (isRemotePath dir) ]
 
--- | One session row under a Claude node (@rescan@ refreshes the list, e.g. after
--- a delete; @liveD@ is the live-session map, polled by 'claudeNode', so renaming
+-- | One session row under an Agents node (@rescan@ refreshes the list, e.g. after
+-- a delete; @liveD@ is the live-session map, polled by 'agentsNode', so renaming
 -- a running session relabels its row — and its status badge tracks the CLI's
 -- semantic state — without a full rescan).  The row's tooltip is the session id.
 sessionRow
@@ -474,7 +495,7 @@ sessionRow
   => Text -> FilePath -> IO () -> Dynamic t (Map Text ClaudeLive) -> ClaudeSession -> m ()
 sessionRow treeName dir rescan liveD s = el "li" $ do
   (sEl, actE) <- treeSelect' treeName sessMenu $ do
-      claudeIcon
+      agentIcon
       elAttr "span" ("class" =: "claude-session-label" <> "title" =: csId s)
         . dynText $ ffor liveD $ \m ->
           csAge s <> " · " <> fromMaybe (csTitle s) (clName =<< M.lookup (csId s) m)

@@ -1987,7 +1987,7 @@ tabLabelText k names = case k of
   BrowserKey n   -> "Browser " <> T.pack (show n)
   GitLogKey _ b  -> "Log: " <> b
   ReviewKey d    -> "Review: " <> T.pack (takeFileName (dropTrailingPathSeparator d))
-  TasksKey       -> "Claude Tasks"
+  TasksKey       -> "Agent Tasks"
   PlanKey d _    -> "Plan: " <> T.pack (takeFileName (dropTrailingPathSeparator d))
   CompareKey d _ -> "Compare: " <> T.pack (takeFileName (dropTrailingPathSeparator d))
   EditorKey file -> T.pack (takeFileName file)
@@ -2944,9 +2944,9 @@ listNavJs = T.unlines
   , "          cur.dispatchEvent(new MouseEvent('click', mo));"
   -- A workspace file row opens on double-click (single click just selects it),
   -- so Enter/Space on a file must synthesise a dblclick to open it in the editor.
-  -- Claude nodes (the "Claude" row and its session children, nested in li.claude)
+  -- Agents nodes (the "Agents" row and its session children, nested in li.agents)
   -- likewise act on double-click, so Enter/Space there resumes/launches.
-  , "          if (cur.closest('li.file, li.claude')) cur.dispatchEvent(new MouseEvent('dblclick', mo)); }"
+  , "          if (cur.closest('li.file, li.agents')) cur.dispatchEvent(new MouseEvent('dblclick', mo)); }"
   , "        e.preventDefault(); return; }"
   , "      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {"
   , "        if (cur) { var li = cur.closest('li');"
@@ -4825,7 +4825,7 @@ statusLightJs = T.unlines
   , "  var el = null, shapeEl = null, countEl = null, state = 'green', timer = null;"
   -- The live-session state (what the dot draws) and its hover text, pushed by
   -- the reflex network; 'none' until the first push, a tick after boot.
-  , "  var claude = 'none', claudeTip = 'Claude: no sessions running', claudeCount = 0;"
+  , "  var claude = 'none', claudeTip = 'No agents running', claudeCount = 0;"
   -- Runs BEFORE mainWidgetWithCss rebuilds <body>, which detaches anything we
   -- append now — so (re)create the dot on demand and keep it in whatever <body>
   -- is current, preserving the colour across a rebuild.
@@ -4922,9 +4922,9 @@ statusLightJs = T.unlines
   -- safe: the line exists only to say hands off, so the hover text is otherwise
   -- purely about the sessions.
   , "  function coordText(){"
-  , "    if (state === 'orange') return 'Leksah: Claude needs it shortly';"
-  , "    if (state === 'red')    return 'Leksah: Claude is testing \\u2014 hands off';"
-  , "    if (state === 'blue')   return 'Leksah: Claude is rebuilding/restarting';"
+  , "    if (state === 'orange') return 'Leksah: an agent needs it shortly';"
+  , "    if (state === 'red')    return 'Leksah: an agent is testing \\u2014 hands off';"
+  , "    if (state === 'blue')   return 'Leksah: an agent is rebuilding/restarting';"
   , "    return '';"
   , "  }"
   , "  function tipText(){ var c = coordText(); return claudeTip + (c ? '\\n' + c : ''); }"
@@ -6139,7 +6139,7 @@ main showMenubar macTitlebar wid ctx = mdo
     -- Review pane requested from the git tree ("Review Changes…" / "Review
     -- Worktree…") or the Claude worktree flow; opens as a center tab too.
     (reviewReqE, fireReviewReq) <- newTriggerEvent
-    -- The Claude task queue ("Claude Task Queue…" on a Claude node) and the
+    -- The Claude task queue ("Agent Task Queue…" on an Agents node) and the
     -- plan-review pane ("Review Plan…" on a session row).  TasksKey is one
     -- global tab; the requesting dir seeds its add-form via the ref.
     tasksSeedRef <- liftIO (newIORef ".")

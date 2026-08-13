@@ -124,7 +124,7 @@ csTitle s = fromMaybe (csLabel s) (csName s)
 -- @claude@ binary is often installed (or self-updates its symlink) after leksah
 -- has already started, and re-checking on a miss lets the feature light up
 -- without a restart.  @findExecutable@ on a miss is a cheap PATH scan and only
--- runs from tree builds / the 30s claudeNode poll.
+-- runs from tree builds / the 30s agentsNode poll.
 {-# NOINLINE claudeAvailableRef #-}
 claudeAvailableRef :: IORef Bool
 claudeAvailableRef = unsafePerformIO (newIORef False)
