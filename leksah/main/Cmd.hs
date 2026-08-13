@@ -29,14 +29,15 @@ import Control.Monad (unless, when, void)
 
 import Data.Aeson
        (Value(..), Result(..), object, (.=), encode, eitherDecodeStrict,
-        fromJSON)
+        fromJSON, toJSON)
 import qualified Data.Aeson.Key as Key (fromText)
-import qualified Data.Aeson.KeyMap as KM (lookup)
+import qualified Data.Aeson.KeyMap as KM (insert, lookup)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8 (getLine)
+import qualified Data.ByteString.Lazy as BL (toStrict, writeFile)
 import qualified Data.ByteString.Lazy.Char8 as BL8 (putStrLn)
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
-import Data.Char (isSpace, isDigit)
+import Data.Char (isSpace, isDigit, toLower)
 import Data.List (isPrefixOf, isInfixOf, dropWhileEnd, sortBy, stripPrefix)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Ord (comparing)
@@ -47,10 +48,12 @@ import Data.Text.Encoding (encodeUtf8, decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 
 import System.Directory
-       (getCurrentDirectory, getHomeDirectory, doesFileExist)
-import System.Environment (getArgs, lookupEnv)
+       (getCurrentDirectory, getHomeDirectory, doesFileExist,
+        createDirectoryIfMissing, getPermissions, setPermissions,
+        setOwnerExecutable)
+import System.Environment (getArgs, getExecutablePath, lookupEnv)
 import System.Exit (exitFailure)
-import System.FilePath ((</>))
+import System.FilePath ((</>), takeDirectory)
 import System.IO
        (hPutStrLn, stderr, stdout, hFlush, hSetBuffering,
         BufferMode(LineBuffering), isEOF)
@@ -126,7 +129,16 @@ usage = T.unlines
   , "  leksah-cmd agent describe [SID] --title T --html H"
   , "                                     set how an agent appears in the Agents pane"
   , "                                     (SID defaults to the calling session)"
+  , "  leksah-cmd agent register [--worktree DIR] [--role R] [--branch B] [--note TEXT]"
+  , "                                     record a session's relationship with a git"
+  , "                                     worktree (created/working/reviewing/abandoned);"
+  , "                                     worktree defaults to your cwd, session to you"
   , "  leksah-cmd agent                   the full agent help (also: me, status)"
+  , "  leksah-cmd hooks install [--project DIR]"
+  , "                                     add the worktree-registry PostToolUse hook to"
+  , "                                     ~/.claude/settings.json (or DIR/.claude/) so"
+  , "                                     sessions NOT launched from leksah register too"
+  , "  leksah-cmd hooks write-script      (re)write ~/.leksah/worktree-hook.sh"
   , "  leksah-cmd help                    show this help"
   ]
 
@@ -145,6 +157,13 @@ main = getArgs >>= \case
   -- ping: exit 0 if the UI answered, 1 otherwise (for scripting).
   ("ping":_) -> pingOnce >>= \ok ->
     if ok then putStrLn "ok" else hPutStrLn stderr "leksah: not responding" >> exitFailure
+
+  -- hooks: the Claude Code PostToolUse hook that keeps leksah's worktree
+  -- registry fresh.  write-script (re)writes ~/.leksah/worktree-hook.sh (also
+  -- run at every leksah launch); install merges the hook into user or project
+  -- settings for sessions NOT launched from leksah — opt-in, with a y/N.
+  ("hooks":"write-script":_) -> hooksWriteScript >>= putStrLn
+  ("hooks":"install":rest)   -> hooksInstall rest
 
   -- wait-ready [SECONDS]: poll until the UI answers (used after a relaunch).
   ("wait-ready":rest) -> do
@@ -847,6 +866,18 @@ mcpTools =
       , ("html",    "string", "HTML fragment, ~4 rendered lines. Allowed tags: p, br, a, code, b, strong, i, em, ul, li, span.")
       , ("session", "string", "Whose entry to set (default: your own)") ]
       []
+  , mcpTool "register_worktree"
+      "Record YOUR relationship with a git worktree, so the IDE's worktree map \
+      \stays accurate. Call it whenever you create a worktree, start working in \
+      \one, review one, are done with one — or change the branch a worktree is \
+      \on (pass branch). The IDE shows these relationships in its Workspace and \
+      \Agents panes, so the user can always tell which session a worktree \
+      \belongs to."
+      [ ("worktree", "string", "The worktree's path (default: your working directory)")
+      , ("role",     "string", "created, working (default), reviewing, or abandoned")
+      , ("branch",   "string", "The branch it is on now — pass after switching branches (default: read from git)")
+      , ("note",     "string", "One line saying what your relationship with it is") ]
+      []
   ]
 
 -- | Field lookup on an aeson object 'Value'.
@@ -966,6 +997,13 @@ mcpCall params = do
                         <> maybe [] ((:[]) . T.unpack) (mcpText "session" args)
                         <> maybe [] (\t -> ["--title", T.unpack t]) mt
                         <> maybe [] (\h -> ["--html",  T.unpack h]) mh
+      -- register_worktree: like describe, the caller is identified by the wire
+      -- format, so every argument is optional.
+      "register_worktree" -> sock $ ["agent", "register"]
+          <> maybe [] (\w -> ["--worktree", T.unpack w]) (mcpText "worktree" args)
+          <> maybe [] (\r -> ["--role",     T.unpack r]) (mcpText "role" args)
+          <> maybe [] (\b -> ["--branch",   T.unpack b]) (mcpText "branch" args)
+          <> maybe [] (\n -> ["--note",     T.unpack n]) (mcpText "note" args)
       "screenshot" -> do
         n <- atomicModifyIORef' mcpShotCounter (\i -> (i + 1, i))
         home <- getHomeDirectory
@@ -985,3 +1023,135 @@ mcpCall params = do
     sock args = tryReply args >>= \case
       Nothing -> return (Left "leksah is not running (no control socket answered)")
       Just t  -> return (Right t)
+
+--------------------------------------------------------------------------------
+-- The worktree-registry PostToolUse hook
+
+-- | (Re)write @~\/.leksah\/worktree-hook.sh@ with this binary's path baked in
+-- (leksah runs this at every launch, so the path survives rebuilds), and
+-- return the script's path.
+hooksWriteScript :: IO FilePath
+hooksWriteScript = do
+  home <- getHomeDirectory
+  exe  <- getExecutablePath
+  let dir  = home </> ".leksah"
+      path = dir </> "worktree-hook.sh"
+  createDirectoryIfMissing True dir
+  writeFile path (hookScript exe)
+  perms <- getPermissions path
+  setPermissions path (setOwnerExecutable True perms)
+  return path
+
+-- | The hook body: parse the PostToolUse JSON on stdin (python3 — no jq
+-- dependency), recognise @git worktree add@ (register the new path as
+-- @created@) and @git switch@\/@checkout@ (record the branch move,
+-- @--branch-only@ so an agent's claim note is never clobbered), and hand it
+-- to @leksah-cmd agent register@ with the hook payload's session id.  Silent,
+-- and every path exits 0 — it must never slow or block a session.
+hookScript :: String -> String
+hookScript exe = unlines
+  [ "#!/bin/sh"
+  , "# Generated by `leksah-cmd hooks write-script` (rewritten at every leksah"
+  , "# launch).  Claude Code PostToolUse hook: git worktree/branch commands a"
+  , "# session runs in Bash land in leksah's worktree registry automatically."
+  , "[ -S \"$HOME/.leksah/cmd.sock\" ] || exit 0"
+  , "LK=" <> show exe
+  , "[ -x \"$LK\" ] || LK=$(command -v leksah-cmd) || exit 0"
+  , "command -v python3 >/dev/null 2>&1 || exit 0"
+    -- The heredoc below IS python's stdin, so the hook payload must be read
+    -- first and passed through the environment.
+  , "PAYLOAD=$(cat 2>/dev/null || true)"
+  , "export PAYLOAD"
+  , "python3 - \"$LK\" <<'PYEOF' >/dev/null 2>&1"
+  , "import json,os,re,subprocess,sys"
+  , "try: d=json.loads(os.environ.get(\"PAYLOAD\") or \"{}\")"
+  , "except Exception: sys.exit(0)"
+  , "if d.get(\"tool_name\")!=\"Bash\": sys.exit(0)"
+  , "cmd=(d.get(\"tool_input\") or {}).get(\"command\",\"\") or \"\""
+  , "cwd=d.get(\"cwd\") or \"\""
+  , "sid=d.get(\"session_id\") or \"\""
+  , "lk=sys.argv[1]"
+  , "def reg(args):"
+  , "    a=[lk,\"agent\",\"register\"]+args"
+  , "    if sid: a+=[\"--session\",sid]"
+  , "    try: subprocess.run(a,timeout=8,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)"
+  , "    except Exception: pass"
+  , "def absd(p):"
+  , "    return p if os.path.isabs(p) else os.path.normpath(os.path.join(cwd,p))"
+  , "toks=[t.strip(\"'\\\"\") for t in re.findall(r\"[^\\s;&|]+\",cmd)]"
+  , "def wt_add_path():"
+  , "    for i in range(1,len(toks)-1):"
+  , "        if toks[i]==\"worktree\" and toks[i+1]==\"add\" and toks[i-1].endswith(\"git\"):"
+  , "            j=i+2"
+  , "            while j<len(toks):"
+  , "                t=toks[j]"
+  , "                if t in (\"-b\",\"-B\"): j+=2"
+  , "                elif t.startswith(\"-\"): j+=1"
+  , "                else: return t"
+  , "    return None"
+  , "p=wt_add_path()"
+  , "if p:"
+  , "    reg([\"--worktree\",absd(p),\"--role\",\"created\",\"--note\",\"git worktree add (hook)\"])"
+  , "elif re.search(r\"git\\s+(switch|checkout)\\s\",cmd) and cwd:"
+  , "    reg([\"--worktree\",cwd,\"--branch-only\"])"
+  , "sys.exit(0)"
+  , "PYEOF"
+  , "exit 0"
+  ]
+
+-- | Merge the hook into @~\/.claude\/settings.json@ (or a project's
+-- @.claude\/settings.json@ with @--project DIR@), after showing what will be
+-- added and asking.  Idempotent: an existing worktree-hook entry is left
+-- alone.  This is the OPT-IN path for sessions leksah did not launch — leksah
+-- itself injects the hook per launch via @--settings@, touching no user file.
+hooksInstall :: [String] -> IO ()
+hooksInstall args = do
+  home <- getHomeDirectory
+  target <- case args of
+    ["--project", d] -> return (d </> ".claude" </> "settings.json")
+    []               -> return (home </> ".claude" </> "settings.json")
+    _ -> do hPutStrLn stderr "usage: leksah-cmd hooks install [--project DIR]"
+            exitFailure
+  script <- hooksWriteScript
+  ex <- doesFileExist target
+  parsed <- if ex then eitherDecodeStrict <$> BS.readFile target
+                  else return (Right (object []))
+  case parsed of
+    Left err -> do
+      hPutStrLn stderr ("leksah-cmd: cannot parse " <> target <> ": " <> err)
+      exitFailure
+    Right v
+      | hookPresent v -> putStrLn ("Already installed in " <> target)
+      | otherwise -> do
+          putStrLn ("Will add this PostToolUse entry to " <> target <> ":")
+          BL8.putStrLn (encode hookEntry)
+          putStr "Proceed? [y/N] " >> hFlush stdout
+          answer <- getLine
+          if map toLower answer `elem` ["y", "yes"]
+            then do
+              createDirectoryIfMissing True (takeDirectory target)
+              BL.writeFile target (encode (addHook v))
+              putStrLn ("Installed (hook script: " <> script <> ").")
+              putStrLn "Note: the file is rewritten as compact JSON."
+            else putStrLn "Aborted — nothing written."
+  where
+    -- Guarded so machines without the script (a teammate's checkout, this
+    -- settings file synced elsewhere) get a no-op, not a shell error.
+    hookCmd :: Text
+    hookCmd = "[ -x \"$HOME/.leksah/worktree-hook.sh\" ] && \"$HOME/.leksah/worktree-hook.sh\" || true"
+    hookEntry = object
+      [ "matcher" .= ("Bash" :: Text)
+      , "hooks" .= [ object [ "type" .= ("command" :: Text)
+                            , "command" .= hookCmd
+                            , "timeout" .= (10 :: Int) ] ] ]
+    hookPresent v =
+      "worktree-hook.sh" `T.isInfixOf`
+        decodeUtf8With lenientDecode (BL.toStrict (encode v))
+    setKey k val (Object o) = Object (KM.insert (Key.fromText k) val o)
+    setKey k val _          = object [ Key.fromText k .= val ]
+    addHook v =
+      let hooksVal = fromMaybe (object []) (mcpField "hooks" v)
+          arr = case mcpField "PostToolUse" hooksVal of
+                  Just a | Success xs <- (fromJSON a :: Result [Value]) -> xs
+                  _ -> []
+      in setKey "hooks" (setKey "PostToolUse" (toJSON (arr <> [hookEntry])) hooksVal) v

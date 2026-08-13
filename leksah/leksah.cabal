@@ -137,6 +137,7 @@ library
         IDE.Web.SplitOpenRequest
         IDE.Web.GitLogRequest
         IDE.Web.Worktree
+        IDE.Web.WorktreeRegistry
         IDE.Web.ClaudeQueue
         IDE.Web.NewWindowRequest
         IDE.Web.OpenPanel

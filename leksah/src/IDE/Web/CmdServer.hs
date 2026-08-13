@@ -137,6 +137,8 @@ import IDE.Web.Agent
        (ForkPlace(..), ForkRequest(..), agentList, agentRead, agentSend,
         agentStatus, emptyForkRequest, forkAgent)
 import IDE.Web.AgentInfo (describeAgent)
+import IDE.Web.WorktreeRegistry
+       (ClaimRole, parseRole, recordBranchMove, registerWorktree)
 import IDE.Web.Claude (sessionOwningPid, showLiveSession)
 
 import IDE.Web.Instance (cmdSocketFileName)
@@ -701,6 +703,23 @@ handleConn app conn = do
         ("describe" : rest) -> case parseDescribe me rest of
           Left err          -> reply ("agent describe: " <> err <> "\n\n" <> agentUsage)
           Right (sid, t, h) -> describeAgent sid t h >>= reply
+        -- How a session (or a hook acting for one) records its relationship
+        -- with a git worktree — the Worktrees tree node and the Agents pane
+        -- read these back.  The worktree defaults to the CALLER's cwd, the
+        -- session to the caller, so the usual call is just
+        -- `agent register --role working --note '…'`.
+        ("register" : rest) -> case parseRegister cwd me rest of
+          Left err -> reply ("agent register: " <> err <> "\n\n" <> agentUsage)
+          -- --branch-only (the git hook's switch/checkout path) records the
+          -- branch move without touching claims; a full register upserts the
+          -- caller's claim too.
+          Right (path, mrole, mbranch, note, msid, branchOnly)
+            | branchOnly ->
+                recordBranchMove path mbranch msid "hook" >>= \r ->
+                  reply (r <> "\n")
+            | otherwise ->
+                registerWorktree path mbranch msid mrole note "agent" >>= \r ->
+                  reply (r <> "\n")
         _ -> reply agentUsage
       where
         -- Only leading flags are flags, so a message that starts with a dash
@@ -763,6 +782,30 @@ handleConn app conn = do
         val []       _ = Left "missing value for an option"
         orElse x y = maybe y Just x
 
+    -- @agent register@'s flags.  All optional: the worktree defaults to the
+    -- caller's cwd, the session to the caller (or to no session at all — a
+    -- human registering from a shell is fine, the claim just says so).
+    parseRegister :: FilePath -> Maybe Text -> [Text]
+                  -> Either Text (FilePath, Maybe ClaimRole, Maybe Text, Text, Maybe Text, Bool)
+    parseRegister cwd me = go Nothing Nothing Nothing Nothing Nothing False
+      where
+        go mw mr mb mn ms bo [] =
+          Right (fromMaybe cwd mw, mr, mb, fromMaybe "" mn, ms `orElse` me, bo)
+        go mw mr mb mn ms bo (a : as) = case a of
+          "--worktree" -> val as $ \v as' -> go (Just (resolve cwd v)) mr mb mn ms bo as'
+          "--role"     -> val as $ \v as' -> case parseRole v of
+            Just r  -> go mw (Just r) mb mn ms bo as'
+            Nothing -> Left ("unknown role " <> v
+                             <> " (created|working|reviewing|abandoned)")
+          "--branch"   -> val as $ \v as' -> go mw mr (Just v) mn ms bo as'
+          "--note"     -> val as $ \v as' -> go mw mr mb (Just v) ms bo as'
+          "--session"  -> val as $ \v as' -> go mw mr mb mn (Just v) bo as'
+          "--branch-only" -> go mw mr mb mn ms True as
+          _ -> Left ("unexpected argument " <> a)
+        val (v : as) k = k v as
+        val []       _ = Left "missing value for an option"
+        orElse x y = maybe y Just x
+
     agentUsage = T.unlines
       [ "leksah-cmd agent — Claude sessions starting and driving each other:"
       , "  fork [OPTS] [PROMPT]  start an agent in a pane beside you, forked from"
@@ -781,6 +824,11 @@ handleConn app conn = do
       , "  show SID              bring SID's pane to the front in the UI"
       , "  describe [SID] --title T --html H   how you appear in the Agents pane"
       , "                        (SID defaults to the calling session)"
+      , "  register [--worktree DIR] [--role created|working|reviewing|abandoned]"
+      , "           [--branch B] [--note TEXT] [--session SID]"
+      , "                        record your relationship with a git worktree"
+      , "                        (worktree defaults to your cwd, session to you;"
+      , "                        re-register with --branch after re-pointing one)"
       ]
 
     -- The workspace's leksah package (project, package), if it's open.

@@ -63,6 +63,7 @@ import IDE.Web.Claude
        (ClaudeCmd(..), runClaudeCmd, claudeRunning, claudeLiveBySession,
         ClaudeLive(..), mruClaudePane, claudeTranscriptPath)
 import IDE.Web.Worktree (newClaudeWorktreeUnique)
+import IDE.Web.WorktreeRegistry (ClaimRole(..), registerWorktree)
 import IDE.Workspace (projectOpenPath)
 
 -- | How many queue-started sessions may run at once.  A small fixed number
@@ -178,6 +179,12 @@ startTask t = do
       Right (wt, _branch) -> do
         withApp $ \app -> projectOpenPath (appWorkspace app) wt
         runClaudeCmd (ClaudePrompt wt (qtPrompt t))
+        -- The launched session's id isn't knowable here (it registers itself,
+        -- prompted by the worktree system-prompt note); record the task's
+        -- relationship so the worktree is never orphaned even if it doesn't.
+        _ <- registerWorktree wt Nothing Nothing (Just RoleWorking)
+               ("queued task: " <> T.take 70 (qtPrompt t)
+                <> (if T.null (qtTag t) then "" else " (" <> qtTag t <> ")")) "leksah"
         void . withQueue $ \q ->
           (patch q (qtId t) (\x ->
              x { qtWorktree = Just wt, qtNote = "" }), ())

@@ -29,6 +29,7 @@ module IDE.Web.AgentInfo
   , dismissAgent
   , agentForest
   , agentTitles
+  , agentDirOf
   , agentRefreshPrompt
   , sanitizeAgentHtml
   ) where
@@ -58,10 +59,10 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
        (UTCTime, defaultTimeLocale, diffUTCTime, formatTime, getCurrentTime)
-import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 
 import System.Directory (doesFileExist, getModificationTime)
-import System.FilePath (dropTrailingPathSeparator)
+import System.FilePath (dropTrailingPathSeparator, takeFileName)
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath)
@@ -72,6 +73,8 @@ import IDE.Web.Claude
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
+import IDE.Web.WorktreeRegistry
+       (SessionClaim(..), WorktreeInfo(..), claimsBySession, roleText)
 
 -- | What leksah knows about one agent beyond what the CLI writes down.  Keyed
 -- by session id — the only durable handle (pids and panes come and go, and a
@@ -115,6 +118,10 @@ data AgentNode = AgentNode
                               --   label when agents work in worktrees
   , anPr       :: Maybe (Int, Text)
                               -- ^ its branch's open PR as @(number, url)@
+  , anWorktrees :: [Text]     -- ^ the worktree relationships it REGISTERED
+                              --   (`agent register` \/ register_worktree),
+                              --   pre-rendered one per line — shown under the
+                              --   checkout line
   , anChildren :: [AgentNode] -- ^ the agents it forked
   } deriving (Eq, Show)
 
@@ -173,6 +180,15 @@ agentTitles = M.mapMaybe title <$> peekInfos
   where title i = case T.strip <$> aiTitle i of
           Just t | not (T.null t) -> Just t
           _                       -> Nothing
+
+-- | Where a session lives, as far as leksah remembers (its 'aiDir') — how a
+-- worktree row resumes a session whose transcripts are in ANOTHER checkout.
+agentDirOf :: Text -> IO (Maybe FilePath)
+agentDirOf sid = do
+  m <- peekInfos
+  return $ case aiDir <$> M.lookup sid m of
+    Just d | not (null d) -> Just d
+    _                     -> Nothing
 
 -- | Remember that @parent@ forked @child@ (in @dir@) with this first prompt —
 -- called by 'IDE.Web.Agent.forkAgent' the moment the child's pane exists, since
@@ -337,6 +353,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids) = AgentNode
   , anLive     = state /= "gone"
   , anBranch   = br
   , anPr       = pr
+  , anWorktrees = []
   , anChildren = map demoNode kids
   }
 #else
@@ -351,7 +368,12 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     (br, pr) <- agentGit posix (T.unpack (csrDir r))
     let i = M.lookup (csrSession r) infos
     return (csrSession r, (node r i) { anBranch = br, anPr = pr })
-  let nodes = M.fromList (liveNodes <> exited)
+  -- Decorate every row with the worktree relationships its session registered
+  -- (cheap: 'claimsBySession' is an MVar peek per node over a small map).
+  decorated <- forM (liveNodes <> exited) $ \(s, n) -> do
+    wls <- worktreeClaimLines now s
+    return (s, n { anWorktrees = wls })
+  let nodes = M.fromList decorated
       -- The parent of x, skipping over agents that aren't shown (dismissed, or
       -- exited long ago) so their children stay visible under the nearest
       -- ancestor that IS.  Bounded, like claudeLiveOwners' walk, so a cycle in
@@ -392,6 +414,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       -- Filled in by the caller, which does the (cached) git lookup.
       , anBranch  = Nothing
       , anPr      = Nothing
+      , anWorktrees = []
       , anChildren = [] }
 
     -- Stored agents that are NOT running: either exited (their transcript's mtime
@@ -424,6 +447,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anLive    = False
           , anBranch  = br
           , anPr      = pr
+          , anWorktrees = []
           , anChildren = [] }
       goneNodes <- forM (take exitedMaxRows (sortOn (Down . fst) [ x | Right x <- cands ])) $ \(t, i) -> do
         title <- case aiTitle i of
@@ -442,6 +466,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anLive    = False
           , anBranch  = br
           , anPr      = pr
+          , anWorktrees = []
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 
@@ -454,6 +479,22 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
 
     firstNonEmpty xs = fromMaybe "" (listToMaybe (filter (not . T.null) xs))
 #endif
+
+-- | One line per worktree relationship the session has registered — via
+-- @leksah-cmd agent register@ \/ the @register_worktree@ MCP tool \/ the
+-- PostToolUse hook — e.g. @"created · fix-tests [claude\/fix-tests] · 2h ago —
+-- fixing the parser"@, newest first, capped so a busy session's row stays
+-- bounded.
+worktreeClaimLines :: UTCTime -> Text -> IO [Text]
+worktreeClaimLines now sid = do
+  cs <- claimsBySession sid
+  return $ take 4
+    [ roleText (scRole c) <> " · "
+        <> T.pack (takeFileName (dropTrailingPathSeparator (wiPath w)))
+        <> maybe "" (\b -> " [" <> b <> "]") (scBranch c)
+        <> " · " <> humanAge now (posixSecondsToUTCTime (realToFrac (scWhen c)))
+        <> (if T.null (scNote c) then "" else " — " <> scNote c)
+    | (w, c) <- cs ]
 
 humanAge :: UTCTime -> UTCTime -> Text
 humanAge now t

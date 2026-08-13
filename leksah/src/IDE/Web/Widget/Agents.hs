@@ -31,7 +31,7 @@ module IDE.Web.Widget.Agents
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.))
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Map (Map)
@@ -43,6 +43,7 @@ import qualified Data.Text as T
 import Clay
        (Css, (?), (#), (|>), (-:), auto, backgroundImage, bold, borderRadius,
         borderStyle, color, cursor, cursorDefault, display, flex, fontSize,
+        fontStyle, italic,
         fontWeight, height, hidden, hover, none, opacity, overflow, padding,
         pct, pointer, px, textDecoration, underline, vGradient,
         None(..), Cursor(..))
@@ -186,6 +187,11 @@ agentNodeW open refresh miss nD = treeItem "agents-node" open item children
         elDynAttr "a" (prAttrs <$> nD) . dynText $
           ffor nD $ \n -> maybe "" (\(k, _) -> "PR #" <> T.pack (show k)) (anPr n)
         dynText $ ffor nD $ maybe "" ("  ·  " <>) . anBranch
+      -- The worktree relationships the agent REGISTERED (`agent register` /
+      -- register_worktree / the git hook) — leksah's other own-facts lines:
+      -- one per claim, plain text, empty collapses away.
+      dyn_ $ ffor nD $ \n ->
+        forM_ (anWorktrees n) $ \l -> divClass "agents-worktrees" (text l)
       -- The description, straight into innerHTML — sanitized once, where it was
       -- stored ('IDE.Web.AgentInfo.sanitizeAgentHtml').  Empty collapses away
       -- (see the :empty rule in 'agentsCss') rather than leaving a gap.
@@ -423,6 +429,12 @@ agentsCss = do
     ".agents .agents-where" ? do
         color dimColor
         fontSize (px 11)
+        padding (px 0) (px 4) (px 1) (px 14)
+        "overflow-wrap" -: "anywhere"
+    ".agents .agents-worktrees" ? do
+        color dimColor
+        fontSize (px 11)
+        fontStyle italic
         padding (px 0) (px 4) (px 1) (px 14)
         "overflow-wrap" -: "anywhere"
     -- Hovering a row's own button highlights that row's line, like the

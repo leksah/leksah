@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$HOME/.leksah/worktree-hook.sh\" ] && \"$HOME/.leksah/worktree-hook.sh\" || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

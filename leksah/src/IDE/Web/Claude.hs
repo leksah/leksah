@@ -411,8 +411,10 @@ claudeCommandLine cmd = do
   -- Local sessions get leksah's MCP server (IDE tools: diagnostics, open_file,
   -- build, hover, screenshot…) — see `leksah-cmd mcp`.  The config file points
   -- at a local binary, so remote (ssh://) dirs skip it.
-  mcpFlag <- if isRemotePath d then return "" else claudeMcpFlag
-  let flags = mcpFlag <> allowFlag <> appendSystemPrompt (planHtmlNote : notes)
+  mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag
+  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag
+  let flags = mcpFlag <> hooksFlag <> allowFlag
+           <> appendSystemPrompt (planHtmlNote : worktreeNote : notes)
       line' = maybe line (\p -> p <> " " <> line) mbPrefix <> flags
   return (d, key, line')
   where
@@ -429,6 +431,8 @@ claudeCommandLine cmd = do
     --     every session, since any of them can be asked.
     --   * @agent send@ — a child agent reporting back to the parent that forked
     --     it.  Without it that loop stalls on a prompt the parent can't answer.
+    --   * @agent register@ — answering 'worktreeNote' (it records a
+    --     worktree relationship in a sidecar, and nothing else).
     --
     -- And nothing else: NOT `agent fork`, so children can't quietly fan out.
     -- Note the placement: @--allowedTools@ is variadic, so it must be followed
@@ -437,6 +441,7 @@ claudeCommandLine cmd = do
     allowFlag = " --allowedTools " <> T.unwords (map shq allowed)
       where
         allowed = "Bash(leksah-cmd agent describe:*)" :
+          "Bash(leksah-cmd agent register:*)" :
           case cmd of
             ClaudeAgent s | Just _ <- asParent s -> ["Bash(leksah-cmd agent send:*)"]
             _                                    -> []
@@ -514,6 +519,22 @@ planHtmlNote =
   \markdown file stays the authoritative plan; regenerate the .html whenever \
   \the plan changes."
 
+-- | Ask every leksah-launched session to keep the IDE's worktree map accurate:
+-- register when it creates, adopts, reviews or finishes with a git worktree,
+-- and re-register when it re-points one at another branch.  The command is on
+-- the launch allow-list ('allowFlag'), so following this note never stops the
+-- session on a permission prompt.
+worktreeNote :: Text
+worktreeNote =
+  "When you create a git worktree, start working in one, review one, finish \
+  \with one, or switch the branch a worktree is on, immediately register that \
+  \with the IDE by calling the register_worktree MCP tool (or running \
+  \`leksah-cmd agent register --worktree PATH --role \
+  \created|working|reviewing|abandoned --note '<one line: your relationship \
+  \with it>'` — pre-approved, it never prompts; pass --branch after switching \
+  \branches). This keeps the IDE's map of worktrees, branches and sessions \
+  \accurate for the user."
+
 -- | The @--mcp-config@ flag wiring a leksah-launched session to leksah's MCP
 -- server (@leksah-cmd mcp@ — IDE tools: diagnostics, open_file, build, hover,
 -- screenshot), (re)writing @~\/.leksah\/mcp.json@ so the recorded binary path
@@ -533,6 +554,37 @@ claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
                 , "command" .= exe
                 , "args"    .= (["mcp"] :: [Text]) ] ] ]
       return (" --mcp-config " <> T.pack path)
+
+-- | The @--settings@ flag wiring a leksah-launched session to the worktree
+-- PostToolUse hook: every @git worktree add@ \/ @git switch@ a session runs in
+-- Bash lands in the worktree registry, no cooperation needed.  The hook script
+-- itself is written by @leksah-cmd hooks write-script@ (the script text lives
+-- with the CLI, which also installs it into user\/project settings on demand —
+-- @leksah-cmd hooks install@); this just refreshes it and points a small
+-- settings JSON at it.  Empty when @leksah-cmd@ isn't on PATH.  @--settings@
+-- loads ADDITIONAL settings, so the user's own hooks keep working.
+claudeHooksFlag :: IO Text
+claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
+  findExecutable "leksah-cmd" >>= \case
+    Nothing  -> return ""
+    Just exe -> do
+      (ec, _, _) <- readProcessWithExitCode exe ["hooks", "write-script"] ""
+      case ec of
+        ExitSuccess -> do
+          home <- getHomeDirectory
+          let path   = home </> ".leksah" </> "hooks.json"
+              script = home </> ".leksah" </> "worktree-hook.sh"
+          BL.writeFile path . encode $ object
+            [ "hooks" .= object
+                [ "PostToolUse" .=
+                    [ object
+                        [ "matcher" .= ("Bash" :: Text)
+                        , "hooks" .=
+                            [ object [ "type"    .= ("command" :: Text)
+                                     , "command" .= script
+                                     , "timeout" .= (10 :: Int) ] ] ] ] ] ]
+          return (" --settings " <> T.pack path)
+        _ -> return ""
 
 -- | Is a @claude@ terminal window currently live for @dir@ — the shared
 -- interactive window (@dir#claude@) or any resumed/ask window (@dir#claude#…@)?

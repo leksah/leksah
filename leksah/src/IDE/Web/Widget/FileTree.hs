@@ -9,6 +9,7 @@ module IDE.Web.Widget.FileTree
   , joinPaths
   , fileTree
   , claudeNode
+  , statusBadge
   , GitStatus(..)
   , gitClass
   , gitBadge

@@ -54,6 +54,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readCreateProcessWithExitCode, proc, cwd)
 
 import IDE.Git (runGit)
+import IDE.Web.WorktreeRegistry (ClaimRole(..), registerWorktree)
 
 --------------------------------------------------------------------------------
 -- Small git helpers (Either-returning wrappers over 'runGit')
@@ -121,6 +122,8 @@ newClaudeWorktree dir taskName = do
                 -- Best-effort: a failed config write only loses the recorded
                 -- base (scanReview falls back to origin/HEAD).
                 _ <- git_ root ["config", "branch." <> branch <> ".leksah-base", base]
+                _ <- registerWorktree wtPath (Just branch) Nothing (Just RoleCreated)
+                       ("created by leksah, forked from " <> base) "leksah"
                 return (Right (wtPath, branch))
   where rightToMaybe = either (const Nothing) Just
 
