@@ -1198,6 +1198,11 @@ data TmuxPane = TmuxPane
                        --   backing twin can be told apart from a user's own
                        --   pane sharing the same window — see the backing-twin
                        --   filter in 'IDE.Web.Widget.TerminalCC'.
+  , tpPath   :: Text   -- ^ tmux @#{pane_current_path}@ — the pane's working
+                       --   directory (host-local for remote panes; @""@ where
+                       --   unknown, e.g. the browser demo).  The toolbar
+                       --   strip's active-pane details show it, the way an
+                       --   editor tab shows its file's path.
   , tpClaudeTitle :: Maybe Text
                      -- ^ for a Claude Code pane, the title of the session running
                      --   in it — its @/rename@ name, else the transcript's first
@@ -1251,7 +1256,7 @@ listTerminalTree = do
     created <- demoCreatedSessions
     return $ M.fromListWith (\_ old -> old)
         [ (sid, (name, [ TmuxWindow 0 ("@" <> sid) name True False False False ""
-                             [ TmuxPane 0 ("%" <> sid) name 0 True "" Nothing Nothing ] ]))
+                             [ TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing ] ]))
         | (sid, name) <- ts ++ created ]
 #else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
@@ -1347,7 +1352,8 @@ paneTreeFormat = intercalate "\t"
     , "#{window_name}"
     , "#{window_active}", "#{window_bell_flag}", "#{window_activity_flag}"
     , "#{window_silence_flag}", "#{@leksah_run}", "#{pane_index}", "#{pane_active}"
-    , "#{pane_id}", "#{pane_pid}", "#{pane_current_command}", "#{pane_title}" ]
+    , "#{pane_id}", "#{pane_pid}", "#{pane_current_command}"
+    , "#{pane_current_path}", "#{pane_title}" ]
 
 -- | Run tmux on a remote host over ssh (no PTY, BatchMode — key auth only).
 -- 'Nothing' when ssh or the remote tmux fails (host down, no server, …).
@@ -1510,9 +1516,9 @@ parsePaneTree :: String -> Map Text (Text, [TmuxWindow])
 parsePaneTree out = M.map toSession grouped
   where
     rows =
-      [ (sid, sname, wi, wid, wn, wa == "1", wb == "1", wac == "1", ws == "1", runkey, pidx, pa == "1", pid, ppid, paneName)
+      [ (sid, sname, wi, wid, wn, wa == "1", wb == "1", wac == "1", ws == "1", runkey, pidx, pa == "1", pid, ppid, ppath, paneName)
       | line <- lines out
-      , (sid:sname:wiT:wid:wn:wa:wb:wac:ws:runkey:piT:pa:pid:ppidT:cmd:rest) <- [T.splitOn "\t" (T.pack line)]
+      , (sid:sname:wiT:wid:wn:wa:wb:wac:ws:runkey:piT:pa:pid:ppidT:cmd:ppath:rest) <- [T.splitOn "\t" (T.pack line)]
       , not (T.null sid)
       -- The control-mode monitor's hidden session is not a real terminal.
       , sname /= monitorSessionName
@@ -1522,11 +1528,11 @@ parsePaneTree out = M.map toSession grouped
             paneName = if T.null title then cmd else title
             -- An old remote tmux with no #{pane_pid} just yields 0 (unknown).
             ppid     = maybe 0 id (readMaybe (T.unpack ppidT)) ]
-    -- session id -> (name, window index -> (window id, name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id, pane pid, @leksah_run)))
-    grouped :: Map Text (Text, Map Int (Text, Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text, Int, Text)))
+    -- session id -> (name, window index -> (window id, name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id, pane pid, path, @leksah_run)))
+    grouped :: Map Text (Text, Map Int (Text, Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text, Int, Text, Text)))
     grouped = M.fromListWith mergeSess
-      [ (sid, (sname, M.singleton wi (wid, wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid, ppid, runkey))))
-      | (sid, sname, wi, wid, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, ppid, paneName) <- rows ]
+      [ (sid, (sname, M.singleton wi (wid, wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid, ppid, ppath, runkey))))
+      | (sid, sname, wi, wid, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, ppid, ppath, paneName) <- rows ]
     mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
     -- The run key is a *pane* option (rows differ within a window — e.g. a
     -- claude pane dragged into a window of shell panes), so a window's
@@ -1537,8 +1543,8 @@ parsePaneTree out = M.map toSession grouped
     toSession (sname, wm) =
       ( sname
       , [ TmuxWindow wi wid (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk
-            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) ppid pa prk Nothing Nothing
-            | (pidx, (paneName, pa, pid, ppid, prk)) <- M.toAscList ps ]
+            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) ppid pa prk ppath Nothing Nothing
+            | (pidx, (paneName, pa, pid, ppid, ppath, prk)) <- M.toAscList ps ]
         | (wi, (wid, wn, wa, wb, wac, ws, rk, ps)) <- M.toAscList wm ] )
 
 -- | Make window @w@ of session @s@ (a tmux session id) the current window.

@@ -606,11 +606,19 @@ static void leksah_measure_toolbar(void) {
     if (gLeksahWindow == nil) return;
     id web = leksah_find_webview([gLeksahWindow contentView]);
     if (web == nil) return;
+    // Only the VISIBLE controls: the always-present buttons (direct children)
+    // plus the collapsible wrapper's own clipped box — children of the hidden
+    // wrapper keep their laid-out rects (overflow:hidden only clips paint), so
+    // measuring every .toolbar-item made the no-drag zone span buttons that
+    // are not on screen, and with them the active-pane details.  Everything
+    // right of the last visible control (the details text, the empty strip)
+    // drags the window.
     NSString *js =
-        @"(function(){var es=document.querySelectorAll('.toolbar .toolbar-item');"
-        @"if(!es.length)return '';var lo=1e9,hi=-1e9;"
-        @"es.forEach(function(e){var r=e.getBoundingClientRect();"
-        @"lo=Math.min(lo,r.left);hi=Math.max(hi,r.right);});return lo+','+hi;})()";
+        @"(function(){var lo=1e9,hi=-1e9;"
+        @"var add=function(r){if(r.width>0){lo=Math.min(lo,r.left);hi=Math.max(hi,r.right);}};"
+        @"document.querySelectorAll('.toolbar > .toolbar-item').forEach(function(e){add(e.getBoundingClientRect());});"
+        @"var w=document.querySelector('.toolbar-items');if(w)add(w.getBoundingClientRect());"
+        @"return hi<lo?'':lo+','+hi;})()";
     void (^handler)(id, id) = ^(id result, id error) {
         (void)error;
         if ([result isKindOfClass:[NSString class]] && [(NSString *)result length] > 0) {
@@ -714,6 +722,15 @@ static void leksah_install_titlebar_drag(void) {
             if (yFromTop < 0 || yFromTop > kLeksahTitlebarHeight) return e;  // below the title bar
             if (leksah_on_window_button(w, p)) return e;            // a traffic-light button
             if (p.x >= gToolbarMinX && p.x <= gToolbarMaxX) return e;  // a toolbar button
+            // Double-click in the title-bar strip: what a native title bar
+            // does, honouring the System Settings choice (zoom by default).
+            if ([e clickCount] >= 2) {
+                NSString *action = [[NSUserDefaults standardUserDefaults]
+                                       stringForKey:@"AppleActionOnDoubleClick"];
+                if ([action isEqualToString:@"Minimize"]) [w miniaturize:nil];
+                else if (![action isEqualToString:@"None"]) [w zoom:nil];
+                return nil;
+            }
             [w performWindowDragWithEvent:e];
             return nil;                                              // consume; we handled it
         }];

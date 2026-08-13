@@ -187,6 +187,9 @@ agentNodeW open refresh miss nD = treeItem "agents-node" open item children
         elDynAttr "a" (prAttrs <$> nD) . dynText $
           ffor nD $ \n -> maybe "" (\(k, _) -> "PR #" <> T.pack (show k)) (anPr n)
         dynText $ ffor nD $ maybe "" ("  ·  " <>) . anBranch
+        -- The checkout's FULL path, dimmest — the same touch as the toolbar
+        -- strip's editor path, and what tells two same-named worktrees apart.
+        elClass "span" "agents-where-path" . dynText $ (T.pack . anDir) <$> nD
       -- The worktree relationships the agent REGISTERED (`agent register` /
       -- register_worktree / the git hook) — leksah's other own-facts lines:
       -- one per claim, plain text, empty collapses away.
@@ -431,6 +434,10 @@ agentsCss = do
         fontSize (px 11)
         padding (px 0) (px 4) (px 1) (px 14)
         "overflow-wrap" -: "anywhere"
+    ".agents .agents-where-path" ? do
+        opacity 0.7
+        "margin-left" -: "6px"
+        fontSize (px 10)
     ".agents .agents-worktrees" ? do
         color dimColor
         fontSize (px 11)

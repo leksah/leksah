@@ -5320,7 +5320,61 @@ main showMenubar macTitlebar wid ctx = mdo
     -- The web menu bar is suppressed when a native menu is present
     -- (leksah-wkwebview); its command events then simply never fire.
     menubarE   <- if showMenubar then menubarWidget else return never
-    toolbarE   <- toolbarWidget ctx tallVisD wide1VisD
+    -- The active-pane details shown in the toolbar strip (after the toggle,
+    -- sliding right when the buttons are shown): the same label and icon the
+    -- FLIPPER gives the pane ('flipPaneLabel' / 'flipIconSrc' — a terminal
+    -- window tab shows "session · window · pane" with the state-carrying tmux
+    -- window icon), plus a dim full path for file/checkout-backed tabs.
+    let activePaneInfoD = (\mk lws names tree ->
+          case mk of
+            Nothing -> Nothing
+            Just k  ->
+              let fullOf k' = case k' of
+                    EditorKey f    -> T.pack f
+                    GitLogKey d _  -> T.pack d
+                    ReviewKey d    -> T.pack d
+                    PlanKey d _    -> T.pack d
+                    CompareKey d _ -> T.pack d
+                    _              -> ""
+                  -- A terminal pane's "full path" is its working directory
+                  -- (tmux #{pane_current_path}, polled with the tree).
+                  panePathOf s w p = fromMaybe "" $ do
+                    (_, wins) <- M.lookup s tree
+                    win <- find ((== w) . twIndex) wins
+                    pn  <- find ((== p) . tpIndex) (twPanes win)
+                    pure (tpPath pn)
+              in Just $ case k of
+                   LeksahWinKey n | Just lw <- M.lookup n lws ->
+                     case lwSession lw of
+                       -- Session-backed: the session's active window/pane,
+                       -- exactly as the flipper would list it.
+                       Just s | Just (w, p) <- activePaneOfSession s tree ->
+                         ( flipIconSrc lws tree (FlipPane s w p)
+                         , flipPaneLabel s w p tree
+                         , panePathOf s w p )
+                       -- Views-only window: its focused (or first) view leaf.
+                       _ -> case maybe [] (: []) (lwFocused lw)
+                                   ++ treeLeafIds (lwTree lw) of
+                              (LeafId l : _) ->
+                                ( flipIconSrc lws tree (FlipView n l)
+                                , maybe "(closed view)" (`tabLabelText` names)
+                                        (viewKeyOf lws n l)
+                                , maybe "" fullOf (viewKeyOf lws n l) )
+                              [] -> (Nothing, tabLabelText k names, "")
+                   _ -> ( flipIconSrc lws tree (FlipTab k)
+                        , tabLabelText k names, fullOf k ))
+          <$> activePaneD <*> leksahWindowsD' <*> terminalNamesD <*> allTreeD
+    activePaneInfoD' <- holdUniqDyn activePaneInfoD
+    toolbarE   <- toolbarWidget ctx tallVisD wide1VisD $
+      void . dyn $ ffor activePaneInfoD' $ \case
+        Nothing -> return ()
+        Just (mIcon, label, full) -> do
+          mapM_ (\src -> elAttr "img" ("class" =: "tab-icon" <> "src" =: src) (pure ()))
+                mIcon
+          elAttr "span" ("class" =: "toolbar-pane-label"
+                      <> "title" =: (if T.null full then label else full)) (text label)
+          unless (T.null full) $
+            elAttr "span" ("class" =: "toolbar-pane-path") (text full)
     -- Transparent, click-through overlays over the side pane / bottom bar that
     -- draw the divider line next to the editor area and (via CSS :has focus) a
     -- drop shadow when one of that panel's panes is active — see layoutCss.
@@ -6584,8 +6638,38 @@ main showMenubar macTitlebar wid ctx = mdo
     -- A ⌘-number on a non-active wide0 button feeds a synthetic flip selection
     -- (always wide0), so it navigates through the same path as the flipper.
     (numFlipE, fireNumFlip) <- newTriggerEvent
+    -- Hiding the side/bottom bar must never leave its pane ACTIVE but
+    -- INVISIBLE: when the active tab lives in the newly hidden area, commit a
+    -- synthetic flip to the first still-visible item in the flipper order —
+    -- restricted to THIS window's items (hiding a bar must not raise another
+    -- OS window).  Rides the normal flip path, so focus lands properly.
+    let barHiddenE = leftmost
+          [ "tall"  <$ ffilter (== TallHide) (updated tallVisD)
+          , "wide1" <$ ffilter (== TallHide) (updated wide1VisD) ]
+        hidePick (mact, rt, items, lws, tree, wins, tv, wv) area =
+          case mact of
+            Just k | maybe "wide0" fst (find ((== k) . snd) rt) == area ->
+              -- tv/wv still hold the PRE-event values in this frame, so the
+              -- event's own area says what just hid; the other bar's state
+              -- comes from its (unchanged) Behavior.
+              let hiddenNow a = a == area
+                    || (a == "tall"  && tv == TallHide)
+                    || (a == "wide1" && wv == TallHide)
+                  mine fi = case flipOwnerWindow lws tree wins fi of
+                    Just w  -> w == wid
+                    Nothing -> True
+              in listToMaybe
+                   [ (a, fi) | (a, fi) <- items, not (hiddenNow a), mine fi ]
+            _ -> Nothing
+        hideFlipE = attachWithMaybe hidePick
+            ((,,,,,,,) <$> current activePaneD <*> current recentTabs
+                       <*> current flipLiveD <*> current leksahWindowsD'
+                       <*> current allTreeD <*> current webWindowsD
+                       <*> current tallVisD <*> current wide1VisD)
+            barHiddenE
     let flipSelE  = leftmost [ fmapMaybe (listToMaybe . M.toList) flipRawE
-                             , (\fi -> ("wide0", fi)) <$> numFlipE ]
+                             , (\fi -> ("wide0", fi)) <$> numFlipE
+                             , hideFlipE ]
         -- The global flipper: classify each selection by the OS window that owns
         -- the tab (from the shared per-window state).  A wide0 item owned by
         -- ANOTHER window is a cross-window select — raise that window and make
