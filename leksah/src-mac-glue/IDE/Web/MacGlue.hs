@@ -179,11 +179,12 @@ foreign import ccall "leksah_set_recent_files" c_setRecentFiles :: CString -> IO
 -- newline-separated).
 foreign import ccall "leksah_set_claude_status" c_setClaudeStatus
   :: CString -> CInt -> CString -> CString -> IO ()
--- Snapshot the WKWebView content to a PNG at the given path; returns 1 on success.
-foreign import ccall "leksah_screenshot" c_screenshot :: CString -> IO CInt
--- Snapshot just a rectangle (x,y,w,h in CSS px) of the WKWebView content.
+-- Snapshot OS window <wid>'s WKWebView content to a PNG at the given path;
+-- returns 1 on success.  A negative wid means window 0.
+foreign import ccall "leksah_screenshot" c_screenshot :: CString -> CInt -> IO CInt
+-- Snapshot just a rectangle (x,y,w,h in CSS px) of OS window <wid>'s content.
 foreign import ccall "leksah_snapshot_rect" c_snapshotRect
-  :: CString -> CInt -> CInt -> CInt -> CInt -> IO CInt
+  :: CString -> CInt -> CInt -> CInt -> CInt -> CInt -> IO CInt
 foreign import ccall "leksah_pick_color" c_pickColor :: CString -> IO ()
 -- Native browser panes: drive pane <bid>'s overlaid WKWebView (created by the
 -- JS rect reporter's first snapshot — a load before creation is kept pending).
@@ -362,10 +363,10 @@ c_setRecentFiles :: CString -> IO ()
 c_setRecentFiles _ = return ()
 c_setClaudeStatus :: CString -> CInt -> CString -> CString -> IO ()
 c_setClaudeStatus _ _ _ _ = return ()
-c_screenshot :: CString -> IO CInt
-c_screenshot _ = return 0
-c_snapshotRect :: CString -> CInt -> CInt -> CInt -> CInt -> IO CInt
-c_snapshotRect _ _ _ _ _ = return 0
+c_screenshot :: CString -> CInt -> IO CInt
+c_screenshot _ _ = return 0
+c_snapshotRect :: CString -> CInt -> CInt -> CInt -> CInt -> CInt -> IO CInt
+c_snapshotRect _ _ _ _ _ _ = return 0
 c_pickColor :: CString -> IO ()
 c_pickColor _ = return ()
 c_browserLoad :: CInt -> CString -> IO ()

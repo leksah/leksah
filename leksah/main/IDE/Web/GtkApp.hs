@@ -166,9 +166,14 @@ setActiveWindow theApp wid =
 -- arrives on a CmdServer thread; the snapshot must run on the GTK main loop,
 -- so marshal over and block on the result.  Process-global (last window to
 -- register wins) — good enough for the dev screenshot tool.
+--
+-- The window id is ignored here: unlike the macOS front end (which keeps every
+-- NSWindow in a wid-keyed table and can photograph any of them), this closes
+-- over one 'WK.WebView', so @--window@ has nothing to select between.  Making
+-- it work would mean keeping a wid → WebView map alongside the registration.
 registerSnapshotHandler :: WK.WebView -> IO ()
 registerSnapshotHandler webView =
-  registerScreenshotHandler $ \path -> do
+  registerScreenshotHandler $ \path _wid -> do
     done <- newEmptyMVar
     postGUIAsync $
       WK.webViewGetSnapshot webView WK.SnapshotRegionVisible

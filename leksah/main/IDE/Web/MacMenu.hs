@@ -343,13 +343,15 @@ installMacMenu = do
   -- The Preferences colour swatches open the native NSColorPanel (the web
   -- colour input's popover mis-anchors in our transparent-titlebar window).
   setColorPickImpl $ \hex -> withCString (T.unpack hex) c_pickColor
-  -- `leksah-cmd screenshot FILE`: snapshot the WKWebView content to a PNG.
-  registerScreenshotHandler $ \path ->
-    (/= 0) <$> withCString (T.unpack path) c_screenshot
-  -- Region grab's permission-free path: snapshot just the selected rectangle.
-  registerScreenshotRegionHandler $ \path (x, y, w, h) ->
+  -- `leksah-cmd screenshot FILE`: snapshot OS window `wid`'s WKWebView to a PNG.
+  registerScreenshotHandler $ \path wid ->
+    (/= 0) <$> withCString (T.unpack path) (`c_screenshot` fromIntegral wid)
+  -- Region grab's permission-free path: snapshot just the selected rectangle,
+  -- in the window whose page drew the picker.
+  registerScreenshotRegionHandler $ \path wid (x, y, w, h) ->
     withCString (T.unpack path) $ \p -> (/= 0) <$>
-      c_snapshotRect p (fromIntegral x) (fromIntegral y) (fromIntegral w) (fromIntegral h)
+      c_snapshotRect p (fromIntegral wid)
+        (fromIntegral x) (fromIntegral y) (fromIntegral w) (fromIntegral h)
   -- Build the menu bar from the LIVE keybindings table, and rebuild it when
   -- the table reloads (keybindings.json edit / edit.reloadKeybindings) so a
   -- user rebind shows up as the item's key equivalent.  The listener fires

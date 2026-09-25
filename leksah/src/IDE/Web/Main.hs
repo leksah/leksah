@@ -5747,7 +5747,9 @@ main showMenubar macTitlebar wid ctx = mdo
     performEvent_ $ ffor regionRectE $ \rect -> liftIO $ do
         target <- readIORef regionTargetRef
         file <- nextRegionFile
-        ok <- requestScreenshotRegion (T.pack file) rect
+        -- widN, not 0: the picker ran in THIS window, so the rect is in this
+        -- window's coordinates and must be cropped out of this window's page.
+        ok <- requestScreenshotRegion (T.pack file) widN rect
         when ok $ if T.null target
             then fireAIPayload (AIText (T.pack file <> " "))
             else void $ sendPathToTarget target file

@@ -550,13 +550,27 @@ static id leksah_find_webview(NSView *v) {
 // main queue and block on a semaphore until the completion handler has written
 // the file.  Returns 1 on success.  WebKit isn't imported, so the config class
 // and method are reached dynamically, exactly as evaluateJavaScript is above.
-static int leksah_snapshot_impl(const char *cpath, BOOL useRect, NSRect rect) {
-    if (cpath == NULL || gLeksahWindow == nil) return 0;
+//
+// wid selects WHICH OS window to photograph; a negative wid means window 0.
+// This used to be hard-wired to gLeksahWindow, which is only ever window 0
+// (leksah_register_window sets it when wid == 0) — so with several windows open
+// `leksah-cmd screenshot` silently photographed a window the user was not
+// looking at, and anything shown in the ACTIVE window (a modal dialog, say) was
+// invisible in the PNG.  The caller resolves the default from leksah's own
+// activeWindow, which is right even when the app is not frontmost.
+static int leksah_snapshot_impl(const char *cpath, int wid, BOOL useRect, NSRect rect) {
+    if (cpath == NULL) return 0;
     NSString *path = [NSString stringWithUTF8String:cpath];
     __block BOOL ok = NO;
     dispatch_semaphore_t sem = dispatch_semaphore_create(0);
     dispatch_async(dispatch_get_main_queue(), ^{
-        id web = leksah_find_webview([gLeksahWindow contentView]);
+        NSWindow *win = (wid >= 0 && gWindows != nil)
+            ? [gWindows objectForKey:@(wid)] : gLeksahWindow;
+        // An explicit wid that names no window fails rather than falling back
+        // to window 0: a picture of the wrong window reported as success is
+        // exactly the confusion the wid parameter exists to remove.
+        if (win == nil) { dispatch_semaphore_signal(sem); return; }
+        id web = leksah_find_webview([win contentView]);
         if (web == nil) { dispatch_semaphore_signal(sem); return; }
         Class cfgClass = NSClassFromString(@"WKSnapshotConfiguration");
         id cfg = (cfgClass != nil) ? [[cfgClass alloc] init] : nil;
@@ -590,14 +604,17 @@ static int leksah_snapshot_impl(const char *cpath, BOOL useRect, NSRect rect) {
     return ok ? 1 : 0;
 }
 
-// The whole WKWebView content (for `leksah-cmd screenshot`).
-int leksah_screenshot(const char *cpath) {
-    return leksah_snapshot_impl(cpath, NO, NSZeroRect);
+// The whole WKWebView content of OS window `wid` (for `leksah-cmd screenshot`).
+// A negative wid falls back to window 0.
+int leksah_screenshot(const char *cpath, int wid) {
+    return leksah_snapshot_impl(cpath, wid, NO, NSZeroRect);
 }
 
 // Just the rectangle (x,y,w,h in CSS px) — the permission-free grab-region path.
-int leksah_snapshot_rect(const char *cpath, int x, int y, int w, int h) {
-    return leksah_snapshot_impl(cpath, YES, NSMakeRect(x, y, w, h));
+// The rect arrives in the coordinate system of the window that drew the picker,
+// so it takes a wid for the same reason a full screenshot does.
+int leksah_snapshot_rect(const char *cpath, int wid, int x, int y, int w, int h) {
+    return leksah_snapshot_impl(cpath, wid, YES, NSMakeRect(x, y, w, h));
 }
 
 // Ask the page for the x-range covered by the toolbar buttons, so a click there

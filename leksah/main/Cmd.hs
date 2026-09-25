@@ -110,7 +110,13 @@ usage = T.unlines
   , "                                     prompt: suspends the UI, evals, resumes"
   , "  leksah-cmd hs eval -f FILE | -     the same, code from FILE / stdin"
   , "  leksah-cmd ping                    print \"ok\" if the UI is up (silent-ish, exit 0/1)"
-  , "  leksah-cmd screenshot FILE         capture the UI to a PNG (wkwebview/webkitgtk)"
+  , "  leksah-cmd screenshot [--window N] FILE"
+  , "                                     capture a window to a PNG (wkwebview/webkitgtk);"
+  , "                                     without --window, the ACTIVE window"
+  , "  leksah-cmd window list             OS windows: id, tab count, active tab"
+  , "  leksah-cmd window focus N          make window N active: raise it, and move the"
+  , "                                     window that dialogs open in (and that screenshot"
+  , "                                     defaults to).  Does not activate the app."
   , "  leksah-cmd grab-region [TARGET]    select a screen region; type its PNG path into"
   , "                                     a terminal pane (default: regionCaptureTarget pref;"
   , "                                     TARGET is a session/window/pane path)"
@@ -816,9 +822,10 @@ mcpTools =
       , ("line", "number", "1-based line")
       , ("column", "number", "1-based column") ] ["file", "line"]
   , mcpTool "screenshot"
-      "Capture the Leksah IDE window to a PNG and return its path (read the \
-      \image from that path to see the UI)."
-      [] []
+      "Capture a Leksah IDE window to a PNG and return its path (read the \
+      \image from that path to see the UI). Defaults to the ACTIVE window, \
+      \which is where dialogs open; pass window to photograph another one."
+      [ ("window", "number", "OS window id (default: the active window)") ] []
   , mcpTool "fork_agent"
       "Start ANOTHER Claude Code agent in a terminal pane beside your own, in \
       \this IDE, and return its session id. By default it is a fork of your \
@@ -1010,7 +1017,9 @@ mcpCall params = do
         pid <- getProcessID
         let path = home </> ".leksah"
                         </> ("mcp-screenshot-" <> show pid <> "-" <> show n <> ".png")
-        sock ["screenshot", path]
+        sock $ ["screenshot"]
+            <> maybe [] (\w -> ["--window", show w]) (mcpInt "window" args)
+            <> [path]
       _ -> return (Left ("unknown tool: " <> name))
     return $ object
       [ "content" .=

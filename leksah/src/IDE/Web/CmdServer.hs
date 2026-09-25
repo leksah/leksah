@@ -70,7 +70,7 @@ import GHC.Conc (threadStatus, ThreadStatus(..))
 import GHC.Conc.Sync (listThreads, threadLabel)
 import GHC.Stack.CloneStack (cloneThreadStack, decode, StackEntry(..))
 import Data.List (isPrefixOf, isInfixOf)
-import Control.Lens ((^.), (%~))
+import Control.Lens ((^.), (%~), (.~))
 import Control.Monad (filterM, forM_, forever, void, when, (<=<))
 
 import Data.Foldable (toList)
@@ -122,7 +122,8 @@ import IDE.Problems.Types
        (Pos(..), Problem(..), Range(..), Severity(..))
 import IDE.Reactive (modifyCell, readCell)
 import IDE.Web.Model
-       (AIPaneRef(..), TabKey(..), paneAISession, webWindows)
+       (AIPaneRef(..), TabKey(..), WindowId(..), activeWindow, paneAISession,
+        webWindows, wwActive, wwWide0)
 import IDE.Workspace
        (activeProject, prDir, projectOpenPath, setProjectCmdPrefix,
         workspaceActivatePackage, wsCell, wsProjectKey, wsProjects, wsSpec)
@@ -147,6 +148,7 @@ import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.ScreenshotRequest (requestScreenshot)
+import IDE.Web.NewWindowRequest (requestRaiseWindow)
 import IDE.Web.Heartbeat (lastBeatAge)
 import IDE.Web.SnapRequest (requestSnapPane)
 
@@ -246,6 +248,17 @@ handleConn app conn = do
     -- ssh://host/… paths pass through untouched.
     resolve cwd p = let s = T.unpack p in
         if isRemotePath s || not (isRelative s) then s else cwd </> s
+
+    -- Strip a leading @--window N@ / @-w N@ from an argument list, returning the
+    -- window id (if given) and the remaining arguments.  Leading only, so a file
+    -- called "--window" is still reachable after one, and an unparseable N is
+    -- left in place rather than silently swallowed — the command then fails on a
+    -- missing filename instead of photographing the wrong window.
+    windowOpt :: [Text] -> (Maybe Int, [Text])
+    windowOpt (f : n : rest)
+      | f `elem` ["--window", "-w"]
+      , Just k <- readMaybe (T.unpack n) = (Just k, rest)
+    windowOpt args = (Nothing, args)
 
     -- Resolve user input that may also be scp-style (host:~/path etc.) —
     -- one cached ssh round trip expands a leading ~ (see RemoteExec).
@@ -453,21 +466,77 @@ handleConn app conn = do
           , T.pack ("problemSources=" <> show (Map.size probs))
           ]
 
-      -- screenshot FILE: capture the UI to a PNG (native WKWebView snapshot on
-      -- macOS).  Relative paths resolve against the client's cwd.
-      ("screenshot" : file : _) | not (T.null file) -> do
+      -- screenshot [--window N] FILE: capture the UI to a PNG (native WKWebView
+      -- snapshot on macOS).  Relative paths resolve against the client's cwd.
+      --
+      -- Without --window this photographs the ACTIVE window, not window 0.  It
+      -- used to be hard-wired to window 0, so with several windows open you got
+      -- a picture of a window nobody was looking at — and anything that opens in
+      -- the active window (a modal dialog above all) was simply absent from the
+      -- PNG, which reads as "the feature is broken" rather than "wrong window".
+      ("screenshot" : rest0) | (mwid, file : _) <- windowOpt rest0, not (T.null file) -> do
+        wid <- case mwid of
+          Just n  -> return n
+          Nothing -> do
+            ui <- readCell (appUi app)
+            return $ case view activeWindow ui of
+              Just (WindowId n) -> n
+              Nothing           -> 0
         let path = resolve cwd file
             -- Right after a relaunch the window/WKWebView may not be wired up yet
             -- (a screenshot then finds no view); retry a few times before giving up.
-            tryShot 0 = requestScreenshot (T.pack path)
-            tryShot n = requestScreenshot (T.pack path) >>= \case
+            tryShot 0 = requestScreenshot (T.pack path) wid
+            tryShot n = requestScreenshot (T.pack path) wid >>= \case
               True  -> return True
               False -> threadDelay 500000 >> tryShot (n - 1 :: Int)
         ok <- tryShot 6
         reply $ if ok
-          then "Wrote screenshot to " <> T.pack path <> "\n"
+          then "Wrote screenshot of window " <> T.pack (show wid)
+            <> " to " <> T.pack path <> "\n"
           else "screenshot: failed — no capture handler (the wkwebview and "
-            <> "webkitgtk front ends support it) or the snapshot errored.\n"
+            <> "webkitgtk front ends support it), the snapshot errored, or "
+            <> "there is no window " <> T.pack (show wid) <> ".\n"
+
+      -- window list: the OS windows and their ids, so `window focus N` and
+      -- `screenshot --window N` have something to name.
+      ("window" : "list" : _) -> do
+        ui <- readCell (appUi app)
+        -- No frame column: _wwFrame is only ever constructed as Nothing (its
+        -- "filled by the native side" comment describes an intent nothing
+        -- implements), so it would print "-" for every window forever.
+        let act = view activeWindow ui
+            row (w@(WindowId n), ww) = T.intercalate "\t"
+              [ T.pack (show n)
+              , T.pack (show (length (view wwWide0 ww)))
+              , maybe "-" (T.pack . show) (view wwActive ww)
+              ] <> (if Just w == act then "\t(active)" else "")
+        reply . T.unlines $
+          "# id\ttabs\tactive tab" : map row (Map.toList (view webWindows ui))
+
+      -- window focus N: make OS window N the active one — it comes to the front
+      -- and takes key status within the app, and leksah's own activeWindow moves
+      -- with it, which is what actually decides where a dialog opens and which
+      -- window `screenshot` defaults to.
+      --
+      -- Both halves are needed and they are not the same thing.  Setting the
+      -- model alone leaves the wrong window in front of the user; raising alone
+      -- does not move activeWindow when the app is not frontmost (a script run
+      -- from a terminal never gives leksah key status, so no windowDidBecomeKey
+      -- arrives).  Deliberately does NOT activate the application: pulling the
+      -- whole app over the caller's terminal is not what a scripted "point at
+      -- window N" should do.
+      ("window" : "focus" : n : _) | Just k <- readMaybe (T.unpack n) -> do
+        ui <- readCell (appUi app)
+        if Map.member (WindowId k) (view webWindows ui)
+          then do
+            modifyCell (appUi app) (activeWindow .~ Just (WindowId k))
+            requestRaiseWindow k
+            reply $ "Focused window " <> T.pack (show k) <> ".\n"
+          else reply $ "window focus: no window " <> T.pack (show k)
+            <> " (try `leksah-cmd window list`).\n"
+
+      ("window" : _) ->
+        reply "usage: leksah-cmd window list | window focus N\n"
 
       -- grab-region [TARGET]: interactively select a screen rectangle
       -- (`screencapture -i`) and type the resulting PNG's path into a terminal
@@ -938,7 +1007,12 @@ usage = T.unlines
   , "  open-browser URL        open the default browser snapped to this pane"
   , "  js eval CODE            evaluate JS in the running leksah"
   , "  ping                    reply \"ok\" (liveness check for wait-ready)"
-  , "  screenshot FILE         capture the UI to a PNG (wkwebview)"
+  , "  screenshot [--window N] FILE"
+  , "                          capture a window to a PNG (wkwebview); default:"
+  , "                          the active window"
+  , "  window list             OS windows: id, tab count, active tab"
+  , "  window focus N          make window N active (raises it; moves the window"
+  , "                          dialogs open in and screenshot's default)"
   , "  grab-region [TARGET]    select a screen region → its path into a terminal pane"
   , "  diagnostics [FILE|--all] current errors/warnings (active project; --all = every project)"
   , "  active-selection        focused editor's file + selected line range"
