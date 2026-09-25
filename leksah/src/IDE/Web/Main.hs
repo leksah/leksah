@@ -3546,8 +3546,56 @@ terminalWriteJs = T.unlines
   -- Output goes through the passthrough/kitty filter (IDE.Web.KittyGraphics);
   -- everything it does not intercept it hands to term.write unchanged, in one
   -- write per chunk.
+  , "    frameFeed(id, term, a);"
+  , "  }"
+  , "  function feed(id, term, a){"
+  , "    if (!a.length) return;"
   , "    if (window.LeksahKitty) window.LeksahKitty.feed(id, term, a);"
   , "    else term.write(a);"
+  , "  }"
+  -- Synchronized output (DEC 2026) arrives split: tmux hands us a program's
+  -- output in ~1KB %output chunks, so one frame of a TUI that brackets its
+  -- redraws in ?2026h … ?2026l (Claude Code does) spans several writes.
+  -- xterm.js checks the mode at PAINT time (RenderService._renderRows) and
+  -- skips painting while a frame is open — with frames streaming back to
+  -- back (a trackpad flick: ~800KB/s), nearly every animation frame landed
+  -- mid-frame, so the screen froze until the stream slowed.  Hand xterm only
+  -- whole frames: hold back a tail that opens a frame without closing it
+  -- until the close arrives (50ms safety flush, well under xterm's own 1s
+  -- sync timeout), plus a trailing partial escape that might be the opener.
+  , "  var SYNC_ON = [27,91,63,50,48,50,54,104], SYNC_OFF = [27,91,63,50,48,50,54,108];"
+  , "  var held = {}, heldTimer = {};"
+  , "  function lastIndexOfSeq(a, seq){"
+  , "    outer: for (var i = a.length - seq.length; i >= 0; i--) {"
+  , "      for (var j = 0; j < seq.length; j++) if (a[i + j] !== seq[j]) continue outer;"
+  , "      return i;"
+  , "    }"
+  , "    return -1;"
+  , "  }"
+  , "  function partialTail(a){"
+  , "    for (var k = Math.min(SYNC_ON.length - 1, a.length); k > 0; k--) {"
+  , "      var ok = true;"
+  , "      for (var j = 0; j < k; j++) if (a[a.length - k + j] !== SYNC_ON[j]) { ok = false; break; }"
+  , "      if (ok) return k;"
+  , "    }"
+  , "    return 0;"
+  , "  }"
+  , "  function frameFeed(id, term, a){"
+  , "    var h = held[id];"
+  , "    if (h) { var c = new Uint8Array(h.length + a.length); c.set(h); c.set(a, h.length); a = c; delete held[id]; }"
+  , "    if (heldTimer[id]) { clearTimeout(heldTimer[id]); delete heldTimer[id]; }"
+  , "    var on = lastIndexOfSeq(a, SYNC_ON), cut = a.length;"
+  , "    if (on >= 0 && lastIndexOfSeq(a, SYNC_OFF) < on) cut = on;"
+  , "    else cut = a.length - partialTail(a);"
+  , "    feed(id, term, cut === a.length ? a : a.subarray(0, cut));"
+  , "    if (cut < a.length) {"
+  , "      held[id] = a.slice(cut);"
+  , "      heldTimer[id] = setTimeout(function(){"
+  , "        delete heldTimer[id];"
+  , "        var t = byId[id], r = held[id]; delete held[id];"
+  , "        if (t && r) feed(id, t, r);"
+  , "      }, 50);"
+  , "    }"
   , "  }"
   -- The terminal cell size (CSS px) for leksah's font settings — measured
   -- ONCE from a throwaway offscreen xterm (the browser equivalent of reading
