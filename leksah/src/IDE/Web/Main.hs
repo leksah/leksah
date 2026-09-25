@@ -3224,7 +3224,85 @@ terminalMouseScaleJs = T.unlines
   , "        return '\\x1b[<' + b + ';' + sx + ';' + sy + fin;"
   , "      });"
   , "  }"
-  , "  return { setCellPx: setCellPx, rescale: rescale };"
+  -- onData(term, cb): term.onData, but SGR wheel reports (buttons 64-127:
+  -- wheel up/down/left/right plus modifier bits) are held until the next
+  -- animation frame and handed on as ONE chunk.  A trackpad flick fires
+  -- ~120 wheel events a second; one send-keys per report is one pty write
+  -- per report for the program (Claude Code's fullscreen UI redraws the
+  -- whole screen per read).  iTerm2 likewise writes each event's reports in
+  -- a single write (PTYSession writeMouseReport, it_repeated:steps).  Any
+  -- other input flushes the held reports first, so ordering is preserved.
+  , "  var wheelRe = /^(?:\\x1b\\[<(\\d+);\\d+;\\d+M)+$/;"
+  , "  function isWheel(d){"
+  , "    if (!wheelRe.test(d)) return false;"
+  , "    var re = /\\x1b\\[<(\\d+);/g, m;"
+  , "    while ((m = re.exec(d))) { var b = +m[1]; if (b < 64 || b > 127) return false; }"
+  , "    return true;"
+  , "  }"
+  -- Wheel → mouse reports, handled here instead of by xterm.js so the scroll
+  -- distance and rate can be shaped like iTerm2's.  iTerm2 (fastTrackpad +
+  -- proportionalScrollWheelReporting, its defaults) reports
+  -- ceil(accumulated NSEvent.deltaY / lineHeight) per event, where deltaY is
+  -- AppKit's accelerated, quantised "line" delta: slow movement yields single
+  -- lines, a flick yields many — up to 32 reports per event, written in one go.
+  -- A web view only gets the PIXEL delta (scrollingDeltaY), so approximate:
+  -- accumulate lines = (|px| / __leksahWheelPx) ^ __leksahWheelAccel per event
+  -- (fractions carry over; reset on direction change, like iTerm2's
+  -- takeWholePortionWithDelta), emit the whole part, cap 32 per event.
+  -- Defaults px = one cell height, accel = 1: exactly xterm.js's distance.
+  -- Only while the program asked for mouse reports in SGR encoding (what
+  -- TUIs use); otherwise xterm handles the wheel (scrollback, legacy
+  -- encodings).  Capture phase on the pane element, so xterm's own wheel
+  -- listener never sees a handled event.
+  , "  function wheelReport(term, e){"
+  , "    if (!term.modes || term.modes.mouseTrackingMode === 'none') return null;"
+  , "    var ms = term._core && term._core.mouseStateService;"
+  , "    var enc = ms && ms.activeEncoding;"
+  , "    if (enc !== 'SGR' && enc !== 'SGR_PIXELS') return null;"
+  , "    if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.deltaY === 0) return null;"
+  , "    var screen = term.element && term.element.querySelector('.xterm-screen');"
+  , "    var cell = term.dimensions && term.dimensions.css && term.dimensions.css.cell;"
+  , "    if (!screen || !cell || !(cell.width > 0) || !(cell.height > 0)) return null;"
+  , "    var r = screen.getBoundingClientRect();"
+  , "    var px = Math.max(0, e.clientX - r.left), py = Math.max(0, e.clientY - r.top);"
+  , "    var x, y;"
+  , "    if (enc === 'SGR_PIXELS') { x = Math.floor(px) + 1; y = Math.floor(py) + 1; }"
+  , "    else { x = Math.min(term.cols, Math.floor(px / cell.width) + 1);"
+  , "           y = Math.min(term.rows, Math.floor(py / cell.height) + 1); }"
+  , "    var b = (e.deltaY < 0 ? 64 : 65) + (e.shiftKey ? 4 : 0) + (e.altKey ? 8 : 0) + (e.ctrlKey ? 16 : 0);"
+  , "    return { rep: '\\x1b[<' + b + ';' + x + ';' + y + 'M', cellH: cell.height };"
+  , "  }"
+  , "  function wheelLines(e, cellH){"
+  , "    var unit = e.deltaMode === 1 ? 1 : e.deltaMode === 2 ? 1 / 40 : (window.__leksahWheelPx || cellH);"
+  , "    var accel = window.__leksahWheelAccel || 1;"
+  , "    return Math.pow(Math.abs(e.deltaY) / unit, accel);"
+  , "  }"
+  , "  function onData(term, cb){"
+  , "    var held = '', armed = false;"
+  , "    function flush(){ armed = false; if (held) { var h = held; held = ''; cb(h); } }"
+  , "    function hold(d){ held += d; if (!armed) { armed = true; requestAnimationFrame(flush); } }"
+  , "    var host = term.element && term.element.parentElement;"
+  , "    var acc = 0;"
+  , "    function onWheel(e){"
+  , "      var w = wheelReport(term, e);"
+  , "      if (w === null) return;"
+  , "      e.preventDefault(); e.stopPropagation();"
+  , "      var sign = e.deltaY < 0 ? -1 : 1;"
+  , "      if (acc * sign < 0) acc = 0;"
+  , "      acc += sign * wheelLines(e, w.cellH);"
+  , "      var n = Math.min(32, Math.floor(Math.abs(acc)));"
+  , "      if (n > 0) { acc -= sign * n; hold(w.rep.repeat(n)); }"
+  , "    }"
+  , "    if (host) host.addEventListener('wheel', onWheel, { capture: true, passive: false });"
+  , "    var sub = term.onData(function(d){"
+  , "      if (isWheel(d)) hold(d);"
+  , "      else { flush(); cb(d); }"
+  , "    });"
+  , "    return { dispose: function(){"
+  , "      if (host) host.removeEventListener('wheel', onWheel, { capture: true });"
+  , "      sub.dispose(); } };"
+  , "  }"
+  , "  return { setCellPx: setCellPx, rescale: rescale, onData: onData };"
   , "})();"
   ]
 

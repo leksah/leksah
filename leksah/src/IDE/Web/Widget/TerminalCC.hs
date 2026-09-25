@@ -2080,7 +2080,9 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         -- Keystrokes → tmux.  ccSendBytes is fire-and-forget, so no forkIO:
         -- sending inline keeps keystroke ORDER (concurrent forks could race
         -- for the submit lock and swap two fast keypresses).
-        _ <- term ^. js1 ("onData" :: Text) (fun $ \_ _ args -> case args of
+        -- (LeksahMouseScale.onData = term.onData with wheel reports batched
+        -- per animation frame; see terminalMouseScaleJs.)
+        _ <- jsg ("LeksahMouseScale" :: Text) ^. js2 ("onData" :: Text) term (fun $ \_ _ args -> case args of
                 (d : _) -> do
                     s <- valToText d
                     -- SGR mouse reports (ESC [ < b;x;y M/m): in SGR-pixel
