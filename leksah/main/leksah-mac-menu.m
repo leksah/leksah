@@ -2192,7 +2192,34 @@ static void leksah_install_beep_handler(id webview) {
 // will-close observers that drive active-window tracking and close-merge.
 // Returns YES if a previously-saved frame was restored (so the caller knows not
 // to override it, e.g. by centring a fresh window).
+// WebKit paces page rendering updates (requestAnimationFrame, so xterm.js
+// painting) near 60fps even on a 120Hz ProMotion panel — the internal feature
+// "Prefer Page Rendering Updates near 60fps", on by default (Safari exposes it
+// under Develop ▸ Feature Flags).  At 60fps a fast terminal scroll moves twice
+// as far per frame as iTerm2's 120fps Metal renderer, and reads as stutter.
+// Switch it off through the private WKPreferences feature API; every step is
+// probed, so a WebKit without it just keeps the 60fps cap.
+static void leksah_allow_high_refresh(id web) {
+    @try {
+        if (![web respondsToSelector:@selector(configuration)]) return;
+        id prefs = [[web valueForKey:@"configuration"] valueForKey:@"preferences"];
+        Class prefsClass = NSClassFromString(@"WKPreferences");
+        SEL featuresSel = NSSelectorFromString(@"_features");
+        SEL setSel = NSSelectorFromString(@"_setEnabled:forFeature:");
+        if (prefs == nil || ![prefsClass respondsToSelector:featuresSel]
+                || ![prefs respondsToSelector:setSel]) return;
+        NSArray *features = ((id (*)(id, SEL))objc_msgSend)(prefsClass, featuresSel);
+        for (id f in features) {
+            if ([[f valueForKey:@"key"] isEqual:@"PreferPageRenderingUpdatesNear60FPSEnabled"]) {
+                ((void (*)(id, SEL, BOOL, id))objc_msgSend)(prefs, setSel, NO, f);
+                return;
+            }
+        }
+    } @catch (...) {}   // (...): see the ghci reloc note above
+}
+
 static BOOL leksah_configure_window(NSWindow *win, int wid) {
+    leksah_allow_high_refresh([win contentView]);
     if (gWindows == nil) gWindows = [[NSMutableDictionary alloc] init];
     [gWindows setObject:win forKey:@(wid)];
     if (wid == 0) gLeksahWindow = win;
