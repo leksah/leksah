@@ -71,17 +71,17 @@
  import           Ide.Logger
  import           Ide.Plugin.Cabal.CabalAdd.Types
  import           Ide.Plugin.Cabal.Completion.Completer.Module  (fpToExposedModulePath)
-@@ -276,7 +281,13 @@
-   getBuildTargets :: GenericPackageDescription -> FilePath -> FilePath -> IO [BuildTarget]
-   getBuildTargets gpd cabalFilePath haskellFilePath = do
-     let haskellFileRelativePath = makeRelative (dropFileName cabalFilePath) haskellFilePath
+@@ -298,7 +303,13 @@
+ getBuildTargets :: PackageDescription -> FilePath -> FilePath -> IO [BuildTarget]
+ getBuildTargets pd cabalFilePath haskellFilePath = do
+   let haskellFileRelativePath = makeRelative (dropFileName cabalFilePath) haskellFilePath
 +#if MIN_VERSION_Cabal(3,17,0)
-+    -- The fork's Cabal 3.17 split Verbosity into VerbosityFlags + handles;
-+    -- readBuildTargets still wants a full Verbosity, so wrap the flags.
-+    readBuildTargets (mkVerbosity defaultVerbosityHandles (verboseNoStderr silent)) (flattenPackageDescription gpd) [haskellFileRelativePath]
++  -- The fork's Cabal 3.17 split Verbosity into VerbosityFlags + handles;
++  -- readBuildTargets still wants a full Verbosity, so wrap the flags.
++  readBuildTargets (mkVerbosity defaultVerbosityHandles (verboseNoStderr silent)) pd [haskellFileRelativePath]
 +#else
-     readBuildTargets (verboseNoStderr silent) (flattenPackageDescription gpd) [haskellFileRelativePath]
+   readBuildTargets (verboseNoStderr silent) pd [haskellFileRelativePath]
 +#endif
  
-   mkCodeActionForDependency :: FilePath -> Maybe String -> (T.Text, T.Text) -> J.CodeAction
-   mkCodeActionForDependency cabalFilePath target (suggestedDep, suggestedVersion) =
+ {- | Gives a mentioned number of @(dependency, version)@ pairs
+ found in the "hidden package" diagnostic message.

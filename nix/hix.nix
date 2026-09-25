@@ -82,7 +82,7 @@ let
   hlsDepsPatched = pkgs.lib.optionalString isGhc914sh ''
     packages: ${patchedHackage "cabal-add" "0.2" ./patches/cabal-add-cabal-syntax-3.17.patch}
     packages: ${patchedHackage "cabal-install-parsers" "0.6.3" ./patches/cabal-install-parsers-cabal-syntax-3.17.patch}
-    packages: ${patchedHackage "ghc-exactprint" "1.14.0.0" ./patches/ghc-exactprint-1.14-stable-ghc-9.14.patch}
+    packages: ${patchedHackage "ghc-exactprint" "1.14.1.0" ./patches/ghc-exactprint-1.14-stable-ghc-9.14.patch}
   '';
   # HLS's own hls-cabal-plugin doesn't compile against the fork's Cabal-syntax
   # 3.17: CondTree lost its middle type param, and runParseResult now wraps
