@@ -1465,7 +1465,8 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                     -- Latency trace: the display half of the KEY record above.
                     focusLog $ "[" <> T.unpack sessionId <> "] ECHO pane="
                         <> T.unpack pane <> " bytes=" <> show (BS.length dat)
-                    liftJSM $ writePane sessionId pane dat
+                    liftJSM . forM_ (M.lookup pane terms) $ \term ->
+                        writePane sessionId pane term dat
                 Just (_, PauseDropping) -> return ()   -- stale: the capture will include it
                 Just (t0, PauseGotCap cap buf) -> liftIO $
                     writeIORef pausedRef (M.insert pane (t0, PauseGotCap cap (dat : buf)) st)
@@ -1484,17 +1485,18 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
               st <- liftIO $ readIORef pausedRef
               case M.lookup p st of
                 Just (_, PauseGotCap cap buf) -> do
-                    liftJSM $ do
+                    terms <- liftIO $ readIORef termsRef
+                    liftJSM . forM_ (M.lookup p terms) $ \term -> do
                         case res of
                           Right (stLine : _) ->
-                              writePane sessionId p (buildReplay cap stLine)
+                              writePane sessionId p term (buildReplay cap stLine)
                           -- No state line: skip the replay (screen keeps
                           -- whatever it had) — but the BUFFERED live output
                           -- must still flush, or everything typed since the
                           -- capture silently vanishes (a deaf pane).
                           _ -> focusLog $ "[" <> T.unpack sessionId
                                   <> "] replay cur FAILED pane=" <> T.unpack p
-                        forM_ (reverse buf) $ writePane sessionId p
+                        forM_ (reverse buf) $ writePane sessionId p term
                     liftIO $ writeIORef pausedRef (M.delete p st)
                 _ -> liftIO $ modifyIORef' pausedRef (M.delete p)
           | otherwise -> return ()
@@ -2300,10 +2302,18 @@ data PauseState
                                         --   (reversed) until the state line lands
 
 -- | @LeksahTerm.write@: base64 the raw bytes into the pane's xterm.
-writePane :: Text -> PaneId -> BS.ByteString -> JSM ()
-writePane sess pane dat = void $
-    jsg ("LeksahTerm" :: Text) ^. js2 ("write" :: Text)
-        (paneKey sess pane) (decodeUtf8 (B64.encode dat))
+--
+-- @term@ is the xterm THIS widget created for the pane: the registry key is
+-- global (session + pane), so when a pane moves to another leksah window the
+-- widget it left keeps its termsRef entry (the pane never left the session,
+-- so the departed-pane sweep doesn't drop it) while the new window's xterm
+-- takes over the key.  Writing only when the registry still holds OUR xterm
+-- stops the stale widget's control client doubling every byte into the new
+-- owner's xterm (which scrambles cursor-relative TUIs like Claude Code).
+writePane :: Text -> PaneId -> JSVal -> BS.ByteString -> JSM ()
+writePane sess pane term dat = void $
+    jsg ("LeksahTerm" :: Text) ^. js3 ("write" :: Text)
+        (paneKey sess pane) (decodeUtf8 (B64.encode dat)) term
 
 -- | (Re)fill a pane's xterm from tmux's current screen, race-free: resume
 -- the pane (a no-op unless flow control paused it), then fetch the capture

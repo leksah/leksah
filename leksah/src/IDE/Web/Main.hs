@@ -3536,9 +3536,11 @@ terminalWriteJs = T.unlines
   , "    try { if (window.__leksahXtermActive) term.options.theme = window.__leksahXtermActive; } catch (e) {} }"
   , "  function unregister(id){ delete byId[id];"
   , "    try { window.LeksahKitty.drop(id); } catch (e) {} }"
-  , "  function write(id, b64){"
+  -- owner: the xterm the writing widget created; a widget whose pane moved to
+  -- another leksah window no longer owns the key and must not write into it.
+  , "  function write(id, b64, owner){"
   , "    var term = byId[id];"
-  , "    if (!term) return;"
+  , "    if (!term || (owner && owner !== term)) return;"
   , "    var bin = atob(b64), n = bin.length, a = new Uint8Array(n);"
   , "    for (var i=0;i<n;i++) a[i] = bin.charCodeAt(i);"
   -- Output goes through the passthrough/kitty filter (IDE.Web.KittyGraphics);
