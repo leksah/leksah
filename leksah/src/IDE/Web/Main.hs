@@ -151,7 +151,7 @@ import Reflex
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never, getPostBuild, select, fan, fanMap,
         fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate, zipDyn,
         sample, constDyn,
-        tagPromptlyDyn, debounce, delay, tickLossyFromPostBuildTime)
+        tagPromptlyDyn, attachPromptlyDynWithMaybe, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
         text, blank, domEvent, EventName(..),
@@ -8733,10 +8733,10 @@ main showMenubar macTitlebar wid ctx = mdo
     -- the trigger fan-out can lag, drop, or deliver a stale snapshot to a busy or
     -- background window, so an activated pane would fail to float to the flipper /
     -- tab MRU front (even though the MVar, hence the saved session, is correct).
-    -- So float this window's own activations (wide0ActivateE) to the front locally
+    -- So float this window's own activations (wide0ShownE) to the front locally
     -- and immediately; a healthy fan-out echo then just agrees.  Membership still
     -- comes from the shared state, so tabs moved to/from this window are respected.
-    localWide0MruD <- foldDyn (\k ks -> k : filter (/= k) ks) [] wide0ActivateE
+    localWide0MruD <- foldDyn (\k ks -> k : filter (/= k) ks) [] wide0ShownE
     wide0OrderD  <- holdUniqDyn $
         (\ww mru ->
             let base     = _wwWide0 ww
@@ -8839,11 +8839,25 @@ main showMenubar macTitlebar wid ctx = mdo
     -- The active pane became a wide0 tab THIS window owns: float it to the MRU
     -- front / mark it active in the shared state (ignored for side/bottom tabs and
     -- for tabs owned by other windows).
-    let wide0ActivateE = attachWithMaybe
+    --
+    -- Only activations that DISAGREE with the shared active tab are written
+    -- back.  Every Cell write reaches this window as its own queued snapshot,
+    -- and showing a snapshot's active tab moves activePaneD too — so echoing
+    -- those replays stale snapshots back into the cell, where each write
+    -- queues another stale snapshot.  Two writes in flight at once (⌘D on an
+    -- editor: close → fallback tab active, then the new lw tab active) then
+    -- flip the window between the two tabs forever, dozens of times a second.
+    -- The shared value is sampled promptly: the selection it drives lands in
+    -- the same frame.  The local MRU still floats every shown tab
+    -- (wide0ShownE), so cross-window flips order the tab bar as before.
+    let wide0ShownE = attachWithMaybe
           (\ord mk -> case mk of
                         Just k | k `elem` map fst ord -> Just k
                         _                             -> Nothing)
           (current wide0OrderD) (updated activePaneD)
+        wide0ActivateE = attachPromptlyDynWithMaybe
+          (\shared k -> if shared == Just k then Nothing else Just k)
+          wide0ActiveD wide0ShownE
     performEvent_ $ ffor (updated activePaneD) $ \mk -> do
         wlog wid ("activePane -> " <> show mk)
         focusLog ("[" <> show wid <> "] activePaneD -> " <> show mk)
