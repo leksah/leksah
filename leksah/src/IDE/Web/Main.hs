@@ -1458,6 +1458,12 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- xterm.  Enabled per the tmuxInterceptPrefix pref (mirrored in from reflex).
   _ <- eval leksahTmuxJs
 
+  -- Defines window.LeksahMouseScale: rescales SGR-pixel (DECSET 1016) mouse
+  -- reports from xterm's CSS px into the pane's tmux pixel geometry, so
+  -- pixel-mouse programs (farsee) see coordinates in the same units as their
+  -- TIOCGWINSZ.  Applied in the CC widget's onData path.
+  _ <- eval terminalMouseScaleJs
+
   -- Builds xterm linkHandlers for OSC 8 hyperlinks (window.LeksahOscLinks): a hover
   -- tooltip with the URL, and click-to-open for http(s) links.
   _ <- eval terminalOscLinksJs
@@ -3170,6 +3176,55 @@ leksahTmuxJs = T.unlines
   , "      return swallow(e);"
   , "    });"
   , "  };"
+  , "})();"
+  ]
+
+-- | @window.LeksahMouseScale@: rescales xterm's SGR-pixel (DECSET 1016) mouse
+-- reports into the pane's tmux pixel geometry (applied in the CC widget's
+-- onData path, before the bytes are send-keys'd into the pane).
+--
+-- tmux describes a pane's size to the program inside it (TIOCGWINSZ, CSI 14t)
+-- in pixels of @#{window_cell_width}x#{window_cell_height}@ per cell — and
+-- with only control-mode clients attached those are tmux's built-in defaults
+-- (16x32), a CC client having no tty to measure.  xterm.js generates 1016
+-- reports in ITS pixels: CSS px, cells of roughly half that.  A program that
+-- compares the two — farsee sizes its kitty image placement from TIOCGWINSZ
+-- and hit-tests clicks against it — sees every click land at about half the
+-- X/Y it should.  For a real terminal client tmux re-encodes mouse input into
+-- pane pixels itself; a CC pane's input bypasses tmux, so the translation has
+-- to happen here.
+--
+-- @setCellPx@ stores the pane's tmux cell-pixel size on the registered xterm
+-- (from the @cpx:@-tagged display-message reply in the CC widget); @rescale@
+-- maps each report's x;y from xterm CSS px to pane px around the CSS pixel's
+-- centre, clamped to the pane box.  Reports pass through untouched until
+-- setCellPx has arrived, and whenever the terminal is not in SGR_PIXELS
+-- encoding (cell coordinates mean the same thing in both worlds).
+terminalMouseScaleJs :: Text
+terminalMouseScaleJs = T.unlines
+  [ "window.LeksahMouseScale = (function(){"
+  , "  function setCellPx(id, w, h){"
+  , "    var t = window.LeksahTerm && window.LeksahTerm.byId[id];"
+  , "    if (t && w > 0 && h > 0) t._leksahCellPx = { w: w, h: h };"
+  , "  }"
+  , "  function rescale(term, data){"
+  , "    var px = term._leksahCellPx;"
+  , "    if (!px) return data;"
+  , "    var ms = term._core && term._core.mouseStateService;"
+  , "    if (!ms || ms.activeEncoding !== 'SGR_PIXELS') return data;"
+  , "    var dims = term.dimensions;"
+  , "    var cell = dims && dims.css && dims.css.cell;"
+  , "    if (!cell || !(cell.width > 0) || !(cell.height > 0)) return data;"
+  , "    var fx = px.w / cell.width, fy = px.h / cell.height;"
+  , "    var mx = term.cols * px.w, my = term.rows * px.h;"
+  , "    return data.replace(/\\x1b\\[<(\\d+);(\\d+);(\\d+)([Mm])/g,"
+  , "      function(m, b, x, y, fin){"
+  , "        var sx = Math.min(mx, Math.max(1, Math.floor((x - 0.5) * fx) + 1));"
+  , "        var sy = Math.min(my, Math.max(1, Math.floor((y - 0.5) * fy) + 1));"
+  , "        return '\\x1b[<' + b + ';' + sx + ';' + sy + fin;"
+  , "      });"
+  , "  }"
+  , "  return { setCellPx: setCellPx, rescale: rescale };"
   , "})();"
   ]
 

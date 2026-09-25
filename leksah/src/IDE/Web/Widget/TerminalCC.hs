@@ -1499,6 +1499,18 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                         forM_ (reverse buf) $ writePane sessionId p term
                     liftIO $ writeIORef pausedRef (M.delete p st)
                 _ -> liftIO $ modifyIORef' pausedRef (M.delete p)
+          -- The pane's tmux cell-pixel size (queried at xterm creation):
+          -- hand it to LeksahMouseScale so onData can rescale SGR-pixel
+          -- mouse reports into the pane's pixel geometry.
+          | Just p <- T.stripPrefix "cpx:" rtag ->
+              case res of
+                Right (ln : _)
+                  | [wT, hT] <- T.splitOn "\t" ln
+                  , Just (wpx :: Int) <- readMaybe (T.unpack wT)
+                  , Just (hpx :: Int) <- readMaybe (T.unpack hT) ->
+                      liftJSM . void $ jsg ("LeksahMouseScale" :: Text)
+                          ^. js3 ("setCellPx" :: Text) (paneKey sessionId p) wpx hpx
+                _ -> return ()
           | otherwise -> return ()
         _ -> return ()
 
@@ -2071,13 +2083,25 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         _ <- term ^. js1 ("onData" :: Text) (fun $ \_ _ args -> case args of
                 (d : _) -> do
                     s <- valToText d
+                    -- SGR mouse reports (ESC [ < b;x;y M/m): in SGR-pixel
+                    -- mode (DECSET 1016) xterm's coordinates are ITS CSS px,
+                    -- but the pane's pixel geometry (TIOCGWINSZ) is tmux's
+                    -- window_cell_width/height per cell — about double.
+                    -- Rescale into the pane's units (LeksahMouseScale, fed by
+                    -- the cpx: query at xterm creation): the translation tmux
+                    -- itself does for a real client, which send-keys'd input
+                    -- bypasses.  Keystrokes skip the JS round trip.
+                    s' <- if "\ESC[<" `T.isInfixOf` s
+                            then valToText =<< jsg ("LeksahMouseScale" :: Text)
+                                     ^. js2 ("rescale" :: Text) term s
+                            else return s
                     -- Latency trace (µs-stamped, off unless the focus logger
                     -- is on): pairs with the ECHO record in the %output
                     -- write path, so a \"typing is slow\" episode shows
                     -- exactly which hop eats the time.
                     focusLog $ "[" <> T.unpack sessionId <> "] KEY pane="
-                        <> T.unpack pane <> " bytes=" <> show (T.length s)
-                    liftIO $ ccSendBytes cc pane (encodeUtf8 s)
+                        <> T.unpack pane <> " bytes=" <> show (T.length s')
+                    liftIO $ ccSendBytes cc pane (encodeUtf8 s')
                 _ -> return ())
         -- Intercept the tmux C-b prefix (when the pref is on).  Crucial for CC
         -- tabs: keystrokes here are send-keys'd into the pane, so a raw C-b never
@@ -2115,6 +2139,16 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         -- fill the fresh xterm from the pane's current screen + recent
         -- history (also resumes the pane if flow control paused it)
         liftIO $ requestReplay cc pausedRef ReplayWithHistory pane
+        -- The pane's tmux cell-pixel size (window_cell_width/height, the
+        -- per-cell unit of TIOCGWINSZ inside the pane — tmux's 16x32
+        -- defaults while only CC clients are attached): needed to rescale
+        -- SGR-pixel mouse reports in onData above.  Queried once per xterm;
+        -- it only changes if a real client with a pixel-reporting tty
+        -- attaches to the session, which nothing here tracks.  Reply lands
+        -- in the EvReply dispatcher (tag cpx:).
+        liftIO $ ccCommandTagged cc ("cpx:" <> pane)
+            ("display-message -p -t " <> pane
+             <> " -F '#{window_cell_width}\t#{window_cell_height}'")
         -- Focus-on-mount: the reconciler wanted the keyboard here before this
         -- xterm existed (a fresh ⌘D split) — deterministic, no polling.
         pendM <- liftIO $ readIORef pendingMountRef
