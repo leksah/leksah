@@ -3565,7 +3565,12 @@ terminalWriteJs = T.unlines
   , "      if (!(window.WebglAddon && window.WebglAddon.WebglAddon)) return false;"
   , "      var c = document.createElement('canvas');"
   , "      if (!(c.getContext('webgl2') || c.getContext('webgl'))) return false;"
-  , "      term.loadAddon(new window.WebglAddon.WebglAddon());"
+  , "      var gl = new window.WebglAddon.WebglAddon();"
+  -- WebKit caps live WebGL contexts (~16 per page) and drops the oldest past
+  -- that — likely with many tmux panes.  Disposing the addon on loss hands the
+  -- terminal back to the DOM renderer instead of leaving it blank.
+  , "      gl.onContextLoss(function(){ try { gl.dispose(); term.refresh(0, term.rows - 1); } catch (e) {} });"
+  , "      term.loadAddon(gl);"
   , "      return true;"
   , "    } catch (e) { return false; }"
   , "  }"

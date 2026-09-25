@@ -2008,6 +2008,10 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         _ <- jsg ("LeksahTerm" :: Text) ^. js2 ("register" :: Text)
                  (paneKey sessionId pane) term
         _ <- term ^. js1 ("open" :: Text) (_element_raw paneEl)
+        -- GPU renderer (after open(): it needs the screen element).  Runtime
+        -- probe inside JS, falling back to the DOM renderer — see
+        -- 'LeksahTerm.loadWebgl' and the classic widget in IDE.Web.Widget.Terminal.
+        _ <- jsg ("LeksahTerm" :: Text) ^. js1 ("loadWebgl" :: Text) term
         -- Make file paths / identifiers in the output clickable (see
         -- 'terminalLinksJs'); same callbacks as the classic widget.
         _ <- jsg ("LeksahTermLinks" :: Text) ^. js4 ("attach" :: Text) term
