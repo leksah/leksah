@@ -30,7 +30,7 @@ module IDE.Web.GtkApp
 import Control.Exception (SomeException, try)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Lens ((?~), view)
-import Control.Monad (forM_, unless, void, when)
+import Control.Monad (forM_, unless, void)
 
 import Data.ByteString (ByteString)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
@@ -38,15 +38,15 @@ import qualified Data.Map as M
 import qualified Data.Text as T (unpack)
 import Data.Text.Encoding (decodeUtf8)
 
-import Data.GI.Base (get, on, SignalProxy(PropertyNotify))
 import qualified GI.Gdk as Gdk (textureSaveToPng)
 import qualified GI.Gio as Gio
        (ApplicationFlags(..), Cancellable, applicationQuit, applicationRun,
         onApplicationActivate)
 import qualified GI.Gtk as Gtk
        (Application, ApplicationWindow, applicationNew, applicationWindowNew,
-        onWindowCloseRequest, windowSetTitle, windowSetDefaultSize,
-        windowSetChild, windowPresent)
+        eventControllerFocusNew, onEventControllerFocusEnter,
+        onWindowCloseRequest, widgetAddController, windowSetTitle,
+        windowSetDefaultSize, windowSetChild, windowPresent)
 import qualified GI.WebKit as WK
        (LoadEvent(..), SnapshotOptions(..), SnapshotRegion(..), WebView,
         onWebViewLoadChanged, setSettingsEnableDeveloperExtras,
@@ -128,14 +128,26 @@ openWindow app html url windowsRef theApp mbWid = do
   installGtkMenu app win
   registerSnapshotHandler webView
   atomicModifyIORef' windowsRef (\m -> (M.insert wid win m, ()))
-  -- Track the frontmost window (the AppKit 'leksah_window_activated' analog): on
-  -- each is-active transition, if this window just gained focus, record it as the
-  -- active window so the process-wide bridges (Close/Save/Find) and the flipper's
-  -- in-place actions target it.  ('is-active' is a GtkWindow property; haskell-gi
-  -- surfaces its changes only through PropertyNotify.)
-  _ <- on win (PropertyNotify #isActive) $ \_ -> do
-         active <- get win #isActive
-         when active $ setActiveWindow theApp wid
+  -- Track the frontmost window (the AppKit 'leksah_window_activated' analog): a
+  -- focus controller fires 'enter' when keyboard focus moves into this window's
+  -- widget tree — i.e. when it becomes the window being used — so record it as
+  -- the active window, which is what the process-wide bridges (Close/Save/Find)
+  -- and the flipper's in-place actions target.  ('enter' does not re-fire as
+  -- focus moves between widgets *within* the tree, only on entering it.)
+  --
+  -- Deliberately NOT `on win (PropertyNotify #isActive)`, the obvious spelling:
+  -- the overloaded-label attribute machinery is not available in this gi-gtk4
+  -- build, so `get win #isActive` fails to compile with "Type
+  -- Gtk.ApplicationWindow does not have any known attributes".  That is why
+  -- every other GTK call in this front end uses the plain generated functions,
+  -- and this one must too.
+  --
+  -- Connect BEFORE adding: gtk_widget_add_controller takes ownership, so the
+  -- binding disowns focusCtl and any later use of it warns "Accessing a
+  -- disowned pointer".
+  focusCtl <- Gtk.eventControllerFocusNew
+  _ <- Gtk.onEventControllerFocusEnter focusCtl $ setActiveWindow theApp wid
+  Gtk.widgetAddController win focusCtl
   -- Window close: merge this window's tabs into a survivor (shared logic); the
   -- last window quits the GTK app.  Returning False lets the default close
   -- proceed (True would veto it).

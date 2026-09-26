@@ -169,6 +169,12 @@ keySpecToGtkAccel spec =
         "["     -> "bracketleft"
         "]"     -> "bracketright"
         "="     -> "equal"
+        -- GTK wants key NAMES for punctuation: a literal '/', ',', '`' or
+        -- '-' fails gtk_accelerator_parse ("Unable to parse accelerator").
+        "/"     -> "slash"
+        ","     -> "comma"
+        "`"     -> "grave"
+        "-"     -> "minus"
         -- A trailing empty part means the key itself was '+'.
         ""      -> "plus"
         _       -> k
