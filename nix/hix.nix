@@ -332,9 +332,30 @@ rec {
           # exe's ghc-options, but ghc914-sh is a static GHC and every slice is
           # built static-only (`shared: False`), so there are no dyn libs to
           # link — build the exe the static way like the rest of the project.
+          # -ormolu -fourmolu: both FORMATTER plugins are manual flags
+          # defaulting True, and both formatters cap Cabal-syntax
+          # >=3.16 && <3.17 (they parse .cabal files for default-extensions).
+          # GHC 9.14 boots Cabal-syntax 3.17, so with either plugin on there is
+          # no solution at all and the shell cannot even be EVALUATED — the
+          # failure is an HLS plan-to-nix build error, which reads as "the flake
+          # is broken" rather than "a formatter is unsatisfiable".
+          #
+          # Turning them off (rather than patching, as with the cabal-add /
+          # cabal-install-parsers caps above) is the right trade here: those two
+          # are load-bearing for hls-cabal-plugin, whereas these are two of
+          # several interchangeable formatters that leksah does not use.
+          # Relaxing the bound instead would mean porting both to the 3.17
+          # ParseResult/PErrorWithSource API for no gain.
+          #
+          # The other formatters need nothing: HLS already disables
+          # stylish-haskell itself for ghc >= 9.14 (its ghc-lib-parser doesn't
+          # support it), and the cabal-fmt / cabal-gild plugins shell out to
+          # external binaries instead of linking a formatter library.
+          # Revisit when ormolu/fourmolu support Cabal-syntax 3.17.
           cabalProjectLocal =
             "allow-newer: cabal-add:Cabal-syntax, cabal-add:Cabal\n"
             + "constraints: haskell-language-server -dynamic\n"
+            + "constraints: haskell-language-server -ormolu -fourmolu\n"
             + clibNoRts + hlsDepsPatched;
         };
       };
