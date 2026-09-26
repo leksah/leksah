@@ -105,6 +105,16 @@
             src = ./.;
             version = "0.17.0.0";
           };
+          # The Linux counterpart of the .dmg / Setup.exe: a tarball that
+          # carries its own GTK4 + WebKitGTK and needs no nix on the target.
+          # See nix/linux-tarball.nix for why it binds a store rather than
+          # relocating binaries the way nix/macos-app.nix does.
+          leksah-linux-tarball = import ./nix/linux-tarball.nix {
+            inherit pkgs;
+            leksah = flake.packages."leksah:exe:leksah";
+            src = ./.;
+            version = "0.17.0.0";
+          };
         }
           # A novice-friendly macOS artifact for the leksah-wkwebview front end:
           # a relocatable .app (dylib closure bundled + rebased, ad-hoc signed)
