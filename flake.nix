@@ -115,6 +115,15 @@
             src = ./.;
             version = "0.17.0.0";
           };
+          # The zero-dependency counterpart: leksah-warp linked statically
+          # against musl, so it needs no libc, no GUI stack and no user
+          # namespaces — the option for servers and locked-down machines.
+          leksah-warp-linux-tarball = import ./nix/linux-warp-tarball.nix {
+            inherit pkgs;
+            leksah-warp = flake.packages."x86_64-unknown-linux-musl:leksah:exe:leksah-warp";
+            src = ./.;
+            version = "0.17.0.0";
+          };
         }
           # A novice-friendly macOS artifact for the leksah-wkwebview front end:
           # a relocatable .app (dylib closure bundled + rebased, ad-hoc signed)

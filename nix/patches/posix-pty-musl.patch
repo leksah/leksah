@@ -1,0 +1,13 @@
+Musl is Linux without __GLIBC__: it ships forkpty in <pty.h> and has no
+<libutil.h> (that branch is for the BSDs).  Detect Linux, not glibc.
+--- a/cbits/fork_exec_with_pty.c
++++ b/cbits/fork_exec_with_pty.c
+@@ -13,7 +13,7 @@
+ 
+ #if defined(__APPLE__)
+ #include <util.h>
+-#elif defined(__GLIBC__)
++#elif defined(__GLIBC__) || defined(__linux__)
+ #include <pty.h>
+ #else /* bsd without glibc */
+ #include <libutil.h>

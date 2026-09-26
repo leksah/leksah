@@ -36,6 +36,15 @@ let
     packages: ${patchedHackage "cabal-doctest" "1.0.12" ./patches/cabal-doctest-cabal-3.17.patch}
     allow-newer: cabal-doctest:Cabal
   '';
+  # posix-pty's C shim assumes non-glibc Linux is BSD and includes
+  # <libutil.h>; musl is Linux with forkpty in <pty.h>, so the musl cross
+  # (leksah-warp static tarball) fails with "libutil.h: No such file or
+  # directory".  Patch the include guard to detect __linux__; a no-op on
+  # glibc/darwin, and patched here (not packages.posix-pty.patches) so the
+  # solver plans against the same source the slice builds.
+  posixPtyPatched = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isMusl ''
+    packages: ${patchedHackage "posix-pty" "0.2.2" ./patches/posix-pty-musl.patch}
+  '';
   # hslogger hard-depends on network (for its syslog/growl handlers), and
   # network does not build for the GHC JavaScript backend.  For the JS cross
   # (projectCross re-evaluates this module with the cross pkgs, so
@@ -107,8 +116,8 @@ let
 in
 rec {
     projectFileName = "cabal.project";
-    cabalProjectLocal = clibNoRts + cabalDoctestPatched + hsloggerNoNetworkJs
-      + reflexDomCoreJsaddleJs;
+    cabalProjectLocal = clibNoRts + cabalDoctestPatched + posixPtyPatched
+      + hsloggerNoNetworkJs + reflexDomCoreJsaddleJs;
     # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix hkm/stable-haskell
     # branch) that can cross-compile from darwin to Linux (musl) via hyper-linux.
     compiler-nix-name = "ghc914-sh";
@@ -145,18 +154,21 @@ rec {
     # Cross targets exposed as flake packages (NOT pulled into the dev shell —
     # see `shell.crossPlatforms` below, which forces it empty so the native dev
     # loop never builds a cross GHC):
-    #   * x86_64-linux host: ucrt64 (Windows leksah-webview2; TH via wine/iserv).
+    #   * x86_64-linux host: ucrt64 (Windows leksah-webview2; TH via wine/iserv)
+    #     and musl64, which builds the statically-linked leksah-warp download
+    #     (nix/linux-warp-tarball.nix).  Only the warp front end is built for
+    #     musl — see the `buildable` gate below.
     #   * aarch64-darwin host: aarch64-linux-musl (verified darwin→linux target
     #     of the -hl branch; TH/tests run under hyper-linux `hl`) AND ucrt64, so
     #     the `leksah-linux` / `leksah-windows` apps have something to run.
     crossPlatforms = p:
       pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux")
-        [ p.ucrt64 ]
+        [ p.ucrt64 p.musl64 ]
       ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin
         [ p.aarch64-multiplatform-musl p.ucrt64 ]
       ++ [ p.ghcjs ];
     modules = [({pkgs, lib, config, ...}: let
-        inherit (pkgs.stdenv.hostPlatform) isWindows;
+        inherit (pkgs.stdenv.hostPlatform) isWindows isMusl;
         # The GHC JavaScript backend (javascript-unknown-ghcjs).  nixpkgs gives
         # this platform NO C compiler by design (pkgs/stdenv/cross/default.nix:
         # `targetPlatform.isGhcjs` → `cc = throw "no C compiler …"`), because the
@@ -186,8 +198,28 @@ rec {
         packages.jsaddle-webview2.components.library.configureFlags =
           lib.optionals isWindows
             [ "--extra-include-dirs=${webview2-sdk}/build/native/include" ];
-        # Match the jsaddle project's proven mingw config.
-        enableStatic = lib.mkIf isWindows true;
+        # Match the jsaddle project's proven mingw config.  musl gets it too:
+        # the whole point of that target here is a leksah-warp binary that runs
+        # on any x86_64 Linux without a libc to match (nix/linux-warp-tarball.nix
+        # fails the build if the result turns out not to be static).
+        enableStatic = lib.mkIf (isWindows || isMusl) true;
+        # Under the v2 slice builder, cabal's `executable-static: True`
+        # reaches GHC as `-static` (static Haskell libraries) but not
+        # `-optl-static` — the final C link stays dynamic (PT_INTERP +
+        # NEEDED libc.so) and nix/linux-warp-tarball.nix rejects the
+        # binary.  Pass the linker half explicitly for the musl exe.
+        packages.leksah.components.exes.leksah-warp.ghcOptions =
+          lib.mkIf isMusl [ "-optl-static" ];
+        # Only exe:leksah-warp is ever BUILT for musl.  exe:leksah is GTK4 +
+        # WebKitGTK (see its `libs` below) and isLinux is true for musl, so its
+        # derivation does reference a GTK stack that nixpkgs will not build for
+        # musl — but merely evaluating it is harmless, and nothing asks for it.
+        # This is not a new situation: the darwin crossPlatforms above has
+        # included aarch64-multiplatform-musl all along, with the same unbuilt
+        # exe:leksah.  Do NOT try to switch it off with `buildable = false` —
+        # that drops the component from the plan and haskell.nix's
+        # modules/install-plan/redirect.nix then fails with "attribute 'leksah'
+        # missing".
         # bitvec's SIMD cbits use __builtin_cpu_supports, whose __cpu_model
         # (libgcc) symbol the iserv RTS linker can't resolve when loading the
         # unit for TH under wine; the flag drops the cbits.
@@ -198,8 +230,18 @@ rec {
         # XDG_DATA_DIRS rather than clearing it (wrapGAppsHook4's setup hook
         # doesn't survive the component builder's phase order, so the wrapper
         # sets the env explicitly).
+        # No wrapper on musl.  That target exists to produce a *statically
+        # linked* leksah-warp with no runtime closure at all (see
+        # nix/linux-warp-tarball.nix), and a wrapper would undo exactly that:
+        # it is a shell script that names the nix ghc and cabal by store path,
+        # so the "self-contained" binary would drag in a multi-GB closure.
+        # It also cannot be evaluated for this cross target — makeWrapper
+        # resolves to make-shell-wrapper-hook, which throws
+        # "makeWrapper/makeShellWrapper must be in nativeBuildInputs" because
+        # targetPackages has no runtimeShell.  Leksah takes ghc/cabal from the
+        # user's PATH instead.
         packages.leksah.components.exes.leksah.build-tools =
-          lib.optionals (!isWindows && !isJS) [
+          lib.optionals (!isWindows && !isJS && !isMusl) [
             pkgs.makeWrapper
           ];
         packages.leksah.components.exes.leksah.libs =
@@ -214,7 +256,7 @@ rec {
           # Ship the loader DLL next to the exe (it is LoadLibrary'd at startup).
           lib.optionalString isWindows ''
             cp ${webview2-sdk}/runtimes/win-x64/native/WebView2Loader.dll $out/bin/
-          '' + lib.optionalString (!isWindows && !isJS) ''
+          '' + lib.optionalString (!isWindows && !isJS && !isMusl) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
             cp -r ${../leksah/linux} $out/share/
@@ -228,12 +270,13 @@ rec {
             --prefix 'XDG_DATA_DIRS' ':' "${pkgs.adwaita-icon-theme}/share" \
             ''} --argv0 leksah
         '';
+        # Unwrapped on musl — see the note on exe:leksah.build-tools above.
         packages.leksah.components.exes.leksah-warp.build-tools =
-          lib.optionals (!isWindows && !isJS) [
+          lib.optionals (!isWindows && !isJS && !isMusl) [
             pkgs.makeWrapper
           ];
         packages.leksah.components.exes.leksah-warp.postInstall =
-          lib.optionalString (!isWindows && !isJS) ''
+          lib.optionalString (!isWindows && !isJS && !isMusl) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
             cp -r ${../leksah/linux} $out/share/
