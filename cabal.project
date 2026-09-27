@@ -121,6 +121,15 @@ allow-newer:
 
 constraints: monoidal-containers >=0.6.2.0, any.haskell-gi-overloading ==0.0, any.happy ==2.1.7, extra >=1.8, semialign <1.4
 
+-- One haskell-gi for every gi-* Setup.  haskell-gi 0.26.17 does not take the
+-- Cabal-3.17.0.1 the setups below are pinned to, so with it on Hackage the
+-- unpinned setups (gi-gdk4, gi-gtk4, gi-webkit, ...) moved to 0.26.17 + Cabal
+-- 3.16 while the pinned ones stayed on 0.26.16.  The host and build copies of
+-- gi-glib/gi-gio/... then differ in unit id, and a native v2 slice (both
+-- copies in one store, told apart only by version) can bind the wrong one:
+-- jsaddle-webkitgtk's unit id stopped matching the plan.
+constraints: any.haskell-gi ==0.26.16
+
 -- The gi-* custom Setups (the Linux front end's GTK4/WebKitGTK stack) link
 -- haskell-gi, whose build-store compile resolves Cabal from the toolchain's
 -- global db (Cabal-3.17.0.1) even though the plan records build:Cabal-3.16.1.0
