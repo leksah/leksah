@@ -184,7 +184,7 @@ import IDE.Web.Model
         flipMirror, flipMru, AIPaneRef(..), paneAISession, tabFontSize,
         dragPreview)
 import IDE.Workspace
-       (activePackage, wsOpenFile, wsProjects)
+       (activePackage, wsOpenFile, wsPath, wsProjects)
 import IDE.Ws.Types (Package(..), Project(..))
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
 import IDE.Web.Bridge
@@ -1007,24 +1007,38 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 #if defined(ghcjs_HOST_OS)
       -- The browser demo's workspace lives in the page-seeded mock tree
       -- (window.leksahDemoFiles → IDE.Web.FS).
-      let filePath = "/demo/demo.leksah.json"
+      let mbWorkspace = Just "/demo/demo.leksah.json"
 #else
-      let filePath = "/Users/hamish/haskell/leksah/leksah.leksah.json"
+      -- The workspace that was open last time, as remembered in
+      -- web-session.json.  Workspace files are per-user (and untracked), so
+      -- there is no default: none remembered, or one that has since gone,
+      -- starts with no workspace and the Welcome page's Add Project….
+      mbWorkspace <- liftIO $ do
+        remembered <- (>>= wsWorkspace) <$> readWebSession
+        case remembered of
+          Nothing -> return Nothing
+          Just p | isRemotePath p -> return (Just p)
+                 | otherwise -> do
+            there <- doesFileExist p
+            unless there $ appNote app
+              ("The last workspace, " <> T.pack p <> ", no longer exists")
+            return (if there then Just p else Nothing)
 #endif
-      metaLog ("boot: reading workspace " <> filePath)
-      -- The old @.lkshw@ v4 format is dead: a stored session pointing at one
-      -- means "no workspace" (plus a visible note); a @.leksah.json@ path
-      -- loads through the workspace service (projects enumerate in the
-      -- background, the cell updates as results land).
-      liftIO $ if ".lkshw" `isSuffixOf` filePath
-          then appNote app (T.pack filePath
-                 <> " is the retired .lkshw workspace format — open a"
-                 <> " .leksah.json workspace instead")
-          else (wsOpenFile (appWorkspace app) filePath
-                  `catch` \(e :: SomeException) ->
-                      appNote app ("Can't load workspace file "
-                                   <> T.pack filePath <> ": " <> T.pack (show e)))
-      metaLog "boot: workspace read"
+      forM_ mbWorkspace $ \filePath -> do
+        metaLog ("boot: reading workspace " <> filePath)
+        -- The old @.lkshw@ v4 format is dead: a stored session pointing at
+        -- one means "no workspace" (plus a visible note); a @.leksah.json@
+        -- path loads through the workspace service (projects enumerate in
+        -- the background, the cell updates as results land).
+        liftIO $ if ".lkshw" `isSuffixOf` filePath
+            then appNote app (T.pack filePath
+                   <> " is the retired .lkshw workspace format — open a"
+                   <> " .leksah.json workspace instead")
+            else (wsOpenFile (appWorkspace app) filePath
+                    `catch` \(e :: SomeException) ->
+                        appNote app ("Can't load workspace file "
+                                     <> T.pack filePath <> ": " <> T.pack (show e)))
+        metaLog "boot: workspace read"
       -- Multi-window restore: read the saved session and SEED every saved
       -- window's per-window state (wide0 tabs — terminals filtered to still-live
       -- tmux sessions — plus its side/bottom visibility) into the shared MVar
@@ -9351,7 +9365,7 @@ main showMenubar macTitlebar wid ctx = mdo
     paneAID <- holdUniqDyn ((^. paneAISession) <$> ide)
     tabFontD' <- holdUniqDyn ((^. tabFontSize) <$> ide)
     sessionD <- holdUniqDyn $
-      (\wins vis recF lws mru paneAI tabFonts projRecents ->
+      (\wins vis recF lws mru paneAI tabFonts projRecents wsFile ->
           WebSession 6
             [ WebWindowSession (filter notPrefs (_wwWide0 ww)) (_wwActive ww)
                                (_wwTall ww) (_wwWide1 ww) (Just (_wwZoom ww))
@@ -9372,9 +9386,12 @@ main showMenubar macTitlebar wid ctx = mdo
             -- window's layout instead (@leksah_layout / wsLeksahWindows).
             (Just (M.toAscList tabFonts))
             -- Add Project…'s MRU inputs.
-            (Just projRecents))
+            (Just projRecents)
+            -- The open workspace, reopened at start-up.
+            wsFile)
         <$> webWindowsD <*> visibleTabsD <*> recentFilesD <*> leksahWindowsD
         <*> flipMruD <*> paneAID <*> tabFontD' <*> projectRecentsD
+        <*> (view wsPath <$> cWs ctx)
     let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
     saveSessE <- debounce (1 :: NominalDiffTime) (gate (current writeGateD) (updated sessionD))
     -- Once this instance has initiated a handoff, stop writing the session — the

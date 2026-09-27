@@ -115,6 +115,12 @@ data WebSession = WebSession
       --   value also sits in a process-global 'IORef' there, which is what a
       --   dialog in a SECOND window reads: this field is only how it survives a
       --   restart.
+  , wsWorkspace :: Maybe FilePath
+      -- ^ the @.leksah.json@ workspace that was open, reopened at start-up if
+      --   it still exists.  Optional like the fields above: absent (older
+      --   files) or 'Nothing' starts with no workspace.  Workspace files are
+      --   per-user and untracked, so there is no project default to fall
+      --   back to.
   } deriving (Eq, Show, Generic)
 
 instance ToJSON WebWindowSession
@@ -227,7 +233,7 @@ instance FromJSON LeksahWindow where
 emptyWebSession :: WebSession
 emptyWebSession =
     WebSession webSessionVersion [] [] Nothing Nothing Nothing Nothing Nothing
-                Nothing
+                Nothing Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = sidecarPath "web-session.json"
