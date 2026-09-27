@@ -939,7 +939,7 @@ mcpServe = do
             , "capabilities" .= object [ "tools" .= object [] ]
             , "serverInfo" .= object
                 [ "name" .= ("leksah" :: Text)
-                , "version" .= ("0.17.0" :: Text) ]
+                , "version" .= ("2.0.0.0" :: Text) ]
             ]
           "ping"       -> return . Right $ object []
           "tools/list" -> return . Right $ object [ "tools" .= mcpTools ]

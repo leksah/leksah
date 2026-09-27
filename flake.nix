@@ -139,7 +139,7 @@
             inherit pkgs;
             leksah = flake.packages."x86_64-w64-mingw32:leksah:exe:leksah";
             src = ./.;
-            version = "0.17.0.0";
+            version = "2.0.0.0";
           };
           # The Linux counterpart of the .dmg / Setup.exe: a tarball that
           # carries its own GTK4 + WebKitGTK and needs no nix on the target.
@@ -149,7 +149,7 @@
             inherit pkgs;
             leksah = flake.packages."leksah:exe:leksah";
             src = ./.;
-            version = "0.17.0.0";
+            version = "2.0.0.0";
           };
           # The zero-dependency counterpart: leksah-warp linked statically
           # against musl, so it needs no libc, no GUI stack and no user
@@ -158,7 +158,7 @@
             inherit pkgs;
             leksah-warp = flake.packages."x86_64-unknown-linux-musl:leksah:exe:leksah-warp";
             src = ./.;
-            version = "0.17.0.0";
+            version = "2.0.0.0";
           };
         }
           # A novice-friendly macOS artifact for the leksah-wkwebview front end:
@@ -171,14 +171,14 @@
               inherit pkgs;
               leksah = flake.packages."leksah:exe:leksah";
               src = ./.;
-              version = "0.17.0.0";
+              version = "2.0.0.0";
             };
           in {
             inherit leksah-macos-app;
             leksah-macos-dmg = import ./nix/macos-dmg.nix {
               inherit pkgs;
               app = leksah-macos-app;
-              version = "0.17.0.0";
+              version = "2.0.0.0";
             };
           });
         apps = flake.apps

@@ -27,7 +27,7 @@ InstallDir "$PROGRAMFILES64\Leksah"
 InstallDirRegKey HKLM "Software\Leksah" "InstallDir"
 RequestExecutionLevel admin
 
-VIProductVersion "0.17.0.0"
+VIProductVersion "2.0.0.0"
 VIAddVersionKey "ProductName" "Leksah"
 VIAddVersionKey "FileDescription" "Leksah Haskell IDE"
 VIAddVersionKey "FileVersion" "${VERSION}"
