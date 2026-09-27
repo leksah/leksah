@@ -54,10 +54,12 @@ import Language.Javascript.JSaddle
        (fun, js2, jsg, jss, runJSM, valToNumber, valToText)
 import System.Directory (doesFileExist, removeFile)
 import System.IO (IOMode(ReadMode), hFileSize, withBinaryFile)
+#if !defined(mingw32_HOST_OS)
 import System.Posix.Files (fileSize, getFdStatus)
 import System.Posix.IO (closeFd)
 import System.Posix.SharedMem (ShmOpenFlags(..), shmOpen, shmUnlink)
 import System.Posix.Types (COff(..), Fd(..))
+#endif
 #endif
 
 kittyGraphicsJs :: Text
@@ -362,6 +364,11 @@ readFilePart path want = do
 -- it).  Note also that macOS rounds an object's size up to a page, so the size
 -- from @fstat@ over-reports; what the client declared wins (see 'readLen').
 readShm :: FilePath -> Int -> IO (Maybe BS.ByteString)
+#if defined(mingw32_HOST_OS)
+-- Windows has no POSIX shared memory (and no @unix@ package): a @t=s@ image
+-- is reported as unreadable, exactly as a failed read is elsewhere.
+readShm _ _ = return Nothing
+#else
 readShm name want = do
   let nm = if "/" `isPrefixOf` name then name else '/' : name
       flags = ShmOpenFlags { shmCreate = False, shmExclusive = False
@@ -380,6 +387,7 @@ readShm name want = do
   where
     onUnit :: SomeException -> IO ()
     onUnit _ = return ()
+#endif
 
 -- | How much to read: what the client asked for, clamped to what is there and
 -- to 'maxImageBytes' (a client that says nothing gets the whole object).
@@ -389,6 +397,7 @@ readLen want have
   | want > 0  = min maxImageBytes (min want have)
   | otherwise = min maxImageBytes have
 
+#if !defined(mingw32_HOST_OS)
 foreign import ccall unsafe "sys/mman.h mmap"
   c_mmap :: Ptr () -> CSize -> CInt -> CInt -> CInt -> COff -> IO (Ptr ())
 foreign import ccall unsafe "sys/mman.h munmap"
@@ -403,4 +412,5 @@ mapFailed = intPtrToPtr (-1)
 protRead, mapShared :: CInt
 protRead = 1
 mapShared = 1
+#endif
 #endif
