@@ -5,6 +5,10 @@
 *.lkshw
 leksah.lkshs
 leksah.lkshw
+# Workspace files (.leksah.json) are per-user: the IDE rewrites them whenever
+# a project is added or removed, so a tracked one collects everyone's local
+# (and private) sibling projects.
+*.leksah.json
 *~
 /.shelly/
 /.cabal-sandbox/
