@@ -45,6 +45,34 @@ let
   posixPtyPatched = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isMusl ''
     packages: ${patchedHackage "posix-pty" "0.2.2" ./patches/posix-pty-musl.patch}
   '';
+  # Under the v2 slice builder a slice builds one component, but cabal's
+  # solver still resolves the whole package, executables included.  The
+  # stable-haskell mingw compiler preinstalls no boot libraries (they are
+  # slices too), so an executable-only dependency that is not in the
+  # library's closure is simply absent and the slice fails to solve.
+  # aeson-pretty's exe wants cmdargs -> process; build it library-only.
+  #
+  # jsaddle-webview2's C shim needs WebView2.h (nothing from the SDK is
+  # linked).  It goes in cabal.project, not the component's configureFlags:
+  # the v2 slice builder ignores configureFlags, and here the plan sees the
+  # same include dir the slice builds with.
+  windowsProjectLocal = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isWindows ''
+    package aeson-pretty
+      flags: +lib-only
+    package jsaddle-webview2
+      extra-include-dirs: ${webview2-include}
+  '';
+  webview2-sdk = pkgs.pkgsBuildBuild.callPackage ./webview2-sdk.nix { };
+  # The SDK's headers plus one shim.  WebView2.h includes "EventToken.h", but
+  # mingw-w64 ships it as eventtoken.h — Windows' case-insensitive filesystem
+  # hides the difference, a Linux build host does not.  (The SDK's other
+  # mismatches are in the C++-only WebView2EnvironmentOptions.h, which the C
+  # shim never includes.)
+  webview2-include = pkgs.pkgsBuildBuild.runCommand "webview2-include" { } ''
+    mkdir -p $out
+    cp ${webview2-sdk}/build/native/include/*.h $out/
+    echo '#include <eventtoken.h>' > $out/EventToken.h
+  '';
   # hslogger hard-depends on network (for its syslog/growl handlers), and
   # network does not build for the GHC JavaScript backend.  For the JS cross
   # (projectCross re-evaluates this module with the cross pkgs, so
@@ -117,6 +145,7 @@ in
 rec {
     projectFileName = "cabal.project";
     cabalProjectLocal = clibNoRts + cabalDoctestPatched + posixPtyPatched
+      + windowsProjectLocal
       + hsloggerNoNetworkJs + reflexDomCoreJsaddleJs;
     # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix hkm/stable-haskell
     # branch) that can cross-compile from darwin to Linux (musl) via hyper-linux.
@@ -130,8 +159,7 @@ rec {
     # mkForce: hkm/stable-haskell's cabal-project.nix now sets builderVersion
     # itself (=2), so a plain assignment here collides ("conflicting definition
     # values"); the override takes priority for both the native and cross evals.
-    builderVersion = pkgs.lib.mkForce
-      (if pkgs.stdenv.hostPlatform.isWindows then 1 else 2);
+    builderVersion = pkgs.lib.mkForce 2;
     # GHC-version variants disabled for now (takes too long to plan them all)
     # flake.variants = {
     #   "ghc96".compiler-nix-name = pkgs.lib.mkForce "ghc96";
@@ -177,27 +205,12 @@ rec {
         # native C library (gtk3, cairo, …) — doing so forces that throw.  Every
         # native-GUI module attr below is therefore gated `&& !isJS`.
         isJS = pkgs.stdenv.hostPlatform.isGhcjs;
-        # WebView2.h for jsaddle-webview2's C shim (compile time) and
-        # WebView2Loader.dll for the installed exe (run time).  Only the
-        # header is needed at build time — the DLL is loaded dynamically.
-        webview2-sdk = pkgs.pkgsBuildBuild.fetchzip {
-          url = "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.4022.49";
-          extension = "zip";
-          stripRoot = false;
-          hash = "sha256-RoVh4A/Pg9/40kHtIIsC916QgPkB8TnDeOvN4ptPNM4=";
-        };
       in {
         packages.reflex.components.tests.hlint.buildable = pkgs.lib.mkForce false;
         packages.reflex.components.tests.RequesterT.buildable = pkgs.lib.mkForce false;
         packages.reflex.components.tests.QueryT.buildable = pkgs.lib.mkForce false;
         packages.reflex.components.tests.EventWriterT.buildable = pkgs.lib.mkForce false;
         packages.reflex.components.tests.DebugCycles.buildable = pkgs.lib.mkForce false;
-        # jsaddle-webview2's C shim needs WebView2.h on the include path (see
-        # webview2-sdk above); nothing from the SDK is linked.
-        package-keys = ["jsaddle-webview2"];
-        packages.jsaddle-webview2.components.library.configureFlags =
-          lib.optionals isWindows
-            [ "--extra-include-dirs=${webview2-sdk}/build/native/include" ];
         # Match the jsaddle project's proven mingw config.  musl gets it too:
         # the whole point of that target here is a leksah-warp binary that runs
         # on any x86_64 Linux without a libc to match (nix/linux-warp-tarball.nix
@@ -252,11 +265,10 @@ rec {
             pkgs.adwaita-icon-theme
             pkgs.gsettings-desktop-schemas
           ];
+        # (WebView2Loader.dll is staged by nix/windows-installer.nix: the v2
+        # slice builder does not run a component's postInstall.)
         packages.leksah.components.exes.leksah.postInstall =
-          # Ship the loader DLL next to the exe (it is LoadLibrary'd at startup).
-          lib.optionalString isWindows ''
-            cp ${webview2-sdk}/runtimes/win-x64/native/WebView2Loader.dll $out/bin/
-          '' + lib.optionalString (!isWindows && !isJS && !isMusl) ''
+          lib.optionalString (!isWindows && !isJS && !isMusl) ''
           ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             mkdir -p $out/share
             cp -r ${../leksah/linux} $out/share/

@@ -3,7 +3,7 @@
 #
 # Two steps:
 #   1. `staging` assembles the on-disk install tree — bin/ (the exe renamed to
-#      leksah.exe so the relocatable datadir logic in IDE.Core.State fires, plus
+#      leksah.exe, plus
 #      the mingw runtime DLLs and WebView2Loader.dll) and leksah/ (the datadir:
 #      the cabal data-files leksah reads at runtime plus the bundled web assets
 #      cm6/ and xterm/ and the Hasklig fonts, which are not cabal data-files).
@@ -22,14 +22,21 @@
 }:
 
 let
+  webview2-sdk = pkgs.callPackage ./webview2-sdk.nix { };
+
   staging = pkgs.runCommand "leksah-windows-staging" { } ''
     mkdir -p $out/bin $out/leksah
 
-    # Executable, renamed to leksah.exe (leksahSubDir keys on this name), plus
+    # Executable, renamed to leksah.exe (cosmetic now — IDE.Paths.packagedDataDir
+    # keys on the bin/ + leksah/ LAYOUT, not on the executable's name), plus
     # the runtime DLLs (dereferenced so the tree is self-contained).  The .dll.a
     # import libraries in bin/ are build-time only — the *.dll glob skips them.
     cp -L ${leksah}/bin/leksah.exe $out/bin/leksah.exe
     for f in ${leksah}/bin/*.dll; do cp -L "$f" $out/bin/; done
+    # The WebView2 loader, LoadLibrary'd at startup (so not in the exe's own
+    # bin/, and no import library at link time).  Staged here rather than by a
+    # postInstall on the exe: the v2 slice builder does not run those.
+    cp ${webview2-sdk}/runtimes/win-x64/native/WebView2Loader.dll $out/bin/
     # Datadir.  Keep it to what the app actually reads at runtime.
     cp -r ${src}/leksah/pics           $out/leksah/pics
     cp -r ${src}/leksah/cm6            $out/leksah/cm6

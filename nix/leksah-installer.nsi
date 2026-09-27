@@ -8,9 +8,9 @@
 ;   ICON     - path to leksah.ico
 ;   LICENSE  - path to the license text shown on the license page
 ;
-; Install layout (matches leksah's relocatable datadir logic in
-; IDE.Core.State.leksahSubDir: the exe must be named leksah.exe, and the data
-; dir is <installroot>\leksah):
+; Install layout (matches IDE.Paths.packagedDataDir, which looks for the data
+; dir at <exedir>\..\leksah -- so bin\ and leksah\ must stay siblings; the
+; executable's name does not matter):
 ;   $INSTDIR\bin\leksah.exe   (+ runtime DLLs, WebView2Loader.dll)
 ;   $INSTDIR\leksah\...        (pics, cm6, xterm, fonts)
 
