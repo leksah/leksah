@@ -110,6 +110,14 @@
     section h2 { font-size: 28px; letter-spacing: -0.01em; margin-bottom: 8px; }
     section p.lead { color: var(--muted); max-width: 720px; margin-bottom: 28px; }
 
+    /* The download button (#install): the primary link is swapped to the
+       visitor's OS by the script at the bottom; the alternates line lists
+       the other platforms. */
+    .dl { margin: 6px 0 26px; }
+    .dl-alts { color: var(--muted); font-size: 14px; margin-top: 12px; }
+    .dl-alts a { color: var(--muted); text-decoration: underline; }
+    .dl-alts a:hover { color: var(--text); }
+
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
     .card {
       background: var(--panel); border: 1px solid var(--border);
@@ -178,6 +186,7 @@
     </p>
     <div class="cta">
       <a class="btn primary" href="/try/">▶&nbsp; Try the demo</a>
+      <a class="btn ghost" href="#install">⬇&nbsp; Download</a>
       <a class="btn ghost" href="https://github.com/leksah/leksah">View on GitHub</a>
     </div>
   </div>
@@ -271,7 +280,20 @@
 
   <section id="install">
     <h2>Get it</h2>
-    <p class="lead">Install <a href="https://nixos.org/download/">Nix</a>, then:</p>
+    <!-- The artifacts are GitHub release assets (scripts/release.sh uploads
+         them): too big for the Pages repo this site is mirrored to.  The
+         script at the bottom points the primary button at the visitor's OS.
+         Without JS the button is the Linux tarball and the alternates line
+         lists everything else. -->
+    <div class="dl">
+      <a class="btn primary" id="dlBtn" href="https://github.com/leksah/leksah/releases/download/v2.0.0.0/leksah-2.0.0.0-x86_64-linux.tar.gz">⬇&nbsp; Download for Linux (x86_64)</a>
+      <p class="dl-alts">Nothing to configure — unpack and run.  Other platforms:
+        <span id="dlAlts"><a href="https://github.com/leksah/leksah/releases/download/v2.0.0.0/Leksah-2.0.0.0.dmg">macOS</a> ·
+          <a href="https://github.com/leksah/leksah/releases/download/v2.0.0.0/LeksahSetup.exe">Windows</a> ·
+          <a href="https://github.com/leksah/leksah/releases/download/v2.0.0.0/leksah-warp-2.0.0.0-x86_64-linux-musl.tar.gz">Linux server (static, browser UI)</a></span>
+      </p>
+    </div>
+    <p class="lead">Or install <a href="https://nixos.org/download/">Nix</a>, then:</p>
     <pre class="install"><code><span class="p">$</span> git clone https://github.com/leksah/leksah.git
 <span class="p">$</span> cd leksah
 <span class="p">$</span> ./leksah.sh --nix ghc914   <span class="c"># native app (or --warp for the browser UI)</span></code></pre>
@@ -342,6 +364,41 @@
       embed();
       var req = frame.requestFullscreen || frame.webkitRequestFullscreen;
       if (req) req.call(frame);
+    });
+  })();
+
+  // Point the #install download button at the visitor's OS and rebuild the
+  // alternates line with the rest.  The artifact names here must match the
+  // assets scripts/release.sh uploads to the v<version> GitHub release
+  // (built by nix/{linux-tarball,macos-dmg,windows-installer,
+  // linux-warp-tarball}.nix), and v must match the version it releases.
+  (function () {
+    var v = '2.0.0.0';
+    var base = 'https://github.com/leksah/leksah/releases/download/v' + v + '/';
+    var dl = {
+      linux:   { label: 'Linux (x86_64)', file: 'leksah-' + v + '-x86_64-linux.tar.gz' },
+      macos:   { label: 'macOS',          file: 'Leksah-' + v + '.dmg' },
+      windows: { label: 'Windows',        file: 'LeksahSetup.exe' },
+      server:  { label: 'Linux server (static, browser UI)',
+                 file: 'leksah-warp-' + v + '-x86_64-linux-musl.tar.gz' }
+    };
+    var ua = navigator.userAgent;
+    // iPhone/iPad get the macOS link: not runnable there, but the least
+    // wrong thing to hand someone who taps Download on an Apple device.
+    var os = /Windows/i.test(ua) ? 'windows'
+           : /Mac|iPhone|iPad/i.test(ua) ? 'macos'
+           : 'linux';
+    var btn = document.getElementById('dlBtn');
+    btn.href = base + dl[os].file;
+    btn.textContent = '⬇  Download for ' + dl[os].label;
+    var alts = document.getElementById('dlAlts');
+    alts.textContent = '';
+    Object.keys(dl).filter(function (k) { return k !== os; }).forEach(function (k, i) {
+      if (i) alts.appendChild(document.createTextNode(' · '));
+      var a = document.createElement('a');
+      a.href = base + dl[k].file;
+      a.textContent = dl[k].label;
+      alts.appendChild(a);
     });
   })();
 </script>
