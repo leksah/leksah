@@ -35,7 +35,43 @@
     in
       flake-utils.lib.eachSystem supportedSystems (system:
       let
-        overlays = [ haskellNix.overlay
+        overlays = [
+          # Before haskellNix.overlay, which reads this with `prev.… or`.
+          # haskell.nix pins emulator-using cross slices of a deny-list
+          # (th-orphans, base) to builders advertising `recursive-nix`, a
+          # marker for the zw3rk farm's one native x86_64-linux host (its
+          # other linux slots are aarch64 VMs under Rosetta, where
+          # wine/qemu TH stalls).  Our x86_64-linux builders are real
+          # hardware and do not advertise it, so with the pin mingw `base`
+          # has nowhere to build and the Windows installer cannot be built
+          # at all.  An empty list only drops the pin.
+          (final: prev: {
+            haskell-nix = (prev.haskell-nix or {}) // {
+              emulatorNativeBuilderPackages = [];
+            };
+          })
+          haskellNix.overlay
+          # haskell.nix's wine overlay appends wine-add-dll-directory-11.patch
+          # for wine >= 11, but nixpkgs' wine 11.0 already carries that change
+          # upstream, so patchPhase dies with "Reversed (or previously applied)
+          # patch detected" and the whole mingw cross plan (TH under
+          # wine/iserv, the Windows installer) is unbuildable.  Strip exactly
+          # that patch; when haskell.nix drops it, this filter is a no-op.
+          (final: prev:
+            let
+              dropDllDirPatch = w: w.overrideAttrs (old: {
+                patches = builtins.filter
+                  (p: baseNameOf p != "wine-add-dll-directory-11.patch")
+                  (old.patches or []);
+              });
+            in {
+              winePackages = prev.winePackages // {
+                minimal = dropDllDirPatch prev.winePackages.minimal;
+              };
+              wine64Packages = prev.wine64Packages // {
+                minimal = dropDllDirPatch prev.wine64Packages.minimal;
+              };
+            })
           (final: prev: {
             # Expose the HLS source tree so nix/hix.nix can use it as a tool `src`.
             hls-github-src = inputs.hls-github;
