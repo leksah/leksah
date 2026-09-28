@@ -4829,6 +4829,15 @@ contextMenuClampJs :: Text
 contextMenuClampJs = T.unlines
   [ "(function(){"
   , "  'use strict';"
+  -- Cancel the web view's own menu on any row carrying a leksah context menu
+  -- (IDE.Web.Widget.ContextMenu marks them with data-leksah-menu).  That
+  -- widget also calls preventDefault from its Haskell handler, but jsaddle
+  -- dispatches it too late on the first right-click after an idle spell, so
+  -- WebKit's menu came up over leksah's one; this has to be synchronous JS.
+  , "  document.addEventListener('contextmenu', function(e){"
+  , "    var t = e.target;"
+  , "    if (t && t.closest && t.closest('[data-leksah-menu]')) e.preventDefault();"
+  , "  }, true);"
   , "  var M = 4;"  -- viewport margin
   , "  function clamp(el){"
   , "    try {"

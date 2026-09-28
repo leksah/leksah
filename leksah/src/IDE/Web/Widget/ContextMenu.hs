@@ -8,10 +8,11 @@ module IDE.Web.Widget.ContextMenu where
 import Control.Lens ((^.))
 
 import Data.Bool (bool)
+import Control.Monad (void)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
 
-import Language.Javascript.JSaddle (liftJSM, js1)
+import Language.Javascript.JSaddle (liftJSM, js1, js2)
 
 import GHCJS.Marshal (FromJSVal(..))
 import GHCJS.DOM (currentDocumentUnchecked)
@@ -35,6 +36,7 @@ import Reflex
         fmapMaybe)
 import Reflex.Dom.Core
        (wrapDomEventMaybe, elAttr', wrapDomEvent, EventResult,
+        getPostBuild, performEvent_,
         Element, DomBuilderSpace, dyn, (=:), _element_raw)
 import IDE.Web.Frame (MonadWidget)
 
@@ -57,6 +59,16 @@ contextMenu
   -> m (Event t a)
   -> m (Event t (), Event t a)
 contextMenu parent menu = mdo
+  -- Mark the row, so the page's synchronous contextmenu listener
+  -- (contextMenuClampJs in IDE.Web.Main) cancels WebKit's own menu on it.  The
+  -- preventDefault below alone loses that race on the first right-click after
+  -- an idle spell.  Set on the element itself (never via querySelector: it may
+  -- not be attached yet), and only AFTER the build: a JS call made while the
+  -- widget is still being built aborts wkwebview's batched DOM build, which
+  -- leaves the whole UI unstyled.
+  pb <- getPostBuild
+  performEvent_ $ ffor pb $ \_ -> liftJSM . void $ pToJSVal (_element_raw parent)
+    ^. js2 ("setAttribute" :: Text) ("data-leksah-menu" :: Text) ("" :: Text)
   contextmenuE <- wrapDomEvent (uncheckedCastTo HTMLElement $ _element_raw parent)
     (`onSync` DOM.contextMenu) $ do
       preventDefault
