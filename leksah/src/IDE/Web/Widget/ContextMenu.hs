@@ -20,14 +20,14 @@ import GHCJS.DOM.Types (HTMLElement(..), uncheckedCastTo, pToJSVal)
 import qualified GHCJS.DOM.Types as DOM (Element(..))
 import qualified GHCJS.DOM.Event as Event (getTargetUnchecked)
 import GHCJS.DOM.EventM
-       (event, uiPageY, uiPageX, onSync, preventDefault)
+       (event, mouseClientXY, onSync, preventDefault)
 import qualified GHCJS.DOM.GlobalEventHandlers as DOM (contextMenu)
 import GHCJS.DOM.GlobalEventHandlers (touchStart, mouseDown)
 
 import Clay
        (shadowWithSpread, bsColor, boxShadow,
-        absolute, padding, px, borderRadius, background,
-        position, (?), Css, Color(..), nil, zIndex)
+        padding, px, borderRadius, background,
+        position, fixed, (?), Css, Color(..), nil, zIndex)
 
 import IDE.Web.Theme (menuTopColor, dropShadowColor)
 
@@ -43,7 +43,12 @@ import IDE.Web.Frame (MonadWidget)
 contextMenuCss :: Css
 contextMenuCss =
   ".context-menu" ? do
-    position absolute
+    -- Fixed at the click's viewport coordinates, not absolute at its page
+    -- coordinates: the menu is inserted beside the row that owns it, so with
+    -- `absolute` any positioned ancestor becomes the origin — the Terminals
+    -- tree's rows are `position: relative` (for their inline button slots),
+    -- which put its menus that row's offset too far down and to the right.
+    position fixed
     -- Solid opaque background: Clay's 'vGradient' emits the legacy unprefixed
     -- @linear-gradient(top, …)@ syntax, which modern WebKit rejects (→ no
     -- background → a see-through menu), so use a flat colour like the flipper.
@@ -72,9 +77,7 @@ contextMenu parent menu = mdo
   contextmenuE <- wrapDomEvent (uncheckedCastTo HTMLElement $ _element_raw parent)
     (`onSync` DOM.contextMenu) $ do
       preventDefault
-      x <- uiPageX
-      y <- uiPageY
-      return (x, y)
+      mouseClientXY
   showContextMenuD <- holdDyn Nothing $ leftmost
     [ Just <$> contextmenuE
     , Nothing <$ events
