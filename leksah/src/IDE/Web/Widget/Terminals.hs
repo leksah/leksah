@@ -84,6 +84,7 @@ import IDE.Web.Widget.Terminal
         killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane, moveTmuxPane,
         moveRemoteTmuxPane, renameTmuxSession, renameTmuxWindow, isClaudePane)
 import IDE.Web.Widget.Tree (treeItem)
+import IDE.Web.Widget.Menu (rowMenu)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
 import IDE.Web.Frame (MonadWidget, performEvent_)
@@ -457,11 +458,12 @@ termIcon name = elAttr "img" ("class" =: "tree-icon" <> "src" =: ("/pics/" <> na
 -- | A top-level host row: bold label plus the "+" new-session glyph.
 hostRow :: MonadWidget t m => Text -> TerminalsEvents -> Text -> m (Event t NodeEvent)
 hostRow label newEv tip = do
-    elClass "span" "terminals-label terminals-host-label" $ do
+    (lbl, _) <- elClass' "span" "terminals-label terminals-host-label" $ do
         termIcon "tree-host-local.svg"
         text label
     newE <- actionBtn "+" tip
-    pure $ Right newEv <$ newE
+    menuE <- rowMenu lbl [constDyn ("New Session", newEv)]
+    pure $ Right <$> leftmost [newEv <$ newE, menuE]
 
 -- | A remote host: its tmux tree from the shared per-host ssh poll (see
 -- 'IDE.Web.Main'); unreachable hosts keep the last-known tree and mark the
@@ -482,8 +484,12 @@ remoteHostNode activeD host treeD = do
                 termIcon "tree-host-remote.svg"
                 dynText lblD
             newE <- actionBtn "+" ("New session on " <> host)
+            menuE <- rowMenu lbl
+              [ constDyn ("Open Server Connection", SelectRemoteHost host)
+              , constDyn ("New Session",            NewRemoteTerminal host) ]
             pure $ leftmost [ Right (NewRemoteTerminal host) <$ newE
-                            , Right (SelectRemoteHost host)  <$ domEvent Click lbl ])
+                            , Right (SelectRemoteHost host)  <$ domEvent Click lbl
+                            , Right <$> menuE ])
         (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\sid vD ->
             remoteSessionNode activeD host sid vD))
 
@@ -508,11 +514,16 @@ remoteSessionNode activeD host sid vD =
         renE    <- renameControl (fst <$> vD) (RenameRemoteTerminalSession host sid)
         newWinE <- actionBtn "+" "New window in this session"
         killE   <- confirmClose
+        menuE   <- rowMenu lbl
+          [ (\(nm, _) -> ("Show", SelectRemoteTerminal host sid nm)) <$> vD
+          , constDyn ("New Window", NewRemoteTerminalWindow host sid)
+          , (\(nm, _) -> ("Kill Session", CloseRemoteTerminal host sid nm)) <$> vD ]
         -- The select event carries the session's CURRENT name too, so the
         -- handler can match a tab keyed by name (cc-connect HOST#NAME); the
         -- close event likewise, to drop that tab.
         pure $ leftmost
-          [ (\(nm, _) -> Right (SelectRemoteTerminal host sid nm))
+          [ Right <$> menuE
+          , (\(nm, _) -> Right (SelectRemoteTerminal host sid nm))
               <$> tagPromptlyDyn vD (domEvent Click lbl)
           , Right <$> renE
           , Right (NewRemoteTerminalWindow host sid) <$ newWinE
@@ -537,8 +548,12 @@ remoteWindowsTree host sid nameD windowsD =
                     dynText (twLabel <$> wD)
               renE  <- renameControl (windowRawName <$> wD) (RenameRemoteTerminalWindow host sid widx)
               killE <- confirmClose
+              menuE <- rowMenu e
+                [ (\nm -> ("Show", SelectRemoteTerminalWindow host sid nm widx)) <$> nameD
+                , constDyn ("Kill Window", KillRemoteTerminalWindow host sid widx) ]
               pure $ leftmost
-                [ (\nm -> Right (SelectRemoteTerminalWindow host sid nm widx))
+                [ Right <$> menuE
+                , (\nm -> Right (SelectRemoteTerminalWindow host sid nm widx))
                     <$> tagPromptlyDyn nameD (domEvent Click e)
                 , Right <$> renE
                 , Right (KillRemoteTerminalWindow host sid widx) <$ killE ])
@@ -562,8 +577,14 @@ remotePanesTree host sid nameD widx panesD =
         zoomE  <- actionBtn "⤢" "Zoom / unzoom this pane"
         breakE <- actionBtn "↗" "Break this pane out into its own window"
         killE  <- confirmClose
+        menuE  <- rowMenu e
+          [ (\nm -> ("Show", SelectRemoteTerminalPane host sid nm widx pidx)) <$> nameD
+          , constDyn ("Zoom / Unzoom",             ZoomRemoteTerminalPane host sid widx pidx)
+          , constDyn ("Break Out into a Window",   BreakRemoteTerminalPane host sid widx pidx)
+          , constDyn ("Kill Pane",                 KillRemoteTerminalPane host sid widx pidx) ]
         pure $ leftmost
-          [ (\nm -> Right (SelectRemoteTerminalPane host sid nm widx pidx))
+          [ Right <$> menuE
+          , (\nm -> Right (SelectRemoteTerminalPane host sid nm widx pidx))
               <$> tagPromptlyDyn nameD (domEvent Click e)
           , Right (ZoomRemoteTerminalPane host sid widx pidx)  <$ zoomE
           , Right (BreakRemoteTerminalPane host sid widx pidx) <$ breakE
@@ -719,7 +740,12 @@ sessionRow activeD attnD n vD = do
   renE <- renameControl rawNameD (renameTmuxSession n)
   newWinE <- actionBtn "+" "New window in this session"
   killE <- confirmClose
-  return $ leftmost [ Right (SelectTerminal n) <$ domEvent Click labelEl
+  menuE <- rowMenu labelEl
+    [ constDyn ("Show",         Right (SelectTerminal n))
+    , constDyn ("New Window",   Left (newTmuxWindow n))
+    , constDyn ("Kill Session", Right (CloseTerminal n)) ]
+  return $ leftmost [ menuE
+                    , Right (SelectTerminal n) <$ domEvent Click labelEl
                     , Left <$> renE
                     , Left (newTmuxWindow n) <$ newWinE
                     , Right (CloseTerminal n)  <$ killE ]
@@ -743,7 +769,11 @@ windowsTree n windowsD =
                     dynText (twLabel <$> wD)
               renE <- renameControl (windowRawName <$> wD) (renameTmuxWindow n widx)
               killE <- confirmClose
-              return $ leftmost [ Right (SelectTerminalWindow n widx) <$ domEvent Click e
+              menuE <- rowMenu e
+                [ constDyn ("Show",        Right (SelectTerminalWindow n widx))
+                , constDyn ("Kill Window", Left (killTmuxWindow n widx)) ]
+              return $ leftmost [ menuE
+                                , Right (SelectTerminalWindow n widx) <$ domEvent Click e
                                 , Left <$> renE
                                 , Left (killTmuxWindow n widx) <$ killE ])
           (el "ul" $ panesTree n widx (twPanes <$> wD)))
@@ -768,7 +798,13 @@ panesTree n widx panesD =
         zoomE  <- actionBtn "⤢" "Zoom / unzoom this pane"
         breakE <- actionBtn "↗" "Break this pane out into its own window"
         killE <- confirmClose
-        return $ leftmost [ Right (SelectTerminalPane n widx pidx) <$ domEvent Click e
+        menuE <- rowMenu e
+          [ constDyn ("Show",                    Right (SelectTerminalPane n widx pidx))
+          , constDyn ("Zoom / Unzoom",           Left (zoomTmuxPane n widx pidx))
+          , constDyn ("Break Out into a Window", Left (breakTmuxPane n widx pidx))
+          , constDyn ("Kill Pane",               Left (killTmuxPane n widx pidx)) ]
+        return $ leftmost [ menuE
+                          , Right (SelectTerminalPane n widx pidx) <$ domEvent Click e
                           , Left (zoomTmuxPane n widx pidx)  <$ zoomE
                           , Left (breakTmuxPane n widx pidx) <$ breakE
                           , Left (killTmuxPane n widx pidx)  <$ killE ])

@@ -20,13 +20,14 @@ import Reflex (leftmost, never, Event, Dynamic, tag, current, attachWith)
 
 import Reflex.Dom.Core
        (dynText, el', el, elClass, divClass, text,
-        HasDomEvent(..), EventName(..))
+        HasDomEvent(..), EventName(..), Element, EventResult, DomBuilderSpace)
 
 import IDE.Web.Theme
        (selectionColor, dimColor, menuTopColor, menuBottomColor, dropShadowColor)
 import IDE.Web.Command (Command)
 import IDE.Web.MenuModel (MenuItem(..), prettyKeySpec)
 import IDE.Web.Widget.Tree (clickMods)
+import IDE.Web.Widget.ContextMenu (contextMenu)
 import IDE.Web.SplitOpenRequest (SplitTarget, requestSplitOpen)
 import IDE.Web.Frame (MonadWidget)
 
@@ -102,6 +103,18 @@ menuMods items =
         (li, _) <- el' "li" . dynText $ fst <$> d
         modsE <- clickMods li
         return $ attachWith (\v mods -> (mods, v)) (snd <$> current d) modsE
+
+-- | A leksah right-click menu on an existing row element, listing @(label,
+-- value)@ items and firing the value of the one chosen.  Attaching it is what
+-- replaces the web view's own context menu on that row ('contextMenu' cancels
+-- the native one synchronously); rows built with 'treeSelect'' get this for
+-- free, and this is the same thing for rows that are not.
+rowMenu
+  :: MonadWidget t m
+  => Element EventResult (DomBuilderSpace m) t
+  -> [Dynamic t (Text, a)]
+  -> m (Event t a)
+rowMenu row items = snd <$> contextMenu row (fmap snd <$> menuMods items)
 
 -- | A context-menu whose items may declare a 'SplitTarget' (@Just@): holding ⌥
 -- while clicking such an item opens it into a split of the active pane (⌥⇧ =

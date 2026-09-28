@@ -62,11 +62,12 @@ import Language.Javascript.JSaddle (liftJSM, jsg, js1)
 import IDE.Web.Agent (agentSend, showAgentPane)
 import IDE.Web.AgentInfo
        (AgentNode(..), agentForest, agentRefreshPrompt, dismissAgent)
-import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
+import IDE.Web.Claude (ClaudeCmd(..), copySessionId, runClaudeCmd)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
         dimColor, dimOpacity, fgColor, fgMutedColor, hoverColor, selectionColor)
 import IDE.Web.Widget.Tree (treeItem)
+import IDE.Web.Widget.Menu (rowMenu)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | The pane.  Polls 'agentForest' (cheap — it reads the status poll's cache),
@@ -152,25 +153,37 @@ agentNodeW open refresh miss nD = treeItem "agents-node" open item children
       -- may be parked on a first-run question), or bring an exited one back
       -- where it left off — its transcript is still there, so --resume picks the
       -- thread up rather than starting over.
+      let open' n =
+            if anState n == "gone"
+              then runClaudeCmd (ClaudeResume (anDir n) (anSession n))
+              else showAgentPane (anSession n) >>= \found -> if found
+                then return ()
+                else miss $ anTitle n <> " is running, but not in a terminal \
+                            \here — there is no pane to bring up."
+          -- ⟳ while it is running, ✕ once it has gone.
+          manage n =
+            if anLive n
+              then void (agentSend (anSession n) True agentRefreshPrompt)
+              else dismissAgent (anSession n) >> refresh
       performEvent_ $ ffor (tagPromptlyDyn nD (domEvent Click lbl)) $ \n ->
-        liftIO . void . forkIO $
-          if anState n == "gone"
-            then runClaudeCmd (ClaudeResume (anDir n) (anSession n))
-            else showAgentPane (anSession n) >>= \found -> if found
-              then return ()
-              else miss $ anTitle n <> " is running, but not in a terminal \
-                          \here — there is no pane to bring up."
-      -- ⟳ while it is running, ✕ once it has gone.
+        liftIO . void . forkIO $ open' n
       liveD <- holdUniqDyn (anLive <$> nD)
       btnE  <- switchHold never =<< dyn (ffor liveD $ \l ->
         if l then actionBtn "\8635" "Ask this agent to refresh its title and \
                                     \description"
              else actionBtn "\10005" "Forget this agent (its children stay)")
       performEvent_ $ ffor (tagPromptlyDyn nD btnE) $ \n ->
-        liftIO . void . forkIO $
-          if anLive n
-            then void (agentSend (anSession n) True agentRefreshPrompt)
-            else dismissAgent (anSession n) >> refresh
+        liftIO . void . forkIO $ manage n
+      -- The same actions on right-click, plus copying the session id (what
+      -- `leksah-cmd agent send/read/wait` take).
+      menuE <- rowMenu lbl
+        [ ffor nD $ \n -> ( if anState n == "gone" then "Resume Agent" else "Show Pane"
+                         , open' n )
+        , ffor nD $ \n -> ( if anLive n then "Refresh Title and Description"
+                                        else "Forget Agent"
+                         , manage n )
+        , ffor nD $ \n -> ("Copy Session Id", copySessionId (anSession n)) ]
+      performEvent_ $ ffor menuE $ liftIO . void . forkIO
       return (never :: Event t ())
 
     children = do
