@@ -210,7 +210,9 @@ import IDE.Web.Handoff
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel)
-import IDE.Web.OpenWorkspace (openPickedWorkspace, openWorkspaceToken)
+import IDE.Web.OpenWorkspace
+       (createPickedWorkspace, newWorkspaceToken, openPickedWorkspace,
+        openWorkspaceToken)
 import IDE.Web.Theme (themeVarsCss, paletteCss, contrastCss, bgColor, fgColor)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
@@ -8778,6 +8780,11 @@ main showMenubar macTitlebar wid ctx = mdo
                                                   then Just p else Nothing) pickedPathE)
         $ \p -> liftIO . void . forkIO $
             getGlobalApp >>= mapM_ (`openPickedWorkspace` p)
+    -- …and Workspace ▸ New Workspace…'s folder (also its own token).
+    performEvent_ $ ffor (fmapMaybe (\(t, p) -> if t == newWorkspaceToken
+                                                  then Just p else Nothing) pickedPathE)
+        $ \p -> liftIO . void . forkIO $
+            getGlobalApp >>= mapM_ (`createPickedWorkspace` p)
     -- "local" is not an ssh host, so it is not in rcHosts; the dialog wants it
     -- first in the Server drop-down.
     let serversD = ("local" :) <$> remoteHostsD

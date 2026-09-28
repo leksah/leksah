@@ -13,7 +13,7 @@ import Data.Text (Text)
 import IDE.Web.AIContextRequest
        (AIAction(..), requestAIAction)
 import IDE.Web.AddProjectRequest (requestAddProject)
-import IDE.Web.OpenWorkspace (requestOpenWorkspace)
+import IDE.Web.OpenWorkspace (requestNewWorkspace, requestOpenWorkspace)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.NewWindowRequest (requestNewWindow)
@@ -376,6 +376,15 @@ commandOpenWorkspace = CommandIDEAction
   "/pics/file-open.svg"
   "Open a .leksah-workspace file"
   (const requestOpenWorkspace)
+
+-- | Workspace ▸ New Workspace…: pick a folder and create a workspace there,
+-- with that folder as its first project ("IDE.Web.OpenWorkspace").  Like Open
+-- Workspace…, the action only shows the native panel.
+commandNewWorkspace :: Command
+commandNewWorkspace = CommandIDEAction
+  "/pics/file-open.svg"
+  "Create a workspace in a folder, with that folder as its first project"
+  (const requestNewWorkspace)
 
 -- | File ▸ Add Server… (and the Terminals-tree row): register an ssh host in
 -- the remote-hosts setting.  A plain 'CommandIDEAction', so both the web
