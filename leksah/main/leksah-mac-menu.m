@@ -97,6 +97,69 @@ int leksah_take_previous_callbacks(void **out, int max)
     return n;
 }
 
+// Finder's "open these documents" (double-clicking a .leksah-workspace, or
+// dropping files on the Dock icon), handled as the kAEOpenDocuments Apple Event
+// rather than through an application delegate: the delegate belongs to
+// jsaddle-wkwebview, whose delegates must not be replaced.  Each file goes to
+// the same open_file callback File ▸ Open uses; Haskell decides whether it is
+// a workspace or an editor file.
+@interface LeksahOpenDocumentsHandler : NSObject
+- (void)handleOpenDocuments:(NSAppleEventDescriptor *)event
+             withReplyEvent:(NSAppleEventDescriptor *)reply;
+@end
+
+@implementation LeksahOpenDocumentsHandler
+static void leksah_open_document_descriptor(NSAppleEventDescriptor *d) {
+    NSAppleEventDescriptor *u = [d coerceToDescriptorType:typeFileURL];
+    if (u == nil) return;
+    NSString *s = [[NSString alloc] initWithData:[u data] encoding:NSUTF8StringEncoding];
+    NSURL *url = s ? [NSURL URLWithString:s] : nil;
+    NSString *path = [url path];
+    // One line per document, for when a double-click seems to do nothing.
+    fprintf(stderr, "LEKSAH open-documents: %s\n", path ? [path UTF8String] : "(none)");
+    if (path != nil && gHs.open_file) gHs.open_file([path UTF8String]);
+}
+- (void)handleOpenDocuments:(NSAppleEventDescriptor *)event
+             withReplyEvent:(NSAppleEventDescriptor *)reply {
+    NSAppleEventDescriptor *docs = [event paramDescriptorForKeyword:keyDirectObject];
+    if (docs == nil) return;
+    NSInteger n = [docs numberOfItems];
+    if (n == 0) { leksah_open_document_descriptor(docs); return; }
+    for (NSInteger i = 1; i <= n; i++)      // descriptor lists are 1-based
+        leksah_open_document_descriptor([docs descriptorAtIndex:i]);
+}
+@end
+
+// Installed once the callbacks exist (so a document can always be delivered).
+// AppKit registers its OWN open-documents handler while the app finishes
+// launching, replacing any installed earlier, so install ours again on the
+// will- and did-finish-launching notifications too: from then on ours wins,
+// and it is in place before AppKit processes the event for a file that
+// LAUNCHED the app.  (Installing again after launch is harmless — the handler
+// is simply replaced by itself — and covers a ghci :reload, which re-registers
+// the callbacks long after launch.)
+static LeksahOpenDocumentsHandler *gOpenDocsHandler = nil;
+static void leksah_set_open_documents_handler(void) {
+    [[NSAppleEventManager sharedAppleEventManager]
+        setEventHandler:gOpenDocsHandler
+            andSelector:@selector(handleOpenDocuments:withReplyEvent:)
+          forEventClass:kCoreEventClass
+             andEventID:kAEOpenDocuments];
+}
+static void leksah_install_open_documents_handler(void) {
+    if (gOpenDocsHandler == nil) {
+        gOpenDocsHandler = [LeksahOpenDocumentsHandler new];
+        NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+        for (NSNotificationName n in @[NSApplicationWillFinishLaunchingNotification,
+                                       NSApplicationDidFinishLaunchingNotification])
+            [nc addObserverForName:n object:nil queue:nil
+                        usingBlock:^(NSNotification *note) {
+                            leksah_set_open_documents_handler();
+                        }];
+    }
+    leksah_set_open_documents_handler();
+}
+
 void leksah_set_haskell_callbacks(
     void (*menu_action)(int),
     void (*open_file)(const char *),
@@ -118,6 +181,7 @@ void leksah_set_haskell_callbacks(
     gHs.window_activated = window_activated;
     gHs.window_closing   = window_closing;
     gHs.color_picked     = color_picked;
+    leksah_install_open_documents_handler();
 }
 
 // Registered separately (additive — keeps leksah_set_haskell_callbacks's ABI

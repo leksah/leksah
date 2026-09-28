@@ -210,6 +210,7 @@ import IDE.Web.Handoff
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel)
+import IDE.Ws.File (isWorkspaceFile)
 import IDE.Web.OpenWorkspace
        (createPickedWorkspace, newWorkspaceToken, openPickedWorkspace,
         openWorkspaceToken)
@@ -9126,7 +9127,12 @@ main showMenubar macTitlebar wid ctx = mdo
       , wbShortcuts = fireShortcutsReq ()
       , wbBrowser = fireBrowserReq ()
       , wbKeymap = fireKeymapCmd
-      , wbOpenedFile = fireOpenedFile
+      -- A workspace file opens as the workspace, anything else as an editor
+      -- tab — whichever way it arrived: Finder / Dock (the open-documents
+      -- Apple Event), File ▸ Open…, Open Recent or `leksah-cmd editor open`.
+      , wbOpenedFile = \fp -> if isWorkspaceFile fp
+          then void . forkIO $ getGlobalApp >>= mapM_ (`openPickedWorkspace` fp)
+          else fireOpenedFile fp
       , wbRegionGrab = fireRegionGrab
       , wbAIAction = fireAIAction
       , wbNewLw = fireNewLwReq

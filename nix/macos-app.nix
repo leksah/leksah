@@ -137,6 +137,24 @@ pkgs.runCommand "Leksah.app"
         <key>NSHighResolutionCapable</key>              <true/>
         <key>NSHumanReadableCopyright</key>             <string>Leksah authors, GNU General Public License.</string>
         <key>LSMinimumSystemVersion</key>              <string>11.0</string>
+        <!-- .leksah-workspace files: a type of our own (JSON inside), which
+             Finder then opens in Leksah on a double-click. -->
+        <key>UTExportedTypeDeclarations</key>
+        <array><dict>
+            <key>UTTypeIdentifier</key>             <string>org.leksah.workspace</string>
+            <key>UTTypeDescription</key>            <string>Leksah Workspace</string>
+            <key>UTTypeConformsTo</key>             <array><string>public.json</string></array>
+            <key>UTTypeTagSpecification</key>       <dict>
+                <key>public.filename-extension</key> <array><string>leksah-workspace</string></array>
+            </dict>
+        </dict></array>
+        <key>CFBundleDocumentTypes</key>
+        <array><dict>
+            <key>CFBundleTypeName</key>             <string>Leksah Workspace</string>
+            <key>CFBundleTypeRole</key>             <string>Editor</string>
+            <key>LSHandlerRank</key>                <string>Owner</string>
+            <key>LSItemContentTypes</key>           <array><string>org.leksah.workspace</string></array>
+        </dict></array>
     </dict>
     </plist>
     PLIST
