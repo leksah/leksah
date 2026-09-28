@@ -7137,10 +7137,27 @@ main showMenubar macTitlebar wid ctx = mdo
                    , h' == h, t == sid || t == nm ] of
             (n : _) -> n
             []      -> remoteKey h sid
+        -- The server row's tab: the host's default "leksah" session, which a
+        -- bare "ssh://host" tab attaches (see remoteTabHostTarget) and the
+        -- tree also lists as an ordinary session ("ssh://host#$0").  Resolve
+        -- it like a session select — any tab already open for it, under its
+        -- id, its name or the bare key — so a server-row click never opens a
+        -- second tab (and flipper entry) for the same panes.  Only when
+        -- nothing is open does it make the bare per-server tab.
+        resolveHostKey rt trees h =
+          case [ sid | Just (_, ss) <- [M.lookup h trees]
+                     , (sid, (nm, _)) <- M.toList ss, nm == "leksah" ] of
+            (sid : _) -> resolveRemoteKey rt h sid "leksah"
+            [] -> case [ n | (_, TerminalKey n) <- rt
+                           , Just (h', "leksah") <- [remoteTabHostTarget n]
+                           , h' == h ] of
+                    (n : _) -> n
+                    []      -> "ssh://" <> h
         remoteOpenKeyE = leftmost
           [ fmapMaybe id remoteNewSidE
             -- Server row → the per-server tab (its default "leksah" session).
-          , ("ssh://" <>) <$> selRemoteHostE
+          , attachWith (\(rt, trees) h -> resolveHostKey rt trees h)
+                       ((,) <$> current recentTabs <*> current hostTreesD) selRemoteHostE
           , attachWith (\rt (h, sid, nm) -> resolveRemoteKey rt h sid nm)
                        (current recentTabs) selRemoteE
           , attachWith (\rt (h, sid, nm, _) -> resolveRemoteKey rt h sid nm)
@@ -7159,7 +7176,8 @@ main showMenubar macTitlebar wid ctx = mdo
           [ attachWith (\tr s       -> flipForSel s Nothing  Nothing  tr) (current allTreeD) selectTermE
           , attachWith (\tr (s,w)   -> flipForSel s (Just w) Nothing  tr) (current allTreeD) selectWinE
           , attachWith (\tr (s,w,p) -> flipForSel s (Just w) (Just p) tr) (current allTreeD) selectPaneE
-          , attachWith (\(tr,_)  h              -> flipForSel ("ssh://" <> h)            Nothing  Nothing  tr) treeRtB selRemoteHostE
+          , attachWith (\((tr,rt),trees) h     -> flipForSel (resolveHostKey rt trees h) Nothing  Nothing  tr)
+                       ((,) <$> treeRtB <*> current hostTreesD) selRemoteHostE
           , attachWith (\(tr,rt) (h,sid,nm)     -> flipForSel (resolveRemoteKey rt h sid nm) Nothing  Nothing  tr) treeRtB selRemoteE
           , attachWith (\(tr,rt) (h,sid,nm,w)   -> flipForSel (resolveRemoteKey rt h sid nm) (Just w) Nothing  tr) treeRtB selRemoteWinE
           , attachWith (\(tr,rt) (h,sid,nm,w,p) -> flipForSel (resolveRemoteKey rt h sid nm) (Just w) (Just p) tr) treeRtB selRemotePaneE ]
