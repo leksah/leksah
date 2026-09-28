@@ -301,10 +301,9 @@ terminalCss = do
     -- (no active pane / the active tab hidden).  pointer-events:none and
     -- z-index 25 as the old overlay had; the glow spills over the bars,
     -- which is the point of it being one fixed top-level element.
-    -- CAVEAT: anchor() resolves from LAYOUT geometry — a transform (the
-    -- tall/wide1 auto-hide reveal translates pane content) does not move
-    -- the glow; the ring (in-tree) stays correct, the glow catches up when
-    -- the reveal settles.
+    -- WebKit's anchor() follows the anchor's TRANSFORMED position, so the
+    -- auto-hide reveals (which translate pane content) carry the glow along
+    -- with no rules of their own — see the note in Layout.hs.
     -- The overlay ALSO carries the active pane's 1px max-contrast ring (the
     -- white border lives here, never on pane elements).  It is 1px WIDER and
     -- TALLER than its anchor (border-box): the left/top borders land on the
@@ -335,9 +334,9 @@ terminalCss = do
         "width" -: "calc(anchor-size(--leksah-active-pane-tall width, 0px) + 1px)"
         "height" -: "calc(anchor-size(--leksah-active-pane-tall height, 0px) + 1px)"
         "border-left" -: "none"
-    -- The wide1 (bottom bar) variant (third overlay div): the bar is a
-    -- transform-parked overlay in auto-hide mode, so its overlay carries the
-    -- bar's own parked/revealed transforms (Layout.hs wide1-auto rules).
+    -- The wide1 (bottom bar) variant (third overlay div): anchored to the
+    -- bar's active pane, so it follows the bar's parked/revealed transforms
+    -- in auto-hide mode by itself.
     ".leksah-pane-glow.glow-wide1" ? do
         "top" -: "anchor(--leksah-active-pane-wide1 top, -10000px)"
         "left" -: "anchor(--leksah-active-pane-wide1 left, -10000px)"

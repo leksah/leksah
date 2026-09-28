@@ -329,34 +329,14 @@ layoutCss = do
         ("transition" -: "transform 0.15s ease")
     ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .findbar, .leksah.wide1-hide.wide1-focus .findbar" ?
         ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
-    -- The active-pane glow/ring overlays (terminalCss .leksah-pane-glow) are
-    -- position:fixed and CSS-anchored to LAYOUT geometry, which transforms do
-    -- not move — so through the bar's transform-only reveal they must ride
-    -- the very same transforms as the content their anchors live in: the
-    -- wide0-anchored overlay slides up with the editor content, the
-    -- wide1-anchored one is parked off-screen and revealed with the bar, and
-    -- the tall one never moves (side-pane content doesn't slide).  Same
-    -- transition, same suppress and drag-resize overrides as the content.
-    -- (.leksah-pane-left-line is wide0-anchored like the base glow, so it
-    -- rides the base glow's transforms wherever they apply.)
-    ".leksah:is(.wide1-auto, .wide1-hide) .leksah-pane-glow, .leksah:is(.wide1-auto, .wide1-hide) .leksah-pane-left-line" ?
-        ("transition" -: "transform 0.15s ease")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line), .leksah.wide1-hide.wide1-focus :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ?
-        ("transform" -: "translateY(calc(-1 * var(--wide1-bar)))")
-    ".leksah:is(.wide1-auto, .wide1-hide) .leksah-pane-glow.glow-wide1" ?
-        ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
-    ".leksah.wide1-auto:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1, .leksah.wide1-hide.wide1-focus .leksah-pane-glow.glow-wide1" ?
-        ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ?
-        ("transform" -: "translateY(0)")
-    ".leksah.wide1-auto.wide1-suppress:has(.statusbar:hover, .area-wide1:hover, .area-wide1:focus-within, .wide1-divider:hover) .leksah-pane-glow.glow-wide1" ?
-        ("transform" -: "translateY(calc(var(--wide1-bar) + 20px))")
-    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 :is(.leksah-pane-glow:not(.glow-tall):not(.glow-wide1), .leksah-pane-left-line)" ? do
-        "transform" -: "translateY(calc(-1 * var(--wide1-bar)))"
-        "transition" -: "none"
-    ".leksah:is(.wide1-auto, .wide1-hide).leksah-resizing-wide1 .leksah-pane-glow.glow-wide1" ? do
-        "transform" -: "translateY(0)"
-        "transition" -: "none"
+    -- The active-pane glow/ring overlays (terminalCss .leksah-pane-glow) need
+    -- NO rules here.  They are position:fixed and CSS-anchored to the active
+    -- pane, and WebKit's anchor positioning follows the anchor's TRANSFORMED
+    -- position — so through the bar's transform-only reveal each overlay
+    -- simply tracks its anchor as the content slides.  (They used to be given
+    -- the same translateY as the content, on the belief that anchors resolve
+    -- from untransformed layout; with anchors that follow transforms that
+    -- moved the main-pane ring twice as far as its pane.)
     -- Force-collapse override (bottom bar): '.wide1-suppress' slides the bar back
     -- off-screen and un-shifts the editor content even while hovered, so a
     -- selection that activated a file/terminal snaps the bar shut with the cursor

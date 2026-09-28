@@ -5530,9 +5530,10 @@ main showMenubar macTitlebar wid ctx = mdo
     elAttr "div" ("class" =: "leksah-pane-glow") blank
     -- …and the per-area variants: tall (anchors --leksah-active-pane-tall;
     -- no border-left, side tabs sit on the screen's left edge) and wide1
-    -- (anchors --leksah-active-pane-wide1; rides the bottom bar's auto-hide
-    -- transforms).  Split per area because the auto-hide reveals move each
-    -- area's content by DIFFERENT transforms, which CSS anchors ignore.
+    -- (anchors --leksah-active-pane-wide1).  Split per area so each area's
+    -- ring and glow can differ (the tall one draws no left border at the
+    -- screen edge); anchors follow the auto-hide reveals' transforms, so
+    -- none of them needs transform rules of its own.
     elAttr "div" ("class" =: "leksah-pane-glow glow-tall") blank
     elAttr "div" ("class" =: "leksah-pane-glow glow-wide1") blank
     -- The active pane's 1px left ring line, as its own anchored overlay
