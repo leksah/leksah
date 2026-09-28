@@ -210,6 +210,7 @@ import IDE.Web.Handoff
 import IDE.Web.CmdServer (startCmdServer, suppressNextRestart)
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.OpenPanel (runOpenFilePanel)
+import IDE.Web.OpenWorkspace (openPickedWorkspace, openWorkspaceToken)
 import IDE.Web.Theme (themeVarsCss, paletteCss, contrastCss, bgColor, fgColor)
 import IDE.Web.WindowBridge
        (WindowBridge(..), registerWindowBridge, startWindowBridgeDrains,
@@ -8771,6 +8772,12 @@ main showMenubar macTitlebar wid ctx = mdo
     -- bridge, tagged with the asking dialog's token.
     (addProjectReqE, fireAddProjectReq) <- newTriggerEvent
     (pickedPathE, firePickedPath) <- newTriggerEvent
+    -- Workspace ▸ Open Workspace…'s pick (its own token; see
+    -- "IDE.Web.OpenWorkspace").  Off the frame thread: it reads the file.
+    performEvent_ $ ffor (fmapMaybe (\(t, p) -> if t == openWorkspaceToken
+                                                  then Just p else Nothing) pickedPathE)
+        $ \p -> liftIO . void . forkIO $
+            getGlobalApp >>= mapM_ (`openPickedWorkspace` p)
     -- "local" is not an ssh host, so it is not in rcHosts; the dialog wants it
     -- first in the Server drop-down.
     let serversD = ("local" :) <$> remoteHostsD

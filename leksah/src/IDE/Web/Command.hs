@@ -13,6 +13,7 @@ import Data.Text (Text)
 import IDE.Web.AIContextRequest
        (AIAction(..), requestAIAction)
 import IDE.Web.AddProjectRequest (requestAddProject)
+import IDE.Web.OpenWorkspace (requestOpenWorkspace)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.CloseRequest (requestCloseActivePane)
 import IDE.Web.NewWindowRequest (requestNewWindow)
@@ -365,6 +366,16 @@ commandAddProject = CommandIDEAction
   "/pics/file-open.svg"
   "Add a project, folder or remote directory to the workspace"
   (const requestAddProject)
+
+-- | Workspace ▸ Open Workspace…: pick a @.leksah.json@ and make it the open
+-- workspace.  A plain 'CommandIDEAction', so every dispatch route runs it; the
+-- action only shows the native panel, and the pick comes back on the shared
+-- pick queue, where 'IDE.Web.Main' opens it ("IDE.Web.OpenWorkspace").
+commandOpenWorkspace :: Command
+commandOpenWorkspace = CommandIDEAction
+  "/pics/file-open.svg"
+  "Open a .leksah.json workspace"
+  (const requestOpenWorkspace)
 
 -- | File ▸ Add Server… (and the Terminals-tree row): register an ssh host in
 -- the remote-hosts setting.  A plain 'CommandIDEAction', so both the web

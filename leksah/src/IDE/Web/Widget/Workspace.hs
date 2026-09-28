@@ -13,7 +13,6 @@ module IDE.Web.Widget.Workspace (
 
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, try, SomeException)
-import Control.Lens (view)
 import Control.Monad (void, when, unless, filterM, forM, forM_)
 import Control.Monad.IO.Class (liftIO)
 import Language.Javascript.JSaddle (liftJSM, eval, valToNumber)
@@ -26,7 +25,7 @@ import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import qualified Data.Map as M
        (Map, elems, empty, filterWithKey, findWithDefault, fromList,
         fromListWith, insert, keys, lookup, singleton, toList, null, union)
-import Data.Maybe (listToMaybe, fromMaybe, isJust, mapMaybe)
+import Data.Maybe (listToMaybe, fromMaybe, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
 import System.IO.Unsafe (unsafePerformIO)
@@ -81,7 +80,7 @@ import Reflex
         Event, never, fmapMaybe, tagPromptlyDyn, sample,
         tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (elDynClass, elAttr, dyn, button, (=:), elDynAttr,
+       (elDynClass, elAttr, dyn, (=:), elDynAttr,
         divClass, text, el, elClass, dynText, domEvent, EventName(..))
 
 import IDE.Web.Theme
@@ -96,7 +95,7 @@ import IDE.Workspace
        (Ws, WorkspaceService(..), activeComponent, activePackage,
         activeProject, packageIdText, prDir, projectOpenPath,
         workspaceActivatePackage,
-        workspaceRemoveProject, wsPath, wsProjects, wsSpecFor)
+        workspaceRemoveProject, wsProjects, wsSpecFor)
 import IDE.Ws.Cabal (componentTarget)
 import IDE.Ws.File (applyOverrides)
 import IDE.Ws.Registry (typeById)
@@ -1695,9 +1694,6 @@ workspaceWidget ctx activeFileD revealFileD = do
   showIgnoredD <- holdUniqDyn $ uiShowIgnoredFiles . cfgUi <$> cCfg ctx
   divClass "workspace leksah-nav" $
     divClass "workspace-body" $ do
-      workspaceIsOpenD <- holdUniqDyn $ isJust . view wsPath <$> cWs ctx
-      _ <- elDynAttr "div" (bool mempty ("style" =: "display: none") <$> workspaceIsOpenD) $
-        button "Open Workspace (TODO)"
       elClass "ul" "projects" $ do
         let addFileToKey = map (\(n, p) -> ((n, prKey p), p))
             projectsD = M.fromList . addFileToKey . zip [0..] . wsProjects <$> cWs ctx

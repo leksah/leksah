@@ -103,6 +103,7 @@ library
         IDE.Web.SaveRequest
         IDE.Web.FindRequest
         IDE.Web.AddProjectRequest
+        IDE.Web.OpenWorkspace
         IDE.Web.AddServerRequest
         IDE.Web.RemoteSettingsRequest
         IDE.Web.PreferencesRequest
