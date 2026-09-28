@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- SPDX-License-Identifier: Apache-2.0
 
--- | Reading and writing the workspace file, @\<name\>.leksah.json@.
+-- | Reading and writing the workspace file, @\<name\>.leksah-workspace@
+-- (JSON inside, like VS Code's @.code-workspace@; files from before the
+-- rename, @\<name\>.leksah.json@, still open — see 'isWorkspaceFile').
 --
 -- The JSON layout (keys written sorted; unknown keys are ignored on read,
 -- missing optional keys default):
@@ -31,6 +33,8 @@ module IDE.Ws.File
   , ToolOverride(..)
   , readWorkspaceFile
   , writeWorkspaceFile
+  , workspaceExtension
+  , isWorkspaceFile
   , applyOverrides
   ) where
 
@@ -40,7 +44,7 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Encode.Pretty (Config(..), defConfig, encodePretty')
 import qualified Data.ByteString.Lazy as BL
-import Data.List (intercalate)
+import Data.List (intercalate, isSuffixOf)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes)
@@ -54,6 +58,16 @@ import IDE.Ws.Types
 
 -- | A command override stored in the workspace file: replaces the
 -- program and arguments a project type would use for a 'Verb'.
+
+-- | The workspace file extension.
+workspaceExtension :: String
+workspaceExtension = ".leksah-workspace"
+
+-- | Is this a workspace file?  The current extension, or the one it replaced
+-- (@.leksah.json@), so workspaces saved before the rename still open.
+isWorkspaceFile :: FilePath -> Bool
+isWorkspaceFile p = any (`isSuffixOf` p) [workspaceExtension, ".leksah.json"]
+
 data ToolOverride = ToolOverride
   { toProgram :: Text
   , toArgs    :: [Text]

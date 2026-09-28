@@ -144,7 +144,7 @@ Effects (readFile/listDirectory/runTool) are a parameter record so
 enumeration is testable and remote-capable (ssh:// roots via the existing
 RemotePath seam).  Instances: cabal (cabal.project/`*.cabal`), stack,
 cargo (`cargo metadata` JSON), nix flake, make, plain dir.  Workspace
-file: fresh `<name>.leksah.json` — version, projects (type/root/file,
+file: fresh `<name>.leksah-workspace` — version, projects (type/root/file,
 per-project command overrides), active target; paths relative to the file.
 
 ### Windows

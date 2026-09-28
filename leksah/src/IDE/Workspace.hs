@@ -5,7 +5,7 @@
 
 -- | The live workspace: which projects are open, what enumerating them
 -- found, and what is active.  One 'Cell' holds the whole 'Ws' value; the
--- spec half ('wsSpec') mirrors the @\<name\>.leksah.json@ file and is
+-- spec half ('wsSpec') mirrors the @\<name\>.leksah-workspace@ file and is
 -- saved through 'IDE.Ws.File' whenever an operation changes it.
 module IDE.Workspace
   ( -- * State
@@ -69,7 +69,7 @@ data ActiveTarget = ActiveTarget
 
 -- | The live workspace value held in the cell.
 data Ws = Ws
-    { _wsPath        :: Maybe FilePath          -- ^ the @.leksah.json@
+    { _wsPath        :: Maybe FilePath          -- ^ the @.leksah-workspace@
     , _wsSpec        :: WF.Workspace            -- ^ what the file says
     , _wsProjectsMap :: Map ProjectKey Project  -- ^ enumeration results
     , _wsActive      :: Maybe ActiveTarget

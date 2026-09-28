@@ -116,7 +116,7 @@ data WebSession = WebSession
       --   dialog in a SECOND window reads: this field is only how it survives a
       --   restart.
   , wsWorkspace :: Maybe FilePath
-      -- ^ the @.leksah.json@ workspace that was open, reopened at start-up if
+      -- ^ the @.leksah-workspace@ file that was open, reopened at start-up if
       --   it still exists.  Optional like the fields above: absent (older
       --   files) or 'Nothing' starts with no workspace.  Workspace files are
       --   per-user and untracked, so there is no project default to fall

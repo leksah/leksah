@@ -1008,7 +1008,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 #if defined(ghcjs_HOST_OS)
       -- The browser demo's workspace lives in the page-seeded mock tree
       -- (window.leksahDemoFiles → IDE.Web.FS).
-      let mbWorkspace = Just "/demo/demo.leksah.json"
+      let mbWorkspace = Just "/demo/demo.leksah-workspace"
 #else
       -- The workspace that was open last time, as remembered in
       -- web-session.json.  Workspace files are per-user (and untracked), so
@@ -1028,13 +1028,13 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       forM_ mbWorkspace $ \filePath -> do
         metaLog ("boot: reading workspace " <> filePath)
         -- The old @.lkshw@ v4 format is dead: a stored session pointing at
-        -- one means "no workspace" (plus a visible note); a @.leksah.json@
+        -- one means "no workspace" (plus a visible note); a workspace file
         -- path loads through the workspace service (projects enumerate in
         -- the background, the cell updates as results land).
         liftIO $ if ".lkshw" `isSuffixOf` filePath
             then appNote app (T.pack filePath
                    <> " is the retired .lkshw workspace format — open a"
-                   <> " .leksah.json workspace instead")
+                   <> " .leksah-workspace workspace instead")
             else (wsOpenFile (appWorkspace app) filePath
                     `catch` \(e :: SomeException) ->
                         appNote app ("Can't load workspace file "
@@ -3099,7 +3099,7 @@ demoSplitCandidates :: IO [FilePath]
 demoSplitCandidates = do
     fs <- fsListFilesRecursive "/demo"
     return . sortOn rank $
-      [ f | f <- fs, takeFileName f /= "demo.leksah.json" ]
+      [ f | f <- fs, takeFileName f /= "demo.leksah-workspace" ]
   where
     rank f = (,) (case takeExtension f of
                     ".hs"      -> 0 :: Int
