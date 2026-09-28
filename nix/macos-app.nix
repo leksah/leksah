@@ -135,7 +135,7 @@ pkgs.runCommand "Leksah.app"
         <key>CFBundleShortVersionString</key>           <string>${version}</string>
         <key>CFBundleVersion</key>                      <string>${version}</string>
         <key>NSHighResolutionCapable</key>              <true/>
-        <key>NSHumanReadableCopyright</key>             <string>Leksah authors, GNU General Public License.</string>
+        <key>NSHumanReadableCopyright</key>             <string>Copyright © 2007-2026 Hamish Mackenzie. Apache License 2.0.</string>
         <key>LSMinimumSystemVersion</key>              <string>11.0</string>
         <!-- .leksah-workspace files: a type of our own (JSON inside), which
              Finder then opens in Leksah on a double-click. -->
