@@ -116,10 +116,13 @@ let
   # cabal-install-parsers (cabal-add dep): the fork's ParseResult gained a
   # source type parameter (`ParseResult src a`) alongside the same
   # *WithSource error/warning wrappers.
+  # hie-bios 0.21 gates the OsPath PkgDbPath on GHC >= 9.15; the fork
+  # already has it at 9.14.
   hlsDepsPatched = pkgs.lib.optionalString isGhc914sh ''
     packages: ${patchedHackage "cabal-add" "0.2" ./patches/cabal-add-cabal-syntax-3.17.patch}
     packages: ${patchedHackage "cabal-install-parsers" "0.6.3" ./patches/cabal-install-parsers-cabal-syntax-3.17.patch}
     packages: ${patchedHackage "ghc-exactprint" "1.14.1.0" ./patches/ghc-exactprint-1.14-stable-ghc-9.14.patch}
+    packages: ${patchedHackage "hie-bios" "0.21.0" ./patches/hie-bios-stable-ghc-9.14-ospath.patch}
   '';
   # HLS's own hls-cabal-plugin doesn't compile against the fork's Cabal-syntax
   # 3.17: CondTree lost its middle type param, and runParseResult now wraps
@@ -138,6 +141,8 @@ let
         # against its library (cProjectVersion "9.14.0"); relax ghcide's exact
         # version-equality guard so it loads ghc914-sh projects.
         ./patches/ghcide-relax-ghc-version-check.patch
+        # The fork has backported GHC 9.15 API changes (mkIfaceTc, WholeCoreBindings, …).
+        ./patches/ghcide-stable-ghc-9.14-ghc-9.15-api.patch
       ];
     }
     else pkgs.hls-github-src;

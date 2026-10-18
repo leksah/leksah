@@ -1,0 +1,68 @@
+diff -ru a/ghcide/src/Development/IDE/GHC/Compat/Core.hs b/ghcide/src/Development/IDE/GHC/Compat/Core.hs
+--- a/ghcide/src/Development/IDE/GHC/Compat/Core.hs	2026-10-11 02:32:32
++++ b/ghcide/src/Development/IDE/GHC/Compat/Core.hs	2026-10-11 02:32:32
+@@ -744,7 +744,9 @@
+ 
+ mkIfaceTc :: HscEnv -> GHC.SafeHaskellMode -> ModDetails -> ModSummary -> Maybe CoreProgram -> TcGblEnv -> IO ModIface
+ mkIfaceTc hscEnv shm md _ms _mcp =
+-  GHC.mkIfaceTc hscEnv shm md _ms _mcp -- mcp::Maybe CoreProgram is only used in GHC >= 9.6
++  -- ghc914-sh: mkIfaceTc gained the Maybe ModBreaks argument of GHC 9.15;
++  -- ghcide makes typecheck-only interfaces, so there are no breakpoints.
++  GHC.mkIfaceTc hscEnv shm md _ms _mcp Nothing
+ 
+ mkBootModDetailsTc :: HscEnv -> TcGblEnv -> IO ModDetails
+ mkBootModDetailsTc session = GHC.mkBootModDetailsTc
+diff -ru a/ghcide/src/Development/IDE/GHC/Orphans.hs b/ghcide/src/Development/IDE/GHC/Orphans.hs
+--- a/ghcide/src/Development/IDE/GHC/Orphans.hs	2026-10-11 02:34:59
++++ b/ghcide/src/Development/IDE/GHC/Orphans.hs	2026-10-11 02:34:59
+@@ -74,7 +74,8 @@
+ 
+ instance NFData WholeCoreBindings where
+ #if MIN_VERSION_ghc(9,11,0)
+-  rnf (WholeCoreBindings bs m ml f) = rnf bs `seq` rnf m `seq` rnf ml `seq` rnf f
++  -- ghc914-sh: GHC 9.15 added a fifth field.
++  rnf (WholeCoreBindings bs m ml f g) = rnf bs `seq` rnf m `seq` rnf ml `seq` rnf f `seq` rwhnf g
+ #else
+   rnf (WholeCoreBindings bs m ml) = rnf bs `seq` rnf m `seq` rnf ml
+ #endif
+diff -ru a/ghcide/src/Development/IDE/Import/FindImports.hs b/ghcide/src/Development/IDE/Import/FindImports.hs
+--- a/ghcide/src/Development/IDE/Import/FindImports.hs	2026-10-11 02:40:00
++++ b/ghcide/src/Development/IDE/Import/FindImports.hs	2026-10-11 02:40:00
+@@ -35,6 +35,8 @@
+ import           GHC.Generics
+ import           GHC.Types.PkgQual
+ import           GHC.Unit
++-- ghc914-sh: hiddenModules is a UniqSet (GHC 9.15 API).
++import           GHC.Types.Unique.Set              (nonDetEltsUniqSet)
+ 
+ 
+ #if MIN_VERSION_ghc(9,11,0)
+@@ -134,7 +136,7 @@
+ 
+ -- | What a home unit exposes, from its flags.
+ mkUnitVisibility :: (UnitId, DynFlags) -> (UnitId, UnitVisibility)
+-mkUnitVisibility (i, flags) = (i, UnitVisibility reexports (hiddenModules flags))
++mkUnitVisibility (i, flags) = (i, UnitVisibility reexports (S.fromList $ nonDetEltsUniqSet $ hiddenModules flags))
+   where
+ #if MIN_VERSION_ghc(9,11,0)
+     -- Earlier entries win, as in 'GHC.Driver.Config.Finder.initFinderOpts'
+@@ -235,7 +237,8 @@
+     ue = hsc_unit_env env
+     units = homeUnitEnv_units $ ue_findHomeUnitEnv (homeUnitId_ dflags) ue
+     hpt_deps :: [UnitId]
+-    hpt_deps = homeUnitDepends units
++    -- ghc914-sh: homeUnitDepends is a Set (GHC 9.15 API).
++    hpt_deps = S.toList $ homeUnitDepends units
+ 
+     toModLocation uid file = liftIO $ do
+         loc <- mkHomeModLocation dflags (unLoc modName) (fromNormalizedFilePath file)
+@@ -265,7 +268,8 @@
+         LookupMultiple rs -> FoundMultiple rs
+         LookupHidden pkg_hiddens mod_hiddens ->
+           notFound
+-             { fr_pkgs_hidden = map (moduleUnit . fst) pkg_hiddens
++             -- ghc914-sh: LookupHidden carries the hidden units directly.
++             { fr_pkgs_hidden = pkg_hiddens
+              , fr_mods_hidden = map (moduleUnit . fst) mod_hiddens
+              }
+         LookupUnusable unusable ->
