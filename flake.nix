@@ -1,6 +1,6 @@
 {
   # This is a template created by `hix init`
-  inputs.haskellNix.url = "github:input-output-hk/haskell.nix/hkm/stable-haskell";
+  inputs.haskellNix.url = "github:input-output-hk/haskell.nix";
   inputs.nixpkgs.follows = "haskellNix/nixpkgs-unstable";
   # hyper-linux runs aarch64-linux / x86_64-linux ELF binaries on Apple Silicon
   # via Hypervisor.framework.  haskell.nix's darwin→linux cross (the -hl branch

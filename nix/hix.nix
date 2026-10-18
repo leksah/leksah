@@ -152,8 +152,8 @@ rec {
     cabalProjectLocal = clibNoRts + cabalDoctestPatched + posixPtyPatched
       + windowsProjectLocal
       + hsloggerNoNetworkJs + reflexDomCoreJsaddleJs;
-    # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix hkm/stable-haskell
-    # branch) that can cross-compile from darwin to Linux (musl) via hyper-linux.
+    # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix master) that can
+    # cross-compile from darwin to Linux (musl) via hyper-linux.
     compiler-nix-name = "ghc914-sh";
     # v2 slice builds for the native platforms (what leksah's own incremental
     # builds use).  The mingw cross must use the classic builder: v2 compiles
@@ -161,7 +161,7 @@ rec {
     # setup.exe the Linux build host can't run; v1's setup-builder uses the
     # build compiler.  projectCross re-evaluates this module with the cross
     # pkgs, so the condition picks the right builder per platform.
-    # mkForce: hkm/stable-haskell's cabal-project.nix now sets builderVersion
+    # mkForce: haskell.nix's cabal-project.nix now sets builderVersion
     # itself (=2), so a plain assignment here collides ("conflicting definition
     # values"); the override takes priority for both the native and cross evals.
     builderVersion = pkgs.lib.mkForce 2;
