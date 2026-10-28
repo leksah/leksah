@@ -27,6 +27,9 @@ module IDE.Web.AgentInfo
   , recordAgentFork
   , describeAgent
   , dismissAgent
+  , markAgentDone
+  , setAgentRole
+  , agentParentOf
   , agentForest
   , agentTitles
   , agentDirOf
@@ -67,8 +70,9 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.AgentNames (agentNames)
 import IDE.Web.Claude
-       (ClaudeLive(..), claudeLiveBySession, claudeSessionLabel,
+       (ClaudeLive(..), claudeLatestActivity, claudeLiveBySession, claudeSessionLabel,
         claudeTranscriptPath)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
@@ -90,26 +94,40 @@ data AgentInfo = AgentInfo
                                --   fork that has not registered a session yet
                                --   still shows as @starting@ rather than as
                                --   nothing at all
+  , aiDone    :: Maybe Text    -- ^ its summary, when it said it was done
+                               --   (@agent done@) — cleared once it gets busy
+                               --   again
+  , aiDoneAt  :: Maybe Double  -- ^ when it said so (POSIX seconds)
+  , aiRole    :: Maybe Text    -- ^ the role it was started in (@--as ROLE@)
   } deriving (Eq, Show)
 
 instance ToJSON AgentInfo where
   toJSON i = object
     [ "session" .= aiSession i, "parent" .= aiParent i, "dir" .= aiDir i
     , "title" .= aiTitle i, "desc" .= aiDesc i, "when" .= aiWhen i
-    , "born" .= aiBorn i ]
+    , "born" .= aiBorn i, "done" .= aiDone i, "doneAt" .= aiDoneAt i
+    , "role" .= aiRole i ]
 
 instance FromJSON AgentInfo where
   parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
     <$> o .: "session" <*> o .:? "parent" <*> (fromMaybe "" <$> o .:? "dir")
     <*> o .:? "title" <*> o .:? "desc" <*> o .:? "when" <*> o .:? "born"
+    <*> o .:? "done" <*> o .:? "doneAt" <*> o .:? "role"
 
 -- | One row of the Agents pane: an agent, and the agents it forked.
 data AgentNode = AgentNode
   { anSession  :: Text        -- ^ session id (the handle for show\/resume\/send)
+  , anName     :: Text        -- ^ the name leksah gave it ("Wren" — see
+                              --   "IDE.Web.AgentNames"), @""@ if it has none
   , anTitle    :: Text        -- ^ its own title, else its @\/rename@ name, else
                               --   its first prompt, else the short id
   , anState    :: Text        -- ^ @waiting@ | @busy@ | @idle@ | @gone@
   , anDetail   :: Text        -- ^ what it is doing, spelled out (row tooltip)
+  , anDone     :: Maybe Text  -- ^ the summary it gave when it said it was done
+  , anRole     :: Maybe Text  -- ^ the role it was started in, if any
+  , anActivity :: Maybe Text  -- ^ what it is doing RIGHT NOW, in a few words —
+                              --   its last tool call while busy, the prompt it
+                              --   is stuck on while waiting; 'Nothing' at rest
   , anDir      :: FilePath    -- ^ its working directory
   , anDesc     :: Maybe Text  -- ^ sanitized HTML, shown while expanded
   , anAge      :: Text        -- ^ when an exited agent was last active ("2h ago")
@@ -235,6 +253,30 @@ describeAgent sid mtitle mhtml = do
            <> [ "  title: " <> t | Just t <- [aiTitle cur'] ]
            <> [ "  description: " <> T.take 200 d | Just d <- [aiDesc cur'] ] )
 
+-- | An agent saying it has finished (@agent done@), with what it would like
+-- the user — and the agent that started it — to know.
+markAgentDone :: Text -> Text -> IO ()
+markAgentDone sid summary = do
+  live <- claudeLiveBySession
+  now  <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
+  let dir = maybe "" clDir (M.lookup sid live)
+  withInfos $ \m ->
+    let cur = fromMaybe (blank sid dir) (M.lookup sid m)
+    in (M.insert sid cur { aiDone = Just summary, aiDoneAt = Just now } m, ())
+
+clearAgentDone :: Text -> IO ()
+clearAgentDone sid = withInfos $ \m ->
+  (M.adjust (\i -> i { aiDone = Nothing, aiDoneAt = Nothing }) sid m, ())
+
+-- | Remember which role an agent was started in.
+setAgentRole :: Text -> Text -> IO ()
+setAgentRole sid role = withInfos $ \m ->
+  (M.adjust (\i -> i { aiRole = Just role }) sid m, ())
+
+-- | The agent that started @sid@, if leksah saw it happen.
+agentParentOf :: Text -> IO (Maybe Text)
+agentParentOf sid = (aiParent =<<) . M.lookup sid <$> peekInfos
+
 -- | Forget an agent (the pane's ✕ on an exited row).  Its children re-attach to
 -- ITS parent rather than disappearing — see 'agentForest'.
 dismissAgent :: Text -> IO ()
@@ -244,7 +286,8 @@ blank :: Text -> FilePath -> AgentInfo
 blank sid dir = AgentInfo
   { aiSession = sid, aiParent = Nothing
   , aiDir = dropTrailingPathSeparator dir
-  , aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing }
+  , aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
+  , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing }
 
 --------------------------------------------------------------------------------
 -- the tree
@@ -326,7 +369,8 @@ demoForestRef = unsafePerformIO (newIORef Nothing)
 
 -- | One page-seeded row (children nest the same shape).
 data DemoAgent = DemoAgent Text Text Text Text FilePath (Maybe Text) Text
-                           (Maybe Text) (Maybe (Int, Text)) [DemoAgent]
+                           (Maybe Text) (Maybe (Int, Text)) [DemoAgent] (Maybe Text)
+                           (Maybe Text)
 
 instance FromJSON DemoAgent where
   parseJSON = withObject "DemoAgent" $ \o -> DemoAgent
@@ -340,13 +384,19 @@ instance FromJSON DemoAgent where
     <*> o .:? "branch"
     <*> o .:? "pr"
     <*> (fromMaybe [] <$> o .:? "children")
+    <*> o .:? "name"
+    <*> o .:? "activity"
 
 demoNode :: DemoAgent -> AgentNode
-demoNode (DemoAgent s title state detail dir desc age br pr kids) = AgentNode
+demoNode (DemoAgent s title state detail dir desc age br pr kids name activity) = AgentNode
   { anSession  = s
+  , anName     = fromMaybe "" name
   , anTitle    = title
   , anState    = state
   , anDetail   = detail
+  , anActivity = activity
+  , anDone     = Nothing
+  , anRole     = Nothing
   , anDir      = dir
   , anDesc     = sanitizeAgentHtml <$> desc
   , anAge      = age
@@ -366,13 +416,27 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   exited <- exitedNodes now infos liveRows
   liveNodes <- forM (csRows st) $ \r -> do
     (br, pr) <- agentGit posix (T.unpack (csrDir r))
+    act <- agentActivity r
     let i = M.lookup (csrSession r) infos
-    return (csrSession r, (node r i) { anBranch = br, anPr = pr })
+        n0 = (node r i) { anBranch = br, anPr = pr, anActivity = act }
+    -- Done ✓ while it rests after saying so; busy again a minute after
+    -- `agent done` (the turn that said it is over by then) means it has been
+    -- given more work, and the summary is stale.
+    n <- case (aiDone =<< i, aiDoneAt =<< i) of
+      (Just _, Just at)
+        | csrState r == "idle" -> return n0 { anState = "done"
+                                            , anDetail = "Done — it said it has finished" }
+        | posix - at > 60      -> clearAgentDone (csrSession r) >> return n0 { anDone = Nothing }
+      _ -> return n0
+    return (csrSession r, n)
   -- Decorate every row with the worktree relationships its session registered
   -- (cheap: 'claimsBySession' is an MVar peek per node over a small map).
+  -- (And with its name: an exited agent keeps the one it had.)
+  names <- agentNames
   decorated <- forM (liveNodes <> exited) $ \(s, n) -> do
     wls <- worktreeClaimLines now s
-    return (s, n { anWorktrees = wls })
+    return (s, n { anWorktrees = wls
+                 , anName = M.findWithDefault (anName n) s names })
   let nodes = M.fromList decorated
       -- The parent of x, skipping over agents that aren't shown (dismissed, or
       -- exited long ago) so their children stay visible under the nearest
@@ -398,15 +462,20 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       "busy"    -> 1
       "shell"   -> 1
       "idle"    -> 2
+      "done"    -> 2
       _         -> 3
 
     node r i = AgentNode
       { anSession = csrSession r
+      , anName    = csrName r
       , anTitle   = firstNonEmpty [ maybe "" T.strip (i >>= aiTitle)
                                   , csrTitle r
                                   , T.take 8 (csrSession r) ]
       , anState   = csrState r
       , anDetail  = csrDetail r
+      , anActivity = Nothing
+      , anDone    = i >>= aiDone
+      , anRole    = i >>= aiRole
       , anDir     = T.unpack (csrDir r)
       , anDesc    = i >>= aiDesc
       , anAge     = ""
@@ -436,9 +505,13 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         (br, pr) <- agentGit posix (aiDir i)
         return . (,) (aiSession i) $ AgentNode
           { anSession = aiSession i
+          , anName    = ""
           , anTitle   = firstNonEmpty [ maybe "" T.strip (aiTitle i)
                                       , T.take 8 (aiSession i) ]
           , anState   = "starting"
+          , anActivity = Nothing
+          , anDone    = Nothing
+          , anRole    = aiRole i
           , anDetail  = "Starting — if it stays like this, look at its pane: it "
                         <> "is probably waiting at a first-run prompt"
           , anDir     = aiDir i
@@ -456,9 +529,13 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         (br, pr) <- agentGit posix (aiDir i)
         return . (,) (aiSession i) $ AgentNode
           { anSession = aiSession i
+          , anName    = ""
           , anTitle   = firstNonEmpty [ T.takeWhile (/= '\n') title
                                       , T.take 8 (aiSession i) ]
           , anState   = "gone"
+          , anActivity = Nothing
+          , anDone    = aiDone i
+          , anRole    = aiRole i
           , anDetail  = "Exited — click to resume it here"
           , anDir     = aiDir i
           , anDesc    = aiDesc i
@@ -478,6 +555,40 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       _ -> Nothing
 
     firstNonEmpty xs = fromMaybe "" (listToMaybe (filter (not . T.null) xs))
+#endif
+
+#if !defined(ghcjs_HOST_OS)
+-- | The activity line for a live row: the approval it is waiting on, or —
+-- while busy — its last tool call, read from the transcript's tail and cached
+-- per transcript by mtime (the pane polls every 2s; a busy agent's transcript
+-- changes far less often than that).
+agentActivity :: ClaudeStatusRow -> IO (Maybe Text)
+agentActivity r = case csrState r of
+  "waiting" -> return (Just (csrDetail r))
+  "busy"    -> fmap shellAware . (`catch` \(_ :: SomeException) -> return Nothing) $ do
+    p <- claudeTranscriptPath (T.unpack (csrDir r)) (csrSession r)
+    t <- getModificationTime p
+    cached <- M.lookup p <$> readIORef activityRef
+    case cached of
+      Just (t', a) | t' == t -> return a
+      _ -> do
+        a <- claudeLatestActivity p
+        atomicModifyIORef' activityRef (\m -> (M.insert p (t, a) m, ()))
+        return a
+  _ -> return Nothing
+
+  where
+    -- A session busy only because a shell command of its own is still running
+    -- (a background job, a long build) has finished its turn: its transcript's
+    -- last message is prose, which would read as "Writing".  Say what it is.
+    shellAware a
+      | csrDetail r == "Running a shell command"
+      , maybe True (`elem` ["Writing", "Thinking"]) a = Just (csrDetail r)
+      | otherwise = a
+
+{-# NOINLINE activityRef #-}
+activityRef :: IORef (Map FilePath (UTCTime, Maybe Text))
+activityRef = unsafePerformIO (newIORef M.empty)
 #endif
 
 -- | One line per worktree relationship the session has registered — via

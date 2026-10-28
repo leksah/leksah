@@ -78,6 +78,7 @@ import IDE.Web.Theme
        (selectionColor, onAccentColor, hoverColor, dimColor, dimOpacity, fgColor,
         surfaceSunkenColor, btnTopColor, btnBottomColor, btnHoverTopColor,
         btnHoverBottomColor)
+import IDE.Web.AgentFace (agentFaceDataUri)
 import IDE.Web.Events (TerminalsEvents(..))
 import IDE.Web.Widget.Terminal
        (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
@@ -652,27 +653,33 @@ windowActivePane w = listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
 isClaudeWindow :: TmuxWindow -> Bool
 isClaudeWindow = maybe False isClaudePane . windowActivePane
 
--- | The window's leading icon: the robot for a calm/idle Claude window, but the
+-- | The window's leading icon: the agent's face (the robot until it has a name)
+-- for a calm/idle Claude window, but the
 -- bell/activity/silence alert icon otherwise (so "claude wants input" stays
 -- visible on a claude tile).
 windowIconSrc :: TmuxWindow -> Text
 windowIconSrc w
   | isClaudeWindow w
   , src `elem` ["/pics/tree-window-calm.svg", "/pics/tree-window-idle.svg"]
-      = "/pics/tree-claude.svg"
+      = maybe "/pics/tree-claude.svg" agentFaceDataUri
+              (windowActivePane w >>= tpAgentName)
   | otherwise = src
   where src = windowAlertSrc w
 
--- | The tile/flipper text for a tmux window: the title of the Claude session in
--- its active pane ('tpClaudeTitle' — the session's @/rename@ name, else the
--- transcript's first prompt) instead of the bare window name "claude";
+-- | The tile/flipper text for a tmux window: for a Claude session in its active
+-- pane, the agent's name and then its title ('tpAgentName', 'tpClaudeTitle' —
+-- the session's @/rename@ name, else the transcript's first prompt), e.g.
+-- @Wren — fix the CI failure@, instead of the bare window name "claude";
 -- everything else shows the window name with the leading "idx: " prefix stripped.
 windowTabLabel :: TmuxWindow -> Text
-windowTabLabel w = case windowActivePane w >>= tpClaudeTitle of
-  Just t | not (T.null t) -> ellipsize 32 t
-  _ | isClaudeWindow w    -> "claude"
-    | otherwise           -> stripIdxPrefix (twIndex w) (twLabel w)
+windowTabLabel w = case (tpAgentName =<< pane, tpClaudeTitle =<< pane) of
+  (Just a, Just t) | not (T.null t) -> ellipsize 40 (a <> " — " <> t)
+  (Just a, _)                       -> a
+  (_, Just t) | not (T.null t)      -> ellipsize 32 t
+  _ | isClaudeWindow w              -> "claude"
+    | otherwise                     -> stripIdxPrefix (twIndex w) (twLabel w)
   where
+    pane = windowActivePane w
     ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
                   | otherwise      = t
 

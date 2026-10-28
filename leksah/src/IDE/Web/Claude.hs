@@ -30,6 +30,7 @@ module IDE.Web.Claude
   , newAgentSessionId
   , runClaudeCmd
   , claudeCommandLine
+  , claudeLatestActivity
   , claudeRunning
   , claudeKeyFor
   , mruClaudePane
@@ -49,6 +50,7 @@ module IDE.Web.Claude
   , deleteSession
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
 import Control.Monad (void, forM, mfilter, when)
@@ -69,7 +71,8 @@ import Data.Time
        (UTCTime, NominalDiffTime, getCurrentTime, diffUTCTime)
 
 import Data.Aeson
-       (Value(..), decodeStrict', withObject, (.:), object, (.=), encode)
+       (Object, Value(..), decodeStrict', withObject, (.:), (.:?), object, (.=),
+        encode)
 import Data.Aeson.Types (parseMaybe, FromJSON)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (writeFile)
@@ -98,6 +101,7 @@ import Text.Read (readMaybe)
 import IDE.App (appUi, getGlobalApp)
 import IDE.Reactive (readCell)
 import IDE.Web.Model (WebUi(_leksahWindows))
+import IDE.Web.AgentNames (agentNameFor, sessionOfRunKey)
 import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
         liveRunPanes, livePanePids, tmuxCmd, sendKeysTo, findRunPane,
@@ -378,6 +382,8 @@ data AgentSpec = AgentSpec
   , asPrompt  :: Maybe Text -- ^ seeded first prompt (submitted at launch)
   , asParent  :: Maybe Text -- ^ the session that asked, if one did — told to
                             --   the child so it can report back
+  , asRoleNote :: Maybe Text -- ^ the instructions of the role it was started in
+                            --   ("IDE.Web.AgentRoles"), for its system prompt
   } deriving (Eq, Show)
 
 -- | A fresh RFC 4122 version-4 UUID, the shape @claude --session-id@ wants.
@@ -416,7 +422,12 @@ runClaudeCmd cmd = void . forkIO $ do
       tmuxCmd ["select-pane", "-t", T.unpack pid]
       requestLocalTerm sid
     Nothing -> do
-      name <- freshSessionName "claude"
+      -- The tmux session (so the tab, and the spoken bell) is called after the
+      -- agent ("Wren") whenever the launch pins its session id; a launch that
+      -- can't know its id yet (@-c@, the picker) is renamed by the Terminals
+      -- poll once its session shows up ('IDE.Web.Widget.Terminal').
+      base <- maybe (return "claude") agentNameFor (sessionOfRunKey key)
+      name <- freshSessionName base
       newSessionWindow name d (Just key) line' False
         >>= mapM_ (\(sid, wid, _) -> requestNewLw (sid, wid))
 
@@ -435,7 +446,15 @@ claudeCommandLine (ClaudeNew d) = do
   sid <- newAgentSessionId
   claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Nothing
-    , asParent = Nothing }
+    , asParent = Nothing, asRoleNote = Nothing }
+claudeCommandLine (ClaudePrompt d p) = do
+  -- Pinned for the same reason, and so a queued task's agent has a name (and
+  -- an Agents-pane identity) from the moment it starts.  The run key keeps the
+  -- @dir#claude@ prefix the worktree flows match on ('claudeKeyFor').
+  sid <- newAgentSessionId
+  claudeCommandLine . ClaudeAgent $ AgentSpec
+    { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Just p
+    , asParent = Nothing, asRoleNote = Nothing }
 claudeCommandLine cmd = do
   let d = dropTrailingPathSeparator dir
   mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
@@ -444,15 +463,24 @@ claudeCommandLine cmd = do
   -- at a local binary, so remote (ssh://) dirs skip it.
   mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag
   hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag
+  -- The agent's own name, when its session id is known at launch — so it can
+  -- tell the user and other agents who it is.
+  myName <- traverse agentNameFor ownSession
   let flags = mcpFlag <> hooksFlag <> allowFlag
-           <> appendSystemPrompt (planHtmlNote : worktreeNote : notes)
+           <> appendSystemPrompt (planHtmlNote : worktreeNote
+                                   : maybe [] ((: []) . nameNote) myName <> notes)
       line' = maybe line (\p -> p <> " " <> line) mbPrefix <> flags
   return (d, key, line')
   where
+    ownSession = case cmd of
+      ClaudeAgent s    -> Just (asSession s)
+      ClaudeResume _ i -> Just i
+      _                -> Nothing
     -- Extra system-prompt notes this command needs, joined into the ONE
     -- @--append-system-prompt@ 'appendSystemPrompt' emits.
     notes = case cmd of
       ClaudeAgent s -> [ agentNote p (asSession s) | Just p <- [asParent s] ]
+                       <> maybe [] (: []) (asRoleNote s)
       _             -> []
     -- Two things a leksah-launched session may do without stopping to ask,
     -- because in both cases the thing asking is leksah itself:
@@ -460,6 +488,8 @@ claudeCommandLine cmd = do
     --   * @agent describe@ — answer the Agents pane's ⟳ button (it writes a
     --     title and a description into a sidecar, and nothing else).  Granted to
     --     every session, since any of them can be asked.
+    --   * @agent done@ — saying it has finished (it marks the agent done in
+    --     the Agents pane and, for a child, hands the summary to its parent).
     --   * @agent send@ — a child agent reporting back to the parent that forked
     --     it.  Without it that loop stalls on a prompt the parent can't answer.
     --   * @agent register@ — answering 'worktreeNote' (it records a
@@ -473,6 +503,7 @@ claudeCommandLine cmd = do
       where
         allowed = "Bash(leksah-cmd agent describe:*)" :
           "Bash(leksah-cmd agent register:*)" :
+          "Bash(leksah-cmd agent done:*)" :
           case cmd of
             ClaudeAgent s | Just _ <- asParent s -> ["Bash(leksah-cmd agent send:*)"]
             _                                    -> []
@@ -490,6 +521,7 @@ claudeCommandLine cmd = do
                                      <> " — what it does and how it fits into this project.") )
       -- The queue's worktree dir is unique per task, so the shared "claude"
       -- key keeps it addressable by the worktree flows (Review's send etc.).
+      -- (not reached either: ClaudePrompt pins an id, like ClaudeNew)
       ClaudePrompt d p     -> (d, "claude", "claude " <> shq p)
       -- A child agent: its own pinned session id makes the run key unique, so
       -- every fork gets a NEW pane (findRunPane can still bring it back).
@@ -526,16 +558,32 @@ agentNote parent me = T.unlines
     \another agent (Claude Code session " <> parent <> ") that is working \
     \alongside you."
   , ""
-  , "When you finish — or if you get stuck, or need a decision only it can \
-    \make — report back to it by running:"
+  , "When you finish, say so — that marks you done in the IDE's Agents pane \
+    \and hands your summary to the agent that started you:"
   , ""
-  , "    leksah-cmd agent send " <> parent <> " --submit '<your report>'"
+  , "    leksah-cmd agent done --summary '<your report>'"
   , ""
-  , "Keep the report self-contained (what you did, what you found, which files \
+  , "If you get stuck, or need a decision only it can make, ask it directly:"
+  , ""
+  , "    leksah-cmd agent send " <> parent <> " --submit '<your question>'"
+  , ""
+  , "Keep reports self-contained (what you did, what you found, which files \
     \changed): that session cannot see your screen. Your own session id is "
     <> me <> ", which it can use to read your transcript or send you more \
     \work. Do not fork further agents unless you are asked to."
   ]
+
+-- | Tell an agent the name leksah gave it ("IDE.Web.AgentNames"), which is
+-- what its tab, the status surfaces and the Agents pane call it.
+nameNote :: Text -> Text
+nameNote name =
+  "In the Leksah IDE you are called " <> name <> ". That is the name on your \
+  \tab and in Leksah's Agents pane, and it is how the user and other agents \
+  \refer to you: `leksah-cmd agent send " <> T.toLower name <> " ...` reaches \
+  \you, and the other agents' names work the same way (`leksah-cmd agent \
+  \list` shows them; `leksah-cmd agent find 'topic'` finds the one already \
+  \working on something). Start any report you send to another agent with \
+  \your name."
 
 -- | Ask every leksah-launched session to keep an HTML rendering of its plan
 -- next to the markdown one — leksah's plan-review pane shows the HTML version
@@ -713,6 +761,60 @@ claudeLatestPlan path = (`catch` \(_ :: SomeException) -> return Nothing) $ do
       case mapMaybe (parseMaybe oneP) (cs :: [Value]) of
         (p : _) -> return p
         []      -> fail "no plan in line"
+
+-- | What the agent is doing right now, in a few words, from the last assistant
+-- message in its transcript: the tool it last called (@Bash: cabal build@,
+-- @Edit Main.hs@, @Agent: review the diff@…), or @Thinking@ \/ @Writing@ when
+-- that message is thought or prose.  For the Agents pane's activity line,
+-- which shows it only while the agent is busy.  Reads the last 64KB only.
+claudeLatestActivity :: FilePath -> IO (Maybe Text)
+claudeLatestActivity path = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+    tailLines <- withFile path ReadMode $ \h -> do
+      size <- hFileSize h
+      let back = min size (64 * 1024)
+      hSeek h SeekFromEnd (negate back)
+      BS.lines <$> BS.hGet h (fromIntegral back)
+    return . listToMaybe . mapMaybe (\l -> decodeStrict' l >>= parseMaybe lineP)
+      . reverse $ filter ("\"type\":\"assistant\"" `BS.isInfixOf`) tailLines
+  where
+    lineP = withObject "line" $ \o -> do
+      t <- o .: "type"
+      if t /= ("assistant" :: Text) then fail "not assistant" else do
+        m  <- o .: "message"
+        cs <- m .: "content"
+        case reverse (cs :: [Value]) of
+          (c : _) -> withObject "content" blockP c
+          []      -> fail "empty"
+    blockP c = c .: "type" >>= \case
+      ("tool_use" :: Text) -> do
+        name <- c .: "name"
+        inp  <- c .:? "input" >>= maybe (return mempty) return
+        return (describeTool name inp)
+      "thinking" -> return "Thinking"
+      _          -> return "Writing"
+    describeTool :: Text -> Object -> Text
+    describeTool name inp =
+      let str k = case parseMaybe (.: k) inp of
+                    Just v | not (T.null (T.strip v)) -> Just (oneLine v)
+                    _                                 -> Nothing
+          file  = T.pack . takeFileName . T.unpack
+          short = T.takeWhileEnd (/= '_') name
+      in case name of
+        "Bash"         -> maybe "Bash" ("Bash: " <>) (str "description" <|> str "command")
+        "Read"         -> maybe "Read" (("Read " <>) . file) (str "file_path")
+        "Edit"         -> maybe "Edit" (("Edit " <>) . file) (str "file_path")
+        "MultiEdit"    -> maybe "Edit" (("Edit " <>) . file) (str "file_path")
+        "Write"        -> maybe "Write" (("Write " <>) . file) (str "file_path")
+        "NotebookEdit" -> maybe "Edit" (("Edit " <>) . file) (str "notebook_path")
+        "Grep"         -> maybe "Grep" ("Grep " <>) (str "pattern")
+        "Glob"         -> maybe "Glob" ("Glob " <>) (str "pattern")
+        "WebFetch"     -> maybe "WebFetch" ("Fetch " <>) (str "url")
+        "WebSearch"    -> maybe "WebSearch" ("Search: " <>) (str "query")
+        "Agent"        -> maybe "Agent" ("Agent: " <>) (str "description")
+        "Task"         -> maybe "Task" ("Task: " <>) (str "description")
+        _ | "mcp__" `T.isPrefixOf` name -> short
+          | otherwise                   -> name
+    oneLine = T.take 80 . T.strip . T.takeWhile (/= '\n')
 
 -- | Activate the most-recently-used LIVE claude terminal for @dir@ (select its
 -- tmux window\/pane wherever it now lives and open that session's terminal

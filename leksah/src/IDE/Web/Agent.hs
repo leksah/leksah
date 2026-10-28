@@ -47,13 +47,21 @@ module IDE.Web.Agent
   , agentStatus
   , agentSend
   , agentRead
+  , agentLastSaid
+  , renameAgentEverywhere
+  , resolveAgent
+  , agentFind
+  , agentDone
+  , agentRoleList
   , newAgentSessionId
   , showAgentPane
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Exception (catch, SomeException)
-import Control.Monad (filterM, forM)
+import Control.Monad (filterM, forM, when)
 
+import Data.Char (isAlphaNum)
 import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -72,7 +80,12 @@ import System.IO
        (withFile, IOMode(ReadMode), hSeek, SeekMode(SeekFromEnd), hFileSize)
 
 import IDE.Utils.RemotePath (isRemotePath)
-import IDE.Web.AgentInfo (recordAgentFork)
+import IDE.Web.AgentInfo
+       (AgentNode(..), agentForest, agentParentOf, agentTitles, markAgentDone,
+        recordAgentFork, setAgentRole)
+import IDE.Web.AgentNames
+       (agentNameFor, agentNames, renameAgent, resolveAgentName, touchAgentNames)
+import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, roleNote)
 import IDE.Web.Claude
        (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
         claudeCommandLine, claudeLiveBySession, claudeLiveOwners,
@@ -83,7 +96,7 @@ import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
        (freshSessionName, liveRunPanes, livePanePids, newSessionWindow, pasteTo,
-        sendKeysTo, splitPane, tmuxCmd)
+        sendKeysTo, splitPane, tmuxCmd, tmuxOut)
 
 -- | Where the child's pane goes.
 data ForkPlace
@@ -106,12 +119,14 @@ data ForkRequest = ForkRequest
   , frPrompt :: Maybe Text     -- ^ the first prompt, submitted at launch
   , frParent :: Maybe Text     -- ^ the calling session, from the client pid
   , frCwd    :: FilePath       -- ^ the caller's cwd (the dir of last resort)
+  , frRole   :: Maybe Text     -- ^ start it in this role ("IDE.Web.AgentRoles");
+                               --   a role agent is always fresh
   } deriving (Eq, Show)
 
 emptyForkRequest :: FilePath -> ForkRequest
 emptyForkRequest cwd = ForkRequest
   { frPlace = PlaceBeside, frDir = Nothing, frFrom = Nothing, frFresh = False
-  , frPrompt = Nothing, frParent = Nothing, frCwd = cwd }
+  , frPrompt = Nothing, frParent = Nothing, frCwd = cwd, frRole = Nothing }
 
 -- | Start a child agent, and answer with its session id and a line the parent
 -- can act on.
@@ -129,8 +144,18 @@ emptyForkRequest cwd = ForkRequest
 -- do NOT @select-pane@ it: the fork is the parent's doing, not the user's, so it
 -- must not move the user's focus (or the parent's, if it is mid-turn) — the new
 -- pane just appears.
+--
+-- With 'frRole', the role is looked up first (from the directory the agent
+-- will work in) and the agent starts fresh, with the role's instructions.
 forkAgent :: ForkRequest -> IO (Either Text (Text, Text))
-forkAgent fr = (`catch` \(e :: SomeException) ->
+forkAgent fr0 = case frRole fr0 of
+  Nothing -> forkAgentAs Nothing fr0
+  Just n  -> findAgentRole (fromMaybe (frCwd fr0) (frDir fr0)) n >>= \case
+    Left err   -> return (Left err)
+    Right role -> forkAgentAs (Just role) fr0 { frFresh = True }
+
+forkAgentAs :: Maybe AgentRole -> ForkRequest -> IO (Either Text (Text, Text))
+forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                   return (Left ("agent fork failed: " <> T.pack (show e)))) $
     claudeAvailable >>= \case
       False -> return (Left "the claude CLI is not on leksah's PATH")
@@ -165,7 +190,8 @@ forkAgent fr = (`catch` \(e :: SomeException) ->
                                   , asSession = child
                                   , asFrom    = from
                                   , asPrompt  = frPrompt fr
-                                  , asParent  = parent }
+                                  , asParent  = parent
+                                  , asRoleNote = roleNote <$> mrole }
              (_, key, line) <- claudeCommandLine (ClaudeAgent spec)
              place live spec key line
 
@@ -176,6 +202,9 @@ forkAgent fr = (`catch` \(e :: SomeException) ->
       -- says what the child was asked to do — its forked transcript starts with
       -- the PARENT's first prompt).
       recordAgentFork (asParent spec) (asSession spec) (asDir spec) (asPrompt spec)
+      -- (already chosen by 'claudeCommandLine', which told the agent its name)
+      ownName <- agentNameFor (asSession spec)
+      mapM_ (setAgentRole (asSession spec) . roleName) mrole
       mPane <- case (frPlace fr, asParent spec `orElse` asFrom spec) of
         (PlaceTab, _)     -> return Nothing
         (_, Just p)       -> paneForSession p
@@ -188,39 +217,44 @@ forkAgent fr = (`catch` \(e :: SomeException) ->
               tmuxCmd ["set-option", "-p", "-t", T.unpack newPane
                       , "@leksah_run", T.unpack key]
               requestLocalTerm tsess
-              return (Right (asSession spec, described spec live ("pane " <> newPane)))
+              return (Right (asSession spec, described ownName spec live ("pane " <> newPane)))
         Nothing -> do
-          name <- freshSessionName "claude"
+          name <- freshSessionName ownName
           newSessionWindow name (asDir spec) (Just key) line False >>= \case
             Nothing -> return (Left "could not open a terminal for the agent")
             Just (tsess, wid, _) -> do
               requestNewLw (tsess, wid)
-              return (Right (asSession spec, described spec live "a new tab"))
+              return (Right (asSession spec, described ownName spec live "a new tab"))
 
     -- The reply: what was started, and the three things the parent can do next.
     -- Spelled out because the caller is usually a model reading tool output.
-    described spec live whereAt = T.unlines $
-      [ "Started agent " <> asSession spec <> " in " <> whereAt <> " ("
-          <> T.pack (asDir spec) <> ")."
+    described ownName spec live whereAt = T.unlines $
+      [ "Started agent " <> ownName <> " (session " <> asSession spec <> ") in "
+          <> whereAt <> " (" <> T.pack (asDir spec) <> ")."
       , case asFrom spec of
           Just f -> "It is a fork of session " <> f <> nameOf live f
                       <> ", so it already has that conversation's context."
-          Nothing -> "It is a fresh agent: it knows only the prompt you gave it."
+          Nothing | Just ro <- mrole ->
+                     "It is a fresh agent in the role " <> roleName ro
+                       <> ": it knows only that role and the prompt you gave it."
+                  | otherwise ->
+                     "It is a fresh agent: it knows only the prompt you gave it."
       , maybe "No prompt was sent, so it is waiting at its prompt."
               (const "Its first prompt has been sent.") (asPrompt spec)
       , ""
       , "It reports back by messaging you when it finishes.  You can also:"
-      , "  leksah-cmd agent wait " <> asSession spec <> "        # block until it is idle"
-      , "  leksah-cmd agent read " <> asSession spec <> "        # its last answers"
-      , "  leksah-cmd agent send " <> asSession spec <> " --submit 'more'"
+      , "  leksah-cmd agent wait " <> handle <> "        # block until it is idle"
+      , "  leksah-cmd agent read " <> handle <> "        # its last answers"
+      , "  leksah-cmd agent send " <> handle <> " --submit 'more'"
       ]
+      where handle = T.toLower ownName
 
     nameOf live sid = case M.lookup sid live >>= clName of
       Just n  -> " (" <> n <> ")"
       Nothing -> ""
 
--- | The live sessions, one tab-separated row each: session id, state, tmux pane
--- (@-@ when it isn't in one of leksah's), directory, title.  The caller's own
+-- | The live sessions, one tab-separated row each: session id, name, state, tmux
+-- pane (@-@ when it isn't in one of leksah's), directory, title.  The caller's own
 -- session is marked, so an agent reading this can tell itself apart from its
 -- peers.  Ordered like the status surfaces: needs-you first, then working, then
 -- idle.
@@ -229,19 +263,24 @@ agentList me = do
   live  <- claudeLiveBySession
   panes <- panesBySession
   if M.null live then return "No Claude Code sessions are running.\n" else do
+    names  <- touchAgentNames (M.keys live)
+    titles <- agentTitles
     rows <- forM (sortOn (\l -> (rank l, clDir l)) (M.elems live)) $ \l -> do
-      title <- case clName l of
+      -- The same title every other surface shows: what the agent called
+      -- itself, else its /rename name, else its first prompt.
+      title <- case M.lookup (clSession l) titles <|> clName l of
         Just n  -> return n
         Nothing -> fromMaybe "" <$> claudeSessionLabel (clDir l) (clSession l)
       return $ T.intercalate "\t"
         [ clSession l
+        , M.findWithDefault "-" (clSession l) names
         , fromMaybe "idle" (clStatus l)
         , fromMaybe "-" (M.lookup (clSession l) panes)
         , T.pack (clDir l)
         , T.takeWhile (/= '\n') title
         , if me == Just (clSession l) then "(you)" else "" ]
     return . T.unlines $
-      "# session\tstate\tpane\tdir\ttitle" : rows
+      "# session\tname\tstate\tpane\tdir\ttitle" : rows
   where
     rank l = case clStatus l of
       Just "waiting" -> 0 :: Int
@@ -333,6 +372,113 @@ agentRead sid n = do
                       else map ("\n--- said ---\n" <>) (lastN n msgs))
   where
     lastN k xs = drop (max 0 (length xs - max 1 k)) xs
+
+-- | Give an agent a name of the user's choosing ('renameAgent'), and carry it
+-- to the tmux session that is named after the agent — so the tab, which shows
+-- the session's name, follows.  A session the user named something else is
+-- left alone.
+renameAgentEverywhere :: Text -> Text -> IO (Either Text Text)
+renameAgentEverywhere sid new = do
+  old <- M.lookup sid <$> agentNames
+  res <- renameAgent sid new
+  case (res, old) of
+    (Right nm, Just o) -> do
+      paneForSession sid >>= mapM_ (\(ts, _, _) -> do
+        cur <- fmap T.strip <$> tmuxOut
+                 ["display-message", "-p", "-t", T.unpack ts, "#{session_name}"]
+        when (maybe False (\c -> c == o || (o <> "-") `T.isPrefixOf` c) cur) $ do
+          fresh <- freshSessionName nm
+          tmuxCmd ["rename-session", "-t", T.unpack ts, T.unpack fresh])
+      return res
+    _ -> return res
+
+-- | What a person or agent typed to name an agent — "wren", a session-id
+-- prefix, a whole id — as a session id ('resolveAgentName' over the live
+-- sessions).  'Left' only when it is ambiguous.
+resolveAgent :: Text -> IO (Either Text Text)
+resolveAgent arg = do
+  live <- claudeLiveBySession
+  resolveAgentName (M.keys live) arg
+
+-- | @agent find QUERY@: which agent to hand this to?  Ranks the agents in the
+-- Agents pane (running ones, and those that exited recently) by how well what
+-- they are — name, title, self-description, branch, PR, directory, role, what
+-- they are doing — matches the query's words, with a nudge towards agents that
+-- are free (idle, or done) and away from ones that have exited.  Also lists the
+-- roles ("IDE.Web.AgentRoles") whose descriptions match, as agents you could
+-- start instead.
+agentFind :: FilePath -> Text -> IO Text
+agentFind cwd q = do
+  forest <- agentForest
+  roles  <- agentRoles cwd
+  let terms = filter ((> 1) . T.length) . T.words . T.toLower
+            $ T.map (\c -> if isAlphaNum c || c `elem` ("-_#./" :: String) then c else ' ') q
+      flat ns = concatMap (\n -> n : flat (anChildren n)) ns
+      fields n =
+        [ (T.toLower (anName n), 6 :: Int), (T.toLower (anTitle n), 4)
+        , (T.toLower (maybe "" stripTags (anDesc n)), 2)
+        , (T.toLower (fromMaybe "" (anBranch n)), 2)
+        , (maybe "" (\(k, _) -> "#" <> T.pack (show k)) (anPr n), 3)
+        , (T.toLower (T.pack (anDir n)), 1)
+        , (T.toLower (fromMaybe "" (anRole n)), 3)
+        , (T.toLower (fromMaybe "" (anDone n)), 2)
+        , (T.toLower (fromMaybe "" (anActivity n)), 1)
+        , (T.toLower (T.unwords (anWorktrees n)), 2) ]
+      hits n = [ t | t <- terms, any ((t `T.isInfixOf`) . fst) (fields n) ]
+      score n = sum [ w | t <- terms, (f, w) <- fields n, t `T.isInfixOf` f ]
+              + (case anState n of
+                   "idle" -> 2; "done" -> 2; "gone" -> -3; _ -> 0)
+      ranked = take 5 . sortOn (\(sc, _) -> negate sc)
+               $ [ (score n, n) | n <- flat forest, not (null (hits n)) ]
+      roleHits = [ ro | ro <- roles
+                      , any (`T.isInfixOf` T.toLower (roleName ro <> " " <> roleDescription ro)) terms ]
+      row (_, n) = T.intercalate "\t"
+        [ if T.null (anName n) then "-" else anName n, anSession n, anState n
+        , T.pack (anDir n), T.takeWhile (/= '\n') (anTitle n)
+        , "matched: " <> T.unwords (hits n) ]
+  return . T.unlines $
+    (if null ranked
+       then [ "No agent matches \"" <> q <> "\"." ]
+       else "# name\tsession\tstate\tdir\ttitle\twhy" : map row ranked)
+    <> (if null roleHits then [] else
+          "" : "Roles you could start for it (leksah-cmd agent fork --as ROLE 'task'):"
+          : [ "  " <> roleName ro <> " — " <> roleDescription ro | ro <- roleHits ])
+    <> (if null ranked then []
+        else [ "", "Hand it over with: leksah-cmd agent send NAME --submit '...'" ])
+  where
+    stripTags t = case T.breakOn "<" t of
+      (a, rest) | T.null rest -> a
+                | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
+
+-- | @agent done@: an agent saying it has finished.  Marks it ✓ in the Agents
+-- pane (with the summary), and — if another agent started it — submits the
+-- summary to that agent, so the parent wakes up to the result.
+agentDone :: Text -> Text -> IO Text
+agentDone sid summary = do
+  markAgentDone sid summary
+  name <- agentNameFor sid
+  agentParentOf sid >>= \case
+    Nothing -> return ("Marked " <> name <> " done.\n")
+    Just p  -> do
+      _ <- agentSend p True (name <> " is done: " <> summary)
+      pname <- agentNameFor p
+      return ("Marked " <> name <> " done, and sent the summary to " <> pname <> ".\n")
+
+-- | @agent roles@: the roles an agent can be started in from @cwd@.
+agentRoleList :: FilePath -> IO Text
+agentRoleList cwd = agentRoles cwd >>= \case
+  [] -> return "No roles are defined. A role is a Claude Code subagent file: \
+               \.claude/agents/NAME.md (in the project, or in ~/.claude/agents) \
+               \with name: and description: in its front matter.\n"
+  rs -> return . T.unlines $
+          [ roleName ro <> "\t" <> roleDescription ro <> "\t" <> T.pack (roleFile ro) | ro <- rs ]
+
+-- | The last thing a session said (its latest assistant text), for the Agents
+-- pane's "last said" peek — 'Nothing' if it has said nothing yet.
+agentLastSaid :: Text -> IO (Maybe Text)
+agentLastSaid sid = transcriptFor sid >>= \case
+  Nothing   -> return Nothing
+  Just path -> listToMaybe . reverse <$> assistantTail path
 
 --------------------------------------------------------------------------------
 -- helpers

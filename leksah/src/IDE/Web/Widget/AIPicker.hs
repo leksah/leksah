@@ -13,20 +13,24 @@ module IDE.Web.Widget.AIPicker
   , aiPickerKeysJs
   ) where
 
+import Control.Monad (void)
+
 import Data.Map (Map)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Clay
-       (Css, (?), color, fontSize, fontStyle, italic, opacity, px, marginRight,
-        marginLeft, textAlign, width, inlineBlock, center, Color(Other))
+       (Css, (?), (|>), color, fontSize, fontStyle, fontWeight, bold, height,
+        italic, opacity, px, marginRight, marginLeft, middle, textAlign,
+        verticalAlign, width, inlineBlock, center, Color(Other))
 import qualified Clay (display)
 
 import Reflex (Dynamic)
-import Reflex.Dom.Core (elDynAttr, dynText, (=:))
+import Reflex.Dom.Core (elDynAttr, elDynHtmlAttr', dynText, (=:))
 
 import System.FilePath (takeFileName)
 
+import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AISession (AIChoice(..), AIRow(..))
 import IDE.Web.Theme (dimColor)
 import IDE.Web.Frame (MonadWidget)
@@ -67,6 +71,18 @@ aiPickerCss = do
     marginLeft (px 6)
     fontSize (px 11)
     fontStyle italic
+  ".ai-face" ? do
+    Clay.display inlineBlock
+    width (px 16)
+    height (px 16)
+    marginRight (px 5)
+    verticalAlign middle
+  ".ai-face" |> "svg" ? do
+    width (px 16)
+    height (px 16)
+  ".ai-name" ? do
+    fontWeight bold
+    marginRight (px 6)
   ".ai-default" ? marginLeft (px 6)
   ".ai-default" ? color busyColor
 
@@ -76,6 +92,9 @@ aiPickerCss = do
 aiChoiceLabel :: MonadWidget t m => Dynamic t AIChoice -> m ()
 aiChoiceLabel choiceD = do
   elDynAttr "span" (glyphAttr <$> choiceD) $ dynText (glyphFor <$> choiceD)
+  -- The agent's face and name lead: they are what the user remembers it by.
+  void $ elDynHtmlAttr' "span" ("class" =: "ai-face") (faceFor <$> choiceD)
+  elDynAttr "span" (nameAttr <$> choiceD) $ dynText (nameFor <$> choiceD)
   elDynAttr "span" (pure ("class" =: "ai-title")) $ dynText (titleFor <$> choiceD)
   elDynAttr "span" (pure ("class" =: "ai-dir")) $ dynText (dirFor <$> choiceD)
   elDynAttr "span" (noteAttr <$> choiceD) $ dynText (noteFor <$> choiceD)
@@ -83,7 +102,7 @@ aiChoiceLabel choiceD = do
   where
     -- Explicit signatures: '=:' is generic over any At/Monoid container, so the
     -- attribute maps have to be pinned down here.
-    glyphAttr, noteAttr, starAttr :: AIChoice -> Map Text Text
+    glyphAttr, nameAttr, noteAttr, starAttr :: AIChoice -> Map Text Text
     glyphAttr (AISessionChoice r) = "class" =: ("ai-glyph ai-" <> arState r)
     glyphAttr (AINewSession _)    = "class" =: "ai-glyph ai-new"
     glyphFor (AINewSession _) = "+"
@@ -92,6 +111,13 @@ aiChoiceLabel choiceD = do
       "busy"    -> "◆"
       "idle"    -> "●"
       _         -> "○"
+    faceFor (AISessionChoice r) | not (T.null (arName r)) = agentFaceSvg (arName r)
+    faceFor _                                             = ""
+    nameFor (AISessionChoice r) = arName r
+    nameFor _                   = ""
+    nameAttr (AISessionChoice r)
+      | not (T.null (arName r)) = "class" =: "ai-name"
+    nameAttr _                  = "style" =: "display:none"
     titleFor (AISessionChoice r) = arTitle r
     titleFor (AINewSession _)    = "New Claude session"
     dirFor (AISessionChoice r) = T.pack (takeFileName (arDir r))

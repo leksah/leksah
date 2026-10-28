@@ -2057,8 +2057,9 @@ activePaneOfSession n tree = do
   p <- listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
   return (twIndex w, tpIndex p)
 
--- | The spoken location of a session's belled window — the tmux (terminal)
--- window NAME, then the pane number when the window has more than one pane, e.g.
+-- | The spoken location of a session's belled window — the name of the agent in
+-- its active pane, if it is one; otherwise the tmux (terminal) window NAME, then
+-- the pane number when the window has more than one pane, e.g.
 -- "leksah, 1" (or just "leksah" for a single-pane window; no "window"/"pane"
 -- words, and NOT the OS window name) — for the terminal-bell announcement.  The
 -- bell fires in the session's viewed (current/active) window; the pane is that
@@ -2068,12 +2069,15 @@ bellLocation n tree = do
   (_, wins) <- M.lookup n tree
   w <- listToMaybe (filter twActive wins ++ wins)
   let name = stripIdxPrefix (twIndex w) (twLabel w)
-      pnum = maybe (twIndex w) tpIndex
-                   (listToMaybe (filter tpActive (twPanes w) ++ twPanes w))
-  -- A lone pane needs no number — the window name alone locates it.
-  return $ if length (twPanes w) <= 1
-             then name
-             else name <> ", " <> T.pack (show pnum)
+      pane = listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+      pnum = maybe (twIndex w) tpIndex pane
+  -- An agent is announced by its own name ("Wren") — unique, and what its tab
+  -- says, so no pane number is needed.  A lone pane needs no number either —
+  -- the window name alone locates it.
+  return $ case tpAgentName =<< pane of
+    Just a -> a
+    Nothing | length (twPanes w) <= 1 -> name
+            | otherwise               -> name <> ", " <> T.pack (show pnum)
 
 -- | Resolve a tmux @#{pane_id}@ (e.g. @%5@, server-global) to its flipper item
 -- by scanning the pane tree for the pane's @(session, window index, pane index)@.

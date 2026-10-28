@@ -53,7 +53,7 @@ import Reflex
         newTriggerEvent, holdUniqDyn, ffor, constDyn, zipDynWith,
         tickLossyFromPostBuildTime, sample)
 import Reflex.Dom.Core
-       (elAttr, elDynAttr, (=:), text, el, elClass, elDynClass,
+       (elAttr, elDynAttr, elDynHtmlAttr', (=:), text, el, elClass, elDynClass,
         dynText, dyn, domEvent, EventName(..))
 
 import IDE.Web.Events (FileEvents, FileEvent(..))
@@ -67,6 +67,8 @@ import IDE.Web.Claude
         ClaudeSession(..), csTitle, ClaudeLive(..),
         ClaudeCmd(..), runClaudeCmd, claudeRunning, activateMruClaude,
         copySessionId, revealSession, deleteSession)
+import IDE.Web.AgentFace (agentFaceSvg)
+import IDE.Web.AgentNames (agentNames)
 import IDE.Web.Worktree (requestNewWorktree)
 import IDE.Web.ClaudeQueue (requestTaskQueue, requestPlanReview)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -427,10 +429,14 @@ agentsNodeWith treeName dir extraD = do
   -- faster than the full rescan.  Cheap: one directory listing plus a few
   -- hundred bytes per live session (and one @ps@ to drop dead leftovers),
   -- versus the rescan's head-read of every transcript in the folder.
-  let doNames = void . forkIO $ claudeLiveBySession >>= fireName
+  -- (The agents' names ride along: a session is named by the status poll the
+  -- first time it is seen, and the row should pick that up just as quickly.)
+  let doNames = void . forkIO $
+        ((,) <$> claudeLiveBySession <*> agentNames) >>= fireName
   nameTick <- tickLossyFromPostBuildTime 3
   performEvent_ $ liftIO doNames <$ leftmost [() <$ pb, () <$ nameTick]
-  liveD <- holdUniqDyn =<< holdDyn M.empty nameE
+  liveD  <- holdUniqDyn =<< holdDyn M.empty (fst <$> nameE)
+  namesD <- holdUniqDyn =<< holdDyn M.empty (snd <$> nameE)
   sessD <- holdDyn [] sessE
   runD  <- holdUniqDyn =<< holdDyn False runE
   hasD  <- holdUniqDyn ((\ss ex -> not (null ss) || not (null ex)) <$> sessD <*> extraD)
@@ -462,7 +468,7 @@ agentsNodeWith treeName dir extraD = do
           void . dyn $ (\ss extras -> sequence_
               [ w | (_, w) <- sortOn (Down . fst) $
                       [ (realToFrac (utcTimeToPOSIXSeconds (csModified s)) :: Double,
-                         sessionRow treeName dir doScan liveD s) | s <- ss ]
+                         sessionRow treeName dir doScan liveD namesD s) | s <- ss ]
                       <> extras ])
             <$> sessD <*> extraD
           return (never :: Event t ()))
@@ -490,15 +496,22 @@ agentsNodeWith treeName dir extraD = do
 -- a delete; @liveD@ is the live-session map, polled by 'agentsNode', so renaming
 -- a running session relabels its row — and its status badge tracks the CLI's
 -- semantic state — without a full rescan).  The row's tooltip is the session id.
+-- A session that has an agent name ("IDE.Web.AgentNames") shows its face and
+-- name; one that has never been seen running keeps the robot.
 sessionRow
   :: forall t m. MonadWidget t m
-  => Text -> FilePath -> IO () -> Dynamic t (Map Text ClaudeLive) -> ClaudeSession -> m ()
-sessionRow treeName dir rescan liveD s = el "li" $ do
+  => Text -> FilePath -> IO () -> Dynamic t (Map Text ClaudeLive)
+  -> Dynamic t (Map Text Text) -> ClaudeSession -> m ()
+sessionRow treeName dir rescan liveD namesD s = el "li" $ do
   (sEl, actE) <- treeSelect' treeName sessMenu $ do
-      agentIcon
+      let nameD = M.lookup (csId s) <$> namesD
+      void $ elDynHtmlAttr' "span" ("class" =: "tree-face")
+        (maybe robotHtml agentFaceSvg <$> nameD)
       elAttr "span" ("class" =: "claude-session-label" <> "title" =: csId s)
-        . dynText $ ffor liveD $ \m ->
-          csAge s <> " · " <> fromMaybe (csTitle s) (clName =<< M.lookup (csId s) m)
+        . dynText $ (\m mn ->
+          csAge s <> " · " <> maybe "" (<> " — ") mn
+            <> fromMaybe (csTitle s) (clName =<< M.lookup (csId s) m))
+          <$> liveD <*> nameD
       statusBadge $ ffor liveD (rowBadge . M.lookup (csId s))
       return (never :: Event t (IO ()))
   -- Double-click / Enter → resume this session.  ⌥ resumes it into a split of
@@ -510,6 +523,7 @@ sessionRow treeName dir rescan liveD s = el "li" $ do
       else runClaudeCmd (ClaudeResume dir (csId s))
   performEvent_ $ liftIO <$> actE
   where
+    robotHtml = "<img class=\"tree-icon\" src=\"/pics/tree-claude.svg\">"
     rowBadge Nothing  = Nothing
     rowBadge (Just l) = case clStatus l of
       Just "waiting" -> Just ("▲", "#f85149",

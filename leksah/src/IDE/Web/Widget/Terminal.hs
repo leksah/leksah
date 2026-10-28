@@ -83,24 +83,30 @@ module IDE.Web.Widget.Terminal
   , notifyTerminalBell
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO)
+#if !defined(ghcjs_HOST_OS)
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
+import System.IO.Unsafe (unsafePerformIO)
+#endif
 import Control.Exception (try, catch, SomeException)
 import Control.Lens ((^.))
 import Control.Monad (void, forM_, when, unless, mfilter)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
+import Data.Char (isDigit)
 import qualified Data.ByteString.Base64 as B64 (encode)
 import Data.List (find, intercalate, nub)
 import Data.Map (Map)
 import qualified Data.Map as M
        (empty, singleton, fromList, fromListWith, unionWith, toAscList, toList,
-        map, lookup, findWithDefault)
+        map, lookup, findWithDefault, traverseWithKey)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines,
-        null, breakOn, drop, isPrefixOf, replace)
+        null, breakOn, drop, isPrefixOf, replace, all)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Text.Read (readMaybe)
 
@@ -152,10 +158,12 @@ import System.Exit (ExitCode(ExitSuccess))
 
 import IDE.Web.Claude
        (claudeSessionsFor, csId, csTitle, claudeLiveOwners, ClaudeLive(..))
+import IDE.Web.AgentNames (agentNames)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
         findRunPane, liveRunPanes, isBackingRunKey, selectTmuxWindowById,
+        freshSessionName, tmuxOut,
         getLoginShell, interactiveShellArgs, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.TerminalRefresh (monitorSessionName)
@@ -1216,6 +1224,11 @@ data TmuxPane = TmuxPane
                      --   @waiting@ means blocked on an approval prompt — surfaced
                      --   as a persistent needs-input alert and preferred by the
                      --   jump-to-alert command.
+  , tpAgentName :: Maybe Text
+                     -- ^ the name leksah gave the Claude session in this pane
+                     --   ("Wren" — "IDE.Web.AgentNames"), resolved like
+                     --   'tpClaudeTitle'.  What the tab leads with and what the
+                     --   bell announcement says.
   } deriving (Eq, Show)
 
 -- | A tmux window within a session: its index, a display label (its index and
@@ -1255,7 +1268,7 @@ listTerminalTree = do
     created <- demoCreatedSessions
     return $ M.fromListWith (\_ old -> old)
         [ (sid, (name, [ TmuxWindow 0 ("@" <> sid) name True False False False ""
-                             [ TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing ] ]))
+                             [ TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing Nothing ] ]))
         | (sid, name) <- ts ++ created ]
 #else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
@@ -1265,6 +1278,12 @@ listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
             (_rc, out, _) <- readProcessWithExitCode tmux
                 ["-L", tmuxSocket, "list-panes", "-a", "-F", paneTreeFormat] ""
             enrichClaudeTitles (parsePaneTree out)
+
+-- | Serializes 'enrichClaudeTitles'' session renames across the per-window
+-- polls.
+{-# NOINLINE renameLock #-}
+renameLock :: MVar ()
+renameLock = unsafePerformIO (newMVar ())
 
 -- | Fill in 'tpClaudeTitle' for every Claude Code pane in the tree: the title of
 -- the session running in it — the name @/rename@ gave it, else the transcript's
@@ -1287,12 +1306,44 @@ enrichClaudeTitles tree
   | otherwise = do
       owners <- claudeLiveOwners
       byDir  <- M.fromList <$> mapM (\d -> (,) d <$> claudeSessionsFor d) claudeDirs
-      return $ M.map (\(nm, ws) ->
-          (nm, [ w { twPanes = map (fillPane owners byDir) (twPanes w) } | w <- ws ])) tree
+      names  <- agentNames
+      M.traverseWithKey renameAfterAgent $ M.map (\(nm, ws) ->
+          (nm, [ w { twPanes = map (fillPane owners byDir names) (twPanes w) }
+               | w <- ws ])) tree
   where
     claudeDirs = nub (mapMaybe claudePaneDir
                        [ p | (_, (_, ws)) <- M.toList tree, w <- ws, p <- twPanes w ])
-    fillPane owners byDir p = case claudePaneDir p of
+    -- A tmux session still called @claude@ / @claude-N@ — one opened before its
+    -- agent had a name (@claude -c@, the resume picker, a session from before
+    -- names existed) — is renamed after the agent in it, once, so its tab and
+    -- its bell say "Wren" too.  Only when exactly one named agent is in it:
+    -- with two, neither name describes the session.
+    --
+    -- Every OS window polls this tree, so two polls can both have seen the old
+    -- name: the rename re-reads the CURRENT name under a process-wide lock and
+    -- only acts if it is still the default — otherwise the second poll would
+    -- find "Wren" taken and rename the same session again, to "Wren-2".
+    renameAfterAgent tsid (nm, ws)
+      | isClaudeDefault nm
+      , [a] <- nub [ n | w <- ws, p <- twPanes w, Just n <- [tpAgentName p] ] =
+          withMVar renameLock $ \_ -> do
+            mcur <- fmap T.strip <$> tmuxOut
+                      ["display-message", "-p", "-t", T.unpack tsid, "#{session_name}"]
+            case mcur of
+              Just cur | isClaudeDefault cur -> do
+                new <- freshSessionName a
+                tmuxCmd ["rename-session", "-t", T.unpack tsid, T.unpack new]
+                return (new, ws)
+              Just cur -> return (cur, ws)
+              Nothing  -> return (nm, ws)
+      | otherwise = return (nm, ws)
+    isClaudeDefault nm = case T.stripPrefix "claude" nm of
+      Just ""   -> True
+      Just rest -> case T.stripPrefix "-" rest of
+                     Just ds -> not (T.null ds) && T.all isDigit ds
+                     Nothing -> False
+      Nothing   -> False
+    fillPane owners byDir names p = case claudePaneDir p of
       Nothing  -> p
       Just dir ->
         let ss    = M.findWithDefault [] dir byDir
@@ -1305,7 +1356,9 @@ enrichClaudeTitles tree
               Nothing -> case claudePaneSession p of
                            Just sid -> csTitle <$> find ((== sid) . csId) ss
                            Nothing  -> csTitle <$> listToMaybe ss
-        in p { tpClaudeTitle = case title of
+            ownSid = (clSession <$> M.lookup (tpPid p) owners) <|> claudePaneSession p
+        in p { tpAgentName   = ownSid >>= (`M.lookup` names)
+             , tpClaudeTitle = case title of
                  -- An unnamed session with no user prompt yet has no title.
                  Just t | t /= "(untitled session)" -> Just t
                  _                                   -> Nothing
@@ -1542,7 +1595,7 @@ parsePaneTree out = M.map toSession grouped
     toSession (sname, wm) =
       ( sname
       , [ TmuxWindow wi wid (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk
-            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) ppid pa prk ppath Nothing Nothing
+            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) ppid pa prk ppath Nothing Nothing Nothing
             | (pidx, (paneName, pa, pid, ppid, ppath, prk)) <- M.toAscList ps ]
         | (wi, (wid, wn, wa, wb, wac, ws, rk, ps)) <- M.toAscList wm ] )
 

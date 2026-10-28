@@ -25,6 +25,7 @@ module IDE.Web.ClaudeStatus
   , registerClaudeStatusPush
   , claudeStatusTooltip
   , claudeStatusGlyph
+  , claudeRowLabel
   ) where
 
 import Control.Applicative ((<|>))
@@ -42,6 +43,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import System.IO.Unsafe (unsafePerformIO)
 
+import IDE.Web.AgentNames (touchAgentNames)
 import IDE.Web.Claude
        (ClaudeLive(..), claudeLiveBySession, claudeSessionLabel)
 
@@ -49,6 +51,9 @@ import IDE.Web.Claude
 data ClaudeStatusRow = ClaudeStatusRow
   { csrState   :: Text  -- ^ @waiting@ (blocked on an approval prompt) \/ @busy@
                         --   (the agent or a shell command is working) \/ @idle@
+  , csrName    :: Text  -- ^ the name leksah gave it ("Wren" — see
+                        --   "IDE.Web.AgentNames"): WHO it is, as against
+                        --   'csrTitle', which says what it is doing
   , csrTitle   :: Text  -- ^ what the agent calls itself (@agent describe@), else
                         --   the name @\/rename@ gave it, else its first prompt
   , csrDir     :: Text  -- ^ its working directory (absolute)
@@ -119,7 +124,10 @@ startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
           [ l | l <- M.elems live, clName l == Nothing
               , not (clSession l `M.member` labels) ]
         titles <- titlesIO
-        return (summarize titles labels' (M.elems live), labels')
+        -- The poll is where a session leksah did NOT launch (claude -c, the
+        -- resume picker, one typed into a terminal) first gets its name.
+        names  <- touchAgentNames (M.keys live)
+        return (summarize names titles labels' (M.elems live), labels')
       when (st /= prev) $ do
         atomicWriteIORef statusRef st
         readIORef pushRef >>= mapM_ (\h ->
@@ -133,8 +141,9 @@ startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
 -- | Fold the live sessions into a 'ClaudeStatus': attention first (blocked on an
 -- approval prompt), then working, then idle, each group by title.  Takes the
 -- agent-written titles (session → title) and the cached first-prompt labels.
-summarize :: Map Text Text -> Map Text Text -> [ClaudeLive] -> ClaudeStatus
-summarize titles labels ls = ClaudeStatus
+summarize :: Map Text Text -> Map Text Text -> Map Text Text -> [ClaudeLive]
+          -> ClaudeStatus
+summarize names titles labels ls = ClaudeStatus
   { csState   = if null ls then "none"
                 else if nWaiting > 0 then "waiting"
                 else if nWorking > 0 then "busy" else "idle"
@@ -177,6 +186,7 @@ summarize titles labels ls = ClaudeStatus
           0 -> "waiting"
           1 -> "busy"
           _ -> "idle"
+      , csrName    = M.findWithDefault "" (clSession l) names
       , csrTitle   = title l
       , csrDir     = T.pack (clDir l)
       , csrDetail  = case clStatus l of
@@ -187,6 +197,14 @@ summarize titles labels ls = ClaudeStatus
           _              -> "Running"
       , csrSession = clSession l
       }
+
+-- | One session in one line, as every list of them prints it: its name, then
+-- what it is doing — @Wren — fix the CI failure@.
+claudeRowLabel :: ClaudeStatusRow -> Text
+claudeRowLabel r
+  | T.null (csrName r)  = csrTitle r
+  | T.null (csrTitle r) = csrName r
+  | otherwise           = csrName r <> " — " <> csrTitle r
 
 -- | The status-surface glyph for a state: the same three shapes the macOS
 -- menu-bar item and the in-page traffic light draw, as text (for tooltips and
@@ -204,6 +222,6 @@ claudeStatusGlyph = \case
 claudeStatusTooltip :: ClaudeStatus -> Text
 claudeStatusTooltip st = T.intercalate "\n" (csSummary st : map line (csRows st))
   where
-    line r = claudeStatusGlyph (csrState r) <> " " <> csrTitle r
+    line r = claudeStatusGlyph (csrState r) <> " " <> claudeRowLabel r
                <> (if T.null (csrDir r) then "" else "  ·  " <> baseName (csrDir r))
     baseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')

@@ -55,6 +55,7 @@ import IDE.Web.Claude
        (ClaudeLive(..), ClaudeSession(..), claudeLiveBySession,
         claudeLiveOwners, claudeSessionLabel, claudeSessionsFor,
         paneCurrentPath)
+import IDE.Web.AgentNames (agentNames)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.Widget.Terminal (TmuxPane(..), TmuxWindow(..))
@@ -62,6 +63,7 @@ import IDE.Web.Widget.Terminal (TmuxPane(..), TmuxWindow(..))
 -- | One row of the AI-session picker.
 data AIRow = AIRow
   { arSession :: Text      -- ^ the Claude session id — the durable handle
+  , arName    :: Text      -- ^ the name leksah gave it ("Wren"), or @""@
   , arTitle   :: Text      -- ^ its @\/rename@ name, else its first prompt
   , arDir     :: FilePath  -- ^ its working directory
   , arState   :: Text      -- ^ @waiting@ \/ @busy@ \/ @idle@, or @closed@
@@ -270,13 +272,14 @@ aiPickerChoices app tree mref = do
   -- a name-or-first-prompt for every live session, so the picker never re-reads a
   -- transcript for one.
   cached  <- claudeStatusNow
+  names   <- agentNames
   ui      <- readCell (appUi app)
   mdflt   <- maybe (return Nothing) (paneDefaultSessionWith owners live app tree) mref
   let titles  = M.fromList [ (csrSession r, csrTitle r) | r <- csRows cached ]
       ordered = orderSessions owners tree (ui ^. flipMru) live
       -- The default leads, and is not repeated further down.
       sids = maybe ordered (\d -> d : filter (/= d) ordered) mdflt
-  rows  <- mapM (row titles mdflt live) sids
+  rows  <- mapM (row names titles mdflt live) sids
   mnew  <- maybe (return Nothing) (paneProjectDir app tree) mref
   let newRow = case mnew of
         Just d  -> [AINewSession d]
@@ -285,7 +288,7 @@ aiPickerChoices app tree mref = do
         Nothing -> []
   return (map AISessionChoice rows ++ newRow, mdflt)
   where
-    row titles mdflt live sid = do
+    row names titles mdflt live sid = do
       let mlive = M.lookup sid live
           dir   = maybe "" clDir mlive
       title <- case clName =<< mlive of
@@ -300,6 +303,7 @@ aiPickerChoices app tree mref = do
             return (fromMaybe (T.take 8 sid) lbl)
       return AIRow
         { arSession = sid
+        , arName    = M.findWithDefault "" sid names
         , arTitle   = title
         , arDir     = dir
         , arState   = case mlive of

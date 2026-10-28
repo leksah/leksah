@@ -45,7 +45,8 @@ import IDE.Web.Model (WindowId(..), activeWindow)
 import IDE.Workspace (projectOpenPath)
 import IDE.Web.Claude (showLiveSession)
 import IDE.Web.ClaudeStatus
-       (ClaudeStatus(..), ClaudeStatusRow(..), registerClaudeStatusPush)
+       (ClaudeStatus(..), ClaudeStatusRow(..), claudeRowLabel,
+        registerClaudeStatusPush)
 import IDE.Web.Command (Command(..), commandAction, commandGetToggleState)
 import IDE.Web.GhciMode
        (ghciMode, registerGhciCleanupNamed, registerGhciQuiesceNamed, setGhciStop,
@@ -242,7 +243,7 @@ pushClaudeStatusToMenuBar st =
     -- for their task), so it rides along in the row's title.
     row r = T.intercalate "\t"
       [ csrState r
-      , ellipsize 60 (csrTitle r)
+      , ellipsize 60 (claudeRowLabel r)
           <> (if T.null (csrDir r) then "" else "  ·  " <> baseName (csrDir r))
       , T.intercalate "\\n" [ csrDir r, csrDetail r, csrSession r ]
       , csrSession r

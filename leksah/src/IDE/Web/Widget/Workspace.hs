@@ -117,6 +117,7 @@ import IDE.Web.Claude
        (claudeAvailable, runClaudeCmd, ClaudeCmd(..), ClaudeSession(..),
         claudeSessionsFor, claudeTranscriptPath, showLiveSession)
 import IDE.Web.AgentInfo (agentDirOf, agentTitles)
+import IDE.Web.AgentNames (agentNames)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.WorktreeRegistry
@@ -1089,6 +1090,7 @@ worktreeStory :: FilePath -> IO (Text, Maybe Text, [(Text, Text, Text, Double)])
 worktreeStory p = do
   mwi    <- worktreeInfo p
   titles <- agentTitles
+  names  <- agentNames
   now    <- getPOSIXTime
   let age w = let s = round (realToFrac now - w) :: Integer
               in if | s < 90        -> "just now"
@@ -1103,7 +1105,12 @@ worktreeStory p = do
                 <> sid (beSession b) <> " (" <> beVia b <> ")"
       claimRow c = do
         s <- scSession c
-        let name = fromMaybe (T.take 8 s) (M.lookup s titles)
+        -- "Wren — fixing the parser", or whichever half is known.
+        let name = case (M.lookup s names, M.lookup s titles) of
+              (Just a, Just t) -> a <> " — " <> t
+              (Just a, _)      -> a
+              (_, Just t)      -> t
+              _                -> T.take 8 s
         return ( s
                , roleText (scRole c) <> " · " <> name
                , s <> " · " <> age (scWhen c)

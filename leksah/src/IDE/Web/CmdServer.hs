@@ -135,8 +135,9 @@ import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
 import IDE.Web.Agent
-       (ForkPlace(..), ForkRequest(..), agentList, agentRead, agentSend,
-        agentStatus, emptyForkRequest, forkAgent)
+       (ForkPlace(..), ForkRequest(..), agentDone, agentFind, agentList,
+        agentRead, agentRoleList, agentSend, agentStatus, emptyForkRequest,
+        forkAgent, renameAgentEverywhere, resolveAgent)
 import IDE.Web.AgentInfo (describeAgent)
 import IDE.Web.WorktreeRegistry
        (ClaimRole, parseRole, recordBranchMove, registerWorktree)
@@ -750,28 +751,49 @@ handleConn app conn = do
       case args of
         ("fork" : rest) -> case parseFork cwd me rest of
           Left err -> reply ("agent fork: " <> err <> "\n\n" <> agentUsage)
-          Right fr -> forkAgent fr >>= \case
-            Left err       -> reply ("agent fork: " <> err <> "\n")
-            Right (_, msg) -> reply msg
+          Right fr0 -> withAgents (frFrom fr0) $ \from -> do
+            let fr = fr0 { frFrom = from }
+            forkAgent fr >>= \case
+              Left err       -> reply ("agent fork: " <> err <> "\n")
+              Right (_, msg) -> reply msg
         ("list" : _)  -> agentList me >>= reply
         ("me" : _)    -> reply $ case me of
             Just sid -> sid <> "\n"
             Nothing  -> "not called from a Claude Code session\n"
-        ("status" : sid : _) | not (T.null sid) -> agentStatus sid >>= reply
-        ("send" : sid : rest)
-          | not (T.null sid), (submit, ps) <- sendFlags rest, not (null ps) ->
-              agentSend sid submit (T.intercalate " " ps) >>= reply
-        ("read" : sid : rest) | not (T.null sid) ->
+        -- Every SID below may also be the agent's NAME ("wren") or a unique
+        -- prefix of its id ('resolveAgent').
+        ("status" : who : _) | not (T.null who) -> withAgent who $ \sid ->
+            agentStatus sid >>= reply
+        ("send" : who : rest)
+          | not (T.null who), (submit, ps) <- sendFlags rest, not (null ps) ->
+              withAgent who $ \sid ->
+                agentSend sid submit (T.intercalate " " ps) >>= reply
+        ("read" : who : rest) | not (T.null who) -> withAgent who $ \sid ->
             agentRead sid (fromMaybe 1 (intFlag ["--last", "-n"] rest)) >>= reply
-        ("show" : sid : _) | not (T.null sid) -> showLiveSession sid >>= \ok ->
-            reply $ if ok then "Showing " <> sid <> ".\n"
-                          else "Could not find a pane for " <> sid <> ".\n"
+        ("show" : who : _) | not (T.null who) -> withAgent who $ \sid ->
+          showLiveSession sid >>= \ok ->
+            reply $ if ok then "Showing " <> who <> ".\n"
+                          else "Could not find a pane for " <> who <> ".\n"
+        -- Which agent should take this?  Ranked by what they say they are
+        -- doing; roles that fit are listed too.
+        ("find" : rest) | not (null rest) -> agentFind cwd (T.unwords rest) >>= reply
+        -- "I have finished": ✓ in the Agents pane, and the summary goes to the
+        -- agent that started this one.
+        ("done" : rest) -> case parseDone me rest of
+          Left err             -> reply ("agent done: " <> err <> "\n\n" <> agentUsage)
+          Right (who, summary) -> withAgent who $ \sid -> agentDone sid summary >>= reply
+        ("rename" : rest) -> case (rest, me) of
+          ([who, new], _)    -> withAgent who $ \sid -> renamed =<< renameAgentEverywhere sid new
+          ([new], Just sid)  -> renamed =<< renameAgentEverywhere sid new
+          _ -> reply ("agent rename: give a new name (and, from outside an agent, "
+                      <> "which agent)\n\n" <> agentUsage)
+        ("roles" : _) -> agentRoleList cwd >>= reply
         -- How an agent says what it is doing, for the Agents pane: a title and
         -- a small HTML description.  The session defaults to the CALLER, so the
         -- usual call names no session at all.
         ("describe" : rest) -> case parseDescribe me rest of
           Left err          -> reply ("agent describe: " <> err <> "\n\n" <> agentUsage)
-          Right (sid, t, h) -> describeAgent sid t h >>= reply
+          Right (who, t, h) -> withAgent who $ \sid -> describeAgent sid t h >>= reply
         -- How a session (or a hook acting for one) records its relationship
         -- with a git worktree — the Worktrees tree node and the Agents pane
         -- read these back.  The worktree defaults to the CALLER's cwd, the
@@ -791,6 +813,14 @@ handleConn app conn = do
                   reply (r <> "\n")
         _ -> reply agentUsage
       where
+        withAgent who k = resolveAgent who >>= \case
+          Left err  -> reply ("agent: " <> err <> "\n")
+          Right sid -> k sid
+        withAgents Nothing k    = k Nothing
+        withAgents (Just who) k = withAgent who (k . Just)
+        renamed = \case
+          Left err -> reply ("agent rename: " <> err <> "\n")
+          Right n  -> reply ("Renamed to " <> n <> ".\n")
         -- Only leading flags are flags, so a message that starts with a dash
         -- still arrives intact.
         sendFlags = goSend False
@@ -815,6 +845,7 @@ handleConn app conn = do
           "--window"   -> go fr { frPlace = PlaceTab    } as
           "--fresh"    -> go fr { frFresh = True } as
           "--from"     -> arg as $ \v as' -> go fr { frFrom = Just v } as'
+          "--as"       -> arg as $ \v as' -> go fr { frRole = Just v } as'
           "--dir"      -> arg as $ \v as' -> go fr { frDir = Just (resolve cwd v) } as'
           "--"         -> Right (withPrompt fr as)
           _ | "-" `T.isPrefixOf` a, T.length a > 1 ->
@@ -851,6 +882,25 @@ handleConn app conn = do
         val []       _ = Left "missing value for an option"
         orElse x y = maybe y Just x
 
+    -- @agent done@'s arguments: an optional session (default: the caller),
+    -- then --summary TEXT — or the summary as the remaining words.
+    parseDone me = go Nothing Nothing
+      where
+        go msid msum [] = case (maybe me Just msid, msum) of
+          (Nothing, _)       -> Left ("no session: run this from a Claude session, or"
+                                      <> " name one — `agent done SID --summary …`")
+          (Just sid, Just t) -> Right (sid, t)
+          (Just _, Nothing)  -> Left "say what you did: --summary TEXT"
+        go msid msum (a : as) = case a of
+          "--summary" -> case as of
+            (v : as') -> go msid (Just v) as'
+            []        -> Left "missing value for --summary"
+          "--session" -> case as of
+            (v : as') -> go (Just v) msum as'
+            []        -> Left "missing value for --session"
+          _ | msum == Nothing -> go msid (Just (T.unwords (a : as))) []
+            | otherwise       -> Left ("unexpected argument " <> a)
+
     -- @agent register@'s flags.  All optional: the worktree defaults to the
     -- caller's cwd, the session to the caller (or to no session at all — a
     -- human registering from a shell is fine, the claim just says so).
@@ -883,9 +933,16 @@ handleConn app conn = do
       , "      --tab             give it its own leksah tab instead"
       , "      --fresh           no inherited context: it knows only PROMPT"
       , "      --from SID        fork that session instead of the calling one"
+      , "      --as ROLE         a fresh agent in that role (see `agent roles`)"
       , "      --dir DIR         work here (only with --fresh: see `agent fork`)"
-      , "  list                  live sessions: id, state, pane, dir, title"
+      , "  list                  live sessions: id, name, state, pane, dir, title"
+      , "  find QUERY            which agent fits this? ranked by what they are doing"
+      , "  roles                 the roles `fork --as` can start (.claude/agents/*.md)"
+      , "  done --summary TEXT   say you have finished (✓ in the Agents pane; the"
+      , "                        summary goes to the agent that started you)"
+      , "  rename [SID] NAME     give an agent (default: you) another name"
       , "  me                    the session id of the caller"
+      , "  (SID: a session id, a unique prefix of one, or the agent's name)"
       , "  status SID            one line: state, detail, pane, dir"
       , "  wait SID [--timeout S]  block until SID is idle/waiting (client-side)"
       , "  read SID [--last N]   SID's last N answers, newest last"

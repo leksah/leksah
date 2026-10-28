@@ -125,8 +125,13 @@ usage = T.unlines
   , "                                     forked from your conversation (so it has your"
   , "                                     context).  --below/--tab place it elsewhere,"
   , "                                     --fresh gives it no context, --dir DIR (with"
-  , "                                     --fresh) picks its directory"
-  , "  leksah-cmd agent list              live Claude sessions: id, state, pane, dir, title"
+  , "                                     --fresh) picks its directory, --as ROLE starts"
+  , "                                     a fresh agent in a role (agent roles)"
+  , "  leksah-cmd agent list              live Claude sessions: id, name, state, pane, dir, title"
+  , "  leksah-cmd agent find QUERY        which agent fits this work? (ranked, free ones first)"
+  , "  leksah-cmd agent done --summary T  say you have finished (tells whoever started you)"
+  , "  leksah-cmd agent rename [SID] NAME give an agent (default: you) another name"
+  , "                                     (every SID may also be the agent's name, e.g. wren)"
   , "  leksah-cmd agent wait SID [--timeout S]"
   , "                                     block until that agent is idle (or needs a human)"
   , "  leksah-cmd agent read SID [--last N]   what it last said"
@@ -835,13 +840,38 @@ mcpTools =
       \It reports back by sending you a message when it finishes; you can also \
       \poll it with read_agent, or `leksah-cmd agent wait <id>` from Bash. Use \
       \it for work worth doing in parallel or worth keeping out of your own \
-      \context — and tell the user you have started it."
+      \context — and tell the user you have started it. Before starting one, \
+      \check find_agent: an agent already working on the topic has the context \
+      \a new one would lack — send_to_agent it instead. Each agent has a short \
+      \name (an animal, like Wren) that every agent tool accepts in place of \
+      \its session id."
       [ ("prompt", "string", "What it should do — its first message. Say it as you would to a colleague who has just read everything you have.")
+      , ("role",   "string", "Start a fresh agent in this role (a Claude Code subagent definition in .claude/agents/; see list_agent_roles)")
       , ("fresh",  "boolean", "Do NOT inherit your conversation: a clean agent that knows only this prompt (and the project's CLAUDE.md)")
       , ("dir",    "string", "Working directory — only with fresh (a forked conversation stays in its own directory)")
       , ("place",  "string", "beside (default), below, or tab") ] ["prompt"]
+  , mcpTool "find_agent"
+      "Which agent in this IDE should take a piece of work? Ranks the running \
+      \(and recently finished) agents by how well what they are doing — name, \
+      \title, self-description, branch, PR, directory, role — matches your \
+      \query, favouring ones that are free; also lists roles you could start a \
+      \new agent in. Use it before fork_agent: handing work to an agent that \
+      \already has the context beats briefing a new one."
+      [ ("query", "string", "What the work is about, in a few words (a topic, a file, a PR number, a branch)") ]
+      ["query"]
+  , mcpTool "agent_done"
+      "Say that you have finished what you were asked to do. Marks you done (✓) \
+      \in Leksah's Agents pane with your summary and, if another agent started \
+      \you, sends it the summary so it can carry on. Call it once, at the end."
+      [ ("summary", "string", "What you did, what you found, which files changed — self-contained, the reader cannot see your screen") ]
+      ["summary"]
+  , mcpTool "list_agent_roles"
+      "The roles a new agent can be started in (fork_agent's role argument): \
+      \Claude Code subagent definitions from .claude/agents/ in the project \
+      \and in ~/.claude/agents/, with what each is for."
+      [] []
   , mcpTool "list_agents"
-      "The Claude Code sessions running in this IDE right now — id, state \
+      "The Claude Code sessions running in this IDE right now — id, name, state \
       \(waiting/busy/idle), pane, directory, title — with your own row marked. \
       \How to find the agents you forked, or a peer to hand something to."
       [] []
@@ -850,7 +880,7 @@ mcpTools =
       \a peer from list_agents). Submitted as a turn by default, so it will act \
       \on it — including waking it if it had gone idle. Its reply comes back to \
       \you the same way, as a message, so do not block waiting for it."
-      [ ("session", "string", "Target session id")
+      [ ("session", "string", "Target agent: its name (e.g. wren) or session id")
       , ("text",    "string", "What to say. Self-contained: it cannot see your context.")
       , ("submit",  "boolean", "Press Enter (default true). False leaves it in the composer for the user to edit.") ]
       ["session", "text"]
@@ -858,7 +888,7 @@ mcpTools =
       "What another session last SAID (its final assistant messages), plus \
       \whether it is still working. Use it to collect a forked agent's answer, \
       \or to catch up on one you were told about."
-      [ ("session", "string", "Session id")
+      [ ("session", "string", "The agent's name (e.g. wren) or session id")
       , ("last",    "number", "How many of its answers to return (default 1)") ]
       ["session"]
   , mcpTool "describe_agent"
@@ -981,12 +1011,20 @@ mcpCall params = do
         Just p  -> sock $ ["agent", "fork"]
                        <> [ "--fresh" | mcpBool "fresh" args ]
                        <> maybe [] (\d -> ["--dir", T.unpack d]) (mcpText "dir" args)
+                       <> maybe [] (\ro -> ["--as", T.unpack ro]) (mcpText "role" args)
                        <> case mcpText "place" args of
                             Just "below" -> ["--below"]
                             Just "tab"   -> ["--tab"]
                             _            -> []
                        <> ["--", T.unpack p]
       "list_agents" -> sock ["agent", "list"]
+      "find_agent" -> case mcpText "query" args of
+        Just q  -> sock ["agent", "find", T.unpack q]
+        Nothing -> return (Left "missing required argument: query")
+      "agent_done" -> case mcpText "summary" args of
+        Just t  -> sock ["agent", "done", "--summary", T.unpack t]
+        Nothing -> return (Left "missing required argument: summary")
+      "list_agent_roles" -> sock ["agent", "roles"]
       "send_to_agent" -> case (mcpText "session" args, mcpText "text" args) of
         (Just s, Just t) -> sock $ ["agent", "send", T.unpack s]
                                 <> [ "--submit" | maybe True id (mcpBoolMaybe "submit" args) ]
