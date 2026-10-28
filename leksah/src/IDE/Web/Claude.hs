@@ -27,6 +27,7 @@ module IDE.Web.Claude
   , claudeLiveOwners
   , ClaudeCmd(..)
   , AgentSpec(..)
+  , newAgentSessionId
   , runClaudeCmd
   , claudeCommandLine
   , claudeRunning
@@ -52,10 +53,11 @@ import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
 import Control.Monad (void, forM, mfilter, when)
 
+import Data.Bits ((.&.), (.|.))
 import Data.Char (isAlphaNum)
 import Data.Foldable (toList)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.List (sortOn)
+import Data.List (intercalate, sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (mapMaybe, listToMaybe, fromMaybe)
@@ -73,6 +75,8 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (writeFile)
 import Data.Text.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
+import Data.Word (Word8)
+import Numeric (showHex)
 
 import System.Directory
        (findExecutable, getHomeDirectory, doesDirectoryExist, doesFileExist,
@@ -376,6 +380,23 @@ data AgentSpec = AgentSpec
                             --   the child so it can report back
   } deriving (Eq, Show)
 
+-- | A fresh RFC 4122 version-4 UUID, the shape @claude --session-id@ wants.
+-- 16 bytes of @\/dev\/urandom@ (present on both platforms leksah's tmux
+-- integration runs on) rather than a new dependency.
+newAgentSessionId :: IO Text
+newAgentSessionId = do
+  bs <- withFile "/dev/urandom" ReadMode (`BS.hGet` 16)
+  let ws = zipWith stamp [0 :: Int ..]
+             (map (fromIntegral . fromEnum) (BS.unpack bs)) :: [Word8]
+  return . T.pack . intercalate "-" . groups [8, 4, 4, 4, 12] $ concatMap hex ws
+  where
+    stamp 6 w = (w .&. 0x0f) .|. 0x40   -- version 4
+    stamp 8 w = (w .&. 0x3f) .|. 0x80   -- variant 1
+    stamp _ w = w
+    hex w = let s = showHex w "" in if length s == 1 then '0' : s else s
+    groups []       _ = []
+    groups (k : ks) s = let (a, b) = splitAt k s in a : groups ks b
+
 -- | Open (or focus) a terminal in the right directory running the command.
 -- An existing pane for the same conversation (its @\@leksah_run@ key) is
 -- focused instead of duplicated — one claude process per conversation —
@@ -405,6 +426,16 @@ runClaudeCmd cmd = void . forkIO $ do
 -- 'runClaudeCmd' and the ⌥-open-into-split pipeline (which runs the line in a
 -- split pane rather than a new window).
 claudeCommandLine :: ClaudeCmd -> IO (FilePath, Text, Text)
+claudeCommandLine (ClaudeNew d) = do
+  -- A NEW session must get a new pane.  With no id of its own it would share
+  -- the directory key (@dir#claude@) with Continue/Resume…, and 'runClaudeCmd'
+  -- would just focus whichever of those is already open.  So pin a fresh
+  -- @--session-id@: the run key becomes @dir#claude#\<id\>@ — unique, and the
+  -- plain resume shape, so the pane's session is known from its key.
+  sid <- newAgentSessionId
+  claudeCommandLine . ClaudeAgent $ AgentSpec
+    { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Nothing
+    , asParent = Nothing }
 claudeCommandLine cmd = do
   let d = dropTrailingPathSeparator dir
   mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
@@ -446,6 +477,7 @@ claudeCommandLine cmd = do
             ClaudeAgent s | Just _ <- asParent s -> ["Bash(leksah-cmd agent send:*)"]
             _                                    -> []
     (dir, keyTag, line) = case cmd of
+      -- (not reached: the equation above turns ClaudeNew into ClaudeAgent)
       ClaudeNew d          -> (d, "claude",            "claude")
       ClaudeContinue d     -> (d, "claude",            "claude -c")
       ClaudeResumePicker d -> (d, "claude",            "claude --resume")

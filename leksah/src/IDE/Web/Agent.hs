@@ -54,15 +54,12 @@ module IDE.Web.Agent
 import Control.Exception (catch, SomeException)
 import Control.Monad (filterM, forM)
 
-import Data.Bits ((.&.), (.|.))
-import Data.List (intercalate, sortOn)
+import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Word (Word8)
-import Numeric (showHex)
 
 import Data.Aeson (Value(..), decodeStrict', withObject, (.:))
 import Data.Aeson.Types (parseMaybe)
@@ -79,7 +76,8 @@ import IDE.Web.AgentInfo (recordAgentFork)
 import IDE.Web.Claude
        (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
         claudeCommandLine, claudeLiveBySession, claudeLiveOwners,
-        claudeSessionLabel, claudeTranscriptPath, paneForSession,
+        claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
+        paneForSession,
         showLiveSession, showTmuxPane)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
@@ -335,23 +333,6 @@ agentRead sid n = do
                       else map ("\n--- said ---\n" <>) (lastN n msgs))
   where
     lastN k xs = drop (max 0 (length xs - max 1 k)) xs
-
--- | A fresh RFC 4122 version-4 UUID, the shape @claude --session-id@ wants.
--- 16 bytes of @\/dev\/urandom@ (present on both platforms leksah's tmux
--- integration runs on) rather than a new dependency.
-newAgentSessionId :: IO Text
-newAgentSessionId = do
-  bs <- withFile "/dev/urandom" ReadMode (`BS.hGet` 16)
-  let ws = zipWith stamp [0 :: Int ..]
-             (map (fromIntegral . fromEnum) (BS.unpack bs)) :: [Word8]
-  return . T.pack . intercalate "-" . groups [8, 4, 4, 4, 12] $ concatMap hex ws
-  where
-    stamp 6 w = (w .&. 0x0f) .|. 0x40   -- version 4
-    stamp 8 w = (w .&. 0x3f) .|. 0x80   -- variant 1
-    stamp _ w = w
-    hex w = let s = showHex w "" in if length s == 1 then '0' : s else s
-    groups []       _ = []
-    groups (k : ks) s = let (a, b) = splitAt k s in a : groups ks b
 
 --------------------------------------------------------------------------------
 -- helpers
