@@ -83,6 +83,7 @@ allCommands =
     , always "view.showHiddenFiles"       "Show Hidden Files"     commandToggleShowHidden
     , always "view.showIgnoredFiles"      "Show Ignored Files"    commandToggleShowIgnored
 
+    , always "terminal.newTerminal"       "New Terminal"          CommandNewTerminal
     , terminal "terminal.newWindow"       "New Window"            (paneCmd "new-window" "c")
     , terminal "terminal.previousWindow"  "Previous Window"       (paneCmd "previous-window" "p")
     , terminal "terminal.nextWindow"      "Next Window"           (paneCmd "next-window" "n")

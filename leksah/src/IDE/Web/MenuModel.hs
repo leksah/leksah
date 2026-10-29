@@ -174,7 +174,7 @@ menuModel =
 -- editor otherwise.
 terminalMenu :: [MenuEntry]
 terminalMenu =
-  [ MCmd "terminal.newWindow"
+  [ MCmd "terminal.newTerminal"
   , MCmd "terminal.previousWindow"
   , MCmd "terminal.nextWindow"
   , MSepE

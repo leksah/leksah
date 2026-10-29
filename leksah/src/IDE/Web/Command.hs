@@ -73,6 +73,8 @@ data Command =
   -- Jump to the next terminal window flagged for attention (bell first, then
   -- activity) — e.g. a teammate that rang the bell wanting input.
   | CommandFocusAlert
+  -- A new terminal tab in the front window.
+  | CommandNewTerminal
   -- Numbered navigation (1-based; see IDE.Web.Main): Cmd+N the Nth split of
   -- the active terminal, Opt+Cmd+N the Nth side-bar pane, Ctrl+Cmd+N the Nth
   -- bottom-bar pane.

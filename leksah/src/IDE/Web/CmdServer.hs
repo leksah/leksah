@@ -133,7 +133,9 @@ import qualified IDE.Ws.File as WF
 import IDE.Ws.Registry (detectProject)
 import IDE.Ws.Types (Package(..), Project(..), ProjectKey(..), Verb(..))
 import IDE.Web.FS (fsEffects)
-import IDE.Web.Command (Command(CommandShowTeam))
+import IDE.Web.Command (Command(CommandShowTeam), commandAction)
+import IDE.Web.Commands (lookupCommand)
+import IDE.Web.Keybindings (CommandSpec(..))
 import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
@@ -561,6 +563,16 @@ handleConn app conn = do
       -- arrives).  Deliberately does NOT activate the application: pulling the
       -- whole app over the caller's terminal is not what a scripted "point at
       -- window N" should do.
+      -- Run a command by its keybindings id (`terminal.newTerminal`, …) the
+      -- way choosing it from the menu bar would: its action if it has one,
+      -- else into the front window's keymap stream.  (The handful the native
+      -- menus special-case — Open, Save, Find… — are not reachable this way.)
+      ("command" : cid : _) -> case lookupCommand cid >>= (`csMake` Nothing) of
+        Nothing  -> reply $ "No command " <> cid <> "\n"
+        Just cmd -> do
+          maybe (requestKeymapCommand cmd) ($ app) (cmd ^. commandAction)
+          reply $ "Ran " <> cid <> "\n"
+
       -- File ▸ New Window, from a script: a terminal in the active project,
       -- with the front window's side/bottom pane settings.
       ("window" : "new" : _) -> do

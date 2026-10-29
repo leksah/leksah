@@ -5808,6 +5808,7 @@ main showMenubar macTitlebar wid ctx = mdo
           CommandNextError     -> Just c
           CommandPreviousError -> Just c
           CommandFocusAlert    -> Just c
+          CommandNewTerminal   -> Just c
           _                    -> Nothing) panelCmdE
     performEvent_ $ ffor panelCmdE $ \case
       CommandFileOpen          -> liftIO runOpenFilePanel
@@ -8204,6 +8205,22 @@ main showMenubar macTitlebar wid ctx = mdo
     -- content (⌥⇧ = below) — or just refocus the pane when the same content
     -- is already in the layout.  Rides the IDEAction mutation stream.
     (leafOpenE, fireLeafOpen) <- newTriggerEvent
+    -- Terminal ▸ New Terminal (⌘T): a new terminal TAB in this window, in the
+    -- directory of whatever the active pane shows (else the active project's,
+    -- else home).  Splitting is ⌘D's job.
+    let newTerminalE = fmapMaybe (\e -> case e ^? _KeymapCommand of
+                          Just CommandNewTerminal -> Just (); _ -> Nothing) keymapE
+    performEvent_ $ ffor (tag ((,,) <$> current ide <*> current activePaneD <*> current allTreeD) newTerminalE)
+      $ \(ui, mk, tree) -> liftIO . void . forkIO $ do
+        let fromPane = mk >>= panePathOfKey ui tree
+        isDir <- maybe (return False) doesDirectoryExist fromPane
+        dir <- case fromPane of
+          Just p | not (isRemotePath p) ->
+            return . dropTrailingPathSeparator $ if isDir then p else takeDirectory p
+          _ -> do
+            mws <- getGlobalApp >>= traverse (readCell . wsCell . appWorkspace)
+            maybe getHomeDirectory (return . prDir) (mws >>= activeProject)
+        openTerminalInDir dir
     let leafOpenPane pc vert lw
           | Just l <- listToMaybe
               [ l | l <- treeLeafIds (lwTree lw)

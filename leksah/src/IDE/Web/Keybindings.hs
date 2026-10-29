@@ -153,7 +153,7 @@ defaultKeybindings =
     , r "cmd+alt+0"        "view.fontReset"
     , r "cmd+ctrl+b"       "view.newBrowserPane"
     -- Terminal (native-menu key equivalents, gated by the command's when).
-    , r "cmd+shift+t"      "terminal.newWindow"
+    , r "cmd+t"            "terminal.newTerminal"
     , r "cmd+shift+["      "terminal.previousWindow"
     , r "cmd+shift+]"      "terminal.nextWindow"
     , r "cmd+d"            "terminal.splitRight"

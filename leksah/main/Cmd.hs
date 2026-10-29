@@ -119,6 +119,8 @@ usage = T.unlines
   , "                                     without --window, the ACTIVE window"
   , "  leksah-cmd window list             OS windows: id, tab count, active tab"
   , "  leksah-cmd window new              File > New Window (opens with a terminal)"
+  , "  leksah-cmd command ID              run a command by keybindings id (e.g."
+  , "                                     terminal.newTerminal) as its menu item would"
   , "  leksah-cmd window focus N          make window N active: raise it, and move the"
   , "                                     window that dialogs open in (and that screenshot"
   , "                                     defaults to).  Does not activate the app."
