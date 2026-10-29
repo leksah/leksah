@@ -426,9 +426,25 @@ agentCardCss = do
     "padding" -: "0 2px"
     "cursor" -: "pointer"
   ".agent-card .agent-card-more:hover" ? ("color" -: "var(--leksah-fg)")
+  -- The rename field takes the name's place exactly: one line tall (the line
+  -- clips anything taller), border-box so its padding and border fit inside
+  -- that, and in the name's own bold face so nothing shifts when it appears.
   ".agent-card .agent-card-rename" ? do
-    "font-size" -: "12px"
-    "width" -: "100px"
+    "box-sizing" -: "border-box"
+    "height" -: "1.35em"
+    "margin" -: "0"
+    "padding" -: "0 3px"
+    "font" -: "inherit"
+    "font-weight" -: "bold"
+    "line-height" -: "normal"
+    "color" -: "var(--leksah-fg)"
+    "background" -: "var(--leksah-surface-alt)"
+    "border" -: "1px solid var(--leksah-selection)"
+    "border-radius" -: "3px"
+    "outline" -: "none"
+    "align-self" -: "center"
+    "flex" -: "0 1 9em"
+    "min-width" -: "4em"
   ".agent-card .agent-card-bio" ? do
     "margin" -: "6px 0 2px 0"
     "color" -: "var(--leksah-fg-muted)"
