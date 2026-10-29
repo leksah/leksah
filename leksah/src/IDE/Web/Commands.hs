@@ -41,6 +41,7 @@ allCommands =
 
     , always "edit.find"                  "Find"                  CommandFind
     , always "edit.showShortcuts"         "Keyboard Shortcuts…"   CommandShowShortcuts
+    , always "ai.showTeam"                "Team"                  CommandShowTeam
     , always "edit.showPreferences"       "Preferences…"          CommandShowPreferences
     , always "edit.reloadKeybindings"     "Reload Keybindings"    commandReloadKeybindings
 

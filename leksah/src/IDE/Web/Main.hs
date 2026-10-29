@@ -300,6 +300,7 @@ import IDE.Web.Widget.Review (reviewCss, reviewWidget)
 import IDE.Web.Widget.NewWorktree (newWorktreeDialog)
 import IDE.Web.Widget.Tasks (tasksCss, tasksWidget)
 import IDE.Web.Widget.Agents (agentsCss, agentsWidget, agentLinksJs)
+import IDE.Web.Widget.Team (teamCss, teamWidget)
 import IDE.Web.Widget.Plan (planCss, planWidget)
 import IDE.Web.Widget.Compare (compareCss, compareWidget)
 import IDE.Web.ClaudeQueue
@@ -1110,6 +1111,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                                 , lwSession lw == Just n ]
               PreferencesKey -> []   -- transient, never restore
               ShortcutsKey   -> []   -- transient, never restore
+              TeamKey        -> []   -- transient, never restore
               WelcomeKey{}   -> []   -- transient; re-minted when a window is empty
               GitLogKey{}    -> []   -- transient, never restore
               ReviewKey{}    -> []   -- transient, never restore
@@ -1974,6 +1976,7 @@ css = render $ do
     terminalCss
     terminalsCss
     agentsCss
+    teamCss
     changesCss
     gitLogCss
     reviewCss
@@ -2007,6 +2010,7 @@ tabLabelText k names = case k of
   ChangesKey     -> "Changes"
   PreferencesKey -> "Preferences"
   ShortcutsKey   -> "Shortcuts"
+  TeamKey        -> "Team"
   WelcomeKey _   -> "Welcome"
   BrowserKey n   -> "Browser " <> T.pack (show n)
   GitLogKey _ b  -> "Log: " <> b
@@ -2029,6 +2033,7 @@ tabIconSrc k = case k of
   GrepKey        -> Just "/pics/grep.svg"
   ChangesKey     -> Just "/pics/changes.svg"
   ShortcutsKey   -> Just "/pics/shortcuts.svg"
+  TeamKey        -> Just "/pics/tree-claude.svg"
   WelcomeKey{}   -> Just "/pics/docs.svg"
   BrowserKey{}   -> Just "/pics/browser.svg"
   GitLogKey{}    -> Just "/pics/tree-git.svg"
@@ -2267,6 +2272,7 @@ tabFlipKey k = "tab:" <> case k of
     ChangesKey     -> "changes"
     PreferencesKey -> "preferences"
     ShortcutsKey   -> "shortcuts"
+    TeamKey        -> "team"
     WelcomeKey n   -> "welcome:" <> T.pack (show n)
     BrowserKey n   -> "browser:" <> T.pack (show n)
     TerminalKey s  -> "terminal:" <> s
@@ -5700,6 +5706,12 @@ main showMenubar macTitlebar wid ctx = mdo
           , fmapMaybe (\e -> case e ^? _KeymapCommand of
                                Just CommandShowShortcuts -> Just (); _ -> Nothing) keymapE
           , shortcutsBridgeE ]
+        -- AI ▸ Team, the Agents pane's 👥, or `leksah-cmd team` (all via the
+        -- keymap command bridge) opens the Team pane.
+        showTeamE = leftmost
+          [ fmapMaybe (\case CommandShowTeam -> Just (); _ -> Nothing) panelCmdE
+          , fmapMaybe (\e -> case e ^? _KeymapCommand of
+                               Just CommandShowTeam -> Just (); _ -> Nothing) keymapE ]
     -- View ▸ New Browser Pane, ⌃⌘B (keymap), or the native menu item (via the
     -- bridge): mint a fresh persistent pane id and open its tab.  A terminal
     -- URL click arrives with the URL to load ('Just'); the menu paths start
@@ -6688,6 +6700,7 @@ main showMenubar macTitlebar wid ctx = mdo
         openPrefsFlipE = FlipTab PreferencesKey <$ showPrefsE
         -- The Shortcuts pane (⌘/ / menu) likewise takes no focus — bump it too.
         openShortcutsFlipE = FlipTab ShortcutsKey <$ showShortcutsE
+        openTeamFlipE = FlipTab TeamKey <$ showTeamE
         -- …and a freshly opened browser pane (its address bar takes focus, but
         -- focusin floats only via the generic tab float, which can miss).
         openBrowserFlipE = FlipTab <$> newBrowserKeyE
@@ -6704,6 +6717,7 @@ main showMenubar macTitlebar wid ctx = mdo
                                   , openEditorFlipE
                                   , openPrefsFlipE
                                   , openShortcutsFlipE
+                                  , openTeamFlipE
                                   , openBrowserFlipE ]
     -- The MRU: THE shared flip order — one '_flipMru' list in the IDE record used
     -- by every OS window (single source of truth, no per-window copies).  This
@@ -7912,6 +7926,7 @@ main showMenubar macTitlebar wid ctx = mdo
               Just k@CompareKey{}     -> Just k
               Just k@PreferencesKey   -> Just k
               Just k@ShortcutsKey     -> Just k
+              Just k@TeamKey          -> Just k
               -- Closing the Welcome pane is how you empty a window on purpose,
               -- and the never-empty rule then closes the window itself — so it
               -- has to be reachable here, not just openable.
@@ -8936,6 +8951,7 @@ main showMenubar macTitlebar wid ctx = mdo
           , ((\(d, p) -> CompareKey d p =: ("wide0", Just ())) <$> compareReqE)
           , (PreferencesKey =: ("wide0", Just ())) <$ showPrefsE
           , (ShortcutsKey =: ("wide0", Just ())) <$ showShortcutsE
+          , (TeamKey =: ("wide0", Just ())) <$ showTeamE
           -- The never-empty-window rule (see 'welcomeOpenE'): this window has
           -- no tabs left and could not be closed, so it gets a Welcome pane.
           , (\k -> k =: ("wide0", Just ())) <$> welcomeOpenE
@@ -9001,6 +9017,7 @@ main showMenubar macTitlebar wid ctx = mdo
                               -- wide0 open.)
                               , ("wide0" =: PreferencesKey) <$ showPrefsE
                               , ("wide0" =: ShortcutsKey) <$ showShortcutsE
+                              , ("wide0" =: TeamKey) <$ showTeamE
                               , ("wide0" =:) <$> welcomeOpenE
                               , ("wide0" =:) <$> newBrowserKeyE
                               , (\(d, b) -> "wide0" =: GitLogKey d b) <$> gitLogReqE
@@ -9133,6 +9150,7 @@ main showMenubar macTitlebar wid ctx = mdo
               <$> flipMruD <*> allTreeD))
           ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
+          TeamKey        -> toDM TeamTab <$> teamWidget
           ShortcutsKey   -> toDM ShortcutsTab <$> withTabFont k (shortcutsWidget ctx)
           WelcomeKey _   -> toDM WelcomeTab <$>
               withTabFont k (welcomeWidget ctx selectedE recentFilesD)
@@ -9478,6 +9496,7 @@ main showMenubar macTitlebar wid ctx = mdo
     let notPrefs k = case k of
           PreferencesKey -> False
           ShortcutsKey   -> False
+          TeamKey        -> False
           WelcomeKey{}   -> False
           _              -> True
     leksahWindowsD <- holdUniqDyn ((^. leksahWindows) <$> ide)

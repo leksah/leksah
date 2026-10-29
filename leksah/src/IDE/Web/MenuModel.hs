@@ -159,6 +159,7 @@ menuModel =
       , MCmd "ai.focusTerminal"
       , MCmd "ai.grabRegion"
       , MSepE
+      , MCmd "ai.showTeam"
       , MCmd "ai.newClaudeSession"
       , MCmd "ai.continueClaudeSession"
       ])

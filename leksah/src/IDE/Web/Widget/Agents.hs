@@ -60,7 +60,7 @@ import Clay.Stylesheet (key)
 import Reflex
        (Dynamic, Event, attach, current, ffor, fmapMaybe, foldDyn, getPostBuild,
         holdDyn, holdUniqDyn, leftmost, listViewWithKey, never, newTriggerEvent,
-        tag, tagPromptlyDyn, tickLossyFromPostBuildTime, updated)
+        tag, tickLossyFromPostBuildTime, updated)
 import Reflex.Dom.Core
        (blank, def, divClass, domEvent, dyn_, dynText, elAttr, elAttr', elClass,
         elClass', elDynAttr, elDynAttr', elementConfig_initialAttributes,
@@ -88,6 +88,8 @@ import IDE.Web.Theme
 import IDE.Web.Widget.AgentCard
        (CardActions(..), CardEvent(..), agentCard, agentCardCss, colourOf,
         displayName)
+import IDE.Web.Command (Command(CommandShowTeam))
+import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 
 -- | What the cards' buttons do, for a pane that shows notices with @toast@ and
@@ -176,6 +178,8 @@ agentsWidget topNameD = do
         performEvent_ $ ffor (updated flatD') $ \fl -> liftJSM . void . eval $
           ("try{localStorage.setItem('leksahAgentsFlat','" <> (if fl then "1" else "0")
              <> "')}catch(e){}" :: Text)
+        teamE <- actionBtn "👥" "Open the Team pane: a bio card for every agent"
+        performEvent_ $ liftIO (requestKeymapCommand CommandShowTeam) <$ teamE
         h <- actionBtn "⟳" "Re-read the agent list"
         return (h, leftmost chipEs, flatD')
       inp <- inputElement $ def
@@ -190,7 +194,7 @@ agentsWidget topNameD = do
 
     -- No manager yet: offer one.  (One that exists has its own card, second.)
     let noManagerD = not . any anManager . flatten <$> forestD
-    dyn_ $ ffor noManagerD $ \none -> if not none then blank else do
+    dyn_ $ ffor noManagerD $ \noManager -> if not noManager then blank else do
       (b, _) <- elAttr' "button"
         ("class" =: "agents-manager-start"
          <> "title" =: "Start a manager agent: it routes your tasks to the right \

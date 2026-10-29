@@ -178,6 +178,8 @@ type AgentsEvents = ()
 type CompareEvents = ()
 -- | The Shortcuts cheat-sheet pane is read-only, so it reports nothing outward.
 type ShortcutsEvents = ()
+-- | The Team pane acts through IO (the cards' actions) — nothing outward.
+type TeamEvents = ()
 -- | The Welcome pane acts entirely through the process-global request hooks
 -- (open panels, new window, preferences) — nothing outward.
 type WelcomeEvents = ()
@@ -209,6 +211,7 @@ data TabEvents e where
   ChangesTab   :: TabEvents ChangesEvents
   PreferencesTab :: TabEvents PreferencesEvents
   ShortcutsTab :: TabEvents ShortcutsEvents
+  TeamTab      :: TabEvents TeamEvents
   WelcomeTab   :: TabEvents WelcomeEvents
   BrowserTab   :: TabEvents BrowserEvents
   WorkspaceTab :: TabEvents ProjectEvents

@@ -63,6 +63,7 @@ data Command =
   | CommandFind
   | CommandShowPreferences
   | CommandShowShortcuts
+  | CommandShowTeam
   | CommandOpenBrowser
   | CommandNextError
   | CommandPreviousError
@@ -121,6 +122,7 @@ commandImageAndTip CommandFind = ("/pics/find.svg", "Show or hide the find bar")
 commandImageAndTip CommandNextError = ("/pics/error-next.svg", "Go to the next error")
 commandImageAndTip CommandPreviousError = ("/pics/error-prev.svg", "Go to the previous error")
 commandImageAndTip CommandShowShortcuts = ("/pics/shortcuts.svg", "Show the keyboard shortcut cheat sheet")
+commandImageAndTip CommandShowTeam = ("/pics/tree-claude.svg", "Show the Team: a bio for every agent")
 commandImageAndTip CommandOpenBrowser = ("/pics/browser.svg", "Open a new web browser pane")
 commandImageAndTip _ = ("", "")
 

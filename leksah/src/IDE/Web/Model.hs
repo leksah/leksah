@@ -88,6 +88,8 @@ data TabKey
   | PreferencesKey
   -- | The keyboard-shortcut cheat sheet (read-only, ⌘D-convertible).
   | ShortcutsKey
+  -- | The Team pane: a bio card for every agent.
+  | TeamKey
   -- | An embedded web browser pane.  The Int is its persistent id (minted by
   -- 'IDE.Web.Widget.Browser.nextBrowserId', never reused); the pane's URL
   -- state lives in that module's registry, not in the key.

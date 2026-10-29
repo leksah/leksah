@@ -135,6 +135,7 @@ usage = T.unlines
   , "                                     end its process but keep it / bring it back /"
   , "                                     ask it to rewrite its title, description and bio"
   , "  leksah-cmd agent manager [start]   the team's manager agent: who it is / start it"
+  , "  leksah-cmd team                    open the Team pane (a bio card for every agent)"
   , "                                     (every SID may also be the agent's name, e.g. wren)"
   , "  leksah-cmd agent wait SID [--timeout S]"
   , "                                     block until that agent is idle (or needs a human)"

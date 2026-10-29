@@ -131,6 +131,8 @@ import qualified IDE.Ws.File as WF
 import IDE.Ws.Registry (detectProject)
 import IDE.Ws.Types (Package(..), Project(..), ProjectKey(..), Verb(..))
 import IDE.Web.FS (fsEffects)
+import IDE.Web.Command (Command(CommandShowTeam))
+import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Utils.RemoteExec (resolveProjectInput)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
@@ -737,6 +739,8 @@ handleConn app conn = do
       -- caller identifies itself by pid, so `agent fork` needs no arguments —
       -- "fork me, beside me" is the whole common case.
       ("agent" : rest) -> agentVerb mpid cwd rest
+      -- Open the Team pane (a bio card for every agent) in the front window.
+      ("team" : _) -> requestKeymapCommand CommandShowTeam >> reply "Opening the Team pane.\n"
 
       ("help" : _) -> reply usage
       []            -> reply usage
