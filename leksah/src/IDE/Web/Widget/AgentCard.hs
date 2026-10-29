@@ -44,7 +44,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Clay (Css, (?), (-:))
 
 import Reflex
-       (Dynamic, Event, attach, current, ffilter, ffor, gate, getPostBuild,
+       (Dynamic, Event, attach, current, delay, ffilter, ffor, gate, getPostBuild,
         holdDyn, holdUniqDyn, leftmost, never, newTriggerEvent, sample,
         switchHold, tag, tagPromptlyDyn, updated)
 import Reflex.Dom.Core
@@ -142,9 +142,15 @@ agentCard acts mustD startOpen selectedD nD = mdo
         & inputElementConfig_initialValue .~ anName n0
         & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
             ("class" =: "agent-card-rename" <> "spellcheck" =: "false")
-      pbR <- getPostBuild
-      performEvent_ $ ffor pbR $ \_ -> liftJSM . void $
-        _element_raw (_inputElement_element inp) ^. js0 ("select" :: Text)
+      -- Focus it with the current name selected, so typing replaces it.  Not
+      -- at postBuild itself: the input is not attached to the page yet then
+      -- (wkwebview batches DOM changes), and an unattached element cannot take
+      -- focus — a moment later it is.
+      readyE <- delay 0.05 =<< getPostBuild
+      performEvent_ $ ffor readyE $ \_ -> liftJSM $ do
+        let raw = _element_raw (_inputElement_element inp)
+        void $ raw ^. js0 ("focus" :: Text)
+        void $ raw ^. js0 ("select" :: Text)
       let commitE = tag (current (_inputElement_value inp)) (keypress Enter inp)
           cancelE = leftmost [ () <$ keydown Escape inp
                              , () <$ ffilter not (updated (_inputElement_hasFocus inp)) ]
