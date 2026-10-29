@@ -138,7 +138,7 @@ import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
 import IDE.Web.Agent
        (ForkPlace(..), ForkRequest(..), agentDone, agentFind, agentList,
-        agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
+        agentHook, agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
         agentResume, agentRoleList, agentSend, agentStatus, agentSuspend,
         emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent)
 import IDE.Web.AgentInfo (describeAgent)
@@ -793,6 +793,9 @@ handleConn app conn = do
           _ -> reply ("agent rename: give a new name (and, from outside an agent, "
                       <> "which agent)\n\n" <> agentUsage)
         ("roles" : _) -> agentRoleList cwd >>= reply
+        -- A Claude Code hook (`leksah-cmd agent hook EVENT`, its JSON as the
+        -- next argument): see 'agentHook'.  The reply is what the hook prints.
+        ("hook" : ev : raw : _) -> agentHook mpid ev raw >>= reply
         -- Ending an agent's process on purpose, keeping the agent; and
         -- bringing it back with what it was launched with.
         ("suspend" : who : rest) | not (T.null who) -> withAgent who $ \sid ->

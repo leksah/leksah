@@ -60,6 +60,7 @@ import System.IO
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
 import System.Process (readProcess)
+import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
 import Network.Socket
@@ -169,6 +170,20 @@ main = getArgs >>= \case
   ("open-browser":rest) -> do
     pane <- maybe "" id <$> lookupEnv "TMUX_PANE"
     send ("open-browser" : pane : rest)
+
+  -- agent hook EVENT: a Claude Code hook (leksah installs these for the
+  -- sessions it launches — see claudeHooksFlag).  Claude Code waits for it,
+  -- so it must be quick and must never fail the session: the event's JSON
+  -- (stdin) goes to leksah, leksah's answer (SessionStart's extra context, or
+  -- nothing) is printed, and it exits 0 whatever happens — also when leksah is
+  -- not running or does not answer within a few seconds.
+  ("agent":"hook":ev:_) -> (`catch` \(_ :: SomeException) -> return ()) $ do
+    input <- BS.getContents
+    r <- timeout 4000000 . tryReply $
+           ["agent", "hook", ev, T.unpack (decodeUtf8With lenientDecode input)]
+    case r of
+      Just (Just t) | not (T.null (T.strip t)) -> T.putStr t
+      _                                        -> return ()
 
   -- ping: exit 0 if the UI answered, 1 otherwise (for scripting).
   ("ping":_) -> pingOnce >>= \ok ->

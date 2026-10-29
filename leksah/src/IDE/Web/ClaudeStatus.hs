@@ -26,12 +26,15 @@ module IDE.Web.ClaudeStatus
   , claudeStatusTooltip
   , claudeStatusGlyph
   , claudeRowLabel
+  , pokeClaudeStatus
   ) where
 
 import Control.Applicative ((<|>))
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, takeMVar, tryPutMVar)
+import System.Timeout (timeout)
 import Control.Exception (catch, SomeException)
-import Control.Monad (foldM, when)
+import Control.Monad (foldM, void, when)
 
 import Data.IORef
        (IORef, newIORef, readIORef, atomicModifyIORef', atomicWriteIORef)
@@ -89,6 +92,20 @@ statusRef = unsafePerformIO (newIORef emptyClaudeStatus)
 pushRef :: IORef [ClaudeStatus -> IO ()]
 pushRef = unsafePerformIO (newIORef [])
 
+-- | A poke for the poll: look again now rather than at the next 3s tick.
+{-# NOINLINE pokeVar #-}
+pokeVar :: MVar ()
+pokeVar = unsafePerformIO newEmptyMVar
+
+-- | Re-read the sessions now — what a Claude Code hook calls when a session
+-- has just finished a turn, asked for approval, or ended, so every status
+-- surface shows it at once instead of within 3s.  Pokes again a moment later
+-- too: the hook can run a beat before the CLI rewrites its session file.
+pokeClaudeStatus :: IO ()
+pokeClaudeStatus = do
+  _ <- tryPutMVar pokeVar ()
+  void . forkIO $ threadDelay 400000 >> void (tryPutMVar pokeVar ())
+
 -- | The most recent poll result.  A plain 'IORef' read — safe to call from a
 -- reflex tick on the frame thread.
 claudeStatusNow :: IO ClaudeStatus
@@ -132,7 +149,8 @@ startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
         atomicWriteIORef statusRef st
         readIORef pushRef >>= mapM_ (\h ->
           h st `catch` \(_ :: SomeException) -> return ())
-      threadDelay 3000000
+      -- Every 3s — or at once, when a hook says something changed.
+      _ <- timeout 3000000 (takeMVar pokeVar)
       loop st labels'
     addLabel m l = claudeSessionLabel (clDir l) (clSession l) >>= \case
       Just lbl -> return (M.insert (clSession l) lbl m)

@@ -31,6 +31,10 @@ module IDE.Web.Claude
   , runClaudeCmd
   , claudeCommandLine
   , claudeLatestActivity
+  , claudeProcessOf
+  , nameNote
+  , agentNote
+  , managerNote
   , claudeRunning
   , claudeKeyFor
   , mruClaudePane
@@ -74,7 +78,8 @@ import Data.Time
 import Data.Aeson
        (Object, Value(..), decodeStrict', withObject, (.:), (.:?), object, (.=),
         encode)
-import Data.Aeson.Types (parseMaybe, FromJSON)
+import Data.Aeson.Types (Pair, parseMaybe, FromJSON)
+import qualified Data.Aeson.Key as Key (fromText)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (writeFile)
 import Data.Text.Encoding (decodeUtf8With)
@@ -760,15 +765,28 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
           home <- getHomeDirectory
           let path   = home </> ".leksah" </> "hooks.json"
               script = home </> ".leksah" </> "worktree-hook.sh"
+          -- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
+          -- SessionStart keeps an agent's identity across /clear and /branch
+          -- and re-briefs it on a resume; Stop, Notification and SessionEnd
+          -- make the status surfaces update at once rather than at the
+          -- next poll.  Each is `leksah-cmd agent hook EVENT`, which always
+          -- exits 0 quickly, so a hook can never hold up or fail a session.
+          let lifecycle :: Text -> Pair
+              lifecycle ev = Key.fromText ev .=
+                [ object [ "hooks" .=
+                    [ object [ "type"    .= ("command" :: Text)
+                             , "command" .= (shq (T.pack exe) <> " agent hook " <> ev)
+                             , "timeout" .= (5 :: Int) ] ] ] ]
           BL.writeFile path . encode $ object
             [ "hooks" .= object
-                [ "PostToolUse" .=
+                ([ "PostToolUse" .=
                     [ object
                         [ "matcher" .= ("Bash" :: Text)
                         , "hooks" .=
                             [ object [ "type"    .= ("command" :: Text)
                                      , "command" .= script
-                                     , "timeout" .= (10 :: Int) ] ] ] ] ] ]
+                                     , "timeout" .= (10 :: Int) ] ] ] ] ]
+                 <> map lifecycle ["SessionStart", "Stop", "Notification", "SessionEnd"]) ]
           return (" --settings " <> T.pack path)
         _ -> return ""
 
@@ -1028,6 +1046,24 @@ sessionForPaneId pid = do
 -- caller is a DESCENDANT (leksah-cmd, or the @leksah-cmd mcp@ server, invoked by
 -- a session), so this is the other lookup.  Lets a pane opened by a Claude
 -- session be bound to it.
+-- | The @claude@ process a pid runs under (itself or its nearest ancestor with
+-- a session file) and the session id that file names now — for a hook, which
+-- runs as a child of the session it reports on.  Unlike 'sessionOwningPid' it
+-- looks at every session file, continued or not.
+claudeProcessOf :: Int -> IO (Maybe (Int, Text))
+claudeProcessOf pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  ls <- claudeSessionFiles
+  parents <- readParentPids
+  let byPid = M.fromList [ (clPid l, clSession l) | l <- ls ]
+      go :: Int -> Int -> Maybe (Int, Text)
+      go 0 _ = Nothing
+      go n p = case M.lookup p byPid of
+        Just s  -> Just (p, s)
+        Nothing -> case M.lookup p parents of
+          Just q | q > 1 -> go (n - 1) q
+          _              -> Nothing
+  return (go (12 :: Int) pid)
+
 sessionOwningPid :: Int -> IO (Maybe Text)
 sessionOwningPid pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
   ls <- claudeLiveSessions

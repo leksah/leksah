@@ -33,6 +33,7 @@ module IDE.Web.AgentInfo
   , setAgentManager
   , agentManager
   , agentInfoOf
+  , moveAgentRecord
   , agentParentOf
   , agentForest
   , agentTitles
@@ -314,6 +315,28 @@ migrateContinued = do
       , aiBio     = aiBio n <|> aiBio o
       , aiBioAt   = aiBioAt n <|> aiBioAt o
       , aiManager = aiManager n || aiManager o }
+
+-- | Move what leksah knows about session @old@ to @new@ at once (the hook's
+-- path, see 'IDE.Web.Agent.agentHook'), re-pointing its children.  With
+-- @keepStory@ False — a @/clear@, which starts the conversation over — only
+-- WHO it is moves (parent, role, manager, birth, directory); its title,
+-- description, bio and done summary described the conversation it cleared.
+moveAgentRecord :: Bool -> Text -> Text -> IO ()
+moveAgentRecord keepStory old new = withInfos $ \m ->
+  let reparent i = i { aiParent = (\p -> if p == old then new else p) <$> aiParent i }
+      forget i = i { aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing
+                   , aiBio = Nothing, aiBioAt = Nothing, aiDone = Nothing
+                   , aiDoneAt = Nothing }
+      moved = case M.lookup old m of
+        Nothing -> m
+        Just o  -> let o' = (if keepStory then id else forget) o { aiSession = new }
+                   in M.insert new (maybe o' (\n -> n { aiParent = aiParent n <|> aiParent o'
+                                                     , aiRole = aiRole n <|> aiRole o'
+                                                     , aiManager = aiManager n || aiManager o'
+                                                     , aiBorn = aiBorn o' <|> aiBorn n })
+                                           (M.lookup new m))
+                                (M.delete old m)
+  in (M.map reparent moved, ())
 
 -- | An agent saying it has finished (@agent done@), with what it would like
 -- the user — and the agent that started it — to know.

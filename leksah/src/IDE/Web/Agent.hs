@@ -50,6 +50,7 @@ module IDE.Web.Agent
   , agentLastSaid
   , renameAgentEverywhere
   , agentConversation
+  , agentHook
   , resolveAgent
   , agentFind
   , agentDone
@@ -76,9 +77,17 @@ import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Data.Aeson (Value(..), decodeStrict', parseJSON, withObject, (.:), (.:?))
+import Data.Aeson
+       (Value(..), decodeStrict', encode, object, parseJSON, withObject, (.:),
+        (.:?), (.=))
 import Data.Aeson.Types (parseMaybe)
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as BL (toStrict)
+import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import qualified Data.Text.Encoding as TE (decodeUtf8, decodeUtf8With, encodeUtf8)
+import Data.Text.Encoding.Error (lenientDecode)
+import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
+import System.IO.Unsafe (unsafePerformIO)
 
 import System.Directory
        (doesDirectoryExist, doesFileExist, getHomeDirectory, listDirectory)
@@ -90,16 +99,20 @@ import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
-        recordAgentFork, setAgentManager, setAgentRole, setAgentSuspended)
+        moveAgentRecord, recordAgentFork, setAgentManager, setAgentRole,
+        setAgentSuspended)
 import IDE.Web.AgentNames
-       (agentNameFor, agentNames, renameAgent, resolveAgentName, touchAgentNames)
+       (adoptContinuation, agentNameFor, agentNames, renameAgent,
+        resolveAgentName, touchAgentNames)
 import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, roleNote)
 import IDE.Web.Claude
        (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
         claudeCommandLine, claudeLiveBySession, claudeLiveOwners,
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
-        showLiveSession, showTmuxPane)
+        showLiveSession, showTmuxPane, claudeProcessOf, nameNote, agentNote,
+        managerNote)
+import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
@@ -642,6 +655,89 @@ transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
         listToMaybe <$> filterM doesFileExist [ root </> d </> leaf | d <- ds ]
 
 -- | The assistant's text messages from the tail of a transcript, oldest first.
+-- | A Claude Code hook reporting on a leksah-launched session (installed by
+-- 'IDE.Web.Claude.claudeHooksFlag'; arrives through @leksah-cmd agent hook
+-- EVENT@, whose pid — a child of the session's @claude@ — is @mpid@).
+-- Answers what the hook should print: SessionStart's extra context as the
+-- JSON Claude Code expects, or nothing.  Never throws — a hook must not fail.
+--
+--   * SessionStart: a @/clear@ or @/branch@ switches the SAME claude process
+--     to a new session id — the same agent, so the new id takes the old one's
+--     name and record ('adoptContinuation', 'moveAgentRecord'); the old id is
+--     the one this process ran last (remembered from its previous
+--     SessionStart, else its session file).  Then anything but a fresh
+--     startup gets a re-briefing — its name, who started it, its role, the
+--     manager's brief — which a resumed session started outside leksah's
+--     launcher (claude -c, the resume picker) would not otherwise have.
+--   * Stop, Notification, SessionEnd: the status surfaces look again now.
+--
+-- Every event is logged, one line, to @~\/.leksah\/agent-hooks.log@.
+agentHook :: Maybe Int -> Text -> Text -> IO Text
+agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
+  let v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
+      field k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Text
+      sid = field "session_id"
+  proc <- maybe (return Nothing) claudeProcessOf mpid
+  logHook ev proc [sid, field "source", field "reason", field "notification_type"]
+  case (ev, sid) of
+    ("SessionStart", Just new) -> do
+      let source = fromMaybe "" (field "source")
+          ppid = fst <$> proc
+      prev <- atomicModifyIORef' hookSessions $ \m ->
+        ( maybe m (\p -> M.insert p new m) ppid
+        , ppid >>= (`M.lookup` m) )
+      -- The process's previous session: what its last SessionStart said, else
+      -- what its session file still says (it may not have been rewritten yet).
+      let old = case prev of
+            Just o | o /= new -> Just o
+            _ -> case snd <$> proc of
+              Just o | o /= new -> Just o
+              _                 -> Nothing
+      case (source, old) of
+        (src, Just o) | src `elem` ["clear", "fork"] -> do
+          _ <- adoptContinuation o new
+          moveAgentRecord (src /= "clear") o new
+        _ -> return ()
+      pokeClaudeStatus
+      if source == "startup" then return "" else briefing new
+    _ -> pokeClaudeStatus >> return ""
+  where
+    briefing sid = do
+      name <- agentNameFor sid
+      minfo <- agentInfoOf sid
+      roleText <- case (minfo >>= aiRole, minfo) of
+        (Just ro, Just i) -> either (const Nothing) (Just . roleNote) <$> findAgentRole (aiDir i) ro
+        _                 -> return Nothing
+      let notes = [ nameNote name | not (T.null name) ]
+               <> [ agentNote p sid | Just p <- [minfo >>= aiParent] ]
+               <> maybe [] (: []) roleText
+               <> [ managerNote | maybe False aiManager minfo ]
+      return $ if null notes then "" else TE.decodeUtf8 . BL.toStrict . encode $ object
+        [ "hookSpecificOutput" .= object
+            [ "hookEventName" .= ("SessionStart" :: Text)
+            , "additionalContext" .= T.intercalate "\n\n" notes ] ]
+
+-- | The session each claude process (by pid) last started — how a SessionStart
+-- for a NEW id in the same process is recognised as the same agent.
+{-# NOINLINE hookSessions #-}
+hookSessions :: IORef (Map Int Text)
+hookSessions = unsafePerformIO (newIORef M.empty)
+
+-- | One line per hook event in @~\/.leksah\/agent-hooks.log@ (kept to the last
+-- ~2000 lines): when, which event, which process, and the fields that matter.
+logHook :: Text -> Maybe (Int, Text) -> [Maybe Text] -> IO ()
+logHook ev proc fs = (`catch` \(_ :: SomeException) -> return ()) $ do
+  home <- getHomeDirectory
+  now  <- getCurrentTime
+  let path = home </> ".leksah" </> "agent-hooks.log"
+      ln = T.intercalate "\t" $
+             [ T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S" now), ev
+             , maybe "-" (\(p, s) -> T.pack (show p) <> ":" <> T.take 8 s) proc ]
+             <> map (fromMaybe "-") fs
+  ex <- doesFileExist path
+  old <- if ex then T.lines . TE.decodeUtf8With lenientDecode <$> BS.readFile path else return []
+  BS.writeFile path . TE.encodeUtf8 . T.unlines $ drop (max 0 (length old - 1999)) old <> [ln]
+
 -- | The tail of a session's conversation as @(fromUser, text)@ turns, oldest
 -- first: what the user typed (or another agent sent it) and what it answered —
 -- tool calls, tool results, and the CLI's own command and reminder messages
