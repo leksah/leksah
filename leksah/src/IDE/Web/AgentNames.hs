@@ -7,9 +7,8 @@
 --
 -- A name belongs to a session for good (it survives a @--resume@), but is only
 -- RESERVED while the session has been seen recently: a name nobody has used for
--- a week goes back in the pool.  The pool is the 26 animals of 'agentAnimals',
--- one per initial letter, so no two names in use start with the same sound —
--- which is what makes them work when spoken.
+-- a week goes back in the pool.  The pool is the animals of 'agentAnimals':
+-- short, everyday, and distinct when spoken (the bell announces them).
 --
 -- FS\/JSON only, and deliberately low in the import graph (nothing from
 -- "IDE.Web.Claude" or above), so the launcher ('IDE.Web.Claude.claudeCommandLine'),
@@ -46,13 +45,16 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath)
 
--- | The pool: one animal per letter, each short and distinct when spoken.
--- "IDE.Web.AgentFace" draws a face for every one of them.
+-- | The pool, each short and distinct when spoken.  "IDE.Web.AgentFace" draws
+-- a face for every one of them — add the face with the name.
 agentAnimals :: [Text]
 agentAnimals =
-  [ "Alpaca", "Badger", "Crane", "Dingo", "Egret", "Fox", "Gecko", "Heron"
-  , "Ibis", "Jay", "Koala", "Lynx", "Mole", "Newt", "Otter", "Puffin"
-  , "Quail", "Raven", "Seal", "Tapir", "Urial", "Vole", "Wren", "Xerus"
+  [ "Alpaca", "Badger", "Bear", "Beaver", "Cat", "Cow", "Crane", "Deer"
+  , "Dingo", "Duck", "Egret", "Elephant", "Fox", "Frog", "Gecko", "Giraffe"
+  , "Hedgehog", "Heron", "Hippo", "Ibis", "Jay", "Kiwi", "Koala", "Lion"
+  , "Lynx", "Mole", "Monkey", "Newt", "Otter", "Owl", "Panda", "Penguin"
+  , "Pig", "Puffin", "Quail", "Rabbit", "Raccoon", "Raven", "Seal", "Sheep"
+  , "Tapir", "Tiger", "Turtle", "Urial", "Vole", "Wolf", "Wren", "Xerus"
   , "Yak", "Zebra" ]
 
 -- | One session's name, and when it was last seen (POSIX seconds) — the
@@ -137,7 +139,7 @@ touch now m sid = case M.lookup sid m of
 -- 'reserveFor'), the one whose last use is oldest — so a name that has just
 -- been freed isn't immediately handed to someone else, which would be
 -- confusing.  Ties (never-used animals) go by a hash of the session id, so the
--- choice doesn't always walk the alphabet.  With all 26 held, an animal gets a
+-- choice doesn't always walk the alphabet.  With every animal held, one gets a
 -- number (@Wren-2@).
 pick :: Double -> Map Text NameRec -> Text -> Text
 pick now m sid = case sortOn order free of
