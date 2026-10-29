@@ -53,7 +53,7 @@ import IDE.Web.GhciMode
         stopForGhci, phaseLog)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.MacGlue
-import IDE.Web.Main (jsMain, indexHtml, mintWindowId)
+import IDE.Web.Main (jsMain, indexHtml, mintNewWindow)
 import IDE.Web.Keybindings (registerKeymapListener)
 import IDE.Web.MenuModel (renderedMenus, MenuItem(..))
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), setNativeBrowserOps)
@@ -328,7 +328,7 @@ installMacMenu = do
   -- File ▸ New Window: mint a WindowId (seeds an empty WebWindow), then ask the
   -- ObjC glue to create an NSWindow + WKWebView; it calls back macAttachWindow.
   setNewWindowHandler . withApp $ \app -> do
-      WindowId n <- mintWindowId app
+      WindowId n <- mintNewWindow app
       c_newWindow (fromIntegral n)
   -- Restore: create a native window for an already-seeded window id (no mint).
   setOpenWindowHandler (c_newWindow . fromIntegral)

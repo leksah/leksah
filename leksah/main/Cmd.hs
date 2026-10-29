@@ -118,6 +118,7 @@ usage = T.unlines
   , "                                     capture a window to a PNG (wkwebview/webkitgtk);"
   , "                                     without --window, the ACTIVE window"
   , "  leksah-cmd window list             OS windows: id, tab count, active tab"
+  , "  leksah-cmd window new              File > New Window (opens with a terminal)"
   , "  leksah-cmd window focus N          make window N active: raise it, and move the"
   , "                                     window that dialogs open in (and that screenshot"
   , "                                     defaults to).  Does not activate the app."

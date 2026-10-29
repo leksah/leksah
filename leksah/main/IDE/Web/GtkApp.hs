@@ -62,7 +62,7 @@ import IDE.App (App, appUi, getGlobalApp)
 import IDE.Reactive (modifyCell, readCell)
 import IDE.Web.Model (WindowId(..), activeWindow, webWindows)
 import IDE.Web.GtkMenu (installGtkMenu, postGUIAsync)
-import IDE.Web.Main (jsMain, mintWindowId)
+import IDE.Web.Main (jsMain, mintNewWindow, mintWindowId)
 import IDE.Web.NewWindowRequest
        (setNewWindowHandler, setOpenWindowHandler, setRaiseWindowHandler)
 import IDE.Web.ScreenshotRequest (registerScreenshotHandler)
@@ -92,7 +92,8 @@ runGtkApp html url _jsm = do
     Just theApp -> do
       -- Register the native window hooks the shared New Window command / flipper
       -- drive.  All three must touch GTK on the main loop, so marshal there.
-      setNewWindowHandler   $ postGUIAsync (openWindow app html url windowsRef theApp Nothing)
+      setNewWindowHandler   $ postGUIAsync
+        (mintNewWindow theApp >>= openWindow app html url windowsRef theApp . Just)
       setOpenWindowHandler  $ \n -> postGUIAsync
                                 (openWindow app html url windowsRef theApp (Just (WindowId n)))
       setRaiseWindowHandler $ \n -> postGUIAsync $

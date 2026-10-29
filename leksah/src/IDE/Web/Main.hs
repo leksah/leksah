@@ -23,6 +23,7 @@ module IDE.Web.Main
   , css
   , jsMain
   , mintWindowId
+  , mintNewWindow
   ) where
 
 import Control.Concurrent
@@ -184,8 +185,9 @@ import IDE.Web.Model
         flipMirror, flipMru, AIPaneRef(..), paneAISession, tabFontSize,
         dragPreview, tabKeyPath)
 import IDE.Workspace
-       (activePackage, workspaceFollowPath, workspaceSweepTemporary,
-        wsOpenFile, wsPath, wsProjects)
+       (WorkspaceService(..), activePackage, activeProject, prDir,
+        workspaceFollowPath, workspaceSweepTemporary, wsOpenFile, wsPath,
+        wsProjects)
 import IDE.Ws.Types (Package(..), Project(..))
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
 import IDE.Web.Bridge
@@ -1274,6 +1276,29 @@ mintWindowId app = stateCell (appUi app) $ \ui ->
                 & webWindows %~ M.insert wid defaultWebWindow { _wwZoom = zoom }
                 & activeWindow %~ Just . fromMaybe wid
   in (ui', wid)
+
+-- | File ▸ New Window's 'mintWindowId': the new window starts with the side
+-- and bottom panes the way the window it was opened from has them (the
+-- toolbar toggle needs no copying — it lives in the shared @localStorage@),
+-- and is marked to open a terminal rather than the Welcome pane.
+mintNewWindow :: App -> IO WindowId
+mintNewWindow app = do
+  wid <- mintWindowId app
+  modifyCell (appUi app) $ \ui ->
+    let parent = do
+          aw <- ui ^. activeWindow
+          guard (aw /= wid)
+          M.lookup aw (ui ^. webWindows)
+        inherit ww = maybe ww (\p -> ww { _wwTall = _wwTall p, _wwWide1 = _wwWide1 p }) parent
+    in ui & webWindows %~ M.adjust inherit wid
+  atomicModifyIORef' freshWindowsRef (\ws -> (S.insert wid ws, ()))
+  return wid
+
+-- | Windows minted by 'mintNewWindow' that have not booted yet: an empty one
+-- of these opens a terminal where any other empty window shows Welcome.
+{-# NOINLINE freshWindowsRef #-}
+freshWindowsRef :: IORef (S.Set WindowId)
+freshWindowsRef = unsafePerformIO (newIORef S.empty)
 
 -- | Adopt a 'WindowId' the native side already created, ensuring its 'WebWindow'
 -- exists (idempotent: keeps any entry the native seed already inserted).
@@ -5576,7 +5601,20 @@ main showMenubar macTitlebar wid ctx = mdo
   emptyWinD  <- holdUniqDyn (null . _wwWide0 <$> myWinD)
   emptyPb    <- getPostBuild
   emptyBoot0 <- delay 0.4 emptyPb
-  let emptyBootE = gate (current emptyWinD) emptyBoot0
+  -- A File ▸ New Window window boots into a terminal instead (in the active
+  -- project's directory, else home), placed in the frontmost window — this
+  -- one, by now.  If none has turned up a few seconds later (no tmux), the
+  -- boot check below falls back to Welcome after all.
+  freshE <- performEvent $ ffor (gate (current emptyWinD) emptyBoot0) $ \_ -> liftIO $ do
+    fresh <- atomicModifyIORef' freshWindowsRef (\ws -> (S.delete wid ws, wid `S.member` ws))
+    when fresh $ do
+      mws <- getGlobalApp >>= traverse (readCell . wsCell . appWorkspace)
+      dir <- maybe getHomeDirectory (return . prDir) (mws >>= activeProject)
+      openTerminalInDir dir
+    return fresh
+  freshFallbackE <- delay 3 (ffilter id freshE)
+  let emptyBootE = gate (current emptyWinD) $
+        leftmost [ () <$ ffilter not freshE, () <$ freshFallbackE ]
       -- True = "this is the boot check", i.e. Welcome unconditionally.
       wantWelcomeE = leftmost [ True <$ emptyBootE
                               , False <$ ffilter id (updated emptyWinD) ]

@@ -154,7 +154,7 @@ import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.RegionGrabRequest (requestRegionGrab)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.ScreenshotRequest (requestScreenshot)
-import IDE.Web.NewWindowRequest (requestRaiseWindow)
+import IDE.Web.NewWindowRequest (requestNewWindow, requestRaiseWindow)
 import IDE.Web.Heartbeat (lastBeatAge)
 import IDE.Web.SnapRequest (requestSnapPane)
 
@@ -561,6 +561,12 @@ handleConn app conn = do
       -- arrives).  Deliberately does NOT activate the application: pulling the
       -- whole app over the caller's terminal is not what a scripted "point at
       -- window N" should do.
+      -- File ▸ New Window, from a script: a terminal in the active project,
+      -- with the front window's side/bottom pane settings.
+      ("window" : "new" : _) -> do
+        requestNewWindow
+        reply "New window requested\n"
+
       ("window" : "focus" : n : _) | Just k <- readMaybe (T.unpack n) -> do
         ui <- readCell (appUi app)
         if Map.member (WindowId k) (view webWindows ui)
