@@ -51,6 +51,7 @@ module IDE.Web.Agent
   , renameAgentEverywhere
   , agentConversation
   , agentHook
+  , agentEvents
   , resolveAgent
   , agentFind
   , agentDone
@@ -78,8 +79,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Data.Aeson
-       (Value(..), decodeStrict', encode, object, parseJSON, withObject, (.:),
-        (.:?), (.=))
+       (Object, Value(..), decodeStrict', encode, object, parseJSON, withObject,
+        (.:), (.:?), (.=))
+import Data.Foldable (toList)
 import Data.Aeson.Types (parseMaybe)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (toStrict)
@@ -111,7 +113,10 @@ import IDE.Web.Claude
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
         showLiveSession, showTmuxPane, claudeProcessOf, nameNote, agentNote,
-        managerNote)
+        managerNote, describeToolUse)
+import IDE.Web.AgentEvents
+       (SessionEvents(..), editedRecently, eventsFor, sessionEvents, recordCwd, recordEdit, recordFailure, recordPermission,
+        recordToolEnd, recordToolStart, recordTurnEnd)
 import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
@@ -291,6 +296,7 @@ agentList me = do
   if M.null live then return "No Claude Code sessions are running.\n" else do
     names  <- touchAgentNames (M.keys live)
     titles <- agentTitles
+    events <- sessionEvents
     rows <- forM (sortOn (\l -> (rank l, clDir l)) (M.elems live)) $ \l -> do
       -- The same title every other surface shows: what the agent called
       -- itself, else its /rename name, else its first prompt.
@@ -301,7 +307,7 @@ agentList me = do
         [ clSession l
         , M.findWithDefault "-" (clSession l) names
         , liveState l
-        , liveDetail l
+        , detailWith (M.lookup (clSession l) events) l
         , fromMaybe "-" (M.lookup (clSession l) panes)
         , T.pack (clDir l)
         , T.takeWhile (/= '\n') title
@@ -337,6 +343,29 @@ liveDetail l = case clStatus l of
   Just "shell"   -> "running a shell command"
   _              -> "ready for input"
 
+-- | @agent events SID@: what the hooks have told leksah about a session — the
+-- tool running now, a pending approval, the last API error, where its shell
+-- is, and the files it edited.
+agentEvents :: Text -> IO Text
+agentEvents sid = do
+  e <- eventsFor sid
+  let row k = maybe (k <> "\t-") (\(t, _) -> k <> "\t" <> t)
+  return . T.unlines $
+    [ row "tool" (seTool e), row "approval" (sePermission e), row "error" (seError e)
+    , "cwd\t" <> maybe "-" T.pack (seCwd e) ]
+    <> [ "edited\t" <> T.pack f | (f, _) <- seEdits e ]
+
+-- | 'liveDetail', sharpened by what the hooks have said
+-- ("IDE.Web.AgentEvents"): the exact approval it waits for, the tool it is
+-- running, or the API error its last turn ended on (a turn that failed so
+-- looks merely idle to the CLI).
+detailWith :: Maybe SessionEvents -> ClaudeLive -> Text
+detailWith me l = case (liveState l, me) of
+  ("waiting", Just e) | Just (p, _) <- sePermission e -> "waiting for approval: " <> p
+  ("busy", Just e) | Just (t, _) <- seTool e -> t
+  ("idle", Just e) | Just (err, _) <- seError e -> "API error: " <> err
+  _ -> liveDetail l
+
 -- | One line for one session: its state, then what it is doing.  The state is
 -- the first word so a poller can match on it — @waiting@ (blocked on an
 -- approval prompt, and it needs a human), @busy@ (working), @idle@
@@ -360,9 +389,10 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
       _ -> return "gone\tthat session is not running\n"
   Just l  -> do
     pane <- M.lookup sid <$> panesBySession
+    ev   <- M.lookup sid <$> sessionEvents
     return $ T.intercalate "\t"
         [ liveState l
-        , liveDetail l
+        , detailWith ev l
         , fromMaybe "-" pane
         , T.pack (clDir l) ] <> "\n"
 
@@ -695,8 +725,14 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
   let v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
       field k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Text
       sid = field "session_id"
+      obj k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Object
+      toolName = fromMaybe "" (field "tool_name")
+      toolInput = fromMaybe mempty (obj "tool_input")
   proc <- maybe (return Nothing) claudeProcessOf mpid
-  logHook ev proc [sid, field "source", field "reason", field "notification_type"]
+  -- (Not the per-tool events: they come several times a turn.)
+  if ev `elem` ["PreToolUse", "PostToolUse", "PostToolUseFailure"] then return ()
+    else logHook ev proc [sid, field "source", field "reason", field "notification_type"
+                         , field "error", field "tool_name"]
   case (ev, sid) of
     ("SessionStart", Just new) -> do
       let source = fromMaybe "" (field "source")
@@ -718,8 +754,56 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
         _ -> return ()
       pokeClaudeStatus
       if source == "startup" then return "" else briefing new
+    -- What it is doing this moment (the activity line), and what it changed.
+    ("PreToolUse", Just s) -> do
+      recordToolStart s (describeToolUse toolName toolInput)
+      return ""
+    ("PostToolUseFailure", Just s) -> recordToolEnd s >> return ""
+    ("PostToolUse", Just s) -> do
+      recordToolEnd s
+      let files = editedFiles toolName toolInput (v >>= parseMaybe (withObject "hook" (.: "tool_response")))
+      if null files then return "" else do
+        recordEdit s files
+        overlapNote s files
+    -- What it is waiting for you to approve, in full.
+    ("PermissionRequest", Just s) -> do
+      recordPermission s (approvalText toolName toolInput)
+      pokeClaudeStatus
+      return ""
+    -- A turn that ended on an API error, which would otherwise look idle.
+    ("StopFailure", Just s) -> do
+      recordFailure s $ fromMaybe "unknown" (field "error")
+        <> maybe "" (\m -> " — " <> T.take 160 m) (field "last_assistant_message")
+      pokeClaudeStatus
+      return ""
+    ("Stop", Just s) -> recordTurnEnd s >> pokeClaudeStatus >> return ""
+    ("CwdChanged", Just s) -> do
+      mapM_ (recordCwd s . T.unpack) (field "new_cwd")
+      return ""
     _ -> pokeClaudeStatus >> return ""
   where
+    -- Another live agent edited one of these files lately: tell this one, once
+    -- per file and colleague (an async hook's context reaches it next turn).
+    overlapNote s files = do
+      live <- claudeLiveBySession
+      hits <- fmap concat . forM files $ \f -> do
+        others <- filter (`M.member` live) <$> editedRecently (2 * 3600) s f
+        fresh <- atomicModifyIORef' overlapWarned $ \w ->
+          let new = [ o | o <- others, (s, f, o) `notElem` w ]
+          in (w <> [ (s, f, o) | o <- new ], new)
+        return [ (f, o) | o <- fresh ]
+      if null hits then return "" else do
+        named <- forM hits $ \(f, o) -> (,) f <$> agentNameFor o
+        let say (f, nm) = nm <> " also edited " <> T.pack f <> " in the last two hours"
+            msg = "Leksah: " <> T.intercalate "; " (map say named)
+               <> ". Their changes may not be committed yet — check with them before \
+                  \going further (`leksah-cmd agent send NAME …`), so your edits \
+                  \do not collide."
+        return . TE.decodeUtf8 . BL.toStrict . encode $ object
+          [ "hookSpecificOutput" .= object
+              [ "hookEventName" .= ("PostToolUse" :: Text)
+              , "additionalContext" .= msg ] ]
+
     briefing sid = do
       name <- agentNameFor sid
       minfo <- agentInfoOf sid
@@ -734,6 +818,43 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
         [ "hookSpecificOutput" .= object
             [ "hookEventName" .= ("SessionStart" :: Text)
             , "additionalContext" .= T.intercalate "\n\n" notes ] ]
+
+-- | Which @(session, file, other session)@ overlaps have been pointed out
+-- already — each once.
+{-# NOINLINE overlapWarned #-}
+overlapWarned :: IORef [(Text, FilePath, Text)]
+overlapWarned = unsafePerformIO (newIORef [])
+
+-- | The files a tool call edited: the path an Edit\/Write\/NotebookEdit names,
+-- or the ones a Bash command's @bashEditDiff@ lists (its shape is not
+-- documented, so any string, or any object's @filePath@\/@file_path@\/@path@,
+-- found in it counts).
+editedFiles :: Text -> Object -> Maybe Value -> [FilePath]
+editedFiles name inp resp = map T.unpack $ case name of
+  "Edit"         -> str "file_path"
+  "MultiEdit"    -> str "file_path"
+  "Write"        -> str "file_path"
+  "NotebookEdit" -> str "notebook_path"
+  "Bash"         -> maybe [] paths (resp >>= parseMaybe (withObject "resp" (.: "bashEditDiff")))
+  _              -> []
+  where
+    str k = maybe [] (: []) (parseMaybe (.: k) inp)
+    paths :: Value -> [Text]
+    paths = \case
+      String t -> [t]
+      Array xs -> concatMap paths (toList xs)
+      Object o -> case [ p | k <- ["filePath", "file_path", "path"]
+                           , Just p <- [parseMaybe (.: k) o] ] of
+                    (p : _) -> [p]
+                    []      -> concatMap paths (toList o)
+      _        -> []
+
+-- | An approval request in a few words, showing what would actually run:
+-- @Bash: rm -rf node_modules@, @Edit Main.hs@, @WebFetch https://…@.
+approvalText :: Text -> Object -> Text
+approvalText name inp = case parseMaybe (.: "command") inp of
+  Just c | name == "Bash" -> "Bash: " <> T.take 120 (T.strip (T.takeWhile (/= '\n') c))
+  _                       -> describeToolUse name inp
 
 -- | The session each claude process (by pid) last started — how a SessionStart
 -- for a NEW id in the same process is recognised as the same agent.

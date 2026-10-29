@@ -170,6 +170,10 @@ agentCard acts mustD startOpen nD = mdo
           ffor nD $ \n -> "started " <> T.intercalate ", " (anChildNames n)
         elDynAttr "span" (sinceAttrs <$> nD) . dynText $
           ffor nD $ \n -> maybe "" (\b -> "since " <> ago now b) (anBorn n)
+        -- Where its shell has gone, and what it has edited (from the hooks).
+        elDynAttr "span" (cwdAttrs <$> nD) . dynText $
+          ffor nD $ \n -> maybe "" (\c -> "now in " <> T.pack (baseName c)) (anCwd n)
+        elDynAttr "span" (editsAttrs <$> nD) . dynText $ editsText <$> nD
       dyn_ $ ffor nD $ \n ->
         forM_ (anWorktrees n) $ \l -> divClass "agent-card-worktree" (text l)
       dyn_ $ ffor nD $ \n -> forM_ (anDone n) $ \d ->
@@ -237,7 +241,8 @@ displayName n | T.null (anName n) = T.take 8 (anSession n)
               | otherwise         = anName n
 
 badgeAttrs, managerAttrs, roleAttrs, stateAttrs, ageAttrs, line3Attrs, branchAttrs,
-  prAttrs, parentAttrs, childrenAttrs, sinceAttrs :: AgentNode -> Map Text Text
+  prAttrs, parentAttrs, childrenAttrs, sinceAttrs, cwdAttrs, editsAttrs
+  :: AgentNode -> Map Text Text
 badgeAttrs n = "class" =: "agent-card-badge" <> "style" =: ("color:" <> colourOf (anState n))
 managerAttrs n = if anManager n then "class" =: "agent-card-tag agent-card-tag-manager"
                                 else hidden
@@ -246,7 +251,9 @@ stateAttrs n = "class" =: "agent-card-state" <> "style" =: ("color:" <> colourOf
 ageAttrs n = if T.null (anAge n) then hidden else "class" =: "agent-card-age"
 line3Attrs n = if T.null (line3 n) then hidden
                else "class" =: ("agent-card-line agent-card-activity"
-                                <> if isJust (anActivity n) then " agent-card-now" else "")
+                                <> (if isJust (anError n) then " agent-card-error"
+                                    else if isJust (anActivity n) then " agent-card-now" else ""))
+                 <> "title" =: line3 n
 branchAttrs n = maybe hidden (const ("class" =: "agent-card-fact")) (anBranch n)
 prAttrs n = case anPr n of
   Nothing       -> hidden
@@ -255,6 +262,18 @@ prAttrs n = case anPr n of
 parentAttrs n = maybe hidden (const ("class" =: "agent-card-fact")) (anParentName n)
 childrenAttrs n = if null (anChildNames n) then hidden else "class" =: "agent-card-fact"
 sinceAttrs n = maybe hidden (const ("class" =: "agent-card-fact")) (anBorn n)
+cwdAttrs n = maybe hidden (\c -> "class" =: "agent-card-fact" <> "title" =: T.pack c) (anCwd n)
+editsAttrs n
+  | null (anEdits n) = hidden
+  | otherwise = "class" =: "agent-card-fact agent-card-edits"
+             <> "title" =: T.intercalate "\n" (map T.pack (anEdits n))
+
+-- | "edited: Main.hs, Agents.hs +3" — the latest few files it edited.
+editsText :: AgentNode -> Text
+editsText n = case anEdits n of
+  [] -> ""
+  fs -> "edited: " <> T.intercalate ", " (map (T.pack . baseName) (take 3 fs))
+     <> (if length fs > 3 then " +" <> T.pack (show (length fs - 3)) else "")
 
 moreAttrs :: Bool -> Bool -> Map Text Text
 moreAttrs full must
@@ -265,9 +284,10 @@ moreAttrs full must
 hidden :: Map Text Text
 hidden = "style" =: "display:none"
 
--- | The third line: what it is doing right now, else the first line of what it
--- says about itself.
+-- | The third line: the API error its last turn ended on, else what it is
+-- doing right now, else the first line of what it says about itself.
 line3 :: AgentNode -> Text
+line3 n | Just err <- anError n = "⚠ API error: " <> err
 line3 n = case anActivity n of
   Just a | not (T.null a) -> a
   _ -> T.take 160 . T.strip . T.takeWhile (/= '\n') . stripTags
@@ -409,6 +429,7 @@ agentCardCss = do
     "font-family" -: "'SF Mono', Menlo, monospace"
     "font-size" -: "11px"
   ".agent-card-waiting .agent-card-activity" ? ("color" -: "#f85149")
+  ".agent-card .agent-card-activity.agent-card-error" ? ("color" -: "#f85149")
   ".agent-card .agent-card-more" ? do
     "flex" -: "0 0 auto"
     "background" -: "none"

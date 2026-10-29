@@ -138,7 +138,7 @@ import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
 import IDE.Web.Agent
        (ForkPlace(..), ForkRequest(..), agentDone, agentFind, agentList,
-        agentHook, agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
+        agentEvents, agentHook, agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
         agentResume, agentRoleList, agentSend, agentStatus, agentSuspend,
         emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent)
 import IDE.Web.AgentInfo (describeAgent)
@@ -796,6 +796,8 @@ handleConn app conn = do
         -- A Claude Code hook (`leksah-cmd agent hook EVENT`, its JSON as the
         -- next argument): see 'agentHook'.  The reply is what the hook prints.
         ("hook" : ev : raw : _) -> agentHook mpid ev raw >>= reply
+        ("events" : who : _) | not (T.null who) -> withAgent who $ \sid ->
+            agentEvents sid >>= reply
         -- Ending an agent's process on purpose, keeping the agent; and
         -- bringing it back with what it was launched with.
         ("suspend" : who : rest) | not (T.null who) -> withAgent who $ \sid ->
@@ -967,6 +969,7 @@ handleConn app conn = do
       , "  suspend SID [--force] end its process but keep it (resume brings it back)"
       , "  resume SID            reopen a suspended or exited agent, as it was launched"
       , "  refresh SID           ask it to rewrite its title, description and bio"
+      , "  events SID            what its hooks reported: tool, approval, error, edits"
       , "  manager [start]       who the team's manager is / start (or resume) it"
       , "  me                    the session id of the caller"
       , "  (SID: a session id, a unique prefix of one, or the agent's name)"

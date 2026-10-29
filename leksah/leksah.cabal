@@ -162,6 +162,7 @@ library
         IDE.Web.ClaudeStatus
         IDE.Web.AISession
         IDE.Web.Agent
+        IDE.Web.AgentEvents
         IDE.Web.AgentFace
         IDE.Web.AgentInfo
         IDE.Web.AgentNames

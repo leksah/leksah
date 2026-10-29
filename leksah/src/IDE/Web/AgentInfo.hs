@@ -76,6 +76,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.AgentEvents (SessionEvents(..), sessionEvents)
 import IDE.Web.AgentNames (agentContinuations, agentNames)
 import IDE.Web.Claude
        (ClaudeLive(..), claudeLatestActivity, claudeLiveBySession, claudeSessionLabel,
@@ -163,6 +164,9 @@ data AgentNode = AgentNode
   , anBorn     :: Maybe Double -- ^ when leksah started it (POSIX seconds)
   , anParentName :: Maybe Text -- ^ the name of the agent that started it
   , anChildNames :: [Text]    -- ^ the names of the agents it started
+  , anEdits    :: [FilePath]  -- ^ files it edited (the hooks saw), newest first
+  , anError    :: Maybe Text  -- ^ the API error its last turn ended on
+  , anCwd      :: Maybe FilePath -- ^ where its shell is, when that is not 'anDir'
   , anChildren :: [AgentNode] -- ^ the agents it forked
   } deriving (Eq, Show)
 
@@ -522,6 +526,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anBorn     = Nothing
   , anParentName = Nothing
   , anChildNames = map (\(DemoAgent _ _ _ _ _ _ _ _ _ _ nm _ _) -> fromMaybe "" nm) kids
+  , anEdits = [], anError = Nothing, anCwd = Nothing
   , anChildren = map demoNode kids
   }
 #else
@@ -553,16 +558,33 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   -- (And with its name: an exited agent keeps the one it had.)
   -- And with what agents.json knows that the CLI does not: its bio, whether it
   -- is the manager, when it was born, and who started it.
-  names <- agentNames
+  -- And with what the hooks have said about it ("IDE.Web.AgentEvents"): the
+  -- approval it waits for, the API error its turn ended on, or the tool it is
+  -- running — each a better activity line than the transcript can give —
+  -- and the files it edited and where its shell went.
+  names  <- agentNames
+  events <- sessionEvents
   decorated <- forM (liveNodes <> exited) $ \(s, n) -> do
     wls <- worktreeClaimLines now s
     let i = M.lookup s infos
+        e = M.lookup s events
+        recentErr = e >>= seError
+        activity = case anState n of
+          "waiting" | Just (p, _) <- e >>= sePermission -> Just ("needs approval: " <> p)
+          state | state `elem` ["busy", "shell"], Just (t, _) <- e >>= seTool -> Just t
+          _ -> anActivity n
     return (s, n { anWorktrees = wls
                  , anName = M.findWithDefault (anName n) s names
                  , anBio = i >>= aiBio
                  , anManager = maybe False aiManager i
                  , anBorn = i >>= aiBorn
-                 , anParentName = (i >>= aiParent) >>= (`M.lookup` names) })
+                 , anParentName = (i >>= aiParent) >>= (`M.lookup` names)
+                 , anActivity = if anLive n then activity else anActivity n
+                 , anError = if anLive n then fst <$> recentErr else Nothing
+                 , anEdits = maybe [] (map fst . seEdits) e
+                 , anCwd = e >>= seCwd >>= \c ->
+                     if dropTrailingPathSeparator c == dropTrailingPathSeparator (anDir n)
+                       then Nothing else Just c })
   let nodes = M.fromList decorated
       -- The parent of x, skipping over agents that aren't shown (dismissed, or
       -- exited long ago) so their children stay visible under the nearest
@@ -614,6 +636,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anWorktrees = []
       , anBio = Nothing, anManager = False, anBorn = Nothing
       , anParentName = Nothing, anChildNames = []
+      , anEdits = [], anError = Nothing, anCwd = Nothing
       , anChildren = [] }
 
     -- Stored agents that are NOT running: either exited (their transcript's mtime
@@ -655,6 +678,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
+          , anEdits = [], anError = Nothing, anCwd = Nothing
           , anChildren = [] }
       let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
           (suspendedCands, goneCands) =
@@ -686,6 +710,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
+          , anEdits = [], anError = Nothing, anCwd = Nothing
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 

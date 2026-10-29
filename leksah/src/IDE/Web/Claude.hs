@@ -31,6 +31,7 @@ module IDE.Web.Claude
   , runClaudeCmd
   , claudeCommandLine
   , claudeLatestActivity
+  , describeToolUse
   , claudeProcessOf
   , nameNote
   , agentNote
@@ -775,12 +776,24 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
           -- make the status surfaces update at once rather than at the
           -- next poll.  Each is `leksah-cmd agent hook EVENT`, which always
           -- exits 0 quickly, so a hook can never hold up or fail a session.
-          let lifecycle :: Text -> Pair
-              lifecycle ev = Key.fromText ev .=
-                [ object [ "hooks" .=
-                    [ object [ "type"    .= ("command" :: Text)
-                             , "command" .= (shq (T.pack exe) <> " agent hook " <> ev)
-                             , "timeout" .= (5 :: Int) ] ] ] ]
+          --
+          -- The rest only REPORT, so they run async where Claude Code allows
+          -- it — they never hold a session up: the tool call running now
+          -- (PreToolUse / PostToolUse[Failure]) and the files it edited, the approval a
+          -- session waits for (PermissionRequest), a turn that ended on an
+          -- API error (StopFailure), and where its shell went (CwdChanged).
+          -- A PostToolUse answer (another agent edited the same file) reaches
+          -- the session on its next turn.
+          let hookGroup :: Bool -> Text -> Value
+              hookGroup async ev = object [ "hooks" .=
+                [ object ([ "type"    .= ("command" :: Text)
+                          , "command" .= (shq (T.pack exe) <> " agent hook " <> ev)
+                          , "timeout" .= (5 :: Int) ]
+                          <> [ "async" .= True | async ]) ] ]
+              hookOn :: Bool -> Text -> Pair
+              hookOn async ev = Key.fromText ev .= [hookGroup async ev]
+              lifecycle = hookOn False
+              reporter  = hookGroup True
           BL.writeFile path . encode $ object
             [ "hooks" .= object
                 ([ "PostToolUse" .=
@@ -789,8 +802,16 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
                         , "hooks" .=
                             [ object [ "type"    .= ("command" :: Text)
                                      , "command" .= script
-                                     , "timeout" .= (10 :: Int) ] ] ] ] ]
-                 <> map lifecycle ["SessionStart", "Stop", "Notification", "SessionEnd"]) ]
+                                     , "timeout" .= (10 :: Int) ] ] ]
+                    , reporter "PostToolUse" ] ]
+                 <> map lifecycle ["SessionStart", "Stop", "Notification", "SessionEnd"
+                                  -- (Claude Code does not run an async
+                                  -- PreToolUse hook; this one answers at once
+                                  -- with nothing, which leaves the call alone.)
+                                  , "PreToolUse"]
+                 <> map (hookOn True)
+                      [ "PostToolUseFailure", "PermissionRequest"
+                      , "StopFailure", "CwdChanged" ]) ]
           return (" --settings " <> T.pack path)
         _ -> return ""
 
@@ -917,31 +938,36 @@ claudeLatestActivity path = (`catch` \(_ :: SomeException) -> return Nothing) $ 
       ("tool_use" :: Text) -> do
         name <- c .: "name"
         inp  <- c .:? "input" >>= maybe (return mempty) return
-        return (describeTool name inp)
+        return (describeToolUse name inp)
       "thinking" -> return "Thinking"
       _          -> return "Writing"
-    describeTool :: Text -> Object -> Text
-    describeTool name inp =
-      let str k = case parseMaybe (.: k) inp of
-                    Just v | not (T.null (T.strip v)) -> Just (oneLine v)
-                    _                                 -> Nothing
-          file  = T.pack . takeFileName . T.unpack
-          short = T.takeWhileEnd (/= '_') name
-      in case name of
-        "Bash"         -> maybe "Bash" ("Bash: " <>) (str "description" <|> str "command")
-        "Read"         -> maybe "Read" (("Read " <>) . file) (str "file_path")
-        "Edit"         -> maybe "Edit" (("Edit " <>) . file) (str "file_path")
-        "MultiEdit"    -> maybe "Edit" (("Edit " <>) . file) (str "file_path")
-        "Write"        -> maybe "Write" (("Write " <>) . file) (str "file_path")
-        "NotebookEdit" -> maybe "Edit" (("Edit " <>) . file) (str "notebook_path")
-        "Grep"         -> maybe "Grep" ("Grep " <>) (str "pattern")
-        "Glob"         -> maybe "Glob" ("Glob " <>) (str "pattern")
-        "WebFetch"     -> maybe "WebFetch" ("Fetch " <>) (str "url")
-        "WebSearch"    -> maybe "WebSearch" ("Search: " <>) (str "query")
-        "Agent"        -> maybe "Agent" ("Agent: " <>) (str "description")
-        "Task"         -> maybe "Task" ("Task: " <>) (str "description")
-        _ | "mcp__" `T.isPrefixOf` name -> short
-          | otherwise                   -> name
+
+-- | A tool call in a few words — @Bash: cabal build@, @Edit Main.hs@,
+-- @Agent: review the diff@ — for the Agents pane's activity line (from a
+-- transcript, or as a hook reports it).
+describeToolUse :: Text -> Object -> Text
+describeToolUse name inp =
+  let str k = case parseMaybe (.: k) inp of
+                Just v | not (T.null (T.strip v)) -> Just (oneLine v)
+                _                                 -> Nothing
+      file  = T.pack . takeFileName . T.unpack
+      short = T.takeWhileEnd (/= '_') name
+  in case name of
+    "Bash"         -> maybe "Bash" ("Bash: " <>) (str "description" <|> str "command")
+    "Read"         -> maybe "Read" (("Read " <>) . file) (str "file_path")
+    "Edit"         -> maybe "Edit" (("Edit " <>) . file) (str "file_path")
+    "MultiEdit"    -> maybe "Edit" (("Edit " <>) . file) (str "file_path")
+    "Write"        -> maybe "Write" (("Write " <>) . file) (str "file_path")
+    "NotebookEdit" -> maybe "Edit" (("Edit " <>) . file) (str "notebook_path")
+    "Grep"         -> maybe "Grep" ("Grep " <>) (str "pattern")
+    "Glob"         -> maybe "Glob" ("Glob " <>) (str "pattern")
+    "WebFetch"     -> maybe "WebFetch" ("Fetch " <>) (str "url")
+    "WebSearch"    -> maybe "WebSearch" ("Search: " <>) (str "query")
+    "Agent"        -> maybe "Agent" ("Agent: " <>) (str "description")
+    "Task"         -> maybe "Task" ("Task: " <>) (str "description")
+    _ | "mcp__" `T.isPrefixOf` name -> short
+      | otherwise                   -> name
+  where
     oneLine = T.take 80 . T.strip . T.takeWhile (/= '\n')
 
 -- | Activate the most-recently-used LIVE claude terminal for @dir@ (select its
