@@ -33,6 +33,7 @@ module IDE.Web.Widget.Terminals
   , isClaudeWindow
   , windowIconSrc
   , windowTabLabel
+  , paneIconSrc
   , stripIdxPrefix
   ) where
 
@@ -665,6 +666,20 @@ windowIconSrc w
               (windowActivePane w >>= tpAgentName)
   | otherwise = src
   where src = windowAlertSrc w
+
+-- | One PANE's leading icon, for the places that list panes rather than
+-- windows (the flipper, the toolbar strip): 'windowIconSrc' reads the window's
+-- ACTIVE pane, so every pane of a split window used to wear that one agent's
+-- face.  This one is the pane's own — its agent's face while calm, else the
+-- window's alert icon, with "blocked on an approval prompt" judged for this
+-- pane alone (another pane's prompt is not this pane's alert).
+paneIconSrc :: TmuxWindow -> TmuxPane -> Text
+paneIconSrc w p
+  | isClaudePane p
+  , src `elem` ["/pics/tree-window-calm.svg", "/pics/tree-window-idle.svg"]
+      = maybe "/pics/tree-claude.svg" agentFaceDataUri (tpAgentName p)
+  | otherwise = src
+  where src = windowAlertSrc w { twPanes = [p] }
 
 -- | The tile/flipper text for a tmux window: for a Claude session in its active
 -- pane, the agent's name and then its title ('tpAgentName', 'tpClaudeTitle' —

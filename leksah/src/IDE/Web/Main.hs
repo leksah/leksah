@@ -55,7 +55,7 @@ import qualified Data.ByteString as BS (readFile)
 import qualified Data.ByteString.Char8 as BS (unlines)
 import qualified Data.ByteString.Lazy as BS (toStrict)
 import qualified Data.ByteString.Lazy as LBS (fromStrict, readFile)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isDigit)
 import qualified Data.Dependent.Map as DM (singleton, fromList, lookup)
 import Data.Dependent.Sum (DSum(..))
 import Data.Foldable (Foldable(..))
@@ -73,7 +73,7 @@ import qualified Data.Set as S
        (Set, fromList, delete, null, singleton, empty, insert, member, intersection)
 import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, drop, stripPrefix, takeWhile, all, splitOn, replace)
+import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
@@ -348,7 +348,7 @@ import IDE.Web.Widget.Terminal
         reapControlClients, TmuxWindow(..), TmuxPane(..), isClaudePane)
 import IDE.Web.Widget.Terminals
        (terminalsCss, terminalsWidget, sessionAlert, windowIconSrc,
-        windowTabLabel, stripIdxPrefix)
+        windowTabLabel, paneIconSrc, stripIdxPrefix)
 import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.LwView (sessionlessLwWidget)
 #if defined(ghcjs_HOST_OS)
@@ -2117,24 +2117,49 @@ flipForSel s mw mp tree = do
             Nothing -> tpIndex <$> listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
   pure (FlipPane s (twIndex w) pidx)
 
--- | Flipper label for a tmux pane: "session-name · window-name", with a
--- trailing " · pane-name" only when the window has more than one pane (a
--- single-pane window IS the pane, so its name would just be noise).  Uses the
--- session's current tmux name (from the tree, so a rename shows up); the window
--- and pane names come from 'twLabel'/'tpLabel' with their "@idx: @" prefix
--- stripped.
+-- | Flipper label for a tmux pane.
+--
+-- A pane running a named agent is labelled by THAT agent — "Raven — fix the
+-- CI failure" — whichever pane of its window is active, followed by
+-- " · session" only when the agent lives in a session named after something
+-- else (a split inside another agent's session).  The window-level label
+-- ('windowTabLabel') describes the window's active pane, so using it here gave
+-- every pane of a split window the same agent, and repeated the agent's name
+-- that the session name already carried.
+--
+-- Any other pane: "session · window", with a trailing " · pane" only when the
+-- window has more than one pane (a single-pane window IS the pane, so its name
+-- would just be noise), and with a part dropped when it only repeats the one
+-- before it.  Uses the session's current tmux name (from the tree, so a rename
+-- shows up); the window and pane names come from 'twLabel'/'tpLabel' with
+-- their "@idx: @" prefix stripped.
 flipPaneLabel :: Text -> Int -> Int -> Map Text (Text, [TmuxWindow]) -> Text
-flipPaneLabel n w p tree =
-  maybe n fst (M.lookup n tree) <> " · " <> winName
-    <> (if length panes > 1 then " · " <> paneName else "")
+flipPaneLabel n w p tree = case mbPane of
+    Just pn | Just a <- tpAgentName pn ->
+      a <> maybe "" (" — " <>) (ellipsize 60 <$> (tpClaudeTitle pn >>= nonEmpty))
+        <> (if baseName sessName == a then "" else " · " <> sessName)
+    _ -> T.intercalate " · " . dedupe $
+           [sessName, winName] <> [ paneName | length panes > 1 ]
   where
+    sessName = maybe n fst (M.lookup n tree)
     stripIdx i lbl = fromMaybe lbl (T.stripPrefix (T.pack (show i) <> ": ") lbl)
     mbWin   = find ((== w) . twIndex) (maybe [] snd (M.lookup n tree))
     panes   = maybe [] twPanes mbWin
-    winName = maybe (T.pack (show w)) windowTabLabel mbWin
-    paneName = case [ stripIdx p (tpLabel pn) | pn <- panes, tpIndex pn == p ] of
-                 (l:_) -> l
-                 []    -> T.pack (show p)
+    mbPane  = find ((== p) . tpIndex) panes
+    -- The window's own name, not 'windowTabLabel' — that one is about the
+    -- window's ACTIVE pane, which need not be this one.
+    winName = maybe (T.pack (show w)) (\win -> stripIdx (twIndex win) (twLabel win)) mbWin
+    paneName = maybe (T.pack (show p)) (stripIdx p . tpLabel) mbPane
+    nonEmpty t = if T.null t then Nothing else Just t
+    -- "Wren-2" is still Wren's session.
+    baseName s = case T.breakOnEnd "-" s of
+      (pre, ds) | not (T.null pre), not (T.null ds), T.all isDigit ds -> T.dropEnd 1 pre
+      _ -> s
+    dedupe (x : y : zs) | x == y = dedupe (x : zs)
+    dedupe (x : zs)              = x : dedupe zs
+    dedupe []                    = []
+    ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
+                  | otherwise      = t
 
 -- | The leading icon (an SVG path under @/pics@) for a flipper entry, or 'Nothing'
 -- for entries shown by label alone.  A terminal — whether the item is a whole
@@ -2152,7 +2177,7 @@ flipPaneLabel n w p tree =
 
 flipIconSrc :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Text
 flipIconSrc lws tree fi = case fi of
-        FlipPane n w _          -> Just (winIcon n w)
+        FlipPane n w p          -> Just (paneIcon n w p)
         FlipTab (TerminalKey n) -> Just (winIcon n (activeWinIdx n))
         FlipTab k               -> tabIconSrc k
         FlipView n l            -> viewKeyOf lws n l >>= tabIconSrc
@@ -2160,6 +2185,10 @@ flipIconSrc lws tree fi = case fi of
     winIcon n w = case M.lookup n tree >>= find ((== w) . twIndex) . snd of
         Just win -> windowIconSrc win
         Nothing  -> "/pics/tree-window-idle.svg"
+    -- A pane wears its OWN icon (its agent's face), not its window's.
+    paneIcon n w p = case M.lookup n tree >>= find ((== w) . twIndex) . snd of
+        Just win | Just pn <- find ((== p) . tpIndex) (twPanes win) -> paneIconSrc win pn
+        _ -> winIcon n w
     activeWinIdx sid = maybe 0 twIndex $ M.lookup sid tree
         >>= (\wins -> listToMaybe (filter twActive wins ++ wins)) . snd
 
