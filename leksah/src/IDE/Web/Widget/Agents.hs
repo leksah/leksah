@@ -127,7 +127,7 @@ agentCardActions toast refresh = CardActions
 -- other card — and whichever the user opened — exactly as it was.
 agentsWidget :: forall t m . MonadWidget t m => Dynamic t [Text] -> m (Event t ())
 agentsWidget mruNamesD = do
-  (root, _) <- elClass' "div" "agents leksah-nav" $ mdo
+  (root, _) <- elClass' "div" "agents-pane leksah-nav" $ mdo
     pb   <- getPostBuild
     tick <- tickLossyFromPostBuildTime 2
     (forestE, fireForest) <- newTriggerEvent
@@ -400,7 +400,7 @@ agentsCss = do
     -- The cards themselves (shared with the Team pane).
     agentCardCss
     -- Head and cards: only the cards scroll.
-    ".agents" ? do
+    ".agents-pane" ? do
         height (pct 100)
         overflow hidden
         display flex
@@ -409,53 +409,53 @@ agentsCss = do
         key "fill" dimColor
         cursor cursorDefault
         "padding-right" -: "8px"
-    ".agents button" ? do
+    ".agents-pane button" ? do
         color fgColor
         borderStyle none
         borderRadius (px 3) (px 3) (px 3) (px 3)
         backgroundImage (vGradient btnTopColor btnBottomColor)
         fontSize (px 12)
         cursor cursorDefault
-    ".agents button" # hover ?
+    ".agents-pane button" # hover ?
         backgroundImage (vGradient btnHoverTopColor btnHoverBottomColor)
     -- The header's quiet glyph buttons (⟳, the layout toggle).
-    ".agents .agents-action" ? do
+    ".agents-pane .agents-action" ? do
         padding (px 0) (px 3) (px 0) (px 3)
         fontSize (px 11)
         "background" -: "none"
         color dimColor
         "opacity" -: "0.6"
         "flex" -: "0 0 auto"
-    ".agents .agents-action" # hover ? do
+    ".agents-pane .agents-action" # hover ? do
         "opacity" -: "1"
         color fgColor
         backgroundImage (vGradient hoverColor hoverColor)
     -- The header: agent count, the state chips, the layout toggle and the
     -- re-read glyph; the search box under them.
-    ".agents .agents-head" ? do
+    ".agents-pane .agents-head" ? do
         "flex" -: "0 0 auto"
         padding (px 3) (px 0) (px 4) (px 2)
-    ".agents .agents-head-row" ? do
+    ".agents-pane .agents-head-row" ? do
         display flex
         "align-items" -: "center"
         "gap" -: "3px"
-    ".agents .agents-head-label" ? do
+    ".agents-pane .agents-head-label" ? do
         fontWeight bold
         color dimColor
         fontSize (px 12)
         "flex" -: "1"
         "min-width" -: "0"
-    ".agents .agents-chip" ? do
+    ".agents-pane .agents-chip" ? do
         "background" -: "none"
         fontSize (px 11)
         padding (px 0) (px 4) (px 0) (px 4)
         color dimColor
         "border" -: "1px solid transparent"
         "flex" -: "0 0 auto"
-    ".agents .agents-chip.agents-chip-on" ? do
+    ".agents-pane .agents-chip.agents-chip-on" ? do
         color fgColor
         "border" -: "1px solid var(--leksah-selection)"
-    ".agents .agents-search" ? do
+    ".agents-pane .agents-search" ? do
         "width" -: "calc(100% - 8px)"
         "margin" -: "4px 0 0 0"
         fontSize (px 12)
@@ -465,19 +465,19 @@ agentsCss = do
         "border" -: "1px solid var(--leksah-border-faint)"
         borderRadius (px 3) (px 3) (px 3) (px 3)
         "outline" -: "none"
-    ".agents .agents-search:focus" ?
+    ".agents-pane .agents-search:focus" ?
         ("border-color" -: "var(--leksah-selection)")
-    ".agents .agents-manager-start" ? do
+    ".agents-pane .agents-manager-start" ? do
         "margin" -: "0 0 6px 2px"
         "align-self" -: "flex-start"
         padding (px 2) (px 8) (px 2) (px 8)
-    ".agents .agents-empty" ? do
+    ".agents-pane .agents-empty" ? do
         color dimColor
         fontSize (px 12)
         padding (px 2) (px 2) (px 6) (px 2)
         "overflow-wrap" -: "anywhere"
     -- The cards: one column, ordered by CSS (see 'Slot').
-    ".agents .agents-list" ? do
+    ".agents-pane .agents-list" ? do
         "flex" -: "1 1 auto"
         "min-height" -: "0"
         overflow'
@@ -485,7 +485,7 @@ agentsCss = do
         "flex-direction" -: "column"
         "gap" -: "5px"
         "padding" -: "1px 1px 6px 1px"
-    ".agents .agents-slot" ? ("flex" -: "0 0 auto")
+    ".agents-pane .agents-slot" ? ("flex" -: "0 0 auto")
     -- An agent's face in the workspace tree's session rows.
     ".tree-face" ? do
         "display" -: "inline-flex"

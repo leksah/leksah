@@ -9467,7 +9467,7 @@ main showMenubar macTitlebar wid ctx = mdo
             WorkspaceKey -> Just ("tall"  :: Text, ".workspace" :: Text)
             MetadataKey  -> Just ("tall",  ".metadata")
             TerminalsKey -> Just ("tall",  ".terminals")
-            AgentsKey    -> Just ("tall",  ".agents")
+            AgentsKey    -> Just ("tall",  ".agents-pane")
             ErrorsKey    -> Just ("wide1", ".errors")
             LogKey       -> Just ("wide1", ".log")
             GrepKey      -> Just ("wide1", ".grep")
