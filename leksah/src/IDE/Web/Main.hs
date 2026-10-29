@@ -153,8 +153,8 @@ import Reflex
         sample, constDyn,
         tagPromptlyDyn, attachPromptlyDynWithMaybe, debounce, delay, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
-       (dyn, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
-        text, blank, domEvent, EventName(..),
+       (dyn, dyn_, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
+        simpleList, text, blank, domEvent, EventName(..),
         _element_raw, (=:))
 
 import IDE.Web.Attach (mainWidgetWithCssGuarded)
@@ -6151,11 +6151,40 @@ main showMenubar macTitlebar wid ctx = mdo
                           Nothing -> contentLabel lw tree
                         Nothing -> "")
                       <$> ide <*> terminalNamesD <*> allTreeD
+              -- The window's own panes as the FLIPPER lists them — its tmux
+              -- panes (resolved to their owning leksah window, as the flipper
+              -- does) and its view leaves, in flipper (MRU) order — each with
+              -- the flipper's icon and label.
+              paneIconsD = (\items lws tree names ->
+                  [ (src, lbl)
+                  | (_, fi) <- items
+                  , case fi of
+                      FlipPane s w _ -> paneOwnerLw lws tree s w == Just n
+                      FlipView n' _  -> n' == n
+                      FlipTab _      -> False
+                  , Just src <- [flipIconSrc lws tree fi]
+                  , let lbl = case fi of
+                          FlipPane s w p -> flipPaneLabel s w p tree
+                          FlipView n' l  -> maybe "" (`tabLabelText` names) (viewKeyOf lws n' l)
+                          FlipTab t      -> tabLabelText t names ])
+                <$> flipLiveD <*> leksahWindowsD' <*> allTreeD <*> terminalNamesD
+              -- One pane: its icon and the window's name.  Several: just the
+              -- panes' icons — the same ones, in the same order, as the
+              -- flipper shows — each naming its pane on hover.
               labelW = do
-                  void $ elDynAttr' "img"
-                      ((\src -> "class" =: "tab-icon term-alert-icon" <> "src" =: src) <$> iconD)
-                      (pure ())
-                  dynText labelD
+                  paneIconsD' <- holdUniqDyn paneIconsD
+                  multiD <- holdUniqDyn ((> 1) . length <$> paneIconsD')
+                  dyn_ $ ffor multiD $ \case
+                    False -> do
+                      void $ elDynAttr' "img"
+                          ((\src -> "class" =: "tab-icon term-alert-icon" <> "src" =: src) <$> iconD)
+                          (pure ())
+                      dynText labelD
+                    True -> void $ simpleList paneIconsD' $ \pD ->
+                      elDynAttr "img"
+                        ((\(src, lbl) -> "class" =: "tab-icon tab-pane-icon term-alert-icon"
+                                       <> "src" =: src <> "title" =: lbl) <$> pD)
+                        (pure ())
               orderStyleD = buttonOrderStyleD ident baseOrderD
               badgeD = M.lookup ident <$> badgeNumsD
           tabButton area fkey k isVisibleD orderStyleD badgeD Nothing Nothing labelW

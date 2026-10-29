@@ -120,6 +120,12 @@ tabsCss = do
         verticalAlign middle
         "margin" -: "0 4px 2px 2px"
         opacity dimOpacity
+    -- A window with several panes shows just their icons (its panes, in
+    -- flipper order): packed closer, and a touch larger since they carry the
+    -- whole tab.
+    ".tab-buttons button img.tab-pane-icon" ? do
+        height (px 16)
+        "margin" -: "0 1px 1px 1px"
     -- Full brightness for the selected / hovered / flipper-preview tab.  The
     -- SELECTED tab sits on the dark-blue selection background in both themes, so
     -- its label stays light ('onAccentColor') rather than 'fgColor' (which flips
